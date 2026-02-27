@@ -1,4 +1,6 @@
+using MahjongClaw.Domain.Tiles;
 using MahjongClaw.Persistence;
+using MahjongClaw.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,6 +10,401 @@ builder.Services.AddDbContext<MahjongClawDbContext>(options =>
 
 var app = builder.Build();
 
-app.MapGet("/", () => "Hello World!");
+app.MapGet("/", () => "Mahjong Claw API");
+
+var gameGroup = app.MapGroup("/api/game");
+
+gameGroup.MapPost("/", async (MahjongClawDbContext dbContext, CancellationToken cancellationToken) =>
+{
+    var game = new GameEntity
+    {
+        Status = "Waiting",
+        Round = 1
+    };
+
+    dbContext.Games.Add(game);
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    var response = new CreateGameResponse(game.Id, game.Status, game.Round, game.CreatedAt);
+    return Results.Created($"/api/game/{game.Id}", response);
+});
+
+var validSeats = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "East",
+    "South",
+    "West",
+    "North"
+};
+
+gameGroup.MapPost("/{id:guid}/join", async (
+    Guid id,
+    JoinGameRequest request,
+    MahjongClawDbContext dbContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games
+        .Include(g => g.Players)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!string.Equals(game.Status, "Waiting", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Conflict(new { message = "Game is not open for joining." });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Seat))
+    {
+        return Results.BadRequest(new { message = "Player name and seat are required." });
+    }
+
+    if (!validSeats.Contains(request.Seat.Trim()))
+    {
+        return Results.BadRequest(new { message = "Seat must be East, South, West, or North." });
+    }
+
+    if (game.Players.Any(player => string.Equals(player.Seat, request.Seat, StringComparison.OrdinalIgnoreCase)))
+    {
+        return Results.Conflict(new { message = "Seat is already taken." });
+    }
+
+    var player = new PlayerEntity
+    {
+        GameId = game.Id,
+        Name = request.Name.Trim(),
+        Seat = request.Seat.Trim(),
+        Score = 0
+    };
+
+    dbContext.Players.Add(player);
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    var response = new JoinGameResponse(player.Id, game.Id, player.Name, player.Seat, player.Score);
+    return Results.Ok(response);
+});
+
+gameGroup.MapPost("/{id:guid}/start", async (
+    Guid id,
+    MahjongClawDbContext dbContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games
+        .Include(g => g.Players)
+        .Include(g => g.Tiles)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!string.Equals(game.Status, "Waiting", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Conflict(new { message = "Game has already started." });
+    }
+
+    if (game.Players.Count < 4)
+    {
+        return Results.Conflict(new { message = "Game requires 4 players to start." });
+    }
+
+    var dealer = game.Players.FirstOrDefault(player =>
+        string.Equals(player.Seat, "East", StringComparison.OrdinalIgnoreCase)) ?? game.Players.First();
+
+    game.DealerId = dealer.Id;
+    game.CurrentPlayerId = dealer.Id;
+    game.Status = "Active";
+
+    if (game.Tiles.Count == 0)
+    {
+        var rng = new Random();
+        var tiles = TileFactory.CreateStandardSet().OrderBy(_ => rng.Next()).ToList();
+        var tileEntities = tiles.Select((tile, index) => new TileEntity
+        {
+            Id = Guid.NewGuid(),
+            GameId = game.Id,
+            Suit = tile.Suit.ToString(),
+            Rank = tile.Rank,
+            Wind = tile.Wind?.ToString(),
+            Dragon = tile.Dragon?.ToString(),
+            Location = "Wall",
+            Sequence = index
+        }).ToList();
+
+        dbContext.Tiles.AddRange(tileEntities);
+
+        DealStartingHands(game, tileEntities);
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    var response = new StartGameResponse(game.Id, game.Status, game.DealerId, game.CurrentPlayerId);
+    return Results.Ok(response);
+});
+
+gameGroup.MapGet("/{id:guid}/state", async (
+    Guid id,
+    MahjongClawDbContext dbContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games
+        .AsNoTracking()
+        .Include(g => g.Players)
+        .Include(g => g.Tiles)
+        .Include(g => g.Melds)
+        .Include(g => g.Discards)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+
+    var response = new GameStateResponse(
+        game.Id,
+        game.Status,
+        game.CurrentPlayerId,
+        game.DealerId,
+        game.Round,
+        game.CreatedAt,
+        game.Players.Select(player => new PlayerSummary(player.Id, player.Name, player.Seat, player.Score)).ToList(),
+        game.Tiles.Count,
+        game.Melds.Count,
+        game.Discards.Count);
+
+    return Results.Ok(response);
+});
+
+gameGroup.MapPost("/{id:guid}/draw", async (
+    Guid id,
+    DrawTileRequest request,
+    MahjongClawDbContext dbContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games
+        .Include(g => g.Tiles)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Conflict(new { message = "Game is not active." });
+    }
+
+    if (game.CurrentPlayerId != request.PlayerId)
+    {
+        return Results.Conflict(new { message = "It is not this player's turn." });
+    }
+
+    var tile = game.Tiles
+        .Where(t => t.Location == "Wall")
+        .OrderBy(t => t.Sequence)
+        .FirstOrDefault();
+
+    if (tile is null)
+    {
+        return Results.Conflict(new { message = "No tiles left in wall." });
+    }
+
+    tile.Location = "Hand";
+    tile.PlayerId = request.PlayerId;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(new DrawTileResponse(tile.Id, tile.Suit, tile.Rank, tile.Wind, tile.Dragon));
+});
+
+gameGroup.MapPost("/{id:guid}/discard", async (
+    Guid id,
+    DiscardTileRequest request,
+    MahjongClawDbContext dbContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games
+        .Include(g => g.Tiles)
+        .Include(g => g.Discards)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (game.CurrentPlayerId != request.PlayerId)
+    {
+        return Results.Conflict(new { message = "It is not this player's turn." });
+    }
+
+    var tile = game.Tiles.FirstOrDefault(t => t.Id == request.TileId && t.PlayerId == request.PlayerId);
+
+    if (tile is null)
+    {
+        return Results.NotFound(new { message = "Tile not found in player's hand." });
+    }
+
+    tile.Location = "Discard";
+
+    var sequence = game.Discards.Count == 0
+        ? 1
+        : game.Discards.Max(d => d.Sequence) + 1;
+
+    var discard = new DiscardEntity
+    {
+        GameId = game.Id,
+        PlayerId = request.PlayerId,
+        TileId = tile.Id,
+        Sequence = sequence
+    };
+
+    dbContext.Discards.Add(discard);
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(new DiscardTileResponse(discard.Id, tile.Id, discard.Sequence));
+});
+
+gameGroup.MapPost("/{id:guid}/meld", async (
+    Guid id,
+    MeldRequest request,
+    MahjongClawDbContext dbContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games
+        .Include(g => g.Tiles)
+        .Include(g => g.Melds)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+
+    var tiles = game.Tiles
+        .Where(t => request.TileIds.Contains(t.Id) && t.PlayerId == request.PlayerId)
+        .ToList();
+
+    if (tiles.Count != request.TileIds.Count)
+    {
+        return Results.NotFound(new { message = "One or more tiles are missing from the player's hand." });
+    }
+
+    var meld = new MeldEntity
+    {
+        GameId = game.Id,
+        PlayerId = request.PlayerId,
+        Type = request.Type
+    };
+
+    dbContext.Melds.Add(meld);
+
+    foreach (var tile in tiles)
+    {
+        tile.Location = "Meld";
+        tile.Meld = meld;
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(new MeldResponse(meld.Id, request.Type, tiles.Select(t => t.Id).ToList()));
+});
+
+gameGroup.MapPost("/{id:guid}/win", async (
+    Guid id,
+    WinRequest request,
+    MahjongClawDbContext dbContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games.FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+
+    game.Status = "Completed";
+    game.CurrentPlayerId = request.PlayerId;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(new WinResponse(game.Id, game.Status, request.PlayerId));
+});
 
 app.Run();
+
+void DealStartingHands(GameEntity game, IReadOnlyList<TileEntity> tiles)
+{
+    var seatOrder = new[] { "East", "South", "West", "North" };
+    var players = seatOrder
+        .Select(seat => game.Players.FirstOrDefault(p =>
+            string.Equals(p.Seat, seat, StringComparison.OrdinalIgnoreCase)))
+        .Where(p => p is not null)
+        .ToList();
+
+    if (players.Count != 4)
+    {
+        return;
+    }
+
+    var wallTiles = tiles.Where(t => t.Location == "Wall").OrderBy(t => t.Sequence).ToList();
+    var drawIndex = 0;
+
+    for (var round = 0; round < 3; round++)
+    {
+        foreach (var player in players)
+        {
+            DealTiles(player!, wallTiles, ref drawIndex, 4);
+        }
+    }
+
+    foreach (var player in players)
+    {
+        DealTiles(player!, wallTiles, ref drawIndex, 1);
+    }
+
+    var east = players.First(p => string.Equals(p!.Seat, "East", StringComparison.OrdinalIgnoreCase));
+    DealTiles(east!, wallTiles, ref drawIndex, 1);
+}
+
+void DealTiles(PlayerEntity player, IReadOnlyList<TileEntity> wallTiles, ref int drawIndex, int count)
+{
+    for (var i = 0; i < count && drawIndex < wallTiles.Count; i++)
+    {
+        var tile = wallTiles[drawIndex++];
+        tile.Location = "Hand";
+        tile.PlayerId = player.Id;
+    }
+}
+
+internal record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt);
+internal record JoinGameRequest(string Name, string Seat);
+internal record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);
+internal record StartGameResponse(Guid GameId, string Status, Guid? DealerId, Guid? CurrentPlayerId);
+internal record PlayerSummary(Guid Id, string Name, string Seat, int Score);
+internal record GameStateResponse(
+    Guid Id,
+    string Status,
+    Guid? CurrentPlayerId,
+    Guid? DealerId,
+    int Round,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<PlayerSummary> Players,
+    int TilesInPlay,
+    int MeldCount,
+    int DiscardCount);
+
+internal record DrawTileRequest(Guid PlayerId);
+internal record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);
+internal record DiscardTileRequest(Guid PlayerId, Guid TileId);
+internal record DiscardTileResponse(Guid DiscardId, Guid TileId, int Sequence);
+internal record MeldRequest(Guid PlayerId, string Type, IReadOnlyList<Guid> TileIds);
+internal record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
+internal record WinRequest(Guid PlayerId);
+internal record WinResponse(Guid GameId, string Status, Guid PlayerId);
