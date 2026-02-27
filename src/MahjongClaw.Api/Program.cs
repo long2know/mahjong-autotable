@@ -28,6 +28,14 @@ gameGroup.MapPost("/", async (MahjongClawDbContext dbContext, CancellationToken 
     return Results.Created($"/api/game/{game.Id}", response);
 });
 
+var validSeats = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "East",
+    "South",
+    "West",
+    "North"
+};
+
 gameGroup.MapPost("/{id:guid}/join", async (
     Guid id,
     JoinGameRequest request,
@@ -51,6 +59,11 @@ gameGroup.MapPost("/{id:guid}/join", async (
     if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Seat))
     {
         return Results.BadRequest(new { message = "Player name and seat are required." });
+    }
+
+    if (!validSeats.Contains(request.Seat.Trim()))
+    {
+        return Results.BadRequest(new { message = "Seat must be East, South, West, or North." });
     }
 
     if (game.Players.Any(player => string.Equals(player.Seat, request.Seat, StringComparison.OrdinalIgnoreCase)))
@@ -97,7 +110,9 @@ gameGroup.MapPost("/{id:guid}/start", async (
         return Results.Conflict(new { message = "Game requires 4 players to start." });
     }
 
-    var dealer = game.Players.First();
+    var dealer = game.Players.FirstOrDefault(player =>
+        string.Equals(player.Seat, "East", StringComparison.OrdinalIgnoreCase)) ?? game.Players.First();
+
     game.DealerId = dealer.Id;
     game.CurrentPlayerId = dealer.Id;
     game.Status = "Active";
