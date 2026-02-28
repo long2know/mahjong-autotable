@@ -4,90 +4,102 @@
 
 <h1>Lobby</h1>
 
-<p class="text-muted">Create a room or join an existing table. SignalR wiring comes next.</p>
-
 <div class="row g-4">
-    <div class="col-12 col-lg-6">
+    <div class="col-12 col-lg-5">
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
+                <p class="text-muted">Start a new table and invite friends to join with the generated game ID.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Saturday Night Mahjong" />
+                    <label class="form-label">Preferred seat</label>
+                    <select class="form-select">
+                        <option selected>Auto-assign</option>
+                        <option>East (Dealer)</option>
+                        <option>South</option>
+                        <option>West</option>
+                        <option>North</option>
+                    </select>
                 </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-primary" disabled>Create</button>
-                    <button class="btn btn-outline-secondary" disabled>Invite friends</button>
+                <button class="btn btn-primary" disabled>Create game</button>
+                <div class="alert alert-light border mt-4 mb-0">
+                    <div class="small text-muted">Game ID</div>
+                    <div class="fw-semibold">MC-2048</div>
                 </div>
-                <p class="text-muted small mt-3 mb-0">API wiring for create + invite is pending.</p>
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-6">
+    <div class="col-12 col-lg-7">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Join Game</h5>
-                <div class="mb-3">
-                    <label class="form-label">Game ID</label>
-                    <input class="form-control" placeholder="Game id" />
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">Join Game</h5>
+                        <p class="text-muted mb-0">Enter an existing lobby ID and choose your seat.</p>
+                    </div>
+                    <span class="badge text-bg-secondary">Open tables: 3</span>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" />
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Game ID</label>
+                        <input class="form-control" placeholder="Game id" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Player name</label>
+                        <input class="form-control" placeholder="Enter your name" />
+                    </div>
                 </div>
-                <button class="btn btn-secondary" disabled>Join</button>
-                <p class="text-muted small mt-3 mb-0">Join uses the server lobby endpoint once ready.</p>
+                <div class="row g-3 mt-1">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Seat preference</label>
+                        <select class="form-select">
+                            <option selected>Any seat</option>
+                            <option>East</option>
+                            <option>South</option>
+                            <option>West</option>
+                            <option>North</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6 d-flex align-items-end">
+                        <button class="btn btn-secondary w-100" disabled>Join game</button>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <h6 class="text-uppercase text-muted">Active Lobbies</h6>
+                    <div class="list-group lobby-list">
+                        @foreach (var lobby in ActiveLobbies)
+                        {
+                            <div class="list-group-item d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                <div>
+                                    <div class="fw-semibold">@lobby.Name</div>
+                                    <div class="small text-muted">Host: @lobby.Host · @lobby.Players/4 players</div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge text-bg-light">@lobby.Status</span>
+                                    <button class="btn btn-outline-primary btn-sm" disabled>Join</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="card mt-4">
-    <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <h5 class="card-title mb-0">Open Tables</h5>
-            <button class="btn btn-outline-primary btn-sm" disabled>Refresh</button>
-        </div>
-        <div class="table-responsive mt-3">
-            <table class="table table-sm align-middle lobby-table">
-                <thead>
-                    <tr>
-                        <th>Table</th>
-                        <th>Host</th>
-                        <th>Seats</th>
-                        <th>Status</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Harbor Lights</td>
-                        <td>Ari</td>
-                        <td>2 / 4</td>
-                        <td><span class="badge text-bg-success">Waiting</span></td>
-                        <td class="text-end"><button class="btn btn-outline-secondary btn-sm" disabled>Join</button></td>
-                    </tr>
-                    <tr>
-                        <td>Morning Wind</td>
-                        <td>Jun</td>
-                        <td>4 / 4</td>
-                        <td><span class="badge text-bg-secondary">Full</span></td>
-                        <td class="text-end"><button class="btn btn-outline-secondary btn-sm" disabled>Join</button></td>
-                    </tr>
-                    <tr>
-                        <td>Golden Bamboo</td>
-                        <td>Mei</td>
-                        <td>1 / 4</td>
-                        <td><span class="badge text-bg-warning">Starting</span></td>
-                        <td class="text-end"><button class="btn btn-outline-secondary btn-sm" disabled>Join</button></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <p class="text-muted small mb-0">Live table list will load once the lobby service is connected.</p>
-    </div>
-</div>
+<p class="text-muted mt-3">Wire create/join actions to the API once client services are in place.</p>
+
+@code {
+    private IReadOnlyList<LobbyView> ActiveLobbies => new[]
+    {
+        new LobbyView("MC-2048", "Warm Bamboo Table", "Jun", 3, "Waiting"),
+        new LobbyView("MC-0912", "Dragon's Den", "Mina", 2, "Waiting"),
+        new LobbyView("MC-7777", "Evening Wind", "Kai", 4, "Ready")
+    };
+
+    private record LobbyView(string Id, string Name, string Host, int Players, string Status);
+}

@@ -423,3 +423,13 @@ code {
 .lobby-table td:last-child {
     width: 1%;
 }
+
+.lobby-list .list-group-item {
+    border-radius: 0.6rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid #e1e5ea;
+}
+
+.lobby-list .list-group-item:last-child {
+    margin-bottom: 0;
+}
