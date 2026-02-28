@@ -433,3 +433,14 @@ code {
 .lobby-list .list-group-item:last-child {
     margin-bottom: 0;
 }
+
+.lobby-table th {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6c757d;
+}
+
+.lobby-table td {
+    vertical-align: middle;
+}
