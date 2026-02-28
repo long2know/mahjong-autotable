@@ -223,3 +223,12 @@ code {
 .table td .badge {
     font-weight: 600;
 }
+
+.lobby-hero {
+    border: 1px solid #e5e7eb;
+    background: linear-gradient(120deg, #f8fafc 0%, #ffffff 60%);
+}
+
+.lobby-hero .card-title {
+    font-weight: 600;
+}
