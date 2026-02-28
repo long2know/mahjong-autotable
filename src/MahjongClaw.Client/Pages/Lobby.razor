@@ -3,10 +3,11 @@
 <PageTitle>Lobby</PageTitle>
 
 <h1>Lobby</h1>
-<p class="text-muted">Create a new table or join an existing game. (Mock layout)</p>
+
+<p class="text-muted">Create a room or join an existing table. SignalR wiring comes next.</p>
 
 <div class="row g-4">
-    <div class="col-12 col-lg-5">
+    <div class="col-12 col-lg-6">
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
@@ -15,69 +16,78 @@
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Table privacy</label>
-                    <select class="form-select">
-                        <option>Public (listed)</option>
-                        <option>Private (invite only)</option>
-                    </select>
+                    <label class="form-label">Table name</label>
+                    <input class="form-control" placeholder="Saturday Night Mahjong" />
                 </div>
-                <button class="btn btn-primary" disabled>Create</button>
-                <p class="text-muted small mt-3 mb-0">Wired to POST /api/game once services are ready.</p>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" disabled>Create</button>
+                    <button class="btn btn-outline-secondary" disabled>Invite friends</button>
+                </div>
+                <p class="text-muted small mt-3 mb-0">API wiring for create + invite is pending.</p>
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-7">
-        <div class="card">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100">
             <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                    <h5 class="card-title mb-0">Join Game</h5>
-                    <div class="input-group lobby-search">
-                        <span class="input-group-text">Search</span>
-                        <input class="form-control" placeholder="Filter by host or table id" />
-                    </div>
+                <h5 class="card-title">Join Game</h5>
+                <div class="mb-3">
+                    <label class="form-label">Game ID</label>
+                    <input class="form-control" placeholder="Game id" />
                 </div>
-
-                <div class="row g-3 mt-1">
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Game ID</label>
-                        <input class="form-control" placeholder="e.g. 4f1c-28a" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Player name</label>
-                        <input class="form-control" placeholder="Enter your name" />
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label">Player name</label>
+                    <input class="form-control" placeholder="Enter your name" />
                 </div>
-                <button class="btn btn-secondary mt-3" disabled>Join Selected</button>
-            </div>
-        </div>
-
-        <div class="card mt-4">
-            <div class="card-body">
-                <h6 class="text-uppercase text-muted">Open Tables</h6>
-                <div class="list-group list-group-flush lobby-list">
-                    @foreach (var table in OpenTables)
-                    {
-                        <div class="list-group-item d-flex align-items-center justify-content-between">
-                            <div>
-                                <div class="fw-semibold">@table.Id</div>
-                                <div class="small text-muted">Host: @table.Host · Seats: @table.SeatsFilled/4</div>
-                            </div>
-                            <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
-                        </div>
-                    }
-                </div>
+                <button class="btn btn-secondary" disabled>Join</button>
+                <p class="text-muted small mt-3 mb-0">Join uses the server lobby endpoint once ready.</p>
             </div>
         </div>
     </div>
 </div>
 
-@code {
-    private IReadOnlyList<TableView> OpenTables => new[]
-    {
-        new TableView("ABCD-123", "Jun", 2),
-        new TableView("ZXCV-552", "Mina", 1),
-        new TableView("QWER-998", "Kai", 3)
-    };
-
-    private record TableView(string Id, string Host, int SeatsFilled);
-}
+<div class="card mt-4">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h5 class="card-title mb-0">Open Tables</h5>
+            <button class="btn btn-outline-primary btn-sm" disabled>Refresh</button>
+        </div>
+        <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle lobby-table">
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Host</th>
+                        <th>Seats</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Harbor Lights</td>
+                        <td>Ari</td>
+                        <td>2 / 4</td>
+                        <td><span class="badge text-bg-success">Waiting</span></td>
+                        <td class="text-end"><button class="btn btn-outline-secondary btn-sm" disabled>Join</button></td>
+                    </tr>
+                    <tr>
+                        <td>Morning Wind</td>
+                        <td>Jun</td>
+                        <td>4 / 4</td>
+                        <td><span class="badge text-bg-secondary">Full</span></td>
+                        <td class="text-end"><button class="btn btn-outline-secondary btn-sm" disabled>Join</button></td>
+                    </tr>
+                    <tr>
+                        <td>Golden Bamboo</td>
+                        <td>Mei</td>
+                        <td>1 / 4</td>
+                        <td><span class="badge text-bg-warning">Starting</span></td>
+                        <td class="text-end"><button class="btn btn-outline-secondary btn-sm" disabled>Join</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small mb-0">Live table list will load once the lobby service is connected.</p>
+    </div>
+</div>

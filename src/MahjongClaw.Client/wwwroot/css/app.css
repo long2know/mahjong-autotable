@@ -414,3 +414,12 @@ code {
 .lobby-list .list-group-item:first-child {
     border-top: none;
 }
+
+.lobby-table th,
+.lobby-table td {
+    white-space: nowrap;
+}
+
+.lobby-table td:last-child {
+    width: 1%;
+}
