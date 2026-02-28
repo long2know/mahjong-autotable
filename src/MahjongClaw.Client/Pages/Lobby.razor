@@ -5,72 +5,95 @@
 <h1>Lobby</h1>
 
 <div class="row g-4">
-    <div class="col-12 col-xl-5">
+    <div class="col-12 col-xl-6">
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
-                <p class="text-muted small mb-3">Start a new table and invite friends to join.</p>
+                <p class="text-muted">Start a fresh table and invite friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Saturday Night Mahjong" />
+                    <input class="form-control" placeholder="Weekend tiles" />
                 </div>
                 <button class="btn btn-primary w-100" disabled>Create</button>
+                <p class="text-muted small mt-3 mb-0">Wire to POST /api/game when ready.</p>
             </div>
         </div>
     </div>
-    <div class="col-12 col-xl-7">
-        <div class="card mb-4">
+    <div class="col-12 col-xl-6">
+        <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Join Game</h5>
-                <p class="text-muted small mb-3">Enter a game id from a friend.</p>
-                <div class="row g-3">
-                    <div class="col-12 col-md-5">
-                        <label class="form-label">Game ID</label>
-                        <input class="form-control" placeholder="e.g. 7B3K2" />
-                    </div>
-                    <div class="col-12 col-md-7">
-                        <label class="form-label">Player name</label>
-                        <input class="form-control" placeholder="Enter your name" />
-                    </div>
+                <p class="text-muted">Enter a game ID to jump in.</p>
+                <div class="mb-3">
+                    <label class="form-label">Game ID</label>
+                    <input class="form-control" placeholder="MC-2048" />
                 </div>
-                <button class="btn btn-secondary mt-3" disabled>Join</button>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                    <h5 class="card-title mb-0">Active Tables</h5>
-                    <span class="badge text-bg-light">3 open tables</span>
+                <div class="mb-3">
+                    <label class="form-label">Player name</label>
+                    <input class="form-control" placeholder="Enter your name" />
                 </div>
-                <div class="list-group list-group-flush mt-3">
-                    @foreach (var table in Tables)
-                    {
-                        <button class="list-group-item list-group-item-action d-flex align-items-center justify-content-between" disabled>
-                            <div>
-                                <div class="fw-semibold">@table.Name</div>
-                                <div class="small text-muted">Host: @table.Host • Players: @table.Players/4</div>
-                            </div>
-                            <span class="badge text-bg-secondary">@table.Id</span>
-                        </button>
-                    }
-                </div>
-                <p class="text-muted small mt-3 mb-0">Table list will come from the lobby API.</p>
+                <button class="btn btn-secondary w-100" disabled>Join</button>
+                <p class="text-muted small mt-3 mb-0">Wire to POST /api/game/{id}/join.</p>
             </div>
         </div>
     </div>
 </div>
 
+<div class="card mt-4">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+                <h5 class="card-title mb-1">Open Tables</h5>
+                <p class="text-muted mb-0">Mock data until SignalR lobby feed arrives.</p>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" disabled>Refresh</button>
+        </div>
+        <div class="table-responsive mt-3">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Table</th>
+                        <th>Host</th>
+                        <th>Players</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var table in OpenTables)
+                    {
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">@table.Name</div>
+                                <div class="text-muted small">@table.GameId</div>
+                            </td>
+                            <td>@table.Host</td>
+                            <td>@table.Players</td>
+                            <td>
+                                <span class="badge text-bg-@table.StatusStyle">@table.Status</span>
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-secondary" disabled>View</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 @code {
-    private IReadOnlyList<TableSummary> Tables => new[]
+    private IReadOnlyList<LobbyTable> OpenTables => new[]
     {
-        new TableSummary("Downtown Dealers", "Mina", 2, "4FJ9X"),
-        new TableSummary("Lucky Bamboo", "Jun", 3, "2HD5Q"),
-        new TableSummary("Night Owls", "Kai", 1, "9K1PT")
+        new LobbyTable("Weekend Run", "MC-2048", "Jun", "2 / 4", "Waiting", "success"),
+        new LobbyTable("Family Night", "MC-1091", "Kai", "4 / 4", "Full", "secondary"),
+        new LobbyTable("Practice", "MC-3377", "Mina", "1 / 4", "Waiting", "success")
     };
 
-    private record TableSummary(string Name, string Host, int Players, string Id);
+    private record LobbyTable(string Name, string GameId, string Host, string Players, string Status, string StatusStyle);
 }
