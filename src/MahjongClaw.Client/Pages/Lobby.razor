@@ -3,10 +3,9 @@
 <PageTitle>Lobby</PageTitle>
 
 <h1>Lobby</h1>
-<p class="text-muted">Create a new table or join an existing game. (Mock layout)</p>
 
 <div class="row g-4">
-    <div class="col-12 col-lg-5">
+    <div class="col-12 col-xl-5">
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
@@ -15,69 +14,54 @@
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Table privacy</label>
-                    <select class="form-select">
-                        <option>Private (invite only)</option>
-                        <option>Public (open lobby)</option>
-                    </select>
+                    <label class="form-label">Table name</label>
+                    <input class="form-control" placeholder="Weekend Mahjong" />
                 </div>
-                <button class="btn btn-primary w-100" disabled>Create game</button>
-                <p class="text-muted small mt-2 mb-0">API wiring comes next.</p>
-            </div>
-        </div>
-
-        <div class="card mt-4">
-            <div class="card-body">
-                <h5 class="card-title">Quick tips</h5>
-                <ul class="small text-muted mb-0">
-                    <li>Games start once 4 seats are filled.</li>
-                    <li>Dealer is assigned to East on start.</li>
-                    <li>SignalR will deliver live updates.</li>
-                </ul>
+                <button class="btn btn-primary">Create</button>
+                <p class="text-muted small mt-3 mb-0">Creates a new table and seats you as East (dealer).</p>
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-7">
+    <div class="col-12 col-xl-7">
         <div class="card mb-4">
             <div class="card-body">
                 <h5 class="card-title">Join Game</h5>
                 <div class="row g-3">
                     <div class="col-12 col-md-6">
                         <label class="form-label">Game ID</label>
-                        <input class="form-control" placeholder="Game id" />
+                        <input class="form-control" placeholder="MC-7X9Q" />
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Player name</label>
                         <input class="form-control" placeholder="Enter your name" />
                     </div>
                 </div>
-                <div class="d-flex gap-2 mt-3">
-                    <button class="btn btn-secondary" disabled>Join game</button>
-                    <button class="btn btn-outline-secondary" disabled>Paste invite link</button>
+                <div class="d-flex align-items-center gap-2 mt-3">
+                    <button class="btn btn-outline-secondary">Join</button>
+                    <span class="text-muted small">Use the invite code from your host.</span>
                 </div>
             </div>
         </div>
-
         <div class="card">
             <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between">
-                    <h5 class="card-title mb-0">Open Tables</h5>
-                    <span class="badge text-bg-light">3 available</span>
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div>
+                        <h5 class="card-title mb-0">Recent Tables</h5>
+                        <p class="text-muted small mb-0">Mock list until lobby API is live.</p>
+                    </div>
+                    <span class="badge text-bg-light">Updated just now</span>
                 </div>
-                <div class="lobby-table-list mt-3">
-                    @foreach (var table in OpenTables)
+                <div class="list-group list-group-flush mt-3">
+                    @foreach (var table in Tables)
                     {
-                        <div class="lobby-table">
+                        <div class="list-group-item lobby-row">
                             <div>
                                 <div class="fw-semibold">@table.Name</div>
-                                <div class="text-muted small">Game ID: @table.Id</div>
+                                <div class="text-muted small">Host: @table.Host • Seats: @table.SeatsFilled / 4</div>
                             </div>
                             <div class="text-end">
-                                <div class="small text-muted">Seats</div>
-                                <div class="fw-semibold">@table.Seats</div>
-                            </div>
-                            <div>
-                                <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
+                                <div class="badge text-bg-secondary">@table.Status</div>
+                                <div class="small text-muted mt-1">@table.Code</div>
                             </div>
                         </div>
                     }
@@ -88,12 +72,12 @@
 </div>
 
 @code {
-    private IReadOnlyList<LobbyTable> OpenTables => new[]
+    private IReadOnlyList<TableView> Tables => new List<TableView>
     {
-        new LobbyTable("Downtown Table", "A1B2", "2 / 4"),
-        new LobbyTable("Weekend Winds", "C7D9", "3 / 4"),
-        new LobbyTable("Jade Garden", "E5F3", "1 / 4")
+        new("Sunrise Table", "Aiko", "MC-7X9Q", "Waiting", 2),
+        new("Downtown Tile Club", "Ravi", "MC-2K1L", "In progress", 4),
+        new("Friday Practice", "Mina", "MC-4P8H", "Waiting", 3)
     };
 
-    private record LobbyTable(string Name, string Id, string Seats);
+    private record TableView(string Name, string Host, string Code, string Status, int SeatsFilled);
 }
