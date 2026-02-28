@@ -444,3 +444,14 @@ code {
 .lobby-table td {
     vertical-align: middle;
 }
+
+.lobby-metrics .card {
+    border: 1px solid #eef0f2;
+    border-radius: 0.9rem;
+    background: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
+}
+
+.lobby-stat .display-6 {
+    margin: 0;
+    line-height: 1.1;
+}

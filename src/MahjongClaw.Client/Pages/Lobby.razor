@@ -4,12 +4,42 @@
 
 <h1>Lobby</h1>
 
-<div class="row g-4">
+<div class="row g-3 lobby-metrics">
+    <div class="col-12 col-md-4">
+        <div class="card lobby-stat">
+            <div class="card-body">
+                <div class="text-muted small">Open Tables</div>
+                <div class="display-6 fw-semibold">3</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card lobby-stat">
+            <div class="card-body">
+                <div class="text-muted small">Players Online</div>
+                <div class="display-6 fw-semibold">11</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card lobby-stat">
+            <div class="card-body">
+                <div class="text-muted small">Ready Games</div>
+                <div class="display-6 fw-semibold">1</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-1">
     <div class="col-12 col-xl-6">
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
                 <p class="text-muted">Start a fresh table and invite friends.</p>
+                <div class="alert alert-primary small mb-3" role="alert">
+                    You are seated as <strong>South</strong> by default in the MVP.
+                </div>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
@@ -28,6 +58,9 @@
             <div class="card-body">
                 <h5 class="card-title">Join Game</h5>
                 <p class="text-muted">Enter a game ID to jump in.</p>
+                <div class="alert alert-secondary small mb-3" role="alert">
+                    Waiting rooms lock once 4 seats are filled.
+                </div>
                 <div class="mb-3">
                     <label class="form-label">Game ID</label>
                     <input class="form-control" placeholder="MC-2048" />
