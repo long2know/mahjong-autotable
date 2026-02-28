@@ -5,94 +5,101 @@
 <h1>Lobby</h1>
 
 <div class="row g-4">
-    <div class="col-12 col-lg-5">
+    <div class="col-12 col-lg-6">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Create Game</h5>
-                <p class="text-muted small">Host a new table and invite friends.</p>
+                <div class="d-flex align-items-center justify-content-between">
+                    <h5 class="card-title mb-0">Create Game</h5>
+                    <span class="badge text-bg-primary">Host</span>
+                </div>
+                <p class="text-muted small mt-2">Start a new table and invite friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Ruleset</label>
-                    <select class="form-select">
-                        <option selected>Traditional Chinese (MVP)</option>
-                        <option disabled>Hong Kong (coming later)</option>
-                        <option disabled>Riichi (later)</option>
-                    </select>
+                    <label class="form-label">Table name</label>
+                    <input class="form-control" placeholder="Saturday night Mahjong" />
                 </div>
-                <button class="btn btn-primary w-100" disabled>Create table</button>
-                <p class="text-muted small mt-3 mb-0">Create will call <code>/api/game</code> once wired.</p>
+                <button class="btn btn-primary w-100" disabled>Create game</button>
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-7">
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">Join Game</h5>
-                <p class="text-muted small">Enter a game code from the host.</p>
-                <div class="row g-3">
-                    <div class="col-12 col-md-4">
-                        <label class="form-label">Game ID</label>
-                        <input class="form-control" placeholder="e.g. 8F3Q" />
-                    </div>
-                    <div class="col-12 col-md-8">
-                        <label class="form-label">Player name</label>
-                        <input class="form-control" placeholder="Enter your name" />
-                    </div>
-                </div>
-                <div class="d-flex flex-wrap gap-2 mt-3">
-                    <button class="btn btn-secondary" disabled>Join</button>
-                    <button class="btn btn-outline-secondary" disabled>Reconnect</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
-                    <h5 class="card-title mb-0">Active Tables</h5>
-                    <span class="badge text-bg-light">Mock data</span>
+                    <h5 class="card-title mb-0">Join Game</h5>
+                    <span class="badge text-bg-light">Player</span>
                 </div>
-                <div class="table-responsive mt-3">
-                    <table class="table table-sm align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Game ID</th>
-                                <th>Host</th>
-                                <th>Players</th>
-                                <th>Status</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><span class="badge text-bg-dark">8F3Q</span></td>
-                                <td>Jun</td>
-                                <td>3 / 4</td>
-                                <td><span class="badge text-bg-warning">Waiting</span></td>
-                                <td><button class="btn btn-outline-primary btn-sm" disabled>Join</button></td>
-                            </tr>
-                            <tr>
-                                <td><span class="badge text-bg-dark">9A1K</span></td>
-                                <td>Mina</td>
-                                <td>4 / 4</td>
-                                <td><span class="badge text-bg-success">In game</span></td>
-                                <td><button class="btn btn-outline-secondary btn-sm" disabled>View</button></td>
-                            </tr>
-                            <tr>
-                                <td><span class="badge text-bg-dark">2C7P</span></td>
-                                <td>Kai</td>
-                                <td>1 / 4</td>
-                                <td><span class="badge text-bg-info">Open</span></td>
-                                <td><button class="btn btn-outline-primary btn-sm" disabled>Join</button></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <p class="text-muted small mt-2">Use a game ID from the host.</p>
+                <div class="mb-3">
+                    <label class="form-label">Game ID</label>
+                    <input class="form-control" placeholder="e.g. 8F2K-19" />
                 </div>
-                <p class="text-muted small mb-0">This list will populate from the lobby endpoint later.</p>
+                <div class="mb-3">
+                    <label class="form-label">Player name</label>
+                    <input class="form-control" placeholder="Enter your name" />
+                </div>
+                <button class="btn btn-secondary w-100" disabled>Join game</button>
             </div>
         </div>
     </div>
 </div>
+
+<div class="card mt-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div>
+                <h5 class="card-title mb-1">Open Tables</h5>
+                <p class="text-muted small mb-0">Mock data while we wire the API.</p>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" disabled>Refresh</button>
+        </div>
+        <div class="table-responsive mt-3">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Host</th>
+                        <th>Players</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var game in OpenGames)
+                    {
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">@game.TableName</div>
+                                <div class="text-muted small">ID: @game.GameId</div>
+                            </td>
+                            <td>@game.Host</td>
+                            <td>@game.PlayerCount / 4</td>
+                            <td>
+                                <span class="badge @game.StatusClass">@game.Status</span>
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-outline-secondary btn-sm" disabled>Join</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted mt-3">Wire these buttons to the API (create/join) once the client services are in place.</p>
+
+@code {
+    private IReadOnlyList<LobbyGame> OpenGames => new List<LobbyGame>
+    {
+        new("Evening East", "Hana", "4KF-219", 3, "Waiting", "text-bg-success"),
+        new("Family Table", "Marco", "9PP-882", 4, "In Progress", "text-bg-warning"),
+        new("Quick Round", "Linh", "3HD-418", 2, "Waiting", "text-bg-success")
+    };
+
+    private record LobbyGame(string TableName, string Host, string GameId, int PlayerCount, string Status, string StatusClass);
+}

@@ -215,3 +215,11 @@ code {
 .hero h1 {
     font-weight: 700;
 }
+
+.table tbody tr td {
+    vertical-align: middle;
+}
+
+.table td .badge {
+    font-weight: 600;
+}
