@@ -287,3 +287,18 @@ code {
         align-items: flex-start;
     }
 }
+
+.lobby-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.lobby-row:hover {
+    border-color: #cfe2ff;
+    background: #f8f9ff;
+}
