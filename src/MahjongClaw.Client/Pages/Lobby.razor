@@ -3,9 +3,10 @@
 <PageTitle>Lobby</PageTitle>
 
 <h1>Lobby</h1>
+<p class="text-muted">Create a new table or join an existing game. (Mock layout)</p>
 
 <div class="row g-4">
-    <div class="col-12 col-lg-6">
+    <div class="col-12 col-lg-5">
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
@@ -14,81 +15,69 @@
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Preferred seat</label>
+                    <label class="form-label">Table privacy</label>
                     <select class="form-select">
-                        <option>Auto</option>
-                        <option>East</option>
-                        <option>South</option>
-                        <option>West</option>
-                        <option>North</option>
+                        <option>Public (listed)</option>
+                        <option>Private (invite only)</option>
                     </select>
                 </div>
                 <button class="btn btn-primary" disabled>Create</button>
+                <p class="text-muted small mt-3 mb-0">Wired to POST /api/game once services are ready.</p>
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-6">
-        <div class="card h-100">
+    <div class="col-12 col-lg-7">
+        <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Join Game</h5>
-                <div class="mb-3">
-                    <label class="form-label">Game ID</label>
-                    <input class="form-control" placeholder="Game id" />
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <h5 class="card-title mb-0">Join Game</h5>
+                    <div class="input-group lobby-search">
+                        <span class="input-group-text">Search</span>
+                        <input class="form-control" placeholder="Filter by host or table id" />
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" />
+
+                <div class="row g-3 mt-1">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Game ID</label>
+                        <input class="form-control" placeholder="e.g. 4f1c-28a" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Player name</label>
+                        <input class="form-control" placeholder="Enter your name" />
+                    </div>
                 </div>
-                <button class="btn btn-secondary" disabled>Join</button>
+                <button class="btn btn-secondary mt-3" disabled>Join Selected</button>
             </div>
         </div>
-    </div>
-</div>
 
-<div class="card mt-4">
-    <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <div>
-                <h5 class="card-title mb-1">Open Games</h5>
-                <p class="text-muted mb-0">Mock lobby feed until API integration lands.</p>
-            </div>
-            <button class="btn btn-outline-primary btn-sm" disabled>Refresh</button>
-        </div>
-
-        <div class="lobby-grid mt-3">
-            @foreach (var game in Games)
-            {
-                <div class="lobby-card">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                            <div class="fw-semibold">Game @game.Id</div>
-                            <div class="small text-muted">Dealer: @game.Dealer</div>
+        <div class="card mt-4">
+            <div class="card-body">
+                <h6 class="text-uppercase text-muted">Open Tables</h6>
+                <div class="list-group list-group-flush lobby-list">
+                    @foreach (var table in OpenTables)
+                    {
+                        <div class="list-group-item d-flex align-items-center justify-content-between">
+                            <div>
+                                <div class="fw-semibold">@table.Id</div>
+                                <div class="small text-muted">Host: @table.Host · Seats: @table.SeatsFilled/4</div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
                         </div>
-                        <span class="badge text-bg-light">@game.Status</span>
-                    </div>
-                    <div class="mt-2 small">Players: @game.PlayerCount / 4</div>
-                    <div class="player-chips mt-2">
-                        @foreach (var player in game.Players)
-                        {
-                            <span class="badge rounded-pill text-bg-secondary">@player</span>
-                        }
-                    </div>
-                    <button class="btn btn-outline-secondary btn-sm mt-3 w-100" disabled>Join</button>
+                    }
                 </div>
-            }
+            </div>
         </div>
     </div>
 </div>
-
-<p class="text-muted mt-3">Wire these buttons to the API (create/join) once the client services are in place.</p>
 
 @code {
-    private IReadOnlyList<LobbyGame> Games => new[]
+    private IReadOnlyList<TableView> OpenTables => new[]
     {
-        new LobbyGame("A1B2", "Kai", "Waiting", 2, new[] { "Kai", "Mina" }),
-        new LobbyGame("C7D8", "Jun", "Starting", 4, new[] { "Jun", "You", "Ivy", "Oren" }),
-        new LobbyGame("Q4Z9", "Lea", "Waiting", 1, new[] { "Lea" })
+        new TableView("ABCD-123", "Jun", 2),
+        new TableView("ZXCV-552", "Mina", 1),
+        new TableView("QWER-998", "Kai", 3)
     };
 
-    private record LobbyGame(string Id, string Dealer, string Status, int PlayerCount, IReadOnlyList<string> Players);
+    private record TableView(string Id, string Host, int SeatsFilled);
 }
