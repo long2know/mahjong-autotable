@@ -5,93 +5,72 @@
 <h1>Lobby</h1>
 
 <div class="row g-4">
-    <div class="col-12 col-xl-6">
+    <div class="col-12 col-xl-5">
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
+                <p class="text-muted small mb-3">Start a new table and invite friends to join.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Weekend Mahjong" />
+                    <input class="form-control" placeholder="Saturday Night Mahjong" />
                 </div>
-                <button class="btn btn-primary" disabled>Create</button>
-                <p class="text-muted small mt-3 mb-0">Creates a new table and seats you as East.</p>
+                <button class="btn btn-primary w-100" disabled>Create</button>
             </div>
         </div>
     </div>
-    <div class="col-12 col-xl-6">
-        <div class="card h-100">
+    <div class="col-12 col-xl-7">
+        <div class="card mb-4">
             <div class="card-body">
                 <h5 class="card-title">Join Game</h5>
-                <div class="mb-3">
-                    <label class="form-label">Game ID</label>
-                    <input class="form-control" placeholder="Game id" />
+                <p class="text-muted small mb-3">Enter a game id from a friend.</p>
+                <div class="row g-3">
+                    <div class="col-12 col-md-5">
+                        <label class="form-label">Game ID</label>
+                        <input class="form-control" placeholder="e.g. 7B3K2" />
+                    </div>
+                    <div class="col-12 col-md-7">
+                        <label class="form-label">Player name</label>
+                        <input class="form-control" placeholder="Enter your name" />
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" />
+                <button class="btn btn-secondary mt-3" disabled>Join</button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <h5 class="card-title mb-0">Active Tables</h5>
+                    <span class="badge text-bg-light">3 open tables</span>
                 </div>
-                <button class="btn btn-secondary" disabled>Join</button>
-                <p class="text-muted small mt-3 mb-0">Join with a code shared by the host.</p>
+                <div class="list-group list-group-flush mt-3">
+                    @foreach (var table in Tables)
+                    {
+                        <button class="list-group-item list-group-item-action d-flex align-items-center justify-content-between" disabled>
+                            <div>
+                                <div class="fw-semibold">@table.Name</div>
+                                <div class="small text-muted">Host: @table.Host • Players: @table.Players/4</div>
+                            </div>
+                            <span class="badge text-bg-secondary">@table.Id</span>
+                        </button>
+                    }
+                </div>
+                <p class="text-muted small mt-3 mb-0">Table list will come from the lobby API.</p>
             </div>
         </div>
     </div>
 </div>
 
-<div class="card mt-4">
-    <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <h5 class="card-title mb-0">Open Tables</h5>
-            <span class="badge text-bg-light">Mock data</span>
-        </div>
-        <div class="table-responsive mt-3">
-            <table class="table align-middle lobby-table">
-                <thead>
-                    <tr>
-                        <th>Table</th>
-                        <th>Host</th>
-                        <th>Seats</th>
-                        <th>Status</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
-                            <div class="fw-semibold">Sunrise Mahjong</div>
-                            <div class="small text-muted">#MC-1452</div>
-                        </td>
-                        <td>Jun</td>
-                        <td>2 / 4</td>
-                        <td><span class="badge text-bg-success">Waiting</span></td>
-                        <td class="text-end"><button class="btn btn-sm btn-outline-secondary" disabled>Join</button></td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <div class="fw-semibold">Bamboo Run</div>
-                            <div class="small text-muted">#MC-1408</div>
-                        </td>
-                        <td>Mina</td>
-                        <td>4 / 4</td>
-                        <td><span class="badge text-bg-warning">In Progress</span></td>
-                        <td class="text-end"><button class="btn btn-sm btn-outline-secondary" disabled>Full</button></td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <div class="fw-semibold">Night Owls</div>
-                            <div class="small text-muted">#MC-1389</div>
-                        </td>
-                        <td>Kai</td>
-                        <td>3 / 4</td>
-                        <td><span class="badge text-bg-success">Waiting</span></td>
-                        <td class="text-end"><button class="btn btn-sm btn-outline-secondary" disabled>Join</button></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <p class="text-muted small mb-0">This list will be replaced with live lobby data from the API.</p>
-    </div>
-</div>
+@code {
+    private IReadOnlyList<TableSummary> Tables => new[]
+    {
+        new TableSummary("Downtown Dealers", "Mina", 2, "4FJ9X"),
+        new TableSummary("Lucky Bamboo", "Jun", 3, "2HD5Q"),
+        new TableSummary("Night Owls", "Kai", 1, "9K1PT")
+    };
+
+    private record TableSummary(string Name, string Host, int Players, string Id);
+}
