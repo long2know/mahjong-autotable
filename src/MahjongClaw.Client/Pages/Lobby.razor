@@ -3,80 +3,96 @@
 <PageTitle>Lobby</PageTitle>
 
 <h1>Lobby</h1>
-<p class="text-muted">Create a new table or join an existing game. Live lobby data will replace the mock list.</p>
 
 <div class="row g-4">
-    <div class="col-12 col-xl-5">
-        <div class="card mb-4">
+    <div class="col-12 col-lg-5">
+        <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
+                <p class="text-muted small">Host a new table and invite friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
-                <button class="btn btn-primary" disabled>Create</button>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Join Game</h5>
                 <div class="mb-3">
-                    <label class="form-label">Game ID</label>
-                    <input class="form-control" placeholder="Game id" />
+                    <label class="form-label">Ruleset</label>
+                    <select class="form-select">
+                        <option selected>Traditional Chinese (MVP)</option>
+                        <option disabled>Hong Kong (coming later)</option>
+                        <option disabled>Riichi (later)</option>
+                    </select>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" />
-                </div>
-                <button class="btn btn-secondary" disabled>Join</button>
+                <button class="btn btn-primary w-100" disabled>Create table</button>
+                <p class="text-muted small mt-3 mb-0">Create will call <code>/api/game</code> once wired.</p>
             </div>
         </div>
     </div>
-    <div class="col-12 col-xl-7">
+    <div class="col-12 col-lg-7">
         <div class="card mb-4">
             <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between">
-                    <h5 class="card-title mb-0">Open Tables</h5>
-                    <span class="badge text-bg-light">3 active</span>
+                <h5 class="card-title">Join Game</h5>
+                <p class="text-muted small">Enter a game code from the host.</p>
+                <div class="row g-3">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Game ID</label>
+                        <input class="form-control" placeholder="e.g. 8F3Q" />
+                    </div>
+                    <div class="col-12 col-md-8">
+                        <label class="form-label">Player name</label>
+                        <input class="form-control" placeholder="Enter your name" />
+                    </div>
                 </div>
-                <div class="list-group list-group-flush mt-3">
-                    @foreach (var table in OpenTables)
-                    {
-                        <div class="list-group-item d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <div>
-                                <div class="fw-semibold">@table.Name</div>
-                                <div class="small text-muted">@table.Players / 4 players · @table.Status</div>
-                            </div>
-                            <div class="d-flex align-items-center gap-2">
-                                <span class="badge text-bg-primary">@table.Region</span>
-                                <button class="btn btn-outline-secondary btn-sm" disabled>View</button>
-                            </div>
-                        </div>
-                    }
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <button class="btn btn-secondary" disabled>Join</button>
+                    <button class="btn btn-outline-secondary" disabled>Reconnect</button>
                 </div>
-                <p class="text-muted small mt-3 mb-0">This list will be populated via the API.</p>
             </div>
         </div>
+
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">How it works</h5>
-                <ol class="mb-0">
-                    <li>Create a table to become the host.</li>
-                    <li>Share the game ID with friends.</li>
-                    <li>Start when four players are seated.</li>
-                </ol>
+                <div class="d-flex align-items-center justify-content-between">
+                    <h5 class="card-title mb-0">Active Tables</h5>
+                    <span class="badge text-bg-light">Mock data</span>
+                </div>
+                <div class="table-responsive mt-3">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Game ID</th>
+                                <th>Host</th>
+                                <th>Players</th>
+                                <th>Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge text-bg-dark">8F3Q</span></td>
+                                <td>Jun</td>
+                                <td>3 / 4</td>
+                                <td><span class="badge text-bg-warning">Waiting</span></td>
+                                <td><button class="btn btn-outline-primary btn-sm" disabled>Join</button></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge text-bg-dark">9A1K</span></td>
+                                <td>Mina</td>
+                                <td>4 / 4</td>
+                                <td><span class="badge text-bg-success">In game</span></td>
+                                <td><button class="btn btn-outline-secondary btn-sm" disabled>View</button></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge text-bg-dark">2C7P</span></td>
+                                <td>Kai</td>
+                                <td>1 / 4</td>
+                                <td><span class="badge text-bg-info">Open</span></td>
+                                <td><button class="btn btn-outline-primary btn-sm" disabled>Join</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-muted small mb-0">This list will populate from the lobby endpoint later.</p>
             </div>
         </div>
     </div>
 </div>
-
-@code {
-    private IReadOnlyList<TableView> OpenTables => new[]
-    {
-        new TableView("Sunrise Table", 3, "Waiting for 1", "NA-West"),
-        new TableView("Cobalt Dragons", 2, "Waiting for 2", "NA-East"),
-        new TableView("Night Market", 4, "In progress", "EU-Central")
-    };
-
-    private record TableView(string Name, int Players, string Status, string Region);
-}
