@@ -2,12 +2,38 @@
 
 <PageTitle>Mahjong Claw</PageTitle>
 
-<h1>Mahjong Claw</h1>
-<p class="lead">Multiplayer Traditional Chinese Mahjong — MVP client in progress.</p>
+<div class="hero">
+    <h1>Mahjong Claw</h1>
+    <p class="lead">Multiplayer Traditional Chinese Mahjong — MVP client in progress.</p>
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-primary" href="lobby">Go to Lobby</a>
+        <a class="btn btn-outline-secondary" href="game">View Game Board</a>
+    </div>
+</div>
 
-<ul>
-    <li>Use <strong>Lobby</strong> to create or join a game.</li>
-    <li>Open <strong>Game</strong> to view the board state and take actions.</li>
-</ul>
-
-<p class="text-muted">SignalR + API wiring comes next.</p>
+<div class="row g-4 mt-4">
+    <div class="col-12 col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Create or Join</h5>
+                <p class="card-text">Spin up a table, invite friends, and seat players before the deal begins.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Real-time Table</h5>
+                <p class="card-text">SignalR will keep every player synced with wall, discards, and melds.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Rules Engine</h5>
+                <p class="card-text">Traditional Chinese scoring and legal move validation built into the backend.</p>
+            </div>
+        </div>
+    </div>
+</div>
