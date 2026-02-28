@@ -1,0 +1,38 @@
+﻿@page "/lobby"
+
+<PageTitle>Lobby</PageTitle>
+
+<h1>Lobby</h1>
+
+<div class="row g-4">
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Create Game</h5>
+                <div class="mb-3">
+                    <label class="form-label">Player name</label>
+                    <input class="form-control" placeholder="Enter your name" />
+                </div>
+                <button class="btn btn-primary" disabled>Create</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Join Game</h5>
+                <div class="mb-3">
+                    <label class="form-label">Game ID</label>
+                    <input class="form-control" placeholder="Game id" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Player name</label>
+                    <input class="form-control" placeholder="Enter your name" />
+                </div>
+                <button class="btn btn-secondary" disabled>Join</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted mt-3">Wire these buttons to the API (create/join) once the client services are in place.</p>
