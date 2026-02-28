@@ -302,3 +302,14 @@ code {
     border-color: #cfe2ff;
     background: #f8f9ff;
 }
+
+.lobby-table th {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6c757d;
+}
+
+.lobby-table td {
+    vertical-align: middle;
+}

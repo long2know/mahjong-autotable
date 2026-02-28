@@ -5,79 +5,81 @@
 <h1>Lobby</h1>
 
 <div class="row g-4">
-    <div class="col-12 col-xl-5">
-        <div class="card">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
+                <p class="text-muted small">Start a fresh table and invite friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" />
+                    <input class="form-control" placeholder="Enter your name" value="Kai" />
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Weekend Mahjong" />
+                    <label class="form-label">Table note</label>
+                    <input class="form-control" placeholder="Optional message" value="Weekend match" />
                 </div>
-                <button class="btn btn-primary">Create</button>
-                <p class="text-muted small mt-3 mb-0">Creates a new table and seats you as East (dealer).</p>
+                <button class="btn btn-primary" disabled>Create game</button>
             </div>
         </div>
     </div>
-    <div class="col-12 col-xl-7">
-        <div class="card mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Join Game</h5>
-                <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Game ID</label>
-                        <input class="form-control" placeholder="MC-7X9Q" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Player name</label>
-                        <input class="form-control" placeholder="Enter your name" />
-                    </div>
+                <p class="text-muted small">Enter a game code to take a seat.</p>
+                <div class="mb-3">
+                    <label class="form-label">Game ID</label>
+                    <input class="form-control" placeholder="Game id" value="MC-4821" />
                 </div>
-                <div class="d-flex align-items-center gap-2 mt-3">
-                    <button class="btn btn-outline-secondary">Join</button>
-                    <span class="text-muted small">Use the invite code from your host.</span>
+                <div class="mb-3">
+                    <label class="form-label">Player name</label>
+                    <input class="form-control" placeholder="Enter your name" value="You" />
                 </div>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                    <div>
-                        <h5 class="card-title mb-0">Recent Tables</h5>
-                        <p class="text-muted small mb-0">Mock list until lobby API is live.</p>
-                    </div>
-                    <span class="badge text-bg-light">Updated just now</span>
-                </div>
-                <div class="list-group list-group-flush mt-3">
-                    @foreach (var table in Tables)
-                    {
-                        <div class="list-group-item lobby-row">
-                            <div>
-                                <div class="fw-semibold">@table.Name</div>
-                                <div class="text-muted small">Host: @table.Host • Seats: @table.SeatsFilled / 4</div>
-                            </div>
-                            <div class="text-end">
-                                <div class="badge text-bg-secondary">@table.Status</div>
-                                <div class="small text-muted mt-1">@table.Code</div>
-                            </div>
-                        </div>
-                    }
-                </div>
+                <button class="btn btn-secondary" disabled>Join game</button>
             </div>
         </div>
     </div>
 </div>
 
-@code {
-    private IReadOnlyList<TableView> Tables => new List<TableView>
-    {
-        new("Sunrise Table", "Aiko", "MC-7X9Q", "Waiting", 2),
-        new("Downtown Tile Club", "Ravi", "MC-2K1L", "In progress", 4),
-        new("Friday Practice", "Mina", "MC-4P8H", "Waiting", 3)
-    };
+<div class="card mt-4">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+                <h5 class="card-title mb-1">Active tables</h5>
+                <p class="text-muted small mb-0">Sample lobby list until the API is live.</p>
+            </div>
+            <span class="badge text-bg-light">2 open seats</span>
+        </div>
+        <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle lobby-table">
+                <thead>
+                    <tr>
+                        <th>Game</th>
+                        <th>Host</th>
+                        <th>Seats</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>MC-4821</strong></td>
+                        <td>Jun</td>
+                        <td>3 / 4</td>
+                        <td><span class="badge text-bg-success">Lobby</span></td>
+                        <td><button class="btn btn-outline-secondary btn-sm" disabled>Join</button></td>
+                    </tr>
+                    <tr>
+                        <td><strong>MC-5127</strong></td>
+                        <td>Mina</td>
+                        <td>4 / 4</td>
+                        <td><span class="badge text-bg-warning">In play</span></td>
+                        <td><button class="btn btn-outline-secondary btn-sm" disabled>Watch</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-    private record TableView(string Name, string Host, string Code, string Status, int SeatsFilled);
-}
+<p class="text-muted mt-3">Wire these actions to the API (create/join) once the client services are in place.</p>
