@@ -6,84 +6,95 @@
 
 <div class="row g-4">
     <div class="col-12 col-lg-5">
-        <div class="card mb-4">
+        <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
-                <p class="text-muted small">Start a new table and invite friends with the game code.</p>
+                <p class="text-muted small">Start a new table and invite friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Saturday night mahjong" />
+                    <input class="form-control" placeholder="Saturday night hand" />
                 </div>
-                <button class="btn btn-primary" disabled>Create game</button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" disabled>Create game</button>
+                    <button class="btn btn-outline-secondary" disabled>Copy invite</button>
+                </div>
             </div>
         </div>
-        <div class="card">
+
+        <div class="card mt-4">
             <div class="card-body">
                 <h5 class="card-title">Quick Join</h5>
-                <p class="text-muted small">Paste a game id to jump right in.</p>
+                <p class="text-muted small">Already have an invite code?</p>
                 <div class="mb-3">
                     <label class="form-label">Game ID</label>
-                    <input class="form-control" placeholder="MC-0A4Z" />
+                    <input class="form-control" placeholder="e.g. 8F2K9" />
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" />
-                </div>
-                <button class="btn btn-secondary" disabled>Join game</button>
+                <button class="btn btn-secondary w-100" disabled>Join game</button>
             </div>
         </div>
     </div>
+
     <div class="col-12 col-lg-7">
-        <div class="card h-100">
+        <div class="card">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
                     <h5 class="card-title mb-0">Open Tables</h5>
-                    <span class="badge text-bg-light">3 open</span>
+                    <span class="badge text-bg-light">2 live</span>
                 </div>
-                <p class="text-muted small mt-2">Sample lobby list while API wiring is in progress.</p>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Table</th>
-                                <th>Host</th>
-                                <th>Players</th>
-                                <th>State</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Evening Wind</td>
-                                <td>Jun</td>
-                                <td>2 / 4</td>
-                                <td><span class="badge text-bg-success">Waiting</span></td>
-                                <td><button class="btn btn-outline-primary btn-sm" disabled>Join</button></td>
-                            </tr>
-                            <tr>
-                                <td>Bamboo Grove</td>
-                                <td>Mina</td>
-                                <td>3 / 4</td>
-                                <td><span class="badge text-bg-warning">In Lobby</span></td>
-                                <td><button class="btn btn-outline-primary btn-sm" disabled>Join</button></td>
-                            </tr>
-                            <tr>
-                                <td>Dragon Gate</td>
-                                <td>Kai</td>
-                                <td>4 / 4</td>
-                                <td><span class="badge text-bg-secondary">Full</span></td>
-                                <td><button class="btn btn-outline-secondary btn-sm" disabled>Full</button></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <p class="text-muted small mt-1">Mocked list until the API is wired.</p>
+                <div class="table-list">
+                    <div class="table-list-item">
+                        <div>
+                            <div class="fw-semibold">Morning Bamboo</div>
+                            <div class="small text-muted">Game ID: 7T4D1 • 2/4 players</div>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm" disabled>Join</button>
+                    </div>
+                    <div class="table-list-item">
+                        <div>
+                            <div class="fw-semibold">Tile & Tea Club</div>
+                            <div class="small text-muted">Game ID: H9Q3L • 3/4 players</div>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm" disabled>Join</button>
+                    </div>
                 </div>
-                <div class="alert alert-secondary mt-3 mb-0">
-                    <strong>Next:</strong> wire create/join actions + fetch lobby list from the API.
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-body">
+                <h5 class="card-title">Lobby Status</h5>
+                <div class="row g-3">
+                    <div class="col-6 col-md-3">
+                        <div class="status-pill">
+                            <div class="fw-semibold">Latency</div>
+                            <div class="text-muted small">18 ms</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="status-pill">
+                            <div class="fw-semibold">SignalR</div>
+                            <div class="text-muted small">Connected</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="status-pill">
+                            <div class="fw-semibold">Tables</div>
+                            <div class="text-muted small">2 open</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="status-pill">
+                            <div class="fw-semibold">Players</div>
+                            <div class="text-muted small">6 online</div>
+                        </div>
+                    </div>
                 </div>
+                <p class="text-muted small mt-3 mb-0">Real-time status will update once the SignalR client is wired.</p>
             </div>
         </div>
     </div>

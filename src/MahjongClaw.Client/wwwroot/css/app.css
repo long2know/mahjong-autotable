@@ -455,3 +455,28 @@ code {
     margin: 0;
     line-height: 1.1;
 }
+
+.table-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.table-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e6e6e6;
+    background: #ffffff;
+}
+
+.status-pill {
+    border: 1px solid #e6e6e6;
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    background: #fdfdfd;
+    text-align: center;
+}
