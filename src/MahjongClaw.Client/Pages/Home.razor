@@ -2,37 +2,71 @@
 
 <PageTitle>Mahjong Claw</PageTitle>
 
-<div class="hero">
-    <h1>Mahjong Claw</h1>
-    <p class="lead">Multiplayer Traditional Chinese Mahjong — MVP client in progress.</p>
-    <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-primary" href="lobby">Go to Lobby</a>
-        <a class="btn btn-outline-secondary" href="game">View Game Board</a>
+<div class="hero card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center g-4">
+            <div class="col-12 col-lg-7">
+                <h1 class="display-5 fw-semibold">Mahjong Claw</h1>
+                <p class="lead mb-3">Multiplayer Traditional Chinese Mahjong — MVP client in progress.</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-primary" href="lobby">Enter Lobby</a>
+                    <a class="btn btn-outline-secondary" href="game">View Game Board</a>
+                </div>
+            </div>
+            <div class="col-12 col-lg-5">
+                <div class="hero-tile-grid">
+                    <Tile Label="🀄 Red Dragon" IsHighlighted="true" />
+                    <Tile Label="🀀 East" />
+                    <Tile Label="🀁 South" />
+                    <Tile Label="🀂 West" />
+                    <Tile Label="🀅 7 Dots" />
+                    <Tile Label="🀙 1 Bamboo" />
+                    <Tile Label="🀐 1 Character" />
+                    <Tile Label="🀃 North" />
+                </div>
+                <div class="text-muted small mt-2">Tile visuals are placeholders until SVG assets are ready.</div>
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="row g-4 mt-4">
+<div class="row g-4">
     <div class="col-12 col-lg-4">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Create or Join</h5>
-                <p class="card-text">Spin up a table, invite friends, and seat players before the deal begins.</p>
+                <h5 class="card-title">Lobby</h5>
+                <p class="text-muted">Create or join tables with seat availability and game status.</p>
+                <ul class="list-unstyled mb-0">
+                    <li>✅ Mock create/join flow</li>
+                    <li>✅ Active tables list</li>
+                    <li>⏳ Wire to API</li>
+                </ul>
             </div>
         </div>
     </div>
     <div class="col-12 col-lg-4">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Real-time Table</h5>
-                <p class="card-text">SignalR will keep every player synced with wall, discards, and melds.</p>
+                <h5 class="card-title">Game Board</h5>
+                <p class="text-muted">Seating layout, discards, and player hand display.</p>
+                <ul class="list-unstyled mb-0">
+                    <li>✅ Table layout</li>
+                    <li>✅ Tile component</li>
+                    <li>⏳ Live SignalR state</li>
+                </ul>
             </div>
         </div>
     </div>
     <div class="col-12 col-lg-4">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Rules Engine</h5>
-                <p class="card-text">Traditional Chinese scoring and legal move validation built into the backend.</p>
+                <h5 class="card-title">Next Up</h5>
+                <p class="text-muted">Client services and real-time updates.</p>
+                <ol class="mb-0">
+                    <li>Client API service</li>
+                    <li>SignalR hub connection</li>
+                    <li>State store + actions</li>
+                </ol>
             </div>
         </div>
     </div>

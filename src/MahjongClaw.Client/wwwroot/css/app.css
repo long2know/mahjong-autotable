@@ -317,3 +317,18 @@ code {
 .table-responsive .table td {
     vertical-align: middle;
 }
+
+.hero {
+    background: linear-gradient(120deg, #ffffff 0%, #f2f6ff 100%);
+    border: 1px solid #e6edf7;
+}
+
+.hero-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.hero-tile-grid .tile-shell {
+    width: 100%;
+}
