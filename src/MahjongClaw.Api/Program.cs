@@ -1,6 +1,8 @@
+using MahjongClaw.Api.Hubs;
 using MahjongClaw.Domain.Tiles;
 using MahjongClaw.Persistence;
 using MahjongClaw.Persistence.Entities;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,13 +10,19 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<MahjongClawDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("MahjongClaw")));
 
+builder.Services.AddSignalR();
+
 var app = builder.Build();
 
 app.MapGet("/", () => "Mahjong Claw API");
+app.MapHub<GameHub>("/hubs/game");
 
 var gameGroup = app.MapGroup("/api/game");
 
-gameGroup.MapPost("/", async (MahjongClawDbContext dbContext, CancellationToken cancellationToken) =>
+gameGroup.MapPost("/", async (
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken) =>
 {
     var game = new GameEntity
     {
@@ -41,6 +49,7 @@ gameGroup.MapPost("/{id:guid}/join", async (
     Guid id,
     JoinGameRequest request,
     MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
     CancellationToken cancellationToken) =>
 {
     var game = await dbContext.Games
@@ -84,12 +93,14 @@ gameGroup.MapPost("/{id:guid}/join", async (
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new JoinGameResponse(player.Id, game.Id, player.Name, player.Seat, player.Score);
+    await SendToGame(hubContext, game.Id, "PlayerJoined", response, cancellationToken);
     return Results.Ok(response);
 });
 
 gameGroup.MapPost("/{id:guid}/start", async (
     Guid id,
     MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
     CancellationToken cancellationToken) =>
 {
     var game = await dbContext.Games
@@ -143,6 +154,7 @@ gameGroup.MapPost("/{id:guid}/start", async (
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new StartGameResponse(game.Id, game.Status, game.DealerId, game.CurrentPlayerId);
+    await SendToGame(hubContext, game.Id, "GameStarted", response, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -183,6 +195,7 @@ gameGroup.MapPost("/{id:guid}/draw", async (
     Guid id,
     DrawTileRequest request,
     MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
     CancellationToken cancellationToken) =>
 {
     var game = await dbContext.Games
@@ -219,13 +232,16 @@ gameGroup.MapPost("/{id:guid}/draw", async (
 
     await dbContext.SaveChangesAsync(cancellationToken);
 
-    return Results.Ok(new DrawTileResponse(tile.Id, tile.Suit, tile.Rank, tile.Wind, tile.Dragon));
+    var response = new DrawTileResponse(tile.Id, tile.Suit, tile.Rank, tile.Wind, tile.Dragon);
+    await SendToGame(hubContext, game.Id, "TileDrawn", response, cancellationToken);
+    return Results.Ok(response);
 });
 
 gameGroup.MapPost("/{id:guid}/discard", async (
     Guid id,
     DiscardTileRequest request,
     MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
     CancellationToken cancellationToken) =>
 {
     var game = await dbContext.Games
@@ -268,13 +284,16 @@ gameGroup.MapPost("/{id:guid}/discard", async (
 
     await dbContext.SaveChangesAsync(cancellationToken);
 
-    return Results.Ok(new DiscardTileResponse(discard.Id, tile.Id, discard.Sequence));
+    var response = new DiscardTileResponse(discard.Id, tile.Id, discard.Sequence);
+    await SendToGame(hubContext, game.Id, "TileDiscarded", response, cancellationToken);
+    return Results.Ok(response);
 });
 
 gameGroup.MapPost("/{id:guid}/meld", async (
     Guid id,
     MeldRequest request,
     MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
     CancellationToken cancellationToken) =>
 {
     var game = await dbContext.Games
@@ -313,13 +332,16 @@ gameGroup.MapPost("/{id:guid}/meld", async (
 
     await dbContext.SaveChangesAsync(cancellationToken);
 
-    return Results.Ok(new MeldResponse(meld.Id, request.Type, tiles.Select(t => t.Id).ToList()));
+    var response = new MeldResponse(meld.Id, request.Type, tiles.Select(t => t.Id).ToList());
+    await SendToGame(hubContext, game.Id, "MeldDeclared", response, cancellationToken);
+    return Results.Ok(response);
 });
 
 gameGroup.MapPost("/{id:guid}/win", async (
     Guid id,
     WinRequest request,
     MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
     CancellationToken cancellationToken) =>
 {
     var game = await dbContext.Games.FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
@@ -334,10 +356,15 @@ gameGroup.MapPost("/{id:guid}/win", async (
 
     await dbContext.SaveChangesAsync(cancellationToken);
 
-    return Results.Ok(new WinResponse(game.Id, game.Status, request.PlayerId));
+    var response = new WinResponse(game.Id, game.Status, request.PlayerId);
+    await SendToGame(hubContext, game.Id, "GameWon", response, cancellationToken);
+    return Results.Ok(response);
 });
 
 app.Run();
+
+static Task SendToGame(IHubContext<GameHub> hubContext, Guid gameId, string eventName, object payload, CancellationToken cancellationToken)
+    => hubContext.Clients.Group(gameId.ToString()).SendAsync(eventName, payload, cancellationToken);
 
 void DealStartingHands(GameEntity game, IReadOnlyList<TileEntity> tiles)
 {
