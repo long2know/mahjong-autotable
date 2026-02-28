@@ -8,34 +8,55 @@
     <div class="col-12 col-lg-6">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Create Game</h5>
-                <p class="text-muted small">Start a fresh table and invite friends.</p>
+                <div class="d-flex align-items-start justify-content-between">
+                    <div>
+                        <h5 class="card-title mb-1">Create Game</h5>
+                        <p class="text-muted small mb-3">Start a fresh table and invite friends.</p>
+                    </div>
+                    <span class="badge text-bg-success">New</span>
+                </div>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" value="Kai" />
+                    <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Table note</label>
-                    <input class="form-control" placeholder="Optional message" value="Weekend match" />
+                    <label class="form-label">Table visibility</label>
+                    <select class="form-select">
+                        <option>Private (invite only)</option>
+                        <option>Open (anyone with link)</option>
+                    </select>
                 </div>
-                <button class="btn btn-primary" disabled>Create game</button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary">Create</button>
+                    <button class="btn btn-outline-secondary">Generate invite link</button>
+                </div>
+                <p class="text-muted small mt-3 mb-0">Wiring to the API happens once auth + game endpoints are ready.</p>
             </div>
         </div>
     </div>
     <div class="col-12 col-lg-6">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Join Game</h5>
-                <p class="text-muted small">Enter a game code to take a seat.</p>
+                <div class="d-flex align-items-start justify-content-between">
+                    <div>
+                        <h5 class="card-title mb-1">Join Game</h5>
+                        <p class="text-muted small mb-3">Enter a game ID shared by the host.</p>
+                    </div>
+                    <span class="badge text-bg-info">Invite</span>
+                </div>
                 <div class="mb-3">
                     <label class="form-label">Game ID</label>
-                    <input class="form-control" placeholder="Game id" value="MC-4821" />
+                    <input class="form-control" placeholder="game-92bcf" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" value="You" />
+                    <input class="form-control" placeholder="Enter your name" />
                 </div>
-                <button class="btn btn-secondary" disabled>Join game</button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-secondary">Join</button>
+                    <button class="btn btn-outline-secondary">Paste invite</button>
+                </div>
+                <p class="text-muted small mt-3 mb-0">The lobby will validate seats once real-time state is wired up.</p>
             </div>
         </div>
     </div>
@@ -45,36 +66,52 @@
     <div class="card-body">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
-                <h5 class="card-title mb-1">Active tables</h5>
-                <p class="text-muted small mb-0">Sample lobby list until the API is live.</p>
+                <h5 class="card-title mb-1">Active Tables</h5>
+                <p class="text-muted small mb-0">Mock data for the MVP layout.</p>
             </div>
-            <span class="badge text-bg-light">2 open seats</span>
+            <button class="btn btn-outline-primary btn-sm">Refresh</button>
         </div>
         <div class="table-responsive mt-3">
-            <table class="table table-sm align-middle lobby-table">
+            <table class="table table-sm align-middle">
                 <thead>
                     <tr>
-                        <th>Game</th>
-                        <th>Host</th>
-                        <th>Seats</th>
+                        <th>Table</th>
                         <th>Status</th>
+                        <th>Players</th>
+                        <th>Updated</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td><strong>MC-4821</strong></td>
-                        <td>Jun</td>
-                        <td>3 / 4</td>
-                        <td><span class="badge text-bg-success">Lobby</span></td>
-                        <td><button class="btn btn-outline-secondary btn-sm" disabled>Join</button></td>
+                        <td>
+                            <div class="fw-semibold">Jade River</div>
+                            <div class="text-muted small">game-92bcf</div>
+                        </td>
+                        <td><span class="badge text-bg-warning">Waiting</span></td>
+                        <td>2 / 4</td>
+                        <td>Just now</td>
+                        <td><button class="btn btn-outline-secondary btn-sm">Join</button></td>
                     </tr>
                     <tr>
-                        <td><strong>MC-5127</strong></td>
-                        <td>Mina</td>
+                        <td>
+                            <div class="fw-semibold">North Wind</div>
+                            <div class="text-muted small">game-3f119</div>
+                        </td>
+                        <td><span class="badge text-bg-success">Playing</span></td>
                         <td>4 / 4</td>
-                        <td><span class="badge text-bg-warning">In play</span></td>
-                        <td><button class="btn btn-outline-secondary btn-sm" disabled>Watch</button></td>
+                        <td>2 min ago</td>
+                        <td><button class="btn btn-outline-secondary btn-sm" disabled>Full</button></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">Lucky Bamboo</div>
+                            <div class="text-muted small">game-8d27a</div>
+                        </td>
+                        <td><span class="badge text-bg-secondary">Paused</span></td>
+                        <td>3 / 4</td>
+                        <td>10 min ago</td>
+                        <td><button class="btn btn-outline-secondary btn-sm">Resume</button></td>
                     </tr>
                 </tbody>
             </table>
@@ -82,4 +119,4 @@
     </div>
 </div>
 
-<p class="text-muted mt-3">Wire these actions to the API (create/join) once the client services are in place.</p>
+<p class="text-muted mt-3">Replace mock data with lobby state from the backend once available.</p>

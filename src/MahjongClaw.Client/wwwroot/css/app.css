@@ -313,3 +313,7 @@ code {
 .lobby-table td {
     vertical-align: middle;
 }
+
+.table-responsive .table td {
+    vertical-align: middle;
+}
