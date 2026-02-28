@@ -6,96 +6,68 @@
 
 <div class="row g-4">
     <div class="col-12 col-lg-5">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
-                <p class="text-muted small">Start a new table and invite friends.</p>
+                <p class="text-muted small">Start a new table and invite your friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Saturday night hand" />
+                    <input class="form-control" placeholder="Saturday night table" />
                 </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-primary" disabled>Create game</button>
-                    <button class="btn btn-outline-secondary" disabled>Copy invite</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="card mt-4">
-            <div class="card-body">
-                <h5 class="card-title">Quick Join</h5>
-                <p class="text-muted small">Already have an invite code?</p>
-                <div class="mb-3">
-                    <label class="form-label">Game ID</label>
-                    <input class="form-control" placeholder="e.g. 8F2K9" />
-                </div>
-                <button class="btn btn-secondary w-100" disabled>Join game</button>
+                <button class="btn btn-primary" disabled>Create</button>
+                <div class="text-muted small mt-3">Auto-generates a game ID once wired to the API.</div>
             </div>
         </div>
     </div>
-
     <div class="col-12 col-lg-7">
         <div class="card">
             <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between">
-                    <h5 class="card-title mb-0">Open Tables</h5>
-                    <span class="badge text-bg-light">2 live</span>
-                </div>
-                <p class="text-muted small mt-1">Mocked list until the API is wired.</p>
-                <div class="table-list">
-                    <div class="table-list-item">
-                        <div>
-                            <div class="fw-semibold">Morning Bamboo</div>
-                            <div class="small text-muted">Game ID: 7T4D1 • 2/4 players</div>
-                        </div>
-                        <button class="btn btn-outline-primary btn-sm" disabled>Join</button>
+                <h5 class="card-title">Join Game</h5>
+                <p class="text-muted small">Paste a game ID or pick from recent tables.</p>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Game ID</label>
+                        <input class="form-control" placeholder="Game id" />
                     </div>
-                    <div class="table-list-item">
-                        <div>
-                            <div class="fw-semibold">Tile & Tea Club</div>
-                            <div class="small text-muted">Game ID: H9Q3L • 3/4 players</div>
-                        </div>
-                        <button class="btn btn-outline-primary btn-sm" disabled>Join</button>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Player name</label>
+                        <input class="form-control" placeholder="Enter your name" />
                     </div>
                 </div>
+                <button class="btn btn-secondary mt-3" disabled>Join</button>
             </div>
         </div>
-
         <div class="card mt-4">
             <div class="card-body">
-                <h5 class="card-title">Lobby Status</h5>
-                <div class="row g-3">
-                    <div class="col-6 col-md-3">
-                        <div class="status-pill">
-                            <div class="fw-semibold">Latency</div>
-                            <div class="text-muted small">18 ms</div>
+                <h6 class="text-uppercase text-muted">Recent tables</h6>
+                <div class="list-group lobby-list">
+                    @foreach (var game in RecentGames)
+                    {
+                        <div class="list-group-item d-flex align-items-center justify-content-between">
+                            <div>
+                                <div class="fw-semibold">@game.Name</div>
+                                <div class="small text-muted">@game.Id • @game.Players/4 players</div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
                         </div>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <div class="status-pill">
-                            <div class="fw-semibold">SignalR</div>
-                            <div class="text-muted small">Connected</div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <div class="status-pill">
-                            <div class="fw-semibold">Tables</div>
-                            <div class="text-muted small">2 open</div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <div class="status-pill">
-                            <div class="fw-semibold">Players</div>
-                            <div class="text-muted small">6 online</div>
-                        </div>
-                    </div>
+                    }
                 </div>
-                <p class="text-muted small mt-3 mb-0">Real-time status will update once the SignalR client is wired.</p>
             </div>
         </div>
     </div>
 </div>
+
+@code {
+    private IReadOnlyList<GameSummary> RecentGames => new[]
+    {
+        new GameSummary("Moonlight Mahjong", "6F3A9", 3),
+        new GameSummary("Wind & Bamboo", "1C8TQ", 2),
+        new GameSummary("Lunch Break", "9ZP2M", 4)
+    };
+
+    private record GameSummary(string Name, string Id, int Players);
+}

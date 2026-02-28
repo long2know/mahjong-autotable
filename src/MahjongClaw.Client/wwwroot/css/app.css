@@ -480,3 +480,13 @@ code {
     background: #fdfdfd;
     text-align: center;
 }
+
+.lobby-list .list-group-item {
+    border-radius: 0.75rem;
+    margin-bottom: 0.6rem;
+    border: 1px solid #e5e7eb;
+}
+
+.lobby-list .list-group-item:last-child {
+    margin-bottom: 0;
+}
