@@ -57,6 +57,7 @@
                                 <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
                                     <span>@table.Host • @table.Region</span>
                                     <span class="badge @GetStatusBadge(table.Status)">@table.Status</span>
+                                    <span class="text-muted">Code: @table.Code</span>
                                     <span class="seat-indicator" aria-label="Seats filled">
                                         @for (var seat = 0; seat < 4; seat++)
                                         {
@@ -67,7 +68,7 @@
                             </div>
                             <div class="text-end">
                                 <div class="badge text-bg-primary">@table.Players / 4 seats</div>
-                                <button class="btn btn-sm btn-outline-primary ms-2" disabled>Join</button>
+                                <button class="btn btn-sm btn-outline-primary ms-2" disabled="@(!table.CanJoin)">Join</button>
                             </div>
                         </div>
                     }
@@ -82,8 +83,8 @@
 @code {
     private IReadOnlyList<TableView> OpenTables => new[]
     {
-        new TableView("Golden Dragons", "Jun", "US West", 3, "Waiting"),
-        new TableView("Family Table", "Mina", "US Central", 2, "In progress")
+        new TableView("Golden Dragons", "Jun", "US West", 3, "Waiting", "X8K2", true),
+        new TableView("Family Table", "Mina", "US Central", 2, "In progress", "LQ7P", false)
     };
 
     private static string GetStatusBadge(string status) => status switch
@@ -93,5 +94,5 @@
         _ => "text-bg-secondary"
     };
 
-    private record TableView(string Name, string Host, string Region, int Players, string Status);
+    private record TableView(string Name, string Host, string Region, int Players, string Status, string Code, bool CanJoin);
 }
