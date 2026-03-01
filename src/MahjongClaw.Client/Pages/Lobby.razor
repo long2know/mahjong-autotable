@@ -9,61 +9,67 @@
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
-                <p class="text-muted">Spin up a new table and invite friends.</p>
+                <p class="text-muted small">Start a new table and invite friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Friday Night Mahjong" />
+                    <input class="form-control" placeholder="Weekend table" />
                 </div>
-                <button class="btn btn-primary w-100" disabled>Create table</button>
+                <button class="btn btn-primary w-100" disabled>Create game</button>
+                <p class="text-muted small mt-2 mb-0">Wires to POST /api/game once services are hooked up.</p>
             </div>
         </div>
     </div>
     <div class="col-12 col-lg-7">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Join Game</h5>
-                <p class="text-muted">Enter a game id or select an open table below.</p>
-                <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Game ID</label>
-                        <input class="form-control" placeholder="e.g. 7P4K8" />
+                <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                    <div>
+                        <h5 class="card-title mb-1">Join Game</h5>
+                        <p class="text-muted small mb-0">Search by game ID or pick a recent lobby.</p>
                     </div>
-                    <div class="col-12 col-md-6">
+                    <button class="btn btn-outline-secondary" disabled>Refresh</button>
+                </div>
+                <div class="row mt-3 g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Game ID</label>
+                        <input class="form-control" placeholder="e.g. 5F3A-92B" />
+                    </div>
+                    <div class="col-md-6">
                         <label class="form-label">Player name</label>
                         <input class="form-control" placeholder="Enter your name" />
                     </div>
                 </div>
-                <button class="btn btn-secondary mt-3" disabled>Join with code</button>
+                <button class="btn btn-secondary mt-3" disabled>Join by ID</button>
 
-                <div class="mt-4">
-                    <h6 class="text-uppercase text-muted">Open Tables</h6>
-                    <div class="lobby-table-list">
-                        @foreach (var table in OpenTables)
-                        {
-                            <div class="lobby-table">
-                                <div>
-                                    <div class="fw-semibold">@table.Name</div>
-                                    <div class="small text-muted">ID: @table.Id · @table.Status</div>
-                                </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <span class="badge text-bg-light">@table.SeatsFilled/4</span>
-                                    <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
-                                </div>
-                                <div class="lobby-seats mt-3">
-                                    @foreach (var seat in table.Seats)
-                                    {
-                                        <div class="lobby-seat">
-                                            <span class="badge rounded-pill text-bg-secondary">@seat.Seat</span>
-                                            <span class="small">@seat.Player</span>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
+                <div class="lobby-list mt-4">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <h6 class="text-uppercase text-muted mb-0">Recent lobbies</h6>
+                        <span class="badge text-bg-light">3 active</span>
+                    </div>
+                    <div class="lobby-card mt-3">
+                        <div>
+                            <div class="fw-semibold">East Wind Social</div>
+                            <div class="small text-muted">Host: Jun · 2/4 players · Started 5 min ago</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
+                    </div>
+                    <div class="lobby-card">
+                        <div>
+                            <div class="fw-semibold">Bamboo Breeze</div>
+                            <div class="small text-muted">Host: Mina · 3/4 players · Started 12 min ago</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
+                    </div>
+                    <div class="lobby-card">
+                        <div>
+                            <div class="fw-semibold">Late Night Tiles</div>
+                            <div class="small text-muted">Host: Kai · 1/4 players · Started 1 min ago</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
                     </div>
                 </div>
             </div>
@@ -71,27 +77,4 @@
     </div>
 </div>
 
-<p class="text-muted mt-3">Wire these panels to the API (create/join) once client services are in place.</p>
-
-@code {
-    private IReadOnlyList<LobbyTableView> OpenTables => new[]
-    {
-        new LobbyTableView("Friday Night Mahjong", "7P4K8", "Waiting for players", 2, new()
-        {
-            new LobbySeatView("East", "Jun"),
-            new LobbySeatView("South", "Open"),
-            new LobbySeatView("West", "Mina"),
-            new LobbySeatView("North", "Open")
-        }),
-        new LobbyTableView("Office League", "Q2Z91", "Ready", 4, new()
-        {
-            new LobbySeatView("East", "Luca"),
-            new LobbySeatView("South", "Tori"),
-            new LobbySeatView("West", "Arun"),
-            new LobbySeatView("North", "You")
-        })
-    };
-
-    private record LobbyTableView(string Name, string Id, string Status, int SeatsFilled, List<LobbySeatView> Seats);
-    private record LobbySeatView(string Seat, string Player);
-}
+<p class="text-muted mt-3">This page will bind to lobby API responses when client services are wired.</p>
