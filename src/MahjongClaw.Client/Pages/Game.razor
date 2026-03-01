@@ -77,12 +77,20 @@
 @code {
     private int WallRemaining => 70;
 
-    private PlayerView PlayerNorth => new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), true, false);
-    private PlayerView PlayerWest => new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), false, false);
-    private PlayerView PlayerEast => new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), false, true);
-    private PlayerView PlayerSouth => new("South", "You", 920, new(), new() { "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character", "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo", "🀞 6 Bamboo", "🀟 7 Bamboo" }, false, false);
+    private PlayerView PlayerNorth => new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), 12, true, false);
+    private PlayerView PlayerWest => new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), 11, false, false);
+    private PlayerView PlayerEast => new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), 13, false, true);
+    private PlayerView PlayerSouth => new("South", "You", 920, new(), new() { "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character", "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo", "🀞 6 Bamboo", "🀟 7 Bamboo" }, 13, false, false);
 
     private IReadOnlyList<string> CenterDiscards => new[] { "🀀", "🀁", "🀂", "🀃", "🀅", "🀆", "🀈", "🀐", "🀑", "🀒" };
+
+    private IEnumerable<string> BuildHiddenHand(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return "🀫";
+        }
+    }
 
     private RenderFragment RenderSeat(PlayerView player) => @<div class="seat-card">
         <div class="d-flex align-items-center justify-content-between">
@@ -108,7 +116,13 @@
                 <Tile Label="@tile" />
             }
         </div>
+        <div class="tile-row tile-row-wrap mt-2">
+            @foreach (var tile in BuildHiddenHand(player.HandCount))
+            {
+                <Tile Label="@tile" IsFaceDown="true" />
+            }
+        </div>
     </div>;
 
-    private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, bool IsDealer, bool IsCurrent);
+    private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
 }
