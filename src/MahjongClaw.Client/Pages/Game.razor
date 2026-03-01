@@ -23,7 +23,7 @@
                         </div>
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span class="badge text-bg-success">@GameStatus</span>
+                        <span class="badge @GetStatusBadge(GameStatus)">@GameStatus</span>
                         <span class="badge bg-dark-subtle text-dark">Wall: @WallRemaining tiles</span>
                     </div>
                 </div>
@@ -203,6 +203,15 @@
     private IReadOnlyList<(string Timestamp, string Description)> RecentActions => MockState.RecentActions;
     private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => MockState.Melds;
     private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => MockState.Seats;
+
+    private static string GetStatusBadge(string status) => status switch
+    {
+        "Waiting" => "text-bg-info",
+        "In Progress" => "text-bg-success",
+        "Paused" => "text-bg-warning",
+        "Complete" => "text-bg-secondary",
+        _ => "text-bg-primary"
+    };
 
     private IEnumerable<string> BuildHiddenHand(int count)
     {
