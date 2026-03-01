@@ -3,105 +3,81 @@
 <PageTitle>Lobby</PageTitle>
 
 <h1>Lobby</h1>
+<p class="text-muted">Create a new table or join an existing game. This is mocked UI until API wiring lands.</p>
 
 <div class="row g-4">
-    <div class="col-12 col-lg-6">
+    <div class="col-12 col-lg-5">
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
-                <p class="text-muted small">Start a new table and invite friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Saturday night tiles" />
+                    <input class="form-control" placeholder="Saturday Night Mahjong" />
                 </div>
-                <div class="d-flex align-items-center justify-content-between">
-                    <span class="badge text-bg-light">4 seats</span>
-                    <button class="btn btn-primary" disabled>Create</button>
+                <div class="mb-3">
+                    <label class="form-label">Starting score</label>
+                    <select class="form-select">
+                        <option>25000</option>
+                        <option>20000</option>
+                        <option>15000</option>
+                    </select>
                 </div>
+                <button class="btn btn-primary w-100" disabled>Create</button>
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-6">
-        <div class="card h-100">
+    <div class="col-12 col-lg-7">
+        <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Join Game</h5>
-                <p class="text-muted small">Enter a game ID shared by the host.</p>
-                <div class="mb-3">
-                    <label class="form-label">Game ID</label>
-                    <input class="form-control" placeholder="Game id" />
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <h5 class="card-title mb-0">Join Game</h5>
+                    <span class="badge text-bg-light">3 tables live</span>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" />
+                <div class="mt-3 lobby-list">
+                    @foreach (var table in Tables)
+                    {
+                        <div class="lobby-entry">
+                            <div>
+                                <div class="fw-semibold">@table.Name</div>
+                                <div class="small text-muted">Host: @table.Host · @table.Players/4 players</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="badge text-bg-secondary">@table.Code</div>
+                                <button class="btn btn-sm btn-outline-secondary ms-2" disabled>Join</button>
+                            </div>
+                        </div>
+                    }
                 </div>
-                <button class="btn btn-secondary" disabled>Join</button>
+
+                <div class="row g-3 mt-4">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Game ID</label>
+                        <input class="form-control" placeholder="MC-4829" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Player name</label>
+                        <input class="form-control" placeholder="Enter your name" />
+                    </div>
+                </div>
+                <button class="btn btn-secondary w-100 mt-3" disabled>Join with ID</button>
             </div>
         </div>
     </div>
 </div>
 
-<div class="card mt-4">
-    <div class="card-body">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <h5 class="card-title mb-0">Open Tables</h5>
-            <span class="badge text-bg-info">Mock data</span>
-        </div>
-        <div class="table-responsive mt-3">
-            <table class="table align-middle">
-                <thead>
-                    <tr>
-                        <th>Table</th>
-                        <th>Host</th>
-                        <th>Seats</th>
-                        <th>Status</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var table in OpenTables)
-                    {
-                        <tr>
-                            <td>
-                                <div class="fw-semibold">@table.Name</div>
-                                <div class="small text-muted">@table.GameId</div>
-                            </td>
-                            <td>@table.Host</td>
-                            <td>
-                                <div class="d-flex align-items-center gap-2">
-                                    <div class="seat-indicator">
-                                        @for (var i = 0; i < table.SeatCount; i++)
-                                        {
-                                            <span class="seat-dot @(i < table.SeatsFilled ? "seat-dot-filled" : string.Empty)"></span>
-                                        }
-                                    </div>
-                                    <span class="small">@table.SeatsFilled/@table.SeatCount</span>
-                                </div>
-                            </td>
-                            <td><span class="badge text-bg-light">@table.Status</span></td>
-                            <td class="text-end">
-                                <button class="btn btn-outline-primary btn-sm" disabled>Join</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<p class="text-muted mt-3">Wire create/join buttons to the API once client services are ready.</p>
+<p class="text-muted mt-3">Buttons are disabled until API endpoints for lobby creation and joining are wired.</p>
 
 @code {
-    private IReadOnlyList<TableView> OpenTables => new[]
+    private IReadOnlyList<TablePreview> Tables => new[]
     {
-        new TableView("MC-1024", "Lantern League", "Rina", 4, 2, "Waiting"),
-        new TableView("MC-2049", "Bamboo Breeze", "Theo", 4, 4, "In Game"),
-        new TableView("MC-2188", "Dragon Den", "Aly", 4, 1, "Waiting")
+        new TablePreview("Dragon Gate", "Jun", 2, "MC-4829"),
+        new TablePreview("Evening Winds", "Mina", 3, "MC-3174"),
+        new TablePreview("Lucky Bamboo", "Kai", 1, "MC-9961")
     };
 
-    private record TableView(string GameId, string Name, string Host, int SeatCount, int SeatsFilled, string Status);
+    private record TablePreview(string Name, string Host, int Players, string Code);
 }

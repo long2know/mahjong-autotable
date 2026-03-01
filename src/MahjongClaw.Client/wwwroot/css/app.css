@@ -506,3 +506,20 @@ code {
 .seat-dot-filled {
     background: #198754;
 }
+
+.lobby-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.lobby-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e6e6e6;
+    background: #fdfdfd;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
