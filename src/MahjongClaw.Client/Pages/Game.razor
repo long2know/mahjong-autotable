@@ -10,10 +10,13 @@
             <div class="card-body">
                 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
                     <div>
-                        <h5 class="card-title mb-1">Table</h5>
-                        <p class="text-muted mb-0">Live state from SignalR will replace this mock view.</p>
+                        <h5 class="card-title mb-1">@TableName</h5>
+                        <p class="text-muted mb-0">Table ID: @TableCode</p>
                     </div>
-                    <div class="badge bg-dark-subtle text-dark">Wall: @WallRemaining tiles</div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="badge text-bg-success">@GameStatus</span>
+                        <span class="badge bg-dark-subtle text-dark">Wall: @WallRemaining tiles</span>
+                    </div>
                 </div>
                 <div class="status-row mt-3">
                     <span class="badge text-bg-primary">Turn: @PlayerEast.Name</span>
@@ -177,6 +180,9 @@
     private int DrawsRemaining => MockState.DrawsRemaining;
     private string RoundWind => MockState.RoundWind;
     private int HandNumber => MockState.HandNumber;
+    private string TableName => MockState.TableName;
+    private string TableCode => MockState.TableCode;
+    private string GameStatus => MockState.GameStatus;
 
     private PlayerView PlayerNorth => MockState.PlayerNorth;
     private PlayerView PlayerWest => MockState.PlayerWest;
@@ -233,6 +239,9 @@
 
     private record MockGameState
     {
+        public string TableName { get; init; } = "Golden Dragons";
+        public string TableCode { get; init; } = "GD-4821";
+        public string GameStatus { get; init; } = "In Progress";
         public int WallRemaining { get; init; } = 70;
         public int DrawsRemaining { get; init; } = 10;
         public string RoundWind { get; init; } = "East";
