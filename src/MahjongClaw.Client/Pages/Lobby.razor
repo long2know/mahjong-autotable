@@ -56,6 +56,7 @@
                                 <div class="fw-semibold">@table.Name</div>
                                 <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
                                     <span>@table.Host • @table.Region</span>
+                                    <span class="badge @GetStatusBadge(table.Status)">@table.Status</span>
                                     <span class="seat-indicator" aria-label="Seats filled">
                                         @for (var seat = 0; seat < 4; seat++)
                                         {
@@ -81,9 +82,16 @@
 @code {
     private IReadOnlyList<TableView> OpenTables => new[]
     {
-        new TableView("Golden Dragons", "Jun", "US West", 3),
-        new TableView("Family Table", "Mina", "US Central", 2)
+        new TableView("Golden Dragons", "Jun", "US West", 3, "Waiting"),
+        new TableView("Family Table", "Mina", "US Central", 2, "In progress")
     };
 
-    private record TableView(string Name, string Host, string Region, int Players);
+    private static string GetStatusBadge(string status) => status switch
+    {
+        "Waiting" => "text-bg-success",
+        "In progress" => "text-bg-warning",
+        _ => "text-bg-secondary"
+    };
+
+    private record TableView(string Name, string Host, string Region, int Players, string Status);
 }
