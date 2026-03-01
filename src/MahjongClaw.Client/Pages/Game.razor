@@ -169,48 +169,23 @@
 </div>
 
 @code {
-    private int WallRemaining => 70;
-    private int DrawsRemaining => 10;
-    private string RoundWind => "East";
-    private int HandNumber => 3;
+    private static readonly MockGameState MockState = new();
 
-    private PlayerView PlayerNorth => new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), 12, true, false);
-    private PlayerView PlayerWest => new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), 11, false, false);
-    private PlayerView PlayerEast => new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), 13, false, true);
-    private PlayerView PlayerSouth => new("South", "You", 920, new(), new() { "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character", "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo", "🀞 6 Bamboo", "🀟 7 Bamboo" }, 13, false, false);
+    private int WallRemaining => MockState.WallRemaining;
+    private int DrawsRemaining => MockState.DrawsRemaining;
+    private string RoundWind => MockState.RoundWind;
+    private int HandNumber => MockState.HandNumber;
 
-    private IReadOnlyList<string> CenterDiscards => new[] { "🀀", "🀁", "🀂", "🀃", "🀅", "🀆", "🀈", "🀐", "🀑", "🀒" };
+    private PlayerView PlayerNorth => MockState.PlayerNorth;
+    private PlayerView PlayerWest => MockState.PlayerWest;
+    private PlayerView PlayerEast => MockState.PlayerEast;
+    private PlayerView PlayerSouth => MockState.PlayerSouth;
 
-    private IReadOnlyList<(string Name, int Score)> Scoreboard => new[]
-    {
-        ("Jun", 1340),
-        ("Kai", 1200),
-        ("You", 920),
-        ("Mina", 800)
-    };
-
-    private IReadOnlyList<(string Timestamp, string Description)> RecentActions => new[]
-    {
-        ("19:12", "Jun drew a tile."),
-        ("19:11", "Mina discarded 🀅 7 Dots."),
-        ("19:10", "You declared Pung on 🀀 East."),
-        ("19:09", "Kai discarded 🀓 4 Character.")
-    };
-
-    private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => new[]
-    {
-        ("You", "Pung", new List<string> { "🀀", "🀀", "🀀" }),
-        ("Jun", "Chow", new List<string> { "🀙", "🀚", "🀛" }),
-        ("Kai", "Kong", new List<string> { "🀅", "🀅", "🀅", "🀅" })
-    };
-
-    private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => new[]
-    {
-        ("East", "Jun", 1340, true),
-        ("South", "You", 920, false),
-        ("West", "Mina", 800, false),
-        ("North", "Kai", 1200, false)
-    };
+    private IReadOnlyList<string> CenterDiscards => MockState.CenterDiscards;
+    private IReadOnlyList<(string Name, int Score)> Scoreboard => MockState.Scoreboard;
+    private IReadOnlyList<(string Timestamp, string Description)> RecentActions => MockState.RecentActions;
+    private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => MockState.Melds;
+    private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => MockState.Seats;
 
     private IEnumerable<string> BuildHiddenHand(int count)
     {
@@ -253,4 +228,58 @@
     </div>;
 
     private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
+
+    private record MockGameState
+    {
+        public int WallRemaining { get; init; } = 70;
+        public int DrawsRemaining { get; init; } = 10;
+        public string RoundWind { get; init; } = "East";
+        public int HandNumber { get; init; } = 3;
+
+        public PlayerView PlayerNorth { get; init; } = new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), 12, true, false);
+        public PlayerView PlayerWest { get; init; } = new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), 11, false, false);
+        public PlayerView PlayerEast { get; init; } = new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), 13, false, true);
+        public PlayerView PlayerSouth { get; init; } = new("South", "You", 920, new(), new()
+        {
+            "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character",
+            "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo",
+            "🀞 6 Bamboo", "🀟 7 Bamboo"
+        }, 13, false, false);
+
+        public IReadOnlyList<string> CenterDiscards { get; init; } = new[]
+        {
+            "🀀", "🀁", "🀂", "🀃", "🀅", "🀆", "🀈", "🀐", "🀑", "🀒"
+        };
+
+        public IReadOnlyList<(string Name, int Score)> Scoreboard { get; init; } = new[]
+        {
+            ("Jun", 1340),
+            ("Kai", 1200),
+            ("You", 920),
+            ("Mina", 800)
+        };
+
+        public IReadOnlyList<(string Timestamp, string Description)> RecentActions { get; init; } = new[]
+        {
+            ("19:12", "Jun drew a tile."),
+            ("19:11", "Mina discarded 🀅 7 Dots."),
+            ("19:10", "You declared Pung on 🀀 East."),
+            ("19:09", "Kai discarded 🀓 4 Character.")
+        };
+
+        public IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds { get; init; } = new[]
+        {
+            ("You", "Pung", new List<string> { "🀀", "🀀", "🀀" }),
+            ("Jun", "Chow", new List<string> { "🀙", "🀚", "🀛" }),
+            ("Kai", "Kong", new List<string> { "🀅", "🀅", "🀅", "🀅" })
+        };
+
+        public IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats { get; init; } = new[]
+        {
+            ("East", "Jun", 1340, true),
+            ("South", "You", 920, false),
+            ("West", "Mina", 800, false),
+            ("North", "Kai", 1200, false)
+        };
+    }
 }
