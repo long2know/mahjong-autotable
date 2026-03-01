@@ -91,6 +91,20 @@
                 <p class="text-muted small mt-3 mb-0">Tap a tile to discard once wired to actions.</p>
             </div>
         </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Recent Actions</h5>
+                <ul class="timeline">
+                    @foreach (var entry in RecentActions)
+                    {
+                        <li>
+                            <div class="timeline-time">@entry.Timestamp</div>
+                            <div class="timeline-text">@entry.Description</div>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Actions</h5>
@@ -124,6 +138,14 @@
         ("Kai", 1200),
         ("You", 920),
         ("Mina", 800)
+    };
+
+    private IReadOnlyList<(string Timestamp, string Description)> RecentActions => new[]
+    {
+        ("19:12", "Jun drew a tile."),
+        ("19:11", "Mina discarded 🀅 7 Dots."),
+        ("19:10", "You declared Pung on 🀀 East."),
+        ("19:09", "Kai discarded 🀓 4 Character.")
     };
 
     private IEnumerable<string> BuildHiddenHand(int count)
