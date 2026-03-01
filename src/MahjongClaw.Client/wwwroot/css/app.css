@@ -703,6 +703,21 @@ code {
     gap: 0.5rem;
 }
 
+.wall-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.wall-progress .progress {
+    height: 0.4rem;
+    background-color: #e9ecef;
+}
+
+.wall-progress .progress-bar {
+    background-color: #198754;
+}
+
 .seat-summary {
     display: flex;
     flex-direction: column;

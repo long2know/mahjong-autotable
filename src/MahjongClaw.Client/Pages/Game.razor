@@ -35,6 +35,16 @@
                     <span class="badge text-bg-light">Draws left: @DrawsRemaining</span>
                 </div>
 
+                <div class="wall-progress mt-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <span class="text-muted small">Wall remaining</span>
+                        <span class="text-muted small">@WallRemaining / @WallTotal</span>
+                    </div>
+                    <div class="progress" role="progressbar" aria-label="Wall remaining" aria-valuenow="@WallRemaining" aria-valuemin="0" aria-valuemax="@WallTotal">
+                        <div class="progress-bar" style="width: @WallPercent%"></div>
+                    </div>
+                </div>
+
                 <div class="table-grid mt-4">
                     <div class="seat seat-north">
                         @RenderSeat(PlayerNorth)
@@ -186,6 +196,8 @@
     private static readonly MockGameState MockState = new();
 
     private int WallRemaining => MockState.WallRemaining;
+    private int WallTotal => MockState.WallTotal;
+    private string WallPercent => ((WallRemaining / (double)WallTotal) * 100).ToString("0");
     private int DrawsRemaining => MockState.DrawsRemaining;
     private string RoundWind => MockState.RoundWind;
     private int HandNumber => MockState.HandNumber;
@@ -261,6 +273,7 @@
         public string TableCode { get; init; } = "GD-4821";
         public string GameStatus { get; init; } = "In Progress";
         public int WallRemaining { get; init; } = 70;
+        public int WallTotal { get; init; } = 136;
         public int DrawsRemaining { get; init; } = 10;
         public string RoundWind { get; init; } = "East";
         public int HandNumber { get; init; } = 3;
