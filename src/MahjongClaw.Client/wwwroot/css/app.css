@@ -490,3 +490,19 @@ code {
 .lobby-list .list-group-item:last-child {
     margin-bottom: 0;
 }
+
+.seat-indicator {
+    display: inline-flex;
+    gap: 0.25rem;
+}
+
+.seat-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: #e1e5ea;
+}
+
+.seat-dot-filled {
+    background: #198754;
+}

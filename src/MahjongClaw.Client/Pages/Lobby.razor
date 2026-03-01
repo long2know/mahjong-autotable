@@ -5,69 +5,103 @@
 <h1>Lobby</h1>
 
 <div class="row g-4">
-    <div class="col-12 col-lg-5">
+    <div class="col-12 col-lg-6">
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
-                <p class="text-muted small">Start a new table and invite your friends.</p>
+                <p class="text-muted small">Start a new table and invite friends.</p>
                 <div class="mb-3">
                     <label class="form-label">Player name</label>
                     <input class="form-control" placeholder="Enter your name" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Saturday night table" />
+                    <input class="form-control" placeholder="Saturday night tiles" />
                 </div>
-                <button class="btn btn-primary" disabled>Create</button>
-                <div class="text-muted small mt-3">Auto-generates a game ID once wired to the API.</div>
+                <div class="d-flex align-items-center justify-content-between">
+                    <span class="badge text-bg-light">4 seats</span>
+                    <button class="btn btn-primary" disabled>Create</button>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-12 col-lg-7">
-        <div class="card">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Join Game</h5>
-                <p class="text-muted small">Paste a game ID or pick from recent tables.</p>
-                <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Game ID</label>
-                        <input class="form-control" placeholder="Game id" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Player name</label>
-                        <input class="form-control" placeholder="Enter your name" />
-                    </div>
+                <p class="text-muted small">Enter a game ID shared by the host.</p>
+                <div class="mb-3">
+                    <label class="form-label">Game ID</label>
+                    <input class="form-control" placeholder="Game id" />
                 </div>
-                <button class="btn btn-secondary mt-3" disabled>Join</button>
-            </div>
-        </div>
-        <div class="card mt-4">
-            <div class="card-body">
-                <h6 class="text-uppercase text-muted">Recent tables</h6>
-                <div class="list-group lobby-list">
-                    @foreach (var game in RecentGames)
-                    {
-                        <div class="list-group-item d-flex align-items-center justify-content-between">
-                            <div>
-                                <div class="fw-semibold">@game.Name</div>
-                                <div class="small text-muted">@game.Id • @game.Players/4 players</div>
-                            </div>
-                            <button class="btn btn-sm btn-outline-primary" disabled>Join</button>
-                        </div>
-                    }
+                <div class="mb-3">
+                    <label class="form-label">Player name</label>
+                    <input class="form-control" placeholder="Enter your name" />
                 </div>
+                <button class="btn btn-secondary" disabled>Join</button>
             </div>
         </div>
     </div>
 </div>
 
+<div class="card mt-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <h5 class="card-title mb-0">Open Tables</h5>
+            <span class="badge text-bg-info">Mock data</span>
+        </div>
+        <div class="table-responsive mt-3">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Host</th>
+                        <th>Seats</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var table in OpenTables)
+                    {
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">@table.Name</div>
+                                <div class="small text-muted">@table.GameId</div>
+                            </td>
+                            <td>@table.Host</td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="seat-indicator">
+                                        @for (var i = 0; i < table.SeatCount; i++)
+                                        {
+                                            <span class="seat-dot @(i < table.SeatsFilled ? "seat-dot-filled" : string.Empty)"></span>
+                                        }
+                                    </div>
+                                    <span class="small">@table.SeatsFilled/@table.SeatCount</span>
+                                </div>
+                            </td>
+                            <td><span class="badge text-bg-light">@table.Status</span></td>
+                            <td class="text-end">
+                                <button class="btn btn-outline-primary btn-sm" disabled>Join</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted mt-3">Wire create/join buttons to the API once client services are ready.</p>
+
 @code {
-    private IReadOnlyList<GameSummary> RecentGames => new[]
+    private IReadOnlyList<TableView> OpenTables => new[]
     {
-        new GameSummary("Moonlight Mahjong", "6F3A9", 3),
-        new GameSummary("Wind & Bamboo", "1C8TQ", 2),
-        new GameSummary("Lunch Break", "9ZP2M", 4)
+        new TableView("MC-1024", "Lantern League", "Rina", 4, 2, "Waiting"),
+        new TableView("MC-2049", "Bamboo Breeze", "Theo", 4, 4, "In Game"),
+        new TableView("MC-2188", "Dragon Den", "Aly", 4, 1, "Waiting")
     };
 
-    private record GameSummary(string Name, string Id, int Players);
+    private record TableView(string GameId, string Name, string Host, int SeatCount, int SeatsFilled, string Status);
 }
