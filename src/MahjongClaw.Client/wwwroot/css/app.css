@@ -617,3 +617,29 @@ code {
 .lobby-item .btn {
     white-space: nowrap;
 }
+
+.state-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #6c757d;
+    letter-spacing: 0.05em;
+}
+
+.state-value {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.score-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e9ecef;
+}
+
+.score-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}

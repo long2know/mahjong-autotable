@@ -46,6 +46,38 @@
     <div class="col-12 col-xl-4">
         <div class="card mb-4">
             <div class="card-body">
+                <h5 class="card-title">Game State</h5>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <div class="state-label">Round Wind</div>
+                        <div class="state-value">@RoundWind</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="state-label">Dealer</div>
+                        <div class="state-value">@PlayerEast.Name</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="state-label">Hand #</div>
+                        <div class="state-value">@HandNumber</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="state-label">Wall Remaining</div>
+                        <div class="state-value">@WallRemaining</div>
+                    </div>
+                </div>
+                <div class="score-list mt-3">
+                    @foreach (var player in Scoreboard)
+                    {
+                        <div class="score-item">
+                            <span class="fw-semibold">@player.Name</span>
+                            <span class="text-muted">@player.Score pts</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
                     <h5 class="card-title mb-0">Your Hand</h5>
                     <span class="badge text-bg-primary">@PlayerSouth.Seat</span>
@@ -76,6 +108,8 @@
 
 @code {
     private int WallRemaining => 70;
+    private string RoundWind => "East";
+    private int HandNumber => 3;
 
     private PlayerView PlayerNorth => new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), 12, true, false);
     private PlayerView PlayerWest => new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), 11, false, false);
@@ -83,6 +117,14 @@
     private PlayerView PlayerSouth => new("South", "You", 920, new(), new() { "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character", "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo", "🀞 6 Bamboo", "🀟 7 Bamboo" }, 13, false, false);
 
     private IReadOnlyList<string> CenterDiscards => new[] { "🀀", "🀁", "🀂", "🀃", "🀅", "🀆", "🀈", "🀐", "🀑", "🀒" };
+
+    private IReadOnlyList<(string Name, int Score)> Scoreboard => new[]
+    {
+        ("Jun", 1340),
+        ("Kai", 1200),
+        ("You", 920),
+        ("Mina", 800)
+    };
 
     private IEnumerable<string> BuildHiddenHand(int count)
     {
