@@ -523,3 +523,23 @@ code {
     background: #fdfdfd;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
+
+.lobby-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.lobby-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.65rem;
+    border: 1px solid #e6e8eb;
+    background: #fdfdfd;
+}
+
+.lobby-entry .badge {
+    font-size: 0.75rem;
+}
