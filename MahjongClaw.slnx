@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/MahjongClaw.Api/MahjongClaw.Api.csproj" />
+    <Project Path="src/MahjongClaw.Client/MahjongClaw.Client.csproj" />
     <Project Path="src/MahjongClaw.Domain/MahjongClaw.Domain.csproj" />
     <Project Path="src/MahjongClaw.Persistence/MahjongClaw.Persistence.csproj" />
   </Folder>

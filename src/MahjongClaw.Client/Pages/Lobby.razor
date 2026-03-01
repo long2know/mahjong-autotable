@@ -1,0 +1,81 @@
+﻿@page "/lobby"
+
+<PageTitle>Lobby</PageTitle>
+
+<h1>Lobby</h1>
+
+<div class="row g-4">
+    <div class="col-12 col-lg-5">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Create Game</h5>
+                <p class="text-muted small">Start a new table and invite friends.</p>
+                <div class="mb-3">
+                    <label class="form-label">Player name</label>
+                    <input class="form-control" placeholder="Enter your name" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Table name</label>
+                    <input class="form-control" placeholder="Saturday night table" />
+                </div>
+                <button class="btn btn-primary" disabled>Create</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-7">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="card-title mb-1">Join Game</h5>
+                        <p class="text-muted small mb-0">Browse open tables or join with an ID.</p>
+                    </div>
+                    <span class="badge text-bg-light">2 open</span>
+                </div>
+
+                <div class="row g-3 mt-2">
+                    <div class="col-12 col-md-5">
+                        <label class="form-label">Game ID</label>
+                        <input class="form-control" placeholder="Game id" />
+                    </div>
+                    <div class="col-12 col-md-7">
+                        <label class="form-label">Player name</label>
+                        <input class="form-control" placeholder="Enter your name" />
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary mt-3" disabled>Join</button>
+
+                <div class="divider" aria-hidden="true"></div>
+
+                <div class="lobby-list">
+                    @foreach (var table in OpenTables)
+                    {
+                        <div class="lobby-item">
+                            <div>
+                                <div class="fw-semibold">@table.Name</div>
+                                <div class="small text-muted">@table.Host • @table.Region</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="badge text-bg-primary">@table.Players / 4</div>
+                                <button class="btn btn-sm btn-outline-primary ms-2" disabled>Join</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted mt-3">Wire create/join to the API once the client services are ready.</p>
+
+@code {
+    private IReadOnlyList<TableView> OpenTables => new[]
+    {
+        new TableView("Golden Dragons", "Jun", "US West", 3),
+        new TableView("Family Table", "Mina", "US Central", 2)
+    };
+
+    private record TableView(string Name, string Host, string Region, int Players);
+}

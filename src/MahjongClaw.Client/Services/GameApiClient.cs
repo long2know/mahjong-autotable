@@ -1,0 +1,60 @@
+using System.Net.Http.Json;
+
+namespace MahjongClaw.Client.Services;
+
+public sealed class GameApiClient
+{
+    private readonly HttpClient _http;
+
+    public GameApiClient(HttpClient http)
+    {
+        _http = http;
+    }
+
+    public async Task<CreateGameResponse> CreateGameAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsync("/api/game", content: null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<CreateGameResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Game create response was empty.");
+    }
+
+    public async Task<JoinGameResponse> JoinGameAsync(Guid gameId, JoinGameRequest request, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"/api/game/{gameId}/join", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JoinGameResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Join game response was empty.");
+    }
+
+    public async Task<StartGameResponse> StartGameAsync(Guid gameId, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsync($"/api/game/{gameId}/start", content: null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<StartGameResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Start game response was empty.");
+    }
+
+    public async Task<GameStateResponse> GetGameStateAsync(Guid gameId, CancellationToken cancellationToken = default)
+    {
+        var response = await _http.GetFromJsonAsync<GameStateResponse>($"/api/game/{gameId}/state", cancellationToken);
+        return response ?? throw new InvalidOperationException("Game state response was empty.");
+    }
+
+    public record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt);
+    public record JoinGameRequest(string Name, string Seat);
+    public record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);
+    public record StartGameResponse(Guid GameId, string Status, Guid? DealerId, Guid? CurrentPlayerId);
+    public record PlayerSummary(Guid Id, string Name, string Seat, int Score);
+    public record GameStateResponse(
+        Guid Id,
+        string Status,
+        Guid? CurrentPlayerId,
+        Guid? DealerId,
+        int Round,
+        DateTimeOffset CreatedAt,
+        IReadOnlyList<PlayerSummary> Players,
+        int TilesInPlay,
+        int MeldCount,
+        int DiscardCount);
+}

@@ -1,0 +1,256 @@
+﻿@page "/game"
+
+<PageTitle>Game</PageTitle>
+
+<h1>Game</h1>
+
+<div class="row g-4">
+    <div class="col-12 col-xl-8">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+                    <div>
+                        <h5 class="card-title mb-1">Table</h5>
+                        <p class="text-muted mb-0">Live state from SignalR will replace this mock view.</p>
+                    </div>
+                    <div class="badge bg-dark-subtle text-dark">Wall: @WallRemaining tiles</div>
+                </div>
+                <div class="status-row mt-3">
+                    <span class="badge text-bg-primary">Turn: @PlayerEast.Name</span>
+                    <span class="badge text-bg-secondary">Phase: Discard</span>
+                    <span class="badge text-bg-light">Draws left: @DrawsRemaining</span>
+                </div>
+
+                <div class="table-grid mt-4">
+                    <div class="seat seat-north">
+                        @RenderSeat(PlayerNorth)
+                    </div>
+                    <div class="seat seat-west">
+                        @RenderSeat(PlayerWest)
+                    </div>
+                    <div class="seat seat-east">
+                        @RenderSeat(PlayerEast)
+                    </div>
+                    <div class="seat seat-south">
+                        @RenderSeat(PlayerSouth)
+                    </div>
+                    <div class="center-area">
+                        <h6 class="text-uppercase text-muted">Discards</h6>
+                        <div class="tile-row tile-row-wrap">
+                            @foreach (var tile in CenterDiscards)
+                            {
+                                <Tile Label="@tile" />
+                            }
+                        </div>
+                        <div class="mt-3 text-muted small">Current turn: <strong>@PlayerEast.Name</strong></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-xl-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Game State</h5>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <div class="state-label">Round Wind</div>
+                        <div class="state-value">@RoundWind</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="state-label">Dealer</div>
+                        <div class="state-value">@PlayerEast.Name</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="state-label">Hand #</div>
+                        <div class="state-value">@HandNumber</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="state-label">Wall Remaining</div>
+                        <div class="state-value">@WallRemaining</div>
+                    </div>
+                </div>
+                <div class="score-list mt-3">
+                    @foreach (var player in Scoreboard)
+                    {
+                        <div class="score-item">
+                            <span class="fw-semibold">@player.Name</span>
+                            <span class="text-muted">@player.Score pts</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Seat Summary</h5>
+                <div class="seat-summary">
+                    @foreach (var seat in Seats)
+                    {
+                        <div class="seat-summary-item">
+                            <div>
+                                <div class="fw-semibold">@seat.Wind</div>
+                                <div class="small text-muted">@seat.Player</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="badge text-bg-light">@seat.Score pts</div>
+                                @if (seat.IsDealer)
+                                {
+                                    <div class="badge text-bg-warning ms-1">Dealer</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h5 class="card-title mb-0">Your Hand</h5>
+                    <span class="badge text-bg-primary">@PlayerSouth.Seat</span>
+                </div>
+                <div class="tile-row mt-3">
+                    @foreach (var tile in PlayerSouth.Hand)
+                    {
+                        <Tile Label="@tile" IsHighlighted="@tile.StartsWith("🀄")" />
+                    }
+                </div>
+                <p class="text-muted small mt-3 mb-0">Tap a tile to discard once wired to actions.</p>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Recent Actions</h5>
+                <ul class="timeline">
+                    @foreach (var entry in RecentActions)
+                    {
+                        <li>
+                            <div class="timeline-time">@entry.Timestamp</div>
+                            <div class="timeline-text">@entry.Description</div>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Melds on Table</h5>
+                <div class="meld-list">
+                    @foreach (var meld in Melds)
+                    {
+                        <div class="meld-item">
+                            <div class="fw-semibold">@meld.Player</div>
+                            <div class="text-muted small">@meld.Type</div>
+                            <div class="meld-tiles mt-2">
+                                @foreach (var tile in meld.Tiles)
+                                {
+                                    <Tile Label="@tile" />
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Actions</h5>
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-outline-primary">Draw</button>
+                    <button class="btn btn-outline-secondary">Discard</button>
+                    <button class="btn btn-outline-success">Declare Win</button>
+                    <button class="btn btn-outline-warning">Meld</button>
+                </div>
+                <p class="text-muted small mt-3 mb-0">Buttons are currently mocked for layout only.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int WallRemaining => 70;
+    private int DrawsRemaining => 10;
+    private string RoundWind => "East";
+    private int HandNumber => 3;
+
+    private PlayerView PlayerNorth => new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), 12, true, false);
+    private PlayerView PlayerWest => new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), 11, false, false);
+    private PlayerView PlayerEast => new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), 13, false, true);
+    private PlayerView PlayerSouth => new("South", "You", 920, new(), new() { "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character", "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo", "🀞 6 Bamboo", "🀟 7 Bamboo" }, 13, false, false);
+
+    private IReadOnlyList<string> CenterDiscards => new[] { "🀀", "🀁", "🀂", "🀃", "🀅", "🀆", "🀈", "🀐", "🀑", "🀒" };
+
+    private IReadOnlyList<(string Name, int Score)> Scoreboard => new[]
+    {
+        ("Jun", 1340),
+        ("Kai", 1200),
+        ("You", 920),
+        ("Mina", 800)
+    };
+
+    private IReadOnlyList<(string Timestamp, string Description)> RecentActions => new[]
+    {
+        ("19:12", "Jun drew a tile."),
+        ("19:11", "Mina discarded 🀅 7 Dots."),
+        ("19:10", "You declared Pung on 🀀 East."),
+        ("19:09", "Kai discarded 🀓 4 Character.")
+    };
+
+    private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => new[]
+    {
+        ("You", "Pung", new List<string> { "🀀", "🀀", "🀀" }),
+        ("Jun", "Chow", new List<string> { "🀙", "🀚", "🀛" }),
+        ("Kai", "Kong", new List<string> { "🀅", "🀅", "🀅", "🀅" })
+    };
+
+    private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => new[]
+    {
+        ("East", "Jun", 1340, true),
+        ("South", "You", 920, false),
+        ("West", "Mina", 800, false),
+        ("North", "Kai", 1200, false)
+    };
+
+    private IEnumerable<string> BuildHiddenHand(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return "🀫";
+        }
+    }
+
+    private RenderFragment RenderSeat(PlayerView player) => @<div class="seat-card">
+        <div class="d-flex align-items-center justify-content-between">
+            <div>
+                <div class="fw-semibold">@player.Name</div>
+                <div class="small text-muted">@player.Seat</div>
+            </div>
+            <div class="text-end">
+                <div class="badge text-bg-light">@player.Score pts</div>
+                @if (player.IsDealer)
+                {
+                    <div class="badge text-bg-warning ms-1">Dealer</div>
+                }
+                @if (player.IsCurrent)
+                {
+                    <div class="badge text-bg-success ms-1">Turn</div>
+                }
+            </div>
+        </div>
+        <div class="tile-row tile-row-wrap mt-2">
+            @foreach (var tile in player.Discards)
+            {
+                <Tile Label="@tile" />
+            }
+        </div>
+        <div class="tile-row tile-row-wrap mt-2">
+            @foreach (var tile in BuildHiddenHand(player.HandCount))
+            {
+                <Tile Label="@tile" IsFaceDown="true" />
+            }
+        </div>
+    </div>;
+
+    private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
+}
