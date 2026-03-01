@@ -15,6 +15,11 @@
                     </div>
                     <div class="badge bg-dark-subtle text-dark">Wall: @WallRemaining tiles</div>
                 </div>
+                <div class="status-row mt-3">
+                    <span class="badge text-bg-primary">Turn: @PlayerEast.Name</span>
+                    <span class="badge text-bg-secondary">Phase: Discard</span>
+                    <span class="badge text-bg-light">Draws left: @DrawsRemaining</span>
+                </div>
 
                 <div class="table-grid mt-4">
                     <div class="seat seat-north">
@@ -142,6 +147,7 @@
 
 @code {
     private int WallRemaining => 70;
+    private int DrawsRemaining => 10;
     private string RoundWind => "East";
     private int HandNumber => 3;
 
