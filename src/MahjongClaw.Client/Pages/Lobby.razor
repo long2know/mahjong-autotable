@@ -54,10 +54,18 @@
                         <div class="lobby-item">
                             <div>
                                 <div class="fw-semibold">@table.Name</div>
-                                <div class="small text-muted">@table.Host • @table.Region</div>
+                                <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
+                                    <span>@table.Host • @table.Region</span>
+                                    <span class="seat-indicator" aria-label="Seats filled">
+                                        @for (var seat = 0; seat < 4; seat++)
+                                        {
+                                            <span class="seat-dot @(seat < table.Players ? "seat-dot-filled" : "")"></span>
+                                        }
+                                    </span>
+                                </div>
                             </div>
                             <div class="text-end">
-                                <div class="badge text-bg-primary">@table.Players / 4</div>
+                                <div class="badge text-bg-primary">@table.Players / 4 seats</div>
                                 <button class="btn btn-sm btn-outline-primary ms-2" disabled>Join</button>
                             </div>
                         </div>
