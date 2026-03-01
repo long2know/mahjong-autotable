@@ -17,7 +17,10 @@
                 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
                     <div>
                         <h5 class="card-title mb-1">@TableName</h5>
-                        <p class="text-muted mb-0">Table ID: @TableCode</p>
+                        <div class="table-meta">
+                            <span>Table ID: @TableCode</span>
+                            <button class="btn btn-sm btn-outline-secondary" disabled>Copy</button>
+                        </div>
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="badge text-bg-success">@GameStatus</span>

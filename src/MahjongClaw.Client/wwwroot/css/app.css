@@ -625,6 +625,15 @@ code {
     letter-spacing: 0.05em;
 }
 
+.table-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
 .state-value {
     font-size: 1rem;
     font-weight: 600;
