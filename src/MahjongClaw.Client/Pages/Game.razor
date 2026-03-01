@@ -105,6 +105,26 @@
                 </ul>
             </div>
         </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Melds on Table</h5>
+                <div class="meld-list">
+                    @foreach (var meld in Melds)
+                    {
+                        <div class="meld-item">
+                            <div class="fw-semibold">@meld.Player</div>
+                            <div class="text-muted small">@meld.Type</div>
+                            <div class="meld-tiles mt-2">
+                                @foreach (var tile in meld.Tiles)
+                                {
+                                    <Tile Label="@tile" />
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Actions</h5>
@@ -146,6 +166,13 @@
         ("19:11", "Mina discarded 🀅 7 Dots."),
         ("19:10", "You declared Pung on 🀀 East."),
         ("19:09", "Kai discarded 🀓 4 Character.")
+    };
+
+    private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => new[]
+    {
+        ("You", "Pung", new List<string> { "🀀", "🀀", "🀀" }),
+        ("Jun", "Chow", new List<string> { "🀙", "🀚", "🀛" }),
+        ("Kai", "Kong", new List<string> { "🀅", "🀅", "🀅", "🀅" })
     };
 
     private IEnumerable<string> BuildHiddenHand(int count)

@@ -668,3 +668,22 @@ code {
 .timeline-text {
     font-size: 0.95rem;
 }
+
+.meld-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.meld-item {
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e7e7e7;
+    background: #fdfdfd;
+}
+
+.meld-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
