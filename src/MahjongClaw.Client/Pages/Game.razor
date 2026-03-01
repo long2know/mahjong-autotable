@@ -83,6 +83,29 @@
         </div>
         <div class="card mb-4">
             <div class="card-body">
+                <h5 class="card-title">Seat Summary</h5>
+                <div class="seat-summary">
+                    @foreach (var seat in Seats)
+                    {
+                        <div class="seat-summary-item">
+                            <div>
+                                <div class="fw-semibold">@seat.Wind</div>
+                                <div class="small text-muted">@seat.Player</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="badge text-bg-light">@seat.Score pts</div>
+                                @if (seat.IsDealer)
+                                {
+                                    <div class="badge text-bg-warning ms-1">Dealer</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
                     <h5 class="card-title mb-0">Your Hand</h5>
                     <span class="badge text-bg-primary">@PlayerSouth.Seat</span>
@@ -179,6 +202,14 @@
         ("You", "Pung", new List<string> { "🀀", "🀀", "🀀" }),
         ("Jun", "Chow", new List<string> { "🀙", "🀚", "🀛" }),
         ("Kai", "Kong", new List<string> { "🀅", "🀅", "🀅", "🀅" })
+    };
+
+    private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => new[]
+    {
+        ("East", "Jun", 1340, true),
+        ("South", "You", 920, false),
+        ("West", "Mina", 800, false),
+        ("North", "Kai", 1200, false)
     };
 
     private IEnumerable<string> BuildHiddenHand(int count)
