@@ -1,0 +1,48 @@
+using FluentAssertions;
+using MahjongClaw.Domain.Rules;
+using MahjongClaw.Domain.Tiles;
+
+namespace MahjongClaw.Tests;
+
+public class MeldValidatorTests
+{
+    [Fact]
+    public void IsValidChow_ReturnsTrueForSuitedRun()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Dots, 4),
+            new Tile(TileSuit.Dots, 5)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsFalseForHonors()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.South),
+            new Tile(TileSuit.Winds, 0, Wind.West)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidPung_ReturnsTrueForTriplet()
+    {
+        var tile = new Tile(TileSuit.Characters, 7);
+        MeldValidator.IsValidPung(new[] { tile, tile, tile }).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsTrueForQuad()
+    {
+        var tile = new Tile(TileSuit.Bamboos, 2);
+        MeldValidator.IsValidKong(new[] { tile, tile, tile, tile }).Should().BeTrue();
+    }
+}
