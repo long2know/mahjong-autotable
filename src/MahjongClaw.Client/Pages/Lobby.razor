@@ -111,13 +111,13 @@
     private IReadOnlyList<TableView> OpenTables => new[]
     {
         new TableView("Golden Dragons", "Jun", "US West", 3, "Waiting", "X8K2", true),
-        new TableView("Family Table", "Mina", "US Central", 2, "In progress", "LQ7P", false)
+        new TableView("Family Table", "Mina", "US Central", 2, "In Progress", "LQ7P", false)
     };
 
     private static string GetStatusBadge(string status) => status switch
     {
         "Waiting" => "text-bg-success",
-        "In progress" => "text-bg-warning",
+        "In Progress" => "text-bg-warning",
         _ => "text-bg-secondary"
     };
 
