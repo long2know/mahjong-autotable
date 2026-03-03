@@ -24,3 +24,11 @@ dotnet run --project src/MahjongClaw.Client
 ```
 dotnet test MahjongClaw.slnx -c Release
 ```
+
+## UI Smoke Tests (Playwright)
+Set the base URL to a running client instance and run:
+```
+PLAYWRIGHT_BASE_URL=http://localhost:5002
+npm install
+npm run test:e2e
+```
