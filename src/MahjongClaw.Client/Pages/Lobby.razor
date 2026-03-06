@@ -1,4 +1,7 @@
-﻿@page "/lobby"
+@page "/lobby"
+@using MahjongClaw.Client.Services
+@inject GameApiClient Api
+@inject NavigationManager Navigation
 
 <PageTitle>Lobby</PageTitle>
 
@@ -9,73 +12,177 @@
         <div class="card h-100">
             <div class="card-body">
                 <h5 class="card-title">Create Game</h5>
-                <p class="text-muted small">Start a new table and invite friends.</p>
+                <p class="text-muted small">Create a table, then share the game ID for players to join.</p>
+
                 <div class="mb-3">
-                    <label class="form-label">Player name</label>
-                    <input class="form-control" placeholder="Enter your name" />
+                    <label class="form-label">Host name</label>
+                    <input class="form-control" @bind="HostName" placeholder="Enter your name" />
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Table name</label>
-                    <input class="form-control" placeholder="Saturday night table" />
-                </div>
-                <button class="btn btn-primary" disabled>Create</button>
+
+                <button class="btn btn-primary" @onclick="CreateGameAsync" disabled="@IsBusy">Create</button>
+
+                @if (CreatedGameId is not null)
+                {
+                    <div class="alert alert-success mt-3 mb-0">
+                        <div><strong>Game created:</strong> @CreatedGameId</div>
+                        <div class="small">Share this ID with other players.</div>
+                    </div>
+                }
             </div>
         </div>
     </div>
+
     <div class="col-12 col-lg-7">
         <div class="card h-100">
             <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between">
-                    <div>
-                        <h5 class="card-title mb-1">Join Game</h5>
-                        <p class="text-muted small mb-0">Browse open tables or join with an ID.</p>
-                    </div>
-                    <span class="badge text-bg-light">2 open</span>
-                </div>
+                <h5 class="card-title">Join / Start Game</h5>
+                <p class="text-muted small">Join by game ID, then start once 4 seats are filled.</p>
 
-                <div class="row g-3 mt-2">
-                    <div class="col-12 col-md-5">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
                         <label class="form-label">Game ID</label>
-                        <input class="form-control" placeholder="Game id" />
+                        <input class="form-control" @bind="JoinGameId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
                     </div>
-                    <div class="col-12 col-md-7">
+                    <div class="col-12 col-md-6">
                         <label class="form-label">Player name</label>
-                        <input class="form-control" placeholder="Enter your name" />
+                        <input class="form-control" @bind="JoinName" placeholder="Enter your name" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Seat</label>
+                        <select class="form-select" @bind="JoinSeat">
+                            @foreach (var seat in Seats)
+                            {
+                                <option value="@seat">@seat</option>
+                            }
+                        </select>
                     </div>
                 </div>
 
-                <button class="btn btn-secondary mt-3" disabled>Join</button>
-
-                <div class="divider" aria-hidden="true"></div>
-
-                <div class="lobby-list">
-                    @foreach (var table in OpenTables)
-                    {
-                        <div class="lobby-item">
-                            <div>
-                                <div class="fw-semibold">@table.Name</div>
-                                <div class="small text-muted">@table.Host • @table.Region</div>
-                            </div>
-                            <div class="text-end">
-                                <div class="badge text-bg-primary">@table.Players / 4</div>
-                                <button class="btn btn-sm btn-outline-primary ms-2" disabled>Join</button>
-                            </div>
-                        </div>
-                    }
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <button class="btn btn-secondary" @onclick="JoinGameAsync" disabled="@IsBusy">Join</button>
+                    <button class="btn btn-outline-primary" @onclick="StartGameAsync" disabled="@IsBusy">Start</button>
+                    <button class="btn btn-outline-dark" @onclick="OpenGameAsync" disabled="@IsBusy">Open Game</button>
                 </div>
+
+                @if (LastJoinedPlayerId is not null)
+                {
+                    <p class="text-muted small mt-3 mb-0">Joined player ID: @LastJoinedPlayerId</p>
+                }
             </div>
         </div>
     </div>
 </div>
 
-<p class="text-muted mt-3">Wire create/join to the API once the client services are ready.</p>
+@if (!string.IsNullOrWhiteSpace(Error))
+{
+    <div class="alert alert-danger mt-3">@Error</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Status))
+{
+    <div class="alert alert-info mt-3 mb-0">@Status</div>
+}
 
 @code {
-    private IReadOnlyList<TableView> OpenTables => new[]
-    {
-        new TableView("Golden Dragons", "Jun", "US West", 3),
-        new TableView("Family Table", "Mina", "US Central", 2)
-    };
+    private static readonly string[] Seats = ["East", "South", "West", "North"];
 
-    private record TableView(string Name, string Host, string Region, int Players);
+    private string HostName { get; set; } = string.Empty;
+    private string JoinGameId { get; set; } = string.Empty;
+    private string JoinName { get; set; } = string.Empty;
+    private string JoinSeat { get; set; } = "South";
+
+    private Guid? CreatedGameId { get; set; }
+    private Guid? LastJoinedPlayerId { get; set; }
+    private string? Status { get; set; }
+    private string? Error { get; set; }
+    private bool IsBusy { get; set; }
+
+    private async Task CreateGameAsync()
+    {
+        await RunWithStatusAsync(async () =>
+        {
+            var created = await Api.CreateGameAsync();
+            CreatedGameId = created.Id;
+            JoinGameId = created.Id.ToString();
+            Status = $"Game created: {created.Id}";
+        });
+    }
+
+    private async Task JoinGameAsync()
+    {
+        await RunWithStatusAsync(async () =>
+        {
+            var gameId = ParseGameIdOrThrow();
+            var name = string.IsNullOrWhiteSpace(JoinName) ? HostName : JoinName;
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                throw new InvalidOperationException("Enter a player name before joining.");
+            }
+
+            var joined = await Api.JoinGameAsync(gameId, new GameApiClient.JoinGameRequest(name.Trim(), JoinSeat));
+            LastJoinedPlayerId = joined.PlayerId;
+            Status = $"Joined {joined.GameId} as {joined.Seat}.";
+        });
+    }
+
+    private async Task StartGameAsync()
+    {
+        await RunWithStatusAsync(async () =>
+        {
+            var gameId = ParseGameIdOrThrow();
+            var started = await Api.StartGameAsync(gameId);
+            Status = $"Game started. Current player: {started.CurrentPlayerId}";
+        });
+    }
+
+    private Task OpenGameAsync()
+    {
+        try
+        {
+            var gameId = ParseGameIdOrThrow();
+            var playerPart = LastJoinedPlayerId is null ? string.Empty : $"&playerId={LastJoinedPlayerId}";
+            Navigation.NavigateTo($"/game?gameId={gameId}{playerPart}");
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            return Task.CompletedTask;
+        }
+    }
+
+    private Guid ParseGameIdOrThrow()
+    {
+        var candidate = string.IsNullOrWhiteSpace(JoinGameId) && CreatedGameId is not null
+            ? CreatedGameId.Value.ToString()
+            : JoinGameId;
+
+        if (!Guid.TryParse(candidate, out var gameId))
+        {
+            throw new InvalidOperationException("Enter a valid game ID.");
+        }
+
+        return gameId;
+    }
+
+    private async Task RunWithStatusAsync(Func<Task> work)
+    {
+        Error = null;
+        IsBusy = true;
+
+        try
+        {
+            await work();
+        }
+        catch (Exception ex)
+        {
+            Status = null;
+            Error = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }
