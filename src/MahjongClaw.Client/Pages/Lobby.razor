@@ -64,6 +64,61 @@
                     <button class="btn btn-outline-dark" @onclick="OpenGameAsync" disabled="@IsBusy">Open Game</button>
                 </div>
 
+                <div class="row g-3 mt-3 lobby-metrics">
+                    <div class="col-12 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body lobby-stat">
+                                <div class="small text-muted text-uppercase">Players Online</div>
+                                <div class="display-6 fw-semibold">128</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body lobby-stat">
+                                <div class="small text-muted text-uppercase">Tables Active</div>
+                                <div class="display-6 fw-semibold">24</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body lobby-stat">
+                                <div class="small text-muted text-uppercase">Avg Wait</div>
+                                <div class="display-6 fw-semibold">2m</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider" aria-hidden="true"></div>
+
+                <div class="lobby-list">
+                    @foreach (var table in OpenTables)
+                    {
+                        <div class="lobby-item">
+                            <div>
+                                <div class="fw-semibold">@table.Name</div>
+                                <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
+                                    <span>@table.Host • @table.Region</span>
+                                    <span class="badge @GetStatusBadge(table.Status)">@table.Status</span>
+                                    <span class="text-muted">Code: @table.Code</span>
+                                    <span class="seat-indicator" aria-label="Seats filled">
+                                        @for (var seat = 0; seat < 4; seat++)
+                                        {
+                                            <span class="seat-dot @(seat < table.Players ? "seat-dot-filled" : "")"></span>
+                                        }
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <div class="badge text-bg-primary">@table.Players / 4 seats</div>
+                                <button class="btn btn-sm btn-outline-primary ms-2" disabled="@(!table.CanJoin)">Join</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
                 @if (LastJoinedPlayerId is not null)
                 {
                     <p class="text-muted small mt-3 mb-0">Joined player ID: @LastJoinedPlayerId</p>
@@ -96,6 +151,19 @@
     private string? Status { get; set; }
     private string? Error { get; set; }
     private bool IsBusy { get; set; }
+
+    private IReadOnlyList<TableView> OpenTables => new[]
+    {
+        new TableView("Golden Dragons", "Jun", "US West", 3, "Waiting", "X8K2", true),
+        new TableView("Family Table", "Mina", "US Central", 2, "In Progress", "LQ7P", false)
+    };
+
+    private static string GetStatusBadge(string status) => status switch
+    {
+        "Waiting" => "text-bg-success",
+        "In Progress" => "text-bg-warning",
+        _ => "text-bg-secondary"
+    };
 
     private async Task CreateGameAsync()
     {
@@ -185,4 +253,6 @@
             IsBusy = false;
         }
     }
+
+    private record TableView(string Name, string Host, string Region, int Players, string Status, string Code, bool CanJoin);
 }
