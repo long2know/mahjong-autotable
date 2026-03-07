@@ -1,4 +1,10 @@
 ﻿@page "/game"
+@using MahjongClaw.Client.Services
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.SignalR.Client
+@inject GameApiClient Api
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
 
 <PageTitle>Game</PageTitle>
 
@@ -9,6 +15,11 @@
         <button class="btn btn-outline-primary" disabled>Invite</button>
     </div>
 </div>
+
+@if (!string.IsNullOrWhiteSpace(LiveStatus))
+{
+    <div class="alert alert-info py-2">@LiveStatus</div>
+}
 
 <div class="row g-4">
     <div class="col-12 col-xl-8">
@@ -196,7 +207,13 @@
 </div>
 
 @code {
+    [SupplyParameterFromQuery] public Guid? GameId { get; set; }
+    [SupplyParameterFromQuery] public Guid? PlayerId { get; set; }
+
     private static readonly MockGameState MockState = new();
+    private HubConnection? _hub;
+    private GameApiClient.GameStateResponse? _liveState;
+    private string? LiveStatus;
 
     private int WallRemaining => MockState.WallRemaining;
     private int WallTotal => MockState.WallTotal;
@@ -204,9 +221,9 @@
     private int DrawsRemaining => MockState.DrawsRemaining;
     private string RoundWind => MockState.RoundWind;
     private int HandNumber => MockState.HandNumber;
-    private string TableName => MockState.TableName;
-    private string TableCode => MockState.TableCode;
-    private string GameStatus => MockState.GameStatus;
+    private string TableName => GameId is null ? MockState.TableName : $"Game {GameId}";
+    private string TableCode => GameId?.ToString()[..8] ?? MockState.TableCode;
+    private string GameStatus => _liveState?.Status ?? MockState.GameStatus;
 
     private PlayerView PlayerNorth => MockState.PlayerNorth;
     private PlayerView PlayerWest => MockState.PlayerWest;
@@ -218,6 +235,82 @@
     private IReadOnlyList<(string Timestamp, string Description)> RecentActions => MockState.RecentActions;
     private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => MockState.Melds;
     private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => MockState.Seats;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (GameId is null)
+        {
+            LiveStatus = "Using mock state (no gameId query parameter).";
+            return;
+        }
+
+        await RefreshLiveStateAsync();
+        await ConnectHubAsync(GameId.Value);
+    }
+
+    private async Task ConnectHubAsync(Guid gameId)
+    {
+        var hubUri = Navigation.ToAbsoluteUri("/hubs/game");
+
+        _hub = new HubConnectionBuilder()
+            .WithUrl(hubUri)
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hub.On<object>("PlayerJoined", _ => _ = RefreshLiveStateAsync());
+        _hub.On<object>("GameStarted", _ => _ = RefreshLiveStateAsync());
+        _hub.On<object>("TileDrawn", _ => _ = RefreshLiveStateAsync());
+        _hub.On<object>("TileDiscarded", _ => _ = RefreshLiveStateAsync());
+        _hub.On<object>("MeldDeclared", _ => _ = RefreshLiveStateAsync());
+        _hub.On<object>("GameWon", _ => _ = RefreshLiveStateAsync());
+        _hub.On<object>("GameStateUpdated", _ => _ = RefreshLiveStateAsync());
+
+        await _hub.StartAsync();
+        await _hub.SendAsync("JoinGame", gameId.ToString());
+
+        LiveStatus = $"Connected to live updates for game {gameId}.";
+    }
+
+    private async Task RefreshLiveStateAsync()
+    {
+        if (GameId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _liveState = await Api.GetGameStateAsync(GameId.Value);
+            LiveStatus = $"Live state refreshed at {DateTime.Now:T}. Status: {_liveState.Status}";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            LiveStatus = $"Live refresh failed: {ex.Message}";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hub is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (GameId is not null)
+            {
+                await _hub.SendAsync("LeaveGame", GameId.Value.ToString());
+            }
+
+            await _hub.DisposeAsync();
+        }
+        catch
+        {
+            // ignore shutdown errors in UI teardown
+        }
+    }
 
     private static string GetStatusBadge(string status) => status switch
     {
