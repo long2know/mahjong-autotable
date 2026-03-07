@@ -625,6 +625,15 @@ code {
     letter-spacing: 0.05em;
 }
 
+.table-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
 .state-value {
     font-size: 1rem;
     font-weight: 600;
@@ -692,6 +701,21 @@ code {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+}
+
+.wall-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.wall-progress .progress {
+    height: 0.4rem;
+    background-color: #e9ecef;
+}
+
+.wall-progress .progress-bar {
+    background-color: #198754;
 }
 
 .seat-summary {

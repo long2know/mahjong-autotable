@@ -2,7 +2,13 @@
 
 <PageTitle>Game</PageTitle>
 
-<h1>Game</h1>
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <h1 class="mb-0">Game</h1>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="lobby">Back to Lobby</a>
+        <button class="btn btn-outline-primary" disabled>Invite</button>
+    </div>
+</div>
 
 <div class="row g-4">
     <div class="col-12 col-xl-8">
@@ -10,15 +16,33 @@
             <div class="card-body">
                 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
                     <div>
-                        <h5 class="card-title mb-1">Table</h5>
-                        <p class="text-muted mb-0">Live state from SignalR will replace this mock view.</p>
+                        <h5 class="card-title mb-1">@TableName</h5>
+                        <div class="table-meta">
+                            <span>Table ID: @TableCode</span>
+                            <button class="btn btn-sm btn-outline-secondary" disabled>Copy</button>
+                        </div>
                     </div>
-                    <div class="badge bg-dark-subtle text-dark">Wall: @WallRemaining tiles</div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="badge @GetStatusBadge(GameStatus)">@GameStatus</span>
+                        <span class="badge bg-dark-subtle text-dark">Wall: @WallRemaining tiles</span>
+                    </div>
                 </div>
                 <div class="status-row mt-3">
                     <span class="badge text-bg-primary">Turn: @PlayerEast.Name</span>
                     <span class="badge text-bg-secondary">Phase: Discard</span>
+                    <span class="badge text-bg-light">Round: @RoundWind</span>
+                    <span class="badge text-bg-light">Hand: @HandNumber</span>
                     <span class="badge text-bg-light">Draws left: @DrawsRemaining</span>
+                </div>
+
+                <div class="wall-progress mt-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <span class="text-muted small">Wall remaining</span>
+                        <span class="text-muted small">@WallRemaining / @WallTotal</span>
+                    </div>
+                    <div class="progress" role="progressbar" aria-label="Wall remaining" aria-valuenow="@WallRemaining" aria-valuemin="0" aria-valuemax="@WallTotal">
+                        <div class="progress-bar" style="width: @WallPercent%"></div>
+                    </div>
                 </div>
 
                 <div class="table-grid mt-4">
@@ -51,7 +75,7 @@
     <div class="col-12 col-xl-4">
         <div class="card mb-4">
             <div class="card-body">
-                <h5 class="card-title">Game State</h5>
+                <h5 class="card-title mb-2">Game State</h5>
                 <div class="row g-2">
                     <div class="col-6">
                         <div class="state-label">Round Wind</div>
@@ -83,7 +107,7 @@
         </div>
         <div class="card mb-4">
             <div class="card-body">
-                <h5 class="card-title">Seat Summary</h5>
+                <h5 class="card-title mb-2">Seat Summary</h5>
                 <div class="seat-summary">
                     @foreach (var seat in Seats)
                     {
@@ -106,9 +130,12 @@
         </div>
         <div class="card mb-4">
             <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <h5 class="card-title mb-0">Your Hand</h5>
-                    <span class="badge text-bg-primary">@PlayerSouth.Seat</span>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge text-bg-primary">@PlayerSouth.Seat</span>
+                        <span class="badge text-bg-light">@PlayerSouth.Hand.Count tiles</span>
+                    </div>
                 </div>
                 <div class="tile-row mt-3">
                     @foreach (var tile in PlayerSouth.Hand)
@@ -121,7 +148,7 @@
         </div>
         <div class="card mb-4">
             <div class="card-body">
-                <h5 class="card-title">Recent Actions</h5>
+                <h5 class="card-title mb-2">Recent Actions</h5>
                 <ul class="timeline">
                     @foreach (var entry in RecentActions)
                     {
@@ -135,7 +162,7 @@
         </div>
         <div class="card mb-4">
             <div class="card-body">
-                <h5 class="card-title">Melds on Table</h5>
+                <h5 class="card-title mb-2">Melds on Table</h5>
                 <div class="meld-list">
                     @foreach (var meld in Melds)
                     {
@@ -155,7 +182,7 @@
         </div>
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Actions</h5>
+                <h5 class="card-title mb-2">Actions</h5>
                 <div class="d-flex flex-wrap gap-2">
                     <button class="btn btn-outline-primary">Draw</button>
                     <button class="btn btn-outline-secondary">Discard</button>
@@ -169,47 +196,36 @@
 </div>
 
 @code {
-    private int WallRemaining => 70;
-    private int DrawsRemaining => 10;
-    private string RoundWind => "East";
-    private int HandNumber => 3;
+    private static readonly MockGameState MockState = new();
 
-    private PlayerView PlayerNorth => new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), 12, true, false);
-    private PlayerView PlayerWest => new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), 11, false, false);
-    private PlayerView PlayerEast => new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), 13, false, true);
-    private PlayerView PlayerSouth => new("South", "You", 920, new(), new() { "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character", "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo", "🀞 6 Bamboo", "🀟 7 Bamboo" }, 13, false, false);
+    private int WallRemaining => MockState.WallRemaining;
+    private int WallTotal => MockState.WallTotal;
+    private string WallPercent => ((WallRemaining / (double)WallTotal) * 100).ToString("0");
+    private int DrawsRemaining => MockState.DrawsRemaining;
+    private string RoundWind => MockState.RoundWind;
+    private int HandNumber => MockState.HandNumber;
+    private string TableName => MockState.TableName;
+    private string TableCode => MockState.TableCode;
+    private string GameStatus => MockState.GameStatus;
 
-    private IReadOnlyList<string> CenterDiscards => new[] { "🀀", "🀁", "🀂", "🀃", "🀅", "🀆", "🀈", "🀐", "🀑", "🀒" };
+    private PlayerView PlayerNorth => MockState.PlayerNorth;
+    private PlayerView PlayerWest => MockState.PlayerWest;
+    private PlayerView PlayerEast => MockState.PlayerEast;
+    private PlayerView PlayerSouth => MockState.PlayerSouth;
 
-    private IReadOnlyList<(string Name, int Score)> Scoreboard => new[]
+    private IReadOnlyList<string> CenterDiscards => MockState.CenterDiscards;
+    private IReadOnlyList<(string Name, int Score)> Scoreboard => MockState.Scoreboard;
+    private IReadOnlyList<(string Timestamp, string Description)> RecentActions => MockState.RecentActions;
+    private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => MockState.Melds;
+    private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => MockState.Seats;
+
+    private static string GetStatusBadge(string status) => status switch
     {
-        ("Jun", 1340),
-        ("Kai", 1200),
-        ("You", 920),
-        ("Mina", 800)
-    };
-
-    private IReadOnlyList<(string Timestamp, string Description)> RecentActions => new[]
-    {
-        ("19:12", "Jun drew a tile."),
-        ("19:11", "Mina discarded 🀅 7 Dots."),
-        ("19:10", "You declared Pung on 🀀 East."),
-        ("19:09", "Kai discarded 🀓 4 Character.")
-    };
-
-    private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => new[]
-    {
-        ("You", "Pung", new List<string> { "🀀", "🀀", "🀀" }),
-        ("Jun", "Chow", new List<string> { "🀙", "🀚", "🀛" }),
-        ("Kai", "Kong", new List<string> { "🀅", "🀅", "🀅", "🀅" })
-    };
-
-    private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => new[]
-    {
-        ("East", "Jun", 1340, true),
-        ("South", "You", 920, false),
-        ("West", "Mina", 800, false),
-        ("North", "Kai", 1200, false)
+        "Waiting" => "text-bg-info",
+        "In Progress" => "text-bg-success",
+        "Paused" => "text-bg-warning",
+        "Complete" => "text-bg-secondary",
+        _ => "text-bg-primary"
     };
 
     private IEnumerable<string> BuildHiddenHand(int count)
@@ -253,4 +269,62 @@
     </div>;
 
     private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
+
+    private record MockGameState
+    {
+        public string TableName { get; init; } = "Golden Dragons";
+        public string TableCode { get; init; } = "GD-4821";
+        public string GameStatus { get; init; } = "In Progress";
+        public int WallRemaining { get; init; } = 70;
+        public int WallTotal { get; init; } = 136;
+        public int DrawsRemaining { get; init; } = 10;
+        public string RoundWind { get; init; } = "East";
+        public int HandNumber { get; init; } = 3;
+
+        public PlayerView PlayerNorth { get; init; } = new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), 12, true, false);
+        public PlayerView PlayerWest { get; init; } = new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), 11, false, false);
+        public PlayerView PlayerEast { get; init; } = new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), 13, false, true);
+        public PlayerView PlayerSouth { get; init; } = new("South", "You", 920, new(), new()
+        {
+            "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character",
+            "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo",
+            "🀞 6 Bamboo", "🀟 7 Bamboo"
+        }, 13, false, false);
+
+        public IReadOnlyList<string> CenterDiscards { get; init; } = new[]
+        {
+            "🀀", "🀁", "🀂", "🀃", "🀅", "🀆", "🀈", "🀐", "🀑", "🀒"
+        };
+
+        public IReadOnlyList<(string Name, int Score)> Scoreboard { get; init; } = new[]
+        {
+            ("Jun", 1340),
+            ("Kai", 1200),
+            ("You", 920),
+            ("Mina", 800)
+        };
+
+        public IReadOnlyList<(string Timestamp, string Description)> RecentActions { get; init; } = new[]
+        {
+            ("19:12", "Jun drew a tile."),
+            ("19:11", "Mina discarded 🀅 7 Dots."),
+            ("19:10", "You declared Pung on 🀀 East."),
+            ("19:09", "Kai discarded 🀓 4 Character.")
+        };
+
+        public IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds { get; init; } = new[]
+        {
+            ("You", "Pung", new List<string> { "🀀", "🀀", "🀀" }),
+            ("Jun", "Chow", new List<string> { "🀙", "🀚", "🀛" }),
+            ("Kai", "Kong", new List<string> { "🀅", "🀅", "🀅", "🀅" })
+        };
+
+        public IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats { get; init; } = new[]
+        {
+            ("East", "Jun", 1340, true),
+            ("South", "You", 920, false),
+            ("West", "Mina", 800, false),
+            ("North", "Kai", 1200, false)
+        };
+    }
 }
