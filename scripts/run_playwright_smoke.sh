@@ -5,12 +5,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_URL="${PLAYWRIGHT_API_URL:-http://localhost:5270}"
 CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://localhost:5299}"
 
-migrate_log="/tmp/mahjong-claw-migrate.log"
-api_log="/tmp/mahjong-claw-api.log"
-client_log="/tmp/mahjong-claw-client.log"
+log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
+mkdir -p "$log_dir"
+
+migrate_log="$log_dir/migrate.log"
+api_log="$log_dir/api.log"
+client_log="$log_dir/client.log"
 
 api_pid=""
 client_pid=""
+
+rm -f "$migrate_log" "$api_log" "$client_log"
 
 cleanup() {
   local exit_code=$?
@@ -63,6 +68,7 @@ wait_for_http() {
   return 1
 }
 
+echo "Smoke logs will be written to: ${log_dir}"
 echo "Applying database migrations..."
 (
   cd "$ROOT_DIR"
