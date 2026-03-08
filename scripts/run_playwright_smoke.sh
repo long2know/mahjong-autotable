@@ -2,8 +2,21 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_URL="${PLAYWRIGHT_API_URL:-http://localhost:5270}"
-CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://localhost:5299}"
+
+pick_free_port() {
+  python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+}
+
+API_PORT="${PLAYWRIGHT_API_PORT:-$(pick_free_port)}"
+CLIENT_PORT="${PLAYWRIGHT_CLIENT_PORT:-$(pick_free_port)}"
+API_URL="${PLAYWRIGHT_API_URL:-http://127.0.0.1:${API_PORT}}"
+CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:${CLIENT_PORT}}"
 
 log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
 mkdir -p "$log_dir"
@@ -54,8 +67,14 @@ trap cleanup EXIT
 wait_for_http() {
   local url="$1"
   local name="$2"
+  local pid="$3"
 
   for _ in {1..60}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "${name} process exited before becoming ready (${url})" >&2
+      return 1
+    fi
+
     local code
     code="$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)"
     if [[ "$code" != "000" ]]; then
@@ -72,30 +91,34 @@ echo "Smoke logs will be written to: ${log_dir}"
 echo "Applying database migrations..."
 (
   cd "$ROOT_DIR"
-  dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
+  ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
 ) >"${migrate_log}" 2>&1
 
 echo "Starting API at ${API_URL}..."
 (
   cd "$ROOT_DIR"
-  dotnet run --project src/MahjongClaw.Api --launch-profile http
+  ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/MahjongClaw.Api --no-launch-profile --urls "$API_URL"
 ) >"${api_log}" 2>&1 &
 api_pid=$!
 
-wait_for_http "$API_URL" "API"
+wait_for_http "$API_URL" "API" "$api_pid"
 
 echo "Starting Client at ${CLIENT_URL}..."
 (
   cd "$ROOT_DIR"
-  dotnet run --project src/MahjongClaw.Client --launch-profile http
+  dotnet run --project src/MahjongClaw.Client --no-launch-profile --urls "$CLIENT_URL"
 ) >"${client_log}" 2>&1 &
 client_pid=$!
 
-wait_for_http "$CLIENT_URL" "Client"
+wait_for_http "$CLIENT_URL" "Client" "$client_pid"
 
 echo "Installing Playwright dependencies..."
 cd "$ROOT_DIR"
-npm install --include=dev
+if [[ -f "package-lock.json" ]]; then
+  npm ci --include=dev
+else
+  npm install --include=dev
+fi
 
 echo "Running Playwright smoke suite..."
-PLAYWRIGHT_BASE_URL="$CLIENT_URL" PLAYWRIGHT_API_URL="$API_URL" npm run test:e2e
+PLAYWRIGHT_BASE_URL="$CLIENT_URL" PLAYWRIGHT_API_URL="$API_URL" npx playwright test
