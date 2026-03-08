@@ -5,12 +5,44 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_URL="${PLAYWRIGHT_API_URL:-http://localhost:5270}"
 CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://localhost:5299}"
 
+migrate_log="/tmp/mahjong-claw-migrate.log"
+api_log="/tmp/mahjong-claw-api.log"
+client_log="/tmp/mahjong-claw-client.log"
+
 api_pid=""
 client_pid=""
 
 cleanup() {
+  local exit_code=$?
+
   [[ -n "${api_pid}" ]] && kill "${api_pid}" 2>/dev/null || true
   [[ -n "${client_pid}" ]] && kill "${client_pid}" 2>/dev/null || true
+
+  if [[ "$exit_code" -ne 0 ]]; then
+    echo
+    echo "Smoke run failed. Relevant logs:"
+    echo "  migration: ${migrate_log}"
+    echo "  api:       ${api_log}"
+    echo "  client:    ${client_log}"
+
+    if [[ -f "${migrate_log}" ]]; then
+      echo
+      echo "--- tail: migration log ---"
+      tail -n 80 "${migrate_log}" || true
+    fi
+
+    if [[ -f "${api_log}" ]]; then
+      echo
+      echo "--- tail: api log ---"
+      tail -n 80 "${api_log}" || true
+    fi
+
+    if [[ -f "${client_log}" ]]; then
+      echo
+      echo "--- tail: client log ---"
+      tail -n 80 "${client_log}" || true
+    fi
+  fi
 }
 trap cleanup EXIT
 
@@ -35,13 +67,13 @@ echo "Applying database migrations..."
 (
   cd "$ROOT_DIR"
   dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
-) >/tmp/mahjong-claw-migrate.log 2>&1
+) >"${migrate_log}" 2>&1
 
 echo "Starting API at ${API_URL}..."
 (
   cd "$ROOT_DIR"
   dotnet run --project src/MahjongClaw.Api --launch-profile http
-) >/tmp/mahjong-claw-api.log 2>&1 &
+) >"${api_log}" 2>&1 &
 api_pid=$!
 
 wait_for_http "$API_URL" "API"
@@ -50,7 +82,7 @@ echo "Starting Client at ${CLIENT_URL}..."
 (
   cd "$ROOT_DIR"
   dotnet run --project src/MahjongClaw.Client --launch-profile http
-) >/tmp/mahjong-claw-client.log 2>&1 &
+) >"${client_log}" 2>&1 &
 client_pid=$!
 
 wait_for_http "$CLIENT_URL" "Client"
