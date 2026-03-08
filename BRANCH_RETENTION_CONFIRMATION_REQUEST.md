@@ -18,6 +18,12 @@ For each branch:
 - Unique commits preserved under immutable tags before deletion.
 - Full command transcript + rationale logged in `TASKS.md` and `ISOLATED_WORK.md`.
 
+## Stakeholder Response
+Status: PENDING
+Decision:
+Responder:
+Responded At:
+
 ## Approval Options
 Reply with one of:
 - `APPROVE ALL`

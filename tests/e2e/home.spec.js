@@ -1,13 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-const baseUrl = process.env.PLAYWRIGHT_BASE_URL;
-
 test.describe('Mahjong Claw UI smoke', () => {
-  test.beforeEach(() => {
-    if (!baseUrl) {
-      test.skip(true, 'PLAYWRIGHT_BASE_URL not set');
-    }
-  });
 
   test('home page renders hero', async ({ page }) => {
     await page.goto('/');

@@ -26,9 +26,15 @@ dotnet test MahjongClaw.slnx -c Release
 ```
 
 ## UI Smoke Tests (Playwright)
-Set the base URL to a running client instance and run:
+Set the client base URL (required) and API base URL (optional, defaults to `http://localhost:5270`) and run:
 ```
-PLAYWRIGHT_BASE_URL=http://localhost:5002
+PLAYWRIGHT_BASE_URL=http://localhost:5299
+PLAYWRIGHT_API_URL=http://localhost:5270
 npm install
 npm run test:e2e
+```
+
+Or run the full local smoke flow (starts API + Client automatically, then executes Playwright):
+```
+./scripts/run_playwright_smoke.sh
 ```

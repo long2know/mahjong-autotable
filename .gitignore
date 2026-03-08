@@ -55,3 +55,10 @@ nunit-*.xml
 
 # Node
 node_modules/
+
+# Playwright
+test-results/
+playwright-report/
+
+# Local dev database
+*.db

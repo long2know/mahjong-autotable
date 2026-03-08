@@ -4,7 +4,7 @@ module.exports = defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5002',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5299',
     trace: 'on-first-retry'
   }
 });

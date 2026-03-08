@@ -47,6 +47,15 @@ Because each branch is `ahead 1` vs `origin/main`, treat them as unique-history 
 4. Delete remote legacy branches.
 5. Log exact commands and rationale in task logs.
 
+## Monitoring Helper
+For recurring check-ins while waiting on stakeholder confirmation, use:
+
+```bash
+./scripts/branch_retention_status_snapshot.sh
+```
+
+This command runs the approval gate and prints up-to-date `behind/ahead` counts for each candidate legacy branch.
+
 ## Command Template
 ```bash
 git fetch --all --prune
