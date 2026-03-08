@@ -37,4 +37,6 @@ npm run test:e2e
 Or run the full local smoke flow (starts API + Client automatically, then executes Playwright):
 ```
 ./scripts/run_playwright_smoke.sh
+# or
+npm run test:e2e:smoke
 ```
