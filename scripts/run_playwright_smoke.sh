@@ -27,6 +27,8 @@ client_log="$log_dir/client.log"
 
 api_pid=""
 client_pid=""
+client_appsettings="$ROOT_DIR/src/MahjongClaw.Client/wwwroot/appsettings.json"
+client_appsettings_backup="$log_dir/appsettings.backup.json"
 
 rm -f "$migrate_log" "$api_log" "$client_log"
 
@@ -35,6 +37,10 @@ cleanup() {
 
   [[ -n "${api_pid}" ]] && kill "${api_pid}" 2>/dev/null || true
   [[ -n "${client_pid}" ]] && kill "${client_pid}" 2>/dev/null || true
+
+  if [[ -f "$client_appsettings_backup" ]]; then
+    mv "$client_appsettings_backup" "$client_appsettings"
+  fi
 
   if [[ "$exit_code" -ne 0 ]]; then
     echo
@@ -102,6 +108,19 @@ echo "Starting API at ${API_URL}..."
 api_pid=$!
 
 wait_for_http "$API_URL" "API" "$api_pid"
+
+echo "Configuring client API base URL (${API_URL})..."
+cp "$client_appsettings" "$client_appsettings_backup"
+python3 - <<'PY' "$client_appsettings" "$API_URL"
+import json, sys
+path, api_url = sys.argv[1], sys.argv[2]
+with open(path, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+data['ApiBaseUrl'] = api_url
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PY
 
 echo "Starting Client at ${CLIENT_URL}..."
 (
