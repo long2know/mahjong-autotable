@@ -18,6 +18,11 @@ public static class HandAnalyzer
 
         var counts = BuildCounts(tiles);
 
+        if (TryBuildSevenPairs(counts, out hand))
+        {
+            return true;
+        }
+
         foreach (var tile in counts.Keys.ToList())
         {
             if (counts[tile] >= 2)
@@ -47,6 +52,26 @@ public static class HandAnalyzer
         }
 
         return counts;
+    }
+
+    private static bool TryBuildSevenPairs(Dictionary<Tile, int> counts, out WinningHand? hand)
+    {
+        hand = null;
+
+        if (counts.Values.Any(count => count % 2 != 0))
+        {
+            return false;
+        }
+
+        var pairCount = counts.Values.Sum(count => count / 2);
+        if (pairCount != 7)
+        {
+            return false;
+        }
+
+        var pairTile = counts.First(kvp => kvp.Value >= 2).Key;
+        hand = new WinningHand(Array.Empty<Meld>(), pairTile, WinningPattern.SevenPairs);
+        return true;
     }
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)

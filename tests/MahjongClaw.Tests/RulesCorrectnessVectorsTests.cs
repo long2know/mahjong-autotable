@@ -26,7 +26,7 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
-    public void HandAnalyzer_RejectsSevenPairsVariant_NotYetSupportedByCurrentEngine()
+    public void HandAnalyzer_AcceptsSevenPairsVariant_AsWinningPattern()
     {
         var tiles = new List<Tile>
         {
@@ -39,7 +39,9 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7)
         };
 
-        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
     }
 
     [Fact]
