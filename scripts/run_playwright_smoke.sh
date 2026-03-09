@@ -17,6 +17,7 @@ API_PORT="${PLAYWRIGHT_API_PORT:-$(pick_free_port)}"
 CLIENT_PORT="${PLAYWRIGHT_CLIENT_PORT:-$(pick_free_port)}"
 API_URL="${PLAYWRIGHT_API_URL:-http://127.0.0.1:${API_PORT}}"
 CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:${CLIENT_PORT}}"
+WAIT_TIMEOUT_SECONDS="${PLAYWRIGHT_WAIT_TIMEOUT_SECONDS:-60}"
 
 log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
 mkdir -p "$log_dir"
@@ -88,7 +89,7 @@ wait_for_http() {
   local name="$2"
   local pid="$3"
 
-  for _ in {1..60}; do
+  for ((attempt = 1; attempt <= WAIT_TIMEOUT_SECONDS; attempt++)); do
     if ! kill -0 "$pid" 2>/dev/null; then
       echo "${name} process exited before becoming ready (${url})" >&2
       return 1
@@ -102,7 +103,7 @@ wait_for_http() {
     sleep 1
   done
 
-  echo "Timed out waiting for ${name} at ${url}" >&2
+  echo "Timed out waiting for ${name} at ${url} after ${WAIT_TIMEOUT_SECONDS}s" >&2
   return 1
 }
 

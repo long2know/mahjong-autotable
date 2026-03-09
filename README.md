@@ -51,3 +51,8 @@ If dependencies are already installed (for example in CI after `npm ci`), skip r
 ```
 PLAYWRIGHT_SKIP_NPM_INSTALL=1 ./scripts/run_playwright_smoke.sh
 ```
+
+If your environment is slower to start API/client processes, increase readiness wait timeout (default: 60s):
+```
+PLAYWRIGHT_WAIT_TIMEOUT_SECONDS=120 ./scripts/run_playwright_smoke.sh
+```
