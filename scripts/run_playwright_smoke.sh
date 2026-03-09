@@ -22,6 +22,7 @@ CLIENT_READY_URL="${PLAYWRIGHT_CLIENT_READY_URL:-$CLIENT_URL}"
 WAIT_TIMEOUT_SECONDS="${PLAYWRIGHT_WAIT_TIMEOUT_SECONDS:-60}"
 SKIP_DB_MIGRATIONS="${PLAYWRIGHT_SKIP_DB_MIGRATIONS:-0}"
 DOTNET_NO_BUILD="${PLAYWRIGHT_DOTNET_NO_BUILD:-0}"
+READY_HTTP_PATTERN="${PLAYWRIGHT_READY_HTTP_PATTERN:-2|3}"
 
 log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
 mkdir -p "$log_dir"
@@ -108,13 +109,13 @@ wait_for_http() {
 
     local code
     code="$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)"
-    if [[ "$code" != "000" ]]; then
+    if [[ "$code" =~ ^(${READY_HTTP_PATTERN})[0-9][0-9]$ ]]; then
       return 0
     fi
     sleep 1
   done
 
-  echo "Timed out waiting for ${name} at ${url} after ${WAIT_TIMEOUT_SECONDS}s" >&2
+  echo "Timed out waiting for ${name} at ${url} after ${WAIT_TIMEOUT_SECONDS}s (expected HTTP pattern: ${READY_HTTP_PATTERN}xx)" >&2
   return 1
 }
 

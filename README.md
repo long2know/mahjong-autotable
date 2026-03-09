@@ -73,3 +73,8 @@ PLAYWRIGHT_API_READY_URL=http://127.0.0.1:5270/healthz \
 PLAYWRIGHT_CLIENT_READY_URL=http://127.0.0.1:5299/ \
 ./scripts/run_playwright_smoke.sh
 ```
+
+Readiness checks treat only 2xx/3xx as healthy by default. If your endpoint intentionally returns a different success code class, override it:
+```
+PLAYWRIGHT_READY_HTTP_PATTERN='2|3|4' ./scripts/run_playwright_smoke.sh
+```
