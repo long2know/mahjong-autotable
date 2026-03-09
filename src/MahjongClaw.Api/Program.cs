@@ -11,8 +11,16 @@ builder.Services.AddDbContext<MahjongClawDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("MahjongClaw")));
 
 builder.Services.AddSignalR();
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod());
+});
 
 var app = builder.Build();
+app.UseCors();
 
 app.MapGet("/", () => "Mahjong Claw API");
 app.MapHub<GameHub>("/hubs/game");

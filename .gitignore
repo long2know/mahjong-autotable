@@ -62,3 +62,6 @@ playwright-report/
 
 # Local dev database
 *.db
+
+# Branch retention automation artifacts
+branch_retention_status_latest.json

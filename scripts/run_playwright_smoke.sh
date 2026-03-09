@@ -2,62 +2,178 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_URL="${PLAYWRIGHT_API_URL:-http://localhost:5270}"
-CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://localhost:5299}"
+
+pick_free_port() {
+  python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+}
+
+API_PORT="${PLAYWRIGHT_API_PORT:-$(pick_free_port)}"
+CLIENT_PORT="${PLAYWRIGHT_CLIENT_PORT:-$(pick_free_port)}"
+API_URL="${PLAYWRIGHT_API_URL:-http://127.0.0.1:${API_PORT}}"
+CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:${CLIENT_PORT}}"
+API_READY_URL="${PLAYWRIGHT_API_READY_URL:-$API_URL}"
+CLIENT_READY_URL="${PLAYWRIGHT_CLIENT_READY_URL:-$CLIENT_URL}"
+WAIT_TIMEOUT_SECONDS="${PLAYWRIGHT_WAIT_TIMEOUT_SECONDS:-60}"
+SKIP_DB_MIGRATIONS="${PLAYWRIGHT_SKIP_DB_MIGRATIONS:-0}"
+DOTNET_NO_BUILD="${PLAYWRIGHT_DOTNET_NO_BUILD:-0}"
+READY_HTTP_PATTERN="${PLAYWRIGHT_READY_HTTP_PATTERN:-2|3}"
+
+log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
+mkdir -p "$log_dir"
+
+ensure_dotnet_ef() {
+  export PATH="$HOME/.dotnet/tools:$PATH"
+
+  if dotnet ef --version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "dotnet-ef not found. Installing global tool..."
+  if ! dotnet tool install --global dotnet-ef >/dev/null 2>&1; then
+    dotnet tool update --global dotnet-ef >/dev/null 2>&1
+  fi
+}
+
+migrate_log="$log_dir/migrate.log"
+api_log="$log_dir/api.log"
+client_log="$log_dir/client.log"
+
+api_dotnet_run_args=(--no-launch-profile)
+client_dotnet_run_args=(--no-launch-profile)
+if [[ "$DOTNET_NO_BUILD" == "1" ]]; then
+  api_dotnet_run_args+=(--no-build)
+  client_dotnet_run_args+=(--no-build)
+fi
 
 api_pid=""
 client_pid=""
+client_appsettings="$ROOT_DIR/src/MahjongClaw.Client/wwwroot/appsettings.json"
+client_appsettings_backup="$log_dir/appsettings.backup.json"
+
+rm -f "$migrate_log" "$api_log" "$client_log"
 
 cleanup() {
+  local exit_code=$?
+
   [[ -n "${api_pid}" ]] && kill "${api_pid}" 2>/dev/null || true
   [[ -n "${client_pid}" ]] && kill "${client_pid}" 2>/dev/null || true
+
+  if [[ -f "$client_appsettings_backup" ]]; then
+    mv "$client_appsettings_backup" "$client_appsettings"
+  fi
+
+  if [[ "$exit_code" -ne 0 ]]; then
+    echo
+    echo "Smoke run failed. Relevant logs:"
+    echo "  migration: ${migrate_log}"
+    echo "  api:       ${api_log}"
+    echo "  client:    ${client_log}"
+
+    if [[ -f "${migrate_log}" ]]; then
+      echo
+      echo "--- tail: migration log ---"
+      tail -n 80 "${migrate_log}" || true
+    fi
+
+    if [[ -f "${api_log}" ]]; then
+      echo
+      echo "--- tail: api log ---"
+      tail -n 80 "${api_log}" || true
+    fi
+
+    if [[ -f "${client_log}" ]]; then
+      echo
+      echo "--- tail: client log ---"
+      tail -n 80 "${client_log}" || true
+    fi
+  fi
 }
 trap cleanup EXIT
 
 wait_for_http() {
   local url="$1"
   local name="$2"
+  local pid="$3"
 
-  for _ in {1..60}; do
+  for ((attempt = 1; attempt <= WAIT_TIMEOUT_SECONDS; attempt++)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "${name} process exited before becoming ready (${url})" >&2
+      return 1
+    fi
+
     local code
     code="$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)"
-    if [[ "$code" != "000" ]]; then
+    if [[ "$code" =~ ^(${READY_HTTP_PATTERN})[0-9][0-9]$ ]]; then
       return 0
     fi
     sleep 1
   done
 
-  echo "Timed out waiting for ${name} at ${url}" >&2
+  echo "Timed out waiting for ${name} at ${url} after ${WAIT_TIMEOUT_SECONDS}s (expected HTTP pattern: ${READY_HTTP_PATTERN}xx)" >&2
   return 1
 }
 
-echo "Applying database migrations..."
-(
-  cd "$ROOT_DIR"
-  dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
-) >/tmp/mahjong-claw-migrate.log 2>&1
+echo "Smoke logs will be written to: ${log_dir}"
+if [[ "$SKIP_DB_MIGRATIONS" == "1" ]]; then
+  echo "Skipping database migrations (PLAYWRIGHT_SKIP_DB_MIGRATIONS=1)."
+else
+  ensure_dotnet_ef
+  echo "Applying database migrations..."
+  (
+    cd "$ROOT_DIR"
+    ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
+  ) >"${migrate_log}" 2>&1
+fi
 
 echo "Starting API at ${API_URL}..."
 (
   cd "$ROOT_DIR"
-  dotnet run --project src/MahjongClaw.Api --launch-profile http
-) >/tmp/mahjong-claw-api.log 2>&1 &
+  ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/MahjongClaw.Api "${api_dotnet_run_args[@]}" --urls "$API_URL"
+) >"${api_log}" 2>&1 &
 api_pid=$!
 
-wait_for_http "$API_URL" "API"
+wait_for_http "$API_READY_URL" "API" "$api_pid"
+
+echo "Configuring client API base URL (${API_URL})..."
+cp "$client_appsettings" "$client_appsettings_backup"
+python3 - <<'PY' "$client_appsettings" "$API_URL"
+import json, sys
+path, api_url = sys.argv[1], sys.argv[2]
+with open(path, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+data['ApiBaseUrl'] = api_url
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PY
 
 echo "Starting Client at ${CLIENT_URL}..."
 (
   cd "$ROOT_DIR"
-  dotnet run --project src/MahjongClaw.Client --launch-profile http
-) >/tmp/mahjong-claw-client.log 2>&1 &
+  dotnet run --project src/MahjongClaw.Client "${client_dotnet_run_args[@]}" --urls "$CLIENT_URL"
+) >"${client_log}" 2>&1 &
 client_pid=$!
 
-wait_for_http "$CLIENT_URL" "Client"
+wait_for_http "$CLIENT_READY_URL" "Client" "$client_pid"
 
-echo "Installing Playwright dependencies..."
 cd "$ROOT_DIR"
-npm install --include=dev
+if [[ "${PLAYWRIGHT_SKIP_NPM_INSTALL:-0}" == "1" ]]; then
+  echo "Skipping npm dependency install (PLAYWRIGHT_SKIP_NPM_INSTALL=1)."
+else
+  echo "Installing Playwright dependencies..."
+  if [[ -f "package-lock.json" ]]; then
+    npm ci --include=dev
+  else
+    npm install --include=dev
+  fi
+fi
 
 echo "Running Playwright smoke suite..."
-PLAYWRIGHT_BASE_URL="$CLIENT_URL" PLAYWRIGHT_API_URL="$API_URL" npm run test:e2e
+PLAYWRIGHT_CMD="${PLAYWRIGHT_E2E_COMMAND:-npx playwright test}"
+PLAYWRIGHT_BASE_URL="$CLIENT_URL" PLAYWRIGHT_API_URL="$API_URL" bash -lc "$PLAYWRIGHT_CMD"
