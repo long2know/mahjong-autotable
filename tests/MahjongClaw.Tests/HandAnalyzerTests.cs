@@ -42,7 +42,8 @@ public class HandAnalyzerTests
             new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
             new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
             new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green),
-            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White)
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 9)
         };
 
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();

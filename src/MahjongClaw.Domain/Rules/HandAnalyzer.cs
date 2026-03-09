@@ -18,6 +18,16 @@ public static class HandAnalyzer
 
         var counts = BuildCounts(tiles);
 
+        if (TryBuildSevenPairs(counts, out hand))
+        {
+            return true;
+        }
+
+        if (TryBuildThirteenOrphans(counts, out hand))
+        {
+            return true;
+        }
+
         foreach (var tile in counts.Keys.ToList())
         {
             if (counts[tile] >= 2)
@@ -27,7 +37,11 @@ public static class HandAnalyzer
 
                 if (TryFormMelds(counts, melds))
                 {
-                    hand = new WinningHand(melds, tile);
+                    var pattern = tiles.All(static t => t.IsHonor)
+                        ? WinningPattern.AllHonors
+                        : WinningPattern.Standard;
+
+                    hand = new WinningHand(melds, tile, pattern);
                     return true;
                 }
 
@@ -48,6 +62,74 @@ public static class HandAnalyzer
 
         return counts;
     }
+
+    private static bool TryBuildSevenPairs(Dictionary<Tile, int> counts, out WinningHand? hand)
+    {
+        hand = null;
+
+        if (counts.Values.Any(count => count % 2 != 0))
+        {
+            return false;
+        }
+
+        var pairCount = counts.Values.Sum(count => count / 2);
+        if (pairCount != 7)
+        {
+            return false;
+        }
+
+        var pairTile = counts.First(kvp => kvp.Value >= 2).Key;
+        hand = new WinningHand(Array.Empty<Meld>(), pairTile, WinningPattern.SevenPairs);
+        return true;
+    }
+
+    private static bool TryBuildThirteenOrphans(Dictionary<Tile, int> counts, out WinningHand? hand)
+    {
+        hand = null;
+
+        var terminalAndHonorTiles = BuildThirteenOrphansTileSet();
+        if (counts.Keys.Any(tile => !terminalAndHonorTiles.Contains(tile)))
+        {
+            return false;
+        }
+
+        if (terminalAndHonorTiles.Any(tile => !counts.TryGetValue(tile, out var count) || count < 1))
+        {
+            return false;
+        }
+
+        var duplicateTile = counts.Where(kvp => kvp.Value == 2).Select(kvp => kvp.Key).SingleOrDefault();
+        if (duplicateTile is null)
+        {
+            return false;
+        }
+
+        if (counts.Any(kvp => kvp.Value > 2))
+        {
+            return false;
+        }
+
+        hand = new WinningHand(Array.Empty<Meld>(), duplicateTile, WinningPattern.ThirteenOrphans);
+        return true;
+    }
+
+    private static HashSet<Tile> BuildThirteenOrphansTileSet()
+        => new()
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
     {

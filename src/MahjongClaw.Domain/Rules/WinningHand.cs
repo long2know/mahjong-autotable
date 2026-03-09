@@ -4,12 +4,26 @@ namespace MahjongClaw.Domain.Rules;
 
 public sealed record Meld(MeldType Type, IReadOnlyList<Tile> Tiles);
 
-public sealed record WinningHand(IReadOnlyList<Meld> Melds, Tile Pair)
+public enum WinningPattern
 {
-    public int BasicScore => Melds.Sum(meld => meld.Type switch
+    Standard,
+    SevenPairs,
+    ThirteenOrphans,
+    AllHonors
+}
+
+public sealed record WinningHand(IReadOnlyList<Meld> Melds, Tile Pair, WinningPattern Pattern = WinningPattern.Standard)
+{
+    public int BasicScore => Pattern switch
     {
-        MeldType.Pung => 2,
-        MeldType.Kong => 8,
-        _ => 0
-    });
+        WinningPattern.SevenPairs => 24,
+        WinningPattern.ThirteenOrphans => 88,
+        WinningPattern.AllHonors => 64,
+        _ => Melds.Sum(meld => meld.Type switch
+        {
+            MeldType.Pung => 2,
+            MeldType.Kong => 8,
+            _ => 0
+        })
+    };
 }
