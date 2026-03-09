@@ -62,6 +62,11 @@ If your local database is already migrated and you want faster reruns, skip migr
 PLAYWRIGHT_SKIP_DB_MIGRATIONS=1 ./scripts/run_playwright_smoke.sh
 ```
 
+If you've already built the solution and want faster reruns, skip builds for both API and Client `dotnet run` commands:
+```
+PLAYWRIGHT_DOTNET_NO_BUILD=1 ./scripts/run_playwright_smoke.sh
+```
+
 If your startup path should probe a custom readiness endpoint (for example `/healthz`), override one or both readiness URLs:
 ```
 PLAYWRIGHT_API_READY_URL=http://127.0.0.1:5270/healthz \

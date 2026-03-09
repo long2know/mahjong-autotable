@@ -21,6 +21,7 @@ API_READY_URL="${PLAYWRIGHT_API_READY_URL:-$API_URL}"
 CLIENT_READY_URL="${PLAYWRIGHT_CLIENT_READY_URL:-$CLIENT_URL}"
 WAIT_TIMEOUT_SECONDS="${PLAYWRIGHT_WAIT_TIMEOUT_SECONDS:-60}"
 SKIP_DB_MIGRATIONS="${PLAYWRIGHT_SKIP_DB_MIGRATIONS:-0}"
+DOTNET_NO_BUILD="${PLAYWRIGHT_DOTNET_NO_BUILD:-0}"
 
 log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
 mkdir -p "$log_dir"
@@ -41,6 +42,13 @@ ensure_dotnet_ef() {
 migrate_log="$log_dir/migrate.log"
 api_log="$log_dir/api.log"
 client_log="$log_dir/client.log"
+
+api_dotnet_run_args=(--no-launch-profile)
+client_dotnet_run_args=(--no-launch-profile)
+if [[ "$DOTNET_NO_BUILD" == "1" ]]; then
+  api_dotnet_run_args+=(--no-build)
+  client_dotnet_run_args+=(--no-build)
+fi
 
 api_pid=""
 client_pid=""
@@ -125,7 +133,7 @@ fi
 echo "Starting API at ${API_URL}..."
 (
   cd "$ROOT_DIR"
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/MahjongClaw.Api --no-launch-profile --urls "$API_URL"
+  ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/MahjongClaw.Api "${api_dotnet_run_args[@]}" --urls "$API_URL"
 ) >"${api_log}" 2>&1 &
 api_pid=$!
 
@@ -147,7 +155,7 @@ PY
 echo "Starting Client at ${CLIENT_URL}..."
 (
   cd "$ROOT_DIR"
-  dotnet run --project src/MahjongClaw.Client --no-launch-profile --urls "$CLIENT_URL"
+  dotnet run --project src/MahjongClaw.Client "${client_dotnet_run_args[@]}" --urls "$CLIENT_URL"
 ) >"${client_log}" 2>&1 &
 client_pid=$!
 
