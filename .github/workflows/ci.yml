@@ -39,8 +39,6 @@ jobs:
         run: npm ci
       - name: Install Playwright browser dependencies
         run: npx playwright install --with-deps chromium
-      - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef
       - name: Run lobby-to-game smoke tests
         env:
           PLAYWRIGHT_SKIP_NPM_INSTALL: '1'

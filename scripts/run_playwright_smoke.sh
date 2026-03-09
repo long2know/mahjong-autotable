@@ -21,6 +21,19 @@ CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:${CLIENT_PORT}}"
 log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
 mkdir -p "$log_dir"
 
+ensure_dotnet_ef() {
+  export PATH="$HOME/.dotnet/tools:$PATH"
+
+  if dotnet ef --version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "dotnet-ef not found. Installing global tool..."
+  if ! dotnet tool install --global dotnet-ef >/dev/null 2>&1; then
+    dotnet tool update --global dotnet-ef >/dev/null 2>&1
+  fi
+}
+
 migrate_log="$log_dir/migrate.log"
 api_log="$log_dir/api.log"
 client_log="$log_dir/client.log"
@@ -94,6 +107,7 @@ wait_for_http() {
 }
 
 echo "Smoke logs will be written to: ${log_dir}"
+ensure_dotnet_ef
 echo "Applying database migrations..."
 (
   cd "$ROOT_DIR"
