@@ -17,6 +17,8 @@ API_PORT="${PLAYWRIGHT_API_PORT:-$(pick_free_port)}"
 CLIENT_PORT="${PLAYWRIGHT_CLIENT_PORT:-$(pick_free_port)}"
 API_URL="${PLAYWRIGHT_API_URL:-http://127.0.0.1:${API_PORT}}"
 CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:${CLIENT_PORT}}"
+API_READY_URL="${PLAYWRIGHT_API_READY_URL:-$API_URL}"
+CLIENT_READY_URL="${PLAYWRIGHT_CLIENT_READY_URL:-$CLIENT_URL}"
 WAIT_TIMEOUT_SECONDS="${PLAYWRIGHT_WAIT_TIMEOUT_SECONDS:-60}"
 
 log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
@@ -122,7 +124,7 @@ echo "Starting API at ${API_URL}..."
 ) >"${api_log}" 2>&1 &
 api_pid=$!
 
-wait_for_http "$API_URL" "API" "$api_pid"
+wait_for_http "$API_READY_URL" "API" "$api_pid"
 
 echo "Configuring client API base URL (${API_URL})..."
 cp "$client_appsettings" "$client_appsettings_backup"
@@ -144,7 +146,7 @@ echo "Starting Client at ${CLIENT_URL}..."
 ) >"${client_log}" 2>&1 &
 client_pid=$!
 
-wait_for_http "$CLIENT_URL" "Client" "$client_pid"
+wait_for_http "$CLIENT_READY_URL" "Client" "$client_pid"
 
 cd "$ROOT_DIR"
 if [[ "${PLAYWRIGHT_SKIP_NPM_INSTALL:-0}" == "1" ]]; then

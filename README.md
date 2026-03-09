@@ -56,3 +56,10 @@ If your environment is slower to start API/client processes, increase readiness 
 ```
 PLAYWRIGHT_WAIT_TIMEOUT_SECONDS=120 ./scripts/run_playwright_smoke.sh
 ```
+
+If your startup path should probe a custom readiness endpoint (for example `/healthz`), override one or both readiness URLs:
+```
+PLAYWRIGHT_API_READY_URL=http://127.0.0.1:5270/healthz \
+PLAYWRIGHT_CLIENT_READY_URL=http://127.0.0.1:5299/ \
+./scripts/run_playwright_smoke.sh
+```
