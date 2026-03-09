@@ -20,6 +20,7 @@ CLIENT_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:${CLIENT_PORT}}"
 API_READY_URL="${PLAYWRIGHT_API_READY_URL:-$API_URL}"
 CLIENT_READY_URL="${PLAYWRIGHT_CLIENT_READY_URL:-$CLIENT_URL}"
 WAIT_TIMEOUT_SECONDS="${PLAYWRIGHT_WAIT_TIMEOUT_SECONDS:-60}"
+SKIP_DB_MIGRATIONS="${PLAYWRIGHT_SKIP_DB_MIGRATIONS:-0}"
 
 log_dir="${PLAYWRIGHT_SMOKE_LOG_DIR:-$ROOT_DIR/artifacts/playwright-smoke}"
 mkdir -p "$log_dir"
@@ -110,12 +111,16 @@ wait_for_http() {
 }
 
 echo "Smoke logs will be written to: ${log_dir}"
-ensure_dotnet_ef
-echo "Applying database migrations..."
-(
-  cd "$ROOT_DIR"
-  ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
-) >"${migrate_log}" 2>&1
+if [[ "$SKIP_DB_MIGRATIONS" == "1" ]]; then
+  echo "Skipping database migrations (PLAYWRIGHT_SKIP_DB_MIGRATIONS=1)."
+else
+  ensure_dotnet_ef
+  echo "Applying database migrations..."
+  (
+    cd "$ROOT_DIR"
+    ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
+  ) >"${migrate_log}" 2>&1
+fi
 
 echo "Starting API at ${API_URL}..."
 (
