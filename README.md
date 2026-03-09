@@ -40,3 +40,9 @@ Or run the full local smoke flow (starts API + Client automatically, then execut
 # or
 npm run test:e2e:smoke
 ```
+
+To override the Playwright command (for example, run only a subset/spec), set `PLAYWRIGHT_E2E_COMMAND`:
+```
+PLAYWRIGHT_E2E_COMMAND='npx playwright test tests/e2e/smoke.spec.ts'
+./scripts/run_playwright_smoke.sh
+```

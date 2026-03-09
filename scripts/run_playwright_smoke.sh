@@ -140,4 +140,5 @@ else
 fi
 
 echo "Running Playwright smoke suite..."
-PLAYWRIGHT_BASE_URL="$CLIENT_URL" PLAYWRIGHT_API_URL="$API_URL" npx playwright test
+PLAYWRIGHT_CMD="${PLAYWRIGHT_E2E_COMMAND:-npx playwright test}"
+PLAYWRIGHT_BASE_URL="$CLIENT_URL" PLAYWRIGHT_API_URL="$API_URL" bash -lc "$PLAYWRIGHT_CMD"
