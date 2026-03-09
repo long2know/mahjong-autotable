@@ -100,6 +100,14 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void MeetsMinimumFan_ReturnsTrue_ForThirteenOrphansSpecialHand()
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Characters, 1), WinningPattern.ThirteenOrphans);
+
+        ScoreCalculator.MeetsMinimumFan(hand).Should().BeTrue();
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ThrowsForNegativeThreshold()
     {
         var hand = new WinningHand(

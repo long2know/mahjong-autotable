@@ -7,7 +7,8 @@ public sealed record Meld(MeldType Type, IReadOnlyList<Tile> Tiles);
 public enum WinningPattern
 {
     Standard,
-    SevenPairs
+    SevenPairs,
+    ThirteenOrphans
 }
 
 public sealed record WinningHand(IReadOnlyList<Meld> Melds, Tile Pair, WinningPattern Pattern = WinningPattern.Standard)
@@ -15,6 +16,7 @@ public sealed record WinningHand(IReadOnlyList<Meld> Melds, Tile Pair, WinningPa
     public int BasicScore => Pattern switch
     {
         WinningPattern.SevenPairs => 24,
+        WinningPattern.ThirteenOrphans => 88,
         _ => Melds.Sum(meld => meld.Type switch
         {
             MeldType.Pung => 2,

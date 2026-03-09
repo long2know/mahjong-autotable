@@ -23,6 +23,11 @@ public static class HandAnalyzer
             return true;
         }
 
+        if (TryBuildThirteenOrphans(counts, out hand))
+        {
+            return true;
+        }
+
         foreach (var tile in counts.Keys.ToList())
         {
             if (counts[tile] >= 2)
@@ -73,6 +78,54 @@ public static class HandAnalyzer
         hand = new WinningHand(Array.Empty<Meld>(), pairTile, WinningPattern.SevenPairs);
         return true;
     }
+
+    private static bool TryBuildThirteenOrphans(Dictionary<Tile, int> counts, out WinningHand? hand)
+    {
+        hand = null;
+
+        var terminalAndHonorTiles = BuildThirteenOrphansTileSet();
+        if (counts.Keys.Any(tile => !terminalAndHonorTiles.Contains(tile)))
+        {
+            return false;
+        }
+
+        if (terminalAndHonorTiles.Any(tile => !counts.TryGetValue(tile, out var count) || count < 1))
+        {
+            return false;
+        }
+
+        var duplicateTile = counts.Where(kvp => kvp.Value == 2).Select(kvp => kvp.Key).SingleOrDefault();
+        if (duplicateTile is null)
+        {
+            return false;
+        }
+
+        if (counts.Any(kvp => kvp.Value > 2))
+        {
+            return false;
+        }
+
+        hand = new WinningHand(Array.Empty<Meld>(), duplicateTile, WinningPattern.ThirteenOrphans);
+        return true;
+    }
+
+    private static HashSet<Tile> BuildThirteenOrphansTileSet()
+        => new()
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
     {
