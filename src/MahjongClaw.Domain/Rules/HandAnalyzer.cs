@@ -37,7 +37,11 @@ public static class HandAnalyzer
 
                 if (TryFormMelds(counts, melds))
                 {
-                    hand = new WinningHand(melds, tile);
+                    var pattern = tiles.All(static t => t.IsHonor)
+                        ? WinningPattern.AllHonors
+                        : WinningPattern.Standard;
+
+                    hand = new WinningHand(melds, tile, pattern);
                     return true;
                 }
 
