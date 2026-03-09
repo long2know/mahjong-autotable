@@ -131,12 +131,16 @@ client_pid=$!
 
 wait_for_http "$CLIENT_URL" "Client" "$client_pid"
 
-echo "Installing Playwright dependencies..."
 cd "$ROOT_DIR"
-if [[ -f "package-lock.json" ]]; then
-  npm ci --include=dev
+if [[ "${PLAYWRIGHT_SKIP_NPM_INSTALL:-0}" == "1" ]]; then
+  echo "Skipping npm dependency install (PLAYWRIGHT_SKIP_NPM_INSTALL=1)."
 else
-  npm install --include=dev
+  echo "Installing Playwright dependencies..."
+  if [[ -f "package-lock.json" ]]; then
+    npm ci --include=dev
+  else
+    npm install --include=dev
+  fi
 fi
 
 echo "Running Playwright smoke suite..."

@@ -46,3 +46,8 @@ To override the Playwright command (for example, run only a subset/spec), set `P
 PLAYWRIGHT_E2E_COMMAND='npx playwright test tests/e2e/smoke.spec.ts'
 ./scripts/run_playwright_smoke.sh
 ```
+
+If dependencies are already installed (for example in CI after `npm ci`), skip reinstalling inside the smoke script:
+```
+PLAYWRIGHT_SKIP_NPM_INSTALL=1 ./scripts/run_playwright_smoke.sh
+```
