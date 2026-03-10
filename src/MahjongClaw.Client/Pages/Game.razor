@@ -85,25 +85,25 @@
                             <div class="wall-side wall-top">
                                 @foreach (var stack in BuildWallSide("North"))
                                 {
-                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty)"></div>
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-right">
                                 @foreach (var stack in BuildWallSide("East"))
                                 {
-                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty)"></div>
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-bottom">
                                 @foreach (var stack in BuildWallSide("South"))
                                 {
-                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty)"></div>
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-left">
                                 @foreach (var stack in BuildWallSide("West"))
                                 {
-                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty)"></div>
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)"></div>
                                 }
                             </div>
                         </div>
@@ -487,10 +487,20 @@
         };
 
         var breakIndex = Math.Clamp((HandNumber * 2) % WallStacksPerSide, 0, WallStacksPerSide - 1);
+        var stacksRemaining = (int)Math.Ceiling(WallRemaining / 2d);
+        var sideOffset = side switch
+        {
+            "North" => 0,
+            "East" => WallStacksPerSide,
+            "South" => WallStacksPerSide * 2,
+            "West" => WallStacksPerSide * 3,
+            _ => 0
+        };
 
         for (var i = 0; i < WallStacksPerSide; i++)
         {
-            yield return new WallStackView(i, side == breakSide && i == breakIndex);
+            var globalIndex = sideOffset + i;
+            yield return new WallStackView(i, side == breakSide && i == breakIndex, globalIndex >= stacksRemaining);
         }
     }
 
@@ -536,7 +546,7 @@
 
     private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
 
-    private record WallStackView(int Index, bool IsBreakMarker);
+    private record WallStackView(int Index, bool IsBreakMarker, bool IsDepleted);
 
     private record MockGameState
     {

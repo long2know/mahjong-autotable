@@ -252,19 +252,45 @@ code {
     border-radius: 0.2rem;
     background: linear-gradient(180deg, #f7f7f7 0%, #dde3ea 100%);
     border: 1px solid #c4ccd6;
-    box-shadow: 0 0.25rem 0 0 #c5ced8;
+    position: relative;
+}
+
+.wall-stack::after {
+    content: "";
+    position: absolute;
+    left: -1px;
+    top: 0.24rem;
+    width: calc(100% + 2px);
+    height: 0.52rem;
+    border-radius: 0.2rem;
+    border: 1px solid #bcc6d1;
+    background: linear-gradient(180deg, #ffffff 0%, #e7edf3 100%);
 }
 
 .wall-left .wall-stack,
 .wall-right .wall-stack {
     width: 0.52rem;
     height: 0.9rem;
-    box-shadow: 0.25rem 0 0 0 #c5ced8;
 }
 
-.wall-stack-break {
+.wall-left .wall-stack::after,
+.wall-right .wall-stack::after {
+    top: -1px;
+    left: 0.24rem;
+    width: 0.52rem;
+    height: calc(100% + 2px);
+}
+
+.wall-stack-break,
+.wall-stack-break::after {
     border-color: #f59f00;
     background: linear-gradient(180deg, #fff4cc 0%, #ffd66b 100%);
+}
+
+.wall-stack-depleted,
+.wall-stack-depleted::after {
+    opacity: 0.28;
+    border-style: dashed;
 }
 
 .tile-row {
