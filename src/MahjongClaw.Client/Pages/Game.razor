@@ -587,6 +587,7 @@
     };
 
     private const int WallStacksPerSide = 17;
+    private const int TotalWallStacks = WallStacksPerSide * 4;
 
     private IEnumerable<WallStackView> BuildWallSide(string side)
     {
@@ -599,21 +600,40 @@
         };
 
         var breakIndex = Math.Clamp((HandNumber * 2) % WallStacksPerSide, 0, WallStacksPerSide - 1);
-        var stacksRemaining = (int)Math.Ceiling(WallRemaining / 2d);
-        var sideOffset = side switch
-        {
-            "North" => 0,
-            "East" => WallStacksPerSide,
-            "South" => WallStacksPerSide * 2,
-            "West" => WallStacksPerSide * 3,
-            _ => 0
-        };
+        var drawStartIndex = GetSideOffset(breakSide) + breakIndex;
 
+        var stacksRemaining = Math.Clamp((int)Math.Ceiling(WallRemaining / 2d), 0, TotalWallStacks);
+        var stacksConsumed = TotalWallStacks - stacksRemaining;
+
+        var sideOffset = GetSideOffset(side);
         for (var i = 0; i < WallStacksPerSide; i++)
         {
             var globalIndex = sideOffset + i;
-            yield return new WallStackView(i, side == breakSide && i == breakIndex, globalIndex >= stacksRemaining);
+            yield return new WallStackView(
+                i,
+                side == breakSide && i == breakIndex,
+                IsConsumedStack(globalIndex, drawStartIndex, stacksConsumed));
         }
+    }
+
+    private static int GetSideOffset(string side) => side switch
+    {
+        "North" => 0,
+        "East" => WallStacksPerSide,
+        "South" => WallStacksPerSide * 2,
+        "West" => WallStacksPerSide * 3,
+        _ => 0
+    };
+
+    private static bool IsConsumedStack(int globalIndex, int drawStartIndex, int stacksConsumed)
+    {
+        if (stacksConsumed <= 0)
+        {
+            return false;
+        }
+
+        var relativeIndex = (globalIndex - drawStartIndex + TotalWallStacks) % TotalWallStacks;
+        return relativeIndex < stacksConsumed;
     }
 
     private string BuildWallStackTitle(string side, WallStackView stack)
