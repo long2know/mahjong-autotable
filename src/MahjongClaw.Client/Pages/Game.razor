@@ -237,12 +237,12 @@
             <div class="card-body">
                 <h5 class="card-title mb-2">Actions</h5>
                 <div class="d-flex flex-wrap gap-2">
-                    <button class="btn btn-outline-primary">Draw</button>
-                    <button class="btn btn-outline-secondary">Discard</button>
-                    <button class="btn btn-outline-success">Declare Win</button>
-                    <button class="btn btn-outline-warning">Meld</button>
+                    <button class="btn btn-outline-primary" @onclick="DrawTileAsync" disabled="@(!CanDraw)">Draw</button>
+                    <button class="btn btn-outline-secondary" disabled title="Discard wiring pending tile-selection UI.">Discard</button>
+                    <button class="btn btn-outline-success" @onclick="DeclareWinAsync" disabled="@(!CanDeclareWin)">Declare Win</button>
+                    <button class="btn btn-outline-warning" disabled title="Meld wiring pending tile-selection UI.">Meld</button>
                 </div>
-                <p class="text-muted small mt-3 mb-0">Buttons are currently mocked for layout only.</p>
+                <p class="text-muted small mt-3 mb-0">Draw/Win now call live API when gameId + playerId are present.</p>
             </div>
         </div>
     </div>
@@ -259,6 +259,19 @@
     private readonly CancellationTokenSource _disposeCts = new();
     private GameApiClient.GameStateResponse? _liveState;
     private string? LiveStatus;
+
+    private bool CanDraw =>
+        GameId is not null &&
+        PlayerId is not null &&
+        _liveState is not null &&
+        string.Equals(_liveState.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
+        _liveState.CurrentPlayerId == PlayerId;
+
+    private bool CanDeclareWin =>
+        GameId is not null &&
+        PlayerId is not null &&
+        _liveState is not null &&
+        string.Equals(_liveState.Status, "Active", StringComparison.OrdinalIgnoreCase);
 
     private int WallTotal => MockState.WallTotal;
     private int WallRemaining => _liveState is null ? MockState.WallRemaining : Math.Max(0, WallTotal - _liveState.TilesInPlay);
@@ -398,6 +411,46 @@
         catch (Exception ex)
         {
             LiveStatus = $"Live refresh failed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DrawTileAsync()
+    {
+        if (!CanDraw || GameId is null || PlayerId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await Api.DrawTileAsync(GameId.Value, new GameApiClient.DrawTileRequest(PlayerId.Value), _disposeCts.Token);
+            LiveStatus = $"Drew tile {result.Suit} {result.Rank}.";
+            await RefreshLiveStateAsync();
+        }
+        catch (Exception ex)
+        {
+            LiveStatus = $"Draw failed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DeclareWinAsync()
+    {
+        if (!CanDeclareWin || GameId is null || PlayerId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeclareWinAsync(GameId.Value, new GameApiClient.WinRequest(PlayerId.Value), _disposeCts.Token);
+            LiveStatus = "Win declared.";
+            await RefreshLiveStateAsync();
+        }
+        catch (Exception ex)
+        {
+            LiveStatus = $"Declare win failed: {ex.Message}";
             await InvokeAsync(StateHasChanged);
         }
     }
