@@ -180,6 +180,17 @@ code {
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     background: rgba(11, 29, 20, 0.3);
+    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.seat-anchor-current {
+    border-color: rgba(88, 245, 152, 0.85);
+    background: rgba(16, 58, 37, 0.8);
+    box-shadow: 0 0 0 2px rgba(88, 245, 152, 0.28);
+}
+
+.seat-anchor-dealer {
+    border-color: rgba(255, 210, 102, 0.92);
 }
 
 .anchor-north {

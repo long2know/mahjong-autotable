@@ -76,10 +76,10 @@
                             <div class="indicator-hand">Hand @HandNumber</div>
                         </div>
                         <div class="seat-anchors" aria-label="Seat anchors">
-                            <span class="seat-anchor anchor-north">North</span>
-                            <span class="seat-anchor anchor-east">East</span>
-                            <span class="seat-anchor anchor-south">South</span>
-                            <span class="seat-anchor anchor-west">West</span>
+                            <span class='@BuildSeatAnchorClass("North")'>North</span>
+                            <span class='@BuildSeatAnchorClass("East")'>East</span>
+                            <span class='@BuildSeatAnchorClass("South")'>South</span>
+                            <span class='@BuildSeatAnchorClass("West")'>West</span>
                         </div>
                         <div class="physical-wall" aria-label="Mahjong wall preview">
                             <div class="wall-side wall-top">
@@ -266,7 +266,9 @@
     private string GameStatus => _liveState?.Status ?? MockState.GameStatus;
     private string CurrentPhase => _liveState?.Status ?? "Discard";
     private string CurrentTurnName => ResolvePlayerName(_liveState?.CurrentPlayerId, fallback: PlayerEast.Name);
+    private string CurrentTurnSeat => ResolveSeat(_liveState?.CurrentPlayerId, fallback: "East");
     private string CurrentDealerName => ResolvePlayerName(_liveState?.DealerId, fallback: PlayerEast.Name);
+    private string CurrentDealerSeat => ResolveSeat(_liveState?.DealerId, fallback: "North");
 
     private PlayerView PlayerNorth => GetPlayerView("North", MockState.PlayerNorth);
     private PlayerView PlayerWest => GetPlayerView("West", MockState.PlayerWest);
@@ -432,6 +434,33 @@
         }
 
         return _liveState.Players.FirstOrDefault(player => player.Id == playerId.Value)?.Name ?? fallback;
+    }
+
+    private string ResolveSeat(Guid? playerId, string fallback)
+    {
+        if (playerId is null || _liveState?.Players is null)
+        {
+            return fallback;
+        }
+
+        return _liveState.Players.FirstOrDefault(player => player.Id == playerId.Value)?.Seat ?? fallback;
+    }
+
+    private string BuildSeatAnchorClass(string seat)
+    {
+        var classes = $"seat-anchor anchor-{seat.ToLowerInvariant()}";
+
+        if (string.Equals(CurrentTurnSeat, seat, StringComparison.OrdinalIgnoreCase))
+        {
+            classes += " seat-anchor-current";
+        }
+
+        if (string.Equals(CurrentDealerSeat, seat, StringComparison.OrdinalIgnoreCase))
+        {
+            classes += " seat-anchor-dealer";
+        }
+
+        return classes;
     }
 
     private PlayerView GetPlayerView(string seat, PlayerView fallback)
