@@ -71,6 +71,16 @@
                         @RenderSeat(PlayerSouth)
                     </div>
                     <div class="center-area">
+                        <div class="table-indicator" aria-label="Round and hand indicator">
+                            <div class="indicator-wind">@RoundWind Round</div>
+                            <div class="indicator-hand">Hand @HandNumber</div>
+                        </div>
+                        <div class="seat-anchors" aria-label="Seat anchors">
+                            <span class="seat-anchor anchor-north">North</span>
+                            <span class="seat-anchor anchor-east">East</span>
+                            <span class="seat-anchor anchor-south">South</span>
+                            <span class="seat-anchor anchor-west">West</span>
+                        </div>
                         <div class="physical-wall" aria-label="Mahjong wall preview">
                             <div class="wall-side wall-top">
                                 @foreach (var stack in BuildWallSide("North"))
