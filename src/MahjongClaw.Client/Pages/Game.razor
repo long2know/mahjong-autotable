@@ -71,11 +71,52 @@
                         @RenderSeat(PlayerSouth)
                     </div>
                     <div class="center-area">
-                        <h6 class="text-uppercase text-muted">Discards</h6>
-                        <div class="tile-row tile-row-wrap">
+                        <div class="table-indicator" aria-label="Round and hand indicator">
+                            <div class="indicator-wind">@RoundWind Round</div>
+                            <div class="indicator-hand">Hand @HandNumber</div>
+                        </div>
+                        <div class="seat-anchors" aria-label="Seat anchors">
+                            <span class='@BuildSeatAnchorClass("North")'>North</span>
+                            <span class='@BuildSeatAnchorClass("East")'>East</span>
+                            <span class='@BuildSeatAnchorClass("South")'>South</span>
+                            <span class='@BuildSeatAnchorClass("West")'>West</span>
+                        </div>
+                        <div class="physical-wall" aria-label="Mahjong wall preview">
+                            <div class="wall-side wall-top">
+                                @foreach (var stack in BuildWallSide("North"))
+                                {
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("North", stack)"></div>
+                                }
+                            </div>
+                            <div class="wall-side wall-right">
+                                @foreach (var stack in BuildWallSide("East"))
+                                {
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("East", stack)"></div>
+                                }
+                            </div>
+                            <div class="wall-side wall-bottom">
+                                @foreach (var stack in BuildWallSide("South"))
+                                {
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("South", stack)"></div>
+                                }
+                            </div>
+                            <div class="wall-side wall-left">
+                                @foreach (var stack in BuildWallSide("West"))
+                                {
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("West", stack)"></div>
+                                }
+                            </div>
+                        </div>
+                        <div class="wall-legend" aria-label="Wall legend">
+                            <span><span class="wall-stack wall-stack-break"></span> break marker</span>
+                            <span><span class="wall-stack wall-stack-depleted"></span> consumed stack</span>
+                            <span><strong>@WallRemaining</strong> tiles remain</span>
+                        </div>
+                        <h6 class="text-uppercase text-muted mt-3">Discards</h6>
+                        <div class="discard-lane" aria-label="Center discard lane">
                             @foreach (var tile in CenterDiscards)
                             {
-                                <Tile Label="@tile" />
+                                <Tile Label="@tile" ExtraClass="tile-discard" />
                             }
                         </div>
                         <div class="mt-3 text-muted small">Current turn: <strong>@CurrentTurnName</strong></div>
@@ -230,7 +271,9 @@
     private string GameStatus => _liveState?.Status ?? MockState.GameStatus;
     private string CurrentPhase => _liveState?.Status ?? "Discard";
     private string CurrentTurnName => ResolvePlayerName(_liveState?.CurrentPlayerId, fallback: PlayerEast.Name);
+    private string CurrentTurnSeat => ResolveSeat(_liveState?.CurrentPlayerId, fallback: "East");
     private string CurrentDealerName => ResolvePlayerName(_liveState?.DealerId, fallback: PlayerEast.Name);
+    private string CurrentDealerSeat => ResolveSeat(_liveState?.DealerId, fallback: "North");
 
     private PlayerView PlayerNorth => GetPlayerView("North", MockState.PlayerNorth);
     private PlayerView PlayerWest => GetPlayerView("West", MockState.PlayerWest);
@@ -398,6 +441,33 @@
         return _liveState.Players.FirstOrDefault(player => player.Id == playerId.Value)?.Name ?? fallback;
     }
 
+    private string ResolveSeat(Guid? playerId, string fallback)
+    {
+        if (playerId is null || _liveState?.Players is null)
+        {
+            return fallback;
+        }
+
+        return _liveState.Players.FirstOrDefault(player => player.Id == playerId.Value)?.Seat ?? fallback;
+    }
+
+    private string BuildSeatAnchorClass(string seat)
+    {
+        var classes = $"seat-anchor anchor-{seat.ToLowerInvariant()}";
+
+        if (string.Equals(CurrentTurnSeat, seat, StringComparison.OrdinalIgnoreCase))
+        {
+            classes += " seat-anchor-current";
+        }
+
+        if (string.Equals(CurrentDealerSeat, seat, StringComparison.OrdinalIgnoreCase))
+        {
+            classes += " seat-anchor-dealer";
+        }
+
+        return classes;
+    }
+
     private PlayerView GetPlayerView(string seat, PlayerView fallback)
     {
         if (_liveState?.Players is null)
@@ -437,6 +507,51 @@
         "Complete" => "text-bg-secondary",
         _ => "text-bg-primary"
     };
+
+    private const int WallStacksPerSide = 17;
+
+    private IEnumerable<WallStackView> BuildWallSide(string side)
+    {
+        var breakSide = (HandNumber % 4) switch
+        {
+            0 => "East",
+            1 => "South",
+            2 => "West",
+            _ => "North"
+        };
+
+        var breakIndex = Math.Clamp((HandNumber * 2) % WallStacksPerSide, 0, WallStacksPerSide - 1);
+        var stacksRemaining = (int)Math.Ceiling(WallRemaining / 2d);
+        var sideOffset = side switch
+        {
+            "North" => 0,
+            "East" => WallStacksPerSide,
+            "South" => WallStacksPerSide * 2,
+            "West" => WallStacksPerSide * 3,
+            _ => 0
+        };
+
+        for (var i = 0; i < WallStacksPerSide; i++)
+        {
+            var globalIndex = sideOffset + i;
+            yield return new WallStackView(i, side == breakSide && i == breakIndex, globalIndex >= stacksRemaining);
+        }
+    }
+
+    private string BuildWallStackTitle(string side, WallStackView stack)
+    {
+        if (stack.IsBreakMarker)
+        {
+            return $"{side} wall break marker";
+        }
+
+        if (stack.IsDepleted)
+        {
+            return $"{side} wall consumed stack {stack.Index + 1}";
+        }
+
+        return $"{side} wall stack {stack.Index + 1}";
+    }
 
     private IEnumerable<string> BuildHiddenHand(int count)
     {
@@ -479,6 +594,8 @@
     </div>;
 
     private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
+
+    private record WallStackView(int Index, bool IsBreakMarker, bool IsDepleted);
 
     private record MockGameState
     {
