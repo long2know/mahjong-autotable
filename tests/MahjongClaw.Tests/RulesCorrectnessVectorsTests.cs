@@ -581,6 +581,47 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_ForPureSuitHand_WhenNineGatesTerminalMultiplicityIsNotMet()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pure dots winning hand: 123, 123, 456, 789 + pair 11
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesSevenPairs_OverNineGatesLikePureSuitShapes_WhenRanksAreMissing()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pure dots seven pairs, intentionally missing 8/9 to ensure this is not Nine Gates.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesAllHonors_OverSevenPairs_WhenBothApply()
     {
         var tiles = new List<Tile>
