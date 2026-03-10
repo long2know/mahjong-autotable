@@ -171,6 +171,28 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void MeetsMinimumFan_ReturnsTrue_ForLittleThreeDragonsSpecialHand()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            WinningPattern.LittleThreeDragons);
+
+        ScoreCalculator.MeetsMinimumFan(hand).Should().BeTrue();
+    }
+
+    [Fact]
+    public void MeetsMinimumFan_ReturnsTrue_ForLittleFourWindsSpecialHand()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Winds, 0, Wind.North),
+            WinningPattern.LittleFourWinds);
+
+        ScoreCalculator.MeetsMinimumFan(hand).Should().BeTrue();
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ThrowsForNegativeThreshold()
     {
         var hand = new WinningHand(

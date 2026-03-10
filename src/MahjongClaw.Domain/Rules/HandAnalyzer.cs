@@ -43,13 +43,17 @@ public static class HandAnalyzer
                             ? WinningPattern.BigFourWinds
                             : IsBigThreeDragons(melds)
                                 ? WinningPattern.BigThreeDragons
-                                : tiles.All(static t => t.IsHonor)
-                                    ? WinningPattern.AllHonors
-                                : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
-                                    ? WinningPattern.AllTerminals
-                                    : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
-                                        ? WinningPattern.AllTerminalsAndHonors
-                                        : WinningPattern.Standard;
+                                : IsLittleFourWinds(melds, tile)
+                                    ? WinningPattern.LittleFourWinds
+                                    : IsLittleThreeDragons(melds, tile)
+                                        ? WinningPattern.LittleThreeDragons
+                                        : tiles.All(static t => t.IsHonor)
+                                            ? WinningPattern.AllHonors
+                                            : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
+                                                ? WinningPattern.AllTerminals
+                                                : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
+                                                    ? WinningPattern.AllTerminalsAndHonors
+                                                    : WinningPattern.Standard;
 
                     hand = new WinningHand(melds, tile, pattern);
                     return true;
@@ -167,6 +171,34 @@ public static class HandAnalyzer
             meld.Tiles.FirstOrDefault() is { Suit: TileSuit.Winds, Wind: Wind.East or Wind.South or Wind.West or Wind.North });
 
         return windTripletCount == 4;
+    }
+
+    private static bool IsLittleThreeDragons(IReadOnlyList<Meld> melds, Tile pair)
+    {
+        if (pair is not { Suit: TileSuit.Dragons, Dragon: Dragon.Red or Dragon.Green or Dragon.White })
+        {
+            return false;
+        }
+
+        var dragonTripletCount = melds.Count(static meld =>
+            (meld.Type is MeldType.Pung or MeldType.Kong) &&
+            meld.Tiles.FirstOrDefault() is { Suit: TileSuit.Dragons, Dragon: Dragon.Red or Dragon.Green or Dragon.White });
+
+        return dragonTripletCount == 2;
+    }
+
+    private static bool IsLittleFourWinds(IReadOnlyList<Meld> melds, Tile pair)
+    {
+        if (pair is not { Suit: TileSuit.Winds, Wind: Wind.East or Wind.South or Wind.West or Wind.North })
+        {
+            return false;
+        }
+
+        var windTripletCount = melds.Count(static meld =>
+            (meld.Type is MeldType.Pung or MeldType.Kong) &&
+            meld.Tiles.FirstOrDefault() is { Suit: TileSuit.Winds, Wind: Wind.East or Wind.South or Wind.West or Wind.North });
+
+        return windTripletCount == 3;
     }
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
