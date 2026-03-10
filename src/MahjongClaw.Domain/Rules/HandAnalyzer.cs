@@ -16,6 +16,11 @@ public static class HandAnalyzer
             return false;
         }
 
+        if (tiles.Any(static tile => tile.IsFlower))
+        {
+            return false;
+        }
+
         var counts = BuildCounts(tiles);
         if (counts.Values.Any(static count => count > 4))
         {
