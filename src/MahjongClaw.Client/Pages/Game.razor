@@ -40,8 +40,8 @@
                     </div>
                 </div>
                 <div class="status-row mt-3">
-                    <span class="badge text-bg-primary">Turn: @PlayerEast.Name</span>
-                    <span class="badge text-bg-secondary">Phase: Discard</span>
+                    <span class="badge text-bg-primary">Turn: @CurrentTurnName</span>
+                    <span class="badge text-bg-secondary">Phase: @CurrentPhase</span>
                     <span class="badge text-bg-light">Round: @RoundWind</span>
                     <span class="badge text-bg-light">Hand: @HandNumber</span>
                     <span class="badge text-bg-light">Draws left: @DrawsRemaining</span>
@@ -78,7 +78,7 @@
                                 <Tile Label="@tile" />
                             }
                         </div>
-                        <div class="mt-3 text-muted small">Current turn: <strong>@PlayerEast.Name</strong></div>
+                        <div class="mt-3 text-muted small">Current turn: <strong>@CurrentTurnName</strong></div>
                     </div>
                 </div>
             </div>
@@ -95,7 +95,7 @@
                     </div>
                     <div class="col-6">
                         <div class="state-label">Dealer</div>
-                        <div class="state-value">@PlayerEast.Name</div>
+                        <div class="state-value">@CurrentDealerName</div>
                     </div>
                     <div class="col-6">
                         <div class="state-label">Hand #</div>
@@ -228,6 +228,9 @@
     private string TableName => GameId is null ? MockState.TableName : $"Game {GameId}";
     private string TableCode => GameId?.ToString()[..8] ?? MockState.TableCode;
     private string GameStatus => _liveState?.Status ?? MockState.GameStatus;
+    private string CurrentPhase => _liveState?.Status ?? "Discard";
+    private string CurrentTurnName => ResolvePlayerName(_liveState?.CurrentPlayerId, fallback: PlayerEast.Name);
+    private string CurrentDealerName => ResolvePlayerName(_liveState?.DealerId, fallback: PlayerEast.Name);
 
     private PlayerView PlayerNorth => GetPlayerView("North", MockState.PlayerNorth);
     private PlayerView PlayerWest => GetPlayerView("West", MockState.PlayerWest);
@@ -383,6 +386,16 @@
         {
             _disposeCts.Dispose();
         }
+    }
+
+    private string ResolvePlayerName(Guid? playerId, string fallback)
+    {
+        if (playerId is null || _liveState?.Players is null)
+        {
+            return fallback;
+        }
+
+        return _liveState.Players.FirstOrDefault(player => player.Id == playerId.Value)?.Name ?? fallback;
     }
 
     private PlayerView GetPlayerView(string seat, PlayerView fallback)
