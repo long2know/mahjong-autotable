@@ -348,13 +348,20 @@
             .WithAutomaticReconnect()
             .Build();
 
-        _hub.On<object>("PlayerJoined", _ => _ = RefreshFromEventAsync("Player joined"));
-        _hub.On<object>("GameStarted", _ => _ = RefreshFromEventAsync("Game started"));
-        _hub.On<object>("TileDrawn", _ => _ = RefreshFromEventAsync("Tile drawn"));
-        _hub.On<object>("TileDiscarded", _ => _ = RefreshFromEventAsync("Tile discarded"));
-        _hub.On<object>("MeldDeclared", _ => _ = RefreshFromEventAsync("Meld declared"));
-        _hub.On<object>("GameWon", _ => _ = RefreshFromEventAsync("Game won"));
-        _hub.On<object>("GameStateUpdated", _ => _ = RefreshFromEventAsync("State updated"));
+        RegisterRefreshHandler("PlayerJoined", "Player joined");
+        RegisterRefreshHandler("GameStarted", "Game started");
+        RegisterRefreshHandler("TileDrawn", "Tile drawn");
+        RegisterRefreshHandler("TileDiscarded", "Tile discarded");
+        RegisterRefreshHandler("MeldDeclared", "Meld declared");
+        RegisterRefreshHandler("GameWon", "Game won");
+        RegisterRefreshHandler("GameStateUpdated", "State updated");
+
+        // Compatibility aliases for server/client naming drift.
+        RegisterRefreshHandler("PlayerJoin", "Player joined");
+        RegisterRefreshHandler("DrawnTile", "Tile drawn");
+        RegisterRefreshHandler("DiscardedTile", "Tile discarded");
+        RegisterRefreshHandler("Meld", "Meld declared");
+        RegisterRefreshHandler("WinDeclared", "Game won");
 
         _hub.Reconnecting += error =>
         {
@@ -383,6 +390,11 @@
         await _hub.SendAsync("JoinGame", gameId.ToString(), _disposeCts.Token);
 
         LiveStatus = $"Connected to live updates for game {gameId}.";
+    }
+
+    private void RegisterRefreshHandler(string hubEventName, string displayName)
+    {
+        _hub?.On<object>(hubEventName, _ => _ = RefreshFromEventAsync(displayName));
     }
 
     private Task RefreshFromEventAsync(string eventName)
