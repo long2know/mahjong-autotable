@@ -268,6 +268,33 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void MeetsMinimumFan_ReturnsFalse_ForSpecialHand_WhenCustomThresholdExceedsSpecialScore()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Characters, 1),
+            WinningPattern.SevenPairs);
+
+        ScoreCalculator.MeetsMinimumFan(hand, 25).Should().BeFalse();
+    }
+
+    [Fact]
+    public void EvaluateMinimumFan_ReturnsExpectedShortfall_ForSpecialHand_WhenCustomThresholdExceedsSpecialScore()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Characters, 1),
+            WinningPattern.SevenPairs);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand, 25);
+
+        evaluation.BasicScore.Should().Be(24);
+        evaluation.MinimumFan.Should().Be(25);
+        evaluation.MeetsMinimumFan.Should().BeFalse();
+        evaluation.FanShortfall.Should().Be(1);
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ThrowsForNegativeThreshold()
     {
         var hand = new WinningHand(
