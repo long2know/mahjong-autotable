@@ -284,4 +284,17 @@ public class ScoreCalculatorTests
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    [Fact]
+    public void EvaluateMinimumFan_ThrowsForNegativeThreshold()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Characters, 1),
+            WinningPattern.SevenPairs);
+
+        var act = () => ScoreCalculator.EvaluateMinimumFan(hand, -1);
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
 }
