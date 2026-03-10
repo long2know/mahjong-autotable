@@ -215,6 +215,7 @@
     private static readonly string[] SeatOrder = ["East", "South", "West", "North"];
 
     private HubConnection? _hub;
+    private readonly CancellationTokenSource _disposeCts = new();
     private GameApiClient.GameStateResponse? _liveState;
     private string? LiveStatus;
 
@@ -288,43 +289,80 @@
             .WithAutomaticReconnect()
             .Build();
 
-        _hub.On<object>("PlayerJoined", _ => _ = RefreshLiveStateAsync());
-        _hub.On<object>("GameStarted", _ => _ = RefreshLiveStateAsync());
-        _hub.On<object>("TileDrawn", _ => _ = RefreshLiveStateAsync());
-        _hub.On<object>("TileDiscarded", _ => _ = RefreshLiveStateAsync());
-        _hub.On<object>("MeldDeclared", _ => _ = RefreshLiveStateAsync());
-        _hub.On<object>("GameWon", _ => _ = RefreshLiveStateAsync());
-        _hub.On<object>("GameStateUpdated", _ => _ = RefreshLiveStateAsync());
+        _hub.On<object>("PlayerJoined", _ => _ = RefreshFromEventAsync("Player joined"));
+        _hub.On<object>("GameStarted", _ => _ = RefreshFromEventAsync("Game started"));
+        _hub.On<object>("TileDrawn", _ => _ = RefreshFromEventAsync("Tile drawn"));
+        _hub.On<object>("TileDiscarded", _ => _ = RefreshFromEventAsync("Tile discarded"));
+        _hub.On<object>("MeldDeclared", _ => _ = RefreshFromEventAsync("Meld declared"));
+        _hub.On<object>("GameWon", _ => _ = RefreshFromEventAsync("Game won"));
+        _hub.On<object>("GameStateUpdated", _ => _ = RefreshFromEventAsync("State updated"));
 
-        await _hub.StartAsync();
-        await _hub.SendAsync("JoinGame", gameId.ToString());
+        _hub.Reconnecting += error =>
+        {
+            LiveStatus = $"Reconnecting to live updates{(error is null ? string.Empty : $": {error.Message}")}";
+            return InvokeAsync(StateHasChanged);
+        };
+
+        _hub.Reconnected += async _ =>
+        {
+            LiveStatus = "Live updates reconnected.";
+            await RefreshLiveStateAsync();
+        };
+
+        _hub.Closed += error =>
+        {
+            if (_disposeCts.IsCancellationRequested)
+            {
+                return Task.CompletedTask;
+            }
+
+            LiveStatus = $"Live updates disconnected{(error is null ? "." : $": {error.Message}")}";
+            return InvokeAsync(StateHasChanged);
+        };
+
+        await _hub.StartAsync(_disposeCts.Token);
+        await _hub.SendAsync("JoinGame", gameId.ToString(), _disposeCts.Token);
 
         LiveStatus = $"Connected to live updates for game {gameId}.";
     }
 
+    private Task RefreshFromEventAsync(string eventName)
+    {
+        LiveStatus = $"Event received: {eventName}. Refreshing live state...";
+        return RefreshLiveStateAsync();
+    }
+
     private async Task RefreshLiveStateAsync()
     {
-        if (GameId is null)
+        if (GameId is null || _disposeCts.IsCancellationRequested)
         {
             return;
         }
 
         try
         {
-            _liveState = await Api.GetGameStateAsync(GameId.Value);
+            _liveState = await Api.GetGameStateAsync(GameId.Value, _disposeCts.Token);
             LiveStatus = $"Live state refreshed at {DateTime.Now:T}. Status: {_liveState.Status}";
             await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) when (_disposeCts.IsCancellationRequested)
+        {
+            // ignore shutdown cancellation
         }
         catch (Exception ex)
         {
             LiveStatus = $"Live refresh failed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
         }
     }
 
     public async ValueTask DisposeAsync()
     {
+        _disposeCts.Cancel();
+
         if (_hub is null)
         {
+            _disposeCts.Dispose();
             return;
         }
 
@@ -340,6 +378,10 @@
         catch
         {
             // ignore shutdown errors in UI teardown
+        }
+        finally
+        {
+            _disposeCts.Dispose();
         }
     }
 
