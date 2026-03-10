@@ -117,11 +117,13 @@ public static class HandAnalyzer
             return false;
         }
 
-        var duplicateTile = counts.Where(kvp => kvp.Value == 2).Select(kvp => kvp.Key).SingleOrDefault();
-        if (duplicateTile is null)
+        var duplicateTiles = counts.Where(kvp => kvp.Value == 2).Select(kvp => kvp.Key).ToList();
+        if (duplicateTiles.Count != 1)
         {
             return false;
         }
+
+        var duplicateTile = duplicateTiles[0];
 
         if (counts.Any(kvp => kvp.Value > 2))
         {
