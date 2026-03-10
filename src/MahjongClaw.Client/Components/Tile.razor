@@ -1,11 +1,15 @@
-﻿<div class="tile @TileClass">
+﻿<div class="tile @TileClass" title="@Label">
     @if (IsFaceDown)
     {
         <span class="tile-back" aria-hidden="true">🀫</span>
     }
     else
     {
-        <span class="tile-label">@Label</span>
+        <span class="tile-glyph">@DisplayGlyph</span>
+        @if (!string.IsNullOrWhiteSpace(DisplayCaption))
+        {
+            <span class="tile-caption">@DisplayCaption</span>
+        }
     }
 </div>
 
@@ -15,6 +19,31 @@
     [Parameter] public bool IsHighlighted { get; set; }
     [Parameter] public string? ExtraClass { get; set; }
 
+    private string DisplayGlyph
+    {
+        get
+        {
+            var trimmed = (Label ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                return "🀫";
+            }
+
+            var firstSpace = trimmed.IndexOf(' ');
+            return firstSpace > 0 ? trimmed[..firstSpace] : trimmed;
+        }
+    }
+
+    private string? DisplayCaption
+    {
+        get
+        {
+            var trimmed = (Label ?? string.Empty).Trim();
+            var firstSpace = trimmed.IndexOf(' ');
+            return firstSpace > 0 && firstSpace + 1 < trimmed.Length ? trimmed[(firstSpace + 1)..] : null;
+        }
+    }
+
     private string TileClass
     {
         get
@@ -22,6 +51,11 @@
             var classes = new List<string> { "tile-shell" };
 
             classes.Add(IsFaceDown ? "tile-facedown" : "tile-faceup");
+
+            if (!IsFaceDown)
+            {
+                classes.Add(GetThemeClass());
+            }
 
             if (IsHighlighted)
             {
@@ -35,5 +69,37 @@
 
             return string.Join(" ", classes);
         }
+    }
+
+    private string GetThemeClass()
+    {
+        var text = $"{DisplayGlyph} {DisplayCaption}".ToLowerInvariant();
+
+        if (text.Contains("bamboo"))
+        {
+            return "tile-theme-bamboo";
+        }
+
+        if (text.Contains("dot"))
+        {
+            return "tile-theme-dot";
+        }
+
+        if (text.Contains("character"))
+        {
+            return "tile-theme-character";
+        }
+
+        if (text.Contains("east") || text.Contains("south") || text.Contains("west") || text.Contains("north"))
+        {
+            return "tile-theme-wind";
+        }
+
+        if (text.Contains("dragon") || text.Contains("🀄") || text.Contains("🀅") || text.Contains("🀆"))
+        {
+            return "tile-theme-dragon";
+        }
+
+        return "tile-theme-generic";
     }
 }

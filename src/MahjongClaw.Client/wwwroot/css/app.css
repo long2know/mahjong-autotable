@@ -336,37 +336,77 @@ code {
 
 .tile-shell {
     display: inline-flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 2.6rem;
-    min-width: 2.1rem;
-    padding: 0 0.35rem;
+    height: 3rem;
+    min-width: 2.25rem;
+    padding: 0.15rem 0.35rem;
     border-radius: 0.5rem;
-    border: 1px solid #d0d7de;
-    background: #fff;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #222;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    border: 1px solid #cfc7b1;
+    background: linear-gradient(180deg, #fffefa 0%, #f8f1e2 58%, #efe3cb 100%);
+    color: #1f1f1f;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.tile-shell:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .tile-facedown {
-    background: #2c3e50;
+    background: linear-gradient(180deg, #34495e 0%, #243447 100%);
+    border-color: #243447;
     color: #fff;
 }
 
 .tile-highlight {
     border-color: #0d6efd;
-    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2), 0 2px 5px rgba(13, 110, 253, 0.25);
 }
 
 .tile-faceup {
     border-color: #c7b28a;
-    background: linear-gradient(180deg, #fffdf6 0%, #f6eddc 58%, #efe3ca 100%);
 }
 
-.tile-label {
+.tile-glyph {
+    font-size: 1rem;
+    line-height: 1;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.tile-caption {
+    font-size: 0.55rem;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    opacity: 0.82;
+}
+
+.tile-theme-bamboo .tile-glyph {
+    color: #1f7f3c;
+}
+
+.tile-theme-dot .tile-glyph {
+    color: #1f5aa6;
+}
+
+.tile-theme-character .tile-glyph {
+    color: #b7432f;
+}
+
+.tile-theme-wind .tile-glyph {
+    color: #2f2f2f;
+}
+
+.tile-theme-dragon .tile-glyph {
+    color: #8b1f7a;
+}
+
+.tile-theme-generic .tile-glyph {
+    color: #3f4852;
 }
 
 .discard-lane {

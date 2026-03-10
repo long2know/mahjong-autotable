@@ -41,6 +41,22 @@ public sealed class GameApiClient
         return response ?? throw new InvalidOperationException("Game state response was empty.");
     }
 
+    public async Task<DrawTileResponse> DrawTileAsync(Guid gameId, DrawTileRequest request, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"/api/game/{gameId}/draw", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DrawTileResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Draw tile response was empty.");
+    }
+
+    public async Task<WinResponse> DeclareWinAsync(Guid gameId, WinRequest request, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"/api/game/{gameId}/win", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<WinResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Win response was empty.");
+    }
+
     public record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt);
     public record JoinGameRequest(string Name, string Seat);
     public record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);
@@ -57,4 +73,9 @@ public sealed class GameApiClient
         int TilesInPlay,
         int MeldCount,
         int DiscardCount);
+
+    public record DrawTileRequest(Guid PlayerId);
+    public record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);
+    public record WinRequest(Guid PlayerId);
+    public record WinResponse(Guid GameId, string Status, Guid PlayerId);
 }
