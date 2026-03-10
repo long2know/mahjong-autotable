@@ -39,10 +39,12 @@ public static class HandAnalyzer
                 {
                     var pattern = IsAllGreen(tiles)
                         ? WinningPattern.AllGreen
-                        : IsBigThreeDragons(melds)
-                            ? WinningPattern.BigThreeDragons
-                            : tiles.All(static t => t.IsHonor)
-                                ? WinningPattern.AllHonors
+                        : IsBigFourWinds(melds)
+                            ? WinningPattern.BigFourWinds
+                            : IsBigThreeDragons(melds)
+                                ? WinningPattern.BigThreeDragons
+                                : tiles.All(static t => t.IsHonor)
+                                    ? WinningPattern.AllHonors
                                 : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
                                     ? WinningPattern.AllTerminals
                                     : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
@@ -156,6 +158,15 @@ public static class HandAnalyzer
             dragonTile.Dragon is Dragon.Red or Dragon.Green or Dragon.White);
 
         return dragonTripletCount == 3;
+    }
+
+    private static bool IsBigFourWinds(IReadOnlyList<Meld> melds)
+    {
+        var windTripletCount = melds.Count(static meld =>
+            (meld.Type is MeldType.Pung or MeldType.Kong) &&
+            meld.Tiles.FirstOrDefault() is { Suit: TileSuit.Winds, Wind: Wind.East or Wind.South or Wind.West or Wind.North });
+
+        return windTripletCount == 4;
     }
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
