@@ -11,7 +11,8 @@ public enum WinningPattern
     ThirteenOrphans,
     AllHonors,
     AllTerminals,
-    AllTerminalsAndHonors
+    AllTerminalsAndHonors,
+    AllGreen
 }
 
 public sealed record WinningHand(IReadOnlyList<Meld> Melds, Tile Pair, WinningPattern Pattern = WinningPattern.Standard)
@@ -23,6 +24,7 @@ public sealed record WinningHand(IReadOnlyList<Meld> Melds, Tile Pair, WinningPa
         WinningPattern.AllHonors => 64,
         WinningPattern.AllTerminals => 64,
         WinningPattern.AllTerminalsAndHonors => 64,
+        WinningPattern.AllGreen => 88,
         _ => Melds.Sum(meld => meld.Type switch
         {
             MeldType.Pung => 2,

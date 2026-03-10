@@ -37,13 +37,15 @@ public static class HandAnalyzer
 
                 if (TryFormMelds(counts, melds))
                 {
-                    var pattern = tiles.All(static t => t.IsHonor)
-                        ? WinningPattern.AllHonors
-                        : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
-                            ? WinningPattern.AllTerminals
-                            : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
-                                ? WinningPattern.AllTerminalsAndHonors
-                                : WinningPattern.Standard;
+                    var pattern = IsAllGreen(tiles)
+                        ? WinningPattern.AllGreen
+                        : tiles.All(static t => t.IsHonor)
+                            ? WinningPattern.AllHonors
+                            : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
+                                ? WinningPattern.AllTerminals
+                                : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
+                                    ? WinningPattern.AllTerminalsAndHonors
+                                    : WinningPattern.Standard;
 
                     hand = new WinningHand(melds, tile, pattern);
                     return true;
@@ -134,6 +136,15 @@ public static class HandAnalyzer
             new(TileSuit.Dragons, 0, null, Dragon.Green),
             new(TileSuit.Dragons, 0, null, Dragon.White)
         };
+
+    private static bool IsAllGreen(IReadOnlyList<Tile> tiles)
+        => tiles.All(static tile =>
+            tile switch
+            {
+                { Suit: TileSuit.Dragons, Dragon: Dragon.Green } => true,
+                { Suit: TileSuit.Bamboos, Rank: 2 or 3 or 4 or 6 or 8 } => true,
+                _ => false
+            });
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
     {
