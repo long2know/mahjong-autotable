@@ -5,10 +5,15 @@ public static class ScoreCalculator
     public const int ChineseOfficialMinimumFan = 8;
 
     public static int CalculateBasicScore(WinningHand hand)
-        => hand.BasicScore;
+    {
+        ArgumentNullException.ThrowIfNull(hand);
+        return hand.BasicScore;
+    }
 
     public static FanEvaluation EvaluateMinimumFan(WinningHand hand, int minimumFan = ChineseOfficialMinimumFan)
     {
+        ArgumentNullException.ThrowIfNull(hand);
+
         if (minimumFan < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(minimumFan), "Minimum fan cannot be negative.");

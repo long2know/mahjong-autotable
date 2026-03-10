@@ -295,6 +295,30 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_ThrowsForNullHand()
+    {
+        var act = () => ScoreCalculator.CalculateBasicScore(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void EvaluateMinimumFan_ThrowsForNullHand()
+    {
+        var act = () => ScoreCalculator.EvaluateMinimumFan(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void MeetsMinimumFan_ThrowsForNullHand()
+    {
+        var act = () => ScoreCalculator.MeetsMinimumFan(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ThrowsForNegativeThreshold()
     {
         var hand = new WinningHand(
