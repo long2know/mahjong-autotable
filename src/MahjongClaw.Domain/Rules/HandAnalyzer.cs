@@ -39,13 +39,15 @@ public static class HandAnalyzer
                 {
                     var pattern = IsAllGreen(tiles)
                         ? WinningPattern.AllGreen
-                        : tiles.All(static t => t.IsHonor)
-                            ? WinningPattern.AllHonors
-                            : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
-                                ? WinningPattern.AllTerminals
-                                : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
-                                    ? WinningPattern.AllTerminalsAndHonors
-                                    : WinningPattern.Standard;
+                        : IsBigThreeDragons(melds)
+                            ? WinningPattern.BigThreeDragons
+                            : tiles.All(static t => t.IsHonor)
+                                ? WinningPattern.AllHonors
+                                : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
+                                    ? WinningPattern.AllTerminals
+                                    : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
+                                        ? WinningPattern.AllTerminalsAndHonors
+                                        : WinningPattern.Standard;
 
                     hand = new WinningHand(melds, tile, pattern);
                     return true;
@@ -145,6 +147,16 @@ public static class HandAnalyzer
                 { Suit: TileSuit.Bamboos, Rank: 2 or 3 or 4 or 6 or 8 } => true,
                 _ => false
             });
+
+    private static bool IsBigThreeDragons(IReadOnlyList<Meld> melds)
+    {
+        var dragonTripletCount = melds.Count(static meld =>
+            (meld.Type is MeldType.Pung or MeldType.Kong) &&
+            meld.Tiles.FirstOrDefault() is { Suit: TileSuit.Dragons } dragonTile &&
+            dragonTile.Dragon is Dragon.Red or Dragon.Green or Dragon.White);
+
+        return dragonTripletCount == 3;
+    }
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
     {
