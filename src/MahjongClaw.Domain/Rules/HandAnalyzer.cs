@@ -37,7 +37,7 @@ public static class HandAnalyzer
             return true;
         }
 
-        foreach (var tile in counts.Keys.ToList())
+        foreach (var tile in GetOrderedTiles(counts))
         {
             if (counts[tile] >= 2)
             {
@@ -96,7 +96,7 @@ public static class HandAnalyzer
             return false;
         }
 
-        var pairTile = counts.First(kvp => kvp.Value >= 2).Key;
+        var pairTile = GetOrderedTiles(counts).First(tile => counts[tile] >= 2);
         var pattern = DetermineTileOnlyPattern(tiles) ?? WinningPattern.SevenPairs;
         hand = new WinningHand(Array.Empty<Meld>(), pairTile, pattern);
         return true;
@@ -302,6 +302,12 @@ public static class HandAnalyzer
             },
             _ => tile.Rank
         };
+
+    private static List<Tile> GetOrderedTiles(Dictionary<Tile, int> counts)
+        => counts.Keys
+            .OrderBy(GetTileSortBucket)
+            .ThenBy(GetTileSortValue)
+            .ToList();
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
     {

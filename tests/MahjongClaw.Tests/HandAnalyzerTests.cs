@@ -96,4 +96,29 @@ public class HandAnalyzerTests
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
         hand.Should().BeNull();
     }
+
+    [Fact]
+    public void TryGetWinningHand_SelectsDeterministicPairForSevenPairsAcrossInputOrders()
+    {
+        var tilesA = new List<Tile>
+        {
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1)
+        };
+
+        var tilesB = tilesA.AsEnumerable().Reverse().ToList();
+
+        HandAnalyzer.TryGetWinningHand(tilesA, out var handA).Should().BeTrue();
+        HandAnalyzer.TryGetWinningHand(tilesB, out var handB).Should().BeTrue();
+
+        handA!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        handB!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        handA.Pair.Should().Be(new Tile(TileSuit.Characters, 4));
+        handB.Pair.Should().Be(new Tile(TileSuit.Characters, 4));
+    }
 }
