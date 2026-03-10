@@ -56,7 +56,8 @@ public static class HandAnalyzer
                                     ? WinningPattern.LittleFourWinds
                                     : IsLittleThreeDragons(melds, tile)
                                         ? WinningPattern.LittleThreeDragons
-                                        : DetermineTileOnlyPattern(tiles) ?? WinningPattern.Standard;
+                                        : DetermineTileOnlyPattern(tiles)
+                                            ?? (IsAllPungs(melds) ? WinningPattern.AllPungs : WinningPattern.Standard);
 
                     hand = new WinningHand(melds, tile, pattern);
                     return true;
@@ -263,6 +264,9 @@ public static class HandAnalyzer
 
         return windTripletCount == 3;
     }
+
+    private static bool IsAllPungs(IReadOnlyList<Meld> melds)
+        => melds.Count > 0 && melds.All(static meld => meld.Type is MeldType.Pung or MeldType.Kong);
 
     private static int GetTileSortBucket(Tile tile)
         => tile.Suit switch

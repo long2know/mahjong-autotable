@@ -204,6 +204,17 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void MeetsMinimumFan_ReturnsFalse_ForAllPungsWithoutAdditionalFan()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        ScoreCalculator.MeetsMinimumFan(hand).Should().BeFalse();
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ThrowsForNegativeThreshold()
     {
         var hand = new WinningHand(
