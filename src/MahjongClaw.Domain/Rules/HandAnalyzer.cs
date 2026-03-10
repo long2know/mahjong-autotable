@@ -17,6 +17,10 @@ public static class HandAnalyzer
         }
 
         var counts = BuildCounts(tiles);
+        if (counts.Values.Any(static count => count > 4))
+        {
+            return false;
+        }
 
         if (TryBuildSevenPairs(counts, out hand))
         {
