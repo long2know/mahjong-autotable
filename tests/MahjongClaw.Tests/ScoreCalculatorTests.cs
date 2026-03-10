@@ -116,6 +116,17 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void MeetsMinimumFan_ReturnsTrue_ForAllTerminalsSpecialHand()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Characters, 1),
+            WinningPattern.AllTerminals);
+
+        ScoreCalculator.MeetsMinimumFan(hand).Should().BeTrue();
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ReturnsTrue_ForAllTerminalsAndHonorsSpecialHand()
     {
         var hand = new WinningHand(

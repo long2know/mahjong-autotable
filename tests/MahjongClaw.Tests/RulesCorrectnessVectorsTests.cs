@@ -99,6 +99,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsAllTerminals_AsWinningPattern()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair of terminals
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            // Melds using only terminal suited tiles
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsAllTerminalsAndHonors_AsWinningPattern()
     {
         var tiles = new List<Tile>

@@ -39,9 +39,11 @@ public static class HandAnalyzer
                 {
                     var pattern = tiles.All(static t => t.IsHonor)
                         ? WinningPattern.AllHonors
-                        : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
-                            ? WinningPattern.AllTerminalsAndHonors
-                            : WinningPattern.Standard;
+                        : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
+                            ? WinningPattern.AllTerminals
+                            : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
+                                ? WinningPattern.AllTerminalsAndHonors
+                                : WinningPattern.Standard;
 
                     hand = new WinningHand(melds, tile, pattern);
                     return true;
