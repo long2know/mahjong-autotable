@@ -264,14 +264,14 @@
         GameId is not null &&
         PlayerId is not null &&
         _liveState is not null &&
-        string.Equals(_liveState.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
+        IsLiveGameActive(_liveState.Status) &&
         _liveState.CurrentPlayerId == PlayerId;
 
     private bool CanDeclareWin =>
         GameId is not null &&
         PlayerId is not null &&
         _liveState is not null &&
-        string.Equals(_liveState.Status, "Active", StringComparison.OrdinalIgnoreCase);
+        IsLiveGameActive(_liveState.Status);
 
     private int WallTotal => MockState.WallTotal;
     private int WallRemaining => _liveState is null ? MockState.WallRemaining : Math.Max(0, WallTotal - _liveState.TilesInPlay);
@@ -281,12 +281,12 @@
     private int HandNumber => _liveState?.Round ?? MockState.HandNumber;
     private string TableName => GameId is null ? MockState.TableName : $"Game {GameId}";
     private string TableCode => GameId?.ToString()[..8] ?? MockState.TableCode;
-    private string GameStatus => _liveState?.Status ?? MockState.GameStatus;
-    private string CurrentPhase => _liveState?.Status ?? "Discard";
+    private string GameStatus => NormalizeGameStatus(_liveState?.Status) ?? MockState.GameStatus;
+    private string CurrentPhase => _liveState is null ? "Discard" : NormalizeGameStatus(_liveState.Status);
     private string CurrentTurnName => ResolvePlayerName(_liveState?.CurrentPlayerId, fallback: PlayerEast.Name);
     private string CurrentTurnSeat => ResolveSeat(_liveState?.CurrentPlayerId, fallback: "East");
     private string CurrentDealerName => ResolvePlayerName(_liveState?.DealerId, fallback: PlayerEast.Name);
-    private string CurrentDealerSeat => ResolveSeat(_liveState?.DealerId, fallback: "North");
+    private string CurrentDealerSeat => ResolveSeat(_liveState?.DealerId, fallback: "East");
 
     private PlayerView PlayerNorth => GetPlayerView("North", MockState.PlayerNorth);
     private PlayerView PlayerWest => GetPlayerView("West", MockState.PlayerWest);
@@ -552,12 +552,37 @@
         _ => "North"
     };
 
+    private static bool IsLiveGameActive(string? status) =>
+        string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "In Progress", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeGameStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return "Unknown";
+        }
+
+        if (string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase))
+        {
+            return "In Progress";
+        }
+
+        if (string.Equals(status, "Completed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Complete";
+        }
+
+        return status;
+    }
+
     private static string GetStatusBadge(string status) => status switch
     {
         "Waiting" => "text-bg-info",
         "In Progress" => "text-bg-success",
         "Paused" => "text-bg-warning",
         "Complete" => "text-bg-secondary",
+        "Unknown" => "text-bg-dark",
         _ => "text-bg-primary"
     };
 
