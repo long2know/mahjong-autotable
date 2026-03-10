@@ -132,11 +132,77 @@ code {
 
 .center-area {
     grid-column: 1 / -1;
-    background: #ffffff;
-    border: 1px dashed #d7d7d7;
+    background: radial-gradient(circle at center, #1f6d43 0%, #155233 72%, #114228 100%);
+    border: 1px solid #2f7b52;
     border-radius: 1rem;
     padding: 1rem;
     text-align: center;
+    color: #f8f9fa;
+}
+
+.physical-wall {
+    position: relative;
+    height: 220px;
+    border-radius: 0.8rem;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(0, 0, 0, 0.08);
+    margin-bottom: 0.75rem;
+}
+
+.wall-side {
+    position: absolute;
+    display: flex;
+    gap: 0.2rem;
+}
+
+.wall-top,
+.wall-bottom {
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.wall-top {
+    top: 0.6rem;
+}
+
+.wall-bottom {
+    bottom: 0.6rem;
+}
+
+.wall-left,
+.wall-right {
+    top: 50%;
+    transform: translateY(-50%);
+    flex-direction: column;
+}
+
+.wall-left {
+    left: 0.6rem;
+}
+
+.wall-right {
+    right: 0.6rem;
+}
+
+.wall-stack {
+    width: 0.9rem;
+    height: 0.52rem;
+    border-radius: 0.2rem;
+    background: linear-gradient(180deg, #f7f7f7 0%, #dde3ea 100%);
+    border: 1px solid #c4ccd6;
+    box-shadow: 0 0.25rem 0 0 #c5ced8;
+}
+
+.wall-left .wall-stack,
+.wall-right .wall-stack {
+    width: 0.52rem;
+    height: 0.9rem;
+    box-shadow: 0.25rem 0 0 0 #c5ced8;
+}
+
+.wall-stack-break {
+    border-color: #f59f00;
+    background: linear-gradient(180deg, #fff4cc 0%, #ffd66b 100%);
 }
 
 .tile-row {

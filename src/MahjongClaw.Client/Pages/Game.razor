@@ -71,8 +71,34 @@
                         @RenderSeat(PlayerSouth)
                     </div>
                     <div class="center-area">
-                        <h6 class="text-uppercase text-muted">Discards</h6>
-                        <div class="tile-row tile-row-wrap">
+                        <div class="physical-wall" aria-label="Mahjong wall preview">
+                            <div class="wall-side wall-top">
+                                @foreach (var stack in BuildWallSide("North"))
+                                {
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty)"></div>
+                                }
+                            </div>
+                            <div class="wall-side wall-right">
+                                @foreach (var stack in BuildWallSide("East"))
+                                {
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty)"></div>
+                                }
+                            </div>
+                            <div class="wall-side wall-bottom">
+                                @foreach (var stack in BuildWallSide("South"))
+                                {
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty)"></div>
+                                }
+                            </div>
+                            <div class="wall-side wall-left">
+                                @foreach (var stack in BuildWallSide("West"))
+                                {
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty)"></div>
+                                }
+                            </div>
+                        </div>
+                        <h6 class="text-uppercase text-muted mt-3">Discards</h6>
+                        <div class="tile-row tile-row-wrap justify-content-center">
                             @foreach (var tile in CenterDiscards)
                             {
                                 <Tile Label="@tile" />
@@ -438,6 +464,26 @@
         _ => "text-bg-primary"
     };
 
+    private const int WallStacksPerSide = 17;
+
+    private IEnumerable<WallStackView> BuildWallSide(string side)
+    {
+        var breakSide = (HandNumber % 4) switch
+        {
+            0 => "East",
+            1 => "South",
+            2 => "West",
+            _ => "North"
+        };
+
+        var breakIndex = Math.Clamp((HandNumber * 2) % WallStacksPerSide, 0, WallStacksPerSide - 1);
+
+        for (var i = 0; i < WallStacksPerSide; i++)
+        {
+            yield return new WallStackView(i, side == breakSide && i == breakIndex);
+        }
+    }
+
     private IEnumerable<string> BuildHiddenHand(int count)
     {
         for (var i = 0; i < count; i++)
@@ -479,6 +525,8 @@
     </div>;
 
     private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
+
+    private record WallStackView(int Index, bool IsBreakMarker);
 
     private record MockGameState
     {
