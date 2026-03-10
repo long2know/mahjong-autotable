@@ -108,10 +108,10 @@
                             </div>
                         </div>
                         <h6 class="text-uppercase text-muted mt-3">Discards</h6>
-                        <div class="tile-row tile-row-wrap justify-content-center">
+                        <div class="discard-lane" aria-label="Center discard lane">
                             @foreach (var tile in CenterDiscards)
                             {
-                                <Tile Label="@tile" />
+                                <Tile Label="@tile" ExtraClass="tile-discard" />
                             }
                         </div>
                         <div class="mt-3 text-muted small">Current turn: <strong>@CurrentTurnName</strong></div>
