@@ -304,6 +304,26 @@ code {
     border-style: dashed;
 }
 
+.wall-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.wall-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.wall-legend .wall-stack {
+    transform: scale(0.85);
+}
+
 .tile-row {
     display: flex;
     flex-wrap: nowrap;

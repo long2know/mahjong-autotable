@@ -85,27 +85,32 @@
                             <div class="wall-side wall-top">
                                 @foreach (var stack in BuildWallSide("North"))
                                 {
-                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)"></div>
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("North", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-right">
                                 @foreach (var stack in BuildWallSide("East"))
                                 {
-                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)"></div>
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("East", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-bottom">
                                 @foreach (var stack in BuildWallSide("South"))
                                 {
-                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)"></div>
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("South", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-left">
                                 @foreach (var stack in BuildWallSide("West"))
                                 {
-                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)"></div>
+                                    <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("West", stack)"></div>
                                 }
                             </div>
+                        </div>
+                        <div class="wall-legend" aria-label="Wall legend">
+                            <span><span class="wall-stack wall-stack-break"></span> break marker</span>
+                            <span><span class="wall-stack wall-stack-depleted"></span> consumed stack</span>
+                            <span><strong>@WallRemaining</strong> tiles remain</span>
                         </div>
                         <h6 class="text-uppercase text-muted mt-3">Discards</h6>
                         <div class="discard-lane" aria-label="Center discard lane">
@@ -531,6 +536,21 @@
             var globalIndex = sideOffset + i;
             yield return new WallStackView(i, side == breakSide && i == breakIndex, globalIndex >= stacksRemaining);
         }
+    }
+
+    private string BuildWallStackTitle(string side, WallStackView stack)
+    {
+        if (stack.IsBreakMarker)
+        {
+            return $"{side} wall break marker";
+        }
+
+        if (stack.IsDepleted)
+        {
+            return $"{side} wall consumed stack {stack.Index + 1}";
+        }
+
+        return $"{side} wall stack {stack.Index + 1}";
     }
 
     private IEnumerable<string> BuildHiddenHand(int count)
