@@ -19,12 +19,31 @@
                     <input class="form-control" @bind="HostName" placeholder="Enter your name" />
                 </div>
 
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-md-7">
+                        <label class="form-label">Game mode</label>
+                        <select class="form-select" @bind="CreateMode">
+                            <option value="HumanVsHuman">Human vs Human</option>
+                            <option value="HumanVsBot">Human vs Bot</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-5">
+                        <label class="form-label">Bot seats</label>
+                        <select class="form-select" @bind="BotSeatCount" disabled="@(CreateMode != "HumanVsBot")">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                        </select>
+                    </div>
+                </div>
+
                 <button class="btn btn-primary" @onclick="CreateGameAsync" disabled="@IsBusy">Create</button>
 
                 @if (CreatedGameId is not null)
                 {
                     <div class="alert alert-success mt-3 mb-0">
                         <div><strong>Game created:</strong> @CreatedGameId</div>
+                        <div class="small">Mode: @FormatCreateMode() @FormatBotSeatSummary()</div>
                         <div class="small">Share this ID with other players.</div>
                     </div>
                 }
@@ -145,6 +164,8 @@
     private string JoinGameId { get; set; } = string.Empty;
     private string JoinName { get; set; } = string.Empty;
     private string JoinSeat { get; set; } = "South";
+    private string CreateMode { get; set; } = "HumanVsHuman";
+    private int BotSeatCount { get; set; } = 1;
 
     private Guid? CreatedGameId { get; set; }
     private Guid? LastJoinedPlayerId { get; set; }
@@ -172,7 +193,7 @@
             var created = await Api.CreateGameAsync();
             CreatedGameId = created.Id;
             JoinGameId = created.Id.ToString();
-            Status = $"Game created: {created.Id}";
+            Status = $"Game created: {created.Id} ({FormatCreateMode()}{FormatBotSeatSummary()}).";
         });
     }
 
@@ -219,6 +240,12 @@
             return Task.CompletedTask;
         }
     }
+
+    private string FormatCreateMode()
+        => CreateMode == "HumanVsBot" ? "Human vs Bot" : "Human vs Human";
+
+    private string FormatBotSeatSummary()
+        => CreateMode == "HumanVsBot" ? $" ({BotSeatCount} bot seat{(BotSeatCount == 1 ? string.Empty : "s")})" : string.Empty;
 
     private Guid ParseGameIdOrThrow()
     {
