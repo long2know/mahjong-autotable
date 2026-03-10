@@ -348,4 +348,31 @@ public class ScoreCalculatorTests
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    [Fact]
+    public void MeetsMinimumFan_ReturnsTrue_ForZeroThreshold()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        ScoreCalculator.MeetsMinimumFan(hand, 0).Should().BeTrue();
+    }
+
+    [Fact]
+    public void EvaluateMinimumFan_ReturnsZeroShortfall_ForZeroThreshold_WhenHandWouldOtherwiseFailDefault()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand, 0);
+
+        evaluation.BasicScore.Should().Be(6);
+        evaluation.MinimumFan.Should().Be(0);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
 }
