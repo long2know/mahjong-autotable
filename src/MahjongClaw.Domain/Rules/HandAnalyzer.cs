@@ -11,7 +11,8 @@ public static class HandAnalyzer
     {
         hand = null;
 
-        if (tiles.Count % 3 != 2)
+        // A complete winning hand should always contain exactly 14 tiles.
+        if (tiles.Count != 14)
         {
             return false;
         }
