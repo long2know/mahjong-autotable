@@ -1,4 +1,5 @@
 ﻿@page "/game"
+@using System.Linq
 @using MahjongClaw.Client.Services
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.SignalR.Client
@@ -211,30 +212,60 @@
     [SupplyParameterFromQuery] public Guid? PlayerId { get; set; }
 
     private static readonly MockGameState MockState = new();
+    private static readonly string[] SeatOrder = ["East", "South", "West", "North"];
+
     private HubConnection? _hub;
     private GameApiClient.GameStateResponse? _liveState;
     private string? LiveStatus;
 
-    private int WallRemaining => MockState.WallRemaining;
     private int WallTotal => MockState.WallTotal;
+    private int WallRemaining => _liveState is null ? MockState.WallRemaining : Math.Max(0, WallTotal - _liveState.TilesInPlay);
     private string WallPercent => ((WallRemaining / (double)WallTotal) * 100).ToString("0");
-    private int DrawsRemaining => MockState.DrawsRemaining;
-    private string RoundWind => MockState.RoundWind;
-    private int HandNumber => MockState.HandNumber;
+    private int DrawsRemaining => _liveState is null ? MockState.DrawsRemaining : Math.Max(0, WallRemaining / 4);
+    private string RoundWind => _liveState is null ? MockState.RoundWind : GetRoundWind(_liveState.Round);
+    private int HandNumber => _liveState?.Round ?? MockState.HandNumber;
     private string TableName => GameId is null ? MockState.TableName : $"Game {GameId}";
     private string TableCode => GameId?.ToString()[..8] ?? MockState.TableCode;
     private string GameStatus => _liveState?.Status ?? MockState.GameStatus;
 
-    private PlayerView PlayerNorth => MockState.PlayerNorth;
-    private PlayerView PlayerWest => MockState.PlayerWest;
-    private PlayerView PlayerEast => MockState.PlayerEast;
-    private PlayerView PlayerSouth => MockState.PlayerSouth;
+    private PlayerView PlayerNorth => GetPlayerView("North", MockState.PlayerNorth);
+    private PlayerView PlayerWest => GetPlayerView("West", MockState.PlayerWest);
+    private PlayerView PlayerEast => GetPlayerView("East", MockState.PlayerEast);
+    private PlayerView PlayerSouth => GetPlayerView("South", MockState.PlayerSouth);
 
     private IReadOnlyList<string> CenterDiscards => MockState.CenterDiscards;
-    private IReadOnlyList<(string Name, int Score)> Scoreboard => MockState.Scoreboard;
-    private IReadOnlyList<(string Timestamp, string Description)> RecentActions => MockState.RecentActions;
-    private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds => MockState.Melds;
-    private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats => MockState.Seats;
+    private IReadOnlyList<(string Name, int Score)> Scoreboard =>
+        _liveState?.Players?.Select(p => (p.Name, p.Score)).ToList() ?? MockState.Scoreboard;
+    private IReadOnlyList<(string Timestamp, string Description)> RecentActions =>
+        _liveState is null
+            ? MockState.RecentActions
+            :
+            [
+                ($"{DateTime.Now:t}", $"Status: {_liveState.Status}"),
+                ($"{DateTime.Now:t}", $"Players: {_liveState.Players.Count}"),
+                ($"{DateTime.Now:t}", $"Discards: {_liveState.DiscardCount}")
+            ];
+    private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds =>
+        _liveState is null
+            ? MockState.Melds
+            :
+            [
+                ("Table", $"Meld count: {_liveState.MeldCount}", new List<string>()),
+                ("Table", $"Tiles in play: {_liveState.TilesInPlay}", new List<string>())
+            ];
+    private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats =>
+        _liveState?.Players is null
+            ? MockState.Seats
+            : SeatOrder.Select(seat =>
+            {
+                var player = _liveState.Players.FirstOrDefault(p => string.Equals(p.Seat, seat, StringComparison.OrdinalIgnoreCase));
+                return (
+                    Wind: seat,
+                    Player: player?.Name ?? "Open",
+                    Score: player?.Score ?? 0,
+                    IsDealer: player is not null && _liveState.DealerId == player.Id
+                );
+            }).ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -311,6 +342,37 @@
             // ignore shutdown errors in UI teardown
         }
     }
+
+    private PlayerView GetPlayerView(string seat, PlayerView fallback)
+    {
+        if (_liveState?.Players is null)
+        {
+            return fallback;
+        }
+
+        var player = _liveState.Players.FirstOrDefault(p => string.Equals(p.Seat, seat, StringComparison.OrdinalIgnoreCase));
+        if (player is null)
+        {
+            return fallback with { Name = "Open", Score = 0, IsDealer = false, IsCurrent = false, HandCount = 0 };
+        }
+
+        return fallback with
+        {
+            Name = player.Name,
+            Seat = player.Seat,
+            Score = player.Score,
+            IsDealer = _liveState.DealerId == player.Id,
+            IsCurrent = _liveState.CurrentPlayerId == player.Id
+        };
+    }
+
+    private static string GetRoundWind(int round) => round switch
+    {
+        <= 4 => "East",
+        <= 8 => "South",
+        <= 12 => "West",
+        _ => "North"
+    };
 
     private static string GetStatusBadge(string status) => status switch
     {
