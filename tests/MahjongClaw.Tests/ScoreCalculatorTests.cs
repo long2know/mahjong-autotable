@@ -193,6 +193,17 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void MeetsMinimumFan_ReturnsTrue_ForNineGatesSpecialHand()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 5),
+            WinningPattern.NineGates);
+
+        ScoreCalculator.MeetsMinimumFan(hand).Should().BeTrue();
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ThrowsForNegativeThreshold()
     {
         var hand = new WinningHand(

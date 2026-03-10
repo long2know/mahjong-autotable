@@ -39,8 +39,10 @@ public static class HandAnalyzer
                 {
                     var pattern = IsAllGreen(tiles)
                         ? WinningPattern.AllGreen
-                        : IsBigFourWinds(melds)
-                            ? WinningPattern.BigFourWinds
+                        : IsNineGates(tiles)
+                            ? WinningPattern.NineGates
+                            : IsBigFourWinds(melds)
+                                ? WinningPattern.BigFourWinds
                             : IsBigThreeDragons(melds)
                                 ? WinningPattern.BigThreeDragons
                                 : IsLittleFourWinds(melds, tile)
@@ -153,6 +155,40 @@ public static class HandAnalyzer
                 { Suit: TileSuit.Bamboos, Rank: 2 or 3 or 4 or 6 or 8 } => true,
                 _ => false
             });
+
+    private static bool IsNineGates(IReadOnlyList<Tile> tiles)
+    {
+        if (tiles.Any(static tile => tile.IsHonor || tile.IsFlower))
+        {
+            return false;
+        }
+
+        var suit = tiles[0].Suit;
+        if (tiles.Any(tile => tile.Suit != suit))
+        {
+            return false;
+        }
+
+        var rankCounts = tiles
+            .GroupBy(static tile => tile.Rank)
+            .ToDictionary(static group => group.Key, static group => group.Count());
+
+        for (var rank = 1; rank <= 9; rank++)
+        {
+            if (!rankCounts.TryGetValue(rank, out var count))
+            {
+                return false;
+            }
+
+            var minimum = rank is 1 or 9 ? 3 : 1;
+            if (count < minimum)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static bool IsBigThreeDragons(IReadOnlyList<Meld> melds)
     {
