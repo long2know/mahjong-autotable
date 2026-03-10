@@ -241,9 +241,48 @@ public static class HandAnalyzer
         return windTripletCount == 3;
     }
 
+    private static int GetTileSortBucket(Tile tile)
+        => tile.Suit switch
+        {
+            TileSuit.Characters => 0,
+            TileSuit.Bamboos => 1,
+            TileSuit.Dots => 2,
+            TileSuit.Winds => 3,
+            TileSuit.Dragons => 4,
+            TileSuit.Flowers => 5,
+            _ => 6
+        };
+
+    private static int GetTileSortValue(Tile tile)
+        => tile.Suit switch
+        {
+            TileSuit.Winds => tile.Wind switch
+            {
+                Wind.East => 1,
+                Wind.South => 2,
+                Wind.West => 3,
+                Wind.North => 4,
+                _ => 9
+            },
+            TileSuit.Dragons => tile.Dragon switch
+            {
+                Dragon.Red => 1,
+                Dragon.Green => 2,
+                Dragon.White => 3,
+                _ => 9
+            },
+            _ => tile.Rank
+        };
+
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
     {
-        var nextTile = counts.FirstOrDefault(kvp => kvp.Value > 0).Key;
+        var nextTile = counts
+            .Where(static kvp => kvp.Value > 0)
+            .Select(static kvp => kvp.Key)
+            .OrderBy(GetTileSortBucket)
+            .ThenBy(GetTileSortValue)
+            .FirstOrDefault();
+
         if (nextTile is null)
         {
             return true;

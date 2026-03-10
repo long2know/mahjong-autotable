@@ -48,4 +48,26 @@ public class HandAnalyzerTests
 
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
     }
+
+    [Fact]
+    public void IsWinningHand_AcceptsWinningHand_WhenInputOrderStartsWithMiddleTileOfChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair (first two inserted as rank 2 to force dictionary insertion order edge case)
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            // Chow 1-2-3 (2 is not a valid chow start for this meld)
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            // Chow 3-4-5
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            // Chow 6-7-8
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            // Pung of red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeTrue();
+    }
 }
