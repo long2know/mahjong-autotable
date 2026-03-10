@@ -22,7 +22,7 @@ public static class HandAnalyzer
             return false;
         }
 
-        if (TryBuildSevenPairs(counts, out hand))
+        if (TryBuildSevenPairs(tiles, counts, out hand))
         {
             return true;
         }
@@ -41,9 +41,7 @@ public static class HandAnalyzer
 
                 if (TryFormMelds(counts, melds))
                 {
-                    var pattern = IsAllGreen(tiles)
-                        ? WinningPattern.AllGreen
-                        : IsNineGates(tiles)
+                    var pattern = IsNineGates(tiles)
                             ? WinningPattern.NineGates
                             : IsBigFourWinds(melds)
                                 ? WinningPattern.BigFourWinds
@@ -53,13 +51,7 @@ public static class HandAnalyzer
                                     ? WinningPattern.LittleFourWinds
                                     : IsLittleThreeDragons(melds, tile)
                                         ? WinningPattern.LittleThreeDragons
-                                        : tiles.All(static t => t.IsHonor)
-                                            ? WinningPattern.AllHonors
-                                            : tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9))
-                                                ? WinningPattern.AllTerminals
-                                                : tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9)))
-                                                    ? WinningPattern.AllTerminalsAndHonors
-                                                    : WinningPattern.Standard;
+                                        : DetermineTileOnlyPattern(tiles) ?? WinningPattern.Standard;
 
                     hand = new WinningHand(melds, tile, pattern);
                     return true;
@@ -83,7 +75,7 @@ public static class HandAnalyzer
         return counts;
     }
 
-    private static bool TryBuildSevenPairs(Dictionary<Tile, int> counts, out WinningHand? hand)
+    private static bool TryBuildSevenPairs(IReadOnlyList<Tile> tiles, Dictionary<Tile, int> counts, out WinningHand? hand)
     {
         hand = null;
 
@@ -99,7 +91,8 @@ public static class HandAnalyzer
         }
 
         var pairTile = counts.First(kvp => kvp.Value >= 2).Key;
-        hand = new WinningHand(Array.Empty<Meld>(), pairTile, WinningPattern.SevenPairs);
+        var pattern = DetermineTileOnlyPattern(tiles) ?? WinningPattern.SevenPairs;
+        hand = new WinningHand(Array.Empty<Meld>(), pairTile, pattern);
         return true;
     }
 
@@ -150,6 +143,31 @@ public static class HandAnalyzer
             new(TileSuit.Dragons, 0, null, Dragon.Green),
             new(TileSuit.Dragons, 0, null, Dragon.White)
         };
+
+    private static WinningPattern? DetermineTileOnlyPattern(IReadOnlyList<Tile> tiles)
+    {
+        if (IsAllGreen(tiles))
+        {
+            return WinningPattern.AllGreen;
+        }
+
+        if (tiles.All(static t => t.IsHonor))
+        {
+            return WinningPattern.AllHonors;
+        }
+
+        if (tiles.All(static t => !t.IsHonor && !t.IsFlower && (t.Rank is 1 or 9)))
+        {
+            return WinningPattern.AllTerminals;
+        }
+
+        if (tiles.All(static t => t.IsHonor || (!t.IsFlower && (t.Rank is 1 or 9))))
+        {
+            return WinningPattern.AllTerminalsAndHonors;
+        }
+
+        return null;
+    }
 
     private static bool IsAllGreen(IReadOnlyList<Tile> tiles)
         => tiles.All(static tile =>
