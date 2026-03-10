@@ -637,6 +637,27 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsOffSuit()
+    {
+        var tiles = new List<Tile>
+        {
+            // Nine Gates base in dots, but extra tile is off-suit, producing no valid winning decomposition.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_ForPureSuitHand_WhenNineGatesTerminalMultiplicityIsNotMet()
     {
         var tiles = new List<Tile>
