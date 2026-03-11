@@ -83,24 +83,28 @@
                         </div>
                         <div class="physical-wall" aria-label="Mahjong wall preview">
                             <div class="wall-side wall-top">
+                                <span class="wall-side-label">North wall</span>
                                 @foreach (var stack in BuildWallSide("North"))
                                 {
                                     <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("North", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-right">
+                                <span class="wall-side-label">East wall</span>
                                 @foreach (var stack in BuildWallSide("East"))
                                 {
                                     <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("East", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-bottom">
+                                <span class="wall-side-label">South wall</span>
                                 @foreach (var stack in BuildWallSide("South"))
                                 {
                                     <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("South", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-left">
+                                <span class="wall-side-label">West wall</span>
                                 @foreach (var stack in BuildWallSide("West"))
                                 {
                                     <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("West", stack)"></div>

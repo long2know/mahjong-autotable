@@ -228,6 +228,16 @@ code {
     gap: 0.2rem;
 }
 
+.wall-side-label {
+    position: absolute;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.7);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
 .wall-top,
 .wall-bottom {
     left: 50%;
@@ -238,8 +248,20 @@ code {
     top: 0.6rem;
 }
 
+.wall-top .wall-side-label {
+    top: -0.95rem;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
 .wall-bottom {
     bottom: 0.6rem;
+}
+
+.wall-bottom .wall-side-label {
+    bottom: -0.95rem;
+    left: 50%;
+    transform: translateX(-50%);
 }
 
 .wall-left,
@@ -253,8 +275,22 @@ code {
     left: 0.6rem;
 }
 
+.wall-left .wall-side-label {
+    left: -1.15rem;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    transform-origin: center;
+}
+
 .wall-right {
     right: 0.6rem;
+}
+
+.wall-right .wall-side-label {
+    right: -1.2rem;
+    top: 50%;
+    transform: translateY(-50%) rotate(90deg);
+    transform-origin: center;
 }
 
 .wall-stack {
