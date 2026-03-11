@@ -70,6 +70,50 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(88);
     }
 
+    [Theory]
+    [InlineData(TileSuit.Characters, 1)]
+    [InlineData(TileSuit.Characters, 9)]
+    [InlineData(TileSuit.Dots, 1)]
+    [InlineData(TileSuit.Dots, 9)]
+    [InlineData(TileSuit.Bamboos, 1)]
+    [InlineData(TileSuit.Bamboos, 9)]
+    [InlineData(TileSuit.Winds, 0, Wind.East)]
+    [InlineData(TileSuit.Winds, 0, Wind.South)]
+    [InlineData(TileSuit.Winds, 0, Wind.West)]
+    [InlineData(TileSuit.Winds, 0, Wind.North)]
+    [InlineData(TileSuit.Dragons, 0, null, Dragon.Red)]
+    [InlineData(TileSuit.Dragons, 0, null, Dragon.Green)]
+    [InlineData(TileSuit.Dragons, 0, null, Dragon.White)]
+    public void HandAnalyzer_AcceptsThirteenOrphans_WhenPairIsAnyRequiredTerminalOrHonor(
+        TileSuit pairSuit,
+        int pairRank,
+        Wind? pairWind = null,
+        Dragon? pairDragon = null)
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        tiles.Add(new Tile(pairSuit, pairRank, pairWind, pairDragon));
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.ThirteenOrphans);
+        hand.BasicScore.Should().Be(88);
+    }
+
     [Fact]
     public void HandAnalyzer_AcceptsAllHonors_AsWinningPattern()
     {
