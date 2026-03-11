@@ -193,6 +193,12 @@
             var created = await Api.CreateGameAsync();
             CreatedGameId = created.Id;
             JoinGameId = created.Id.ToString();
+
+            if (CreateMode == "HumanVsBot")
+            {
+                await ConfigureHumanVsBotSeatsAsync(created.Id);
+            }
+
             Status = $"Game created: {created.Id} ({FormatCreateMode()}{FormatBotSeatSummary()}).";
         });
     }
@@ -246,6 +252,28 @@
 
     private string FormatBotSeatSummary()
         => CreateMode == "HumanVsBot" ? $" ({BotSeatCount} bot seat{(BotSeatCount == 1 ? string.Empty : "s")})" : string.Empty;
+
+    private async Task ConfigureHumanVsBotSeatsAsync(Guid gameId)
+    {
+        if (string.IsNullOrWhiteSpace(HostName))
+        {
+            throw new InvalidOperationException("Host name is required for Human vs Bot setup.");
+        }
+
+        var seatPlan = new[] { "East", "South", "West", "North" };
+        var host = await Api.JoinGameAsync(gameId, new GameApiClient.JoinGameRequest(HostName.Trim(), seatPlan[0]));
+
+        LastJoinedPlayerId = host.PlayerId;
+        JoinName = HostName.Trim();
+        JoinSeat = host.Seat;
+
+        for (var index = 1; index <= BotSeatCount && index < seatPlan.Length; index++)
+        {
+            var seat = seatPlan[index];
+            var botName = $"Bot {index}";
+            await Api.JoinGameAsync(gameId, new GameApiClient.JoinGameRequest(botName, seat));
+        }
+    }
 
     private Guid ParseGameIdOrThrow()
     {
