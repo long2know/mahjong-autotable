@@ -748,6 +748,37 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(6)]
+    [InlineData(8)]
+    public void HandAnalyzer_RejectsNineGates_WhenRequiredInnerTileIsOffSuit(int displacedRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            // Extra in-suit tile keeps 14 tiles total.
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one required inner dot tile with an off-suit tile of the same rank.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == displacedRank);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(TileSuit.Bamboos, displacedRank);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(Dragon.Red)]
     [InlineData(Dragon.Green)]
     [InlineData(Dragon.White)]
