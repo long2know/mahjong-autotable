@@ -86,6 +86,7 @@ public sealed class GameApiClient
     public record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);
     public record DiscardTileRequest(Guid PlayerId, Guid TileId);
     public record DiscardTileResponse(Guid DiscardId, Guid TileId, int Sequence);
+    public record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
     public record WinRequest(Guid PlayerId);
     public record WinResponse(Guid GameId, string Status, Guid PlayerId);
 }

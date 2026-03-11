@@ -361,20 +361,20 @@
             .WithAutomaticReconnect()
             .Build();
 
-        RegisterRefreshHandler("PlayerJoined", "Player joined");
-        RegisterRefreshHandler("GameStarted", "Game started");
+        RegisterPlayerJoinedHandler("PlayerJoined");
+        RegisterGameStartedHandler("GameStarted");
         RegisterTileDrawnHandler("TileDrawn");
         RegisterTileDiscardedHandler("TileDiscarded");
-        RegisterRefreshHandler("MeldDeclared", "Meld declared");
-        RegisterRefreshHandler("GameWon", "Game won");
+        RegisterMeldDeclaredHandler("MeldDeclared");
+        RegisterGameWonHandler("GameWon");
         RegisterRefreshHandler("GameStateUpdated", "State updated");
 
         // Compatibility aliases for server/client naming drift.
-        RegisterRefreshHandler("PlayerJoin", "Player joined");
+        RegisterPlayerJoinedHandler("PlayerJoin");
         RegisterTileDrawnHandler("DrawnTile");
         RegisterTileDiscardedHandler("DiscardedTile");
-        RegisterRefreshHandler("Meld", "Meld declared");
-        RegisterRefreshHandler("WinDeclared", "Game won");
+        RegisterMeldDeclaredHandler("Meld");
+        RegisterGameWonHandler("WinDeclared");
 
         _hub.Reconnecting += error =>
         {
@@ -410,6 +410,16 @@
         _hub?.On<object>(hubEventName, _ => _ = RefreshFromEventAsync(displayName));
     }
 
+    private void RegisterPlayerJoinedHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.JoinGameResponse>(hubEventName, payload => _ = HandlePlayerJoinedEventAsync(payload));
+    }
+
+    private void RegisterGameStartedHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.StartGameResponse>(hubEventName, payload => _ = HandleGameStartedEventAsync(payload));
+    }
+
     private void RegisterTileDrawnHandler(string hubEventName)
     {
         _hub?.On<GameApiClient.DrawTileResponse>(hubEventName, payload => _ = HandleTileDrawnEventAsync(payload));
@@ -418,6 +428,27 @@
     private void RegisterTileDiscardedHandler(string hubEventName)
     {
         _hub?.On<GameApiClient.DiscardTileResponse>(hubEventName, payload => _ = HandleTileDiscardedEventAsync(payload));
+    }
+
+    private void RegisterMeldDeclaredHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.MeldResponse>(hubEventName, payload => _ = HandleMeldDeclaredEventAsync(payload));
+    }
+
+    private void RegisterGameWonHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.WinResponse>(hubEventName, payload => _ = HandleGameWonEventAsync(payload));
+    }
+
+    private Task HandlePlayerJoinedEventAsync(GameApiClient.JoinGameResponse payload)
+    {
+        return RefreshFromEventAsync($"Player joined: {payload.Name} ({payload.Seat})");
+    }
+
+    private Task HandleGameStartedEventAsync(GameApiClient.StartGameResponse payload)
+    {
+        var dealer = payload.DealerId?.ToString()[..8] ?? "unknown";
+        return RefreshFromEventAsync($"Game started (dealer {dealer})");
     }
 
     private Task HandleTileDrawnEventAsync(GameApiClient.DrawTileResponse payload)
@@ -430,6 +461,17 @@
     {
         _lastDrawnTileId = null;
         return RefreshFromEventAsync("Tile discarded");
+    }
+
+    private Task HandleMeldDeclaredEventAsync(GameApiClient.MeldResponse payload)
+    {
+        _lastDrawnTileId = null;
+        return RefreshFromEventAsync($"Meld declared: {payload.Type} ({payload.TileIds.Count} tiles)");
+    }
+
+    private Task HandleGameWonEventAsync(GameApiClient.WinResponse payload)
+    {
+        return RefreshFromEventAsync($"Game won by {payload.PlayerId.ToString()[..8]}");
     }
 
     private Task RefreshFromEventAsync(string eventName)
