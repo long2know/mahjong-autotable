@@ -779,6 +779,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Theory]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void HandAnalyzer_RejectsNineGates_WhenTerminalMultiplicityIsBrokenByOffSuitReplacement(int displacedTerminalRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots: 1112345678999 + extra 5 dot.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one terminal (1 or 9) with an off-suit tile of the same rank.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == displacedTerminalRank);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(TileSuit.Characters, displacedTerminalRank);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(Dragon.Red)]
     [InlineData(Dragon.Green)]
     [InlineData(Dragon.White)]
