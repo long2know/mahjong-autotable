@@ -699,6 +699,31 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(88);
     }
 
+    [Theory]
+    [InlineData(TileSuit.Characters)]
+    [InlineData(TileSuit.Dots)]
+    [InlineData(TileSuit.Bamboos)]
+    public void HandAnalyzer_AcceptsNineGates_InAnySingleSuitedFamily(TileSuit suit)
+    {
+        var tiles = new List<Tile>
+        {
+            // 1112345678999 + 5 in the same suited family.
+            new(suit, 1), new(suit, 1), new(suit, 1),
+            new(suit, 2),
+            new(suit, 3),
+            new(suit, 4),
+            new(suit, 5), new(suit, 5),
+            new(suit, 6),
+            new(suit, 7),
+            new(suit, 8),
+            new(suit, 9), new(suit, 9), new(suit, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.NineGates);
+        hand.BasicScore.Should().Be(88);
+    }
+
     [Fact]
     public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsOffSuit()
     {
