@@ -49,6 +49,14 @@ public sealed class GameApiClient
             ?? throw new InvalidOperationException("Draw tile response was empty.");
     }
 
+    public async Task<DiscardTileResponse> DiscardTileAsync(Guid gameId, DiscardTileRequest request, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"/api/game/{gameId}/discard", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DiscardTileResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Discard response was empty.");
+    }
+
     public async Task<WinResponse> DeclareWinAsync(Guid gameId, WinRequest request, CancellationToken cancellationToken = default)
     {
         using var response = await _http.PostAsJsonAsync($"/api/game/{gameId}/win", request, cancellationToken);
@@ -76,6 +84,8 @@ public sealed class GameApiClient
 
     public record DrawTileRequest(Guid PlayerId);
     public record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);
+    public record DiscardTileRequest(Guid PlayerId, Guid TileId);
+    public record DiscardTileResponse(Guid DiscardId, Guid TileId, int Sequence);
     public record WinRequest(Guid PlayerId);
     public record WinResponse(Guid GameId, string Status, Guid PlayerId);
 }

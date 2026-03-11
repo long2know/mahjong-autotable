@@ -242,11 +242,11 @@
                 <h5 class="card-title mb-2">Actions</h5>
                 <div class="d-flex flex-wrap gap-2">
                     <button class="btn btn-outline-primary" @onclick="DrawTileAsync" disabled="@(!CanDraw)">Draw</button>
-                    <button class="btn btn-outline-secondary" disabled title="Discard wiring pending tile-selection UI.">Discard</button>
+                    <button class="btn btn-outline-secondary" @onclick="DiscardLastDrawnTileAsync" disabled="@(!CanDiscard)" title="Discards the most recently drawn tile for this player.">Discard Last Draw</button>
                     <button class="btn btn-outline-success" @onclick="DeclareWinAsync" disabled="@(!CanDeclareWin)">Declare Win</button>
                     <button class="btn btn-outline-warning" disabled title="Meld wiring pending tile-selection UI.">Meld</button>
                 </div>
-                <p class="text-muted small mt-3 mb-0">Draw/Win now call live API when gameId + playerId are present.</p>
+                <p class="text-muted small mt-3 mb-0">Draw/Discard/Win now call live API when gameId + playerId are present.</p>
             </div>
         </div>
     </div>
@@ -262,6 +262,7 @@
     private HubConnection? _hub;
     private readonly CancellationTokenSource _disposeCts = new();
     private GameApiClient.GameStateResponse? _liveState;
+    private Guid? _lastDrawnTileId;
     private string? LiveStatus;
 
     private bool CanDraw =>
@@ -270,6 +271,14 @@
         _liveState is not null &&
         IsLiveGameActive(_liveState.Status) &&
         _liveState.CurrentPlayerId == PlayerId;
+
+    private bool CanDiscard =>
+        GameId is not null &&
+        PlayerId is not null &&
+        _liveState is not null &&
+        IsLiveGameActive(_liveState.Status) &&
+        _liveState.CurrentPlayerId == PlayerId &&
+        _lastDrawnTileId is not null;
 
     private bool CanDeclareWin =>
         GameId is not null &&
@@ -354,16 +363,16 @@
 
         RegisterRefreshHandler("PlayerJoined", "Player joined");
         RegisterRefreshHandler("GameStarted", "Game started");
-        RegisterRefreshHandler("TileDrawn", "Tile drawn");
-        RegisterRefreshHandler("TileDiscarded", "Tile discarded");
+        RegisterTileDrawnHandler("TileDrawn");
+        RegisterTileDiscardedHandler("TileDiscarded");
         RegisterRefreshHandler("MeldDeclared", "Meld declared");
         RegisterRefreshHandler("GameWon", "Game won");
         RegisterRefreshHandler("GameStateUpdated", "State updated");
 
         // Compatibility aliases for server/client naming drift.
         RegisterRefreshHandler("PlayerJoin", "Player joined");
-        RegisterRefreshHandler("DrawnTile", "Tile drawn");
-        RegisterRefreshHandler("DiscardedTile", "Tile discarded");
+        RegisterTileDrawnHandler("DrawnTile");
+        RegisterTileDiscardedHandler("DiscardedTile");
         RegisterRefreshHandler("Meld", "Meld declared");
         RegisterRefreshHandler("WinDeclared", "Game won");
 
@@ -399,6 +408,28 @@
     private void RegisterRefreshHandler(string hubEventName, string displayName)
     {
         _hub?.On<object>(hubEventName, _ => _ = RefreshFromEventAsync(displayName));
+    }
+
+    private void RegisterTileDrawnHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.DrawTileResponse>(hubEventName, payload => _ = HandleTileDrawnEventAsync(payload));
+    }
+
+    private void RegisterTileDiscardedHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.DiscardTileResponse>(hubEventName, payload => _ = HandleTileDiscardedEventAsync(payload));
+    }
+
+    private Task HandleTileDrawnEventAsync(GameApiClient.DrawTileResponse payload)
+    {
+        _lastDrawnTileId = payload.TileId;
+        return RefreshFromEventAsync("Tile drawn");
+    }
+
+    private Task HandleTileDiscardedEventAsync(GameApiClient.DiscardTileResponse _)
+    {
+        _lastDrawnTileId = null;
+        return RefreshFromEventAsync("Tile discarded");
     }
 
     private Task RefreshFromEventAsync(string eventName)
@@ -441,12 +472,38 @@
         try
         {
             var result = await Api.DrawTileAsync(GameId.Value, new GameApiClient.DrawTileRequest(PlayerId.Value), _disposeCts.Token);
+            _lastDrawnTileId = result.TileId;
             LiveStatus = $"Drew tile {result.Suit} {result.Rank}.";
             await RefreshLiveStateAsync();
         }
         catch (Exception ex)
         {
             LiveStatus = $"Draw failed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DiscardLastDrawnTileAsync()
+    {
+        if (!CanDiscard || GameId is null || PlayerId is null || _lastDrawnTileId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await Api.DiscardTileAsync(
+                GameId.Value,
+                new GameApiClient.DiscardTileRequest(PlayerId.Value, _lastDrawnTileId.Value),
+                _disposeCts.Token);
+
+            _lastDrawnTileId = null;
+            LiveStatus = $"Discarded tile sequence #{result.Sequence}.";
+            await RefreshLiveStateAsync();
+        }
+        catch (Exception ex)
+        {
+            LiveStatus = $"Discard failed: {ex.Message}";
             await InvokeAsync(StateHasChanged);
         }
     }
