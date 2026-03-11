@@ -33,6 +33,32 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalseForMixedSuits()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Bamboos, 4),
+            new Tile(TileSuit.Dots, 5)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsFalseForNonConsecutiveRanks()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 2),
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 5)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsTrueForTriplet()
     {
         var tile = new Tile(TileSuit.Characters, 7);
@@ -40,9 +66,36 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalseWhenTilesDiffer()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 7),
+            new Tile(TileSuit.Characters, 7),
+            new Tile(TileSuit.Characters, 8)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidKong_ReturnsTrueForQuad()
     {
         var tile = new Tile(TileSuit.Bamboos, 2);
         MeldValidator.IsValidKong(new[] { tile, tile, tile, tile }).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalseWhenTilesDiffer()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 3)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
     }
 }
