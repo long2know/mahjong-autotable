@@ -751,7 +751,7 @@ public class RulesCorrectnessVectorsTests
     [InlineData(Dragon.Red)]
     [InlineData(Dragon.Green)]
     [InlineData(Dragon.White)]
-    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsHonor(Dragon extraDragon)
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsDragonHonor(Dragon extraDragon)
     {
         var tiles = new List<Tile>
         {
@@ -766,6 +766,31 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Dots, 8),
             new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
             new(TileSuit.Dragons, 0, null, extraDragon)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(Wind.East)]
+    [InlineData(Wind.South)]
+    [InlineData(Wind.West)]
+    [InlineData(Wind.North)]
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsWindHonor(Wind extraWind)
+    {
+        var tiles = new List<Tile>
+        {
+            // Nine Gates base in dots, but extra tile is a wind honor tile.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Winds, 0, extraWind)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
