@@ -724,8 +724,10 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(88);
     }
 
-    [Fact]
-    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsOffSuit()
+    [Theory]
+    [InlineData(TileSuit.Bamboos, 5)]
+    [InlineData(TileSuit.Characters, 5)]
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraSuitedTileIsOffSuit(TileSuit extraSuit, int extraRank)
     {
         var tiles = new List<Tile>
         {
@@ -739,7 +741,31 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Dots, 7),
             new(TileSuit.Dots, 8),
             new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
-            new(TileSuit.Bamboos, 5)
+            new(extraSuit, extraRank)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(Dragon.Red)]
+    [InlineData(Dragon.Green)]
+    [InlineData(Dragon.White)]
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsHonor(Dragon extraDragon)
+    {
+        var tiles = new List<Tile>
+        {
+            // Nine Gates base in dots, but extra tile is an honor tile.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dragons, 0, null, extraDragon)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
