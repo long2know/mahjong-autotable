@@ -101,7 +101,7 @@ gameGroup.MapPost("/{id:guid}/join", async (
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new JoinGameResponse(player.Id, game.Id, player.Name, player.Seat, player.Score);
-    await SendToGame(hubContext, game.Id, "PlayerJoined", response, cancellationToken);
+    await SendToGameWithAliases(hubContext, game.Id, "PlayerJoined", response, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -162,7 +162,7 @@ gameGroup.MapPost("/{id:guid}/start", async (
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new StartGameResponse(game.Id, game.Status, game.DealerId, game.CurrentPlayerId);
-    await SendToGame(hubContext, game.Id, "GameStarted", response, cancellationToken);
+    await SendToGameWithAliases(hubContext, game.Id, "GameStarted", response, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -241,7 +241,7 @@ gameGroup.MapPost("/{id:guid}/draw", async (
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new DrawTileResponse(tile.Id, tile.Suit, tile.Rank, tile.Wind, tile.Dragon);
-    await SendToGame(hubContext, game.Id, "TileDrawn", response, cancellationToken);
+    await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", response, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -293,7 +293,7 @@ gameGroup.MapPost("/{id:guid}/discard", async (
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new DiscardTileResponse(discard.Id, tile.Id, discard.Sequence);
-    await SendToGame(hubContext, game.Id, "TileDiscarded", response, cancellationToken);
+    await SendToGameWithAliases(hubContext, game.Id, "TileDiscarded", response, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -341,7 +341,7 @@ gameGroup.MapPost("/{id:guid}/meld", async (
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new MeldResponse(meld.Id, request.Type, tiles.Select(t => t.Id).ToList());
-    await SendToGame(hubContext, game.Id, "MeldDeclared", response, cancellationToken);
+    await SendToGameWithAliases(hubContext, game.Id, "MeldDeclared", response, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -365,14 +365,35 @@ gameGroup.MapPost("/{id:guid}/win", async (
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new WinResponse(game.Id, game.Status, request.PlayerId);
-    await SendToGame(hubContext, game.Id, "GameWon", response, cancellationToken);
+    await SendToGameWithAliases(hubContext, game.Id, "GameWon", response, cancellationToken);
     return Results.Ok(response);
 });
 
 app.Run();
 
+static async Task SendToGameWithAliases(IHubContext<GameHub> hubContext, Guid gameId, string eventName, object payload, CancellationToken cancellationToken)
+{
+    await SendToGame(hubContext, gameId, eventName, payload, cancellationToken);
+
+    foreach (var alias in GetEventAliases(eventName))
+    {
+        await SendToGame(hubContext, gameId, alias, payload, cancellationToken);
+    }
+}
+
 static Task SendToGame(IHubContext<GameHub> hubContext, Guid gameId, string eventName, object payload, CancellationToken cancellationToken)
     => hubContext.Clients.Group(gameId.ToString()).SendAsync(eventName, payload, cancellationToken);
+
+static IEnumerable<string> GetEventAliases(string eventName)
+    => eventName switch
+    {
+        "PlayerJoined" => ["PlayerJoin"],
+        "TileDrawn" => ["DrawnTile"],
+        "TileDiscarded" => ["DiscardedTile"],
+        "MeldDeclared" => ["Meld"],
+        "GameWon" => ["WinDeclared"],
+        _ => []
+    };
 
 void DealStartingHands(GameEntity game, IReadOnlyList<TileEntity> tiles)
 {
