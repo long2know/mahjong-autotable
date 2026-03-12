@@ -83,24 +83,28 @@
                         </div>
                         <div class="physical-wall" aria-label="Mahjong wall preview">
                             <div class="wall-side wall-top">
+                                <span class="wall-side-label">North wall</span>
                                 @foreach (var stack in BuildWallSide("North"))
                                 {
                                     <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("North", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-right">
+                                <span class="wall-side-label">East wall</span>
                                 @foreach (var stack in BuildWallSide("East"))
                                 {
                                     <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("East", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-bottom">
+                                <span class="wall-side-label">South wall</span>
                                 @foreach (var stack in BuildWallSide("South"))
                                 {
                                     <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("South", stack)"></div>
                                 }
                             </div>
                             <div class="wall-side wall-left">
+                                <span class="wall-side-label">West wall</span>
                                 @foreach (var stack in BuildWallSide("West"))
                                 {
                                     <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("West", stack)"></div>
@@ -238,11 +242,11 @@
                 <h5 class="card-title mb-2">Actions</h5>
                 <div class="d-flex flex-wrap gap-2">
                     <button class="btn btn-outline-primary" @onclick="DrawTileAsync" disabled="@(!CanDraw)">Draw</button>
-                    <button class="btn btn-outline-secondary" disabled title="Discard wiring pending tile-selection UI.">Discard</button>
+                    <button class="btn btn-outline-secondary" @onclick="DiscardLastDrawnTileAsync" disabled="@(!CanDiscard)" title="Discards the most recently drawn tile for this player.">Discard Last Draw</button>
                     <button class="btn btn-outline-success" @onclick="DeclareWinAsync" disabled="@(!CanDeclareWin)">Declare Win</button>
                     <button class="btn btn-outline-warning" disabled title="Meld wiring pending tile-selection UI.">Meld</button>
                 </div>
-                <p class="text-muted small mt-3 mb-0">Draw/Win now call live API when gameId + playerId are present.</p>
+                <p class="text-muted small mt-3 mb-0">Draw/Discard/Win now call live API when gameId + playerId are present.</p>
             </div>
         </div>
     </div>
@@ -258,6 +262,7 @@
     private HubConnection? _hub;
     private readonly CancellationTokenSource _disposeCts = new();
     private GameApiClient.GameStateResponse? _liveState;
+    private Guid? _lastDrawnTileId;
     private string? LiveStatus;
 
     private bool CanDraw =>
@@ -266,6 +271,14 @@
         _liveState is not null &&
         IsLiveGameActive(_liveState.Status) &&
         _liveState.CurrentPlayerId == PlayerId;
+
+    private bool CanDiscard =>
+        GameId is not null &&
+        PlayerId is not null &&
+        _liveState is not null &&
+        IsLiveGameActive(_liveState.Status) &&
+        _liveState.CurrentPlayerId == PlayerId &&
+        _lastDrawnTileId is not null;
 
     private bool CanDeclareWin =>
         GameId is not null &&
@@ -348,13 +361,20 @@
             .WithAutomaticReconnect()
             .Build();
 
-        _hub.On<object>("PlayerJoined", _ => _ = RefreshFromEventAsync("Player joined"));
-        _hub.On<object>("GameStarted", _ => _ = RefreshFromEventAsync("Game started"));
-        _hub.On<object>("TileDrawn", _ => _ = RefreshFromEventAsync("Tile drawn"));
-        _hub.On<object>("TileDiscarded", _ => _ = RefreshFromEventAsync("Tile discarded"));
-        _hub.On<object>("MeldDeclared", _ => _ = RefreshFromEventAsync("Meld declared"));
-        _hub.On<object>("GameWon", _ => _ = RefreshFromEventAsync("Game won"));
-        _hub.On<object>("GameStateUpdated", _ => _ = RefreshFromEventAsync("State updated"));
+        RegisterPlayerJoinedHandler("PlayerJoined");
+        RegisterGameStartedHandler("GameStarted");
+        RegisterTileDrawnHandler("TileDrawn");
+        RegisterTileDiscardedHandler("TileDiscarded");
+        RegisterMeldDeclaredHandler("MeldDeclared");
+        RegisterGameWonHandler("GameWon");
+        RegisterRefreshHandler("GameStateUpdated", "State updated");
+
+        // Compatibility aliases for server/client naming drift.
+        RegisterPlayerJoinedHandler("PlayerJoin");
+        RegisterTileDrawnHandler("DrawnTile");
+        RegisterTileDiscardedHandler("DiscardedTile");
+        RegisterMeldDeclaredHandler("Meld");
+        RegisterGameWonHandler("WinDeclared");
 
         _hub.Reconnecting += error =>
         {
@@ -383,6 +403,75 @@
         await _hub.SendAsync("JoinGame", gameId.ToString(), _disposeCts.Token);
 
         LiveStatus = $"Connected to live updates for game {gameId}.";
+    }
+
+    private void RegisterRefreshHandler(string hubEventName, string displayName)
+    {
+        _hub?.On<object>(hubEventName, _ => _ = RefreshFromEventAsync(displayName));
+    }
+
+    private void RegisterPlayerJoinedHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.JoinGameResponse>(hubEventName, payload => _ = HandlePlayerJoinedEventAsync(payload));
+    }
+
+    private void RegisterGameStartedHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.StartGameResponse>(hubEventName, payload => _ = HandleGameStartedEventAsync(payload));
+    }
+
+    private void RegisterTileDrawnHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.DrawTileResponse>(hubEventName, payload => _ = HandleTileDrawnEventAsync(payload));
+    }
+
+    private void RegisterTileDiscardedHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.DiscardTileResponse>(hubEventName, payload => _ = HandleTileDiscardedEventAsync(payload));
+    }
+
+    private void RegisterMeldDeclaredHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.MeldResponse>(hubEventName, payload => _ = HandleMeldDeclaredEventAsync(payload));
+    }
+
+    private void RegisterGameWonHandler(string hubEventName)
+    {
+        _hub?.On<GameApiClient.WinResponse>(hubEventName, payload => _ = HandleGameWonEventAsync(payload));
+    }
+
+    private Task HandlePlayerJoinedEventAsync(GameApiClient.JoinGameResponse payload)
+    {
+        return RefreshFromEventAsync($"Player joined: {payload.Name} ({payload.Seat})");
+    }
+
+    private Task HandleGameStartedEventAsync(GameApiClient.StartGameResponse payload)
+    {
+        var dealer = payload.DealerId?.ToString()[..8] ?? "unknown";
+        return RefreshFromEventAsync($"Game started (dealer {dealer})");
+    }
+
+    private Task HandleTileDrawnEventAsync(GameApiClient.DrawTileResponse payload)
+    {
+        _lastDrawnTileId = payload.TileId;
+        return RefreshFromEventAsync("Tile drawn");
+    }
+
+    private Task HandleTileDiscardedEventAsync(GameApiClient.DiscardTileResponse _)
+    {
+        _lastDrawnTileId = null;
+        return RefreshFromEventAsync("Tile discarded");
+    }
+
+    private Task HandleMeldDeclaredEventAsync(GameApiClient.MeldResponse payload)
+    {
+        _lastDrawnTileId = null;
+        return RefreshFromEventAsync($"Meld declared: {payload.Type} ({payload.TileIds.Count} tiles)");
+    }
+
+    private Task HandleGameWonEventAsync(GameApiClient.WinResponse payload)
+    {
+        return RefreshFromEventAsync($"Game won by {payload.PlayerId.ToString()[..8]}");
     }
 
     private Task RefreshFromEventAsync(string eventName)
@@ -425,12 +514,38 @@
         try
         {
             var result = await Api.DrawTileAsync(GameId.Value, new GameApiClient.DrawTileRequest(PlayerId.Value), _disposeCts.Token);
+            _lastDrawnTileId = result.TileId;
             LiveStatus = $"Drew tile {result.Suit} {result.Rank}.";
             await RefreshLiveStateAsync();
         }
         catch (Exception ex)
         {
             LiveStatus = $"Draw failed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DiscardLastDrawnTileAsync()
+    {
+        if (!CanDiscard || GameId is null || PlayerId is null || _lastDrawnTileId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await Api.DiscardTileAsync(
+                GameId.Value,
+                new GameApiClient.DiscardTileRequest(PlayerId.Value, _lastDrawnTileId.Value),
+                _disposeCts.Token);
+
+            _lastDrawnTileId = null;
+            LiveStatus = $"Discarded tile sequence #{result.Sequence}.";
+            await RefreshLiveStateAsync();
+        }
+        catch (Exception ex)
+        {
+            LiveStatus = $"Discard failed: {ex.Message}";
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -586,7 +701,7 @@
         _ => "text-bg-primary"
     };
 
-    private const int WallStacksPerSide = 17;
+    private const int WallStacksPerSide = 18;
     private const int TotalWallStacks = WallStacksPerSide * 4;
 
     private IEnumerable<WallStackView> BuildWallSide(string side)
@@ -701,7 +816,7 @@
         public string TableCode { get; init; } = "GD-4821";
         public string GameStatus { get; init; } = "In Progress";
         public int WallRemaining { get; init; } = 70;
-        public int WallTotal { get; init; } = 136;
+        public int WallTotal { get; init; } = 144;
         public int DrawsRemaining { get; init; } = 10;
         public string RoundWind { get; init; } = "East";
         public int HandNumber { get; init; } = 3;

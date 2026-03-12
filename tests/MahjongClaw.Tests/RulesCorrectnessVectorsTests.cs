@@ -70,6 +70,50 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(88);
     }
 
+    [Theory]
+    [InlineData(TileSuit.Characters, 1)]
+    [InlineData(TileSuit.Characters, 9)]
+    [InlineData(TileSuit.Dots, 1)]
+    [InlineData(TileSuit.Dots, 9)]
+    [InlineData(TileSuit.Bamboos, 1)]
+    [InlineData(TileSuit.Bamboos, 9)]
+    [InlineData(TileSuit.Winds, 0, Wind.East)]
+    [InlineData(TileSuit.Winds, 0, Wind.South)]
+    [InlineData(TileSuit.Winds, 0, Wind.West)]
+    [InlineData(TileSuit.Winds, 0, Wind.North)]
+    [InlineData(TileSuit.Dragons, 0, null, Dragon.Red)]
+    [InlineData(TileSuit.Dragons, 0, null, Dragon.Green)]
+    [InlineData(TileSuit.Dragons, 0, null, Dragon.White)]
+    public void HandAnalyzer_AcceptsThirteenOrphans_WhenPairIsAnyRequiredTerminalOrHonor(
+        TileSuit pairSuit,
+        int pairRank,
+        Wind? pairWind = null,
+        Dragon? pairDragon = null)
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        tiles.Add(new Tile(pairSuit, pairRank, pairWind, pairDragon));
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.ThirteenOrphans);
+        hand.BasicScore.Should().Be(88);
+    }
+
     [Fact]
     public void HandAnalyzer_AcceptsAllHonors_AsWinningPattern()
     {
@@ -167,6 +211,26 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
             new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
             new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllGreen);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesAllGreen_OverSevenPairs_WhenBothApply()
+    {
+        var tiles = new List<Tile>
+        {
+            // Seven pairs shape composed only of legal green tiles.
+            // 2-bamboo appears four times, which forms two pairs in the current analyzer.
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
@@ -538,6 +602,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_PrioritizesAllHonors_OverAllTerminalsAndHonors_WhenBothApply()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Melds: pung east, pung south, pung west, pung red dragon
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllHonors);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenHandContainsNonGreenTile()
     {
         var tiles = new List<Tile>
@@ -655,8 +747,35 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(88);
     }
 
-    [Fact]
-    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsOffSuit()
+    [Theory]
+    [InlineData(TileSuit.Characters)]
+    [InlineData(TileSuit.Dots)]
+    [InlineData(TileSuit.Bamboos)]
+    public void HandAnalyzer_AcceptsNineGates_InAnySingleSuitedFamily(TileSuit suit)
+    {
+        var tiles = new List<Tile>
+        {
+            // 1112345678999 + 5 in the same suited family.
+            new(suit, 1), new(suit, 1), new(suit, 1),
+            new(suit, 2),
+            new(suit, 3),
+            new(suit, 4),
+            new(suit, 5), new(suit, 5),
+            new(suit, 6),
+            new(suit, 7),
+            new(suit, 8),
+            new(suit, 9), new(suit, 9), new(suit, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.NineGates);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Theory]
+    [InlineData(TileSuit.Bamboos, 5)]
+    [InlineData(TileSuit.Characters, 5)]
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraSuitedTileIsOffSuit(TileSuit extraSuit, int extraRank)
     {
         var tiles = new List<Tile>
         {
@@ -670,7 +789,115 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Dots, 7),
             new(TileSuit.Dots, 8),
             new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
-            new(TileSuit.Bamboos, 5)
+            new(extraSuit, extraRank)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(6)]
+    [InlineData(8)]
+    public void HandAnalyzer_RejectsNineGates_WhenRequiredInnerTileIsOffSuit(int displacedRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            // Extra in-suit tile keeps 14 tiles total.
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one required inner dot tile with an off-suit tile of the same rank.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == displacedRank);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(TileSuit.Bamboos, displacedRank);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void HandAnalyzer_RejectsNineGates_WhenTerminalMultiplicityIsBrokenByOffSuitReplacement(int displacedTerminalRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots: 1112345678999 + extra 5 dot.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one terminal (1 or 9) with an off-suit tile of the same rank.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == displacedTerminalRank);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(TileSuit.Characters, displacedTerminalRank);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(Dragon.Red)]
+    [InlineData(Dragon.Green)]
+    [InlineData(Dragon.White)]
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsDragonHonor(Dragon extraDragon)
+    {
+        var tiles = new List<Tile>
+        {
+            // Nine Gates base in dots, but extra tile is an honor tile.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dragons, 0, null, extraDragon)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(Wind.East)]
+    [InlineData(Wind.South)]
+    [InlineData(Wind.West)]
+    [InlineData(Wind.North)]
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsWindHonor(Wind extraWind)
+    {
+        var tiles = new List<Tile>
+        {
+            // Nine Gates base in dots, but extra tile is a wind honor tile.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Winds, 0, extraWind)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
@@ -826,6 +1053,31 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsThirteenOrphans_WhenAllOrphansExistButPairTileIsNotAnOrphan()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Extra tile is not a terminal/honor, so no valid orphan pair exists.
+            new(TileSuit.Dots, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesThirteenOrphans_OverAllTerminalsAndHonors_WhenBothApply()
     {
         var tiles = new List<Tile>
@@ -850,6 +1102,44 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.ThirteenOrphans);
         hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesAllTerminals_OverAllPungs_WhenBothApply()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 characters
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            // Melds: pung 9 characters, pung 1 dots, pung 9 dots, pung 1 bamboos
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesAllTerminalsAndHonors_OverAllPungs_WhenBothApply()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: east wind
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Melds: pung 1 characters, pung 9 characters, pung 1 dots, pung red dragon
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminalsAndHonors);
+        hand.BasicScore.Should().Be(64);
     }
 
     [Fact]
