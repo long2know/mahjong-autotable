@@ -190,11 +190,27 @@
     {
         await RunWithStatusAsync(async () =>
         {
-            var created = await Api.CreateGameAsync();
+            if (CreateMode == "HumanVsBot" && string.IsNullOrWhiteSpace(HostName))
+            {
+                throw new InvalidOperationException("Host name is required for Human vs Bot setup.");
+            }
+
+            var request = new GameApiClient.CreateGameRequest(
+                string.IsNullOrWhiteSpace(HostName) ? null : HostName.Trim(),
+                CreateMode,
+                BotSeatCount);
+
+            var created = await Api.CreateGameAsync(request);
             CreatedGameId = created.Id;
             JoinGameId = created.Id.ToString();
+            LastJoinedPlayerId = created.HostPlayerId;
 
-            if (CreateMode == "HumanVsBot")
+            if (!string.IsNullOrWhiteSpace(HostName))
+            {
+                JoinName = HostName.Trim();
+            }
+
+            if (CreateMode == "HumanVsBot" && created.HostPlayerId is null)
             {
                 await ConfigureHumanVsBotSeatsAsync(created.Id);
             }

@@ -11,9 +11,12 @@ public sealed class GameApiClient
         _http = http;
     }
 
-    public async Task<CreateGameResponse> CreateGameAsync(CancellationToken cancellationToken = default)
+    public async Task<CreateGameResponse> CreateGameAsync(CreateGameRequest? request = null, CancellationToken cancellationToken = default)
     {
-        using var response = await _http.PostAsync("/api/game", content: null, cancellationToken);
+        using var response = request is null
+            ? await _http.PostAsync("/api/game", content: null, cancellationToken)
+            : await _http.PostAsJsonAsync("/api/game", request, cancellationToken);
+
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<CreateGameResponse>(cancellationToken: cancellationToken)
             ?? throw new InvalidOperationException("Game create response was empty.");
@@ -65,7 +68,8 @@ public sealed class GameApiClient
             ?? throw new InvalidOperationException("Win response was empty.");
     }
 
-    public record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt);
+    public record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount);
+    public record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt, Guid? HostPlayerId);
     public record JoinGameRequest(string Name, string Seat);
     public record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);
     public record StartGameResponse(Guid GameId, string Status, Guid? DealerId, Guid? CurrentPlayerId);
