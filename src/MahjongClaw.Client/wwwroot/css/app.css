@@ -116,7 +116,12 @@ code {
 .table-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas:
+        "north north"
+        "west east"
+        "south south"
+        "center center";
     gap: 1rem;
     position: relative;
     min-height: 420px;
@@ -131,6 +136,22 @@ code {
     padding: 0.85rem;
     border: 1px solid #e7e7e7;
     min-height: 120px;
+}
+
+.seat-north {
+    grid-area: north;
+}
+
+.seat-west {
+    grid-area: west;
+}
+
+.seat-east {
+    grid-area: east;
+}
+
+.seat-south {
+    grid-area: south;
 }
 
 .center-area {
