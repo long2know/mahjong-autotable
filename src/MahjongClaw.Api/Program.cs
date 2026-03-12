@@ -30,18 +30,59 @@ var gameGroup = app.MapGroup("/api/game");
 gameGroup.MapPost("/", async (
     MahjongClawDbContext dbContext,
     IHubContext<GameHub> hubContext,
+    CreateGameRequest? request,
     CancellationToken cancellationToken) =>
 {
     var game = new GameEntity
     {
+        Id = Guid.NewGuid(),
         Status = "Waiting",
         Round = 1
     };
 
     dbContext.Games.Add(game);
+
+    Guid? hostPlayerId = null;
+    var hostName = request?.HostName?.Trim();
+    var createMode = request?.Mode?.Trim();
+    var botSeatCount = Math.Clamp(request?.BotSeatCount ?? 0, 0, 3);
+
+    if (!string.IsNullOrWhiteSpace(hostName))
+    {
+        var seatPlan = new[] { "East", "South", "West", "North" };
+        var hostPlayer = new PlayerEntity
+        {
+            Id = Guid.NewGuid(),
+            GameId = game.Id,
+            Name = hostName,
+            Seat = seatPlan[0],
+            Score = 0
+        };
+
+        dbContext.Players.Add(hostPlayer);
+        hostPlayerId = hostPlayer.Id;
+
+        if (string.Equals(createMode, "HumanVsBot", StringComparison.OrdinalIgnoreCase))
+        {
+            for (var index = 1; index <= botSeatCount && index < seatPlan.Length; index++)
+            {
+                var botPlayer = new PlayerEntity
+                {
+                    Id = Guid.NewGuid(),
+                    GameId = game.Id,
+                    Name = $"Bot {index}",
+                    Seat = seatPlan[index],
+                    Score = 0
+                };
+
+                dbContext.Players.Add(botPlayer);
+            }
+        }
+    }
+
     await dbContext.SaveChangesAsync(cancellationToken);
 
-    var response = new CreateGameResponse(game.Id, game.Status, game.Round, game.CreatedAt);
+    var response = new CreateGameResponse(game.Id, game.Status, game.Round, game.CreatedAt, hostPlayerId);
     return Results.Created($"/api/game/{game.Id}", response);
 });
 
@@ -439,7 +480,8 @@ void DealTiles(PlayerEntity player, IReadOnlyList<TileEntity> wallTiles, ref int
     }
 }
 
-internal record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt);
+internal record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount);
+internal record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt, Guid? HostPlayerId);
 internal record JoinGameRequest(string Name, string Seat);
 internal record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);
 internal record StartGameResponse(Guid GameId, string Status, Guid? DealerId, Guid? CurrentPlayerId);
