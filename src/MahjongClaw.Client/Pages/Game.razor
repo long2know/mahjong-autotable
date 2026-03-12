@@ -194,7 +194,7 @@
                         <span class="badge text-bg-light">@PlayerSouth.Hand.Count tiles</span>
                     </div>
                 </div>
-                <div class="tile-row mt-3">
+                <div class="tile-row mt-3 seat-tiles seat-south">
                     @foreach (var tile in PlayerSouth.Hand)
                     {
                         <Tile Label="@tile" IsHighlighted="@tile.StartsWith("🀄")" />
@@ -226,7 +226,7 @@
                         <div class="meld-item">
                             <div class="fw-semibold">@meld.Player</div>
                             <div class="text-muted small">@meld.Type</div>
-                            <div class="meld-tiles mt-2">
+                            <div class="meld-tiles mt-2 seat-tiles seat-south">
                                 @foreach (var tile in meld.Tiles)
                                 {
                                     <Tile Label="@tile" />
@@ -792,13 +792,13 @@
                 }
             </div>
         </div>
-        <div class="tile-row tile-row-wrap mt-2">
+        <div class="tile-row tile-row-wrap mt-2 seat-tiles seat-@player.Seat.ToLowerInvariant()">
             @foreach (var tile in player.Discards)
             {
                 <Tile Label="@tile" />
             }
         </div>
-        <div class="tile-row tile-row-wrap mt-2">
+        <div class="tile-row tile-row-wrap mt-2 seat-tiles seat-@player.Seat.ToLowerInvariant()">
             @foreach (var tile in BuildHiddenHand(player.HandCount))
             {
                 <Tile Label="@tile" IsFaceDown="true" />
