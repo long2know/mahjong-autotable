@@ -375,9 +375,12 @@ code {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 3rem;
-    min-width: 2.25rem;
-    padding: 0.15rem 0.35rem;
+    width: 2.55rem;
+    min-width: 2.55rem;
+    height: 3.35rem;
+    padding: 0.2rem 0.25rem;
+    gap: 0.1rem;
+    overflow: hidden;
     border-radius: 0.5rem;
     border: 1px solid #cfc7b1;
     background: linear-gradient(180deg, #fffefa 0%, #f8f1e2 58%, #efe3cb 100%);
@@ -407,18 +410,24 @@ code {
 }
 
 .tile-glyph {
-    font-size: 1rem;
+    font-size: 1.45rem;
     line-height: 1;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .tile-caption {
-    font-size: 0.55rem;
+    display: block;
+    width: 100%;
+    font-size: 0.48rem;
     font-weight: 700;
-    line-height: 1.05;
-    letter-spacing: 0.03em;
+    line-height: 1;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
+    text-align: center;
     opacity: 0.82;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tile-theme-bamboo .tile-glyph {
