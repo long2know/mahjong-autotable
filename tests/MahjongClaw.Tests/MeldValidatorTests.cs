@@ -138,4 +138,31 @@ public class MeldValidatorTests
 
         MeldValidator.IsValidPung(tiles).Should().BeFalse();
     }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalseForWrongTileCount()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 2)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsFalseForWrongTileCount()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Dots, 4)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
 }
