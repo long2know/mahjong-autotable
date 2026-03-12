@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "MahjongClaw (API + Client)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "dev-up",
+      "program": "${workspaceFolder}/src/MahjongClaw.Api/bin/Debug/net10.0/MahjongClaw.Api.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/MahjongClaw.Api",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5270"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+        "uriFormat": "http://localhost:5299"
+      }
+    }
+  ]
+}
