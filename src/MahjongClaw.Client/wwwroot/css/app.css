@@ -415,6 +415,12 @@ code {
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
+.center-area .tile-glyph,
+.seat-card .tile-glyph,
+.meld-item .tile-glyph {
+    font-size: 1.85rem;
+}
+
 .tile-caption {
     display: block;
     width: 100%;
