@@ -598,31 +598,34 @@ code {
 
 @media (min-width: 992px) {
     .table-grid {
-        grid-template-columns: 1fr 1fr 1fr;
-        grid-template-rows: auto auto;
+        grid-template-columns: minmax(210px, 1fr) minmax(320px, 1.35fr) minmax(210px, 1fr);
+        grid-template-rows: auto minmax(320px, 1fr) auto;
+        grid-template-areas:
+            "north north north"
+            "west center east"
+            "south south south";
+        align-items: stretch;
     }
 
     .seat-north {
-        grid-column: 2 / 3;
+        grid-area: north;
     }
 
     .seat-west {
-        grid-column: 1 / 2;
-        grid-row: 2 / 3;
+        grid-area: west;
     }
 
     .seat-east {
-        grid-column: 3 / 4;
-        grid-row: 2 / 3;
+        grid-area: east;
     }
 
     .seat-south {
-        grid-column: 2 / 3;
-        grid-row: 2 / 3;
+        grid-area: south;
     }
 
     .center-area {
-        grid-column: 1 / -1;
+        grid-area: center;
+        min-height: 320px;
     }
 }
 
