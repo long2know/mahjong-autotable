@@ -128,6 +128,38 @@ code {
     padding: 0.75rem;
     border-radius: 1.25rem;
     background: radial-gradient(circle at 50% 40%, rgba(18, 84, 52, 0.2) 0%, rgba(12, 52, 32, 0.18) 55%, rgba(8, 35, 22, 0.12) 100%);
+    border: 1px solid rgba(20, 74, 48, 0.6);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 12px 28px rgba(8, 22, 14, 0.3);
+    overflow: hidden;
+}
+
+.table-grid::before {
+    content: "";
+    position: absolute;
+    inset: 0.45rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.28);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.table-grid::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.08) 0%, transparent 55%),
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.04) 2px, transparent 2px, transparent 6px);
+    opacity: 0.25;
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.table-grid > * {
+    position: relative;
+    z-index: 1;
 }
 
 .seat-card {
