@@ -113,19 +113,99 @@ code {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+.table-surface {
+    position: relative;
+    padding: 0.85rem;
+    border-radius: 1.7rem;
+    background: linear-gradient(135deg, #5d4021 0%, #3f2a16 52%, #2b1b0f 100%);
+    border: 1px solid rgba(85, 58, 29, 0.85);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 18px 42px rgba(6, 18, 12, 0.45);
+    overflow: hidden;
+}
+
+.table-surface::before {
+    content: "";
+    position: absolute;
+    inset: 0.35rem;
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.table-surface::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(35deg, rgba(255, 255, 255, 0.04) 0, rgba(255, 255, 255, 0.04) 6px, transparent 6px, transparent 16px);
+    opacity: 0.18;
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.table-surface > * {
+    position: relative;
+    z-index: 1;
+}
+
 .table-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto auto;
+    grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.35fr) minmax(180px, 1fr);
+    grid-template-rows: auto minmax(280px, 1fr) auto;
+    grid-template-areas:
+        ". north ."
+        "west center east"
+        ". south .";
     gap: 1rem;
     position: relative;
-    min-height: 420px;
+    min-height: 520px;
     padding: 0.75rem;
     border-radius: 1.25rem;
     background: radial-gradient(circle at 50% 40%, rgba(18, 84, 52, 0.2) 0%, rgba(12, 52, 32, 0.18) 55%, rgba(8, 35, 22, 0.12) 100%);
+    border: 1px solid rgba(20, 74, 48, 0.6);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 12px 28px rgba(8, 22, 14, 0.3);
+    overflow: hidden;
+}
+
+.table-grid::before {
+    content: "";
+    position: absolute;
+    inset: 0.45rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.28);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.table-grid::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.08) 0%, transparent 55%),
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.04) 2px, transparent 2px, transparent 6px);
+    opacity: 0.25;
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.table-grid > * {
+    position: relative;
+    z-index: 1;
+}
+
+.seat {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
 }
 
 .seat-card {
+    width: 100%;
     background: #f8f9fa;
     border-radius: 0.75rem;
     padding: 0.85rem;
@@ -133,8 +213,24 @@ code {
     min-height: 120px;
 }
 
+.seat-north {
+    grid-area: north;
+}
+
+.seat-west {
+    grid-area: west;
+}
+
+.seat-east {
+    grid-area: east;
+}
+
+.seat-south {
+    grid-area: south;
+}
+
 .center-area {
-    grid-column: 1 / -1;
+    grid-area: center;
     background: radial-gradient(circle at center, #1f6d43 0%, #155233 72%, #114228 100%);
     border: 1px solid #2f7b52;
     border-radius: 1rem;
@@ -142,6 +238,7 @@ code {
     text-align: center;
     color: #f8f9fa;
     min-height: 320px;
+    width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -227,8 +324,10 @@ code {
     height: 220px;
     border-radius: 0.8rem;
     border: 1px solid rgba(255, 255, 255, 0.22);
-    background: rgba(0, 0, 0, 0.08);
+    background: radial-gradient(circle at 50% 45%, rgba(27, 108, 66, 0.22) 0%, rgba(10, 44, 27, 0.28) 60%, rgba(6, 24, 15, 0.35) 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 0 28px rgba(0, 0, 0, 0.35);
     margin-bottom: 0.75rem;
+    overflow: hidden;
 }
 
 .wall-side {
@@ -309,6 +408,17 @@ code {
     background: linear-gradient(180deg, #f7f7f7 0%, #dde3ea 100%);
     border: 1px solid #c4ccd6;
     position: relative;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+.wall-stack::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border-radius: 0.18rem;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 55%);
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 .wall-stack::after {
@@ -341,6 +451,12 @@ code {
 .wall-stack-break::after {
     border-color: #f59f00;
     background: linear-gradient(180deg, #fff4cc 0%, #ffd66b 100%);
+    box-shadow: 0 0 0 1px rgba(245, 159, 0, 0.35), 0 0 6px rgba(245, 159, 0, 0.45);
+}
+
+.wall-stack-break::before {
+    background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.55) 0, rgba(255, 255, 255, 0.55) 2px, rgba(255, 255, 255, 0.15) 2px, rgba(255, 255, 255, 0.15) 4px);
+    opacity: 0.65;
 }
 
 .wall-stack-depleted,
@@ -424,10 +540,12 @@ code {
     padding: 0.2rem 0.25rem;
     gap: 0.1rem;
     overflow: hidden;
+    position: relative;
     border-radius: 0.5rem;
     border: 1px solid #cfc7b1;
     background: linear-gradient(180deg, #fffefa 0%, #f8f1e2 58%, #efe3cb 100%);
     color: #1f1f1f;
+    --tile-accent: rgba(141, 117, 78, 0.45);
     --tile-tilt: perspective(600px) rotateX(0deg);
     --tile-tilt-angle: 0deg;
     transform-style: preserve-3d;
@@ -435,6 +553,27 @@ code {
     box-shadow: 0 2px 0 #e3d6b9, 0 4px 0 #d8c9a7, 0 8px 12px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.85);
     transition: transform 140ms ease, box-shadow 140ms ease;
     animation: tile-deal 180ms ease-out;
+}
+
+.tile-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0.18rem;
+    border-radius: 0.38rem;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0) 45%);
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.tile-shell::after {
+    content: "";
+    position: absolute;
+    inset: 0.28rem;
+    border-radius: 0.32rem;
+    border: 1px solid var(--tile-accent);
+    opacity: 0.55;
+    pointer-events: none;
+    box-shadow: inset 0 -0.12rem 0 rgba(0, 0, 0, 0.08);
 }
 
 .tile-shell:hover {
@@ -454,9 +593,22 @@ code {
 }
 
 .tile-facedown {
-    background: linear-gradient(180deg, #34495e 0%, #243447 100%);
-    border-color: #243447;
+    background: linear-gradient(145deg, #3a4f6a 0%, #223244 60%, #172433 100%);
+    border-color: #1a2633;
     color: #fff;
+    --tile-accent: rgba(92, 136, 176, 0.4);
+}
+
+.tile-facedown::before {
+    background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.18) 0, rgba(255, 255, 255, 0.18) 3px, rgba(255, 255, 255, 0.04) 3px, rgba(255, 255, 255, 0.04) 6px);
+    opacity: 0.45;
+}
+
+.tile-back {
+    font-size: 1.2rem;
+    letter-spacing: 0.05em;
+    opacity: 0.85;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
 .tile-highlight {
@@ -552,33 +704,69 @@ code {
     transform: translateY(-2px) scale(1.02);
 }
 
-@media (min-width: 992px) {
+@media (min-width: 768px) {
     .table-grid {
-        grid-template-columns: 1fr 1fr 1fr;
-        grid-template-rows: auto auto;
+        grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.2fr) minmax(180px, 1fr);
+        grid-template-rows: auto minmax(280px, 1fr) auto;
+        grid-template-areas:
+            ". north ."
+            "west center east"
+            ". south .";
+        align-items: stretch;
     }
 
     .seat-north {
-        grid-column: 2 / 3;
+        grid-area: north;
     }
 
     .seat-west {
-        grid-column: 1 / 2;
-        grid-row: 2 / 3;
+        grid-area: west;
     }
 
     .seat-east {
-        grid-column: 3 / 4;
-        grid-row: 2 / 3;
+        grid-area: east;
     }
 
     .seat-south {
-        grid-column: 2 / 3;
-        grid-row: 2 / 3;
+        grid-area: south;
     }
 
     .center-area {
-        grid-column: 1 / -1;
+        grid-area: center;
+        min-height: 280px;
+    }
+}
+
+@media (min-width: 992px) {
+    .table-grid {
+        grid-template-columns: minmax(210px, 1fr) minmax(320px, 1.35fr) minmax(210px, 1fr);
+        grid-template-rows: auto minmax(320px, 1fr) auto;
+        grid-template-areas:
+            ". north ."
+            "west center east"
+            ". south .";
+        align-items: stretch;
+    }
+
+    .seat-north {
+        grid-area: north;
+    }
+
+    .seat-west {
+        grid-area: west;
+    }
+
+    .seat-east {
+        grid-area: east;
+    }
+
+    .seat-south {
+        grid-area: south;
+    }
+
+    .center-area {
+        grid-area: center;
+        min-height: 320px;
     }
 }
 
