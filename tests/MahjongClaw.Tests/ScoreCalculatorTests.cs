@@ -31,6 +31,81 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_CountsKongsAndPungs_ForStandardHand()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 5),
+                    new(TileSuit.Dots, 5),
+                    new(TileSuit.Dots, 5)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 9),
+                    new(TileSuit.Characters, 9),
+                    new(TileSuit.Characters, 9)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 1),
+                    new(TileSuit.Bamboos, 2),
+                    new(TileSuit.Bamboos, 3)
+                })
+            },
+            new Tile(TileSuit.Dots, 1));
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(12);
+    }
+
+    [Fact]
+    public void CalculateBasicScore_IgnoresMeldScore_ForAllPungsPattern()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.White),
+                    new(TileSuit.Dragons, 0, null, Dragon.White),
+                    new(TileSuit.Dragons, 0, null, Dragon.White),
+                    new(TileSuit.Dragons, 0, null, Dragon.White)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 7),
+                    new(TileSuit.Characters, 7),
+                    new(TileSuit.Characters, 7)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 3),
+                    new(TileSuit.Dots, 3),
+                    new(TileSuit.Dots, 3)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 6),
+                    new(TileSuit.Bamboos, 6),
+                    new(TileSuit.Bamboos, 6)
+                })
+            },
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(6);
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ReturnsFalse_WhenHandIsBelowChineseOfficialThreshold()
     {
         var hand = new WinningHand(
