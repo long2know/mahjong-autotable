@@ -115,16 +115,15 @@ code {
 }
 .table-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto auto auto;
+    grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.35fr) minmax(180px, 1fr);
+    grid-template-rows: auto minmax(280px, 1fr) auto;
     grid-template-areas:
-        "north north"
-        "west east"
-        "south south"
-        "center center";
+        ". north ."
+        "west center east"
+        ". south .";
     gap: 1rem;
     position: relative;
-    min-height: 420px;
+    min-height: 520px;
     padding: 0.75rem;
     border-radius: 1.25rem;
     background: radial-gradient(circle at 50% 40%, rgba(18, 84, 52, 0.2) 0%, rgba(12, 52, 32, 0.18) 55%, rgba(8, 35, 22, 0.12) 100%);
@@ -162,7 +161,14 @@ code {
     z-index: 1;
 }
 
+.seat {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+}
+
 .seat-card {
+    width: 100%;
     background: #f8f9fa;
     border-radius: 0.75rem;
     padding: 0.85rem;
@@ -187,7 +193,7 @@ code {
 }
 
 .center-area {
-    grid-column: 1 / -1;
+    grid-area: center;
     background: radial-gradient(circle at center, #1f6d43 0%, #155233 72%, #114228 100%);
     border: 1px solid #2f7b52;
     border-radius: 1rem;
@@ -195,6 +201,7 @@ code {
     text-align: center;
     color: #f8f9fa;
     min-height: 320px;
+    width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -652,9 +659,9 @@ code {
         grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.2fr) minmax(180px, 1fr);
         grid-template-rows: auto minmax(280px, 1fr) auto;
         grid-template-areas:
-            "north north north"
+            ". north ."
             "west center east"
-            "south south south";
+            ". south .";
         align-items: stretch;
     }
 
@@ -685,9 +692,9 @@ code {
         grid-template-columns: minmax(210px, 1fr) minmax(320px, 1.35fr) minmax(210px, 1fr);
         grid-template-rows: auto minmax(320px, 1fr) auto;
         grid-template-areas:
-            "north north north"
+            ". north ."
             "west center east"
-            "south south south";
+            ". south .";
         align-items: stretch;
     }
 
