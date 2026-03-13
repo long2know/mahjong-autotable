@@ -45,6 +45,24 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsSevenPairs_WhenQuadCountsAsTwoPairs()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsThirteenOrphans_AsWinningPattern()
     {
         var tiles = new List<Tile>
