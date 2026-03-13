@@ -113,6 +113,43 @@ code {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+.table-surface {
+    position: relative;
+    padding: 0.85rem;
+    border-radius: 1.7rem;
+    background: linear-gradient(135deg, #5d4021 0%, #3f2a16 52%, #2b1b0f 100%);
+    border: 1px solid rgba(85, 58, 29, 0.85);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 18px 42px rgba(6, 18, 12, 0.45);
+    overflow: hidden;
+}
+
+.table-surface::before {
+    content: "";
+    position: absolute;
+    inset: 0.35rem;
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.table-surface::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(35deg, rgba(255, 255, 255, 0.04) 0, rgba(255, 255, 255, 0.04) 6px, transparent 6px, transparent 16px);
+    opacity: 0.18;
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.table-surface > * {
+    position: relative;
+    z-index: 1;
+}
+
 .table-grid {
     display: grid;
     grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.35fr) minmax(180px, 1fr);
