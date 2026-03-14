@@ -59,6 +59,32 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalseForDuplicateRanks()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 3)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsFalseForWrapAroundSequence()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Bamboos, 8),
+            new Tile(TileSuit.Bamboos, 9),
+            new Tile(TileSuit.Bamboos, 1)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsTrueForTriplet()
     {
         var tile = new Tile(TileSuit.Characters, 7);
