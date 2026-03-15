@@ -597,6 +597,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_PrioritizesBigThreeDragons_OverAllTerminalsAndHonors_WhenBothApply()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 characters (terminal)
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            // Melds: pung red, pung green, pung white dragons, pung 9 characters
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.BigThreeDragons);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenTwoDragonTripletsButPairIsNotDragon_AndNoThirdDragonTriplet()
     {
         var tiles = new List<Tile>
@@ -686,6 +714,34 @@ public class RulesCorrectnessVectorsTests
             // Pair: red dragon
             new(TileSuit.Dragons, 0, null, Dragon.Red),
             new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Melds: pung east, pung south, pung west, pung north
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.BigFourWinds);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesBigFourWinds_OverAllTerminalsAndHonors_WhenBothApply()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 characters (terminal)
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
             // Melds: pung east, pung south, pung west, pung north
             new(TileSuit.Winds, 0, Wind.East),
             new(TileSuit.Winds, 0, Wind.East),
