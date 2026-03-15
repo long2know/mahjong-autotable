@@ -45,6 +45,25 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_PrioritizesSevenPairs_WhenStandardMeldDecompositionExists()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsSevenPairs_WhenQuadCountsAsTwoPairs()
     {
         var tiles = new List<Tile>
@@ -161,6 +180,62 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_PrioritizesLittleFourWinds_WhenPairIsWindTile()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: east wind
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            // Melds: pung south, pung west, pung north, pung red dragon
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.LittleFourWinds);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesAllTerminalsAndHonors_WhenHonorHandIncludesTerminalPung()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Melds: pung east, pung south, pung west, pung 1 dots
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminalsAndHonors);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenHonorHandIncludesSuitedChow()
     {
         var tiles = new List<Tile>
@@ -263,6 +338,34 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Dragons, 0, null, Dragon.Red),
             new(TileSuit.Dragons, 0, null, Dragon.Red),
             new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminalsAndHonors);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsAllTerminalsAndHonors_WhenPairIsHonorTile()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragon
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Melds: pung 1 chars, pung 9 chars, pung 1 dots, pung east wind
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
@@ -400,6 +503,25 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenAllGreenCandidateContainsBambooFive()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: green dragon
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Melds: 234 bamboo, 234 bamboo, chow 456 bamboo (includes 5), pung 8 bamboo
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsBigThreeDragons_AsWinningPattern()
     {
         var tiles = new List<Tile>
@@ -466,25 +588,6 @@ public class RulesCorrectnessVectorsTests
             // Melds: 234 bamboo, 678 bamboo (contains non-green 7), pung 6 bamboo, pung 8 bamboo
             new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
             new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8),
-            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
-            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
-        };
-
-        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
-        hand!.Pattern.Should().Be(WinningPattern.Standard);
-    }
-
-    [Fact]
-    public void HandAnalyzer_UsesStandardPattern_WhenAllGreenCandidateContainsBambooFive()
-    {
-        var tiles = new List<Tile>
-        {
-            // Pair: green dragon
-            new(TileSuit.Dragons, 0, null, Dragon.Green),
-            new(TileSuit.Dragons, 0, null, Dragon.Green),
-            // Melds: 234 bamboo, 456 bamboo (contains non-green 5), pung 6 bamboo, pung 8 bamboo
-            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
-            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
             new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
             new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
         };
@@ -561,6 +664,34 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Winds, 0, Wind.East),
             new(TileSuit.Winds, 0, Wind.East),
             new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.BigThreeDragons);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesBigThreeDragons_OverAllTerminalsAndHonors_WhenBothApply()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 characters (terminal)
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            // Melds: pung red, pung green, pung white dragons, pung 9 characters
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
@@ -658,6 +789,34 @@ public class RulesCorrectnessVectorsTests
             // Pair: red dragon
             new(TileSuit.Dragons, 0, null, Dragon.Red),
             new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Melds: pung east, pung south, pung west, pung north
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.BigFourWinds);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesBigFourWinds_OverAllTerminalsAndHonors_WhenBothApply()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 characters (terminal)
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
             // Melds: pung east, pung south, pung west, pung north
             new(TileSuit.Winds, 0, Wind.East),
             new(TileSuit.Winds, 0, Wind.East),
