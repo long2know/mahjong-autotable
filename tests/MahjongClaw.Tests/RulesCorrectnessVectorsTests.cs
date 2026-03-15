@@ -271,6 +271,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsAllTerminalsAndHonors_WhenPairIsHonorTile()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragon
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Melds: pung 1 chars, pung 9 chars, pung 1 dots, pung east wind
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminalsAndHonors);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenAllTerminalsAndHonorsCandidateContainsMiddleTile()
     {
         var tiles = new List<Tile>
