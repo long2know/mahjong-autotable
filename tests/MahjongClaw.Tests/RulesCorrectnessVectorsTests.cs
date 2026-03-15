@@ -421,6 +421,25 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsAllGreen_WhenNoDragonsAppear()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 bamboo
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            // Melds: 234 bamboo, 234 bamboo, pung 6 bamboo, pung 8 bamboo
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllGreen);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesAllGreen_OverSevenPairs_WhenBothApply()
     {
         var tiles = new List<Tile>
