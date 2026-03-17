@@ -2257,6 +2257,28 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsAlternatePair_WhenInitialPairCandidateCannotFormMelds()
+    {
+        var tiles = new List<Tile>
+        {
+            // Only the 5 dot pair yields a valid meld decomposition.
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenQuadSplitsAcrossPungAndChow()
     {
         var tiles = new List<Tile>
