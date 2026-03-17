@@ -42,4 +42,31 @@ public class TileFactoryTests
             tiles.Count(t => t.Suit == TileSuit.Dragons && t.Dragon == dragon).Should().Be(4);
         }
     }
+
+    [Fact]
+    public void CreateStandardSet_IncludesOneCopyOfEachFlowerRank()
+    {
+        var tiles = TileFactory.CreateStandardSet();
+
+        for (var rank = 1; rank <= 4; rank++)
+        {
+            tiles.Count(t => t.Suit == TileSuit.Flowers && t.Rank == rank).Should().Be(1);
+        }
+
+        tiles.Count(t => t.Suit == TileSuit.Flowers).Should().Be(4);
+    }
+
+    [Fact]
+    public void CreateStandardSet_IncludesOneCopyOfEachSeasonRank()
+    {
+        var tiles = TileFactory.CreateStandardSet();
+
+        for (var rank = 1; rank <= 4; rank++)
+        {
+            tiles.Count(t => t.Suit == TileSuit.Seasons && t.Rank == rank).Should().Be(1);
+        }
+
+        tiles.Count(t => t.Suit == TileSuit.Seasons).Should().Be(4);
+    }
 }
+
