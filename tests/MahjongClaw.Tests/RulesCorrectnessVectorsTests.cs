@@ -2034,6 +2034,30 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsThirteenOrphans_WhenAnyTileAppearsThreeTimes()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsThirteenOrphansShape_WhenMultiplePairsExist()
     {
         var tiles = new List<Tile>
