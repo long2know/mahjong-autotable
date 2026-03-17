@@ -2179,6 +2179,24 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenQuadSplitsAcrossPungAndChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 9 bamboos
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            // Melds: pung 2 dots, chow 2-3-4 dots, chow 5-6-7 dots, chow 3-4-5 chars
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHands_WhenFlowerOrSeasonTileIsIncluded()
     {
         var tiles = new List<Tile>
