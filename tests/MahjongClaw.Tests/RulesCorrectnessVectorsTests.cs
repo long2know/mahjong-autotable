@@ -3079,6 +3079,27 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsTerminalHonorHand_WhenNoValidMeldDecompositionExists()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 characters
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            // Triplets: 9 characters, 1 dots
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            // Pairs: east wind, red dragon
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Singletons to block any remaining melds.
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_PrefersPungs_WhenMultipleStandardDecompositionsExist()
     {
         var tiles = new List<Tile>
