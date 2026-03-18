@@ -1565,21 +1565,28 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(88);
     }
 
-    [Fact]
-    public void HandAnalyzer_AcceptsLittleThreeDragons_AsWinningPattern()
+    [Theory]
+    [InlineData(Dragon.Red)]
+    [InlineData(Dragon.Green)]
+    [InlineData(Dragon.White)]
+    public void HandAnalyzer_AcceptsLittleThreeDragons_WhenPairIsAnyDragon(Dragon pairDragon)
     {
+        var tripletDragons = new[] { Dragon.Red, Dragon.Green, Dragon.White }
+            .Where(dragon => dragon != pairDragon)
+            .ToArray();
+
         var tiles = new List<Tile>
         {
-            // Pair: white dragon
-            new(TileSuit.Dragons, 0, null, Dragon.White),
-            new(TileSuit.Dragons, 0, null, Dragon.White),
-            // Melds: pung red dragon, pung green dragon, pung east, chow 123 dots
-            new(TileSuit.Dragons, 0, null, Dragon.Red),
-            new(TileSuit.Dragons, 0, null, Dragon.Red),
-            new(TileSuit.Dragons, 0, null, Dragon.Red),
-            new(TileSuit.Dragons, 0, null, Dragon.Green),
-            new(TileSuit.Dragons, 0, null, Dragon.Green),
-            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Pair: selected dragon
+            new(TileSuit.Dragons, 0, null, pairDragon),
+            new(TileSuit.Dragons, 0, null, pairDragon),
+            // Melds: two dragon pungs (other colors), pung east, chow 123 dots
+            new(TileSuit.Dragons, 0, null, tripletDragons[0]),
+            new(TileSuit.Dragons, 0, null, tripletDragons[0]),
+            new(TileSuit.Dragons, 0, null, tripletDragons[0]),
+            new(TileSuit.Dragons, 0, null, tripletDragons[1]),
+            new(TileSuit.Dragons, 0, null, tripletDragons[1]),
+            new(TileSuit.Dragons, 0, null, tripletDragons[1]),
             new(TileSuit.Winds, 0, Wind.East),
             new(TileSuit.Winds, 0, Wind.East),
             new(TileSuit.Winds, 0, Wind.East),
