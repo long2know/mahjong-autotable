@@ -1795,6 +1795,33 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Theory]
+    [InlineData(TileSuit.Characters, 1)]
+    [InlineData(TileSuit.Characters, 9)]
+    [InlineData(TileSuit.Bamboos, 1)]
+    [InlineData(TileSuit.Bamboos, 9)]
+    public void HandAnalyzer_AcceptsNineGates_WhenExtraTileIsTerminalInNonDotSuit(TileSuit suit, int extraRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // 1112345678999 + terminal extra in the same suited family.
+            new(suit, 1), new(suit, 1), new(suit, 1),
+            new(suit, 2),
+            new(suit, 3),
+            new(suit, 4),
+            new(suit, 5),
+            new(suit, 6),
+            new(suit, 7),
+            new(suit, 8),
+            new(suit, 9), new(suit, 9), new(suit, 9),
+            new(suit, extraRank)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.NineGates);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Theory]
     [InlineData(TileSuit.Bamboos, 5)]
     [InlineData(TileSuit.Characters, 5)]
     public void HandAnalyzer_RejectsNineGatesShape_WhenExtraSuitedTileIsOffSuit(TileSuit extraSuit, int extraRank)
@@ -1819,8 +1846,10 @@ public class RulesCorrectnessVectorsTests
 
     [Theory]
     [InlineData(2)]
+    [InlineData(3)]
     [InlineData(4)]
     [InlineData(6)]
+    [InlineData(7)]
     [InlineData(8)]
     public void HandAnalyzer_RejectsNineGates_WhenRequiredInnerTileIsOffSuit(int displacedRank)
     {
