@@ -105,10 +105,37 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalseForFlowerTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Flowers, 1),
+            new Tile(TileSuit.Flowers, 1),
+            new Tile(TileSuit.Flowers, 1)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidKong_ReturnsTrueForQuad()
     {
         var tile = new Tile(TileSuit.Bamboos, 2);
         MeldValidator.IsValidKong(new[] { tile, tile, tile, tile }).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalseForSeasonTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Seasons, 2),
+            new Tile(TileSuit.Seasons, 2),
+            new Tile(TileSuit.Seasons, 2),
+            new Tile(TileSuit.Seasons, 2)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
     }
 
     [Fact]
