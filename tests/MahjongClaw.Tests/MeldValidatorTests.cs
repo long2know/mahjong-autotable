@@ -105,6 +105,13 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsTrueForHonorTriplet()
+    {
+        var tile = new Tile(TileSuit.Winds, 0, Wind.North);
+        MeldValidator.IsValidPung(new[] { tile, tile, tile }).Should().BeTrue();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalseWhenTilesDiffer()
     {
         var tiles = new[]
@@ -134,6 +141,13 @@ public class MeldValidatorTests
     public void IsValidKong_ReturnsTrueForQuad()
     {
         var tile = new Tile(TileSuit.Bamboos, 2);
+        MeldValidator.IsValidKong(new[] { tile, tile, tile, tile }).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsTrueForHonorQuad()
+    {
+        var tile = new Tile(TileSuit.Dragons, 0, null, Dragon.Red);
         MeldValidator.IsValidKong(new[] { tile, tile, tile, tile }).Should().BeTrue();
     }
 
