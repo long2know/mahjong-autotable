@@ -2476,6 +2476,33 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Theory]
+    [InlineData(TileSuit.Characters, 2)]
+    [InlineData(TileSuit.Characters, 8)]
+    [InlineData(TileSuit.Bamboos, 3)]
+    [InlineData(TileSuit.Bamboos, 7)]
+    public void HandAnalyzer_AcceptsNineGates_WhenExtraTileIsMiddleRankInNonDotSuit(TileSuit suit, int extraRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // 1112345678999 + non-terminal extra in the same suited family.
+            new(suit, 1), new(suit, 1), new(suit, 1),
+            new(suit, 2),
+            new(suit, 3),
+            new(suit, 4),
+            new(suit, 5),
+            new(suit, 6),
+            new(suit, 7),
+            new(suit, 8),
+            new(suit, 9), new(suit, 9), new(suit, 9),
+            new(suit, extraRank)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.NineGates);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Theory]
     [InlineData(TileSuit.Bamboos, 5)]
     [InlineData(TileSuit.Characters, 5)]
     public void HandAnalyzer_RejectsNineGatesShape_WhenExtraSuitedTileIsOffSuit(TileSuit extraSuit, int extraRank)
@@ -3299,6 +3326,23 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
             new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
             new(TileSuit.Bamboos, 3)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsSevenPairsShape_WhenTileAppearsSixTimes()
+    {
+        var tiles = new List<Tile>
+        {
+            // Six copies would otherwise form three pairs, but exceeds tile limits.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
