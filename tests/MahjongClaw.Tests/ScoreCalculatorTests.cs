@@ -167,6 +167,37 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void MeetsMinimumFan_ReturnsTrue_WhenStandardHandScoresExactlyEight()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 2));
+
+        ScoreCalculator.MeetsMinimumFan(hand).Should().BeTrue();
+    }
+
+    [Fact]
     public void MeetsMinimumFan_ReturnsTrue_ForSevenPairsSpecialHand()
     {
         var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), WinningPattern.SevenPairs);

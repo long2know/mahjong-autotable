@@ -109,6 +109,7 @@ public static class HandAnalyzer
     {
         hand = null;
         var bestRank = int.MinValue;
+        var bestScore = int.MinValue;
 
         foreach (var tile in GetOrderedTiles(counts))
         {
@@ -128,13 +129,17 @@ public static class HandAnalyzer
 
             var pattern = DetermineMeldPattern(tiles, melds, tile);
             var rank = GetPatternRank(pattern);
-            if (rank <= bestRank)
+            var candidateHand = new WinningHand(melds.ToList(), tile, pattern);
+            var candidateScore = candidateHand.BasicScore;
+
+            if (rank < bestRank || (rank == bestRank && candidateScore <= bestScore))
             {
                 continue;
             }
 
             bestRank = rank;
-            hand = new WinningHand(melds.ToList(), tile, pattern);
+            bestScore = candidateScore;
+            hand = candidateHand;
         }
 
         return hand is not null;
