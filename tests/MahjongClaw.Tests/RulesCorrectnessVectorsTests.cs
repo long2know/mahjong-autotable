@@ -1514,6 +1514,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesAllPungs_WhenTerminalHonorHandHasNonTerminalPair()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 dots (non-terminal)
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 2),
+            // Melds: pung 1 chars, pung 9 chars, pung east wind, pung red dragon
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesLittleFourWinds_OverAllPungs_WhenBothApply()
     {
         var tiles = new List<Tile>
