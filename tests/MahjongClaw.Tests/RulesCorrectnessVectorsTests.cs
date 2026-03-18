@@ -799,6 +799,27 @@ public class RulesCorrectnessVectorsTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void HandAnalyzer_UsesStandardPattern_WhenAllGreenCandidateContainsBambooTerminal(int terminalRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: green dragon
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Melds: 234 bamboo, 234 bamboo, pung 6 bamboo, pung terminal bamboo
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, terminalRank), new(TileSuit.Bamboos, terminalRank), new(TileSuit.Bamboos, terminalRank)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
     [Fact]
     public void HandAnalyzer_AcceptsBigThreeDragons_AsWinningPattern()
     {
