@@ -102,4 +102,20 @@ public class HandAnalyzerEdgeCaseTests
 
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
     }
+
+    [Fact]
+    public void IsWinningHand_ReturnsFalse_WhenSeasonTileIsIncluded()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Seasons, 2)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
 }

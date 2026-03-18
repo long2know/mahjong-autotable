@@ -138,6 +138,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalseForSeasonTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Seasons, 2),
+            new Tile(TileSuit.Seasons, 2),
+            new Tile(TileSuit.Seasons, 2)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidKong_ReturnsTrueForQuad()
     {
         var tile = new Tile(TileSuit.Bamboos, 2);
