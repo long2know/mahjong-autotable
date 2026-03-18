@@ -2968,4 +2968,25 @@ public class RulesCorrectnessVectorsTests
         var create = () => new Tile(TileSuit.Winds, 0);
         create.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void Tile_ThrowsWhenDragonMetadataMissing()
+    {
+        var create = () => new Tile(TileSuit.Dragons, 0);
+        create.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Tile_ThrowsWhenWindIncludesDragonValue()
+    {
+        var create = () => new Tile(TileSuit.Winds, 0, Wind.East, Dragon.Red);
+        create.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Tile_ThrowsWhenDragonIncludesWindValue()
+    {
+        var create = () => new Tile(TileSuit.Dragons, 0, Wind.East, Dragon.Red);
+        create.Should().Throw<ArgumentException>();
+    }
 }
