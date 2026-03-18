@@ -734,6 +734,27 @@ public class RulesCorrectnessVectorsTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(9)]
+    public void HandAnalyzer_UsesStandardPattern_WhenAllGreenCandidateHasNonGreenPair(int pairRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: non-green bamboo rank
+            new(TileSuit.Bamboos, pairRank), new(TileSuit.Bamboos, pairRank),
+            // Melds: 234 bamboo, 234 bamboo, pung 6 bamboo, pung 8 bamboo
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
     [Fact]
     public void HandAnalyzer_AcceptsAllGreen_WhenPairIsSuitedGreenTile()
     {
