@@ -98,6 +98,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalseWhenSeasonTileIncluded()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Seasons, 1)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsTrueForTriplet()
     {
         var tile = new Tile(TileSuit.Characters, 7);
