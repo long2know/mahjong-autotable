@@ -3209,6 +3209,26 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_PrioritizesHigherStandardScore_WhenMultiplePairCandidatesExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Candidate pairs on 1 dots (low score) vs 4 dots (higher score).
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 4));
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_AssignsStandardScore_BasedOnPungCount()
     {
         var tiles = new List<Tile>
