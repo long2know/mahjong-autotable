@@ -3286,6 +3286,25 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHands_WhenSuitedTileExceedsFourCopies()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesHigherStandardScore_WhenMultiplePairCandidatesExist()
     {
         var tiles = new List<Tile>
