@@ -1115,6 +1115,25 @@ public class RulesCorrectnessVectorsTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
     }
 
+    [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenAllGreenCandidateIncludesOtherSuitGreenRanks()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: green dragon
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Melds: 234 bamboo, 234 bamboo, pung 6 bamboo, chow 234 dots (non-green suit)
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(9)]
