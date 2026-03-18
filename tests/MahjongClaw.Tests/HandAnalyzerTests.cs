@@ -183,6 +183,26 @@ public class HandAnalyzerTests
     }
 
     [Fact]
+    public void TryGetWinningHand_BacktracksAcrossPairCandidates_WhenFirstPairFails()
+    {
+        var tiles = new List<Tile>
+        {
+            // Characters: 123 and 234 chows.
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            // Dots: pung of 1 and pair of 5.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Bamboos: chow 789.
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalse_WhenAnyTileCountExceedsFour()
     {
         var tiles = new List<Tile>

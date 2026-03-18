@@ -44,12 +44,22 @@ public static class MeldValidator
             return false;
         }
 
+        if (tiles.Any(static tile => tile.IsFlower))
+        {
+            return false;
+        }
+
         return tiles.All(tile => tile == tiles[0]);
     }
 
     public static bool IsValidKong(IReadOnlyList<Tile> tiles)
     {
         if (tiles.Count != 4)
+        {
+            return false;
+        }
+
+        if (tiles.Any(static tile => tile.IsFlower))
         {
             return false;
         }
