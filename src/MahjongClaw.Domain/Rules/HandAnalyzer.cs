@@ -38,37 +38,7 @@ public static class HandAnalyzer
             return true;
         }
 
-        foreach (var tile in GetOrderedTiles(counts))
-        {
-            if (counts[tile] >= 2)
-            {
-                counts[tile] -= 2;
-                var melds = new List<Meld>();
-
-                if (TryFormMelds(counts, melds))
-                {
-                    var pattern = IsNineGates(tiles)
-                            ? WinningPattern.NineGates
-                            : IsBigFourWinds(melds)
-                                ? WinningPattern.BigFourWinds
-                            : IsBigThreeDragons(melds)
-                                ? WinningPattern.BigThreeDragons
-                                : IsLittleFourWinds(melds, tile)
-                                    ? WinningPattern.LittleFourWinds
-                                    : IsLittleThreeDragons(melds, tile)
-                                        ? WinningPattern.LittleThreeDragons
-                                        : DetermineTileOnlyPattern(tiles)
-                                            ?? (IsAllPungs(melds) ? WinningPattern.AllPungs : WinningPattern.Standard);
-
-                    hand = new WinningHand(melds, tile, pattern);
-                    return true;
-                }
-
-                counts[tile] += 2;
-            }
-        }
-
-        return false;
+        return TryBuildStandardHand(tiles, counts, out hand);
     }
 
     private static Dictionary<Tile, int> BuildCounts(IReadOnlyList<Tile> tiles)
@@ -135,6 +105,46 @@ public static class HandAnalyzer
         return true;
     }
 
+    private static bool TryBuildStandardHand(IReadOnlyList<Tile> tiles, Dictionary<Tile, int> counts, out WinningHand? hand)
+    {
+        hand = null;
+        var bestRank = int.MinValue;
+        var bestScore = int.MinValue;
+
+        foreach (var tile in GetOrderedTiles(counts))
+        {
+            if (counts[tile] < 2)
+            {
+                continue;
+            }
+
+            var candidateCounts = new Dictionary<Tile, int>(counts);
+            candidateCounts[tile] -= 2;
+
+            var melds = new List<Meld>();
+            if (!TryFormMelds(candidateCounts, melds))
+            {
+                continue;
+            }
+
+            var pattern = DetermineMeldPattern(tiles, melds, tile);
+            var rank = GetPatternRank(pattern);
+            var candidateHand = new WinningHand(melds.ToList(), tile, pattern);
+            var candidateScore = candidateHand.BasicScore;
+
+            if (rank < bestRank || (rank == bestRank && candidateScore <= bestScore))
+            {
+                continue;
+            }
+
+            bestRank = rank;
+            bestScore = candidateScore;
+            hand = candidateHand;
+        }
+
+        return hand is not null;
+    }
+
     private static HashSet<Tile> BuildThirteenOrphansTileSet()
         => new()
         {
@@ -151,6 +161,39 @@ public static class HandAnalyzer
             new(TileSuit.Dragons, 0, null, Dragon.Red),
             new(TileSuit.Dragons, 0, null, Dragon.Green),
             new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+    private static WinningPattern DetermineMeldPattern(IReadOnlyList<Tile> tiles, IReadOnlyList<Meld> melds, Tile pair)
+        => IsNineGates(tiles)
+            ? WinningPattern.NineGates
+            : IsBigFourWinds(melds)
+                ? WinningPattern.BigFourWinds
+            : IsBigThreeDragons(melds)
+                ? WinningPattern.BigThreeDragons
+                : IsLittleFourWinds(melds, pair)
+                    ? WinningPattern.LittleFourWinds
+                    : IsLittleThreeDragons(melds, pair)
+                        ? WinningPattern.LittleThreeDragons
+                        : DetermineTileOnlyPattern(tiles)
+                            ?? (IsAllPungs(melds) ? WinningPattern.AllPungs : WinningPattern.Standard);
+
+    private static int GetPatternRank(WinningPattern pattern)
+        => pattern switch
+        {
+            WinningPattern.ThirteenOrphans => 150,
+            WinningPattern.NineGates => 140,
+            WinningPattern.BigFourWinds => 130,
+            WinningPattern.BigThreeDragons => 120,
+            WinningPattern.LittleFourWinds => 110,
+            WinningPattern.LittleThreeDragons => 100,
+            WinningPattern.AllGreen => 90,
+            WinningPattern.AllHonors => 80,
+            WinningPattern.AllTerminals => 70,
+            WinningPattern.AllTerminalsAndHonors => 60,
+            WinningPattern.SevenPairs => 50,
+            WinningPattern.AllPungs => 40,
+            WinningPattern.Standard => 10,
+            _ => 0
         };
 
     private static WinningPattern? DetermineTileOnlyPattern(IReadOnlyList<Tile> tiles)
