@@ -165,6 +165,20 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidKong_ReturnsFalseForFlowerTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Flowers, 1),
+            new Tile(TileSuit.Flowers, 1),
+            new Tile(TileSuit.Flowers, 1),
+            new Tile(TileSuit.Flowers, 1)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidKong_ReturnsFalseForSeasonTiles()
     {
         var tiles = new[]
