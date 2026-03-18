@@ -85,6 +85,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalseWhenFlowerTileIncluded()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Flowers, 1)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsTrueForTriplet()
     {
         var tile = new Tile(TileSuit.Characters, 7);
@@ -176,6 +189,27 @@ public class MeldValidatorTests
         };
 
         MeldValidator.IsValidMeld(tiles, (MeldType)999).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidMeld_ReturnsTrueForKnownTypes()
+    {
+        var chow = new[]
+        {
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Characters, 6)
+        };
+
+        var pungTile = new Tile(TileSuit.Dragons, 0, null, Dragon.Green);
+        var pung = new[] { pungTile, pungTile, pungTile };
+
+        var kongTile = new Tile(TileSuit.Bamboos, 9);
+        var kong = new[] { kongTile, kongTile, kongTile, kongTile };
+
+        MeldValidator.IsValidMeld(chow, MeldType.Chow).Should().BeTrue();
+        MeldValidator.IsValidMeld(pung, MeldType.Pung).Should().BeTrue();
+        MeldValidator.IsValidMeld(kong, MeldType.Kong).Should().BeTrue();
     }
 
     [Fact]
