@@ -68,6 +68,44 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_CountsMultipleKongs_ForStandardHand()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 2),
+                    new(TileSuit.Characters, 2),
+                    new(TileSuit.Characters, 2)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 5));
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(20);
+    }
+
+    [Fact]
     public void CalculateBasicScore_IgnoresMeldScore_ForAllPungsPattern()
     {
         var hand = new WinningHand(
