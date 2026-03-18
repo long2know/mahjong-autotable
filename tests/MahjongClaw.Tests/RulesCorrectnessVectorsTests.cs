@@ -777,6 +777,27 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(88);
     }
 
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void HandAnalyzer_AcceptsAllGreen_WhenPairIsGreenBambooInChowHeavyHand(int pairRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 3/4 bamboo (green tile)
+            new(TileSuit.Bamboos, pairRank), new(TileSuit.Bamboos, pairRank),
+            // Melds: 234 bamboo, 234 bamboo, pung 6 bamboo, pung 8 bamboo
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllGreen);
+        hand.BasicScore.Should().Be(88);
+    }
+
     [Fact]
     public void HandAnalyzer_PrioritizesAllGreen_OverSevenPairs_WhenBothApply()
     {
