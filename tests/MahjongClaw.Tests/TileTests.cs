@@ -70,6 +70,30 @@ public class TileTests
     }
 
     [Fact]
+    public void Tile_ThrowsWhenSeasonRankIsOutOfRange()
+    {
+        var create = () => new Tile(TileSuit.Seasons, 5);
+
+        create.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Tile_ThrowsWhenSeasonTileIncludesHonorMetadata()
+    {
+        var create = () => new Tile(TileSuit.Seasons, 1, null, Dragon.Red);
+
+        create.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Tile_ThrowsWhenSuitedRankIsOutOfRange()
+    {
+        var create = () => new Tile(TileSuit.Bamboos, 0);
+
+        create.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public void Tile_ThrowsWhenSuitedTileIncludesHonorMetadata()
     {
         var create = () => new Tile(TileSuit.Characters, 5, Wind.East);
