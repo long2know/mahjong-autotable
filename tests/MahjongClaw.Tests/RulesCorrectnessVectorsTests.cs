@@ -2417,6 +2417,64 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Theory]
+    [InlineData(2, Wind.East)]
+    [InlineData(7, Wind.North)]
+    public void HandAnalyzer_RejectsNineGates_WhenRequiredInnerTileIsReplacedByWindHonor(int displacedRank, Wind honor)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            // Extra in-suit tile keeps 14 tiles total.
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one required inner dot tile with a wind honor tile.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == displacedRank);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(TileSuit.Winds, 0, honor);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(3, Dragon.Red)]
+    [InlineData(8, Dragon.White)]
+    public void HandAnalyzer_RejectsNineGates_WhenRequiredInnerTileIsReplacedByDragonHonor(int displacedRank, Dragon honor)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            // Extra in-suit tile keeps 14 tiles total.
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one required inner dot tile with a dragon honor tile.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == displacedRank);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(TileSuit.Dragons, 0, null, honor);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(9)]
     public void HandAnalyzer_RejectsNineGates_WhenTerminalMultiplicityIsBrokenByOffSuitReplacement(int displacedTerminalRank)
