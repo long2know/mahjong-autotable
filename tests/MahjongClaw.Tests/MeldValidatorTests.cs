@@ -98,6 +98,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalseWhenSeasonTileIncluded()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Seasons, 1)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsTrueForTriplet()
     {
         var tile = new Tile(TileSuit.Characters, 7);
@@ -162,6 +175,20 @@ public class MeldValidatorTests
     {
         var tile = new Tile(TileSuit.Dragons, 0, null, Dragon.Red);
         MeldValidator.IsValidKong(new[] { tile, tile, tile, tile }).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalseForFlowerTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Flowers, 1),
+            new Tile(TileSuit.Flowers, 1),
+            new Tile(TileSuit.Flowers, 1),
+            new Tile(TileSuit.Flowers, 1)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
     }
 
     [Fact]
