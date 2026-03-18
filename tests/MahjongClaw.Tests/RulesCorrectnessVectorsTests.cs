@@ -3357,6 +3357,27 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(TileSuit.Flowers, 1)]
+    [InlineData(TileSuit.Seasons, 2)]
+    public void HandAnalyzer_RejectsHands_WhenFlowerOrSeasonTileAppears(TileSuit suit, int rank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 9 characters
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            // Melds: 123 chars, 456 chars, 789 dots, pung red dragons (flower/season replaces third dragon)
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new Tile(suit, rank)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void HandAnalyzer_RejectsHands_WhenAnyTileExceedsFourCopies()
     {
