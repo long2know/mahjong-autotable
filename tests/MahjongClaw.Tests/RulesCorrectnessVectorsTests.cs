@@ -2771,16 +2771,18 @@ public class RulesCorrectnessVectorsTests
     {
         var tiles = new List<Tile>
         {
-            // Pair should be 9 dots to preserve three pungs (6/7/8) plus a chow.
-            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            // Pair should be 6 dots to preserve three pungs (7/8/9) plus a 5-6-7 chow.
+            // Pairing 9 dots instead yields four chows with zero pungs.
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
             new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
-            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
-            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
-        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 9));
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 6));
         hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
         hand.BasicScore.Should().Be(6);
     }
