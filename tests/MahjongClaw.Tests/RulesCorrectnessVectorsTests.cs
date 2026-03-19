@@ -2482,6 +2482,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesAllPungs_WhenSuitedPairWithAllHonorPungs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 5),
+            // Melds: pung east, pung south, pung west, pung red dragon
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenChowBreaksAllPungs()
     {
         var tiles = new List<Tile>
@@ -4208,5 +4236,26 @@ public class RulesCorrectnessVectorsTests
     {
         var create = () => new Tile(TileSuit.Dragons, 0, Wind.East, Dragon.Red);
         create.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Tile_ThrowsWhenWindRankIsNonZero()
+    {
+        var create = () => new Tile(TileSuit.Winds, 1, Wind.East);
+        create.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Tile_ThrowsWhenDragonRankIsNonZero()
+    {
+        var create = () => new Tile(TileSuit.Dragons, 2, null, Dragon.Red);
+        create.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Tile_ThrowsForInvalidFlowerRank()
+    {
+        var create = () => new Tile(TileSuit.Flowers, 5);
+        create.Should().Throw<ArgumentOutOfRangeException>();
     }
 }
