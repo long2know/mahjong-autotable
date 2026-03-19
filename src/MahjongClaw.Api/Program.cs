@@ -574,6 +574,14 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     var suitClusterBonus = !IsHonorSuit(tile.Suit)
         ? Math.Max(0, (suitCount - 1) / 2)
         : 0;
+    var suitSingletonPenalty = !IsHonorSuit(tile.Suit)
+        ? suitCount switch
+        {
+            1 => -2,
+            2 => -1,
+            _ => 0
+        }
+        : 0;
     var hasHonorMatch = false;
 
     foreach (var other in suitTiles)
@@ -668,7 +676,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score -= 1;
     }
 
-    return score + suitClusterBonus;
+    return score + suitClusterBonus + suitSingletonPenalty;
 }
 
 static bool IsHonorSuit(string suit)
