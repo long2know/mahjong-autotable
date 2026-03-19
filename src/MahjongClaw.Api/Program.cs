@@ -1,4 +1,5 @@
 using MahjongClaw.Api.Hubs;
+using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
 using MahjongClaw.Persistence;
 using MahjongClaw.Persistence.Entities;
@@ -423,6 +424,29 @@ gameGroup.MapPost("/{id:guid}/bot/turn", async (
         return Results.Conflict(new { message = "Bot hand is in an invalid state." });
     }
 
+    if (!TryBuildTileHand(handTiles, out var botHand))
+    {
+        return Results.Conflict(new { message = "Bot hand contains invalid tile data." });
+    }
+
+    if (HandAnalyzer.TryGetWinningHand(botHand, out _))
+    {
+        game.Status = "Completed";
+        game.CurrentPlayerId = botPlayer.Id;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (drawResponse is not null)
+        {
+            await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
+        }
+
+        var winResponse = new WinResponse(game.Id, game.Status, botPlayer.Id);
+        await SendToGameWithAliases(hubContext, game.Id, "GameWon", winResponse, cancellationToken);
+
+        return Results.Ok(new BotTurnResponse(drawResponse?.TileId, null, null, game.CurrentPlayerId, true));
+    }
+
     var discardTile = SelectBotDiscard(handTiles);
     discardTile.Location = "Discard";
 
@@ -556,6 +580,57 @@ static IEnumerable<string> GetEventAliases(string eventName)
         "GameWon" => ["WinDeclared"],
         _ => []
     };
+
+static bool TryBuildTileHand(IEnumerable<TileEntity> entities, out List<Tile> tiles)
+{
+    tiles = new List<Tile>();
+
+    foreach (var entity in entities)
+    {
+        if (!Enum.TryParse<TileSuit>(entity.Suit, true, out var suit))
+        {
+            tiles.Clear();
+            return false;
+        }
+
+        Wind? wind = null;
+        Dragon? dragon = null;
+
+        if (!string.IsNullOrWhiteSpace(entity.Wind))
+        {
+            if (!Enum.TryParse<Wind>(entity.Wind, true, out var parsedWind))
+            {
+                tiles.Clear();
+                return false;
+            }
+
+            wind = parsedWind;
+        }
+
+        if (!string.IsNullOrWhiteSpace(entity.Dragon))
+        {
+            if (!Enum.TryParse<Dragon>(entity.Dragon, true, out var parsedDragon))
+            {
+                tiles.Clear();
+                return false;
+            }
+
+            dragon = parsedDragon;
+        }
+
+        try
+        {
+            tiles.Add(new Tile(suit, entity.Rank, wind, dragon));
+        }
+        catch (Exception)
+        {
+            tiles.Clear();
+            return false;
+        }
+    }
+
+    return true;
+}
 
 static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
     => handTiles
@@ -778,7 +853,7 @@ internal record DrawTileRequest(Guid PlayerId);
 internal record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);
 internal record DiscardTileRequest(Guid PlayerId, Guid TileId);
 internal record DiscardTileResponse(Guid DiscardId, Guid TileId, int Sequence);
-internal record BotTurnResponse(Guid? DrawnTileId, Guid DiscardId, Guid DiscardTileId, Guid? NextPlayerId);
+internal record BotTurnResponse(Guid? DrawnTileId, Guid? DiscardId, Guid? DiscardTileId, Guid? NextPlayerId, bool Won = false);
 internal record MeldRequest(Guid PlayerId, string Type, IReadOnlyList<Guid> TileIds);
 internal record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
 internal record WinRequest(Guid PlayerId);
