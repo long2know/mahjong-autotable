@@ -567,6 +567,10 @@ static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
 static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTiles)
 {
     var score = 0;
+    var suitCount = handTiles.Count(other => string.Equals(other.Suit, tile.Suit, StringComparison.OrdinalIgnoreCase));
+    var suitClusterBonus = !IsHonorSuit(tile.Suit)
+        ? Math.Max(0, (suitCount - 1) / 2)
+        : 0;
 
     foreach (var other in handTiles)
     {
@@ -608,7 +612,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         }
     }
 
-    return score;
+    return score + suitClusterBonus;
 }
 
 static bool IsHonorSuit(string suit)
