@@ -579,6 +579,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsAllTerminals_WhenPairIsNineDots()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 9 dots
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            // Melds: pung 1 chars, pung 9 chars, pung 1 bamboos, pung 9 bamboos
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenAllTerminalsCandidateContainsMiddleTile()
     {
         var tiles = new List<Tile>
