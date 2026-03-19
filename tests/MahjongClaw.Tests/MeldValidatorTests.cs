@@ -1,6 +1,7 @@
 using FluentAssertions;
 using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
+using System.Linq;
 
 namespace MahjongClaw.Tests;
 
@@ -14,6 +15,19 @@ public class MeldValidatorTests
             new Tile(TileSuit.Dots, 3),
             new Tile(TileSuit.Dots, 4),
             new Tile(TileSuit.Dots, 5)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsTrueWhenTilesAreUnsorted()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Characters, 3),
+            new Tile(TileSuit.Characters, 4)
         };
 
         MeldValidator.IsValidChow(tiles).Should().BeTrue();
@@ -220,19 +234,6 @@ public class MeldValidatorTests
     }
 
     [Fact]
-    public void IsValidChow_ReturnsTrueForUnsortedSuitedRun()
-    {
-        var tiles = new[]
-        {
-            new Tile(TileSuit.Bamboos, 7),
-            new Tile(TileSuit.Bamboos, 9),
-            new Tile(TileSuit.Bamboos, 8)
-        };
-
-        MeldValidator.IsValidChow(tiles).Should().BeTrue();
-    }
-
-    [Fact]
     public void IsValidMeld_ReturnsFalseForUnknownType()
     {
         var tiles = new[]
@@ -264,6 +265,17 @@ public class MeldValidatorTests
         MeldValidator.IsValidMeld(chow, MeldType.Chow).Should().BeTrue();
         MeldValidator.IsValidMeld(pung, MeldType.Pung).Should().BeTrue();
         MeldValidator.IsValidMeld(kong, MeldType.Kong).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(MeldType.Chow, 4)]
+    [InlineData(MeldType.Pung, 2)]
+    [InlineData(MeldType.Kong, 3)]
+    public void IsValidMeld_ReturnsFalseForWrongTileCount(MeldType type, int count)
+    {
+        var tiles = Enumerable.Repeat(new Tile(TileSuit.Dots, 1), count).ToArray();
+
+        MeldValidator.IsValidMeld(tiles, type).Should().BeFalse();
     }
 
     [Fact]
