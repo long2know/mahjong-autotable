@@ -78,6 +78,27 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_SelectsValidPair_WhenEarlierPairCandidateFails()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair intended: 2 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chows: 123 dots (twice)
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Chow: 456 dots
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            // Chow: 789 dots
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+        hand.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalse_WhenTileCountIsNotFourteen()
     {
         var tiles = new List<Tile>
@@ -87,6 +108,25 @@ public class HandAnalyzerEdgeCaseTests
             new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
             new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
             new(TileSuit.Bamboos, 1)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsWinningHand_ReturnsFalse_WhenTileCountExceedsFourteen()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chows
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            // Extra tile pushes count beyond 14
+            new(TileSuit.Bamboos, 5)
         };
 
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
