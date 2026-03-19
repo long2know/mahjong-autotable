@@ -45,6 +45,26 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_PrefersHigherBasicScore_WhenMultipleStandardDecompositionsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            // Ambiguous shape: 111222333 can be three pungs or three chows
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            // Required chow: 456 chars
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenAnyTileAppearsFiveTimes()
     {
         var tiles = new List<Tile>
