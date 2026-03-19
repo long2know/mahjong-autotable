@@ -265,6 +265,7 @@
     private readonly CancellationTokenSource _disposeCts = new();
     private GameApiClient.GameStateResponse? _liveState;
     private Guid? _lastDrawnTileId;
+    private bool _botTurnInFlight;
     private string? LiveStatus;
 
     private bool CanDraw =>
@@ -482,7 +483,7 @@
         return RefreshLiveStateAsync();
     }
 
-    private async Task RefreshLiveStateAsync()
+    private async Task RefreshLiveStateAsync(bool triggerBotTurn = true)
     {
         if (GameId is null || _disposeCts.IsCancellationRequested)
         {
@@ -494,6 +495,11 @@
             _liveState = await Api.GetGameStateAsync(GameId.Value, _disposeCts.Token);
             LiveStatus = $"Live state refreshed at {DateTime.Now:T}. Status: {_liveState.Status}";
             await InvokeAsync(StateHasChanged);
+
+            if (triggerBotTurn)
+            {
+                await MaybeTriggerBotTurnAsync();
+            }
         }
         catch (OperationCanceledException) when (_disposeCts.IsCancellationRequested)
         {
@@ -503,6 +509,46 @@
         {
             LiveStatus = $"Live refresh failed: {ex.Message}";
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task MaybeTriggerBotTurnAsync()
+    {
+        if (_botTurnInFlight || GameId is null || _liveState is null || _disposeCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!IsLiveGameActive(_liveState.Status))
+        {
+            return;
+        }
+
+        var currentPlayer = _liveState.Players.FirstOrDefault(player => player.Id == _liveState.CurrentPlayerId);
+        if (currentPlayer is null || !IsBotName(currentPlayer.Name))
+        {
+            return;
+        }
+
+        _botTurnInFlight = true;
+
+        try
+        {
+            var result = await Api.TriggerBotTurnAsync(GameId.Value, _disposeCts.Token);
+            LiveStatus = result.Won
+                ? $"{currentPlayer.Name} won the hand."
+                : $"{currentPlayer.Name} played a turn.";
+
+            await RefreshLiveStateAsync(triggerBotTurn: false);
+        }
+        catch (Exception ex)
+        {
+            LiveStatus = $"Bot turn failed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _botTurnInFlight = false;
         }
     }
 
@@ -672,6 +718,9 @@
     private static bool IsLiveGameActive(string? status) =>
         string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "In Progress", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBotName(string name)
+        => name.StartsWith("Bot", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeGameStatus(string? status)
     {
