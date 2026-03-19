@@ -571,6 +571,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     var suitClusterBonus = !IsHonorSuit(tile.Suit)
         ? Math.Max(0, (suitCount - 1) / 2)
         : 0;
+    var hasHonorMatch = false;
 
     foreach (var other in handTiles)
     {
@@ -590,6 +591,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
                 string.Equals(tile.Dragon, other.Dragon, StringComparison.OrdinalIgnoreCase))
             {
                 score += 3;
+                hasHonorMatch = true;
             }
 
             continue;
@@ -610,6 +612,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         {
             score += 1;
         }
+    }
+
+    if (IsHonorSuit(tile.Suit) && !hasHonorMatch)
+    {
+        score -= 1;
     }
 
     return score + suitClusterBonus;
