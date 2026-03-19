@@ -567,20 +567,18 @@ static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
 static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTiles)
 {
     var score = 0;
-    var suitCount = handTiles.Count(other => string.Equals(other.Suit, tile.Suit, StringComparison.OrdinalIgnoreCase));
+    var suitTiles = handTiles
+        .Where(other => string.Equals(other.Suit, tile.Suit, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+    var suitCount = suitTiles.Count;
     var suitClusterBonus = !IsHonorSuit(tile.Suit)
         ? Math.Max(0, (suitCount - 1) / 2)
         : 0;
     var hasHonorMatch = false;
 
-    foreach (var other in handTiles)
+    foreach (var other in suitTiles)
     {
         if (ReferenceEquals(tile, other))
-        {
-            continue;
-        }
-
-        if (!string.Equals(tile.Suit, other.Suit, StringComparison.OrdinalIgnoreCase))
         {
             continue;
         }
@@ -614,7 +612,52 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         }
     }
 
-    if (IsHonorSuit(tile.Suit) && !hasHonorMatch)
+    if (IsHonorSuit(tile.Suit))
+    {
+        if (!hasHonorMatch)
+        {
+            score -= 1;
+        }
+
+        return score + suitClusterBonus;
+    }
+
+    var rankCounts = suitTiles
+        .GroupBy(other => other.Rank)
+        .ToDictionary(group => group.Key, group => group.Count());
+
+    rankCounts.TryGetValue(tile.Rank, out var sameRankCount);
+    if (sameRankCount >= 2)
+    {
+        score += 2;
+    }
+
+    if (sameRankCount >= 3)
+    {
+        score += 2;
+    }
+
+    var hasMinus1 = rankCounts.ContainsKey(tile.Rank - 1);
+    var hasPlus1 = rankCounts.ContainsKey(tile.Rank + 1);
+    var hasMinus2 = rankCounts.ContainsKey(tile.Rank - 2);
+    var hasPlus2 = rankCounts.ContainsKey(tile.Rank + 2);
+
+    if (hasMinus1 && hasPlus1)
+    {
+        score += 2;
+    }
+
+    if (hasMinus2 && hasMinus1)
+    {
+        score += 1;
+    }
+
+    if (hasPlus1 && hasPlus2)
+    {
+        score += 1;
+    }
+
+    if ((tile.Rank == 1 || tile.Rank == 9) && sameRankCount <= 1 && !hasMinus1 && !hasPlus1)
     {
         score -= 1;
     }
