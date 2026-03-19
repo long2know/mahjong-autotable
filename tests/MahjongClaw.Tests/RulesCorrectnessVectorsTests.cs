@@ -1968,6 +1968,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenDragonPairHasNoDragonTriplets()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: red dragon
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Melds: chow 123 chars, chow 456 chars, chow 789 dots, pung 5 bamboos
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesBigFourWinds_OverAllHonors_WhenBothApply()
     {
         var tiles = new List<Tile>
