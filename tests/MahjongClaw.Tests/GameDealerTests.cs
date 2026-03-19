@@ -33,6 +33,18 @@ public class GameDealerTests
         state.Wall.RemainingCount.Should().Be(144 - 53);
     }
 
+    [Fact]
+    public void InitializeGame_AssignsPlayersToWindsInSeatOrder()
+    {
+        var rng = new Random(17);
+        var state = GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, rng);
+
+        state.GetPlayer(Wind.East).Name.Should().Be("Alice");
+        state.GetPlayer(Wind.South).Name.Should().Be("Bob");
+        state.GetPlayer(Wind.West).Name.Should().Be("Chris");
+        state.GetPlayer(Wind.North).Name.Should().Be("Dana");
+    }
+
     [Theory]
     [InlineData(3)]
     [InlineData(5)]
