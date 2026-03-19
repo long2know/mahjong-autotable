@@ -47,6 +47,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalseForDragonHonors()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Green),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsFalseForMixedSuits()
     {
         var tiles = new[]
