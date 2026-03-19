@@ -564,6 +564,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesAllHonors_WhenDragonPairHasSingleDragonTriplet()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: red dragon
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Melds: pung green dragon, pung east, pung south, pung west
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllHonors);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenAllHonorsCandidateContainsSuitedTile()
     {
         var tiles = new List<Tile>
