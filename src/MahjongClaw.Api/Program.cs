@@ -616,7 +616,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     {
         if (!hasHonorMatch)
         {
-            score -= 1;
+            score -= 2;
         }
 
         return score + suitClusterBonus;
@@ -641,6 +641,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     var hasPlus1 = rankCounts.ContainsKey(tile.Rank + 1);
     var hasMinus2 = rankCounts.ContainsKey(tile.Rank - 2);
     var hasPlus2 = rankCounts.ContainsKey(tile.Rank + 2);
+    var hasNeighbor = hasMinus1 || hasPlus1 || hasMinus2 || hasPlus2;
 
     if (hasMinus1 && hasPlus1)
     {
@@ -655,6 +656,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     if (hasPlus1 && hasPlus2)
     {
         score += 1;
+    }
+
+    if (sameRankCount <= 1 && !hasNeighbor)
+    {
+        score -= 1;
     }
 
     if ((tile.Rank == 1 || tile.Rank == 9) && sameRankCount <= 1 && !hasMinus1 && !hasPlus1)
