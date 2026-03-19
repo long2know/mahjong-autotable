@@ -1,6 +1,7 @@
 using FluentAssertions;
 using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
+using System.Linq;
 
 namespace MahjongClaw.Tests;
 
@@ -30,5 +31,20 @@ public class GameDealerTests
         var state = GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, rng);
 
         state.Wall.RemainingCount.Should().Be(144 - 53);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(5)]
+    public void InitializeGame_ThrowsWhenPlayerCountIsNotFour(int playerCount)
+    {
+        var names = Enumerable.Range(0, playerCount)
+            .Select(index => $"Player{index}")
+            .ToArray();
+
+        var act = () => GameDealer.InitializeGame(names, new Random(7));
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("Exactly four players are required.");
     }
 }
