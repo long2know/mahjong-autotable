@@ -423,7 +423,7 @@ gameGroup.MapPost("/{id:guid}/bot/turn", async (
         return Results.Conflict(new { message = "Bot hand is in an invalid state." });
     }
 
-    var discardTile = handTiles[Random.Shared.Next(handTiles.Count)];
+    var discardTile = SelectBotDiscard(handTiles);
     discardTile.Location = "Discard";
 
     var sequence = game.Discards.Count == 0
@@ -556,6 +556,132 @@ static IEnumerable<string> GetEventAliases(string eventName)
         "GameWon" => ["WinDeclared"],
         _ => []
     };
+
+static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
+    => handTiles
+        .OrderBy(tile => GetBotTileKeepScore(tile, handTiles))
+        .ThenBy(tile => tile.Suit)
+        .ThenBy(tile => tile.Rank)
+        .First();
+
+static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTiles)
+{
+    var score = 0;
+    var suitTiles = handTiles
+        .Where(other => string.Equals(other.Suit, tile.Suit, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+    var suitCount = suitTiles.Count;
+    var suitClusterBonus = !IsHonorSuit(tile.Suit)
+        ? Math.Max(0, (suitCount - 1) / 2)
+        : 0;
+    var suitSingletonPenalty = !IsHonorSuit(tile.Suit)
+        ? suitCount switch
+        {
+            1 => -2,
+            2 => -1,
+            _ => 0
+        }
+        : 0;
+    var hasHonorMatch = false;
+
+    foreach (var other in suitTiles)
+    {
+        if (ReferenceEquals(tile, other))
+        {
+            continue;
+        }
+
+        if (IsHonorSuit(tile.Suit))
+        {
+            if (string.Equals(tile.Wind, other.Wind, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(tile.Dragon, other.Dragon, StringComparison.OrdinalIgnoreCase))
+            {
+                score += 3;
+                hasHonorMatch = true;
+            }
+
+            continue;
+        }
+
+        if (other.Rank == tile.Rank)
+        {
+            score += 2;
+            continue;
+        }
+
+        var diff = Math.Abs(other.Rank - tile.Rank);
+        if (diff == 1)
+        {
+            score += 2;
+        }
+        else if (diff == 2)
+        {
+            score += 1;
+        }
+    }
+
+    if (IsHonorSuit(tile.Suit))
+    {
+        if (!hasHonorMatch)
+        {
+            score -= suitCount == 1 ? 3 : 2;
+        }
+
+        return score + suitClusterBonus;
+    }
+
+    var rankCounts = suitTiles
+        .GroupBy(other => other.Rank)
+        .ToDictionary(group => group.Key, group => group.Count());
+
+    rankCounts.TryGetValue(tile.Rank, out var sameRankCount);
+    if (sameRankCount >= 2)
+    {
+        score += 2;
+    }
+
+    if (sameRankCount >= 3)
+    {
+        score += 2;
+    }
+
+    var hasMinus1 = rankCounts.ContainsKey(tile.Rank - 1);
+    var hasPlus1 = rankCounts.ContainsKey(tile.Rank + 1);
+    var hasMinus2 = rankCounts.ContainsKey(tile.Rank - 2);
+    var hasPlus2 = rankCounts.ContainsKey(tile.Rank + 2);
+    var hasNeighbor = hasMinus1 || hasPlus1 || hasMinus2 || hasPlus2;
+
+    if (hasMinus1 && hasPlus1)
+    {
+        score += 2;
+    }
+
+    if (hasMinus2 && hasMinus1)
+    {
+        score += 1;
+    }
+
+    if (hasPlus1 && hasPlus2)
+    {
+        score += 1;
+    }
+
+    if (sameRankCount <= 1 && !hasNeighbor)
+    {
+        score -= 1;
+    }
+
+    if ((tile.Rank == 1 || tile.Rank == 9) && sameRankCount <= 1 && !hasMinus1 && !hasPlus1)
+    {
+        score -= 1;
+    }
+
+    return score + suitClusterBonus + suitSingletonPenalty;
+}
+
+static bool IsHonorSuit(string suit)
+    => string.Equals(suit, "Winds", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(suit, "Dragons", StringComparison.OrdinalIgnoreCase);
 
 static bool IsBotPlayer(PlayerEntity player)
     => player.Name.StartsWith("Bot", StringComparison.OrdinalIgnoreCase);
