@@ -423,7 +423,7 @@ gameGroup.MapPost("/{id:guid}/bot/turn", async (
         return Results.Conflict(new { message = "Bot hand is in an invalid state." });
     }
 
-    var discardTile = handTiles[Random.Shared.Next(handTiles.Count)];
+    var discardTile = SelectBotDiscard(handTiles);
     discardTile.Location = "Discard";
 
     var sequence = game.Discards.Count == 0
@@ -556,6 +556,64 @@ static IEnumerable<string> GetEventAliases(string eventName)
         "GameWon" => ["WinDeclared"],
         _ => []
     };
+
+static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
+    => handTiles
+        .OrderBy(tile => GetBotTileKeepScore(tile, handTiles))
+        .ThenBy(tile => tile.Suit)
+        .ThenBy(tile => tile.Rank)
+        .First();
+
+static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTiles)
+{
+    var score = 0;
+
+    foreach (var other in handTiles)
+    {
+        if (ReferenceEquals(tile, other))
+        {
+            continue;
+        }
+
+        if (!string.Equals(tile.Suit, other.Suit, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (IsHonorSuit(tile.Suit))
+        {
+            if (string.Equals(tile.Wind, other.Wind, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(tile.Dragon, other.Dragon, StringComparison.OrdinalIgnoreCase))
+            {
+                score += 3;
+            }
+
+            continue;
+        }
+
+        if (other.Rank == tile.Rank)
+        {
+            score += 2;
+            continue;
+        }
+
+        var diff = Math.Abs(other.Rank - tile.Rank);
+        if (diff == 1)
+        {
+            score += 2;
+        }
+        else if (diff == 2)
+        {
+            score += 1;
+        }
+    }
+
+    return score;
+}
+
+static bool IsHonorSuit(string suit)
+    => string.Equals(suit, "Winds", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(suit, "Dragons", StringComparison.OrdinalIgnoreCase);
 
 static bool IsBotPlayer(PlayerEntity player)
     => player.Name.StartsWith("Bot", StringComparison.OrdinalIgnoreCase);
