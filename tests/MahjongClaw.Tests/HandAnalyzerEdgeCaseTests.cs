@@ -114,6 +114,25 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void IsWinningHand_ReturnsFalse_WhenTileCountExceedsFourteen()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chows
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            // Extra tile pushes count beyond 14
+            new(TileSuit.Bamboos, 5)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalse_WhenTileAppearsMoreThanFourTimes()
     {
         var tiles = new List<Tile>
