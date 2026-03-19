@@ -2120,6 +2120,33 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenTwoDragonTripletsExistButPairIsNonDragon()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots (non-dragon)
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 5),
+            // Melds: pung red dragon, pung green dragon, chow 123 characters, chow 456 bamboos
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenDragonPairExistsButOnlyOneDragonTriplet()
     {
         var tiles = new List<Tile>
