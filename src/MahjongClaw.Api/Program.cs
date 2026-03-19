@@ -46,6 +46,7 @@ gameGroup.MapPost("/", async (
     var hostName = request?.HostName?.Trim();
     var createMode = request?.Mode?.Trim();
     var botSeatCount = Math.Clamp(request?.BotSeatCount ?? 0, 0, 3);
+    var createdPlayers = new List<PlayerEntity>();
 
     if (!string.IsNullOrWhiteSpace(hostName))
     {
@@ -60,6 +61,7 @@ gameGroup.MapPost("/", async (
         };
 
         dbContext.Players.Add(hostPlayer);
+        createdPlayers.Add(hostPlayer);
         hostPlayerId = hostPlayer.Id;
 
         if (string.Equals(createMode, "HumanVsBot", StringComparison.OrdinalIgnoreCase))
@@ -76,11 +78,18 @@ gameGroup.MapPost("/", async (
                 };
 
                 dbContext.Players.Add(botPlayer);
+                createdPlayers.Add(botPlayer);
             }
         }
     }
 
     await dbContext.SaveChangesAsync(cancellationToken);
+
+    foreach (var createdPlayer in createdPlayers)
+    {
+        var joinResponse = new JoinGameResponse(createdPlayer.Id, game.Id, createdPlayer.Name, createdPlayer.Seat, createdPlayer.Score);
+        await SendToGameWithAliases(hubContext, game.Id, "PlayerJoined", joinResponse, cancellationToken);
+    }
 
     var response = new CreateGameResponse(game.Id, game.Status, game.Round, game.CreatedAt, hostPlayerId);
     return Results.Created($"/api/game/{game.Id}", response);
