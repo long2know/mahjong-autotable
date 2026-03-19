@@ -616,7 +616,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     {
         if (!hasHonorMatch)
         {
-            score -= 2;
+            score -= suitCount == 1 ? 3 : 2;
         }
 
         return score + suitClusterBonus;
