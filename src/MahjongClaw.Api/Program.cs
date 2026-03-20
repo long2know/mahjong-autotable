@@ -658,6 +658,12 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         };
     }
 
+    var pairCount = tileCounts.Count(static entry => entry.Value >= 2);
+    if (tileMatchCount == 2 && pairCount == 1)
+    {
+        score += 2;
+    }
+
     var suitTiles = handTiles
         .Where(other => string.Equals(other.Suit, tile.Suit, StringComparison.OrdinalIgnoreCase))
         .ToList();
