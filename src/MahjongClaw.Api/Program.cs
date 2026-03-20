@@ -806,10 +806,14 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score += 2;
     }
 
-    var hasMinus1 = rankCounts.ContainsKey(tile.Rank - 1);
-    var hasPlus1 = rankCounts.ContainsKey(tile.Rank + 1);
-    var hasMinus2 = rankCounts.ContainsKey(tile.Rank - 2);
-    var hasPlus2 = rankCounts.ContainsKey(tile.Rank + 2);
+    var minus1Count = rankCounts.TryGetValue(tile.Rank - 1, out var minus1) ? minus1 : 0;
+    var plus1Count = rankCounts.TryGetValue(tile.Rank + 1, out var plus1) ? plus1 : 0;
+    var minus2Count = rankCounts.TryGetValue(tile.Rank - 2, out var minus2) ? minus2 : 0;
+    var plus2Count = rankCounts.TryGetValue(tile.Rank + 2, out var plus2) ? plus2 : 0;
+    var hasMinus1 = minus1Count > 0;
+    var hasPlus1 = plus1Count > 0;
+    var hasMinus2 = minus2Count > 0;
+    var hasPlus2 = plus2Count > 0;
     var hasNeighbor = hasMinus1 || hasPlus1 || hasMinus2 || hasPlus2;
     var hasDirectNeighbor = hasMinus1 || hasPlus1;
     var hasGapNeighbor = hasMinus2 || hasPlus2;
@@ -817,6 +821,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     if (hasMinus1 && hasPlus1)
     {
         score += 2;
+
+        if (minus1Count > 1 || plus1Count > 1)
+        {
+            score += 1;
+        }
     }
 
     if (hasMinus2 && hasMinus1)
