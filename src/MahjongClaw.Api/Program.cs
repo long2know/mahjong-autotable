@@ -429,7 +429,7 @@ gameGroup.MapPost("/{id:guid}/bot/turn", async (
         return Results.Conflict(new { message = "Bot hand contains invalid tile data." });
     }
 
-    if (HandAnalyzer.TryGetWinningHand(botHand, out _))
+    if (HandAnalyzer.TryGetWinningHand(botHand, out var winningHand) && ScoreCalculator.MeetsMinimumFan(winningHand!))
     {
         game.Status = "Completed";
         game.CurrentPlayerId = botPlayer.Id;
