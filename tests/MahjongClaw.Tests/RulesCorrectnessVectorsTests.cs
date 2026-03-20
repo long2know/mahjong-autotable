@@ -1008,6 +1008,45 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(64);
     }
 
+    [Theory]
+    [InlineData(TileSuit.Characters, 1)]
+    [InlineData(TileSuit.Characters, 9)]
+    [InlineData(TileSuit.Dots, 1)]
+    [InlineData(TileSuit.Dots, 9)]
+    [InlineData(TileSuit.Bamboos, 1)]
+    [InlineData(TileSuit.Bamboos, 9)]
+    public void HandAnalyzer_AcceptsAllTerminals_WhenPairIsAnyTerminal(TileSuit pairSuit, int pairRank)
+    {
+        var terminalTiles = new List<(TileSuit suit, int rank)>
+        {
+            (TileSuit.Characters, 1),
+            (TileSuit.Characters, 9),
+            (TileSuit.Dots, 1),
+            (TileSuit.Dots, 9),
+            (TileSuit.Bamboos, 1),
+            (TileSuit.Bamboos, 9)
+        };
+
+        terminalTiles.RemoveAll(tile => tile.suit == pairSuit && tile.rank == pairRank);
+
+        var tiles = new List<Tile>
+        {
+            new(pairSuit, pairRank),
+            new(pairSuit, pairRank)
+        };
+
+        foreach (var (suit, rank) in terminalTiles.Take(4))
+        {
+            tiles.Add(new Tile(suit, rank));
+            tiles.Add(new Tile(suit, rank));
+            tiles.Add(new Tile(suit, rank));
+        }
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
+        hand.BasicScore.Should().Be(64);
+    }
+
     [Fact]
     public void HandAnalyzer_RejectsAllTerminalHand_WhenTripletsAreIncomplete()
     {
