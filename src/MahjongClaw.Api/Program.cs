@@ -823,6 +823,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score += 1;
     }
 
+    if ((tile.Rank == 1 && hasPlus1) || (tile.Rank == 9 && hasMinus1))
+    {
+        score += 1;
+    }
+
     if (sameRankCount <= 1 && !hasNeighbor)
     {
         score -= 1;
