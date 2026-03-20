@@ -659,6 +659,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         }
         : 0;
     var hasHonorMatch = false;
+    var honorMatchCount = 0;
 
     foreach (var other in suitTiles)
     {
@@ -674,6 +675,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
             {
                 score += 3;
                 hasHonorMatch = true;
+                honorMatchCount++;
             }
 
             continue;
@@ -701,6 +703,17 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         if (!hasHonorMatch)
         {
             score -= suitCount == 1 ? 3 : 2;
+        }
+        else
+        {
+            var matchSetSize = honorMatchCount + 1;
+            score += matchSetSize switch
+            {
+                >= 4 => 3,
+                3 => 2,
+                2 => 1,
+                _ => 0
+            };
         }
 
         return score + suitClusterBonus;
