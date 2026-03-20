@@ -783,6 +783,8 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     var hasMinus2 = rankCounts.ContainsKey(tile.Rank - 2);
     var hasPlus2 = rankCounts.ContainsKey(tile.Rank + 2);
     var hasNeighbor = hasMinus1 || hasPlus1 || hasMinus2 || hasPlus2;
+    var hasDirectNeighbor = hasMinus1 || hasPlus1;
+    var hasGapNeighbor = hasMinus2 || hasPlus2;
 
     if (hasMinus1 && hasPlus1)
     {
@@ -800,6 +802,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     }
 
     if (sameRankCount <= 1 && !hasNeighbor)
+    {
+        score -= 1;
+    }
+
+    if (sameRankCount <= 1 && !hasDirectNeighbor && hasGapNeighbor)
     {
         score -= 1;
     }
