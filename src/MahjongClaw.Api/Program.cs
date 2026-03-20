@@ -838,6 +838,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score -= 1;
     }
 
+    if (suitFocusPenalty < 0 && sameRankCount <= 1 && !hasNeighbor)
+    {
+        score -= 1;
+    }
+
     return score + suitClusterBonus + suitSingletonPenalty + suitFocusPenalty + suitFocusBonus;
 }
 
