@@ -276,6 +276,25 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(TileSuit.Flowers, 1)]
+    [InlineData(TileSuit.Seasons, 1)]
+    public void HandAnalyzer_RejectsSevenPairs_WhenBonusTilePairAppears(TileSuit bonusSuit, int bonusRank)
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(bonusSuit, bonusRank), new(bonusSuit, bonusRank)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void HandAnalyzer_RejectsHand_WhenPairExistsButNoMeldsForm()
     {
