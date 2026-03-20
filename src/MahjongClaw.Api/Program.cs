@@ -687,6 +687,17 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
             };
         }
     }
+
+    var suitFocusBonus = 0;
+    if (!IsHonorSuit(tile.Suit) && suitedCounts.Count > 0)
+    {
+        var maxSuitCount = suitedCounts.Values.Max();
+        if (suitCount == maxSuitCount && maxSuitCount >= 6)
+        {
+            suitFocusBonus = maxSuitCount >= 8 ? 2 : 1;
+        }
+    }
+
     var hasHonorMatch = false;
     var honorMatchCount = 0;
 
@@ -745,7 +756,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
             };
         }
 
-        return score + suitClusterBonus + suitFocusPenalty;
+        return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus;
     }
 
     var rankCounts = suitTiles
@@ -794,7 +805,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score -= 1;
     }
 
-    return score + suitClusterBonus + suitSingletonPenalty + suitFocusPenalty;
+    return score + suitClusterBonus + suitSingletonPenalty + suitFocusPenalty + suitFocusBonus;
 }
 
 static string GetBotTileKey(TileEntity tile)
