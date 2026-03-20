@@ -210,6 +210,22 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenHonorQuadLeavesUnmatchedSingles()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHands_WhenTileCountIsNotFourteen()
     {
         var thirteenTiles = new List<Tile>
