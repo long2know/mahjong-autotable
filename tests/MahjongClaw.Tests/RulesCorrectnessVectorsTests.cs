@@ -3781,6 +3781,29 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(TileSuit.Flowers, 1)]
+    [InlineData(TileSuit.Seasons, 3)]
+    public void HandAnalyzer_RejectsNineGatesShape_WhenExtraTileIsBonus(TileSuit bonusSuit, int bonusRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Nine Gates base in dots, but extra tile is a bonus tile.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(bonusSuit, bonusRank)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenNineGatesMissingRequiredRank()
     {
