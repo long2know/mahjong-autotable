@@ -636,6 +636,7 @@ static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
     => handTiles
         .OrderBy(tile => GetBotTileKeepScore(tile, handTiles))
         .ThenBy(tile => IsHonorSuit(tile.Suit) ? 0 : 1)
+        .ThenBy(tile => IsTerminalSuitedTile(tile) ? 0 : 1)
         .ThenBy(tile => tile.Suit)
         .ThenBy(tile => tile.Rank)
         .First();
@@ -771,6 +772,9 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
 static bool IsHonorSuit(string suit)
     => string.Equals(suit, "Winds", StringComparison.OrdinalIgnoreCase)
         || string.Equals(suit, "Dragons", StringComparison.OrdinalIgnoreCase);
+
+static bool IsTerminalSuitedTile(TileEntity tile)
+    => !IsHonorSuit(tile.Suit) && tile.Rank is 1 or 9;
 
 static bool IsBotPlayer(PlayerEntity player)
     => player.Name.StartsWith("Bot", StringComparison.OrdinalIgnoreCase);
