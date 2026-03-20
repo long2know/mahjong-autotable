@@ -635,6 +635,7 @@ static bool TryBuildTileHand(IEnumerable<TileEntity> entities, out List<Tile> ti
 static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
     => handTiles
         .OrderBy(tile => GetBotTileKeepScore(tile, handTiles))
+        .ThenBy(tile => IsHonorSuit(tile.Suit) ? 0 : 1)
         .ThenBy(tile => tile.Suit)
         .ThenBy(tile => tile.Rank)
         .First();
