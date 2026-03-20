@@ -644,6 +644,16 @@ static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
 static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTiles)
 {
     var score = 0;
+    var tileCounts = handTiles
+        .GroupBy(static other => GetBotTileKey(other), StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+    var pairGroups = tileCounts.Values.Count(count => count >= 2);
+    tileCounts.TryGetValue(GetBotTileKey(tile), out var tileMatchCount);
+    if (pairGroups == 1 && tileMatchCount >= 2)
+    {
+        score += tileMatchCount == 2 ? 2 : 3;
+    }
+
     var suitTiles = handTiles
         .Where(other => string.Equals(other.Suit, tile.Suit, StringComparison.OrdinalIgnoreCase))
         .ToList();
@@ -785,6 +795,25 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     }
 
     return score + suitClusterBonus + suitSingletonPenalty + suitFocusPenalty;
+}
+
+static string GetBotTileKey(TileEntity tile)
+{
+    var suit = tile.Suit?.Trim() ?? string.Empty;
+    if (IsHonorSuit(suit))
+    {
+        if (!string.IsNullOrWhiteSpace(tile.Wind))
+        {
+            return $"{suit}:Wind:{tile.Wind}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(tile.Dragon))
+        {
+            return $"{suit}:Dragon:{tile.Dragon}";
+        }
+    }
+
+    return $"{suit}:{tile.Rank}";
 }
 
 static bool IsHonorSuit(string suit)
