@@ -180,6 +180,22 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(fifteenTiles, out _).Should().BeFalse();
     }
 
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenNoPairExists()
+    {
+        var tiles = new List<Tile>
+        {
+            // Melds: 123 chars, 456 chars, 789 chars, 123 bamboos, plus two unrelated singles
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(TileSuit.Flowers, 1)]
     [InlineData(TileSuit.Seasons, 2)]
