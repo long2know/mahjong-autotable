@@ -26,6 +26,60 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted version of a standard chow-heavy hand.
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsSevenPairs_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted seven pairs.
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
+    }
+
+    [Fact]
     public void HandAnalyzer_ComputesStandardBasicScore_FromPungsInStandardHand()
     {
         var tiles = new List<Tile>
