@@ -68,6 +68,14 @@ public sealed class GameApiClient
             ?? throw new InvalidOperationException("Win response was empty.");
     }
 
+    public async Task<BotTurnResponse> TriggerBotTurnAsync(Guid gameId, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsync($"/api/game/{gameId}/bot/turn", content: null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BotTurnResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Bot turn response was empty.");
+    }
+
     public record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount);
     public record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt, Guid? HostPlayerId);
     public record JoinGameRequest(string Name, string Seat);
@@ -93,4 +101,5 @@ public sealed class GameApiClient
     public record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
     public record WinRequest(Guid PlayerId);
     public record WinResponse(Guid GameId, string Status, Guid PlayerId);
+    public record BotTurnResponse(Guid? DrawnTileId, Guid? DiscardId, Guid? DiscardTileId, Guid? NextPlayerId, bool Won);
 }

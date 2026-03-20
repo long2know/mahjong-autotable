@@ -1,4 +1,5 @@
 using MahjongClaw.Api.Hubs;
+using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
 using MahjongClaw.Persistence;
 using MahjongClaw.Persistence.Entities;
@@ -423,6 +424,29 @@ gameGroup.MapPost("/{id:guid}/bot/turn", async (
         return Results.Conflict(new { message = "Bot hand is in an invalid state." });
     }
 
+    if (!TryBuildTileHand(handTiles, out var botHand))
+    {
+        return Results.Conflict(new { message = "Bot hand contains invalid tile data." });
+    }
+
+    if (HandAnalyzer.TryGetWinningHand(botHand, out var winningHand) && ScoreCalculator.MeetsMinimumFan(winningHand!))
+    {
+        game.Status = "Completed";
+        game.CurrentPlayerId = botPlayer.Id;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (drawResponse is not null)
+        {
+            await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
+        }
+
+        var winResponse = new WinResponse(game.Id, game.Status, botPlayer.Id);
+        await SendToGameWithAliases(hubContext, game.Id, "GameWon", winResponse, cancellationToken);
+
+        return Results.Ok(new BotTurnResponse(drawResponse?.TileId, null, null, game.CurrentPlayerId, true));
+    }
+
     var discardTile = SelectBotDiscard(handTiles);
     discardTile.Location = "Discard";
 
@@ -557,9 +581,62 @@ static IEnumerable<string> GetEventAliases(string eventName)
         _ => []
     };
 
+static bool TryBuildTileHand(IEnumerable<TileEntity> entities, out List<Tile> tiles)
+{
+    tiles = new List<Tile>();
+
+    foreach (var entity in entities)
+    {
+        if (!Enum.TryParse<TileSuit>(entity.Suit, true, out var suit))
+        {
+            tiles.Clear();
+            return false;
+        }
+
+        Wind? wind = null;
+        Dragon? dragon = null;
+
+        if (!string.IsNullOrWhiteSpace(entity.Wind))
+        {
+            if (!Enum.TryParse<Wind>(entity.Wind, true, out var parsedWind))
+            {
+                tiles.Clear();
+                return false;
+            }
+
+            wind = parsedWind;
+        }
+
+        if (!string.IsNullOrWhiteSpace(entity.Dragon))
+        {
+            if (!Enum.TryParse<Dragon>(entity.Dragon, true, out var parsedDragon))
+            {
+                tiles.Clear();
+                return false;
+            }
+
+            dragon = parsedDragon;
+        }
+
+        try
+        {
+            tiles.Add(new Tile(suit, entity.Rank, wind, dragon));
+        }
+        catch (Exception)
+        {
+            tiles.Clear();
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
     => handTiles
         .OrderBy(tile => GetBotTileKeepScore(tile, handTiles))
+        .ThenBy(tile => IsHonorSuit(tile.Suit) ? 0 : 1)
+        .ThenBy(tile => IsTerminalSuitedTile(tile) ? 0 : 1)
         .ThenBy(tile => tile.Suit)
         .ThenBy(tile => tile.Rank)
         .First();
@@ -567,6 +644,26 @@ static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
 static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTiles)
 {
     var score = 0;
+    var tileCounts = handTiles
+        .GroupBy(static other => GetBotTileKey(other), StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+    tileCounts.TryGetValue(GetBotTileKey(tile), out var tileMatchCount);
+    if (tileMatchCount >= 2)
+    {
+        score += tileMatchCount switch
+        {
+            2 => 2,
+            3 => 3,
+            _ => 4
+        };
+    }
+
+    var pairCount = tileCounts.Count(static entry => entry.Value >= 2);
+    if (tileMatchCount == 2 && pairCount == 1)
+    {
+        score += 2;
+    }
+
     var suitTiles = handTiles
         .Where(other => string.Equals(other.Suit, tile.Suit, StringComparison.OrdinalIgnoreCase))
         .ToList();
@@ -582,7 +679,42 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
             _ => 0
         }
         : 0;
+    var suitedCounts = handTiles
+        .Where(other => !IsHonorSuit(other.Suit))
+        .GroupBy(other => other.Suit, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+    var suitFocusPenalty = 0;
+    if (!IsHonorSuit(tile.Suit) && suitedCounts.Count > 1)
+    {
+        var minSuitCount = suitedCounts.Values.Min();
+        if (suitCount == minSuitCount)
+        {
+            suitFocusPenalty = minSuitCount switch
+            {
+                1 => -2,
+                2 => -1,
+                _ => 0
+            };
+        }
+    }
+
+    var suitFocusBonus = 0;
+    if (!IsHonorSuit(tile.Suit) && suitedCounts.Count > 0)
+    {
+        var maxSuitCount = suitedCounts.Values.Max();
+        if (suitCount == maxSuitCount && maxSuitCount >= 6)
+        {
+            suitFocusBonus = maxSuitCount >= 8 ? 2 : 1;
+        }
+    }
+
+    var honorSingletonCount = handTiles
+        .Where(other => IsHonorSuit(other.Suit))
+        .GroupBy(other => GetBotTileKey(other), StringComparer.OrdinalIgnoreCase)
+        .Count(group => group.Count() == 1);
+
     var hasHonorMatch = false;
+    var honorMatchCount = 0;
 
     foreach (var other in suitTiles)
     {
@@ -598,6 +730,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
             {
                 score += 3;
                 hasHonorMatch = true;
+                honorMatchCount++;
             }
 
             continue;
@@ -622,12 +755,40 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
 
     if (IsHonorSuit(tile.Suit))
     {
+        var honorFocusPenalty = 0;
         if (!hasHonorMatch)
         {
             score -= suitCount == 1 ? 3 : 2;
+
+            if (suitedCounts.Count > 0)
+            {
+                var maxSuitCount = suitedCounts.Values.Max();
+                if (maxSuitCount >= 6)
+                {
+                    honorFocusPenalty = maxSuitCount >= 8 ? -2 : -1;
+                }
+            }
+
+            score += honorSingletonCount switch
+            {
+                >= 5 => -2,
+                >= 3 => -1,
+                _ => 0
+            };
+        }
+        else
+        {
+            var matchSetSize = honorMatchCount + 1;
+            score += matchSetSize switch
+            {
+                >= 4 => 3,
+                3 => 2,
+                2 => 1,
+                _ => 0
+            };
         }
 
-        return score + suitClusterBonus;
+        return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty;
     }
 
     var rankCounts = suitTiles
@@ -645,15 +806,26 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score += 2;
     }
 
-    var hasMinus1 = rankCounts.ContainsKey(tile.Rank - 1);
-    var hasPlus1 = rankCounts.ContainsKey(tile.Rank + 1);
-    var hasMinus2 = rankCounts.ContainsKey(tile.Rank - 2);
-    var hasPlus2 = rankCounts.ContainsKey(tile.Rank + 2);
+    var minus1Count = rankCounts.TryGetValue(tile.Rank - 1, out var minus1) ? minus1 : 0;
+    var plus1Count = rankCounts.TryGetValue(tile.Rank + 1, out var plus1) ? plus1 : 0;
+    var minus2Count = rankCounts.TryGetValue(tile.Rank - 2, out var minus2) ? minus2 : 0;
+    var plus2Count = rankCounts.TryGetValue(tile.Rank + 2, out var plus2) ? plus2 : 0;
+    var hasMinus1 = minus1Count > 0;
+    var hasPlus1 = plus1Count > 0;
+    var hasMinus2 = minus2Count > 0;
+    var hasPlus2 = plus2Count > 0;
     var hasNeighbor = hasMinus1 || hasPlus1 || hasMinus2 || hasPlus2;
+    var hasDirectNeighbor = hasMinus1 || hasPlus1;
+    var hasGapNeighbor = hasMinus2 || hasPlus2;
 
     if (hasMinus1 && hasPlus1)
     {
         score += 2;
+
+        if (minus1Count > 1 || plus1Count > 1)
+        {
+            score += 1;
+        }
     }
 
     if (hasMinus2 && hasMinus1)
@@ -666,7 +838,17 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score += 1;
     }
 
+    if ((tile.Rank == 1 && hasPlus1) || (tile.Rank == 9 && hasMinus1))
+    {
+        score += 1;
+    }
+
     if (sameRankCount <= 1 && !hasNeighbor)
+    {
+        score -= 1;
+    }
+
+    if (sameRankCount <= 1 && !hasDirectNeighbor && hasGapNeighbor)
     {
         score -= 1;
     }
@@ -676,12 +858,39 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score -= 1;
     }
 
-    return score + suitClusterBonus + suitSingletonPenalty;
+    if (suitFocusPenalty < 0 && sameRankCount <= 1 && !hasNeighbor)
+    {
+        score -= 1;
+    }
+
+    return score + suitClusterBonus + suitSingletonPenalty + suitFocusPenalty + suitFocusBonus;
+}
+
+static string GetBotTileKey(TileEntity tile)
+{
+    var suit = tile.Suit?.Trim() ?? string.Empty;
+    if (IsHonorSuit(suit))
+    {
+        if (!string.IsNullOrWhiteSpace(tile.Wind))
+        {
+            return $"{suit}:Wind:{tile.Wind}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(tile.Dragon))
+        {
+            return $"{suit}:Dragon:{tile.Dragon}";
+        }
+    }
+
+    return $"{suit}:{tile.Rank}";
 }
 
 static bool IsHonorSuit(string suit)
     => string.Equals(suit, "Winds", StringComparison.OrdinalIgnoreCase)
         || string.Equals(suit, "Dragons", StringComparison.OrdinalIgnoreCase);
+
+static bool IsTerminalSuitedTile(TileEntity tile)
+    => !IsHonorSuit(tile.Suit) && tile.Rank is 1 or 9;
 
 static bool IsBotPlayer(PlayerEntity player)
     => player.Name.StartsWith("Bot", StringComparison.OrdinalIgnoreCase);
@@ -778,7 +987,7 @@ internal record DrawTileRequest(Guid PlayerId);
 internal record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);
 internal record DiscardTileRequest(Guid PlayerId, Guid TileId);
 internal record DiscardTileResponse(Guid DiscardId, Guid TileId, int Sequence);
-internal record BotTurnResponse(Guid? DrawnTileId, Guid DiscardId, Guid DiscardTileId, Guid? NextPlayerId);
+internal record BotTurnResponse(Guid? DrawnTileId, Guid? DiscardId, Guid? DiscardTileId, Guid? NextPlayerId, bool Won = false);
 internal record MeldRequest(Guid PlayerId, string Type, IReadOnlyList<Guid> TileIds);
 internal record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
 internal record WinRequest(Guid PlayerId);

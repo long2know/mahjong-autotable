@@ -43,6 +43,31 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void IsWinningHand_ReturnsTrue_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted standard hand: pair 9 chars, chows 123/456 chars, chow 789 dots, pung red dragons.
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeTrue();
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalseWhenNoPairExists()
     {
         var tiles = new List<Tile>
@@ -52,6 +77,25 @@ public class HandAnalyzerEdgeCaseTests
             new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
             new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
             new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsWinningHand_ReturnsFalse_WhenPairAndThreeChowsLeaveExtraTile()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pairs: 1 dots, 2 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chows: 123 chars, 456 chars, 789 chars
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            // Extra tile prevents full meld decomposition
+            new(TileSuit.Bamboos, 5)
         };
 
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
