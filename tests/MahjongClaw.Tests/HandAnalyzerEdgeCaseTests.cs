@@ -83,6 +83,25 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void IsWinningHand_ReturnsFalse_WhenPairAndThreeChowsLeaveExtraTile()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pairs: 1 dots, 2 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chows: 123 chars, 456 chars, 789 chars
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            // Extra tile prevents full meld decomposition
+            new(TileSuit.Bamboos, 5)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsWinningHand_AcceptsStandardHand_WhenQuadSplitsAcrossPairAndChows()
     {
         var tiles = new List<Tile>
