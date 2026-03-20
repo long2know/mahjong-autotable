@@ -647,11 +647,15 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     var tileCounts = handTiles
         .GroupBy(static other => GetBotTileKey(other), StringComparer.OrdinalIgnoreCase)
         .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-    var pairGroups = tileCounts.Values.Count(count => count >= 2);
     tileCounts.TryGetValue(GetBotTileKey(tile), out var tileMatchCount);
-    if (pairGroups == 1 && tileMatchCount >= 2)
+    if (tileMatchCount >= 2)
     {
-        score += tileMatchCount == 2 ? 2 : 3;
+        score += tileMatchCount switch
+        {
+            2 => 2,
+            3 => 3,
+            _ => 4
+        };
     }
 
     var suitTiles = handTiles
