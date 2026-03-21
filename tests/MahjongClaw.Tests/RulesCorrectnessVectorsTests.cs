@@ -435,6 +435,25 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsValidPair_WhenQuadCandidateBreaksMeldFormation()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 9));
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenAnyTileAppearsFiveTimes()
     {
         var tiles = new List<Tile>
