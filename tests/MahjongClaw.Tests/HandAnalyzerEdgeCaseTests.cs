@@ -143,6 +143,28 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_SelectsNonQuadPair_WhenQuadSupportsPungAndChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Quad of 2 dots: should be split into pung + chow instead of serving as the pair.
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chow: 1-2-3 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3),
+            // Chows: 456 dots, 789 dots
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Pair: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.Red));
+        hand.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalse_WhenTileCountIsNotFourteen()
     {
         var tiles = new List<Tile>
