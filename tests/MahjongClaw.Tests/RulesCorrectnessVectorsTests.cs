@@ -75,6 +75,24 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenNoPairExists()
+    {
+        var tiles = new List<Tile>
+        {
+            // Melds: 123 chars, 456 chars, 789 chars, 123 dots
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Extra singles (no pair)
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenFlowerTileIsPresent()
     {
         var validTiles = new List<Tile>
@@ -691,6 +709,26 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Dots, 2), new(TileSuit.Dots, 4), new(TileSuit.Dots, 6), new(TileSuit.Dots, 8),
             new(TileSuit.Characters, 1), new(TileSuit.Characters, 3), new(TileSuit.Characters, 5), new(TileSuit.Characters, 7), new(TileSuit.Characters, 9),
             new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenHonorSinglesRemainAfterValidMelds()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            // Melds: 123 dots, 456 dots, 789 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Honor singles that cannot form a meld
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
