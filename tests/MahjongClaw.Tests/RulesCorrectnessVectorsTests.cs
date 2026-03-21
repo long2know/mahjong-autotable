@@ -115,6 +115,33 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairAndTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted standard hand with honor pair.
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void HandAnalyzer_ComputesStandardBasicScore_FromPungsInStandardHand()
     {
         var tiles = new List<Tile>
