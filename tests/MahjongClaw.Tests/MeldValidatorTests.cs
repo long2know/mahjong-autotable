@@ -165,6 +165,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenSameRankDifferentSuits()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Bamboos, 5)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalse_WhenHonorTilesDiffer()
     {
         var tiles = new[]

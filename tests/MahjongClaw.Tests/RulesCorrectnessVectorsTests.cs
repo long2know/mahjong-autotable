@@ -1438,6 +1438,32 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(64);
     }
 
+    [Fact]
+    public void HandAnalyzer_AcceptsAllTerminals_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
+        hand.BasicScore.Should().Be(64);
+    }
+
     [Theory]
     [InlineData(TileSuit.Characters, 1)]
     [InlineData(TileSuit.Characters, 9)]
