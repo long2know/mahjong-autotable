@@ -106,6 +106,51 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForAllHonors()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                })
+            },
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            WinningPattern.AllHonors);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(64);
+    }
+
+    [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForNineGates()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 1),
+                    new(TileSuit.Dots, 2),
+                    new(TileSuit.Dots, 3)
+                })
+            },
+            new Tile(TileSuit.Dots, 5),
+            WinningPattern.NineGates);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(88);
+    }
+
+    [Fact]
     public void CalculateBasicScore_IgnoresMeldScore_ForAllPungsPattern()
     {
         var hand = new WinningHand(
