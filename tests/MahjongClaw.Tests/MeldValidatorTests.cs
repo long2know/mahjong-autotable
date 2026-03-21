@@ -165,6 +165,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenHonorTilesDiffer()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.South)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalseForFlowerTiles()
     {
         var tiles = new[]
