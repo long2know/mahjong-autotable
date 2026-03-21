@@ -1603,6 +1603,33 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsAllTerminalsAndHonors_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted terminals + honors hand.
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminalsAndHonors);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsAllTerminalsAndHonors_WhenTerminalPairAndHonorPungsAppear()
     {
         var tiles = new List<Tile>
@@ -3407,6 +3434,33 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Dragons, 0, null, Dragon.Red),
             new(TileSuit.Dragons, 0, null, Dragon.Red),
             new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsAllPungs_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted all-pungs hand.
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 5)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
