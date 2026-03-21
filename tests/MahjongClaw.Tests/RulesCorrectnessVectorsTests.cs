@@ -1765,6 +1765,33 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsAllGreen_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted all-green hand.
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllGreen);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsAllGreen_WhenGreenDragonPairSupportsFourChows()
     {
         var tiles = new List<Tile>
