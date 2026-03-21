@@ -667,6 +667,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score += 2;
     }
 
+    var suitedPairCount = handTiles
+        .Where(other => !IsHonorSuit(other.Suit))
+        .GroupBy(other => $"{other.Suit}:{other.Rank}", StringComparer.OrdinalIgnoreCase)
+        .Count(group => group.Count() >= 2);
+
     var suitTiles = handTiles
         .Where(other => string.Equals(other.Suit, tile.Suit, StringComparison.OrdinalIgnoreCase))
         .ToList();
@@ -778,6 +783,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
                 >= 3 => -1,
                 _ => 0
             };
+
+            if (suitedPairCount >= 2)
+            {
+                honorFocusPenalty += suitedPairCount >= 3 ? -2 : -1;
+            }
         }
         else
         {
