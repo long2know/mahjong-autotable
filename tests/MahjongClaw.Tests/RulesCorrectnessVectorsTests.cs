@@ -2103,6 +2103,28 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(4);
     }
 
+    [Theory]
+    [InlineData(Dragon.Red)]
+    [InlineData(Dragon.White)]
+    public void HandAnalyzer_UsesStandardPattern_WhenAllGreenCandidateHasNonGreenDragonPair(Dragon pairDragon)
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: red/white dragon
+            new(TileSuit.Dragons, 0, null, pairDragon),
+            new(TileSuit.Dragons, 0, null, pairDragon),
+            // Melds: 234 bamboo, 234 bamboo, pung 6 bamboo, pung 8 bamboo
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
     [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenAllGreenCandidateContainsBambooFive()
     {
