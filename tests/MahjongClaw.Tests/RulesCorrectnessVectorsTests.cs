@@ -3816,6 +3816,33 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsNineGates_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted 1112345678999 + 5 of dots
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.NineGates);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesNineGates_WhenStandardMeldDecompositionExists()
     {
         var tiles = new List<Tile>
