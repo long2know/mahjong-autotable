@@ -1638,6 +1638,33 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsAllTerminalHand_WhenSingletonTerminalPreventsCompletion()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pungs: 1 chars, 1 dots, 1 bamboos.
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            // Pair: 9 chars.
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 9),
+            // Extra terminals that cannot form a meld.
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsAllTerminalsAndHonors_AsWinningPattern()
     {
         var tiles = new List<Tile>
