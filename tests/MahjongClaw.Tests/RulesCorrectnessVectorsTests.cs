@@ -138,6 +138,26 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_ComputesStandardBasicScore_WhenHonorPairAndMixedMeldsIncludePungs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: green dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Melds: 123 chars, 456 dots, pung 7 bams, pung 9 chars
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9), new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenPureStraightAppearsInSingleSuit()
     {
         var tiles = new List<Tile>
