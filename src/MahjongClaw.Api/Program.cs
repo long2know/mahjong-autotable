@@ -831,6 +831,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         }
     }
 
+    if (sameRankCount >= 2 && (hasMinus1 || hasPlus1))
+    {
+        score += hasMinus1 && hasPlus1 ? 2 : 1;
+    }
+
     if (hasMinus2 && hasMinus1)
     {
         score += 1;
