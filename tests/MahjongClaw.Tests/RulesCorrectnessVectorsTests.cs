@@ -358,6 +358,27 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenPureStraightAppearsWithHonorPung()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 bamboos
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            // Melds: 123 dots, 456 dots, 789 dots (pure straight), pung red dragon
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenMixedTripleChowAppearsAcrossSuits()
     {
         var tiles = new List<Tile>
@@ -643,7 +664,7 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
-    public void HandAnalyzer_RejectsHand_WhenNoPairExists()
+    public void HandAnalyzer_RejectsHand_WhenNoPairExists_WithUnrelatedSingles()
     {
         var tiles = new List<Tile>
         {
@@ -5835,7 +5856,7 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
-    public void HandAnalyzer_RejectsHand_WhenNoPairExists()
+    public void HandAnalyzer_RejectsHand_WhenNoPairExists_WithHonorSingles()
     {
         var tiles = new List<Tile>
         {
