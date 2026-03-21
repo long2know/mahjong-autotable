@@ -639,6 +639,9 @@ static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
         .ThenBy(tile => IsTerminalSuitedTile(tile) ? 0 : 1)
         .ThenBy(tile => tile.Suit)
         .ThenBy(tile => tile.Rank)
+        .ThenBy(tile => tile.Wind ?? string.Empty)
+        .ThenBy(tile => tile.Dragon ?? string.Empty)
+        .ThenBy(tile => tile.Id)
         .First();
 
 static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTiles)
