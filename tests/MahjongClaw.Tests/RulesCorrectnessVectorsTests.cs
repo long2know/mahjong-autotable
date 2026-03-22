@@ -4779,6 +4779,62 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Theory]
+    [InlineData(1, Wind.East)]
+    [InlineData(9, Wind.North)]
+    public void HandAnalyzer_RejectsNineGates_WhenTerminalIsReplacedByWindHonor(int displacedTerminalRank, Wind honor)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots: 1112345678999 + extra 5 dot.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one terminal (1 or 9) with a wind honor tile.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == displacedTerminalRank);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(TileSuit.Winds, 0, honor);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(1, Dragon.Red)]
+    [InlineData(9, Dragon.White)]
+    public void HandAnalyzer_RejectsNineGates_WhenTerminalIsReplacedByDragonHonor(int displacedTerminalRank, Dragon honor)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots: 1112345678999 + extra 5 dot.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one terminal (1 or 9) with a dragon honor tile.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == displacedTerminalRank);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(TileSuit.Dragons, 0, null, honor);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(Dragon.Red)]
     [InlineData(Dragon.Green)]
     [InlineData(Dragon.White)]
