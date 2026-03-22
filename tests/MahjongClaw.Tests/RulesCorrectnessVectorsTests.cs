@@ -1726,6 +1726,34 @@ public class RulesCorrectnessVectorsTests
         hand.BasicScore.Should().Be(64);
     }
 
+    [Fact]
+    public void HandAnalyzer_PrioritizesAllTerminals_OverAllTerminalsAndHonors_WhenNoHonorsPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 dots
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            // Melds: pung 9 dots, pung 1 bamboos, pung 9 bamboos, pung 1 chars
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
+        hand.BasicScore.Should().Be(64);
+    }
+
     [Theory]
     [InlineData(TileSuit.Characters, 1)]
     [InlineData(TileSuit.Characters, 9)]
@@ -3818,23 +3846,21 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
-    public void HandAnalyzer_ChoosesHigherScoringStandardDecomposition_WhenMultipleChowLayoutsExist()
+    public void HandAnalyzer_PrefersSevenPairs_WhenStandardDecompositionAlsoExists()
     {
         var tiles = new List<Tile>
         {
             // Pair: 6 dots
             new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
-            // Tiles can form either four chows (789 x4) or three pungs (777/888/999) + chow 789.
+            // Tiles can form either four chows (789 x4) or three pungs (777/888/999) + chow 789,
+            // but should resolve to Seven Pairs when available.
             new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
             new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
             new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
-        hand!.Pattern.Should().Be(WinningPattern.Standard);
-        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
-        hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(1);
-        hand.BasicScore.Should().Be(6);
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
     }
 
     [Fact]
