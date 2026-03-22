@@ -341,6 +341,7 @@ gameGroup.MapPost("/{id:guid}/discard", async (
     };
 
     dbContext.Discards.Add(discard);
+    game.Discards.Add(discard);
 
     var currentPlayer = game.Players.FirstOrDefault(player => player.Id == request.PlayerId);
     if (currentPlayer is not null)
@@ -356,6 +357,7 @@ gameGroup.MapPost("/{id:guid}/discard", async (
 
     var response = new DiscardTileResponse(discard.Id, tile.Id, discard.Sequence);
     await SendToGameWithAliases(hubContext, game.Id, "TileDiscarded", response, cancellationToken);
+    await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -376,111 +378,18 @@ gameGroup.MapPost("/{id:guid}/bot/turn", async (
         return Results.NotFound();
     }
 
-    if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
+    var botTurnResult = await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+    if (!botTurnResult.Success)
     {
-        return Results.Conflict(new { message = "Game is not active." });
-    }
-
-    if (game.CurrentPlayerId is null)
-    {
-        return Results.Conflict(new { message = "No current player set." });
-    }
-
-    var botPlayer = game.Players.FirstOrDefault(player => player.Id == game.CurrentPlayerId);
-    if (botPlayer is null)
-    {
-        return Results.NotFound(new { message = "Current player not found." });
-    }
-
-    if (!IsBotPlayer(botPlayer))
-    {
-        return Results.Conflict(new { message = "Current player is not a bot." });
-    }
-
-    var handTiles = game.Tiles
-        .Where(tile => tile.PlayerId == botPlayer.Id && tile.Location == "Hand")
-        .ToList();
-
-    DrawTileResponse? drawResponse = null;
-    if (handTiles.Count == 13)
-    {
-        var tile = game.Tiles
-            .Where(t => t.Location == "Wall")
-            .OrderBy(t => t.Sequence)
-            .FirstOrDefault();
-
-        if (tile is null)
+        return botTurnResult.StatusCode switch
         {
-            return Results.Conflict(new { message = "No tiles left in wall." });
-        }
-
-        tile.Location = "Hand";
-        tile.PlayerId = botPlayer.Id;
-        drawResponse = new DrawTileResponse(tile.Id, tile.Suit, tile.Rank, tile.Wind, tile.Dragon);
-        handTiles.Add(tile);
-    }
-    else if (handTiles.Count != 14)
-    {
-        return Results.Conflict(new { message = "Bot hand is in an invalid state." });
+            404 => Results.NotFound(new { message = botTurnResult.ErrorMessage }),
+            409 => Results.Conflict(new { message = botTurnResult.ErrorMessage }),
+            _ => Results.BadRequest(new { message = botTurnResult.ErrorMessage })
+        };
     }
 
-    if (!TryBuildTileHand(handTiles, out var botHand))
-    {
-        return Results.Conflict(new { message = "Bot hand contains invalid tile data." });
-    }
-
-    if (HandAnalyzer.TryGetWinningHand(botHand, out var winningHand) && ScoreCalculator.MeetsMinimumFan(winningHand!))
-    {
-        game.Status = "Completed";
-        game.CurrentPlayerId = botPlayer.Id;
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        if (drawResponse is not null)
-        {
-            await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
-        }
-
-        var winResponse = new WinResponse(game.Id, game.Status, botPlayer.Id);
-        await SendToGameWithAliases(hubContext, game.Id, "GameWon", winResponse, cancellationToken);
-
-        return Results.Ok(new BotTurnResponse(drawResponse?.TileId, null, null, game.CurrentPlayerId, true));
-    }
-
-    var discardTile = SelectBotDiscard(handTiles);
-    discardTile.Location = "Discard";
-
-    var sequence = game.Discards.Count == 0
-        ? 1
-        : game.Discards.Max(d => d.Sequence) + 1;
-
-    var discard = new DiscardEntity
-    {
-        GameId = game.Id,
-        PlayerId = botPlayer.Id,
-        TileId = discardTile.Id,
-        Sequence = sequence
-    };
-
-    dbContext.Discards.Add(discard);
-
-    var nextPlayerId = GetNextPlayerId(game, botPlayer);
-    if (nextPlayerId is not null)
-    {
-        game.CurrentPlayerId = nextPlayerId;
-    }
-
-    await dbContext.SaveChangesAsync(cancellationToken);
-
-    if (drawResponse is not null)
-    {
-        await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
-    }
-
-    var discardResponse = new DiscardTileResponse(discard.Id, discardTile.Id, discard.Sequence);
-    await SendToGameWithAliases(hubContext, game.Id, "TileDiscarded", discardResponse, cancellationToken);
-
-    return Results.Ok(new BotTurnResponse(drawResponse?.TileId, discard.Id, discardTile.Id, game.CurrentPlayerId));
+    return Results.Ok(botTurnResult.Response);
 });
 
 gameGroup.MapPost("/{id:guid}/meld", async (
@@ -630,6 +539,149 @@ static bool TryBuildTileHand(IEnumerable<TileEntity> entities, out List<Tile> ti
     }
 
     return true;
+}
+
+static async Task ExecuteBotTurnChainAsync(
+    GameEntity game,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken)
+{
+    const int maxTurns = 4;
+    var turns = 0;
+
+    while (turns < maxTurns &&
+           string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase) &&
+           game.CurrentPlayerId is not null)
+    {
+        var currentPlayer = game.Players.FirstOrDefault(player => player.Id == game.CurrentPlayerId);
+        if (currentPlayer is null || !IsBotPlayer(currentPlayer))
+        {
+            break;
+        }
+
+        var result = await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+        if (!result.Success || result.Response is null || result.Response.Won)
+        {
+            break;
+        }
+
+        turns++;
+    }
+}
+
+static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
+    GameEntity game,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken)
+{
+    if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
+    {
+        return BotTurnExecutionResult.Fail(409, "Game is not active.");
+    }
+
+    if (game.CurrentPlayerId is null)
+    {
+        return BotTurnExecutionResult.Fail(409, "No current player set.");
+    }
+
+    var botPlayer = game.Players.FirstOrDefault(player => player.Id == game.CurrentPlayerId);
+    if (botPlayer is null)
+    {
+        return BotTurnExecutionResult.Fail(404, "Current player not found.");
+    }
+
+    if (!IsBotPlayer(botPlayer))
+    {
+        return BotTurnExecutionResult.Fail(409, "Current player is not a bot.");
+    }
+
+    var handTiles = game.Tiles
+        .Where(tile => tile.PlayerId == botPlayer.Id && tile.Location == "Hand")
+        .ToList();
+
+    DrawTileResponse? drawResponse = null;
+    if (handTiles.Count == 13)
+    {
+        var tile = game.Tiles
+            .Where(t => t.Location == "Wall")
+            .OrderBy(t => t.Sequence)
+            .FirstOrDefault();
+
+        if (tile is null)
+        {
+            return BotTurnExecutionResult.Fail(409, "No tiles left in wall.");
+        }
+
+        tile.Location = "Hand";
+        tile.PlayerId = botPlayer.Id;
+        drawResponse = new DrawTileResponse(tile.Id, tile.Suit, tile.Rank, tile.Wind, tile.Dragon);
+        handTiles.Add(tile);
+    }
+    else if (handTiles.Count != 14)
+    {
+        return BotTurnExecutionResult.Fail(409, "Bot hand is in an invalid state.");
+    }
+
+    if (!TryBuildTileHand(handTiles, out var botHand))
+    {
+        return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
+    }
+
+    if (HandAnalyzer.TryGetWinningHand(botHand, out var winningHand) && ScoreCalculator.MeetsMinimumFan(winningHand!))
+    {
+        game.Status = "Completed";
+        game.CurrentPlayerId = botPlayer.Id;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (drawResponse is not null)
+        {
+            await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
+        }
+
+        var winResponse = new WinResponse(game.Id, game.Status, botPlayer.Id);
+        await SendToGameWithAliases(hubContext, game.Id, "GameWon", winResponse, cancellationToken);
+
+        return BotTurnExecutionResult.Ok(new BotTurnResponse(drawResponse?.TileId, null, null, game.CurrentPlayerId, true));
+    }
+
+    var discardTile = SelectBotDiscard(handTiles);
+    discardTile.Location = "Discard";
+
+    var sequence = game.Discards.Count == 0
+        ? 1
+        : game.Discards.Max(d => d.Sequence) + 1;
+
+    var discard = new DiscardEntity
+    {
+        GameId = game.Id,
+        PlayerId = botPlayer.Id,
+        TileId = discardTile.Id,
+        Sequence = sequence
+    };
+
+    dbContext.Discards.Add(discard);
+    game.Discards.Add(discard);
+
+    var nextPlayerId = GetNextPlayerId(game, botPlayer);
+    if (nextPlayerId is not null)
+    {
+        game.CurrentPlayerId = nextPlayerId;
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    if (drawResponse is not null)
+    {
+        await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
+    }
+
+    var discardResponse = new DiscardTileResponse(discard.Id, discardTile.Id, discard.Sequence);
+    await SendToGameWithAliases(hubContext, game.Id, "TileDiscarded", discardResponse, cancellationToken);
+
+    return BotTurnExecutionResult.Ok(new BotTurnResponse(drawResponse?.TileId, discard.Id, discardTile.Id, game.CurrentPlayerId));
 }
 
 static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
@@ -1071,6 +1123,11 @@ internal record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Win
 internal record DiscardTileRequest(Guid PlayerId, Guid TileId);
 internal record DiscardTileResponse(Guid DiscardId, Guid TileId, int Sequence);
 internal record BotTurnResponse(Guid? DrawnTileId, Guid? DiscardId, Guid? DiscardTileId, Guid? NextPlayerId, bool Won = false);
+internal record BotTurnExecutionResult(bool Success, BotTurnResponse? Response, string? ErrorMessage, int StatusCode)
+{
+    public static BotTurnExecutionResult Ok(BotTurnResponse response) => new(true, response, null, 200);
+    public static BotTurnExecutionResult Fail(int statusCode, string message) => new(false, null, message, statusCode);
+}
 internal record MeldRequest(Guid PlayerId, string Type, IReadOnlyList<Guid> TileIds);
 internal record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
 internal record WinRequest(Guid PlayerId);
