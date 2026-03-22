@@ -162,6 +162,19 @@ public class ScoreCalculatorTests
         ScoreCalculator.CalculateBasicScore(hand).Should().Be(expectedScore);
     }
 
+    [Theory]
+    [InlineData(WinningPattern.SevenPairs, 24)]
+    [InlineData(WinningPattern.ThirteenOrphans, 88)]
+    [InlineData(WinningPattern.AllTerminals, 64)]
+    [InlineData(WinningPattern.BigThreeDragons, 88)]
+    [InlineData(WinningPattern.LittleThreeDragons, 64)]
+    public void CalculateBasicScore_UsesPatternScore_ForAdditionalSpecialHands(WinningPattern pattern, int expectedScore)
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), pattern);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(expectedScore);
+    }
+
     [Fact]
     public void CalculateBasicScore_IgnoresMeldScore_ForAllPungsPattern()
     {
