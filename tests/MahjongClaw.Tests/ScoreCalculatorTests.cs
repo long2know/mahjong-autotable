@@ -150,6 +150,18 @@ public class ScoreCalculatorTests
         ScoreCalculator.CalculateBasicScore(hand).Should().Be(88);
     }
 
+    [Theory]
+    [InlineData(WinningPattern.AllGreen, 88)]
+    [InlineData(WinningPattern.BigFourWinds, 88)]
+    [InlineData(WinningPattern.LittleFourWinds, 64)]
+    [InlineData(WinningPattern.AllTerminalsAndHonors, 64)]
+    public void CalculateBasicScore_UsesPatternScore_ForSpecialHands(WinningPattern pattern, int expectedScore)
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), pattern);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(expectedScore);
+    }
+
     [Fact]
     public void CalculateBasicScore_IgnoresMeldScore_ForAllPungsPattern()
     {
