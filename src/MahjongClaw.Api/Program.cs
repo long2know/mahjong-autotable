@@ -214,6 +214,7 @@ gameGroup.MapPost("/{id:guid}/start", async (
 
     var response = new StartGameResponse(game.Id, game.Status, game.DealerId, game.CurrentPlayerId);
     await SendToGameWithAliases(hubContext, game.Id, "GameStarted", response, cancellationToken);
+    await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
     return Results.Ok(response);
 });
 
