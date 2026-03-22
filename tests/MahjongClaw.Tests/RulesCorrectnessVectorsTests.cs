@@ -1,6 +1,7 @@
 using FluentAssertions;
 using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
+using System.Linq;
 
 namespace MahjongClaw.Tests;
 
@@ -297,6 +298,25 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrefersPungHeavyStandardDecomposition_WhenMultipleOptionsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 6 dots (plus an extra 6 dot to enable a 678 chow)
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            // Remaining tiles can form either three 789 chows or three pungs plus a chow.
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
+        hand.BasicScore.Should().Be(6);
     }
 
     [Fact]
