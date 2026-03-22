@@ -114,6 +114,24 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenThreeMeldsAndTwoPairsRemain()
+    {
+        var tiles = new List<Tile>
+        {
+            // Melds: 123 dots, 456 dots, 789 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Two pairs plus a singleton prevent a valid fourth meld
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Characters, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenSixPairsAndTwoSingletonsAppear()
     {
         var tiles = new List<Tile>
