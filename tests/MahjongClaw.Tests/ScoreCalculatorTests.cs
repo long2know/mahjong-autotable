@@ -226,6 +226,43 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForBigFourWinds_WithMeldsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.South),
+                    new(TileSuit.Winds, 0, Wind.South),
+                    new(TileSuit.Winds, 0, Wind.South)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.West),
+                    new(TileSuit.Winds, 0, Wind.West),
+                    new(TileSuit.Winds, 0, Wind.West)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.North),
+                    new(TileSuit.Winds, 0, Wind.North),
+                    new(TileSuit.Winds, 0, Wind.North)
+                })
+            },
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            WinningPattern.BigFourWinds);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(88);
+    }
+
+    [Fact]
     public void CalculateBasicScore_IgnoresMeldScore_ForAllPungsPattern()
     {
         var hand = new WinningHand(
