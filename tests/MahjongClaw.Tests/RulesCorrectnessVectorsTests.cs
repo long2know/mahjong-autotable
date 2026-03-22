@@ -6375,6 +6375,20 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void Tile_ThrowsWhenFlowerTileIncludesDragonValue()
+    {
+        var create = () => new Tile(TileSuit.Flowers, 1, null, Dragon.Green);
+        create.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Tile_ThrowsWhenSeasonTileIncludesWindValue()
+    {
+        var create = () => new Tile(TileSuit.Seasons, 2, Wind.East);
+        create.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
     public void Tile_ThrowsWhenSeasonTileIncludesDragonValue()
     {
         var create = () => new Tile(TileSuit.Seasons, 2, null, Dragon.White);
