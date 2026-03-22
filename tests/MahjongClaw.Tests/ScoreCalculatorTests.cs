@@ -316,6 +316,42 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void EvaluateMinimumFan_ReturnsMeetsThreshold_WhenScoreEqualsMinimum()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 5));
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand, minimumFan: 8);
+
+        evaluation.BasicScore.Should().Be(8);
+        evaluation.MinimumFan.Should().Be(8);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
+    [Fact]
     public void EvaluateMinimumFan_ReturnsShortfall_ForSpecialHand_WhenCustomThresholdIsHigher()
     {
         var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), WinningPattern.AllHonors);
