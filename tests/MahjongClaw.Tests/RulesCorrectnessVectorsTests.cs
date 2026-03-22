@@ -3799,6 +3799,29 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesQuadTileAcrossPungAndChow_WhenStandardDecompositionRequiresIt()
+    {
+        var tiles = new List<Tile>
+        {
+            // Quad used as pung + chow: 2222 dots plus 1 and 3 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3),
+            // Chow 456 bams
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            // Chow 789 chars
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            // Pair: 9 chars
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(1);
+        hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(3);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsAllPungs_AsWinningPattern()
     {
         var tiles = new List<Tile>
