@@ -6510,6 +6510,13 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void Tile_ThrowsForSuitedRankBelowOne()
+    {
+        var create = () => new Tile(TileSuit.Dots, 0);
+        create.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public void Tile_ThrowsWhenSuitedTileIncludesWindValue()
     {
         var create = () => new Tile(TileSuit.Characters, 3, Wind.East);
