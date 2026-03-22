@@ -248,6 +248,43 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForAllGreen_WithMeldsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 2),
+                    new(TileSuit.Bamboos, 3),
+                    new(TileSuit.Bamboos, 4)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 2),
+                    new(TileSuit.Bamboos, 3),
+                    new(TileSuit.Bamboos, 4)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 6),
+                    new(TileSuit.Bamboos, 6),
+                    new(TileSuit.Bamboos, 6)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 8),
+            WinningPattern.AllGreen);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(88);
+    }
+
+    [Fact]
     public void CalculateBasicScore_UsesPatternScore_ForBigFourWinds_WithMeldsPresent()
     {
         var hand = new WinningHand(
