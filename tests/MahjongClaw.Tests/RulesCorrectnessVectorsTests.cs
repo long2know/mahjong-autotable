@@ -426,6 +426,28 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_ComputesStandardBasicScore_WhenWindPairAndDragonPungAppear()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: east winds
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            // Melds: pung red dragons, 123 chars, 456 dots, 789 bams
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void HandAnalyzer_ComputesStandardBasicScore_WhenHonorPairAndMixedMeldsIncludePungs()
     {
         var tiles = new List<Tile>
