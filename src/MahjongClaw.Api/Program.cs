@@ -646,6 +646,11 @@ static TileEntity SelectBotDiscard(IReadOnlyList<TileEntity> handTiles)
 
 static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTiles)
 {
+    if (IsBonusSuit(tile.Suit))
+    {
+        return -100;
+    }
+
     var score = 0;
     var tileCounts = handTiles
         .GroupBy(static other => GetBotTileKey(other), StringComparer.OrdinalIgnoreCase)
@@ -962,6 +967,10 @@ static string GetBotTileKey(TileEntity tile)
 static bool IsHonorSuit(string suit)
     => string.Equals(suit, "Winds", StringComparison.OrdinalIgnoreCase)
         || string.Equals(suit, "Dragons", StringComparison.OrdinalIgnoreCase);
+
+static bool IsBonusSuit(string suit)
+    => string.Equals(suit, "Flowers", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(suit, "Seasons", StringComparison.OrdinalIgnoreCase);
 
 static bool IsTerminalSuitedTile(TileEntity tile)
     => !IsHonorSuit(tile.Suit) && tile.Rank is 1 or 9;
