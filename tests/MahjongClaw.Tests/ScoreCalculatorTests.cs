@@ -201,6 +201,31 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForAllTerminals_WithMeldsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 1)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 1),
+            WinningPattern.AllTerminals);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(64);
+    }
+
+    [Fact]
     public void CalculateBasicScore_IgnoresMeldScore_ForAllPungsPattern()
     {
         var hand = new WinningHand(
