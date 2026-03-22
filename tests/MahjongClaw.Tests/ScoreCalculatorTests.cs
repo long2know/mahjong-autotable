@@ -106,6 +106,101 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForAllHonors()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                })
+            },
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            WinningPattern.AllHonors);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(64);
+    }
+
+    [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForNineGates()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 1),
+                    new(TileSuit.Dots, 2),
+                    new(TileSuit.Dots, 3)
+                })
+            },
+            new Tile(TileSuit.Dots, 5),
+            WinningPattern.NineGates);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(88);
+    }
+
+    [Theory]
+    [InlineData(WinningPattern.AllGreen, 88)]
+    [InlineData(WinningPattern.BigFourWinds, 88)]
+    [InlineData(WinningPattern.LittleFourWinds, 64)]
+    [InlineData(WinningPattern.AllTerminalsAndHonors, 64)]
+    public void CalculateBasicScore_UsesPatternScore_ForSpecialHands(WinningPattern pattern, int expectedScore)
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), pattern);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(expectedScore);
+    }
+
+    [Theory]
+    [InlineData(WinningPattern.SevenPairs, 24)]
+    [InlineData(WinningPattern.ThirteenOrphans, 88)]
+    [InlineData(WinningPattern.AllTerminals, 64)]
+    [InlineData(WinningPattern.BigThreeDragons, 88)]
+    [InlineData(WinningPattern.LittleThreeDragons, 64)]
+    public void CalculateBasicScore_UsesPatternScore_ForAdditionalSpecialHands(WinningPattern pattern, int expectedScore)
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), pattern);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(expectedScore);
+    }
+
+    [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForAllTerminalsAndHonors_WithMeldsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 1)
+                })
+            },
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            WinningPattern.AllTerminalsAndHonors);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(64);
+    }
+
+    [Fact]
     public void CalculateBasicScore_IgnoresMeldScore_ForAllPungsPattern()
     {
         var hand = new WinningHand(
@@ -141,6 +236,106 @@ public class ScoreCalculatorTests
             WinningPattern.AllPungs);
 
         ScoreCalculator.CalculateBasicScore(hand).Should().Be(6);
+    }
+
+    [Fact]
+    public void EvaluateMinimumFan_ReturnsShortfall_WhenHandIsBelowThreshold()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+                })
+            },
+            new Tile(TileSuit.Characters, 2));
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand);
+
+        evaluation.BasicScore.Should().Be(2);
+        evaluation.MinimumFan.Should().Be(ScoreCalculator.ChineseOfficialMinimumFan);
+        evaluation.MeetsMinimumFan.Should().BeFalse();
+        evaluation.FanShortfall.Should().Be(6);
+    }
+
+    [Fact]
+    public void EvaluateMinimumFan_UsesOverrideMinimumFan_WhenProvided()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 3),
+                    new(TileSuit.Dots, 3),
+                    new(TileSuit.Dots, 3)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 7),
+                    new(TileSuit.Characters, 7),
+                    new(TileSuit.Characters, 7)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 6),
+                    new(TileSuit.Bamboos, 6),
+                    new(TileSuit.Bamboos, 6)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                })
+            },
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            WinningPattern.AllPungs);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand, minimumFan: 6);
+
+        evaluation.BasicScore.Should().Be(6);
+        evaluation.MinimumFan.Should().Be(6);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
+    [Fact]
+    public void EvaluateMinimumFan_ReturnsShortfall_ForSpecialHand_WhenCustomThresholdIsHigher()
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), WinningPattern.AllHonors);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand, minimumFan: 70);
+
+        evaluation.BasicScore.Should().Be(64);
+        evaluation.MinimumFan.Should().Be(70);
+        evaluation.MeetsMinimumFan.Should().BeFalse();
+        evaluation.FanShortfall.Should().Be(6);
+    }
+
+    [Fact]
+    public void EvaluateMinimumFan_Throws_WhenMinimumFanIsNegative()
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1));
+
+        Action act = () => ScoreCalculator.EvaluateMinimumFan(hand, -1);
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]

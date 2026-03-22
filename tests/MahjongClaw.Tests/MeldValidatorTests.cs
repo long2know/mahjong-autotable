@@ -165,6 +165,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenSameRankDifferentSuits()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Bamboos, 5)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalse_WhenHonorTilesDiffer()
     {
         var tiles = new[]
@@ -254,6 +267,34 @@ public class MeldValidatorTests
             new Tile(TileSuit.Bamboos, 2),
             new Tile(TileSuit.Bamboos, 2),
             new Tile(TileSuit.Bamboos, 3)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalse_WhenSameRankDifferentSuits()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Bamboos, 5),
+            new Tile(TileSuit.Dots, 5)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalse_WhenHonorTilesDiffer()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.South)
         };
 
         MeldValidator.IsValidKong(tiles).Should().BeFalse();
