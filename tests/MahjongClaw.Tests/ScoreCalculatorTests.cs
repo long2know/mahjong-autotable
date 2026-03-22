@@ -316,6 +316,19 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void EvaluateMinimumFan_ReturnsShortfall_ForSpecialHand_WhenCustomThresholdIsHigher()
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), WinningPattern.AllHonors);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand, minimumFan: 70);
+
+        evaluation.BasicScore.Should().Be(64);
+        evaluation.MinimumFan.Should().Be(70);
+        evaluation.MeetsMinimumFan.Should().BeFalse();
+        evaluation.FanShortfall.Should().Be(6);
+    }
+
+    [Fact]
     public void EvaluateMinimumFan_Throws_WhenMinimumFanIsNegative()
     {
         var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1));
