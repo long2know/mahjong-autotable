@@ -3674,12 +3674,60 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenThreePungsAndOneChowAreRequired()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragon
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Melds: pung 2 dots, pung 4 bamboos, pung 6 characters, chow 789 dots
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesAllPungs_WhenMixedDecompositionIsAlsoPossible()
     {
         var tiles = new List<Tile>
         {
             // Pair: 5 dots
             new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Melds can be four pungs or three chows (123) + pung 444.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesAllPungs_WhenHonorPairAndChowsArePossible()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: red dragon.
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
             // Melds can be four pungs or three chows (123) + pung 444.
             new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
             new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
