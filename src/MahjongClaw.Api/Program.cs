@@ -726,15 +726,27 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     }
 
     var sevenPairsBias = 0;
-    if (pairCount >= 4)
+    if (pairCount >= 3)
     {
         if (tileMatchCount >= 2)
         {
-            sevenPairsBias = pairCount >= 6 ? 3 : pairCount >= 5 ? 2 : 1;
+            sevenPairsBias = pairCount switch
+            {
+                >= 6 => 3,
+                5 => 2,
+                4 => 1,
+                _ => 1
+            };
         }
         else
         {
-            sevenPairsBias = pairCount >= 6 ? -3 : pairCount >= 5 ? -2 : -1;
+            sevenPairsBias = pairCount switch
+            {
+                >= 6 => -3,
+                5 => -2,
+                4 => -1,
+                _ => -1
+            };
         }
     }
 
