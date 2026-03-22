@@ -93,6 +93,26 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenSinglePairButNoMeldsCanForm()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            // Singles that cannot form chows or pungs
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 6), new(TileSuit.Characters, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenSixPairsAndTwoSingletonsAppear()
     {
         var tiles = new List<Tile>
