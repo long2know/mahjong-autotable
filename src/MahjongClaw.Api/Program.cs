@@ -854,6 +854,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
     var hasDirectNeighbor = hasMinus1 || hasPlus1;
     var hasGapNeighbor = hasMinus2 || hasPlus2;
 
+    if (tile.Rank is >= 3 and <= 7 && hasDirectNeighbor)
+    {
+        score += 1;
+    }
+
     if (hasMinus1 && hasPlus1)
     {
         score += 2;

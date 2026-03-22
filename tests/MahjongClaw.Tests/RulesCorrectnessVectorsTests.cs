@@ -3690,6 +3690,26 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_ChoosesHigherScoringStandardDecomposition_WhenMultipleChowLayoutsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 6 dots
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            // Tiles can form either four chows (789 x4) or three pungs (777/888/999) + chow 789.
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
+        hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(1);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsAllPungs_AsWinningPattern()
     {
         var tiles = new List<Tile>
