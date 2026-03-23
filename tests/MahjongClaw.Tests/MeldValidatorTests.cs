@@ -301,6 +301,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidMeld_ReturnsFalse_WhenTilesContainNull()
+    {
+        var tiles = new Tile[]
+        {
+            new(TileSuit.Dots, 2),
+            null!,
+            new(TileSuit.Dots, 3)
+        };
+
+        MeldValidator.IsValidMeld(tiles, MeldType.Chow).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidMeld_ReturnsFalseForUnknownType()
     {
         var tiles = new[]
