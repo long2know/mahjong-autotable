@@ -46,7 +46,10 @@ gameGroup.MapPost("/", async (
     Guid? hostPlayerId = null;
     var hostName = request?.HostName?.Trim();
     var createMode = request?.Mode?.Trim();
-    var botSeatCount = Math.Clamp(request?.BotSeatCount ?? 0, 0, 3);
+    var requestedBotSeatCount = request?.BotSeatCount;
+    var botSeatCount = string.Equals(createMode, "HumanVsBot", StringComparison.OrdinalIgnoreCase)
+        ? Math.Clamp(requestedBotSeatCount ?? 3, 0, 3)
+        : 0;
     var createdPlayers = new List<PlayerEntity>();
 
     if (!string.IsNullOrWhiteSpace(hostName))
