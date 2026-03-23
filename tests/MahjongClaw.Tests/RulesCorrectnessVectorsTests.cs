@@ -168,6 +168,21 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenWindTileAppearsMoreThanFourTimes()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenNoPairExists()
     {
         var tiles = new List<Tile>
@@ -462,7 +477,7 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
-    public void HandAnalyzer_RejectsHand_WhenHonorTileAppearsMoreThanFourTimes()
+    public void HandAnalyzer_RejectsHand_WhenDragonTileAppearsMoreThanFourTimes()
     {
         var tiles = new List<Tile>
         {
