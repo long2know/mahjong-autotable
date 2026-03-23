@@ -770,6 +770,17 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
             _ => 0
         }
         : 0;
+    var suitPairCount = !IsHonorSuit(tile.Suit)
+        ? suitTiles
+            .GroupBy(other => other.Rank)
+            .Count(group => group.Count() >= 2)
+        : 0;
+    var suitPairBonus = suitPairCount switch
+    {
+        >= 3 => 2,
+        2 => 1,
+        _ => 0
+    };
     var suitedCounts = handTiles
         .Where(other => !IsHonorSuit(other.Suit))
         .GroupBy(other => other.Suit, StringComparer.OrdinalIgnoreCase)
@@ -1007,7 +1018,7 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         score -= 1;
     }
 
-    return score + suitClusterBonus + suitSingletonPenalty + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias;
+    return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias;
 }
 
 static string GetBotTileKey(TileEntity tile)
