@@ -44,6 +44,32 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_ThrowsWhenTilesContainNull()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1),
+            null!,
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 2)
+        };
+
+        Action act = () => HandAnalyzer.TryGetWinningHand(tiles, out _);
+
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenTileCountIsLessThanFourteen()
     {
         var tiles = new List<Tile>
