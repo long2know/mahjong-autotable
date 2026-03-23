@@ -198,6 +198,80 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForBigThreeDragons_WithMeldsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.White),
+                    new(TileSuit.Dragons, 0, null, Dragon.White),
+                    new(TileSuit.Dragons, 0, null, Dragon.White)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 1),
+                    new(TileSuit.Dots, 2),
+                    new(TileSuit.Dots, 3)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 5),
+            WinningPattern.BigThreeDragons);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(88);
+    }
+
+    [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForLittleThreeDragons_WithMeldsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 4),
+                    new(TileSuit.Dots, 5),
+                    new(TileSuit.Dots, 6)
+                })
+            },
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            WinningPattern.LittleThreeDragons);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(64);
+    }
+
+    [Fact]
     public void CalculateBasicScore_UsesPatternScore_ForAllTerminalsAndHonors_WithMeldsPresent()
     {
         var hand = new WinningHand(
