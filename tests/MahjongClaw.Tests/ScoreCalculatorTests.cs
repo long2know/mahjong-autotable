@@ -437,6 +437,71 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void EvaluateMinimumFan_ReturnsMeetsThreshold_WhenMinimumFanIsZero()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+                })
+            },
+            new Tile(TileSuit.Characters, 2));
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand, minimumFan: 0);
+
+        evaluation.BasicScore.Should().Be(2);
+        evaluation.MinimumFan.Should().Be(0);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
+    [Fact]
+    public void MeetsMinimumFan_ReturnsTrue_WhenMinimumFanIsZero()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+                })
+            },
+            new Tile(TileSuit.Characters, 2));
+
+        ScoreCalculator.MeetsMinimumFan(hand, minimumFan: 0).Should().BeTrue();
+    }
+
+    [Fact]
     public void EvaluateMinimumFan_ReturnsMeetsThreshold_WhenScoreEqualsMinimum()
     {
         var hand = new WinningHand(
