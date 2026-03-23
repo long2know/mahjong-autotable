@@ -469,6 +469,49 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void EvaluateMinimumFan_UsesPatternScore_ForAllPungsEvenWithKongs()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 1)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 5),
+                    new(TileSuit.Bamboos, 5),
+                    new(TileSuit.Bamboos, 5)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                })
+            },
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand);
+
+        evaluation.BasicScore.Should().Be(6);
+        evaluation.MinimumFan.Should().Be(ScoreCalculator.ChineseOfficialMinimumFan);
+        evaluation.MeetsMinimumFan.Should().BeFalse();
+        evaluation.FanShortfall.Should().Be(2);
+    }
+
+    [Fact]
     public void EvaluateMinimumFan_UsesOverrideMinimumFan_WhenProvided()
     {
         var hand = new WinningHand(
