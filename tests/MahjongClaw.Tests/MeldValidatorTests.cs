@@ -191,6 +191,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenWindAndDragonMixed()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalseForFlowerTiles()
     {
         var tiles = new[]
