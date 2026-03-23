@@ -27,6 +27,24 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithAllChowsPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Chows: 123 chars, 234 chars, 567 dots, 789 bamboos
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
     public void HandAnalyzer_ThrowsWhenTilesAreNull()
     {
         WinningHand? hand = null;
@@ -80,6 +98,14 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
             new(TileSuit.Characters, 7), new(TileSuit.Characters, 7)
         };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenTileListIsEmpty()
+    {
+        var tiles = new List<Tile>();
 
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
