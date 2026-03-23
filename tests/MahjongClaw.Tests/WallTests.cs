@@ -50,4 +50,12 @@ public class WallTests
 
         act.Should().Throw<InvalidOperationException>().WithMessage("Wall is empty.");
     }
+
+    [Fact]
+    public void Constructor_ThrowsWhenTilesNull()
+    {
+        Action act = () => new Wall(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
 }
