@@ -221,6 +221,25 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForSevenPairs_EvenWhenMeldsProvided()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 1),
+                    new(TileSuit.Dots, 2),
+                    new(TileSuit.Dots, 3)
+                })
+            },
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.SevenPairs);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(24);
+    }
+
+    [Fact]
     public void CalculateBasicScore_UsesPatternScore_ForBigThreeDragons_WithMeldsPresent()
     {
         var hand = new WinningHand(
@@ -489,6 +508,43 @@ public class ScoreCalculatorTests
                 })
             },
             new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(6);
+    }
+
+    [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForAllPungs_WhenChowIsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 7),
+                    new(TileSuit.Dots, 7),
+                    new(TileSuit.Dots, 7)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 3),
+                    new(TileSuit.Characters, 3),
+                    new(TileSuit.Characters, 3)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 1),
+                    new(TileSuit.Bamboos, 2),
+                    new(TileSuit.Bamboos, 3)
+                })
+            },
+            new Tile(TileSuit.Dots, 5),
             WinningPattern.AllPungs);
 
         ScoreCalculator.CalculateBasicScore(hand).Should().Be(6);
