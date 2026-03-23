@@ -56,4 +56,40 @@ test.describe('Mahjong Claw lobby -> game smoke', () => {
     await expect(page.getByRole('heading', { name: 'Your Hand' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Draw' })).toBeVisible();
   });
+
+  test('creates human vs bot game and auto-seats bot players', async ({ page, request }) => {
+    await page.goto('/lobby');
+
+    const createCard = page.locator('.card').filter({ hasText: 'Create Game' }).first();
+    await createCard.getByPlaceholder('Enter your name').fill('BotHost');
+
+    const modeSelect = createCard.locator('label', { hasText: 'Game mode' }).locator('..').locator('select');
+    await modeSelect.selectOption('HumanVsBot');
+
+    const botSeatSelect = createCard.locator('label', { hasText: 'Bot seats' }).locator('..').locator('select');
+    await botSeatSelect.selectOption('2');
+
+    await createCard.getByRole('button', { name: 'Create' }).click();
+
+    const statusAlert = page.locator('.alert').filter({ hasText: 'Game created:' }).first();
+    await expect(statusAlert).toBeVisible();
+    await expect(statusAlert).toContainText('Human vs Bot');
+    await expect(statusAlert).toContainText('2 bot seats');
+
+    const statusText = (await statusAlert.textContent()) ?? '';
+    const gameIdMatch = statusText.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    expect(gameIdMatch).toBeTruthy();
+    const gameId = gameIdMatch[0];
+
+    const stateResponse = await request.get(`${apiBaseUrl}/api/game/${gameId}/state`);
+    expect(stateResponse.ok()).toBeTruthy();
+
+    const state = await stateResponse.json();
+    const playerNames = state.players.map(player => player.name);
+    const playerSeats = state.players.map(player => player.seat);
+
+    expect(state.players).toHaveLength(3);
+    expect(playerNames).toEqual(expect.arrayContaining(['BotHost', 'Bot 1', 'Bot 2']));
+    expect(playerSeats).toEqual(expect.arrayContaining(['East', 'South', 'West']));
+  });
 });
