@@ -722,6 +722,11 @@ static int GetBotTileKeepScore(TileEntity tile, IReadOnlyList<TileEntity> handTi
         };
     }
 
+    if (tileMatchCount >= 4)
+    {
+        score += 2;
+    }
+
     var pairCount = tileCounts.Count(static entry => entry.Value >= 2);
     if (tileMatchCount == 2 && pairCount == 1)
     {
