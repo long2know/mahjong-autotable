@@ -314,6 +314,12 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidMeld_ReturnsFalse_WhenTilesAreNull()
+    {
+        MeldValidator.IsValidMeld(null!, MeldType.Chow).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidMeld_ReturnsFalse_WhenTilesContainNull()
     {
         var tiles = new Tile[]
@@ -413,6 +419,12 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalse_WhenTilesAreNull()
+    {
+        MeldValidator.IsValidChow(null!).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsFalse_WhenTilesContainNull()
     {
         var tiles = new Tile[]
@@ -426,6 +438,12 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenTilesAreNull()
+    {
+        MeldValidator.IsValidPung(null!).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalse_WhenTilesContainNull()
     {
         var tiles = new Tile[]
@@ -436,6 +454,12 @@ public class MeldValidatorTests
         };
 
         MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalse_WhenTilesAreNull()
+    {
+        MeldValidator.IsValidKong(null!).Should().BeFalse();
     }
 
     [Fact]

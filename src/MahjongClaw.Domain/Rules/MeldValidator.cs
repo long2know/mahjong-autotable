@@ -6,6 +6,11 @@ public static class MeldValidator
 {
     public static bool IsValidMeld(IReadOnlyList<Tile> tiles, MeldType type)
     {
+        if (tiles is null)
+        {
+            return false;
+        }
+
         if (tiles.Any(static tile => tile is null))
         {
             return false;
@@ -22,6 +27,11 @@ public static class MeldValidator
 
     public static bool IsValidChow(IReadOnlyList<Tile> tiles)
     {
+        if (tiles is null)
+        {
+            return false;
+        }
+
         if (tiles.Count != 3)
         {
             return false;
@@ -49,6 +59,11 @@ public static class MeldValidator
 
     public static bool IsValidPung(IReadOnlyList<Tile> tiles)
     {
+        if (tiles is null)
+        {
+            return false;
+        }
+
         if (tiles.Count != 3)
         {
             return false;
@@ -69,6 +84,11 @@ public static class MeldValidator
 
     public static bool IsValidKong(IReadOnlyList<Tile> tiles)
     {
+        if (tiles is null)
+        {
+            return false;
+        }
+
         if (tiles.Count != 4)
         {
             return false;
