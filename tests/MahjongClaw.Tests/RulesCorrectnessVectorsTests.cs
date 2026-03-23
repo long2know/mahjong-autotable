@@ -182,6 +182,25 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(Dragon.Red)]
+    [InlineData(Dragon.Green)]
+    [InlineData(Dragon.White)]
+    public void HandAnalyzer_RejectsHand_WhenDragonTileAppearsMoreThanFourTimes(Dragon dragon)
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, dragon), new(TileSuit.Dragons, 0, null, dragon),
+            new(TileSuit.Dragons, 0, null, dragon), new(TileSuit.Dragons, 0, null, dragon),
+            new(TileSuit.Dragons, 0, null, dragon),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void HandAnalyzer_RejectsHand_WhenNoPairExists()
     {
@@ -494,24 +513,6 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
         hand.BasicScore.Should().Be(24);
-    }
-
-    [Fact]
-    public void HandAnalyzer_RejectsHand_WhenDragonTileAppearsMoreThanFourTimes()
-    {
-        var tiles = new List<Tile>
-        {
-            new(TileSuit.Dragons, 0, null, Dragon.Red),
-            new(TileSuit.Dragons, 0, null, Dragon.Red),
-            new(TileSuit.Dragons, 0, null, Dragon.Red),
-            new(TileSuit.Dragons, 0, null, Dragon.Red),
-            new(TileSuit.Dragons, 0, null, Dragon.Red),
-            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
-            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
-            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
-        };
-
-        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
 
     [Fact]
