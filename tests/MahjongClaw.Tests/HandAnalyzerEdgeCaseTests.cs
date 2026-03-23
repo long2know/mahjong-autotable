@@ -163,6 +163,29 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_SelectsHonorPair_WhenSuitedPairWouldBreakChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 dots, 234 dots, 567 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            // Pung: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Pair: east winds (pairing the 2 dots would break the chows)
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+        hand.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
     public void TryGetWinningHand_SelectsNonQuadPair_WhenQuadSupportsPungAndChow()
     {
         var tiles = new List<Tile>
