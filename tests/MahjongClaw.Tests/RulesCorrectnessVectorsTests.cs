@@ -133,6 +133,30 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenQuadSplitsAcrossPungAndChow_WithHonorPung()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 bamboos
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            // Chow: 345 dots (uses one 5 dot)
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            // Pung: 5 dots (remaining three tiles from the quad)
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Chow: 789 characters
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            // Pung: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenDragonPungsAppearWithSuitedPair()
     {
         var tiles = new List<Tile>
