@@ -35,4 +35,21 @@ public class GameStateTests
         state.AdvanceTurn();
         state.CurrentTurn.Should().Be(Wind.East);
     }
+
+    [Fact]
+    public void GetPlayer_ReturnsPlayerForRequestedSeat()
+    {
+        var players = new[]
+        {
+            new Player(Guid.NewGuid(), "Alice", Wind.East),
+            new Player(Guid.NewGuid(), "Bob", Wind.South),
+            new Player(Guid.NewGuid(), "Chris", Wind.West),
+            new Player(Guid.NewGuid(), "Dana", Wind.North)
+        };
+
+        var wall = new Wall(Array.Empty<Tile>());
+        var state = new GameState(Guid.NewGuid(), players, wall, Wind.East);
+
+        state.GetPlayer(Wind.West).Name.Should().Be("Chris");
+    }
 }
