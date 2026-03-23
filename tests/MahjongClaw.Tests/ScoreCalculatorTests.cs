@@ -53,6 +53,29 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_ReturnsZero_WhenOnlyChowsPresent_WithHonorPair()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Chow 1-2-3 characters
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            // Chow 4-5-6 characters
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            // Chow 2-3-4 bamboos
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            // Chow 7-8-9 dots
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(0);
+    }
+
+    [Fact]
     public void CalculateBasicScore_CountsKongsAndPungs_ForStandardHand()
     {
         var hand = new WinningHand(
