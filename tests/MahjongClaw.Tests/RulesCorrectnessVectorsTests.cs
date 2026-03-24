@@ -5269,6 +5269,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenThreePungsAndOneChowPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 dots
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 2),
+            // Melds: pung 5 bamboos, pung 7 characters, pung 9 dots, chow 123 bamboos
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_PrioritizesAllHonors_OverAllPungs_WhenBothApply()
     {
         var tiles = new List<Tile>

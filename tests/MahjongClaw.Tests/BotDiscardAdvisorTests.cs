@@ -189,6 +189,30 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesSingleton_WhenFourPairsPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+        var discardedTile = tiles[discardIndex];
+
+        tiles.Count(tile => tile == discardedTile).Should().Be(1);
+        discardedTile.IsHonor.Should().BeTrue();
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesHonorSingleton_WhenMultipleSuitedPairsExist()
     {
         var tiles = new List<Tile>
@@ -244,6 +268,24 @@ public class BotDiscardAdvisorTests
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
 
         tiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 1));
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_PrioritizesTerminalOffSuit_WhenMultipleOffSuitSingletonsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 7), new(TileSuit.Characters, 8)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 1));
     }
 
     [Fact]
