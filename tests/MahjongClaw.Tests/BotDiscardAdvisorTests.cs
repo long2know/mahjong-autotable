@@ -208,4 +208,22 @@ public class BotDiscardAdvisorTests
 
         tiles[discardIndex].Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
     }
+
+    [Fact]
+    public void SelectDiscardIndex_PrioritizesOffSuitSingleton_WhenDominantSuitHasConnectedRuns()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 7), new(TileSuit.Characters, 8),
+            new(TileSuit.Characters, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 1));
+    }
 }
