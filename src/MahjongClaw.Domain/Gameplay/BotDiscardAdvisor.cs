@@ -1,0 +1,375 @@
+using MahjongClaw.Domain.Tiles;
+
+namespace MahjongClaw.Domain.Gameplay;
+
+public static class BotDiscardAdvisor
+{
+    public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles)
+    {
+        ArgumentNullException.ThrowIfNull(handTiles);
+
+        if (handTiles.Count == 0)
+        {
+            throw new ArgumentException("Hand cannot be empty.", nameof(handTiles));
+        }
+
+        if (handTiles.Any(static tile => tile is null))
+        {
+            throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
+        }
+
+        return handTiles
+            .Select((tile, index) => new
+            {
+                Tile = tile,
+                Index = index,
+                Score = GetBotTileKeepScore(tile, handTiles)
+            })
+            .OrderBy(candidate => candidate.Score)
+            .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
+            .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
+            .ThenBy(candidate => candidate.Tile.Suit)
+            .ThenBy(candidate => candidate.Tile.Rank)
+            .ThenBy(candidate => candidate.Tile.Wind.HasValue ? (int)candidate.Tile.Wind.Value : -1)
+            .ThenBy(candidate => candidate.Tile.Dragon.HasValue ? (int)candidate.Tile.Dragon.Value : -1)
+            .ThenBy(candidate => candidate.Index)
+            .First()
+            .Index;
+    }
+
+    private static int GetBotTileKeepScore(Tile tile, IReadOnlyList<Tile> handTiles)
+    {
+        if (tile.IsFlower)
+        {
+            return -100;
+        }
+
+        var score = 0;
+        var tileCounts = handTiles
+            .GroupBy(static other => other)
+            .ToDictionary(group => group.Key, group => group.Count());
+        tileCounts.TryGetValue(tile, out var tileMatchCount);
+        if (tileMatchCount >= 2)
+        {
+            score += tileMatchCount switch
+            {
+                2 => 2,
+                3 => 3,
+                _ => 4
+            };
+        }
+
+        if (tileMatchCount >= 4)
+        {
+            score += 2;
+        }
+
+        var pairCount = tileCounts.Count(static entry => entry.Value >= 2);
+        if (tileMatchCount == 2 && pairCount == 1)
+        {
+            score += 2;
+        }
+
+        var sevenPairsBias = 0;
+        if (pairCount >= 3)
+        {
+            if (tileMatchCount >= 2)
+            {
+                sevenPairsBias = pairCount switch
+                {
+                    >= 6 => 3,
+                    5 => 2,
+                    4 => 1,
+                    _ => 1
+                };
+            }
+            else
+            {
+                sevenPairsBias = pairCount switch
+                {
+                    >= 6 => -3,
+                    5 => -2,
+                    4 => -1,
+                    _ => -1
+                };
+            }
+        }
+
+        var suitedPairCount = handTiles
+            .Where(static other => !other.IsHonor)
+            .GroupBy(static other => (other.Suit, other.Rank))
+            .Count(group => group.Count() >= 2);
+
+        var suitTiles = handTiles
+            .Where(other => other.Suit == tile.Suit)
+            .ToList();
+        var suitCount = suitTiles.Count;
+        var suitClusterBonus = !tile.IsHonor
+            ? Math.Max(0, (suitCount - 1) / 2)
+            : 0;
+        var suitSingletonPenalty = !tile.IsHonor
+            ? suitCount switch
+            {
+                1 => -2,
+                2 => -1,
+                _ => 0
+            }
+            : 0;
+        var suitPairCount = !tile.IsHonor
+            ? suitTiles
+                .GroupBy(other => other.Rank)
+                .Count(group => group.Count() >= 2)
+            : 0;
+        var suitPairBonus = suitPairCount switch
+        {
+            >= 3 => 2,
+            2 => 1,
+            _ => 0
+        };
+        var suitedCounts = handTiles
+            .Where(static other => !other.IsHonor)
+            .GroupBy(static other => other.Suit)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var suitFocusPenalty = 0;
+        if (!tile.IsHonor && suitedCounts.Count > 1)
+        {
+            var minSuitCount = suitedCounts.Values.Min();
+            if (suitCount == minSuitCount)
+            {
+                suitFocusPenalty = minSuitCount switch
+                {
+                    1 => -2,
+                    2 => -1,
+                    _ => 0
+                };
+            }
+        }
+
+        var suitFocusBonus = 0;
+        if (!tile.IsHonor && suitedCounts.Count > 0)
+        {
+            var maxSuitCount = suitedCounts.Values.Max();
+            if (suitCount == maxSuitCount && maxSuitCount >= 6)
+            {
+                suitFocusBonus = maxSuitCount >= 8 ? 2 : 1;
+            }
+        }
+
+        var dominantSuitPenalty = 0;
+        if (!tile.IsHonor && suitedCounts.Count > 1)
+        {
+            var maxSuitCount = suitedCounts.Values.Max();
+            if (suitCount < maxSuitCount)
+            {
+                dominantSuitPenalty = maxSuitCount >= 8 ? -2 : maxSuitCount >= 7 ? -1 : 0;
+            }
+        }
+
+        var honorSingletonCount = handTiles
+            .Where(static other => other.IsHonor)
+            .GroupBy(static other => other)
+            .Count(group => group.Count() == 1);
+
+        var hasHonorMatch = false;
+        var honorMatchCount = 0;
+
+        foreach (var other in suitTiles)
+        {
+            if (ReferenceEquals(tile, other))
+            {
+                continue;
+            }
+
+            if (tile.IsHonor)
+            {
+                if (tile.Wind == other.Wind && tile.Dragon == other.Dragon)
+                {
+                    score += 3;
+                    hasHonorMatch = true;
+                    honorMatchCount++;
+                }
+
+                continue;
+            }
+
+            if (other.Rank == tile.Rank)
+            {
+                score += 2;
+                continue;
+            }
+
+            var diff = Math.Abs(other.Rank - tile.Rank);
+            if (diff == 1)
+            {
+                score += 2;
+            }
+            else if (diff == 2)
+            {
+                score += 1;
+            }
+        }
+
+        if (tile.IsHonor)
+        {
+            var honorFocusPenalty = 0;
+            if (!hasHonorMatch)
+            {
+                score -= suitCount == 1 ? 3 : 2;
+
+                if (suitedCounts.Count > 0)
+                {
+                    var maxSuitCount = suitedCounts.Values.Max();
+                    if (maxSuitCount >= 6)
+                    {
+                        honorFocusPenalty = maxSuitCount >= 8 ? -2 : -1;
+                    }
+                }
+
+                score += honorSingletonCount switch
+                {
+                    >= 5 => -2,
+                    >= 3 => -1,
+                    _ => 0
+                };
+
+                if (suitedPairCount >= 2)
+                {
+                    honorFocusPenalty += suitedPairCount >= 3 ? -2 : -1;
+                }
+            }
+            else
+            {
+                var matchSetSize = honorMatchCount + 1;
+                score += matchSetSize switch
+                {
+                    >= 4 => 3,
+                    3 => 2,
+                    2 => 1,
+                    _ => 0
+                };
+            }
+
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias;
+        }
+
+        var rankCounts = suitTiles
+            .GroupBy(other => other.Rank)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        rankCounts.TryGetValue(tile.Rank, out var sameRankCount);
+        if (sameRankCount >= 2)
+        {
+            score += 2;
+        }
+
+        if (sameRankCount >= 3)
+        {
+            score += 2;
+        }
+
+        var minus1Count = rankCounts.TryGetValue(tile.Rank - 1, out var minus1) ? minus1 : 0;
+        var plus1Count = rankCounts.TryGetValue(tile.Rank + 1, out var plus1) ? plus1 : 0;
+        var minus2Count = rankCounts.TryGetValue(tile.Rank - 2, out var minus2) ? minus2 : 0;
+        var plus2Count = rankCounts.TryGetValue(tile.Rank + 2, out var plus2) ? plus2 : 0;
+        var hasMinus1 = minus1Count > 0;
+        var hasPlus1 = plus1Count > 0;
+        var hasMinus2 = minus2Count > 0;
+        var hasPlus2 = plus2Count > 0;
+        var hasNeighbor = hasMinus1 || hasPlus1 || hasMinus2 || hasPlus2;
+        var hasDirectNeighbor = hasMinus1 || hasPlus1;
+        var hasGapNeighbor = hasMinus2 || hasPlus2;
+
+        if (tile.Rank is >= 3 and <= 7 && hasDirectNeighbor)
+        {
+            score += 1;
+        }
+
+        if (hasMinus1 && hasPlus1)
+        {
+            score += 2;
+
+            if (minus1Count > 1 || plus1Count > 1)
+            {
+                score += 1;
+            }
+
+            if (minus1Count > 1 && plus1Count > 1)
+            {
+                score += 1;
+            }
+        }
+
+        if (sameRankCount >= 2 && (hasMinus1 || hasPlus1))
+        {
+            score += hasMinus1 && hasPlus1 ? 2 : 1;
+        }
+
+        if (sameRankCount >= 2 && hasMinus1 && hasPlus1)
+        {
+            score += 1;
+        }
+
+        if (hasMinus2 && hasMinus1)
+        {
+            score += 1;
+        }
+
+        if (hasPlus1 && hasPlus2)
+        {
+            score += 1;
+        }
+
+        if (sameRankCount <= 1)
+        {
+            if (hasMinus1 && minus1Count >= 2)
+            {
+                score += 1;
+            }
+
+            if (hasPlus1 && plus1Count >= 2)
+            {
+                score += 1;
+            }
+        }
+
+        if ((tile.Rank == 1 && hasPlus1) || (tile.Rank == 9 && hasMinus1))
+        {
+            score += 1;
+        }
+
+        if (sameRankCount <= 1 && !hasNeighbor)
+        {
+            score -= 1;
+        }
+
+        if (sameRankCount <= 1 && !hasDirectNeighbor && hasGapNeighbor)
+        {
+            score -= 1;
+        }
+
+        if ((tile.Rank == 1 || tile.Rank == 9) && sameRankCount <= 1 && !hasMinus1 && !hasPlus1)
+        {
+            score -= suitCount <= 2 ? 2 : 1;
+
+            if (suitCount == 1)
+            {
+                score -= 1;
+            }
+        }
+
+        if (suitFocusPenalty < 0 && sameRankCount <= 1 && !hasNeighbor)
+        {
+            score -= 1;
+        }
+
+        if (suitCount <= 2 && sameRankCount <= 1 && !hasNeighbor)
+        {
+            score -= 1;
+        }
+
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias;
+    }
+
+    private static bool IsTerminalSuitedTile(Tile tile)
+        => !tile.IsHonor && tile.Rank is 1 or 9;
+}
