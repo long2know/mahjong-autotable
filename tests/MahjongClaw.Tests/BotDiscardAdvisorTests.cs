@@ -187,6 +187,24 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_BreaksHonorSingletonTies_ByDragonOrder()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.Red));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesSingleton_WhenSixPairsPresent()
     {
         var tiles = new List<Tile>
