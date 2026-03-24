@@ -210,6 +210,25 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotDiscardOnlyPair_WhenSinglesAvailable()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 4), new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 5), new(TileSuit.Dots, 8),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dragons, 0, null, Dragon.Red));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesOffSuitSingleton_WhenDominantSuitHasConnectedRuns()
     {
         var tiles = new List<Tile>
