@@ -266,6 +266,44 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_IsWinningHand_ReturnsTrue_ForSevenPairs()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeTrue();
+    }
+
+    [Fact]
+    public void HandAnalyzer_IsWinningHand_ReturnsTrue_ForThirteenOrphans()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Characters, 1)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeTrue();
+    }
+
+    [Fact]
     public void HandAnalyzer_TryGetWinningHand_ReturnsFalse_WhenSeasonTileIsPresent()
     {
         var validTiles = new List<Tile>
@@ -1807,7 +1845,7 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
-    public void HandAnalyzer_AcceptsAllHonors_WhenAllDragonTripletsAppearWithWindPair()
+    public void HandAnalyzer_PrioritizesBigThreeDragons_WhenAllDragonTripletsAppearWithWindPair()
     {
         var tiles = new List<Tile>
         {
@@ -1830,8 +1868,8 @@ public class RulesCorrectnessVectorsTests
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
-        hand!.Pattern.Should().Be(WinningPattern.AllHonors);
-        hand.BasicScore.Should().Be(64);
+        hand!.Pattern.Should().Be(WinningPattern.BigThreeDragons);
+        hand.BasicScore.Should().Be(88);
     }
 
     [Fact]
@@ -7323,5 +7361,29 @@ public class RulesCorrectnessVectorsTests
     {
         var create = () => new Tile(TileSuit.Seasons, 0);
         create.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsLittleFourWindsHand_WithWindPairAndDragonPung()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: East winds
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Pung: South winds
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            // Pung: West winds
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            // Pung: North winds
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            // Pung: Red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.LittleFourWinds);
+        hand.BasicScore.Should().Be(64);
     }
 }
