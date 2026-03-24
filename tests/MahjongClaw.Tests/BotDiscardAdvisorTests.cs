@@ -483,4 +483,24 @@ public class BotDiscardAdvisorTests
 
         tiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 9));
     }
+
+    [Fact]
+    public void SelectDiscardIndex_BreaksSuitedSingletonTies_BySuitOrder()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 5));
+    }
 }
