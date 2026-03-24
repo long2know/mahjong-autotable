@@ -52,4 +52,22 @@ public class GameStateTests
 
         state.GetPlayer(Wind.West).Name.Should().Be("Chris");
     }
+
+    [Fact]
+    public void GetPlayer_ThrowsWhenSeatNotPresent()
+    {
+        var players = new[]
+        {
+            new Player(Guid.NewGuid(), "Alice", Wind.East),
+            new Player(Guid.NewGuid(), "Bob", Wind.South),
+            new Player(Guid.NewGuid(), "Chris", Wind.West)
+        };
+
+        var wall = new Wall(Array.Empty<Tile>());
+        var state = new GameState(Guid.NewGuid(), players, wall, Wind.East);
+
+        Action act = () => state.GetPlayer(Wind.North);
+
+        act.Should().Throw<InvalidOperationException>();
+    }
 }
