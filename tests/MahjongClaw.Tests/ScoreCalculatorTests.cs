@@ -364,6 +364,44 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForAllPungs_WithMeldsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 2),
+                    new(TileSuit.Dots, 2),
+                    new(TileSuit.Dots, 2)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 7),
+                    new(TileSuit.Bamboos, 7),
+                    new(TileSuit.Bamboos, 7)
+                }),
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Characters, 9),
+                    new(TileSuit.Characters, 9),
+                    new(TileSuit.Characters, 9),
+                    new(TileSuit.Characters, 9)
+                })
+            },
+            new Tile(TileSuit.Dots, 5),
+            WinningPattern.AllPungs);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(6);
+    }
+
+    [Fact]
     public void CalculateBasicScore_UsesPatternScore_ForAllGreen_WithMeldsPresent()
     {
         var hand = new WinningHand(
