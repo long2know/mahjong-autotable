@@ -2490,6 +2490,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsAllTerminals_WhenPairIsOneBambooAndTerminalPungsSpanSuits()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 bamboos
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            // Melds: pung 9 bamboos, pung 1 dots, pung 9 dots, pung 1 chars
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsAllTerminals_WhenTilesAreUnsorted()
     {
         var tiles = new List<Tile>
