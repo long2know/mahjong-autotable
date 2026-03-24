@@ -313,6 +313,27 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesSuitedSingleton_WhenHonorQuadsDominate()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 5));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DoesNotDiscardOnlyPair_WhenSinglesAvailable()
     {
         var tiles = new List<Tile>
