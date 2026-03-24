@@ -48,6 +48,7 @@ public static class BotDiscardAdvisor
         var tileCounts = handTiles
             .GroupBy(static other => other)
             .ToDictionary(group => group.Key, group => group.Count());
+        var honorCount = handTiles.Count(static other => other.IsHonor);
         tileCounts.TryGetValue(tile, out var tileMatchCount);
         if (tileMatchCount >= 2)
         {
@@ -249,7 +250,9 @@ public static class BotDiscardAdvisor
                 };
             }
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias;
+            var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
+
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus;
         }
 
         var rankCounts = suitTiles
