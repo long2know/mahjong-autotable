@@ -629,6 +629,38 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void EvaluateMinimumFan_UsesPatternScore_ForThirteenOrphans()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Characters, 1),
+            WinningPattern.ThirteenOrphans);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand);
+
+        evaluation.BasicScore.Should().Be(88);
+        evaluation.MinimumFan.Should().Be(ScoreCalculator.ChineseOfficialMinimumFan);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
+    [Fact]
+    public void EvaluateMinimumFan_UsesPatternScore_ForNineGates()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 5),
+            WinningPattern.NineGates);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand);
+
+        evaluation.BasicScore.Should().Be(88);
+        evaluation.MinimumFan.Should().Be(ScoreCalculator.ChineseOfficialMinimumFan);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
+    [Fact]
     public void EvaluateMinimumFan_UsesOverrideMinimumFan_WhenProvided()
     {
         var hand = new WinningHand(
