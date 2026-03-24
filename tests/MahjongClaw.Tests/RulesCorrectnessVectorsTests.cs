@@ -332,6 +332,28 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_IsWinningHand_ReturnsFalse_WhenFiveOfAKindExists()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 bamboos
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            // Pung: 5 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Chow: 456 dots (includes one 5 dot)
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            // Chow: 789 characters
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            // Chow: 123 bamboos
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3)
+        };
+
+        tiles[8] = new(TileSuit.Dots, 5);
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_IsWinningHand_ReturnsTrue_ForSevenPairs()
     {
         var tiles = new List<Tile>
