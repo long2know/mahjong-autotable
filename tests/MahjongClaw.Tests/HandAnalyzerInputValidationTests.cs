@@ -7,6 +7,22 @@ namespace MahjongClaw.Tests;
 public class HandAnalyzerInputValidationTests
 {
     [Fact]
+    public void TryGetWinningHand_ThrowsWhenTilesAreNull()
+    {
+        Action act = () => HandAnalyzer.TryGetWinningHand(null!, out _);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void IsWinningHand_ThrowsWhenTilesAreNull()
+    {
+        Action act = () => HandAnalyzer.IsWinningHand(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ThrowsWhenTilesContainNullEntry()
     {
         var tiles = new List<Tile>
