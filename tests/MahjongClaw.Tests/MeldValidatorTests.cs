@@ -314,6 +314,20 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidKong_ReturnsFalse_WhenWindAndDragonMixed()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidMeld_ReturnsFalse_WhenTilesAreNull()
     {
         MeldValidator.IsValidMeld(null!, MeldType.Chow).Should().BeFalse();

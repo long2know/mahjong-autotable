@@ -1687,6 +1687,26 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenHonorTilesMimicChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 9 dots
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            // Melds: 123 chars, 456 chars, pung 7 bamboos
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
+            // Honors cannot form a chow
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenHonorPairsPreventCompletingMelds()
     {
         var tiles = new List<Tile>
@@ -3535,6 +3555,26 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
             new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
             new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsAllGreenCandidate_WhenGreenDragonPairHasNoValidMelds()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: green dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Remaining tiles are green-legal but cannot form four melds.
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
