@@ -873,6 +873,21 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenOnlyBonusTilesAppear()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Flowers, 1), new(TileSuit.Flowers, 1), new(TileSuit.Flowers, 1), new(TileSuit.Flowers, 1),
+            new(TileSuit.Flowers, 2), new(TileSuit.Flowers, 2), new(TileSuit.Flowers, 2), new(TileSuit.Flowers, 2),
+            new(TileSuit.Seasons, 3), new(TileSuit.Seasons, 3), new(TileSuit.Seasons, 3),
+            new(TileSuit.Seasons, 4), new(TileSuit.Seasons, 4), new(TileSuit.Seasons, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenBonusTileBreaksSevenPairsCandidate()
     {
         var tiles = new List<Tile>
