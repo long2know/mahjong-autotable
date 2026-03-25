@@ -65,6 +65,33 @@ public class HandAnalyzerInputValidationTests
             .WithMessage("Tiles cannot contain null values.*");
     }
 
+    [Theory]
+    [InlineData(13)]
+    [InlineData(15)]
+    public void TryGetWinningHand_ReturnsFalse_WhenTileCountIsNotFourteen(int tileCount)
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Bamboos, 1)
+        };
+
+        if (tileCount < tiles.Count)
+        {
+            tiles.RemoveAt(tiles.Count - 1);
+        }
+        else if (tileCount > tiles.Count)
+        {
+            tiles.Add(new Tile(TileSuit.Bamboos, 2));
+        }
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
     [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenTileCountExceedsFour()
     {
