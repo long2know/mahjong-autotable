@@ -419,6 +419,25 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_AssignsAllHonorsPattern_WhenOnlyHonorTripletsPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Pungs
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllHonors);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
     public void TryGetWinningHand_AssignsAllTerminalsAndHonors_WhenOnlyTerminalsAndHonorsPresent()
     {
         var tiles = new List<Tile>
