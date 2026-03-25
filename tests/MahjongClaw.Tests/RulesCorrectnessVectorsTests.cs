@@ -1069,6 +1069,25 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_PrefersHigherScoringPair_WhenMultiplePairsPossible()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair choice between 4 dots and lower ranks; the best-scoring option uses 4s as the pair.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 4));
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_ComputesStandardBasicScore_AsZero_WhenOnlyChowsAppear()
     {
         var tiles = new List<Tile>
@@ -6347,6 +6366,24 @@ public class RulesCorrectnessVectorsTests
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenPureSuitMeldsIncludeOffSuitPair()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 bamboos, melds are all dots.
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
     }
 
     [Fact]

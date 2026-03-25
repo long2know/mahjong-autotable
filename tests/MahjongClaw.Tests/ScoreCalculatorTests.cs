@@ -714,6 +714,21 @@ public class ScoreCalculatorTests
         evaluation.FanShortfall.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData(WinningPattern.AllTerminals, 64)]
+    [InlineData(WinningPattern.AllTerminalsAndHonors, 64)]
+    public void EvaluateMinimumFan_UsesPatternScore_ForTerminalHonorHands(WinningPattern pattern, int expectedScore)
+    {
+        var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), pattern);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand);
+
+        evaluation.BasicScore.Should().Be(expectedScore);
+        evaluation.MinimumFan.Should().Be(ScoreCalculator.ChineseOfficialMinimumFan);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
     [Fact]
     public void EvaluateMinimumFan_UsesOverrideMinimumFan_WhenProvided()
     {
