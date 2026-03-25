@@ -877,7 +877,8 @@ public class ScoreCalculatorTests
 
         Action act = () => ScoreCalculator.EvaluateMinimumFan(hand, -1);
 
-        act.Should().Throw<ArgumentOutOfRangeException>();
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithMessage("Minimum fan cannot be negative.*");
     }
 
     [Fact]
