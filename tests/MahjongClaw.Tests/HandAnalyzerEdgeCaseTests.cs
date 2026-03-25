@@ -187,6 +187,27 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_PrefersHigherScore_WhenMultipleStandardDecompositionsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pungs: 222, 333, 444 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            // Chow: 789 dots
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Pair: 55 dots (pairing 22 instead yields all chows, lower score)
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void TryGetWinningHand_SelectsNonQuadPair_WhenQuadSupportsPungAndChow()
     {
         var tiles = new List<Tile>
