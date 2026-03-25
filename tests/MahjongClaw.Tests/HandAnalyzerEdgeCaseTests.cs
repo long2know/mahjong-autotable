@@ -44,6 +44,58 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void IsWinningHand_ReturnsTrue_ForAllGreenHand()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: green dragon
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Melds: 234 bamboo (x2), pung 6 bamboo, pung 8 bamboo
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsWinningHand_ReturnsTrue_ForBigThreeDragonsHand()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Melds: pung red, green, white dragons + chow 123 bamboos
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsWinningHand_ReturnsTrue_ForLittleFourWindsHand()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: east winds
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Melds: pung south, west, north winds + chow 123 dots
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeTrue();
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsTrue_WhenTilesAreUnsorted()
     {
         var tiles = new List<Tile>
