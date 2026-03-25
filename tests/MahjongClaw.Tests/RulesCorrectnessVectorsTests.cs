@@ -3278,6 +3278,34 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenAllTerminalsAndHonorsCandidateIncludesTerminalChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 bamboos
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 1),
+            // Melds: pung east winds, pung red dragons, chow 123 dots, chow 789 chars
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 8),
+            new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesAllPungs_WhenAllTerminalsAndHonorsCandidateContainsMiddlePung()
     {
         var tiles = new List<Tile>
