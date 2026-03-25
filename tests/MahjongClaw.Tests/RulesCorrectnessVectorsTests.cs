@@ -221,6 +221,28 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenTerminalHonorSetIncludesNonTerminalChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 bamboos (terminal)
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            // Pung: east wind
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Pung: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Chow: 123 dots (includes non-terminal tiles)
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Chow: 789 characters
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenQuadSplitsAcrossPungAndChow_WithHonorPung()
     {
         var tiles = new List<Tile>
@@ -4000,6 +4022,32 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsBigFourWinds_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.North)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.BigFourWinds);
+        hand.BasicScore.Should().Be(88);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsLittleFourWinds_WhenWindPairAndThreeWindPungsPresent()
     {
         var tiles = new List<Tile>
@@ -4391,6 +4439,32 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Dots, 1),
             new(TileSuit.Dots, 2),
             new(TileSuit.Dots, 3)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.LittleThreeDragons);
+        hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsLittleThreeDragons_WhenTilesAreUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
