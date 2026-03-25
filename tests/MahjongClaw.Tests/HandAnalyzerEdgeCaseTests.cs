@@ -187,6 +187,33 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_RejectsHand_WhenHonorQuadLeavesExtraPairs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Honor quad: east winds
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            // Honor pungs: south + west winds
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West),
+            // Extra pairs that cannot form a meld
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryGetWinningHand_PrefersHigherScore_WhenMultipleStandardDecompositionsExist()
     {
         var tiles = new List<Tile>
@@ -384,7 +411,7 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
-    public void TryGetWinningHand_PrefersPungHeavyDecomposition_WhenChowOnlyOptionExists()
+    public void TryGetWinningHand_PrefersSevenPairs_WhenPungHeavyDecompositionExists()
     {
         var tiles = new List<Tile>
         {
@@ -395,8 +422,8 @@ public class HandAnalyzerEdgeCaseTests
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
-        hand!.Pattern.Should().Be(WinningPattern.Standard);
-        hand.BasicScore.Should().Be(6);
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
     }
 
     [Fact]
