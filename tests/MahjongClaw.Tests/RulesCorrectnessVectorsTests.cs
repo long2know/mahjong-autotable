@@ -6364,6 +6364,35 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Theory]
+    [InlineData(TileSuit.Flowers, 1)]
+    [InlineData(TileSuit.Seasons, 4)]
+    public void HandAnalyzer_RejectsNineGates_WhenRequiredInnerTileIsReplacedByBonus(TileSuit bonusSuit, int bonusRank)
+    {
+        var tiles = new List<Tile>
+        {
+            // Start from Nine Gates base in dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            // Extra in-suit tile keeps 14 tiles total.
+            new(TileSuit.Dots, 5)
+        };
+
+        // Replace one required inner dot tile with a bonus tile.
+        var displaced = tiles.FindIndex(tile => tile.Suit == TileSuit.Dots && tile.Rank == 4);
+        displaced.Should().BeGreaterThanOrEqualTo(0);
+        tiles[displaced] = new Tile(bonusSuit, bonusRank);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(9)]
     public void HandAnalyzer_RejectsNineGates_WhenTerminalMultiplicityIsBrokenByOffSuitReplacement(int displacedTerminalRank)
