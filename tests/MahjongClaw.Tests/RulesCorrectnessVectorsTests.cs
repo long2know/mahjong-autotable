@@ -7008,6 +7008,33 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(TileSuit.Flowers, 1)]
+    [InlineData(TileSuit.Seasons, 4)]
+    public void HandAnalyzer_RejectsThirteenOrphans_WhenExtraTileIsBonus(TileSuit bonusSuit, int bonusRank)
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        tiles.Add(new Tile(bonusSuit, bonusRank));
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void HandAnalyzer_RejectsThirteenOrphans_WhenAnyTileAppearsThreeTimes()
     {
