@@ -27,6 +27,28 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenMixedSuitsIncludeHonorPung()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 4 bamboos
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            // Chows: 123 characters, 456 dots, 789 dots
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Pung: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairRequiredForChowCompletion()
     {
         var tiles = new List<Tile>
@@ -64,6 +86,25 @@ public class RulesCorrectnessVectorsTests
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithFourChowsAcrossSuits()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: south winds
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            // Chows: 123 chars, 456 chars, 789 dots, 234 bamboos
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
     }
 
     [Fact]
@@ -8414,6 +8455,21 @@ public class RulesCorrectnessVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.AllTerminalsAndHonors);
         hand.BasicScore.Should().Be(64);
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenTileAppearsFiveTimes()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
 
     [Fact]
