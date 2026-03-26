@@ -702,6 +702,8 @@ public class ScoreCalculatorTests
     [InlineData(WinningPattern.AllGreen, 88)]
     [InlineData(WinningPattern.AllHonors, 64)]
     [InlineData(WinningPattern.BigThreeDragons, 88)]
+    [InlineData(WinningPattern.BigFourWinds, 88)]
+    [InlineData(WinningPattern.LittleFourWinds, 64)]
     public void EvaluateMinimumFan_UsesPatternScore_ForSpecialHands(WinningPattern pattern, int expectedScore)
     {
         var hand = new WinningHand(Array.Empty<Meld>(), new Tile(TileSuit.Dots, 1), pattern);
