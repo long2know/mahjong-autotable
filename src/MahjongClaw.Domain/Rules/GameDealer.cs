@@ -7,6 +7,9 @@ public static class GameDealer
 {
     public static GameState InitializeGame(IReadOnlyList<string> playerNames, Random rng)
     {
+        ArgumentNullException.ThrowIfNull(playerNames);
+        ArgumentNullException.ThrowIfNull(rng);
+
         if (playerNames.Count != 4)
         {
             throw new ArgumentException("Exactly four players are required.");

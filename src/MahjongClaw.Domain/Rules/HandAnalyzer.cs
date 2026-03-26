@@ -10,6 +10,12 @@ public static class HandAnalyzer
     public static bool TryGetWinningHand(IReadOnlyList<Tile> tiles, out WinningHand? hand)
     {
         ArgumentNullException.ThrowIfNull(tiles);
+
+        if (tiles.Any(static tile => tile is null))
+        {
+            throw new ArgumentException("Tiles cannot contain null values.", nameof(tiles));
+        }
+
         hand = null;
 
         // A complete winning hand should always contain exactly 14 tiles.

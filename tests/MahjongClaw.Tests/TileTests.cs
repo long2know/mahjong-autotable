@@ -100,4 +100,38 @@ public class TileTests
 
         create.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void Tile_IsHonor_ReturnsTrue_ForHonorTiles()
+    {
+        new Tile(TileSuit.Winds, 0, Wind.East).IsHonor.Should().BeTrue();
+        new Tile(TileSuit.Dragons, 0, null, Dragon.Red).IsHonor.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Tile_IsHonor_ReturnsFalse_ForSuitedAndBonusTiles()
+    {
+        new Tile(TileSuit.Characters, 1).IsHonor.Should().BeFalse();
+        new Tile(TileSuit.Dots, 1).IsHonor.Should().BeFalse();
+        new Tile(TileSuit.Bamboos, 1).IsHonor.Should().BeFalse();
+        new Tile(TileSuit.Flowers, 1).IsHonor.Should().BeFalse();
+        new Tile(TileSuit.Seasons, 1).IsHonor.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Tile_IsFlower_ReturnsTrue_ForBonusTiles()
+    {
+        new Tile(TileSuit.Flowers, 1).IsFlower.Should().BeTrue();
+        new Tile(TileSuit.Seasons, 1).IsFlower.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Tile_IsFlower_ReturnsFalse_ForSuitedAndHonorTiles()
+    {
+        new Tile(TileSuit.Characters, 1).IsFlower.Should().BeFalse();
+        new Tile(TileSuit.Dots, 1).IsFlower.Should().BeFalse();
+        new Tile(TileSuit.Bamboos, 1).IsFlower.Should().BeFalse();
+        new Tile(TileSuit.Winds, 0, Wind.East).IsFlower.Should().BeFalse();
+        new Tile(TileSuit.Dragons, 0, null, Dragon.Red).IsFlower.Should().BeFalse();
+    }
 }

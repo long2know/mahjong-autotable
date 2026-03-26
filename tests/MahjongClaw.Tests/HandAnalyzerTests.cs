@@ -183,6 +183,31 @@ public class HandAnalyzerTests
     }
 
     [Fact]
+    public void TryGetWinningHand_SelectsDeterministicPairForStandardHandsAcrossInputOrders()
+    {
+        var tilesA = new List<Tile>
+        {
+            // Candidate pairs on 1 dots vs 4 dots; 4 dots yields higher standard score.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5)
+        };
+
+        var tilesB = tilesA.AsEnumerable().Reverse().ToList();
+
+        HandAnalyzer.TryGetWinningHand(tilesA, out var handA).Should().BeTrue();
+        HandAnalyzer.TryGetWinningHand(tilesB, out var handB).Should().BeTrue();
+
+        handA!.Pattern.Should().Be(WinningPattern.Standard);
+        handB!.Pattern.Should().Be(WinningPattern.Standard);
+        handA.Pair.Should().Be(new Tile(TileSuit.Dots, 4));
+        handB.Pair.Should().Be(new Tile(TileSuit.Dots, 4));
+        handA.BasicScore.Should().Be(handB.BasicScore);
+    }
+
+    [Fact]
     public void TryGetWinningHand_BacktracksAcrossPairCandidates_WhenFirstPairFails()
     {
         var tiles = new List<Tile>

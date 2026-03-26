@@ -60,6 +60,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalse_WhenHonorMixedWithSuitedTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Winds, 0, Wind.East)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsFalseForMixedSuits()
     {
         var tiles = new[]
@@ -191,6 +204,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenWindAndDragonMixed()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalseForFlowerTiles()
     {
         var tiles = new[]
@@ -301,6 +327,39 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidKong_ReturnsFalse_WhenWindAndDragonMixed()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidMeld_ReturnsFalse_WhenTilesAreNull()
+    {
+        MeldValidator.IsValidMeld(null!, MeldType.Chow).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidMeld_ReturnsFalse_WhenTilesContainNull()
+    {
+        var tiles = new Tile[]
+        {
+            new(TileSuit.Dots, 2),
+            null!,
+            new(TileSuit.Dots, 3)
+        };
+
+        MeldValidator.IsValidMeld(tiles, MeldType.Chow).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidMeld_ReturnsFalseForUnknownType()
     {
         var tiles = new[]
@@ -360,6 +419,18 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenTileCountIsTwo()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Dots, 3)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidKong_ReturnsFalseForWrongTileCount()
     {
         var tiles = new[]
@@ -384,5 +455,63 @@ public class MeldValidatorTests
         };
 
         MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsFalse_WhenTilesAreNull()
+    {
+        MeldValidator.IsValidChow(null!).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsFalse_WhenTilesContainNull()
+    {
+        var tiles = new Tile[]
+        {
+            new(TileSuit.Dots, 2),
+            null!,
+            new(TileSuit.Dots, 3)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidPung_ReturnsFalse_WhenTilesAreNull()
+    {
+        MeldValidator.IsValidPung(null!).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidPung_ReturnsFalse_WhenTilesContainNull()
+    {
+        var tiles = new Tile[]
+        {
+            new(TileSuit.Characters, 5),
+            null!,
+            new(TileSuit.Characters, 5)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalse_WhenTilesAreNull()
+    {
+        MeldValidator.IsValidKong(null!).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalse_WhenTilesContainNull()
+    {
+        var tiles = new Tile[]
+        {
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 7),
+            null!,
+            new(TileSuit.Bamboos, 7)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
     }
 }

@@ -8,6 +8,7 @@ public sealed class Wall
 
     public Wall(IEnumerable<Tile> tiles)
     {
+        ArgumentNullException.ThrowIfNull(tiles);
         _tiles = tiles.ToList();
     }
 

@@ -59,4 +59,20 @@ public class GameDealerTests
         act.Should().Throw<ArgumentException>()
             .WithMessage("Exactly four players are required.");
     }
+
+    [Fact]
+    public void InitializeGame_ThrowsWhenPlayerNamesAreNull()
+    {
+        var act = () => GameDealer.InitializeGame(null!, new Random(5));
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void InitializeGame_ThrowsWhenRandomIsNull()
+    {
+        var act = () => GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
 }
