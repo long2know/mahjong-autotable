@@ -60,6 +60,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalse_WhenHonorMixedWithSuitedTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Winds, 0, Wind.East)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsFalseForMixedSuits()
     {
         var tiles = new[]
