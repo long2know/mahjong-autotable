@@ -71,4 +71,26 @@ public class StandardHandScoreTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.BasicScore.Should().Be(0);
     }
+
+    [Fact]
+    public void TryGetWinningHand_UsesPungTotals_ForStandardHandWithThreePungs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 9 characters
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            // Pung: 1 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            // Pung: 2 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Pung: 3 dots
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            // Chow: 456 bamboos
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+    }
 }
