@@ -523,6 +523,29 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_Backtracks_WhenEarlyPungBlocksMelds()
+    {
+        var tiles = new List<Tile>
+        {
+            // Three 1 dots could form a pung, but the winning hand requires a chow + pair instead.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+        hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(4);
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(0);
+    }
+
+    [Fact]
     public void TryGetWinningHand_RejectsQuadHeavyHand_WhenNoValidPairExists()
     {
         var tiles = new List<Tile>
