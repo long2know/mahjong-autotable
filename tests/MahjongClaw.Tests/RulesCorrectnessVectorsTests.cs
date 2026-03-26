@@ -8409,6 +8409,28 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_UsesPungOverEarlyChow_WhenChowChoiceBlocksCompletion()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pung of 1 dots + chow candidate 123
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Chows: 234, 456, 678 dots
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            // Pair: 9 dots
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 9));
+    }
+
+    [Fact]
     public void Tile_ThrowsWhenDragonIncludesWindValue()
     {
         var create = () => new Tile(TileSuit.Dragons, 0, Wind.East, Dragon.Red);
