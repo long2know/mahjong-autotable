@@ -47,4 +47,23 @@ public class HandAnalyzerPairSelectionTests
         hand.BasicScore.Should().Be(6);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 6));
     }
+
+    [Fact]
+    public void HandAnalyzer_SelectsHonorPair_WhenSuitedPairsBlockChowCompletion()
+    {
+        var tiles = new List<Tile>
+        {
+            // Honor pair to free suited tiles for chow completion.
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Chows: 123 dots, 234 dots, 456 dots, 789 dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+    }
 }
