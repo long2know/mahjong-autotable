@@ -115,6 +115,20 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_BreaksHonorTie_BySuitOrder()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        discardIndex.Should().Be(1);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesIsolatedHonor_WhenStrongSuitedClusterExists()
     {
         var tiles = new List<Tile>
