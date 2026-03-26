@@ -976,6 +976,29 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_ForAllTerminalsAndHonorsCandidateWithBonusTile()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 9 bamboos
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            // Pungs
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminalsAndHonors);
+
+        tiles[0] = new Tile(TileSuit.Flowers, 1);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryGetWinningHand_AssignsAllTerminalsPattern_WhenOnlyTerminalTilesPresent()
     {
         var tiles = new List<Tile>
