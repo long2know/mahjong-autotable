@@ -113,6 +113,29 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void IsWinningHand_ReturnsFalse_WhenHonorSequencePretendsChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Invalid honor "chow": east, south, west winds.
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.West),
+            // Valid chows in dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            // Pung: red dragons.
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Pair: 9 bamboos.
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalse_ForThirteenOrphansCandidateWithBonusTile()
     {
         var tiles = new List<Tile>
