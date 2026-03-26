@@ -406,6 +406,18 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenTileCountIsTwo()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Dots, 3)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidKong_ReturnsFalseForWrongTileCount()
     {
         var tiles = new[]
