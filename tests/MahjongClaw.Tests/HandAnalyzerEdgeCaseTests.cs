@@ -201,6 +201,28 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void IsWinningHand_ReturnsFalse_WhenTwoPairsAndSingleRemainAfterChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 dots, 456 dots, 789 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Pair: 2 characters
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            // Pair: 5 bamboos
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            // Extra single: 9 characters
+            new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenQuadLeavesUnmatchedTiles()
     {
         var tiles = new List<Tile>
