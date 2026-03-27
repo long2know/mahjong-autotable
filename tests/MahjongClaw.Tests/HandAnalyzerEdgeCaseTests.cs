@@ -898,6 +898,7 @@ public class HandAnalyzerEdgeCaseTests
         tiles[0] = new Tile(TileSuit.Flowers, 1);
         tiles[1] = new Tile(TileSuit.Seasons, 2);
 
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
     }
 
