@@ -27,6 +27,26 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_PrefersHigherScoringPungs_WhenChowAlternativeExists()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 8 bamboos
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
+            // Triples: 222, 333, 444 bamboos (can form pungs or three 234 chows)
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            // Chow: 567 bamboos
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsTrueForMixedChowHand()
     {
         var tiles = new List<Tile>
