@@ -467,6 +467,18 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalse_WhenTileCountIsTwo()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 4),
+            new Tile(TileSuit.Dots, 5)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsFalse_WhenTilesAreNull()
     {
         MeldValidator.IsValidChow(null!).Should().BeFalse();
