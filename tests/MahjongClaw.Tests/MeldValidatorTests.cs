@@ -359,8 +359,10 @@ public class MeldValidatorTests
         MeldValidator.IsValidMeld(tiles, MeldType.Chow).Should().BeFalse();
     }
 
-    [Fact]
-    public void IsValidMeld_ReturnsFalseForUnknownType()
+    [Theory]
+    [InlineData(999)]
+    [InlineData(-1)]
+    public void IsValidMeld_ReturnsFalseForUnknownType(int typeValue)
     {
         var tiles = new[]
         {
@@ -369,7 +371,7 @@ public class MeldValidatorTests
             new Tile(TileSuit.Dots, 5)
         };
 
-        MeldValidator.IsValidMeld(tiles, (MeldType)999).Should().BeFalse();
+        MeldValidator.IsValidMeld(tiles, (MeldType)typeValue).Should().BeFalse();
     }
 
     [Fact]
