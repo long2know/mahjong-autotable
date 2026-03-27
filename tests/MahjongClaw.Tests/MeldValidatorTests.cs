@@ -404,6 +404,15 @@ public class MeldValidatorTests
         MeldValidator.IsValidMeld(tiles, type).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(MeldType.Chow)]
+    [InlineData(MeldType.Pung)]
+    [InlineData(MeldType.Kong)]
+    public void IsValidMeld_ReturnsFalse_WhenTilesAreEmpty(MeldType type)
+    {
+        MeldValidator.IsValidMeld(Array.Empty<Tile>(), type).Should().BeFalse();
+    }
+
     [Fact]
     public void IsValidPung_ReturnsFalseForWrongTileCount()
     {
