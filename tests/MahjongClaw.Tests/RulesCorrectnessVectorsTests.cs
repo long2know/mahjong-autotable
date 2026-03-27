@@ -591,6 +591,28 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenQuadSplitsAcrossPairAndTwoChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 dots (uses two tiles from the quad)
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chow: 123 dots (uses one 2 dot)
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Chow: 234 dots (uses one 2 dot)
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            // Chow: 567 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            // Chow: 789 dots
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenDragonPungsAppearWithSuitedPair()
     {
         var tiles = new List<Tile>
