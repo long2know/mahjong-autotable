@@ -339,6 +339,44 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForAllTerminalsAndHonors_WhenKongPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East),
+                    new(TileSuit.Winds, 0, Wind.East)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 1)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 1),
+            WinningPattern.AllTerminalsAndHonors);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(64);
+    }
+
+    [Fact]
     public void CalculateBasicScore_UsesPatternScore_ForAllTerminals_WithMeldsPresent()
     {
         var hand = new WinningHand(
