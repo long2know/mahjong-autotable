@@ -453,6 +453,21 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidKong_ReturnsFalse_WhenTileCountIsFive()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 4)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsFalseForWrongTileCount()
     {
         var tiles = new[]
