@@ -394,6 +394,39 @@ public class MeldValidatorTests
     }
 
     [Theory]
+    [InlineData(MeldType.Chow)]
+    [InlineData(MeldType.Pung)]
+    [InlineData(MeldType.Kong)]
+    public void IsValidMeld_ReturnsFalse_WhenTilesAreNull(MeldType type)
+    {
+        MeldValidator.IsValidMeld(null!, type).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(MeldType.Chow)]
+    [InlineData(MeldType.Pung)]
+    [InlineData(MeldType.Kong)]
+    public void IsValidMeld_ReturnsFalse_WhenTilesContainNull(MeldType type)
+    {
+        var tiles = type == MeldType.Kong
+            ? new[]
+            {
+                new Tile(TileSuit.Dots, 1),
+                new Tile(TileSuit.Dots, 1),
+                new Tile(TileSuit.Dots, 1),
+                null!
+            }
+            : new[]
+            {
+                new Tile(TileSuit.Dots, 1),
+                null!,
+                new Tile(TileSuit.Dots, 2)
+            };
+
+        MeldValidator.IsValidMeld(tiles, type).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(MeldType.Chow, 4)]
     [InlineData(MeldType.Pung, 2)]
     [InlineData(MeldType.Kong, 3)]
