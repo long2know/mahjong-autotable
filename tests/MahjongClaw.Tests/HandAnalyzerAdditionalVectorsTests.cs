@@ -88,4 +88,24 @@ public class HandAnalyzerAdditionalVectorsTests
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
         hand.Should().BeNull();
     }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenAllChowsLeaveNoPair()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 dots, 456 dots, 789 dots, 123 bamboos
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            // Singles: 4 bamboos, 6 bamboos (no pair)
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
+    }
 }
