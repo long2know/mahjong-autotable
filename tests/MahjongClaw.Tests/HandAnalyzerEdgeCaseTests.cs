@@ -868,6 +868,26 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenTwoPairsAndThreePungsLeaveSingleton()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pairs: 2 dots, 5 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Pungs: 3 dots, 4 dots, 6 dots
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            // Singleton: 9 dots
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalse_WhenTileAppearsFiveTimes()
     {
         var tiles = new List<Tile>
