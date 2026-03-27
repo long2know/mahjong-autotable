@@ -990,6 +990,26 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenBonusTilePairIsUsed()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: flowers (invalid in-hand bonus pair)
+            new(TileSuit.Flowers, 1), new(TileSuit.Flowers, 1),
+            // Melds: 123 dots, 456 dots, 789 dots, pung red dragons
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalse_WhenMultipleBonusTilesAreIncluded()
     {
         var tiles = new List<Tile>
