@@ -1270,4 +1270,24 @@ public class HandAnalyzerEdgeCaseTests
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
     }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenHonorSingletonsRemainAfterTriplets()
+    {
+        var tiles = new List<Tile>
+        {
+            // Triplets: 111, 222, 333, 444 dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            // Honor singletons that cannot form a pair or meld.
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
+    }
 }
