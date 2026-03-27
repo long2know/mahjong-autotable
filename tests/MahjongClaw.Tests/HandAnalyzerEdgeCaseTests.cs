@@ -1120,4 +1120,22 @@ public class HandAnalyzerEdgeCaseTests
         hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
         hand.BasicScore.Should().Be(64);
     }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenFiveOfAKindAppears()
+    {
+        var tiles = new List<Tile>
+        {
+            // Five-of-a-kind should immediately invalidate the hand.
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Remaining tiles would otherwise form pungs and a pair.
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
 }
