@@ -1302,6 +1302,25 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_PrioritizesAllPungs_WhenStandardChowDecompositionExists()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots. Remaining tiles can also form three 123 chows + pung 4s,
+            // but the analyzer should choose the higher-ranked all-pungs pattern.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void TryGetWinningHand_AssignsStandardPattern_WhenMixedPungsAndChowsPresent()
     {
         var tiles = new List<Tile>
