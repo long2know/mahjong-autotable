@@ -528,6 +528,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsPairWithHigherBasicScore_WhenMultipleStandardPairsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidate: 6 dots (yields three pungs + one chow).
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            // Four of each 7/8/9 dots to allow either pung-heavy or chow-only decomposition.
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 6));
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenFourPungsLeaveNoPair()
     {
         var tiles = new List<Tile>
