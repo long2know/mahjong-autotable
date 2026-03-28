@@ -153,4 +153,24 @@ public class HandAnalyzerAdditionalVectorsTests
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
         hand.Should().BeNull();
     }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenPairsAndSingletonRemainAfterChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 dots, 456 dots, 789 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Two pairs + singleton in bamboos (cannot complete remaining meld + pair)
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
+    }
 }

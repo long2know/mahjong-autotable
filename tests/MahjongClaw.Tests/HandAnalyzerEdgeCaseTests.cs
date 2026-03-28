@@ -1337,4 +1337,23 @@ public class HandAnalyzerEdgeCaseTests
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
         hand.Should().BeNull();
     }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenHandHasFifteenTiles()
+    {
+        var tiles = new List<Tile>
+        {
+            // All-pungs hand plus one extra tile should be rejected.
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
+    }
 }
