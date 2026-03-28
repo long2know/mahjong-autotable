@@ -285,6 +285,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenAllChowsAndTerminalPairAppear()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 dots (terminal)
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            // Chows: 123 dots, 456 dots, 789 dots, 123 bamboos
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+        hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenPairsAndSingletonRemainAfterChows()
     {
         var tiles = new List<Tile>
@@ -438,6 +458,28 @@ public class HandAnalyzerAdditionalVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenSuitedChowWrapsAcrossTerminal()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Pung: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Chow: 123 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Chow: 456 dots
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            // Invalid suited "chow": 8-9-1 dots (wrap-around)
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 9), new(TileSuit.Dots, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
     }
 
     [Fact]
