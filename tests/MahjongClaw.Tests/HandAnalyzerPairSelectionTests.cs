@@ -30,12 +30,11 @@ public class HandAnalyzerPairSelectionTests
     }
 
     [Fact]
-    public void HandAnalyzer_PrefersPairWithHigherBasicScore_WhenMultiplePairsAreValid()
+    public void HandAnalyzer_PrioritizesSevenPairs_WhenAllPairsPresent()
     {
         var tiles = new List<Tile>
         {
-            // Pair options: 6s or 9s. Pairing 6s allows three pungs + chow (score 6).
-            // Pairing 9s yields four chows only (score 0).
+            // Seven pairs shape should win even if a standard decomposition is possible.
             new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
             new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
             new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
@@ -43,9 +42,8 @@ public class HandAnalyzerPairSelectionTests
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
-        hand!.Pattern.Should().Be(WinningPattern.Standard);
-        hand.BasicScore.Should().Be(6);
-        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 6));
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
     }
 
     [Fact]
@@ -87,5 +85,24 @@ public class HandAnalyzerPairSelectionTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
         hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Characters, 1));
     }
 }
