@@ -151,6 +151,43 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_CountsKong_ForStandardHandWithOnlyChows()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 2),
+                    new(TileSuit.Characters, 3)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Characters, 4),
+                    new(TileSuit.Characters, 5),
+                    new(TileSuit.Characters, 6)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Characters, 7),
+                    new(TileSuit.Characters, 8),
+                    new(TileSuit.Characters, 9)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 5));
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(8);
+    }
+
+    [Fact]
     public void CalculateBasicScore_UsesPatternScore_ForAllHonors()
     {
         var hand = new WinningHand(
