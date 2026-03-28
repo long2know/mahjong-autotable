@@ -131,6 +131,27 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairUnlocksDuplicateChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Pung: 9 dots
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            // Chows: 123 bamboos (twice), 456 bamboos
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenOverlappingHighRankChowsLeadToTerminalPung()
     {
         var tiles = new List<Tile>
