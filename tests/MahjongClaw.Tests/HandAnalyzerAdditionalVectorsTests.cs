@@ -90,7 +90,7 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
-    public void HandAnalyzer_RejectsHand_WhenTwoTripletsAndFourPairsRemain()
+    public void HandAnalyzer_AcceptsStandardHand_WhenTwoTripletsAndFourPairsRemain()
     {
         var tiles = new List<Tile>
         {
@@ -104,9 +104,11 @@ public class HandAnalyzerAdditionalVectorsTests
             new(TileSuit.Dots, 6), new(TileSuit.Dots, 6)
         };
 
-        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
-        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
-        hand.Should().BeNull();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 3));
     }
 
     [Fact]
@@ -220,5 +222,26 @@ public class HandAnalyzerAdditionalVectorsTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
         hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenHonorPungsLeaveSuitedSingletons()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Honor pungs: east, south, west winds
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            // Singles that cannot form a chow or pung
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
     }
 }
