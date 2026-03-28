@@ -233,20 +233,19 @@ public class RulesCorrectnessVectorsTests
     {
         var tiles = new List<Tile>
         {
-            // Pair: 7 dots (pairing 1 dots would leave an unmeldable 7)
+            // Pair: 7 dots (pairing 1 dots leaves no valid meld decomposition).
             new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
-            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
             new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
             new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
-            new(TileSuit.Dots, 5),
-            new(TileSuit.Dots, 6),
-            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 7));
-        hand.BasicScore.Should().Be(2);
+        hand.BasicScore.Should().Be(4);
     }
 
     [Fact]
@@ -2979,6 +2978,24 @@ public class RulesCorrectnessVectorsTests
             new(TileSuit.Winds, 0, Wind.North),
             new(TileSuit.Dragons, 0, null, Dragon.Green),
             new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsAllHonorsCandidate_WhenNoPairExists()
+    {
+        var tiles = new List<Tile>
+        {
+            // Triplets: east, south, west winds, red dragons
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Two honor singles leave no pair.
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Green)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
