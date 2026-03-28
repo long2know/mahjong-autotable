@@ -21,6 +21,32 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsTrue_ForLowerBoundaryRun()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Bamboos, 1),
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 3)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsTrue_ForUpperBoundaryRun()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 7),
+            new Tile(TileSuit.Characters, 8),
+            new Tile(TileSuit.Characters, 9)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeTrue();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsTrueWhenTilesAreUnsorted()
     {
         var tiles = new[]
