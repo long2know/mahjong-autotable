@@ -66,4 +66,26 @@ public class HandAnalyzerPairSelectionTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.Pair.Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
     }
+
+    [Fact]
+    public void HandAnalyzer_SelectsPairFromQuad_WhenOnlyQuadPairAllowsMeldCompletion()
+    {
+        var tiles = new List<Tile>
+        {
+            // Quad of 2 dots; using a different pair blocks chow completion.
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+        hand.BasicScore.Should().Be(0);
+    }
 }

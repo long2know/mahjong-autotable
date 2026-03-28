@@ -9029,4 +9029,24 @@ public class RulesCorrectnessVectorsTests
         hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(0);
         hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(4);
     }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenHonorTilesAttemptToFormChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Chows: 123 dots, 456 dots, 789 bamboos
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9),
+            // Invalid honor "sequence": east-south-west winds
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
 }
