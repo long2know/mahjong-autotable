@@ -1,6 +1,7 @@
 using FluentAssertions;
 using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
+using System.Linq;
 
 namespace MahjongClaw.Tests;
 
@@ -126,6 +127,30 @@ public class HandAnalyzerAdditionalVectorsTests
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenOverlappingHighRankChowsLeadToTerminalPung()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Chow: 567 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            // Chow: 678 dots
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            // Chow: 789 dots
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Pung: 9 dots (terminal)
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(1);
         hand.BasicScore.Should().Be(2);
     }
 
