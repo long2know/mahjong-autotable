@@ -1167,6 +1167,27 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenSevenPairsCandidateContainsBonusTile()
+    {
+        var tiles = new List<Tile>
+        {
+            // Six valid pairs of dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            // Would-be seventh pair broken by a bonus tile.
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Seasons, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsWinningHand_ReturnsFalse_WhenMultipleBonusTilesAreIncluded()
     {
         var tiles = new List<Tile>
