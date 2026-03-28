@@ -191,6 +191,27 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AssignsStandardScore_WhenSuitedPairHasTwoPungsAndTwoChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 bamboos
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            // Pung: 2 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Pung: 8 characters
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8), new(TileSuit.Characters, 8),
+            // Chows: 123 bamboos, 789 dots
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenDuplicateChowsAppearInSingleSuit()
     {
         var tiles = new List<Tile>
