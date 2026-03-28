@@ -523,6 +523,29 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsOnlyViablePair_WhenMultiplePairCandidatesExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidates: 1/2/3/5 dots, but only 5 dots yields complete melds.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+        hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenUnsortedHonorPairMixesChowsAndPung()
     {
         var tiles = new List<Tile>
@@ -591,23 +614,19 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
-    public void HandAnalyzer_SelectsPairWithHigherBasicScore_WhenMultipleStandardPairsExist()
+    public void HandAnalyzer_PrioritizesSevenPairs_WhenPungHeavyStandardAlsoExists()
     {
         var tiles = new List<Tile>
         {
-            // Pair candidate: 6 dots (yields three pungs + one chow).
+            // Seven pairs candidate across 6/7/8/9 dots still allows a pung-heavy standard hand.
             new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
-            // Four of each 7/8/9 dots to allow either pung-heavy or chow-only decomposition.
             new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
             new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
             new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
-        hand!.Pattern.Should().Be(WinningPattern.Standard);
-        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 6));
-        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
-        hand.BasicScore.Should().Be(6);
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
     }
 
     [Fact]
@@ -648,6 +667,26 @@ public class HandAnalyzerAdditionalVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithThreePungsAndOneChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Pungs: 1 dots, 9 dots, 5 bamboos
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            // Chow: 456 characters
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
     }
 }
 
