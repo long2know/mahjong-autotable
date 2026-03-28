@@ -193,4 +193,32 @@ public class HandAnalyzerAdditionalVectorsTests
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
         hand.Should().BeNull();
     }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairIsRequiredForDuplicateChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted honor-pair hand: white dragon pair with four chows in dots (123 x2, 456, 789).
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
+        hand.BasicScore.Should().Be(0);
+    }
 }
