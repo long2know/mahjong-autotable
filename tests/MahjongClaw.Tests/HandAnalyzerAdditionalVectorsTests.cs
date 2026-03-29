@@ -195,6 +195,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenUnsortedTilesMixChowsAndPungs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 bamboos
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            // Pungs: 5 characters, 7 dots
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            // Chows: 123 dots (unsorted), 456 bamboos (unsorted)
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 1), new(TileSuit.Dots, 2),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenOverlappingHighRankChowsLeadToTerminalPung()
     {
         var tiles = new List<Tile>
