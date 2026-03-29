@@ -99,6 +99,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsFalse_WhenDragonMixedWithSuitedTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsFalseForMixedSuits()
     {
         var tiles = new[]
