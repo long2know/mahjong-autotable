@@ -674,4 +674,18 @@ public class BotDiscardAdvisorTests
 
         tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
     }
+
+    [Fact]
+    public void SelectDiscardIndex_BreaksWindTies_ByWindOrder()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+    }
 }
