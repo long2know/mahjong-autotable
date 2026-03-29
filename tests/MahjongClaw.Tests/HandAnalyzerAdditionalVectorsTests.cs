@@ -111,6 +111,29 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenHonorPairWithTwoPungsAndChowLeavesSingletons()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Pungs: 1 dots, 2 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chow: 456 dots
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            // Singles: 7 dots, 9 dots, 1 characters
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairAndTerminalPungWithThreeChows()
     {
         var tiles = new List<Tile>
@@ -304,6 +327,29 @@ public class HandAnalyzerAdditionalVectorsTests
             // Pairs: 1 characters, 9 bamboos
             new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
             new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenTwoQuadsAndPairLeaveOnlySingletons()
+    {
+        var tiles = new List<Tile>
+        {
+            // Quad: 1 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            // Quad: 2 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Pair: 3 dots
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            // Singles: 4/5/6/7 dots
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
