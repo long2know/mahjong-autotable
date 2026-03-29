@@ -115,4 +115,32 @@ public class StandardHandScoreTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.BasicScore.Should().Be(6);
     }
+
+    [Fact]
+    public void TryGetWinningHand_UsesPungTotals_ForUnsortedStandardHand()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted melds: pair 9 dots, pung 4 chars, pung green dragons, chow 123 bams, chow 789 dots.
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 9));
+    }
 }
