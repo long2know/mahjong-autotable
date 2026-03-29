@@ -244,6 +244,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenQuadLeavesOnlyPairs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Quad: 2 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Chows: 345 dots, 678 dots
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            // Pairs: 1 characters, 9 bamboos
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenTwoTripletsAndFourPairsRemain()
     {
         var tiles = new List<Tile>
