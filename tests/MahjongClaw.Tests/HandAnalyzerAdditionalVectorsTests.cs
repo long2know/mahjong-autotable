@@ -118,6 +118,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenMultipleHonorPungsAndChowAppear()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Pungs: east winds, red dragons, 7 bamboos
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
+            // Chow: 234 characters
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenHonorPungsAndChowsLeaveNoPair()
     {
         var tiles = new List<Tile>
@@ -1256,6 +1276,26 @@ public class HandAnalyzerAdditionalVectorsTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
         hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenTwoPairsRemainAfterThreeChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 dots, 456 dots, 789 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Extra pairs + singleton: 2 bamboos pair, 5 characters pair, 9 bamboos singleton
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
     }
 }
 

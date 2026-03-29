@@ -277,6 +277,25 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void CalculateBasicScore_UsesPatternScore_ForThirteenOrphans_EvenWhenMeldsProvided()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9),
+                    new(TileSuit.Dots, 9)
+                })
+            },
+            new Tile(TileSuit.Characters, 1),
+            WinningPattern.ThirteenOrphans);
+
+        ScoreCalculator.CalculateBasicScore(hand).Should().Be(88);
+    }
+
+    [Fact]
     public void CalculateBasicScore_UsesPatternScore_ForBigThreeDragons_WithMeldsPresent()
     {
         var hand = new WinningHand(
