@@ -300,4 +300,23 @@ public class HandAnalyzerPairSelectionTests
         hand.BasicScore.Should().Be(64);
         hand.Pair.Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
     }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenAllGreenSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllGreen);
+        hand.BasicScore.Should().Be(88);
+        hand.Pair.Should().Be(new Tile(TileSuit.Bamboos, 2));
+    }
 }

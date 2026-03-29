@@ -873,6 +873,48 @@ public class ScoreCalculatorTests
         evaluation.FanShortfall.Should().Be(0);
     }
 
+    [Fact]
+    public void EvaluateMinimumFan_UsesPatternScore_ForAllGreen_WithMeldsPresent()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 2),
+                    new(TileSuit.Bamboos, 3),
+                    new(TileSuit.Bamboos, 4)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 6),
+                    new(TileSuit.Bamboos, 6),
+                    new(TileSuit.Bamboos, 6)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 8),
+                    new(TileSuit.Bamboos, 8),
+                    new(TileSuit.Bamboos, 8)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green),
+                    new(TileSuit.Dragons, 0, null, Dragon.Green)
+                })
+            },
+            new Tile(TileSuit.Bamboos, 2),
+            WinningPattern.AllGreen);
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand);
+
+        evaluation.BasicScore.Should().Be(88);
+        evaluation.MinimumFan.Should().Be(ScoreCalculator.ChineseOfficialMinimumFan);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
     [Theory]
     [InlineData(WinningPattern.AllTerminals, 64)]
     [InlineData(WinningPattern.AllTerminalsAndHonors, 64)]
