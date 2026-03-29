@@ -182,6 +182,33 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairAndTerminalPungAppearWithUnsortedChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted melds: pair white dragons, pung 9 dots, chows 123 chars, 456 bamboos, 789 dots.
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenTerminalPairWithHonorPungsAndTwoChows()
     {
         var tiles = new List<Tile>
