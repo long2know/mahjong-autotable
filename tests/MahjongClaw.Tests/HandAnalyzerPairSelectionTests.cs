@@ -146,4 +146,22 @@ public class HandAnalyzerPairSelectionTests
         hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
         hand.Pair.Should().Be(new Tile(TileSuit.Characters, 1));
     }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenSevenPairsIncludesQuads()
+    {
+        var tiles = new List<Tile>
+        {
+            // Two quads plus three pairs; lowest ordered pair should be 2 characters.
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Characters, 2));
+    }
 }
