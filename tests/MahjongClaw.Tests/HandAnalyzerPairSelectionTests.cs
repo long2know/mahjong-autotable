@@ -66,6 +66,26 @@ public class HandAnalyzerPairSelectionTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsSuitedPair_WhenHonorPairWouldLeaveSingletonHonor()
+    {
+        var tiles = new List<Tile>
+        {
+            // East pung must remain intact; using East pair would strand a singleton honor.
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Suited pair candidate.
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Chows: 123 dots, 456 characters, 789 bamboos.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+    }
+
+    [Fact]
     public void HandAnalyzer_SelectsPairFromQuad_WhenOnlyQuadPairAllowsMeldCompletion()
     {
         var tiles = new List<Tile>
