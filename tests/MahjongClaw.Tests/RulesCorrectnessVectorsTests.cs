@@ -9198,4 +9198,26 @@ public class RulesCorrectnessVectorsTests
         hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.Red));
         hand.BasicScore.Should().Be(2);
     }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsAllGreen_WhenDragonPairWithDuplicateChowsAndPungsPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: green dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Chows: 234 bamboos (x2)
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            // Pung: 6 bamboos
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            // Pung: 8 bamboos
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllGreen);
+        hand.BasicScore.Should().Be(88);
+    }
 }
