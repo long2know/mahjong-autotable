@@ -393,6 +393,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenTwoChowsLeaveOnlyPairs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 dots, 456 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            // Pairs: 2 bamboos, 5 bamboos, 8 characters, red dragons
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairIsRequiredForDuplicateChows()
     {
         var tiles = new List<Tile>
@@ -611,6 +631,27 @@ public class HandAnalyzerAdditionalVectorsTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
         hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrefersHonorPair_WhenSuitedPairBreaksChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Honor pair: green dragons.
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green),
+            // Pung: 9 bamboos.
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            // Chows: 123 dots, 234 dots, 345 dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.Green));
+        hand.BasicScore.Should().Be(2);
     }
 
     [Fact]
