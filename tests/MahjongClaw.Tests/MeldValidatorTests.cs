@@ -256,6 +256,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenHonorAndSuitedTilesMixed()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Dots, 1)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalseForFlowerTiles()
     {
         var tiles = new[]
@@ -388,6 +401,20 @@ public class MeldValidatorTests
             new Tile(TileSuit.Winds, 0, Wind.East),
             new Tile(TileSuit.Winds, 0, Wind.East),
             new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalse_WhenHonorAndSuitedTilesMixed()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            new Tile(TileSuit.Bamboos, 2)
         };
 
         MeldValidator.IsValidKong(tiles).Should().BeFalse();
