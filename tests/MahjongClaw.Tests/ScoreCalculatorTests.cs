@@ -699,6 +699,45 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void EvaluateMinimumFan_ReturnsMeetsThreshold_ForStandardHandWithMultipleKongs()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red),
+                    new(TileSuit.Dragons, 0, null, Dragon.Red)
+                }),
+                new(MeldType.Kong, new List<Tile>
+                {
+                    new(TileSuit.Dots, 7),
+                    new(TileSuit.Dots, 7),
+                    new(TileSuit.Dots, 7),
+                    new(TileSuit.Dots, 7)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6)
+                })
+            },
+            new Tile(TileSuit.Dots, 2));
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand);
+
+        evaluation.BasicScore.Should().Be(16);
+        evaluation.MinimumFan.Should().Be(ScoreCalculator.ChineseOfficialMinimumFan);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
+    [Fact]
     public void EvaluateMinimumFan_UsesPatternScore_ForAllPungsEvenWithKongs()
     {
         var hand = new WinningHand(
