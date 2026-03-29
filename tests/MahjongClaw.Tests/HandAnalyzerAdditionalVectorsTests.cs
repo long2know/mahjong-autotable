@@ -49,6 +49,34 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenUnsortedChowsAndHonorPungAppear()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted melds: pair 8 dots, pung green dragons, chows 123 chars, 456 dots, 789 bamboos.
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dots, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 8));
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairAndMixedChowsWithPungAppear()
     {
         var tiles = new List<Tile>
