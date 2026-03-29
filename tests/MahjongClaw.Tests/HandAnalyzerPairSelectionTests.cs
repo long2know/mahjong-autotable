@@ -148,6 +148,25 @@ public class HandAnalyzerPairSelectionTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsCharacterPairBeforeOtherSuits_WhenSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Characters, 9));
+    }
+
+    [Fact]
     public void HandAnalyzer_SelectsLowestOrderedPair_WhenSevenPairsFound()
     {
         var tiles = new List<Tile>
