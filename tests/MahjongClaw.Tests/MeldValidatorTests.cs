@@ -529,6 +529,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidMeld_ReturnsFalse_WhenMeldTypeIsUnknown()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 1)
+        };
+
+        MeldValidator.IsValidMeld(tiles, (MeldType)99).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalseForWrongTileCount()
     {
         var tiles = new[]
