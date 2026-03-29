@@ -129,6 +129,25 @@ public class HandAnalyzerPairSelectionTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsPairWithHigherBasicScore_WhenMultipleStandardPairsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidates: 6 dots (three pungs + chow) or 9 dots (all chows).
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 6));
+    }
+
+    [Fact]
     public void HandAnalyzer_SelectsLowestOrderedPair_WhenSevenPairsFound()
     {
         var tiles = new List<Tile>
