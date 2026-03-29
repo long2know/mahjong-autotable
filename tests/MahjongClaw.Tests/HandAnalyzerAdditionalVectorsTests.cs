@@ -199,6 +199,28 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_PrioritizesHigherBasicScore_WhenChowDecompositionAlsoValid()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 9 dots
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            // Triplets of 2/3/4 dots (can be pungs or chows)
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            // Chow: 567 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
+        hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(1);
+        hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenOverlappingLowRankChowsLeadToTerminalPung()
     {
         var tiles = new List<Tile>
