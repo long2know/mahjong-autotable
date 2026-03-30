@@ -71,4 +71,24 @@ public class HandAnalyzerHonorChowEdgeTests
         hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(2);
         hand.BasicScore.Should().Be(4);
     }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenHonorSequenceIsOnlyRemainingMeld()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots.
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Pung: red dragons.
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Chows: 123 dots, 456 dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            // Honors cannot complete a chow: east-south-west winds.
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.West)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
 }
