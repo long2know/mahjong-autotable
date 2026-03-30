@@ -1360,6 +1360,26 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
+    public void TryGetWinningHand_AcceptsSevenPairs_WhenQuadCountsAsTwoPairs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Quad counts as two pairs in seven-pairs evaluation.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
     public void TryGetWinningHand_AssignsAllPungsPattern_WhenOnlyPungsPresent()
     {
         var tiles = new List<Tile>
