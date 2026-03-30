@@ -15,7 +15,7 @@ public static class Changsha258Ruleset
 
         hand = null;
 
-        if (tiles.Count != 14)
+        if (tiles.Count < 14 || tiles.Count > 18)
         {
             return false;
         }
@@ -124,6 +124,20 @@ public static class Changsha258Ruleset
         if (nextTile is null)
         {
             return true;
+        }
+
+        if (counts[nextTile] >= 4)
+        {
+            counts[nextTile] -= 4;
+            melds.Add(new Meld(MeldType.Kong, new[] { nextTile, nextTile, nextTile, nextTile }));
+
+            if (TryFormMelds(counts, melds))
+            {
+                return true;
+            }
+
+            melds.RemoveAt(melds.Count - 1);
+            counts[nextTile] += 4;
         }
 
         if (counts[nextTile] >= 3)
