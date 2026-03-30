@@ -108,6 +108,28 @@ public class HandAnalyzerPairSelectionTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsNonQuadPair_WhenQuadPairBlocksMeldCompletion()
+    {
+        var tiles = new List<Tile>
+        {
+            // Quad of 2 dots; pair must be 9 dots to complete chows.
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 9));
+    }
+
+    [Fact]
     public void HandAnalyzer_SelectsLowestOrderedPair_WhenMultipleStandardPairsYieldSameScore()
     {
         var tiles = new List<Tile>
@@ -126,6 +148,64 @@ public class HandAnalyzerPairSelectionTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.BasicScore.Should().Be(2);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenAllChowDecompositionsShareSameScore()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidates: 1 dots or 4 dots, both yielding all-chow hands.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            // Chows: 567 bamboos, 789 bamboos.
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenChowHeavyHandHasEqualPungScores()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidates: 6 dots or 9 dots, both yielding three pungs + one chow.
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 6));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenChowHeavyHandHasEqualPungScores_WithHigherRanks()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidates: 5 dots or 8 dots, both yielding one pung + three chows.
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
     }
 
     [Fact]

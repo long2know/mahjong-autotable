@@ -30,6 +30,43 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenFourChowsLeaveNoPair()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 characters, 456 characters, 789 characters, 123 dots.
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Singles that cannot form a pair.
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 7)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
+    public void HandAnalyzer_RejectsHand_WhenTileCountExceedsFour()
+    {
+        var tiles = new List<Tile>
+        {
+            // Five copies of 1 dots should invalidate the hand even if melds appear otherwise complete.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesStandardPattern_WhenPureSuitHandMissingMiddleRanks()
     {
         var tiles = new List<Tile>
@@ -60,6 +97,72 @@ public class HandAnalyzerAdditionalVectorsTests
             new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
             new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
             new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenOverlappingAndDuplicateChowsAppearInSingleSuit()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            // Chows: 234 dots (x2), 567 dots, 678 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithOverlappingChowsInSingleSuit()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Overlapping chows: 123 dots, 234 dots, 345 dots, 456 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithFourChowsAcrossSuits_Unsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted melds: pair white dragons, chows 123 chars, 456 chars, 789 dots, 234 bamboos.
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 4)
         };
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
@@ -135,6 +238,53 @@ public class HandAnalyzerAdditionalVectorsTests
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.BasicScore.Should().Be(6);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPungsAndTerminalChowsAppear()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Pungs: east winds, red dragons
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Chows: 123 bamboos, 789 characters
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithMixedSuitChowsAndPungUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
     }
 
     [Fact]
@@ -507,6 +657,28 @@ public class HandAnalyzerAdditionalVectorsTests
 
         HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairAndSuitedQuadSplitAcrossPungAndChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Quad: 2 dots (pung + chow 123)
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3),
+            // Chow: 456 bamboos
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            // Chow: 789 characters
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
         hand.BasicScore.Should().Be(2);
     }
 
@@ -1299,6 +1471,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenMeldsLeaveTwoUnpairedSingles()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 dots, 456 dots, 789 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Pung: 5 bamboos
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            // Singles: 2 bamboos, 3 bamboos (no pair)
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void HandAnalyzer_UsesChowsOverPung_WhenPungChoiceBlocksCompletion_WithOffSuitPair()
     {
         var tiles = new List<Tile>
@@ -1318,6 +1510,119 @@ public class HandAnalyzerAdditionalVectorsTests
         hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(4);
         hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(0);
         hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithTwoPungsAndTwoChowsAcrossSuits()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Pungs: 2 characters, 5 dots
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Chows: 456 bamboos, 789 dots
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithTwoPungsAndTwoChowsUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            // Unsorted: pair green dragons, pungs 9 characters + 1 dots, chows 456 bamboos + 789 dots.
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.Green));
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithThreeChowsAndOnePungAcrossSuits()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: north winds
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            // Pung: 9 characters
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            // Chows: 123 dots, 456 dots, 789 bamboos
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Winds, 0, Wind.North));
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairHasTwoPungsAndTwoChowsAcrossSuits()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Pungs: 2 dots, 7 characters
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            // Chows: 345 bamboos, 789 dots
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
+    }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenTerminalPairWithHonorPungAndMixedChowsAppear()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            // Pung: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Chows: 123 characters, 456 bamboos, 789 dots
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
     }
 }
 

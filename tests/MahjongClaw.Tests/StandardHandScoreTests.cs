@@ -95,6 +95,28 @@ public class StandardHandScoreTests
     }
 
     [Fact]
+    public void TryGetWinningHand_AssignsZeroScore_ForStandardHandWithHonorPairAndAllChows()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: east winds
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Chow: 123 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Chow: 456 dots
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            // Chow: 123 bamboos
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3),
+            // Chow: 789 characters
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
     public void TryGetWinningHand_UsesPungTotals_ForStandardHandWithThreePungs()
     {
         var tiles = new List<Tile>
@@ -142,5 +164,27 @@ public class StandardHandScoreTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.BasicScore.Should().Be(4);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 9));
+    }
+
+    [Fact]
+    public void TryGetWinningHand_UsesPungTotals_ForStandardHandWithTwoHonorPungs()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 5 dots
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Pung: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Pung: east winds
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Chow: 123 characters
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            // Chow: 789 bamboos
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
     }
 }
