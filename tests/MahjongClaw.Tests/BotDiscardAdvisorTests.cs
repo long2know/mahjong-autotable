@@ -129,6 +129,21 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesTerminalOverNonTerminal_WhenScoresTie()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        discardIndex.Should().Be(0);
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesIsolatedHonor_WhenStrongSuitedClusterExists()
     {
         var tiles = new List<Tile>
