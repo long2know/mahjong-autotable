@@ -9285,4 +9285,27 @@ public class RulesCorrectnessVectorsTests
         hand!.Pattern.Should().Be(WinningPattern.AllGreen);
         hand.BasicScore.Should().Be(88);
     }
+
+    [Fact]
+    public void HandAnalyzer_UsesStandardPattern_WhenTerminalHonorPungsIncludeSimpleChow()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 2 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            // Pung: east winds
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Pung: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            // Pung: 1 characters
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            // Chow: 234 bamboos
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+    }
 }
+
