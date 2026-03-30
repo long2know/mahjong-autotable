@@ -1492,5 +1492,26 @@ public class HandAnalyzerAdditionalVectorsTests
         hand.BasicScore.Should().Be(2);
         hand.Pair.Should().Be(new Tile(TileSuit.Winds, 0, Wind.North));
     }
+
+    [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairHasTwoPungsAndTwoChowsAcrossSuits()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: white dragons
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            // Pungs: 2 dots, 7 characters
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            // Chows: 345 bamboos, 789 dots
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(4);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
+    }
 }
 
