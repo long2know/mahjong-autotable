@@ -4178,6 +4178,7 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Theory]
+    [InlineData(2)]
     [InlineData(3)]
     [InlineData(4)]
     public void HandAnalyzer_AcceptsAllGreen_WhenPairIsGreenBambooInChowHeavyHand(int pairRank)
