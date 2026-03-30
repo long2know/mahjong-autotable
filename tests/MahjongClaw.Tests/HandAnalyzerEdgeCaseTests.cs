@@ -854,7 +854,7 @@ public class HandAnalyzerEdgeCaseTests
     }
 
     [Fact]
-    public void TryGetWinningHand_RejectsHand_WhenTwoQuadsAndTwoPungsLeaveNoPair()
+    public void TryGetWinningHand_AllowsPairSplitFromQuads_WhenNeededForStandardHand()
     {
         var tiles = new List<Tile>
         {
@@ -866,9 +866,11 @@ public class HandAnalyzerEdgeCaseTests
             new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4)
         };
 
-        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
-        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
-        hand.Should().BeNull();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 3));
+        hand.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(3);
+        hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(1);
     }
 
     [Fact]
