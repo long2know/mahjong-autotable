@@ -718,6 +718,47 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void EvaluateMinimumFan_ReturnsShortfall_WhenCustomThresholdExceedsStandardScore()
+    {
+        var hand = new WinningHand(
+            new List<Meld>
+            {
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Dots, 2),
+                    new(TileSuit.Dots, 2),
+                    new(TileSuit.Dots, 2)
+                }),
+                new(MeldType.Pung, new List<Tile>
+                {
+                    new(TileSuit.Bamboos, 5),
+                    new(TileSuit.Bamboos, 5),
+                    new(TileSuit.Bamboos, 5)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Characters, 1),
+                    new(TileSuit.Characters, 2),
+                    new(TileSuit.Characters, 3)
+                }),
+                new(MeldType.Chow, new List<Tile>
+                {
+                    new(TileSuit.Dots, 7),
+                    new(TileSuit.Dots, 8),
+                    new(TileSuit.Dots, 9)
+                })
+            },
+            new Tile(TileSuit.Characters, 9));
+
+        var evaluation = ScoreCalculator.EvaluateMinimumFan(hand, minimumFan: 12);
+
+        evaluation.BasicScore.Should().Be(4);
+        evaluation.MinimumFan.Should().Be(12);
+        evaluation.MeetsMinimumFan.Should().BeFalse();
+        evaluation.FanShortfall.Should().Be(8);
+    }
+
+    [Fact]
     public void EvaluateMinimumFan_ReturnsMeetsThreshold_ForStandardHandWithMultipleKongs()
     {
         var hand = new WinningHand(
