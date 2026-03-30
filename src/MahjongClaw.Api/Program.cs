@@ -459,11 +459,33 @@ gameGroup.MapPost("/{id:guid}/win", async (
     IHubContext<GameHub> hubContext,
     CancellationToken cancellationToken) =>
 {
-    var game = await dbContext.Games.FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+    var game = await dbContext.Games
+        .Include(g => g.Tiles)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
 
     if (game is null)
     {
         return Results.NotFound();
+    }
+
+    var playerTiles = game.Tiles
+        .Where(tile => tile.PlayerId == request.PlayerId && (tile.Location == "Hand" || tile.Location == "Meld"))
+        .ToList();
+
+    if (playerTiles.Count == 0)
+    {
+        return Results.NotFound(new { message = "Player tiles were not found." });
+    }
+
+    if (!TryBuildTileHand(playerTiles, out var tileHand))
+    {
+        return Results.Conflict(new { message = "Player tiles are invalid." });
+    }
+
+    var ruleset = ResolveRuleset(game.Ruleset);
+    if (!TryGetWinningHandForRuleset(tileHand, ruleset))
+    {
+        return Results.Conflict(new { message = "Hand does not meet ruleset requirements." });
     }
 
     game.Status = "Completed";
