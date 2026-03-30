@@ -67,6 +67,11 @@ namespace MahjongClaw.Persistence.Migrations
                     b.Property<int>("Round")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Ruleset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)

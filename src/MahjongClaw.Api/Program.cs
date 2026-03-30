@@ -35,11 +35,13 @@ gameGroup.MapPost("/", async (
     CreateGameRequest? request,
     CancellationToken cancellationToken) =>
 {
+    var ruleset = ResolveRuleset(request?.Ruleset);
     var game = new GameEntity
     {
         Id = Guid.NewGuid(),
         Status = "Waiting",
-        Round = 1
+        Round = 1,
+        Ruleset = ruleset.ToString()
     };
 
     dbContext.Games.Add(game);
@@ -196,7 +198,12 @@ gameGroup.MapPost("/{id:guid}/start", async (
     if (game.Tiles.Count == 0)
     {
         var rng = new Random();
-        var tiles = TileFactory.CreateStandardSet().OrderBy(_ => rng.Next()).ToList();
+        var ruleset = ResolveRuleset(game.Ruleset);
+        var tiles = (ruleset == MahjongRuleset.Changsha258
+            ? TileFactory.CreateChangsha258Set()
+            : TileFactory.CreateStandardSet())
+            .OrderBy(_ => rng.Next())
+            .ToList();
         var tileEntities = tiles.Select((tile, index) => new TileEntity
         {
             Id = Guid.NewGuid(),
@@ -495,6 +502,31 @@ static IEnumerable<string> GetEventAliases(string eventName)
         _ => []
     };
 
+static MahjongRuleset ResolveRuleset(string? ruleset)
+{
+    if (string.IsNullOrWhiteSpace(ruleset))
+    {
+        return MahjongRuleset.ChineseOfficial;
+    }
+
+    var normalized = ruleset.Trim().Replace("-", string.Empty).Replace(" ", string.Empty);
+    if (string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase))
+    {
+        return MahjongRuleset.Changsha258;
+    }
+
+    return Enum.TryParse<MahjongRuleset>(normalized, true, out var parsed)
+        ? parsed
+        : MahjongRuleset.ChineseOfficial;
+}
+
+static bool TryGetWinningHandForRuleset(IReadOnlyList<Tile> tiles, MahjongRuleset ruleset)
+    => ruleset switch
+    {
+        MahjongRuleset.Changsha258 => Changsha258Ruleset.TryGetWinningHand(tiles, out _),
+        _ => HandAnalyzer.TryGetWinningHand(tiles, out var hand) && hand is not null && ScoreCalculator.MeetsMinimumFan(hand)
+    };
+
 static bool TryBuildTileHand(IEnumerable<TileEntity> entities, out List<Tile> tiles)
 {
     tiles = new List<Tile>();
@@ -634,7 +666,8 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
-    if (HandAnalyzer.TryGetWinningHand(botHand, out var winningHand) && ScoreCalculator.MeetsMinimumFan(winningHand!))
+    var ruleset = ResolveRuleset(game.Ruleset);
+    if (TryGetWinningHandForRuleset(botHand, ruleset))
     {
         game.Status = "Completed";
         game.CurrentPlayerId = botPlayer.Id;
@@ -763,7 +796,7 @@ void DealTiles(PlayerEntity player, IReadOnlyList<TileEntity> wallTiles, ref int
     }
 }
 
-internal record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount);
+internal record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount, string? Ruleset = null);
 internal record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt, Guid? HostPlayerId);
 internal record JoinGameRequest(string Name, string Seat);
 internal record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);

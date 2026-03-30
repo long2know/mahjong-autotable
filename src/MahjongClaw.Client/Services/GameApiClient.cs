@@ -76,7 +76,7 @@ public sealed class GameApiClient
             ?? throw new InvalidOperationException("Bot turn response was empty.");
     }
 
-    public record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount);
+    public record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount, string? Ruleset = null);
     public record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt, Guid? HostPlayerId);
     public record JoinGameRequest(string Name, string Seat);
     public record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);

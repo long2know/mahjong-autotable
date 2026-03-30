@@ -37,6 +37,14 @@
                     </div>
                 </div>
 
+                <div class="mb-3">
+                    <label class="form-label">Ruleset</label>
+                    <select class="form-select" @bind="CreateRuleset">
+                        <option value="ChineseOfficial">Chinese Official</option>
+                        <option value="Changsha258">Changsha 258 (2/5/8 pair)</option>
+                    </select>
+                </div>
+
                 <button class="btn btn-primary" @onclick="CreateGameAsync" disabled="@IsBusy">Create</button>
 
                 @if (CreatedGameId is not null)
@@ -44,6 +52,7 @@
                     <div class="alert alert-success mt-3 mb-0">
                         <div><strong>Game created:</strong> @CreatedGameId</div>
                         <div class="small">Mode: @FormatCreateMode() @FormatBotSeatSummary()</div>
+                        <div class="small">Ruleset: @FormatRuleset()</div>
                         <div class="small">Share this ID with other players.</div>
                     </div>
                 }
@@ -165,6 +174,7 @@
     private string JoinName { get; set; } = string.Empty;
     private string JoinSeat { get; set; } = "South";
     private string CreateMode { get; set; } = "HumanVsHuman";
+    private string CreateRuleset { get; set; } = "ChineseOfficial";
     private int BotSeatCount { get; set; } = 1;
 
     private Guid? CreatedGameId { get; set; }
@@ -198,7 +208,8 @@
             var request = new GameApiClient.CreateGameRequest(
                 string.IsNullOrWhiteSpace(HostName) ? null : HostName.Trim(),
                 CreateMode,
-                BotSeatCount);
+                BotSeatCount,
+                CreateRuleset);
 
             var created = await Api.CreateGameAsync(request);
             CreatedGameId = created.Id;
@@ -215,7 +226,7 @@
                 await ConfigureHumanVsBotSeatsAsync(created.Id);
             }
 
-            Status = $"Game created: {created.Id} ({FormatCreateMode()}{FormatBotSeatSummary()}).";
+            Status = $"Game created: {created.Id} ({FormatCreateMode()}{FormatBotSeatSummary()}, {FormatRuleset()}).";
         });
     }
 
@@ -268,6 +279,11 @@
 
     private string FormatBotSeatSummary()
         => CreateMode == "HumanVsBot" ? $" ({BotSeatCount} bot seat{(BotSeatCount == 1 ? string.Empty : "s")})" : string.Empty;
+
+    private string FormatRuleset()
+        => string.Equals(CreateRuleset, "Changsha258", StringComparison.OrdinalIgnoreCase)
+            ? "Changsha 258"
+            : "Chinese Official";
 
     private async Task ConfigureHumanVsBotSeatsAsync(Guid gameId)
     {
