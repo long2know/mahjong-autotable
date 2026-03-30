@@ -151,6 +151,27 @@ public class HandAnalyzerPairSelectionTests
     }
 
     [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenAllChowDecompositionsShareSameScore()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidates: 1 dots or 4 dots, both yielding all-chow hands.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            // Chows: 567 bamboos, 789 bamboos.
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
     public void HandAnalyzer_SelectsLowestOrderedPair_WhenChowHeavyHandHasEqualPungScores()
     {
         var tiles = new List<Tile>
