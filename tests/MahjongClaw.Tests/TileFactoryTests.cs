@@ -68,5 +68,21 @@ public class TileFactoryTests
 
         tiles.Count(t => t.Suit == TileSuit.Seasons).Should().Be(4);
     }
+
+    [Fact]
+    public void CreateChangsha258Set_Returns108Tiles()
+    {
+        var tiles = TileFactory.CreateChangsha258Set();
+
+        tiles.Should().HaveCount(108);
+    }
+
+    [Fact]
+    public void CreateChangsha258Set_ExcludesHonorsAndBonusTiles()
+    {
+        var tiles = TileFactory.CreateChangsha258Set();
+
+        tiles.Should().OnlyContain(tile => tile.Suit == TileSuit.Characters || tile.Suit == TileSuit.Dots || tile.Suit == TileSuit.Bamboos);
+    }
 }
 

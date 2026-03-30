@@ -6,17 +6,7 @@ public static class TileFactory
     {
         var tiles = new List<Tile>(144);
 
-        // Suited tiles: 1-9, four copies each
-        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
-        {
-            for (var rank = 1; rank <= 9; rank++)
-            {
-                for (var copy = 0; copy < 4; copy++)
-                {
-                    tiles.Add(new Tile(suit, rank));
-                }
-            }
-        }
+        AddSuitedTiles(tiles);
 
         // Winds: East, South, West, North (four copies each)
         foreach (Wind wind in Enum.GetValues(typeof(Wind)))
@@ -44,5 +34,29 @@ public static class TileFactory
         }
 
         return tiles;
+    }
+
+    public static IReadOnlyList<Tile> CreateChangsha258Set()
+    {
+        var tiles = new List<Tile>(108);
+
+        AddSuitedTiles(tiles);
+
+        return tiles;
+    }
+
+    private static void AddSuitedTiles(ICollection<Tile> tiles)
+    {
+        // Suited tiles: 1-9, four copies each
+        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        {
+            for (var rank = 1; rank <= 9; rank++)
+            {
+                for (var copy = 0; copy < 4; copy++)
+                {
+                    tiles.Add(new Tile(suit, rank));
+                }
+            }
+        }
     }
 }

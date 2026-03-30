@@ -6,8 +6,16 @@ namespace MahjongClaw.Domain.Rules;
 public static class WallBuilder
 {
     public static Wall BuildShuffledWall(Random rng)
+        => BuildShuffledWall(rng, MahjongRuleset.ChineseOfficial);
+
+    public static Wall BuildShuffledWall(Random rng, MahjongRuleset ruleset)
     {
-        var tiles = TileFactory.CreateStandardSet().ToList();
+        var tiles = ruleset switch
+        {
+            MahjongRuleset.Changsha258 => TileFactory.CreateChangsha258Set().ToList(),
+            _ => TileFactory.CreateStandardSet().ToList()
+        };
+
         Shuffle(tiles, rng);
         return new Wall(tiles);
     }
