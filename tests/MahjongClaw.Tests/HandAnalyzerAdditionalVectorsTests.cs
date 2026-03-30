@@ -155,6 +155,33 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenHonorPairWithMixedSuitChowsAndPungUnsorted()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenHonorPungsAndChowsLeaveNoPair()
     {
         var tiles = new List<Tile>
