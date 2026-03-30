@@ -30,6 +30,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_RejectsHand_WhenFourChowsLeaveNoPair()
+    {
+        var tiles = new List<Tile>
+        {
+            // Chows: 123 characters, 456 characters, 789 characters, 123 dots.
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            // Singles that cannot form a pair.
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 7)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenTileCountExceedsFour()
     {
         var tiles = new List<Tile>
