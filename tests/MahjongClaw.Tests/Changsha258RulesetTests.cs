@@ -139,4 +139,29 @@ public class Changsha258RulesetTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void TryGetWinningHand_ReturnsFalse_WhenExtraTilesLackRequiredKongs(int extraTiles)
+    {
+        var tiles = CreateBaselineWinningHand();
+
+        for (var i = 0; i < extraTiles; i++)
+        {
+            tiles.Add(new Tile(TileSuit.Dots, 9 - i));
+        }
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    private static List<Tile> CreateBaselineWinningHand()
+        => new()
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
 }

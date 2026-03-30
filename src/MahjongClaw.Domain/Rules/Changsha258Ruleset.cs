@@ -31,6 +31,16 @@ public static class Changsha258Ruleset
             return false;
         }
 
+        var requiredKongs = tiles.Count - 14;
+        if (requiredKongs > 0)
+        {
+            var availableKongs = counts.Values.Count(static count => count >= 4);
+            if (availableKongs < requiredKongs)
+            {
+                return false;
+            }
+        }
+
         foreach (var tile in GetOrderedTiles(counts))
         {
             if (counts[tile] < 2)
