@@ -276,4 +276,32 @@ public class HandAnalyzerInputValidationTests
         HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
     }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenMultipleBonusTilesIncludedInOtherwiseWinningHand()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 9 characters
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            // Chows: 123 chars, 456 chars, 789 dots
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            // Pung: red dragons
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+
+        tiles[0] = new Tile(TileSuit.Flowers, 1);
+        tiles[1] = new Tile(TileSuit.Seasons, 2);
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
 }
+
