@@ -85,6 +85,26 @@ public class HandAnalyzerAdditionalVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_AcceptsStandardHand_WhenOverlappingAndDuplicateChowsAppearInSingleSuit()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair: 1 dots
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            // Chows: 234 dots (x2), 567 dots, 678 dots
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(0);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
     public void HandAnalyzer_AcceptsStandardHand_WhenUnsortedChowsAndHonorPungAppear()
     {
         var tiles = new List<Tile>
