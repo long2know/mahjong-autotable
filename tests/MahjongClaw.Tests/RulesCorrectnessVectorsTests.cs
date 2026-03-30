@@ -2126,6 +2126,21 @@ public class RulesCorrectnessVectorsTests
     }
 
     [Fact]
+    public void HandAnalyzer_IsWinningHand_ReturnsFalse_WhenHonorTileAppearsFiveTimes()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void HandAnalyzer_RejectsHand_WhenSuitedTileAppearsFiveTimes()
     {
         var tiles = new List<Tile>
