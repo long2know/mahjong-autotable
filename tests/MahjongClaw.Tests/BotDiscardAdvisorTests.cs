@@ -129,7 +129,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_PrioritizesTerminalOverNonTerminal_WhenScoresTie()
+    public void SelectDiscardIndex_PrefersKeepingTerminal_WhenOnlyNeighborIsPresent()
     {
         var tiles = new List<Tile>
         {
@@ -139,8 +139,8 @@ public class BotDiscardAdvisorTests
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
 
-        discardIndex.Should().Be(0);
-        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 1));
+        discardIndex.Should().Be(1);
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
     }
 
     [Fact]
