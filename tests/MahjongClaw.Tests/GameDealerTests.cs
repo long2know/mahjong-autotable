@@ -35,6 +35,21 @@ public class GameDealerTests
     }
 
     [Fact]
+    public void InitializeGame_UsesChangsha258TileSet()
+    {
+        var rng = new Random(123);
+        var state = GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, rng, MahjongRuleset.Changsha258);
+
+        var allTiles = state.Players
+            .SelectMany(player => player.Hand.Tiles)
+            .Concat(state.Wall.Tiles)
+            .ToList();
+
+        allTiles.Should().HaveCount(108);
+        allTiles.Should().OnlyContain(tile => !tile.IsHonor && !tile.IsFlower);
+    }
+
+    [Fact]
     public void InitializeGame_AssignsPlayersToWindsInSeatOrder()
     {
         var rng = new Random(17);

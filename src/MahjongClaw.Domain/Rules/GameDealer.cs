@@ -5,7 +5,10 @@ namespace MahjongClaw.Domain.Rules;
 
 public static class GameDealer
 {
-    public static GameState InitializeGame(IReadOnlyList<string> playerNames, Random rng)
+    public static GameState InitializeGame(
+        IReadOnlyList<string> playerNames,
+        Random rng,
+        MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
     {
         ArgumentNullException.ThrowIfNull(playerNames);
         ArgumentNullException.ThrowIfNull(rng);
@@ -15,7 +18,7 @@ public static class GameDealer
             throw new ArgumentException("Exactly four players are required.");
         }
 
-        var wall = WallBuilder.BuildShuffledWall(rng);
+        var wall = WallBuilder.BuildShuffledWall(rng, ruleset);
         var players = new List<Player>
         {
             new(Guid.NewGuid(), playerNames[0], Wind.East),
