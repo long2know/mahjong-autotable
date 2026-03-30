@@ -475,6 +475,32 @@ public class MeldValidatorTests
         MeldValidator.IsValidMeld(kong, MeldType.Kong).Should().BeTrue();
     }
 
+    [Fact]
+    public void IsValidMeld_ReturnsFalse_WhenPungTilesProvidedForChowType()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 2)
+        };
+
+        MeldValidator.IsValidMeld(tiles, MeldType.Chow).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidMeld_ReturnsFalse_WhenChowTilesProvidedForPungType()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 1),
+            new Tile(TileSuit.Characters, 2),
+            new Tile(TileSuit.Characters, 3)
+        };
+
+        MeldValidator.IsValidMeld(tiles, MeldType.Pung).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(MeldType.Chow)]
     [InlineData(MeldType.Pung)]
