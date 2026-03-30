@@ -51,6 +51,14 @@ public static class GameDealer
 
     public static void DrawTiles(Wall wall, Hand hand, int count)
     {
+        ArgumentNullException.ThrowIfNull(wall);
+        ArgumentNullException.ThrowIfNull(hand);
+
+        if (count < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "Tile draw count cannot be negative.");
+        }
+
         for (var i = 0; i < count; i++)
         {
             hand.Add(wall.Draw());

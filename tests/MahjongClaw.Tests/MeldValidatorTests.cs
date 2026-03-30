@@ -21,6 +21,32 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidChow_ReturnsTrue_ForLowerBoundaryRun()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Bamboos, 1),
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 3)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsTrue_ForUpperBoundaryRun()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 7),
+            new Tile(TileSuit.Characters, 8),
+            new Tile(TileSuit.Characters, 9)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeTrue();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsTrueWhenTilesAreUnsorted()
     {
         var tiles = new[]
@@ -67,6 +93,19 @@ public class MeldValidatorTests
             new Tile(TileSuit.Dots, 1),
             new Tile(TileSuit.Dots, 2),
             new Tile(TileSuit.Winds, 0, Wind.East)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsFalse_WhenDragonMixedWithSuitedTiles()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
         };
 
         MeldValidator.IsValidChow(tiles).Should().BeFalse();
@@ -217,6 +256,19 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidPung_ReturnsFalse_WhenHonorAndSuitedTilesMixed()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Winds, 0, Wind.East),
+            new Tile(TileSuit.Dots, 1)
+        };
+
+        MeldValidator.IsValidPung(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidPung_ReturnsFalseForFlowerTiles()
     {
         var tiles = new[]
@@ -327,6 +379,20 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidKong_ReturnsFalse_WhenDragonTilesDiffer()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidKong_ReturnsFalse_WhenWindAndDragonMixed()
     {
         var tiles = new[]
@@ -335,6 +401,20 @@ public class MeldValidatorTests
             new Tile(TileSuit.Winds, 0, Wind.East),
             new Tile(TileSuit.Winds, 0, Wind.East),
             new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidKong_ReturnsFalse_WhenHonorAndSuitedTilesMixed()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White),
+            new Tile(TileSuit.Bamboos, 2)
         };
 
         MeldValidator.IsValidKong(tiles).Should().BeFalse();
@@ -359,8 +439,10 @@ public class MeldValidatorTests
         MeldValidator.IsValidMeld(tiles, MeldType.Chow).Should().BeFalse();
     }
 
-    [Fact]
-    public void IsValidMeld_ReturnsFalseForUnknownType()
+    [Theory]
+    [InlineData(999)]
+    [InlineData(-1)]
+    public void IsValidMeld_ReturnsFalseForUnknownType(int typeValue)
     {
         var tiles = new[]
         {
@@ -369,7 +451,7 @@ public class MeldValidatorTests
             new Tile(TileSuit.Dots, 5)
         };
 
-        MeldValidator.IsValidMeld(tiles, (MeldType)999).Should().BeFalse();
+        MeldValidator.IsValidMeld(tiles, (MeldType)typeValue).Should().BeFalse();
     }
 
     [Fact]
@@ -394,6 +476,39 @@ public class MeldValidatorTests
     }
 
     [Theory]
+    [InlineData(MeldType.Chow)]
+    [InlineData(MeldType.Pung)]
+    [InlineData(MeldType.Kong)]
+    public void IsValidMeld_ReturnsFalse_WhenTilesAreNull_ForMeldTypes(MeldType type)
+    {
+        MeldValidator.IsValidMeld(null!, type).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(MeldType.Chow)]
+    [InlineData(MeldType.Pung)]
+    [InlineData(MeldType.Kong)]
+    public void IsValidMeld_ReturnsFalse_WhenTilesContainNull_ForMeldTypes(MeldType type)
+    {
+        var tiles = type == MeldType.Kong
+            ? new[]
+            {
+                new Tile(TileSuit.Dots, 1),
+                new Tile(TileSuit.Dots, 1),
+                new Tile(TileSuit.Dots, 1),
+                null!
+            }
+            : new[]
+            {
+                new Tile(TileSuit.Dots, 1),
+                null!,
+                new Tile(TileSuit.Dots, 2)
+            };
+
+        MeldValidator.IsValidMeld(tiles, type).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(MeldType.Chow, 4)]
     [InlineData(MeldType.Pung, 2)]
     [InlineData(MeldType.Kong, 3)]
@@ -402,6 +517,28 @@ public class MeldValidatorTests
         var tiles = Enumerable.Repeat(new Tile(TileSuit.Dots, 1), count).ToArray();
 
         MeldValidator.IsValidMeld(tiles, type).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(MeldType.Chow)]
+    [InlineData(MeldType.Pung)]
+    [InlineData(MeldType.Kong)]
+    public void IsValidMeld_ReturnsFalse_WhenTilesAreEmpty(MeldType type)
+    {
+        MeldValidator.IsValidMeld(Array.Empty<Tile>(), type).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidMeld_ReturnsFalse_WhenMeldTypeIsUnknown()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 1)
+        };
+
+        MeldValidator.IsValidMeld(tiles, (MeldType)99).Should().BeFalse();
     }
 
     [Fact]
@@ -444,6 +581,21 @@ public class MeldValidatorTests
     }
 
     [Fact]
+    public void IsValidKong_ReturnsFalse_WhenTileCountIsFive()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Characters, 4)
+        };
+
+        MeldValidator.IsValidKong(tiles).Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidChow_ReturnsFalseForWrongTileCount()
     {
         var tiles = new[]
@@ -452,6 +604,18 @@ public class MeldValidatorTests
             new Tile(TileSuit.Dots, 2),
             new Tile(TileSuit.Dots, 3),
             new Tile(TileSuit.Dots, 4)
+        };
+
+        MeldValidator.IsValidChow(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidChow_ReturnsFalse_WhenTileCountIsTwo()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 4),
+            new Tile(TileSuit.Dots, 5)
         };
 
         MeldValidator.IsValidChow(tiles).Should().BeFalse();

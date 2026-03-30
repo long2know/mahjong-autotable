@@ -110,6 +110,42 @@ public class HandAnalyzerInputValidationTests
         HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(TileSuit.Dots)]
+    [InlineData(TileSuit.Bamboos)]
+    public void TryGetWinningHand_ReturnsFalse_WhenSuitedTileAppearsFiveTimes(TileSuit suit)
+    {
+        var tiles = new List<Tile>
+        {
+            new(suit, 1), new(suit, 1), new(suit, 1), new(suit, 1), new(suit, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 6)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenSuitedTileAppearsSixTimes()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        HandAnalyzer.IsWinningHand(tiles).Should().BeFalse();
+    }
+
     [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenHonorTileAppearsFiveTimes()
     {

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using MahjongClaw.Domain.Gameplay;
 using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
 using System.Linq;
@@ -74,5 +75,54 @@ public class GameDealerTests
         var act = () => GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, null!);
 
         act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void DrawTiles_ThrowsWhenWallIsNull()
+    {
+        var act = () => GameDealer.DrawTiles(null!, new Hand(), 1);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void DrawTiles_ThrowsWhenHandIsNull()
+    {
+        var wall = new Wall(new[] { new Tile(TileSuit.Dots, 1) });
+
+        var act = () => GameDealer.DrawTiles(wall, null!, 1);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void DrawTiles_ThrowsWhenCountIsNegative()
+    {
+        var wall = new Wall(new[] { new Tile(TileSuit.Dots, 1) });
+        var hand = new Hand();
+
+        var act = () => GameDealer.DrawTiles(wall, hand, -1);
+
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithMessage("*count*negative*");
+    }
+
+    [Fact]
+    public void DrawTiles_AddsTilesToHandAndReducesWall()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dots, 1),
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 3)
+        };
+
+        var wall = new Wall(tiles);
+        var hand = new Hand();
+
+        GameDealer.DrawTiles(wall, hand, 2);
+
+        hand.Tiles.Should().Equal(tiles[0], tiles[1]);
+        wall.RemainingCount.Should().Be(1);
     }
 }

@@ -165,6 +165,24 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesIsolatedTerminal_WhenPairsAndTripletsPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 7), new(TileSuit.Characters, 8),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesIsolatedOffSuitSingleton_WhenDominantSuitAndHonorPairExist()
     {
         var tiles = new List<Tile>
@@ -216,6 +234,54 @@ public class BotDiscardAdvisorTests
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
 
         tiles[discardIndex].Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.White));
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_PrioritizesHonorSingleton_WhenHonorSetsDominate()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.West));
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_PrioritizesOffSuitSingleton_WhenHonorMajorityPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 9));
     }
 
     [Fact]
@@ -633,5 +699,19 @@ public class BotDiscardAdvisorTests
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
 
         tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_BreaksWindTies_ByWindOrder()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
     }
 }

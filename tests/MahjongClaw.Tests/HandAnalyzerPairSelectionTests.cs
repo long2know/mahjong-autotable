@@ -28,4 +28,295 @@ public class HandAnalyzerPairSelectionTests
         hand.BasicScore.Should().Be(0);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 3));
     }
+
+    [Fact]
+    public void HandAnalyzer_PrioritizesSevenPairs_WhenAllPairsPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            // Seven pairs shape should win even if a standard decomposition is possible.
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.BasicScore.Should().Be(24);
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsHonorPair_WhenSuitedPairsBlockChowCompletion()
+    {
+        var tiles = new List<Tile>
+        {
+            // Honor pair to free suited tiles for chow completion.
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Chows: 123 dots, 234 dots, 456 dots, 789 dots.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsSuitedPair_WhenHonorPairWouldLeaveSingletonHonor()
+    {
+        var tiles = new List<Tile>
+        {
+            // East pung must remain intact; using East pair would strand a singleton honor.
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // Suited pair candidate.
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // Chows: 123 dots, 456 characters, 789 bamboos.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsPairFromQuad_WhenOnlyQuadPairAllowsMeldCompletion()
+    {
+        var tiles = new List<Tile>
+        {
+            // Quad of 2 dots; using a different pair blocks chow completion.
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+        hand.BasicScore.Should().Be(0);
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenMultipleStandardPairsYieldSameScore()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidates: 2 dots or 5 dots, both yielding a standard hand with one pung.
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsPairWithHigherBasicScore_WhenMultipleStandardPairsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair candidates: 6 dots (three pungs + chow) or 9 dots (all chows).
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.BasicScore.Should().Be(6);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 6));
+    }
+
+    [Fact]
+    public void HandAnalyzer_PrefersAllPungsPattern_WhenPairChoiceChangesPatternRank()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pairing 5 dots yields All Pungs; pairing 2 dots forces a chow-heavy standard hand.
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.BasicScore.Should().Be(6);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsCharacterPairBeforeOtherSuits_WhenSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Characters, 9));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsBambooPairBeforeDots_WhenSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Bamboos, 2));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Characters, 1));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenSevenPairsIncludesQuads()
+    {
+        var tiles = new List<Tile>
+        {
+            // Two quads plus three pairs; lowest ordered pair should be 2 characters.
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Characters, 2));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenAllTerminalsAndHonorsSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminalsAndHonors);
+        hand.BasicScore.Should().Be(64);
+        hand.Pair.Should().Be(new Tile(TileSuit.Characters, 1));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenAllTerminalsSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllTerminals);
+        hand.BasicScore.Should().Be(64);
+        hand.Pair.Should().Be(new Tile(TileSuit.Characters, 1));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenAllHonorsSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllHonors);
+        hand.BasicScore.Should().Be(64);
+        hand.Pair.Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+    }
+
+    [Fact]
+    public void HandAnalyzer_SelectsLowestOrderedPair_WhenAllGreenSevenPairsFound()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand!.Pattern.Should().Be(WinningPattern.AllGreen);
+        hand.BasicScore.Should().Be(88);
+        hand.Pair.Should().Be(new Tile(TileSuit.Bamboos, 2));
+    }
 }
