@@ -89,6 +89,7 @@ public sealed class GameApiClient
         Guid? DealerId,
         int Round,
         string Ruleset,
+        int WallTotal,
         DateTimeOffset CreatedAt,
         IReadOnlyList<PlayerSummary> Players,
         int TilesInPlay,

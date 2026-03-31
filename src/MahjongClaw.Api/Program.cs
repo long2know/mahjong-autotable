@@ -248,6 +248,8 @@ gameGroup.MapGet("/{id:guid}/state", async (
     }
 
     var tilesInPlay = game.Tiles.Count(tile => !string.Equals(tile.Location, "Wall", StringComparison.OrdinalIgnoreCase));
+    var ruleset = RulesetResolver.Resolve(game.Ruleset);
+    var wallTotal = ruleset == MahjongRuleset.Changsha258 ? 108 : 144;
 
     var response = new GameStateResponse(
         game.Id,
@@ -256,6 +258,7 @@ gameGroup.MapGet("/{id:guid}/state", async (
         game.DealerId,
         game.Round,
         game.Ruleset,
+        wallTotal,
         game.CreatedAt,
         game.Players.Select(player => new PlayerSummary(player.Id, player.Name, player.Seat, player.Score)).ToList(),
         tilesInPlay,
@@ -816,6 +819,7 @@ internal record GameStateResponse(
     Guid? DealerId,
     int Round,
     string Ruleset,
+    int WallTotal,
     DateTimeOffset CreatedAt,
     IReadOnlyList<PlayerSummary> Players,
     int TilesInPlay,
