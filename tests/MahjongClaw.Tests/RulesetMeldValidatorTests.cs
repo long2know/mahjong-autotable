@@ -47,4 +47,34 @@ public class RulesetMeldValidatorTests
         RulesetMeldValidator.IsValidMeld(tiles, MeldType.Chow, MahjongRuleset.Changsha258)
             .Should().BeTrue();
     }
+
+    [Fact]
+    public void IsValidMeld_RejectsHonorKong_ForChangsha258()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+
+        RulesetMeldValidator.IsValidMeld(tiles, MeldType.Kong, MahjongRuleset.Changsha258)
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidMeld_AllowsSuitedKong_ForChangsha258()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Characters, 2),
+            new Tile(TileSuit.Characters, 2),
+            new Tile(TileSuit.Characters, 2),
+            new Tile(TileSuit.Characters, 2)
+        };
+
+        RulesetMeldValidator.IsValidMeld(tiles, MeldType.Kong, MahjongRuleset.Changsha258)
+            .Should().BeTrue();
+    }
 }
