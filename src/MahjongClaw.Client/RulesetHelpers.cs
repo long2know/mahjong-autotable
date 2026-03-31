@@ -27,7 +27,7 @@ public static class RulesetHelpers
         var wallTotal = WallBuilder.GetWallTotal(resolved);
         return resolved == MahjongRuleset.Changsha258
             ? $"{wallTotal} suited tiles (no honors/flowers). Standard hands only (4 melds + a 2/5/8 pair). Kongs add extra tiles (up to {Changsha258Ruleset.MaxTiles} tiles). No seven-pairs or special patterns yet. No minimum fan gate."
-            : $"{wallTotal} tiles with honors/flowers. Standard Chinese Official rules.";
+            : $"{wallTotal} tiles with honors/flowers. Standard Chinese Official rules (8-fan minimum to win).";
     }
 
     private static MahjongRuleset ResolveRuleset(string? ruleset)
