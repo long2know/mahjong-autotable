@@ -224,6 +224,8 @@ public class Changsha258RulesetTests
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
     public void TryGetWinningHand_ReturnsFalse_WhenExtraTilesLackRequiredKongs(int extraTiles)
     {
         var tiles = CreateBaselineWinningHand();
