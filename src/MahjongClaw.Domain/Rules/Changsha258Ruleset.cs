@@ -83,11 +83,19 @@ public static class Changsha258Ruleset
     }
 
     public static bool IsSmallWinPair(Tile pair)
-        => pair.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
+    {
+        ArgumentNullException.ThrowIfNull(pair);
+
+        return pair.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
             && pair.Rank is 2 or 5 or 8;
+    }
 
     public static bool IsAllowedTile(Tile tile)
-        => tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos;
+    {
+        ArgumentNullException.ThrowIfNull(tile);
+
+        return tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos;
+    }
 
     private static Dictionary<Tile, int> BuildCounts(IReadOnlyList<Tile> tiles)
     {

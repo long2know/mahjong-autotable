@@ -34,6 +34,14 @@ public class Changsha258RulesetTests
         Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Seasons, 1)).Should().BeFalse();
     }
 
+    [Fact]
+    public void IsSmallWinPair_Throws_WhenTileIsNull()
+    {
+        var act = () => Changsha258Ruleset.IsSmallWinPair(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
     [Theory]
     [InlineData(TileSuit.Characters, 1)]
     [InlineData(TileSuit.Dots, 6)]
@@ -50,6 +58,14 @@ public class Changsha258RulesetTests
         Changsha258Ruleset.IsAllowedTile(new Tile(TileSuit.Dragons, 0, null, Dragon.Red)).Should().BeFalse();
         Changsha258Ruleset.IsAllowedTile(new Tile(TileSuit.Flowers, 1)).Should().BeFalse();
         Changsha258Ruleset.IsAllowedTile(new Tile(TileSuit.Seasons, 1)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsAllowedTile_Throws_WhenTileIsNull()
+    {
+        var act = () => Changsha258Ruleset.IsAllowedTile(null!);
+
+        act.Should().Throw<ArgumentNullException>();
     }
 
     [Fact]
