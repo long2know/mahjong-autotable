@@ -78,6 +78,20 @@ public class TileFactoryTests
     }
 
     [Fact]
+    public void CreateChangsha258Set_IncludesFourCopiesOfEachSuitRank()
+    {
+        var tiles = TileFactory.CreateChangsha258Set();
+
+        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        {
+            for (var rank = 1; rank <= 9; rank++)
+            {
+                tiles.Count(t => t.Suit == suit && t.Rank == rank).Should().Be(4);
+            }
+        }
+    }
+
+    [Fact]
     public void CreateChangsha258Set_ExcludesHonorsAndBonusTiles()
     {
         var tiles = TileFactory.CreateChangsha258Set();
