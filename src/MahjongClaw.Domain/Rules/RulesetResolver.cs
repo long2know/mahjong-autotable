@@ -46,12 +46,17 @@ public static class RulesetResolver
             return true;
         }
 
-        if (!normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase))
+        if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            return normalized.Contains("258", StringComparison.Ordinal);
         }
 
-        return normalized.Contains("258", StringComparison.Ordinal);
+        if (normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase))
+        {
+            return normalized.Contains("258", StringComparison.Ordinal);
+        }
+
+        return false;
     }
 
     private static string Normalize(string? ruleset)
