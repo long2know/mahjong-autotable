@@ -247,6 +247,8 @@ gameGroup.MapGet("/{id:guid}/state", async (
         return Results.NotFound();
     }
 
+    var tilesInPlay = game.Tiles.Count(tile => !string.Equals(tile.Location, "Wall", StringComparison.OrdinalIgnoreCase));
+
     var response = new GameStateResponse(
         game.Id,
         game.Status,
@@ -256,7 +258,7 @@ gameGroup.MapGet("/{id:guid}/state", async (
         game.Ruleset,
         game.CreatedAt,
         game.Players.Select(player => new PlayerSummary(player.Id, player.Name, player.Seat, player.Score)).ToList(),
-        game.Tiles.Count,
+        tilesInPlay,
         game.Melds.Count,
         game.Discards.Count);
 
