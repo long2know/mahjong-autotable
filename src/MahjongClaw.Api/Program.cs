@@ -532,8 +532,16 @@ static MahjongRuleset ResolveRuleset(string? ruleset)
         return MahjongRuleset.ChineseOfficial;
     }
 
-    var normalized = ruleset.Trim().Replace("-", string.Empty).Replace(" ", string.Empty);
-    if (string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase))
+    var normalized = string.Concat(ruleset.Trim().Where(char.IsLetterOrDigit));
+    if (string.IsNullOrWhiteSpace(normalized))
+    {
+        return MahjongRuleset.ChineseOfficial;
+    }
+
+    if (string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
+        || (normalized.Contains("Changsha", StringComparison.OrdinalIgnoreCase)
+            && normalized.Contains("258", StringComparison.Ordinal)))
     {
         return MahjongRuleset.Changsha258;
     }

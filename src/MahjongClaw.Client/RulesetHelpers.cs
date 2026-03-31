@@ -9,12 +9,17 @@ public static class RulesetHelpers
             return false;
         }
 
-        var normalized = ruleset.Trim()
-            .Replace("-", string.Empty)
-            .Replace(" ", string.Empty);
+        var normalized = string.Concat(ruleset.Trim().Where(char.IsLetterOrDigit));
 
-        return string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return false;
+        }
+
+        return string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
+            || (normalized.Contains("Changsha", StringComparison.OrdinalIgnoreCase)
+                && normalized.Contains("258", StringComparison.Ordinal));
     }
 
     public static int GetWallTotal(string? ruleset)
