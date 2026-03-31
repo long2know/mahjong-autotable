@@ -43,6 +43,16 @@
                         <option value="ChineseOfficial">Chinese Official</option>
                         <option value="Changsha258">Changsha 258 (2/5/8 pair)</option>
                     </select>
+                    <div class="form-text">
+                        @if (RulesetHelpers.IsChangsha258(CreateRuleset))
+                        {
+                            <span>108 suited tiles, no honors/flowers. Small win requires a 2/5/8 pair.</span>
+                        }
+                        else
+                        {
+                            <span>144 tiles with honors/flowers. Standard Chinese Official rules.</span>
+                        }
+                    </div>
                 </div>
 
                 <button class="btn btn-primary" @onclick="CreateGameAsync" disabled="@IsBusy">Create</button>
