@@ -12,7 +12,7 @@ public static class RulesetMeldValidator
             return false;
         }
 
-        if (ruleset == MahjongRuleset.Changsha258 && tiles.Any(tile => tile.IsHonor || tile.IsFlower))
+        if (ruleset == MahjongRuleset.Changsha258 && tiles.Any(static tile => tile.IsHonor || tile.IsFlower))
         {
             return false;
         }
