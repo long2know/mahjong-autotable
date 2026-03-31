@@ -41,18 +41,17 @@ public static class Changsha258Ruleset
             }
         }
 
-        foreach (var tile in GetOrderedTiles(counts))
+        var pairCandidates = GetOrderedTiles(counts)
+            .Where(tile => counts[tile] >= 2 && IsSmallWinPair(tile))
+            .ToList();
+
+        if (pairCandidates.Count == 0)
         {
-            if (counts[tile] < 2)
-            {
-                continue;
-            }
+            return false;
+        }
 
-            if (!IsSmallWinPair(tile))
-            {
-                continue;
-            }
-
+        foreach (var tile in pairCandidates)
+        {
             var candidateCounts = new Dictionary<Tile, int>(counts);
             candidateCounts[tile] -= 2;
 
