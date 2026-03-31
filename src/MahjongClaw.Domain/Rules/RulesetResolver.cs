@@ -40,7 +40,8 @@ public static class RulesetResolver
     {
         if (string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "CS258", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
