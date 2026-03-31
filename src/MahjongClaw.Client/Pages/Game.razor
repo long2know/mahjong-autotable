@@ -756,11 +756,28 @@
         _ => "text-bg-primary"
     };
 
-    private const int WallStacksPerSide = 18;
-    private const int TotalWallStacks = WallStacksPerSide * 4;
+    private static readonly string[] WallSides = ["North", "East", "South", "West"];
+
+    private int TotalWallStacks => (int)Math.Ceiling(WallTotal / 2d);
+
+    private IReadOnlyDictionary<string, int> BuildWallStackCounts()
+    {
+        var totalStacks = TotalWallStacks;
+        var baseStacks = totalStacks / WallSides.Length;
+        var remainder = totalStacks % WallSides.Length;
+        var counts = new Dictionary<string, int>(WallSides.Length);
+
+        for (var i = 0; i < WallSides.Length; i++)
+        {
+            counts[WallSides[i]] = baseStacks + (i < remainder ? 1 : 0);
+        }
+
+        return counts;
+    }
 
     private IEnumerable<WallStackView> BuildWallSide(string side)
     {
+        var counts = BuildWallStackCounts();
         var breakSide = (HandNumber % 4) switch
         {
             0 => "East",
@@ -769,14 +786,24 @@
             _ => "North"
         };
 
-        var breakIndex = Math.Clamp((HandNumber * 2) % WallStacksPerSide, 0, WallStacksPerSide - 1);
-        var drawStartIndex = GetSideOffset(breakSide) + breakIndex;
+        if (!counts.TryGetValue(breakSide, out var breakSideCount) || breakSideCount == 0)
+        {
+            yield break;
+        }
+
+        var breakIndex = Math.Clamp((HandNumber * 2) % breakSideCount, 0, breakSideCount - 1);
+        var drawStartIndex = GetSideOffset(counts, breakSide) + breakIndex;
 
         var stacksRemaining = Math.Clamp((int)Math.Ceiling(WallRemaining / 2d), 0, TotalWallStacks);
         var stacksConsumed = TotalWallStacks - stacksRemaining;
 
-        var sideOffset = GetSideOffset(side);
-        for (var i = 0; i < WallStacksPerSide; i++)
+        if (!counts.TryGetValue(side, out var sideCount) || sideCount == 0)
+        {
+            yield break;
+        }
+
+        var sideOffset = GetSideOffset(counts, side);
+        for (var i = 0; i < sideCount; i++)
         {
             var globalIndex = sideOffset + i;
             yield return new WallStackView(
@@ -786,18 +813,33 @@
         }
     }
 
-    private static int GetSideOffset(string side) => side switch
+    private static int GetSideOffset(IReadOnlyDictionary<string, int> counts, string side)
     {
-        "North" => 0,
-        "East" => WallStacksPerSide,
-        "South" => WallStacksPerSide * 2,
-        "West" => WallStacksPerSide * 3,
-        _ => 0
-    };
+        var offset = 0;
+        foreach (var wallSide in WallSides)
+        {
+            if (string.Equals(wallSide, side, StringComparison.OrdinalIgnoreCase))
+            {
+                return offset;
+            }
 
-    private static bool IsConsumedStack(int globalIndex, int drawStartIndex, int stacksConsumed)
+            if (counts.TryGetValue(wallSide, out var wallCount))
+            {
+                offset += wallCount;
+            }
+        }
+
+        return 0;
+    }
+
+    private bool IsConsumedStack(int globalIndex, int drawStartIndex, int stacksConsumed)
     {
         if (stacksConsumed <= 0)
+        {
+            return false;
+        }
+
+        if (TotalWallStacks == 0)
         {
             return false;
         }
