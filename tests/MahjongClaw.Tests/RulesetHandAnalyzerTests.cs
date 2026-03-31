@@ -70,6 +70,20 @@ public class RulesetHandAnalyzerTests
         RulesetHandAnalyzer.TryGetWinningHand(bonusTiles, MahjongRuleset.Changsha258, out var bonusHand)
             .Should().BeFalse();
         bonusHand.Should().BeNull();
+
+        var seasonTiles = new List<Tile>
+        {
+            new(TileSuit.Seasons, 1),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2)
+        };
+
+        RulesetHandAnalyzer.TryGetWinningHand(seasonTiles, MahjongRuleset.Changsha258, out var seasonHand)
+            .Should().BeFalse();
+        seasonHand.Should().BeNull();
     }
 
     [Fact]
