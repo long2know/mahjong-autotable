@@ -23,6 +23,18 @@ public class Changsha258RulesetTests
         hand!.Pattern.Should().Be(WinningPattern.Standard);
     }
 
+    [Theory]
+    [InlineData(TileSuit.Bamboos, 5)]
+    [InlineData(TileSuit.Dots, 8)]
+    public void TryGetWinningHand_ReturnsTrue_WhenSmallWinPairIsValidAcrossSuits(TileSuit suit, int rank)
+    {
+        var tiles = CreateWinningHandWithPair(suit, rank);
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pair.Should().Be(new Tile(suit, rank));
+    }
+
     [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenHandIncludesKong()
     {
@@ -188,12 +200,23 @@ public class Changsha258RulesetTests
     }
 
     private static List<Tile> CreateBaselineWinningHand()
+        => CreateWinningHandWithPair(TileSuit.Dots, 2);
+
+    private static List<Tile> CreateWinningHandWithPair(TileSuit suit, int rank)
+    {
+        var tiles = CreateBaselineMelds();
+        tiles.Add(new Tile(suit, rank));
+        tiles.Add(new Tile(suit, rank));
+        return tiles;
+    }
+
+    private static List<Tile> CreateBaselineMelds()
         => new()
         {
             new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
             new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
             new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
-            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
-            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4)
         };
 }
+
