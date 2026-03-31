@@ -35,7 +35,7 @@ gameGroup.MapPost("/", async (
     CreateGameRequest? request,
     CancellationToken cancellationToken) =>
 {
-    var ruleset = ResolveRuleset(request?.Ruleset);
+    var ruleset = RulesetResolver.Resolve(request?.Ruleset);
     var game = new GameEntity
     {
         Id = Guid.NewGuid(),
@@ -198,7 +198,7 @@ gameGroup.MapPost("/{id:guid}/start", async (
     if (game.Tiles.Count == 0)
     {
         var rng = new Random();
-        var ruleset = ResolveRuleset(game.Ruleset);
+        var ruleset = RulesetResolver.Resolve(game.Ruleset);
         var tiles = (ruleset == MahjongRuleset.Changsha258
             ? TileFactory.CreateChangsha258Set()
             : TileFactory.CreateStandardSet())
@@ -483,7 +483,7 @@ gameGroup.MapPost("/{id:guid}/win", async (
         return Results.Conflict(new { message = "Player tiles are invalid." });
     }
 
-    var ruleset = ResolveRuleset(game.Ruleset);
+    var ruleset = RulesetResolver.Resolve(game.Ruleset);
     if (!TryGetWinningHandForRuleset(tileHand, ruleset))
     {
         return Results.Conflict(new { message = "Hand does not meet ruleset requirements." });
@@ -524,32 +524,6 @@ static IEnumerable<string> GetEventAliases(string eventName)
         "GameWon" => ["WinDeclared"],
         _ => []
     };
-
-static MahjongRuleset ResolveRuleset(string? ruleset)
-{
-    if (string.IsNullOrWhiteSpace(ruleset))
-    {
-        return MahjongRuleset.ChineseOfficial;
-    }
-
-    var normalized = string.Concat(ruleset.Trim().Where(char.IsLetterOrDigit));
-    if (string.IsNullOrWhiteSpace(normalized))
-    {
-        return MahjongRuleset.ChineseOfficial;
-    }
-
-    if (string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
-        || (normalized.Contains("Changsha", StringComparison.OrdinalIgnoreCase)
-            && normalized.Contains("258", StringComparison.Ordinal)))
-    {
-        return MahjongRuleset.Changsha258;
-    }
-
-    return Enum.TryParse<MahjongRuleset>(normalized, true, out var parsed)
-        ? parsed
-        : MahjongRuleset.ChineseOfficial;
-}
 
 static bool TryGetWinningHandForRuleset(IReadOnlyList<Tile> tiles, MahjongRuleset ruleset)
     => ruleset switch
@@ -697,7 +671,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
-    var ruleset = ResolveRuleset(game.Ruleset);
+    var ruleset = RulesetResolver.Resolve(game.Ruleset);
     if (TryGetWinningHandForRuleset(botHand, ruleset))
     {
         game.Status = "Completed";
