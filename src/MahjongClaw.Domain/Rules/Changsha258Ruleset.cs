@@ -173,6 +173,11 @@ public static class Changsha258Ruleset
             return melds.Count == 4 && kongsUsed == requiredKongs;
         }
 
+        if (remainingMeldSlots == 0)
+        {
+            return false;
+        }
+
         if (counts[nextTile] >= 4 && kongsUsed < requiredKongs)
         {
             counts[nextTile] -= 4;
