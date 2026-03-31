@@ -20,6 +20,7 @@ public class RulesetResolverTests
     [InlineData("Changsha 258")]
     [InlineData("Changsha 2/5/8")]
     [InlineData("changsha-258")]
+    [InlineData("258")]
     public void Resolve_ReturnsChangsha258_WhenRulesetMatches(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);

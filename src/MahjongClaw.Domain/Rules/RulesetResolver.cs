@@ -39,6 +39,7 @@ public static class RulesetResolver
     private static bool IsChangsha258Normalized(string normalized)
         => string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase)
             || (normalized.Contains("Changsha", StringComparison.OrdinalIgnoreCase)
                 && normalized.Contains("258", StringComparison.Ordinal));
 
