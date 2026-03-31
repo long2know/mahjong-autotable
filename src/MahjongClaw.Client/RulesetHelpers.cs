@@ -5,16 +5,31 @@ namespace MahjongClaw.Client;
 public static class RulesetHelpers
 {
     public static bool IsChangsha258(string? ruleset)
-        => RulesetResolver.IsChangsha258(ruleset);
+        => ResolveRuleset(ruleset) == MahjongRuleset.Changsha258;
 
     public static int GetWallTotal(string? ruleset)
-        => IsChangsha258(ruleset) ? 108 : 144;
+    {
+        var resolved = ResolveRuleset(ruleset);
+        return WallBuilder.GetWallTotal(resolved);
+    }
 
     public static string FormatLabel(string? ruleset)
-        => IsChangsha258(ruleset) ? "Changsha 258 (2/5/8 pair)" : "Chinese Official";
+    {
+        var resolved = ResolveRuleset(ruleset);
+        return resolved == MahjongRuleset.Changsha258
+            ? "Changsha 258 (2/5/8 pair)"
+            : "Chinese Official";
+    }
 
     public static string GetDescription(string? ruleset)
-        => IsChangsha258(ruleset)
-            ? $"{GetWallTotal(ruleset)} suited tiles, no honors/flowers. Win requires 4 melds + a 2/5/8 pair."
-            : $"{GetWallTotal(ruleset)} tiles with honors/flowers. Standard Chinese Official rules.";
+    {
+        var resolved = ResolveRuleset(ruleset);
+        var wallTotal = WallBuilder.GetWallTotal(resolved);
+        return resolved == MahjongRuleset.Changsha258
+            ? $"{wallTotal} suited tiles, no honors/flowers. Win requires 4 melds + a 2/5/8 pair."
+            : $"{wallTotal} tiles with honors/flowers. Standard Chinese Official rules.";
+    }
+
+    private static MahjongRuleset ResolveRuleset(string? ruleset)
+        => RulesetResolver.Resolve(ruleset);
 }
