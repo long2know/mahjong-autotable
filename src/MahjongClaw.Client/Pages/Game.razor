@@ -290,7 +290,9 @@
         _liveState is not null &&
         IsLiveGameActive(_liveState.Status);
 
-    private int WallTotal => _liveState is null ? MockState.WallTotal : _liveState.WallTotal;
+    private int WallTotal => _liveState is null
+        ? RulesetHelpers.GetWallTotal(MockState.Ruleset)
+        : _liveState.WallTotal;
     private int WallRemaining => _liveState is null ? MockState.WallRemaining : Math.Max(0, WallTotal - _liveState.TilesInPlay);
     private string WallPercent => ((WallRemaining / (double)WallTotal) * 100).ToString("0");
     private int DrawsRemaining => _liveState is null ? MockState.DrawsRemaining : Math.Max(0, WallRemaining / 4);
@@ -914,7 +916,7 @@
         public string GameStatus { get; init; } = "In Progress";
         public string Ruleset { get; init; } = "ChineseOfficial";
         public int WallRemaining { get; init; } = 70;
-        public int WallTotal { get; init; } = 144;
+        public int WallTotal => RulesetHelpers.GetWallTotal(Ruleset);
         public int DrawsRemaining { get; init; } = 10;
         public string RoundWind { get; init; } = "East";
         public int HandNumber { get; init; } = 3;

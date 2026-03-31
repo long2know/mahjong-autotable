@@ -46,11 +46,11 @@
                     <div class="form-text">
                         @if (RulesetHelpers.IsChangsha258(CreateRuleset))
                         {
-                            <span>108 suited tiles, no honors/flowers. Small win requires a 2/5/8 pair.</span>
+                            <span>@RulesetHelpers.GetWallTotal(CreateRuleset) suited tiles, no honors/flowers. Small win requires a 2/5/8 pair.</span>
                         }
                         else
                         {
-                            <span>144 tiles with honors/flowers. Standard Chinese Official rules.</span>
+                            <span>@RulesetHelpers.GetWallTotal(CreateRuleset) tiles with honors/flowers. Standard Chinese Official rules.</span>
                         }
                     </div>
                 </div>
