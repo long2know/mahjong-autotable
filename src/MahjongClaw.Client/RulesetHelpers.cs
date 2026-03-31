@@ -15,6 +15,6 @@ public static class RulesetHelpers
 
     public static string GetDescription(string? ruleset)
         => IsChangsha258(ruleset)
-            ? $"{GetWallTotal(ruleset)} suited tiles, no honors/flowers. Small win requires a 2/5/8 pair."
+            ? $"{GetWallTotal(ruleset)} suited tiles, no honors/flowers. Win requires 4 melds + a 2/5/8 pair."
             : $"{GetWallTotal(ruleset)} tiles with honors/flowers. Standard Chinese Official rules.";
 }
