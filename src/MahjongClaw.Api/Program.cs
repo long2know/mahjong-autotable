@@ -199,12 +199,8 @@ gameGroup.MapPost("/{id:guid}/start", async (
     {
         var rng = new Random();
         var ruleset = RulesetResolver.Resolve(game.Ruleset);
-        var tiles = (ruleset == MahjongRuleset.Changsha258
-            ? TileFactory.CreateChangsha258Set()
-            : TileFactory.CreateStandardSet())
-            .OrderBy(_ => rng.Next())
-            .ToList();
-        var tileEntities = tiles.Select((tile, index) => new TileEntity
+        var wall = WallBuilder.BuildShuffledWall(rng, ruleset);
+        var tileEntities = wall.Tiles.Select((tile, index) => new TileEntity
         {
             Id = Guid.NewGuid(),
             GameId = game.Id,
@@ -249,7 +245,7 @@ gameGroup.MapGet("/{id:guid}/state", async (
 
     var tilesInPlay = game.Tiles.Count(tile => !string.Equals(tile.Location, "Wall", StringComparison.OrdinalIgnoreCase));
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
-    var wallTotal = ruleset == MahjongRuleset.Changsha258 ? 108 : 144;
+    var wallTotal = WallBuilder.GetWallTotal(ruleset);
 
     var response = new GameStateResponse(
         game.Id,

@@ -40,6 +40,14 @@ public class WallBuilderTests
         }
     }
 
+    [Theory]
+    [InlineData(MahjongRuleset.ChineseOfficial, 144)]
+    [InlineData(MahjongRuleset.Changsha258, 108)]
+    public void GetWallTotal_ReturnsExpectedCounts(MahjongRuleset ruleset, int expected)
+    {
+        WallBuilder.GetWallTotal(ruleset).Should().Be(expected);
+    }
+
     [Fact]
     public void BuildShuffledWall_ReturnsChangsha258Wall_WhenRulesetSelected()
     {

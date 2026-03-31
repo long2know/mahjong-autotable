@@ -8,6 +8,9 @@ public static class WallBuilder
     public static Wall BuildShuffledWall(Random rng)
         => BuildShuffledWall(rng, MahjongRuleset.ChineseOfficial);
 
+    public static int GetWallTotal(MahjongRuleset ruleset)
+        => ruleset == MahjongRuleset.Changsha258 ? 108 : 144;
+
     public static Wall BuildShuffledWall(Random rng, MahjongRuleset ruleset)
     {
         var tiles = ruleset switch
