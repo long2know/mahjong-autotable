@@ -281,9 +281,7 @@
         => CreateMode == "HumanVsBot" ? $" ({BotSeatCount} bot seat{(BotSeatCount == 1 ? string.Empty : "s")})" : string.Empty;
 
     private string FormatRuleset()
-        => string.Equals(CreateRuleset, "Changsha258", StringComparison.OrdinalIgnoreCase)
-            ? "Changsha 258"
-            : "Chinese Official";
+        => RulesetHelpers.FormatLabel(CreateRuleset);
 
     private async Task ConfigureHumanVsBotSeatsAsync(Guid gameId)
     {

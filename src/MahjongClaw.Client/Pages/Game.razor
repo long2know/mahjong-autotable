@@ -289,7 +289,7 @@
         _liveState is not null &&
         IsLiveGameActive(_liveState.Status);
 
-    private int WallTotal => _liveState is null ? MockState.WallTotal : GetWallTotalForRuleset(_liveState.Ruleset);
+    private int WallTotal => _liveState is null ? MockState.WallTotal : RulesetHelpers.GetWallTotal(_liveState.Ruleset);
     private int WallRemaining => _liveState is null ? MockState.WallRemaining : Math.Max(0, WallTotal - _liveState.TilesInPlay);
     private string WallPercent => ((WallRemaining / (double)WallTotal) * 100).ToString("0");
     private int DrawsRemaining => _liveState is null ? MockState.DrawsRemaining : Math.Max(0, WallRemaining / 4);
@@ -714,9 +714,6 @@
         <= 12 => "West",
         _ => "North"
     };
-
-    private static int GetWallTotalForRuleset(string? ruleset)
-        => string.Equals(ruleset, "Changsha258", StringComparison.OrdinalIgnoreCase) ? 108 : 144;
 
     private static bool IsLiveGameActive(string? status) =>
         string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase) ||
