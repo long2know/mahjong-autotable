@@ -41,7 +41,8 @@ public static class Changsha258Ruleset
             }
         }
 
-        var pairCandidates = GetOrderedTiles(counts)
+        var orderedTiles = GetOrderedTiles(counts);
+        var pairCandidates = orderedTiles
             .Where(tile => counts[tile] >= 2 && IsSmallWinPair(tile))
             .ToList();
 
@@ -56,7 +57,7 @@ public static class Changsha258Ruleset
             candidateCounts[tile] -= 2;
 
             var melds = new List<Meld>();
-            if (!TryFormMelds(candidateCounts, melds, requiredKongs, 0))
+            if (!TryFormMelds(candidateCounts, orderedTiles, melds, requiredKongs, 0))
             {
                 continue;
             }
@@ -121,7 +122,7 @@ public static class Changsha258Ruleset
             .ThenBy(GetTileSortValue)
             .ToList();
 
-    private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds, int requiredKongs, int kongsUsed)
+    private static bool TryFormMelds(Dictionary<Tile, int> counts, IReadOnlyList<Tile> orderedTiles, List<Meld> melds, int requiredKongs, int kongsUsed)
     {
         if (kongsUsed > requiredKongs)
         {
@@ -139,12 +140,8 @@ public static class Changsha258Ruleset
             return false;
         }
 
-        var nextTile = counts
-            .Where(static kvp => kvp.Value > 0)
-            .Select(static kvp => kvp.Key)
-            .OrderBy(GetTileSortBucket)
-            .ThenBy(GetTileSortValue)
-            .FirstOrDefault();
+        var nextTile = orderedTiles
+            .FirstOrDefault(tile => counts.TryGetValue(tile, out var count) && count > 0);
 
         if (nextTile is null)
         {
@@ -156,7 +153,7 @@ public static class Changsha258Ruleset
             counts[nextTile] -= 4;
             melds.Add(new Meld(MeldType.Kong, new[] { nextTile, nextTile, nextTile, nextTile }));
 
-            if (TryFormMelds(counts, melds, requiredKongs, kongsUsed + 1))
+            if (TryFormMelds(counts, orderedTiles, melds, requiredKongs, kongsUsed + 1))
             {
                 return true;
             }
@@ -170,7 +167,7 @@ public static class Changsha258Ruleset
             counts[nextTile] -= 3;
             melds.Add(new Meld(MeldType.Pung, new[] { nextTile, nextTile, nextTile }));
 
-            if (TryFormMelds(counts, melds, requiredKongs, kongsUsed))
+            if (TryFormMelds(counts, orderedTiles, melds, requiredKongs, kongsUsed))
             {
                 return true;
             }
@@ -196,7 +193,7 @@ public static class Changsha258Ruleset
                     counts[tile3] -= 1;
                     melds.Add(new Meld(MeldType.Chow, new[] { nextTile, tile2, tile3 }));
 
-                    if (TryFormMelds(counts, melds, requiredKongs, kongsUsed))
+                    if (TryFormMelds(counts, orderedTiles, melds, requiredKongs, kongsUsed))
                     {
                         return true;
                     }
