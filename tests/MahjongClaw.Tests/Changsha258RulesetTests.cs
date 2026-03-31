@@ -106,6 +106,31 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenHandHasTooFewTiles()
+    {
+        var tiles = CreateBaselineMelds();
+        tiles.Add(new Tile(TileSuit.Dots, 2));
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenHandHasTooManyTiles()
+    {
+        var tiles = CreateBaselineWinningHand();
+        tiles.AddRange(new[]
+        {
+            new Tile(TileSuit.Bamboos, 1),
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 3),
+            new Tile(TileSuit.Bamboos, 4),
+            new Tile(TileSuit.Bamboos, 5)
+        });
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenNoPairExists()
     {
         var tiles = new List<Tile>
