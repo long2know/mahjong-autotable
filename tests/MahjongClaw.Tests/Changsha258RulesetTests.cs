@@ -7,6 +7,32 @@ namespace MahjongClaw.Tests;
 
 public class Changsha258RulesetTests
 {
+    [Theory]
+    [InlineData(TileSuit.Characters, 2)]
+    [InlineData(TileSuit.Dots, 5)]
+    [InlineData(TileSuit.Bamboos, 8)]
+    public void IsSmallWinPair_ReturnsTrue_ForSuitedTwoFiveEight(TileSuit suit, int rank)
+    {
+        Changsha258Ruleset.IsSmallWinPair(new Tile(suit, rank)).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(TileSuit.Characters, 1)]
+    [InlineData(TileSuit.Dots, 4)]
+    [InlineData(TileSuit.Bamboos, 9)]
+    public void IsSmallWinPair_ReturnsFalse_ForNon258SuitedTiles(TileSuit suit, int rank)
+    {
+        Changsha258Ruleset.IsSmallWinPair(new Tile(suit, rank)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsSmallWinPair_ReturnsFalse_ForHonorOrBonusTiles()
+    {
+        Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Winds, 0, Wind.East)).Should().BeFalse();
+        Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Dragons, 0, null, Dragon.Red)).Should().BeFalse();
+        Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Flowers, 1)).Should().BeFalse();
+    }
+
     [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenSmallWinPairIsTwoFiveOrEight()
     {
