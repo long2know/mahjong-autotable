@@ -34,6 +34,24 @@ public class Changsha258RulesetTests
         Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Seasons, 1)).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(TileSuit.Characters, 1)]
+    [InlineData(TileSuit.Dots, 6)]
+    [InlineData(TileSuit.Bamboos, 9)]
+    public void IsAllowedTile_ReturnsTrue_ForSuitedTiles(TileSuit suit, int rank)
+    {
+        Changsha258Ruleset.IsAllowedTile(new Tile(suit, rank)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsAllowedTile_ReturnsFalse_ForHonorOrBonusTiles()
+    {
+        Changsha258Ruleset.IsAllowedTile(new Tile(TileSuit.Winds, 0, Wind.East)).Should().BeFalse();
+        Changsha258Ruleset.IsAllowedTile(new Tile(TileSuit.Dragons, 0, null, Dragon.Red)).Should().BeFalse();
+        Changsha258Ruleset.IsAllowedTile(new Tile(TileSuit.Flowers, 1)).Should().BeFalse();
+        Changsha258Ruleset.IsAllowedTile(new Tile(TileSuit.Seasons, 1)).Should().BeFalse();
+    }
+
     [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenSmallWinPairIsTwoFiveOrEight()
     {
