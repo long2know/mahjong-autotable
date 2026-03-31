@@ -4,6 +4,15 @@ namespace MahjongClaw.Client;
 
 public static class RulesetHelpers
 {
+    public readonly record struct RulesetOption(string Value, string Label);
+
+    public static IReadOnlyList<RulesetOption> GetRulesetOptions()
+        => new[]
+        {
+            new RulesetOption(nameof(MahjongRuleset.ChineseOfficial), FormatLabel(nameof(MahjongRuleset.ChineseOfficial))),
+            new RulesetOption(nameof(MahjongRuleset.Changsha258), FormatLabel(nameof(MahjongRuleset.Changsha258)))
+        };
+
     public static bool IsChangsha258(string? ruleset)
         => ResolveRuleset(ruleset) == MahjongRuleset.Changsha258;
 

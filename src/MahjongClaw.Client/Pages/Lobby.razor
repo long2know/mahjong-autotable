@@ -40,8 +40,10 @@
                 <div class="mb-3">
                     <label class="form-label">Ruleset</label>
                     <select class="form-select" @bind="CreateRuleset">
-                        <option value="ChineseOfficial">Chinese Official</option>
-                        <option value="Changsha258">Changsha 258 (2/5/8 pair)</option>
+                        @foreach (var option in RulesetHelpers.GetRulesetOptions())
+                        {
+                            <option value="@option.Value">@option.Label</option>
+                        }
                     </select>
                     <div class="form-text">
                         <span>@RulesetHelpers.GetDescription(CreateRuleset)</span>
