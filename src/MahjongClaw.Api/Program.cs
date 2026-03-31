@@ -432,11 +432,27 @@ gameGroup.MapPost("/{id:guid}/meld", async (
         return Results.NotFound(new { message = "One or more tiles are missing from the player's hand." });
     }
 
+    if (!Enum.TryParse<MeldType>(request.Type, true, out var meldType))
+    {
+        return Results.BadRequest(new { message = "Invalid meld type." });
+    }
+
+    if (!TryBuildTileHand(tiles, out var tileHand))
+    {
+        return Results.Conflict(new { message = "Meld tiles are invalid." });
+    }
+
+    var ruleset = RulesetResolver.Resolve(game.Ruleset);
+    if (!RulesetMeldValidator.IsValidMeld(tileHand, meldType, ruleset))
+    {
+        return Results.Conflict(new { message = "Meld does not meet ruleset requirements." });
+    }
+
     var meld = new MeldEntity
     {
         GameId = game.Id,
         PlayerId = request.PlayerId,
-        Type = request.Type
+        Type = meldType.ToString()
     };
 
     dbContext.Melds.Add(meld);
