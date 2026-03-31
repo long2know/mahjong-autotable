@@ -154,6 +154,26 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsTrue_WhenQuadSplitsAcrossMeldsWithoutExtraTiles()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Dots, 8));
+        hand.Melds.Should().HaveCount(4);
+        hand.Melds.Should().Contain(meld => meld.Type == MeldType.Pung
+            && meld.Tiles.All(tile => tile == new Tile(TileSuit.Bamboos, 2)));
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenSevenPairsShapeHasStandard258PairDecomposition()
     {
         var tiles = new List<Tile>
