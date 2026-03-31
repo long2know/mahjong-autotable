@@ -50,4 +50,21 @@ public class WallBuilderTests
         wall.RemainingCount.Should().Be(108);
         tiles.Should().OnlyContain(tile => tile.Suit == TileSuit.Characters || tile.Suit == TileSuit.Dots || tile.Suit == TileSuit.Bamboos);
     }
+
+    [Fact]
+    public void BuildShuffledWall_ReturnsChangsha258TileCounts()
+    {
+        var wall = WallBuilder.BuildShuffledWall(new Random(1337), MahjongRuleset.Changsha258);
+        var tiles = wall.Tiles;
+
+        tiles.Should().OnlyContain(tile => !tile.IsHonor && !tile.IsFlower);
+
+        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        {
+            for (var rank = 1; rank <= 9; rank++)
+            {
+                tiles.Count(t => t.Suit == suit && t.Rank == rank).Should().Be(4);
+            }
+        }
+    }
 }
