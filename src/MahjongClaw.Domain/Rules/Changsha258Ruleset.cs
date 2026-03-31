@@ -124,6 +124,11 @@ public static class Changsha258Ruleset
 
     private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
     {
+        if (melds.Count > 4)
+        {
+            return false;
+        }
+
         var nextTile = counts
             .Where(static kvp => kvp.Value > 0)
             .Select(static kvp => kvp.Key)
@@ -133,7 +138,7 @@ public static class Changsha258Ruleset
 
         if (nextTile is null)
         {
-            return true;
+            return melds.Count == 4;
         }
 
         if (counts[nextTile] >= 4)
