@@ -25,6 +25,25 @@ public class RulesetHandAnalyzerTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsTrue_ForChangsha258WithKong()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.Changsha258, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Melds.Should().Contain(meld => meld.Type == MeldType.Kong);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+        hand.Pattern.Should().Be(WinningPattern.Standard);
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_ForChangsha258WhenPairIsNotTwoFiveOrEight()
     {
         var tiles = new List<Tile>
