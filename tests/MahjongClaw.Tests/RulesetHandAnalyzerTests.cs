@@ -106,6 +106,24 @@ public class RulesetHandAnalyzerTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_ForChangsha258SevenPairsShape()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 8),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8)
+        };
+
+        RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.Changsha258, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_ForChineseOfficialSevenPairs()
     {
         var tiles = new List<Tile>
