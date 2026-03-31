@@ -4,7 +4,7 @@ Multiplayer Traditional Chinese Mahjong (backend + rules engine + web UI).
 
 ## Rulesets
 - **Chinese Official**: Standard 144-tile set (3 suits + winds/dragons + flowers/seasons) with minimum-fan scoring gate.
-- **Changsha 258 (minimal)**: 108 suited tiles only (no winds/dragons/flowers/seasons). Standard hand only (4 melds + pair), and the pair must be 2/5/8 (small win). Big-win patterns are not modeled yet.
+- **Changsha 258 (minimal)**: 108 suited tiles only (no winds/dragons/flowers/seasons). Standard hand only (4 melds + pair). Small win requires a 2/5/8 pair. Kongs add extra tiles (up to 18). Big-win patterns are not modeled yet. No minimum fan gate.
 
 ## Prerequisites
 - .NET SDK 10.x
