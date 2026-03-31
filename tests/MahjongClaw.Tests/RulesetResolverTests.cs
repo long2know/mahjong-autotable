@@ -34,6 +34,7 @@ public class RulesetResolverTests
     [InlineData("Changsha")]
     [InlineData("Changsha 2/5/8")]
     [InlineData("Changsha 2-5-8")]
+    [InlineData("Changsha 258 (2/5/8 pair)")]
     [InlineData("changsha-258")]
     [InlineData("CS258")]
     [InlineData("CS-258")]

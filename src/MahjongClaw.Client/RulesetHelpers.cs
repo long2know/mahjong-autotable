@@ -26,7 +26,7 @@ public static class RulesetHelpers
         var resolved = ResolveRuleset(ruleset);
         var wallTotal = WallBuilder.GetWallTotal(resolved);
         return resolved == MahjongRuleset.Changsha258
-            ? $"{wallTotal} suited tiles, no honors/flowers. Win requires 4 melds + a 2/5/8 pair."
+            ? $"{wallTotal} suited tiles (no honors/flowers). Win requires 4 melds + a 2/5/8 pair. No minimum fan gate."
             : $"{wallTotal} tiles with honors/flowers. Standard Chinese Official rules.";
     }
 
