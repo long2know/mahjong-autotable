@@ -56,6 +56,11 @@ public static class RulesetResolver
             return normalized.Contains("258", StringComparison.Ordinal);
         }
 
+        if (normalized.StartsWith("258", StringComparison.Ordinal))
+        {
+            return normalized.Length == 3 || !char.IsDigit(normalized[3]);
+        }
+
         return false;
     }
 

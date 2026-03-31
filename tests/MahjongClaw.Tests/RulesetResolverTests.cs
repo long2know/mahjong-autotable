@@ -29,6 +29,9 @@ public class RulesetResolverTests
     [InlineData("CS 2/5/8 pair")]
     [InlineData("CS 2-5-8")]
     [InlineData("258")]
+    [InlineData("258 pair")]
+    [InlineData("2/5/8 pair")]
+    [InlineData("2-5-8 pair")]
     public void Resolve_ReturnsChangsha258_WhenRulesetMatches(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -47,6 +50,9 @@ public class RulesetResolverTests
     [InlineData("CS 2/5/8 pair")]
     [InlineData("CS 2-5-8")]
     [InlineData("258")]
+    [InlineData("258 pair")]
+    [InlineData("2/5/8 pair")]
+    [InlineData("2-5-8 pair")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetMatches(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
