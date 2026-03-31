@@ -31,6 +31,7 @@ public class Changsha258RulesetTests
         Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Winds, 0, Wind.East)).Should().BeFalse();
         Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Dragons, 0, null, Dragon.Red)).Should().BeFalse();
         Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Flowers, 1)).Should().BeFalse();
+        Changsha258Ruleset.IsSmallWinPair(new Tile(TileSuit.Seasons, 1)).Should().BeFalse();
     }
 
     [Fact]

@@ -70,7 +70,8 @@ public static class Changsha258Ruleset
     }
 
     public static bool IsSmallWinPair(Tile pair)
-        => !pair.IsHonor && !pair.IsFlower && pair.Rank is 2 or 5 or 8;
+        => pair.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
+            && pair.Rank is 2 or 5 or 8;
 
     private static Dictionary<Tile, int> BuildCounts(IReadOnlyList<Tile> tiles)
     {
