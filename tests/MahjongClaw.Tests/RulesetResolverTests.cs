@@ -44,4 +44,22 @@ public class RulesetResolverTests
     {
         RulesetResolver.IsChangsha258("ChineseOfficial").Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("NotChangsha258")]
+    [InlineData("NoChangsha258Rules")]
+    [InlineData("XChangsha258")]
+    public void IsChangsha258_ReturnsFalse_WhenRulesetDoesNotStartWithChangsha(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("NotChangsha258")]
+    [InlineData("NoChangsha258Rules")]
+    [InlineData("XChangsha258")]
+    public void Resolve_ReturnsChineseOfficial_WhenRulesetDoesNotStartWithChangsha(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
+    }
 }

@@ -37,11 +37,21 @@ public static class RulesetResolver
     }
 
     private static bool IsChangsha258Normalized(string normalized)
-        => string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
+    {
+        if (string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase)
-            || (normalized.Contains("Changsha", StringComparison.OrdinalIgnoreCase)
-                && normalized.Contains("258", StringComparison.Ordinal));
+            || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return normalized.Contains("258", StringComparison.Ordinal);
+    }
 
     private static string Normalize(string? ruleset)
         => string.Concat((ruleset ?? string.Empty).Trim().Where(char.IsLetterOrDigit));
