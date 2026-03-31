@@ -45,6 +45,7 @@
                     <span class="badge text-bg-light">Round: @RoundWind</span>
                     <span class="badge text-bg-light">Hand: @HandNumber</span>
                     <span class="badge text-bg-light">Draws left: @DrawsRemaining</span>
+                    <span class="badge text-bg-light">Ruleset: @RulesetLabel</span>
                 </div>
 
                 <div class="wall-progress mt-3">
@@ -298,6 +299,9 @@
     private string TableName => GameId is null ? MockState.TableName : $"Game {GameId}";
     private string TableCode => GameId?.ToString()[..8] ?? MockState.TableCode;
     private string GameStatus => NormalizeGameStatus(_liveState?.Status) ?? MockState.GameStatus;
+    private string RulesetLabel => _liveState is null
+        ? RulesetHelpers.FormatLabel(MockState.Ruleset)
+        : RulesetHelpers.FormatLabel(_liveState.Ruleset);
     private string CurrentPhase => _liveState is null ? "Discard" : NormalizeGameStatus(_liveState.Status);
     private string CurrentTurnName => ResolvePlayerName(_liveState?.CurrentPlayerId, fallback: PlayerEast.Name);
     private string CurrentTurnSeat => ResolveSeat(_liveState?.CurrentPlayerId, fallback: "East");
@@ -866,6 +870,7 @@
         public string TableName { get; init; } = "Golden Dragons";
         public string TableCode { get; init; } = "GD-4821";
         public string GameStatus { get; init; } = "In Progress";
+        public string Ruleset { get; init; } = "ChineseOfficial";
         public int WallRemaining { get; init; } = 70;
         public int WallTotal { get; init; } = 144;
         public int DrawsRemaining { get; init; } = 10;
