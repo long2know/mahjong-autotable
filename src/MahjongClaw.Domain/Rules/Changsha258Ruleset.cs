@@ -4,6 +4,10 @@ namespace MahjongClaw.Domain.Rules;
 
 public static class Changsha258Ruleset
 {
+    public const int MinTiles = 14;
+    public const int MaxKongs = 4;
+    public const int MaxTiles = MinTiles + MaxKongs;
+
     public static bool TryGetWinningHand(IReadOnlyList<Tile> tiles, out WinningHand? hand)
     {
         ArgumentNullException.ThrowIfNull(tiles);
@@ -15,7 +19,7 @@ public static class Changsha258Ruleset
 
         hand = null;
 
-        if (tiles.Count < 14 || tiles.Count > 18)
+        if (tiles.Count < MinTiles || tiles.Count > MaxTiles)
         {
             return false;
         }
@@ -31,7 +35,7 @@ public static class Changsha258Ruleset
             return false;
         }
 
-        var requiredKongs = tiles.Count - 14;
+        var requiredKongs = tiles.Count - MinTiles;
         if (requiredKongs > 0)
         {
             var availableKongs = counts.Values.Count(static count => count >= 4);
