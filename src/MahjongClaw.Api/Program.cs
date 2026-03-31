@@ -501,7 +501,7 @@ gameGroup.MapPost("/{id:guid}/win", async (
     }
 
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
-    if (!TryGetWinningHandForRuleset(tileHand, ruleset))
+    if (!RulesetHandAnalyzer.IsWinningHand(tileHand, ruleset))
     {
         return Results.Conflict(new { message = "Hand does not meet ruleset requirements." });
     }
@@ -540,13 +540,6 @@ static IEnumerable<string> GetEventAliases(string eventName)
         "MeldDeclared" => ["Meld"],
         "GameWon" => ["WinDeclared"],
         _ => []
-    };
-
-static bool TryGetWinningHandForRuleset(IReadOnlyList<Tile> tiles, MahjongRuleset ruleset)
-    => ruleset switch
-    {
-        MahjongRuleset.Changsha258 => Changsha258Ruleset.TryGetWinningHand(tiles, out _),
-        _ => HandAnalyzer.TryGetWinningHand(tiles, out var hand) && hand is not null && ScoreCalculator.MeetsMinimumFan(hand)
     };
 
 static bool TryBuildTileHand(IEnumerable<TileEntity> entities, out List<Tile> tiles)
@@ -689,7 +682,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
     }
 
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
-    if (TryGetWinningHandForRuleset(botHand, ruleset))
+    if (RulesetHandAnalyzer.IsWinningHand(botHand, ruleset))
     {
         game.Status = "Completed";
         game.CurrentPlayerId = botPlayer.Id;
