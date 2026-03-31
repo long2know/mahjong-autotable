@@ -35,6 +35,15 @@ public class GameDealerTests
     }
 
     [Fact]
+    public void InitializeGame_LeavesExpectedWallCount_ForChangsha258()
+    {
+        var rng = new Random(101);
+        var state = GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, rng, MahjongRuleset.Changsha258);
+
+        state.Wall.RemainingCount.Should().Be(108 - 53);
+    }
+
+    [Fact]
     public void InitializeGame_UsesChangsha258TileSet()
     {
         var rng = new Random(123);
