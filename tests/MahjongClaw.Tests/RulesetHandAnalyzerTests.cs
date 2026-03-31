@@ -125,6 +125,23 @@ public class RulesetHandAnalyzerTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsTrue_ForChineseOfficialAllHonors()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green)
+        };
+
+        RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.ChineseOfficial, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.AllHonors);
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_ForChineseOfficialWhenMinimumFanMissing()
     {
         var tiles = new List<Tile>
