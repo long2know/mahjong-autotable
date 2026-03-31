@@ -26,5 +26,5 @@ public static class RulesetHelpers
         => IsChangsha258(ruleset) ? 108 : 144;
 
     public static string FormatLabel(string? ruleset)
-        => IsChangsha258(ruleset) ? "Changsha 258" : "Chinese Official";
+        => IsChangsha258(ruleset) ? "Changsha 258 (2/5/8 pair)" : "Chinese Official";
 }
