@@ -19,6 +19,7 @@ public class RulesetResolverTests
     [InlineData("Changsha258")]
     [InlineData("Changsha 258")]
     [InlineData("Changsha 2/5/8")]
+    [InlineData("Changsha 258 (2/5/8 pair)")]
     [InlineData("changsha-258")]
     [InlineData("258")]
     public void Resolve_ReturnsChangsha258_WhenRulesetMatches(string ruleset)
