@@ -47,6 +47,7 @@
                     <span class="badge text-bg-light">Draws left: @DrawsRemaining</span>
                     <span class="badge text-bg-light">Ruleset: @RulesetLabel</span>
                 </div>
+                <div class="text-muted small mt-2">@RulesetDescription</div>
 
                 <div class="wall-progress mt-3">
                     <div class="d-flex align-items-center justify-content-between">
@@ -304,6 +305,9 @@
     private string RulesetLabel => _liveState is null
         ? RulesetHelpers.FormatLabel(MockState.Ruleset)
         : RulesetHelpers.FormatLabel(_liveState.Ruleset);
+    private string RulesetDescription => _liveState is null
+        ? RulesetHelpers.GetDescription(MockState.Ruleset)
+        : RulesetHelpers.GetDescription(_liveState.Ruleset);
     private string CurrentPhase => _liveState is null ? "Discard" : NormalizeGameStatus(_liveState.Status);
     private string CurrentTurnName => ResolvePlayerName(_liveState?.CurrentPlayerId, fallback: PlayerEast.Name);
     private string CurrentTurnSeat => ResolveSeat(_liveState?.CurrentPlayerId, fallback: "East");

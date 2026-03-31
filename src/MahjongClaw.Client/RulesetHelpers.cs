@@ -12,4 +12,9 @@ public static class RulesetHelpers
 
     public static string FormatLabel(string? ruleset)
         => IsChangsha258(ruleset) ? "Changsha 258 (2/5/8 pair)" : "Chinese Official";
+
+    public static string GetDescription(string? ruleset)
+        => IsChangsha258(ruleset)
+            ? $"{GetWallTotal(ruleset)} suited tiles, no honors/flowers. Small win requires a 2/5/8 pair."
+            : $"{GetWallTotal(ruleset)} tiles with honors/flowers. Standard Chinese Official rules.";
 }

@@ -44,14 +44,7 @@
                         <option value="Changsha258">Changsha 258 (2/5/8 pair)</option>
                     </select>
                     <div class="form-text">
-                        @if (RulesetHelpers.IsChangsha258(CreateRuleset))
-                        {
-                            <span>@RulesetHelpers.GetWallTotal(CreateRuleset) suited tiles, no honors/flowers. Small win requires a 2/5/8 pair.</span>
-                        }
-                        else
-                        {
-                            <span>@RulesetHelpers.GetWallTotal(CreateRuleset) tiles with honors/flowers. Standard Chinese Official rules.</span>
-                        }
+                        <span>@RulesetHelpers.GetDescription(CreateRuleset)</span>
                     </div>
                 </div>
 
