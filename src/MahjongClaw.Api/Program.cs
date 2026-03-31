@@ -98,7 +98,7 @@ gameGroup.MapPost("/", async (
         await SendToGameWithAliases(hubContext, game.Id, "PlayerJoined", joinResponse, cancellationToken);
     }
 
-    var response = new CreateGameResponse(game.Id, game.Status, game.Round, game.CreatedAt, hostPlayerId);
+    var response = new CreateGameResponse(game.Id, game.Status, game.Round, game.CreatedAt, hostPlayerId, ruleset.ToString());
     return Results.Created($"/api/game/{game.Id}", response);
 });
 
@@ -804,7 +804,7 @@ void DealTiles(PlayerEntity player, IReadOnlyList<TileEntity> wallTiles, ref int
 }
 
 internal record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount, string? Ruleset = null);
-internal record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt, Guid? HostPlayerId);
+internal record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt, Guid? HostPlayerId, string Ruleset);
 internal record JoinGameRequest(string Name, string Seat);
 internal record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);
 internal record StartGameResponse(Guid GameId, string Status, Guid? DealerId, Guid? CurrentPlayerId);

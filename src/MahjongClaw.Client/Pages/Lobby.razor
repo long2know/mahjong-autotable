@@ -52,7 +52,7 @@
                     <div class="alert alert-success mt-3 mb-0">
                         <div><strong>Game created:</strong> @CreatedGameId</div>
                         <div class="small">Mode: @FormatCreateMode() @FormatBotSeatSummary()</div>
-                        <div class="small">Ruleset: @FormatRuleset()</div>
+                        <div class="small">Ruleset: @FormatRuleset(CreatedRuleset)</div>
                         <div class="small">Share this ID with other players.</div>
                     </div>
                 }
@@ -178,6 +178,7 @@
     private int BotSeatCount { get; set; } = 1;
 
     private Guid? CreatedGameId { get; set; }
+    private string? CreatedRuleset { get; set; }
     private Guid? LastJoinedPlayerId { get; set; }
     private string? Status { get; set; }
     private string? Error { get; set; }
@@ -213,6 +214,7 @@
 
             var created = await Api.CreateGameAsync(request);
             CreatedGameId = created.Id;
+            CreatedRuleset = created.Ruleset;
             JoinGameId = created.Id.ToString();
             LastJoinedPlayerId = created.HostPlayerId;
 
@@ -226,7 +228,7 @@
                 await ConfigureHumanVsBotSeatsAsync(created.Id);
             }
 
-            Status = $"Game created: {created.Id} ({FormatCreateMode()}{FormatBotSeatSummary()}, {FormatRuleset()}).";
+            Status = $"Game created: {created.Id} ({FormatCreateMode()}{FormatBotSeatSummary()}, {FormatRuleset(created.Ruleset)}).";
         });
     }
 
@@ -280,8 +282,8 @@
     private string FormatBotSeatSummary()
         => CreateMode == "HumanVsBot" ? $" ({BotSeatCount} bot seat{(BotSeatCount == 1 ? string.Empty : "s")})" : string.Empty;
 
-    private string FormatRuleset()
-        => RulesetHelpers.FormatLabel(CreateRuleset);
+    private string FormatRuleset(string? ruleset = null)
+        => RulesetHelpers.FormatLabel(ruleset ?? CreateRuleset);
 
     private async Task ConfigureHumanVsBotSeatsAsync(Guid gameId)
     {
