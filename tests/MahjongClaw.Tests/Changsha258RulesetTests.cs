@@ -324,6 +324,18 @@ public class Changsha258RulesetTests
         Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
     }
 
+    [Fact]
+    public void TryGetWinningHand_Throws_WhenTilesContainNull()
+    {
+        var tiles = CreateBaselineWinningHand();
+        tiles.Add(null!);
+
+        var act = () => Changsha258Ruleset.TryGetWinningHand(tiles, out _);
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("Tiles cannot contain null values.*");
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
