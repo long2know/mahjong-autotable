@@ -56,6 +56,15 @@ public static class Changsha258Ruleset
             var candidateCounts = new Dictionary<Tile, int>(counts);
             candidateCounts[tile] -= 2;
 
+            if (requiredKongs > 0)
+            {
+                var remainingKongs = candidateCounts.Values.Count(static count => count >= 4);
+                if (remainingKongs < requiredKongs)
+                {
+                    continue;
+                }
+            }
+
             var melds = new List<Meld>();
             if (!TryFormMelds(candidateCounts, orderedTiles, melds, requiredKongs, 0))
             {
