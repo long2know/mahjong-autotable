@@ -150,6 +150,23 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_UsesHigherCountSmallWinPair_WhenLowerCountCandidateFails()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenHandIncludesKong()
     {
         var tiles = new List<Tile>
