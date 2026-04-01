@@ -9,7 +9,7 @@ Multiplayer Traditional Chinese Mahjong (backend + rules engine + web UI).
 ### Ruleset selection
 Specify the ruleset string when creating a game. Accepted values include:
 - `ChineseOfficial` (default)
-- `Changsha258` (aliases: `Changsha 258`, `Changsha 2/5/8`, `Changsha 2-5-8`, `CS258`, `CS 2/5/8`, `CS 2-5-8`, `258`)
+- `Changsha258` (aliases: `Changsha 258`, `Changsha 2/5/8`, `Changsha 2-5-8`, `Changsha 2/5/8 pair`, `Changsha 2-5-8 pair`, `CS258`, `CS 2/5/8`, `CS 2-5-8`, `CS 2/5/8 pair`, `258`, `258 pair`, `2/5/8 pair`, `2-5-8 pair`)
 
 ## Prerequisites
 - .NET SDK 10.x
