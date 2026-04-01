@@ -125,4 +125,23 @@ public class Changsha258RulesetTileCountTests
         hand.Melds.Count(meld => meld.Type == MeldType.Kong).Should().Be(3);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
     }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsTrue_WhenExtraTilesMatchFourKongs()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Melds.Should().HaveCount(4);
+        hand.Melds.Count(meld => meld.Type == MeldType.Kong).Should().Be(4);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+    }
 }
