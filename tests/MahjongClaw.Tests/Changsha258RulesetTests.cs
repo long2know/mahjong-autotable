@@ -468,6 +468,31 @@ public class Changsha258RulesetTests
             .WithMessage("Tiles cannot contain null values.*");
     }
 
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenTileCountBelowMinimum()
+    {
+        var tiles = CreateBaselineWinningHand();
+        tiles.RemoveAt(0);
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenTileCountAboveMaximum()
+    {
+        var tiles = CreateBaselineWinningHand();
+        tiles.AddRange(new[]
+        {
+            new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Dots, 6),
+            new Tile(TileSuit.Bamboos, 1),
+            new Tile(TileSuit.Bamboos, 2),
+            new Tile(TileSuit.Bamboos, 3)
+        });
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
