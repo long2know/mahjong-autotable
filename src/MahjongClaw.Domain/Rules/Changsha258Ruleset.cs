@@ -170,6 +170,15 @@ public static class Changsha258Ruleset
             return false;
         }
 
+        if (requiredKongs > 0)
+        {
+            var remainingKongs = counts.Values.Count(static count => count >= 4);
+            if (kongsUsed + remainingKongs < requiredKongs)
+            {
+                return false;
+            }
+        }
+
         var nextTile = orderedTiles
             .FirstOrDefault(tile => counts.TryGetValue(tile, out var count) && count > 0);
 
