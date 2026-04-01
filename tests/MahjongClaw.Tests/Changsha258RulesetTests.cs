@@ -133,6 +133,26 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_AllowsQuadSplitAcrossPungAndChow()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Melds.Count(meld => meld.Type == MeldType.Pung).Should().Be(1);
+        hand.Melds.Count(meld => meld.Type == MeldType.Chow).Should().Be(3);
+        hand.Melds.Should().NotContain(meld => meld.Type == MeldType.Kong);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenHandHasTwoKongs()
     {
         var tiles = new List<Tile>
