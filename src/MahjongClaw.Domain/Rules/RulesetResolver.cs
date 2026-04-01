@@ -93,6 +93,17 @@ public static class RulesetResolver
 
     private static bool IsRepeated258(string digits)
     {
+        if (digits.EndsWith("108", StringComparison.Ordinal))
+        {
+            var prefix = digits[..^3];
+            if (prefix.Length == 0)
+            {
+                return false;
+            }
+
+            return IsRepeated258(prefix);
+        }
+
         if (digits.Length % 3 != 0)
         {
             return false;
