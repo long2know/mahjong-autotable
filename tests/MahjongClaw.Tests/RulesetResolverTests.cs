@@ -74,10 +74,30 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("Changsha 2589")]
+    [InlineData("Changsha 2580 pair")]
+    [InlineData("CS2589")]
+    [InlineData("2589")]
+    public void IsChangsha258_ReturnsFalse_WhenDigitSequenceIsNot258(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("NotChangsha258")]
     [InlineData("NoChangsha258Rules")]
     [InlineData("XChangsha258")]
     public void Resolve_ReturnsChineseOfficial_WhenRulesetDoesNotStartWithChangsha(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
+    }
+
+    [Theory]
+    [InlineData("Changsha 2589")]
+    [InlineData("Changsha 2580 pair")]
+    [InlineData("CS2589")]
+    [InlineData("2589")]
+    public void Resolve_ReturnsChineseOfficial_WhenDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
     }

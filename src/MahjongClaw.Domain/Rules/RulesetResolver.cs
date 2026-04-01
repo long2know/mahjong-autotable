@@ -20,6 +20,11 @@ public static class RulesetResolver
             return MahjongRuleset.Changsha258;
         }
 
+        if (normalized.All(char.IsDigit))
+        {
+            return MahjongRuleset.ChineseOfficial;
+        }
+
         return Enum.TryParse<MahjongRuleset>(normalized, true, out var parsed)
             ? parsed
             : MahjongRuleset.ChineseOfficial;
@@ -46,24 +51,65 @@ public static class RulesetResolver
             return true;
         }
 
-        if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase))
+        if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("258", StringComparison.Ordinal))
         {
-            return normalized.Contains("258", StringComparison.Ordinal);
-        }
-
-        if (normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase))
-        {
-            return normalized.Contains("258", StringComparison.Ordinal);
-        }
-
-        if (normalized.StartsWith("258", StringComparison.Ordinal))
-        {
-            return normalized.Length == 3 || !char.IsDigit(normalized[3]);
+            return ContainsChangsha258Digits(normalized);
         }
 
         return false;
     }
 
+    private static bool ContainsChangsha258Digits(string normalized)
+    {
+        var index = 0;
+        while (index < normalized.Length)
+        {
+            while (index < normalized.Length && !char.IsDigit(normalized[index]))
+            {
+                index++;
+            }
+
+            if (index >= normalized.Length)
+            {
+                break;
+            }
+
+            var start = index;
+            while (index < normalized.Length && char.IsDigit(normalized[index]))
+            {
+                index++;
+            }
+
+            if (IsRepeated258(normalized[start..index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsRepeated258(string digits)
+    {
+        if (digits.Length % 3 != 0)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < digits.Length; i += 3)
+        {
+            if (!digits.AsSpan(i, 3).SequenceEqual("258"))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static string Normalize(string? ruleset)
         => string.Concat((ruleset ?? string.Empty).Trim().Where(char.IsLetterOrDigit));
 }
+
