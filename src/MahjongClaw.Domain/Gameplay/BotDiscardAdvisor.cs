@@ -1,10 +1,11 @@
+using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
 
 namespace MahjongClaw.Domain.Gameplay;
 
 public static class BotDiscardAdvisor
 {
-    public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles)
+    public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
 
@@ -23,7 +24,7 @@ public static class BotDiscardAdvisor
             {
                 Tile = tile,
                 Index = index,
-                Score = GetBotTileKeepScore(tile, handTiles)
+                Score = GetBotTileKeepScore(tile, handTiles, ruleset)
             })
             .OrderBy(candidate => candidate.Score)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
@@ -37,7 +38,7 @@ public static class BotDiscardAdvisor
             .Index;
     }
 
-    private static int GetBotTileKeepScore(Tile tile, IReadOnlyList<Tile> handTiles)
+    private static int GetBotTileKeepScore(Tile tile, IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset)
     {
         if (tile.IsFlower)
         {
@@ -72,7 +73,7 @@ public static class BotDiscardAdvisor
         }
 
         var sevenPairsBias = 0;
-        if (pairCount >= 3)
+        if (ruleset != MahjongRuleset.Changsha258 && pairCount >= 3)
         {
             if (tileMatchCount >= 2)
             {
@@ -94,6 +95,19 @@ public static class BotDiscardAdvisor
                     _ => -1
                 };
             }
+        }
+
+        var smallWinPairBonus = 0;
+        if (ruleset == MahjongRuleset.Changsha258
+            && tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
+            && tile.Rank is 2 or 5 or 8)
+        {
+            smallWinPairBonus = tileMatchCount switch
+            {
+                >= 2 => 3,
+                1 => 1,
+                _ => 0
+            };
         }
 
         var suitedPairCount = handTiles
@@ -252,7 +266,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus;
         }
 
         var rankCounts = suitTiles
@@ -370,7 +384,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus;
     }
 
     private static bool IsTerminalSuitedTile(Tile tile)

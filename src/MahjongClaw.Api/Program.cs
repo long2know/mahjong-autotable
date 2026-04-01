@@ -700,7 +700,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Ok(new BotTurnResponse(drawResponse?.TileId, null, null, game.CurrentPlayerId, true));
     }
 
-    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand);
+    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, ruleset);
     var discardTile = handTiles[discardIndex];
     discardTile.Location = "Discard";
 
