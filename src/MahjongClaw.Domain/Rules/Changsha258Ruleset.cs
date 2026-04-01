@@ -118,32 +118,11 @@ public static class Changsha258Ruleset
             TileSuit.Characters => 0,
             TileSuit.Dots => 1,
             TileSuit.Bamboos => 2,
-            TileSuit.Winds => 3,
-            TileSuit.Dragons => 4,
-            TileSuit.Flowers => 5,
-            _ => 6
+            _ => 3
         };
 
     private static int GetTileSortValue(Tile tile)
-        => tile.Suit switch
-        {
-            TileSuit.Winds => tile.Wind switch
-            {
-                Wind.East => 1,
-                Wind.South => 2,
-                Wind.West => 3,
-                Wind.North => 4,
-                _ => 9
-            },
-            TileSuit.Dragons => tile.Dragon switch
-            {
-                Dragon.Red => 1,
-                Dragon.Green => 2,
-                Dragon.White => 3,
-                _ => 9
-            },
-            _ => tile.Rank
-        };
+        => tile.Rank;
 
     private static List<Tile> GetOrderedTiles(Dictionary<Tile, int> counts)
         => counts.Keys
