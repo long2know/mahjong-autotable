@@ -36,6 +36,8 @@ public class RulesetResolverTests
     [InlineData("258")]
     [InlineData("258 pair")]
     [InlineData("2 5 8")]
+    [InlineData("2/5/8")]
+    [InlineData("2-5-8")]
     [InlineData("2/5/8 pair")]
     [InlineData("2-5-8 pair")]
     public void Resolve_ReturnsChangsha258_WhenRulesetMatches(string ruleset)
@@ -63,6 +65,8 @@ public class RulesetResolverTests
     [InlineData("258")]
     [InlineData("258 pair")]
     [InlineData("2 5 8")]
+    [InlineData("2/5/8")]
+    [InlineData("2-5-8")]
     [InlineData("2/5/8 pair")]
     [InlineData("2-5-8 pair")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetMatches(string ruleset)
