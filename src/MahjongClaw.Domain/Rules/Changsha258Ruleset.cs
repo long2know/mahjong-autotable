@@ -4,6 +4,8 @@ namespace MahjongClaw.Domain.Rules;
 
 public static class Changsha258Ruleset
 {
+    public static readonly IReadOnlySet<int> SmallWinPairRanks = new HashSet<int> { 2, 5, 8 };
+
     public const int RequiredMelds = 4;
     public const int MinTiles = RequiredMelds * 3 + 2;
     public const int MaxKongs = 4;
@@ -88,7 +90,7 @@ public static class Changsha258Ruleset
         ArgumentNullException.ThrowIfNull(pair);
 
         return IsAllowedTile(pair)
-            && pair.Rank is 2 or 5 or 8;
+            && SmallWinPairRanks.Contains(pair.Rank);
     }
 
     public static bool IsAllowedTile(Tile tile)
