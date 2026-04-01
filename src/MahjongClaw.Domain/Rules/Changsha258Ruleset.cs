@@ -4,7 +4,8 @@ namespace MahjongClaw.Domain.Rules;
 
 public static class Changsha258Ruleset
 {
-    public const int MinTiles = 14;
+    public const int RequiredMelds = 4;
+    public const int MinTiles = RequiredMelds * 3 + 2;
     public const int MaxKongs = 4;
     public const int MaxTiles = MinTiles + MaxKongs;
 
@@ -166,7 +167,7 @@ public static class Changsha258Ruleset
             return false;
         }
 
-        var remainingMeldSlots = 4 - melds.Count;
+        var remainingMeldSlots = RequiredMelds - melds.Count;
         if (remainingMeldSlots < 0)
         {
             return false;
@@ -187,7 +188,7 @@ public static class Changsha258Ruleset
 
         if (nextTile is null)
         {
-            return melds.Count == 4 && kongsUsed == requiredKongs;
+            return melds.Count == RequiredMelds && kongsUsed == requiredKongs;
         }
 
         if (remainingMeldSlots == 0)
