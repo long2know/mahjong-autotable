@@ -9,7 +9,7 @@ Multiplayer Traditional Chinese Mahjong (backend + rules engine + web UI).
 ### Ruleset selection
 Specify the ruleset string when creating a game. Accepted values include:
 - `ChineseOfficial` (default)
-- `Changsha258` (aliases: `Changsha`, `Changsha rules`, `Changsha ruleset`, `Changsha 258`, `Changsha 258 minimal`, `Changsha 258 (no honors)`, `Changsha 108 tiles`, `Changsha 2/5/8`, `Changsha 2-5-8`, `Changsha 2 5 8`, `Changsha 2/5/8 pair`, `Changsha 2/5/8 pair, 108 tiles`, `Changsha 2-5-8 pair`, `Changsha 2 5 8 pair`, `Changsha 258 (2/5/8 pair)`, `Changsha 258 (2/5/8 pair, 108 tiles)`, `changsha-258`, `CS258`, `CS-258`, `CS 2/5/8`, `CS 2-5-8`, `CS 2 5 8`, `CS 2/5/8 pair`, `CS 2-5-8 pair`, `CS 2 5 8 pair`, `258`, `258 pair`, `2/5/8`, `2-5-8`, `2 5 8`, `2/5/8 pair`, `2-5-8 pair`, `2 5 8 pair`)
+- `Changsha258` (aliases: `Changsha`, `Changsha rules`, `Changsha ruleset`, `Changsha 258`, `Changsha 258 minimal`, `Changsha 258 (no honors)`, `Changsha 108 tiles`, `Changsha108`, `Changsha 2/5/8`, `Changsha 2-5-8`, `Changsha 2 5 8`, `Changsha 2/5/8 pair`, `Changsha 2/5/8 pair, 108 tiles`, `Changsha 2-5-8 pair`, `Changsha 2 5 8 pair`, `Changsha 258 (2/5/8 pair)`, `Changsha 258 (2/5/8 pair, 108 tiles)`, `Changsha 258 (108 tiles)`, `changsha-258`, `CS258`, `CS-258`, `CS 108`, `CS 108 tiles`, `CS108`, `CS 2/5/8`, `CS 2-5-8`, `CS 2 5 8`, `CS 2/5/8 pair`, `CS 2-5-8 pair`, `CS 2 5 8 pair`, `258`, `258 pair`, `108`, `108 tiles`, `2/5/8`, `2-5-8`, `2 5 8`, `2/5/8 pair`, `2-5-8 pair`, `2 5 8 pair`)
 
 ## Prerequisites
 - .NET SDK 10.x
