@@ -94,6 +94,16 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenBonusTilePresent()
+    {
+        var tiles = CreateBaselineWinningHand();
+        tiles[0] = new Tile(TileSuit.Flowers, 1);
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenSmallWinPairIsTwoFiveOrEight()
     {
         var tiles = new List<Tile>
