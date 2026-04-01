@@ -526,6 +526,21 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenFourKongsHandHasNon258Pair()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenTileAppearsMoreThanFourTimes()
     {
         var tiles = new List<Tile>
