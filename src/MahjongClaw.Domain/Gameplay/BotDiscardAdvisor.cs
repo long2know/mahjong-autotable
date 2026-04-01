@@ -40,6 +40,11 @@ public static class BotDiscardAdvisor
 
     private static int GetBotTileKeepScore(Tile tile, IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset)
     {
+        if (ruleset == MahjongRuleset.Changsha258 && !Changsha258Ruleset.IsAllowedTile(tile))
+        {
+            return -200;
+        }
+
         if (tile.IsFlower)
         {
             return -100;
@@ -98,9 +103,7 @@ public static class BotDiscardAdvisor
         }
 
         var smallWinPairBonus = 0;
-        if (ruleset == MahjongRuleset.Changsha258
-            && tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
-            && tile.Rank is 2 or 5 or 8)
+        if (ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(tile))
         {
             smallWinPairBonus = tileMatchCount switch
             {

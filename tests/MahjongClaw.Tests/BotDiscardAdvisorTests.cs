@@ -144,6 +144,20 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesDiscardingInvalidTile_WhenChangsha258Ruleset()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dots, 2)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrefersKeepingTerminal_WhenOnlyNeighborIsPresent()
     {
         var tiles = new List<Tile>
