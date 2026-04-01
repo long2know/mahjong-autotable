@@ -158,6 +158,22 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesKeepingRequiredSmallWinPair_WhenChangsha258Ruleset()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 6)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Suit.Should().Be(TileSuit.Characters);
+        tiles[discardIndex].Rank.Should().BeOneOf(4, 6);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrefersKeepingTerminal_WhenOnlyNeighborIsPresent()
     {
         var tiles = new List<Tile>
