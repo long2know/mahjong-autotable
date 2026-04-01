@@ -41,13 +41,9 @@ public static class Changsha258Ruleset
             return false;
         }
 
-        if (requiredKongs > 0)
+        if (!HasRequiredKongs(counts, requiredKongs))
         {
-            var availableKongs = counts.Values.Count(static count => count >= 4);
-            if (availableKongs < requiredKongs)
-            {
-                return false;
-            }
+            return false;
         }
 
         var orderedTiles = GetOrderedTiles(counts);
@@ -65,13 +61,9 @@ public static class Changsha258Ruleset
             var candidateCounts = new Dictionary<Tile, int>(counts);
             candidateCounts[tile] -= 2;
 
-            if (requiredKongs > 0)
+            if (!HasRequiredKongs(candidateCounts, requiredKongs))
             {
-                var remainingKongs = candidateCounts.Values.Count(static count => count >= 4);
-                if (remainingKongs < requiredKongs)
-                {
-                    continue;
-                }
+                continue;
             }
 
             var melds = new List<Meld>();
@@ -152,6 +144,21 @@ public static class Changsha258Ruleset
             .ThenBy(GetTileSortValue)
             .ToList();
 
+    private static bool HasRequiredKongs(IReadOnlyDictionary<Tile, int> counts, int requiredKongs)
+        => requiredKongs <= 0
+            || counts.Values.Count(static count => count >= 4) >= requiredKongs;
+
+    private static bool CanSatisfyRemainingKongs(IReadOnlyDictionary<Tile, int> counts, int requiredKongs, int kongsUsed)
+    {
+        if (requiredKongs <= 0)
+        {
+            return true;
+        }
+
+        var remainingKongs = counts.Values.Count(static count => count >= 4);
+        return kongsUsed + remainingKongs >= requiredKongs;
+    }
+
     private static bool TryFormMelds(Dictionary<Tile, int> counts, IReadOnlyList<Tile> orderedTiles, List<Meld> melds, int requiredKongs, int kongsUsed)
     {
         if (kongsUsed > requiredKongs)
@@ -170,13 +177,9 @@ public static class Changsha258Ruleset
             return false;
         }
 
-        if (requiredKongs > 0)
+        if (!CanSatisfyRemainingKongs(counts, requiredKongs, kongsUsed))
         {
-            var remainingKongs = counts.Values.Count(static count => count >= 4);
-            if (kongsUsed + remainingKongs < requiredKongs)
-            {
-                return false;
-            }
+            return false;
         }
 
         var nextTile = orderedTiles
