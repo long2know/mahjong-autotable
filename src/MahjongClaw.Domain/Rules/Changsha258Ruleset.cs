@@ -50,6 +50,9 @@ public static class Changsha258Ruleset
         var orderedTiles = GetOrderedTiles(counts);
         var pairCandidates = orderedTiles
             .Where(tile => counts[tile] >= 2 && IsSmallWinPair(tile))
+            .OrderBy(tile => counts[tile])
+            .ThenBy(GetTileSortBucket)
+            .ThenBy(GetTileSortValue)
             .ToList();
 
         if (pairCandidates.Count == 0)
