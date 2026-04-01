@@ -55,7 +55,8 @@ public static class RulesetResolver
 
         if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase)
-            || normalized.StartsWith("258", StringComparison.Ordinal))
+            || normalized.StartsWith("258", StringComparison.Ordinal)
+            || normalized.StartsWith("108", StringComparison.Ordinal))
         {
             return ContainsChangsha258Digits(normalized);
         }
