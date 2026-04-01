@@ -184,6 +184,21 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenKongHandPairIsNotTwoFiveOrEight()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenOnlyNon258PairCompletesHand()
     {
         var tiles = new List<Tile>
