@@ -26,7 +26,7 @@ public static class RulesetHelpers
     {
         var resolved = ResolveRuleset(ruleset);
         return resolved == MahjongRuleset.Changsha258
-            ? "Changsha 258 (2/5/8 pair)"
+            ? "Changsha 258 (2/5/8 pair, 108 tiles)"
             : "Chinese Official";
     }
 
