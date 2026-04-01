@@ -91,7 +91,7 @@ public static class Changsha258Ruleset
     {
         ArgumentNullException.ThrowIfNull(pair);
 
-        return pair.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
+        return IsAllowedTile(pair)
             && pair.Rank is 2 or 5 or 8;
     }
 
@@ -99,7 +99,7 @@ public static class Changsha258Ruleset
     {
         ArgumentNullException.ThrowIfNull(tile);
 
-        return tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos;
+        return !tile.IsHonor && !tile.IsFlower;
     }
 
     private static Dictionary<Tile, int> BuildCounts(IReadOnlyList<Tile> tiles)
