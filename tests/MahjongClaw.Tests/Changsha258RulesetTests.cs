@@ -69,6 +69,14 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_Throws_WhenTilesNull()
+    {
+        var act = () => Changsha258Ruleset.TryGetWinningHand(null!, out _);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenSmallWinPairIsTwoFiveOrEight()
     {
         var tiles = new List<Tile>
