@@ -77,6 +77,21 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_Throws_WhenTilesContainNull()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 2),
+            null!
+        };
+
+        var act = () => Changsha258Ruleset.TryGetWinningHand(tiles, out _);
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("Tiles cannot contain null values.*");
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenHonorTilePresent()
     {
         var tiles = new List<Tile>
