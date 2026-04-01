@@ -117,8 +117,8 @@ public static class Changsha258Ruleset
         => tile.Suit switch
         {
             TileSuit.Characters => 0,
-            TileSuit.Bamboos => 1,
-            TileSuit.Dots => 2,
+            TileSuit.Dots => 1,
+            TileSuit.Bamboos => 2,
             TileSuit.Winds => 3,
             TileSuit.Dragons => 4,
             TileSuit.Flowers => 5,
