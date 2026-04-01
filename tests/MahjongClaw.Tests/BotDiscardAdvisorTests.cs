@@ -1,5 +1,6 @@
 using FluentAssertions;
 using MahjongClaw.Domain.Gameplay;
+using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
 using System.Linq;
 
@@ -126,6 +127,20 @@ public class BotDiscardAdvisorTests
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
 
         discardIndex.Should().Be(1);
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_PrioritizesKeepingTwoFiveEight_WhenChangsha258Ruleset()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 6)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 6));
     }
 
     [Fact]
