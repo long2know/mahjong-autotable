@@ -7,6 +7,29 @@ namespace MahjongClaw.Tests;
 public class RulesetHandAnalyzerTests
 {
     [Fact]
+    public void TryGetWinningHand_Throws_WhenTilesNull()
+    {
+        var act = () => RulesetHandAnalyzer.TryGetWinningHand(null!, MahjongRuleset.Changsha258, out _);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void TryGetWinningHand_Throws_WhenTilesContainNull()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            null!
+        };
+
+        var act = () => RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.ChineseOfficial, out _);
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("Tiles cannot contain null values.*");
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_ForChangsha258SmallWinPair()
     {
         var tiles = new List<Tile>

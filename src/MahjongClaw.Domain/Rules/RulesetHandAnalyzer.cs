@@ -9,6 +9,13 @@ public static class RulesetHandAnalyzer
 
     public static bool TryGetWinningHand(IReadOnlyList<Tile> tiles, MahjongRuleset ruleset, out WinningHand? hand)
     {
+        ArgumentNullException.ThrowIfNull(tiles);
+
+        if (tiles.Any(static tile => tile is null))
+        {
+            throw new ArgumentException("Tiles cannot contain null values.", nameof(tiles));
+        }
+
         hand = null;
 
         return ruleset switch
