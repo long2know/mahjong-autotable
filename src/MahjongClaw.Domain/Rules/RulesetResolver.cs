@@ -82,7 +82,13 @@ public static class RulesetResolver
                 index++;
             }
 
-            if (IsRepeated258(normalized[start..index]))
+            var digits = normalized[start..index];
+            if (digits == "108")
+            {
+                return true;
+            }
+
+            if (IsRepeated258(digits))
             {
                 return true;
             }
