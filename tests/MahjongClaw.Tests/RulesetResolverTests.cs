@@ -16,6 +16,8 @@ public class RulesetResolverTests
 
     [Theory]
     [InlineData("Changsha")]
+    [InlineData("Changsha rules")]
+    [InlineData("Changsha ruleset")]
     [InlineData("Changsha258")]
     [InlineData("Changsha 258")]
     [InlineData("Changsha 2/5/8")]
@@ -54,6 +56,8 @@ public class RulesetResolverTests
 
     [Theory]
     [InlineData("Changsha")]
+    [InlineData("Changsha rules")]
+    [InlineData("Changsha ruleset")]
     [InlineData("Changsha 2/5/8")]
     [InlineData("Changsha 2-5-8")]
     [InlineData("Changsha 2 5 8")]
