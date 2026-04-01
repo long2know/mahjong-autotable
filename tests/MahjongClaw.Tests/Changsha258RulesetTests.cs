@@ -158,6 +158,28 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_UsesAlternateKong_WhenLowestQuadBlocksMelds()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Bamboos, 2));
+        hand.Melds.Count(meld => meld.Type == MeldType.Kong).Should().Be(1);
+        hand.Melds.Should().Contain(meld => meld.Type == MeldType.Kong
+            && meld.Tiles.All(tile => tile == new Tile(TileSuit.Dots, 5)));
+        hand.Melds.Should().NotContain(meld => meld.Type == MeldType.Kong
+            && meld.Tiles.All(tile => tile == new Tile(TileSuit.Characters, 1)));
+    }
+
+    [Fact]
     public void TryGetWinningHand_AllowsQuadSplitAcrossPungAndChow()
     {
         var tiles = new List<Tile>
