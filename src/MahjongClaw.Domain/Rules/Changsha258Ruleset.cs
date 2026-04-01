@@ -99,7 +99,7 @@ public static class Changsha258Ruleset
     {
         ArgumentNullException.ThrowIfNull(tile);
 
-        return !tile.IsHonor && !tile.IsFlower;
+        return tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos;
     }
 
     private static Dictionary<Tile, int> BuildCounts(IReadOnlyList<Tile> tiles)
