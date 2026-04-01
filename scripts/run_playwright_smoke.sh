@@ -124,11 +124,17 @@ if [[ "$SKIP_DB_MIGRATIONS" == "1" ]]; then
   echo "Skipping database migrations (PLAYWRIGHT_SKIP_DB_MIGRATIONS=1)."
 else
   ensure_dotnet_ef
+  echo "Restoring .NET packages before migrations..."
+  (
+    cd "$ROOT_DIR"
+    dotnet restore MahjongClaw.slnx
+  ) >>"${migrate_log}" 2>&1
+
   echo "Applying database migrations..."
   (
     cd "$ROOT_DIR"
     ASPNETCORE_ENVIRONMENT=Development dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
-  ) >"${migrate_log}" 2>&1
+  ) >>"${migrate_log}" 2>&1
 fi
 
 echo "Starting API at ${API_URL}..."
