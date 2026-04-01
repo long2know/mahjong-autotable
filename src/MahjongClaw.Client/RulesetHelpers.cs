@@ -25,9 +25,13 @@ public static class RulesetHelpers
     public static string FormatLabel(string? ruleset)
     {
         var resolved = ResolveRuleset(ruleset);
-        return resolved == MahjongRuleset.Changsha258
-            ? "Changsha 258 (2/5/8 pair, 108 tiles)"
-            : "Chinese Official";
+        if (resolved == MahjongRuleset.Changsha258)
+        {
+            var wallTotal = WallBuilder.GetWallTotal(resolved);
+            return $"Changsha 258 (2/5/8 pair, {wallTotal} tiles)";
+        }
+
+        return "Chinese Official";
     }
 
     public static string GetDescription(string? ruleset)
