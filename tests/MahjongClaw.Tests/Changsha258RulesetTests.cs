@@ -169,6 +169,40 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsTrue_WhenHandHasFourKongs()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2), new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Melds.Count(meld => meld.Type == MeldType.Kong).Should().Be(4);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenTileCountRequiresFourKongsButOnlyThreeQuadsExist()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2), new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenPairIsNotTwoFiveOrEight()
     {
         var tiles = new List<Tile>
