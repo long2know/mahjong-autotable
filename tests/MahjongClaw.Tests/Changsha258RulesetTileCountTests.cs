@@ -70,4 +70,40 @@ public class Changsha258RulesetTileCountTests
         Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
         hand.Should().BeNull();
     }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsFalse_WhenExtraTilesRequireMultipleKongs()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 8)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsTrue_WhenExtraTilesMatchMultipleKongs()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Melds.Should().HaveCount(4);
+        hand.Melds.Count(meld => meld.Type == MeldType.Kong).Should().Be(2);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+    }
 }
