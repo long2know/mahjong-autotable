@@ -9,8 +9,8 @@ public static class RulesetHelpers
     public static IReadOnlyList<RulesetOption> GetRulesetOptions()
         => new[]
         {
-            new RulesetOption(nameof(MahjongRuleset.ChineseOfficial), FormatLabel(nameof(MahjongRuleset.ChineseOfficial))),
-            new RulesetOption(nameof(MahjongRuleset.Changsha258), FormatLabel(nameof(MahjongRuleset.Changsha258)))
+            new RulesetOption(nameof(MahjongRuleset.Changsha258), FormatLabel(nameof(MahjongRuleset.Changsha258))),
+            new RulesetOption(nameof(MahjongRuleset.ChineseOfficial), FormatLabel(nameof(MahjongRuleset.ChineseOfficial)))
         };
 
     public static bool IsChangsha258(string? ruleset)
