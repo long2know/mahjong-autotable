@@ -27,9 +27,7 @@ public static class RulesetHelpers
         var resolved = ResolveRuleset(ruleset);
         if (resolved == MahjongRuleset.Changsha258)
         {
-            var wallTotal = WallBuilder.GetWallTotal(resolved);
-            var pairRanks = FormatSmallWinPairRanks();
-            return $"Changsha 258 ({pairRanks} suited pair, {wallTotal} tiles)";
+            return "Changsha 258 (default)";
         }
 
         return "Chinese Official";
