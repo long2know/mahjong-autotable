@@ -123,6 +123,12 @@ public static class BotDiscardAdvisor
             ? 6
             : 0;
 
+        var missingSmallWinPairBonus = ruleset == MahjongRuleset.Changsha258
+            && smallWinPairCount == 0
+            && Changsha258Ruleset.IsSmallWinPair(tile)
+            ? 4
+            : 0;
+
         var suitedPairCount = handTiles
             .Where(static other => !other.IsHonor)
             .GroupBy(static other => (other.Suit, other.Rank))
@@ -279,7 +285,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus;
         }
 
         var rankCounts = suitTiles
@@ -397,7 +403,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus;
     }
 
     private static bool IsTerminalSuitedTile(Tile tile)
