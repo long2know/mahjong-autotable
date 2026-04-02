@@ -1,3 +1,5 @@
+using MahjongClaw.Domain.Rules;
+
 namespace MahjongClaw.Persistence.Entities;
 
 public sealed class GameEntity
@@ -7,7 +9,7 @@ public sealed class GameEntity
     public Guid? CurrentPlayerId { get; set; }
     public Guid? DealerId { get; set; }
     public int Round { get; set; }
-    public string Ruleset { get; set; } = "ChineseOfficial";
+    public string Ruleset { get; set; } = nameof(MahjongRuleset.Changsha258);
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public ICollection<PlayerEntity> Players { get; set; } = new List<PlayerEntity>();

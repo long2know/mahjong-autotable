@@ -1,5 +1,6 @@
 @page "/lobby"
 @using MahjongClaw.Client.Services
+@using MahjongClaw.Domain.Rules
 @inject GameApiClient Api
 @inject NavigationManager Navigation
 
@@ -179,7 +180,7 @@
     private string JoinName { get; set; } = string.Empty;
     private string JoinSeat { get; set; } = "South";
     private string CreateMode { get; set; } = "HumanVsHuman";
-    private string CreateRuleset { get; set; } = "Changsha258";
+    private string CreateRuleset { get; set; } = nameof(MahjongRuleset.Changsha258);
     private int BotSeatCount { get; set; } = 1;
 
     private Guid? CreatedGameId { get; set; }

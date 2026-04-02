@@ -1,6 +1,7 @@
 ﻿@page "/game"
 @using System.Linq
 @using MahjongClaw.Client.Services
+@using MahjongClaw.Domain.Rules
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.SignalR.Client
 @inject GameApiClient Api
@@ -918,7 +919,7 @@
         public string TableName { get; init; } = "Golden Dragons";
         public string TableCode { get; init; } = "GD-4821";
         public string GameStatus { get; init; } = "In Progress";
-        public string Ruleset { get; init; } = "Changsha258";
+        public string Ruleset { get; init; } = nameof(MahjongRuleset.Changsha258);
         public int WallRemaining { get; init; } = 70;
         public int WallTotal => RulesetHelpers.GetWallTotal(Ruleset);
         public int DrawsRemaining { get; init; } = 10;
