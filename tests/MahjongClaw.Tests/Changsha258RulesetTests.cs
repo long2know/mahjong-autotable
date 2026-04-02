@@ -201,7 +201,8 @@ public class Changsha258RulesetTests
 
         Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand.Should().NotBeNull();
-        hand!.Melds.Should().Contain(meld => meld.Type == MeldType.Kong);
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Melds.Should().Contain(meld => meld.Type == MeldType.Kong);
         hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
     }
 
