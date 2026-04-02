@@ -16,6 +16,12 @@ public class Changsha258RulesetTests
         Changsha258Ruleset.IsSmallWinPair(new Tile(suit, rank)).Should().BeTrue();
     }
 
+    [Fact]
+    public void SmallWinPairRanks_ContainsOnlyTwoFiveEight()
+    {
+        Changsha258Ruleset.SmallWinPairRanks.Should().BeEquivalentTo(new[] { 2, 5, 8 });
+    }
+
     [Theory]
     [InlineData(TileSuit.Characters, 1)]
     [InlineData(TileSuit.Dots, 4)]
