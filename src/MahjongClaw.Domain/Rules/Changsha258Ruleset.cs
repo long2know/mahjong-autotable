@@ -1,10 +1,11 @@
+using System.Collections.Frozen;
 using MahjongClaw.Domain.Tiles;
 
 namespace MahjongClaw.Domain.Rules;
 
 public static class Changsha258Ruleset
 {
-    public static readonly IReadOnlySet<int> SmallWinPairRanks = new HashSet<int> { 2, 5, 8 };
+    public static readonly IReadOnlySet<int> SmallWinPairRanks = FrozenSet.ToFrozenSet(new[] { 2, 5, 8 });
 
     public const int RequiredMelds = 4;
     public const int MinTiles = RequiredMelds * 3 + 2;
