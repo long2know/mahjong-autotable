@@ -29,7 +29,7 @@ public static class RulesetHelpers
         {
             var wallTotal = WallBuilder.GetWallTotal(resolved);
             var pairRanks = FormatSmallWinPairRanks();
-            return $"Changsha 258 ({pairRanks} pair, {wallTotal} tiles)";
+            return $"Changsha 258 ({pairRanks} suited pair, {wallTotal} tiles)";
         }
 
         return "Chinese Official";
