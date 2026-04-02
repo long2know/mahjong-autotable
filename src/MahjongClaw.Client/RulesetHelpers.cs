@@ -40,7 +40,7 @@ public static class RulesetHelpers
         var resolved = ResolveRuleset(ruleset);
         var wallTotal = WallBuilder.GetWallTotal(resolved);
         return resolved == MahjongRuleset.Changsha258
-            ? $"{wallTotal} suited tiles only (no honors or bonus tiles). Standard hand evaluation only ({Changsha258Ruleset.RequiredMelds} melds + pair, {Changsha258Ruleset.MinTiles}-{Changsha258Ruleset.MaxTiles} tiles with kongs). Winning hands require a suited {FormatSmallWinPairRanks()} pair. Kongs add one tile each (up to {Changsha258Ruleset.MaxKongs}). Special patterns (seven pairs, big-win hands) are not modeled yet. No minimum fan gate."
+            ? $"{wallTotal} suited tiles only (no honors or bonus tiles). Standard hand evaluation only ({Changsha258Ruleset.RequiredMelds} melds + pair, {Changsha258Ruleset.MinTiles}-{Changsha258Ruleset.MaxTiles} tiles with kongs). Winning hands require a suited {FormatSmallWinPairRanks()} pair. Kongs add one tile each (up to {Changsha258Ruleset.MaxKongs}). Special patterns (seven pairs, big-win hands) are not modeled yet. No minimum fan gate. Default ruleset."
             : $"{wallTotal} tiles with honors/flowers. Standard Chinese Official rules (8-fan minimum to win).";
     }
 
