@@ -22,6 +22,12 @@ public class Changsha258RulesetTests
         Changsha258Ruleset.SmallWinPairRanks.Should().BeEquivalentTo(new[] { 2, 5, 8 });
     }
 
+    [Fact]
+    public void SortedSmallWinPairRanks_ReturnsAscendingTwoFiveEight()
+    {
+        Changsha258Ruleset.SortedSmallWinPairRanks.Should().Equal(new[] { 2, 5, 8 });
+    }
+
     [Theory]
     [InlineData(TileSuit.Characters, 1)]
     [InlineData(TileSuit.Dots, 4)]

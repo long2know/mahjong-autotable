@@ -45,7 +45,7 @@ public static class RulesetHelpers
     }
 
     private static string FormatSmallWinPairRanks()
-        => string.Join("/", Changsha258Ruleset.SmallWinPairRanks.OrderBy(rank => rank));
+        => string.Join("/", Changsha258Ruleset.SortedSmallWinPairRanks);
 
     private static MahjongRuleset ResolveRuleset(string? ruleset)
         => RulesetResolver.Resolve(ruleset);

@@ -6,6 +6,7 @@ namespace MahjongClaw.Domain.Rules;
 public static class Changsha258Ruleset
 {
     public static readonly IReadOnlySet<int> SmallWinPairRanks = FrozenSet.ToFrozenSet(new[] { 2, 5, 8 });
+    public static readonly IReadOnlyList<int> SortedSmallWinPairRanks = SmallWinPairRanks.OrderBy(rank => rank).ToArray();
 
     public const int RequiredMelds = 4;
     public const int MinTiles = RequiredMelds * 3 + 2;
