@@ -253,6 +253,26 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_PrefersSmallWinPairThatPreservesRequiredKong()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 7), new(TileSuit.Characters, 8),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+        hand.Melds.Count(meld => meld.Type == MeldType.Kong).Should().Be(1);
+        hand.Melds.Should().Contain(meld => meld.Type == MeldType.Kong
+            && meld.Tiles.All(tile => tile == new Tile(TileSuit.Dots, 2)));
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_WhenHandIncludesKong()
     {
         var tiles = new List<Tile>
