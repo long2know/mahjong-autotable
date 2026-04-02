@@ -50,11 +50,13 @@ public static class RulesetResolver
             || string.Equals(normalized, "ChangshaRules", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "ChangshaRuleset", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "ChangshaDefault", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ChangshaDefaultRuleset", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "ChangshaMinimal", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "ChangshaMini", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CSRules", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CSRuleset", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CSDefault", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "CSDefaultRuleset", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CSMinimal", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CSMini", StringComparison.OrdinalIgnoreCase))
         {
