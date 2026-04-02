@@ -27,7 +27,7 @@ public static class RulesetHelpers
         var resolved = ResolveRuleset(ruleset);
         if (resolved == MahjongRuleset.Changsha258)
         {
-            return $"Changsha 258 (108 tiles, {FormatSmallWinPairRanks()} pair, default)";
+            return $"Changsha 258 ({Changsha258Ruleset.TileSetSize} tiles, {FormatSmallWinPairRanks()} pair, default)";
         }
 
         return "Chinese Official";
