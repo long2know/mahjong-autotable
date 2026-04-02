@@ -1,3 +1,4 @@
+using MahjongClaw.Domain.Rules;
 using MahjongClaw.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,7 +23,9 @@ public sealed class MahjongClawDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Status).HasMaxLength(32);
-            entity.Property(e => e.Ruleset).HasMaxLength(32);
+            entity.Property(e => e.Ruleset)
+                .HasMaxLength(32)
+                .HasDefaultValue(nameof(MahjongRuleset.Changsha258));
             entity.HasMany(e => e.Players)
                 .WithOne(e => e.Game)
                 .HasForeignKey(e => e.GameId);

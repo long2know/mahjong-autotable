@@ -69,8 +69,10 @@ namespace MahjongClaw.Persistence.Migrations
 
                     b.Property<string>("Ruleset")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(32)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Changsha258");
 
                     b.Property<string>("Status")
                         .IsRequired()
