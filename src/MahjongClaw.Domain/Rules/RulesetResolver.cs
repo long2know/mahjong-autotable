@@ -63,7 +63,7 @@ public static class RulesetResolver
                 || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("Suited", StringComparison.OrdinalIgnoreCase))
             {
-                return true;
+                return !normalized.Any(char.IsDigit) || ContainsChangsha258Digits(normalized);
             }
         }
 
