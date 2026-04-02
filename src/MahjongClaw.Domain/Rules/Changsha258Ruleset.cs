@@ -98,7 +98,9 @@ public static class Changsha258Ruleset
         ArgumentNullException.ThrowIfNull(tile);
 
         return tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
-            && tile.Rank is >= 1 and <= 9;
+            && tile.Rank is >= 1 and <= 9
+            && tile.Wind is null
+            && tile.Dragon is null;
     }
 
     private static Dictionary<Tile, int> BuildCounts(IReadOnlyList<Tile> tiles)
@@ -209,7 +211,7 @@ public static class Changsha258Ruleset
             counts[nextTile] += 3;
         }
 
-        if (!nextTile.IsHonor && !nextTile.IsFlower)
+        if (IsAllowedTile(nextTile))
         {
             var rank = nextTile.Rank;
             if (rank <= 7)
