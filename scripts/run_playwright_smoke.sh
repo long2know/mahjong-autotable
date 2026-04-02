@@ -68,6 +68,10 @@ cleanup() {
     mv "$client_appsettings_backup" "$client_appsettings"
   fi
 
+  if [[ -f "$client_appsettings_dev_backup" ]]; then
+    mv "$client_appsettings_dev_backup" "$client_appsettings_dev"
+  fi
+
   if [[ "$exit_code" -ne 0 ]]; then
     echo
     echo "Smoke run failed. Relevant logs:"
@@ -148,15 +152,24 @@ wait_for_http "$API_READY_URL" "API" "$api_pid"
 
 echo "Configuring client API base URL (${API_URL})..."
 cp "$client_appsettings" "$client_appsettings_backup"
-python3 - <<'PY' "$client_appsettings" "$API_URL"
+if [[ -f "$client_appsettings_dev" ]]; then
+  cp "$client_appsettings_dev" "$client_appsettings_dev_backup"
+fi
+python3 - <<'PY' "$API_URL" "$client_appsettings" "$client_appsettings_dev"
 import json, sys
-path, api_url = sys.argv[1], sys.argv[2]
-with open(path, 'r', encoding='utf-8') as f:
-    data = json.load(f)
-data['ApiBaseUrl'] = api_url
-with open(path, 'w', encoding='utf-8') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
+api_url, *paths = sys.argv[1:]
+for path in paths:
+    if not path:
+        continue
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        continue
+    data['ApiBaseUrl'] = api_url
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
 PY
 
 echo "Starting Client at ${CLIENT_URL}..."
