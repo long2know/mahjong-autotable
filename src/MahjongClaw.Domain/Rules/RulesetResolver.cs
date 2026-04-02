@@ -35,7 +35,7 @@ public static class RulesetResolver
         var normalized = Normalize(ruleset);
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            return false;
+            return true;
         }
 
         return IsChangsha258Normalized(normalized);

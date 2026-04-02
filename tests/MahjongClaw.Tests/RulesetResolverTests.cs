@@ -126,6 +126,15 @@ public class RulesetResolverTests
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetEmpty(string? ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
     [Fact]
     public void IsChangsha258_ReturnsFalse_WhenRulesetDoesNotMatch()
     {
