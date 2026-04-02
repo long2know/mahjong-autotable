@@ -53,6 +53,16 @@ public static class RulesetResolver
             return true;
         }
 
+        if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase))
+        {
+            if (normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("SuitedOnly", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
         if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("258", StringComparison.Ordinal)
