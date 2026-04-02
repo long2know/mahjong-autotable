@@ -107,6 +107,35 @@ public class RulesetMeldValidatorTests
     }
 
     [Fact]
+    public void IsValidMeld_RejectsFlowerKong_ForChangsha258()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Flowers, 2),
+            new Tile(TileSuit.Flowers, 2),
+            new Tile(TileSuit.Flowers, 2),
+            new Tile(TileSuit.Flowers, 2)
+        };
+
+        RulesetMeldValidator.IsValidMeld(tiles, MeldType.Kong, MahjongRuleset.Changsha258)
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidMeld_RejectsSeasonPung_ForChangsha258()
+    {
+        var tiles = new[]
+        {
+            new Tile(TileSuit.Seasons, 3),
+            new Tile(TileSuit.Seasons, 3),
+            new Tile(TileSuit.Seasons, 3)
+        };
+
+        RulesetMeldValidator.IsValidMeld(tiles, MeldType.Pung, MahjongRuleset.Changsha258)
+            .Should().BeFalse();
+    }
+
+    [Fact]
     public void IsValidMeld_RejectsSeasonKong_ForChangsha258()
     {
         var tiles = new[]
