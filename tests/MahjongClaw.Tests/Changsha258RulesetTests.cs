@@ -713,7 +713,7 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
-    public void TryGetWinningHand_Throws_WhenTilesContainNull()
+    public void TryGetWinningHand_Throws_WhenTilesContainNull_AfterBaselineHand()
     {
         var tiles = CreateBaselineWinningHand();
         tiles.Add(null!);
