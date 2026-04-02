@@ -6,13 +6,13 @@ public static class RulesetResolver
     {
         if (string.IsNullOrWhiteSpace(ruleset))
         {
-            return MahjongRuleset.ChineseOfficial;
+            return MahjongRuleset.Changsha258;
         }
 
         var normalized = Normalize(ruleset);
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            return MahjongRuleset.ChineseOfficial;
+            return MahjongRuleset.Changsha258;
         }
 
         if (IsChangsha258Normalized(normalized))

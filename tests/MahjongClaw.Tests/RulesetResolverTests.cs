@@ -9,9 +9,9 @@ public class RulesetResolverTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void Resolve_ReturnsChineseOfficial_WhenRulesetEmpty(string? ruleset)
+    public void Resolve_ReturnsChangsha258_WhenRulesetEmpty(string? ruleset)
     {
-        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
     }
 
     [Theory]
