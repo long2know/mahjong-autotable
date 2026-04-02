@@ -6,7 +6,7 @@ namespace MahjongClaw.Domain.Rules;
 public static class WallBuilder
 {
     private static readonly int StandardWallTotal = TileFactory.CreateStandardSet().Count;
-    private static readonly int ChangshaWallTotal = TileFactory.CreateChangsha258Set().Count;
+    private static readonly int ChangshaWallTotal = Changsha258Ruleset.TileSetSize;
 
     public static Wall BuildShuffledWall(Random rng)
         => BuildShuffledWall(rng, MahjongRuleset.Changsha258);

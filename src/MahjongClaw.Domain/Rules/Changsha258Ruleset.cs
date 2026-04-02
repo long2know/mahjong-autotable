@@ -14,6 +14,7 @@ public static class Changsha258Ruleset
     public const int MaxTiles = MinTiles + MaxKongs;
     public const int MinSuitedRank = 1;
     public const int MaxSuitedRank = 9;
+    public const int TileSetSize = 108;
 
     public static bool TryGetWinningHand(IReadOnlyList<Tile> tiles, out WinningHand? hand)
     {

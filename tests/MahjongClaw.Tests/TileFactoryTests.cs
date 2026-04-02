@@ -1,4 +1,5 @@
 using FluentAssertions;
+using MahjongClaw.Domain.Rules;
 using MahjongClaw.Domain.Tiles;
 
 namespace MahjongClaw.Tests;
@@ -74,7 +75,7 @@ public class TileFactoryTests
     {
         var tiles = TileFactory.CreateChangsha258Set();
 
-        tiles.Should().HaveCount(108);
+        tiles.Should().HaveCount(Changsha258Ruleset.TileSetSize);
     }
 
     [Fact]

@@ -40,7 +40,7 @@ public static class TileFactory
 
     public static IReadOnlyList<Tile> CreateChangsha258Set()
     {
-        var tiles = new List<Tile>(108);
+        var tiles = new List<Tile>(Changsha258Ruleset.TileSetSize);
 
         AddSuitedTiles(tiles, Changsha258Ruleset.MinSuitedRank, Changsha258Ruleset.MaxSuitedRank);
 
