@@ -75,6 +75,18 @@ public static class RulesetResolver
             }
         }
 
+        if (normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase))
+        {
+            if (normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("NoHonor", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("SuitedOnly", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("Suited", StringComparison.OrdinalIgnoreCase))
+            {
+                return !normalized.Any(char.IsDigit) || ContainsChangsha258Digits(normalized);
+            }
+        }
+
         if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("258", StringComparison.Ordinal)
