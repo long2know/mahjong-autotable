@@ -31,16 +31,16 @@ public class GameDealerTests
         var rng = new Random(99);
         var state = GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, rng);
 
-        state.Wall.RemainingCount.Should().Be(144 - 53);
+        state.Wall.RemainingCount.Should().Be(108 - 53);
     }
 
     [Fact]
-    public void InitializeGame_LeavesExpectedWallCount_ForChangsha258()
+    public void InitializeGame_LeavesExpectedWallCount_ForChineseOfficial()
     {
         var rng = new Random(101);
-        var state = GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, rng, MahjongRuleset.Changsha258);
+        var state = GameDealer.InitializeGame(new[] { "Alice", "Bob", "Chris", "Dana" }, rng, MahjongRuleset.ChineseOfficial);
 
-        state.Wall.RemainingCount.Should().Be(108 - 53);
+        state.Wall.RemainingCount.Should().Be(144 - 53);
     }
 
     [Fact]

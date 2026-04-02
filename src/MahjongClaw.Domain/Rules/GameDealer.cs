@@ -8,7 +8,7 @@ public static class GameDealer
     public static GameState InitializeGame(
         IReadOnlyList<string> playerNames,
         Random rng,
-        MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
+        MahjongRuleset ruleset = MahjongRuleset.Changsha258)
     {
         ArgumentNullException.ThrowIfNull(playerNames);
         ArgumentNullException.ThrowIfNull(rng);
