@@ -9,7 +9,7 @@ public static class WallBuilder
     private static readonly int ChangshaWallTotal = TileFactory.CreateChangsha258Set().Count;
 
     public static Wall BuildShuffledWall(Random rng)
-        => BuildShuffledWall(rng, MahjongRuleset.ChineseOfficial);
+        => BuildShuffledWall(rng, MahjongRuleset.Changsha258);
 
     public static int GetWallTotal(MahjongRuleset ruleset)
         => ruleset == MahjongRuleset.Changsha258 ? ChangshaWallTotal : StandardWallTotal;
