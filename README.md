@@ -7,9 +7,9 @@ Multiplayer Traditional Chinese Mahjong (backend + rules engine + web UI).
 - **Changsha 258 (minimal)**: 108 suited tiles only (no winds/dragons/flowers/seasons). Standard hand only (4 melds + pair). Small win requires a suited 2/5/8 pair. Kongs add one extra tile each (max 4, 18 tiles total). Big-win patterns are not modeled yet. No minimum fan gate.
 
 ### Ruleset selection
-Specify the ruleset string when creating a game. Accepted values include:
-- `ChineseOfficial` (default)
-- `Changsha258` (aliases: `Changsha`, `Changsha rules`, `Changsha ruleset`, `ChangshaRules`, `ChangshaRuleset`, `Changsha 258`, `Changsha 258 minimal`, `Changsha 258 (no honors)`, `Changsha 108 tiles`, `Changsha108`, `Changsha 2/5/8`, `Changsha 2-5-8`, `Changsha 2 5 8`, `Changsha 2/5/8 pair`, `Changsha 2/5/8 pair, 108 tiles`, `Changsha 2-5-8 pair`, `Changsha 2 5 8 pair`, `Changsha 258 (2/5/8 pair)`, `Changsha 258 (2/5/8 pair, 108 tiles)`, `Changsha 258 (108 tiles)`, `changsha-258`, `CS258`, `CS-258`, `CS 258`, `CS 258 pair`, `CS 108`, `CS 108 tiles`, `CS108`, `CS 2/5/8`, `CS 2-5-8`, `CS 2 5 8`, `CS 2/5/8 pair`, `CS 2-5-8 pair`, `CS 2 5 8 pair`, `258`, `258 pair`, `108`, `108 tiles`, `2/5/8`, `2-5-8`, `2 5 8`, `2/5/8 pair`, `2-5-8 pair`, `2 5 8 pair`)
+Specify the ruleset string when creating a game. If omitted, the API defaults to Changsha 258. Accepted values include:
+- `ChineseOfficial`
+- `Changsha258` (default when omitted; aliases: `Changsha`, `Changsha rules`, `Changsha ruleset`, `ChangshaRules`, `ChangshaRuleset`, `Changsha 258`, `Changsha 258 minimal`, `Changsha 258 (no honors)`, `Changsha 108 tiles`, `Changsha108`, `Changsha 2/5/8`, `Changsha 2-5-8`, `Changsha 2 5 8`, `Changsha 2/5/8 pair`, `Changsha 2/5/8 pair, 108 tiles`, `Changsha 2-5-8 pair`, `Changsha 2 5 8 pair`, `Changsha 258 (2/5/8 pair)`, `Changsha 258 (2/5/8 pair, 108 tiles)`, `Changsha 258 (108 tiles)`, `changsha-258`, `CS258`, `CS-258`, `CS 258`, `CS 258 pair`, `CS 108`, `CS 108 tiles`, `CS108`, `CS 2/5/8`, `CS 2-5-8`, `CS 2 5 8`, `CS 2/5/8 pair`, `CS 2-5-8 pair`, `CS 2 5 8 pair`, `258`, `258 pair`, `108`, `108 tiles`, `2/5/8`, `2-5-8`, `2 5 8`, `2/5/8 pair`, `2-5-8 pair`, `2 5 8 pair`)
 
 Example create game request (Changsha 258):
 ```

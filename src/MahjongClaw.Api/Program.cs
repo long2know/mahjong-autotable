@@ -35,7 +35,9 @@ gameGroup.MapPost("/", async (
     CreateGameRequest? request,
     CancellationToken cancellationToken) =>
 {
-    var ruleset = RulesetResolver.Resolve(request?.Ruleset);
+    var ruleset = string.IsNullOrWhiteSpace(request?.Ruleset)
+        ? MahjongRuleset.Changsha258
+        : RulesetResolver.Resolve(request?.Ruleset);
     var game = new GameEntity
     {
         Id = Guid.NewGuid(),
