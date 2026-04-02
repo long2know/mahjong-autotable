@@ -918,7 +918,7 @@
         public string TableName { get; init; } = "Golden Dragons";
         public string TableCode { get; init; } = "GD-4821";
         public string GameStatus { get; init; } = "In Progress";
-        public string Ruleset { get; init; } = "ChineseOfficial";
+        public string Ruleset { get; init; } = "Changsha258";
         public int WallRemaining { get; init; } = 70;
         public int WallTotal => RulesetHelpers.GetWallTotal(Ruleset);
         public int DrawsRemaining { get; init; } = 10;
@@ -926,18 +926,18 @@
         public int HandNumber { get; init; } = 3;
 
         public PlayerView PlayerNorth { get; init; } = new("North", "Kai", 1200, new() { "🀐", "🀑", "🀒" }, new(), 12, true, false);
-        public PlayerView PlayerWest { get; init; } = new("West", "Mina", 800, new() { "🀀", "🀁" }, new(), 11, false, false);
+        public PlayerView PlayerWest { get; init; } = new("West", "Mina", 800, new() { "🀓", "🀔" }, new(), 11, false, false);
         public PlayerView PlayerEast { get; init; } = new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), 13, false, true);
         public PlayerView PlayerSouth { get; init; } = new("South", "You", 920, new(), new()
         {
-            "🀄 5 Bamboo", "🀅 7 Dots", "🀀 East", "🀂 South", "🀆 9 Dots", "🀐 1 Character",
+            "🀄 5 Bamboo", "🀅 7 Dots", "🀑 2 Character", "🀔 5 Character", "🀆 9 Dots", "🀐 1 Character",
             "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo",
             "🀞 6 Bamboo", "🀟 7 Bamboo"
         }, 13, false, false);
 
         public IReadOnlyList<string> CenterDiscards { get; init; } = new[]
         {
-            "🀀", "🀁", "🀂", "🀃", "🀅", "🀆", "🀈", "🀐", "🀑", "🀒"
+            "🀓", "🀔", "🀕", "🀖", "🀗", "🀘", "🀙", "🀚", "🀛", "🀜"
         };
 
         public IReadOnlyList<(string Name, int Score)> Scoreboard { get; init; } = new[]
@@ -952,7 +952,7 @@
         {
             ("19:12", "Jun drew a tile."),
             ("19:11", "Mina discarded 🀅 7 Dots."),
-            ("19:10", "You declared Pung on 🀀 East."),
+            ("19:10", "You declared Pung on 🀔 5 Character."),
             ("19:09", "Kai discarded 🀓 4 Character.")
         };
 
