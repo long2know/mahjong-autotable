@@ -931,7 +931,7 @@
         public PlayerView PlayerEast { get; init; } = new("East", "Jun", 1340, new() { "🀙", "🀚", "🀛", "🀜" }, new(), 13, false, true);
         public PlayerView PlayerSouth { get; init; } = new("South", "You", 920, new(), new()
         {
-            "🀄 5 Bamboo", "🀅 7 Dots", "🀑 2 Character", "🀔 5 Character", "🀆 9 Dots", "🀐 1 Character",
+            "🀝 5 Bamboo", "🀗 7 Dots", "🀑 2 Character", "🀔 5 Character", "🀆 9 Dots", "🀐 1 Character",
             "🀓 4 Character", "🀙 1 Bamboo", "🀚 2 Bamboo", "🀛 3 Bamboo", "🀝 5 Bamboo",
             "🀞 6 Bamboo", "🀟 7 Bamboo"
         }, 13, false, false);
@@ -952,16 +952,16 @@
         public IReadOnlyList<(string Timestamp, string Description)> RecentActions { get; init; } = new[]
         {
             ("19:12", "Jun drew a tile."),
-            ("19:11", "Mina discarded 🀅 7 Dots."),
+            ("19:11", "Mina discarded 🀗 7 Dots."),
             ("19:10", "You declared Pung on 🀔 5 Character."),
             ("19:09", "Kai discarded 🀓 4 Character.")
         };
 
         public IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds { get; init; } = new[]
         {
-            ("You", "Pung", new List<string> { "🀀", "🀀", "🀀" }),
+            ("You", "Pung", new List<string> { "🀐", "🀐", "🀐" }),
             ("Jun", "Chow", new List<string> { "🀙", "🀚", "🀛" }),
-            ("Kai", "Kong", new List<string> { "🀅", "🀅", "🀅", "🀅" })
+            ("Kai", "Kong", new List<string> { "🀟", "🀟", "🀟", "🀟" })
         };
 
         public IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats { get; init; } = new[]
