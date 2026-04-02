@@ -28,6 +28,13 @@ public class Changsha258RulesetTests
         Changsha258Ruleset.SortedSmallWinPairRanks.Should().Equal(new[] { 2, 5, 8 });
     }
 
+    [Fact]
+    public void TileLimitConstants_AreConsistentWithMeldCounts()
+    {
+        Changsha258Ruleset.MinTiles.Should().Be(Changsha258Ruleset.RequiredMelds * 3 + 2);
+        Changsha258Ruleset.MaxTiles.Should().Be(Changsha258Ruleset.MinTiles + Changsha258Ruleset.MaxKongs);
+    }
+
     [Theory]
     [InlineData(TileSuit.Characters, 1)]
     [InlineData(TileSuit.Dots, 4)]
