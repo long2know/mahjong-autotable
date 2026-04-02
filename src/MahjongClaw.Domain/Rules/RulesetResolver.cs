@@ -48,7 +48,9 @@ public static class RulesetResolver
             || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CS258", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "ChangshaRules", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalized, "ChangshaRuleset", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(normalized, "ChangshaRuleset", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "CSRules", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "CSRuleset", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
