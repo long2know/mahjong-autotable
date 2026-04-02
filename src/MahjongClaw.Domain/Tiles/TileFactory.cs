@@ -1,3 +1,5 @@
+using MahjongClaw.Domain.Rules;
+
 namespace MahjongClaw.Domain.Tiles;
 
 public static class TileFactory
@@ -6,7 +8,7 @@ public static class TileFactory
     {
         var tiles = new List<Tile>(144);
 
-        AddSuitedTiles(tiles);
+        AddSuitedTiles(tiles, 1, 9);
 
         // Winds: East, South, West, North (four copies each)
         foreach (Wind wind in Enum.GetValues(typeof(Wind)))
@@ -40,17 +42,17 @@ public static class TileFactory
     {
         var tiles = new List<Tile>(108);
 
-        AddSuitedTiles(tiles);
+        AddSuitedTiles(tiles, Changsha258Ruleset.MinSuitedRank, Changsha258Ruleset.MaxSuitedRank);
 
         return tiles;
     }
 
-    private static void AddSuitedTiles(ICollection<Tile> tiles)
+    private static void AddSuitedTiles(ICollection<Tile> tiles, int minRank, int maxRank)
     {
-        // Suited tiles: 1-9, four copies each
+        // Suited tiles: min-max ranks, four copies each
         foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
         {
-            for (var rank = 1; rank <= 9; rank++)
+            for (var rank = minRank; rank <= maxRank; rank++)
             {
                 for (var copy = 0; copy < 4; copy++)
                 {
