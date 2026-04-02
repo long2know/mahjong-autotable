@@ -34,8 +34,7 @@ public static class Changsha258Ruleset
             return false;
         }
 
-        var counts = BuildCounts(tiles);
-        if (counts.Values.Any(static count => count > 4))
+        if (!TryBuildCounts(tiles, out var counts))
         {
             return false;
         }
@@ -105,15 +104,27 @@ public static class Changsha258Ruleset
             && tile.Dragon is null;
     }
 
-    private static Dictionary<Tile, int> BuildCounts(IReadOnlyList<Tile> tiles)
+    private static bool TryBuildCounts(IReadOnlyList<Tile> tiles, out Dictionary<Tile, int> counts)
     {
-        var counts = new Dictionary<Tile, int>();
+        counts = new Dictionary<Tile, int>();
         foreach (var tile in tiles)
         {
-            counts[tile] = counts.TryGetValue(tile, out var count) ? count + 1 : 1;
+            if (!counts.TryGetValue(tile, out var count))
+            {
+                counts[tile] = 1;
+                continue;
+            }
+
+            count++;
+            if (count > 4)
+            {
+                return false;
+            }
+
+            counts[tile] = count;
         }
 
-        return counts;
+        return true;
     }
 
     private static int GetTileSortBucket(Tile tile)
