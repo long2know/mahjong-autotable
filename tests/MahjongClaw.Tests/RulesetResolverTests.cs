@@ -71,6 +71,10 @@ public class RulesetResolverTests
     [InlineData("Changsha 258 rules")]
     [InlineData("Changsha 2/5/8 rules")]
     [InlineData("Changsha 2-5-8 rules")]
+    [InlineData("ChangshaMinimal")]
+    [InlineData("CSRules")]
+    [InlineData("CSRuleset")]
+    [InlineData("CSMinimal")]
     public void Resolve_ReturnsChangsha258_WhenRulesetMatches(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -131,6 +135,10 @@ public class RulesetResolverTests
     [InlineData("Changsha 258 rules")]
     [InlineData("Changsha 2/5/8 rules")]
     [InlineData("Changsha 2-5-8 rules")]
+    [InlineData("ChangshaMinimal")]
+    [InlineData("CSRules")]
+    [InlineData("CSRuleset")]
+    [InlineData("CSMinimal")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetMatches(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
