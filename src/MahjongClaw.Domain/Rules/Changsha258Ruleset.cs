@@ -16,6 +16,19 @@ public static class Changsha258Ruleset
     public const int MaxSuitedRank = 9;
     public const int TileSetSize = 108;
 
+    public static bool TryGetRequiredKongCount(int tileCount, out int requiredKongs)
+    {
+        requiredKongs = 0;
+
+        if (tileCount < MinTiles || tileCount > MaxTiles)
+        {
+            return false;
+        }
+
+        requiredKongs = tileCount - MinTiles;
+        return true;
+    }
+
     public static bool TryGetWinningHand(IReadOnlyList<Tile> tiles, out WinningHand? hand)
     {
         ArgumentNullException.ThrowIfNull(tiles);
@@ -27,7 +40,7 @@ public static class Changsha258Ruleset
 
         hand = null;
 
-        if (tiles.Count < MinTiles || tiles.Count > MaxTiles)
+        if (!TryGetRequiredKongCount(tiles.Count, out var requiredKongs))
         {
             return false;
         }
@@ -38,12 +51,6 @@ public static class Changsha258Ruleset
         }
 
         if (!TryBuildCounts(tiles, out var counts))
-        {
-            return false;
-        }
-
-        var requiredKongs = tiles.Count - MinTiles;
-        if (requiredKongs > MaxKongs)
         {
             return false;
         }

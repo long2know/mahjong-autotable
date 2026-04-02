@@ -36,6 +36,27 @@ public class Changsha258RulesetTests
     }
 
     [Theory]
+    [InlineData(Changsha258Ruleset.MinTiles, 0)]
+    [InlineData(Changsha258Ruleset.MinTiles + 1, 1)]
+    [InlineData(Changsha258Ruleset.MinTiles + 2, 2)]
+    [InlineData(Changsha258Ruleset.MinTiles + 3, 3)]
+    [InlineData(Changsha258Ruleset.MinTiles + 4, 4)]
+    public void TryGetRequiredKongCount_ReturnsTrue_ForValidTileCounts(int tileCount, int expectedKongs)
+    {
+        Changsha258Ruleset.TryGetRequiredKongCount(tileCount, out var requiredKongs).Should().BeTrue();
+        requiredKongs.Should().Be(expectedKongs);
+    }
+
+    [Theory]
+    [InlineData(Changsha258Ruleset.MinTiles - 1)]
+    [InlineData(Changsha258Ruleset.MaxTiles + 1)]
+    public void TryGetRequiredKongCount_ReturnsFalse_ForOutOfRangeTileCounts(int tileCount)
+    {
+        Changsha258Ruleset.TryGetRequiredKongCount(tileCount, out var requiredKongs).Should().BeFalse();
+        requiredKongs.Should().Be(0);
+    }
+
+    [Theory]
     [InlineData(TileSuit.Characters, 1)]
     [InlineData(TileSuit.Dots, 4)]
     [InlineData(TileSuit.Bamboos, 9)]
