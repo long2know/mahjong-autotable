@@ -58,8 +58,10 @@ public static class RulesetResolver
         if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase))
         {
             if (normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("NoHonor", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("SuitedOnly", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase))
+                || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("Suited", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
