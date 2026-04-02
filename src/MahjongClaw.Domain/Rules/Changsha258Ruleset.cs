@@ -12,6 +12,8 @@ public static class Changsha258Ruleset
     public const int MinTiles = RequiredMelds * 3 + 2;
     public const int MaxKongs = 4;
     public const int MaxTiles = MinTiles + MaxKongs;
+    public const int MinSuitedRank = 1;
+    public const int MaxSuitedRank = 9;
 
     public static bool TryGetWinningHand(IReadOnlyList<Tile> tiles, out WinningHand? hand)
     {
@@ -99,7 +101,7 @@ public static class Changsha258Ruleset
         ArgumentNullException.ThrowIfNull(tile);
 
         return tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
-            && tile.Rank is >= 1 and <= 9
+            && tile.Rank is >= MinSuitedRank and <= MaxSuitedRank
             && tile.Wind is null
             && tile.Dragon is null;
     }
