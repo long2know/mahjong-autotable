@@ -548,6 +548,24 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_PrefersSmallWinPairThatPreservesCompleteMelds()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+        hand.Melds.Should().HaveCount(4);
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenOnlyNon258PairCompletesHand()
     {
         var tiles = new List<Tile>
