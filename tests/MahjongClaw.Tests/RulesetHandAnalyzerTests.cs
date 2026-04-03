@@ -134,6 +134,46 @@ public class RulesetHandAnalyzerTests
     }
 
     [Fact]
+    public void IsWinningHand_ReturnsFalse_ForChangsha258WhenHonorOrBonusTilesPresent()
+    {
+        var honorTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2)
+        };
+
+        RulesetHandAnalyzer.IsWinningHand(honorTiles, MahjongRuleset.Changsha258).Should().BeFalse();
+
+        var bonusTiles = new List<Tile>
+        {
+            new(TileSuit.Flowers, 1),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2)
+        };
+
+        RulesetHandAnalyzer.IsWinningHand(bonusTiles, MahjongRuleset.Changsha258).Should().BeFalse();
+
+        var seasonTiles = new List<Tile>
+        {
+            new(TileSuit.Seasons, 1),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 2)
+        };
+
+        RulesetHandAnalyzer.IsWinningHand(seasonTiles, MahjongRuleset.Changsha258).Should().BeFalse();
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_ForChangsha258WhenHonorOrBonusTilesPresent()
     {
         var honorTiles = new List<Tile>
