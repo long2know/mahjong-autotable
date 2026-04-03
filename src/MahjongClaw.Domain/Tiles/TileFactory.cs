@@ -4,11 +4,18 @@ namespace MahjongClaw.Domain.Tiles;
 
 public static class TileFactory
 {
+    private static readonly TileSuit[] StandardSuitedSuits =
+    {
+        TileSuit.Characters,
+        TileSuit.Dots,
+        TileSuit.Bamboos
+    };
+
     public static IReadOnlyList<Tile> CreateStandardSet()
     {
         var tiles = new List<Tile>(144);
 
-        AddSuitedTiles(tiles, 1, 9);
+        AddSuitedTiles(tiles, StandardSuitedSuits, 1, 9);
 
         // Winds: East, South, West, North (four copies each)
         foreach (Wind wind in Enum.GetValues(typeof(Wind)))
@@ -42,15 +49,15 @@ public static class TileFactory
     {
         var tiles = new List<Tile>(Changsha258Ruleset.TileSetSize);
 
-        AddSuitedTiles(tiles, Changsha258Ruleset.MinSuitedRank, Changsha258Ruleset.MaxSuitedRank);
+        AddSuitedTiles(tiles, Changsha258Ruleset.AllowedSuits, Changsha258Ruleset.MinSuitedRank, Changsha258Ruleset.MaxSuitedRank);
 
         return tiles;
     }
 
-    private static void AddSuitedTiles(ICollection<Tile> tiles, int minRank, int maxRank)
+    private static void AddSuitedTiles(ICollection<Tile> tiles, IEnumerable<TileSuit> suits, int minRank, int maxRank)
     {
         // Suited tiles: min-max ranks, four copies each
-        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        foreach (var suit in suits)
         {
             for (var rank = minRank; rank <= maxRank; rank++)
             {

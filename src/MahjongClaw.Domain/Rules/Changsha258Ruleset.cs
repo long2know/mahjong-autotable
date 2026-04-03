@@ -7,6 +7,12 @@ public static class Changsha258Ruleset
 {
     public static readonly IReadOnlySet<int> SmallWinPairRanks = FrozenSet.ToFrozenSet(new[] { 2, 5, 8 });
     public static readonly IReadOnlyList<int> SortedSmallWinPairRanks = SmallWinPairRanks.OrderBy(rank => rank).ToArray();
+    public static readonly IReadOnlySet<TileSuit> AllowedSuits = FrozenSet.ToFrozenSet(new[]
+    {
+        TileSuit.Characters,
+        TileSuit.Dots,
+        TileSuit.Bamboos
+    });
 
     public const int RequiredMelds = 4;
     public const int MinTiles = RequiredMelds * 3 + 2;
@@ -108,10 +114,8 @@ public static class Changsha258Ruleset
     {
         ArgumentNullException.ThrowIfNull(tile);
 
-        return tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos
-            && tile.Rank is >= MinSuitedRank and <= MaxSuitedRank
-            && tile.Wind is null
-            && tile.Dragon is null;
+        return AllowedSuits.Contains(tile.Suit)
+            && tile.Rank is >= MinSuitedRank and <= MaxSuitedRank;
     }
 
     private static bool TryBuildCounts(IReadOnlyList<Tile> tiles, out Dictionary<Tile, int> counts)
