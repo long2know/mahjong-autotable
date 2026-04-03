@@ -147,6 +147,17 @@ public static class RulesetResolver
             return IsRepeated258(prefix);
         }
 
+        if (digits.StartsWith("108", StringComparison.Ordinal))
+        {
+            var suffix = digits[3..];
+            if (suffix.Length == 0)
+            {
+                return false;
+            }
+
+            return IsRepeated258(suffix);
+        }
+
         if (digits.Length % 3 != 0)
         {
             return false;
