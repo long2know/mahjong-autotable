@@ -25,12 +25,13 @@ public static class RulesetHelpers
     public static string FormatLabel(string? ruleset)
     {
         var resolved = ResolveRuleset(ruleset);
+        var wallTotal = WallBuilder.GetWallTotal(resolved);
         if (resolved == MahjongRuleset.Changsha258)
         {
-            return $"Changsha 258 ({Changsha258Ruleset.TileSetSize} suited tiles, {FormatSmallWinPairRanks()} pair required, default)";
+            return $"Changsha 258 ({wallTotal} suited tiles, {FormatSmallWinPairRanks()} pair required, default)";
         }
 
-        return "Chinese Official";
+        return $"Chinese Official ({wallTotal} tiles)";
     }
 
     public static string GetDescription(string? ruleset)
