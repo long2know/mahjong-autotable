@@ -65,29 +65,10 @@ public static class RulesetResolver
             return true;
         }
 
-        if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase))
+        if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase))
         {
-            if (normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("NoHonor", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("NoHonours", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("NoHonour", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("SuitedOnly", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("Suited", StringComparison.OrdinalIgnoreCase))
-            {
-                return !normalized.Any(char.IsDigit) || ContainsChangsha258Digits(normalized);
-            }
-        }
-
-        if (normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase))
-        {
-            if (normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("NoHonor", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("NoHonours", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("NoHonour", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("SuitedOnly", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("Suited", StringComparison.OrdinalIgnoreCase))
+            if (ContainsChangshaKeywords(normalized))
             {
                 return !normalized.Any(char.IsDigit) || ContainsChangsha258Digits(normalized);
             }
@@ -103,6 +84,21 @@ public static class RulesetResolver
 
         return false;
     }
+
+    private static bool ContainsChangshaKeywords(string normalized)
+        => normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("NoHonor", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("NoHonours", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("NoHonour", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("SuitedOnly", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Suited", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Ruleset", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Rules", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Rule", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Default", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Minimal", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("Mini", StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsChangsha258Digits(string normalized)
     {
