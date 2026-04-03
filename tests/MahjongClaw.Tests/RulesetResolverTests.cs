@@ -320,4 +320,48 @@ public class RulesetResolverTests
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
     }
+
+    [Theory]
+    [InlineData("Changsha two five eight")]
+    [InlineData("Changsha two five eight pair")]
+    [InlineData("CS two five eight")]
+    [InlineData("Two five eight")]
+    [InlineData("er wu ba")]
+    [InlineData("er wu ba pair")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetUsesWorded258Alias(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("Changsha two five eight")]
+    [InlineData("Changsha two five eight pair")]
+    [InlineData("CS two five eight")]
+    [InlineData("Two five eight")]
+    [InlineData("er wu ba")]
+    [InlineData("er wu ba pair")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesWorded258Alias(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Changsha two five eight nine")]
+    [InlineData("CS two five eight nine")]
+    [InlineData("Two five eight nine")]
+    [InlineData("er wu ba jiu")]
+    public void Resolve_ReturnsChineseOfficial_WhenWordedDigitSequenceIsNot258(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
+    }
+
+    [Theory]
+    [InlineData("Changsha two five eight nine")]
+    [InlineData("CS two five eight nine")]
+    [InlineData("Two five eight nine")]
+    [InlineData("er wu ba jiu")]
+    public void IsChangsha258_ReturnsFalse_WhenWordedDigitSequenceIsNot258(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
+    }
 }

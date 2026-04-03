@@ -47,6 +47,10 @@ public static class RulesetResolver
             || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CS258", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "TwoFiveEight", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "TwoFiveEightPair", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ErWuBa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ErWuBaPair", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "ChangshaRules", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "ChangshaRuleset", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "ChangshaDefault", StringComparison.OrdinalIgnoreCase)
@@ -68,6 +72,11 @@ public static class RulesetResolver
         if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase))
         {
+            if (IsChangsha258WordAlias(normalized))
+            {
+                return true;
+            }
+
             if (ContainsChangshaKeywords(normalized))
             {
                 return !normalized.Any(char.IsDigit) || ContainsChangsha258Digits(normalized);
@@ -77,9 +86,11 @@ public static class RulesetResolver
         if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("258", StringComparison.Ordinal)
-            || normalized.StartsWith("108", StringComparison.Ordinal))
+            || normalized.StartsWith("108", StringComparison.Ordinal)
+            || normalized.StartsWith("TwoFiveEight", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("ErWuBa", StringComparison.OrdinalIgnoreCase))
         {
-            return ContainsChangsha258Digits(normalized);
+            return IsChangsha258WordAlias(normalized) || ContainsChangsha258Digits(normalized);
         }
 
         return false;
@@ -105,6 +116,20 @@ public static class RulesetResolver
             || normalized.Contains("Default", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("Minimal", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("Mini", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsChangsha258WordAlias(string normalized)
+        => string.Equals(normalized, "TwoFiveEight", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "TwoFiveEightPair", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ErWuBa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ErWuBaPair", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ChangshaTwoFiveEight", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ChangshaTwoFiveEightPair", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "CSTwoFiveEight", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "CSTwoFiveEightPair", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ChangshaErWuBa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ChangshaErWuBaPair", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "CSErWuBa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "CSErWuBaPair", StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsChangsha258Digits(string normalized)
     {
