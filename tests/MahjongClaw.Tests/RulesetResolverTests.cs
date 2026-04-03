@@ -385,6 +385,10 @@ public class RulesetResolverTests
     [InlineData("xiao hu pair required")]
     [InlineData("small hu")]
     [InlineData("small hu pair required")]
+    [InlineData("small win")]
+    [InlineData("small win pair required")]
+    [InlineData("Changsha small win")]
+    [InlineData("CS small win pair required")]
     [InlineData("Changsha xiao hu")]
     [InlineData("CS small hu pair required")]
     public void Resolve_ReturnsChangsha258_WhenRulesetUsesWorded258Alias(string ruleset)
@@ -416,6 +420,10 @@ public class RulesetResolverTests
     [InlineData("xiao hu pair required")]
     [InlineData("small hu")]
     [InlineData("small hu pair required")]
+    [InlineData("small win")]
+    [InlineData("small win pair required")]
+    [InlineData("Changsha small win")]
+    [InlineData("CS small win pair required")]
     [InlineData("Changsha xiao hu")]
     [InlineData("CS small hu pair required")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetUsesWorded258Alias(string ruleset)
@@ -430,6 +438,7 @@ public class RulesetResolverTests
     [InlineData("er wu ba jiu")]
     [InlineData("xiao hu nine gates")]
     [InlineData("small hu nine gates")]
+    [InlineData("small win nine gates")]
     public void Resolve_ReturnsChineseOfficial_WhenWordedDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
@@ -442,6 +451,7 @@ public class RulesetResolverTests
     [InlineData("er wu ba jiu")]
     [InlineData("xiao hu nine gates")]
     [InlineData("small hu nine gates")]
+    [InlineData("small win nine gates")]
     public void IsChangsha258_ReturnsFalse_WhenWordedDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
