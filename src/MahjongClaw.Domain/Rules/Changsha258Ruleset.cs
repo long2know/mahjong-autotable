@@ -192,6 +192,7 @@ public static class Changsha258Ruleset
             return false;
         }
 
+        var remainingKongSlots = requiredKongs - kongsUsed;
         if (!CanSatisfyRemainingKongs(counts, requiredKongs, kongsUsed))
         {
             return false;
@@ -210,6 +211,11 @@ public static class Changsha258Ruleset
             return false;
         }
 
+        if (remainingKongSlots == remainingMeldSlots && counts[nextTile] < 4)
+        {
+            return false;
+        }
+
         if (counts[nextTile] >= 4 && kongsUsed < requiredKongs)
         {
             counts[nextTile] -= 4;
@@ -222,6 +228,11 @@ public static class Changsha258Ruleset
 
             melds.RemoveAt(melds.Count - 1);
             counts[nextTile] += 4;
+        }
+
+        if (remainingKongSlots == remainingMeldSlots)
+        {
+            return false;
         }
 
         if (counts[nextTile] >= 3)

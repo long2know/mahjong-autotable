@@ -95,9 +95,11 @@ public class Changsha258RulesetTests
     [InlineData(TileSuit.Characters, 0)]
     [InlineData(TileSuit.Dots, 10)]
     [InlineData(TileSuit.Bamboos, 11)]
-    public void IsAllowedTile_ReturnsFalse_ForOutOfRangeSuitedRanks(TileSuit suit, int rank)
+    public void IsAllowedTile_Throws_ForOutOfRangeSuitedRanks(TileSuit suit, int rank)
     {
-        Changsha258Ruleset.IsAllowedTile(new Tile(suit, rank)).Should().BeFalse();
+        var act = () => Changsha258Ruleset.IsAllowedTile(new Tile(suit, rank));
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]
