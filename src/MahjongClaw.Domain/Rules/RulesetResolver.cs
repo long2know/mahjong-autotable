@@ -43,6 +43,11 @@ public static class RulesetResolver
 
     private static bool IsChangsha258Normalized(string normalized)
     {
+        if (ContainsDisallowedSpecialPatternKeywords(normalized))
+        {
+            return false;
+        }
+
         if (string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase)
@@ -120,6 +125,21 @@ public static class RulesetResolver
             || normalized.Contains("CSSmallWin", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("CSSmallHu", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("CSXiaoHu", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ContainsDisallowedSpecialPatternKeywords(string normalized)
+        => normalized.Contains("SevenPairs", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("ThirteenOrphans", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("NineGates", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("AllHonors", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("AllHonours", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("AllTerminals", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("AllTerminalsAndHonors", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("AllTerminalsAndHonours", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("AllGreen", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("BigThreeDragons", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("BigFourWinds", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("LittleThreeDragons", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("LittleFourWinds", StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsChangshaKeywords(string normalized)
         => normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
