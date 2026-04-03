@@ -1434,6 +1434,69 @@ public class ScoreCalculatorTests
     }
 
     [Fact]
+    public void EvaluateRulesetMinimumFan_DisablesMinimumGate_ForChangsha258()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        var evaluation = ScoreCalculator.EvaluateRulesetMinimumFan(hand, MahjongRuleset.Changsha258);
+
+        evaluation.BasicScore.Should().Be(6);
+        evaluation.MinimumFan.Should().Be(0);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
+    [Fact]
+    public void EvaluateRulesetMinimumFan_UsesChineseOfficialGate_ByDefault()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        var evaluation = ScoreCalculator.EvaluateRulesetMinimumFan(hand, MahjongRuleset.ChineseOfficial);
+
+        evaluation.BasicScore.Should().Be(6);
+        evaluation.MinimumFan.Should().Be(ScoreCalculator.ChineseOfficialMinimumFan);
+        evaluation.MeetsMinimumFan.Should().BeFalse();
+        evaluation.FanShortfall.Should().Be(2);
+    }
+
+    [Fact]
+    public void MeetsRulesetMinimumFan_UsesRulesetSpecificThresholds()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        ScoreCalculator.MeetsRulesetMinimumFan(hand, MahjongRuleset.Changsha258).Should().BeTrue();
+        ScoreCalculator.MeetsRulesetMinimumFan(hand, MahjongRuleset.ChineseOfficial).Should().BeFalse();
+    }
+
+    [Fact]
+    public void EvaluateRulesetMinimumFan_AllowsCustomChineseOfficialThreshold()
+    {
+        var hand = new WinningHand(
+            Array.Empty<Meld>(),
+            new Tile(TileSuit.Dots, 2),
+            WinningPattern.AllPungs);
+
+        var evaluation = ScoreCalculator.EvaluateRulesetMinimumFan(
+            hand,
+            MahjongRuleset.ChineseOfficial,
+            chineseOfficialMinimumFan: 6);
+
+        evaluation.BasicScore.Should().Be(6);
+        evaluation.MinimumFan.Should().Be(6);
+        evaluation.MeetsMinimumFan.Should().BeTrue();
+        evaluation.FanShortfall.Should().Be(0);
+    }
+
+    [Fact]
     public void CalculateBasicScore_ThrowsForNullHand()
     {
         var act = () => ScoreCalculator.CalculateBasicScore(null!);

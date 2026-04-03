@@ -33,7 +33,7 @@ public static class RulesetHandAnalyzer
             return false;
         }
 
-        if (!ScoreCalculator.MeetsMinimumFan(hand))
+        if (!ScoreCalculator.MeetsRulesetMinimumFan(hand, MahjongRuleset.ChineseOfficial))
         {
             hand = null;
             return false;
