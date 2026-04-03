@@ -67,6 +67,8 @@ public static class RulesetResolver
         {
             if (normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("NoHonor", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("NoHonours", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("NoHonour", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("SuitedOnly", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("Suited", StringComparison.OrdinalIgnoreCase))
@@ -79,6 +81,8 @@ public static class RulesetResolver
         {
             if (normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("NoHonor", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("NoHonours", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("NoHonour", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("SuitedOnly", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("SuitedTiles", StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("Suited", StringComparison.OrdinalIgnoreCase))
