@@ -55,6 +55,8 @@ api_pid=""
 client_pid=""
 client_appsettings="$ROOT_DIR/src/MahjongClaw.Client/wwwroot/appsettings.json"
 client_appsettings_backup="$log_dir/appsettings.backup.json"
+client_appsettings_dev="$ROOT_DIR/src/MahjongClaw.Client/wwwroot/appsettings.Development.json"
+client_appsettings_dev_backup="$log_dir/appsettings.Development.backup.json"
 
 rm -f "$migrate_log" "$api_log" "$client_log"
 
