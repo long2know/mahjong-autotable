@@ -98,7 +98,7 @@ public static class RulesetResolver
 
         if ((normalized.StartsWith("Minimal", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith("Mini", StringComparison.OrdinalIgnoreCase))
-            && normalized.Contains("Changsha", StringComparison.OrdinalIgnoreCase))
+            && ContainsChangshaOrCsContext(normalized))
         {
             return IsChangsha258WordAlias(normalized)
                 || (!normalized.Any(char.IsDigit) || ContainsChangsha258Digits(normalized));
@@ -106,6 +106,20 @@ public static class RulesetResolver
 
         return false;
     }
+
+    private static bool ContainsChangshaOrCsContext(string normalized)
+        => normalized.Contains("Changsha", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CS258", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSRules", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSRuleset", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSDefault", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSDefaultRules", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSDefaultRuleset", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSTwoFiveEight", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSErWuBa", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSSmallWin", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSSmallHu", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CSXiaoHu", StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsChangshaKeywords(string normalized)
         => normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
