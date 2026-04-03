@@ -446,4 +446,31 @@ public class RulesetResolverTests
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("minimal 258 (changsha) ruleset variant")]
+    [InlineData("minimal changsha 258 ruleset")]
+    [InlineData("mini changsha 258")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetUsesMinimalPrefixWithChangsha(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("minimal 258 (changsha) ruleset variant")]
+    [InlineData("minimal changsha 258 ruleset")]
+    [InlineData("mini changsha 258")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesMinimalPrefixWithChangsha(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("minimal 258 ruleset variant")]
+    [InlineData("mini 258")]
+    [InlineData("minimal changsha 2589")]
+    public void Resolve_ReturnsChineseOfficial_WhenMinimalPrefixInputIsNotValidChangsha258(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
+    }
 }

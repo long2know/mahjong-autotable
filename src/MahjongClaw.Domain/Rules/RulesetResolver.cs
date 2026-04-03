@@ -95,6 +95,14 @@ public static class RulesetResolver
             return IsChangsha258WordAlias(normalized) || ContainsChangsha258Digits(normalized);
         }
 
+        if ((normalized.StartsWith("Minimal", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("Mini", StringComparison.OrdinalIgnoreCase))
+            && normalized.Contains("Changsha", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsChangsha258WordAlias(normalized)
+                || (!normalized.Any(char.IsDigit) || ContainsChangsha258Digits(normalized));
+        }
+
         return false;
     }
 
