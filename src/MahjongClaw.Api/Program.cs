@@ -253,7 +253,7 @@ gameGroup.MapGet("/{id:guid}/state", async (
         game.CurrentPlayerId,
         game.DealerId,
         game.Round,
-        game.Ruleset,
+        ruleset.ToString(),
         wallTotal,
         game.CreatedAt,
         game.Players.Select(player => new PlayerSummary(player.Id, player.Name, player.Seat, player.Score)).ToList(),
