@@ -28,7 +28,7 @@ public static class RulesetHelpers
         var wallTotal = WallBuilder.GetWallTotal(resolved);
         if (resolved == MahjongRuleset.Changsha258)
         {
-            return $"Changsha 258 ({wallTotal} suited tiles, {FormatSmallWinPairRanks()} pair required, default)";
+            return $"Changsha 258 ({wallTotal} suited tiles, {FormatSmallWinPairRanks()} pair required, no honors, default)";
         }
 
         return $"Chinese Official ({wallTotal} tiles)";
@@ -39,7 +39,7 @@ public static class RulesetHelpers
         var resolved = ResolveRuleset(ruleset);
         var wallTotal = WallBuilder.GetWallTotal(resolved);
         return resolved == MahjongRuleset.Changsha258
-            ? $"{wallTotal} suited tiles only (characters/dots/bamboos, no honors, flowers, or seasons). Standard hand evaluation only ({Changsha258Ruleset.RequiredMelds} melds + pair, {Changsha258Ruleset.MinTiles}-{Changsha258Ruleset.MaxTiles} tiles with kongs). Winning hands require a suited {FormatSmallWinPairRanks()} pair. Kongs add one tile each (up to {Changsha258Ruleset.MaxKongs}, {Changsha258Ruleset.MaxTiles} tiles total). Special patterns (seven pairs, big-win hands) are not scored separately; only standard meld decomposition is checked. No minimum fan gate. Default ruleset."
+            ? $"{wallTotal} suited tiles only (characters/dots/bamboos, no honors, flowers, or seasons). Standard hand evaluation only ({Changsha258Ruleset.RequiredMelds} melds + pair, {Changsha258Ruleset.MinTiles}-{Changsha258Ruleset.MaxTiles} tiles with kongs). Winning hands require a suited {FormatSmallWinPairRanks()} pair (small win). Kongs add one tile each (up to {Changsha258Ruleset.MaxKongs}, {Changsha258Ruleset.MaxTiles} tiles total). Special patterns (seven pairs, big-win hands) are not scored separately; only standard meld decomposition is checked. No minimum fan gate. Default ruleset."
             : $"{wallTotal} tiles with honors/flowers. Standard Chinese Official rules (8-fan minimum to win).";
     }
 
