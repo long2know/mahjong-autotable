@@ -856,7 +856,7 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
-    public void TryGetWinningHand_ReturnsFalse_WhenOnlySmallWinPairIsLockedInRequiredKong()
+    public void TryGetWinningHand_ReturnsFalse_WhenOnlySmallWinPairIsLockedInRequiredKong_WithHigherBambooChow()
     {
         var tiles = new List<Tile>
         {
