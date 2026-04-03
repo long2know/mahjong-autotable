@@ -120,12 +120,7 @@ public static class RulesetResolver
             }
 
             var digits = normalized[start..index];
-            if (digits == "108")
-            {
-                return true;
-            }
-
-            if (IsRepeated258(digits))
+            if (IsChangshaTokenSequence(digits))
             {
                 return true;
             }
@@ -134,30 +129,8 @@ public static class RulesetResolver
         return false;
     }
 
-    private static bool IsRepeated258(string digits)
+    private static bool IsChangshaTokenSequence(string digits)
     {
-        if (digits.EndsWith("108", StringComparison.Ordinal))
-        {
-            var prefix = digits[..^3];
-            if (prefix.Length == 0)
-            {
-                return false;
-            }
-
-            return IsRepeated258(prefix);
-        }
-
-        if (digits.StartsWith("108", StringComparison.Ordinal))
-        {
-            var suffix = digits[3..];
-            if (suffix.Length == 0)
-            {
-                return false;
-            }
-
-            return IsRepeated258(suffix);
-        }
-
         if (digits.Length % 3 != 0)
         {
             return false;
@@ -165,7 +138,8 @@ public static class RulesetResolver
 
         for (var i = 0; i < digits.Length; i += 3)
         {
-            if (!digits.AsSpan(i, 3).SequenceEqual("258"))
+            var token = digits.AsSpan(i, 3);
+            if (!token.SequenceEqual("258") && !token.SequenceEqual("108"))
             {
                 return false;
             }
