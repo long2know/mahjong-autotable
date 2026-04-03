@@ -364,10 +364,14 @@ public class RulesetResolverTests
     [Theory]
     [InlineData("Changsha two five eight")]
     [InlineData("Changsha two five eight pair")]
+    [InlineData("Changsha two five eight pair required")]
     [InlineData("CS two five eight")]
+    [InlineData("CS two five eight pair required")]
     [InlineData("Two five eight")]
+    [InlineData("Two five eight pair required")]
     [InlineData("er wu ba")]
     [InlineData("er wu ba pair")]
+    [InlineData("er wu ba pair required")]
     public void Resolve_ReturnsChangsha258_WhenRulesetUsesWorded258Alias(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -376,10 +380,14 @@ public class RulesetResolverTests
     [Theory]
     [InlineData("Changsha two five eight")]
     [InlineData("Changsha two five eight pair")]
+    [InlineData("Changsha two five eight pair required")]
     [InlineData("CS two five eight")]
+    [InlineData("CS two five eight pair required")]
     [InlineData("Two five eight")]
+    [InlineData("Two five eight pair required")]
     [InlineData("er wu ba")]
     [InlineData("er wu ba pair")]
+    [InlineData("er wu ba pair required")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetUsesWorded258Alias(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
