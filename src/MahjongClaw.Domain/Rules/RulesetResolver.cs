@@ -17,6 +17,18 @@ public static class RulesetResolver
         @"\b(?:[01]?\d|2[0-3])\s*[:：]\s*[0-5]\d(?:\s*[:：]\s*[0-5]\d)?\s*(?:AM|PM|UTC|GMT|PST|PDT|PT)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private static readonly Regex CronHeaderReferenceRegex = new(
+        @"\[\s*cron\s*[:：][^\]]*\]",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex CronReferenceRegex = new(
+        @"\bcron\s*[:：]\s*[0-9a-f]{8}(?:-[0-9a-f]{4}){2}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex ChannelIdReferenceRegex = new(
+        @"\bchannel\s*(?:id)?\s*[:：#＃-]?\s*[\p{Nd}]{6,}\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     public static MahjongRuleset Resolve(string? ruleset)
     {
         if (string.IsNullOrWhiteSpace(ruleset))
@@ -518,6 +530,7 @@ public static class RulesetResolver
 
         source = StripLabeledNumberReferences(source);
         source = StripTemporalReferences(source);
+        source = StripExecutionMetadataReferences(source);
 
         var builder = new StringBuilder(source.Length);
         for (var index = 0; index < source.Length; index++)
@@ -562,6 +575,13 @@ public static class RulesetResolver
     private static string StripTemporalReferences(string source)
         => ClockMetadataRegex.Replace(
             IsoDateMetadataRegex.Replace(source, string.Empty),
+            string.Empty);
+
+    private static string StripExecutionMetadataReferences(string source)
+        => ChannelIdReferenceRegex.Replace(
+            CronReferenceRegex.Replace(
+                CronHeaderReferenceRegex.Replace(source, string.Empty),
+                string.Empty),
             string.Empty);
 
     private static bool TryNormalizeFullWidthAsciiLetter(char character, out char normalized)

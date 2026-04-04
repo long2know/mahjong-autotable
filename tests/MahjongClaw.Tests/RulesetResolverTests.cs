@@ -696,6 +696,22 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("[cron:aac88361-c047-4527-8bef-737045ae8702] minimal 258 (changsha) ruleset variant")]
+    [InlineData("[cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] minimal 258 (changsha) ruleset variant for channel 1474176085838004255")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetContainsCronAndChannelMetadata(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("[cron:aac88361-c047-4527-8bef-737045ae8702] minimal 258 (changsha) ruleset variant")]
+    [InlineData("[cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] minimal 258 (changsha) ruleset variant for channel 1474176085838004255")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetContainsCronAndChannelMetadata(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("minimal changsha 2589")]
     [InlineData("minimal cs 2589")]
     [InlineData("minimal two five eight nine")]
