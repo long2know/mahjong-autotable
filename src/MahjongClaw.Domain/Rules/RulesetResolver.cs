@@ -50,6 +50,11 @@ public static class RulesetResolver
             return false;
         }
 
+        if (ContainsInvalidWorded258Sequence(normalized))
+        {
+            return false;
+        }
+
         if (IsChangsha258ChineseAlias(normalized))
         {
             return true;
@@ -360,6 +365,10 @@ public static class RulesetResolver
             || StartsWithValidChineseAliasPrefix(normalized, "小胡")
             || StartsWithValidChineseAliasPrefix(normalized, "长沙二五八")
             || StartsWithValidChineseAliasPrefix(normalized, "长沙小胡");
+
+    private static bool ContainsInvalidWorded258Sequence(string normalized)
+        => normalized.Contains("TwoFiveEightNine", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("ErWuBaJiu", StringComparison.OrdinalIgnoreCase);
 
     private static bool StartsWithValidChineseAliasPrefix(string value, string prefix)
     {
