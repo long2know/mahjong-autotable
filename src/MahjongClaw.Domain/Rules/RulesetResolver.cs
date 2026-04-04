@@ -26,11 +26,11 @@ public static class RulesetResolver
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex CronHeaderReferenceRegex = new(
-        @"\[\s*cron\s*[:：][^\]]*\]",
+        @"\[\s*cron(?:\s*[:：]\s*|\s+)[^\]]*\]",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex CronReferenceRegex = new(
-        @"\bcron\s*[:：]\s*[0-9a-f]{8}(?:-[0-9a-f]{4}){2}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+        @"\bcron(?:\s*[:：]\s*|\s+)[0-9a-f]{8}(?:-[0-9a-f]{4}){2}-[0-9a-f]{4}-[0-9a-f]{12}\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex ChannelIdReferenceRegex = new(
