@@ -676,6 +676,26 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("minimal 258 (changsha) ruleset variant (2026-04-04 08:21 UTC)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (2026/04/04 01:21 PT)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (check-in 01:21 AM)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (check-in 08：21 UTC)")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetContainsTemporalMetadata(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("minimal 258 (changsha) ruleset variant (2026-04-04 08:21 UTC)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (2026/04/04 01:21 PT)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (check-in 01:21 AM)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (check-in 08：21 UTC)")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetContainsTemporalMetadata(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("minimal changsha 2589")]
     [InlineData("minimal cs 2589")]
     [InlineData("minimal two five eight nine")]
