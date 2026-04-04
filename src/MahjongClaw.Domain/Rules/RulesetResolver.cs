@@ -37,6 +37,10 @@ public static class RulesetResolver
         @"(?:<=|=<|≤|<)\s*[\p{Nd}]+\s*commits?\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private static readonly Regex DiscordMentionReferenceRegex = new(
+        @"<\s*(?:@(?:!|&)?|#)\s*[\p{Nd}]{6,}\s*>|<\s*/[^:\s>]+:[\p{Nd}]{6,}\s*>",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private static readonly Regex RulesetHintLineRegex = new(
         @"(?im)^.*?(?<hint>(?:\b(?:changsha|cs|minimal|mini|small\s*win|small\s*hu|xiao\s*hu|two\s*five\s*eight|er\s*wu\s*ba)\b|长沙|二五八|小胡).*)$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -610,8 +614,10 @@ public static class RulesetResolver
     private static string StripExecutionMetadataReferences(string source)
         => CommitScopeMetadataRegex.Replace(
             ChannelIdReferenceRegex.Replace(
-                CronReferenceRegex.Replace(
-                    CronHeaderReferenceRegex.Replace(source, string.Empty),
+                DiscordMentionReferenceRegex.Replace(
+                    CronReferenceRegex.Replace(
+                        CronHeaderReferenceRegex.Replace(source, string.Empty),
+                        string.Empty),
                     string.Empty),
                 string.Empty),
             string.Empty);
