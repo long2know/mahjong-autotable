@@ -355,7 +355,31 @@ public static class RulesetResolver
             || string.Equals(normalized, "长沙二五八将对", StringComparison.Ordinal)
             || string.Equals(normalized, "长沙小胡", StringComparison.Ordinal)
             || string.Equals(normalized, "长沙小胡将", StringComparison.Ordinal)
-            || string.Equals(normalized, "长沙小胡将对", StringComparison.Ordinal);
+            || string.Equals(normalized, "长沙小胡将对", StringComparison.Ordinal)
+            || StartsWithValidChineseAliasPrefix(normalized, "二五八")
+            || StartsWithValidChineseAliasPrefix(normalized, "小胡")
+            || StartsWithValidChineseAliasPrefix(normalized, "长沙二五八")
+            || StartsWithValidChineseAliasPrefix(normalized, "长沙小胡");
+
+    private static bool StartsWithValidChineseAliasPrefix(string value, string prefix)
+    {
+        if (!value.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (value.Length == prefix.Length)
+        {
+            return true;
+        }
+
+        return !IsNumericCharacter(value[prefix.Length]);
+    }
+
+    private static bool IsNumericCharacter(char character)
+        => char.IsDigit(character)
+            || character is '零' or '〇' or '一' or '二' or '三' or '四' or '五' or '六' or '七' or '八' or '九' or '十'
+            or '百' or '千' or '万' or '萬' or '两' or '兩';
 
     private static bool ContainsChangsha258Digits(string normalized)
     {
