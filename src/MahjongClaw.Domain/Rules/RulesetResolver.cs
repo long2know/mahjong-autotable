@@ -34,7 +34,7 @@ public static class RulesetResolver
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex ChannelIdReferenceRegex = new(
-        @"\bchannel(?:\s*[-_]\s*id|\s*id)?\s*[:：=#＃-]?\s*[\p{Nd}]{6,}\b",
+        @"\bchannel(?:\s*[-_]\s*id|\s*id)?\s*[:：=#＃＝-]?\s*[\p{Nd}]{6,}\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex CommitScopeMetadataRegex = new(

@@ -751,6 +751,8 @@ public class RulesetResolverTests
     [InlineData("minimal 258 (changsha) ruleset variant for channel-id 1474176085838004255")]
     [InlineData("minimal 258 (changsha) ruleset variant for channel_id=1474176085838004255")]
     [InlineData("minimal 258 (changsha) ruleset variant for channelid:1474176085838004255")]
+    [InlineData("minimal 258 (changsha) ruleset variant for channelid＝1474176085838004255")]
+    [InlineData("minimal 258 (changsha) ruleset variant for channel-id＝１４７４１７６０８５８３８００４２５５")]
     public void Resolve_ReturnsChangsha258_WhenRulesetContainsChannelIdMetadataVariants(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -760,6 +762,8 @@ public class RulesetResolverTests
     [InlineData("minimal 258 (changsha) ruleset variant for channel-id 1474176085838004255")]
     [InlineData("minimal 258 (changsha) ruleset variant for channel_id=1474176085838004255")]
     [InlineData("minimal 258 (changsha) ruleset variant for channelid:1474176085838004255")]
+    [InlineData("minimal 258 (changsha) ruleset variant for channelid＝1474176085838004255")]
+    [InlineData("minimal 258 (changsha) ruleset variant for channel-id＝１４７４１７６０８５８３８００４２５５")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetContainsChannelIdMetadataVariants(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
