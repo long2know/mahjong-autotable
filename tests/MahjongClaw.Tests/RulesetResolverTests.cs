@@ -736,6 +736,24 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("minimal 258 (changsha) ruleset variant for channel-id 1474176085838004255")]
+    [InlineData("minimal 258 (changsha) ruleset variant for channel_id=1474176085838004255")]
+    [InlineData("minimal 258 (changsha) ruleset variant for channelid:1474176085838004255")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetContainsChannelIdMetadataVariants(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("minimal 258 (changsha) ruleset variant for channel-id 1474176085838004255")]
+    [InlineData("minimal 258 (changsha) ruleset variant for channel_id=1474176085838004255")]
+    [InlineData("minimal 258 (changsha) ruleset variant for channelid:1474176085838004255")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetContainsChannelIdMetadataVariants(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("[cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] TOP PRIORITY: implement the minimal 258 (Changsha) ruleset variant (per TASKS.md #1) before anything else.")]
     [InlineData("Autonomous Mahjong execution — TOP PRIORITY implement minimal 258 (Changsha) ruleset variant <=5 commits")]
     public void Resolve_ReturnsChangsha258_WhenSingleLineInstructionPrefixPrecedesRulesetHint(string ruleset)
