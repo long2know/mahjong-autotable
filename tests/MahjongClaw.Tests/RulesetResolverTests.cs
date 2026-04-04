@@ -954,7 +954,7 @@ public class RulesetResolverTests
     }
 
     [Fact]
-    public void Resolve_ReturnsChangsha258_WhenRulesetCronReminderBodyRepeatsWithPostMergeStatusInstruction()
+    public void Resolve_ReturnsChangsha258_WhenRulesetCronReminderBodyRepeatsWithPostMergeAndVisualParityInstructions()
     {
         const string ruleset = """
             [cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] Autonomous Mahjong execution for channel 1474176085838004255.
@@ -982,14 +982,15 @@ public class RulesetResolverTests
             "Status update: NO PROGRESS SINCE LAST CHECK-IN (<blocker>) | Next: <immediate corrective action>" and stop.
             After PR merge, send a Discord message to channel 1474176085838004255 with exact format:
             "Status update: <PR URL> | Next: <single immediate step>".
-            Current time: Saturday, April 4th, 2026 — 6:21 AM (America/Los_Angeles) / 2026-04-04 13:21 UTC
+            If the task is visual parity and a screenshot is required, capture and send the screenshot via message tool after the PR, then post the status update line.
+            Current time: Saturday, April 4th, 2026 — 6:41 AM (America/Los_Angeles) / 2026-04-04 13:41 UTC
             """;
 
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
     }
 
     [Fact]
-    public void IsChangsha258_ReturnsTrue_WhenRulesetCronReminderBodyRepeatsWithPostMergeStatusInstruction()
+    public void IsChangsha258_ReturnsTrue_WhenRulesetCronReminderBodyRepeatsWithPostMergeAndVisualParityInstructions()
     {
         const string ruleset = """
             [cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] Autonomous Mahjong execution for channel 1474176085838004255.
@@ -1017,7 +1018,8 @@ public class RulesetResolverTests
             "Status update: NO PROGRESS SINCE LAST CHECK-IN (<blocker>) | Next: <immediate corrective action>" and stop.
             After PR merge, send a Discord message to channel 1474176085838004255 with exact format:
             "Status update: <PR URL> | Next: <single immediate step>".
-            Current time: Saturday, April 4th, 2026 — 6:21 AM (America/Los_Angeles) / 2026-04-04 13:21 UTC
+            If the task is visual parity and a screenshot is required, capture and send the screenshot via message tool after the PR, then post the status update line.
+            Current time: Saturday, April 4th, 2026 — 6:41 AM (America/Los_Angeles) / 2026-04-04 13:41 UTC
             """;
 
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
