@@ -693,6 +693,7 @@ public class RulesetResolverTests
 
     [Theory]
     [InlineData("minimal 258 (changsha) ruleset variant (big wins optional later)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (big wins are optional later)")]
     [InlineData("minimal 258 (changsha) ruleset variant (big wins optional)")]
     [InlineData("changsha 258 no big wins")]
     [InlineData("changsha 258 optional big win")]
@@ -710,6 +711,7 @@ public class RulesetResolverTests
 
     [Theory]
     [InlineData("minimal 258 (changsha) ruleset variant (big wins optional later)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (big wins are optional later)")]
     [InlineData("minimal 258 (changsha) ruleset variant (big wins optional)")]
     [InlineData("changsha 258 no big wins")]
     [InlineData("changsha 258 optional big win")]
