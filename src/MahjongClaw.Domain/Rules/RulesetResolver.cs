@@ -14,7 +14,7 @@ public static class RulesetResolver
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex ClockMetadataRegex = new(
-        @"\b(?:[01]?\d|2[0-3])\s*[:：]\s*[0-5]\d(?:\s*[:：]\s*[0-5]\d)?\s*(?:AM|PM|UTC|GMT|PST|PDT|PT)\b",
+        @"\b(?:[01]?\d|2[0-3])\s*[:：]\s*[0-5]\d(?:\s*[:：]\s*[0-5]\d)?(?:\s*(?:AM|PM|UTC|GMT|PST|PDT|PT))?\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex LongFormDateMetadataRegex = new(
