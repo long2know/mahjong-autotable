@@ -432,6 +432,40 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("长沙")]
+    [InlineData("长沙 258")]
+    [InlineData("二五八")]
+    [InlineData("二五八将")]
+    [InlineData("二五八将对")]
+    [InlineData("小胡")]
+    [InlineData("小胡将")]
+    [InlineData("小胡将对")]
+    [InlineData("长沙 二五八")]
+    [InlineData("长沙 小胡")]
+    [InlineData("长沙 小胡将对")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetUsesChineseAliases(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("长沙")]
+    [InlineData("长沙 258")]
+    [InlineData("二五八")]
+    [InlineData("二五八将")]
+    [InlineData("二五八将对")]
+    [InlineData("小胡")]
+    [InlineData("小胡将")]
+    [InlineData("小胡将对")]
+    [InlineData("长沙 二五八")]
+    [InlineData("长沙 小胡")]
+    [InlineData("长沙 小胡将对")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesChineseAliases(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("Changsha two five eight nine")]
     [InlineData("CS two five eight nine")]
     [InlineData("Two five eight nine")]
@@ -439,6 +473,9 @@ public class RulesetResolverTests
     [InlineData("xiao hu nine gates")]
     [InlineData("small hu nine gates")]
     [InlineData("small win nine gates")]
+    [InlineData("二五八九")]
+    [InlineData("长沙二五八九")]
+    [InlineData("小胡九莲")]
     public void Resolve_ReturnsChineseOfficial_WhenWordedDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
@@ -454,6 +491,9 @@ public class RulesetResolverTests
     [InlineData("small win nine gates")]
     [InlineData("minimal two five eight nine")]
     [InlineData("minimal er wu ba jiu")]
+    [InlineData("二五八九")]
+    [InlineData("长沙二五八九")]
+    [InlineData("小胡九莲")]
     public void IsChangsha258_ReturnsFalse_WhenWordedDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();

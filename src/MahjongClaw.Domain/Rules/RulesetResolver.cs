@@ -48,6 +48,11 @@ public static class RulesetResolver
             return false;
         }
 
+        if (IsChangsha258ChineseAlias(normalized))
+        {
+            return true;
+        }
+
         if (string.Equals(normalized, "Changsha", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "Changsha258", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "258", StringComparison.OrdinalIgnoreCase)
@@ -215,7 +220,8 @@ public static class RulesetResolver
             || normalized.Contains("Mini", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsChangsha258WordAlias(string normalized)
-        => string.Equals(normalized, "XiaoHu", StringComparison.OrdinalIgnoreCase)
+        => IsChangsha258ChineseAlias(normalized)
+            || string.Equals(normalized, "XiaoHu", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "XiaoHuPair", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "XiaoHuRequired", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "XiaoHuPairRequired", StringComparison.OrdinalIgnoreCase)
@@ -305,6 +311,22 @@ public static class RulesetResolver
             || string.Equals(normalized, "MinimalErWuBa", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "MinimalErWuBaRulesetVariant", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "MiniErWuBa", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsChangsha258ChineseAlias(string normalized)
+        => string.Equals(normalized, "长沙", StringComparison.Ordinal)
+            || string.Equals(normalized, "长沙258", StringComparison.Ordinal)
+            || string.Equals(normalized, "二五八", StringComparison.Ordinal)
+            || string.Equals(normalized, "二五八将", StringComparison.Ordinal)
+            || string.Equals(normalized, "二五八将对", StringComparison.Ordinal)
+            || string.Equals(normalized, "小胡", StringComparison.Ordinal)
+            || string.Equals(normalized, "小胡将", StringComparison.Ordinal)
+            || string.Equals(normalized, "小胡将对", StringComparison.Ordinal)
+            || string.Equals(normalized, "长沙二五八", StringComparison.Ordinal)
+            || string.Equals(normalized, "长沙二五八将", StringComparison.Ordinal)
+            || string.Equals(normalized, "长沙二五八将对", StringComparison.Ordinal)
+            || string.Equals(normalized, "长沙小胡", StringComparison.Ordinal)
+            || string.Equals(normalized, "长沙小胡将", StringComparison.Ordinal)
+            || string.Equals(normalized, "长沙小胡将对", StringComparison.Ordinal);
 
     private static bool ContainsChangsha258Digits(string normalized)
     {
