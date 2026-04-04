@@ -471,6 +471,10 @@ public class RulesetResolverTests
     [InlineData("mini two five eight")]
     [InlineData("minimal er wu ba ruleset variant")]
     [InlineData("mini er wu ba")]
+    [InlineData("minimal small win")]
+    [InlineData("mini small win pair required")]
+    [InlineData("minimal xiao hu")]
+    [InlineData("mini small hu pair required")]
     [InlineData("minimal 108 tiles variant")]
     public void Resolve_ReturnsChangsha258_WhenRulesetUsesMinimalPrefixWithChangshaOr258Signals(string ruleset)
     {
@@ -489,6 +493,10 @@ public class RulesetResolverTests
     [InlineData("mini two five eight")]
     [InlineData("minimal er wu ba ruleset variant")]
     [InlineData("mini er wu ba")]
+    [InlineData("minimal small win")]
+    [InlineData("mini small win pair required")]
+    [InlineData("minimal xiao hu")]
+    [InlineData("mini small hu pair required")]
     [InlineData("minimal 108 tiles variant")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetUsesMinimalPrefixWithChangshaOr258Signals(string ruleset)
     {
@@ -510,6 +518,8 @@ public class RulesetResolverTests
     [InlineData("minimal changsha seven pair ruleset")]
     [InlineData("mini cs thirteen orphans rules")]
     [InlineData("mini cs thirteen orphan rules")]
+    [InlineData("minimal small win nine gates")]
+    [InlineData("mini xiao hu nine gates")]
     [InlineData("changsha minimal nine gates")]
     [InlineData("changsha minimal nine gate")]
     [InlineData("cs default big three dragons")]
@@ -526,6 +536,8 @@ public class RulesetResolverTests
     [InlineData("minimal changsha seven pair ruleset")]
     [InlineData("mini cs thirteen orphans rules")]
     [InlineData("mini cs thirteen orphan rules")]
+    [InlineData("minimal small win nine gates")]
+    [InlineData("mini xiao hu nine gates")]
     [InlineData("changsha minimal nine gates")]
     [InlineData("changsha minimal nine gate")]
     [InlineData("cs default big three dragons")]

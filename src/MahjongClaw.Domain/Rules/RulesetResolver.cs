@@ -107,7 +107,9 @@ public static class RulesetResolver
             var hasDigits = normalized.Any(char.IsDigit);
             if (!hasDigits)
             {
-                return IsChangsha258WordAlias(normalized) || ContainsChangshaOrCsContext(normalized);
+                return IsChangsha258WordAlias(normalized)
+                    || IsMinimalWordAlias(normalized)
+                    || ContainsChangshaOrCsContext(normalized);
             }
 
             return ContainsChangsha258Digits(normalized)
@@ -132,6 +134,25 @@ public static class RulesetResolver
             || normalized.Contains("CSSmallWin", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("CSSmallHu", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("CSXiaoHu", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsMinimalWordAlias(string normalized)
+    {
+        const string minimalPrefix = "Minimal";
+        const string miniPrefix = "Mini";
+
+        string? suffix = null;
+        if (normalized.StartsWith(minimalPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            suffix = normalized[minimalPrefix.Length..];
+        }
+        else if (normalized.StartsWith(miniPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            suffix = normalized[miniPrefix.Length..];
+        }
+
+        return !string.IsNullOrEmpty(suffix)
+            && IsChangsha258WordAlias(suffix);
+    }
 
     private static bool ContainsDisallowedSpecialPatternKeywords(string normalized)
         => normalized.Contains("SevenPairs", StringComparison.OrdinalIgnoreCase)
