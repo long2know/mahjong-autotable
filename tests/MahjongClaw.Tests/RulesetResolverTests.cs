@@ -704,6 +704,8 @@ public class RulesetResolverTests
     [InlineData("minimal 258 (changsha) ruleset variant (check-in 08：21 UTC)")]
     [InlineData("minimal 258 (changsha) ruleset variant (Current time: Saturday, April 4th, 2026 — 2:01 AM (America/Los_Angeles) / 2026-04-04 09:01 UTC)")]
     [InlineData("minimal 258 (changsha) ruleset variant (Current time: Sat, Apr 4, 2026 2:01 AM PT)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (Current time: Saturday, 4 April 2026 — 2:01 AM (America/Los_Angeles) / 2026-04-04 09:01 UTC)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (Current time: Sat, 4 Apr 2026 2:01 AM PT)")]
     public void Resolve_ReturnsChangsha258_WhenRulesetContainsTemporalMetadata(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -718,6 +720,8 @@ public class RulesetResolverTests
     [InlineData("minimal 258 (changsha) ruleset variant (check-in 08：21 UTC)")]
     [InlineData("minimal 258 (changsha) ruleset variant (Current time: Saturday, April 4th, 2026 — 2:01 AM (America/Los_Angeles) / 2026-04-04 09:01 UTC)")]
     [InlineData("minimal 258 (changsha) ruleset variant (Current time: Sat, Apr 4, 2026 2:01 AM PT)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (Current time: Saturday, 4 April 2026 — 2:01 AM (America/Los_Angeles) / 2026-04-04 09:01 UTC)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (Current time: Sat, 4 Apr 2026 2:01 AM PT)")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetContainsTemporalMetadata(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
