@@ -377,8 +377,30 @@ public static class RulesetResolver
             || StartsWithValidChineseAliasPrefix(normalized, "长沙小胡");
 
     private static bool ContainsInvalidWorded258Sequence(string normalized)
-        => normalized.Contains("TwoFiveEightNine", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("ErWuBaJiu", StringComparison.OrdinalIgnoreCase);
+        => ContainsWorded258WithExtraNumberWord(
+                normalized,
+                "TwoFiveEight",
+                ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"])
+            || ContainsWorded258WithExtraNumberWord(
+                normalized,
+                "ErWuBa",
+                ["Ling", "Yi", "Er", "San", "Si", "Wu", "Liu", "Qi", "Ba", "Jiu", "Shi"]);
+
+    private static bool ContainsWorded258WithExtraNumberWord(
+        string normalized,
+        string token,
+        string[] disallowedNumberWordSuffixes)
+    {
+        foreach (var suffix in disallowedNumberWordSuffixes)
+        {
+            if (normalized.Contains($"{token}{suffix}", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsMixedLanguageChangshaChineseAlias(string normalized)
     {
