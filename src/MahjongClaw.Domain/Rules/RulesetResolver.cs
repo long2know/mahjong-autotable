@@ -275,7 +275,13 @@ public static class RulesetResolver
             || string.Equals(normalized, "CSErWuBaSmallWin", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CSErWuBaSmallWinPair", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "CSErWuBaSmallWinRequired", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalized, "CSErWuBaSmallWinPairRequired", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(normalized, "CSErWuBaSmallWinPairRequired", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "MinimalTwoFiveEight", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "MinimalTwoFiveEightRulesetVariant", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "MiniTwoFiveEight", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "MinimalErWuBa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "MinimalErWuBaRulesetVariant", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "MiniErWuBa", StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsChangsha258Digits(string normalized)
     {
