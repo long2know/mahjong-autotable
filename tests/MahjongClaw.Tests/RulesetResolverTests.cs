@@ -676,6 +676,24 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("minimal 258 (changsha) ruleset variant (<=5 commits, single theme)")]
+    [InlineData("minimal 258 (changsha) ruleset variant <=5 commits")]
+    [InlineData("minimal 258 (changsha) ruleset variant （≤５ commits）")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetContainsCommitScopeMetadata(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("minimal 258 (changsha) ruleset variant (<=5 commits, single theme)")]
+    [InlineData("minimal 258 (changsha) ruleset variant <=5 commits")]
+    [InlineData("minimal 258 (changsha) ruleset variant （≤５ commits）")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetContainsCommitScopeMetadata(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("minimal 258 (changsha) ruleset variant (2026-04-04 08:21 UTC)")]
     [InlineData("minimal 258 (changsha) ruleset variant (2026/04/04 01:21 PT)")]
     [InlineData("minimal 258 (changsha) ruleset variant (check-in 01:21 AM)")]
