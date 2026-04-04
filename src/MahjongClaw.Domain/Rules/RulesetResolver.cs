@@ -17,6 +17,10 @@ public static class RulesetResolver
         @"\b(?:[01]?\d|2[0-3])\s*[:：]\s*[0-5]\d(?:\s*[:：]\s*[0-5]\d)?\s*(?:AM|PM|UTC|GMT|PST|PDT|PT)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private static readonly Regex LongFormDateMetadataRegex = new(
+        @"\b(?:(?:Mon(?:day)?|Tue(?:s|sday)?|Wed(?:nesday)?|Thu(?:r|rs|rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)\s*,?\s*)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?\s*,?\s+\d{4}\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private static readonly Regex CronHeaderReferenceRegex = new(
         @"\[\s*cron\s*[:：][^\]]*\]",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -574,7 +578,9 @@ public static class RulesetResolver
 
     private static string StripTemporalReferences(string source)
         => ClockMetadataRegex.Replace(
-            IsoDateMetadataRegex.Replace(source, string.Empty),
+            IsoDateMetadataRegex.Replace(
+                LongFormDateMetadataRegex.Replace(source, string.Empty),
+                string.Empty),
             string.Empty);
 
     private static string StripExecutionMetadataReferences(string source)
