@@ -616,6 +616,26 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("minimal #258 ruleset variant")]
+    [InlineData("mini #108 tiles variant")]
+    [InlineData("minimal ＃２５８ ruleset variant")]
+    [InlineData("mini ＃１０８ tiles variant")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetUsesSemanticHashtagDigits(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("minimal #258 ruleset variant")]
+    [InlineData("mini #108 tiles variant")]
+    [InlineData("minimal ＃２５８ ruleset variant")]
+    [InlineData("mini ＃１０８ tiles variant")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesSemanticHashtagDigits(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("minimal 258 (changsha) ruleset variant (per TASKS.md #1)")]
     [InlineData("minimal 258 (changsha) ruleset variant (follow-up PR #329)")]
     [InlineData("minimal 258 (changsha) ruleset variant (per TASKS.md ＃1)")]

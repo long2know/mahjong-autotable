@@ -581,8 +581,30 @@ public static class RulesetResolver
             return false;
         }
 
+        var normalizedDigits = NormalizeDigits(source.AsSpan(digitsStart, cursor - digitsStart));
+        if (IsChangshaTokenSequence(normalizedDigits))
+        {
+            length = 0;
+            return false;
+        }
+
         length = cursor - hashIndex;
         return true;
+    }
+
+    private static string NormalizeDigits(ReadOnlySpan<char> digits)
+    {
+        var builder = new StringBuilder(digits.Length);
+        foreach (var digit in digits)
+        {
+            var numericValue = (int)char.GetNumericValue(digit);
+            if ((uint)numericValue <= 9)
+            {
+                builder.Append((char)('0' + numericValue));
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static string NormalizeTraditionalChangshaCharacters(string normalized)
