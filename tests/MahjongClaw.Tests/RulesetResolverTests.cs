@@ -457,6 +457,10 @@ public class RulesetResolverTests
     [InlineData("长沙 258 规则")]
     [InlineData("长沙 258 规则集")]
     [InlineData("长沙 108 牌")]
+    [InlineData("Changsha 二五八")]
+    [InlineData("Changsha 小胡将对")]
+    [InlineData("CS 二五八 规则")]
+    [InlineData("CS 小胡")]
     public void Resolve_ReturnsChangsha258_WhenRulesetUsesChineseAliases(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -482,6 +486,10 @@ public class RulesetResolverTests
     [InlineData("长沙 258 规则")]
     [InlineData("长沙 258 规则集")]
     [InlineData("长沙 108 牌")]
+    [InlineData("Changsha 二五八")]
+    [InlineData("Changsha 小胡将对")]
+    [InlineData("CS 二五八 规则")]
+    [InlineData("CS 小胡")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetUsesChineseAliases(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
@@ -500,6 +508,8 @@ public class RulesetResolverTests
     [InlineData("二五八九")]
     [InlineData("长沙二五八九")]
     [InlineData("小胡九莲")]
+    [InlineData("Changsha 二五八九")]
+    [InlineData("CS 小胡九莲")]
     public void Resolve_ReturnsChineseOfficial_WhenWordedDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
@@ -520,6 +530,8 @@ public class RulesetResolverTests
     [InlineData("二五八九")]
     [InlineData("长沙二五八九")]
     [InlineData("小胡九莲")]
+    [InlineData("Changsha 二五八九")]
+    [InlineData("CS 小胡九莲")]
     public void IsChangsha258_ReturnsFalse_WhenWordedDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();

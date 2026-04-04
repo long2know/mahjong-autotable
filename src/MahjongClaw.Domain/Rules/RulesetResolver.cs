@@ -55,7 +55,7 @@ public static class RulesetResolver
             return false;
         }
 
-        if (IsChangsha258ChineseAlias(normalized))
+        if (IsChangsha258ChineseAlias(normalized) || IsMixedLanguageChangshaChineseAlias(normalized))
         {
             return true;
         }
@@ -369,6 +369,23 @@ public static class RulesetResolver
     private static bool ContainsInvalidWorded258Sequence(string normalized)
         => normalized.Contains("TwoFiveEightNine", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("ErWuBaJiu", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsMixedLanguageChangshaChineseAlias(string normalized)
+    {
+        if (normalized.StartsWith("Changsha", StringComparison.OrdinalIgnoreCase))
+        {
+            var suffix = normalized["Changsha".Length..];
+            return suffix.Length > 0 && IsChangsha258ChineseAlias(suffix);
+        }
+
+        if (normalized.StartsWith("CS", StringComparison.OrdinalIgnoreCase))
+        {
+            var suffix = normalized["CS".Length..];
+            return suffix.Length > 0 && IsChangsha258ChineseAlias(suffix);
+        }
+
+        return false;
+    }
 
     private static bool StartsWithValidChineseAliasPrefix(string value, string prefix)
     {
