@@ -33,6 +33,10 @@ public static class RulesetResolver
         @"\bchannel\s*(?:id)?\s*[:：#＃-]?\s*[\p{Nd}]{6,}\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private static readonly Regex RulesetHintLineRegex = new(
+        @"(?im)^.*?(?<hint>(?:\b(?:changsha|cs|minimal|mini|small\s*win|small\s*hu|xiao\s*hu|two\s*five\s*eight|er\s*wu\s*ba)\b|长沙|二五八|小胡).*)$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     public static MahjongRuleset Resolve(string? ruleset)
     {
         if (string.IsNullOrWhiteSpace(ruleset))
@@ -532,6 +536,7 @@ public static class RulesetResolver
             return string.Empty;
         }
 
+        source = ExtractLikelyRulesetHintLine(source);
         source = StripLabeledNumberReferences(source);
         source = StripTemporalReferences(source);
         source = StripExecutionMetadataReferences(source);
@@ -571,6 +576,26 @@ public static class RulesetResolver
         }
 
         return builder.ToString();
+    }
+
+    private static string ExtractLikelyRulesetHintLine(string source)
+    {
+        if (!source.Contains('\n') && !source.Contains('\r'))
+        {
+            return source;
+        }
+
+        var matches = RulesetHintLineRegex.Matches(source);
+        foreach (Match match in matches)
+        {
+            var hint = match.Groups["hint"].Value.Trim();
+            if (hint.Length > 0)
+            {
+                return hint;
+            }
+        }
+
+        return source;
     }
 
     private static string StripLabeledNumberReferences(string source)
