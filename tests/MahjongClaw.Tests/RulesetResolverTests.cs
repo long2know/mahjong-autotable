@@ -526,6 +526,10 @@ public class RulesetResolverTests
     [InlineData("cs default big three dragon")]
     [InlineData("changsha rules little four winds")]
     [InlineData("changsha rules little four wind")]
+    [InlineData("changsha 258 big win")]
+    [InlineData("cs 258 big wins")]
+    [InlineData("changsha da hu")]
+    [InlineData("cs dahu")]
     public void Resolve_ReturnsChineseOfficial_WhenRulesetIncludesUnsupportedSpecialPatternKeywords(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
@@ -544,6 +548,10 @@ public class RulesetResolverTests
     [InlineData("cs default big three dragon")]
     [InlineData("changsha rules little four winds")]
     [InlineData("changsha rules little four wind")]
+    [InlineData("changsha 258 big win")]
+    [InlineData("cs 258 big wins")]
+    [InlineData("changsha da hu")]
+    [InlineData("cs dahu")]
     public void IsChangsha258_ReturnsFalse_WhenRulesetIncludesUnsupportedSpecialPatternKeywords(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();

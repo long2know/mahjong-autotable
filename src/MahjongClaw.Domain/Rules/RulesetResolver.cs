@@ -179,7 +179,9 @@ public static class RulesetResolver
             || normalized.Contains("LittleThreeDragons", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("LittleThreeDragon", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("LittleFourWinds", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("LittleFourWind", StringComparison.OrdinalIgnoreCase);
+            || normalized.Contains("LittleFourWind", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("BigWin", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("DaHu", StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsChangshaKeywords(string normalized)
         => normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)
