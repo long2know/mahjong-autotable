@@ -216,11 +216,17 @@ public static class RulesetResolver
             || normalized.Contains("WithoutBigWins", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("NoDaHu", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("WithoutDaHu", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("BigWinOptional", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("BigWinsOptional", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("BigWinOptionalLater", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("BigWinsOptionalLater", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("OptionalBigWin", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("OptionalBigWins", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("无大胡", StringComparison.Ordinal)
             || normalized.Contains("無大胡", StringComparison.Ordinal)
             || normalized.Contains("不要大胡", StringComparison.Ordinal)
+            || normalized.Contains("可选大胡", StringComparison.Ordinal)
+            || normalized.Contains("可選大胡", StringComparison.Ordinal)
             || normalized.Contains("不含大胡", StringComparison.Ordinal)
             || normalized.Contains("非大胡", StringComparison.Ordinal);
 
