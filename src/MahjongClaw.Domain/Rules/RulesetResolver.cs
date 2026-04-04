@@ -584,11 +584,6 @@ public static class RulesetResolver
 
     private static string ExtractLikelyRulesetHintLine(string source)
     {
-        if (!source.Contains('\n') && !source.Contains('\r'))
-        {
-            return source;
-        }
-
         var matches = RulesetHintLineRegex.Matches(source);
         foreach (Match match in matches)
         {
