@@ -491,10 +491,15 @@ public class RulesetResolverTests
 
     [Theory]
     [InlineData("minimal changsha seven pairs ruleset")]
+    [InlineData("minimal changsha seven pair ruleset")]
     [InlineData("mini cs thirteen orphans rules")]
+    [InlineData("mini cs thirteen orphan rules")]
     [InlineData("changsha minimal nine gates")]
+    [InlineData("changsha minimal nine gate")]
     [InlineData("cs default big three dragons")]
+    [InlineData("cs default big three dragon")]
     [InlineData("changsha rules little four winds")]
+    [InlineData("changsha rules little four wind")]
     public void Resolve_ReturnsChineseOfficial_WhenRulesetIncludesUnsupportedSpecialPatternKeywords(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
@@ -502,10 +507,15 @@ public class RulesetResolverTests
 
     [Theory]
     [InlineData("minimal changsha seven pairs ruleset")]
+    [InlineData("minimal changsha seven pair ruleset")]
     [InlineData("mini cs thirteen orphans rules")]
+    [InlineData("mini cs thirteen orphan rules")]
     [InlineData("changsha minimal nine gates")]
+    [InlineData("changsha minimal nine gate")]
     [InlineData("cs default big three dragons")]
+    [InlineData("cs default big three dragon")]
     [InlineData("changsha rules little four winds")]
+    [InlineData("changsha rules little four wind")]
     public void IsChangsha258_ReturnsFalse_WhenRulesetIncludesUnsupportedSpecialPatternKeywords(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
