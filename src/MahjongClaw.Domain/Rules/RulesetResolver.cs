@@ -1,9 +1,14 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace MahjongClaw.Domain.Rules;
 
 public static class RulesetResolver
 {
+    private static readonly Regex LabeledNumberReferenceRegex = new(
+        @"\b(?:pr|pull\s*request|task|tasks(?:[.]md)?)\s*[:：#＃-]?\s*[\p{Nd}]+\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     public static MahjongRuleset Resolve(string? ruleset)
     {
         if (string.IsNullOrWhiteSpace(ruleset))
@@ -503,6 +508,8 @@ public static class RulesetResolver
             return string.Empty;
         }
 
+        source = StripLabeledNumberReferences(source);
+
         var builder = new StringBuilder(source.Length);
         for (var index = 0; index < source.Length; index++)
         {
@@ -539,6 +546,9 @@ public static class RulesetResolver
 
         return builder.ToString();
     }
+
+    private static string StripLabeledNumberReferences(string source)
+        => LabeledNumberReferenceRegex.Replace(source, string.Empty);
 
     private static bool TryNormalizeFullWidthAsciiLetter(char character, out char normalized)
     {
