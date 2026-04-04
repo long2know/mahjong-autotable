@@ -596,4 +596,42 @@ public class RulesetResolverTests
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("Changsha ２５８")]
+    [InlineData("CS ２-５-８ pair")]
+    [InlineData("２５８")]
+    [InlineData("minimal ２５８ ruleset variant")]
+    [InlineData("Changsha １０８ tiles")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetUsesFullWidthDigits(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("Changsha ２５８")]
+    [InlineData("CS ２-５-８ pair")]
+    [InlineData("２５８")]
+    [InlineData("minimal ２５８ ruleset variant")]
+    [InlineData("Changsha １０８ tiles")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesFullWidthDigits(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Changsha ２５８９")]
+    [InlineData("minimal ２５８９ ruleset variant")]
+    public void Resolve_ReturnsChineseOfficial_WhenFullWidthDigitSequenceIsNot258(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
+    }
+
+    [Theory]
+    [InlineData("Changsha ２５８９")]
+    [InlineData("minimal ２５８９ ruleset variant")]
+    public void IsChangsha258_ReturnsFalse_WhenFullWidthDigitSequenceIsNot258(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
+    }
 }

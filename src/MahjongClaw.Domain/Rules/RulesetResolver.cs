@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace MahjongClaw.Domain.Rules;
 
 public static class RulesetResolver
@@ -379,6 +381,35 @@ public static class RulesetResolver
     }
 
     private static string Normalize(string? ruleset)
-        => string.Concat((ruleset ?? string.Empty).Trim().Where(char.IsLetterOrDigit));
+    {
+        var source = (ruleset ?? string.Empty).Trim();
+        if (source.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(source.Length);
+        foreach (var character in source)
+        {
+            if (char.IsLetter(character))
+            {
+                builder.Append(character);
+                continue;
+            }
+
+            if (!char.IsDigit(character))
+            {
+                continue;
+            }
+
+            var numericValue = (int)char.GetNumericValue(character);
+            if ((uint)numericValue <= 9)
+            {
+                builder.Append((char)('0' + numericValue));
+            }
+        }
+
+        return builder.ToString();
+    }
 }
 
