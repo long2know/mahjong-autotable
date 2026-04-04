@@ -470,8 +470,15 @@ public static class RulesetResolver
         }
 
         var builder = new StringBuilder(source.Length);
-        foreach (var character in source)
+        for (var index = 0; index < source.Length; index++)
         {
+            if (source[index] == '#' && TryGetHashReferenceLength(source, index, out var hashReferenceLength))
+            {
+                index += hashReferenceLength - 1;
+                continue;
+            }
+
+            var character = source[index];
             if (char.IsLetter(character))
             {
                 builder.Append(character);
@@ -491,6 +498,30 @@ public static class RulesetResolver
         }
 
         return builder.ToString();
+    }
+
+    private static bool TryGetHashReferenceLength(string source, int hashIndex, out int length)
+    {
+        var cursor = hashIndex + 1;
+        while (cursor < source.Length && char.IsWhiteSpace(source[cursor]))
+        {
+            cursor++;
+        }
+
+        var digitsStart = cursor;
+        while (cursor < source.Length && char.IsDigit(source[cursor]))
+        {
+            cursor++;
+        }
+
+        if (digitsStart == cursor)
+        {
+            length = 0;
+            return false;
+        }
+
+        length = cursor - hashIndex;
+        return true;
     }
 
     private static string NormalizeTraditionalChangshaCharacters(string normalized)
