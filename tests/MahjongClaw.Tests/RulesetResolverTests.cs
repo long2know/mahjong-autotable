@@ -463,7 +463,10 @@ public class RulesetResolverTests
     [InlineData("mini changsha 258")]
     [InlineData("minimal cs 258 ruleset")]
     [InlineData("mini cs 258")]
-    public void Resolve_ReturnsChangsha258_WhenRulesetUsesMinimalPrefixWithChangshaOrCs(string ruleset)
+    [InlineData("minimal 258 ruleset variant")]
+    [InlineData("mini 258")]
+    [InlineData("minimal 108 tiles variant")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetUsesMinimalPrefixWithChangshaOr258Signals(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
     }
@@ -474,14 +477,15 @@ public class RulesetResolverTests
     [InlineData("mini changsha 258")]
     [InlineData("minimal cs 258 ruleset")]
     [InlineData("mini cs 258")]
-    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesMinimalPrefixWithChangshaOrCs(string ruleset)
+    [InlineData("minimal 258 ruleset variant")]
+    [InlineData("mini 258")]
+    [InlineData("minimal 108 tiles variant")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesMinimalPrefixWithChangshaOr258Signals(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
     }
 
     [Theory]
-    [InlineData("minimal 258 ruleset variant")]
-    [InlineData("mini 258")]
     [InlineData("minimal changsha 2589")]
     [InlineData("minimal cs 2589")]
     public void Resolve_ReturnsChineseOfficial_WhenMinimalPrefixInputIsNotValidChangsha258(string ruleset)

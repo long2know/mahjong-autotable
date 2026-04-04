@@ -101,12 +101,19 @@ public static class RulesetResolver
             return IsChangsha258WordAlias(normalized) || ContainsChangsha258Digits(normalized);
         }
 
-        if ((normalized.StartsWith("Minimal", StringComparison.OrdinalIgnoreCase)
-                || normalized.StartsWith("Mini", StringComparison.OrdinalIgnoreCase))
-            && ContainsChangshaOrCsContext(normalized))
+        if (normalized.StartsWith("Minimal", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("Mini", StringComparison.OrdinalIgnoreCase))
         {
-            return IsChangsha258WordAlias(normalized)
-                || (!normalized.Any(char.IsDigit) || ContainsChangsha258Digits(normalized));
+            var hasDigits = normalized.Any(char.IsDigit);
+            if (!hasDigits)
+            {
+                return IsChangsha258WordAlias(normalized) || ContainsChangshaOrCsContext(normalized);
+            }
+
+            return ContainsChangsha258Digits(normalized)
+                && (ContainsChangshaOrCsContext(normalized)
+                    || normalized.Contains("258", StringComparison.Ordinal)
+                    || normalized.Contains("108", StringComparison.Ordinal));
         }
 
         return false;
