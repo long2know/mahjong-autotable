@@ -472,7 +472,7 @@ public static class RulesetResolver
         var builder = new StringBuilder(source.Length);
         for (var index = 0; index < source.Length; index++)
         {
-            if (source[index] == '#' && TryGetHashReferenceLength(source, index, out var hashReferenceLength))
+            if (IsHashMarker(source[index]) && TryGetHashReferenceLength(source, index, out var hashReferenceLength))
             {
                 index += hashReferenceLength - 1;
                 continue;
@@ -523,6 +523,9 @@ public static class RulesetResolver
         normalized = '\0';
         return false;
     }
+
+    private static bool IsHashMarker(char character)
+        => character is '#' or '＃';
 
     private static bool TryGetHashReferenceLength(string source, int hashIndex, out int length)
     {

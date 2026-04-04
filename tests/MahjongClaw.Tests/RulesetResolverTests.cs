@@ -608,6 +608,8 @@ public class RulesetResolverTests
     [Theory]
     [InlineData("minimal 258 (changsha) ruleset variant (per TASKS.md #1)")]
     [InlineData("minimal 258 (changsha) ruleset variant (follow-up PR #329)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (per TASKS.md ＃1)")]
+    [InlineData("minimal 258 (changsha) ruleset variant（follow-up PR ＃３２９）")]
     public void Resolve_ReturnsChangsha258_WhenRulesetContainsHashtagNumberReference(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -616,6 +618,8 @@ public class RulesetResolverTests
     [Theory]
     [InlineData("minimal 258 (changsha) ruleset variant (per TASKS.md #1)")]
     [InlineData("minimal 258 (changsha) ruleset variant (follow-up PR #329)")]
+    [InlineData("minimal 258 (changsha) ruleset variant (per TASKS.md ＃1)")]
+    [InlineData("minimal 258 (changsha) ruleset variant（follow-up PR ＃３２９）")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetContainsHashtagNumberReference(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
