@@ -222,6 +222,8 @@ public static class RulesetResolver
             || normalized.Contains("BigWinsOptionalLater", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("OptionalBigWin", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("OptionalBigWins", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("OptionalBigWinLater", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("OptionalBigWinsLater", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("无大胡", StringComparison.Ordinal)
             || normalized.Contains("無大胡", StringComparison.Ordinal)
             || normalized.Contains("不要大胡", StringComparison.Ordinal)
