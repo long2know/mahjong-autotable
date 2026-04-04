@@ -6,7 +6,7 @@ namespace MahjongClaw.Domain.Rules;
 public static class RulesetResolver
 {
     private static readonly Regex LabeledNumberReferenceRegex = new(
-        @"\b(?:pr|pull\s*request|task|tasks(?:[.]md)?)\s*[:：#＃-]?\s*[\p{Nd}]+\b",
+        @"\b(?:pr|pull[-\s]*request|task|tasks(?:[.]md)?)\s*[:：#＃-]?\s*[\p{Nd}]+\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex IsoDateMetadataRegex = new(

@@ -659,6 +659,7 @@ public class RulesetResolverTests
     [InlineData("minimal 258 (changsha) ruleset variant (per TASKS.md 1)")]
     [InlineData("minimal 258 (changsha) ruleset variant (follow-up PR 329)")]
     [InlineData("minimal 258 (changsha) ruleset variant（follow-up PR：３２９）")]
+    [InlineData("minimal 258 (changsha) ruleset variant (follow-up pull-request 329)")]
     [InlineData("minimal 258 (changsha) ruleset variant (task 1)")]
     public void Resolve_ReturnsChangsha258_WhenRulesetContainsNamedNumberReferenceWithoutHashtag(string ruleset)
     {
@@ -669,6 +670,7 @@ public class RulesetResolverTests
     [InlineData("minimal 258 (changsha) ruleset variant (per TASKS.md 1)")]
     [InlineData("minimal 258 (changsha) ruleset variant (follow-up PR 329)")]
     [InlineData("minimal 258 (changsha) ruleset variant（follow-up PR：３２９）")]
+    [InlineData("minimal 258 (changsha) ruleset variant (follow-up pull-request 329)")]
     [InlineData("minimal 258 (changsha) ruleset variant (task 1)")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetContainsNamedNumberReferenceWithoutHashtag(string ruleset)
     {
