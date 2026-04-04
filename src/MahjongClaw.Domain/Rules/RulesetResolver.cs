@@ -383,6 +383,7 @@ public static class RulesetResolver
 
     private static bool ContainsChangsha258Digits(string normalized)
     {
+        var foundDigitSequence = false;
         var index = 0;
         while (index < normalized.Length)
         {
@@ -402,14 +403,15 @@ public static class RulesetResolver
                 index++;
             }
 
+            foundDigitSequence = true;
             var digits = normalized[start..index];
-            if (IsChangshaTokenSequence(digits))
+            if (!IsChangshaTokenSequence(digits))
             {
-                return true;
+                return false;
             }
         }
 
-        return false;
+        return foundDigitSequence;
     }
 
     private static bool IsChangshaTokenSequence(string digits)

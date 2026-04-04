@@ -333,6 +333,9 @@ public class RulesetResolverTests
     [InlineData("Changsha 2580 pair")]
     [InlineData("Changsha suited 2589")]
     [InlineData("Changsha no honors 2580")]
+    [InlineData("Changsha 258 999")]
+    [InlineData("CS 108 258 777")]
+    [InlineData("minimal 258 ruleset variant 999")]
     [InlineData("CS2589")]
     [InlineData("2589")]
     public void IsChangsha258_ReturnsFalse_WhenDigitSequenceIsNot258(string ruleset)
@@ -354,6 +357,9 @@ public class RulesetResolverTests
     [InlineData("Changsha 2580 pair")]
     [InlineData("Changsha suited 2589")]
     [InlineData("Changsha no honors 2580")]
+    [InlineData("Changsha 258 999")]
+    [InlineData("CS 108 258 777")]
+    [InlineData("minimal 258 ruleset variant 999")]
     [InlineData("CS2589")]
     [InlineData("2589")]
     public void Resolve_ReturnsChineseOfficial_WhenDigitSequenceIsNot258(string ruleset)
