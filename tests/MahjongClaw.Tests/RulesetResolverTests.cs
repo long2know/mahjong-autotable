@@ -496,6 +496,28 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("長沙")]
+    [InlineData("長沙 258")]
+    [InlineData("長沙 二五八")]
+    [InlineData("長沙 小胡")]
+    [InlineData("長沙 108 牌")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetUsesTraditionalChineseChangshaAliases(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("長沙")]
+    [InlineData("長沙 258")]
+    [InlineData("長沙 二五八")]
+    [InlineData("長沙 小胡")]
+    [InlineData("長沙 108 牌")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesTraditionalChineseChangshaAliases(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("Changsha two five eight nine")]
     [InlineData("CS two five eight nine")]
     [InlineData("Two five eight nine")]
@@ -507,6 +529,7 @@ public class RulesetResolverTests
     [InlineData("small win nine gates")]
     [InlineData("二五八九")]
     [InlineData("长沙二五八九")]
+    [InlineData("長沙二五八九")]
     [InlineData("小胡九莲")]
     [InlineData("Changsha 二五八九")]
     [InlineData("CS 小胡九莲")]
@@ -529,6 +552,7 @@ public class RulesetResolverTests
     [InlineData("minimal er wu ba jiu")]
     [InlineData("二五八九")]
     [InlineData("长沙二五八九")]
+    [InlineData("長沙二五八九")]
     [InlineData("小胡九莲")]
     [InlineData("Changsha 二五八九")]
     [InlineData("CS 小胡九莲")]

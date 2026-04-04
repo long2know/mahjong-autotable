@@ -45,6 +45,8 @@ public static class RulesetResolver
 
     private static bool IsChangsha258Normalized(string normalized)
     {
+        normalized = NormalizeTraditionalChangshaCharacters(normalized);
+
         if (ContainsDisallowedSpecialPatternKeywords(normalized))
         {
             return false;
@@ -490,5 +492,8 @@ public static class RulesetResolver
 
         return builder.ToString();
     }
+
+    private static string NormalizeTraditionalChangshaCharacters(string normalized)
+        => normalized.Replace("長沙", "长沙", StringComparison.Ordinal);
 }
 
