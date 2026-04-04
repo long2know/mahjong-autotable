@@ -722,8 +722,28 @@ public class RulesetResolverTests
     }
 
     [Theory]
+    [InlineData("ＣＳ ２５８")]
+    [InlineData("Ｃｈａｎｇｓｈａ ２５８")]
+    [InlineData("ｍｉｎｉｍａｌ ２５８ (ｃｈａｎｇｓｈａ) ruleset variant")]
+    public void Resolve_ReturnsChangsha258_WhenRulesetUsesFullWidthLatinLetters(string ruleset)
+    {
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Theory]
+    [InlineData("ＣＳ ２５８")]
+    [InlineData("Ｃｈａｎｇｓｈａ ２５８")]
+    [InlineData("ｍｉｎｉｍａｌ ２５８ (ｃｈａｎｇｓｈａ) ruleset variant")]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetUsesFullWidthLatinLetters(string ruleset)
+    {
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("Changsha ２５８９")]
     [InlineData("minimal ２５８９ ruleset variant")]
+    [InlineData("ＣＳ ２５８９")]
+    [InlineData("ｍｉｎｉｍａｌ ２５８９ ruleset variant")]
     public void Resolve_ReturnsChineseOfficial_WhenFullWidthDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
@@ -732,6 +752,8 @@ public class RulesetResolverTests
     [Theory]
     [InlineData("Changsha ２５８９")]
     [InlineData("minimal ２５８９ ruleset variant")]
+    [InlineData("ＣＳ ２５８９")]
+    [InlineData("ｍｉｎｉｍａｌ ２５８９ ruleset variant")]
     public void IsChangsha258_ReturnsFalse_WhenFullWidthDigitSequenceIsNot258(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();

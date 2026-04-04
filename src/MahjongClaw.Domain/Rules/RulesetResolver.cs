@@ -479,6 +479,12 @@ public static class RulesetResolver
             }
 
             var character = source[index];
+            if (TryNormalizeFullWidthAsciiLetter(character, out var normalizedLetter))
+            {
+                builder.Append(normalizedLetter);
+                continue;
+            }
+
             if (char.IsLetter(character))
             {
                 builder.Append(character);
@@ -498,6 +504,24 @@ public static class RulesetResolver
         }
 
         return builder.ToString();
+    }
+
+    private static bool TryNormalizeFullWidthAsciiLetter(char character, out char normalized)
+    {
+        if (character is >= 'Ａ' and <= 'Ｚ')
+        {
+            normalized = (char)('A' + (character - 'Ａ'));
+            return true;
+        }
+
+        if (character is >= 'ａ' and <= 'ｚ')
+        {
+            normalized = (char)('a' + (character - 'ａ'));
+            return true;
+        }
+
+        normalized = '\0';
+        return false;
     }
 
     private static bool TryGetHashReferenceLength(string source, int hashIndex, out int length)
