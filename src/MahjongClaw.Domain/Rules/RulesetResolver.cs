@@ -210,7 +210,12 @@ public static class RulesetResolver
             || normalized.Contains("NoDaHu", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("WithoutDaHu", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("BigWinOptionalLater", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("BigWinsOptionalLater", StringComparison.OrdinalIgnoreCase);
+            || normalized.Contains("BigWinsOptionalLater", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("无大胡", StringComparison.Ordinal)
+            || normalized.Contains("無大胡", StringComparison.Ordinal)
+            || normalized.Contains("不要大胡", StringComparison.Ordinal)
+            || normalized.Contains("不含大胡", StringComparison.Ordinal)
+            || normalized.Contains("非大胡", StringComparison.Ordinal);
 
     private static bool ContainsChangshaKeywords(string normalized)
         => normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)

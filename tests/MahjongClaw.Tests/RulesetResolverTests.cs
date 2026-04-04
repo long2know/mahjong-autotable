@@ -609,6 +609,8 @@ public class RulesetResolverTests
     [InlineData("minimal 258 (changsha) ruleset variant (big wins optional later)")]
     [InlineData("changsha 258 no big wins")]
     [InlineData("cs 258 without big win")]
+    [InlineData("长沙 258 无大胡")]
+    [InlineData("长沙 258 不要大胡")]
     public void Resolve_ReturnsChangsha258_WhenRulesetExplicitlyOptsOutBigWinPatterns(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -618,6 +620,8 @@ public class RulesetResolverTests
     [InlineData("minimal 258 (changsha) ruleset variant (big wins optional later)")]
     [InlineData("changsha 258 no big wins")]
     [InlineData("cs 258 without big win")]
+    [InlineData("长沙 258 无大胡")]
+    [InlineData("长沙 258 不要大胡")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetExplicitlyOptsOutBigWinPatterns(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
