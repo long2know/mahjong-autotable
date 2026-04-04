@@ -103,7 +103,8 @@ public static class RulesetResolver
             || normalized.StartsWith("ErWuBa", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("XiaoHu", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("SmallHu", StringComparison.OrdinalIgnoreCase)
-            || normalized.StartsWith("SmallWin", StringComparison.OrdinalIgnoreCase))
+            || normalized.StartsWith("SmallWin", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("长沙", StringComparison.Ordinal))
         {
             return IsChangsha258WordAlias(normalized) || ContainsChangsha258Digits(normalized);
         }
@@ -188,7 +189,8 @@ public static class RulesetResolver
             || normalized.Contains("LittleFourWinds", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("LittleFourWind", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("BigWin", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("DaHu", StringComparison.OrdinalIgnoreCase);
+            || normalized.Contains("DaHu", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("大胡", StringComparison.Ordinal);
 
     private static bool ContainsChangshaKeywords(string normalized)
         => normalized.Contains("NoHonors", StringComparison.OrdinalIgnoreCase)

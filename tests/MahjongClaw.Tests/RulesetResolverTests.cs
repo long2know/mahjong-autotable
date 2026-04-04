@@ -443,6 +443,9 @@ public class RulesetResolverTests
     [InlineData("长沙 二五八")]
     [InlineData("长沙 小胡")]
     [InlineData("长沙 小胡将对")]
+    [InlineData("长沙 258 规则")]
+    [InlineData("长沙 258 规则集")]
+    [InlineData("长沙 108 牌")]
     public void Resolve_ReturnsChangsha258_WhenRulesetUsesChineseAliases(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
@@ -460,6 +463,9 @@ public class RulesetResolverTests
     [InlineData("长沙 二五八")]
     [InlineData("长沙 小胡")]
     [InlineData("长沙 小胡将对")]
+    [InlineData("长沙 258 规则")]
+    [InlineData("长沙 258 规则集")]
+    [InlineData("长沙 108 牌")]
     public void IsChangsha258_ReturnsTrue_WhenRulesetUsesChineseAliases(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
@@ -570,6 +576,7 @@ public class RulesetResolverTests
     [InlineData("cs 258 big wins")]
     [InlineData("changsha da hu")]
     [InlineData("cs dahu")]
+    [InlineData("长沙 258 大胡")]
     public void Resolve_ReturnsChineseOfficial_WhenRulesetIncludesUnsupportedSpecialPatternKeywords(string ruleset)
     {
         RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.ChineseOfficial);
@@ -592,6 +599,7 @@ public class RulesetResolverTests
     [InlineData("cs 258 big wins")]
     [InlineData("changsha da hu")]
     [InlineData("cs dahu")]
+    [InlineData("长沙 258 大胡")]
     public void IsChangsha258_ReturnsFalse_WhenRulesetIncludesUnsupportedSpecialPatternKeywords(string ruleset)
     {
         RulesetResolver.IsChangsha258(ruleset).Should().BeFalse();
