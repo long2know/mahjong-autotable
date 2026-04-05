@@ -4705,6 +4705,52 @@ public class RulesetResolverTests
         RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
     }
 
+    [Fact]
+    public void Resolve_ReturnsChangsha258_WhenRulesetCronReminderBodyContainsNineFortyOneAmTimestampMetadata()
+    {
+        const string ruleset = """
+            [cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] Autonomous Mahjong execution for channel 1474176085838004255.
+            Use ONLY these channel-scoped files as source of truth:
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/AGENTS.md
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/TASKS.md
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/MEMORY.md
+            Do NOT use /home/node/.openclaw/workspaces/main/TASKS.md for this run.
+            TOP PRIORITY: implement the minimal 258 (Changsha) ruleset variant (per TASKS.md #1) before anything else.
+            REQUIREMENT: Each run MUST create and merge exactly one small PR (or explain why it cannot). Keep scope tight (<=5 commits, single theme).
+            If tests fail or PR cannot be opened/merged, send:
+            "Status update: NO PROGRESS SINCE LAST CHECK-IN (<blocker>) | Next: <immediate corrective action>" and stop.
+            After PR merge, send a Discord message to channel 1474176085838004255 with exact format:
+            "Status update: <PR URL> | Next: <single immediate step>".
+            If the task is visual parity and a screenshot is required, capture and send the screenshot via message tool after the PR, then post the status update line.
+            Current time: Sunday, April 5th, 2026 — 9:41 AM (America/Los_Angeles) / 2026-04-05 16:41 UTC
+            """;
+
+        RulesetResolver.Resolve(ruleset).Should().Be(MahjongRuleset.Changsha258);
+    }
+
+    [Fact]
+    public void IsChangsha258_ReturnsTrue_WhenRulesetCronReminderBodyContainsNineFortyOneAmTimestampMetadata()
+    {
+        const string ruleset = """
+            [cron:aac88361-c047-4527-8bef-737045ae8702 Reminder to #mahjong] Autonomous Mahjong execution for channel 1474176085838004255.
+            Use ONLY these channel-scoped files as source of truth:
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/AGENTS.md
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/TASKS.md
+            - /home/node/.openclaw/workspaces/main/channel-mahjong/MEMORY.md
+            Do NOT use /home/node/.openclaw/workspaces/main/TASKS.md for this run.
+            TOP PRIORITY: implement the minimal 258 (Changsha) ruleset variant (per TASKS.md #1) before anything else.
+            REQUIREMENT: Each run MUST create and merge exactly one small PR (or explain why it cannot). Keep scope tight (<=5 commits, single theme).
+            If tests fail or PR cannot be opened/merged, send:
+            "Status update: NO PROGRESS SINCE LAST CHECK-IN (<blocker>) | Next: <immediate corrective action>" and stop.
+            After PR merge, send a Discord message to channel 1474176085838004255 with exact format:
+            "Status update: <PR URL> | Next: <single immediate step>".
+            If the task is visual parity and a screenshot is required, capture and send the screenshot via message tool after the PR, then post the status update line.
+            Current time: Sunday, April 5th, 2026 — 9:41 AM (America/Los_Angeles) / 2026-04-05 16:41 UTC
+            """;
+
+        RulesetResolver.IsChangsha258(ruleset).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData("minimal changsha 2589")]
     [InlineData("minimal cs 2589")]
