@@ -328,6 +328,11 @@ gameGroup.MapPost("/{id:guid}/discard", async (
         return Results.NotFound();
     }
 
+    if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Conflict(new { message = "Game is not active." });
+    }
+
     if (game.CurrentPlayerId != request.PlayerId)
     {
         return Results.Conflict(new { message = "It is not this player's turn." });
@@ -423,6 +428,11 @@ gameGroup.MapPost("/{id:guid}/meld", async (
         return Results.NotFound();
     }
 
+    if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Conflict(new { message = "Game is not active." });
+    }
+
     var tiles = game.Tiles
         .Where(t => request.TileIds.Contains(t.Id) && t.PlayerId == request.PlayerId)
         .ToList();
@@ -478,12 +488,28 @@ gameGroup.MapPost("/{id:guid}/win", async (
     CancellationToken cancellationToken) =>
 {
     var game = await dbContext.Games
+        .Include(g => g.Players)
         .Include(g => g.Tiles)
         .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
 
     if (game is null)
     {
         return Results.NotFound();
+    }
+
+    if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Conflict(new { message = "Game is not active." });
+    }
+
+    if (!game.Players.Any(player => player.Id == request.PlayerId))
+    {
+        return Results.NotFound(new { message = "Player not found in game." });
+    }
+
+    if (game.CurrentPlayerId != request.PlayerId)
+    {
+        return Results.Conflict(new { message = "It is not this player's turn." });
     }
 
     var playerTiles = game.Tiles
