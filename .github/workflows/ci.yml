@@ -18,6 +18,8 @@ jobs:
         run: dotnet restore MahjongClaw.slnx
       - name: Build
         run: dotnet build MahjongClaw.slnx -c Release --no-restore
+      - name: Rules correctness pass (Chinese Official)
+        run: dotnet test MahjongClaw.slnx -c Release --no-build --verbosity normal --filter "FullyQualifiedName~MeldValidatorTests|FullyQualifiedName~RulesCorrectnessVectorsTests|FullyQualifiedName~ScoreCalculatorTests|FullyQualifiedName~RulesetHandAnalyzerTests"
       - name: Test
         run: dotnet test MahjongClaw.slnx -c Release --no-build --verbosity normal
 
