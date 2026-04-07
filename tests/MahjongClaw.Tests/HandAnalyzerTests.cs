@@ -126,6 +126,31 @@ public class HandAnalyzerTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsTrue_WhenHandIncludesRequiredKongTile()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // East kong
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // South pung
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            // West pung
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            // North pung
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North)
+        };
+
+        HandAnalyzer.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pair.Should().Be(new Tile(TileSuit.Dots, 5));
+        hand.Pattern.Should().Be(WinningPattern.BigFourWinds);
+        hand.Melds.Count(meld => meld.Type == MeldType.Kong).Should().Be(1);
+    }
+
+    [Fact]
     public void TryGetWinningHand_SelectsDeterministicPairForSevenPairsAcrossInputOrders()
     {
         var tilesA = new List<Tile>

@@ -4,6 +4,11 @@ namespace MahjongClaw.Domain.Rules;
 
 public static class HandAnalyzer
 {
+    private const int BaseWinningTileCount = 14;
+    private const int RequiredMeldCount = 4;
+    private const int MaxKongs = 4;
+    private const int MaxWinningTileCount = BaseWinningTileCount + MaxKongs;
+
     public static bool IsWinningHand(IReadOnlyList<Tile> tiles)
         => TryGetWinningHand(tiles, out _);
 
@@ -18,8 +23,7 @@ public static class HandAnalyzer
 
         hand = null;
 
-        // A complete winning hand should always contain exactly 14 tiles.
-        if (tiles.Count != 14)
+        if (!TryGetRequiredKongCount(tiles.Count, out var requiredKongs))
         {
             return false;
         }
@@ -35,17 +39,30 @@ public static class HandAnalyzer
             return false;
         }
 
-        if (TryBuildSevenPairs(tiles, counts, out hand))
+        if (requiredKongs == 0 && TryBuildSevenPairs(tiles, counts, out hand))
         {
             return true;
         }
 
-        if (TryBuildThirteenOrphans(counts, out hand))
+        if (requiredKongs == 0 && TryBuildThirteenOrphans(counts, out hand))
         {
             return true;
         }
 
-        return TryBuildStandardHand(tiles, counts, out hand);
+        return TryBuildStandardHand(tiles, counts, requiredKongs, out hand);
+    }
+
+    private static bool TryGetRequiredKongCount(int tileCount, out int requiredKongs)
+    {
+        requiredKongs = 0;
+
+        if (tileCount < BaseWinningTileCount || tileCount > MaxWinningTileCount)
+        {
+            return false;
+        }
+
+        requiredKongs = tileCount - BaseWinningTileCount;
+        return true;
     }
 
     private static Dictionary<Tile, int> BuildCounts(IReadOnlyList<Tile> tiles)
@@ -112,7 +129,11 @@ public static class HandAnalyzer
         return true;
     }
 
-    private static bool TryBuildStandardHand(IReadOnlyList<Tile> tiles, Dictionary<Tile, int> counts, out WinningHand? hand)
+    private static bool TryBuildStandardHand(
+        IReadOnlyList<Tile> tiles,
+        Dictionary<Tile, int> counts,
+        int requiredKongs,
+        out WinningHand? hand)
     {
         hand = null;
         var bestRank = int.MinValue;
@@ -128,8 +149,13 @@ public static class HandAnalyzer
             var candidateCounts = new Dictionary<Tile, int>(counts);
             candidateCounts[tile] -= 2;
 
+            if (!HasRequiredKongs(candidateCounts, requiredKongs))
+            {
+                continue;
+            }
+
             var melds = new List<Meld>();
-            if (!TryFormMelds(candidateCounts, melds))
+            if (!TryFormMelds(candidateCounts, melds, requiredKongs, kongsUsed: 0))
             {
                 continue;
             }
@@ -179,10 +205,10 @@ public static class HandAnalyzer
                 ? WinningPattern.BigThreeDragons
                 : IsLittleFourWinds(melds, pair)
                     ? WinningPattern.LittleFourWinds
-                    : IsLittleThreeDragons(melds, pair)
-                        ? WinningPattern.LittleThreeDragons
-                        : DetermineTileOnlyPattern(tiles)
-                            ?? (IsAllPungs(melds) ? WinningPattern.AllPungs : WinningPattern.Standard);
+                : IsLittleThreeDragons(melds, pair)
+                    ? WinningPattern.LittleThreeDragons
+                    : DetermineTileOnlyPattern(tiles)
+                        ?? (IsAllPungs(melds) ? WinningPattern.AllPungs : WinningPattern.Standard);
 
     private static int GetPatternRank(WinningPattern pattern)
         => pattern switch
@@ -239,6 +265,11 @@ public static class HandAnalyzer
 
     private static bool IsNineGates(IReadOnlyList<Tile> tiles)
     {
+        if (tiles.Count != BaseWinningTileCount)
+        {
+            return false;
+        }
+
         if (tiles.Any(static tile => tile.IsHonor || tile.IsFlower))
         {
             return false;
@@ -360,8 +391,44 @@ public static class HandAnalyzer
             .ThenBy(GetTileSortValue)
             .ToList();
 
-    private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds)
+    private static bool HasRequiredKongs(IReadOnlyDictionary<Tile, int> counts, int requiredKongs)
+        => requiredKongs <= 0
+            || counts.Values.Count(static count => count >= 4) >= requiredKongs;
+
+    private static bool CanSatisfyRemainingKongs(IReadOnlyDictionary<Tile, int> counts, int requiredKongs, int kongsUsed)
     {
+        if (requiredKongs <= 0)
+        {
+            return true;
+        }
+
+        var remainingKongs = counts.Values.Count(static count => count >= 4);
+        return kongsUsed + remainingKongs >= requiredKongs;
+    }
+
+    private static bool TryFormMelds(Dictionary<Tile, int> counts, List<Meld> melds, int requiredKongs, int kongsUsed)
+    {
+        if (kongsUsed > requiredKongs)
+        {
+            return false;
+        }
+
+        var remainingMeldSlots = RequiredMeldCount - melds.Count;
+        if (remainingMeldSlots < 0)
+        {
+            return false;
+        }
+
+        if (kongsUsed + remainingMeldSlots < requiredKongs)
+        {
+            return false;
+        }
+
+        if (!CanSatisfyRemainingKongs(counts, requiredKongs, kongsUsed))
+        {
+            return false;
+        }
+
         var nextTile = counts
             .Where(static kvp => kvp.Value > 0)
             .Select(static kvp => kvp.Key)
@@ -371,16 +438,45 @@ public static class HandAnalyzer
 
         if (nextTile is null)
         {
-            return true;
+            return melds.Count == RequiredMeldCount && kongsUsed == requiredKongs;
         }
 
-        // Try Pung
+        if (remainingMeldSlots == 0)
+        {
+            return false;
+        }
+
+        var remainingKongSlots = requiredKongs - kongsUsed;
+        if (remainingKongSlots == remainingMeldSlots && counts[nextTile] < 4)
+        {
+            return false;
+        }
+
+        if (counts[nextTile] >= 4 && kongsUsed < requiredKongs)
+        {
+            counts[nextTile] -= 4;
+            melds.Add(new Meld(MeldType.Kong, new[] { nextTile, nextTile, nextTile, nextTile }));
+
+            if (TryFormMelds(counts, melds, requiredKongs, kongsUsed + 1))
+            {
+                return true;
+            }
+
+            melds.RemoveAt(melds.Count - 1);
+            counts[nextTile] += 4;
+        }
+
+        if (remainingKongSlots == remainingMeldSlots)
+        {
+            return false;
+        }
+
         if (counts[nextTile] >= 3)
         {
             counts[nextTile] -= 3;
             melds.Add(new Meld(MeldType.Pung, new[] { nextTile, nextTile, nextTile }));
 
-            if (TryFormMelds(counts, melds))
+            if (TryFormMelds(counts, melds, requiredKongs, kongsUsed))
             {
                 return true;
             }
@@ -389,7 +485,6 @@ public static class HandAnalyzer
             counts[nextTile] += 3;
         }
 
-        // Try Chow for suited tiles
         if (!nextTile.IsHonor && !nextTile.IsFlower)
         {
             var rank = nextTile.Rank;
@@ -407,7 +502,7 @@ public static class HandAnalyzer
                     counts[tile3] -= 1;
                     melds.Add(new Meld(MeldType.Chow, new[] { nextTile, tile2, tile3 }));
 
-                    if (TryFormMelds(counts, melds))
+                    if (TryFormMelds(counts, melds, requiredKongs, kongsUsed))
                     {
                         return true;
                     }

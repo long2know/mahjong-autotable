@@ -274,6 +274,30 @@ public class RulesetHandAnalyzerTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsTrue_ForChineseOfficialKongExpandedHand()
+    {
+        var tiles = new List<Tile>
+        {
+            // Pair
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            // East kong
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            // South pung
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            // West pung
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            // North pung
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North)
+        };
+
+        RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.ChineseOfficial, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.BigFourWinds);
+        hand.Melds.Count(meld => meld.Type == MeldType.Kong).Should().Be(1);
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsTrue_ForChineseOfficialNineGates()
     {
         var tiles = new List<Tile>
