@@ -25,6 +25,14 @@ public static class RulesetResolver
         @"\b(?:(?:Mon(?:day)?|Tue(?:s|sday)?|Wed(?:nesday)?|Thu(?:r|rs|rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)\s*,?\s*)?(?:0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s*,?\s+\d{4}\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private static readonly Regex TimeZoneRegionMetadataRegex = new(
+        @"\(\s*[A-Za-z]+(?:/[A-Za-z0-9_+\-]+)+\s*\)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex TimeZoneOffsetMetadataRegex = new(
+        @"\b(?:UTC|GMT)\s*[+\-]\s*(?:0?\d|1\d|2[0-3])(?:\s*[:：]?\s*[0-5]\d)?\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private static readonly Regex CronHeaderReferenceRegex = new(
         @"\[\s*cron(?:\s*[:：]\s*|\s+)[^\]]*\]",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -609,10 +617,14 @@ public static class RulesetResolver
         => LabeledNumberReferenceRegex.Replace(source, string.Empty);
 
     private static string StripTemporalReferences(string source)
-        => ClockMetadataRegex.Replace(
-            IsoDateMetadataRegex.Replace(
-                DayFirstLongFormDateMetadataRegex.Replace(
-                    LongFormDateMetadataRegex.Replace(source, string.Empty),
+        => TimeZoneOffsetMetadataRegex.Replace(
+            TimeZoneRegionMetadataRegex.Replace(
+                ClockMetadataRegex.Replace(
+                    IsoDateMetadataRegex.Replace(
+                        DayFirstLongFormDateMetadataRegex.Replace(
+                            LongFormDateMetadataRegex.Replace(source, string.Empty),
+                            string.Empty),
+                        string.Empty),
                     string.Empty),
                 string.Empty),
             string.Empty);
