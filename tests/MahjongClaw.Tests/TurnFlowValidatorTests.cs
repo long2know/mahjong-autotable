@@ -6,6 +6,24 @@ namespace MahjongClaw.Tests;
 public sealed class TurnFlowValidatorTests
 {
     [Theory]
+    [InlineData(13, 0)]
+    [InlineData(10, 3)]
+    [InlineData(1, 12)]
+    public void CanDraw_WhenPlayerOwnsThirteenTilesAndHasHandTile_ReturnsTrue(int handTileCount, int meldTileCount)
+    {
+        TurnFlowValidator.CanDraw(handTileCount, meldTileCount).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(14, 0)]
+    [InlineData(12, 2)]
+    [InlineData(0, 13)]
+    public void CanDraw_WhenPlayerHandShapeIsInvalid_ReturnsFalse(int handTileCount, int meldTileCount)
+    {
+        TurnFlowValidator.CanDraw(handTileCount, meldTileCount).Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(14, 0)]
     [InlineData(11, 3)]
     [InlineData(10, 4)]

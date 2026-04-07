@@ -290,6 +290,18 @@ gameGroup.MapPost("/{id:guid}/draw", async (
         return Results.Conflict(new { message = "It is not this player's turn." });
     }
 
+    var handTileCount = game.Tiles.Count(tile =>
+        tile.PlayerId == request.PlayerId &&
+        string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase));
+    var meldTileCount = game.Tiles.Count(tile =>
+        tile.PlayerId == request.PlayerId &&
+        string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
+
+    if (!TurnFlowValidator.CanDraw(handTileCount, meldTileCount))
+    {
+        return Results.Conflict(new { message = "Player must hold 13 owned tiles before drawing." });
+    }
+
     var tile = game.Tiles
         .Where(t => t.Location == "Wall")
         .OrderBy(t => t.Sequence)
