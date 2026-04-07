@@ -11,6 +11,9 @@ public static class TurnFlowValidator
     public static bool CanDeclareMeld(int handTileCount, int meldTileCount, int meldTileRequirement)
         => HasValidOwnedTileShape(handTileCount, meldTileCount, requiredOwnedTiles: 14, requiredHandTiles: meldTileRequirement);
 
+    public static bool CanDeclareWin(int handTileCount, int meldTileCount)
+        => HasValidOwnedTileShape(handTileCount, meldTileCount, requiredOwnedTiles: 14, requiredHandTiles: 1);
+
     private static bool HasValidOwnedTileShape(
         int handTileCount,
         int meldTileCount,

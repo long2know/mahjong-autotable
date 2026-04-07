@@ -567,6 +567,18 @@ gameGroup.MapPost("/{id:guid}/win", async (
         return Results.Conflict(new { message = "It is not this player's turn." });
     }
 
+    var handTileCount = game.Tiles.Count(tile =>
+        tile.PlayerId == request.PlayerId &&
+        string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase));
+    var meldTileCount = game.Tiles.Count(tile =>
+        tile.PlayerId == request.PlayerId &&
+        string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
+
+    if (!TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount))
+    {
+        return Results.Conflict(new { message = "Player must hold 14 owned tiles before declaring win." });
+    }
+
     var playerTiles = game.Tiles
         .Where(tile => tile.PlayerId == request.PlayerId && (tile.Location == "Hand" || tile.Location == "Meld"))
         .ToList();

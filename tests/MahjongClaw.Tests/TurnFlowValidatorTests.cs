@@ -66,4 +66,22 @@ public sealed class TurnFlowValidatorTests
     {
         TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData(14, 0)]
+    [InlineData(11, 3)]
+    [InlineData(2, 12)]
+    public void CanDeclareWin_WhenPlayerOwnsFourteenTilesAndHasHandTile_ReturnsTrue(int handTileCount, int meldTileCount)
+    {
+        TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(13, 0)]
+    [InlineData(15, 0)]
+    [InlineData(0, 14)]
+    public void CanDeclareWin_WhenOwnershipShapeIsInvalid_ReturnsFalse(int handTileCount, int meldTileCount)
+    {
+        TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount).Should().BeFalse();
+    }
 }
