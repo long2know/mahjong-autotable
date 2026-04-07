@@ -338,7 +338,10 @@ gameGroup.MapPost("/{id:guid}/discard", async (
         return Results.Conflict(new { message = "It is not this player's turn." });
     }
 
-    var tile = game.Tiles.FirstOrDefault(t => t.Id == request.TileId && t.PlayerId == request.PlayerId);
+    var tile = game.Tiles.FirstOrDefault(t =>
+        t.Id == request.TileId &&
+        t.PlayerId == request.PlayerId &&
+        string.Equals(t.Location, "Hand", StringComparison.OrdinalIgnoreCase));
 
     if (tile is null)
     {
@@ -434,7 +437,10 @@ gameGroup.MapPost("/{id:guid}/meld", async (
     }
 
     var tiles = game.Tiles
-        .Where(t => request.TileIds.Contains(t.Id) && t.PlayerId == request.PlayerId)
+        .Where(t =>
+            request.TileIds.Contains(t.Id) &&
+            t.PlayerId == request.PlayerId &&
+            string.Equals(t.Location, "Hand", StringComparison.OrdinalIgnoreCase))
         .ToList();
 
     if (tiles.Count != request.TileIds.Count)
