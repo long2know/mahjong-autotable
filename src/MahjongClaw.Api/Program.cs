@@ -446,6 +446,7 @@ gameGroup.MapPost("/{id:guid}/meld", async (
     CancellationToken cancellationToken) =>
 {
     var game = await dbContext.Games
+        .Include(g => g.Players)
         .Include(g => g.Tiles)
         .Include(g => g.Melds)
         .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
@@ -460,6 +461,35 @@ gameGroup.MapPost("/{id:guid}/meld", async (
         return Results.Conflict(new { message = "Game is not active." });
     }
 
+    if (!game.Players.Any(player => player.Id == request.PlayerId))
+    {
+        return Results.NotFound(new { message = "Player not found in game." });
+    }
+
+    if (game.CurrentPlayerId != request.PlayerId)
+    {
+        return Results.Conflict(new { message = "It is not this player's turn." });
+    }
+
+    if (!Enum.TryParse<MeldType>(request.Type, true, out var meldType))
+    {
+        return Results.BadRequest(new { message = "Invalid meld type." });
+    }
+
+    var handTileCount = game.Tiles.Count(tile =>
+        tile.PlayerId == request.PlayerId &&
+        string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase));
+    var meldTileCount = game.Tiles.Count(tile =>
+        tile.PlayerId == request.PlayerId &&
+        string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
+
+    var meldTileRequirement = meldType == MeldType.Kong ? 4 : 3;
+
+    if (!TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement))
+    {
+        return Results.Conflict(new { message = "Player must hold 14 owned tiles with enough hand tiles before declaring a meld." });
+    }
+
     var tiles = game.Tiles
         .Where(t =>
             request.TileIds.Contains(t.Id) &&
@@ -470,11 +500,6 @@ gameGroup.MapPost("/{id:guid}/meld", async (
     if (tiles.Count != request.TileIds.Count)
     {
         return Results.NotFound(new { message = "One or more tiles are missing from the player's hand." });
-    }
-
-    if (!Enum.TryParse<MeldType>(request.Type, true, out var meldType))
-    {
-        return Results.BadRequest(new { message = "Invalid meld type." });
     }
 
     if (!TryBuildTileHand(tiles, out var tileHand))

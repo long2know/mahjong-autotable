@@ -41,4 +41,29 @@ public sealed class TurnFlowValidatorTests
     {
         TurnFlowValidator.CanDiscard(handTileCount, meldTileCount).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData(14, 0, 3)]
+    [InlineData(11, 3, 3)]
+    [InlineData(10, 4, 4)]
+    public void CanDeclareMeld_WhenPlayerHasValidOwnershipShapeAndEnoughHandTiles_ReturnsTrue(
+        int handTileCount,
+        int meldTileCount,
+        int meldTileRequirement)
+    {
+        TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(13, 0, 3)]
+    [InlineData(15, 0, 3)]
+    [InlineData(2, 12, 3)]
+    [InlineData(3, 11, 4)]
+    public void CanDeclareMeld_WhenOwnershipShapeOrHandTilesAreInvalid_ReturnsFalse(
+        int handTileCount,
+        int meldTileCount,
+        int meldTileRequirement)
+    {
+        TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement).Should().BeFalse();
+    }
 }
