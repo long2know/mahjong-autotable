@@ -338,6 +338,18 @@ gameGroup.MapPost("/{id:guid}/discard", async (
         return Results.Conflict(new { message = "It is not this player's turn." });
     }
 
+    var handTileCount = game.Tiles.Count(tile =>
+        tile.PlayerId == request.PlayerId &&
+        string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase));
+    var meldTileCount = game.Tiles.Count(tile =>
+        tile.PlayerId == request.PlayerId &&
+        string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
+
+    if (!TurnFlowValidator.CanDiscard(handTileCount, meldTileCount))
+    {
+        return Results.Conflict(new { message = "Player must hold 14 owned tiles before discarding." });
+    }
+
     var tile = game.Tiles.FirstOrDefault(t =>
         t.Id == request.TileId &&
         t.PlayerId == request.PlayerId &&
