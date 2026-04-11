@@ -23,6 +23,7 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     const wallPreview = page.getByLabel('Mahjong wall preview');
     await expect(wallPreview).toBeVisible();
     await expect(wallPreview.locator('.wall-side')).toHaveCount(4);
+    await expect(wallPreview.locator('.wall-side-dealer')).toHaveCount(1);
     await expect(wallPreview.locator('.wall-stack-break')).toHaveCount(1);
 
     const discardLane = page.getByLabel('Center discard lane');
@@ -31,6 +32,7 @@ test.describe('Mahjong Claw game board layout smoke', () => {
 
     await expect(page.getByLabel('Wall legend')).toContainText('break marker');
     await expect(page.getByLabel('Wall legend')).toContainText('consumed stack');
+    await expect(page.getByLabel('Wall legend')).toContainText('dealer wall');
   });
 
   test('keeps 3D wall and seat tile depth styling intact', async ({ page }) => {

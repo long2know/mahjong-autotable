@@ -92,28 +92,28 @@
                                 <span class='@BuildCompassMarkerClass("West")'>W</span>
                             </div>
                             <div class="physical-wall" aria-label="Mahjong wall preview">
-                                <div class="wall-side wall-top">
+                                <div class="wall-side wall-top @(IsDealerSide("North") ? "wall-side-dealer" : string.Empty)">
                                     <span class="wall-side-label">North wall</span>
                                     @foreach (var stack in BuildWallSide("North"))
                                     {
                                         <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("North", stack)"></div>
                                     }
                                 </div>
-                                <div class="wall-side wall-right">
+                                <div class="wall-side wall-right @(IsDealerSide("East") ? "wall-side-dealer" : string.Empty)">
                                     <span class="wall-side-label">East wall</span>
                                     @foreach (var stack in BuildWallSide("East"))
                                     {
                                         <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("East", stack)"></div>
                                     }
                                 </div>
-                                <div class="wall-side wall-bottom">
+                                <div class="wall-side wall-bottom @(IsDealerSide("South") ? "wall-side-dealer" : string.Empty)">
                                     <span class="wall-side-label">South wall</span>
                                     @foreach (var stack in BuildWallSide("South"))
                                     {
                                         <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("South", stack)"></div>
                                     }
                                 </div>
-                                <div class="wall-side wall-left">
+                                <div class="wall-side wall-left @(IsDealerSide("West") ? "wall-side-dealer" : string.Empty)">
                                     <span class="wall-side-label">West wall</span>
                                     @foreach (var stack in BuildWallSide("West"))
                                     {
@@ -124,6 +124,7 @@
                             <div class="wall-legend" aria-label="Wall legend">
                                 <span><span class="wall-stack wall-stack-break"></span> break marker</span>
                                 <span><span class="wall-stack wall-stack-depleted"></span> consumed stack</span>
+                                <span><span class="wall-stack wall-stack-dealer"></span> dealer wall</span>
                                 <span><strong>@WallRemaining</strong> tiles remain</span>
                             </div>
                             <h6 class="text-uppercase text-muted mt-3">Discards</h6>
@@ -318,8 +319,12 @@
     private string CurrentPhase => _liveState is null ? "Discard" : NormalizeGameStatus(_liveState.Status);
     private string CurrentTurnName => ResolvePlayerName(_liveState?.CurrentPlayerId, fallback: PlayerEast.Name);
     private string CurrentTurnSeat => ResolveSeat(_liveState?.CurrentPlayerId, fallback: "East");
-    private string CurrentDealerName => ResolvePlayerName(_liveState?.DealerId, fallback: PlayerEast.Name);
-    private string CurrentDealerSeat => ResolveSeat(_liveState?.DealerId, fallback: "East");
+    private string CurrentDealerName => _liveState is null
+        ? MockState.Seats.FirstOrDefault(seat => seat.IsDealer).Player ?? PlayerEast.Name
+        : ResolvePlayerName(_liveState.DealerId, fallback: PlayerEast.Name);
+    private string CurrentDealerSeat => _liveState is null
+        ? MockState.Seats.FirstOrDefault(seat => seat.IsDealer).Wind ?? "East"
+        : ResolveSeat(_liveState.DealerId, fallback: "East");
 
     private PlayerView PlayerNorth => GetPlayerView("North", MockState.PlayerNorth);
     private PlayerView PlayerWest => GetPlayerView("West", MockState.PlayerWest);
@@ -693,13 +698,16 @@
             classes += " seat-anchor-current";
         }
 
-        if (string.Equals(CurrentDealerSeat, seat, StringComparison.OrdinalIgnoreCase))
+        if (IsDealerSide(seat))
         {
             classes += " seat-anchor-dealer";
         }
 
         return classes;
     }
+
+    private bool IsDealerSide(string seat)
+        => string.Equals(CurrentDealerSeat, seat, StringComparison.OrdinalIgnoreCase);
 
     private string BuildCompassMarkerClass(string wind)
     {
