@@ -14,6 +14,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     await expect(seatAnchors).toContainText('South');
     await expect(seatAnchors).toContainText('West');
 
+    const compass = page.getByLabel('Table compass wind markers');
+    await expect(compass).toBeVisible();
+    await expect(compass.locator('.compass-marker')).toHaveCount(4);
+    await expect(compass.locator('.compass-marker-active')).toHaveCount(1);
+    await expect(compass.locator('.compass-marker-active')).toContainText('E');
+
     const wallPreview = page.getByLabel('Mahjong wall preview');
     await expect(wallPreview).toBeVisible();
     await expect(wallPreview.locator('.wall-side')).toHaveCount(4);

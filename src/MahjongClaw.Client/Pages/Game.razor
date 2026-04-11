@@ -85,6 +85,12 @@
                                 <span class='@BuildSeatAnchorClass("South")'>South</span>
                                 <span class='@BuildSeatAnchorClass("West")'>West</span>
                             </div>
+                            <div class="table-compass" aria-label="Table compass wind markers">
+                                <span class='@BuildCompassMarkerClass("North")'>N</span>
+                                <span class='@BuildCompassMarkerClass("East")'>E</span>
+                                <span class='@BuildCompassMarkerClass("South")'>S</span>
+                                <span class='@BuildCompassMarkerClass("West")'>W</span>
+                            </div>
                             <div class="physical-wall" aria-label="Mahjong wall preview">
                                 <div class="wall-side wall-top">
                                     <span class="wall-side-label">North wall</span>
@@ -690,6 +696,18 @@
         if (string.Equals(CurrentDealerSeat, seat, StringComparison.OrdinalIgnoreCase))
         {
             classes += " seat-anchor-dealer";
+        }
+
+        return classes;
+    }
+
+    private string BuildCompassMarkerClass(string wind)
+    {
+        var classes = $"compass-marker compass-{wind.ToLowerInvariant()}";
+
+        if (string.Equals(RoundWind, wind, StringComparison.OrdinalIgnoreCase))
+        {
+            classes += " compass-marker-active";
         }
 
         return classes;

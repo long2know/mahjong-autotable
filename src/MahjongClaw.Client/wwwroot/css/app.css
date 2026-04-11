@@ -380,6 +380,65 @@ code {
     grid-row: 3;
 }
 
+.table-compass {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: 9.5rem;
+    height: 9.5rem;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.compass-marker {
+    position: absolute;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(243, 230, 201, 0.88);
+    background: rgba(10, 28, 18, 0.6);
+    border: 1px solid rgba(243, 230, 201, 0.35);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.compass-marker-active {
+    color: #fff8db;
+    border-color: rgba(255, 214, 107, 0.95);
+    background: radial-gradient(circle at 30% 30%, rgba(255, 233, 165, 0.42) 0%, rgba(131, 95, 27, 0.78) 100%);
+    box-shadow: 0 0 0 1px rgba(255, 214, 107, 0.35), 0 0 10px rgba(255, 214, 107, 0.4);
+}
+
+.compass-north {
+    top: -0.8rem;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.compass-east {
+    right: -0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.compass-south {
+    bottom: -0.8rem;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.compass-west {
+    left: -0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
 .physical-wall {
     position: relative;
     height: 260px;
