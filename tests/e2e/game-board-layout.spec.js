@@ -150,6 +150,30 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(eastSeatTransform).not.toBe('none');
     expect(westSeatTransform).not.toBe('none');
 
+    const seatCardDepthStyles = await Promise.all([
+      page.locator('.seat-north .seat-card').first().evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { transformStyle: style.transformStyle, boxShadow: style.boxShadow };
+      }),
+      page.locator('.seat-south .seat-card').first().evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { transformStyle: style.transformStyle, boxShadow: style.boxShadow };
+      }),
+      page.locator('.seat-east .seat-card').first().evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { transformStyle: style.transformStyle, boxShadow: style.boxShadow };
+      }),
+      page.locator('.seat-west .seat-card').first().evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { transformStyle: style.transformStyle, boxShadow: style.boxShadow };
+      })
+    ]);
+
+    seatCardDepthStyles.forEach((seatCardStyle) => {
+      expect(seatCardStyle.transformStyle).toBe('preserve-3d');
+      expect(seatCardStyle.boxShadow).toContain('rgb');
+    });
+
     const [indicatorTransform, anchorTransform, discardLaneTransform, discardLaneTransformStyle, compassTransform] = await Promise.all([
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Seat anchors').evaluate((el) => getComputedStyle(el).transform),

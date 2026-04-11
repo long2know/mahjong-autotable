@@ -210,13 +210,27 @@ code {
 
 .seat-card {
     width: 100%;
-    background: rgba(12, 42, 27, 0.35);
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(165deg, rgba(23, 69, 45, 0.52) 0%, rgba(12, 42, 27, 0.38) 55%, rgba(7, 24, 16, 0.45) 100%);
     border-radius: 0.85rem;
     padding: 0.85rem;
-    border: 1px solid rgba(24, 85, 54, 0.35);
+    border: 1px solid rgba(46, 122, 83, 0.46);
     min-height: 120px;
-    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.25);
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.25), 0 8px 18px rgba(3, 12, 8, 0.28);
     color: #f5f7f5;
+    transform-style: preserve-3d;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.seat-card::before {
+    content: "";
+    position: absolute;
+    inset: 0.2rem;
+    border-radius: 0.68rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 52%);
+    pointer-events: none;
 }
 
 .seat-card .text-muted {
@@ -245,24 +259,32 @@ code {
 }
 
 @media (min-width: 768px) {
+    .seat-card {
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.28), 0 12px 24px rgba(4, 13, 9, 0.34);
+    }
+
     .seat-north .seat-card {
         transform-origin: center bottom;
         transform: perspective(940px) rotateX(8deg) translateY(2px);
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.28), 0 -7px 16px rgba(4, 13, 9, 0.2), 0 16px 28px rgba(4, 13, 9, 0.26);
     }
 
     .seat-south .seat-card {
         transform-origin: center top;
         transform: perspective(940px) rotateX(-8deg) translateY(-2px);
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.28), 0 8px 24px rgba(4, 13, 9, 0.36);
     }
 
     .seat-east .seat-card {
         transform-origin: left center;
         transform: perspective(940px) rotateY(-10deg) translateX(2px);
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.28), 8px 8px 20px rgba(4, 13, 9, 0.3);
     }
 
     .seat-west .seat-card {
         transform-origin: right center;
         transform: perspective(940px) rotateY(10deg) translateX(-2px);
+        box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.28), -8px 8px 20px rgba(4, 13, 9, 0.3);
     }
 }
 
