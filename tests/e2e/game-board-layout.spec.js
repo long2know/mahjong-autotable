@@ -26,4 +26,55 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     await expect(page.getByLabel('Wall legend')).toContainText('break marker');
     await expect(page.getByLabel('Wall legend')).toContainText('consumed stack');
   });
+
+  test('keeps 3D wall and seat tile depth styling intact', async ({ page }) => {
+    await page.goto('/game');
+
+    const wallPreview = page.getByLabel('Mahjong wall preview');
+    await expect(wallPreview).toBeVisible();
+
+    const wallTransform = await wallPreview.evaluate((el) => getComputedStyle(el).transform);
+    expect(wallTransform).not.toBe('none');
+
+    const topStackStyle = await wallPreview.locator('.wall-top .wall-stack').first().evaluate((el) => {
+      const style = getComputedStyle(el);
+      const upperLayer = getComputedStyle(el, '::after');
+      return {
+        width: parseFloat(style.width),
+        height: parseFloat(style.height),
+        upperLayerOffset: parseFloat(upperLayer.top)
+      };
+    });
+
+    const leftStackStyle = await wallPreview.locator('.wall-left .wall-stack').first().evaluate((el) => {
+      const style = getComputedStyle(el);
+      const upperLayer = getComputedStyle(el, '::after');
+      return {
+        width: parseFloat(style.width),
+        height: parseFloat(style.height),
+        upperLayerOffset: parseFloat(upperLayer.left)
+      };
+    });
+
+    expect(topStackStyle.width).toBeGreaterThan(topStackStyle.height);
+    expect(topStackStyle.upperLayerOffset).toBeGreaterThan(0);
+    expect(leftStackStyle.height).toBeGreaterThan(leftStackStyle.width);
+    expect(leftStackStyle.upperLayerOffset).toBeGreaterThan(0);
+
+    const southTilt = await page.locator('.seat-tiles.seat-south').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim());
+    const eastTilt = await page.locator('.seat-tiles.seat-east').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim());
+    expect(southTilt).toContain('rotateX');
+    expect(eastTilt).toContain('rotateY');
+
+    const tileDepthStyle = await page.locator('.seat-tiles.seat-south .tile-shell').first().evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        transformStyle: style.transformStyle,
+        boxShadow: style.boxShadow
+      };
+    });
+
+    expect(tileDepthStyle.transformStyle).toBe('preserve-3d');
+    expect(tileDepthStyle.boxShadow).toContain('rgb');
+  });
 });
