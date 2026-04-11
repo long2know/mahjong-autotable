@@ -630,6 +630,26 @@ code {
     .wall-right {
         transform: translateY(-50%) perspective(720px) rotateY(30deg) translateZ(1px);
     }
+
+    .wall-corner {
+        transform-style: preserve-3d;
+    }
+
+    .wall-corner-nw {
+        transform: perspective(700px) rotateX(18deg) rotateY(18deg) translateZ(1px);
+    }
+
+    .wall-corner-ne {
+        transform: perspective(700px) rotateX(18deg) rotateY(-18deg) translateZ(1px);
+    }
+
+    .wall-corner-se {
+        transform: perspective(700px) rotateX(-18deg) rotateY(-18deg) translateZ(1px);
+    }
+
+    .wall-corner-sw {
+        transform: perspective(700px) rotateX(-18deg) rotateY(18deg) translateZ(1px);
+    }
 }
 
 .wall-stack {
