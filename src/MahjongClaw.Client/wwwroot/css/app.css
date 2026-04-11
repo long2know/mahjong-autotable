@@ -244,6 +244,28 @@ code {
     grid-area: south;
 }
 
+@media (min-width: 768px) {
+    .seat-north .seat-card {
+        transform-origin: center bottom;
+        transform: perspective(940px) rotateX(8deg) translateY(2px);
+    }
+
+    .seat-south .seat-card {
+        transform-origin: center top;
+        transform: perspective(940px) rotateX(-8deg) translateY(-2px);
+    }
+
+    .seat-east .seat-card {
+        transform-origin: left center;
+        transform: perspective(940px) rotateY(-10deg) translateX(2px);
+    }
+
+    .seat-west .seat-card {
+        transform-origin: right center;
+        transform: perspective(940px) rotateY(10deg) translateX(-2px);
+    }
+}
+
 .center-area {
     grid-area: center;
     position: relative;
