@@ -541,6 +541,7 @@ code {
     display: flex;
     gap: 0.16rem;
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+    transform-style: preserve-3d;
 }
 
 .wall-side-label {
@@ -606,6 +607,29 @@ code {
     top: 50%;
     transform: translateY(-50%) rotate(90deg);
     transform-origin: center;
+}
+
+@media (min-width: 992px) {
+    .physical-wall {
+        transform: perspective(960px) rotateX(12deg);
+        transform-style: preserve-3d;
+    }
+
+    .wall-top {
+        transform: translateX(-50%) perspective(720px) rotateX(26deg) translateZ(1px);
+    }
+
+    .wall-bottom {
+        transform: translateX(-50%) perspective(720px) rotateX(-26deg) translateZ(1px);
+    }
+
+    .wall-left {
+        transform: translateY(-50%) perspective(720px) rotateY(-30deg) translateZ(1px);
+    }
+
+    .wall-right {
+        transform: translateY(-50%) perspective(720px) rotateY(30deg) translateZ(1px);
+    }
 }
 
 .wall-stack {

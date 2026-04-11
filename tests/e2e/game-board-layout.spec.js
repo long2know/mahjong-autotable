@@ -122,5 +122,17 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(southSeatTransform).not.toBe('none');
     expect(eastSeatTransform).not.toBe('none');
     expect(westSeatTransform).not.toBe('none');
+
+    const [topWallTransform, bottomWallTransform, leftWallTransform, rightWallTransform] = await Promise.all([
+      wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-bottom').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-left').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-right').evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(topWallTransform).toContain('matrix3d');
+    expect(bottomWallTransform).toContain('matrix3d');
+    expect(leftWallTransform).toContain('matrix3d');
+    expect(rightWallTransform).toContain('matrix3d');
   });
 });
