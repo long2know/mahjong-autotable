@@ -25,6 +25,7 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     await expect(wallPreview.locator('.wall-side')).toHaveCount(4);
     await expect(wallPreview.locator('.wall-side-dealer')).toHaveCount(1);
     await expect(wallPreview.locator('.wall-stack-break')).toHaveCount(1);
+    await expect(wallPreview.locator('.wall-stack-break-gap')).toHaveCount(1);
 
     const discardLane = page.getByLabel('Center discard lane');
     await expect(discardLane).toBeVisible();

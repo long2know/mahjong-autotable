@@ -96,28 +96,28 @@
                                     <span class="wall-side-label">North wall</span>
                                     @foreach (var stack in BuildWallSide("North"))
                                     {
-                                        <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("North", stack)"></div>
+                                        <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsAfterBreak ? "wall-stack-break-gap" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("North", stack)"></div>
                                     }
                                 </div>
                                 <div class="wall-side wall-right @(IsDealerSide("East") ? "wall-side-dealer" : string.Empty)">
                                     <span class="wall-side-label">East wall</span>
                                     @foreach (var stack in BuildWallSide("East"))
                                     {
-                                        <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("East", stack)"></div>
+                                        <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsAfterBreak ? "wall-stack-break-gap" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("East", stack)"></div>
                                     }
                                 </div>
                                 <div class="wall-side wall-bottom @(IsDealerSide("South") ? "wall-side-dealer" : string.Empty)">
                                     <span class="wall-side-label">South wall</span>
                                     @foreach (var stack in BuildWallSide("South"))
                                     {
-                                        <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("South", stack)"></div>
+                                        <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsAfterBreak ? "wall-stack-break-gap" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("South", stack)"></div>
                                     }
                                 </div>
                                 <div class="wall-side wall-left @(IsDealerSide("West") ? "wall-side-dealer" : string.Empty)">
                                     <span class="wall-side-label">West wall</span>
                                     @foreach (var stack in BuildWallSide("West"))
                                     {
-                                        <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("West", stack)"></div>
+                                        <div class="wall-stack @(stack.IsBreakMarker ? "wall-stack-break" : string.Empty) @(stack.IsAfterBreak ? "wall-stack-break-gap" : string.Empty) @(stack.IsDepleted ? "wall-stack-depleted" : string.Empty)" title="@BuildWallStackTitle("West", stack)"></div>
                                     }
                                 </div>
                             </div>
@@ -825,6 +825,7 @@
         }
 
         var breakIndex = Math.Clamp((HandNumber * 2) % breakSideCount, 0, breakSideCount - 1);
+        var breakGapIndex = (breakIndex + 1) % breakSideCount;
         var drawStartIndex = GetSideOffset(counts, breakSide) + breakIndex;
 
         var stacksRemaining = Math.Clamp((int)Math.Ceiling(WallRemaining / 2d), 0, TotalWallStacks);
@@ -839,9 +840,11 @@
         for (var i = 0; i < sideCount; i++)
         {
             var globalIndex = sideOffset + i;
+            var isBreakSide = string.Equals(side, breakSide, StringComparison.OrdinalIgnoreCase);
             yield return new WallStackView(
                 i,
-                side == breakSide && i == breakIndex,
+                isBreakSide && i == breakIndex,
+                isBreakSide && sideCount > 1 && i == breakGapIndex,
                 IsConsumedStack(globalIndex, drawStartIndex, stacksConsumed));
         }
     }
@@ -938,7 +941,7 @@
 
     private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
 
-    private record WallStackView(int Index, bool IsBreakMarker, bool IsDepleted);
+    private record WallStackView(int Index, bool IsBreakMarker, bool IsAfterBreak, bool IsDepleted);
 
     private record MockGameState
     {
