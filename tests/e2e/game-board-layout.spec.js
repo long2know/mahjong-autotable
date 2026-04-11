@@ -133,17 +133,31 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(eastSeatTransform).not.toBe('none');
     expect(westSeatTransform).not.toBe('none');
 
-    const [indicatorTransform, anchorTransform, discardLaneTransform, discardLaneTransformStyle] = await Promise.all([
+    const [indicatorTransform, anchorTransform, discardLaneTransform, discardLaneTransformStyle, compassTransform] = await Promise.all([
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Seat anchors').evaluate((el) => getComputedStyle(el).transform),
       discardLane.evaluate((el) => getComputedStyle(el).transform),
-      discardLane.evaluate((el) => getComputedStyle(el).transformStyle)
+      discardLane.evaluate((el) => getComputedStyle(el).transformStyle),
+      page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform)
     ]);
 
     expect(indicatorTransform).not.toBe('none');
     expect(anchorTransform).not.toBe('none');
     expect(discardLaneTransform).toContain('matrix3d');
     expect(discardLaneTransformStyle).toBe('preserve-3d');
+    expect(compassTransform).toContain('matrix3d');
+
+    const [northCompassMarkerTransform, eastCompassMarkerTransform, southCompassMarkerTransform, westCompassMarkerTransform] = await Promise.all([
+      page.locator('.compass-north').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.compass-east').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.compass-south').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.compass-west').evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(northCompassMarkerTransform).not.toBe('none');
+    expect(eastCompassMarkerTransform).not.toBe('none');
+    expect(southCompassMarkerTransform).not.toBe('none');
+    expect(westCompassMarkerTransform).not.toBe('none');
 
     const [topWallTransform, bottomWallTransform, leftWallTransform, rightWallTransform] = await Promise.all([
       wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),

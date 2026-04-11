@@ -417,6 +417,7 @@ code {
     width: 9.5rem;
     height: 9.5rem;
     transform: translate(-50%, -50%);
+    transform-style: preserve-3d;
     pointer-events: none;
     z-index: 0;
 }
@@ -437,6 +438,7 @@ code {
     background: rgba(10, 28, 18, 0.6);
     border: 1px solid rgba(243, 230, 201, 0.35);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    transform-style: preserve-3d;
 }
 
 .compass-marker-active {
@@ -468,6 +470,33 @@ code {
     left: -0.8rem;
     top: 50%;
     transform: translateY(-50%);
+}
+
+@media (min-width: 992px) {
+    .table-compass {
+        transform: translate(-50%, -50%) perspective(960px) rotateX(58deg) rotateZ(-45deg) translateY(3px);
+        transform-origin: center;
+    }
+
+    .compass-marker {
+        box-shadow: 0 5px 10px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    .compass-north {
+        transform: translateX(-50%) translateZ(11px) rotateZ(45deg);
+    }
+
+    .compass-east {
+        transform: translateY(-50%) translateZ(11px) rotateZ(45deg);
+    }
+
+    .compass-south {
+        transform: translateX(-50%) translateZ(11px) rotateZ(45deg);
+    }
+
+    .compass-west {
+        transform: translateY(-50%) translateZ(11px) rotateZ(45deg);
+    }
 }
 
 .physical-wall {
