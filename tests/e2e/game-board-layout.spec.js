@@ -24,6 +24,7 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     await expect(wallPreview).toBeVisible();
     await expect(wallPreview.locator('.wall-side')).toHaveCount(4);
     await expect(wallPreview.locator('.wall-side-dealer')).toHaveCount(1);
+    await expect(wallPreview.locator('.wall-corner')).toHaveCount(4);
     await expect(wallPreview.locator('.wall-stack-break')).toHaveCount(1);
     await expect(wallPreview.locator('.wall-stack-break-gap')).toHaveCount(1);
 
@@ -62,6 +63,16 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       readWallStackStyle('.wall-right .wall-stack', 'left')
     ]);
 
+    const cornerStyle = await wallPreview.locator('.wall-corner').first().evaluate((el) => {
+      const style = getComputedStyle(el);
+      const upperLayer = getComputedStyle(el, '::after');
+      return {
+        width: parseFloat(style.width),
+        height: parseFloat(style.height),
+        topOffset: parseFloat(upperLayer.top)
+      };
+    });
+
     expect(topStackStyle.width).toBeGreaterThan(topStackStyle.height);
     expect(bottomStackStyle.width).toBeGreaterThan(bottomStackStyle.height);
     expect(topStackStyle.upperLayerOffset).toBeGreaterThan(0);
@@ -71,6 +82,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(rightStackStyle.height).toBeGreaterThan(rightStackStyle.width);
     expect(leftStackStyle.upperLayerOffset).toBeGreaterThan(0);
     expect(rightStackStyle.upperLayerOffset).toBeGreaterThan(0);
+
+    expect(cornerStyle.width).toBeGreaterThan(0);
+    expect(cornerStyle.height).toBeGreaterThan(0);
+    expect(cornerStyle.topOffset).toBeGreaterThan(0);
 
     const [southTilt, northTilt, eastTilt, westTilt] = await Promise.all([
       page.locator('.seat-tiles.seat-south').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim()),

@@ -92,6 +92,10 @@
                                 <span class='@BuildCompassMarkerClass("West")'>W</span>
                             </div>
                             <div class="physical-wall" aria-label="Mahjong wall preview">
+                                <span class="wall-corner wall-corner-nw" aria-hidden="true"></span>
+                                <span class="wall-corner wall-corner-ne" aria-hidden="true"></span>
+                                <span class="wall-corner wall-corner-se" aria-hidden="true"></span>
+                                <span class="wall-corner wall-corner-sw" aria-hidden="true"></span>
                                 <div class="wall-side wall-top @(IsDealerSide("North") ? "wall-side-dealer" : string.Empty)">
                                     <span class="wall-side-label">North wall</span>
                                     @foreach (var stack in BuildWallSide("North"))

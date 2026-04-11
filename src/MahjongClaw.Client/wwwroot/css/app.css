@@ -451,6 +451,69 @@ code {
     transform: perspective(900px) rotateX(8deg);
 }
 
+.wall-corner {
+    position: absolute;
+    width: 0.84rem;
+    height: 0.84rem;
+    border-radius: 0.2rem;
+    border: 1px solid #20683f;
+    background: linear-gradient(180deg, #57c78b 0%, #2f8f5b 100%);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.36);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.wall-corner::after {
+    content: "";
+    position: absolute;
+    width: 0.84rem;
+    height: 0.84rem;
+    border-radius: 0.2rem;
+    border: 1px solid #1d603b;
+    background: linear-gradient(180deg, #4bbc80 0%, #2b8352 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.wall-corner-nw {
+    top: 0.34rem;
+    left: 0.34rem;
+}
+
+.wall-corner-nw::after {
+    top: 0.3rem;
+    left: 0.3rem;
+}
+
+.wall-corner-ne {
+    top: 0.34rem;
+    right: 0.34rem;
+}
+
+.wall-corner-ne::after {
+    top: 0.3rem;
+    right: 0.3rem;
+}
+
+.wall-corner-se {
+    bottom: 0.34rem;
+    right: 0.34rem;
+}
+
+.wall-corner-se::after {
+    bottom: 0.3rem;
+    right: 0.3rem;
+}
+
+.wall-corner-sw {
+    bottom: 0.34rem;
+    left: 0.34rem;
+}
+
+.wall-corner-sw::after {
+    bottom: 0.3rem;
+    left: 0.3rem;
+}
+
 .wall-side {
     position: absolute;
     display: flex;
