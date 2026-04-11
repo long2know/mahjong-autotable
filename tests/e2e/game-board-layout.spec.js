@@ -110,6 +110,7 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tileDepthStyle.transformStyle).toBe('preserve-3d');
     expect(tileDepthStyle.boxShadow).toContain('rgb');
 
+    const discardLane = page.getByLabel('Center discard lane');
     const discardTile = page.locator('.discard-lane .tile-shell').first();
     const discardBaseTransform = await discardTile.evaluate((el) => getComputedStyle(el).transform);
     expect(discardBaseTransform).toContain('matrix3d');
@@ -131,6 +132,18 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(southSeatTransform).not.toBe('none');
     expect(eastSeatTransform).not.toBe('none');
     expect(westSeatTransform).not.toBe('none');
+
+    const [indicatorTransform, anchorTransform, discardLaneTransform, discardLaneTransformStyle] = await Promise.all([
+      page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transform),
+      page.getByLabel('Seat anchors').evaluate((el) => getComputedStyle(el).transform),
+      discardLane.evaluate((el) => getComputedStyle(el).transform),
+      discardLane.evaluate((el) => getComputedStyle(el).transformStyle)
+    ]);
+
+    expect(indicatorTransform).not.toBe('none');
+    expect(anchorTransform).not.toBe('none');
+    expect(discardLaneTransform).toContain('matrix3d');
+    expect(discardLaneTransformStyle).toBe('preserve-3d');
 
     const [topWallTransform, bottomWallTransform, leftWallTransform, rightWallTransform] = await Promise.all([
       wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),

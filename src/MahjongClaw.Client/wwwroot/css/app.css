@@ -285,6 +285,7 @@ code {
         inset 0 0 42px rgba(0, 0, 0, 0.45),
         0 12px 28px rgba(6, 16, 10, 0.45);
     overflow: hidden;
+    transform-style: preserve-3d;
 }
 
 .center-area::before {
@@ -325,6 +326,14 @@ code {
 .center-area > * {
     position: relative;
     z-index: 1;
+}
+
+.center-area > .table-indicator,
+.center-area > .seat-anchors,
+.center-area > .wall-legend,
+.center-area > h6,
+.center-area > .mt-3.text-muted.small {
+    transform: translateZ(8px);
 }
 
 .table-indicator {
@@ -961,6 +970,7 @@ code {
     border-radius: 0.65rem;
     border: 1px dashed rgba(255, 255, 255, 0.35);
     background: rgba(7, 24, 16, 0.32);
+    transform-style: preserve-3d;
 }
 
 .tile-discard {
@@ -981,6 +991,18 @@ code {
 
 .discard-lane .tile-shell:hover {
     transform: var(--tile-tilt) translateY(-2px) scale(1.02) rotateZ(var(--tile-tilt-angle));
+}
+
+@media (min-width: 992px) {
+    .center-area {
+        perspective: 1100px;
+    }
+
+    .discard-lane {
+        transform: perspective(920px) rotateX(24deg) rotateZ(-1deg) translateY(2px);
+        transform-origin: center top;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 16px rgba(6, 18, 12, 0.26);
+    }
 }
 
 @media (min-width: 768px) {
