@@ -110,6 +110,15 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tileDepthStyle.transformStyle).toBe('preserve-3d');
     expect(tileDepthStyle.boxShadow).toContain('rgb');
 
+    const discardTile = page.locator('.discard-lane .tile-shell').first();
+    const discardBaseTransform = await discardTile.evaluate((el) => getComputedStyle(el).transform);
+    expect(discardBaseTransform).toContain('matrix3d');
+
+    await discardTile.hover();
+
+    const discardHoverTransform = await discardTile.evaluate((el) => getComputedStyle(el).transform);
+    expect(discardHoverTransform).toContain('matrix3d');
+
     await page.setViewportSize({ width: 1280, height: 720 });
     const [northSeatTransform, southSeatTransform, eastSeatTransform, westSeatTransform] = await Promise.all([
       page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
