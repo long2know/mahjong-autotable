@@ -36,35 +36,44 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     const wallTransform = await wallPreview.evaluate((el) => getComputedStyle(el).transform);
     expect(wallTransform).not.toBe('none');
 
-    const topStackStyle = await wallPreview.locator('.wall-top .wall-stack').first().evaluate((el) => {
+    const readWallStackStyle = async (selector, axis) => wallPreview.locator(selector).first().evaluate((el, pseudoAxis) => {
       const style = getComputedStyle(el);
       const upperLayer = getComputedStyle(el, '::after');
       return {
         width: parseFloat(style.width),
         height: parseFloat(style.height),
-        upperLayerOffset: parseFloat(upperLayer.top)
+        upperLayerOffset: parseFloat(pseudoAxis === 'top' ? upperLayer.top : upperLayer.left)
       };
-    });
+    }, axis);
 
-    const leftStackStyle = await wallPreview.locator('.wall-left .wall-stack').first().evaluate((el) => {
-      const style = getComputedStyle(el);
-      const upperLayer = getComputedStyle(el, '::after');
-      return {
-        width: parseFloat(style.width),
-        height: parseFloat(style.height),
-        upperLayerOffset: parseFloat(upperLayer.left)
-      };
-    });
+    const [topStackStyle, bottomStackStyle, leftStackStyle, rightStackStyle] = await Promise.all([
+      readWallStackStyle('.wall-top .wall-stack', 'top'),
+      readWallStackStyle('.wall-bottom .wall-stack', 'top'),
+      readWallStackStyle('.wall-left .wall-stack', 'left'),
+      readWallStackStyle('.wall-right .wall-stack', 'left')
+    ]);
 
     expect(topStackStyle.width).toBeGreaterThan(topStackStyle.height);
+    expect(bottomStackStyle.width).toBeGreaterThan(bottomStackStyle.height);
     expect(topStackStyle.upperLayerOffset).toBeGreaterThan(0);
-    expect(leftStackStyle.height).toBeGreaterThan(leftStackStyle.width);
-    expect(leftStackStyle.upperLayerOffset).toBeGreaterThan(0);
+    expect(bottomStackStyle.upperLayerOffset).toBeGreaterThan(0);
 
-    const southTilt = await page.locator('.seat-tiles.seat-south').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim());
-    const eastTilt = await page.locator('.seat-tiles.seat-east').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim());
+    expect(leftStackStyle.height).toBeGreaterThan(leftStackStyle.width);
+    expect(rightStackStyle.height).toBeGreaterThan(rightStackStyle.width);
+    expect(leftStackStyle.upperLayerOffset).toBeGreaterThan(0);
+    expect(rightStackStyle.upperLayerOffset).toBeGreaterThan(0);
+
+    const [southTilt, northTilt, eastTilt, westTilt] = await Promise.all([
+      page.locator('.seat-tiles.seat-south').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim()),
+      page.locator('.seat-tiles.seat-north').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim()),
+      page.locator('.seat-tiles.seat-east').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim()),
+      page.locator('.seat-tiles.seat-west').first().evaluate((el) => getComputedStyle(el).getPropertyValue('--tile-tilt').trim())
+    ]);
+
     expect(southTilt).toContain('rotateX');
+    expect(northTilt).toContain('rotateX(-');
     expect(eastTilt).toContain('rotateY');
+    expect(westTilt).toContain('rotateY(-');
 
     const tileDepthStyle = await page.locator('.seat-tiles.seat-south .tile-shell').first().evaluate((el) => {
       const style = getComputedStyle(el);
