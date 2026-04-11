@@ -472,7 +472,7 @@ code {
     transform: translateY(-50%);
 }
 
-@media (min-width: 992px) {
+@media (min-width: 768px) {
     .table-compass {
         transform: translate(-50%, -50%) perspective(960px) rotateX(58deg) rotateZ(-45deg) translateY(3px);
         transform-origin: center;
@@ -1022,7 +1022,7 @@ code {
     transform: var(--tile-tilt) translateY(-2px) scale(1.02) rotateZ(var(--tile-tilt-angle));
 }
 
-@media (min-width: 992px) {
+@media (min-width: 768px) {
     .center-area {
         perspective: 1100px;
     }

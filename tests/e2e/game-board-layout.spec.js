@@ -120,6 +120,23 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     const discardHoverTransform = await discardTile.evaluate((el) => getComputedStyle(el).transform);
     expect(discardHoverTransform).toContain('matrix3d');
 
+    await page.setViewportSize({ width: 900, height: 760 });
+    const [tabletNorthSeatTransform, tabletSouthSeatTransform, tabletEastSeatTransform, tabletWestSeatTransform, tabletDiscardLaneTransform, tabletCompassTransform] = await Promise.all([
+      page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      discardLane.evaluate((el) => getComputedStyle(el).transform),
+      page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(tabletNorthSeatTransform).not.toBe('none');
+    expect(tabletSouthSeatTransform).not.toBe('none');
+    expect(tabletEastSeatTransform).not.toBe('none');
+    expect(tabletWestSeatTransform).not.toBe('none');
+    expect(tabletDiscardLaneTransform).toContain('matrix3d');
+    expect(tabletCompassTransform).toContain('matrix3d');
+
     await page.setViewportSize({ width: 1280, height: 720 });
     const [northSeatTransform, southSeatTransform, eastSeatTransform, westSeatTransform] = await Promise.all([
       page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
