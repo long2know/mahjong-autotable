@@ -121,13 +121,28 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(discardHoverTransform).toContain('matrix3d');
 
     await page.setViewportSize({ width: 900, height: 760 });
-    const [tabletNorthSeatTransform, tabletSouthSeatTransform, tabletEastSeatTransform, tabletWestSeatTransform, tabletDiscardLaneTransform, tabletCompassTransform] = await Promise.all([
+    const [
+      tabletNorthSeatTransform,
+      tabletSouthSeatTransform,
+      tabletEastSeatTransform,
+      tabletWestSeatTransform,
+      tabletDiscardLaneTransform,
+      tabletCompassTransform,
+      tabletTopWallTransform,
+      tabletBottomWallTransform,
+      tabletLeftWallTransform,
+      tabletRightWallTransform
+    ] = await Promise.all([
       page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       discardLane.evaluate((el) => getComputedStyle(el).transform),
-      page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform)
+      page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-bottom').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-left').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-right').evaluate((el) => getComputedStyle(el).transform)
     ]);
 
     expect(tabletNorthSeatTransform).not.toBe('none');
@@ -136,6 +151,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletWestSeatTransform).not.toBe('none');
     expect(tabletDiscardLaneTransform).toContain('matrix3d');
     expect(tabletCompassTransform).toContain('matrix3d');
+    expect(tabletTopWallTransform).toContain('matrix3d');
+    expect(tabletBottomWallTransform).toContain('matrix3d');
+    expect(tabletLeftWallTransform).toContain('matrix3d');
+    expect(tabletRightWallTransform).toContain('matrix3d');
 
     await page.setViewportSize({ width: 1280, height: 720 });
     const [northSeatTransform, southSeatTransform, eastSeatTransform, westSeatTransform] = await Promise.all([

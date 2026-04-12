@@ -713,6 +713,65 @@ code {
     transform-origin: center;
 }
 
+@media (min-width: 768px) {
+    .physical-wall {
+        transform: perspective(940px) rotateX(10deg);
+        transform-style: preserve-3d;
+    }
+
+    .wall-top {
+        transform: translateX(-50%) perspective(700px) rotateX(18deg);
+    }
+
+    .wall-bottom {
+        transform: translateX(-50%) perspective(700px) rotateX(-18deg);
+    }
+
+    .wall-left {
+        transform: translateY(-50%) perspective(700px) rotateY(-22deg);
+    }
+
+    .wall-right {
+        transform: translateY(-50%) perspective(700px) rotateY(22deg);
+    }
+
+    .wall-corner {
+        transform-style: preserve-3d;
+    }
+
+    .wall-corner-nw {
+        transform: perspective(680px) rotateX(12deg) rotateY(12deg);
+    }
+
+    .wall-corner-ne {
+        transform: perspective(680px) rotateX(12deg) rotateY(-12deg);
+    }
+
+    .wall-corner-se {
+        transform: perspective(680px) rotateX(-12deg) rotateY(-12deg);
+    }
+
+    .wall-corner-sw {
+        transform: perspective(680px) rotateX(-12deg) rotateY(12deg);
+    }
+
+    .wall-top .wall-side-label {
+        transform: translateX(-50%) perspective(620px) rotateX(14deg) translateZ(4px);
+    }
+
+    .wall-bottom .wall-side-label {
+        transform: translateX(-50%) perspective(620px) rotateX(-14deg) translateZ(4px);
+    }
+
+    .wall-left .wall-side-label {
+        transform: translateY(-50%) perspective(620px) rotateY(-16deg) rotate(-90deg) translateZ(4px);
+    }
+
+    .wall-right .wall-side-label {
+        transform: translateY(-50%) perspective(620px) rotateY(16deg) rotate(90deg) translateZ(4px);
+    }
+}
+
 @media (min-width: 992px) {
     .physical-wall {
         transform: perspective(960px) rotateX(12deg);
