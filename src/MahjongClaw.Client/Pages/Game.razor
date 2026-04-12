@@ -185,9 +185,9 @@
                     @foreach (var seat in Seats)
                     {
                         <div class="@BuildSeatSummaryItemClass(seat.Wind)">
-                            <div>
-                                <div class="fw-semibold">@seat.Wind</div>
-                                <div class="small text-muted">@seat.Player</div>
+                            <div class="seat-summary-meta">
+                                <div class="fw-semibold seat-summary-wind">@seat.Wind</div>
+                                <div class="small text-muted seat-summary-player">@seat.Player</div>
                             </div>
                             <div class="text-end">
                                 <div class="badge text-bg-light">@seat.Score pts</div>

@@ -2665,6 +2665,16 @@ code {
     transform-style: preserve-3d;
 }
 
+.seat-summary-meta {
+    display: flex;
+    flex-direction: column;
+    transform-style: preserve-3d;
+}
+
+.seat-summary-player {
+    letter-spacing: 0.01em;
+}
+
 @media (min-width: 768px) {
     .seat-summary {
         perspective: 760px;
@@ -2685,6 +2695,22 @@ code {
 
     .seat-summary-west {
         transform: perspective(620px) rotateY(14deg) translateZ(3px);
+    }
+
+    .seat-summary-north .seat-summary-meta {
+        transform: perspective(560px) rotateX(8deg) translateZ(4px);
+    }
+
+    .seat-summary-south .seat-summary-meta {
+        transform: perspective(560px) rotateX(-8deg) translateZ(4px);
+    }
+
+    .seat-summary-east .seat-summary-meta {
+        transform: perspective(560px) rotateY(-10deg) translateZ(4px);
+    }
+
+    .seat-summary-west .seat-summary-meta {
+        transform: perspective(560px) rotateY(10deg) translateZ(4px);
     }
 
     .seat-summary-north .badge {
@@ -2719,6 +2745,22 @@ code {
 
     .seat-summary-west {
         transform: perspective(700px) rotateY(20deg) translateZ(5px);
+    }
+
+    .seat-summary-north .seat-summary-meta {
+        transform: perspective(620px) rotateX(13deg) translateZ(6px);
+    }
+
+    .seat-summary-south .seat-summary-meta {
+        transform: perspective(620px) rotateX(-13deg) translateZ(6px);
+    }
+
+    .seat-summary-east .seat-summary-meta {
+        transform: perspective(620px) rotateY(-15deg) translateZ(6px);
+    }
+
+    .seat-summary-west .seat-summary-meta {
+        transform: perspective(620px) rotateY(15deg) translateZ(6px);
     }
 
     .seat-summary-north .badge {
