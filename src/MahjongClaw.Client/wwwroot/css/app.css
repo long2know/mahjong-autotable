@@ -268,6 +268,18 @@ code {
     transform: translateZ(7px);
 }
 
+.seat-card .seat-badge-score {
+    transform: translateZ(8px);
+}
+
+.seat-card .seat-badge-dealer {
+    transform: translateZ(10px);
+}
+
+.seat-card .seat-badge-turn {
+    transform: translateZ(12px);
+}
+
 .seat-card .tile-row {
     --seat-row-depth: 6px;
     position: relative;
@@ -406,6 +418,54 @@ code {
         transform: translateZ(9px) perspective(560px) rotateY(8deg);
     }
 
+    .seat-north .seat-badge-score {
+        transform: perspective(560px) rotateX(9deg) translateZ(10px);
+    }
+
+    .seat-south .seat-badge-score {
+        transform: perspective(560px) rotateX(-9deg) translateZ(10px);
+    }
+
+    .seat-east .seat-badge-score {
+        transform: perspective(560px) rotateY(-11deg) translateZ(10px);
+    }
+
+    .seat-west .seat-badge-score {
+        transform: perspective(560px) rotateY(11deg) translateZ(10px);
+    }
+
+    .seat-north .seat-badge-dealer {
+        transform: perspective(560px) rotateX(13deg) translateZ(13px);
+    }
+
+    .seat-south .seat-badge-dealer {
+        transform: perspective(560px) rotateX(-13deg) translateZ(13px);
+    }
+
+    .seat-east .seat-badge-dealer {
+        transform: perspective(560px) rotateY(-15deg) translateZ(13px);
+    }
+
+    .seat-west .seat-badge-dealer {
+        transform: perspective(560px) rotateY(15deg) translateZ(13px);
+    }
+
+    .seat-north .seat-badge-turn {
+        transform: perspective(560px) rotateX(16deg) translateZ(14px);
+    }
+
+    .seat-south .seat-badge-turn {
+        transform: perspective(560px) rotateX(-16deg) translateZ(14px);
+    }
+
+    .seat-east .seat-badge-turn {
+        transform: perspective(560px) rotateY(-18deg) translateZ(14px);
+    }
+
+    .seat-west .seat-badge-turn {
+        transform: perspective(560px) rotateY(18deg) translateZ(14px);
+    }
+
     .seat-north .seat-card .tile-row {
         transform-origin: center bottom;
         transform: translateZ(var(--seat-row-depth)) perspective(760px) rotateX(3deg);
@@ -490,6 +550,54 @@ code {
 
     .seat-west .seat-badges {
         transform: perspective(680px) rotateY(18deg) translateZ(10px);
+    }
+
+    .seat-north .seat-badge-score {
+        transform: perspective(620px) rotateX(15deg) translateZ(12px);
+    }
+
+    .seat-south .seat-badge-score {
+        transform: perspective(620px) rotateX(-15deg) translateZ(12px);
+    }
+
+    .seat-east .seat-badge-score {
+        transform: perspective(620px) rotateY(-17deg) translateZ(12px);
+    }
+
+    .seat-west .seat-badge-score {
+        transform: perspective(620px) rotateY(17deg) translateZ(12px);
+    }
+
+    .seat-north .seat-badge-dealer {
+        transform: perspective(620px) rotateX(19deg) translateZ(15px);
+    }
+
+    .seat-south .seat-badge-dealer {
+        transform: perspective(620px) rotateX(-19deg) translateZ(15px);
+    }
+
+    .seat-east .seat-badge-dealer {
+        transform: perspective(620px) rotateY(-21deg) translateZ(15px);
+    }
+
+    .seat-west .seat-badge-dealer {
+        transform: perspective(620px) rotateY(21deg) translateZ(15px);
+    }
+
+    .seat-north .seat-badge-turn {
+        transform: perspective(620px) rotateX(23deg) translateZ(16px);
+    }
+
+    .seat-south .seat-badge-turn {
+        transform: perspective(620px) rotateX(-23deg) translateZ(16px);
+    }
+
+    .seat-east .seat-badge-turn {
+        transform: perspective(620px) rotateY(-25deg) translateZ(16px);
+    }
+
+    .seat-west .seat-badge-turn {
+        transform: perspective(620px) rotateY(25deg) translateZ(16px);
     }
 }
 

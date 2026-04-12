@@ -291,6 +291,34 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletWestSeatBadgesTransform).toContain('matrix3d');
     expect(tabletNorthSeatBadgesTransform).not.toBe(tabletSouthSeatBadgesTransform);
     expect(tabletEastSeatBadgesTransform).not.toBe(tabletWestSeatBadgesTransform);
+
+    const [
+      tabletNorthScoreBadgeTransform,
+      tabletSouthScoreBadgeTransform,
+      tabletEastScoreBadgeTransform,
+      tabletWestScoreBadgeTransform,
+      tabletNorthDealerBadgeTransform,
+      tabletEastTurnBadgeTransform
+    ] = await Promise.all([
+      page.locator('.seat-north .seat-badge-score').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-badge-score').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-badge-score').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-badge-score').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-badge-dealer').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-badge-turn').first().evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(tabletNorthScoreBadgeTransform).toContain('matrix3d');
+    expect(tabletSouthScoreBadgeTransform).toContain('matrix3d');
+    expect(tabletEastScoreBadgeTransform).toContain('matrix3d');
+    expect(tabletWestScoreBadgeTransform).toContain('matrix3d');
+    expect(tabletNorthScoreBadgeTransform).not.toBe(tabletSouthScoreBadgeTransform);
+    expect(tabletEastScoreBadgeTransform).not.toBe(tabletWestScoreBadgeTransform);
+    expect(tabletNorthDealerBadgeTransform).toContain('matrix3d');
+    expect(tabletEastTurnBadgeTransform).toContain('matrix3d');
+    expect(tabletNorthDealerBadgeTransform).not.toBe(tabletNorthScoreBadgeTransform);
+    expect(tabletEastTurnBadgeTransform).not.toBe(tabletEastScoreBadgeTransform);
+
     expect(tabletNorthAnchorTransform).toContain('matrix3d');
     expect(tabletSouthAnchorTransform).toContain('matrix3d');
     expect(tabletEastAnchorTransform).toContain('matrix3d');
@@ -496,6 +524,34 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(westSeatBadgesTransform).toContain('matrix3d');
     expect(northSeatBadgesTransform).not.toBe(southSeatBadgesTransform);
     expect(eastSeatBadgesTransform).not.toBe(westSeatBadgesTransform);
+
+    const [
+      northScoreBadgeTransform,
+      southScoreBadgeTransform,
+      eastScoreBadgeTransform,
+      westScoreBadgeTransform,
+      northDealerBadgeTransform,
+      eastTurnBadgeTransform
+    ] = await Promise.all([
+      page.locator('.seat-north .seat-badge-score').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-badge-score').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-badge-score').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-badge-score').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-badge-dealer').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-badge-turn').first().evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(northScoreBadgeTransform).toContain('matrix3d');
+    expect(southScoreBadgeTransform).toContain('matrix3d');
+    expect(eastScoreBadgeTransform).toContain('matrix3d');
+    expect(westScoreBadgeTransform).toContain('matrix3d');
+    expect(northScoreBadgeTransform).not.toBe(southScoreBadgeTransform);
+    expect(eastScoreBadgeTransform).not.toBe(westScoreBadgeTransform);
+    expect(northDealerBadgeTransform).toContain('matrix3d');
+    expect(eastTurnBadgeTransform).toContain('matrix3d');
+    expect(northDealerBadgeTransform).not.toBe(northScoreBadgeTransform);
+    expect(eastTurnBadgeTransform).not.toBe(eastScoreBadgeTransform);
+
     expect(northSeatTileHighlightTransform).toContain('matrix3d');
     expect(southSeatTileHighlightTransform).toContain('matrix3d');
     expect(eastSeatTileHighlightTransform).toContain('matrix3d');
