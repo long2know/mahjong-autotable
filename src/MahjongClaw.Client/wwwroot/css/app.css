@@ -2671,6 +2671,12 @@ code {
     transform-style: preserve-3d;
 }
 
+.seat-summary-wind,
+.seat-summary-player {
+    display: block;
+    transform-style: preserve-3d;
+}
+
 .seat-summary-player {
     letter-spacing: 0.01em;
 }
@@ -2711,6 +2717,38 @@ code {
 
     .seat-summary-west .seat-summary-meta {
         transform: perspective(560px) rotateY(10deg) translateZ(4px);
+    }
+
+    .seat-summary-north .seat-summary-wind {
+        transform: perspective(520px) rotateX(10deg) translateZ(6px);
+    }
+
+    .seat-summary-south .seat-summary-wind {
+        transform: perspective(520px) rotateX(-10deg) translateZ(6px);
+    }
+
+    .seat-summary-east .seat-summary-wind {
+        transform: perspective(520px) rotateY(-12deg) translateZ(6px);
+    }
+
+    .seat-summary-west .seat-summary-wind {
+        transform: perspective(520px) rotateY(12deg) translateZ(6px);
+    }
+
+    .seat-summary-north .seat-summary-player {
+        transform: perspective(500px) rotateX(7deg) translateZ(3px);
+    }
+
+    .seat-summary-south .seat-summary-player {
+        transform: perspective(500px) rotateX(-7deg) translateZ(3px);
+    }
+
+    .seat-summary-east .seat-summary-player {
+        transform: perspective(500px) rotateY(-9deg) translateZ(3px);
+    }
+
+    .seat-summary-west .seat-summary-player {
+        transform: perspective(500px) rotateY(9deg) translateZ(3px);
     }
 
     .seat-summary-north .badge {
@@ -2761,6 +2799,38 @@ code {
 
     .seat-summary-west .seat-summary-meta {
         transform: perspective(620px) rotateY(15deg) translateZ(6px);
+    }
+
+    .seat-summary-north .seat-summary-wind {
+        transform: perspective(580px) rotateX(15deg) translateZ(8px);
+    }
+
+    .seat-summary-south .seat-summary-wind {
+        transform: perspective(580px) rotateX(-15deg) translateZ(8px);
+    }
+
+    .seat-summary-east .seat-summary-wind {
+        transform: perspective(580px) rotateY(-17deg) translateZ(8px);
+    }
+
+    .seat-summary-west .seat-summary-wind {
+        transform: perspective(580px) rotateY(17deg) translateZ(8px);
+    }
+
+    .seat-summary-north .seat-summary-player {
+        transform: perspective(560px) rotateX(11deg) translateZ(5px);
+    }
+
+    .seat-summary-south .seat-summary-player {
+        transform: perspective(560px) rotateX(-11deg) translateZ(5px);
+    }
+
+    .seat-summary-east .seat-summary-player {
+        transform: perspective(560px) rotateY(-13deg) translateZ(5px);
+    }
+
+    .seat-summary-west .seat-summary-player {
+        transform: perspective(560px) rotateY(13deg) translateZ(5px);
     }
 
     .seat-summary-north .badge {
