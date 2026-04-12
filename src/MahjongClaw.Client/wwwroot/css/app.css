@@ -695,6 +695,26 @@ code {
 .indicator-hand {
     display: inline-flex;
     align-items: center;
+    position: relative;
+    isolation: isolate;
+    padding: 0.12rem 0.48rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(8, 28, 18, 0.34);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+    transform-style: preserve-3d;
+}
+
+.indicator-wind::before,
+.indicator-hand::before {
+    content: "";
+    position: absolute;
+    inset: 0.07rem;
+    border-radius: inherit;
+    border: 1px solid rgba(218, 247, 232, 0.2);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.04) 52%, rgba(0, 0, 0, 0.14) 100%);
+    opacity: 0.7;
+    pointer-events: none;
     transform-style: preserve-3d;
 }
 
@@ -806,6 +826,14 @@ code {
         transform: perspective(520px) rotateY(18deg) translateZ(5px);
     }
 
+    .indicator-wind::before {
+        transform: perspective(480px) rotateY(-22deg) translateZ(2px);
+    }
+
+    .indicator-hand::before {
+        transform: perspective(480px) rotateY(22deg) translateZ(2px);
+    }
+
     .seat-anchors {
         perspective: 760px;
     }
@@ -863,6 +891,14 @@ code {
 
     .indicator-hand {
         transform: perspective(560px) rotateY(22deg) translateZ(6px);
+    }
+
+    .indicator-wind::before {
+        transform: perspective(520px) rotateY(-28deg) translateZ(3px);
+    }
+
+    .indicator-hand::before {
+        transform: perspective(520px) rotateY(28deg) translateZ(3px);
     }
 
     .anchor-north {
