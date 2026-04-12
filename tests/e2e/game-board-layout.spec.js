@@ -899,6 +899,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletEastSummaryTransform,
       tabletSouthSummaryTransform,
       tabletWestSummaryTransform,
+      tabletNorthSummaryLayerTransform,
+      tabletEastSummaryLayerTransform,
+      tabletSouthSummaryLayerTransform,
+      tabletWestSummaryLayerTransform,
       tabletNorthMetaTransform,
       tabletEastMetaTransform,
       tabletSouthMetaTransform,
@@ -920,6 +924,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.seat-summary .seat-summary-east').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-summary .seat-summary-south').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-summary .seat-summary-west').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-summary .seat-summary-north').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-summary .seat-summary-east').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-summary .seat-summary-south').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-summary .seat-summary-west').evaluate((el) => getComputedStyle(el, '::before').transform),
       page.locator('.seat-summary .seat-summary-north .seat-summary-meta').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-summary .seat-summary-east .seat-summary-meta').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-summary .seat-summary-south .seat-summary-meta').evaluate((el) => getComputedStyle(el).transform),
@@ -944,6 +952,13 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletWestSummaryTransform).toContain('matrix3d');
     expect(tabletNorthSummaryTransform).not.toBe(tabletSouthSummaryTransform);
     expect(tabletEastSummaryTransform).not.toBe(tabletWestSummaryTransform);
+
+    expect(tabletNorthSummaryLayerTransform).toContain('matrix3d');
+    expect(tabletEastSummaryLayerTransform).toContain('matrix3d');
+    expect(tabletSouthSummaryLayerTransform).toContain('matrix3d');
+    expect(tabletWestSummaryLayerTransform).toContain('matrix3d');
+    expect(tabletNorthSummaryLayerTransform).not.toBe(tabletSouthSummaryLayerTransform);
+    expect(tabletEastSummaryLayerTransform).not.toBe(tabletWestSummaryLayerTransform);
 
     expect(tabletNorthMetaTransform).toContain('matrix3d');
     expect(tabletEastMetaTransform).toContain('matrix3d');
@@ -977,6 +992,8 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     const [
       desktopNorthSummaryTransform,
       desktopEastSummaryTransform,
+      desktopNorthSummaryLayerTransform,
+      desktopEastSummaryLayerTransform,
       desktopNorthMetaTransform,
       desktopEastMetaTransform,
       desktopNorthWindTransform,
@@ -988,6 +1005,8 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     ] = await Promise.all([
       page.locator('.seat-summary .seat-summary-north').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-summary .seat-summary-east').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-summary .seat-summary-north').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-summary .seat-summary-east').evaluate((el) => getComputedStyle(el, '::before').transform),
       page.locator('.seat-summary .seat-summary-north .seat-summary-meta').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-summary .seat-summary-east .seat-summary-meta').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-summary .seat-summary-north .seat-summary-wind').evaluate((el) => getComputedStyle(el).transform),
@@ -1000,6 +1019,11 @@ test.describe('Mahjong Claw game board layout smoke', () => {
 
     expect(desktopNorthSummaryTransform).toContain('matrix3d');
     expect(desktopEastSummaryTransform).toContain('matrix3d');
+    expect(desktopNorthSummaryLayerTransform).toContain('matrix3d');
+    expect(desktopEastSummaryLayerTransform).toContain('matrix3d');
+    expect(desktopNorthSummaryLayerTransform).not.toBe(desktopEastSummaryLayerTransform);
+    expect(desktopNorthSummaryLayerTransform).not.toBe(tabletNorthSummaryLayerTransform);
+    expect(desktopEastSummaryLayerTransform).not.toBe(tabletEastSummaryLayerTransform);
     expect(desktopNorthMetaTransform).toContain('matrix3d');
     expect(desktopEastMetaTransform).toContain('matrix3d');
     expect(desktopNorthWindTransform).toContain('matrix3d');
