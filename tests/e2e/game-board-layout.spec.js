@@ -1178,6 +1178,44 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(desktopDealerBadgeTransforms.dealerLayerTransform).not.toBe(tabletDealerBadgeTransforms.dealerLayerTransform);
   });
 
+  test('keeps discard title and current-turn label in 3D at tablet and desktop', async ({ page }) => {
+    await page.goto('/game');
+
+    const discardTitle = page.locator('.discard-lane-title').first();
+    const turnLabel = page.locator('.center-turn-label').first();
+    await expect(discardTitle).toBeVisible();
+    await expect(turnLabel).toBeVisible();
+
+    await page.setViewportSize({ width: 900, height: 760 });
+    const [tabletDiscardTitleTransform, tabletTurnLabelTransform, tabletTurnLabelStrongTransform] = await Promise.all([
+      discardTitle.evaluate((el) => getComputedStyle(el).transform),
+      turnLabel.evaluate((el) => getComputedStyle(el).transform),
+      turnLabel.locator('strong').evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(tabletDiscardTitleTransform).toContain('matrix3d');
+    expect(tabletTurnLabelTransform).toContain('matrix3d');
+    expect(tabletTurnLabelStrongTransform).toContain('matrix3d');
+    expect(tabletDiscardTitleTransform).not.toBe(tabletTurnLabelTransform);
+    expect(tabletTurnLabelTransform).not.toBe(tabletTurnLabelStrongTransform);
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const [desktopDiscardTitleTransform, desktopTurnLabelTransform, desktopTurnLabelStrongTransform] = await Promise.all([
+      discardTitle.evaluate((el) => getComputedStyle(el).transform),
+      turnLabel.evaluate((el) => getComputedStyle(el).transform),
+      turnLabel.locator('strong').evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(desktopDiscardTitleTransform).toContain('matrix3d');
+    expect(desktopTurnLabelTransform).toContain('matrix3d');
+    expect(desktopTurnLabelStrongTransform).toContain('matrix3d');
+    expect(desktopDiscardTitleTransform).not.toBe(desktopTurnLabelTransform);
+    expect(desktopTurnLabelTransform).not.toBe(desktopTurnLabelStrongTransform);
+    expect(desktopDiscardTitleTransform).not.toBe(tabletDiscardTitleTransform);
+    expect(desktopTurnLabelTransform).not.toBe(tabletTurnLabelTransform);
+    expect(desktopTurnLabelStrongTransform).not.toBe(tabletTurnLabelStrongTransform);
+  });
+
   test('keeps wall legend capsule pseudo-layers in directional 3D at tablet and desktop', async ({ page }) => {
     await page.goto('/game');
 

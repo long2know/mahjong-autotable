@@ -666,9 +666,19 @@ code {
 .center-area > .table-indicator,
 .center-area > .seat-anchors,
 .center-area > .wall-legend,
-.center-area > h6,
-.center-area > .mt-3.text-muted.small {
+.center-area > .discard-lane-title,
+.center-area > .center-turn-label {
     transform: translateZ(8px);
+}
+
+.discard-lane-title,
+.center-turn-label {
+    transform-style: preserve-3d;
+}
+
+.center-turn-label strong {
+    display: inline-flex;
+    transform-style: preserve-3d;
 }
 
 .table-indicator {
@@ -834,6 +844,18 @@ code {
         transform: perspective(480px) rotateY(22deg) translateZ(2px);
     }
 
+    .center-area > .discard-lane-title {
+        transform: perspective(560px) rotateX(14deg) translateZ(12px);
+    }
+
+    .center-area > .center-turn-label {
+        transform: perspective(560px) rotateX(-12deg) translateZ(10px);
+    }
+
+    .center-area > .center-turn-label strong {
+        transform: perspective(520px) rotateX(-14deg) translateZ(4px);
+    }
+
     .seat-anchors {
         perspective: 760px;
     }
@@ -899,6 +921,18 @@ code {
 
     .indicator-hand::before {
         transform: perspective(520px) rotateY(28deg) translateZ(3px);
+    }
+
+    .center-area > .discard-lane-title {
+        transform: perspective(620px) rotateX(20deg) translateZ(14px);
+    }
+
+    .center-area > .center-turn-label {
+        transform: perspective(620px) rotateX(-18deg) translateZ(12px);
+    }
+
+    .center-area > .center-turn-label strong {
+        transform: perspective(580px) rotateX(-20deg) translateZ(5px);
     }
 
     .anchor-north {
