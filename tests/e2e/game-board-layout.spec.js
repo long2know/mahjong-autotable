@@ -126,6 +126,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletSouthSeatTransform,
       tabletEastSeatTransform,
       tabletWestSeatTransform,
+      tabletNorthSeatLayerTransform,
+      tabletSouthSeatLayerTransform,
+      tabletEastSeatLayerTransform,
+      tabletWestSeatLayerTransform,
       tabletNorthSeatIdentityTransform,
       tabletSouthSeatIdentityTransform,
       tabletEastSeatIdentityTransform,
@@ -179,6 +183,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el, '::before').transform),
       page.locator('.seat-north .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
@@ -233,6 +241,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletSouthSeatTransform).not.toBe('none');
     expect(tabletEastSeatTransform).not.toBe('none');
     expect(tabletWestSeatTransform).not.toBe('none');
+    expect(tabletNorthSeatLayerTransform).toContain('matrix3d');
+    expect(tabletSouthSeatLayerTransform).toContain('matrix3d');
+    expect(tabletEastSeatLayerTransform).toContain('matrix3d');
+    expect(tabletWestSeatLayerTransform).toContain('matrix3d');
+    expect(tabletNorthSeatLayerTransform).not.toBe(tabletSouthSeatLayerTransform);
+    expect(tabletEastSeatLayerTransform).not.toBe(tabletWestSeatLayerTransform);
     expect(tabletNorthSeatIdentityTransform).toContain('matrix3d');
     expect(tabletSouthSeatIdentityTransform).toContain('matrix3d');
     expect(tabletEastSeatIdentityTransform).toContain('matrix3d');
@@ -313,17 +327,36 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletDiscardMiddleRowTransform).not.toBe(tabletDiscardBackRowTransform);
 
     await page.setViewportSize({ width: 1280, height: 720 });
-    const [northSeatTransform, southSeatTransform, eastSeatTransform, westSeatTransform] = await Promise.all([
+    const [
+      northSeatTransform,
+      southSeatTransform,
+      eastSeatTransform,
+      westSeatTransform,
+      northSeatLayerTransform,
+      southSeatLayerTransform,
+      eastSeatLayerTransform,
+      westSeatLayerTransform
+    ] = await Promise.all([
       page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
-      page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el).transform)
+      page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el, '::before').transform)
     ]);
 
     expect(northSeatTransform).not.toBe('none');
     expect(southSeatTransform).not.toBe('none');
     expect(eastSeatTransform).not.toBe('none');
     expect(westSeatTransform).not.toBe('none');
+    expect(northSeatLayerTransform).toContain('matrix3d');
+    expect(southSeatLayerTransform).toContain('matrix3d');
+    expect(eastSeatLayerTransform).toContain('matrix3d');
+    expect(westSeatLayerTransform).toContain('matrix3d');
+    expect(northSeatLayerTransform).not.toBe(southSeatLayerTransform);
+    expect(eastSeatLayerTransform).not.toBe(westSeatLayerTransform);
 
     const seatCardDepthStyles = await Promise.all([
       page.locator('.seat-north .seat-card').first().evaluate((el) => {

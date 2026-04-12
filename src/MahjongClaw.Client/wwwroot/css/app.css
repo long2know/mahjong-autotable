@@ -325,6 +325,26 @@ code {
         box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.28), -8px 8px 20px rgba(4, 13, 9, 0.3);
     }
 
+    .seat-north .seat-card::before {
+        transform: perspective(660px) rotateX(8deg) translateZ(3px);
+        transform-origin: center bottom;
+    }
+
+    .seat-south .seat-card::before {
+        transform: perspective(660px) rotateX(-8deg) translateZ(3px);
+        transform-origin: center top;
+    }
+
+    .seat-east .seat-card::before {
+        transform: perspective(660px) rotateY(-10deg) translateZ(3px);
+        transform-origin: left center;
+    }
+
+    .seat-west .seat-card::before {
+        transform: perspective(660px) rotateY(10deg) translateZ(3px);
+        transform-origin: right center;
+    }
+
     .seat-north .seat-card-header {
         transform: perspective(700px) rotateX(4deg) translateZ(12px);
     }
@@ -408,6 +428,22 @@ code {
 }
 
 @media (min-width: 992px) {
+    .seat-north .seat-card::before {
+        transform: perspective(700px) rotateX(14deg) translateZ(4px);
+    }
+
+    .seat-south .seat-card::before {
+        transform: perspective(700px) rotateX(-14deg) translateZ(4px);
+    }
+
+    .seat-east .seat-card::before {
+        transform: perspective(700px) rotateY(-16deg) translateZ(4px);
+    }
+
+    .seat-west .seat-card::before {
+        transform: perspective(700px) rotateY(16deg) translateZ(4px);
+    }
+
     .seat-north .seat-card-header {
         transform: perspective(760px) rotateX(7deg) translateZ(14px);
     }
