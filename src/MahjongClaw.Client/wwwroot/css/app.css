@@ -586,19 +586,37 @@ code {
     }
 
     .compass-north {
-        transform: translateX(-50%) translateZ(11px) rotateZ(45deg);
+        transform: translateX(-50%) perspective(640px) rotateX(28deg) translateZ(11px) rotateZ(45deg);
     }
 
     .compass-east {
-        transform: translateY(-50%) translateZ(11px) rotateZ(45deg);
+        transform: translateY(-50%) perspective(640px) rotateY(-28deg) translateZ(11px) rotateZ(45deg);
     }
 
     .compass-south {
-        transform: translateX(-50%) translateZ(11px) rotateZ(45deg);
+        transform: translateX(-50%) perspective(640px) rotateX(-28deg) translateZ(11px) rotateZ(45deg);
     }
 
     .compass-west {
-        transform: translateY(-50%) translateZ(11px) rotateZ(45deg);
+        transform: translateY(-50%) perspective(640px) rotateY(28deg) translateZ(11px) rotateZ(45deg);
+    }
+}
+
+@media (min-width: 992px) {
+    .compass-north {
+        transform: translateX(-50%) perspective(700px) rotateX(34deg) translateZ(13px) rotateZ(45deg);
+    }
+
+    .compass-east {
+        transform: translateY(-50%) perspective(700px) rotateY(-34deg) translateZ(13px) rotateZ(45deg);
+    }
+
+    .compass-south {
+        transform: translateX(-50%) perspective(700px) rotateX(-34deg) translateZ(13px) rotateZ(45deg);
+    }
+
+    .compass-west {
+        transform: translateY(-50%) perspective(700px) rotateY(34deg) translateZ(13px) rotateZ(45deg);
     }
 }
 
