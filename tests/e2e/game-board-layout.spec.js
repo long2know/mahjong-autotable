@@ -174,6 +174,30 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       expect(seatCardStyle.boxShadow).toContain('rgb');
     });
 
+    const [northSeatHeaderTransform, southSeatHeaderTransform, eastSeatHeaderTransform, westSeatHeaderTransform] = await Promise.all([
+      page.locator('.seat-north .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(northSeatHeaderTransform).toContain('matrix3d');
+    expect(southSeatHeaderTransform).toContain('matrix3d');
+    expect(eastSeatHeaderTransform).toContain('matrix3d');
+    expect(westSeatHeaderTransform).toContain('matrix3d');
+
+    const [northSeatRowTransform, southSeatRowTransform, eastSeatRowTransform, westSeatRowTransform] = await Promise.all([
+      page.locator('.seat-north .seat-card .tile-row').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-card .tile-row').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-card .tile-row').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-card .tile-row').first().evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(northSeatRowTransform).toContain('matrix3d');
+    expect(southSeatRowTransform).toContain('matrix3d');
+    expect(eastSeatRowTransform).toContain('matrix3d');
+    expect(westSeatRowTransform).toContain('matrix3d');
+
     const [indicatorTransform, anchorTransform, discardLaneTransform, discardLaneTransformStyle, compassTransform] = await Promise.all([
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Seat anchors').evaluate((el) => getComputedStyle(el).transform),

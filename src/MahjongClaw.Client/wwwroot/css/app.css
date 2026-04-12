@@ -242,6 +242,24 @@ code {
     color: #f5f7f5 !important;
 }
 
+.seat-card > .d-flex {
+    position: relative;
+    z-index: 2;
+    transform: translateZ(10px);
+}
+
+.seat-card .tile-row {
+    --seat-row-depth: 6px;
+    position: relative;
+    z-index: 1;
+    transform: translateZ(var(--seat-row-depth));
+    transform-style: preserve-3d;
+}
+
+.seat-card .tile-row + .tile-row {
+    --seat-row-depth: 3px;
+}
+
 .seat-north {
     grid-area: north;
 }
@@ -285,6 +303,26 @@ code {
         transform-origin: right center;
         transform: perspective(940px) rotateY(10deg) translateX(-2px);
         box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.28), -8px 8px 20px rgba(4, 13, 9, 0.3);
+    }
+
+    .seat-north .seat-card .tile-row {
+        transform-origin: center bottom;
+        transform: translateZ(var(--seat-row-depth)) perspective(760px) rotateX(3deg);
+    }
+
+    .seat-south .seat-card .tile-row {
+        transform-origin: center top;
+        transform: translateZ(var(--seat-row-depth)) perspective(760px) rotateX(-3deg);
+    }
+
+    .seat-east .seat-card .tile-row {
+        transform-origin: left center;
+        transform: translateZ(var(--seat-row-depth)) perspective(760px) rotateY(-4deg);
+    }
+
+    .seat-west .seat-card .tile-row {
+        transform-origin: right center;
+        transform: translateZ(var(--seat-row-depth)) perspective(760px) rotateY(4deg);
     }
 }
 
