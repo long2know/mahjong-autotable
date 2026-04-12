@@ -458,16 +458,36 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(leftWallLabelTransform).toContain('matrix3d');
     expect(rightWallLabelTransform).toContain('matrix3d');
 
-    const [northWestCornerTransform, northEastCornerTransform, southEastCornerTransform, southWestCornerTransform] = await Promise.all([
+    const [
+      northWestCornerTransform,
+      northEastCornerTransform,
+      southEastCornerTransform,
+      southWestCornerTransform,
+      northWestCornerUpperTransform,
+      northEastCornerUpperTransform,
+      southEastCornerUpperTransform,
+      southWestCornerUpperTransform
+    ] = await Promise.all([
       wallPreview.locator('.wall-corner-nw').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-corner-ne').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-corner-se').evaluate((el) => getComputedStyle(el).transform),
-      wallPreview.locator('.wall-corner-sw').evaluate((el) => getComputedStyle(el).transform)
+      wallPreview.locator('.wall-corner-sw').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-corner-nw').evaluate((el) => getComputedStyle(el, '::after').transform),
+      wallPreview.locator('.wall-corner-ne').evaluate((el) => getComputedStyle(el, '::after').transform),
+      wallPreview.locator('.wall-corner-se').evaluate((el) => getComputedStyle(el, '::after').transform),
+      wallPreview.locator('.wall-corner-sw').evaluate((el) => getComputedStyle(el, '::after').transform)
     ]);
 
     expect(northWestCornerTransform).toContain('matrix3d');
     expect(northEastCornerTransform).toContain('matrix3d');
     expect(southEastCornerTransform).toContain('matrix3d');
     expect(southWestCornerTransform).toContain('matrix3d');
+    expect(northWestCornerUpperTransform).toContain('matrix3d');
+    expect(northEastCornerUpperTransform).toContain('matrix3d');
+    expect(southEastCornerUpperTransform).toContain('matrix3d');
+    expect(southWestCornerUpperTransform).toContain('matrix3d');
+    expect(northWestCornerUpperTransform).not.toBe(northEastCornerUpperTransform);
+    expect(southWestCornerUpperTransform).not.toBe(southEastCornerUpperTransform);
+    expect(northWestCornerUpperTransform).not.toBe(southWestCornerUpperTransform);
   });
 });
