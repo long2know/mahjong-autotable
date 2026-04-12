@@ -271,6 +271,9 @@ test.describe('Mahjong Claw game board layout smoke', () => {
 
     const [
       indicatorTransform,
+      indicatorTransformStyle,
+      indicatorWindTransform,
+      indicatorHandTransform,
       anchorTransform,
       anchorTransformStyle,
       northAnchorTransform,
@@ -282,6 +285,9 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       compassTransform
     ] = await Promise.all([
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transform),
+      page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transformStyle),
+      page.locator('.table-indicator .indicator-wind').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.table-indicator .indicator-hand').evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Seat anchors').evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Seat anchors').evaluate((el) => getComputedStyle(el).transformStyle),
       page.locator('.seat-anchors .anchor-north').evaluate((el) => getComputedStyle(el).transform),
@@ -293,7 +299,11 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform)
     ]);
 
-    expect(indicatorTransform).not.toBe('none');
+    expect(indicatorTransform).toContain('matrix3d');
+    expect(indicatorTransformStyle).toBe('preserve-3d');
+    expect(indicatorWindTransform).toContain('matrix3d');
+    expect(indicatorHandTransform).toContain('matrix3d');
+    expect(indicatorWindTransform).not.toBe(indicatorHandTransform);
     expect(anchorTransform).not.toBe('none');
     expect(anchorTransformStyle).toBe('preserve-3d');
     expect(northAnchorTransform).toContain('matrix3d');
