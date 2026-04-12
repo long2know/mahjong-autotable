@@ -574,6 +574,9 @@ code {
 }
 
 .seat-anchor {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     padding: 0.12rem 0.45rem;
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -583,14 +586,36 @@ code {
     transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
 }
 
+.seat-anchor::before {
+    content: "";
+    position: absolute;
+    inset: 0.08rem;
+    border-radius: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.06) 48%, rgba(0, 0, 0, 0.16) 100%);
+    opacity: 0.62;
+    pointer-events: none;
+    transform-style: preserve-3d;
+    transition: transform 140ms ease, opacity 140ms ease, border-color 140ms ease;
+}
+
 .seat-anchor-current {
     border-color: rgba(88, 245, 152, 0.85);
     background: rgba(16, 58, 37, 0.8);
     box-shadow: 0 0 0 2px rgba(88, 245, 152, 0.28);
 }
 
+.seat-anchor-current::before {
+    opacity: 0.78;
+    border-color: rgba(152, 255, 198, 0.42);
+}
+
 .seat-anchor-dealer {
     border-color: rgba(255, 210, 102, 0.92);
+}
+
+.seat-anchor-dealer::before {
+    border-color: rgba(255, 220, 138, 0.5);
 }
 
 .anchor-north {
@@ -646,6 +671,22 @@ code {
     .anchor-west {
         transform: perspective(620px) rotateY(24deg) translateZ(7px);
     }
+
+    .anchor-north::before {
+        transform: perspective(520px) rotateX(14deg) translateZ(2px);
+    }
+
+    .anchor-south::before {
+        transform: perspective(520px) rotateX(-14deg) translateZ(2px);
+    }
+
+    .anchor-east::before {
+        transform: perspective(520px) rotateY(-16deg) translateZ(2px);
+    }
+
+    .anchor-west::before {
+        transform: perspective(520px) rotateY(16deg) translateZ(2px);
+    }
 }
 
 @media (min-width: 992px) {
@@ -676,6 +717,22 @@ code {
 
     .anchor-west {
         transform: perspective(660px) rotateY(32deg) translateZ(9px);
+    }
+
+    .anchor-north::before {
+        transform: perspective(560px) rotateX(20deg) translateZ(3px);
+    }
+
+    .anchor-south::before {
+        transform: perspective(560px) rotateX(-20deg) translateZ(3px);
+    }
+
+    .anchor-east::before {
+        transform: perspective(560px) rotateY(-22deg) translateZ(3px);
+    }
+
+    .anchor-west::before {
+        transform: perspective(560px) rotateY(22deg) translateZ(3px);
     }
 }
 
