@@ -1019,4 +1019,51 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(desktopNorthBadgeTransform).not.toBe(tabletNorthBadgeTransform);
     expect(desktopEastBadgeTransform).not.toBe(tabletEastBadgeTransform);
   });
+
+  test('keeps wall legend capsule pseudo-layers in directional 3D at tablet and desktop', async ({ page }) => {
+    await page.goto('/game');
+
+    const wallLegend = page.getByLabel('Wall legend');
+    await expect(wallLegend).toBeVisible();
+
+    await page.setViewportSize({ width: 900, height: 760 });
+    const [
+      tabletBreakLayerTransform,
+      tabletDepletedLayerTransform,
+      tabletDealerLayerTransform,
+      tabletRemainingLayerTransform
+    ] = await Promise.all([
+      page.locator('.wall-legend-item-break').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.wall-legend-item-depleted').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.wall-legend-item-dealer').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.wall-legend-item-remaining').evaluate((el) => getComputedStyle(el, '::before').transform)
+    ]);
+
+    expect(tabletBreakLayerTransform).toContain('matrix3d');
+    expect(tabletDepletedLayerTransform).toContain('matrix3d');
+    expect(tabletDealerLayerTransform).toContain('matrix3d');
+    expect(tabletRemainingLayerTransform).toContain('matrix3d');
+    expect(tabletBreakLayerTransform).not.toBe(tabletRemainingLayerTransform);
+    expect(tabletDepletedLayerTransform).not.toBe(tabletDealerLayerTransform);
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const [desktopBreakLayerTransform, desktopDepletedLayerTransform, desktopDealerLayerTransform, desktopRemainingLayerTransform] =
+      await Promise.all([
+        page.locator('.wall-legend-item-break').evaluate((el) => getComputedStyle(el, '::before').transform),
+        page.locator('.wall-legend-item-depleted').evaluate((el) => getComputedStyle(el, '::before').transform),
+        page.locator('.wall-legend-item-dealer').evaluate((el) => getComputedStyle(el, '::before').transform),
+        page.locator('.wall-legend-item-remaining').evaluate((el) => getComputedStyle(el, '::before').transform)
+      ]);
+
+    expect(desktopBreakLayerTransform).toContain('matrix3d');
+    expect(desktopDepletedLayerTransform).toContain('matrix3d');
+    expect(desktopDealerLayerTransform).toContain('matrix3d');
+    expect(desktopRemainingLayerTransform).toContain('matrix3d');
+    expect(desktopBreakLayerTransform).not.toBe(desktopRemainingLayerTransform);
+    expect(desktopDepletedLayerTransform).not.toBe(desktopDealerLayerTransform);
+    expect(desktopBreakLayerTransform).not.toBe(tabletBreakLayerTransform);
+    expect(desktopDepletedLayerTransform).not.toBe(tabletDepletedLayerTransform);
+    expect(desktopDealerLayerTransform).not.toBe(tabletDealerLayerTransform);
+    expect(desktopRemainingLayerTransform).not.toBe(tabletRemainingLayerTransform);
+  });
 });
