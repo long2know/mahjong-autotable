@@ -174,6 +174,14 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletBottomWallStackTransform,
       tabletLeftWallStackTransform,
       tabletRightWallStackTransform,
+      tabletTopWallLabelTransform,
+      tabletBottomWallLabelTransform,
+      tabletLeftWallLabelTransform,
+      tabletRightWallLabelTransform,
+      tabletTopWallLabelLayerTransform,
+      tabletBottomWallLabelLayerTransform,
+      tabletLeftWallLabelLayerTransform,
+      tabletRightWallLabelLayerTransform,
       tabletDiscardTileOneTransform,
       tabletDiscardTileTwoTransform,
       tabletDiscardTileThreeTransform,
@@ -231,6 +239,14 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       wallPreview.locator('.wall-bottom .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-left .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-right .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-top .wall-side-label').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-bottom .wall-side-label').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-left .wall-side-label').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-right .wall-side-label').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-top .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
+      wallPreview.locator('.wall-bottom .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
+      wallPreview.locator('.wall-left .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
+      wallPreview.locator('.wall-right .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
       page.locator('.discard-lane .tile-shell').nth(0).evaluate((el) => getComputedStyle(el).transform),
       page.locator('.discard-lane .tile-shell').nth(1).evaluate((el) => getComputedStyle(el).transform),
       page.locator('.discard-lane .tile-shell').nth(2).evaluate((el) => getComputedStyle(el).transform),
@@ -307,6 +323,16 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletBottomWallStackTransform).toContain('matrix3d');
     expect(tabletLeftWallStackTransform).toContain('matrix3d');
     expect(tabletRightWallStackTransform).toContain('matrix3d');
+    expect(tabletTopWallLabelTransform).toContain('matrix3d');
+    expect(tabletBottomWallLabelTransform).toContain('matrix3d');
+    expect(tabletLeftWallLabelTransform).toContain('matrix3d');
+    expect(tabletRightWallLabelTransform).toContain('matrix3d');
+    expect(tabletTopWallLabelLayerTransform).toContain('matrix3d');
+    expect(tabletBottomWallLabelLayerTransform).toContain('matrix3d');
+    expect(tabletLeftWallLabelLayerTransform).toContain('matrix3d');
+    expect(tabletRightWallLabelLayerTransform).toContain('matrix3d');
+    expect(tabletTopWallLabelLayerTransform).not.toBe(tabletBottomWallLabelLayerTransform);
+    expect(tabletLeftWallLabelLayerTransform).not.toBe(tabletRightWallLabelLayerTransform);
     expect(tabletDiscardTileOneTransform).toContain('matrix3d');
     expect(tabletDiscardTileTwoTransform).toContain('matrix3d');
     expect(tabletDiscardTileThreeTransform).toContain('matrix3d');
@@ -596,17 +622,36 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(leftWallStackTransform).toContain('matrix3d');
     expect(rightWallStackTransform).toContain('matrix3d');
 
-    const [topWallLabelTransform, bottomWallLabelTransform, leftWallLabelTransform, rightWallLabelTransform] = await Promise.all([
+    const [
+      topWallLabelTransform,
+      bottomWallLabelTransform,
+      leftWallLabelTransform,
+      rightWallLabelTransform,
+      topWallLabelLayerTransform,
+      bottomWallLabelLayerTransform,
+      leftWallLabelLayerTransform,
+      rightWallLabelLayerTransform
+    ] = await Promise.all([
       wallPreview.locator('.wall-top .wall-side-label').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-bottom .wall-side-label').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-left .wall-side-label').evaluate((el) => getComputedStyle(el).transform),
-      wallPreview.locator('.wall-right .wall-side-label').evaluate((el) => getComputedStyle(el).transform)
+      wallPreview.locator('.wall-right .wall-side-label').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-top .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
+      wallPreview.locator('.wall-bottom .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
+      wallPreview.locator('.wall-left .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
+      wallPreview.locator('.wall-right .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform)
     ]);
 
     expect(topWallLabelTransform).toContain('matrix3d');
     expect(bottomWallLabelTransform).toContain('matrix3d');
     expect(leftWallLabelTransform).toContain('matrix3d');
     expect(rightWallLabelTransform).toContain('matrix3d');
+    expect(topWallLabelLayerTransform).toContain('matrix3d');
+    expect(bottomWallLabelLayerTransform).toContain('matrix3d');
+    expect(leftWallLabelLayerTransform).toContain('matrix3d');
+    expect(rightWallLabelLayerTransform).toContain('matrix3d');
+    expect(topWallLabelLayerTransform).not.toBe(bottomWallLabelLayerTransform);
+    expect(leftWallLabelLayerTransform).not.toBe(rightWallLabelLayerTransform);
 
     const [desktopDiscardFrontRowTransform, desktopDiscardMiddleRowTransform, desktopDiscardBackRowTransform] = await Promise.all([
       page.locator('.discard-lane .tile-shell').nth(0).evaluate((el) => getComputedStyle(el).transform),
