@@ -709,6 +709,17 @@ code {
     transform-style: preserve-3d;
 }
 
+.compass-marker::before {
+    content: "";
+    position: absolute;
+    inset: 0.14rem;
+    border-radius: inherit;
+    border: 1px solid rgba(255, 246, 215, 0.26);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.04) 52%, rgba(0, 0, 0, 0.1) 100%);
+    opacity: 0.72;
+    pointer-events: none;
+}
+
 .compass-marker-active {
     color: #fff8db;
     border-color: rgba(255, 214, 107, 0.95);
@@ -765,6 +776,22 @@ code {
     .compass-west {
         transform: translateY(-50%) perspective(640px) rotateY(28deg) translateZ(11px) rotateZ(45deg);
     }
+
+    .compass-north::before {
+        transform: perspective(520px) rotateX(20deg) translateZ(4px);
+    }
+
+    .compass-east::before {
+        transform: perspective(520px) rotateY(-20deg) translateZ(4px);
+    }
+
+    .compass-south::before {
+        transform: perspective(520px) rotateX(-20deg) translateZ(4px);
+    }
+
+    .compass-west::before {
+        transform: perspective(520px) rotateY(20deg) translateZ(4px);
+    }
 }
 
 @media (min-width: 992px) {
@@ -782,6 +809,22 @@ code {
 
     .compass-west {
         transform: translateY(-50%) perspective(700px) rotateY(34deg) translateZ(13px) rotateZ(45deg);
+    }
+
+    .compass-north::before {
+        transform: perspective(560px) rotateX(26deg) translateZ(5px);
+    }
+
+    .compass-east::before {
+        transform: perspective(560px) rotateY(-26deg) translateZ(5px);
+    }
+
+    .compass-south::before {
+        transform: perspective(560px) rotateX(-26deg) translateZ(5px);
+    }
+
+    .compass-west::before {
+        transform: perspective(560px) rotateY(26deg) translateZ(5px);
     }
 }
 

@@ -144,6 +144,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletEastCompassMarkerTransform,
       tabletSouthCompassMarkerTransform,
       tabletWestCompassMarkerTransform,
+      tabletNorthCompassMarkerLayerTransform,
+      tabletEastCompassMarkerLayerTransform,
+      tabletSouthCompassMarkerLayerTransform,
+      tabletWestCompassMarkerLayerTransform,
       tabletWallLegendBreakTransform,
       tabletWallLegendDepletedTransform,
       tabletWallLegendDealerTransform,
@@ -183,6 +187,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.compass-east').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.compass-south').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.compass-west').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.compass-north').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.compass-east').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.compass-south').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.compass-west').evaluate((el) => getComputedStyle(el, '::before').transform),
       page.locator('.wall-legend-item-break').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.wall-legend-item-depleted').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.wall-legend-item-dealer').evaluate((el) => getComputedStyle(el).transform),
@@ -229,6 +237,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletWestCompassMarkerTransform).toContain('matrix3d');
     expect(tabletNorthCompassMarkerTransform).not.toBe(tabletSouthCompassMarkerTransform);
     expect(tabletEastCompassMarkerTransform).not.toBe(tabletWestCompassMarkerTransform);
+    expect(tabletNorthCompassMarkerLayerTransform).toContain('matrix3d');
+    expect(tabletEastCompassMarkerLayerTransform).toContain('matrix3d');
+    expect(tabletSouthCompassMarkerLayerTransform).toContain('matrix3d');
+    expect(tabletWestCompassMarkerLayerTransform).toContain('matrix3d');
+    expect(tabletNorthCompassMarkerLayerTransform).not.toBe(tabletSouthCompassMarkerLayerTransform);
+    expect(tabletEastCompassMarkerLayerTransform).not.toBe(tabletWestCompassMarkerLayerTransform);
     expect(tabletWallLegendBreakTransform).toContain('matrix3d');
     expect(tabletWallLegendDepletedTransform).toContain('matrix3d');
     expect(tabletWallLegendDealerTransform).toContain('matrix3d');
@@ -403,11 +417,24 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(wallLegendDepletedTransform).not.toBe(wallLegendDealerTransform);
     expect(wallLegendBreakTransform).not.toBe(wallLegendRemainingTransform);
 
-    const [northCompassMarkerTransform, eastCompassMarkerTransform, southCompassMarkerTransform, westCompassMarkerTransform] = await Promise.all([
+    const [
+      northCompassMarkerTransform,
+      eastCompassMarkerTransform,
+      southCompassMarkerTransform,
+      westCompassMarkerTransform,
+      northCompassMarkerLayerTransform,
+      eastCompassMarkerLayerTransform,
+      southCompassMarkerLayerTransform,
+      westCompassMarkerLayerTransform
+    ] = await Promise.all([
       page.locator('.compass-north').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.compass-east').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.compass-south').evaluate((el) => getComputedStyle(el).transform),
-      page.locator('.compass-west').evaluate((el) => getComputedStyle(el).transform)
+      page.locator('.compass-west').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.compass-north').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.compass-east').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.compass-south').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.compass-west').evaluate((el) => getComputedStyle(el, '::before').transform)
     ]);
 
     expect(northCompassMarkerTransform).toContain('matrix3d');
@@ -416,6 +443,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(westCompassMarkerTransform).toContain('matrix3d');
     expect(northCompassMarkerTransform).not.toBe(southCompassMarkerTransform);
     expect(eastCompassMarkerTransform).not.toBe(westCompassMarkerTransform);
+    expect(northCompassMarkerLayerTransform).toContain('matrix3d');
+    expect(eastCompassMarkerLayerTransform).toContain('matrix3d');
+    expect(southCompassMarkerLayerTransform).toContain('matrix3d');
+    expect(westCompassMarkerLayerTransform).toContain('matrix3d');
+    expect(northCompassMarkerLayerTransform).not.toBe(southCompassMarkerLayerTransform);
+    expect(eastCompassMarkerLayerTransform).not.toBe(westCompassMarkerLayerTransform);
 
     const [
       topWallTransform,
