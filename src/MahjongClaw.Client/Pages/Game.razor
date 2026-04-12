@@ -184,7 +184,7 @@
                 <div class="seat-summary">
                     @foreach (var seat in Seats)
                     {
-                        <div class="seat-summary-item">
+                        <div class="@BuildSeatSummaryItemClass(seat.Wind)">
                             <div>
                                 <div class="fw-semibold">@seat.Wind</div>
                                 <div class="small text-muted">@seat.Player</div>
@@ -708,6 +708,19 @@
         }
 
         return classes;
+    }
+
+    private static string BuildSeatSummaryItemClass(string wind)
+    {
+        if (string.IsNullOrWhiteSpace(wind))
+        {
+            return "seat-summary-item";
+        }
+
+        var normalized = wind.Trim().ToLowerInvariant();
+        return normalized is "north" or "east" or "south" or "west"
+            ? $"seat-summary-item seat-summary-{normalized}"
+            : "seat-summary-item";
     }
 
     private bool IsDealerSide(string seat)

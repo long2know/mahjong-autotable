@@ -2662,4 +2662,78 @@ code {
     border-radius: 0.75rem;
     border: 1px solid #e7e7e7;
     background: #f8f9fa;
+    transform-style: preserve-3d;
+}
+
+@media (min-width: 768px) {
+    .seat-summary {
+        perspective: 760px;
+        transform-style: preserve-3d;
+    }
+
+    .seat-summary-north {
+        transform: perspective(620px) rotateX(11deg) translateZ(3px);
+    }
+
+    .seat-summary-south {
+        transform: perspective(620px) rotateX(-11deg) translateZ(3px);
+    }
+
+    .seat-summary-east {
+        transform: perspective(620px) rotateY(-14deg) translateZ(3px);
+    }
+
+    .seat-summary-west {
+        transform: perspective(620px) rotateY(14deg) translateZ(3px);
+    }
+
+    .seat-summary-north .badge {
+        transform: perspective(560px) rotateX(9deg) translateZ(5px);
+    }
+
+    .seat-summary-south .badge {
+        transform: perspective(560px) rotateX(-9deg) translateZ(5px);
+    }
+
+    .seat-summary-east .badge {
+        transform: perspective(560px) rotateY(-11deg) translateZ(5px);
+    }
+
+    .seat-summary-west .badge {
+        transform: perspective(560px) rotateY(11deg) translateZ(5px);
+    }
+}
+
+@media (min-width: 1200px) {
+    .seat-summary-north {
+        transform: perspective(700px) rotateX(17deg) translateZ(5px);
+    }
+
+    .seat-summary-south {
+        transform: perspective(700px) rotateX(-17deg) translateZ(5px);
+    }
+
+    .seat-summary-east {
+        transform: perspective(700px) rotateY(-20deg) translateZ(5px);
+    }
+
+    .seat-summary-west {
+        transform: perspective(700px) rotateY(20deg) translateZ(5px);
+    }
+
+    .seat-summary-north .badge {
+        transform: perspective(620px) rotateX(14deg) translateZ(7px);
+    }
+
+    .seat-summary-south .badge {
+        transform: perspective(620px) rotateX(-14deg) translateZ(7px);
+    }
+
+    .seat-summary-east .badge {
+        transform: perspective(620px) rotateY(-16deg) translateZ(7px);
+    }
+
+    .seat-summary-west .badge {
+        transform: perspective(620px) rotateY(16deg) translateZ(7px);
+    }
 }
