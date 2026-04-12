@@ -144,6 +144,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletEastCompassMarkerTransform,
       tabletSouthCompassMarkerTransform,
       tabletWestCompassMarkerTransform,
+      tabletWallLegendBreakTransform,
+      tabletWallLegendDepletedTransform,
+      tabletWallLegendDealerTransform,
+      tabletWallLegendRemainingTransform,
       tabletTopWallTransform,
       tabletBottomWallTransform,
       tabletLeftWallTransform,
@@ -179,6 +183,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.compass-east').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.compass-south').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.compass-west').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-break').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-depleted').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-dealer').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-remaining').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-bottom').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-left').evaluate((el) => getComputedStyle(el).transform),
@@ -221,6 +229,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletWestCompassMarkerTransform).toContain('matrix3d');
     expect(tabletNorthCompassMarkerTransform).not.toBe(tabletSouthCompassMarkerTransform);
     expect(tabletEastCompassMarkerTransform).not.toBe(tabletWestCompassMarkerTransform);
+    expect(tabletWallLegendBreakTransform).toContain('matrix3d');
+    expect(tabletWallLegendDepletedTransform).toContain('matrix3d');
+    expect(tabletWallLegendDealerTransform).toContain('matrix3d');
+    expect(tabletWallLegendRemainingTransform).toContain('matrix3d');
+    expect(tabletWallLegendDepletedTransform).not.toBe(tabletWallLegendDealerTransform);
+    expect(tabletWallLegendBreakTransform).not.toBe(tabletWallLegendRemainingTransform);
     expect(tabletTopWallTransform).toContain('matrix3d');
     expect(tabletBottomWallTransform).toContain('matrix3d');
     expect(tabletLeftWallTransform).toContain('matrix3d');
@@ -343,7 +357,11 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       westAnchorTransform,
       discardLaneTransform,
       discardLaneTransformStyle,
-      compassTransform
+      compassTransform,
+      wallLegendBreakTransform,
+      wallLegendDepletedTransform,
+      wallLegendDealerTransform,
+      wallLegendRemainingTransform
     ] = await Promise.all([
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transformStyle),
@@ -357,7 +375,11 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.seat-anchors .anchor-west').evaluate((el) => getComputedStyle(el).transform),
       discardLane.evaluate((el) => getComputedStyle(el).transform),
       discardLane.evaluate((el) => getComputedStyle(el).transformStyle),
-      page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform)
+      page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-break').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-depleted').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-dealer').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-remaining').evaluate((el) => getComputedStyle(el).transform)
     ]);
 
     expect(indicatorTransform).toContain('matrix3d');
@@ -374,6 +396,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(discardLaneTransform).toContain('matrix3d');
     expect(discardLaneTransformStyle).toBe('preserve-3d');
     expect(compassTransform).toContain('matrix3d');
+    expect(wallLegendBreakTransform).toContain('matrix3d');
+    expect(wallLegendDepletedTransform).toContain('matrix3d');
+    expect(wallLegendDealerTransform).toContain('matrix3d');
+    expect(wallLegendRemainingTransform).toContain('matrix3d');
+    expect(wallLegendDepletedTransform).not.toBe(wallLegendDealerTransform);
+    expect(wallLegendBreakTransform).not.toBe(wallLegendRemainingTransform);
 
     const [northCompassMarkerTransform, eastCompassMarkerTransform, southCompassMarkerTransform, westCompassMarkerTransform] = await Promise.all([
       page.locator('.compass-north').evaluate((el) => getComputedStyle(el).transform),
