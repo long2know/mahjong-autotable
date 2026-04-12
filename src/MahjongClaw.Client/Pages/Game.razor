@@ -912,20 +912,20 @@
     }
 
     private RenderFragment RenderSeat(PlayerView player) => @<div class="seat-card">
-        <div class="d-flex align-items-center justify-content-between">
-            <div>
+        <div class="d-flex align-items-center justify-content-between seat-card-header">
+            <div class="seat-identity">
                 <div class="fw-semibold">@player.Name</div>
                 <div class="small text-muted">@player.Seat</div>
             </div>
-            <div class="text-end">
-                <div class="badge text-bg-light">@player.Score pts</div>
+            <div class="text-end seat-badges">
+                <div class="badge text-bg-light seat-badge seat-badge-score">@player.Score pts</div>
                 @if (player.IsDealer)
                 {
-                    <div class="badge text-bg-warning ms-1">Dealer</div>
+                    <div class="badge text-bg-warning ms-1 seat-badge seat-badge-dealer">Dealer</div>
                 }
                 @if (player.IsCurrent)
                 {
-                    <div class="badge text-bg-success ms-1">Turn</div>
+                    <div class="badge text-bg-success ms-1 seat-badge seat-badge-turn">Turn</div>
                 }
             </div>
         </div>

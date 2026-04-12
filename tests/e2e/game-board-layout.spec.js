@@ -126,6 +126,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletSouthSeatTransform,
       tabletEastSeatTransform,
       tabletWestSeatTransform,
+      tabletNorthSeatBadgesTransform,
+      tabletSouthSeatBadgesTransform,
+      tabletEastSeatBadgesTransform,
+      tabletWestSeatBadgesTransform,
       tabletNorthAnchorTransform,
       tabletSouthAnchorTransform,
       tabletEastAnchorTransform,
@@ -153,6 +157,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-anchors .anchor-north').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-anchors .anchor-south').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-anchors .anchor-east').evaluate((el) => getComputedStyle(el).transform),
@@ -181,6 +189,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletSouthSeatTransform).not.toBe('none');
     expect(tabletEastSeatTransform).not.toBe('none');
     expect(tabletWestSeatTransform).not.toBe('none');
+    expect(tabletNorthSeatBadgesTransform).toContain('matrix3d');
+    expect(tabletSouthSeatBadgesTransform).toContain('matrix3d');
+    expect(tabletEastSeatBadgesTransform).toContain('matrix3d');
+    expect(tabletWestSeatBadgesTransform).toContain('matrix3d');
+    expect(tabletNorthSeatBadgesTransform).not.toBe(tabletSouthSeatBadgesTransform);
+    expect(tabletEastSeatBadgesTransform).not.toBe(tabletWestSeatBadgesTransform);
     expect(tabletNorthAnchorTransform).toContain('matrix3d');
     expect(tabletSouthAnchorTransform).toContain('matrix3d');
     expect(tabletEastAnchorTransform).toContain('matrix3d');
@@ -245,17 +259,36 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       expect(seatCardStyle.boxShadow).toContain('rgb');
     });
 
-    const [northSeatHeaderTransform, southSeatHeaderTransform, eastSeatHeaderTransform, westSeatHeaderTransform] = await Promise.all([
+    const [
+      northSeatHeaderTransform,
+      southSeatHeaderTransform,
+      eastSeatHeaderTransform,
+      westSeatHeaderTransform,
+      northSeatBadgesTransform,
+      southSeatBadgesTransform,
+      eastSeatBadgesTransform,
+      westSeatBadgesTransform
+    ] = await Promise.all([
       page.locator('.seat-north .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
-      page.locator('.seat-west .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform)
+      page.locator('.seat-west .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-badges').first().evaluate((el) => getComputedStyle(el).transform)
     ]);
 
     expect(northSeatHeaderTransform).toContain('matrix3d');
     expect(southSeatHeaderTransform).toContain('matrix3d');
     expect(eastSeatHeaderTransform).toContain('matrix3d');
     expect(westSeatHeaderTransform).toContain('matrix3d');
+    expect(northSeatBadgesTransform).toContain('matrix3d');
+    expect(southSeatBadgesTransform).toContain('matrix3d');
+    expect(eastSeatBadgesTransform).toContain('matrix3d');
+    expect(westSeatBadgesTransform).toContain('matrix3d');
+    expect(northSeatBadgesTransform).not.toBe(southSeatBadgesTransform);
+    expect(eastSeatBadgesTransform).not.toBe(westSeatBadgesTransform);
 
     const [northSeatRowTransform, southSeatRowTransform, eastSeatRowTransform, westSeatRowTransform] = await Promise.all([
       page.locator('.seat-north .seat-card .tile-row').first().evaluate((el) => getComputedStyle(el).transform),
