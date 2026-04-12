@@ -126,6 +126,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletSouthSeatTransform,
       tabletEastSeatTransform,
       tabletWestSeatTransform,
+      tabletNorthAnchorTransform,
+      tabletSouthAnchorTransform,
+      tabletEastAnchorTransform,
+      tabletWestAnchorTransform,
       tabletDiscardLaneTransform,
       tabletCompassTransform,
       tabletTopWallTransform,
@@ -141,6 +145,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-anchors .anchor-north').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-anchors .anchor-south').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-anchors .anchor-east').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-anchors .anchor-west').evaluate((el) => getComputedStyle(el).transform),
       discardLane.evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),
@@ -157,6 +165,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletSouthSeatTransform).not.toBe('none');
     expect(tabletEastSeatTransform).not.toBe('none');
     expect(tabletWestSeatTransform).not.toBe('none');
+    expect(tabletNorthAnchorTransform).toContain('matrix3d');
+    expect(tabletSouthAnchorTransform).toContain('matrix3d');
+    expect(tabletEastAnchorTransform).toContain('matrix3d');
+    expect(tabletWestAnchorTransform).toContain('matrix3d');
     expect(tabletDiscardLaneTransform).toContain('matrix3d');
     expect(tabletCompassTransform).toContain('matrix3d');
     expect(tabletTopWallTransform).toContain('matrix3d');
@@ -229,9 +241,25 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(eastSeatRowTransform).toContain('matrix3d');
     expect(westSeatRowTransform).toContain('matrix3d');
 
-    const [indicatorTransform, anchorTransform, discardLaneTransform, discardLaneTransformStyle, compassTransform] = await Promise.all([
+    const [
+      indicatorTransform,
+      anchorTransform,
+      anchorTransformStyle,
+      northAnchorTransform,
+      eastAnchorTransform,
+      southAnchorTransform,
+      westAnchorTransform,
+      discardLaneTransform,
+      discardLaneTransformStyle,
+      compassTransform
+    ] = await Promise.all([
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Seat anchors').evaluate((el) => getComputedStyle(el).transform),
+      page.getByLabel('Seat anchors').evaluate((el) => getComputedStyle(el).transformStyle),
+      page.locator('.seat-anchors .anchor-north').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-anchors .anchor-east').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-anchors .anchor-south').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-anchors .anchor-west').evaluate((el) => getComputedStyle(el).transform),
       discardLane.evaluate((el) => getComputedStyle(el).transform),
       discardLane.evaluate((el) => getComputedStyle(el).transformStyle),
       page.getByLabel('Table compass wind markers').evaluate((el) => getComputedStyle(el).transform)
@@ -239,6 +267,11 @@ test.describe('Mahjong Claw game board layout smoke', () => {
 
     expect(indicatorTransform).not.toBe('none');
     expect(anchorTransform).not.toBe('none');
+    expect(anchorTransformStyle).toBe('preserve-3d');
+    expect(northAnchorTransform).toContain('matrix3d');
+    expect(eastAnchorTransform).toContain('matrix3d');
+    expect(southAnchorTransform).toContain('matrix3d');
+    expect(westAnchorTransform).toContain('matrix3d');
     expect(discardLaneTransform).toContain('matrix3d');
     expect(discardLaneTransformStyle).toBe('preserve-3d');
     expect(compassTransform).toContain('matrix3d');
