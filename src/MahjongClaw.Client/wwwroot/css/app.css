@@ -1568,6 +1568,11 @@ code {
     transform-origin: center center;
 }
 
+.seat-tiles .tile-shell::before,
+.seat-tiles .tile-shell::after {
+    transform-style: preserve-3d;
+}
+
 .discard-lane {
     --tile-tilt: perspective(720px) rotateX(20deg);
 }
@@ -1769,6 +1774,38 @@ code {
         perspective: 1100px;
     }
 
+    .seat-tiles.seat-north .tile-shell::before {
+        transform: perspective(520px) rotateX(-12deg) translateZ(2px);
+    }
+
+    .seat-tiles.seat-south .tile-shell::before {
+        transform: perspective(520px) rotateX(12deg) translateZ(2px);
+    }
+
+    .seat-tiles.seat-east .tile-shell::before {
+        transform: perspective(520px) rotateY(-14deg) translateZ(2px);
+    }
+
+    .seat-tiles.seat-west .tile-shell::before {
+        transform: perspective(520px) rotateY(14deg) translateZ(2px);
+    }
+
+    .seat-tiles.seat-north .tile-shell::after {
+        transform: perspective(520px) rotateX(-9deg) translateZ(1px);
+    }
+
+    .seat-tiles.seat-south .tile-shell::after {
+        transform: perspective(520px) rotateX(9deg) translateZ(1px);
+    }
+
+    .seat-tiles.seat-east .tile-shell::after {
+        transform: perspective(520px) rotateY(-11deg) translateZ(1px);
+    }
+
+    .seat-tiles.seat-west .tile-shell::after {
+        transform: perspective(520px) rotateY(11deg) translateZ(1px);
+    }
+
     .discard-lane {
         transform: perspective(920px) rotateX(24deg) rotateZ(-1deg) translateY(2px);
         transform-origin: center top;
@@ -1805,6 +1842,38 @@ code {
 }
 
 @media (min-width: 992px) {
+    .seat-tiles.seat-north .tile-shell::before {
+        transform: perspective(560px) rotateX(-18deg) translateZ(3px);
+    }
+
+    .seat-tiles.seat-south .tile-shell::before {
+        transform: perspective(560px) rotateX(18deg) translateZ(3px);
+    }
+
+    .seat-tiles.seat-east .tile-shell::before {
+        transform: perspective(560px) rotateY(-20deg) translateZ(3px);
+    }
+
+    .seat-tiles.seat-west .tile-shell::before {
+        transform: perspective(560px) rotateY(20deg) translateZ(3px);
+    }
+
+    .seat-tiles.seat-north .tile-shell::after {
+        transform: perspective(560px) rotateX(-14deg) translateZ(2px);
+    }
+
+    .seat-tiles.seat-south .tile-shell::after {
+        transform: perspective(560px) rotateX(14deg) translateZ(2px);
+    }
+
+    .seat-tiles.seat-east .tile-shell::after {
+        transform: perspective(560px) rotateY(-16deg) translateZ(2px);
+    }
+
+    .seat-tiles.seat-west .tile-shell::after {
+        transform: perspective(560px) rotateY(16deg) translateZ(2px);
+    }
+
     .discard-lane .tile-shell:nth-child(-n + 4) {
         --tile-depth-tilt: rotateX(8deg) translateZ(5px);
     }

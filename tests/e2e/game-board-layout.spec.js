@@ -182,6 +182,14 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletBottomWallLabelLayerTransform,
       tabletLeftWallLabelLayerTransform,
       tabletRightWallLabelLayerTransform,
+      tabletNorthSeatTileHighlightTransform,
+      tabletSouthSeatTileHighlightTransform,
+      tabletEastSeatTileHighlightTransform,
+      tabletWestSeatTileHighlightTransform,
+      tabletNorthSeatTileFrameTransform,
+      tabletSouthSeatTileFrameTransform,
+      tabletEastSeatTileFrameTransform,
+      tabletWestSeatTileFrameTransform,
       tabletDiscardTileOneTransform,
       tabletDiscardTileTwoTransform,
       tabletDiscardTileThreeTransform,
@@ -247,6 +255,14 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       wallPreview.locator('.wall-bottom .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
       wallPreview.locator('.wall-left .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
       wallPreview.locator('.wall-right .wall-side-label').evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-north .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-south .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-east .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-west .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-north .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      page.locator('.seat-south .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      page.locator('.seat-east .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      page.locator('.seat-west .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::after').transform),
       page.locator('.discard-lane .tile-shell').nth(0).evaluate((el) => getComputedStyle(el).transform),
       page.locator('.discard-lane .tile-shell').nth(1).evaluate((el) => getComputedStyle(el).transform),
       page.locator('.discard-lane .tile-shell').nth(2).evaluate((el) => getComputedStyle(el).transform),
@@ -333,6 +349,18 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletRightWallLabelLayerTransform).toContain('matrix3d');
     expect(tabletTopWallLabelLayerTransform).not.toBe(tabletBottomWallLabelLayerTransform);
     expect(tabletLeftWallLabelLayerTransform).not.toBe(tabletRightWallLabelLayerTransform);
+    expect(tabletNorthSeatTileHighlightTransform).toContain('matrix3d');
+    expect(tabletSouthSeatTileHighlightTransform).toContain('matrix3d');
+    expect(tabletEastSeatTileHighlightTransform).toContain('matrix3d');
+    expect(tabletWestSeatTileHighlightTransform).toContain('matrix3d');
+    expect(tabletNorthSeatTileHighlightTransform).not.toBe(tabletSouthSeatTileHighlightTransform);
+    expect(tabletEastSeatTileHighlightTransform).not.toBe(tabletWestSeatTileHighlightTransform);
+    expect(tabletNorthSeatTileFrameTransform).toContain('matrix3d');
+    expect(tabletSouthSeatTileFrameTransform).toContain('matrix3d');
+    expect(tabletEastSeatTileFrameTransform).toContain('matrix3d');
+    expect(tabletWestSeatTileFrameTransform).toContain('matrix3d');
+    expect(tabletNorthSeatTileFrameTransform).not.toBe(tabletSouthSeatTileFrameTransform);
+    expect(tabletEastSeatTileFrameTransform).not.toBe(tabletWestSeatTileFrameTransform);
     expect(tabletDiscardTileOneTransform).toContain('matrix3d');
     expect(tabletDiscardTileTwoTransform).toContain('matrix3d');
     expect(tabletDiscardTileThreeTransform).toContain('matrix3d');
@@ -420,7 +448,15 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       northSeatBadgesTransform,
       southSeatBadgesTransform,
       eastSeatBadgesTransform,
-      westSeatBadgesTransform
+      westSeatBadgesTransform,
+      northSeatTileHighlightTransform,
+      southSeatTileHighlightTransform,
+      eastSeatTileHighlightTransform,
+      westSeatTileHighlightTransform,
+      northSeatTileFrameTransform,
+      southSeatTileFrameTransform,
+      eastSeatTileFrameTransform,
+      westSeatTileFrameTransform
     ] = await Promise.all([
       page.locator('.seat-north .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
@@ -433,7 +469,15 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.seat-north .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
-      page.locator('.seat-west .seat-badges').first().evaluate((el) => getComputedStyle(el).transform)
+      page.locator('.seat-west .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-south .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-east .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-west .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::before').transform),
+      page.locator('.seat-north .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      page.locator('.seat-south .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      page.locator('.seat-east .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      page.locator('.seat-west .seat-tiles .tile-shell').first().evaluate((el) => getComputedStyle(el, '::after').transform)
     ]);
 
     expect(northSeatHeaderTransform).toContain('matrix3d');
@@ -452,6 +496,18 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(westSeatBadgesTransform).toContain('matrix3d');
     expect(northSeatBadgesTransform).not.toBe(southSeatBadgesTransform);
     expect(eastSeatBadgesTransform).not.toBe(westSeatBadgesTransform);
+    expect(northSeatTileHighlightTransform).toContain('matrix3d');
+    expect(southSeatTileHighlightTransform).toContain('matrix3d');
+    expect(eastSeatTileHighlightTransform).toContain('matrix3d');
+    expect(westSeatTileHighlightTransform).toContain('matrix3d');
+    expect(northSeatTileHighlightTransform).not.toBe(southSeatTileHighlightTransform);
+    expect(eastSeatTileHighlightTransform).not.toBe(westSeatTileHighlightTransform);
+    expect(northSeatTileFrameTransform).toContain('matrix3d');
+    expect(southSeatTileFrameTransform).toContain('matrix3d');
+    expect(eastSeatTileFrameTransform).toContain('matrix3d');
+    expect(westSeatTileFrameTransform).toContain('matrix3d');
+    expect(northSeatTileFrameTransform).not.toBe(southSeatTileFrameTransform);
+    expect(eastSeatTileFrameTransform).not.toBe(westSeatTileFrameTransform);
 
     const [northSeatRowTransform, southSeatRowTransform, eastSeatRowTransform, westSeatRowTransform] = await Promise.all([
       page.locator('.seat-north .seat-card .tile-row').first().evaluate((el) => getComputedStyle(el).transform),
