@@ -639,6 +639,16 @@ code {
 }
 
 @media (min-width: 768px) {
+    .center-area::before {
+        transform: perspective(920px) rotateX(14deg) translateZ(2px);
+        transform-origin: center;
+    }
+
+    .center-area::after {
+        transform: translate(-50%, -50%) perspective(860px) rotateX(56deg) rotateZ(45deg) translateY(2px);
+        transform-origin: center;
+    }
+
     .table-indicator {
         transform: perspective(760px) rotateX(18deg) translateZ(10px);
         box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.35), 0 8px 14px rgba(6, 18, 12, 0.28);
@@ -690,6 +700,14 @@ code {
 }
 
 @media (min-width: 992px) {
+    .center-area::before {
+        transform: perspective(980px) rotateX(20deg) translateZ(4px);
+    }
+
+    .center-area::after {
+        transform: translate(-50%, -50%) perspective(920px) rotateX(63deg) rotateZ(45deg) translateY(3px);
+    }
+
     .table-indicator {
         transform: perspective(800px) rotateX(24deg) translateZ(12px);
         box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.35), 0 10px 16px rgba(6, 18, 12, 0.32);
