@@ -300,6 +300,18 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletDiscardTileOneTransform).not.toBe(tabletDiscardTileTwoTransform);
     expect(tabletDiscardTileThreeTransform).not.toBe(tabletDiscardTileFourTransform);
 
+    const [tabletDiscardFrontRowTransform, tabletDiscardMiddleRowTransform, tabletDiscardBackRowTransform] = await Promise.all([
+      page.locator('.discard-lane .tile-shell').nth(0).evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.discard-lane .tile-shell').nth(4).evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.discard-lane .tile-shell').nth(8).evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(tabletDiscardFrontRowTransform).toContain('matrix3d');
+    expect(tabletDiscardMiddleRowTransform).toContain('matrix3d');
+    expect(tabletDiscardBackRowTransform).toContain('matrix3d');
+    expect(tabletDiscardFrontRowTransform).not.toBe(tabletDiscardMiddleRowTransform);
+    expect(tabletDiscardMiddleRowTransform).not.toBe(tabletDiscardBackRowTransform);
+
     await page.setViewportSize({ width: 1280, height: 720 });
     const [northSeatTransform, southSeatTransform, eastSeatTransform, westSeatTransform] = await Promise.all([
       page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
@@ -562,6 +574,18 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(bottomWallLabelTransform).toContain('matrix3d');
     expect(leftWallLabelTransform).toContain('matrix3d');
     expect(rightWallLabelTransform).toContain('matrix3d');
+
+    const [desktopDiscardFrontRowTransform, desktopDiscardMiddleRowTransform, desktopDiscardBackRowTransform] = await Promise.all([
+      page.locator('.discard-lane .tile-shell').nth(0).evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.discard-lane .tile-shell').nth(4).evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.discard-lane .tile-shell').nth(8).evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(desktopDiscardFrontRowTransform).toContain('matrix3d');
+    expect(desktopDiscardMiddleRowTransform).toContain('matrix3d');
+    expect(desktopDiscardBackRowTransform).toContain('matrix3d');
+    expect(desktopDiscardFrontRowTransform).not.toBe(desktopDiscardMiddleRowTransform);
+    expect(desktopDiscardMiddleRowTransform).not.toBe(desktopDiscardBackRowTransform);
 
     const [
       northWestCornerTransform,
