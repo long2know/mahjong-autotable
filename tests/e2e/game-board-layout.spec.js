@@ -837,4 +837,53 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(southWestCornerUpperTransform).not.toBe(southEastCornerUpperTransform);
     expect(northWestCornerUpperTransform).not.toBe(southWestCornerUpperTransform);
   });
+
+  test('keeps discard lane rim pseudo-layers in directional 3D at tablet and desktop', async ({ page }) => {
+    await page.goto('/game');
+
+    const discardLane = page.getByLabel('Center discard lane');
+    await expect(discardLane).toBeVisible();
+
+    await page.setViewportSize({ width: 900, height: 760 });
+    const [
+      tabletLaneTransform,
+      tabletLaneInsetTransform,
+      tabletLaneFrameTransform,
+      tabletFrontLeftTileTransform,
+      tabletFrontRightTileTransform,
+      tabletBackLeftTileTransform,
+      tabletBackRightTileTransform
+    ] = await Promise.all([
+      discardLane.evaluate((el) => getComputedStyle(el).transform),
+      discardLane.evaluate((el) => getComputedStyle(el, '::before').transform),
+      discardLane.evaluate((el) => getComputedStyle(el, '::after').transform),
+      page.locator('.discard-lane .tile-shell').nth(0).evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.discard-lane .tile-shell').nth(3).evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.discard-lane .tile-shell').nth(8).evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.discard-lane .tile-shell').nth(9).evaluate((el) => getComputedStyle(el).transform)
+    ]);
+
+    expect(tabletLaneTransform).toContain('matrix3d');
+    expect(tabletLaneInsetTransform).toContain('matrix3d');
+    expect(tabletLaneFrameTransform).toContain('matrix3d');
+    expect(tabletLaneInsetTransform).not.toBe(tabletLaneFrameTransform);
+    expect(tabletFrontLeftTileTransform).toContain('matrix3d');
+    expect(tabletFrontRightTileTransform).toContain('matrix3d');
+    expect(tabletBackLeftTileTransform).toContain('matrix3d');
+    expect(tabletBackRightTileTransform).toContain('matrix3d');
+    expect(tabletFrontLeftTileTransform).not.toBe(tabletFrontRightTileTransform);
+    expect(tabletBackLeftTileTransform).not.toBe(tabletBackRightTileTransform);
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const [desktopLaneInsetTransform, desktopLaneFrameTransform] = await Promise.all([
+      discardLane.evaluate((el) => getComputedStyle(el, '::before').transform),
+      discardLane.evaluate((el) => getComputedStyle(el, '::after').transform)
+    ]);
+
+    expect(desktopLaneInsetTransform).toContain('matrix3d');
+    expect(desktopLaneFrameTransform).toContain('matrix3d');
+    expect(desktopLaneInsetTransform).not.toBe(desktopLaneFrameTransform);
+    expect(desktopLaneInsetTransform).not.toBe(tabletLaneInsetTransform);
+    expect(desktopLaneFrameTransform).not.toBe(tabletLaneFrameTransform);
+  });
 });
