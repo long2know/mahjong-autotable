@@ -1281,6 +1281,20 @@ code {
     transform-style: preserve-3d;
 }
 
+.wall-legend-item-remaining strong {
+    align-items: center;
+    justify-content: center;
+    min-width: 1.9rem;
+    padding: 0.04rem 0.38rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 229, 156, 0.55);
+    background: linear-gradient(180deg, rgba(255, 234, 166, 0.92) 0%, rgba(240, 193, 82, 0.9) 100%);
+    color: #3d2604;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.28);
+    transform: translateZ(2px);
+}
+
 .wall-legend .wall-stack {
     transform: translateZ(4px) scale(0.85);
 }
@@ -1304,6 +1318,10 @@ code {
 
     .wall-legend-item-remaining {
         transform: perspective(620px) rotateX(-12deg) translateZ(4px);
+    }
+
+    .wall-legend-item-remaining strong {
+        transform: perspective(560px) rotateX(-10deg) rotateY(12deg) translateZ(8px);
     }
 
     .wall-legend-item-break .wall-stack {
@@ -1334,6 +1352,10 @@ code {
 
     .wall-legend-item-remaining {
         transform: perspective(660px) rotateX(-18deg) translateZ(6px);
+    }
+
+    .wall-legend-item-remaining strong {
+        transform: perspective(600px) rotateX(-16deg) rotateY(16deg) translateZ(11px);
     }
 
     .wall-legend-item-break .wall-stack {
