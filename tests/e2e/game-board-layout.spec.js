@@ -152,6 +152,9 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletWallLegendDepletedTransform,
       tabletWallLegendDealerTransform,
       tabletWallLegendRemainingTransform,
+      tabletWallLegendBreakStackTransform,
+      tabletWallLegendDepletedStackTransform,
+      tabletWallLegendDealerStackTransform,
       tabletTopWallTransform,
       tabletBottomWallTransform,
       tabletLeftWallTransform,
@@ -195,6 +198,9 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.wall-legend-item-depleted').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.wall-legend-item-dealer').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.wall-legend-item-remaining').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-break .wall-stack').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-depleted .wall-stack').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-dealer .wall-stack').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-bottom').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-left').evaluate((el) => getComputedStyle(el).transform),
@@ -247,8 +253,13 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletWallLegendDepletedTransform).toContain('matrix3d');
     expect(tabletWallLegendDealerTransform).toContain('matrix3d');
     expect(tabletWallLegendRemainingTransform).toContain('matrix3d');
+    expect(tabletWallLegendBreakStackTransform).toContain('matrix3d');
+    expect(tabletWallLegendDepletedStackTransform).toContain('matrix3d');
+    expect(tabletWallLegendDealerStackTransform).toContain('matrix3d');
     expect(tabletWallLegendDepletedTransform).not.toBe(tabletWallLegendDealerTransform);
     expect(tabletWallLegendBreakTransform).not.toBe(tabletWallLegendRemainingTransform);
+    expect(tabletWallLegendDepletedStackTransform).not.toBe(tabletWallLegendDealerStackTransform);
+    expect(tabletWallLegendBreakStackTransform).not.toBe(tabletWallLegendDealerStackTransform);
     expect(tabletTopWallTransform).toContain('matrix3d');
     expect(tabletBottomWallTransform).toContain('matrix3d');
     expect(tabletLeftWallTransform).toContain('matrix3d');
@@ -375,7 +386,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       wallLegendBreakTransform,
       wallLegendDepletedTransform,
       wallLegendDealerTransform,
-      wallLegendRemainingTransform
+      wallLegendRemainingTransform,
+      wallLegendBreakStackTransform,
+      wallLegendDepletedStackTransform,
+      wallLegendDealerStackTransform
     ] = await Promise.all([
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transform),
       page.getByLabel('Round and hand indicator').evaluate((el) => getComputedStyle(el).transformStyle),
@@ -393,7 +407,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.wall-legend-item-break').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.wall-legend-item-depleted').evaluate((el) => getComputedStyle(el).transform),
       page.locator('.wall-legend-item-dealer').evaluate((el) => getComputedStyle(el).transform),
-      page.locator('.wall-legend-item-remaining').evaluate((el) => getComputedStyle(el).transform)
+      page.locator('.wall-legend-item-remaining').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-break .wall-stack').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-depleted .wall-stack').evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.wall-legend-item-dealer .wall-stack').evaluate((el) => getComputedStyle(el).transform)
     ]);
 
     expect(indicatorTransform).toContain('matrix3d');
@@ -414,8 +431,13 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(wallLegendDepletedTransform).toContain('matrix3d');
     expect(wallLegendDealerTransform).toContain('matrix3d');
     expect(wallLegendRemainingTransform).toContain('matrix3d');
+    expect(wallLegendBreakStackTransform).toContain('matrix3d');
+    expect(wallLegendDepletedStackTransform).toContain('matrix3d');
+    expect(wallLegendDealerStackTransform).toContain('matrix3d');
     expect(wallLegendDepletedTransform).not.toBe(wallLegendDealerTransform);
     expect(wallLegendBreakTransform).not.toBe(wallLegendRemainingTransform);
+    expect(wallLegendDepletedStackTransform).not.toBe(wallLegendDealerStackTransform);
+    expect(wallLegendBreakStackTransform).not.toBe(wallLegendDealerStackTransform);
 
     const [
       northCompassMarkerTransform,

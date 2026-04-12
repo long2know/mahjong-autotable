@@ -1305,6 +1305,18 @@ code {
     .wall-legend-item-remaining {
         transform: perspective(620px) rotateX(-12deg) translateZ(4px);
     }
+
+    .wall-legend-item-break .wall-stack {
+        transform: perspective(560px) rotateX(14deg) translateZ(6px) scale(0.85);
+    }
+
+    .wall-legend-item-depleted .wall-stack {
+        transform: perspective(560px) rotateY(-16deg) translateZ(6px) scale(0.85);
+    }
+
+    .wall-legend-item-dealer .wall-stack {
+        transform: perspective(560px) rotateY(16deg) translateZ(6px) scale(0.85);
+    }
 }
 
 @media (min-width: 992px) {
@@ -1322,6 +1334,18 @@ code {
 
     .wall-legend-item-remaining {
         transform: perspective(660px) rotateX(-18deg) translateZ(6px);
+    }
+
+    .wall-legend-item-break .wall-stack {
+        transform: perspective(600px) rotateX(22deg) translateZ(8px) scale(0.85);
+    }
+
+    .wall-legend-item-depleted .wall-stack {
+        transform: perspective(600px) rotateY(-24deg) translateZ(8px) scale(0.85);
+    }
+
+    .wall-legend-item-dealer .wall-stack {
+        transform: perspective(600px) rotateY(24deg) translateZ(8px) scale(0.85);
     }
 }
 
