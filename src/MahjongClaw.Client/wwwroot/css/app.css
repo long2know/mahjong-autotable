@@ -1318,6 +1318,22 @@ code {
     .wall-right .wall-stack {
         transform: perspective(560px) rotateY(24deg) translateZ(1px);
     }
+
+    .wall-top .wall-stack::before {
+        transform: perspective(520px) rotateX(18deg) translateZ(2px);
+    }
+
+    .wall-bottom .wall-stack::before {
+        transform: perspective(520px) rotateX(-18deg) translateZ(2px);
+    }
+
+    .wall-left .wall-stack::before {
+        transform: perspective(520px) rotateY(-22deg) translateZ(2px);
+    }
+
+    .wall-right .wall-stack::before {
+        transform: perspective(520px) rotateY(22deg) translateZ(2px);
+    }
 }
 
 @media (min-width: 992px) {
@@ -1424,6 +1440,22 @@ code {
 
     .wall-right .wall-stack {
         transform: perspective(600px) rotateY(32deg) translateZ(2px);
+    }
+
+    .wall-top .wall-stack::before {
+        transform: perspective(560px) rotateX(24deg) translateZ(3px);
+    }
+
+    .wall-bottom .wall-stack::before {
+        transform: perspective(560px) rotateX(-24deg) translateZ(3px);
+    }
+
+    .wall-left .wall-stack::before {
+        transform: perspective(560px) rotateY(-28deg) translateZ(3px);
+    }
+
+    .wall-right .wall-stack::before {
+        transform: perspective(560px) rotateY(28deg) translateZ(3px);
     }
 }
 
