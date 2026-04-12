@@ -341,6 +341,22 @@ code {
         transform: perspective(700px) rotateY(6deg) translateZ(12px);
     }
 
+    .seat-north .seat-identity {
+        transform: perspective(620px) rotateX(8deg) translateZ(9px);
+    }
+
+    .seat-south .seat-identity {
+        transform: perspective(620px) rotateX(-8deg) translateZ(9px);
+    }
+
+    .seat-east .seat-identity {
+        transform: perspective(620px) rotateY(-10deg) translateZ(9px);
+    }
+
+    .seat-west .seat-identity {
+        transform: perspective(620px) rotateY(10deg) translateZ(9px);
+    }
+
     .seat-north .seat-badges {
         transform: perspective(620px) rotateX(12deg) translateZ(8px);
     }
@@ -406,6 +422,22 @@ code {
 
     .seat-west .seat-card-header {
         transform: perspective(760px) rotateY(10deg) translateZ(14px);
+    }
+
+    .seat-north .seat-identity {
+        transform: perspective(680px) rotateX(11deg) translateZ(11px);
+    }
+
+    .seat-south .seat-identity {
+        transform: perspective(680px) rotateX(-11deg) translateZ(11px);
+    }
+
+    .seat-east .seat-identity {
+        transform: perspective(680px) rotateY(-13deg) translateZ(11px);
+    }
+
+    .seat-west .seat-identity {
+        transform: perspective(680px) rotateY(13deg) translateZ(11px);
     }
 
     .seat-north .seat-badges {

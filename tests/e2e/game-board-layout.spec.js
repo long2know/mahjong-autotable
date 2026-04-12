@@ -126,6 +126,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletSouthSeatTransform,
       tabletEastSeatTransform,
       tabletWestSeatTransform,
+      tabletNorthSeatIdentityTransform,
+      tabletSouthSeatIdentityTransform,
+      tabletEastSeatIdentityTransform,
+      tabletWestSeatIdentityTransform,
       tabletNorthSeatBadgesTransform,
       tabletSouthSeatBadgesTransform,
       tabletEastSeatBadgesTransform,
@@ -157,6 +161,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-west .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-north .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
@@ -189,6 +197,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletSouthSeatTransform).not.toBe('none');
     expect(tabletEastSeatTransform).not.toBe('none');
     expect(tabletWestSeatTransform).not.toBe('none');
+    expect(tabletNorthSeatIdentityTransform).toContain('matrix3d');
+    expect(tabletSouthSeatIdentityTransform).toContain('matrix3d');
+    expect(tabletEastSeatIdentityTransform).toContain('matrix3d');
+    expect(tabletWestSeatIdentityTransform).toContain('matrix3d');
+    expect(tabletNorthSeatIdentityTransform).not.toBe(tabletSouthSeatIdentityTransform);
+    expect(tabletEastSeatIdentityTransform).not.toBe(tabletWestSeatIdentityTransform);
     expect(tabletNorthSeatBadgesTransform).toContain('matrix3d');
     expect(tabletSouthSeatBadgesTransform).toContain('matrix3d');
     expect(tabletEastSeatBadgesTransform).toContain('matrix3d');
@@ -264,6 +278,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       southSeatHeaderTransform,
       eastSeatHeaderTransform,
       westSeatHeaderTransform,
+      northSeatIdentityTransform,
+      southSeatIdentityTransform,
+      eastSeatIdentityTransform,
+      westSeatIdentityTransform,
       northSeatBadgesTransform,
       southSeatBadgesTransform,
       eastSeatBadgesTransform,
@@ -273,6 +291,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       page.locator('.seat-south .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-west .seat-card > .d-flex').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-north .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-south .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-east .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
+      page.locator('.seat-west .seat-identity').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-north .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-east .seat-badges').first().evaluate((el) => getComputedStyle(el).transform),
@@ -283,6 +305,12 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(southSeatHeaderTransform).toContain('matrix3d');
     expect(eastSeatHeaderTransform).toContain('matrix3d');
     expect(westSeatHeaderTransform).toContain('matrix3d');
+    expect(northSeatIdentityTransform).toContain('matrix3d');
+    expect(southSeatIdentityTransform).toContain('matrix3d');
+    expect(eastSeatIdentityTransform).toContain('matrix3d');
+    expect(westSeatIdentityTransform).toContain('matrix3d');
+    expect(northSeatIdentityTransform).not.toBe(southSeatIdentityTransform);
+    expect(eastSeatIdentityTransform).not.toBe(westSeatIdentityTransform);
     expect(northSeatBadgesTransform).toContain('matrix3d');
     expect(southSeatBadgesTransform).toContain('matrix3d');
     expect(eastSeatBadgesTransform).toContain('matrix3d');
