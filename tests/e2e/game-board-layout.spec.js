@@ -131,7 +131,11 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       tabletTopWallTransform,
       tabletBottomWallTransform,
       tabletLeftWallTransform,
-      tabletRightWallTransform
+      tabletRightWallTransform,
+      tabletTopWallStackTransform,
+      tabletBottomWallStackTransform,
+      tabletLeftWallStackTransform,
+      tabletRightWallStackTransform
     ] = await Promise.all([
       page.locator('.seat-north .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
       page.locator('.seat-south .seat-card').first().evaluate((el) => getComputedStyle(el).transform),
@@ -142,7 +146,11 @@ test.describe('Mahjong Claw game board layout smoke', () => {
       wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-bottom').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-left').evaluate((el) => getComputedStyle(el).transform),
-      wallPreview.locator('.wall-right').evaluate((el) => getComputedStyle(el).transform)
+      wallPreview.locator('.wall-right').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-top .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-bottom .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-left .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-right .wall-stack').first().evaluate((el) => getComputedStyle(el).transform)
     ]);
 
     expect(tabletNorthSeatTransform).not.toBe('none');
@@ -155,6 +163,10 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(tabletBottomWallTransform).toContain('matrix3d');
     expect(tabletLeftWallTransform).toContain('matrix3d');
     expect(tabletRightWallTransform).toContain('matrix3d');
+    expect(tabletTopWallStackTransform).toContain('matrix3d');
+    expect(tabletBottomWallStackTransform).toContain('matrix3d');
+    expect(tabletLeftWallStackTransform).toContain('matrix3d');
+    expect(tabletRightWallStackTransform).toContain('matrix3d');
 
     await page.setViewportSize({ width: 1280, height: 720 });
     const [northSeatTransform, southSeatTransform, eastSeatTransform, westSeatTransform] = await Promise.all([
@@ -243,17 +255,34 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     expect(southCompassMarkerTransform).not.toBe('none');
     expect(westCompassMarkerTransform).not.toBe('none');
 
-    const [topWallTransform, bottomWallTransform, leftWallTransform, rightWallTransform] = await Promise.all([
+    const [
+      topWallTransform,
+      bottomWallTransform,
+      leftWallTransform,
+      rightWallTransform,
+      topWallStackTransform,
+      bottomWallStackTransform,
+      leftWallStackTransform,
+      rightWallStackTransform
+    ] = await Promise.all([
       wallPreview.locator('.wall-top').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-bottom').evaluate((el) => getComputedStyle(el).transform),
       wallPreview.locator('.wall-left').evaluate((el) => getComputedStyle(el).transform),
-      wallPreview.locator('.wall-right').evaluate((el) => getComputedStyle(el).transform)
+      wallPreview.locator('.wall-right').evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-top .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-bottom .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-left .wall-stack').first().evaluate((el) => getComputedStyle(el).transform),
+      wallPreview.locator('.wall-right .wall-stack').first().evaluate((el) => getComputedStyle(el).transform)
     ]);
 
     expect(topWallTransform).toContain('matrix3d');
     expect(bottomWallTransform).toContain('matrix3d');
     expect(leftWallTransform).toContain('matrix3d');
     expect(rightWallTransform).toContain('matrix3d');
+    expect(topWallStackTransform).toContain('matrix3d');
+    expect(bottomWallStackTransform).toContain('matrix3d');
+    expect(leftWallStackTransform).toContain('matrix3d');
+    expect(rightWallStackTransform).toContain('matrix3d');
 
     const [topWallLabelTransform, bottomWallLabelTransform, leftWallLabelTransform, rightWallLabelTransform] = await Promise.all([
       wallPreview.locator('.wall-top .wall-side-label').evaluate((el) => getComputedStyle(el).transform),

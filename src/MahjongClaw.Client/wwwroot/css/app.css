@@ -770,6 +770,22 @@ code {
     .wall-right .wall-side-label {
         transform: translateY(-50%) perspective(620px) rotateY(16deg) rotate(90deg) translateZ(4px);
     }
+
+    .wall-top .wall-stack {
+        transform: perspective(560px) rotateX(20deg) translateZ(1px);
+    }
+
+    .wall-bottom .wall-stack {
+        transform: perspective(560px) rotateX(-20deg) translateZ(1px);
+    }
+
+    .wall-left .wall-stack {
+        transform: perspective(560px) rotateY(-24deg) translateZ(1px);
+    }
+
+    .wall-right .wall-stack {
+        transform: perspective(560px) rotateY(24deg) translateZ(1px);
+    }
 }
 
 @media (min-width: 992px) {
@@ -829,6 +845,22 @@ code {
     .wall-right .wall-side-label {
         transform: translateY(-50%) perspective(640px) rotateY(24deg) rotate(90deg) translateZ(7px);
     }
+
+    .wall-top .wall-stack {
+        transform: perspective(600px) rotateX(28deg) translateZ(2px);
+    }
+
+    .wall-bottom .wall-stack {
+        transform: perspective(600px) rotateX(-28deg) translateZ(2px);
+    }
+
+    .wall-left .wall-stack {
+        transform: perspective(600px) rotateY(-32deg) translateZ(2px);
+    }
+
+    .wall-right .wall-stack {
+        transform: perspective(600px) rotateY(32deg) translateZ(2px);
+    }
 }
 
 .wall-stack {
@@ -839,6 +871,9 @@ code {
     border: 1px solid #1f6b41;
     position: relative;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+    transform-style: preserve-3d;
+    transform-origin: center;
+    transition: transform 140ms ease, box-shadow 140ms ease;
 }
 
 .wall-stack::before {
