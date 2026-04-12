@@ -37,6 +37,45 @@ test.describe('Mahjong Claw game board layout smoke', () => {
     await expect(page.getByLabel('Wall legend')).toContainText('dealer wall');
   });
 
+  test('keeps directional 3D wall stack side-face transforms at tablet and desktop breakpoints', async ({ page }) => {
+    await page.goto('/game');
+
+    const wallPreview = page.getByLabel('Mahjong wall preview');
+    await expect(wallPreview).toBeVisible();
+
+    const readWallSideFaceTransforms = async () => Promise.all([
+      wallPreview.locator('.wall-top .wall-stack').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      wallPreview.locator('.wall-bottom .wall-stack').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      wallPreview.locator('.wall-left .wall-stack').first().evaluate((el) => getComputedStyle(el, '::after').transform),
+      wallPreview.locator('.wall-right .wall-stack').first().evaluate((el) => getComputedStyle(el, '::after').transform)
+    ]);
+
+    await page.setViewportSize({ width: 900, height: 760 });
+    const [tabletTopFaceTransform, tabletBottomFaceTransform, tabletLeftFaceTransform, tabletRightFaceTransform] = await readWallSideFaceTransforms();
+
+    expect(tabletTopFaceTransform).toContain('matrix3d');
+    expect(tabletBottomFaceTransform).toContain('matrix3d');
+    expect(tabletLeftFaceTransform).toContain('matrix3d');
+    expect(tabletRightFaceTransform).toContain('matrix3d');
+    expect(tabletTopFaceTransform).not.toBe(tabletBottomFaceTransform);
+    expect(tabletLeftFaceTransform).not.toBe(tabletRightFaceTransform);
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const [desktopTopFaceTransform, desktopBottomFaceTransform, desktopLeftFaceTransform, desktopRightFaceTransform] = await readWallSideFaceTransforms();
+
+    expect(desktopTopFaceTransform).toContain('matrix3d');
+    expect(desktopBottomFaceTransform).toContain('matrix3d');
+    expect(desktopLeftFaceTransform).toContain('matrix3d');
+    expect(desktopRightFaceTransform).toContain('matrix3d');
+    expect(desktopTopFaceTransform).not.toBe(desktopBottomFaceTransform);
+    expect(desktopLeftFaceTransform).not.toBe(desktopRightFaceTransform);
+
+    expect(desktopTopFaceTransform).not.toBe(tabletTopFaceTransform);
+    expect(desktopBottomFaceTransform).not.toBe(tabletBottomFaceTransform);
+    expect(desktopLeftFaceTransform).not.toBe(tabletLeftFaceTransform);
+    expect(desktopRightFaceTransform).not.toBe(tabletRightFaceTransform);
+  });
+
   test('keeps 3D wall and seat tile depth styling intact', async ({ page }) => {
     await page.goto('/game');
 

@@ -1334,6 +1334,26 @@ code {
     .wall-right .wall-stack::before {
         transform: perspective(520px) rotateY(22deg) translateZ(2px);
     }
+
+    .wall-top .wall-stack::after {
+        transform: perspective(500px) rotateX(38deg) translateZ(-1px);
+        transform-origin: center top;
+    }
+
+    .wall-bottom .wall-stack::after {
+        transform: perspective(500px) rotateX(-38deg) translateZ(-1px);
+        transform-origin: center bottom;
+    }
+
+    .wall-left .wall-stack::after {
+        transform: perspective(500px) rotateY(-42deg) translateZ(-1px);
+        transform-origin: left center;
+    }
+
+    .wall-right .wall-stack::after {
+        transform: perspective(500px) rotateY(42deg) translateZ(-1px);
+        transform-origin: right center;
+    }
 }
 
 @media (min-width: 992px) {
@@ -1456,6 +1476,26 @@ code {
 
     .wall-right .wall-stack::before {
         transform: perspective(560px) rotateY(28deg) translateZ(3px);
+    }
+
+    .wall-top .wall-stack::after {
+        transform: perspective(540px) rotateX(48deg) translateZ(-1px);
+        transform-origin: center top;
+    }
+
+    .wall-bottom .wall-stack::after {
+        transform: perspective(540px) rotateX(-48deg) translateZ(-1px);
+        transform-origin: center bottom;
+    }
+
+    .wall-left .wall-stack::after {
+        transform: perspective(540px) rotateY(-52deg) translateZ(-1px);
+        transform-origin: left center;
+    }
+
+    .wall-right .wall-stack::after {
+        transform: perspective(540px) rotateY(52deg) translateZ(-1px);
+        transform-origin: right center;
     }
 }
 
