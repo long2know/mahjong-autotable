@@ -190,10 +190,10 @@
                                 <div class="small text-muted seat-summary-player">@seat.Player</div>
                             </div>
                             <div class="text-end seat-summary-score-stack">
-                                <div class="badge text-bg-light">@seat.Score pts</div>
+                                <div class="badge text-bg-light seat-summary-badge seat-summary-badge-score">@seat.Score pts</div>
                                 @if (seat.IsDealer)
                                 {
-                                    <div class="badge text-bg-warning ms-1">Dealer</div>
+                                    <div class="badge text-bg-warning ms-1 seat-summary-badge seat-summary-badge-dealer">Dealer</div>
                                 }
                             </div>
                         </div>

@@ -2825,6 +2825,15 @@ code {
     z-index: 0;
 }
 
+.seat-summary-badge {
+    transform-style: preserve-3d;
+}
+
+.seat-summary-badge-dealer {
+    align-self: flex-end;
+    letter-spacing: 0.01em;
+}
+
 @media (min-width: 768px) {
     .seat-summary {
         perspective: 760px;
@@ -2958,6 +2967,70 @@ code {
     .seat-summary-west .badge::before {
         transform: perspective(520px) rotateY(13deg) translateZ(6px);
     }
+
+    .seat-summary-north .seat-summary-badge-score {
+        transform: perspective(580px) rotateX(10deg) translateZ(7px);
+    }
+
+    .seat-summary-south .seat-summary-badge-score {
+        transform: perspective(580px) rotateX(-10deg) translateZ(7px);
+    }
+
+    .seat-summary-east .seat-summary-badge-score {
+        transform: perspective(580px) rotateY(-12deg) translateZ(7px);
+    }
+
+    .seat-summary-west .seat-summary-badge-score {
+        transform: perspective(580px) rotateY(12deg) translateZ(7px);
+    }
+
+    .seat-summary-north .seat-summary-badge-score::before {
+        transform: perspective(540px) rotateX(12deg) translateZ(8px);
+    }
+
+    .seat-summary-south .seat-summary-badge-score::before {
+        transform: perspective(540px) rotateX(-12deg) translateZ(8px);
+    }
+
+    .seat-summary-east .seat-summary-badge-score::before {
+        transform: perspective(540px) rotateY(-14deg) translateZ(8px);
+    }
+
+    .seat-summary-west .seat-summary-badge-score::before {
+        transform: perspective(540px) rotateY(14deg) translateZ(8px);
+    }
+
+    .seat-summary-north .seat-summary-badge-dealer {
+        transform: perspective(520px) rotateX(6deg) translateZ(3px);
+    }
+
+    .seat-summary-south .seat-summary-badge-dealer {
+        transform: perspective(520px) rotateX(-6deg) translateZ(3px);
+    }
+
+    .seat-summary-east .seat-summary-badge-dealer {
+        transform: perspective(520px) rotateY(-8deg) translateZ(3px);
+    }
+
+    .seat-summary-west .seat-summary-badge-dealer {
+        transform: perspective(520px) rotateY(8deg) translateZ(3px);
+    }
+
+    .seat-summary-north .seat-summary-badge-dealer::before {
+        transform: perspective(500px) rotateX(8deg) translateZ(4px);
+    }
+
+    .seat-summary-south .seat-summary-badge-dealer::before {
+        transform: perspective(500px) rotateX(-8deg) translateZ(4px);
+    }
+
+    .seat-summary-east .seat-summary-badge-dealer::before {
+        transform: perspective(500px) rotateY(-10deg) translateZ(4px);
+    }
+
+    .seat-summary-west .seat-summary-badge-dealer::before {
+        transform: perspective(500px) rotateY(10deg) translateZ(4px);
+    }
 }
 
 @media (min-width: 1200px) {
@@ -3087,5 +3160,69 @@ code {
 
     .seat-summary-west .badge::before {
         transform: perspective(580px) rotateY(18deg) translateZ(8px);
+    }
+
+    .seat-summary-north .seat-summary-badge-score {
+        transform: perspective(650px) rotateX(15deg) translateZ(9px);
+    }
+
+    .seat-summary-south .seat-summary-badge-score {
+        transform: perspective(650px) rotateX(-15deg) translateZ(9px);
+    }
+
+    .seat-summary-east .seat-summary-badge-score {
+        transform: perspective(650px) rotateY(-17deg) translateZ(9px);
+    }
+
+    .seat-summary-west .seat-summary-badge-score {
+        transform: perspective(650px) rotateY(17deg) translateZ(9px);
+    }
+
+    .seat-summary-north .seat-summary-badge-score::before {
+        transform: perspective(610px) rotateX(17deg) translateZ(10px);
+    }
+
+    .seat-summary-south .seat-summary-badge-score::before {
+        transform: perspective(610px) rotateX(-17deg) translateZ(10px);
+    }
+
+    .seat-summary-east .seat-summary-badge-score::before {
+        transform: perspective(610px) rotateY(-19deg) translateZ(10px);
+    }
+
+    .seat-summary-west .seat-summary-badge-score::before {
+        transform: perspective(610px) rotateY(19deg) translateZ(10px);
+    }
+
+    .seat-summary-north .seat-summary-badge-dealer {
+        transform: perspective(580px) rotateX(10deg) translateZ(4px);
+    }
+
+    .seat-summary-south .seat-summary-badge-dealer {
+        transform: perspective(580px) rotateX(-10deg) translateZ(4px);
+    }
+
+    .seat-summary-east .seat-summary-badge-dealer {
+        transform: perspective(580px) rotateY(-12deg) translateZ(4px);
+    }
+
+    .seat-summary-west .seat-summary-badge-dealer {
+        transform: perspective(580px) rotateY(12deg) translateZ(4px);
+    }
+
+    .seat-summary-north .seat-summary-badge-dealer::before {
+        transform: perspective(560px) rotateX(12deg) translateZ(5px);
+    }
+
+    .seat-summary-south .seat-summary-badge-dealer::before {
+        transform: perspective(560px) rotateX(-12deg) translateZ(5px);
+    }
+
+    .seat-summary-east .seat-summary-badge-dealer::before {
+        transform: perspective(560px) rotateY(-14deg) translateZ(5px);
+    }
+
+    .seat-summary-west .seat-summary-badge-dealer::before {
+        transform: perspective(560px) rotateY(14deg) translateZ(5px);
     }
 }
