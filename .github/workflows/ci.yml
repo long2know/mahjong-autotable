@@ -1,9 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
+  workflow_dispatch:
+  # TEMP (quota-safe): disable automatic CI triggers to stop failure-email spam
+  # while Actions minutes/runner availability are exhausted.
 
 jobs:
   build-test:
