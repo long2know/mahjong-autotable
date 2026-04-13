@@ -926,6 +926,12 @@
         }
     }
 
+    private IEnumerable<string> BuildHiddenHandPreview(int count)
+    {
+        const int maxPreviewTiles = 12;
+        return BuildHiddenHand(Math.Min(count, maxPreviewTiles));
+    }
+
     private RenderFragment RenderSeat(PlayerView player) => @<div class="seat-card">
         <div class="d-flex align-items-center justify-content-between seat-card-header">
             <div class="seat-identity">
@@ -951,9 +957,13 @@
             }
         </div>
         <div class="tile-row tile-row-wrap mt-2 seat-tiles seat-@player.Seat.ToLowerInvariant()">
-            @foreach (var tile in BuildHiddenHand(player.HandCount))
+            @foreach (var tile in BuildHiddenHandPreview(player.HandCount))
             {
                 <Tile Label="@tile" IsFaceDown="true" />
+            }
+            @if (player.HandCount > 12)
+            {
+                <span class="seat-hand-overflow">+@(player.HandCount - 12)</span>
             }
         </div>
     </div>;

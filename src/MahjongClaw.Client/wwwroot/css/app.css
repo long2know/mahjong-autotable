@@ -292,6 +292,23 @@ code {
     --seat-row-depth: 3px;
 }
 
+.seat-hand-overflow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(10, 36, 24, 0.65);
+    color: rgba(239, 247, 241, 0.9);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.28);
+}
+
 .seat-north {
     grid-area: north;
 }
