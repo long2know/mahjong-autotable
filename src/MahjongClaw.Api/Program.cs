@@ -296,10 +296,11 @@ gameGroup.MapPost("/{id:guid}/draw", async (
     var meldTileCount = game.Tiles.Count(tile =>
         tile.PlayerId == request.PlayerId &&
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
+    var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
 
-    if (!TurnFlowValidator.CanDraw(handTileCount, meldTileCount))
+    if (!TurnFlowValidator.CanDraw(handTileCount, meldTileCount, declaredKongCount))
     {
-        return Results.Conflict(new { message = "Player must hold 13 owned tiles before drawing." });
+        return Results.Conflict(new { message = "Player must hold 13 owned tiles (plus one per declared kong) before drawing." });
     }
 
     var tile = game.Tiles
@@ -356,10 +357,11 @@ gameGroup.MapPost("/{id:guid}/discard", async (
     var meldTileCount = game.Tiles.Count(tile =>
         tile.PlayerId == request.PlayerId &&
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
+    var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
 
-    if (!TurnFlowValidator.CanDiscard(handTileCount, meldTileCount))
+    if (!TurnFlowValidator.CanDiscard(handTileCount, meldTileCount, declaredKongCount))
     {
-        return Results.Conflict(new { message = "Player must hold 14 owned tiles before discarding." });
+        return Results.Conflict(new { message = "Player must hold 14 owned tiles (plus one per declared kong) before discarding." });
     }
 
     var tile = game.Tiles.FirstOrDefault(t =>
@@ -484,10 +486,11 @@ gameGroup.MapPost("/{id:guid}/meld", async (
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
 
     var meldTileRequirement = meldType == MeldType.Kong ? 4 : 3;
+    var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
 
-    if (!TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement))
+    if (!TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement, declaredKongCount))
     {
-        return Results.Conflict(new { message = "Player must hold 14 owned tiles with enough hand tiles before declaring a meld." });
+        return Results.Conflict(new { message = "Player must hold 14 owned tiles (plus one per declared kong) with enough hand tiles before declaring a meld." });
     }
 
     var tiles = game.Tiles
@@ -573,10 +576,11 @@ gameGroup.MapPost("/{id:guid}/win", async (
     var meldTileCount = game.Tiles.Count(tile =>
         tile.PlayerId == request.PlayerId &&
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
+    var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
 
-    if (!TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount))
+    if (!TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount, declaredKongCount))
     {
-        return Results.Conflict(new { message = "Player must hold 14 owned tiles before declaring win." });
+        return Results.Conflict(new { message = "Player must hold 14 owned tiles (plus one per declared kong) before declaring win." });
     }
 
     var playerTiles = game.Tiles
@@ -745,9 +749,13 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
     var handTiles = game.Tiles
         .Where(tile => tile.PlayerId == botPlayer.Id && tile.Location == "Hand")
         .ToList();
+    var meldTiles = game.Tiles
+        .Where(tile => tile.PlayerId == botPlayer.Id && tile.Location == "Meld")
+        .ToList();
+    var declaredKongCount = CountDeclaredKongs(game.Tiles, botPlayer.Id);
 
     DrawTileResponse? drawResponse = null;
-    if (handTiles.Count == 13)
+    if (TurnFlowValidator.CanDraw(handTiles.Count, meldTiles.Count, declaredKongCount))
     {
         var tile = game.Tiles
             .Where(t => t.Location == "Wall")
@@ -764,18 +772,19 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         drawResponse = new DrawTileResponse(tile.Id, tile.Suit, tile.Rank, tile.Wind, tile.Dragon);
         handTiles.Add(tile);
     }
-    else if (handTiles.Count != 14)
+    else if (!TurnFlowValidator.CanDiscard(handTiles.Count, meldTiles.Count, declaredKongCount))
     {
         return BotTurnExecutionResult.Fail(409, "Bot hand is in an invalid state.");
     }
 
-    if (!TryBuildTileHand(handTiles, out var botHand))
+    var ownedTiles = handTiles.Concat(meldTiles).ToList();
+    if (!TryBuildTileHand(ownedTiles, out var botOwnedHand))
     {
         return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
-    if (RulesetHandAnalyzer.IsWinningHand(botHand, ruleset))
+    if (RulesetHandAnalyzer.IsWinningHand(botOwnedHand, ruleset))
     {
         game.Status = "Completed";
         game.CurrentPlayerId = botPlayer.Id;
@@ -791,6 +800,11 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         await SendToGameWithAliases(hubContext, game.Id, "GameWon", winResponse, cancellationToken);
 
         return BotTurnExecutionResult.Ok(new BotTurnResponse(drawResponse?.TileId, null, null, game.CurrentPlayerId, true));
+    }
+
+    if (!TryBuildTileHand(handTiles, out var botHand))
+    {
+        return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
     var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, ruleset);
@@ -833,6 +847,12 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
 
 static bool IsBotPlayer(PlayerEntity player)
     => player.Name.StartsWith("Bot", StringComparison.OrdinalIgnoreCase);
+
+static int CountDeclaredKongs(IEnumerable<TileEntity> tiles, Guid playerId)
+    => tiles
+        .Where(tile => tile.PlayerId == playerId && string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase))
+        .GroupBy(tile => new { tile.Suit, tile.Rank, tile.Wind, tile.Dragon })
+        .Count(group => group.Count() == 4);
 
 static Guid? GetNextPlayerId(GameEntity game, PlayerEntity currentPlayer)
 {
