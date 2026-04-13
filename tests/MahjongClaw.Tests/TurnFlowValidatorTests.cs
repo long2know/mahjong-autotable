@@ -14,6 +14,12 @@ public sealed class TurnFlowValidatorTests
         TurnFlowValidator.CanDraw(handTileCount, meldTileCount).Should().BeTrue();
     }
 
+    [Fact]
+    public void CanDraw_WhenPlayerHasDeclaredKongAndValidOwnedShape_ReturnsTrue()
+    {
+        TurnFlowValidator.CanDraw(handTileCount: 10, meldTileCount: 4, declaredKongCount: 1).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData(14, 0)]
     [InlineData(12, 2)]
@@ -23,6 +29,12 @@ public sealed class TurnFlowValidatorTests
         TurnFlowValidator.CanDraw(handTileCount, meldTileCount).Should().BeFalse();
     }
 
+    [Fact]
+    public void CanDraw_WhenDeclaredKongCountMismatch_ReturnsFalse()
+    {
+        TurnFlowValidator.CanDraw(handTileCount: 10, meldTileCount: 4, declaredKongCount: 0).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(14, 0)]
     [InlineData(11, 3)]
@@ -30,6 +42,12 @@ public sealed class TurnFlowValidatorTests
     public void CanDiscard_WhenPlayerOwnsFourteenTilesAndHasHandTile_ReturnsTrue(int handTileCount, int meldTileCount)
     {
         TurnFlowValidator.CanDiscard(handTileCount, meldTileCount).Should().BeTrue();
+    }
+
+    [Fact]
+    public void CanDiscard_WhenPlayerHasDeclaredKongAndValidOwnedShape_ReturnsTrue()
+    {
+        TurnFlowValidator.CanDiscard(handTileCount: 11, meldTileCount: 4, declaredKongCount: 1).Should().BeTrue();
     }
 
     [Theory]
@@ -54,6 +72,12 @@ public sealed class TurnFlowValidatorTests
         TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement).Should().BeTrue();
     }
 
+    [Fact]
+    public void CanDeclareMeld_WhenPlayerHasDeclaredKongAndValidOwnedShape_ReturnsTrue()
+    {
+        TurnFlowValidator.CanDeclareMeld(handTileCount: 11, meldTileCount: 4, meldTileRequirement: 3, declaredKongCount: 1).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData(13, 0, 3)]
     [InlineData(15, 0, 3)]
@@ -76,6 +100,12 @@ public sealed class TurnFlowValidatorTests
         TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount).Should().BeTrue();
     }
 
+    [Fact]
+    public void CanDeclareWin_WhenPlayerHasDeclaredKongAndValidOwnedShape_ReturnsTrue()
+    {
+        TurnFlowValidator.CanDeclareWin(handTileCount: 11, meldTileCount: 4, declaredKongCount: 1).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData(13, 0)]
     [InlineData(15, 0)]
@@ -83,5 +113,11 @@ public sealed class TurnFlowValidatorTests
     public void CanDeclareWin_WhenOwnershipShapeIsInvalid_ReturnsFalse(int handTileCount, int meldTileCount)
     {
         TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount).Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanDeclareWin_WhenDeclaredKongCountMismatch_ReturnsFalse()
+    {
+        TurnFlowValidator.CanDeclareWin(handTileCount: 11, meldTileCount: 4, declaredKongCount: 0).Should().BeFalse();
     }
 }
