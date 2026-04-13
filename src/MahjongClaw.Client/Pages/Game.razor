@@ -926,10 +926,19 @@
         }
     }
 
-    private IEnumerable<string> BuildHiddenHandPreview(int count)
+    private IEnumerable<string> BuildHiddenHandPreview(int count, int maxPreviewTiles)
     {
-        const int maxPreviewTiles = 12;
-        return BuildHiddenHand(Math.Min(count, maxPreviewTiles));
+        return BuildHiddenHand(Math.Min(count, Math.Max(0, maxPreviewTiles)));
+    }
+
+    private static int GetHiddenHandPreviewLimit(string seat)
+    {
+        return seat switch
+        {
+            "East" or "West" => 6,
+            "North" => 8,
+            _ => 12
+        };
     }
 
     private RenderFragment RenderSeat(PlayerView player) => @<div class="seat-card">
@@ -956,14 +965,15 @@
                 <Tile Label="@tile" />
             }
         </div>
+        @{ var hiddenPreviewLimit = GetHiddenHandPreviewLimit(player.Seat); }
         <div class="tile-row tile-row-wrap mt-2 seat-tiles seat-@player.Seat.ToLowerInvariant()">
-            @foreach (var tile in BuildHiddenHandPreview(player.HandCount))
+            @foreach (var tile in BuildHiddenHandPreview(player.HandCount, hiddenPreviewLimit))
             {
                 <Tile Label="@tile" IsFaceDown="true" />
             }
-            @if (player.HandCount > 12)
+            @if (player.HandCount > hiddenPreviewLimit)
             {
-                <span class="seat-hand-overflow">+@(player.HandCount - 12)</span>
+                <span class="seat-hand-overflow">+@(player.HandCount - hiddenPreviewLimit)</span>
             }
         </div>
     </div>;
