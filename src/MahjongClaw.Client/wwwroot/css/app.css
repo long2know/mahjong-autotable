@@ -3342,3 +3342,80 @@ code {
         transform: perspective(560px) rotateY(14deg) translateZ(5px);
     }
 }
+
+/* Final consolidated 3D refinement pass for /game */
+.game-3d-refine {
+    perspective: 1800px;
+}
+
+.game-3d-refine .col-xl-8 > .card,
+.game-3d-refine .col-xl-4 > .card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid rgba(76, 101, 131, 0.36);
+    background: linear-gradient(160deg, rgba(248, 252, 255, 0.95) 0%, rgba(236, 243, 250, 0.98) 48%, rgba(222, 233, 244, 0.96) 100%);
+    box-shadow: 0 10px 24px rgba(8, 16, 32, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8),
+        inset 0 -10px 22px rgba(86, 110, 138, 0.1);
+}
+
+.game-3d-refine .col-xl-8 > .card::before,
+.game-3d-refine .col-xl-4 > .card::before {
+    content: "";
+    position: absolute;
+    inset: 0.25rem;
+    border-radius: 0.8rem;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.02) 46%, rgba(180, 199, 222, 0.18) 100%);
+    pointer-events: none;
+}
+
+.game-3d-refine .table-surface {
+    transform: perspective(1800px) rotateX(4deg);
+    transform-origin: center top;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        inset 0 0 0 12px rgba(72, 47, 26, 0.88),
+        inset 0 14px 22px rgba(0, 0, 0, 0.4),
+        0 30px 56px rgba(4, 11, 8, 0.58),
+        0 0 0 1px rgba(110, 74, 43, 0.7);
+}
+
+.game-3d-refine .table-grid {
+    transform: perspective(1500px) rotateX(2.6deg);
+    transform-origin: center top;
+}
+
+.game-3d-refine .state-label,
+.game-3d-refine .timeline-time {
+    color: #4b6077;
+}
+
+.game-3d-refine .score-list,
+.game-3d-refine .timeline li,
+.game-3d-refine .meld-item {
+    border-color: rgba(106, 128, 153, 0.28);
+}
+
+.game-3d-refine .meld-item {
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.9) 0%, rgba(241, 246, 252, 0.86) 52%, rgba(226, 237, 248, 0.88) 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 6px 14px rgba(16, 32, 55, 0.1);
+}
+
+.game-3d-refine .discard-lane {
+    box-shadow: inset 0 0 0 1px rgba(66, 110, 85, 0.45),
+        inset 0 12px 22px rgba(6, 36, 22, 0.28),
+        0 12px 20px rgba(4, 18, 12, 0.34);
+}
+
+.game-3d-refine .center-turn-label strong,
+.game-3d-refine .discard-lane-title {
+    letter-spacing: 0.03em;
+}
+
+@media (max-width: 1199.98px) {
+    .game-3d-refine .table-surface,
+    .game-3d-refine .table-grid {
+        transform: none;
+    }
+}

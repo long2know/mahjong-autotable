@@ -10,20 +10,21 @@
 
 <PageTitle>Game</PageTitle>
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-    <h1 class="mb-0">Game</h1>
-    <div class="d-flex gap-2">
-        <a class="btn btn-outline-secondary" href="lobby">Back to Lobby</a>
-        <button class="btn btn-outline-primary" disabled>Invite</button>
+<div class="game-3d-refine">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <h1 class="mb-0">Game</h1>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary" href="lobby">Back to Lobby</a>
+            <button class="btn btn-outline-primary" disabled>Invite</button>
+        </div>
     </div>
-</div>
 
-@if (!string.IsNullOrWhiteSpace(LiveStatus))
-{
-    <div class="alert alert-info py-2">@LiveStatus</div>
-}
+    @if (!string.IsNullOrWhiteSpace(LiveStatus))
+    {
+        <div class="alert alert-info py-2">@LiveStatus</div>
+    }
 
-<div class="row g-4">
+    <div class="row g-4">
     <div class="col-12 col-xl-8">
         <div class="card h-100">
             <div class="card-body">
@@ -266,6 +267,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 
 @code {
