@@ -753,10 +753,39 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         .Where(tile => tile.PlayerId == botPlayer.Id && tile.Location == "Meld")
         .ToList();
     var declaredKongCount = CountDeclaredKongs(game.Tiles, botPlayer.Id);
+    var ruleset = RulesetResolver.Resolve(game.Ruleset);
+    var canDraw = TurnFlowValidator.CanDraw(handTiles.Count, meldTiles.Count, declaredKongCount);
 
     DrawTileResponse? drawResponse = null;
-    if (TurnFlowValidator.CanDraw(handTiles.Count, meldTiles.Count, declaredKongCount))
+    if (canDraw)
     {
+        if (!TryBuildTileHand(handTiles, out var botConcealedHand) || !TryBuildTileHand(meldTiles, out var botMeldHand))
+        {
+            return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
+        }
+
+        if (TryGetLatestDiscardTileForBotClaim(game, botPlayer.Id, out var latestDiscardTileEntity))
+        {
+            if (!TryBuildTileHand([latestDiscardTileEntity], out var discardedTileHand))
+            {
+                return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
+            }
+
+            var discardedTile = discardedTileHand[0];
+            if (BotClaimAdvisor.ShouldClaimDiscardWin(botConcealedHand, botMeldHand, discardedTile, ruleset))
+            {
+                game.Status = "Completed";
+                game.CurrentPlayerId = botPlayer.Id;
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+
+                var winResponse = new WinResponse(game.Id, game.Status, botPlayer.Id);
+                await SendToGameWithAliases(hubContext, game.Id, "GameWon", winResponse, cancellationToken);
+
+                return BotTurnExecutionResult.Ok(new BotTurnResponse(null, null, latestDiscardTileEntity.Id, game.CurrentPlayerId, true));
+            }
+        }
+
         var tile = game.Tiles
             .Where(t => t.Location == "Wall")
             .OrderBy(t => t.Sequence)
@@ -783,7 +812,6 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
-    var ruleset = RulesetResolver.Resolve(game.Ruleset);
     if (RulesetHandAnalyzer.IsWinningHand(botOwnedHand, ruleset))
     {
         game.Status = "Completed";
@@ -853,6 +881,32 @@ static int CountDeclaredKongs(IEnumerable<TileEntity> tiles, Guid playerId)
         .Where(tile => tile.PlayerId == playerId && string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase))
         .GroupBy(tile => new { tile.Suit, tile.Rank, tile.Wind, tile.Dragon })
         .Count(group => group.Count() == 4);
+
+static bool TryGetLatestDiscardTileForBotClaim(GameEntity game, Guid botPlayerId, out TileEntity latestDiscardTile)
+{
+    latestDiscardTile = null!;
+
+    var latestDiscard = game.Discards
+        .OrderByDescending(discard => discard.Sequence)
+        .FirstOrDefault();
+
+    if (latestDiscard is null || latestDiscard.PlayerId == botPlayerId)
+    {
+        return false;
+    }
+
+    var tile = game.Tiles.FirstOrDefault(candidate =>
+        candidate.Id == latestDiscard.TileId &&
+        string.Equals(candidate.Location, "Discard", StringComparison.OrdinalIgnoreCase));
+
+    if (tile is null)
+    {
+        return false;
+    }
+
+    latestDiscardTile = tile;
+    return true;
+}
 
 static Guid? GetNextPlayerId(GameEntity game, PlayerEntity currentPlayer)
 {
