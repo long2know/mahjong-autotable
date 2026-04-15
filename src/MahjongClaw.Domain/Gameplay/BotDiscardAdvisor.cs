@@ -5,6 +5,9 @@ namespace MahjongClaw.Domain.Gameplay;
 
 public static class BotDiscardAdvisor
 {
+    private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
+    private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
+
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
@@ -19,13 +22,22 @@ public static class BotDiscardAdvisor
             throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
         }
 
-        return handTiles
+        var candidates = handTiles
             .Select((tile, index) => new
             {
                 Tile = tile,
                 Index = index,
-                Score = GetBotTileKeepScore(tile, handTiles, ruleset)
+                Score = GetBotTileKeepScore(tile, handTiles, ruleset),
+                WinningDrawOuts = CountWinningDrawOutsAfterDiscard(handTiles, index, ruleset)
             })
+            .ToList();
+
+        var maxWinningDrawOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+        var prioritizedCandidates = maxWinningDrawOuts > 0
+            ? candidates.Where(candidate => candidate.WinningDrawOuts == maxWinningDrawOuts)
+            : candidates;
+
+        return prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
             .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
@@ -404,6 +416,69 @@ public static class BotDiscardAdvisor
         }
 
         return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus;
+    }
+
+    private static int CountWinningDrawOutsAfterDiscard(IReadOnlyList<Tile> handTiles, int discardIndex, MahjongRuleset ruleset)
+    {
+        var drawTileTypes = ruleset == MahjongRuleset.Changsha258
+            ? Changsha258DrawTileTypes
+            : ChineseOfficialDrawTileTypes;
+
+        var reducedHand = handTiles
+            .Where((_, index) => index != discardIndex)
+            .ToList();
+        var reducedCounts = reducedHand
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningDrawOuts = 0;
+
+        foreach (var drawTileType in drawTileTypes)
+        {
+            reducedCounts.TryGetValue(drawTileType, out var drawTileCount);
+            if (drawTileCount >= 4)
+            {
+                continue;
+            }
+
+            var candidateHand = reducedHand
+                .Append(drawTileType)
+                .ToList();
+
+            if (RulesetHandAnalyzer.IsWinningHand(candidateHand, ruleset))
+            {
+                winningDrawOuts++;
+            }
+        }
+
+        return winningDrawOuts;
+    }
+
+    private static IReadOnlyList<Tile> BuildDrawTileTypes(MahjongRuleset ruleset)
+    {
+        IEnumerable<TileSuit> suitedSuits = ruleset == MahjongRuleset.Changsha258
+            ? Changsha258Ruleset.AllowedSuits
+            : new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos };
+
+        var suitedTiles = suitedSuits
+            .SelectMany(static suit => Enumerable.Range(1, 9).Select(rank => new Tile(suit, rank)));
+
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            return suitedTiles.ToArray();
+        }
+
+        var windTiles = Enum
+            .GetValues<Wind>()
+            .Select(wind => new Tile(TileSuit.Winds, 0, wind));
+        var dragonTiles = Enum
+            .GetValues<Dragon>()
+            .Select(dragon => new Tile(TileSuit.Dragons, 0, null, dragon));
+
+        return suitedTiles
+            .Concat(windTiles)
+            .Concat(dragonTiles)
+            .ToArray();
     }
 
     private static bool IsTerminalSuitedTile(Tile tile)
