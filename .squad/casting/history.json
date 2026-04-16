@@ -1,0 +1,27 @@
+{
+  "universe_usage_history": [
+    {
+      "assignment_id": "assign-2026-04-16-mahjong-claw-init",
+      "universe": "The Matrix",
+      "timestamp": "2026-04-16T20:20:00Z"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "assign-2026-04-16-mahjong-claw-init": {
+      "repository": "long2know/mahjong-claw",
+      "team_size": 6,
+      "members": [
+        "Kusanagi",
+        "Ishikawa",
+        "Batou",
+        "Togusa",
+        "Saito",
+        "Borma"
+      ],
+      "exempt_members": [
+        "Scribe",
+        "Ralph"
+      ]
+    }
+  }
+}
