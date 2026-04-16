@@ -301,7 +301,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_PrioritizesIsolatedTerminal_InSingleSuitWithPairs()
+    public void SelectDiscardIndex_PrioritizesWiderSevenPairsWait_InSingleSuitWithPairs()
     {
         var tiles = new List<Tile>
         {
@@ -316,7 +316,7 @@ public class BotDiscardAdvisorTests
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
 
-        tiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 1));
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 5));
     }
 
     [Fact]
@@ -647,7 +647,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_PrioritizesGapSingleton_WhenOnlyTwoAwayNeighborExists()
+    public void SelectDiscardIndex_PrioritizesWiderWinningWaitOverGapSingleton()
     {
         var tiles = new List<Tile>
         {
@@ -663,7 +663,7 @@ public class BotDiscardAdvisorTests
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles);
 
-        tiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 2));
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 9));
     }
 
     [Fact]

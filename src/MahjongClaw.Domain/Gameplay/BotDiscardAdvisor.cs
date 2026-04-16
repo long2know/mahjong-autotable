@@ -23,19 +23,32 @@ public static class BotDiscardAdvisor
         }
 
         var candidates = handTiles
-            .Select((tile, index) => new
+            .Select((tile, index) =>
             {
-                Tile = tile,
-                Index = index,
-                Score = GetBotTileKeepScore(tile, handTiles, ruleset),
-                WinningDrawOuts = CountWinningDrawOutsAfterDiscard(handTiles, index, ruleset)
+                var winningOutSummary = CountWinningDrawOutsAfterDiscard(handTiles, index, ruleset);
+                return new
+                {
+                    Tile = tile,
+                    Index = index,
+                    Score = GetBotTileKeepScore(tile, handTiles, ruleset),
+                    WinningDrawOuts = winningOutSummary.TileTypes,
+                    WinningDrawOutCopies = winningOutSummary.RemainingCopies
+                };
             })
             .ToList();
 
         var maxWinningDrawOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
         var prioritizedCandidates = maxWinningDrawOuts > 0
-            ? candidates.Where(candidate => candidate.WinningDrawOuts == maxWinningDrawOuts)
+            ? candidates.Where(candidate => candidate.WinningDrawOuts == maxWinningDrawOuts).ToList()
             : candidates;
+
+        if (maxWinningDrawOuts > 0)
+        {
+            var maxWinningDrawOutCopies = prioritizedCandidates.Max(candidate => candidate.WinningDrawOutCopies);
+            prioritizedCandidates = prioritizedCandidates
+                .Where(candidate => candidate.WinningDrawOutCopies == maxWinningDrawOutCopies)
+                .ToList();
+        }
 
         return prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
@@ -418,7 +431,7 @@ public static class BotDiscardAdvisor
         return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus;
     }
 
-    private static int CountWinningDrawOutsAfterDiscard(IReadOnlyList<Tile> handTiles, int discardIndex, MahjongRuleset ruleset)
+    private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(IReadOnlyList<Tile> handTiles, int discardIndex, MahjongRuleset ruleset)
     {
         var drawTileTypes = ruleset == MahjongRuleset.Changsha258
             ? Changsha258DrawTileTypes
@@ -432,6 +445,7 @@ public static class BotDiscardAdvisor
             .ToDictionary(group => group.Key, group => group.Count());
 
         var winningDrawOuts = 0;
+        var winningDrawOutCopies = 0;
 
         foreach (var drawTileType in drawTileTypes)
         {
@@ -448,11 +462,14 @@ public static class BotDiscardAdvisor
             if (RulesetHandAnalyzer.IsWinningHand(candidateHand, ruleset))
             {
                 winningDrawOuts++;
+                winningDrawOutCopies += 4 - drawTileCount;
             }
         }
 
-        return winningDrawOuts;
+        return new WinningDrawOutSummary(winningDrawOuts, winningDrawOutCopies);
     }
+
+    private readonly record struct WinningDrawOutSummary(int TileTypes, int RemainingCopies);
 
     private static IReadOnlyList<Tile> BuildDrawTileTypes(MahjongRuleset ruleset)
     {
