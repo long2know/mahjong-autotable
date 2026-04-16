@@ -52,6 +52,10 @@ public static class BotDiscardAdvisor
         var visibleCounts = visibleTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
+        var ownedCounts = handTiles
+            .Concat(meldTiles)
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
 
         var candidates = handTiles
             .Select((tile, index) =>
@@ -61,7 +65,8 @@ public static class BotDiscardAdvisor
                 {
                     Tile = tile,
                     Index = index,
-                    Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset),
+                    Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset)
+                        + GetTileAvailabilityPenalty(tile, ownedCounts, visibleCounts),
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies
                 };
@@ -577,6 +582,85 @@ public static class BotDiscardAdvisor
             .Concat(dragonTiles)
             .ToArray();
     }
+
+    private static int GetTileAvailabilityPenalty(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        ownedCounts.TryGetValue(tile, out var ownedCount);
+        visibleCounts.TryGetValue(tile, out var visibleCount);
+        var remainingSelf = 4 - ownedCount - visibleCount;
+
+        if (ownedCount >= 2)
+        {
+            return 0;
+        }
+
+        if (tile.IsHonor)
+        {
+            return remainingSelf <= 0 ? -4 : 0;
+        }
+
+        if (!IsSuitedTile(tile))
+        {
+            return 0;
+        }
+
+        if (!HasSequencePotential(tile, ownedCounts, visibleCounts))
+        {
+            return remainingSelf switch
+            {
+                <= 0 => -4,
+                1 => -3,
+                2 => -2,
+                _ => -1
+            };
+        }
+
+        return remainingSelf <= 0 ? -1 : 0;
+    }
+
+    private static bool HasSequencePotential(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        if (!IsSuitedTile(tile))
+        {
+            return false;
+        }
+
+        bool IsTileAvailable(Tile candidate)
+        {
+            ownedCounts.TryGetValue(candidate, out var ownedCount);
+            if (ownedCount > 0)
+            {
+                return true;
+            }
+
+            visibleCounts.TryGetValue(candidate, out var visibleCount);
+            return 4 - ownedCount - visibleCount > 0;
+        }
+
+        var rank = tile.Rank;
+        var suit = tile.Suit;
+
+        var hasLowSequence = rank >= 3
+            && IsTileAvailable(new Tile(suit, rank - 2))
+            && IsTileAvailable(new Tile(suit, rank - 1));
+        var hasMiddleSequence = rank is >= 2 and <= 8
+            && IsTileAvailable(new Tile(suit, rank - 1))
+            && IsTileAvailable(new Tile(suit, rank + 1));
+        var hasHighSequence = rank <= 7
+            && IsTileAvailable(new Tile(suit, rank + 1))
+            && IsTileAvailable(new Tile(suit, rank + 2));
+
+        return hasLowSequence || hasMiddleSequence || hasHighSequence;
+    }
+
+    private static bool IsSuitedTile(Tile tile)
+        => tile.Suit is TileSuit.Characters or TileSuit.Dots or TileSuit.Bamboos;
 
     private static bool IsTerminalSuitedTile(Tile tile)
         => !tile.IsHonor && tile.Rank is 1 or 9;
