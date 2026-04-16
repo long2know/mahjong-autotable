@@ -24,9 +24,15 @@
         <div class="alert alert-info py-2">@LiveStatus</div>
     }
 
+    <div class="table-action-toolbar mb-3" aria-label="Table action toolbar">
+        <button class="btn btn-success btn-sm" type="button">Feedback</button>
+        <button class="btn btn-success btn-sm" type="button" disabled>Share</button>
+        <button class="btn btn-success btn-sm" type="button" disabled>More</button>
+    </div>
+
     <div class="row g-4">
-    <div class="col-12 col-xl-8">
-        <div class="card h-100">
+    <div class="col-12 col-xl-9">
+        <div class="card h-100 game-board-shell">
             <div class="card-body">
                 <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
                     <div>
@@ -146,40 +152,44 @@
             </div>
         </div>
     </div>
-    <div class="col-12 col-xl-4">
-        <div class="card mb-4">
+    <div class="col-12 col-xl-3 game-side-panel">
+        <div class="card mb-4 leaderboard-panel">
             <div class="card-body">
-                <h5 class="card-title mb-2">Game State</h5>
-                <div class="row g-2">
+                <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                    <h5 class="card-title mb-0">Weekly Leaderboard</h5>
+                    <span class="leaderboard-sync-label">Update every hour</span>
+                </div>
+                <div class="leaderboard-header-row">
+                    <span>Player</span>
+                    <span>Won</span>
+                </div>
+                <div class="leaderboard-list">
+                    @for (var i = 0; i < Scoreboard.Count; i++)
+                    {
+                        var player = Scoreboard[i];
+                        <div class="leaderboard-item">
+                            <span class="leaderboard-player">
+                                <span class="leaderboard-rank">#@(i + 1)</span>
+                                <span class="fw-semibold">@player.Name</span>
+                            </span>
+                            <span class="leaderboard-value">@Math.Max(0, player.Score / 12)</span>
+                        </div>
+                    }
+                </div>
+                <div class="leaderboard-note">Your stats are unsaved! <a href="lobby">Save now.</a></div>
+                <div class="row g-2 mt-2">
                     <div class="col-6">
-                        <div class="state-label">Round Wind</div>
+                        <div class="state-label">Round</div>
                         <div class="state-value">@RoundWind</div>
                     </div>
                     <div class="col-6">
                         <div class="state-label">Dealer</div>
                         <div class="state-value">@CurrentDealerName</div>
                     </div>
-                    <div class="col-6">
-                        <div class="state-label">Hand #</div>
-                        <div class="state-value">@HandNumber</div>
-                    </div>
-                    <div class="col-6">
-                        <div class="state-label">Wall Remaining</div>
-                        <div class="state-value">@WallRemaining</div>
-                    </div>
-                </div>
-                <div class="score-list mt-3">
-                    @foreach (var player in Scoreboard)
-                    {
-                        <div class="score-item">
-                            <span class="fw-semibold">@player.Name</span>
-                            <span class="text-muted">@player.Score pts</span>
-                        </div>
-                    }
                 </div>
             </div>
         </div>
-        <div class="card mb-4">
+        <div class="card mb-4 seat-summary-panel">
             <div class="card-body">
                 <h5 class="card-title mb-2">Seat Summary</h5>
                 <div class="seat-summary">
@@ -202,7 +212,7 @@
                 </div>
             </div>
         </div>
-        <div class="card mb-4">
+        <div class="card mb-4 your-hand-panel">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <h5 class="card-title mb-0">Your Hand</h5>
@@ -254,7 +264,7 @@
                 </div>
             </div>
         </div>
-        <div class="card">
+        <div class="card actions-panel">
             <div class="card-body">
                 <h5 class="card-title mb-2">Actions</h5>
                 <div class="d-flex flex-wrap gap-2">
@@ -944,8 +954,11 @@
     private RenderFragment RenderSeat(PlayerView player) => @<div class="seat-card">
         <div class="d-flex align-items-center justify-content-between seat-card-header">
             <div class="seat-identity">
-                <div class="fw-semibold">@player.Name</div>
-                <div class="small text-muted">@player.Seat</div>
+                <span class="seat-avatar" aria-hidden="true">@GetSeatMonogram(player.Seat)</span>
+                <div>
+                    <div class="fw-semibold">@player.Name</div>
+                    <div class="small text-muted">@player.Seat</div>
+                </div>
             </div>
             <div class="text-end seat-badges">
                 <div class="badge text-bg-light seat-badge seat-badge-score">@player.Score pts</div>
@@ -977,6 +990,9 @@
             }
         </div>
     </div>;
+
+    private static string GetSeatMonogram(string seat) =>
+        string.IsNullOrWhiteSpace(seat) ? "?" : seat[..1].ToUpperInvariant();
 
     private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
 
