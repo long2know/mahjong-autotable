@@ -6,52 +6,57 @@
 - Restore: `dotnet restore MahjongClaw.slnx`
 - Build (Release): `dotnet build MahjongClaw.slnx -c Release`
 - Run unit test suite: `dotnet test MahjongClaw.slnx -c Release --no-build`
-- Run a single xUnit test: `dotnet test tests/MahjongClaw.Tests/MahjongClaw.Tests.csproj -c Release --filter "FullyQualifiedName~MahjongClaw.Tests.HandAnalyzerTests.IsWinningHand_ReturnsTrueForStandardHand"`
+- Run CI's rules-correctness subset: `dotnet test MahjongClaw.slnx -c Release --no-build --verbosity normal --filter "FullyQualifiedName~MeldValidatorTests|FullyQualifiedName~RulesCorrectnessVectorsTests|FullyQualifiedName~ScoreCalculatorTests|FullyQualifiedName~RulesetHandAnalyzerTests"`
+- Run a single xUnit test method: `dotnet test tests/MahjongClaw.Tests/MahjongClaw.Tests.csproj -c Release --filter "FullyQualifiedName~MahjongClaw.Tests.HandAnalyzerTests.IsWinningHand_ReturnsTrueForStandardHand"`
 
 ### Playwright e2e smoke tests
 - Install JS dependencies: `npm ci`
 - Run full e2e suite: `npm run test:e2e`
 - Run a single spec: `npm run test:e2e -- tests/e2e/lobby-game-flow.spec.js`
+- Run a single named Playwright test: `npx playwright test tests/e2e/lobby-game-flow.spec.js -g "creates human vs bot game and auto-seats bot players"`
 - Run end-to-end local smoke flow (applies migrations, starts API + client, then runs Playwright): `npm run test:e2e:smoke`
 - Override smoke command (example single spec): `PLAYWRIGHT_E2E_COMMAND='npx playwright test tests/e2e/home.spec.js' ./scripts/run_playwright_smoke.sh`
-
-### MCP servers
-- Copilot CLI project-level MCP config lives in `.github/mcp.json`:
-  - server name: `playwright`
-  - launch command: `npx -y @playwright/mcp@latest`
-- VS Code workspace MCP config also exists in `.vscode/mcp.json` for editor-side MCP tooling.
 
 ### Lint
 - No dedicated lint script is currently defined in `package.json` or CI workflows.
 
+## MCP servers
+
+- Copilot CLI project-level MCP config is in `.github/mcp.json`:
+  - server name: `playwright`
+  - launch command: `npx -y @playwright/mcp@latest`
+- VS Code workspace MCP config also exists in `.vscode/mcp.json` for editor-side MCP tooling.
+
 ## High-level architecture
 
 - The solution is split into four runtime projects plus tests:
-  - `src/MahjongClaw.Domain`: core Mahjong model/rules (`Tile`, wall/dealing, meld validation, hand analysis, score/fan evaluation).
-  - `src/MahjongClaw.Persistence`: EF Core SQLite model (`GameEntity`, `PlayerEntity`, `TileEntity`, `MeldEntity`, `DiscardEntity`) and migrations.
-  - `src/MahjongClaw.Api`: minimal API + SignalR hub. API endpoints under `/api/game/*` persist game state and broadcast real-time events.
-  - `src/MahjongClaw.Client`: Blazor WebAssembly UI, with `Services/GameApiClient.cs` for HTTP calls and `Pages/Game.razor` for live game state + SignalR updates.
+  - `src/MahjongClaw.Domain`: tile model, turn-flow validation, scoring, ruleset-aware win/meld validation, and bot advisors.
+  - `src/MahjongClaw.Persistence`: EF Core SQLite entities + migrations.
+  - `src/MahjongClaw.Api`: minimal API + SignalR hub. Most game orchestration is in `Program.cs` (`/api/game/*` endpoints, server-side bot turn execution, event broadcasting).
+  - `src/MahjongClaw.Client`: Blazor WASM UI, `GameApiClient` DTO/client methods, live SignalR game page, ruleset formatting helpers.
+- Ruleset architecture:
+  - `MahjongRuleset` currently supports `ChineseOfficial` and `Changsha258`.
+  - `RulesetResolver`, `RulesetHandAnalyzer`, and `RulesetMeldValidator` are the ruleset boundary; API paths should call these, not raw `HandAnalyzer`/`MeldValidator`.
 - Runtime flow:
   1. Lobby creates/joins/starts games via `/api/game`.
-  2. API mutates SQLite-backed state with EF Core.
-  3. API emits hub events on `/hubs/game` (grouped by `gameId`).
-  4. Client listens to hub events, then refreshes authoritative state from `/api/game/{id}/state`.
+  2. API persists authoritative state in SQLite and broadcasts hub events per game group.
+  3. Client refreshes state from `/api/game/{id}/state` after events.
+  4. Bot turns are executed server-side (`/api/game/{id}/bot/turn` and bot turn chaining after start/discard), with client-side triggering when current player is a bot.
 - Test layers:
-  - `tests/MahjongClaw.Tests`: rules-engine correctness and pattern-priority tests (xUnit + FluentAssertions).
-  - `tests/e2e`: Playwright smoke scenarios for home/lobby/game flows.
+  - `tests/MahjongClaw.Tests`: broad domain coverage, including ruleset resolution, Changsha 258, turn flow, and bot advisors.
+  - `tests/e2e`: Playwright smoke + deep board-layout/3D presentation assertions.
 
 ## Key conventions in this repository
 
-- **Seat and dealing order is fixed**: East → South → West → North; East receives 14 starting tiles, others 13. This order is used across Domain dealing logic, API start/deal logic, and client seat rendering.
-- **Game and tile state are string-backed in persistence/API**:
-  - game status values: `"Waiting"`, `"Active"`, `"Completed"` (client normalizes for display, e.g. `"Active"` → `"In Progress"`).
-  - tile location values: `"Wall"`, `"Hand"`, `"Discard"`, `"Meld"` (and `DeadWall` is reserved in comments).
-- **SignalR event compatibility aliases are intentional**: API broadcasts canonical names and legacy aliases (`PlayerJoined`/`PlayerJoin`, `TileDrawn`/`DrawnTile`, etc.), and the client subscribes to both.
-- **API/client DTO shapes are duplicated by design**: request/response records are declared in `src/MahjongClaw.Api/Program.cs` and mirrored in `src/MahjongClaw.Client/Services/GameApiClient.cs`; keep them synchronized when changing contracts.
-- **Game page live mode is query-parameter driven**: `/game?gameId=<guid>&playerId=<guid>` enables API actions and SignalR wiring; without `gameId`, `Game.razor` falls back to mock state.
-- **Tile domain invariants are strict and relied on by tests**:
-  - suited tiles use ranks 1-9,
-  - winds/dragons use rank `0` plus required enum metadata,
-  - flowers/seasons are bonus tiles and rejected by winning-hand analysis.
-- **Playwright selectors depend on semantic UI labels/roles**: tests target ARIA labels like `"Mahjong wall preview"` and `"Center discard lane"`; keep those stable unless tests are updated together.
-- **Phase scope emphasis (from `AGENT.md`)**: Phase 1 prioritizes Chinese rules engine + minimal API + SignalR + Blazor UI + CI/e2e smoke coverage.
+- **Default ruleset is Changsha 258**: when ruleset input is omitted or blank, resolver and persistence defaults use `Changsha258`.
+- **Ruleset strings are intentionally fuzzy-tolerant**: `RulesetResolver` normalizes noisy text and many aliases (including mixed-language inputs and metadata stripping). Use `RulesetResolver.Resolve(...)` rather than custom parsing.
+- **Turn legality is shape-based**: draw/discard/meld/win checks use `TurnFlowValidator` with `(hand tiles + meld tiles)` plus declared-kong adjustments. Preserve this invariant when changing API actions.
+- **Bot identity is name-prefix based**: both API and client treat `Name.StartsWith("Bot", OrdinalIgnoreCase)` as bot seats.
+- **API/client DTO contracts are mirrored by design**: records in `src/MahjongClaw.Api/Program.cs` are duplicated in `src/MahjongClaw.Client/Services/GameApiClient.cs`; update both together.
+- **SignalR compatibility aliases are intentional**: API emits canonical + alias event names (`PlayerJoined`/`PlayerJoin`, `TileDrawn`/`DrawnTile`, etc.), and client subscribes to both.
+- **Game state depends on ruleset-aware wall sizing**: API state includes `Ruleset` and `WallTotal`; client wall/deck rendering uses these values and should not hardcode 144.
+- **Seat/dealing order is fixed**: East → South → West → North; initial deal is 14 tiles for East and 13 for others.
+- **Entity state values are string-backed**:
+  - game status values: `"Waiting"`, `"Active"`, `"Completed"` (client display normalization maps to `"In Progress"`/`"Complete"`),
+  - tile location values: `"Wall"`, `"Hand"`, `"Discard"`, `"Meld"`.
+- **Playwright tests are tightly coupled to UI semantics**: ARIA labels and key board-layout class names (for example wall/compass/seat/discard structures) are test targets; update tests with UI refactors.
