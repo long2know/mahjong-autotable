@@ -34,7 +34,7 @@ public static class BotDiscardAdvisor
                 {
                     Tile = tile,
                     Index = index,
-                    Score = GetBotTileKeepScore(tile, handTiles, ruleset),
+                    Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset),
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies
                 };
@@ -67,7 +67,7 @@ public static class BotDiscardAdvisor
             .Index;
     }
 
-    private static int GetBotTileKeepScore(Tile tile, IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset)
+    private static int GetBotTileKeepScore(Tile tile, IReadOnlyList<Tile> handTiles, IReadOnlyList<Tile> meldTiles, MahjongRuleset ruleset)
     {
         if (ruleset == MahjongRuleset.Changsha258 && !Changsha258Ruleset.IsAllowedTile(tile))
         {
@@ -163,10 +163,17 @@ public static class BotDiscardAdvisor
             .GroupBy(static other => (other.Suit, other.Rank))
             .Count(group => group.Count() >= 2);
 
+        var focusTiles = meldTiles.Count == 0
+            ? handTiles
+            : handTiles.Concat(meldTiles).ToList();
+
         var suitTiles = handTiles
             .Where(other => other.Suit == tile.Suit)
             .ToList();
         var suitCount = suitTiles.Count;
+        var focusSuitCount = !tile.IsHonor
+            ? focusTiles.Count(other => other.Suit == tile.Suit)
+            : suitCount;
         var suitClusterBonus = !tile.IsHonor
             ? Math.Max(0, (suitCount - 1) / 2)
             : 0;
@@ -189,7 +196,7 @@ public static class BotDiscardAdvisor
             2 => 1,
             _ => 0
         };
-        var suitedCounts = handTiles
+        var suitedCounts = focusTiles
             .Where(static other => !other.IsHonor)
             .GroupBy(static other => other.Suit)
             .ToDictionary(group => group.Key, group => group.Count());
@@ -197,7 +204,7 @@ public static class BotDiscardAdvisor
         if (!tile.IsHonor && suitedCounts.Count > 1)
         {
             var minSuitCount = suitedCounts.Values.Min();
-            if (suitCount == minSuitCount)
+            if (focusSuitCount == minSuitCount)
             {
                 suitFocusPenalty = minSuitCount switch
                 {
@@ -212,7 +219,7 @@ public static class BotDiscardAdvisor
         if (!tile.IsHonor && suitedCounts.Count > 0)
         {
             var maxSuitCount = suitedCounts.Values.Max();
-            if (suitCount == maxSuitCount && maxSuitCount >= 6)
+            if (focusSuitCount == maxSuitCount && maxSuitCount >= 6)
             {
                 suitFocusBonus = maxSuitCount >= 8 ? 2 : 1;
             }
@@ -222,9 +229,40 @@ public static class BotDiscardAdvisor
         if (!tile.IsHonor && suitedCounts.Count > 1)
         {
             var maxSuitCount = suitedCounts.Values.Max();
-            if (suitCount < maxSuitCount)
+            if (focusSuitCount < maxSuitCount)
             {
                 dominantSuitPenalty = maxSuitCount >= 8 ? -2 : maxSuitCount >= 7 ? -1 : 0;
+            }
+        }
+
+        var meldSuitFocusBonus = 0;
+        if (!tile.IsHonor && meldTiles.Count > 0)
+        {
+            var meldSuitCounts = meldTiles
+                .Where(static other => !other.IsHonor)
+                .GroupBy(static other => other.Suit)
+                .ToDictionary(group => group.Key, group => group.Count());
+
+            if (meldSuitCounts.Count > 0)
+            {
+                var maxMeldSuitCount = meldSuitCounts.Values.Max();
+                var dominantSuitCandidates = meldSuitCounts
+                    .Where(entry => entry.Value == maxMeldSuitCount)
+                    .Select(entry => entry.Key)
+                    .ToList();
+
+                if (dominantSuitCandidates.Count == 1 && maxMeldSuitCount >= 3)
+                {
+                    var dominantSuit = dominantSuitCandidates[0];
+                    if (tile.Suit == dominantSuit)
+                    {
+                        meldSuitFocusBonus = maxMeldSuitCount >= 6 ? 3 : 2;
+                    }
+                    else
+                    {
+                        meldSuitFocusBonus = maxMeldSuitCount >= 6 ? -2 : -1;
+                    }
+                }
             }
         }
 
@@ -314,7 +352,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + meldSuitFocusBonus;
         }
 
         var rankCounts = suitTiles
@@ -432,7 +470,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + meldSuitFocusBonus;
     }
 
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
