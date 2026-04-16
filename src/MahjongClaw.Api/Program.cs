@@ -840,7 +840,17 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
-    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHand, ruleset);
+    var visibleTileEntities = game.Tiles
+        .Where(tile => string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase)
+            || (string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase) && tile.PlayerId != botPlayer.Id))
+        .ToList();
+
+    if (!TryBuildTileHand(visibleTileEntities, out var visibleTiles))
+    {
+        return BotTurnExecutionResult.Fail(409, "Bot visible tiles contain invalid tile data.");
+    }
+
+    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHand, visibleTiles, ruleset);
     var discardTile = handTiles[discardIndex];
     discardTile.Location = "Discard";
 

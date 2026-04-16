@@ -12,6 +12,29 @@ public static class BotDiscardAdvisor
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, IReadOnlyList<Tile> meldTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
+        => SelectDiscardIndexInternal(handTiles, meldTiles, Array.Empty<Tile>(), ruleset);
+
+    public static int SelectDiscardIndex(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyList<Tile> visibleTiles,
+        MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
+    {
+        ArgumentNullException.ThrowIfNull(visibleTiles);
+
+        if (visibleTiles.Any(static tile => tile is null))
+        {
+            throw new ArgumentException("Tiles cannot contain null values.", nameof(visibleTiles));
+        }
+
+        return SelectDiscardIndexInternal(handTiles, meldTiles, visibleTiles, ruleset);
+    }
+
+    private static int SelectDiscardIndexInternal(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyList<Tile> visibleTiles,
+        MahjongRuleset ruleset)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
         ArgumentNullException.ThrowIfNull(meldTiles);
@@ -26,10 +49,14 @@ public static class BotDiscardAdvisor
             throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
         }
 
+        var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
         var candidates = handTiles
             .Select((tile, index) =>
             {
-                var winningOutSummary = CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, index, ruleset);
+                var winningOutSummary = CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, visibleCounts, index, ruleset);
                 return new
                 {
                     Tile = tile,
@@ -476,6 +503,7 @@ public static class BotDiscardAdvisor
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
         int discardIndex,
         MahjongRuleset ruleset)
     {
@@ -499,7 +527,10 @@ public static class BotDiscardAdvisor
         foreach (var drawTileType in drawTileTypes)
         {
             ownedCounts.TryGetValue(drawTileType, out var drawTileCount);
-            if (drawTileCount >= 4)
+            visibleCounts.TryGetValue(drawTileType, out var visibleCount);
+            var remainingCopies = 4 - drawTileCount - visibleCount;
+
+            if (remainingCopies <= 0)
             {
                 continue;
             }
@@ -511,7 +542,7 @@ public static class BotDiscardAdvisor
             if (RulesetHandAnalyzer.IsWinningHand(candidateHand, ruleset))
             {
                 winningDrawOuts++;
-                winningDrawOutCopies += 4 - drawTileCount;
+                winningDrawOutCopies += remainingCopies;
             }
         }
 
