@@ -9,15 +9,19 @@ public static class BotDiscardAdvisor
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
+        => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
+
+    public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, IReadOnlyList<Tile> meldTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
+        ArgumentNullException.ThrowIfNull(meldTiles);
 
         if (handTiles.Count == 0)
         {
             throw new ArgumentException("Hand cannot be empty.", nameof(handTiles));
         }
 
-        if (handTiles.Any(static tile => tile is null))
+        if (handTiles.Any(static tile => tile is null) || meldTiles.Any(static tile => tile is null))
         {
             throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
         }
@@ -25,7 +29,7 @@ public static class BotDiscardAdvisor
         var candidates = handTiles
             .Select((tile, index) =>
             {
-                var winningOutSummary = CountWinningDrawOutsAfterDiscard(handTiles, index, ruleset);
+                var winningOutSummary = CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, index, ruleset);
                 return new
                 {
                     Tile = tile,
@@ -431,7 +435,11 @@ public static class BotDiscardAdvisor
         return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus;
     }
 
-    private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(IReadOnlyList<Tile> handTiles, int discardIndex, MahjongRuleset ruleset)
+    private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        int discardIndex,
+        MahjongRuleset ruleset)
     {
         var drawTileTypes = ruleset == MahjongRuleset.Changsha258
             ? Changsha258DrawTileTypes
@@ -440,7 +448,10 @@ public static class BotDiscardAdvisor
         var reducedHand = handTiles
             .Where((_, index) => index != discardIndex)
             .ToList();
-        var reducedCounts = reducedHand
+        var ownedTiles = reducedHand
+            .Concat(meldTiles)
+            .ToList();
+        var ownedCounts = ownedTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
 
@@ -449,13 +460,13 @@ public static class BotDiscardAdvisor
 
         foreach (var drawTileType in drawTileTypes)
         {
-            reducedCounts.TryGetValue(drawTileType, out var drawTileCount);
+            ownedCounts.TryGetValue(drawTileType, out var drawTileCount);
             if (drawTileCount >= 4)
             {
                 continue;
             }
 
-            var candidateHand = reducedHand
+            var candidateHand = ownedTiles
                 .Append(drawTileType)
                 .ToList();
 
