@@ -65,3 +65,10 @@ playwright-report/
 
 # Branch retention automation artifacts
 branch_retention_status_latest.json
+# Squad: ignore runtime state (logs, inbox, sessions)
+.squad/orchestration-log/
+.squad/log/
+.squad/decisions/inbox/
+.squad/sessions/
+# Squad: SubSquad activation file (local to this machine)
+.squad-workstream

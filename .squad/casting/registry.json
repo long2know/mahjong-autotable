@@ -1,0 +1,46 @@
+{
+  "agents": {
+    "kusanagi": {
+      "persistent_name": "Kusanagi",
+      "universe": "The Matrix",
+      "created_at": "2026-04-16T20:20:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "ishikawa": {
+      "persistent_name": "Ishikawa",
+      "universe": "The Matrix",
+      "created_at": "2026-04-16T20:20:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "batou": {
+      "persistent_name": "Batou",
+      "universe": "The Matrix",
+      "created_at": "2026-04-16T20:20:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "togusa": {
+      "persistent_name": "Togusa",
+      "universe": "The Matrix",
+      "created_at": "2026-04-16T20:20:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "saito": {
+      "persistent_name": "Saito",
+      "universe": "The Matrix",
+      "created_at": "2026-04-16T20:20:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "borma": {
+      "persistent_name": "Borma",
+      "universe": "The Matrix",
+      "created_at": "2026-04-16T20:20:00Z",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}
