@@ -67,39 +67,32 @@ public static class Changsha258Ruleset
         }
 
         var orderedTiles = GetOrderedTiles(counts);
-        var pairCandidates = orderedTiles
-            .Where(tile => counts[tile] >= 2 && IsSmallWinPair(tile))
-            .OrderBy(tile => counts[tile])
-            .ThenBy(GetTileSortBucket)
-            .ThenBy(GetTileSortValue)
-            .ToList();
 
-        if (pairCandidates.Count == 0)
+        if (TryBuildSevenPairsHand(counts, orderedTiles, requiredKongs, out hand))
         {
-            return false;
-        }
-
-        foreach (var tile in pairCandidates)
-        {
-            var candidateCounts = new Dictionary<Tile, int>(counts);
-            candidateCounts[tile] -= 2;
-
-            if (!HasRequiredKongs(candidateCounts, requiredKongs))
-            {
-                continue;
-            }
-
-            var melds = new List<Meld>();
-            if (!TryFormMelds(candidateCounts, orderedTiles, melds, requiredKongs, 0))
-            {
-                continue;
-            }
-
-            hand = new WinningHand(melds.ToList(), tile, WinningPattern.Standard);
             return true;
         }
 
-        return false;
+        if (TryBuildStandardHand(
+            tiles,
+            counts,
+            orderedTiles,
+            requiredKongs,
+            pairPredicate: IsSmallWinPair,
+            requireBigWinForRandomPair: false,
+            out hand))
+        {
+            return true;
+        }
+
+        return TryBuildStandardHand(
+            tiles,
+            counts,
+            orderedTiles,
+            requiredKongs,
+            pairPredicate: static _ => true,
+            requireBigWinForRandomPair: true,
+            out hand);
     }
 
     public static bool IsSmallWinPair(Tile pair)
@@ -158,6 +151,104 @@ public static class Changsha258Ruleset
             .OrderBy(GetTileSortBucket)
             .ThenBy(GetTileSortValue)
             .ToList();
+
+    private static bool TryBuildSevenPairsHand(
+        IReadOnlyDictionary<Tile, int> counts,
+        IReadOnlyList<Tile> orderedTiles,
+        int requiredKongs,
+        out WinningHand? hand)
+    {
+        hand = null;
+
+        if (requiredKongs != 0)
+        {
+            return false;
+        }
+
+        if (counts.Values.Any(static count => count % 2 != 0))
+        {
+            return false;
+        }
+
+        var pairCount = counts.Values.Sum(static count => count / 2);
+        if (pairCount != 7)
+        {
+            return false;
+        }
+
+        var pairTile = orderedTiles.First(tile => counts[tile] >= 2);
+        hand = new WinningHand(Array.Empty<Meld>(), pairTile, WinningPattern.SevenPairs);
+        return true;
+    }
+
+    private static bool TryBuildStandardHand(
+        IReadOnlyList<Tile> allTiles,
+        IReadOnlyDictionary<Tile, int> counts,
+        IReadOnlyList<Tile> orderedTiles,
+        int requiredKongs,
+        Func<Tile, bool> pairPredicate,
+        bool requireBigWinForRandomPair,
+        out WinningHand? hand)
+    {
+        hand = null;
+
+        var pairCandidates = orderedTiles
+            .Where(tile => counts[tile] >= 2 && pairPredicate(tile))
+            .OrderBy(tile => counts[tile])
+            .ThenBy(GetTileSortBucket)
+            .ThenBy(GetTileSortValue)
+            .ToList();
+
+        foreach (var pairTile in pairCandidates)
+        {
+            var candidateCounts = new Dictionary<Tile, int>(counts);
+            candidateCounts[pairTile] -= 2;
+
+            if (!HasRequiredKongs(candidateCounts, requiredKongs))
+            {
+                continue;
+            }
+
+            var melds = new List<Meld>();
+            if (!TryFormMelds(candidateCounts, orderedTiles, melds, requiredKongs, kongsUsed: 0))
+            {
+                continue;
+            }
+
+            if (requireBigWinForRandomPair && !IsEligibleRandomEyeBigWin(allTiles, melds))
+            {
+                continue;
+            }
+
+            var pattern = melds.All(static meld => meld.Type is MeldType.Pung or MeldType.Kong)
+                ? WinningPattern.AllPungs
+                : WinningPattern.Standard;
+
+            hand = new WinningHand(melds.ToList(), pairTile, pattern);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsEligibleRandomEyeBigWin(IReadOnlyList<Tile> allTiles, IReadOnlyList<Meld> melds)
+        => IsPureSuit(allTiles)
+            || IsAllTwoFiveEight(allTiles)
+            || melds.All(static meld => meld.Type is MeldType.Pung or MeldType.Kong);
+
+    private static bool IsPureSuit(IReadOnlyList<Tile> allTiles)
+    {
+        if (allTiles.Count == 0)
+        {
+            return false;
+        }
+
+        var suit = allTiles[0].Suit;
+        return allTiles.All(tile => tile.Suit == suit);
+    }
+
+    private static bool IsAllTwoFiveEight(IReadOnlyList<Tile> allTiles)
+        => allTiles.All(tile => SmallWinPairRanks.Contains(tile.Rank));
 
     private static bool HasRequiredKongs(IReadOnlyDictionary<Tile, int> counts, int requiredKongs)
         => requiredKongs <= 0

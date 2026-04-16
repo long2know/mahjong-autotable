@@ -497,6 +497,42 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void TryGetWinningHand_ReturnsTrue_WhenAllPungsUsesRandomEye()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsTrue_WhenPureSuitUsesRandomEye()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
     public void TryGetWinningHand_ReturnsFalse_WhenOnlySmallWinPairIsLockedInRequiredKong()
     {
         var tiles = new List<Tile>
@@ -737,7 +773,7 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
-    public void TryGetWinningHand_ReturnsFalse_WhenSevenPairsShapeAppears()
+    public void TryGetWinningHand_ReturnsTrue_WhenSevenPairsShapeAppears()
     {
         var tiles = new List<Tile>
         {
@@ -750,7 +786,9 @@ public class Changsha258RulesetTests
             new(TileSuit.Dots, 8), new(TileSuit.Dots, 8)
         };
 
-        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
     }
 
     [Fact]
@@ -774,7 +812,7 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
-    public void TryGetWinningHand_ReturnsTrue_WhenSevenPairsShapeHasStandard258PairDecomposition()
+    public void TryGetWinningHand_ReturnsSevenPairsPattern_WhenSevenPairsShapeHasStandard258PairDecomposition()
     {
         var tiles = new List<Tile>
         {
@@ -788,8 +826,9 @@ public class Changsha258RulesetTests
         };
 
         Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
-        hand!.Pattern.Should().Be(WinningPattern.Standard);
-        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 8));
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
     }
 
     [Fact]
@@ -892,7 +931,7 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
-    public void TryGetWinningHand_ReturnsFalse_WhenFourKongsHandHasNon258Pair()
+    public void TryGetWinningHand_ReturnsTrue_WhenFourKongsHandHasRandomEye()
     {
         var tiles = new List<Tile>
         {
@@ -903,7 +942,10 @@ public class Changsha258RulesetTests
             new(TileSuit.Dots, 1), new(TileSuit.Dots, 1)
         };
 
-        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
     }
 
     [Fact]
@@ -991,7 +1033,7 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
-    public void TryGetWinningHand_ReturnsFalse_WhenHandOnlyFormsThreeMelds()
+    public void TryGetWinningHand_ReturnsSevenPairs_WhenThreeKongsAndPairShapeAppears()
     {
         var tiles = new List<Tile>
         {
@@ -1001,7 +1043,9 @@ public class Changsha258RulesetTests
             new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
         };
 
-        Changsha258Ruleset.TryGetWinningHand(tiles, out _).Should().BeFalse();
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
     }
 
     [Fact]
@@ -1040,4 +1084,3 @@ public class Changsha258RulesetTests
             new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4)
         };
 }
-

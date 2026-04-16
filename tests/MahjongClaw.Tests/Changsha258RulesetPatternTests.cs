@@ -7,7 +7,7 @@ namespace MahjongClaw.Tests;
 public class Changsha258RulesetPatternTests
 {
     [Fact]
-    public void TryGetWinningHand_ReturnsStandardPattern_ForAllPungsShape()
+    public void TryGetWinningHand_ReturnsAllPungsPattern_ForAllPungsShape()
     {
         var tiles = new List<Tile>
         {
@@ -20,7 +20,7 @@ public class Changsha258RulesetPatternTests
 
         Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand.Should().NotBeNull();
-        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
         hand.Melds.Should().HaveCount(4);
         hand.Melds.All(meld => meld.Type == MeldType.Pung).Should().BeTrue();
     }

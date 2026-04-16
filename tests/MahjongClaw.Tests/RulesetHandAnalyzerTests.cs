@@ -67,7 +67,7 @@ public class RulesetHandAnalyzerTests
     }
 
     [Fact]
-    public void TryGetWinningHand_ReturnsStandardPattern_ForChangsha258AllPungs()
+    public void TryGetWinningHand_ReturnsAllPungsPattern_ForChangsha258AllPungs()
     {
         var tiles = new List<Tile>
         {
@@ -80,9 +80,45 @@ public class RulesetHandAnalyzerTests
 
         RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.Changsha258, out var hand).Should().BeTrue();
         hand.Should().NotBeNull();
-        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
         hand.Melds.Should().HaveCount(4);
         hand.Melds.All(meld => meld.Type == MeldType.Pung).Should().BeTrue();
+    }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsTrue_ForChangsha258AllPungsWithRandomEye()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1)
+        };
+
+        RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.Changsha258, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.AllPungs);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
+    public void TryGetWinningHand_ReturnsTrue_ForChangsha258PureSuitWithRandomEye()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9)
+        };
+
+        RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.Changsha258, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 1));
     }
 
     [Fact]
@@ -220,7 +256,7 @@ public class RulesetHandAnalyzerTests
     }
 
     [Fact]
-    public void TryGetWinningHand_ReturnsFalse_ForChangsha258SevenPairsShape()
+    public void TryGetWinningHand_ReturnsTrue_ForChangsha258SevenPairsShape()
     {
         var tiles = new List<Tile>
         {
@@ -233,8 +269,9 @@ public class RulesetHandAnalyzerTests
             new(TileSuit.Dots, 8), new(TileSuit.Dots, 8)
         };
 
-        RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.Changsha258, out var hand).Should().BeFalse();
-        hand.Should().BeNull();
+        RulesetHandAnalyzer.TryGetWinningHand(tiles, MahjongRuleset.Changsha258, out var hand).Should().BeTrue();
+        hand.Should().NotBeNull();
+        hand!.Pattern.Should().Be(WinningPattern.SevenPairs);
     }
 
     [Fact]

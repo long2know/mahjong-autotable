@@ -4,7 +4,7 @@ Multiplayer Traditional Chinese Mahjong (backend + rules engine + web UI).
 
 ## Rulesets
 - **Chinese Official**: Standard 144-tile set (3 suits + winds/dragons + flowers/seasons) with minimum-fan scoring gate.
-- **Changsha 258 (minimal)**: 108 suited tiles only (no winds/dragons/flowers/seasons). Standard hand only (4 melds + pair). Winning hands require a suited 2/5/8 pair. Kongs add one extra tile each (max 4, 18 tiles total). Big-win patterns are not modeled yet. No minimum fan gate.
+- **Changsha 258 (expanded core)**: 108 suited tiles only (no winds/dragons/flowers/seasons). Supports standard hand evaluation (4 melds + pair) with a suited 2/5/8 pair requirement for small wins, plus Seven Pairs and All Pungs big-win recognition. Random-eye wins are allowed for All Pungs and Pure Suit hands. Kongs add one extra tile each (max 4, 18 tiles total). No minimum fan gate. Contextual Changsha settlement mechanics (bird catch, dealer rotation variants, kong-event payouts, xiao hu/da hu settlement) are not modeled yet.
 
 ### Ruleset selection
 Specify the ruleset string when creating a game. If omitted, the API defaults to Changsha 258. Accepted values include:
