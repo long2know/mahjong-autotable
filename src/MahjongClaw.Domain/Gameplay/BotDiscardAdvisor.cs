@@ -7,6 +7,7 @@ public static class BotDiscardAdvisor
 {
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
+    private static readonly IReadOnlyList<Tile> Changsha258SmallWinPairTiles = BuildChangshaSmallWinPairTiles();
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
@@ -66,7 +67,8 @@ public static class BotDiscardAdvisor
                     Tile = tile,
                     Index = index,
                     Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset)
-                        + GetTileAvailabilityPenalty(tile, ownedCounts, visibleCounts),
+                        + GetTileAvailabilityPenalty(tile, ownedCounts, visibleCounts)
+                        + GetChangshaSmallWinPairVisibilityAdjustment(tile, ownedCounts, visibleCounts, ruleset),
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies
                 };
@@ -590,6 +592,40 @@ public static class BotDiscardAdvisor
             .ToArray();
     }
 
+    private static int GetChangshaSmallWinPairVisibilityAdjustment(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
+        MahjongRuleset ruleset)
+    {
+        if (ruleset != MahjongRuleset.Changsha258 || visibleCounts.Count == 0 || !Changsha258Ruleset.IsSmallWinPair(tile))
+        {
+            return 0;
+        }
+
+        if (Changsha258SmallWinPairTiles.Any(pairTile =>
+                ownedCounts.TryGetValue(pairTile, out var pairCount) && pairCount >= 2))
+        {
+            return 0;
+        }
+
+        ownedCounts.TryGetValue(tile, out var ownedCount);
+        if (ownedCount != 1)
+        {
+            return 0;
+        }
+
+        visibleCounts.TryGetValue(tile, out var visibleCount);
+        var remainingCopies = 4 - ownedCount - visibleCount;
+
+        return remainingCopies switch
+        {
+            <= 0 => -5,
+            1 => -2,
+            _ => 0
+        };
+    }
+
     private static int GetTileAvailabilityPenalty(
         Tile tile,
         IReadOnlyDictionary<Tile, int> ownedCounts,
@@ -671,4 +707,9 @@ public static class BotDiscardAdvisor
 
     private static bool IsTerminalSuitedTile(Tile tile)
         => !tile.IsHonor && tile.Rank is 1 or 9;
+
+    private static IReadOnlyList<Tile> BuildChangshaSmallWinPairTiles()
+        => Changsha258Ruleset.AllowedSuits
+            .SelectMany(suit => Changsha258Ruleset.SortedSmallWinPairRanks.Select(rank => new Tile(suit, rank)))
+            .ToArray();
 }
