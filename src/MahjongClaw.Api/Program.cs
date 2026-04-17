@@ -246,6 +246,21 @@ gameGroup.MapGet("/{id:guid}/state", async (
     var tilesInPlay = game.Tiles.Count(tile => !string.Equals(tile.Location, "Wall", StringComparison.OrdinalIgnoreCase));
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
     var wallTotal = WallBuilder.GetWallTotal(ruleset);
+    var turnState = new TurnActionState(TurnPhase.NotStarted, Array.Empty<TurnAction>());
+    if (game.CurrentPlayerId is { } currentPlayerId)
+    {
+        var handTileCount = game.Tiles.Count(tile =>
+            tile.PlayerId == currentPlayerId &&
+            string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase));
+        var meldTileCount = game.Tiles.Count(tile =>
+            tile.PlayerId == currentPlayerId &&
+            string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
+        var declaredKongCount = CountDeclaredKongs(game.Tiles, currentPlayerId);
+        turnState = TurnActionStateResolver.Resolve(game.Status, handTileCount, meldTileCount, declaredKongCount);
+    }
+    var lastDiscard = game.Discards
+        .OrderByDescending(discard => discard.Sequence)
+        .FirstOrDefault();
 
     var response = new GameStateResponse(
         game.Id,
@@ -259,7 +274,11 @@ gameGroup.MapGet("/{id:guid}/state", async (
         game.Players.Select(player => new PlayerSummary(player.Id, player.Name, player.Seat, player.Score)).ToList(),
         tilesInPlay,
         game.Melds.Count,
-        game.Discards.Count);
+        game.Discards.Count,
+        turnState.Phase.ToString(),
+        ToActionNames(turnState.LegalActions),
+        lastDiscard?.TileId,
+        lastDiscard?.PlayerId);
 
     return Results.Ok(response);
 });
@@ -297,10 +316,11 @@ gameGroup.MapPost("/{id:guid}/draw", async (
         tile.PlayerId == request.PlayerId &&
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
     var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
+    var turnState = TurnActionStateResolver.Resolve(game.Status, handTileCount, meldTileCount, declaredKongCount);
 
-    if (!TurnFlowValidator.CanDraw(handTileCount, meldTileCount, declaredKongCount))
+    if (!turnState.HasAction(TurnAction.Draw))
     {
-        return Results.Conflict(new { message = "Player must hold 13 owned tiles (plus one per declared kong) before drawing." });
+        return Results.Conflict(new { message = $"Player cannot draw during {turnState.Phase} phase." });
     }
 
     var tile = game.Tiles
@@ -358,10 +378,11 @@ gameGroup.MapPost("/{id:guid}/discard", async (
         tile.PlayerId == request.PlayerId &&
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
     var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
+    var turnState = TurnActionStateResolver.Resolve(game.Status, handTileCount, meldTileCount, declaredKongCount);
 
-    if (!TurnFlowValidator.CanDiscard(handTileCount, meldTileCount, declaredKongCount))
+    if (!turnState.HasAction(TurnAction.Discard))
     {
-        return Results.Conflict(new { message = "Player must hold 14 owned tiles (plus one per declared kong) before discarding." });
+        return Results.Conflict(new { message = $"Player cannot discard during {turnState.Phase} phase." });
     }
 
     var tile = game.Tiles.FirstOrDefault(t =>
@@ -487,6 +508,12 @@ gameGroup.MapPost("/{id:guid}/meld", async (
 
     var meldTileRequirement = meldType == MeldType.Kong ? 4 : 3;
     var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
+    var turnState = TurnActionStateResolver.Resolve(game.Status, handTileCount, meldTileCount, declaredKongCount);
+
+    if (!turnState.HasAction(TurnAction.Meld))
+    {
+        return Results.Conflict(new { message = $"Player cannot declare meld during {turnState.Phase} phase." });
+    }
 
     if (!TurnFlowValidator.CanDeclareMeld(handTileCount, meldTileCount, meldTileRequirement, declaredKongCount))
     {
@@ -577,6 +604,12 @@ gameGroup.MapPost("/{id:guid}/win", async (
         tile.PlayerId == request.PlayerId &&
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
     var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
+    var turnState = TurnActionStateResolver.Resolve(game.Status, handTileCount, meldTileCount, declaredKongCount);
+
+    if (!turnState.HasAction(TurnAction.Win))
+    {
+        return Results.Conflict(new { message = $"Player cannot declare win during {turnState.Phase} phase." });
+    }
 
     if (!TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount, declaredKongCount))
     {
@@ -754,10 +787,10 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         .ToList();
     var declaredKongCount = CountDeclaredKongs(game.Tiles, botPlayer.Id);
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
-    var canDraw = TurnFlowValidator.CanDraw(handTiles.Count, meldTiles.Count, declaredKongCount);
+    var turnState = TurnActionStateResolver.Resolve(game.Status, handTiles.Count, meldTiles.Count, declaredKongCount);
 
     DrawTileResponse? drawResponse = null;
-    if (canDraw)
+    if (turnState.HasAction(TurnAction.Draw))
     {
         if (!TryBuildTileHand(handTiles, out var botConcealedHand) || !TryBuildTileHand(meldTiles, out var botMeldHand))
         {
@@ -801,7 +834,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         drawResponse = new DrawTileResponse(tile.Id, tile.Suit, tile.Rank, tile.Wind, tile.Dragon);
         handTiles.Add(tile);
     }
-    else if (!TurnFlowValidator.CanDiscard(handTiles.Count, meldTiles.Count, declaredKongCount))
+    else if (!turnState.HasAction(TurnAction.Discard))
     {
         return BotTurnExecutionResult.Fail(409, "Bot hand is in an invalid state.");
     }
@@ -923,6 +956,11 @@ static bool TryGetLatestDiscardTileForBotClaim(GameEntity game, Guid botPlayerId
     return true;
 }
 
+static IReadOnlyList<string> ToActionNames(IReadOnlyList<TurnAction> actions)
+    => actions
+        .Select(static action => action.ToString())
+        .ToList();
+
 static Guid? GetNextPlayerId(GameEntity game, PlayerEntity currentPlayer)
 {
     var seatOrder = new[] { "East", "South", "West", "North" };
@@ -1011,7 +1049,11 @@ internal record GameStateResponse(
     IReadOnlyList<PlayerSummary> Players,
     int TilesInPlay,
     int MeldCount,
-    int DiscardCount);
+    int DiscardCount,
+    string TurnPhase,
+    IReadOnlyList<string> LegalActions,
+    Guid? LastDiscardTileId,
+    Guid? LastDiscardPlayerId);
 
 internal record DrawTileRequest(Guid PlayerId);
 internal record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);

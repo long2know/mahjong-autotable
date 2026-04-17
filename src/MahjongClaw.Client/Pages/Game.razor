@@ -299,7 +299,8 @@
         PlayerId is not null &&
         _liveState is not null &&
         IsLiveGameActive(_liveState.Status) &&
-        _liveState.CurrentPlayerId == PlayerId;
+        _liveState.CurrentPlayerId == PlayerId &&
+        HasLegalAction("Draw");
 
     private bool CanDiscard =>
         GameId is not null &&
@@ -307,13 +308,16 @@
         _liveState is not null &&
         IsLiveGameActive(_liveState.Status) &&
         _liveState.CurrentPlayerId == PlayerId &&
-        _lastDrawnTileId is not null;
+        _lastDrawnTileId is not null &&
+        HasLegalAction("Discard");
 
     private bool CanDeclareWin =>
         GameId is not null &&
         PlayerId is not null &&
         _liveState is not null &&
-        IsLiveGameActive(_liveState.Status);
+        IsLiveGameActive(_liveState.Status) &&
+        _liveState.CurrentPlayerId == PlayerId &&
+        HasLegalAction("Win");
 
     private int WallTotal => _liveState is null
         ? RulesetHelpers.GetWallTotal(MockState.Ruleset)
@@ -332,7 +336,7 @@
     private string RulesetDescription => _liveState is null
         ? RulesetHelpers.GetDescription(MockState.Ruleset)
         : RulesetHelpers.GetDescription(_liveState.Ruleset);
-    private string CurrentPhase => _liveState is null ? "Discard" : NormalizeGameStatus(_liveState.Status);
+    private string CurrentPhase => _liveState is null ? "Discard" : NormalizeTurnPhase(_liveState.TurnPhase, _liveState.Status);
     private string CurrentTurnName => ResolvePlayerName(_liveState?.CurrentPlayerId, fallback: PlayerEast.Name);
     private string CurrentTurnSeat => ResolveSeat(_liveState?.CurrentPlayerId, fallback: "East");
     private string CurrentDealerName => _liveState is null
@@ -788,6 +792,10 @@
     private static bool IsBotName(string name)
         => name.StartsWith("Bot", StringComparison.OrdinalIgnoreCase);
 
+    private bool HasLegalAction(string action)
+        => _liveState?.LegalActions?.Any(candidate =>
+               string.Equals(candidate, action, StringComparison.OrdinalIgnoreCase)) == true;
+
     private static string NormalizeGameStatus(string? status)
     {
         if (string.IsNullOrWhiteSpace(status))
@@ -806,6 +814,21 @@
         }
 
         return status;
+    }
+
+    private static string NormalizeTurnPhase(string? turnPhase, string? status)
+    {
+        if (string.IsNullOrWhiteSpace(turnPhase))
+        {
+            return NormalizeGameStatus(status);
+        }
+
+        return turnPhase switch
+        {
+            "NotStarted" => "Waiting",
+            "Completed" => "Complete",
+            _ => turnPhase
+        };
     }
 
     private static string GetStatusBadge(string status) => status switch

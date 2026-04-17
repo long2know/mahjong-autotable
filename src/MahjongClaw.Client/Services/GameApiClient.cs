@@ -94,7 +94,11 @@ public sealed class GameApiClient
         IReadOnlyList<PlayerSummary> Players,
         int TilesInPlay,
         int MeldCount,
-        int DiscardCount);
+        int DiscardCount,
+        string TurnPhase,
+        IReadOnlyList<string> LegalActions,
+        Guid? LastDiscardTileId,
+        Guid? LastDiscardPlayerId);
 
     public record DrawTileRequest(Guid PlayerId);
     public record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);
