@@ -415,6 +415,7 @@
     private string _winBirdRankText = string.Empty;
     private bool _winIsMultipleWin;
     private GameApiClient.WinResponse? _latestWin;
+    private int _latestStateRevision = -1;
     private bool _botTurnInFlight;
     private string? LiveStatus;
 
@@ -708,7 +709,14 @@
 
         try
         {
-            _liveState = await Api.GetGameStateAsync(GameId.Value, PlayerId, _disposeCts.Token);
+            var refreshedState = await Api.GetGameStateAsync(GameId.Value, PlayerId, _disposeCts.Token);
+            if (_latestStateRevision > refreshedState.StateRevision)
+            {
+                return;
+            }
+
+            _liveState = refreshedState;
+            _latestStateRevision = refreshedState.StateRevision;
             if (_selectedMeldTileIds.Count > 0)
             {
                 var viewerHandIds = _liveState.ViewerHand.Select(tile => tile.Id).ToHashSet();

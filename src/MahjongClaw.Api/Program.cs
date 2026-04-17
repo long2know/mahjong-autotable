@@ -279,6 +279,10 @@ gameGroup.MapGet("/{id:guid}/state", async (
             .ToList()
         : new List<TileSummary>();
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
+    var stateRevision = tilesInPlay
+        + game.Discards.Count
+        + game.Melds.Count
+        + (string.Equals(game.Status, "Completed", StringComparison.OrdinalIgnoreCase) ? 1 : 0);
     var wallTotal = WallBuilder.GetWallTotal(ruleset);
     var turnState = new TurnActionState(TurnPhase.NotStarted, Array.Empty<TurnAction>());
     if (game.CurrentPlayerId is { } currentPlayerId)
@@ -314,6 +318,7 @@ gameGroup.MapGet("/{id:guid}/state", async (
                 tile.PlayerId == player.Id &&
                 string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase)))).ToList(),
         tilesInPlay,
+        stateRevision,
         meldSummaries,
         discardSummaries,
         viewerHand,
@@ -362,6 +367,26 @@ gameGroup.MapPost("/{id:guid}/draw", async (
 
     if (!turnState.HasAction(TurnAction.Draw))
     {
+        if (turnState.HasAction(TurnAction.Discard))
+        {
+            var latestHandTile = game.Tiles
+                .Where(tile =>
+                    tile.PlayerId == request.PlayerId &&
+                    string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(tile => tile.Sequence)
+                .FirstOrDefault();
+
+            if (latestHandTile is not null)
+            {
+                return Results.Ok(new DrawTileResponse(
+                    latestHandTile.Id,
+                    latestHandTile.Suit,
+                    latestHandTile.Rank,
+                    latestHandTile.Wind,
+                    latestHandTile.Dragon));
+            }
+        }
+
         return Results.Conflict(new { message = $"Player cannot draw during {turnState.Phase} phase." });
     }
 
@@ -406,6 +431,14 @@ gameGroup.MapPost("/{id:guid}/discard", async (
     if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
     {
         return Results.Conflict(new { message = "Game is not active." });
+    }
+
+    var existingDiscard = game.Discards.FirstOrDefault(discard =>
+        discard.PlayerId == request.PlayerId &&
+        discard.TileId == request.TileId);
+    if (existingDiscard is not null)
+    {
+        return Results.Ok(new DiscardTileResponse(existingDiscard.Id, existingDiscard.TileId, existingDiscard.Sequence));
     }
 
     if (game.CurrentPlayerId != request.PlayerId)
@@ -531,14 +564,30 @@ gameGroup.MapPost("/{id:guid}/meld", async (
         return Results.NotFound(new { message = "Player not found in game." });
     }
 
-    if (game.CurrentPlayerId != request.PlayerId)
-    {
-        return Results.Conflict(new { message = "It is not this player's turn." });
-    }
-
     if (!Enum.TryParse<MeldType>(request.Type, true, out var meldType))
     {
         return Results.BadRequest(new { message = "Invalid meld type." });
+    }
+
+    var normalizedMeldType = meldType.ToString();
+    var requestedTileIds = request.TileIds.OrderBy(tileId => tileId).ToList();
+    var existingMeld = game.Melds.FirstOrDefault(candidate =>
+        candidate.PlayerId == request.PlayerId &&
+        string.Equals(candidate.Type, normalizedMeldType, StringComparison.OrdinalIgnoreCase) &&
+        game.Tiles
+            .Where(tile => tile.MeldId == candidate.Id)
+            .Select(tile => tile.Id)
+            .OrderBy(tileId => tileId)
+            .SequenceEqual(requestedTileIds));
+
+    if (existingMeld is not null)
+    {
+        return Results.Ok(new MeldResponse(existingMeld.Id, existingMeld.Type, requestedTileIds));
+    }
+
+    if (game.CurrentPlayerId != request.PlayerId)
+    {
+        return Results.Conflict(new { message = "It is not this player's turn." });
     }
 
     var handTileCount = game.Tiles.Count(tile =>
@@ -622,6 +671,12 @@ gameGroup.MapPost("/{id:guid}/win", async (
     if (game is null)
     {
         return Results.NotFound();
+    }
+
+    if (string.Equals(game.Status, "Completed", StringComparison.OrdinalIgnoreCase) &&
+        game.CurrentPlayerId == request.PlayerId)
+    {
+        return Results.Ok(new WinResponse(game.Id, game.Status, request.PlayerId));
     }
 
     if (!string.Equals(game.Status, "Active", StringComparison.OrdinalIgnoreCase))
@@ -1251,6 +1306,7 @@ internal record GameStateResponse(
     DateTimeOffset CreatedAt,
     IReadOnlyList<PlayerSummary> Players,
     int TilesInPlay,
+    int StateRevision,
     IReadOnlyList<MeldSummary> Melds,
     IReadOnlyList<DiscardSummary> Discards,
     IReadOnlyList<TileSummary> ViewerHand,

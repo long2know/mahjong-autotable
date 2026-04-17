@@ -107,6 +107,7 @@ public sealed class GameApiClient
         DateTimeOffset CreatedAt,
         IReadOnlyList<PlayerSummary> Players,
         int TilesInPlay,
+        int StateRevision,
         IReadOnlyList<MeldSummary> Melds,
         IReadOnlyList<DiscardSummary> Discards,
         IReadOnlyList<TileSummary> ViewerHand,
