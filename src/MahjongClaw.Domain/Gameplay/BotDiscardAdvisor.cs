@@ -621,20 +621,21 @@ public static class BotDiscardAdvisor
             return 0;
         }
 
-        ownedCounts.TryGetValue(tile, out var ownedCount);
-        if (ownedCount != 1)
+        handCounts.TryGetValue(tile, out var handCount);
+        if (handCount != 1)
         {
             return 0;
         }
 
+        ownedCounts.TryGetValue(tile, out var ownedCount);
         visibleCounts.TryGetValue(tile, out var visibleCount);
         var remainingCopies = 4 - ownedCount - visibleCount;
 
         return remainingCopies switch
         {
-            <= 0 => -5,
-            1 => -2,
-            2 => -1,
+            <= 0 => -20,
+            1 => -10,
+            2 => -5,
             _ => 0
         };
     }
