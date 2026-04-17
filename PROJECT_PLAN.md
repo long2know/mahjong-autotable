@@ -1,107 +1,80 @@
-# Mahjong Claw — Project Plan
+# Mahjong Claw — Changsha Completion Plan
 
-## 1) Objectives
-- Implement Traditional Chinese Mahjong (official wall construction, turn flow, melds, win detection, scoring) for 4 players.
-- Ship a .NET 10 backend with EF Core (SQLite) + real‑time SignalR updates.
-- Deliver a Web UI (Blazor WASM preferred) with responsive layout and game visuals.
-- Provide automated tests, CI, and documentation.
+## Objective
+Reach full, production-stable Changsha Mahjong support in this repository by closing rules, API/state, UI, and QA gaps against the referenced Changsha rule set (tile set, xiao hu/da hu, kong events, bird catch, multi-win, dealer/round progression, and settlement).
 
-## 2) Architecture Overview
-**Backend (.NET 10 / ASP.NET Core Minimal API)**
-- API endpoints for game lifecycle + player actions.
-- JWT auth for players.
-- SignalR hub for pushing game state.
-- Rules engine encapsulated in domain services.
+## Current Baseline (Audit Summary)
+- **Implemented core:** 108-tile Changsha set, 2/5/8 eye small-win gate, kong-aware hand shapes, Seven Pairs, All Pungs recognition, basic draw/discard/meld/win loop.
+- **Partially implemented:** random-eye eligibility for some big-win shapes, dealer/current turn tracking.
+- **Missing major mechanics:** xiao hu family, most da hu event-based variants, bird catch and payout math, claim arbitration, rob-kong/kong-on-cannon, missed-win lock, multi-winner resolution, full settlement ledger, dealer/round transition policy, gameplay e2e coverage.
 
-**Persistence (EF Core + SQLite)**
-- Entities: Game, Player, Tile, Wall, Hand, DiscardPile, Meld.
-- Migrations tracked in repo.
+## “100% Complete and Working” Definition
+1. Full Changsha rule parity implemented in engine + runtime flow.
+2. Server-authoritative turn/claim state machine with deterministic conflict resolution.
+3. Complete settlement with per-seat deltas, dealer modifiers, bird effects, and replayable hand history.
+4. Blazor client fully wired for real gameplay (no placeholder action flows).
+5. Automated quality gates pass for domain, API integration, realtime ordering, and end-to-end multiplayer flows.
 
-**Front‑end (Blazor WASM)**
-- Real‑time updates via SignalR.
-- Visuals for hand/discard/wall/melds.
-- Mobile‑friendly responsive layout (future MAUI reuse).
+## Phase Roadmap
 
-## 3) Milestones & Phases
-### Phase 0 — Repo & Foundations
-- [ ] Initialize .NET 10 solution structure
-- [ ] Add base documentation & conventions
-- [ ] CI pipeline scaffold (GitHub Actions)
+| Phase | Goal | Key Deliverables | Merge Gate |
+|---|---|---|---|
+| P0 | Planning + baseline lock | Audits, completion backlog, baseline test pass | Plan approved and merged |
+| P1 | Runtime state-machine foundation | Claim windows, action legality model, transition invariants | Illegal transitions prevented by tests |
+| P2 | Rules completion (Changsha) | Xiao hu/da hu evaluators, kong/last-tile/missed-win semantics | Rule parity matrix passing |
+| P3 | API + persistence completion | Claim APIs, settlement ledger, richer state DTOs/events | Integration tests green |
+| P4 | UI gameplay completion | Claim/meld/settlement UX wired to live APIs/events | Full playable hand flow in e2e |
+| P5 | Stability + bot + race hardening | Concurrency/race handling, reconnect consistency, bot adaptation | Multi-client stability suite green |
+| P6 | Release hardening | CI release gates, soak/perf checks, docs/runbook | Release candidate cut |
 
-### Phase 1 — Core Domain & Rules Engine
-- [ ] Tile generation (144 tiles) + shuffle
-- [ ] Wall build (4 walls, 18 stacks x 2 tiles)
-- [ ] Break wall + deal logic (East 14, others 13)
-- [ ] Turn order, draw/discard
-- [ ] Meld detection (chow/pung/kong)
-- [ ] Win detection + baseline scoring
-- [ ] Unit tests for rule engine
+## Backlog (Execution IDs)
 
-### Phase 2 — Backend API + Persistence
-- [ ] EF Core models + SQLite migrations
-- [ ] Game lifecycle endpoints: create/join/start
-- [ ] Action endpoints: draw/discard/meld/win
-- [ ] Game state serialization
-- [ ] SignalR hub + events
-- [ ] Integration tests for API
+### P1 — State machine foundation
+- **CHG-P1-001:** Introduce explicit action-state graph (draw/discard/claim/resolve/settle).
+- **CHG-P1-002:** Add claim window + timeout model and persistence.
+- **CHG-P1-003:** Implement discard claim priority resolution policy.
+- **CHG-P1-004:** Add transition invariant/unit tests for legal/illegal action paths.
 
-### Phase 3 — Front‑End MVP
-- [ ] Blazor WASM project
-- [ ] Lobby + join/start UI
-- [ ] Game board (hand/discards/wall/melds)
-- [ ] Action UI (draw/discard/meld)
-- [ ] SignalR subscription + state rendering
-- [ ] Responsive layout pass
+### P2 — Changsha rules completion
+- **CHG-P2-001:** Add xiao hu detector set (Big Four Happiness, Banhu, Missing One Suit, Six Six Straight).
+- **CHG-P2-002:** Add explicit da hu taxonomy + evaluator (Heavenly/Earthly, All 2/5/8, Pure Suit, Last Tile variants, Luxury Seven Pairs, Fully Reliant).
+- **CHG-P2-003:** Model kong event variants (Win after Kong, Robbing Kong, Kong on Cannon).
+- **CHG-P2-004:** Implement missed-win lock/unlock semantics.
+- **CHG-P2-005:** Add multi-winner-on-discard rule resolution support.
 
-### Phase 4 — Quality & Release
-- [ ] Expanded test coverage
-- [ ] Performance pass (state diffing, payload sizes)
-- [ ] Documentation (API + rules)
-- [ ] Deployment notes & Docker (optional)
+### P3 — API/persistence/settlement
+- **CHG-P3-001:** Add settlement ledger entities (hand result, seat deltas, reason codes).
+- **CHG-P3-002:** Add bird catch resolution and payout multiplier pipeline.
+- **CHG-P3-003:** Expand API contracts for claims, settlement, and hand progression.
+- **CHG-P3-004:** Add API integration suite for action conflicts and settlement correctness.
 
-## 4) Data Model (Draft)
-- **Game**: Id, Status, CurrentPlayerId, DealerId (East), WallId, Round, CreatedAt
-- **Player**: Id, Name, Seat (East/South/West/North), HandId, Score
-- **Tile**: Id, Suit, Rank, IsFlower, IsSeason, OwnerType (Wall/Hand/Discard/Meld)
-- **Wall**: Id, Tiles (ordered)
-- **Hand**: Id, PlayerId, Tiles
-- **DiscardPile**: Id, GameId, Tiles
-- **Meld**: Id, GameId, PlayerId, Type (Chow/Pung/Kong), Tiles
+### P4 — UI gameplay wiring
+- **CHG-P4-001:** Replace disabled meld flow with live tile-selection/meld declaration UX.
+- **CHG-P4-002:** Add claim decision UI (chi/pung/kong/win/pass) with priority/timeout feedback.
+- **CHG-P4-003:** Add hand settlement view (winners, birds, deltas, dealer next).
+- **CHG-P4-004:** Remove mock-only gameplay dependencies for active games.
 
-## 5) API Endpoints (Initial)
-- POST `/api/game` — create game
-- POST `/api/game/{id}/join`
-- POST `/api/game/{id}/start`
-- POST `/api/game/{id}/draw`
-- POST `/api/game/{id}/discard`
-- POST `/api/game/{id}/meld`
-- POST `/api/game/{id}/win`
-- GET `/api/game/{id}/state`
+### P5 — Stability and multiplayer correctness
+- **CHG-P5-001:** Add realtime ordering/idempotency guardrails and tests.
+- **CHG-P5-002:** Harden reconnect/resync behavior with state replay.
+- **CHG-P5-003:** Expand bot logic to full-rule turn/claim compatibility.
 
-## 6) SignalR Events
-- `GameStateUpdated`
-- `PlayerJoined`
-- `GameStarted`
-- `TileDrawn`
-- `TileDiscarded`
-- `MeldDeclared`
-- `GameEnded`
+### P6 — Release readiness
+- **CHG-P6-001:** Enforce full CI gates for domain + API + e2e gameplay suites.
+- **CHG-P6-002:** Add soak/perf checks around event throughput and hand completion.
+- **CHG-P6-003:** Ship operator/runbook docs for migrations and rollback.
 
-## 7) Risks / Open Questions
-- Exact scoring rules (Chinese Official) need confirmation + reference spec.
-- State model for hidden info (hands) across clients.
-- Security model for player auth (JWT flow design).
-- Determinism in wall break + dice handling.
+## QA Release Gates
+1. Domain parity vectors for all xiao hu/da hu categories.
+2. API integration coverage for every game action happy + negative path.
+3. Realtime ordering/reconnect tests with deterministic sequencing checks.
+4. End-to-end multiplayer gameplay tests covering claims, kong events, settlement.
+5. Full solution build/test and e2e smoke all green on main.
 
-## 8) Immediate Next Steps
-1. Scaffold .NET 10 solution + projects (Api, Domain, Persistence, Tests, Client).
-2. Add EF Core models + initial migration.
-3. Implement rules engine core (tiles, wall, deal, draw/discard).
-4. Stand up minimal API endpoints + SignalR hub.
-
-## 9) Acceptance Criteria (Phase 1 MVP)
-- 4 players can create/join/start a game.
-- Server enforces valid turns and tile actions.
-- Wall/draw/discard/meld flows work end‑to‑end.
-- Win detection triggers game end with scoring summary.
-- Clients receive real‑time updates.
+## Branch Execution Strategy
+Use short-lived branches per phase slice:
+1. checkout `main`
+2. create `feature/changsha-completion-{phase}-{slice}`
+3. implement scoped backlog items + tests
+4. commit, push, PR, merge
+5. repeat for next phase until all backlog IDs close
