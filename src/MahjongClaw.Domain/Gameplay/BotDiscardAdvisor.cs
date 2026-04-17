@@ -643,7 +643,13 @@ public static class BotDiscardAdvisor
 
         if (tile.IsHonor)
         {
-            return remainingSelf <= 0 ? -4 : 0;
+            return remainingSelf switch
+            {
+                <= 0 => -4,
+                1 => -2,
+                2 => -1,
+                _ => 0
+            };
         }
 
         if (!IsSuitedTile(tile))
