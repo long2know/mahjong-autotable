@@ -107,6 +107,10 @@ public sealed class GameApiClient
     public record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
     public record WinRequest(
         Guid PlayerId,
+        bool IsSelfDraw = true,
+        Guid? DiscarderPlayerId = null,
+        int? BirdRank = null,
+        bool IsMultipleWin = false,
         bool IsInitialDeal = false,
         bool IsHeavenly = false,
         bool IsEarthly = false,
@@ -116,12 +120,17 @@ public sealed class GameApiClient
         bool IsRobbingKong = false,
         bool IsKongOnCannon = false,
         bool IsFullyReliant = false);
+    public record PlayerScoreDelta(Guid PlayerId, int Delta, int NewScore);
     public record WinResponse(
         Guid GameId,
         string Status,
         Guid PlayerId,
         IReadOnlyList<string>? ChangshaWinTypes = null,
         bool? IsBigWin = null,
-        bool? IsSmallWin = null);
+        bool? IsSmallWin = null,
+        IReadOnlyList<PlayerScoreDelta>? ScoreDeltas = null,
+        Guid? NextDealerId = null,
+        int? NextRound = null,
+        string? BirdSeat = null);
     public record BotTurnResponse(Guid? DrawnTileId, Guid? DiscardId, Guid? DiscardTileId, Guid? NextPlayerId, bool Won);
 }

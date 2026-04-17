@@ -516,11 +516,21 @@
 
     private Task HandleGameWonEventAsync(GameApiClient.WinResponse payload)
     {
+        var winner = ResolvePlayerName(payload.PlayerId, payload.PlayerId.ToString()[..8]);
         var winTypeSummary = payload.ChangshaWinTypes is { Count: > 0 }
             ? $" ({string.Join(", ", payload.ChangshaWinTypes)})"
             : string.Empty;
+        var settlementSummary = payload.ScoreDeltas is { Count: > 0 }
+            ? $", settlement {payload.ScoreDeltas.Count} entries"
+            : string.Empty;
+        var birdSummary = string.IsNullOrWhiteSpace(payload.BirdSeat)
+            ? string.Empty
+            : $", bird {payload.BirdSeat}";
+        var nextRoundSummary = payload.NextRound is int round
+            ? $", next round {round}"
+            : string.Empty;
 
-        return RefreshFromEventAsync($"Game won by {payload.PlayerId.ToString()[..8]}{winTypeSummary}");
+        return RefreshFromEventAsync($"Game won by {winner}{winTypeSummary}{settlementSummary}{birdSummary}{nextRoundSummary}");
     }
 
     private Task RefreshFromEventAsync(string eventName)
@@ -653,8 +663,15 @@
 
         try
         {
-            await Api.DeclareWinAsync(GameId.Value, new GameApiClient.WinRequest(PlayerId.Value), _disposeCts.Token);
-            LiveStatus = "Win declared.";
+            var result = await Api.DeclareWinAsync(GameId.Value, new GameApiClient.WinRequest(PlayerId.Value), _disposeCts.Token);
+            var winTypeSummary = result.ChangshaWinTypes is { Count: > 0 }
+                ? $" ({string.Join(", ", result.ChangshaWinTypes)})"
+                : string.Empty;
+            var scoreDeltaSummary = result.ScoreDeltas is { Count: > 0 }
+                ? $", settlement entries: {result.ScoreDeltas.Count}"
+                : string.Empty;
+
+            LiveStatus = $"Win declared{winTypeSummary}{scoreDeltaSummary}.";
             await RefreshLiveStateAsync();
         }
         catch (Exception ex)

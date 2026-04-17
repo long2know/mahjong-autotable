@@ -637,12 +637,69 @@ gameGroup.MapPost("/{id:guid}/win", async (
     }
 
     ChangshaWinEvaluation? changshaEvaluation = null;
+    IReadOnlyList<PlayerScoreDelta>? scoreDeltas = null;
+    Guid? nextDealerId = null;
+    int? nextRound = null;
+    string? birdSeat = null;
     if (ruleset == MahjongRuleset.Changsha258)
     {
+        if (!request.IsSelfDraw && request.DiscarderPlayerId is null)
+        {
+            return Results.BadRequest(new { message = "DiscarderPlayerId is required for discard wins." });
+        }
+
+        if (request.IsSelfDraw && request.DiscarderPlayerId is not null)
+        {
+            return Results.BadRequest(new { message = "DiscarderPlayerId must be omitted for self-draw wins." });
+        }
+
+        if (request.DiscarderPlayerId == request.PlayerId)
+        {
+            return Results.BadRequest(new { message = "Winner and discarder cannot be the same player." });
+        }
+
+        if (request.BirdRank is < 1 or > 9)
+        {
+            return Results.BadRequest(new { message = "BirdRank must be between 1 and 9." });
+        }
+
         changshaEvaluation = ChangshaWinTypeEvaluator.Evaluate(
             tileHand,
             winningHand,
             BuildChangshaWinContext(request));
+
+        if (!TryBuildChangshaSettlementSeats(game.Players, out var settlementSeats, out var seatBuildError))
+        {
+            return Results.Conflict(new { message = seatBuildError });
+        }
+
+        var settlementRequest = new ChangshaSettlementRequest(
+            settlementSeats,
+            WinnerId: request.PlayerId,
+            DealerId: game.DealerId ?? request.PlayerId,
+            IsSelfDraw: request.IsSelfDraw,
+            IsBigWin: changshaEvaluation.IsBigWin,
+            DiscarderId: request.IsSelfDraw ? null : request.DiscarderPlayerId,
+            BirdRank: request.BirdRank,
+            IsMultipleWin: request.IsMultipleWin);
+
+        var settlementResult = ChangshaSettlementCalculator.Calculate(settlementRequest);
+
+        foreach (var delta in settlementResult.ScoreDeltas)
+        {
+            var player = game.Players.First(candidate => candidate.Id == delta.PlayerId);
+            player.Score = delta.NewScore;
+        }
+
+        game.DealerId = settlementResult.NextDealerId;
+        game.Round = Math.Max(1, game.Round + settlementResult.NextRoundIncrement);
+
+        scoreDeltas = settlementResult.ScoreDeltas
+            .Select(delta => new PlayerScoreDelta(delta.PlayerId, delta.Delta, delta.NewScore))
+            .ToList();
+        nextDealerId = settlementResult.NextDealerId;
+        nextRound = game.Round;
+        birdSeat = settlementResult.BirdSeat?.ToString();
     }
 
     game.Status = "Completed";
@@ -656,7 +713,11 @@ gameGroup.MapPost("/{id:guid}/win", async (
         request.PlayerId,
         changshaEvaluation?.WinTypes.Select(static type => type.ToString()).ToList(),
         changshaEvaluation?.IsBigWin,
-        changshaEvaluation?.IsSmallWin);
+        changshaEvaluation?.IsSmallWin,
+        scoreDeltas,
+        nextDealerId,
+        nextRound,
+        birdSeat);
     await SendToGameWithAliases(hubContext, game.Id, "GameWon", response, cancellationToken);
     return Results.Ok(response);
 });
@@ -988,6 +1049,36 @@ static ChangshaWinContext BuildChangshaWinContext(WinRequest request)
         IsKongOnCannon: request.IsKongOnCannon,
         IsFullyReliant: request.IsFullyReliant);
 
+static bool TryBuildChangshaSettlementSeats(
+    IEnumerable<PlayerEntity> players,
+    out List<ChangshaSettlementSeat> seats,
+    out string? error)
+{
+    seats = new List<ChangshaSettlementSeat>();
+    error = null;
+
+    foreach (var player in players)
+    {
+        if (!Enum.TryParse<Wind>(player.Seat, true, out var seatWind))
+        {
+            error = $"Player '{player.Name}' has invalid seat '{player.Seat}'.";
+            seats.Clear();
+            return false;
+        }
+
+        seats.Add(new ChangshaSettlementSeat(player.Id, seatWind, player.Score));
+    }
+
+    if (seats.Count != 4)
+    {
+        error = "Changsha settlement requires exactly four players.";
+        seats.Clear();
+        return false;
+    }
+
+    return true;
+}
+
 static Guid? GetNextPlayerId(GameEntity game, PlayerEntity currentPlayer)
 {
     var seatOrder = new[] { "East", "South", "West", "North" };
@@ -1096,6 +1187,10 @@ internal record MeldRequest(Guid PlayerId, string Type, IReadOnlyList<Guid> Tile
 internal record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
 internal record WinRequest(
     Guid PlayerId,
+    bool IsSelfDraw = true,
+    Guid? DiscarderPlayerId = null,
+    int? BirdRank = null,
+    bool IsMultipleWin = false,
     bool IsInitialDeal = false,
     bool IsHeavenly = false,
     bool IsEarthly = false,
@@ -1105,10 +1200,15 @@ internal record WinRequest(
     bool IsRobbingKong = false,
     bool IsKongOnCannon = false,
     bool IsFullyReliant = false);
+internal record PlayerScoreDelta(Guid PlayerId, int Delta, int NewScore);
 internal record WinResponse(
     Guid GameId,
     string Status,
     Guid PlayerId,
     IReadOnlyList<string>? ChangshaWinTypes = null,
     bool? IsBigWin = null,
-    bool? IsSmallWin = null);
+    bool? IsSmallWin = null,
+    IReadOnlyList<PlayerScoreDelta>? ScoreDeltas = null,
+    Guid? NextDealerId = null,
+    int? NextRound = null,
+    string? BirdSeat = null);
