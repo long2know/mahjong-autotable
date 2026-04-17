@@ -227,6 +227,7 @@ gameGroup.MapPost("/{id:guid}/start", async (
 
 gameGroup.MapGet("/{id:guid}/state", async (
     Guid id,
+    Guid? viewerPlayerId,
     MahjongClawDbContext dbContext,
     CancellationToken cancellationToken) =>
 {
@@ -244,6 +245,39 @@ gameGroup.MapGet("/{id:guid}/state", async (
     }
 
     var tilesInPlay = game.Tiles.Count(tile => !string.Equals(tile.Location, "Wall", StringComparison.OrdinalIgnoreCase));
+    var tilesById = game.Tiles.ToDictionary(tile => tile.Id);
+    var discardSummaries = game.Discards
+        .OrderBy(discard => discard.Sequence)
+        .Select(discard =>
+        {
+            var tileLabel = tilesById.TryGetValue(discard.TileId, out var tileEntity)
+                ? BuildTileLabel(tileEntity)
+                : "🀫 Unknown";
+
+            return new DiscardSummary(discard.Id, discard.PlayerId, discard.TileId, discard.Sequence, tileLabel);
+        })
+        .ToList();
+    var meldSummaries = game.Melds
+        .OrderBy(meld => meld.CreatedAt)
+        .Select(meld => new MeldSummary(
+            meld.Id,
+            meld.PlayerId,
+            meld.Type,
+            game.Tiles
+                .Where(tile => tile.MeldId == meld.Id)
+                .OrderBy(tile => tile.Sequence)
+                .Select(tile => new TileSummary(tile.Id, BuildTileLabel(tile)))
+                .ToList()))
+        .ToList();
+    var viewerHand = viewerPlayerId is { } viewerId && game.Players.Any(player => player.Id == viewerId)
+        ? game.Tiles
+            .Where(tile =>
+                tile.PlayerId == viewerId &&
+                string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(tile => tile.Sequence)
+            .Select(tile => new TileSummary(tile.Id, BuildTileLabel(tile)))
+            .ToList()
+        : new List<TileSummary>();
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
     var wallTotal = WallBuilder.GetWallTotal(ruleset);
     var turnState = new TurnActionState(TurnPhase.NotStarted, Array.Empty<TurnAction>());
@@ -271,10 +305,18 @@ gameGroup.MapGet("/{id:guid}/state", async (
         ruleset.ToString(),
         wallTotal,
         game.CreatedAt,
-        game.Players.Select(player => new PlayerSummary(player.Id, player.Name, player.Seat, player.Score)).ToList(),
+        game.Players.Select(player => new PlayerSummary(
+            player.Id,
+            player.Name,
+            player.Seat,
+            player.Score,
+            game.Tiles.Count(tile =>
+                tile.PlayerId == player.Id &&
+                string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase)))).ToList(),
         tilesInPlay,
-        game.Melds.Count,
-        game.Discards.Count,
+        meldSummaries,
+        discardSummaries,
+        viewerHand,
         turnState.Phase.ToString(),
         ToActionNames(turnState.LegalActions),
         lastDiscard?.TileId,
@@ -1037,6 +1079,46 @@ static IReadOnlyList<string> ToActionNames(IReadOnlyList<TurnAction> actions)
         .Select(static action => action.ToString())
         .ToList();
 
+static string BuildTileLabel(TileEntity tile)
+{
+    var characterGlyphs = new[] { "🀇", "🀈", "🀉", "🀊", "🀋", "🀌", "🀍", "🀎", "🀏" };
+    var bambooGlyphs = new[] { "🀐", "🀑", "🀒", "🀓", "🀔", "🀕", "🀖", "🀗", "🀘" };
+    var dotGlyphs = new[] { "🀙", "🀚", "🀛", "🀜", "🀝", "🀞", "🀟", "🀠", "🀡" };
+
+    if (Enum.TryParse<TileSuit>(tile.Suit, true, out var suit))
+    {
+        return suit switch
+        {
+            TileSuit.Characters when tile.Rank is >= 1 and <= 9
+                => $"{characterGlyphs[tile.Rank - 1]} {tile.Rank} Character",
+            TileSuit.Bamboos when tile.Rank is >= 1 and <= 9
+                => $"{bambooGlyphs[tile.Rank - 1]} {tile.Rank} Bamboo",
+            TileSuit.Dots when tile.Rank is >= 1 and <= 9
+                => $"{dotGlyphs[tile.Rank - 1]} {tile.Rank} Dot",
+            TileSuit.Winds when Enum.TryParse<Wind>(tile.Wind, true, out var wind)
+                => wind switch
+                {
+                    Wind.East => "🀀 East Wind",
+                    Wind.South => "🀁 South Wind",
+                    Wind.West => "🀂 West Wind",
+                    Wind.North => "🀃 North Wind",
+                    _ => $"{tile.Suit} {tile.Wind}"
+                },
+            TileSuit.Dragons when !string.IsNullOrWhiteSpace(tile.Dragon)
+                => tile.Dragon.Trim().ToLowerInvariant() switch
+                {
+                    "red" => "🀄 Red Dragon",
+                    "green" => "🀅 Green Dragon",
+                    "white" => "🀆 White Dragon",
+                    _ => $"{tile.Dragon} Dragon"
+                },
+            _ => $"{tile.Suit} {tile.Rank}"
+        };
+    }
+
+    return $"{tile.Suit} {tile.Rank}";
+}
+
 static ChangshaWinContext BuildChangshaWinContext(WinRequest request)
     => new(
         IsInitialDeal: request.IsInitialDeal,
@@ -1154,7 +1236,10 @@ internal record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOf
 internal record JoinGameRequest(string Name, string Seat);
 internal record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);
 internal record StartGameResponse(Guid GameId, string Status, Guid? DealerId, Guid? CurrentPlayerId);
-internal record PlayerSummary(Guid Id, string Name, string Seat, int Score);
+internal record PlayerSummary(Guid Id, string Name, string Seat, int Score, int HandCount);
+internal record TileSummary(Guid Id, string Label);
+internal record DiscardSummary(Guid Id, Guid PlayerId, Guid TileId, int Sequence, string TileLabel);
+internal record MeldSummary(Guid Id, Guid PlayerId, string Type, IReadOnlyList<TileSummary> Tiles);
 internal record GameStateResponse(
     Guid Id,
     string Status,
@@ -1166,8 +1251,9 @@ internal record GameStateResponse(
     DateTimeOffset CreatedAt,
     IReadOnlyList<PlayerSummary> Players,
     int TilesInPlay,
-    int MeldCount,
-    int DiscardCount,
+    IReadOnlyList<MeldSummary> Melds,
+    IReadOnlyList<DiscardSummary> Discards,
+    IReadOnlyList<TileSummary> ViewerHand,
     string TurnPhase,
     IReadOnlyList<string> LegalActions,
     Guid? LastDiscardTileId,

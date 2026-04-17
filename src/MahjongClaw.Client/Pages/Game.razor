@@ -217,17 +217,31 @@
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <h5 class="card-title mb-0">Your Hand</h5>
                     <div class="d-flex align-items-center gap-2">
-                        <span class="badge text-bg-primary">@PlayerSouth.Seat</span>
-                        <span class="badge text-bg-light">@PlayerSouth.Hand.Count tiles</span>
+                        <span class="badge text-bg-primary">@ViewerHandPlayer.Seat</span>
+                        <span class="badge text-bg-light">@ViewerHandTiles.Count tiles</span>
                     </div>
                 </div>
-                <div class="tile-row mt-3 seat-tiles seat-south">
-                    @foreach (var tile in PlayerSouth.Hand)
+
+                @if (_liveState is not null && ViewerHandTiles.Count == 0)
+                {
+                    <p class="text-muted small mt-3 mb-0">Join as a player to view and select your hand tiles.</p>
+                }
+                else
+                {
+                    <div class="tile-row mt-3 seat-tiles seat-@ViewerHandPlayer.Seat.ToLowerInvariant() hand-tile-selection">
+                    @foreach (var tile in ViewerHandTiles)
                     {
-                        <Tile Label="@tile" IsHighlighted="@tile.StartsWith("🀄")" />
+                        var isSelected = tile.Id is Guid tileId && IsMeldTileSelected(tileId);
+                        <button type="button"
+                                class="hand-tile-button @(isSelected ? "hand-tile-button-selected" : string.Empty)"
+                                @onclick="() => ToggleMeldTileSelection(tile.Id)"
+                                disabled="@(tile.Id is null || !CanMeld)">
+                            <Tile Label="@tile.Label" IsHighlighted="@isSelected" />
+                        </button>
                     }
-                </div>
-                <p class="text-muted small mt-3 mb-0">Tap a tile to discard once wired to actions.</p>
+                    </div>
+                    <p class="text-muted small mt-3 mb-0">Select @RequiredMeldTileCount tile(s) and declare @SelectedMeldType.ToLowerInvariant() when meld is legal.</p>
+                }
             </div>
         </div>
         <div class="card mb-4">
@@ -247,21 +261,28 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h5 class="card-title mb-2">Melds on Table</h5>
-                <div class="meld-list">
-                    @foreach (var meld in Melds)
-                    {
-                        <div class="meld-item">
-                            <div class="fw-semibold">@meld.Player</div>
-                            <div class="text-muted small">@meld.Type</div>
-                            <div class="meld-tiles mt-2 seat-tiles seat-south">
-                                @foreach (var tile in meld.Tiles)
-                                {
-                                    <Tile Label="@tile" />
-                                }
+                @if (Melds.Count == 0)
+                {
+                    <p class="text-muted small mb-0">No melds declared in this hand yet.</p>
+                }
+                else
+                {
+                    <div class="meld-list">
+                        @foreach (var meld in Melds)
+                        {
+                            <div class="meld-item">
+                                <div class="fw-semibold">@meld.Player</div>
+                                <div class="text-muted small">@meld.Type</div>
+                                <div class="meld-tiles mt-2 seat-tiles seat-south">
+                                    @foreach (var tile in meld.Tiles)
+                                    {
+                                        <Tile Label="@tile" />
+                                    }
+                                </div>
                             </div>
-                        </div>
-                    }
-                </div>
+                        }
+                    </div>
+                }
             </div>
         </div>
         <div class="card actions-panel">
@@ -270,12 +291,107 @@
                 <div class="d-flex flex-wrap gap-2">
                     <button class="btn btn-outline-primary" @onclick="DrawTileAsync" disabled="@(!CanDraw)">Draw</button>
                     <button class="btn btn-outline-secondary" @onclick="DiscardLastDrawnTileAsync" disabled="@(!CanDiscard)" title="Discards the most recently drawn tile for this player.">Discard Last Draw</button>
+                    <button class="btn btn-outline-warning" @onclick="DeclareMeldAsync" disabled="@(!CanDeclareSelectedMeld)">Declare @SelectedMeldType</button>
                     <button class="btn btn-outline-success" @onclick="DeclareWinAsync" disabled="@(!CanDeclareWin)">Declare Win</button>
-                    <button class="btn btn-outline-warning" disabled title="Meld wiring pending tile-selection UI.">Meld</button>
                 </div>
-                <p class="text-muted small mt-3 mb-0">Draw/Discard/Win now call live API when gameId + playerId are present.</p>
+                <div class="claim-panel mt-3">
+                    <div class="small fw-semibold">Claim Decision</div>
+                    <div class="claim-priority-text">Priority: Win &gt; Kong &gt; Pung &gt; Chow. Claim window closes once the server resolves the next action.</div>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <button class="btn btn-sm btn-outline-light" type="button" @onclick='() => SetMeldType("Chow")' disabled="@(!CanMeld)">Chow</button>
+                        <button class="btn btn-sm btn-outline-light" type="button" @onclick='() => SetMeldType("Pung")' disabled="@(!CanMeld)">Pung</button>
+                        <button class="btn btn-sm btn-outline-light" type="button" @onclick='() => SetMeldType("Kong")' disabled="@(!CanMeld)">Kong</button>
+                        <button class="btn btn-sm btn-outline-light" type="button" @onclick="SetDiscardWinClaim" disabled="@(!CanDeclareWin || _liveState?.LastDiscardPlayerId is null)">Win</button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="PassClaimSelection" disabled="@(!HasClaimActions)">Pass</button>
+                    </div>
+                </div>
+
+                <div class="win-options mt-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" id="win-self-draw" type="checkbox" checked="@_winIsSelfDraw" @onchange="OnWinSelfDrawChanged" />
+                        <label class="form-check-label" for="win-self-draw">Self draw win</label>
+                    </div>
+                    @if (!_winIsSelfDraw)
+                    {
+                        <label class="form-label form-label-sm mt-2 mb-1" for="win-discarder-select">Discarder</label>
+                        <select id="win-discarder-select" class="form-select form-select-sm" value="@(_winDiscarderPlayerId?.ToString() ?? string.Empty)" @onchange="HandleDiscarderSelectionChanged">
+                            <option value="">Select discarder</option>
+                            @foreach (var player in AvailableDiscarderOptions)
+                            {
+                                <option value="@player.Id">@player.Name (@player.Seat)</option>
+                            }
+                        </select>
+                    }
+                    <div class="row g-2 mt-1">
+                        <div class="col-6">
+                            <label class="form-label form-label-sm mb-1" for="win-bird-rank">Bird rank</label>
+                            <input id="win-bird-rank" type="number" class="form-control form-control-sm" min="1" max="9" placeholder="1-9 optional" value="@_winBirdRankText" @onchange="HandleBirdRankChanged" />
+                        </div>
+                        <div class="col-6 d-flex align-items-end">
+                            <div class="form-check mb-1">
+                                <input class="form-check-input" id="win-multiple" type="checkbox" @bind="_winIsMultipleWin" disabled="@_winIsSelfDraw" />
+                                <label class="form-check-label small" for="win-multiple">Multiple win (discard)</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-muted small mt-3 mb-0">Draw/discard/meld/win actions now use live APIs when gameId + playerId are present.</p>
             </div>
         </div>
+        @if (_latestWin is not null)
+        {
+            <div class="card mb-4 settlement-panel">
+                <div class="card-body">
+                    <h5 class="card-title mb-2">Latest Settlement</h5>
+                    <div class="small mb-2">
+                        Winner: <strong>@ResolvePlayerName(_latestWin.PlayerId, _latestWin.PlayerId.ToString()[..8])</strong>
+                        @if (_latestWin.BirdSeat is not null)
+                        {
+                            <span> • Bird seat: <strong>@_latestWin.BirdSeat</strong></span>
+                        }
+                        @if (_latestWin.NextRound is not null)
+                        {
+                            <span> • Next round: <strong>@_latestWin.NextRound</strong></span>
+                        }
+                    </div>
+
+                    @if (_latestWin.ChangshaWinTypes is { Count: > 0 })
+                    {
+                        <div class="d-flex flex-wrap gap-1 mb-2">
+                            @foreach (var winType in _latestWin.ChangshaWinTypes)
+                            {
+                                <span class="badge text-bg-light">@winType</span>
+                            }
+                        </div>
+                    }
+
+                    @if (_latestWin.ScoreDeltas is { Count: > 0 })
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-borderless mb-0 settlement-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Player</th>
+                                        <th scope="col" class="text-end">Delta</th>
+                                        <th scope="col" class="text-end">New score</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var delta in _latestWin.ScoreDeltas.OrderByDescending(item => item.Delta))
+                                    {
+                                        <tr>
+                                            <td>@ResolvePlayerName(delta.PlayerId, delta.PlayerId.ToString()[..8])</td>
+                                            <td class="text-end @(delta.Delta >= 0 ? "text-success" : "text-danger")">@((delta.Delta >= 0 ? "+" : string.Empty) + delta.Delta)</td>
+                                            <td class="text-end">@delta.NewScore</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
     </div>
 </div>
 </div>
@@ -290,7 +406,15 @@
     private HubConnection? _hub;
     private readonly CancellationTokenSource _disposeCts = new();
     private GameApiClient.GameStateResponse? _liveState;
+    private readonly List<(string Timestamp, string Description)> _liveEvents = [];
     private Guid? _lastDrawnTileId;
+    private readonly HashSet<Guid> _selectedMeldTileIds = [];
+    private string _selectedMeldType = "Chow";
+    private bool _winIsSelfDraw = true;
+    private Guid? _winDiscarderPlayerId;
+    private string _winBirdRankText = string.Empty;
+    private bool _winIsMultipleWin;
+    private GameApiClient.WinResponse? _latestWin;
     private bool _botTurnInFlight;
     private string? LiveStatus;
 
@@ -318,6 +442,23 @@
         IsLiveGameActive(_liveState.Status) &&
         _liveState.CurrentPlayerId == PlayerId &&
         HasLegalAction("Win");
+
+    private bool CanMeld =>
+        GameId is not null &&
+        PlayerId is not null &&
+        _liveState is not null &&
+        IsLiveGameActive(_liveState.Status) &&
+        _liveState.CurrentPlayerId == PlayerId &&
+        HasLegalAction("Meld");
+
+    private bool HasClaimActions => CanMeld || CanDeclareWin;
+    private string SelectedMeldType => _selectedMeldType;
+    private int RequiredMeldTileCount => string.Equals(_selectedMeldType, "Kong", StringComparison.OrdinalIgnoreCase) ? 4 : 3;
+    private bool CanDeclareSelectedMeld => CanMeld && _selectedMeldTileIds.Count == RequiredMeldTileCount;
+    private IReadOnlyList<GameApiClient.PlayerSummary> AvailableDiscarderOptions => _liveState?.Players
+        .Where(player => PlayerId is null || player.Id != PlayerId.Value)
+        .OrderBy(player => player.Seat)
+        .ToList() ?? [];
 
     private int WallTotal => _liveState is null
         ? RulesetHelpers.GetWallTotal(MockState.Ruleset)
@@ -350,27 +491,39 @@
     private PlayerView PlayerWest => GetPlayerView("West", MockState.PlayerWest);
     private PlayerView PlayerEast => GetPlayerView("East", MockState.PlayerEast);
     private PlayerView PlayerSouth => GetPlayerView("South", MockState.PlayerSouth);
+    private PlayerView ViewerHandPlayer => GetViewerHandPlayerView();
+    private IReadOnlyList<HandTileView> ViewerHandTiles => _liveState is null
+        ? MockState.PlayerSouth.Hand.Select(label => new HandTileView(null, label)).ToList()
+        : _liveState.ViewerHand.Select(tile => new HandTileView(tile.Id, tile.Label)).ToList();
 
-    private IReadOnlyList<string> CenterDiscards => MockState.CenterDiscards;
+    private IReadOnlyList<string> CenterDiscards => _liveState is null
+        ? MockState.CenterDiscards
+        : _liveState.Discards
+            .OrderBy(discard => discard.Sequence)
+            .Select(discard => discard.TileLabel)
+            .ToList();
     private IReadOnlyList<(string Name, int Score)> Scoreboard =>
         _liveState?.Players?.Select(p => (p.Name, p.Score)).ToList() ?? MockState.Scoreboard;
     private IReadOnlyList<(string Timestamp, string Description)> RecentActions =>
         _liveState is null
             ? MockState.RecentActions
-            :
-            [
-                ($"{DateTime.Now:t}", $"Status: {_liveState.Status}"),
-                ($"{DateTime.Now:t}", $"Players: {_liveState.Players.Count}"),
-                ($"{DateTime.Now:t}", $"Discards: {_liveState.DiscardCount}")
-            ];
+            : _liveEvents.Count > 0
+                ? _liveEvents
+                :
+                [
+                    ($"{DateTime.Now:t}", $"Status: {_liveState.Status}"),
+                    ($"{DateTime.Now:t}", $"Current turn: {ResolvePlayerName(_liveState.CurrentPlayerId, "Unknown")}"),
+                    ($"{DateTime.Now:t}", $"Discards: {_liveState.Discards.Count}")
+                ];
     private IReadOnlyList<(string Player, string Type, List<string> Tiles)> Melds =>
         _liveState is null
             ? MockState.Melds
-            :
-            [
-                ("Table", $"Meld count: {_liveState.MeldCount}", new List<string>()),
-                ("Table", $"Tiles in play: {_liveState.TilesInPlay}", new List<string>())
-            ];
+            : _liveState.Melds
+                .Select(meld => (
+                    ResolvePlayerName(meld.PlayerId, meld.PlayerId.ToString()[..8]),
+                    meld.Type,
+                    meld.Tiles.Select(tile => tile.Label).ToList()))
+                .ToList();
     private IReadOnlyList<(string Wind, string Player, int Score, bool IsDealer)> Seats =>
         _liveState?.Players is null
             ? MockState.Seats
@@ -487,35 +640,41 @@
 
     private Task HandlePlayerJoinedEventAsync(GameApiClient.JoinGameResponse payload)
     {
+        RecordLiveEvent($"Player joined: {payload.Name} ({payload.Seat})");
         return RefreshFromEventAsync($"Player joined: {payload.Name} ({payload.Seat})");
     }
 
     private Task HandleGameStartedEventAsync(GameApiClient.StartGameResponse payload)
     {
         var dealer = payload.DealerId?.ToString()[..8] ?? "unknown";
+        RecordLiveEvent($"Game started (dealer {dealer})");
         return RefreshFromEventAsync($"Game started (dealer {dealer})");
     }
 
     private Task HandleTileDrawnEventAsync(GameApiClient.DrawTileResponse payload)
     {
         _lastDrawnTileId = payload.TileId;
+        RecordLiveEvent($"Tile drawn: {payload.Suit} {payload.Rank}");
         return RefreshFromEventAsync("Tile drawn");
     }
 
     private Task HandleTileDiscardedEventAsync(GameApiClient.DiscardTileResponse _)
     {
         _lastDrawnTileId = null;
+        RecordLiveEvent("Tile discarded");
         return RefreshFromEventAsync("Tile discarded");
     }
 
     private Task HandleMeldDeclaredEventAsync(GameApiClient.MeldResponse payload)
     {
         _lastDrawnTileId = null;
+        RecordLiveEvent($"Meld declared: {payload.Type} ({payload.TileIds.Count} tiles)");
         return RefreshFromEventAsync($"Meld declared: {payload.Type} ({payload.TileIds.Count} tiles)");
     }
 
     private Task HandleGameWonEventAsync(GameApiClient.WinResponse payload)
     {
+        _latestWin = payload;
         var winner = ResolvePlayerName(payload.PlayerId, payload.PlayerId.ToString()[..8]);
         var winTypeSummary = payload.ChangshaWinTypes is { Count: > 0 }
             ? $" ({string.Join(", ", payload.ChangshaWinTypes)})"
@@ -530,6 +689,7 @@
             ? $", next round {round}"
             : string.Empty;
 
+        RecordLiveEvent($"Game won by {winner}{winTypeSummary}");
         return RefreshFromEventAsync($"Game won by {winner}{winTypeSummary}{settlementSummary}{birdSummary}{nextRoundSummary}");
     }
 
@@ -548,7 +708,16 @@
 
         try
         {
-            _liveState = await Api.GetGameStateAsync(GameId.Value, _disposeCts.Token);
+            _liveState = await Api.GetGameStateAsync(GameId.Value, PlayerId, _disposeCts.Token);
+            if (_selectedMeldTileIds.Count > 0)
+            {
+                var viewerHandIds = _liveState.ViewerHand.Select(tile => tile.Id).ToHashSet();
+                _selectedMeldTileIds.RemoveWhere(tileId => !viewerHandIds.Contains(tileId));
+            }
+            if (!_winIsSelfDraw && _winDiscarderPlayerId is null)
+            {
+                _winDiscarderPlayerId = _liveState.LastDiscardPlayerId;
+            }
             LiveStatus = $"Live state refreshed at {DateTime.Now:T}. Status: {_liveState.Status}";
             await InvokeAsync(StateHasChanged);
 
@@ -620,6 +789,7 @@
             var result = await Api.DrawTileAsync(GameId.Value, new GameApiClient.DrawTileRequest(PlayerId.Value), _disposeCts.Token);
             _lastDrawnTileId = result.TileId;
             LiveStatus = $"Drew tile {result.Suit} {result.Rank}.";
+            RecordLiveEvent($"Drew tile {result.Suit} {result.Rank}");
             await RefreshLiveStateAsync();
         }
         catch (Exception ex)
@@ -645,11 +815,46 @@
 
             _lastDrawnTileId = null;
             LiveStatus = $"Discarded tile sequence #{result.Sequence}.";
+            RecordLiveEvent($"Discarded tile sequence #{result.Sequence}");
             await RefreshLiveStateAsync();
         }
         catch (Exception ex)
         {
             LiveStatus = $"Discard failed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DeclareMeldAsync()
+    {
+        if (!CanMeld || GameId is null || PlayerId is null)
+        {
+            return;
+        }
+
+        if (_selectedMeldTileIds.Count != RequiredMeldTileCount)
+        {
+            LiveStatus = $"Select exactly {RequiredMeldTileCount} tile(s) for {_selectedMeldType}.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            var result = await Api.DeclareMeldAsync(
+                GameId.Value,
+                new GameApiClient.MeldRequest(PlayerId.Value, _selectedMeldType, _selectedMeldTileIds.ToList()),
+                _disposeCts.Token);
+
+            _selectedMeldTileIds.Clear();
+            _lastDrawnTileId = null;
+            LiveStatus = $"Declared {_selectedMeldType} ({result.TileIds.Count} tiles).";
+            RecordLiveEvent($"Declared {_selectedMeldType} ({result.TileIds.Count} tiles)");
+            await RefreshLiveStateAsync();
+        }
+        catch (Exception ex)
+        {
+            LiveStatus = $"Declare meld failed: {ex.Message}";
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -663,7 +868,30 @@
 
         try
         {
-            var result = await Api.DeclareWinAsync(GameId.Value, new GameApiClient.WinRequest(PlayerId.Value), _disposeCts.Token);
+            if (!TryParseBirdRank(out var birdRank))
+            {
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            if (!_winIsSelfDraw && _winDiscarderPlayerId is null)
+            {
+                LiveStatus = "Select a discarder when declaring a discard win.";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var result = await Api.DeclareWinAsync(
+                GameId.Value,
+                new GameApiClient.WinRequest(
+                    PlayerId.Value,
+                    IsSelfDraw: _winIsSelfDraw,
+                    DiscarderPlayerId: _winIsSelfDraw ? null : _winDiscarderPlayerId,
+                    BirdRank: birdRank,
+                    IsMultipleWin: !_winIsSelfDraw && _winIsMultipleWin),
+                _disposeCts.Token);
+
+            _latestWin = result;
             var winTypeSummary = result.ChangshaWinTypes is { Count: > 0 }
                 ? $" ({string.Join(", ", result.ChangshaWinTypes)})"
                 : string.Empty;
@@ -672,12 +900,125 @@
                 : string.Empty;
 
             LiveStatus = $"Win declared{winTypeSummary}{scoreDeltaSummary}.";
+            RecordLiveEvent($"Win declared{winTypeSummary}");
             await RefreshLiveStateAsync();
         }
         catch (Exception ex)
         {
             LiveStatus = $"Declare win failed: {ex.Message}";
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private bool TryParseBirdRank(out int? birdRank)
+    {
+        birdRank = null;
+        if (string.IsNullOrWhiteSpace(_winBirdRankText))
+        {
+            return true;
+        }
+
+        if (int.TryParse(_winBirdRankText, out var parsedRank) && parsedRank is >= 1 and <= 9)
+        {
+            birdRank = parsedRank;
+            return true;
+        }
+
+        LiveStatus = "Bird rank must be between 1 and 9.";
+        return false;
+    }
+
+    private bool IsMeldTileSelected(Guid tileId)
+        => _selectedMeldTileIds.Contains(tileId);
+
+    private void ToggleMeldTileSelection(Guid? tileId)
+    {
+        if (tileId is not { } selectedTileId || !CanMeld)
+        {
+            return;
+        }
+
+        if (!_selectedMeldTileIds.Add(selectedTileId))
+        {
+            _selectedMeldTileIds.Remove(selectedTileId);
+            return;
+        }
+
+        if (_selectedMeldTileIds.Count <= RequiredMeldTileCount)
+        {
+            return;
+        }
+
+        _selectedMeldTileIds.Remove(selectedTileId);
+        LiveStatus = $"Only {RequiredMeldTileCount} tile(s) can be selected for {_selectedMeldType}.";
+    }
+
+    private void SetMeldType(string meldType)
+    {
+        if (string.IsNullOrWhiteSpace(meldType))
+        {
+            return;
+        }
+
+        if (!string.Equals(_selectedMeldType, meldType, StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedMeldType = meldType;
+            _selectedMeldTileIds.Clear();
+        }
+
+        LiveStatus = $"Claim option selected: {_selectedMeldType}.";
+    }
+
+    private void SetDiscardWinClaim()
+    {
+        _winIsSelfDraw = false;
+        _winDiscarderPlayerId = _liveState?.LastDiscardPlayerId ?? _winDiscarderPlayerId;
+        LiveStatus = "Claim option selected: Win on discard.";
+    }
+
+    private void PassClaimSelection()
+    {
+        _selectedMeldTileIds.Clear();
+        _winIsSelfDraw = true;
+        _winDiscarderPlayerId = null;
+        _winIsMultipleWin = false;
+        LiveStatus = "Claim options cleared (pass).";
+    }
+
+    private void OnWinSelfDrawChanged(ChangeEventArgs args)
+    {
+        _winIsSelfDraw = args.Value is bool boolValue
+            ? boolValue
+            : bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
+
+        if (_winIsSelfDraw)
+        {
+            _winDiscarderPlayerId = null;
+            _winIsMultipleWin = false;
+            return;
+        }
+
+        _winDiscarderPlayerId ??= _liveState?.LastDiscardPlayerId;
+    }
+
+    private void HandleDiscarderSelectionChanged(ChangeEventArgs args)
+    {
+        _winDiscarderPlayerId = Guid.TryParse(args.Value?.ToString(), out var playerId)
+            ? playerId
+            : null;
+    }
+
+    private void HandleBirdRankChanged(ChangeEventArgs args)
+    {
+        _winBirdRankText = args.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void RecordLiveEvent(string description)
+    {
+        _liveEvents.Insert(0, ($"{DateTime.Now:t}", description));
+        if (_liveEvents.Count > 12)
+        {
+            _liveEvents.RemoveAt(_liveEvents.Count - 1);
         }
     }
 
@@ -785,18 +1126,58 @@
         var player = _liveState.Players.FirstOrDefault(p => string.Equals(p.Seat, seat, StringComparison.OrdinalIgnoreCase));
         if (player is null)
         {
-            return fallback with { Name = "Open", Score = 0, IsDealer = false, IsCurrent = false, HandCount = 0 };
+            return fallback with { Name = "Open", Score = 0, IsDealer = false, IsCurrent = false, Discards = new List<string>(), Hand = new List<string>(), HandCount = 0 };
         }
+
+        var discards = _liveState.Discards
+            .Where(discard => discard.PlayerId == player.Id)
+            .OrderBy(discard => discard.Sequence)
+            .Select(discard => discard.TileLabel)
+            .ToList();
+        var isViewer = PlayerId == player.Id;
+        var viewerHand = isViewer
+            ? _liveState.ViewerHand.Select(tile => tile.Label).ToList()
+            : new List<string>();
 
         return fallback with
         {
             Name = player.Name,
             Seat = player.Seat,
             Score = player.Score,
+            Discards = discards,
+            Hand = viewerHand,
+            HandCount = isViewer && viewerHand.Count > 0 ? viewerHand.Count : player.HandCount,
             IsDealer = _liveState.DealerId == player.Id,
             IsCurrent = _liveState.CurrentPlayerId == player.Id
         };
     }
+
+    private PlayerView GetViewerHandPlayerView()
+    {
+        if (_liveState?.Players is null || PlayerId is null)
+        {
+            return PlayerSouth;
+        }
+
+        var player = _liveState.Players.FirstOrDefault(candidate => candidate.Id == PlayerId.Value);
+        if (player is null)
+        {
+            return PlayerSouth;
+        }
+
+        var fallback = GetFallbackPlayerView(player.Seat);
+        return GetPlayerView(player.Seat, fallback);
+    }
+
+    private static PlayerView GetFallbackPlayerView(string seat)
+        => seat switch
+        {
+            "North" => MockState.PlayerNorth,
+            "West" => MockState.PlayerWest,
+            "East" => MockState.PlayerEast,
+            "South" => MockState.PlayerSouth,
+            _ => MockState.PlayerSouth
+        };
 
     private static string GetRoundWind(int round) => round switch
     {
@@ -1038,6 +1419,7 @@
     private static string GetSeatMonogram(string seat) =>
         string.IsNullOrWhiteSpace(seat) ? "?" : seat[..1].ToUpperInvariant();
 
+    private sealed record HandTileView(Guid? Id, string Label);
     private record PlayerView(string Seat, string Name, int Score, List<string> Discards, List<string> Hand, int HandCount, bool IsDealer, bool IsCurrent);
 
     private record WallStackView(int Index, bool IsBreakMarker, bool IsAfterBreak, bool IsDepleted);

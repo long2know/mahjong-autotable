@@ -2820,6 +2820,56 @@ code {
     gap: 0.35rem;
 }
 
+.hand-tile-selection {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.hand-tile-button {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border-radius: 0.85rem;
+    line-height: 0;
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.hand-tile-button:disabled {
+    opacity: 0.62;
+}
+
+.hand-tile-button:not(:disabled):hover {
+    transform: translateY(-3px);
+}
+
+.hand-tile-button-selected {
+    box-shadow: 0 0 0 2px rgba(25, 135, 84, 0.5);
+}
+
+.claim-panel {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+}
+
+.claim-priority-text {
+    font-size: 0.78rem;
+    color: #5f6773;
+}
+
+.win-options .form-label-sm {
+    font-size: 0.74rem;
+    letter-spacing: 0.01em;
+}
+
+.settlement-panel .settlement-table th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #637085;
+}
+
 .status-row {
     display: flex;
     flex-wrap: wrap;
@@ -3698,6 +3748,41 @@ code {
     border-color: rgba(172, 224, 197, 0.5);
     color: #ecfaf2;
     background: rgba(7, 29, 18, 0.55);
+}
+
+.game-3d-refine .claim-panel {
+    border-color: rgba(117, 193, 155, 0.25);
+    background: rgba(7, 28, 19, 0.58);
+}
+
+.game-3d-refine .claim-priority-text {
+    color: rgba(191, 228, 205, 0.85);
+}
+
+.game-3d-refine .win-options .form-control,
+.game-3d-refine .win-options .form-select {
+    background: rgba(6, 24, 16, 0.72);
+    border-color: rgba(133, 202, 166, 0.38);
+    color: #ecfaf2;
+}
+
+.game-3d-refine .win-options .form-control::placeholder {
+    color: rgba(196, 228, 208, 0.56);
+}
+
+.game-3d-refine .win-options .form-label,
+.game-3d-refine .win-options .form-check-label {
+    color: rgba(210, 239, 223, 0.9);
+}
+
+.game-3d-refine .hand-tile-button-selected {
+    box-shadow:
+        0 0 0 2px rgba(160, 229, 193, 0.82),
+        0 10px 16px rgba(4, 19, 12, 0.5);
+}
+
+.game-3d-refine .settlement-panel .table {
+    color: #e7f5ec;
 }
 
 .game-3d-refine .discard-lane {

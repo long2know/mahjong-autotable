@@ -38,9 +38,12 @@ public sealed class GameApiClient
             ?? throw new InvalidOperationException("Start game response was empty.");
     }
 
-    public async Task<GameStateResponse> GetGameStateAsync(Guid gameId, CancellationToken cancellationToken = default)
+    public async Task<GameStateResponse> GetGameStateAsync(Guid gameId, Guid? viewerPlayerId = null, CancellationToken cancellationToken = default)
     {
-        var response = await _http.GetFromJsonAsync<GameStateResponse>($"/api/game/{gameId}/state", cancellationToken);
+        var requestUri = viewerPlayerId is null
+            ? $"/api/game/{gameId}/state"
+            : $"/api/game/{gameId}/state?viewerPlayerId={viewerPlayerId}";
+        var response = await _http.GetFromJsonAsync<GameStateResponse>(requestUri, cancellationToken);
         return response ?? throw new InvalidOperationException("Game state response was empty.");
     }
 
@@ -58,6 +61,14 @@ public sealed class GameApiClient
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<DiscardTileResponse>(cancellationToken: cancellationToken)
             ?? throw new InvalidOperationException("Discard response was empty.");
+    }
+
+    public async Task<MeldResponse> DeclareMeldAsync(Guid gameId, MeldRequest request, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"/api/game/{gameId}/meld", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<MeldResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Meld response was empty.");
     }
 
     public async Task<WinResponse> DeclareWinAsync(Guid gameId, WinRequest request, CancellationToken cancellationToken = default)
@@ -81,7 +92,10 @@ public sealed class GameApiClient
     public record JoinGameRequest(string Name, string Seat);
     public record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);
     public record StartGameResponse(Guid GameId, string Status, Guid? DealerId, Guid? CurrentPlayerId);
-    public record PlayerSummary(Guid Id, string Name, string Seat, int Score);
+    public record PlayerSummary(Guid Id, string Name, string Seat, int Score, int HandCount);
+    public record TileSummary(Guid Id, string Label);
+    public record DiscardSummary(Guid Id, Guid PlayerId, Guid TileId, int Sequence, string TileLabel);
+    public record MeldSummary(Guid Id, Guid PlayerId, string Type, IReadOnlyList<TileSummary> Tiles);
     public record GameStateResponse(
         Guid Id,
         string Status,
@@ -93,8 +107,9 @@ public sealed class GameApiClient
         DateTimeOffset CreatedAt,
         IReadOnlyList<PlayerSummary> Players,
         int TilesInPlay,
-        int MeldCount,
-        int DiscardCount,
+        IReadOnlyList<MeldSummary> Melds,
+        IReadOnlyList<DiscardSummary> Discards,
+        IReadOnlyList<TileSummary> ViewerHand,
         string TurnPhase,
         IReadOnlyList<string> LegalActions,
         Guid? LastDiscardTileId,
@@ -104,6 +119,7 @@ public sealed class GameApiClient
     public record DrawTileResponse(Guid TileId, string Suit, int Rank, string? Wind, string? Dragon);
     public record DiscardTileRequest(Guid PlayerId, Guid TileId);
     public record DiscardTileResponse(Guid DiscardId, Guid TileId, int Sequence);
+    public record MeldRequest(Guid PlayerId, string Type, IReadOnlyList<Guid> TileIds);
     public record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
     public record WinRequest(
         Guid PlayerId,
