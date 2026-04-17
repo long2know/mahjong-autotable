@@ -119,6 +119,8 @@ public static class BotDiscardAdvisor
             .ToDictionary(group => group.Key, group => group.Count());
         var honorCount = handTiles.Count(static other => other.IsHonor);
         tileCounts.TryGetValue(tile, out var tileMatchCount);
+        var meldMatchCount = meldTiles.Count(other => other.Equals(tile));
+        var meldExtensionBonus = meldMatchCount >= 3 ? 6 : 0;
         if (tileMatchCount >= 2)
         {
             score += tileMatchCount switch
@@ -393,7 +395,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + meldSuitFocusBonus;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + meldSuitFocusBonus + meldExtensionBonus;
         }
 
         var rankCounts = suitTiles
@@ -511,7 +513,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + meldSuitFocusBonus;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + meldSuitFocusBonus + meldExtensionBonus;
     }
 
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
