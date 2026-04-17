@@ -53,6 +53,9 @@ public static class BotDiscardAdvisor
         var visibleCounts = visibleTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
+        var handCounts = handTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
         var ownedCounts = handTiles
             .Concat(meldTiles)
             .GroupBy(static tile => tile)
@@ -68,7 +71,7 @@ public static class BotDiscardAdvisor
                     Index = index,
                     Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset)
                         + GetTileAvailabilityPenalty(tile, ownedCounts, visibleCounts)
-                        + GetChangshaSmallWinPairVisibilityAdjustment(tile, ownedCounts, visibleCounts, ruleset),
+                        + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset),
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies
                 };
@@ -596,6 +599,7 @@ public static class BotDiscardAdvisor
 
     private static int GetChangshaSmallWinPairVisibilityAdjustment(
         Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts,
         IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts,
         MahjongRuleset ruleset)
@@ -606,7 +610,7 @@ public static class BotDiscardAdvisor
         }
 
         if (Changsha258SmallWinPairTiles.Any(pairTile =>
-                ownedCounts.TryGetValue(pairTile, out var pairCount) && pairCount >= 2))
+                handCounts.TryGetValue(pairTile, out var pairCount) && pairCount >= 2))
         {
             return 0;
         }
