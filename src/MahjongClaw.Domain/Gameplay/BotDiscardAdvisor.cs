@@ -622,6 +622,7 @@ public static class BotDiscardAdvisor
         {
             <= 0 => -5,
             1 => -2,
+            2 => -1,
             _ => 0
         };
     }
