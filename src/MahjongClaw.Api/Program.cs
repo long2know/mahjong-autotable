@@ -631,9 +631,18 @@ gameGroup.MapPost("/{id:guid}/win", async (
     }
 
     var ruleset = RulesetResolver.Resolve(game.Ruleset);
-    if (!RulesetHandAnalyzer.IsWinningHand(tileHand, ruleset))
+    if (!RulesetHandAnalyzer.TryGetWinningHand(tileHand, ruleset, out var winningHand) || winningHand is null)
     {
         return Results.Conflict(new { message = "Hand does not meet ruleset requirements." });
+    }
+
+    ChangshaWinEvaluation? changshaEvaluation = null;
+    if (ruleset == MahjongRuleset.Changsha258)
+    {
+        changshaEvaluation = ChangshaWinTypeEvaluator.Evaluate(
+            tileHand,
+            winningHand,
+            BuildChangshaWinContext(request));
     }
 
     game.Status = "Completed";
@@ -641,7 +650,13 @@ gameGroup.MapPost("/{id:guid}/win", async (
 
     await dbContext.SaveChangesAsync(cancellationToken);
 
-    var response = new WinResponse(game.Id, game.Status, request.PlayerId);
+    var response = new WinResponse(
+        game.Id,
+        game.Status,
+        request.PlayerId,
+        changshaEvaluation?.WinTypes.Select(static type => type.ToString()).ToList(),
+        changshaEvaluation?.IsBigWin,
+        changshaEvaluation?.IsSmallWin);
     await SendToGameWithAliases(hubContext, game.Id, "GameWon", response, cancellationToken);
     return Results.Ok(response);
 });
@@ -961,6 +976,18 @@ static IReadOnlyList<string> ToActionNames(IReadOnlyList<TurnAction> actions)
         .Select(static action => action.ToString())
         .ToList();
 
+static ChangshaWinContext BuildChangshaWinContext(WinRequest request)
+    => new(
+        IsInitialDeal: request.IsInitialDeal,
+        IsHeavenly: request.IsHeavenly,
+        IsEarthly: request.IsEarthly,
+        IsLastTileDraw: request.IsLastTileDraw,
+        IsLastTileDiscard: request.IsLastTileDiscard,
+        IsWinAfterKong: request.IsWinAfterKong,
+        IsRobbingKong: request.IsRobbingKong,
+        IsKongOnCannon: request.IsKongOnCannon,
+        IsFullyReliant: request.IsFullyReliant);
+
 static Guid? GetNextPlayerId(GameEntity game, PlayerEntity currentPlayer)
 {
     var seatOrder = new[] { "East", "South", "West", "North" };
@@ -1067,5 +1094,21 @@ internal record BotTurnExecutionResult(bool Success, BotTurnResponse? Response, 
 }
 internal record MeldRequest(Guid PlayerId, string Type, IReadOnlyList<Guid> TileIds);
 internal record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
-internal record WinRequest(Guid PlayerId);
-internal record WinResponse(Guid GameId, string Status, Guid PlayerId);
+internal record WinRequest(
+    Guid PlayerId,
+    bool IsInitialDeal = false,
+    bool IsHeavenly = false,
+    bool IsEarthly = false,
+    bool IsLastTileDraw = false,
+    bool IsLastTileDiscard = false,
+    bool IsWinAfterKong = false,
+    bool IsRobbingKong = false,
+    bool IsKongOnCannon = false,
+    bool IsFullyReliant = false);
+internal record WinResponse(
+    Guid GameId,
+    string Status,
+    Guid PlayerId,
+    IReadOnlyList<string>? ChangshaWinTypes = null,
+    bool? IsBigWin = null,
+    bool? IsSmallWin = null);

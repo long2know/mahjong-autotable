@@ -105,7 +105,23 @@ public sealed class GameApiClient
     public record DiscardTileRequest(Guid PlayerId, Guid TileId);
     public record DiscardTileResponse(Guid DiscardId, Guid TileId, int Sequence);
     public record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
-    public record WinRequest(Guid PlayerId);
-    public record WinResponse(Guid GameId, string Status, Guid PlayerId);
+    public record WinRequest(
+        Guid PlayerId,
+        bool IsInitialDeal = false,
+        bool IsHeavenly = false,
+        bool IsEarthly = false,
+        bool IsLastTileDraw = false,
+        bool IsLastTileDiscard = false,
+        bool IsWinAfterKong = false,
+        bool IsRobbingKong = false,
+        bool IsKongOnCannon = false,
+        bool IsFullyReliant = false);
+    public record WinResponse(
+        Guid GameId,
+        string Status,
+        Guid PlayerId,
+        IReadOnlyList<string>? ChangshaWinTypes = null,
+        bool? IsBigWin = null,
+        bool? IsSmallWin = null);
     public record BotTurnResponse(Guid? DrawnTileId, Guid? DiscardId, Guid? DiscardTileId, Guid? NextPlayerId, bool Won);
 }
