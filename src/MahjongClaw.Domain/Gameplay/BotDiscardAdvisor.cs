@@ -169,12 +169,19 @@ public static class BotDiscardAdvisor
         var smallWinPairBonus = 0;
         if (ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(tile))
         {
-            smallWinPairBonus = tileMatchCount switch
+            if (smallWinPairCount >= 1 && tileMatchCount == 1)
             {
-                >= 2 => 3,
-                1 => 1,
-                _ => 0
-            };
+                smallWinPairBonus = 0;
+            }
+            else
+            {
+                smallWinPairBonus = tileMatchCount switch
+                {
+                    >= 2 => 3,
+                    1 => 1,
+                    _ => 0
+                };
+            }
         }
 
         var requiredSmallWinPairBonus = ruleset == MahjongRuleset.Changsha258
