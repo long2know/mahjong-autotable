@@ -530,6 +530,7 @@ public static class BotDiscardAdvisor
             ? Changsha258DrawTileTypes
             : ChineseOfficialDrawTileTypes;
 
+        var discardTile = handTiles[discardIndex];
         var reducedHand = handTiles
             .Where((_, index) => index != discardIndex)
             .ToList();
@@ -547,6 +548,11 @@ public static class BotDiscardAdvisor
         {
             ownedCounts.TryGetValue(drawTileType, out var drawTileCount);
             visibleCounts.TryGetValue(drawTileType, out var visibleCount);
+            if (drawTileType.Equals(discardTile))
+            {
+                visibleCount++;
+            }
+
             var remainingCopies = 4 - drawTileCount - visibleCount;
 
             if (remainingCopies <= 0)
