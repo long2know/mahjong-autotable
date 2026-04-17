@@ -94,3 +94,35 @@ Readiness checks treat only 2xx/3xx as healthy by default. If your endpoint inte
 ```
 PLAYWRIGHT_READY_HTTP_PATTERN='2|3|4' ./scripts/run_playwright_smoke.sh
 ```
+
+## Soak / throughput check
+Run a multi-hand bot completion soak against the API:
+```
+dotnet build MahjongClaw.slnx -c Release
+SOAK_HANDS=4 SOAK_MAX_SECONDS_PER_HAND=60 ./scripts/run_soak_check.sh
+```
+
+The script writes logs/artifacts to `artifacts/soak/` (API startup log + summary).
+If your local database is already migrated, you can skip migration setup for faster reruns:
+```
+SOAK_SKIP_DB_MIGRATIONS=1 ./scripts/run_soak_check.sh
+```
+
+## Operations runbook (migrations + rollback)
+1. Back up SQLite before migrations:
+```
+mkdir -p backups
+cp src/MahjongClaw.Api/mahjongclaw.db "backups/mahjongclaw-$(date +%Y%m%d%H%M%S).db"
+```
+2. Apply latest migrations:
+```
+dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
+```
+3. Roll back to a prior migration (example):
+```
+dotnet ef database update 20260330205201_AddGameRuleset --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
+```
+4. If rollback fails or data is corrupted, stop services and restore a backup:
+```
+cp backups/<snapshot>.db src/MahjongClaw.Api/mahjongclaw.db
+```

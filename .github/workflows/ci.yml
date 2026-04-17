@@ -1,13 +1,25 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
-  # TEMP (quota-safe): disable automatic CI triggers to stop failure-email spam
-  # while Actions minutes/runner availability are exhausted.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         env:
@@ -38,6 +50,7 @@ jobs:
   e2e-smoke:
     runs-on: ubuntu-latest
     needs: build-test
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         env:
@@ -88,3 +101,51 @@ jobs:
           if [ -f playwright-report/index.html ]; then
             echo "Playwright report generated at playwright-report/index.html"
           fi
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-smoke-artifacts
+          path: |
+            artifacts/playwright-smoke
+            playwright-report
+          if-no-files-found: ignore
+
+  soak-check:
+    runs-on: ubuntu-latest
+    needs: build-test
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --force --detach FETCH_HEAD
+      - name: Install .NET SDK (channel 10.0)
+        run: |
+          set -euo pipefail
+          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          bash /tmp/dotnet-install.sh --channel 10.0 --install-dir "$HOME/.dotnet"
+          echo "$HOME/.dotnet" >> "$GITHUB_PATH"
+      - name: Restore + build (Release)
+        run: |
+          dotnet restore MahjongClaw.slnx
+          dotnet build MahjongClaw.slnx -c Release --no-restore
+      - name: Run hand completion soak check
+        env:
+          SOAK_HANDS: '4'
+          SOAK_MAX_SECONDS_PER_HAND: '60'
+          SOAK_START_API: '1'
+        run: ./scripts/run_soak_check.sh
+      - name: Upload soak artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-check-artifacts
+          path: artifacts/soak
+          if-no-files-found: ignore
