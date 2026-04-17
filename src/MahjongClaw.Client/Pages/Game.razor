@@ -516,7 +516,11 @@
 
     private Task HandleGameWonEventAsync(GameApiClient.WinResponse payload)
     {
-        return RefreshFromEventAsync($"Game won by {payload.PlayerId.ToString()[..8]}");
+        var winTypeSummary = payload.ChangshaWinTypes is { Count: > 0 }
+            ? $" ({string.Join(", ", payload.ChangshaWinTypes)})"
+            : string.Empty;
+
+        return RefreshFromEventAsync($"Game won by {payload.PlayerId.ToString()[..8]}{winTypeSummary}");
     }
 
     private Task RefreshFromEventAsync(string eventName)
