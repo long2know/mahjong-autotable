@@ -7,6 +7,7 @@ public enum ChangshaWinType
     Banhu,
     MissingOneSuit,
     SixSixStraight,
+    SanTong,
     Heavenly,
     Earthly,
     AllPungs,

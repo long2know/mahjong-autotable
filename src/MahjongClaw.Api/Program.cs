@@ -194,6 +194,8 @@ gameGroup.MapPost("/{id:guid}/start", async (
     game.DealerId = dealer.Id;
     game.CurrentPlayerId = dealer.Id;
     game.Status = "Active";
+    game.RoundWind ??= "East";
+    game.DealerRotationCount = 0;
 
     if (game.Tiles.Count == 0)
     {
@@ -306,6 +308,7 @@ gameGroup.MapGet("/{id:guid}/state", async (
         game.CurrentPlayerId,
         game.DealerId,
         game.Round,
+        game.RoundWind,
         ruleset.ToString(),
         wallTotal,
         game.CreatedAt,
@@ -641,6 +644,40 @@ gameGroup.MapPost("/{id:guid}/meld", async (
         Type = meldType.ToString()
     };
 
+    // M3: Classify kong type
+    string? kongKind = null;
+    if (meldType == MeldType.Kong)
+    {
+        var lastDiscard = game.Discards
+            .OrderByDescending(d => d.Sequence)
+            .FirstOrDefault();
+        var claimedFromDiscard = lastDiscard is not null && tiles.Any(t => t.Id == lastDiscard.TileId);
+        
+        KongKind kind;
+        if (!claimedFromDiscard)
+        {
+            // Check if promoting an existing pung
+            var sampleTile = tiles.First();
+            var existingPung = game.Melds.FirstOrDefault(m =>
+                m.PlayerId == request.PlayerId &&
+                string.Equals(m.Type, "Pung", StringComparison.OrdinalIgnoreCase) &&
+                game.Tiles.Any(t => t.MeldId == m.Id && 
+                    t.Suit == sampleTile.Suit && 
+                    t.Rank == sampleTile.Rank &&
+                    t.Wind == sampleTile.Wind &&
+                    t.Dragon == sampleTile.Dragon));
+            
+            kind = existingPung is not null ? KongKind.Promoted : KongKind.Concealed;
+        }
+        else
+        {
+            kind = KongKind.Exposed;
+        }
+        
+        kongKind = KongKindParser.ToMeldTypeString(kind);
+        meld.Kind = kongKind;
+    }
+
     dbContext.Melds.Add(meld);
 
     foreach (var tile in tiles)
@@ -650,6 +687,86 @@ gameGroup.MapPost("/{id:guid}/meld", async (
     }
 
     await dbContext.SaveChangesAsync(cancellationToken);
+
+    // M4: Broadcast robbing-the-kong opportunity for promoted kongs
+    if (meldType == MeldType.Kong && kongKind == "PromotedKong" && tiles.Any())
+    {
+        var kongTile = tiles.First();
+        var eligibleOpponents = new List<Guid>();
+        
+        if (!TryBuildTileHand(new[] { kongTile }, out var kongTileHand) || kongTileHand.Count != 1)
+        {
+            // Invalid kong tile, skip robbing check
+        }
+        else
+        {
+            var promotedTile = kongTileHand[0];
+            
+            foreach (var opponent in game.Players.Where(p => p.Id != request.PlayerId))
+            {
+                var opponentHandTiles = game.Tiles
+                    .Where(t => t.PlayerId == opponent.Id && 
+                               string.Equals(t.Location, "Hand", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                
+                if (!TryBuildTileHand(opponentHandTiles, out var opponentTileHand))
+                {
+                    continue;
+                }
+                
+                var opponentKongCount = game.Melds
+                    .Count(m => m.PlayerId == opponent.Id && 
+                               (string.Equals(m.Type, "Kong", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(m.Kind, "ConcealedKong", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(m.Kind, "ExposedKong", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(m.Kind, "PromotedKong", StringComparison.OrdinalIgnoreCase)));
+                
+                if (ChangshaRobbingKongDetector.CanRobPromotedKong(opponentTileHand, promotedTile, opponentKongCount))
+                {
+                    eligibleOpponents.Add(opponent.Id);
+                }
+            }
+        }
+        
+        if (eligibleOpponents.Any())
+        {
+            var robOpportunity = new
+            {
+                TileId = kongTile.Id,
+                Suit = kongTile.Suit,
+                Rank = kongTile.Rank,
+                Wind = kongTile.Wind,
+                Dragon = kongTile.Dragon,
+                KongPlayerId = request.PlayerId,
+                EligibleOpponents = eligibleOpponents
+            };
+            await SendToGameWithAliases(hubContext, game.Id, "KongRobOpportunity", robOpportunity, cancellationToken);
+        }
+    }
+
+    // M3: Draw replacement tile after kong
+    if (meldType == MeldType.Kong)
+    {
+        var replacementTile = game.Tiles
+            .Where(t => t.Location == "Wall")
+            .OrderBy(t => t.Sequence)
+            .FirstOrDefault();
+
+        if (replacementTile is not null)
+        {
+            replacementTile.Location = "Hand";
+            replacementTile.PlayerId = request.PlayerId;
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            var drawResponse = new DrawTileResponse(
+                replacementTile.Id, 
+                replacementTile.Suit, 
+                replacementTile.Rank, 
+                replacementTile.Wind, 
+                replacementTile.Dragon);
+            await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
+        }
+    }
 
     var response = new MeldResponse(meld.Id, request.Type, tiles.Select(t => t.Id).ToList());
     await SendToGameWithAliases(hubContext, game.Id, "MeldDeclared", response, cancellationToken);
@@ -666,6 +783,7 @@ gameGroup.MapPost("/{id:guid}/win", async (
     var game = await dbContext.Games
         .Include(g => g.Players)
         .Include(g => g.Tiles)
+        .Include(g => g.Melds)
         .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
 
     if (game is null)
@@ -760,10 +878,86 @@ gameGroup.MapPost("/{id:guid}/win", async (
             return Results.BadRequest(new { message = "BirdRank must be between 1 and 9." });
         }
 
+        if (request.BirdRanks is not null && request.BirdRanks.Any(rank => rank is < 1 or > 9))
+        {
+            return Results.BadRequest(new { message = "All BirdRanks must be between 1 and 9." });
+        }
+
+        if (request.BirdRanks is not null && request.BirdRank is not null)
+        {
+            return Results.BadRequest(new { message = "Cannot specify both BirdRank and BirdRanks; use BirdRanks for multi-bird scenarios." });
+        }
+
+        // M5: Server-side last-tile detection
+        var wallRemaining = game.Tiles.Count(t => string.Equals(t.Location, "Wall", StringComparison.OrdinalIgnoreCase));
+        var isLastTileDraw = request.IsLastTileDraw;
+        var isLastTileDiscard = request.IsLastTileDiscard;
+        
+        if (wallRemaining == 0)
+        {
+            if (request.IsSelfDraw)
+            {
+                isLastTileDraw = true;
+            }
+            else
+            {
+                isLastTileDiscard = true;
+            }
+        }
+
+        // D6: Detect fully reliant via domain helper
+        var isFullyReliant = false;
+        var playerMelds = game.Melds.Where(m => m.PlayerId == request.PlayerId).ToList();
+        
+        if (playerMelds.Any())
+        {
+            var meldInfos = new List<MeldInfo>();
+            
+            foreach (var meld in playerMelds)
+            {
+                var meldType = meld.Type;
+                var meldKind = meld.Kind;
+                
+                // Determine if meld came from claimed discard or self-drawn
+                // Chow, Pung: assumed from claimed discard in standard play
+                // ExposedKong: from claimed discard
+                // ConcealedKong: self-drawn (all 4 tiles)
+                // PromotedKong: original pung from discard, 4th tile self-drawn
+                TileSource meldSource;
+                if (string.Equals(meldType, "Kong", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.Equals(meldKind, "ConcealedKong", StringComparison.OrdinalIgnoreCase))
+                    {
+                        meldSource = TileSource.SelfDrawn;
+                    }
+                    else
+                    {
+                        // ExposedKong and PromotedKong: original tiles from discard
+                        meldSource = TileSource.ClaimedDiscard;
+                    }
+                }
+                else
+                {
+                    // Chow, Pung: assumed from claimed discard
+                    meldSource = TileSource.ClaimedDiscard;
+                }
+                
+                meldInfos.Add(new MeldInfo(meldSource));
+            }
+            
+            var winningTileSource = request.IsSelfDraw ? TileSource.SelfDrawn : TileSource.ClaimedDiscard;
+            isFullyReliant = ChangshaFullyReliantDetector.IsFullyReliant(meldInfos, winningTileSource);
+        }
+        else if (!request.IsSelfDraw)
+        {
+            // No melds, but won from discard = fully reliant
+            isFullyReliant = true;
+        }
+
         changshaEvaluation = ChangshaWinTypeEvaluator.Evaluate(
             tileHand,
             winningHand,
-            BuildChangshaWinContext(request));
+            BuildChangshaWinContext(request, isFullyReliant, isLastTileDraw, isLastTileDiscard));
 
         if (!TryBuildChangshaSettlementSeats(game.Players, out var settlementSeats, out var seatBuildError))
         {
@@ -777,7 +971,8 @@ gameGroup.MapPost("/{id:guid}/win", async (
             IsSelfDraw: request.IsSelfDraw,
             IsBigWin: changshaEvaluation.IsBigWin,
             DiscarderId: request.IsSelfDraw ? null : request.DiscarderPlayerId,
-            BirdRank: request.BirdRank,
+            BirdRank: request.BirdRanks is null ? request.BirdRank : null,
+            BirdRanks: request.BirdRanks,
             IsMultipleWin: request.IsMultipleWin);
 
         var settlementResult = ChangshaSettlementCalculator.Calculate(settlementRequest);
@@ -788,8 +983,26 @@ gameGroup.MapPost("/{id:guid}/win", async (
             player.Score = delta.NewScore;
         }
 
+        var previousDealerId = game.DealerId;
         game.DealerId = settlementResult.NextDealerId;
         game.Round = Math.Max(1, game.Round + settlementResult.NextRoundIncrement);
+
+        if (previousDealerId != game.DealerId)
+        {
+            game.DealerRotationCount++;
+            
+            if (game.DealerRotationCount > 0 && game.DealerRotationCount % 4 == 0)
+            {
+                game.RoundWind = game.RoundWind switch
+                {
+                    "East" => "South",
+                    "South" => "West",
+                    "West" => "North",
+                    "North" => "East",
+                    _ => "East"
+                };
+            }
+        }
 
         scoreDeltas = settlementResult.ScoreDeltas
             .Select(delta => new PlayerScoreDelta(delta.PlayerId, delta.Delta, delta.NewScore))
@@ -1174,17 +1387,21 @@ static string BuildTileLabel(TileEntity tile)
     return $"{tile.Suit} {tile.Rank}";
 }
 
-static ChangshaWinContext BuildChangshaWinContext(WinRequest request)
+static ChangshaWinContext BuildChangshaWinContext(
+    WinRequest request, 
+    bool? overrideIsFullyReliant = null,
+    bool? overrideIsLastTileDraw = null,
+    bool? overrideIsLastTileDiscard = null)
     => new(
         IsInitialDeal: request.IsInitialDeal,
         IsHeavenly: request.IsHeavenly,
         IsEarthly: request.IsEarthly,
-        IsLastTileDraw: request.IsLastTileDraw,
-        IsLastTileDiscard: request.IsLastTileDiscard,
+        IsLastTileDraw: overrideIsLastTileDraw ?? request.IsLastTileDraw,
+        IsLastTileDiscard: overrideIsLastTileDiscard ?? request.IsLastTileDiscard,
         IsWinAfterKong: request.IsWinAfterKong,
         IsRobbingKong: request.IsRobbingKong,
         IsKongOnCannon: request.IsKongOnCannon,
-        IsFullyReliant: request.IsFullyReliant);
+        IsFullyReliant: overrideIsFullyReliant ?? request.IsFullyReliant);
 
 static bool TryBuildChangshaSettlementSeats(
     IEnumerable<PlayerEntity> players,
@@ -1301,6 +1518,7 @@ internal record GameStateResponse(
     Guid? CurrentPlayerId,
     Guid? DealerId,
     int Round,
+    string? RoundWind,
     string Ruleset,
     int WallTotal,
     DateTimeOffset CreatedAt,
@@ -1332,6 +1550,7 @@ internal record WinRequest(
     bool IsSelfDraw = true,
     Guid? DiscarderPlayerId = null,
     int? BirdRank = null,
+    int[]? BirdRanks = null,
     bool IsMultipleWin = false,
     bool IsInitialDeal = false,
     bool IsHeavenly = false,

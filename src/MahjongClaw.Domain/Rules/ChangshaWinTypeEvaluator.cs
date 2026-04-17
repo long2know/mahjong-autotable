@@ -18,7 +18,8 @@ public static class ChangshaWinTypeEvaluator
         ChangshaWinType.WinAfterKong,
         ChangshaWinType.RobbingKong,
         ChangshaWinType.KongOnCannon,
-        ChangshaWinType.FullyReliant
+        ChangshaWinType.FullyReliant,
+        ChangshaWinType.SanTong
     };
 
     public static ChangshaWinEvaluation Evaluate(
@@ -58,6 +59,11 @@ public static class ChangshaWinTypeEvaluator
             if (HasAtLeastTwoTriplets(allTiles))
             {
                 winTypes.Add(ChangshaWinType.SixSixStraight);
+            }
+
+            if (IsSanTong(allTiles))
+            {
+                winTypes.Add(ChangshaWinType.SanTong);
             }
         }
 
@@ -162,6 +168,7 @@ public static class ChangshaWinTypeEvaluator
             ChangshaWinType.Banhu => 150,
             ChangshaWinType.MissingOneSuit => 160,
             ChangshaWinType.SixSixStraight => 170,
+            ChangshaWinType.SanTong => 175,
             _ => 999
         };
 
@@ -206,5 +213,35 @@ public static class ChangshaWinTypeEvaluator
         }
 
         return suitedTiles.All(tile => tile.Suit == suitedTiles[0].Suit);
+    }
+
+    private static bool IsSanTong(IReadOnlyList<Tile> tiles)
+    {
+        var tripletGroups = tiles
+            .Where(static tile => Changsha258Ruleset.AllowedSuits.Contains(tile.Suit))
+            .GroupBy(static tile => tile)
+            .Where(group => group.Count() >= 3)
+            .ToList();
+
+        if (tripletGroups.Count < 3)
+        {
+            return false;
+        }
+
+        var tripletsGroupedByRank = tripletGroups
+            .Select(group => group.Key)
+            .GroupBy(static tile => tile.Rank)
+            .ToList();
+
+        foreach (var rankGroup in tripletsGroupedByRank)
+        {
+            var suits = rankGroup.Select(tile => tile.Suit).Distinct().ToList();
+            if (suits.Count == 3)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

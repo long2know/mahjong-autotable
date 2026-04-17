@@ -9,6 +9,8 @@ public sealed class GameEntity
     public Guid? CurrentPlayerId { get; set; }
     public Guid? DealerId { get; set; }
     public int Round { get; set; }
+    public string? RoundWind { get; set; }
+    public int DealerRotationCount { get; set; }
     public string Ruleset { get; set; } = nameof(MahjongRuleset.Changsha258);
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

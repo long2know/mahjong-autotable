@@ -14,7 +14,9 @@ public sealed record ChangshaSettlementRequest(
     bool IsBigWin,
     Guid? DiscarderId = null,
     int? BirdRank = null,
-    bool IsMultipleWin = false);
+    IReadOnlyList<int>? BirdRanks = null,
+    bool IsMultipleWin = false,
+    IReadOnlyList<ChangshaWinType>? WinTypes = null);
 
 public sealed record ChangshaSettlementResult(
     IReadOnlyList<ChangshaSeatDelta> ScoreDeltas,
@@ -76,6 +78,16 @@ public static class ChangshaSettlementCalculator
             throw new ArgumentOutOfRangeException(nameof(request.BirdRank), "Bird rank must be between 1 and 9.");
         }
 
+        if (request.BirdRanks is not null && request.BirdRanks.Any(rank => rank is < 1 or > 9))
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.BirdRanks), "All bird ranks must be between 1 and 9.");
+        }
+
+        if (request.BirdRanks is not null && request.BirdRank is not null)
+        {
+            throw new ArgumentException("Cannot specify both BirdRank and BirdRanks; use BirdRanks for multi-bird scenarios.", nameof(request));
+        }
+
         var deltas = request.Seats.ToDictionary(seat => seat.PlayerId, static _ => 0);
         var loserBasePayments = new Dictionary<Guid, int>();
         var winnerIsDealer = request.WinnerId == request.DealerId;
@@ -123,10 +135,27 @@ public static class ChangshaSettlementCalculator
         }
 
         Wind? birdSeat = null;
-        if (request.BirdRank is { } birdRank)
+        IReadOnlyList<int> effectiveBirdRanks = request.BirdRanks ?? (request.BirdRank is { } single ? [single] : []);
+        
+        if (effectiveBirdRanks.Count > 0)
         {
-            birdSeat = ResolveBirdSeat(request.Seats, request.DealerId, birdRank);
-            ApplyBirdCatchAdjustments(request, birdSeat.Value, deltas, loserBasePayments);
+            var birdSeats = effectiveBirdRanks.Select(rank => ResolveBirdSeat(request.Seats, request.DealerId, rank)).ToList();
+            birdSeat = birdSeats.FirstOrDefault();
+            
+            ApplyMultiBirdAdjustments(request, birdSeats, deltas, loserBasePayments);
+        }
+
+        if (request.WinTypes?.Contains(ChangshaWinType.LuxurySevenPairs) == true)
+        {
+            foreach (var seat in request.Seats)
+            {
+                if (seat.PlayerId != request.WinnerId && seat.PlayerId == request.DealerId)
+                {
+                    var currentLoserDelta = deltas[seat.PlayerId];
+                    deltas[seat.PlayerId] = currentLoserDelta * 2;
+                    deltas[request.WinnerId] -= currentLoserDelta;
+                }
+            }
         }
 
         var scoreDeltas = request.Seats
@@ -145,6 +174,77 @@ public static class ChangshaSettlementCalculator
             nextDealerId,
             NextRoundIncrement: 1,
             birdSeat);
+    }
+
+    private static void ApplyMultiBirdAdjustments(
+        ChangshaSettlementRequest request,
+        IReadOnlyList<Wind> birdSeats,
+        IDictionary<Guid, int> deltas,
+        IReadOnlyDictionary<Guid, int> loserBasePayments)
+    {
+        var winnerSeat = request.Seats.Single(seat => seat.PlayerId == request.WinnerId);
+        
+        if (request.IsSelfDraw)
+        {
+            var birdMatchCount = birdSeats.Count(birdSeat => birdSeat == winnerSeat.Seat);
+            if (birdMatchCount > 0)
+            {
+                var multiplier = birdMatchCount;
+                foreach (var (loserId, payment) in loserBasePayments)
+                {
+                    deltas[loserId] -= payment * multiplier;
+                    deltas[request.WinnerId] += payment * multiplier;
+                }
+                return;
+            }
+            
+            // Birds landed on losers - double each loser that got hit
+            var processedBirds = new HashSet<Wind>();
+            foreach (var birdSeat in birdSeats)
+            {
+                if (processedBirds.Contains(birdSeat))
+                {
+                    continue;
+                }
+                processedBirds.Add(birdSeat);
+                
+                var birdPlayer = request.Seats.FirstOrDefault(seat => seat.Seat == birdSeat);
+                if (birdPlayer is null || birdPlayer.PlayerId == request.WinnerId)
+                {
+                    continue;
+                }
+
+                if (!loserBasePayments.TryGetValue(birdPlayer.PlayerId, out var loserPayment))
+                {
+                    continue;
+                }
+
+                deltas[birdPlayer.PlayerId] -= loserPayment;
+                deltas[request.WinnerId] += loserPayment;
+            }
+            return;
+        }
+
+        if (request.DiscarderId is not { } discarderId)
+        {
+            return;
+        }
+
+        var discarderSeat = request.Seats.Single(seat => seat.PlayerId == discarderId);
+        var matchingBirds = birdSeats.Count(birdSeat => birdSeat == winnerSeat.Seat || birdSeat == discarderSeat.Seat);
+        
+        if (matchingBirds == 0)
+        {
+            return;
+        }
+
+        if (!loserBasePayments.TryGetValue(discarderId, out var discardPayment))
+        {
+            return;
+        }
+
+        deltas[discarderId] -= discardPayment * matchingBirds;
+        deltas[request.WinnerId] += discardPayment * matchingBirds;
     }
 
     private static void ApplyBirdCatchAdjustments(

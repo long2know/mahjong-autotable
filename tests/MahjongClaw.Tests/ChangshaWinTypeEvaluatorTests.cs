@@ -169,6 +169,67 @@ public sealed class ChangshaWinTypeEvaluatorTests
         evaluation.IsBigWin.Should().BeTrue();
     }
 
+    [Fact]
+    public void Evaluate_DetectsSanTong_WhenThreeTripletsSameRankAcrossSuitsAtInitialDeal()
+    {
+        List<Tile> sanTongTiles =
+        [
+            new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5),
+            new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3), new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 2)
+        ];
+
+        var hand = ResolveWinningHand(sanTongTiles);
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(
+            sanTongTiles,
+            hand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.SanTong);
+        evaluation.IsBigWin.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Evaluate_DoesNotDetectSanTong_WhenNotInitialDeal()
+    {
+        List<Tile> tiles =
+        [
+            new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5),
+            new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3), new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 2)
+        ];
+
+        var hand = ResolveWinningHand(tiles);
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(tiles, hand);
+
+        evaluation.WinTypes.Should().NotContain(ChangshaWinType.SanTong);
+    }
+
+    [Fact]
+    public void Evaluate_DoesNotDetectSanTong_WhenOnlyTwoSameRankTriplets()
+    {
+        List<Tile> tiles =
+        [
+            new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Bamboos, 3), new Tile(TileSuit.Bamboos, 3), new Tile(TileSuit.Bamboos, 3),
+            new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3), new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 2)
+        ];
+
+        var hand = ResolveWinningHand(tiles);
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(
+            tiles,
+            hand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        evaluation.WinTypes.Should().NotContain(ChangshaWinType.SanTong);
+    }
+
     private static WinningHand ResolveWinningHand(IReadOnlyList<Tile> tiles)
     {
         Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();

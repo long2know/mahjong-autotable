@@ -21,9 +21,21 @@ test.describe('Mahjong Claw lobby -> game smoke', () => {
     expect(gameIdMatch).toBeTruthy();
     const gameId = gameIdMatch[0];
 
+    // Query state to find which seat the host already occupies
+    const stateResponse = await request.get(`${apiBaseUrl}/api/game/${gameId}/state`);
+    expect(stateResponse.ok()).toBeTruthy();
+
+    const gameState = await stateResponse.json();
+    const hostSeats = new Set(gameState.players.map(p => p.seat));
+
     let southPlayerId;
 
     for (const seat of seats) {
+      // Skip seats that are already occupied
+      if (hostSeats.has(seat)) {
+        continue;
+      }
+
       const joinResponse = await request.post(`${apiBaseUrl}/api/game/${gameId}/join`, {
         data: {
           name: `Smoke-${seat}`,
@@ -54,7 +66,7 @@ test.describe('Mahjong Claw lobby -> game smoke', () => {
     await expect(page.getByRole('heading', { name: 'Game', exact: true })).toBeVisible();
     await expect(page.getByText(`Table ID: ${gameId.slice(0, 8)}`)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your Hand' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Draw' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
   });
 
   test('creates human vs bot game and auto-seats bot players', async ({ page, request }) => {

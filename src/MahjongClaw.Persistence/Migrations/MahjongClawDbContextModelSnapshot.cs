@@ -64,8 +64,19 @@ namespace MahjongClaw.Persistence.Migrations
                     b.Property<Guid?>("DealerId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("DealerRotationCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
                     b.Property<int>("Round")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("RoundWind")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("East");
 
                     b.Property<string>("Ruleset")
                         .IsRequired()
@@ -94,6 +105,10 @@ namespace MahjongClaw.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("GameId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("PlayerId")

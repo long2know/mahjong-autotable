@@ -116,6 +116,93 @@ public sealed class ChangshaSettlementCalculatorTests
         result.NextDealerId.Should().Be(NorthId);
     }
 
+    [Fact]
+    public void Calculate_TwoBirds_OneMatchesWinner_DoublePayments()
+    {
+        var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
+            BuildSeats(),
+            WinnerId: SouthId,
+            DealerId: EastId,
+            IsSelfDraw: true,
+            IsBigWin: false,
+            BirdRanks: [2, 5]));
+
+        DeltaFor(result, EastId).Should().Be(-40);
+        DeltaFor(result, SouthId).Should().Be(+80);
+        DeltaFor(result, WestId).Should().Be(-20);
+        DeltaFor(result, NorthId).Should().Be(-20);
+    }
+
+    [Fact]
+    public void Calculate_TwoBirds_BothMatchWinner_TriplePayments()
+    {
+        var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
+            BuildSeats(),
+            WinnerId: SouthId,
+            DealerId: EastId,
+            IsSelfDraw: true,
+            IsBigWin: false,
+            BirdRanks: [2, 6]));
+
+        DeltaFor(result, EastId).Should().Be(-60);
+        DeltaFor(result, SouthId).Should().Be(+120);
+        DeltaFor(result, WestId).Should().Be(-30);
+        DeltaFor(result, NorthId).Should().Be(-30);
+    }
+
+    [Fact]
+    public void Calculate_LegacySingleBirdRank_StillWorks()
+    {
+        var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
+            BuildSeats(),
+            WinnerId: SouthId,
+            DealerId: EastId,
+            IsSelfDraw: true,
+            IsBigWin: false,
+            BirdRank: 2));
+
+        DeltaFor(result, EastId).Should().Be(-40);
+        DeltaFor(result, SouthId).Should().Be(+80);
+        DeltaFor(result, WestId).Should().Be(-20);
+        DeltaFor(result, NorthId).Should().Be(-20);
+        result.BirdSeat.Should().Be(Wind.South);
+    }
+
+    [Fact]
+    public void Calculate_LuxurySevenPairs_DoublesAllLosersPayment()
+    {
+        var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
+            BuildSeats(),
+            WinnerId: SouthId,
+            DealerId: EastId,
+            IsSelfDraw: true,
+            IsBigWin: true,
+            WinTypes: [ChangshaWinType.LuxurySevenPairs]));
+
+        DeltaFor(result, EastId).Should().Be(-140);
+        DeltaFor(result, SouthId).Should().Be(+260);
+        DeltaFor(result, WestId).Should().Be(-60);
+        DeltaFor(result, NorthId).Should().Be(-60);
+    }
+
+    [Fact]
+    public void Calculate_LuxurySevenPairs_WithBird_QuadruplesMatchedPayment()
+    {
+        var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
+            BuildSeats(),
+            WinnerId: SouthId,
+            DealerId: EastId,
+            IsSelfDraw: true,
+            IsBigWin: true,
+            BirdRank: 2,
+            WinTypes: [ChangshaWinType.LuxurySevenPairs]));
+
+        DeltaFor(result, EastId).Should().Be(-280);
+        DeltaFor(result, SouthId).Should().Be(+520);
+        DeltaFor(result, WestId).Should().Be(-120);
+        DeltaFor(result, NorthId).Should().Be(-120);
+    }
+
     private static IReadOnlyList<ChangshaSettlementSeat> BuildSeats()
         =>
         [

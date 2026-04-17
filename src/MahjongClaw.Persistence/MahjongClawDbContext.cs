@@ -26,6 +26,11 @@ public sealed class MahjongClawDbContext : DbContext
             entity.Property(e => e.Ruleset)
                 .HasMaxLength(32)
                 .HasDefaultValue(nameof(MahjongRuleset.Changsha258));
+            entity.Property(e => e.RoundWind)
+                .HasMaxLength(16)
+                .HasDefaultValue("East");
+            entity.Property(e => e.DealerRotationCount)
+                .HasDefaultValue(0);
             entity.HasMany(e => e.Players)
                 .WithOne(e => e.Game)
                 .HasForeignKey(e => e.GameId);
@@ -66,6 +71,7 @@ public sealed class MahjongClawDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Type).HasMaxLength(16);
+            entity.Property(e => e.Kind).HasMaxLength(16);
             entity.HasOne(e => e.Player)
                 .WithMany()
                 .HasForeignKey(e => e.PlayerId);
