@@ -70,7 +70,7 @@ public static class BotDiscardAdvisor
                     Tile = tile,
                     Index = index,
                     Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset)
-                        + GetTileAvailabilityPenalty(tile, ownedCounts, visibleCounts)
+                        + GetTileAvailabilityPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset),
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies
@@ -642,6 +642,7 @@ public static class BotDiscardAdvisor
 
     private static int GetTileAvailabilityPenalty(
         Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts,
         IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts)
     {
@@ -670,7 +671,7 @@ public static class BotDiscardAdvisor
             return 0;
         }
 
-        if (!HasSequencePotential(tile, ownedCounts, visibleCounts))
+        if (!HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
         {
             return remainingSelf switch
             {
@@ -686,6 +687,7 @@ public static class BotDiscardAdvisor
 
     private static bool HasSequencePotential(
         Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts,
         IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts)
     {
@@ -696,12 +698,13 @@ public static class BotDiscardAdvisor
 
         bool IsTileAvailable(Tile candidate)
         {
-            ownedCounts.TryGetValue(candidate, out var ownedCount);
-            if (ownedCount > 0)
+            handCounts.TryGetValue(candidate, out var handCount);
+            if (handCount > 0)
             {
                 return true;
             }
 
+            ownedCounts.TryGetValue(candidate, out var ownedCount);
             visibleCounts.TryGetValue(candidate, out var visibleCount);
             return 4 - ownedCount - visibleCount > 0;
         }

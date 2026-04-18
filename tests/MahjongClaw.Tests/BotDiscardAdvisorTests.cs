@@ -484,6 +484,35 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithMeldedNeighbors_DoesNotTreatBlockedMeldTilesAsAvailable()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 9)
+        };
+
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 5)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, meldTiles, visibleTiles);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 4));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrefersKeepingTerminal_WhenOnlyNeighborIsPresent()
     {
         var tiles = new List<Tile>
