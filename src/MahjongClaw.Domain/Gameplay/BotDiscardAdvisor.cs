@@ -615,12 +615,6 @@ public static class BotDiscardAdvisor
             return 0;
         }
 
-        if (Changsha258SmallWinPairTiles.Any(pairTile =>
-                handCounts.TryGetValue(pairTile, out var pairCount) && pairCount >= 2))
-        {
-            return 0;
-        }
-
         handCounts.TryGetValue(tile, out var handCount);
         if (handCount != 1)
         {
