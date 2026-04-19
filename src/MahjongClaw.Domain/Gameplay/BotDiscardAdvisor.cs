@@ -175,7 +175,7 @@ public static class BotDiscardAdvisor
         }
 
         var sevenPairsBias = 0;
-        if (ruleset != MahjongRuleset.Changsha258 && pairCount >= 3)
+        if (pairCount >= 3)
         {
             if (tileMatchCount >= 2)
             {
