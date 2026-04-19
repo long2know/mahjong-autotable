@@ -1165,6 +1165,11 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Current player is not a bot.");
     }
 
+    if (!dbContext.Entry(game).Collection(g => g.Melds).IsLoaded)
+    {
+        await dbContext.Entry(game).Collection(g => g.Melds).LoadAsync(cancellationToken);
+    }
+
     var handTiles = game.Tiles
         .Where(tile => tile.PlayerId == botPlayer.Id && tile.Location == "Hand")
         .ToList();
@@ -1193,12 +1198,67 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
             var discardedTile = discardedTileHand[0];
             if (BotClaimAdvisor.ShouldClaimDiscardWin(botConcealedHand, botMeldHand, discardedTile, ruleset))
             {
+                ChangshaWinEvaluation? changshaEvaluation = null;
+                IReadOnlyList<PlayerScoreDelta>? scoreDeltas = null;
+                Guid? nextDealerId = null;
+                int? nextRound = null;
+                string? birdSeat = null;
+
+                if (ruleset == MahjongRuleset.Changsha258)
+                {
+                    var winningTiles = botConcealedHand
+                        .Concat(botMeldHand)
+                        .Append(discardedTile)
+                        .ToList();
+
+                    if (!RulesetHandAnalyzer.TryGetWinningHand(winningTiles, ruleset, out var winningHand) || winningHand is null)
+                    {
+                        return BotTurnExecutionResult.Fail(409, "Bot discard win evaluation failed.");
+                    }
+
+                    var latestDiscard = game.Discards
+                        .OrderByDescending(discard => discard.Sequence)
+                        .FirstOrDefault();
+
+                    if (latestDiscard is null)
+                    {
+                        return BotTurnExecutionResult.Fail(409, "Discard win requested but no discard was found.");
+                    }
+
+                    if (!TryApplyChangshaBotWin(
+                        game,
+                        botPlayer.Id,
+                        isSelfDraw: false,
+                        discarderId: latestDiscard.PlayerId,
+                        winningTiles,
+                        winningHand,
+                        out changshaEvaluation,
+                        out scoreDeltas,
+                        out nextDealerId,
+                        out nextRound,
+                        out birdSeat,
+                        out var changshaError))
+                    {
+                        return BotTurnExecutionResult.Fail(409, changshaError ?? "Changsha win settlement failed.");
+                    }
+                }
+
                 game.Status = "Completed";
                 game.CurrentPlayerId = botPlayer.Id;
 
                 await dbContext.SaveChangesAsync(cancellationToken);
 
-                var winResponse = new WinResponse(game.Id, game.Status, botPlayer.Id);
+                var winResponse = new WinResponse(
+                    game.Id,
+                    game.Status,
+                    botPlayer.Id,
+                    changshaEvaluation?.WinTypes.Select(static type => type.ToString()).ToList(),
+                    changshaEvaluation?.IsBigWin,
+                    changshaEvaluation?.IsSmallWin,
+                    scoreDeltas,
+                    nextDealerId,
+                    nextRound,
+                    birdSeat);
                 await SendToGameWithAliases(hubContext, game.Id, "GameWon", winResponse, cancellationToken);
 
                 return BotTurnExecutionResult.Ok(new BotTurnResponse(null, null, latestDiscardTileEntity.Id, game.CurrentPlayerId, true));
@@ -1233,6 +1293,37 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
 
     if (RulesetHandAnalyzer.IsWinningHand(botOwnedHand, ruleset))
     {
+        ChangshaWinEvaluation? changshaEvaluation = null;
+        IReadOnlyList<PlayerScoreDelta>? scoreDeltas = null;
+        Guid? nextDealerId = null;
+        int? nextRound = null;
+        string? birdSeat = null;
+
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            if (!RulesetHandAnalyzer.TryGetWinningHand(botOwnedHand, ruleset, out var winningHand) || winningHand is null)
+            {
+                return BotTurnExecutionResult.Fail(409, "Bot win evaluation failed.");
+            }
+
+            if (!TryApplyChangshaBotWin(
+                game,
+                botPlayer.Id,
+                isSelfDraw: true,
+                discarderId: null,
+                botOwnedHand,
+                winningHand,
+                out changshaEvaluation,
+                out scoreDeltas,
+                out nextDealerId,
+                out nextRound,
+                out birdSeat,
+                out var changshaError))
+            {
+                return BotTurnExecutionResult.Fail(409, changshaError ?? "Changsha win settlement failed.");
+            }
+        }
+
         game.Status = "Completed";
         game.CurrentPlayerId = botPlayer.Id;
 
@@ -1243,7 +1334,17 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
             await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
         }
 
-        var winResponse = new WinResponse(game.Id, game.Status, botPlayer.Id);
+        var winResponse = new WinResponse(
+            game.Id,
+            game.Status,
+            botPlayer.Id,
+            changshaEvaluation?.WinTypes.Select(static type => type.ToString()).ToList(),
+            changshaEvaluation?.IsBigWin,
+            changshaEvaluation?.IsSmallWin,
+            scoreDeltas,
+            nextDealerId,
+            nextRound,
+            birdSeat);
         await SendToGameWithAliases(hubContext, game.Id, "GameWon", winResponse, cancellationToken);
 
         return BotTurnExecutionResult.Ok(new BotTurnResponse(drawResponse?.TileId, null, null, game.CurrentPlayerId, true));
@@ -1402,6 +1503,150 @@ static ChangshaWinContext BuildChangshaWinContext(
         IsRobbingKong: request.IsRobbingKong,
         IsKongOnCannon: request.IsKongOnCannon,
         IsFullyReliant: overrideIsFullyReliant ?? request.IsFullyReliant);
+
+static bool TryApplyChangshaBotWin(
+    GameEntity game,
+    Guid winnerId,
+    bool isSelfDraw,
+    Guid? discarderId,
+    IReadOnlyList<Tile> tileHand,
+    WinningHand winningHand,
+    out ChangshaWinEvaluation? changshaEvaluation,
+    out IReadOnlyList<PlayerScoreDelta>? scoreDeltas,
+    out Guid? nextDealerId,
+    out int? nextRound,
+    out string? birdSeat,
+    out string? errorMessage)
+{
+    changshaEvaluation = null;
+    scoreDeltas = null;
+    nextDealerId = null;
+    nextRound = null;
+    birdSeat = null;
+    errorMessage = null;
+
+    if (!isSelfDraw && discarderId is null)
+    {
+        errorMessage = "DiscarderPlayerId is required for discard wins.";
+        return false;
+    }
+
+    if (discarderId == winnerId)
+    {
+        errorMessage = "Winner and discarder cannot be the same player.";
+        return false;
+    }
+
+    var wallRemaining = game.Tiles.Count(t => string.Equals(t.Location, "Wall", StringComparison.OrdinalIgnoreCase));
+    var isLastTileDraw = isSelfDraw && wallRemaining == 0;
+    var isLastTileDiscard = !isSelfDraw && wallRemaining == 0;
+
+    var isFullyReliant = false;
+    var playerMelds = game.Melds.Where(m => m.PlayerId == winnerId).ToList();
+
+    if (playerMelds.Any())
+    {
+        var meldInfos = new List<MeldInfo>();
+
+        foreach (var meld in playerMelds)
+        {
+            var meldType = meld.Type;
+            var meldKind = meld.Kind;
+
+            TileSource meldSource;
+            if (string.Equals(meldType, "Kong", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(meldKind, "ConcealedKong", StringComparison.OrdinalIgnoreCase))
+                {
+                    meldSource = TileSource.SelfDrawn;
+                }
+                else
+                {
+                    meldSource = TileSource.ClaimedDiscard;
+                }
+            }
+            else
+            {
+                meldSource = TileSource.ClaimedDiscard;
+            }
+
+            meldInfos.Add(new MeldInfo(meldSource));
+        }
+
+        var winningTileSource = isSelfDraw ? TileSource.SelfDrawn : TileSource.ClaimedDiscard;
+        isFullyReliant = ChangshaFullyReliantDetector.IsFullyReliant(meldInfos, winningTileSource);
+    }
+    else if (!isSelfDraw)
+    {
+        isFullyReliant = true;
+    }
+
+    changshaEvaluation = ChangshaWinTypeEvaluator.Evaluate(
+        tileHand,
+        winningHand,
+        new ChangshaWinContext(
+            IsInitialDeal: false,
+            IsHeavenly: false,
+            IsEarthly: false,
+            IsLastTileDraw: isLastTileDraw,
+            IsLastTileDiscard: isLastTileDiscard,
+            IsWinAfterKong: false,
+            IsRobbingKong: false,
+            IsKongOnCannon: false,
+            IsFullyReliant: isFullyReliant));
+
+    if (!TryBuildChangshaSettlementSeats(game.Players, out var settlementSeats, out var seatBuildError))
+    {
+        errorMessage = seatBuildError;
+        return false;
+    }
+
+    var settlementRequest = new ChangshaSettlementRequest(
+        settlementSeats,
+        WinnerId: winnerId,
+        DealerId: game.DealerId ?? winnerId,
+        IsSelfDraw: isSelfDraw,
+        IsBigWin: changshaEvaluation.IsBigWin,
+        DiscarderId: isSelfDraw ? null : discarderId);
+
+    var settlementResult = ChangshaSettlementCalculator.Calculate(settlementRequest);
+
+    foreach (var delta in settlementResult.ScoreDeltas)
+    {
+        var player = game.Players.First(candidate => candidate.Id == delta.PlayerId);
+        player.Score = delta.NewScore;
+    }
+
+    var previousDealerId = game.DealerId;
+    game.DealerId = settlementResult.NextDealerId;
+    game.Round = Math.Max(1, game.Round + settlementResult.NextRoundIncrement);
+
+    if (previousDealerId != game.DealerId)
+    {
+        game.DealerRotationCount++;
+
+        if (game.DealerRotationCount > 0 && game.DealerRotationCount % 4 == 0)
+        {
+            game.RoundWind = game.RoundWind switch
+            {
+                "East" => "South",
+                "South" => "West",
+                "West" => "North",
+                "North" => "East",
+                _ => "East"
+            };
+        }
+    }
+
+    scoreDeltas = settlementResult.ScoreDeltas
+        .Select(delta => new PlayerScoreDelta(delta.PlayerId, delta.Delta, delta.NewScore))
+        .ToList();
+    nextDealerId = settlementResult.NextDealerId;
+    nextRound = game.Round;
+    birdSeat = settlementResult.BirdSeat?.ToString();
+
+    return true;
+}
 
 static bool TryBuildChangshaSettlementSeats(
     IEnumerable<PlayerEntity> players,
