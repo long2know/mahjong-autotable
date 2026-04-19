@@ -73,18 +73,44 @@ public static class BotDiscardAdvisor
                         + GetTileAvailabilityPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset),
                     WinningDrawOuts = winningOutSummary.TileTypes,
-                    WinningDrawOutCopies = winningOutSummary.RemainingCopies
+                    WinningDrawOutCopies = winningOutSummary.RemainingCopies,
+                    SmallWinningDrawOuts = winningOutSummary.SmallWinTileTypes,
+                    SmallWinningDrawOutCopies = winningOutSummary.SmallWinRemainingCopies,
+                    BigWinningDrawOuts = winningOutSummary.BigWinTileTypes,
+                    BigWinningDrawOutCopies = winningOutSummary.BigWinRemainingCopies
                 };
             })
             .ToList();
 
-        var maxWinningDrawOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
-        var prioritizedCandidates = maxWinningDrawOuts > 0
-            ? candidates.Where(candidate => candidate.WinningDrawOuts == maxWinningDrawOuts).ToList()
-            : candidates;
+        var prioritizedCandidates = candidates;
+        var maxSmallWinOuts = 0;
 
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            maxSmallWinOuts = prioritizedCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
+            if (maxSmallWinOuts > 0)
+            {
+                prioritizedCandidates = prioritizedCandidates
+                    .Where(candidate => candidate.SmallWinningDrawOuts == maxSmallWinOuts)
+                    .ToList();
+
+                var maxSmallWinCopies = prioritizedCandidates.Max(candidate => candidate.SmallWinningDrawOutCopies);
+                if (maxSmallWinCopies > 0)
+                {
+                    prioritizedCandidates = prioritizedCandidates
+                        .Where(candidate => candidate.SmallWinningDrawOutCopies == maxSmallWinCopies)
+                        .ToList();
+                }
+            }
+        }
+
+        var maxWinningDrawOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
         if (maxWinningDrawOuts > 0)
         {
+            prioritizedCandidates = prioritizedCandidates
+                .Where(candidate => candidate.WinningDrawOuts == maxWinningDrawOuts)
+                .ToList();
+
             var maxWinningDrawOutCopies = prioritizedCandidates.Max(candidate => candidate.WinningDrawOutCopies);
             prioritizedCandidates = prioritizedCandidates
                 .Where(candidate => candidate.WinningDrawOutCopies == maxWinningDrawOutCopies)
@@ -543,6 +569,10 @@ public static class BotDiscardAdvisor
 
         var winningDrawOuts = 0;
         var winningDrawOutCopies = 0;
+        var smallWinDrawOuts = 0;
+        var smallWinDrawOutCopies = 0;
+        var bigWinDrawOuts = 0;
+        var bigWinDrawOutCopies = 0;
 
         foreach (var drawTileType in drawTileTypes)
         {
@@ -564,17 +594,44 @@ public static class BotDiscardAdvisor
                 .Append(drawTileType)
                 .ToList();
 
-            if (RulesetHandAnalyzer.IsWinningHand(candidateHand, ruleset))
+            if (RulesetHandAnalyzer.TryGetWinningHand(candidateHand, ruleset, out var winningHand))
             {
                 winningDrawOuts++;
                 winningDrawOutCopies += remainingCopies;
+
+                if (ruleset == MahjongRuleset.Changsha258 && winningHand is not null)
+                {
+                    var evaluation = ChangshaWinTypeEvaluator.Evaluate(candidateHand, winningHand);
+                    if (evaluation.IsBigWin)
+                    {
+                        bigWinDrawOuts++;
+                        bigWinDrawOutCopies += remainingCopies;
+                    }
+                    else
+                    {
+                        smallWinDrawOuts++;
+                        smallWinDrawOutCopies += remainingCopies;
+                    }
+                }
             }
         }
 
-        return new WinningDrawOutSummary(winningDrawOuts, winningDrawOutCopies);
+        return new WinningDrawOutSummary(
+            winningDrawOuts,
+            winningDrawOutCopies,
+            smallWinDrawOuts,
+            smallWinDrawOutCopies,
+            bigWinDrawOuts,
+            bigWinDrawOutCopies);
     }
 
-    private readonly record struct WinningDrawOutSummary(int TileTypes, int RemainingCopies);
+    private readonly record struct WinningDrawOutSummary(
+        int TileTypes,
+        int RemainingCopies,
+        int SmallWinTileTypes,
+        int SmallWinRemainingCopies,
+        int BigWinTileTypes,
+        int BigWinRemainingCopies);
 
     private static IReadOnlyList<Tile> BuildDrawTileTypes(MahjongRuleset ruleset)
     {
