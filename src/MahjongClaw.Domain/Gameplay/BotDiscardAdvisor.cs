@@ -61,6 +61,8 @@ public static class BotDiscardAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
 
+        var hasLiveSmallWinPairCandidate = HasLiveSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts, ruleset);
+
         var candidates = handTiles
             .Select((tile, index) =>
             {
@@ -69,7 +71,7 @@ public static class BotDiscardAdvisor
                 {
                     Tile = tile,
                     Index = index,
-                    Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset)
+                    Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset, hasLiveSmallWinPairCandidate)
                         + GetTileAvailabilityPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset),
                     WinningDrawOuts = winningOutSummary.TileTypes,
@@ -130,7 +132,12 @@ public static class BotDiscardAdvisor
             .Index;
     }
 
-    private static int GetBotTileKeepScore(Tile tile, IReadOnlyList<Tile> handTiles, IReadOnlyList<Tile> meldTiles, MahjongRuleset ruleset)
+    private static int GetBotTileKeepScore(
+        Tile tile,
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        MahjongRuleset ruleset,
+        bool hasLiveSmallWinPairCandidate)
     {
         if (ruleset == MahjongRuleset.Changsha258 && !Changsha258Ruleset.IsAllowedTile(tile))
         {
@@ -227,7 +234,15 @@ public static class BotDiscardAdvisor
         var missingSmallWinPairBonus = ruleset == MahjongRuleset.Changsha258
             && smallWinPairCount == 0
             && Changsha258Ruleset.IsSmallWinPair(tile)
+            && hasLiveSmallWinPairCandidate
             ? 4
+            : 0;
+
+        var deadSmallWinPairPenalty = ruleset == MahjongRuleset.Changsha258
+            && smallWinPairCount == 0
+            && Changsha258Ruleset.IsSmallWinPair(tile)
+            && !hasLiveSmallWinPairCandidate
+            ? -3
             : 0;
 
         var suitedPairCount = handTiles
@@ -424,7 +439,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + meldSuitFocusBonus + meldExtensionBonus;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus;
         }
 
         var rankCounts = suitTiles
@@ -542,7 +557,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + meldSuitFocusBonus + meldExtensionBonus;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus;
     }
 
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
@@ -658,6 +673,40 @@ public static class BotDiscardAdvisor
             .Concat(windTiles)
             .Concat(dragonTiles)
             .ToArray();
+    }
+
+    private static bool HasLiveSmallWinPairCandidate(
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
+        MahjongRuleset ruleset)
+    {
+        if (ruleset != MahjongRuleset.Changsha258 || visibleCounts.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var tile in Changsha258SmallWinPairTiles)
+        {
+            handCounts.TryGetValue(tile, out var handCount);
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            if (handCount > 0)
+            {
+                if (remainingCopies >= 1)
+                {
+                    return true;
+                }
+            }
+            else if (remainingCopies >= 2)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int GetChangshaSmallWinPairVisibilityAdjustment(
