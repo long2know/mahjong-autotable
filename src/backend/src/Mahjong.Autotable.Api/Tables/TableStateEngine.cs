@@ -3,6 +3,7 @@ namespace Mahjong.Autotable.Api.Tables;
 public interface ITableStateEngine
 {
     TableGameState CreateInitialState(IReadOnlyCollection<int>? botSeatIndexes = null, int? seed = null);
+    void NormalizePersistedState(TableGameState state, int persistedStateVersion);
     DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId);
     BotAdvanceResult AdvanceBots(TableGameState state, int maxActions);
 }
@@ -17,6 +18,7 @@ public sealed class TableStateEngine : ITableStateEngine
 {
     public const int SeatCount = 4;
     public const int TotalTiles = 136;
+    public const string RngAlgorithmId = "fisher-yates-v1";
 
     public TableGameState CreateInitialState(IReadOnlyCollection<int>? botSeatIndexes = null, int? seed = null)
     {
@@ -47,16 +49,44 @@ public sealed class TableStateEngine : ITableStateEngine
 
         hands[0].Tiles.Add(DrawFromWall(wall));
 
-        return new TableGameState
+        var state = new TableGameState
         {
+            StateVersion = 1,
+            ActionSequence = 0,
             ActiveSeat = 0,
             TurnNumber = 1,
             DrawNumber = 1,
-            Metadata = new TableStateMetadata { Seed = resolvedSeed },
+            Metadata = new TableStateMetadata
+            {
+                Seed = resolvedSeed,
+                AlgorithmId = RngAlgorithmId
+            },
             Seats = seats,
             Hands = hands,
             Wall = wall
         };
+
+        RefreshIntegrity(state);
+        return state;
+    }
+
+    public void NormalizePersistedState(TableGameState state, int persistedStateVersion)
+    {
+        ValidateState(state);
+        state.StateVersion = Math.Max(state.StateVersion, persistedStateVersion);
+        state.ActionSequence = Math.Max(state.ActionSequence, GetMaxActionSequence(state));
+        state.Metadata ??= new TableStateMetadata();
+        if (string.IsNullOrWhiteSpace(state.Metadata.AlgorithmId))
+        {
+            state.Metadata.AlgorithmId = RngAlgorithmId;
+        }
+
+        if (state.LastAction is null && state.ActionLog.Count > 0)
+        {
+            state.LastAction = ToLastAction(state.ActionLog[^1]);
+        }
+
+        RefreshIntegrity(state);
     }
 
     public DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId)
@@ -79,7 +109,7 @@ public sealed class TableStateEngine : ITableStateEngine
                 };
             }
 
-            var seat = state.Seats[state.ActiveSeat];
+            var seat = GetSeat(state, state.ActiveSeat);
             if (seat.SeatType == TableSeatType.Human)
             {
                 return new BotAdvanceResult
@@ -153,29 +183,40 @@ public sealed class TableStateEngine : ITableStateEngine
 
     private static void ValidateState(TableGameState state)
     {
+        ArgumentNullException.ThrowIfNull(state);
+
         if (state.Seats.Count != SeatCount)
         {
-            throw new InvalidOperationException("Table state must contain exactly four seats.");
+            ThrowInvariant(state, "Table state must contain exactly four seats.");
         }
 
         if (state.ActiveSeat is < 0 or >= SeatCount)
         {
-            throw new InvalidOperationException("Active seat must be between 0 and 3.");
+            ThrowInvariant(state, "Active seat must be between 0 and 3.");
         }
 
-        if (state.Seats.Select(seat => seat.SeatIndex).Distinct().Count() != SeatCount)
+        var expectedSeatIndexes = Enumerable.Range(0, SeatCount);
+        var seatIndexes = state.Seats.Select(seat => seat.SeatIndex).OrderBy(index => index).ToArray();
+        if (!seatIndexes.SequenceEqual(expectedSeatIndexes))
         {
-            throw new InvalidOperationException("Seat indexes must be unique.");
+            ThrowInvariant(state, "Seat indexes must map to 0-3 exactly once.");
         }
 
         if (state.Hands.Count != SeatCount)
         {
-            throw new InvalidOperationException("Table state must contain exactly four hands.");
+            ThrowInvariant(state, "Table state must contain exactly four hands.");
         }
 
-        if (state.Hands.Select(hand => hand.SeatIndex).Distinct().Count() != SeatCount)
+        var handSeatIndexes = state.Hands.Select(hand => hand.SeatIndex).OrderBy(index => index).ToArray();
+        if (!handSeatIndexes.SequenceEqual(expectedSeatIndexes))
         {
-            throw new InvalidOperationException("Hand seat indexes must be unique.");
+            ThrowInvariant(state, "Hand seat indexes must map to 0-3 exactly once.");
+        }
+
+        var trackedTiles = state.Wall.Count + state.Hands.Sum(hand => hand.Tiles.Count) + state.DiscardPile.Count;
+        if (trackedTiles != TotalTiles)
+        {
+            ThrowInvariant(state, "Tile conservation invariant failed.");
         }
     }
 
@@ -187,29 +228,35 @@ public sealed class TableStateEngine : ITableStateEngine
     {
         ValidateState(state);
 
+        if (state.Phase == TableTurnPhase.WallExhausted)
+        {
+            ThrowRule(state, TableActionErrorCodes.RoundNotActive, "Round is no longer active.");
+        }
+
         if (state.Phase != TableTurnPhase.AwaitingDiscard)
         {
-            throw new InvalidOperationException("Discards are only allowed while awaiting discard.");
+            ThrowRule(state, TableActionErrorCodes.InvalidPhase, "Discards are only allowed while awaiting discard.");
         }
 
         if (seatIndex != state.ActiveSeat)
         {
-            throw new InvalidOperationException("Only the active seat can discard.");
+            ThrowRule(state, TableActionErrorCodes.NotActiveSeat, "Only the active seat can discard.");
         }
 
-        var seat = state.Seats.Single(currentSeat => currentSeat.SeatIndex == seatIndex);
+        var seat = GetSeat(state, seatIndex);
         if (seat.SeatType != requiredSeatType)
         {
-            throw new InvalidOperationException($"Seat {seatIndex} is not a {requiredSeatType} seat.");
+            ThrowRule(state, TableActionErrorCodes.NotActiveSeat, $"Seat {seatIndex} is not a {requiredSeatType} seat.");
         }
 
         var hand = GetHandForSeat(state, seatIndex);
         if (!hand.Tiles.Remove(tileId))
         {
-            throw new InvalidOperationException("Tile is not in the active seat hand.");
+            ThrowRule(state, TableActionErrorCodes.TileNotInHand, "Tile is not in the active seat hand.");
         }
 
-        var discardAction = CreateAction(
+        var discardAction = AppendAction(
+            state,
             seatIndex,
             state.TurnNumber,
             "discard",
@@ -223,7 +270,6 @@ public sealed class TableStateEngine : ITableStateEngine
             TurnNumber = state.TurnNumber,
             OccurredUtc = discardAction.OccurredUtc
         });
-        state.ActionLog.Add(discardAction);
 
         state.ActiveSeat = (state.ActiveSeat + 1) % SeatCount;
         state.TurnNumber++;
@@ -231,6 +277,7 @@ public sealed class TableStateEngine : ITableStateEngine
         if (state.Wall.Count == 0)
         {
             state.Phase = TableTurnPhase.WallExhausted;
+            RefreshIntegrity(state);
             return new DiscardActionResult
             {
                 DiscardAction = discardAction,
@@ -245,13 +292,15 @@ public sealed class TableStateEngine : ITableStateEngine
         state.DrawNumber++;
         state.Phase = TableTurnPhase.AwaitingDiscard;
 
-        var drawAction = CreateAction(
+        var drawAction = AppendAction(
+            state,
             drawSeat,
             state.TurnNumber,
             "draw",
             drawTileId,
             $"tile-{drawTileId}");
-        state.ActionLog.Add(drawAction);
+
+        RefreshIntegrity(state);
 
         return new DiscardActionResult
         {
@@ -260,8 +309,35 @@ public sealed class TableStateEngine : ITableStateEngine
         };
     }
 
-    private static TableSeatHandState GetHandForSeat(TableGameState state, int seatIndex) =>
-        state.Hands.Single(hand => hand.SeatIndex == seatIndex);
+    private static TableSeatState GetSeat(TableGameState state, int seatIndex)
+    {
+        var seat = state.Seats.SingleOrDefault(currentSeat => currentSeat.SeatIndex == seatIndex);
+        if (seat is null)
+        {
+            throw new TableRuleException(
+                TableActionErrorCodes.SeatNotFound,
+                $"Seat {seatIndex} does not exist.",
+                state.StateVersion,
+                state.ActionSequence);
+        }
+
+        return seat;
+    }
+
+    private static TableSeatHandState GetHandForSeat(TableGameState state, int seatIndex)
+    {
+        var hand = state.Hands.SingleOrDefault(currentHand => currentHand.SeatIndex == seatIndex);
+        if (hand is null)
+        {
+            throw new TableRuleException(
+                TableActionErrorCodes.StateInvariantBroken,
+                $"Seat {seatIndex} hand is missing.",
+                state.StateVersion,
+                state.ActionSequence);
+        }
+
+        return hand;
+    }
 
     private static List<int> CreateShuffledWall(int seed)
     {
@@ -290,14 +366,17 @@ public sealed class TableStateEngine : ITableStateEngine
         return tileId;
     }
 
-    private static TableAction CreateAction(
+    private static TableAction AppendAction(
+        TableGameState state,
         int seatIndex,
         int turnNumber,
         string actionType,
         int? tileId,
-        string detail) =>
-        new()
+        string detail)
+    {
+        var action = new TableAction
         {
+            Sequence = ++state.ActionSequence,
             SeatIndex = seatIndex,
             TurnNumber = turnNumber,
             ActionType = actionType,
@@ -305,4 +384,35 @@ public sealed class TableStateEngine : ITableStateEngine
             Detail = detail,
             OccurredUtc = DateTime.UtcNow
         };
+
+        state.ActionLog.Add(action);
+        state.LastAction = ToLastAction(action);
+        state.StateVersion++;
+        return action;
+    }
+
+    private static TableLastActionState ToLastAction(TableAction action) =>
+        new()
+        {
+            Sequence = action.Sequence,
+            SeatIndex = action.SeatIndex,
+            ActionType = action.ActionType,
+            TileId = action.TileId,
+            Detail = action.Detail
+        };
+
+    private static long GetMaxActionSequence(TableGameState state) =>
+        state.ActionLog.Count == 0 ? 0 : state.ActionLog.Max(action => action.Sequence);
+
+    private static void RefreshIntegrity(TableGameState state)
+    {
+        state.Integrity ??= new TableIntegrityState();
+        state.Integrity.StateHash = TableStateHasher.Compute(state);
+    }
+
+    private static void ThrowInvariant(TableGameState state, string message) =>
+        ThrowRule(state, TableActionErrorCodes.StateInvariantBroken, message);
+
+    private static void ThrowRule(TableGameState state, string code, string message) =>
+        throw new TableRuleException(code, message, state.StateVersion, state.ActionSequence);
 }

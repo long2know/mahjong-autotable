@@ -56,7 +56,7 @@ app.MapPost("/api/tables", async (
         var session = new TableSession
         {
             RuleSet = ruleSet,
-            StateVersion = 1,
+            StateVersion = state.StateVersion,
             StateJson = serializer.Serialize(state),
             CreatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow,
@@ -77,6 +77,7 @@ app.MapPost("/api/tables", async (
 app.MapGet("/api/tables/{id:guid}", async (
     Guid id,
     AppDbContext db,
+    ITableStateEngine engine,
     ITableStateSerializer serializer,
     CancellationToken cancellationToken) =>
 {
@@ -87,12 +88,14 @@ app.MapGet("/api/tables/{id:guid}", async (
     }
 
     var state = serializer.Deserialize(session.StateJson);
+    engine.NormalizePersistedState(state, session.StateVersion);
     return Results.Ok(session.ToDto(state));
 });
 
 app.MapPost("/api/tables/{id:guid}/bots/advance", async (
     Guid id,
     AdvanceBotsRequest request,
+    HttpContext httpContext,
     AppDbContext db,
     ITableStateEngine engine,
     ITableStateSerializer serializer,
@@ -105,10 +108,26 @@ app.MapPost("/api/tables/{id:guid}/bots/advance", async (
     }
 
     var state = serializer.Deserialize(session.StateJson);
-    var result = engine.AdvanceBots(state, request.MaxActions);
+    engine.NormalizePersistedState(state, session.StateVersion);
+
+    BotAdvanceResult result;
+    try
+    {
+        result = engine.AdvanceBots(state, request.MaxActions);
+    }
+    catch (TableRuleException exception)
+    {
+        var error = ToActionError(
+            exception.Code,
+            exception.Message,
+            exception.StateVersion,
+            exception.ActionSequence,
+            httpContext.TraceIdentifier);
+        return Results.BadRequest(error);
+    }
 
     session.StateJson = serializer.Serialize(state);
-    session.StateVersion += 1;
+    session.StateVersion = state.StateVersion;
     session.UpdatedUtc = DateTime.UtcNow;
     session.LastActionUtc = result.Actions.Count == 0 ? session.LastActionUtc : result.Actions[^1].OccurredUtc;
 
@@ -121,6 +140,7 @@ app.MapPost("/api/tables/{id:guid}/bots/advance", async (
 app.MapPost("/api/tables/{id:guid}/actions/discard", async (
     Guid id,
     DiscardActionRequest request,
+    HttpContext httpContext,
     AppDbContext db,
     ITableStateEngine engine,
     ITableStateSerializer serializer,
@@ -133,13 +153,25 @@ app.MapPost("/api/tables/{id:guid}/actions/discard", async (
     }
 
     var state = serializer.Deserialize(session.StateJson);
+    engine.NormalizePersistedState(state, session.StateVersion);
+
+    if (request.ExpectedStateVersion.HasValue && request.ExpectedStateVersion.Value != state.StateVersion)
+    {
+        var error = ToActionError(
+            TableActionErrorCodes.ConcurrencyConflict,
+            $"Expected state version {request.ExpectedStateVersion.Value}, current version is {state.StateVersion}.",
+            state.StateVersion,
+            state.ActionSequence,
+            httpContext.TraceIdentifier);
+        return Results.Conflict(error);
+    }
 
     try
     {
         var result = engine.ApplyHumanDiscard(state, request.SeatIndex, request.TileId);
 
         session.StateJson = serializer.Serialize(state);
-        session.StateVersion += 1;
+        session.StateVersion = state.StateVersion;
         session.UpdatedUtc = DateTime.UtcNow;
         session.LastActionUtc = result.DrawAction?.OccurredUtc ?? result.DiscardAction.OccurredUtc;
 
@@ -148,10 +180,24 @@ app.MapPost("/api/tables/{id:guid}/actions/discard", async (
         var tableDto = session.ToDto(state);
         return Results.Ok(new DiscardActionResponse(tableDto, result.DiscardAction, result.DrawAction));
     }
-    catch (InvalidOperationException exception)
+    catch (TableRuleException exception)
     {
-        return Results.BadRequest(new { error = exception.Message });
+        var error = ToActionError(
+            exception.Code,
+            exception.Message,
+            exception.StateVersion,
+            exception.ActionSequence,
+            httpContext.TraceIdentifier);
+        return Results.BadRequest(error);
     }
 });
+
+static TableActionError ToActionError(
+    string code,
+    string message,
+    int stateVersion,
+    long actionSequence,
+    string correlationId) =>
+    new(code, message, stateVersion, actionSequence, correlationId);
 
 app.Run();

@@ -13,3 +13,4 @@
 - Added backend unit tests around bot state engine behavior to lock current deterministic placeholder semantics while rules engine work remains pending.
 - Replaced placeholder bot mutation with an authoritative draw/discard loop backed by seeded wall state, per-seat hands, discard pile tracking, and phase-aware turn semantics.
 - Added strict human discard validation endpoint and routed bot advancement through the same discard application path to keep server authority and invariants aligned.
+- Added action-sequence/state-version progression rules, canonical state hashing, and structured contract error responses (including optimistic concurrency conflicts) for discard and bot orchestration endpoints.

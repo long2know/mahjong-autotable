@@ -22,6 +22,21 @@ public enum TableTurnPhase
 public sealed class TableStateMetadata
 {
     public int Seed { get; set; }
+    public string AlgorithmId { get; set; } = string.Empty;
+}
+
+public sealed class TableIntegrityState
+{
+    public string StateHash { get; set; } = string.Empty;
+}
+
+public sealed class TableLastActionState
+{
+    public long Sequence { get; set; }
+    public int SeatIndex { get; set; }
+    public string ActionType { get; set; } = string.Empty;
+    public int? TileId { get; set; }
+    public string Detail { get; set; } = string.Empty;
 }
 
 public sealed class TableSeatHandState
@@ -40,21 +55,26 @@ public sealed class TableDiscard
 
 public sealed class TableAction
 {
-    public string ActionType { get; init; } = string.Empty;
-    public int SeatIndex { get; init; }
-    public int TurnNumber { get; init; }
-    public int? TileId { get; init; }
-    public string Detail { get; init; } = string.Empty;
-    public DateTime OccurredUtc { get; init; }
+    public long Sequence { get; set; }
+    public string ActionType { get; set; } = string.Empty;
+    public int SeatIndex { get; set; }
+    public int TurnNumber { get; set; }
+    public int? TileId { get; set; }
+    public string Detail { get; set; } = string.Empty;
+    public DateTime OccurredUtc { get; set; }
 }
 
 public sealed class TableGameState
 {
+    public int StateVersion { get; set; } = 1;
+    public long ActionSequence { get; set; }
     public int ActiveSeat { get; set; }
     public int TurnNumber { get; set; } = 1;
     public int DrawNumber { get; set; }
     public TableTurnPhase Phase { get; set; } = TableTurnPhase.AwaitingDiscard;
     public TableStateMetadata Metadata { get; set; } = new();
+    public TableIntegrityState Integrity { get; set; } = new();
+    public TableLastActionState? LastAction { get; set; }
     public List<int> Wall { get; set; } = [];
     public List<TableSeatState> Seats { get; set; } = [];
     public List<TableSeatHandState> Hands { get; set; } = [];

@@ -18,6 +18,10 @@ public class TableStateEngineTests
         Assert.Equal(TableTurnPhase.AwaitingDiscard, state.Phase);
         Assert.Equal(1, state.TurnNumber);
         Assert.Equal(1, state.DrawNumber);
+        Assert.Equal(1, state.StateVersion);
+        Assert.Equal(0, state.ActionSequence);
+        Assert.Equal(TableStateEngine.RngAlgorithmId, state.Metadata.AlgorithmId);
+        Assert.False(string.IsNullOrWhiteSpace(state.Integrity.StateHash));
         Assert.Equal(14, state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Count);
         Assert.All(state.Hands.Where(hand => hand.SeatIndex != 0), hand => Assert.Equal(13, hand.Tiles.Count));
         Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
@@ -35,6 +39,7 @@ public class TableStateEngineTests
         Assert.Equal(
             first.Hands.SelectMany(hand => hand.Tiles),
             second.Hands.SelectMany(hand => hand.Tiles));
+        Assert.Equal(first.Integrity.StateHash, second.Integrity.StateHash);
         Assert.NotEqual(first.Wall, third.Wall);
     }
 
@@ -46,8 +51,8 @@ public class TableStateEngineTests
 
         var tileId = state.Hands.Single(hand => hand.SeatIndex == 1).Tiles[0];
 
-        var exception = Assert.Throws<InvalidOperationException>(() => _engine.ApplyHumanDiscard(state, 1, tileId));
-        Assert.Contains("not a Human seat", exception.Message);
+        var exception = Assert.Throws<TableRuleException>(() => _engine.ApplyHumanDiscard(state, 1, tileId));
+        Assert.Equal(TableActionErrorCodes.NotActiveSeat, exception.Code);
     }
 
     [Fact]
@@ -56,8 +61,54 @@ public class TableStateEngineTests
         var state = _engine.CreateInitialState(seed: 11);
         var otherTile = state.Hands.Single(hand => hand.SeatIndex == 1).Tiles[0];
 
-        var exception = Assert.Throws<InvalidOperationException>(() => _engine.ApplyHumanDiscard(state, 0, otherTile));
-        Assert.Contains("not in the active seat hand", exception.Message);
+        var exception = Assert.Throws<TableRuleException>(() => _engine.ApplyHumanDiscard(state, 0, otherTile));
+        Assert.Equal(TableActionErrorCodes.TileNotInHand, exception.Code);
+    }
+
+    [Fact]
+    public void ApplyHumanDiscard_IncrementsStateVersionAndActionSequence()
+    {
+        var state = _engine.CreateInitialState(seed: 51);
+        var initialStateVersion = state.StateVersion;
+        var initialActionSequence = state.ActionSequence;
+        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+
+        var result = _engine.ApplyHumanDiscard(state, 0, tileId);
+
+        Assert.NotNull(result.DrawAction);
+        Assert.Equal(initialStateVersion + 2, state.StateVersion);
+        Assert.Equal(initialActionSequence + 2, state.ActionSequence);
+        Assert.Equal(initialActionSequence + 1, result.DiscardAction.Sequence);
+        Assert.Equal(initialActionSequence + 2, result.DrawAction!.Sequence);
+        Assert.Equal(result.DrawAction.Sequence, state.LastAction!.Sequence);
+    }
+
+    [Fact]
+    public void ApplyHumanDiscard_ChangesIntegrityHash()
+    {
+        var state = _engine.CreateInitialState(seed: 72);
+        var beforeHash = state.Integrity.StateHash;
+        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+
+        _engine.ApplyHumanDiscard(state, 0, tileId);
+
+        Assert.NotEqual(beforeHash, state.Integrity.StateHash);
+        Assert.False(string.IsNullOrWhiteSpace(state.Integrity.StateHash));
+    }
+
+    [Fact]
+    public void NormalizePersistedState_AlignsVersionAndRepairsLegacyFields()
+    {
+        var state = _engine.CreateInitialState(seed: 88);
+        state.StateVersion = 0;
+        state.Metadata.AlgorithmId = string.Empty;
+        state.Integrity.StateHash = string.Empty;
+
+        _engine.NormalizePersistedState(state, 9);
+
+        Assert.Equal(9, state.StateVersion);
+        Assert.Equal(TableStateEngine.RngAlgorithmId, state.Metadata.AlgorithmId);
+        Assert.False(string.IsNullOrWhiteSpace(state.Integrity.StateHash));
     }
 
     [Fact]
@@ -107,7 +158,7 @@ public class TableStateEngineTests
     {
         var state = _engine.CreateInitialState(seed: 33);
         state.ActiveSeat = 1;
-        state.Wall.Clear();
+        ExhaustWallPreservingTileConservation(state);
 
         var result = _engine.AdvanceBots(state, 8);
 
@@ -128,5 +179,22 @@ public class TableStateEngineTests
         var handTiles = state.Hands.Sum(hand => hand.Tiles.Count);
         var discardTiles = state.DiscardPile.Count;
         return state.Wall.Count + handTiles + discardTiles;
+    }
+
+    private static void ExhaustWallPreservingTileConservation(TableGameState state)
+    {
+        while (state.Wall.Count > 0)
+        {
+            var lastIndex = state.Wall.Count - 1;
+            var tileId = state.Wall[lastIndex];
+            state.Wall.RemoveAt(lastIndex);
+            state.DiscardPile.Add(new TableDiscard
+            {
+                SeatIndex = 0,
+                TileId = tileId,
+                TurnNumber = 0,
+                OccurredUtc = DateTime.UnixEpoch
+            });
+        }
     }
 }

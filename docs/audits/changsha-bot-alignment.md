@@ -182,3 +182,15 @@ Without these decisions, gameplay-critical paths remain ambiguous.
 - explicit end/error semantics and deferred Changsha scope list
 
 Phase 0 completion now maps to implementing this contract exactly (state + validator + replay guarantees) before moving into Phase 1 engine coding.
+
+## Phase 0 implementation progress (current iteration)
+
+Implemented in backend this cycle:
+- action-sequence/state-version progression on authoritative actions
+- canonical state hashing (`integrity.stateHash`) for deterministic integrity snapshots
+- explicit error-code payloads for action rejection, including optimistic concurrency (`CONCURRENCY_CONFLICT`)
+- state normalization for persisted snapshots to keep legacy payloads compatible with new integrity fields
+
+Still pending for full Phase 0 completion:
+- durable append-only event-log persistence outside snapshot JSON
+- replay endpoint/command that reproduces and verifies final state hash from seed + accepted actions
