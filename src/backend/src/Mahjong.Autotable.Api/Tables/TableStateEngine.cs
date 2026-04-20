@@ -4,6 +4,7 @@ public interface ITableStateEngine
 {
     TableGameState CreateInitialState(IReadOnlyCollection<int>? botSeatIndexes = null, int? seed = null);
     void NormalizePersistedState(TableGameState state, int persistedStateVersion);
+    TableGameState ReplayFromSeed(TableGameState snapshot);
     DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId);
     BotAdvanceResult AdvanceBots(TableGameState state, int maxActions);
 }
@@ -87,6 +88,39 @@ public sealed class TableStateEngine : ITableStateEngine
         }
 
         RefreshIntegrity(state);
+    }
+
+    public TableGameState ReplayFromSeed(TableGameState snapshot)
+    {
+        ValidateState(snapshot);
+        snapshot.Metadata ??= new TableStateMetadata();
+
+        var botSeatIndexes = snapshot.Seats
+            .Where(seat => seat.SeatType == TableSeatType.Bot)
+            .Select(seat => seat.SeatIndex)
+            .ToArray();
+
+        var replay = CreateInitialState(botSeatIndexes, snapshot.Metadata.Seed);
+        var discardActions = snapshot.ActionLog
+            .Where(action => action.ActionType.Equals("discard", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(action => action.Sequence);
+
+        foreach (var action in discardActions)
+        {
+            var tileId = action.TileId;
+            if (!tileId.HasValue)
+            {
+                ThrowInvariant(replay, "Discard action is missing tile id for replay.");
+            }
+
+            var replaySeat = GetSeat(replay, action.SeatIndex);
+            var requiredSeatType = replaySeat.SeatType == TableSeatType.Human
+                ? TableSeatType.Human
+                : TableSeatType.Bot;
+            _ = ApplyDiscard(replay, action.SeatIndex, tileId.GetValueOrDefault(), requiredSeatType);
+        }
+
+        return replay;
     }
 
     public DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId)
