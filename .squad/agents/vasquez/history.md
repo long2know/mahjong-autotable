@@ -12,3 +12,6 @@
 - Current repository state is scaffolding-only; `RuleSet = changsha` exists, but no executable game-state machine or action arbitration yet.
 - Bot readiness requires one authoritative pipeline for human and bot actions, plus seat-scoped state privacy and replayable deterministic logs.
 - Changsha implementation should be frozen as a versioned profile (`changsha-v1`) with explicit ambiguity list before coding transitions.
+- First implementation contract should keep draw as server-owned and discard as the only external seat action to avoid turn-race ambiguity.
+- A minimal but durable state contract must include seed/algorithm, ordered wall, action sequence, and canonical state hash so deterministic replay is verifiable.
+- For the initial slice, ending on live-wall exhaustion is the only supported round termination; claims/kong/settlement stay explicitly out-of-scope.

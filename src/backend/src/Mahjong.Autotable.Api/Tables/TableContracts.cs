@@ -2,9 +2,14 @@ using Mahjong.Autotable.Api.Data.Entities;
 
 namespace Mahjong.Autotable.Api.Tables;
 
-public sealed record CreateTableRequest(string? RuleSet = null, IReadOnlyList<int>? BotSeatIndexes = null);
+public sealed record CreateTableRequest(
+    string? RuleSet = null,
+    IReadOnlyList<int>? BotSeatIndexes = null,
+    int? Seed = null);
 
 public sealed record AdvanceBotsRequest(int MaxActions = 8);
+
+public sealed record DiscardActionRequest(int SeatIndex, int TileId);
 
 public sealed record TableDto(
     Guid Id,
@@ -19,6 +24,11 @@ public sealed record AdvanceBotsResponse(
     TableDto Table,
     IReadOnlyList<TableAction> Actions,
     BotAdvanceStopReason StopReason);
+
+public sealed record DiscardActionResponse(
+    TableDto Table,
+    TableAction DiscardAction,
+    TableAction? DrawAction);
 
 public static class TableMappings
 {

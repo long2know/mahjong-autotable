@@ -11,3 +11,5 @@
 - Backend priorities: game state APIs, rule engine interfaces, and provider-flexible persistence.
 - Added initial bot-play backend slice: 4-seat typed table state (human/bot), table create/get APIs, and deterministic bot advance endpoint with persisted `StateJson` + `StateVersion` for extensibility.
 - Added backend unit tests around bot state engine behavior to lock current deterministic placeholder semantics while rules engine work remains pending.
+- Replaced placeholder bot mutation with an authoritative draw/discard loop backed by seeded wall state, per-seat hands, discard pile tracking, and phase-aware turn semantics.
+- Added strict human discard validation endpoint and routed bot advancement through the same discard application path to keep server authority and invariants aligned.

@@ -52,7 +52,7 @@ app.MapPost("/api/tables", async (
     try
     {
         var ruleSet = string.IsNullOrWhiteSpace(request.RuleSet) ? "changsha" : request.RuleSet.Trim();
-        var state = engine.CreateInitialState(request.BotSeatIndexes);
+        var state = engine.CreateInitialState(request.BotSeatIndexes, request.Seed);
         var session = new TableSession
         {
             RuleSet = ruleSet,
@@ -116,6 +116,42 @@ app.MapPost("/api/tables/{id:guid}/bots/advance", async (
 
     var tableDto = session.ToDto(state);
     return Results.Ok(new AdvanceBotsResponse(tableDto, result.Actions, result.StopReason));
+});
+
+app.MapPost("/api/tables/{id:guid}/actions/discard", async (
+    Guid id,
+    DiscardActionRequest request,
+    AppDbContext db,
+    ITableStateEngine engine,
+    ITableStateSerializer serializer,
+    CancellationToken cancellationToken) =>
+{
+    var session = await db.TableSessions.FirstOrDefaultAsync(table => table.Id == id, cancellationToken);
+    if (session is null)
+    {
+        return Results.NotFound();
+    }
+
+    var state = serializer.Deserialize(session.StateJson);
+
+    try
+    {
+        var result = engine.ApplyHumanDiscard(state, request.SeatIndex, request.TileId);
+
+        session.StateJson = serializer.Serialize(state);
+        session.StateVersion += 1;
+        session.UpdatedUtc = DateTime.UtcNow;
+        session.LastActionUtc = result.DrawAction?.OccurredUtc ?? result.DiscardAction.OccurredUtc;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var tableDto = session.ToDto(state);
+        return Results.Ok(new DiscardActionResponse(tableDto, result.DiscardAction, result.DrawAction));
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
 });
 
 app.Run();

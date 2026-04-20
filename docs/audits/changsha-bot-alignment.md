@@ -172,3 +172,13 @@ The next increment must convert Changsha rules from prose into explicit state tr
 4. Confirm whether “bot transparency” (explicit bot labeling at table) is required for product.
 
 Without these decisions, gameplay-critical paths remain ambiguous.
+
+## Phase 0 contract alignment update
+
+`docs/specs/changsha-v1-contract.md` now defines the Phase 0 executable contract for the first gameplay slice:
+- deterministic dealer/opening and draw-discard loop boundaries
+- required backend state fields for authority, replay, and invariants
+- shared legal-action validator rules for human and bot seats
+- explicit end/error semantics and deferred Changsha scope list
+
+Phase 0 completion now maps to implementing this contract exactly (state + validator + replay guarantees) before moving into Phase 1 engine coding.

@@ -27,11 +27,15 @@ infra/
   - `Sqlite` (default)
   - `PostgreSql`
   - `SqlServer`
-- `AppDbContext` and `TableSession` are placeholder persistence objects only.
-- Initial bot-play slice endpoints:
-  - `POST /api/tables` creates a 4-seat table (`botSeatIndexes` optional; default seats 1-3 are bots).
-  - `GET /api/tables/{id}` returns persisted table state.
-  - `POST /api/tables/{id}/bots/advance` advances deterministic bot turns (`draw` + placeholder `discard`) until a human turn or action cap.
+- `TableSession` persists authoritative table state snapshots (`StateJson`) with optimistic version increments (`StateVersion`).
+- Draw/discard loop slice endpoints:
+  - `POST /api/tables` creates a 4-seat table and deterministically deals from a seeded wall.
+    - Request: `{ "ruleSet": "changsha", "botSeatIndexes": [1,2,3], "seed": 12345 }` (`seed` optional; server-generated when omitted).
+  - `GET /api/tables/{id}` returns persisted table state (including `phase`, `wall`, `hands`, `discardPile`, and `metadata.seed`).
+  - `POST /api/tables/{id}/actions/discard` submits a human discard through server validation.
+    - Request: `{ "seatIndex": 0, "tileId": 87 }`
+    - Rejections include non-active seat, non-human seat, and tile-not-owned.
+  - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `MaxActionsReached`, `WallExhausted`).
 
 Key config (`appsettings.json`):
 
