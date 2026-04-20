@@ -1,9 +1,9 @@
 ---
-updated_at: 2026-04-21T01:20:00.000Z
-focus_area: Changsha state integrity + error contract alignment
+updated_at: 2026-04-21T02:10:00.000Z
+focus_area: Changsha replay verification + integrity hardening
 active_issues: []
 ---
 
 # What We're Focused On
 
-Hardening gameplay loop slices with deterministic state-hash integrity, optimistic concurrency, and explicit rule-error contracts for human and bot actions.
+Hardening gameplay-loop slices with deterministic replay verification from seed + accepted actions, while preserving explicit error contracts and optimistic concurrency behavior.

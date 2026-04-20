@@ -192,6 +192,53 @@ app.MapPost("/api/tables/{id:guid}/actions/discard", async (
     }
 });
 
+app.MapPost("/api/tables/{id:guid}/replay/verify", async (
+    Guid id,
+    HttpContext httpContext,
+    AppDbContext db,
+    ITableStateEngine engine,
+    ITableStateSerializer serializer,
+    CancellationToken cancellationToken) =>
+{
+    var session = await db.TableSessions.FirstOrDefaultAsync(table => table.Id == id, cancellationToken);
+    if (session is null)
+    {
+        return Results.NotFound();
+    }
+
+    var state = serializer.Deserialize(session.StateJson);
+    engine.NormalizePersistedState(state, session.StateVersion);
+
+    try
+    {
+        var replay = engine.ReplayFromSeed(state);
+        var integrityMatch = string.Equals(
+            state.Integrity.StateHash,
+            replay.Integrity.StateHash,
+            StringComparison.Ordinal);
+
+        var response = new ReplayVerificationResponse(
+            session.ToDto(state),
+            integrityMatch,
+            state.Integrity.StateHash,
+            replay.Integrity.StateHash,
+            replay.StateVersion,
+            replay.ActionSequence);
+
+        return Results.Ok(response);
+    }
+    catch (TableRuleException exception)
+    {
+        var error = ToActionError(
+            exception.Code,
+            exception.Message,
+            exception.StateVersion,
+            exception.ActionSequence,
+            httpContext.TraceIdentifier);
+        return Results.BadRequest(error);
+    }
+});
+
 static TableActionError ToActionError(
     string code,
     string message,

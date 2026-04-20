@@ -37,6 +37,14 @@ public sealed record TableActionError(
     long ActionSequence,
     string CorrelationId);
 
+public sealed record ReplayVerificationResponse(
+    TableDto Table,
+    bool IntegrityMatch,
+    string ExpectedStateHash,
+    string ReplayedStateHash,
+    int ReplayedStateVersion,
+    long ReplayedActionSequence);
+
 public static class TableMappings
 {
     public static TableDto ToDto(this TableSession session, TableGameState state) =>

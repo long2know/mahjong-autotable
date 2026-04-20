@@ -193,4 +193,4 @@ Implemented in backend this cycle:
 
 Still pending for full Phase 0 completion:
 - durable append-only event-log persistence outside snapshot JSON
-- replay endpoint/command that reproduces and verifies final state hash from seed + accepted actions
+- hard replay governance (API-level pass/fail policy and automated integrity enforcement hooks)
