@@ -9,3 +9,5 @@
 
 - Team initialized with Bishop as Backend Dev.
 - Backend priorities: game state APIs, rule engine interfaces, and provider-flexible persistence.
+- Added initial bot-play backend slice: 4-seat typed table state (human/bot), table create/get APIs, and deterministic bot advance endpoint with persisted `StateJson` + `StateVersion` for extensibility.
+- Added backend unit tests around bot state engine behavior to lock current deterministic placeholder semantics while rules engine work remains pending.

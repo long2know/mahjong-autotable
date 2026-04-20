@@ -1,0 +1,34 @@
+using Mahjong.Autotable.Api.Data.Entities;
+
+namespace Mahjong.Autotable.Api.Tables;
+
+public sealed record CreateTableRequest(string? RuleSet = null, IReadOnlyList<int>? BotSeatIndexes = null);
+
+public sealed record AdvanceBotsRequest(int MaxActions = 8);
+
+public sealed record TableDto(
+    Guid Id,
+    string RuleSet,
+    int StateVersion,
+    DateTime CreatedUtc,
+    DateTime UpdatedUtc,
+    DateTime? LastActionUtc,
+    TableGameState State);
+
+public sealed record AdvanceBotsResponse(
+    TableDto Table,
+    IReadOnlyList<TableAction> Actions,
+    BotAdvanceStopReason StopReason);
+
+public static class TableMappings
+{
+    public static TableDto ToDto(this TableSession session, TableGameState state) =>
+        new(
+            session.Id,
+            session.RuleSet,
+            session.StateVersion,
+            session.CreatedUtc,
+            session.UpdatedUtc,
+            session.LastActionUtc,
+            state);
+}

@@ -28,6 +28,10 @@ infra/
   - `PostgreSql`
   - `SqlServer`
 - `AppDbContext` and `TableSession` are placeholder persistence objects only.
+- Initial bot-play slice endpoints:
+  - `POST /api/tables` creates a 4-seat table (`botSeatIndexes` optional; default seats 1-3 are bots).
+  - `GET /api/tables/{id}` returns persisted table state.
+  - `POST /api/tables/{id}/bots/advance` advances deterministic bot turns (`draw` + placeholder `discard`) until a human turn or action cap.
 
 Key config (`appsettings.json`):
 

@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasKey(x => x.Id);
             entity.Property(x => x.RuleSet).HasMaxLength(50);
             entity.Property(x => x.StateJson).HasColumnType("TEXT");
+            entity.Property(x => x.StateVersion).HasDefaultValue(1);
         });
     }
 }
