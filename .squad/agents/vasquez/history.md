@@ -9,3 +9,6 @@
 
 - Team initialized with Vasquez as Rules Engineer.
 - Rule priorities: Changsha wall/draw behavior, turn transitions, and compatibility seams for expanded Chinese rules.
+- Current repository state is scaffolding-only; `RuleSet = changsha` exists, but no executable game-state machine or action arbitration yet.
+- Bot readiness requires one authoritative pipeline for human and bot actions, plus seat-scoped state privacy and replayable deterministic logs.
+- Changsha implementation should be frozen as a versioned profile (`changsha-v1`) with explicit ambiguity list before coding transitions.
