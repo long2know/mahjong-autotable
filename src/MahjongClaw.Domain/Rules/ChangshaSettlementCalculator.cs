@@ -198,16 +198,12 @@ public static class ChangshaSettlementCalculator
                 return;
             }
             
-            // Birds landed on losers - double each loser that got hit
-            var processedBirds = new HashSet<Wind>();
-            foreach (var birdSeat in birdSeats)
+            // Birds landed on losers - each matching bird adds one extra base payment.
+            foreach (var birdSeatGroup in birdSeats.GroupBy(static seat => seat))
             {
-                if (processedBirds.Contains(birdSeat))
-                {
-                    continue;
-                }
-                processedBirds.Add(birdSeat);
-                
+                var birdSeat = birdSeatGroup.Key;
+                var hitCount = birdSeatGroup.Count();
+
                 var birdPlayer = request.Seats.FirstOrDefault(seat => seat.Seat == birdSeat);
                 if (birdPlayer is null || birdPlayer.PlayerId == request.WinnerId)
                 {
@@ -219,8 +215,8 @@ public static class ChangshaSettlementCalculator
                     continue;
                 }
 
-                deltas[birdPlayer.PlayerId] -= loserPayment;
-                deltas[request.WinnerId] += loserPayment;
+                deltas[birdPlayer.PlayerId] -= loserPayment * hitCount;
+                deltas[request.WinnerId] += loserPayment * hitCount;
             }
             return;
         }

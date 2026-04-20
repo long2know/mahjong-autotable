@@ -151,6 +151,23 @@ public sealed class ChangshaSettlementCalculatorTests
     }
 
     [Fact]
+    public void Calculate_TwoBirds_BothHitSameLoser_ApplyExtraPaymentPerBird()
+    {
+        var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
+            BuildSeats(),
+            WinnerId: SouthId,
+            DealerId: EastId,
+            IsSelfDraw: true,
+            IsBigWin: false,
+            BirdRanks: [3, 7]));
+
+        DeltaFor(result, EastId).Should().Be(-20);
+        DeltaFor(result, SouthId).Should().Be(+60);
+        DeltaFor(result, WestId).Should().Be(-30);
+        DeltaFor(result, NorthId).Should().Be(-10);
+    }
+
+    [Fact]
     public void Calculate_LegacySingleBirdRank_StillWorks()
     {
         var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
