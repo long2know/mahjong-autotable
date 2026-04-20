@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj" />
+  </Folder>
+</Solution>

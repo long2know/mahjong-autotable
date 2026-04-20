@@ -1,0 +1,12 @@
+services:
+  mahjong-autotable:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile
+      target: runtime-autotable
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development

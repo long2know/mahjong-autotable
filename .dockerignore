@@ -1,0 +1,7 @@
+.git
+.github
+.squad
+.copilot
+**/bin
+**/obj
+**/node_modules
