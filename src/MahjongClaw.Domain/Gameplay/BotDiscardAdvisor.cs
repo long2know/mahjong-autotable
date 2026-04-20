@@ -73,6 +73,7 @@ public static class BotDiscardAdvisor
                     Index = index,
                     Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset, hasLiveSmallWinPairCandidate)
                         + GetTileAvailabilityPenalty(tile, handCounts, ownedCounts, visibleCounts)
+                        + GetDeadAdjacencyPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset),
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies,
@@ -747,6 +748,70 @@ public static class BotDiscardAdvisor
             2 => -5,
             _ => 0
         };
+    }
+
+    private static int GetDeadAdjacencyPenalty(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        if (!IsSuitedTile(tile))
+        {
+            return 0;
+        }
+
+        var suit = tile.Suit;
+        var rank = tile.Rank;
+        var penalty = 0;
+
+        bool HasTileInHand(int targetRank)
+        {
+            if (targetRank is < Changsha258Ruleset.MinSuitedRank or > Changsha258Ruleset.MaxSuitedRank)
+            {
+                return false;
+            }
+
+            return handCounts.TryGetValue(new Tile(suit, targetRank), out var count) && count > 0;
+        }
+
+        bool HasLiveTile(int targetRank)
+        {
+            if (targetRank is < Changsha258Ruleset.MinSuitedRank or > Changsha258Ruleset.MaxSuitedRank)
+            {
+                return false;
+            }
+
+            var targetTile = new Tile(suit, targetRank);
+            if (handCounts.TryGetValue(targetTile, out var handCount) && handCount > 0)
+            {
+                return true;
+            }
+
+            ownedCounts.TryGetValue(targetTile, out var ownedCount);
+            visibleCounts.TryGetValue(targetTile, out var visibleCount);
+            return 4 - ownedCount - visibleCount > 0;
+        }
+
+        if (HasTileInHand(rank - 1))
+        {
+            var hasCompletion = HasLiveTile(rank - 2) || HasLiveTile(rank + 1);
+            if (!hasCompletion)
+            {
+                penalty -= 4;
+            }
+        }
+
+        if (HasTileInHand(rank + 1))
+        {
+            var hasCompletion = HasLiveTile(rank - 1) || HasLiveTile(rank + 2);
+            if (!hasCompletion)
+            {
+                penalty -= 4;
+            }
+        }
+
+        return penalty;
     }
 
     private static int GetTileAvailabilityPenalty(
