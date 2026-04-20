@@ -62,6 +62,9 @@ public static class BotDiscardAdvisor
             .ToDictionary(group => group.Key, group => group.Count());
 
         var hasLiveSmallWinPairCandidate = HasLiveSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts, ruleset);
+        var liveSmallWinPairCandidates = ruleset == MahjongRuleset.Changsha258 && visibleCounts.Count > 0
+            ? BuildLiveSmallWinPairCandidates(handCounts, ownedCounts, visibleCounts)
+            : null;
 
         var candidates = handTiles
             .Select((tile, index) =>
@@ -71,7 +74,7 @@ public static class BotDiscardAdvisor
                 {
                     Tile = tile,
                     Index = index,
-                    Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset, hasLiveSmallWinPairCandidate)
+                    Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset, hasLiveSmallWinPairCandidate, liveSmallWinPairCandidates)
                         + GetTileAvailabilityPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetDeadAdjacencyPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset),
@@ -138,7 +141,8 @@ public static class BotDiscardAdvisor
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         MahjongRuleset ruleset,
-        bool hasLiveSmallWinPairCandidate)
+        bool hasLiveSmallWinPairCandidate,
+        IReadOnlySet<Tile>? liveSmallWinPairCandidates)
     {
         if (ruleset == MahjongRuleset.Changsha258 && !Changsha258Ruleset.IsAllowedTile(tile))
         {
@@ -254,6 +258,18 @@ public static class BotDiscardAdvisor
             && hasLiveSmallWinPairCandidate
             ? -10
             : 0;
+
+        var soleSmallWinPairKeepBonus = 0;
+        if (ruleset == MahjongRuleset.Changsha258
+            && tileMatchCount == 2
+            && smallWinPairCount == 1
+            && Changsha258Ruleset.IsSmallWinPair(tile)
+            && liveSmallWinPairCandidates is not null
+            && liveSmallWinPairCandidates.Count == 1
+            && liveSmallWinPairCandidates.Contains(tile))
+        {
+            soleSmallWinPairKeepBonus = 8;
+        }
 
         var suitedPairCount = handTiles
             .Where(static other => !other.IsHonor)
@@ -449,7 +465,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus + soleSmallWinPairKeepBonus;
         }
 
         var rankCounts = suitTiles
@@ -567,7 +583,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus + soleSmallWinPairKeepBonus;
     }
 
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
@@ -683,6 +699,46 @@ public static class BotDiscardAdvisor
             .Concat(windTiles)
             .Concat(dragonTiles)
             .ToArray();
+    }
+
+    private static IReadOnlySet<Tile> BuildLiveSmallWinPairCandidates(
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        var candidates = new HashSet<Tile>();
+
+        foreach (var tile in Changsha258SmallWinPairTiles)
+        {
+            handCounts.TryGetValue(tile, out var handCount);
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+
+            var remainingCopies = 4 - ownedCount - visibleCount;
+
+            if (handCount >= 2)
+            {
+                candidates.Add(tile);
+                continue;
+            }
+
+            if (handCount == 1)
+            {
+                if (remainingCopies >= 1)
+                {
+                    candidates.Add(tile);
+                }
+
+                continue;
+            }
+
+            if (remainingCopies >= 2)
+            {
+                candidates.Add(tile);
+            }
+        }
+
+        return candidates;
     }
 
     private static bool HasLiveSmallWinPairCandidate(
