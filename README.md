@@ -31,10 +31,11 @@ infra/
 - Draw/discard loop slice endpoints:
   - `POST /api/tables` creates a 4-seat table and deterministically deals from a seeded wall.
     - Request: `{ "ruleSet": "changsha", "botSeatIndexes": [1,2,3], "seed": 12345 }` (`seed` optional; server-generated when omitted).
-  - `GET /api/tables/{id}` returns persisted table state (including `phase`, `wall`, `hands`, `discardPile`, and `metadata.seed`).
+  - `GET /api/tables/{id}` returns persisted table state (including `stateVersion`, `actionSequence`, `phase`, `wall`, `hands`, `discardPile`, `metadata.seed`, `metadata.algorithmId`, and `integrity.stateHash`).
   - `POST /api/tables/{id}/actions/discard` submits a human discard through server validation.
-    - Request: `{ "seatIndex": 0, "tileId": 87 }`
-    - Rejections include non-active seat, non-human seat, and tile-not-owned.
+    - Request: `{ "seatIndex": 0, "tileId": 87, "expectedStateVersion": 3 }` (`expectedStateVersion` optional optimistic concurrency token).
+    - Rejections return structured contract payloads (`code`, `message`, `stateVersion`, `actionSequence`, `correlationId`).
+    - Error codes now include `ROUND_NOT_ACTIVE`, `INVALID_PHASE`, `NOT_ACTIVE_SEAT`, `SEAT_NOT_FOUND`, `TILE_NOT_IN_HAND`, `CONCURRENCY_CONFLICT`, and `STATE_INVARIANT_BROKEN`.
   - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `MaxActionsReached`, `WallExhausted`).
 
 Key config (`appsettings.json`):
@@ -91,4 +92,4 @@ docker run --rm -p 8080:8080 -v $(pwd)/data:/app/data mahjong-autotable:autotabl
 ## Notes
 
 - Frontend modernization is optional and incremental; no forced rewrite in this scaffold.
-- Rule logic implementation is intentionally deferred; this commit only establishes architecture and delivery plumbing.
+- Claim windows, kong variants, win validation, and scoring/settlement are still deferred to upcoming Changsha phases.

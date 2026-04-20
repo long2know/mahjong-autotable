@@ -9,7 +9,7 @@ public sealed record CreateTableRequest(
 
 public sealed record AdvanceBotsRequest(int MaxActions = 8);
 
-public sealed record DiscardActionRequest(int SeatIndex, int TileId);
+public sealed record DiscardActionRequest(int SeatIndex, int TileId, int? ExpectedStateVersion = null);
 
 public sealed record TableDto(
     Guid Id,
@@ -30,13 +30,20 @@ public sealed record DiscardActionResponse(
     TableAction DiscardAction,
     TableAction? DrawAction);
 
+public sealed record TableActionError(
+    string Code,
+    string Message,
+    int StateVersion,
+    long ActionSequence,
+    string CorrelationId);
+
 public static class TableMappings
 {
     public static TableDto ToDto(this TableSession session, TableGameState state) =>
         new(
             session.Id,
             session.RuleSet,
-            session.StateVersion,
+            state.StateVersion,
             session.CreatedUtc,
             session.UpdatedUtc,
             session.LastActionUtc,
