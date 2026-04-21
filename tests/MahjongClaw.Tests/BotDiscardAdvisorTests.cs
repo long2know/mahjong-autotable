@@ -189,6 +189,24 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PreservesLastSmallWinSingleton_WhenChangsha258Ruleset()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 7)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 7));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrefersBreakingNonSmallWinPair_WhenSmallWinPairStillPossible()
     {
         var tiles = new List<Tile>

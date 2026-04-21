@@ -8,6 +8,7 @@ public static class BotDiscardAdvisor
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
     private static readonly IReadOnlyList<Tile> Changsha258SmallWinPairTiles = BuildChangshaSmallWinPairTiles();
+    private const int LastSmallWinSingletonKeepBonus = 12;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
@@ -61,6 +62,26 @@ public static class BotDiscardAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
 
+        Tile? lastSmallWinSingleton = null;
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+            var smallWinTileCount = handTiles.Count(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
+
+            if (smallWinPairCount == 0 && smallWinTileCount == 1)
+            {
+                var candidate = handTiles.First(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
+                ownedCounts.TryGetValue(candidate, out var ownedCount);
+                visibleCounts.TryGetValue(candidate, out var visibleCount);
+                var remainingCopies = 4 - ownedCount - visibleCount;
+
+                if (remainingCopies > 0)
+                {
+                    lastSmallWinSingleton = candidate;
+                }
+            }
+        }
+
         var hasLiveSmallWinPairCandidate = HasLiveSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts, ruleset);
         var liveSmallWinPairCandidates = ruleset == MahjongRuleset.Changsha258 && visibleCounts.Count > 0
             ? BuildLiveSmallWinPairCandidates(handCounts, ownedCounts, visibleCounts)
@@ -77,7 +98,10 @@ public static class BotDiscardAdvisor
                     Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset, hasLiveSmallWinPairCandidate, liveSmallWinPairCandidates)
                         + GetTileAvailabilityPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetDeadAdjacencyPenalty(tile, handCounts, ownedCounts, visibleCounts)
-                        + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset),
+                        + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset)
+                        + (lastSmallWinSingleton is not null && tile.Equals(lastSmallWinSingleton)
+                            ? LastSmallWinSingletonKeepBonus
+                            : 0),
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies,
                     SmallWinningDrawOuts = winningOutSummary.SmallWinTileTypes,
