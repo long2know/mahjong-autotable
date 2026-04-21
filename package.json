@@ -6,6 +6,8 @@
   },
   "scripts": {
     "test:e2e": "playwright test",
-    "test:e2e:smoke": "./scripts/run_playwright_smoke.sh"
+    "test:e2e:smoke": "./scripts/run_playwright_smoke.sh",
+    "dev:autotable": "npm --prefix src/MahjongClaw.AutotableClient run dev",
+    "build:autotable": "npm --prefix src/MahjongClaw.AutotableClient run build"
   }
 }

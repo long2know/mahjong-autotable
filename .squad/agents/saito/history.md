@@ -16,3 +16,33 @@
 **Resilience:** The fix does not hardcode "East" — it dynamically adapts to whichever seat the server assigns the host, making it robust to future host-seating logic changes.
 **Secondary Fix:** Added `exact: true` to "Draw" button selector to avoid strict-mode ambiguity with "Discard Last Draw" button.
 **Outcome:** All 10 e2e smoke tests now pass (10/10 ✅).
+
+### 2026-04-17: Autotable Reconnaissance — Modeling a Client After pwmarcz/autotable
+
+**Task:** Read-only research into pwmarcz/autotable (Riichi Mahjong tabletop sim) to inform squad's new client architecture.
+
+**Key Findings:**
+- **License:** MIT code + mixed CC/OFL assets. ⚠️ Tile textures are CC BY-NC-SA (non-commercial); avoid reusing.
+- **Stack:** TypeScript + three.js ^0.179 + Parcel 2 + WebSocket (ws library). No physics engine.
+- **Networking:** Central WebSocket server, key-value state collections, 10Hz mouse sync with interpolation. Fully deterministic, state-driven. No peer-to-peer.
+- **Tile Rendering:** Per-tile 3D Blender models (.glb) with texture mapping; InstancedMesh for optimization. Quaternion-based rotation, no atlas.
+- **Physics:** Zero physics. Tiles are placed in slots; no tumble, bounce, or collision. Raycasting for pick; dragging constrained to horizontal plane.
+- **View Toggle:** Orthographic (default) vs. Perspective; press 'p' or UI checkbox. Smooth 100ms animation between modes.
+- **Slot-based Model:** Named slots (hand, wall, discard, payment) with allowed rotations and push relationships. Elegant avoids collision bugs.
+- **Interpolation:** Mouse waypoints sent 10/sec with timestamps; client smoothly interpolates → 100ms latency, unnoticed in non-real-time game.
+
+**Patterns to Adopt:**
+1. Slot-based tile placement (no physics needed).
+2. State-driven sync: state updates → client-side animation (not physics simulation).
+3. Key-value server collections for game state.
+4. InstancedMesh rendering for scale.
+5. Raycasting + constrained dragging (no complex collision).
+
+**Pitfalls to Avoid:**
+1. Non-commercial asset licensing (commission original art instead).
+2. Makefile asset pipeline (brittle in CI; consider embedded generation or Git LFS).
+3. Orthographic-only projection (players struggle with far tiles; design UI/camera better).
+4. No persistence (add light DB for replay/spectating).
+5. Minimal UI/accessibility (plan colorblind variants, font scaling early).
+
+**Deliverable:** Report at `.squad/research/autotable-recon.md` (599 words, all 9 sections covered).

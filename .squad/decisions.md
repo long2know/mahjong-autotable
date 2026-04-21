@@ -166,6 +166,37 @@ Completed domain-layer rules work for Changsha parity PR. All changes additive a
 - All work is domain-layer only; Batou owns API integration
 - FullyReliant and RobbingKong helpers are pure functions with no side effects
 
+### 2026-04-17: Autotable Client Direction
+**By:** Kusanagi (Lead Architect)  
+**Date:** 2026-04-17  
+**Branch:** `squad/autotable-client`  
+**Status:** Proposed (awaiting Stephen review)
+
+**Decision:** Build new TypeScript + three.js client (Vite) to replace/complement Blazor WASM.
+
+**Key Choices:**
+- **Tech Stack:** Vite + TypeScript 5.x + three.js 0.170 + @microsoft/signalr 8.x
+- **NO cannon-es for MVP** — server-authoritative state; animations are deterministic tweens, not physics
+- **Sub-Project Layout:** Modular `src/scene/`, `src/state/`, `src/net/`, `src/input/`, `src/ui/`
+- **Serving:** Standalone Vite at localhost:5173 with API proxy; static prod build
+- **Blazor Policy:** Untouched during autotable build; retire only after Phase 5 parity proven
+
+**Phase 0 Scope (1–2 days, Togusa lead):**
+- Vite + TS + three.js boilerplate
+- 108-tile wall mesh (placeholder colors)
+- SignalR connect + event subscription
+- `npm run dev` → localhost:5173, `npm run build` → green
+
+**Open Questions:**
+1. Tile art source: public-domain set vs commissioned?
+2. Prod hosting: CDN vs same-origin wwwroot/?
+3. Blazor retirement timeline: post-Phase 5 validation?
+
+**Alternatives Rejected:**
+- Blazor + three.js interop (tight coupling, JS friction)
+- React/Vue wrapper (unnecessary overhead for single 3D scene)
+- Physics-first approach (overkill for server-authoritative state)
+
 ## Governance
 
 - Keep decisions concise and implementation-facing.
