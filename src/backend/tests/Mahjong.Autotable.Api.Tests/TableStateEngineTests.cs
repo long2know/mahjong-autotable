@@ -144,6 +144,37 @@ public class TableStateEngineTests
     }
 
     [Fact]
+    public void VerifyReplayIntegrity_WhenStateIsUntampered_ReturnsMatch()
+    {
+        var state = _engine.CreateInitialState(seed: 131);
+        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        _engine.ApplyHumanDiscard(state, 0, tileId);
+        _engine.AdvanceBots(state, 4);
+
+        var verification = _engine.VerifyReplayIntegrity(state);
+
+        Assert.True(verification.IntegrityMatch);
+        Assert.Equal(verification.ExpectedStateHash, verification.ReplayedStateHash);
+        Assert.Equal(state.StateVersion, verification.ReplayedStateVersion);
+        Assert.Equal(state.ActionSequence, verification.ReplayedActionSequence);
+    }
+
+    [Fact]
+    public void VerifyReplayIntegrity_WhenStateIsTampered_ReturnsMismatch()
+    {
+        var state = _engine.CreateInitialState(seed: 132);
+        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        _engine.ApplyHumanDiscard(state, 0, tileId);
+        state.ActionLog[0].Detail = "tampered-action";
+        _engine.NormalizePersistedState(state, state.StateVersion);
+
+        var verification = _engine.VerifyReplayIntegrity(state);
+
+        Assert.False(verification.IntegrityMatch);
+        Assert.NotEqual(verification.ExpectedStateHash, verification.ReplayedStateHash);
+    }
+
+    [Fact]
     public void ApplyHumanDiscard_AndBotAdvance_PreserveTileConservation()
     {
         var state = _engine.CreateInitialState(seed: 67);
