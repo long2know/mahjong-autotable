@@ -140,6 +140,11 @@ app.MapPost("/api/tables/{id:guid}/bots/advance", async (
 
     var state = serializer.Deserialize(session.StateJson);
     engine.NormalizePersistedState(state, session.StateVersion);
+    var integrity = engine.VerifyReplayIntegrity(state);
+    if (!integrity.IntegrityMatch)
+    {
+        return Results.Conflict(ToIntegrityConflict(state, httpContext.TraceIdentifier, integrity));
+    }
 
     BotAdvanceResult result;
     try
@@ -199,6 +204,12 @@ app.MapPost("/api/tables/{id:guid}/actions/discard", async (
         return Results.Conflict(error);
     }
 
+    var integrity = engine.VerifyReplayIntegrity(state);
+    if (!integrity.IntegrityMatch)
+    {
+        return Results.Conflict(ToIntegrityConflict(state, httpContext.TraceIdentifier, integrity));
+    }
+
     try
     {
         var result = engine.ApplyHumanDiscard(state, request.SeatIndex, request.TileId);
@@ -228,6 +239,7 @@ app.MapPost("/api/tables/{id:guid}/actions/discard", async (
 
 app.MapPost("/api/tables/{id:guid}/replay/verify", async (
     Guid id,
+    bool strict,
     HttpContext httpContext,
     AppDbContext db,
     ITableStateEngine engine,
@@ -245,19 +257,19 @@ app.MapPost("/api/tables/{id:guid}/replay/verify", async (
 
     try
     {
-        var replay = engine.ReplayFromSeed(state);
-        var integrityMatch = string.Equals(
-            state.Integrity.StateHash,
-            replay.Integrity.StateHash,
-            StringComparison.Ordinal);
+        var verification = engine.VerifyReplayIntegrity(state);
+        if (strict && !verification.IntegrityMatch)
+        {
+            return Results.Conflict(ToIntegrityConflict(state, httpContext.TraceIdentifier, verification));
+        }
 
         var response = new ReplayVerificationResponse(
             session.ToDto(state),
-            integrityMatch,
-            state.Integrity.StateHash,
-            replay.Integrity.StateHash,
-            replay.StateVersion,
-            replay.ActionSequence);
+            verification.IntegrityMatch,
+            verification.ExpectedStateHash,
+            verification.ReplayedStateHash,
+            verification.ReplayedStateVersion,
+            verification.ReplayedActionSequence);
 
         return Results.Ok(response);
     }
@@ -280,5 +292,16 @@ static TableActionError ToActionError(
     long actionSequence,
     string correlationId) =>
     new(code, message, stateVersion, actionSequence, correlationId);
+
+static TableActionError ToIntegrityConflict(
+    TableGameState state,
+    string correlationId,
+    ReplayVerificationResult verification) =>
+    ToActionError(
+        TableActionErrorCodes.StateInvariantBroken,
+        $"Replay integrity mismatch. expected={verification.ExpectedStateHash}, replayed={verification.ReplayedStateHash}.",
+        state.StateVersion,
+        state.ActionSequence,
+        correlationId);
 
 app.Run();

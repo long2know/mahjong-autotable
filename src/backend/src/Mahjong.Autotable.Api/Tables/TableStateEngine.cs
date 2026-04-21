@@ -5,6 +5,7 @@ public interface ITableStateEngine
     TableGameState CreateInitialState(IReadOnlyCollection<int>? botSeatIndexes = null, int? seed = null);
     void NormalizePersistedState(TableGameState state, int persistedStateVersion);
     TableGameState ReplayFromSeed(TableGameState snapshot);
+    ReplayVerificationResult VerifyReplayIntegrity(TableGameState snapshot);
     DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId);
     BotAdvanceResult AdvanceBots(TableGameState state, int maxActions);
 }
@@ -13,6 +14,15 @@ public sealed class DiscardActionResult
 {
     public required TableAction DiscardAction { get; init; }
     public required TableAction? DrawAction { get; init; }
+}
+
+public sealed class ReplayVerificationResult
+{
+    public required bool IntegrityMatch { get; init; }
+    public required string ExpectedStateHash { get; init; }
+    public required string ReplayedStateHash { get; init; }
+    public required int ReplayedStateVersion { get; init; }
+    public required long ReplayedActionSequence { get; init; }
 }
 
 public sealed class TableStateEngine : ITableStateEngine
@@ -121,6 +131,22 @@ public sealed class TableStateEngine : ITableStateEngine
         }
 
         return replay;
+    }
+
+    public ReplayVerificationResult VerifyReplayIntegrity(TableGameState snapshot)
+    {
+        var replay = ReplayFromSeed(snapshot);
+        return new ReplayVerificationResult
+        {
+            IntegrityMatch = string.Equals(
+                snapshot.Integrity.StateHash,
+                replay.Integrity.StateHash,
+                StringComparison.Ordinal),
+            ExpectedStateHash = snapshot.Integrity.StateHash,
+            ReplayedStateHash = replay.Integrity.StateHash,
+            ReplayedStateVersion = replay.StateVersion,
+            ReplayedActionSequence = replay.ActionSequence
+        };
     }
 
     public DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId)

@@ -192,6 +192,7 @@ Implemented in backend this cycle:
 - state normalization for persisted snapshots to keep legacy payloads compatible with new integrity fields
 - durable append-only event persistence in `TableSessionEvents` with ordered sequence retrieval
 - replay verification endpoint (`POST /api/tables/{id}/replay/verify`) that compares expected vs replayed hash
+- strict replay-governance hooks: mutating endpoints now reject integrity mismatches with `STATE_INVARIANT_BROKEN`
 
 Still pending for full Phase 0 completion:
-- hard replay governance (API-level pass/fail policy and automated integrity enforcement hooks)
+- no remaining backend contract blockers; next work shifts to deferred Changsha rule surface (claims/kong/hu/scoring)

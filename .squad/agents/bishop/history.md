@@ -16,3 +16,4 @@
 - Added action-sequence/state-version progression rules, canonical state hashing, and structured contract error responses (including optimistic concurrency conflicts) for discard and bot orchestration endpoints.
 - Added replay verification support that re-simulates accepted discard actions from stored seed and compares canonical state hashes for deterministic integrity checks.
 - Added durable append-only `TableSessionEvents` persistence, event-stream retrieval API, and state-hash stamping on emitted actions to improve replay/integrity auditability.
+- Added replay-governance enforcement: mutating endpoints now run preflight replay checks and reject invariant mismatches as `STATE_INVARIANT_BROKEN`; replay verify supports strict conflict mode.

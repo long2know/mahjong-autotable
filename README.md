@@ -40,6 +40,8 @@ infra/
   - `GET /api/tables/{id}/events` returns the append-only persisted action stream (`sequence`, action payload, `stateVersion`, `stateHash`, and timestamps).
     - Query options: `afterSequence` (exclusive lower bound) and `limit` (max 500, default 200).
   - `POST /api/tables/{id}/replay/verify` replays accepted discard actions from seed and returns integrity comparison metadata (`integrityMatch`, `expectedStateHash`, `replayedStateHash`).
+    - Optional query: `strict=true` returns `409` with `STATE_INVARIANT_BROKEN` when replay integrity does not match.
+  - State-mutating endpoints (`/actions/discard`, `/bots/advance`) now enforce replay integrity before applying new actions and reject mismatched snapshots with `STATE_INVARIANT_BROKEN`.
 
 Key config (`appsettings.json`):
 
