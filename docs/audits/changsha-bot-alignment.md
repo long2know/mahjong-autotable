@@ -190,7 +190,8 @@ Implemented in backend this cycle:
 - canonical state hashing (`integrity.stateHash`) for deterministic integrity snapshots
 - explicit error-code payloads for action rejection, including optimistic concurrency (`CONCURRENCY_CONFLICT`)
 - state normalization for persisted snapshots to keep legacy payloads compatible with new integrity fields
+- durable append-only event persistence in `TableSessionEvents` with ordered sequence retrieval
+- replay verification endpoint (`POST /api/tables/{id}/replay/verify`) that compares expected vs replayed hash
 
 Still pending for full Phase 0 completion:
-- durable append-only event-log persistence outside snapshot JSON
 - hard replay governance (API-level pass/fail policy and automated integrity enforcement hooks)

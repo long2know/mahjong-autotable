@@ -61,6 +61,7 @@ public sealed class TableAction
     public int TurnNumber { get; set; }
     public int? TileId { get; set; }
     public string Detail { get; set; } = string.Empty;
+    public string StateHash { get; set; } = string.Empty;
     public DateTime OccurredUtc { get; set; }
 }
 

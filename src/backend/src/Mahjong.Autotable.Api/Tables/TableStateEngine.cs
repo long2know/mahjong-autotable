@@ -307,11 +307,14 @@ public sealed class TableStateEngine : ITableStateEngine
 
         state.ActiveSeat = (state.ActiveSeat + 1) % SeatCount;
         state.TurnNumber++;
+        RefreshIntegrity(state);
+        discardAction.StateHash = state.Integrity.StateHash;
 
         if (state.Wall.Count == 0)
         {
             state.Phase = TableTurnPhase.WallExhausted;
             RefreshIntegrity(state);
+            discardAction.StateHash = state.Integrity.StateHash;
             return new DiscardActionResult
             {
                 DiscardAction = discardAction,
@@ -335,6 +338,7 @@ public sealed class TableStateEngine : ITableStateEngine
             $"tile-{drawTileId}");
 
         RefreshIntegrity(state);
+        drawAction.StateHash = state.Integrity.StateHash;
 
         return new DiscardActionResult
         {
