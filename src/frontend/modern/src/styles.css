@@ -5,15 +5,136 @@
 body {
   margin: 0;
   background: #f3f2f1;
+  color: #1f1f1f;
 }
 
 .app-shell {
   min-height: 100vh;
+  max-width: 1100px;
+  margin: 0 auto;
   display: grid;
-  place-items: center;
+  align-content: start;
+  gap: 16px;
   padding: 24px;
 }
 
-.app-shell > * {
-  width: min(560px, 100%);
+.panel {
+  width: 100%;
+}
+
+.actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.status-line {
+  margin: 8px 0 0;
+  color: #605e5c;
+}
+
+.status-line.ok {
+  color: #107c10;
+}
+
+.status-line.down {
+  color: #a4262c;
+}
+
+.error-line {
+  margin: 10px 0 0;
+  color: #a4262c;
+  font-weight: 600;
+}
+
+.metrics-grid {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.metrics-grid > div {
+  border: 1px solid #e1dfdd;
+  border-radius: 6px;
+  background: #faf9f8;
+  padding: 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.metrics-grid span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #605e5c;
+}
+
+.metrics-grid strong {
+  font-size: 15px;
+}
+
+.seats-grid {
+  margin-top: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.seat-card {
+  border: 1px solid #edebe9;
+  border-radius: 8px;
+  padding: 10px;
+  background: #faf9f8;
+}
+
+.seat-card.active {
+  border-color: #0f6cbd;
+  box-shadow: 0 0 0 1px #0f6cbd inset;
+}
+
+.seat-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.seat-card p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #605e5c;
+}
+
+.tile-picker {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tile-pill {
+  border: 1px solid #c8c6c4;
+  border-radius: 999px;
+  background: #fff;
+  color: #201f1e;
+  padding: 4px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.tile-pill.selected {
+  background: #0f6cbd;
+  border-color: #0f6cbd;
+  color: #fff;
+}
+
+.events-list {
+  margin: 8px 0 0 20px;
+  padding: 0;
+}
+
+.events-list li {
+  margin: 4px 0;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }

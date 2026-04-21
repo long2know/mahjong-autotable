@@ -17,3 +17,4 @@
 - Added replay verification support that re-simulates accepted discard actions from stored seed and compares canonical state hashes for deterministic integrity checks.
 - Added durable append-only `TableSessionEvents` persistence, event-stream retrieval API, and state-hash stamping on emitted actions to improve replay/integrity auditability.
 - Added replay-governance enforcement: mutating endpoints now run preflight replay checks and reject invariant mismatches as `STATE_INVARIANT_BROKEN`; replay verify supports strict conflict mode.
+- Replaced the minimal modern placeholder page with a backend-driven control panel for table creation, human discard actions, bot advancement, replay verification, and persisted event inspection.
