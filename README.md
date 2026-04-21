@@ -57,6 +57,7 @@ Key config (`appsettings.json`):
 - **Full stack (backend + modern frontend):** select `F5 Full Stack (Backend + Modern Frontend)`.
 - **Autotable baseline only:** select `Backend + Autotable Baseline`.
 - Full stack F5 runs `npm install && npm run dev` for the modern frontend terminal session.
+- The modern frontend currently provides a backend-wired control panel (create table, discard, advance bots, replay verify, and event stream inspection) while full tabletop UI integration continues.
 
 ### CLI
 
