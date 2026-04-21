@@ -833,6 +833,39 @@ public static class BotDiscardAdvisor
         visibleCounts.TryGetValue(tile, out var visibleCount);
         var remainingCopies = 4 - ownedCount - visibleCount;
 
+        if (ownedCount >= 3)
+        {
+            return remainingCopies switch
+            {
+                <= 0 => -20,
+                1 => -10,
+                2 => -5,
+                _ => 0
+            };
+        }
+
+        bool HasAdjacentRank(int targetRank)
+        {
+            if (targetRank is < Changsha258Ruleset.MinSuitedRank or > Changsha258Ruleset.MaxSuitedRank)
+            {
+                return false;
+            }
+
+            return handCounts.TryGetValue(new Tile(tile.Suit, targetRank), out var count) && count > 0;
+        }
+
+        var hasAdjacent = HasAdjacentRank(tile.Rank - 1) || HasAdjacentRank(tile.Rank + 1);
+        if (hasAdjacent)
+        {
+            return remainingCopies switch
+            {
+                <= 0 => -6,
+                1 => -4,
+                2 => -2,
+                _ => 0
+            };
+        }
+
         return remainingCopies switch
         {
             <= 0 => -20,
