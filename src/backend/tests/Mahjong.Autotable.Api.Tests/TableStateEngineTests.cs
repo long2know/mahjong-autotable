@@ -80,7 +80,10 @@ public class TableStateEngineTests
         Assert.Equal(initialActionSequence + 2, state.ActionSequence);
         Assert.Equal(initialActionSequence + 1, result.DiscardAction.Sequence);
         Assert.Equal(initialActionSequence + 2, result.DrawAction!.Sequence);
+        Assert.False(string.IsNullOrWhiteSpace(result.DiscardAction.StateHash));
+        Assert.False(string.IsNullOrWhiteSpace(result.DrawAction.StateHash));
         Assert.Equal(result.DrawAction.Sequence, state.LastAction!.Sequence);
+        Assert.Equal(result.DrawAction.StateHash, state.Integrity.StateHash);
     }
 
     [Fact]

@@ -12,6 +12,7 @@ builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddScoped<ITableStateEngine, TableStateEngine>();
 builder.Services.AddScoped<ITableStateSerializer, TableStateSerializer>();
+builder.Services.AddScoped<ITableSessionEventStore, TableSessionEventStore>();
 
 var app = builder.Build();
 
@@ -46,6 +47,7 @@ app.MapPost("/api/tables", async (
     CreateTableRequest request,
     AppDbContext db,
     ITableStateEngine engine,
+    ITableSessionEventStore eventStore,
     ITableStateSerializer serializer,
     CancellationToken cancellationToken) =>
 {
@@ -64,6 +66,7 @@ app.MapPost("/api/tables", async (
         };
 
         db.TableSessions.Add(session);
+        await eventStore.PersistNewEventsAsync(session, state, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         return Results.Created($"/api/tables/{session.Id}", session.ToDto(state));
@@ -92,12 +95,40 @@ app.MapGet("/api/tables/{id:guid}", async (
     return Results.Ok(session.ToDto(state));
 });
 
+app.MapGet("/api/tables/{id:guid}/events", async (
+    Guid id,
+    long? afterSequence,
+    int? limit,
+    AppDbContext db,
+    ITableStateEngine engine,
+    ITableStateSerializer serializer,
+    ITableSessionEventStore eventStore,
+    CancellationToken cancellationToken) =>
+{
+    var session = await db.TableSessions.FirstOrDefaultAsync(table => table.Id == id, cancellationToken);
+    if (session is null)
+    {
+        return Results.NotFound();
+    }
+
+    var state = serializer.Deserialize(session.StateJson);
+    engine.NormalizePersistedState(state, session.StateVersion);
+    var events = await eventStore.GetEventsAsync(id, afterSequence, limit ?? 200, cancellationToken);
+
+    return Results.Ok(new TableEventsResponse(
+        id,
+        state.StateVersion,
+        state.ActionSequence,
+        events.Select(evt => evt.ToDto()).ToList()));
+});
+
 app.MapPost("/api/tables/{id:guid}/bots/advance", async (
     Guid id,
     AdvanceBotsRequest request,
     HttpContext httpContext,
     AppDbContext db,
     ITableStateEngine engine,
+    ITableSessionEventStore eventStore,
     ITableStateSerializer serializer,
     CancellationToken cancellationToken) =>
 {
@@ -130,6 +161,7 @@ app.MapPost("/api/tables/{id:guid}/bots/advance", async (
     session.StateVersion = state.StateVersion;
     session.UpdatedUtc = DateTime.UtcNow;
     session.LastActionUtc = result.Actions.Count == 0 ? session.LastActionUtc : result.Actions[^1].OccurredUtc;
+    await eventStore.PersistNewEventsAsync(session, state, cancellationToken);
 
     await db.SaveChangesAsync(cancellationToken);
 
@@ -143,6 +175,7 @@ app.MapPost("/api/tables/{id:guid}/actions/discard", async (
     HttpContext httpContext,
     AppDbContext db,
     ITableStateEngine engine,
+    ITableSessionEventStore eventStore,
     ITableStateSerializer serializer,
     CancellationToken cancellationToken) =>
 {
@@ -174,6 +207,7 @@ app.MapPost("/api/tables/{id:guid}/actions/discard", async (
         session.StateVersion = state.StateVersion;
         session.UpdatedUtc = DateTime.UtcNow;
         session.LastActionUtc = result.DrawAction?.OccurredUtc ?? result.DiscardAction.OccurredUtc;
+        await eventStore.PersistNewEventsAsync(session, state, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
 

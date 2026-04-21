@@ -45,6 +45,24 @@ public sealed record ReplayVerificationResponse(
     int ReplayedStateVersion,
     long ReplayedActionSequence);
 
+public sealed record TableEventDto(
+    long Sequence,
+    string ActionType,
+    int SeatIndex,
+    int TurnNumber,
+    int? TileId,
+    string Detail,
+    int StateVersion,
+    string StateHash,
+    DateTime OccurredUtc,
+    DateTime PersistedUtc);
+
+public sealed record TableEventsResponse(
+    Guid TableId,
+    int StateVersion,
+    long ActionSequence,
+    IReadOnlyList<TableEventDto> Events);
+
 public static class TableMappings
 {
     public static TableDto ToDto(this TableSession session, TableGameState state) =>
@@ -56,4 +74,17 @@ public static class TableMappings
             session.UpdatedUtc,
             session.LastActionUtc,
             state);
+
+    public static TableEventDto ToDto(this TableSessionEvent evt) =>
+        new(
+            evt.Sequence,
+            evt.ActionType,
+            evt.SeatIndex,
+            evt.TurnNumber,
+            evt.TileId,
+            evt.Detail,
+            evt.StateVersion,
+            evt.StateHash,
+            evt.OccurredUtc,
+            evt.PersistedUtc);
 }
