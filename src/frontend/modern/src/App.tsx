@@ -363,6 +363,10 @@ export function App() {
     claimWindow !== null &&
     claimWindow.opportunities.length > 0 &&
     viewerSeatIndex === humanSeatIndex;
+  const canStartNextHand =
+    table !== null &&
+    tableView !== null &&
+    (tableView.state.phase === 'RoundComplete' || tableView.state.phase === 'WallExhausted');
 
   const checkHealth = useCallback(async () => {
     try {
@@ -451,6 +455,34 @@ export function App() {
       );
     });
   }, [advanceBotsToHumanTurn, loadEvents, loadSeatView, runOperation, viewerSeatIndex]);
+
+  const startNextHand = useCallback(async () => {
+    if (table === null) {
+      return;
+    }
+
+    await runOperation(async () => {
+      const nextTable = await readJson<TableDto>(`/api/tables/${table.id}/next-hand`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      const progression = await advanceBotsToHumanTurn(nextTable);
+      setTable(progression.table);
+      await loadEvents(progression.table.id);
+      await loadSeatView(progression.table.id, viewerSeatIndex);
+
+      const botSummary =
+        progression.totalActions > 0
+          ? ` Bots played ${progression.totalActions} action(s) (${formatStopReason(progression.stopReason)}).`
+          : '';
+      setStatusMessage(
+        `Started next hand (${progression.table.id.slice(0, 8)}). ${
+          progression.table.state.activeSeat === humanSeatIndex ? 'Your turn.' : 'Waiting on backend state.'
+        }${botSummary}`
+      );
+    });
+  }, [advanceBotsToHumanTurn, loadEvents, loadSeatView, runOperation, table, viewerSeatIndex]);
 
   const refreshTable = useCallback(async () => {
     if (table === null) {
@@ -617,6 +649,9 @@ export function App() {
           </Button>
           <Button onClick={refreshTable} disabled={busy || table === null}>
             Refresh
+          </Button>
+          <Button onClick={startNextHand} disabled={busy || !canStartNextHand}>
+            Next hand
           </Button>
         </div>
         <div className="perspective-row">

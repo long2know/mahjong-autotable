@@ -71,6 +71,30 @@ public sealed class ClaimResolutionApiTests(ApiTestFactory factory) : IClassFixt
         Assert.Equal(JsonValueKind.Null, root.GetProperty("table").GetProperty("state").GetProperty("claimWindow").ValueKind);
     }
 
+    [Fact]
+    public async Task NextHand_FromExistingTable_CreatesNewTableWithIncrementedSeed()
+    {
+        using var client = factory.CreateClient();
+        var sourceTableId = await CreateTableAsync(client, 9100);
+
+        var sourceResponse = await client.GetAsync($"/api/tables/{sourceTableId}");
+        sourceResponse.EnsureSuccessStatusCode();
+        using var sourceDocument = JsonDocument.Parse(await sourceResponse.Content.ReadAsStringAsync());
+        var sourceRuleSet = sourceDocument.RootElement.GetProperty("ruleSet").GetString();
+        var sourceSeed = sourceDocument.RootElement.GetProperty("state").GetProperty("metadata").GetProperty("seed").GetInt32();
+
+        var nextHandResponse = await client.PostAsJsonAsync($"/api/tables/{sourceTableId}/next-hand", new { });
+
+        Assert.Equal(HttpStatusCode.Created, nextHandResponse.StatusCode);
+        using var nextDocument = JsonDocument.Parse(await nextHandResponse.Content.ReadAsStringAsync());
+        var nextRoot = nextDocument.RootElement;
+        Assert.NotEqual(sourceTableId, nextRoot.GetProperty("id").GetGuid());
+        Assert.Equal(sourceRuleSet, nextRoot.GetProperty("ruleSet").GetString());
+        Assert.Equal(sourceSeed + 1, nextRoot.GetProperty("state").GetProperty("metadata").GetProperty("seed").GetInt32());
+        Assert.Equal(1, nextRoot.GetProperty("stateVersion").GetInt32());
+        Assert.Equal(0, nextRoot.GetProperty("state").GetProperty("actionSequence").GetInt64());
+    }
+
     private static async Task<Guid> CreateTableAsync(HttpClient client, int seed)
     {
         var response = await client.PostAsJsonAsync("/api/tables", new { seed });

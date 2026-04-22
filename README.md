@@ -31,6 +31,9 @@ infra/
 - Draw/discard loop slice endpoints:
   - `POST /api/tables` creates a 4-seat table and deterministically deals from a seeded wall.
     - Request: `{ "ruleSet": "changsha", "botSeatIndexes": [1,2,3], "seed": 12345 }` (`seed` optional; server-generated when omitted).
+  - `POST /api/tables/{id}/next-hand` starts a fresh hand as a new table session using the same rule set and bot seat layout.
+    - Seed is deterministically incremented from the source table (`currentSeed + 1`).
+    - Response shape matches `POST /api/tables` (`201 Created` with new table payload).
   - `GET /api/tables/{id}` returns persisted table state (including `stateVersion`, `actionSequence`, `phase`, `wall`, `hands`, `discardPile`, `metadata.seed`, `metadata.algorithmId`, and `integrity.stateHash`).
   - `GET /api/tables/{id}/view?seatIndex={seat}` returns a seat-scoped projection for multiplayer/privacy-safe clients.
     - Own hand includes concrete tile ids; opponent hands expose counts only.
@@ -72,7 +75,7 @@ Key config (`appsettings.json`):
 - **Full stack (backend + modern frontend):** select `F5 Full Stack (Backend + Modern Frontend)`.
 - **Autotable baseline only:** select `Backend + Autotable Baseline`.
 - Full stack F5 runs `npm install && npm run dev` for the modern frontend terminal session.
-- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, exposed meld display per seat, claim-resolution panel with pass/take-selected actions, round-complete winner messaging for `hu` claims, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
+- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, exposed meld display per seat, claim-resolution panel with pass/take-selected actions, round-complete winner messaging for `hu` claims, one-click **Next hand** restart flow, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
 
 ### CLI
 
