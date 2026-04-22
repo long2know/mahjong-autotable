@@ -95,6 +95,50 @@ app.MapGet("/api/tables/{id:guid}", async (
     return Results.Ok(session.ToDto(state));
 });
 
+app.MapGet("/api/tables/{id:guid}/view", async (
+    Guid id,
+    int? seatIndex,
+    HttpContext httpContext,
+    AppDbContext db,
+    ITableStateEngine engine,
+    ITableStateSerializer serializer,
+    CancellationToken cancellationToken) =>
+{
+    var session = await db.TableSessions.FirstOrDefaultAsync(table => table.Id == id, cancellationToken);
+    if (session is null)
+    {
+        return Results.NotFound();
+    }
+
+    var state = serializer.Deserialize(session.StateJson);
+    engine.NormalizePersistedState(state, session.StateVersion);
+    if (!seatIndex.HasValue)
+    {
+        var error = ToActionError(
+            TableActionErrorCodes.InvalidSeat,
+            "seatIndex query parameter is required.",
+            state.StateVersion,
+            state.ActionSequence,
+            httpContext.TraceIdentifier);
+        return Results.BadRequest(error);
+    }
+
+    try
+    {
+        return Results.Ok(session.ToSeatViewDto(state, seatIndex.Value));
+    }
+    catch (ArgumentOutOfRangeException)
+    {
+        var error = ToActionError(
+            TableActionErrorCodes.SeatNotFound,
+            $"Seat {seatIndex.Value} does not exist.",
+            state.StateVersion,
+            state.ActionSequence,
+            httpContext.TraceIdentifier);
+        return Results.BadRequest(error);
+    }
+});
+
 app.MapGet("/api/tables/{id:guid}/events", async (
     Guid id,
     long? afterSequence,
