@@ -13,7 +13,8 @@
       },
       "serverReadyAction": {
         "action": "openExternally",
-        "pattern": "Now listening on:\\s+(https?://\\S+)"
+        "pattern": "Now listening on:\\s+(https?://\\S+)",
+        "uriFormat": "%s/autotable/"
       }
     },
     {
@@ -32,6 +33,11 @@
       "preLaunchTask": "backend: build",
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "Now listening on:\\s+(https?://\\S+)",
+        "uriFormat": "%s/autotable/"
       }
     }
   ],

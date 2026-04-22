@@ -1,7 +1,9 @@
-# Autotable Baseline Frontend
+# Autotable baseline assets
 
-This folder is reserved for the **autotable-first** frontend baseline.
+This directory contains a mirrored static build of the upstream Autotable client from `https://pwmarcz.pl/autotable/`.
 
-- Place upstream `pwmarcz/autotable` UI assets or adapted files here.
-- Keep this path stable so backend static hosting and Docker packaging stay unchanged.
-- Incremental React migration should happen in `src/frontend/modern/` without forcing a rewrite.
+- Purpose: preserve the original perspective/table visual baseline while Changsha gameplay logic is integrated in backend APIs.
+- Served by backend at `/autotable/` (see `Mahjong.Autotable.Api` static file mapping).
+- Source project: `https://github.com/pwmarcz/autotable`.
+
+The mirrored files are intentionally committed so local `F5` runs and Docker images do not depend on external asset CDNs.
