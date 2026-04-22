@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { clientState, type GameState } from './state';
 import { generateTileAtlas, tileIdFromLabel, type TileAtlas } from './tileAtlas';
 import { createTileMesh } from './tile';
+import { createCameraController, type CameraController } from './camera';
 
 const TILE_WIDTH = 0.8;
 const TILE_HEIGHT = 1.2;
@@ -21,26 +22,16 @@ const SEAT_POSITIONS: SeatPosition[] = [
   { seat: 'North', position: new THREE.Vector3(-15, 0, 0), rotation: -Math.PI / 2 },
 ];
 
-export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { camera: THREE.Camera; scene: THREE.Scene } {
+export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { cameraController: CameraController; scene: THREE.Scene } {
   console.log('[Scene] Initializing state-driven scene...');
   
   // Scene setup
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x2a4a3a);
 
-  // Orthographic camera (top-down view)
+  // Camera controller (manages both ortho and perspective cameras)
   const aspect = window.innerWidth / window.innerHeight;
-  const frustumSize = 50;
-  const camera = new THREE.OrthographicCamera(
-    (frustumSize * aspect) / -2,
-    (frustumSize * aspect) / 2,
-    frustumSize / 2,
-    frustumSize / -2,
-    0.1,
-    1000
-  );
-  camera.position.set(0, 50, 0);
-  camera.lookAt(0, 0, 0);
+  const cameraController = createCameraController(aspect);
 
   // Renderer
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -259,23 +250,24 @@ export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { camer
 
   // Handle window resize
   window.addEventListener('resize', () => {
-    const newAspect = window.innerWidth / window.innerHeight;
-    camera.left = (frustumSize * newAspect) / -2;
-    camera.right = (frustumSize * newAspect) / 2;
-    camera.top = frustumSize / 2;
-    camera.bottom = frustumSize / -2;
-    camera.updateProjectionMatrix();
+    cameraController.onResize(window.innerWidth, window.innerHeight);
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
   // Animation loop
+  let lastTime = Date.now();
   function animate() {
     requestAnimationFrame(animate);
-    renderer.render(scene, camera);
+    const now = Date.now();
+    const deltaTime = (now - lastTime) / 1000;
+    lastTime = now;
+
+    cameraController.update(deltaTime);
+    renderer.render(scene, cameraController.getActive());
   }
 
   animate();
   console.log('[Scene] State-driven scene initialized');
   
-  return { camera, scene };
+  return { cameraController, scene };
 }

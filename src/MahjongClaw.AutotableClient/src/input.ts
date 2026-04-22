@@ -55,6 +55,10 @@ class InputHandler {
     this.setupPointerEvents();
   }
 
+  setCamera(camera: THREE.Camera): void {
+    this.camera = camera;
+  }
+
   setPlayerId(playerId: string | null): void {
     this.playerId = playerId;
   }

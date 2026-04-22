@@ -1,6 +1,7 @@
 // HUD action buttons for game interactions
 import type { GameState } from './state';
 import type { InputEvent } from './input';
+import type { CameraController } from './camera';
 
 type ButtonClickListener = (event: InputEvent) => void;
 
@@ -510,4 +511,66 @@ export class HudActions {
 
 export function createHudActions(containerId: string): HudActions {
   return new HudActions(containerId);
+}
+
+// View mode button
+export class ViewButton {
+  private container: HTMLElement;
+  private button: HTMLButtonElement;
+  private cameraController: CameraController;
+  private onToggle: (() => void) | null = null;
+
+  constructor(containerId: string, cameraController: CameraController) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+      throw new Error(`HUD container #${containerId} not found`);
+    }
+    this.container = container;
+    this.cameraController = cameraController;
+
+    // Create button
+    this.button = document.createElement('button');
+    this.button.id = 'btn-view';
+    this.button.style.cssText = `
+      position: fixed;
+      top: 10px;
+      right: 230px;
+      padding: 8px 16px;
+      background: rgba(74, 144, 226, 0.9);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      font-family: monospace;
+      font-size: 14px;
+      z-index: 101;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    `;
+    this.updateLabel();
+    
+    this.button.addEventListener('click', () => {
+      this.cameraController.toggleMode();
+      this.updateLabel();
+      if (this.onToggle) {
+        this.onToggle();
+      }
+      console.log(`[ViewButton] Mode: ${this.cameraController.getMode()}`);
+    });
+
+    document.body.appendChild(this.button);
+  }
+
+  setToggleCallback(callback: () => void): void {
+    this.onToggle = callback;
+  }
+
+  updateLabel(): void {
+    const mode = this.cameraController.getMode();
+    this.button.textContent = mode === 'flat' ? 'View: Flat' : 'View: Perspective';
+  }
+}
+
+export function createViewButton(containerId: string, cameraController: CameraController): ViewButton {
+  return new ViewButton(containerId, cameraController);
 }

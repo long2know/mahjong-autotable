@@ -3,11 +3,11 @@ import { initSignalR, getConfig } from './net';
 import { generateTileAtlas } from './tileAtlas';
 import { clientState } from './state';
 import { createInputHandler } from './input';
-import { createHudActions } from './hud';
+import { createHudActions, createViewButton } from './hud';
 import * as actions from './actions';
 
 async function main() {
-  console.log('Mahjong Claw Autotable Client - Phase 2');
+  console.log('Mahjong Claw Autotable Client - Phase 3');
 
   const container = document.getElementById('canvas-container');
   if (!container) {
@@ -19,9 +19,9 @@ async function main() {
   console.log('[Main] Generating tile atlas...');
   const tileAtlas = generateTileAtlas();
 
-  // Initialize scene with atlas
+  // Initialize scene with camera controller
   console.log('[Main] Initializing scene...');
-  const { camera, scene } = initScene(container, tileAtlas);
+  const { cameraController, scene } = initScene(container, tileAtlas);
 
   // Initialize networking last (will fetch state and trigger scene rebuild)
   console.log('[Main] Initializing networking...');
@@ -34,7 +34,7 @@ async function main() {
   
   // Initialize input handler
   console.log('[Main] Initializing input handler...');
-  const inputHandler = createInputHandler(camera, scene, container);
+  const inputHandler = createInputHandler(cameraController.getActive(), scene, container);
   const config = getConfig();
   inputHandler.setPlayerId(config.playerId);
   inputHandler.setState(clientState.getState());
@@ -44,6 +44,23 @@ async function main() {
   const hudActions = createHudActions('hud-actions-container');
   hudActions.setPlayerId(config.playerId);
   hudActions.setState(clientState.getState());
+  
+  // Initialize view button
+  console.log('[Main] Initializing view button...');
+  const viewButton = createViewButton('hud', cameraController);
+  viewButton.setToggleCallback(() => {
+    inputHandler.setCamera(cameraController.getActive());
+  });
+  
+  // Keyboard listener for 'p' key
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'p' || event.key === 'P') {
+      cameraController.toggleMode();
+      viewButton.updateLabel();
+      inputHandler.setCamera(cameraController.getActive());
+      console.log(`[Main] Camera mode: ${cameraController.getMode()}`);
+    }
+  });
   
   // Input locking flag
   let isActionInProgress = false;
@@ -145,6 +162,17 @@ async function main() {
     // Update input handler and HUD with new state
     inputHandler.setState(state);
     hudActions.setState(state);
+    
+    // Update camera if local player seat changed
+    if (config.playerId) {
+      const player = state.players.find(p => p.id === config.playerId);
+      if (player) {
+        const seatIndex = ['East', 'South', 'West', 'North'].indexOf(player.seat);
+        if (seatIndex !== -1) {
+          cameraController.updateSeat(seatIndex);
+        }
+      }
+    }
   });
   
   console.log('[Main] Bootstrap complete. Use ?game=<id>&player=<id> to connect to a game.');

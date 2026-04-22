@@ -214,6 +214,96 @@
 - Expected: Draw/Discard/Meld/Win actions POST to server, state refetches, scene updates
 
 
+### Phase 3 AutotableClient View Modes (2026-04-17)
+
+**Completed:** Full Phase 3 implementation — dual camera modes with smooth transitions.
+
+**Camera Controller Architecture (camera.ts):**
+- Manages two cameras: `OrthographicCamera` (flat top-down) and `PerspectiveCamera` (3D angled)
+- `CameraMode` type: `'flat' | 'perspective'`
+- Methods: `getActive()`, `setMode()`, `toggleMode()`, `updateSeat()`, `onResize()`, `update(deltaTime)`
+- Transition system: 300ms animated lerp between camera positions/lookAt/FOV
+- Custom easing: `easeInOutCubic(t)` — no external tweening library added
+- Update loop: called from scene.ts animation loop, advances transition state each frame
+
+**Per-Seat Perspective Positioning:**
+- Seat-based camera rotation (90° steps around table center)
+- Seat 0 (East, +Z): camera at `(0, 12, 15)` looking at origin (hand at bottom)
+- Seat 1 (South, -X): `(15, 12, 0)`
+- Seat 2 (West, -Z): `(0, 12, -15)`
+- Seat 3 (North, +X): `(-15, 12, 0)`
+- FOV 45°, near 0.1, far 100
+- Camera updates when local player seat detected in state
+
+**Flat Mode (Orthographic):**
+- Position: `(0, 30, 0)` looking straight down
+- Frustum size 50, scales with aspect ratio
+- Resize recalculates left/right/top/bottom on window size change
+
+**Toggle Mechanisms:**
+1. **Keyboard:** Press `p` key (matches pwmarcz/autotable convention)
+2. **HUD Button:** "View: [mode]" button in top-right corner (`right: 230px` to avoid HUD overlap)
+3. Both triggers:
+   - Call `cameraController.toggleMode()`
+   - Update button label
+   - Update input handler camera ref via `inputHandler.setCamera()`
+
+**Input Handler Integration:**
+- New method: `setCamera(camera)` to receive active camera on mode change
+- Raycaster automatically works with both camera types (Three.js handles perspective/ortho projection)
+- Click-to-discard interaction preserved across both views
+
+**Scene.ts Changes:**
+- Return signature: `{ camera, scene }` → `{ cameraController, scene }`
+- Animation loop: added `deltaTime` tracking, calls `cameraController.update(deltaTime)`
+- Renderer: uses `cameraController.getActive()` instead of fixed camera ref
+- Resize handler: delegates to `cameraController.onResize()`
+
+**Main.ts Changes:**
+- Instantiate `CameraController` after scene setup
+- Create `ViewButton` with callback: `viewButton.setToggleCallback(() => inputHandler.setCamera(...))`
+- Keyboard listener: `'p'` key toggles mode, updates label, updates input camera
+- State listener: detect local player seat index, call `cameraController.updateSeat(seatIndex)`
+
+**HUD View Button (hud.ts):**
+- New `ViewButton` class with `setToggleCallback()` method
+- Button styles: fixed position, blue background, white text, shadow
+- Label sync: `updateLabel()` reads `cameraController.getMode()` and displays "View: Flat" or "View: Perspective"
+
+**Transition Animation Details:**
+- Duration: 300ms (pwmarcz used 100ms; we chose smoother 300ms)
+- Easing function: `easeInOutCubic` — smooth acceleration/deceleration
+- Interpolates: position (Vector3), lookAt target (always origin), FOV (perspective only)
+- State machine: `TransitionState` with `startTime`, `duration`, `startState`, `endState`
+- Progress calculation: `Math.min((now - startTime) / duration, 1)`
+
+**Build Results:**
+- ✅ `npm run build`: TypeScript clean, Vite build produces 554 KB bundle (141 KB gzip)
+- ✅ `dotnet build`: 0 errors, 0 warnings
+- ✅ `dotnet test`: 2341/2341 passed (unchanged baseline)
+
+**TypeScript Strict Mode:**
+- All code passes strict + noUncheckedIndexedAccess
+- No `!` assertion operators used
+- Proper null checks on camera transitions and state access
+
+**Phase 3 Gotchas:**
+1. **Camera reference timing:** Must call `inputHandler.setCamera()` AFTER toggling mode, not before. Otherwise raycaster uses old camera during transition.
+2. **Button callback lifecycle:** `ViewButton` needs explicit callback setter because button is created before input handler is wired. Can't pass callback in constructor.
+3. **Transition state management:** Must clone Vector3 positions in `startTransition()` to avoid reference bugs during interpolation.
+4. **Seat index mapping:** Must convert seat string ("East", "South", etc.) to numeric index (0-3) for angle calculation. Uses `['East', 'South', 'West', 'North'].indexOf(seat)`.
+
+**Deferred to Phase 4:**
+- OrbitControls for manual camera drag (out of scope for Phase 3)
+- Tile hover effects (not camera-related)
+- Settlement overlay (not camera-related)
+
+**Known Limitations:**
+- Spectator mode defaults to Seat 0 perspective (no spectator-specific camera angle)
+- No spring physics for transitions (linear interpolation with easing only)
+- Transition cannot be interrupted (must complete before next toggle)
+
+
 ## Upcoming: TS/Three.js Autotable Client
 
 **2026-04-17:** Kusanagi architected new TypeScript + three.js client (branch: `squad/autotable-client`) modeled on pwmarcz/autotable. Togusa will lead implementation when Stephen green-lights Phase 0 scaffold.
