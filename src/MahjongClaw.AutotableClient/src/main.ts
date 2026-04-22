@@ -5,9 +5,12 @@ import { clientState } from './state';
 import { createInputHandler } from './input';
 import { createHudActions, createViewButton } from './hud';
 import * as actions from './actions';
+import { globalToastManager } from './toast';
+import { gameEndOverlay } from './overlay';
+import * as audio from './audio';
 
 async function main() {
-  console.log('Mahjong Claw Autotable Client - Phase 3');
+  console.log('Mahjong Claw Autotable Client - Phase 4');
 
   const container = document.getElementById('canvas-container');
   if (!container) {
@@ -81,16 +84,28 @@ async function main() {
         case 'drawRequested':
           console.log('[Main] Draw requested');
           result = await actions.drawTile(config.gameId, config.playerId);
+          if (result.success) {
+            globalToastManager.show('Drew a tile');
+            audio.play('draw');
+          }
           break;
           
         case 'discardRequested':
           console.log('[Main] Discard requested:', event.tileId);
           result = await actions.discardTile(config.gameId, config.playerId, event.tileId);
+          if (result.success) {
+            globalToastManager.show('Tile discarded');
+            audio.play('discard');
+          }
           break;
           
         case 'meldRequested':
           console.log('[Main] Meld requested:', event.meldType, event.tileIds);
           result = await actions.declareMeld(config.gameId, config.playerId, event.meldType, event.tileIds);
+          if (result.success) {
+            globalToastManager.show(`${event.meldType} declared`);
+            audio.play('meld');
+          }
           break;
           
         case 'winRequested':
@@ -98,6 +113,10 @@ async function main() {
           const state = clientState.getState();
           const discarderPlayerId = event.isSelfDraw ? null : state?.lastDiscardPlayerId ?? null;
           result = await actions.declareWin(config.gameId, config.playerId, event.isSelfDraw, discarderPlayerId);
+          if (result.success) {
+            globalToastManager.show('Win declared!');
+            audio.play('win');
+          }
           break;
           
         case 'pass':
@@ -108,11 +127,11 @@ async function main() {
       
       if (result && !result.success) {
         console.error('[Main] Action failed:', result.error);
-        alert(`Action failed: ${result.error}`);
+        globalToastManager.show(`Error: ${result.error}`);
       }
     } catch (error) {
       console.error('[Main] Action error:', error);
-      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      globalToastManager.show(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       isActionInProgress = false;
       inputHandler.setEnabled(true);
@@ -162,6 +181,11 @@ async function main() {
     // Update input handler and HUD with new state
     inputHandler.setState(state);
     hudActions.setState(state);
+    
+    // Show game end overlay if game is completed
+    if (state.status === 'Completed' && !gameEndOverlay.isVisible()) {
+      gameEndOverlay.show(state);
+    }
     
     // Update camera if local player seat changed
     if (config.playerId) {

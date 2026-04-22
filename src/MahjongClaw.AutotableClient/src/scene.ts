@@ -3,6 +3,7 @@ import { clientState, type GameState } from './state';
 import { generateTileAtlas, tileIdFromLabel, type TileAtlas } from './tileAtlas';
 import { createTileMesh } from './tile';
 import { createCameraController, type CameraController } from './camera';
+import { globalTweenManager, easeOutQuad } from './animation';
 
 const TILE_WIDTH = 0.8;
 const TILE_HEIGHT = 1.2;
@@ -59,15 +60,22 @@ export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { camer
   const gameGroup = new THREE.Group();
   scene.add(gameGroup);
 
-  // Current turn indicator
-  const turnIndicator = new THREE.Mesh(
-    new THREE.RingGeometry(1.5, 2, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide })
-  );
+  // Current turn indicator with pulsing glow
+  const turnIndicatorGeometry = new THREE.RingGeometry(1.5, 2, 32);
+  const turnIndicatorMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0xffff00, 
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.8
+  });
+  const turnIndicator = new THREE.Mesh(turnIndicatorGeometry, turnIndicatorMaterial);
   turnIndicator.rotation.x = -Math.PI / 2;
   turnIndicator.position.y = 0.05;
   turnIndicator.visible = false;
   scene.add(turnIndicator);
+  
+  // Pulsing animation state for turn indicator
+  let turnPulsePhase = 0;
 
   function rebuildScene(state: GameState | null): void {
     // Clear previous game elements
@@ -89,7 +97,7 @@ export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { camer
     // Render wall pile
     renderWallPile(gameGroup, state, tileAtlas);
     
-    // Render each seat's elements
+    // Render each seat's elements (with spawn animations)
     for (const seatPos of SEAT_POSITIONS) {
       const player = state.players.find(p => p.seat === seatPos.seat);
       if (!player) continue;
@@ -184,13 +192,55 @@ export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { camer
         tile = createTileMesh('back', false, atlas);
       }
       
-      // Position tiles in a row
+      // Position tiles in a row (with spawn animation: fade in + small Y drop)
       const x = (i - handTileCount / 2) * (TILE_WIDTH + TILE_GAP);
-      tile.position.set(x, TILE_HEIGHT / 2, -5);
+      tile.position.set(x, TILE_HEIGHT / 2 + 0.3, -5);
+      
+      // Fade-in animation
+      if (tile.material && 'opacity' in tile.material) {
+        (tile.material as THREE.MeshStandardMaterial).transparent = true;
+        (tile.material as THREE.MeshStandardMaterial).opacity = 0;
+        
+        const targetOpacity = { opacity: 0 };
+        globalTweenManager.tween(
+          `tile-spawn-${player.id}-${i}`,
+          targetOpacity,
+          { opacity: 1 },
+          250,
+          easeOutQuad,
+          () => {
+            if (tile.material && 'opacity' in tile.material) {
+              (tile.material as THREE.MeshStandardMaterial).opacity = 1;
+            }
+          }
+        );
+        
+        // Update material opacity each frame
+        const updateOpacity = () => {
+          if (tile.material && 'opacity' in tile.material) {
+            (tile.material as THREE.MeshStandardMaterial).opacity = targetOpacity.opacity;
+          }
+        };
+        tile.userData['updateOpacity'] = updateOpacity;
+      }
+      
+      // Drop animation
+      const targetPos = { y: TILE_HEIGHT / 2 + 0.3 };
+      globalTweenManager.tween(
+        `tile-drop-${player.id}-${i}`,
+        targetPos,
+        { y: TILE_HEIGHT / 2 },
+        250,
+        easeOutQuad
+      );
+      
+      // Update position each frame
+      tile.userData['targetPos'] = targetPos;
+      
       group.add(tile);
     }
     
-    // Render open melds
+    // Render open melds (with scale pop animation for new melds)
     const playerMelds = state.melds.filter(m => m.playerId === player.id);
     let meldOffsetX = (handTileCount / 2 + 1) * (TILE_WIDTH + TILE_GAP);
     
@@ -211,6 +261,19 @@ export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { camer
         }
         
         tile.rotation.y = Math.PI / 8; // Slight angle for melds
+        
+        // Scale pop animation for new melds
+        tile.scale.set(0.8, 0.8, 0.8);
+        const targetScale = { x: 0.8, y: 0.8, z: 0.8 };
+        globalTweenManager.tween(
+          `meld-scale-${meld.id}-${i}`,
+          targetScale,
+          { x: 1, y: 1, z: 1 },
+          200,
+          easeOutQuad
+        );
+        tile.userData['targetScale'] = targetScale;
+        
         group.add(tile);
       }
       
@@ -262,7 +325,35 @@ export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { camer
     const deltaTime = (now - lastTime) / 1000;
     lastTime = now;
 
+    // Update camera transitions
     cameraController.update(deltaTime);
+    
+    // Update tween animations
+    globalTweenManager.update();
+    
+    // Update tile positions/opacity from tweens
+    gameGroup.traverse((obj) => {
+      if (obj.userData['targetPos']) {
+        const pos = obj.userData['targetPos'] as { y: number };
+        obj.position.y = pos.y;
+      }
+      if (obj.userData['targetScale']) {
+        const scale = obj.userData['targetScale'] as { x: number; y: number; z: number };
+        obj.scale.set(scale.x, scale.y, scale.z);
+      }
+      if (obj.userData['updateOpacity']) {
+        const update = obj.userData['updateOpacity'] as () => void;
+        update();
+      }
+    });
+    
+    // Pulse turn indicator
+    if (turnIndicator.visible) {
+      turnPulsePhase += deltaTime * 2;
+      const pulse = 0.6 + Math.sin(turnPulsePhase) * 0.2;
+      turnIndicatorMaterial.opacity = pulse;
+    }
+
     renderer.render(scene, cameraController.getActive());
   }
 

@@ -1,6 +1,6 @@
-# Mahjong Claw - Autotable Client (Phase 1)
+# Mahjong Claw - Autotable Client (Phase 4)
 
-TypeScript + three.js 3D client for Mahjong Claw — state-driven rendering with procedural tile atlas.
+TypeScript + three.js 3D client for Mahjong Claw — state-driven rendering with animations, feedback, and settlement overlay.
 
 ## Prerequisites
 
@@ -65,16 +65,25 @@ npm run preview
 ## Architecture
 
 - `index.html` - Entry point with HUD overlay
-- `src/main.ts` - App bootstrap + HUD updates
-- `src/scene.ts` - State-driven three.js scene rebuilding
+- `src/main.ts` - App bootstrap, HUD updates, toast/overlay/audio integration
+- `src/scene.ts` - State-driven three.js scene rebuilding with animations
 - `src/state.ts` - Client state cache with event emitter
-- `src/net.ts` - SignalR + REST state fetching
+- `src/net.ts` - SignalR + REST state fetching with audio hooks
 - `src/tileAtlas.ts` - Procedural tile texture atlas generator (27 Changsha faces + back)
 - `src/tile.ts` - Tile mesh factory with atlas UV mapping
+- `src/camera.ts` - Dual camera controller (flat/perspective) with smooth transitions
+- `src/input.ts` - Raycaster for click-to-discard interaction
+- `src/hud.ts` - Action buttons (Draw, Chow, Pung, Kong, Win, Pass) + View toggle
+- `src/actions.ts` - REST API wrappers (draw, discard, meld, win)
+- `src/animation.ts` - Generic tween manager with easing functions
+- `src/toast.ts` - Toast notification system
+- `src/overlay.ts` - Game end overlay with winner display
+- `src/audio.ts` - Audio hook system (no-op, ready for Phase 5)
 - `src/types.ts` - DTO type definitions
 
-## Phase 1 Features
+## Features (Phases 1-4)
 
+### Phase 1: State-Driven Rendering
 - **Full GameState rendering** from REST `/api/game/{id}/state`
 - **Real-time updates** via SignalR (refetches state on each event)
 - **Procedural tile atlas**: 27 Changsha tile faces (bamboo/character/dot × 1-9) + tile back
@@ -87,12 +96,42 @@ npm run preview
 - **HUD overlay**: Wall count, current turn player, your seat
 - **Spectator mode**: Works without `player` param (all hands face-down)
 
-## Phase 1 Out of Scope
+### Phase 2: Interaction
+- **Click-to-discard**: Raycast tile selection in your hand
+- **Action buttons**: Draw, Chow, Pung, Kong, Win (self-draw), Pass
+- **Claim window**: 5-second offer after opponent discard
+- **Client-side validation**: Meld legality checks, automatic tile selection
+- **Error handling**: ActionResult pattern with user feedback
+- **Input locking**: Prevents concurrent API calls
 
-- No click/hover/drag interaction (Phase 2)
-- No perspective camera toggle (Phase 3)
-- No tile animations (Phase 4)
+### Phase 3: View Modes
+- **Dual cameras**: Flat (orthographic) and Perspective (3D angled)
+- **Smooth transitions**: 300ms animated camera swap with easeInOutCubic
+- **Per-seat perspective**: Camera rotates to put local player at bottom
+- **Toggle mechanisms**: 
+  - Keyboard: Press `p` key
+  - HUD button: "View: [mode]" button (top-right)
+- **Raycaster compatibility**: Click-to-discard works in both views
+
+### Phase 4: Polish
+- **Tile animations**:
+  - Spawn animation: 250ms fade-in + Y-drop on tile placement
+  - Meld scale pop: 200ms scale animation (0.8→1) when melds form
+- **Turn indicator pulse**: Opacity oscillates 0.6-0.8 for visual feedback
+- **Toast notifications**: Bottom-center, 3s auto-dismiss, replaces alert()
+  - "Drew a tile", "Tile discarded", "[Meld] declared", "Win declared!"
+  - Error messages with visual consistency
+- **Game end overlay**: Full-screen with winner info, hand display, close button
+- **Audio hooks**: No-op system ready for Phase 5 audio assets
+  - Wired for 'draw', 'discard', 'meld', 'win' events
+
+## Out of Scope (Phase 4)
+
 - No lobby/create-game UI (Phase 5)
+- No actual audio files (hooks only)
+- No mobile touch controls
+- No settings panel
+- No spectator chat
 
 ## Testing a Game
 

@@ -303,6 +303,102 @@
 - No spring physics for transitions (linear interpolation with easing only)
 - Transition cannot be interrupted (must complete before next toggle)
 
+### Phase 4 AutotableClient Polish (2026-04-17)
+
+**Completed:** Full Phase 4 implementation — animations, feedback, and settlement overlay.
+
+**New Modules:**
+- `animation.ts` (2.1 KB): Generic tween manager with easing functions (easeInOutCubic, easeOutQuad)
+- `toast.ts` (2.4 KB): Toast notification system (max 3 visible, 3s auto-dismiss, bottom-center)
+- `audio.ts` (359 B): No-op audio hook for future Phase 5 audio assets
+- `overlay.ts` (5.9 KB): Game end overlay with winner info, hand display, close button
+
+**Tile Animations:**
+- Spawn animation: 250ms fade-in (opacity 0→1) + small Y-drop (0.3 units) on tile placement
+- Meld pop: 200ms scale animation (0.8→1) when melds form
+- All animations use `globalTweenManager` with `easeOutQuad` for smooth feel
+- Animation state stored in tile mesh `userData` for per-frame updates
+
+**Turn Indicator Enhancement:**
+- Pulsing glow effect: opacity oscillates 0.6-0.8 via sine wave
+- Phase state tracked in animation loop: `turnPulsePhase += deltaTime * 2`
+- Material set to transparent with DoubleSide rendering
+
+**Toast Notification System:**
+- Replaces ugly `alert()` calls from Phase 2
+- Fixed position bottom-center (above action buttons at 100px)
+- Dark semi-transparent background consistent with HUD style
+- Auto-dismiss after 3 seconds with fade-in/fade-out transitions
+- Max 3 visible toasts; oldest removed when capacity exceeded
+- Shows toasts for: "Drew a tile", "Tile discarded", "[Meld Type] declared", "Win declared!", errors
+
+**Game End Overlay:**
+- Triggered when `state.status === 'Completed'`
+- Full-screen dark overlay (rgba(0,0,0,0.8)) with centered content box
+- Displays:
+  - Winner name and seat
+  - Winner score
+  - Winning hand (melds + concealed tiles) if viewer is winner
+  - Close button to dismiss (returns to spectator view of final table)
+- Overlay does NOT unmount 3D scene; scene remains visible behind
+
+**Audio Hooks:**
+- `audio.play(event)` called for 'draw', 'discard', 'meld', 'win' events
+- Currently no-op with console.debug logging only
+- Wired in both main.ts (user actions) and net.ts (SignalR events)
+- Ready for Phase 5 audio asset integration
+
+**Scene Animation Loop:**
+- Added `globalTweenManager.update()` call in animate() loop
+- Traverse game group to update tile positions/scales/opacity from tween targets
+- Turn indicator pulse updated per frame
+- deltaTime tracking for smooth animation regardless of frame rate
+
+**Integration Points:**
+- main.ts: Import toast/overlay/audio, show toasts on action success, show overlay on game complete
+- net.ts: Audio hooks on SignalR events (draw/discard/meld/win)
+- scene.ts: Spawn animations for tiles, meld scale pop, turn indicator pulse
+
+**Build Results:**
+- ✅ `npm run build`: TypeScript clean, Vite build produces 561 KB bundle (143 KB gzip)
+- ✅ `dotnet build`: 0 errors, 0 warnings
+- ✅ `dotnet test`: 2341/2341 passed (unchanged baseline)
+
+**TypeScript Strict Mode:**
+- All new code passes strict + noUncheckedIndexedAccess
+- No `!` assertion operators used
+- Proper type guards for userData access
+- Material property checks before accessing opacity/transparent
+
+**Phase 4 Gotchas:**
+1. **Material mutability:** THREE.js tile meshes share materials by default. Must set `transparent: true` and mutate opacity per-instance. Used `userData` to store target opacity object for tween updates.
+2. **Tween lifecycle:** Tweens run to completion or must be explicitly cancelled. No cleanup needed since scene rebuild clears all tiles (and their userData) on state change.
+3. **Overlay timing:** Must check `!gameEndOverlay.isVisible()` before showing to avoid duplicate overlays on repeated state updates.
+4. **Toast z-index:** Set to 1000 to appear above HUD (z-index unspecified) but below overlay (z-index 2000).
+5. **Animation frame updates:** Must traverse scene and manually apply tween target values to mesh properties each frame. THREE.js doesn't auto-update from external state.
+
+**Visual Language Consistency:**
+- Dark semi-transparent backgrounds (rgba(0,0,0,0.7-0.85))
+- White text on dark backgrounds
+- Blue accent color (#4a90e2) for primary actions
+- Monospace font for UI consistency
+- All new UI matches existing HUD style from Phase 2
+
+**Deferred to Phase 5:**
+- Actual audio files (currently no-op hooks)
+- Lobby UI / room creation / matchmaking
+- Mobile touch controls
+- Settings panel
+- Spectator chat
+
+**Known Limitations:**
+- Animations are spawn-only (fade-in + drop); no slide-from-wall or slide-to-discard movement
+  - Reason: Complex to implement state diffing to track tile ID movement between state snapshots
+  - Chosen fallback: simpler spawn animation is visually pleasing and avoids sync bugs
+- No bird highlight for winning tiles (not in state DTO)
+- No point breakdown / fan display (not in state DTO; would need server changes)
+- No kong replacement animation (single-wall-pile representation doesn't track draw source)
+
 
 ## Upcoming: TS/Three.js Autotable Client
 

@@ -9,6 +9,8 @@ import type {
   MeldResponse,
   WinResponse,
 } from './types';
+import { globalToastManager } from './toast';
+import * as audio from './audio';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5270';
 const HUB_URL = `${API_BASE}/hubs/game`;
@@ -104,48 +106,56 @@ export async function initSignalR(gameId?: string, playerId?: string): Promise<v
   connection.on('TileDrawn', (data: DrawTileResponse) => {
     console.log('[SignalR] TileDrawn:', data);
     clientState.applySignalREvent('TileDrawn', data);
+    audio.play('draw');
     refetchState();
   });
 
   connection.on('DrawnTile', (data: DrawTileResponse) => {
     console.log('[SignalR] DrawnTile (alias):', data);
     clientState.applySignalREvent('DrawnTile', data);
+    audio.play('draw');
     refetchState();
   });
 
   connection.on('TileDiscarded', (data: DiscardTileResponse) => {
     console.log('[SignalR] TileDiscarded:', data);
     clientState.applySignalREvent('TileDiscarded', data);
+    audio.play('discard');
     refetchState();
   });
 
   connection.on('DiscardedTile', (data: DiscardTileResponse) => {
     console.log('[SignalR] DiscardedTile (alias):', data);
     clientState.applySignalREvent('DiscardedTile', data);
+    audio.play('discard');
     refetchState();
   });
 
   connection.on('MeldDeclared', (data: MeldResponse) => {
     console.log('[SignalR] MeldDeclared:', data);
     clientState.applySignalREvent('MeldDeclared', data);
+    audio.play('meld');
     refetchState();
   });
 
   connection.on('Meld', (data: MeldResponse) => {
     console.log('[SignalR] Meld (alias):', data);
     clientState.applySignalREvent('Meld', data);
+    audio.play('meld');
     refetchState();
   });
 
   connection.on('GameWon', (data: WinResponse) => {
     console.log('[SignalR] GameWon:', data);
     clientState.applySignalREvent('GameWon', data);
+    audio.play('win');
     refetchState();
   });
 
   connection.on('WinDeclared', (data: WinResponse) => {
     console.log('[SignalR] WinDeclared (alias):', data);
     clientState.applySignalREvent('WinDeclared', data);
+    audio.play('win');
     refetchState();
   });
 
