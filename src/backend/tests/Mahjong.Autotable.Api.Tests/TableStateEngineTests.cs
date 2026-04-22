@@ -166,6 +166,42 @@ public class TableStateEngineTests
     }
 
     [Fact]
+    public void ApplyHumanDiscard_ClaimWindowSelectsHuOverKong()
+    {
+        var state = _engine.CreateInitialState(seed: 142);
+
+        const int discardLogicalTile = 4;
+        var discardTileId = discardLogicalTile * 4;
+        var kongTileOne = discardTileId + 1;
+        var kongTileTwo = discardTileId + 2;
+        var kongTileThree = discardTileId + 3;
+
+        ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(state, 2, kongTileOne, kongTileTwo, kongTileThree);
+        ForceTilesIntoSeat(
+            state,
+            1,
+            0, 1, 2,
+            4, 5, 6,
+            8, 9, 10,
+            24, 25,
+            12, 20);
+
+        var result = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+
+        Assert.Null(result.DrawAction);
+        Assert.Equal(TableTurnPhase.AwaitingClaimResolution, state.Phase);
+        var claimWindow = Assert.IsType<TableClaimWindowState>(state.ClaimWindow);
+        Assert.Contains(claimWindow.Opportunities, opportunity =>
+            opportunity.SeatIndex == 1 && opportunity.ClaimType == TableClaimType.Hu);
+        Assert.Contains(claimWindow.Opportunities, opportunity =>
+            opportunity.SeatIndex == 2 && opportunity.ClaimType == TableClaimType.Kong);
+        var selected = Assert.IsType<TableClaimOpportunity>(claimWindow.SelectedOpportunity);
+        Assert.Equal(1, selected.SeatIndex);
+        Assert.Equal(TableClaimType.Hu, selected.ClaimType);
+    }
+
+    [Fact]
     public void NormalizePersistedState_AlignsVersionAndRepairsLegacyFields()
     {
         var state = _engine.CreateInitialState(seed: 88);
@@ -357,6 +393,44 @@ public class TableStateEngineTests
     }
 
     [Fact]
+    public void ResolveClaimWindow_WithTakeSelectedHu_CompletesRound()
+    {
+        var state = _engine.CreateInitialState(seed: 244);
+
+        const int discardLogicalTile = 4;
+        var discardTileId = discardLogicalTile * 4;
+
+        ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(
+            state,
+            1,
+            0, 1, 2,
+            4, 5, 6,
+            8, 9, 10,
+            24, 25,
+            12, 20);
+
+        _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+
+        var result = _engine.ResolveClaimWindow(state, TableClaimResolutionDecisionValues.TakeSelected);
+
+        Assert.Equal(TableClaimResolutionDecisionValues.TakeSelected, result.AppliedDecision);
+        Assert.Equal("claim-resolve-take-selected", result.ResolutionAction.ActionType);
+        Assert.Null(result.DrawAction);
+        Assert.Null(state.ClaimWindow);
+        Assert.Equal(TableTurnPhase.RoundComplete, state.Phase);
+        Assert.Equal(1, state.ActiveSeat);
+        var win = Assert.IsType<TableWinState>(state.Win);
+        Assert.Equal(1, win.WinningSeatIndex);
+        Assert.Equal(TableClaimType.Hu, win.WinningClaimType);
+        Assert.Equal(discardTileId, win.WinningTileId);
+        Assert.Equal(0, win.SourceSeatIndex);
+        Assert.Contains(discardTileId, state.Hands.Single(hand => hand.SeatIndex == 1).Tiles);
+        Assert.DoesNotContain(state.DiscardPile, discard => discard.TileId == discardTileId && discard.SeatIndex == 0);
+        Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
+    }
+
+    [Fact]
     public void ReplayFromSeed_WithTakeSelectedClaimMeld_ReproducesIntegrityHash()
     {
         var state = _engine.CreateInitialState(seed: 243);
@@ -383,6 +457,34 @@ public class TableStateEngineTests
         Assert.Equal(1, state.DrawNumber);
         Assert.Equal(1, state.TurnNumber);
         Assert.Equal(0, state.ActiveSeat);
+    }
+
+    [Fact]
+    public void AdvanceBots_WhenRoundIsComplete_HaltsWithoutActions()
+    {
+        var state = _engine.CreateInitialState(seed: 245);
+
+        const int discardLogicalTile = 4;
+        var discardTileId = discardLogicalTile * 4;
+
+        ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(
+            state,
+            1,
+            0, 1, 2,
+            4, 5, 6,
+            8, 9, 10,
+            24, 25,
+            12, 20);
+
+        _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+        _ = _engine.ResolveClaimWindow(state, TableClaimResolutionDecisionValues.TakeSelected);
+
+        var result = _engine.AdvanceBots(state, 8);
+
+        Assert.Empty(result.Actions);
+        Assert.Equal(BotAdvanceStopReason.RoundComplete, result.StopReason);
+        Assert.Equal(TableTurnPhase.RoundComplete, state.Phase);
     }
 
     [Fact]
