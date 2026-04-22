@@ -24,6 +24,19 @@ interface TableSeatViewHandState {
   tiles: number[] | null;
 }
 
+interface TableMeldState {
+  claimType: string;
+  tileIds: number[];
+  claimedFromSeatIndex: number;
+  sourceTurnNumber: number;
+  sourceActionSequence: number;
+}
+
+interface TableSeatMeldState {
+  seatIndex: number;
+  melds: TableMeldState[];
+}
+
 interface TableAction {
   sequence: number;
   actionType: string;
@@ -88,6 +101,7 @@ interface TableGameState {
   wall: number[];
   seats: TableSeatState[];
   hands: TableSeatHandState[];
+  exposedMelds: TableSeatMeldState[];
   discardPile: TableDiscard[];
   claimWindow: TableClaimWindowState | null;
   actionLog: TableAction[];
@@ -115,6 +129,7 @@ interface TableSeatViewState {
   wallCount: number;
   seats: TableSeatState[];
   hands: TableSeatViewHandState[];
+  exposedMelds: TableSeatMeldState[];
   discardPile: TableDiscard[];
   lastAction: TableLastActionState | null;
   claimWindow: TableClaimWindowState | null;
@@ -294,6 +309,11 @@ export function App() {
 
   const handMap = useMemo(
     () => new Map((tableView?.state.hands ?? []).map((hand) => [hand.seatIndex, hand])),
+    [tableView]
+  );
+
+  const meldMap = useMemo(
+    () => new Map((tableView?.state.exposedMelds ?? []).map((seatMeld) => [seatMeld.seatIndex, seatMeld.melds])),
     [tableView]
   );
 
@@ -629,6 +649,7 @@ export function App() {
                 const seatDiscards = tableView.state.discardPile
                   .filter((discard) => discard.seatIndex === seat.seatIndex)
                   .slice(-5);
+                const seatMelds = meldMap.get(seat.seatIndex) ?? [];
 
                 return (
                   <section
@@ -646,6 +667,33 @@ export function App() {
                         ? `Visible tiles: ${handCount}`
                         : `Concealed tiles: ${handCount}`}
                     </p>
+                    <div className="seat-melds">
+                      {seatMelds.length === 0 ? (
+                        <small>No exposed melds</small>
+                      ) : (
+                        seatMelds.map((meld, index) => (
+                          <div
+                            key={`${seat.seatIndex}-${meld.sourceActionSequence}-${meld.claimType}-${index}`}
+                            className="seat-meld"
+                          >
+                            <div className="seat-meld-header">
+                              <strong>{formatClaimType(meld.claimType)}</strong>
+                              <small>from S{meld.claimedFromSeatIndex}</small>
+                            </div>
+                            <div className="seat-meld-tiles">
+                              {meld.tileIds.map((tileId) => {
+                                const face = describeTile(tileId);
+                                return (
+                                  <span key={`${meld.sourceActionSequence}-${tileId}`} className={`mini-tile ${face.tone}`}>
+                                    {face.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                     <div className="mini-discard-row">
                       {seatDiscards.length === 0 ? (
                         <small>No discards</small>

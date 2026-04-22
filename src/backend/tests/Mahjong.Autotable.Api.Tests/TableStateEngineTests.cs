@@ -24,6 +24,8 @@ public class TableStateEngineTests
         Assert.False(string.IsNullOrWhiteSpace(state.Integrity.StateHash));
         Assert.Equal(14, state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Count);
         Assert.All(state.Hands.Where(hand => hand.SeatIndex != 0), hand => Assert.Equal(13, hand.Tiles.Count));
+        Assert.Equal(4, state.ExposedMelds.Count);
+        Assert.All(state.ExposedMelds, seatMelds => Assert.Empty(seatMelds.Melds));
         Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
     }
 
@@ -288,8 +290,10 @@ public class TableStateEngineTests
         var discardTileId = discardLogicalTile * 4;
         var pungTileOne = discardTileId + 1;
         var pungTileTwo = discardTileId + 2;
+        var spareCopy = discardTileId + 3;
 
         ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(state, 1, spareCopy);
         ForceTilesIntoSeat(state, 2, pungTileOne, pungTileTwo);
 
         _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
@@ -302,9 +306,69 @@ public class TableStateEngineTests
         Assert.Null(state.ClaimWindow);
         Assert.Equal(2, state.ActiveSeat);
         Assert.Equal(TableTurnPhase.AwaitingDiscard, state.Phase);
-        Assert.Contains(discardTileId, state.Hands.Single(hand => hand.SeatIndex == 2).Tiles);
+        Assert.DoesNotContain(discardTileId, state.Hands.Single(hand => hand.SeatIndex == 2).Tiles);
+        Assert.DoesNotContain(pungTileOne, state.Hands.Single(hand => hand.SeatIndex == 2).Tiles);
+        Assert.DoesNotContain(pungTileTwo, state.Hands.Single(hand => hand.SeatIndex == 2).Tiles);
+        var seatMelds = state.ExposedMelds.Single(seatMeld => seatMeld.SeatIndex == 2).Melds;
+        var meld = Assert.Single(seatMelds);
+        Assert.Equal(TableClaimType.Pung, meld.ClaimType);
+        Assert.Equal(3, meld.TileIds.Count);
+        Assert.Contains(discardTileId, meld.TileIds);
+        Assert.Equal(11, state.Hands.Single(hand => hand.SeatIndex == 2).Tiles.Count);
         Assert.DoesNotContain(state.DiscardPile, discard => discard.TileId == discardTileId && discard.SeatIndex == 0);
         Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
+    }
+
+    [Fact]
+    public void ResolveClaimWindow_WithTakeSelectedKong_CreatesMeldAndDrawsSupplementalTile()
+    {
+        var state = _engine.CreateInitialState(seed: 242);
+
+        const int discardLogicalTile = 12;
+        var discardTileId = discardLogicalTile * 4;
+        var kongTileOne = discardTileId + 1;
+        var kongTileTwo = discardTileId + 2;
+        var kongTileThree = discardTileId + 3;
+
+        ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(state, 2, kongTileOne, kongTileTwo, kongTileThree);
+
+        _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+        var wallBefore = state.Wall.Count;
+        var handBefore = state.Hands.Single(hand => hand.SeatIndex == 2).Tiles.Count;
+
+        var result = _engine.ResolveClaimWindow(state, TableClaimResolutionDecisionValues.TakeSelected);
+
+        Assert.Equal(TableClaimResolutionDecisionValues.TakeSelected, result.AppliedDecision);
+        Assert.Equal("claim-resolve-take-selected", result.ResolutionAction.ActionType);
+        Assert.NotNull(result.DrawAction);
+        Assert.Equal("draw", result.DrawAction!.ActionType);
+        Assert.Equal(2, state.ActiveSeat);
+        Assert.Equal(TableTurnPhase.AwaitingDiscard, state.Phase);
+        Assert.Equal(wallBefore - 1, state.Wall.Count);
+        Assert.Equal(handBefore - 2, state.Hands.Single(hand => hand.SeatIndex == 2).Tiles.Count);
+        var seatMelds = state.ExposedMelds.Single(seatMeld => seatMeld.SeatIndex == 2).Melds;
+        var meld = Assert.Single(seatMelds);
+        Assert.Equal(TableClaimType.Kong, meld.ClaimType);
+        Assert.Equal(4, meld.TileIds.Count);
+        Assert.Contains(discardTileId, meld.TileIds);
+        Assert.DoesNotContain(state.DiscardPile, discard => discard.TileId == discardTileId && discard.SeatIndex == 0);
+        Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
+    }
+
+    [Fact]
+    public void ReplayFromSeed_WithTakeSelectedClaimMeld_ReproducesIntegrityHash()
+    {
+        var state = _engine.CreateInitialState(seed: 243);
+        var discardTileId = FindDiscardTileWithClaimWindow(state, 0);
+        _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+        _ = _engine.ResolveClaimWindow(state, TableClaimResolutionDecisionValues.TakeSelected);
+
+        var replay = _engine.ReplayFromSeed(state);
+
+        Assert.Equal(state.Integrity.StateHash, replay.Integrity.StateHash);
+        Assert.Equal(state.StateVersion, replay.StateVersion);
+        Assert.Equal(state.ActionSequence, replay.ActionSequence);
     }
 
     [Fact]
@@ -403,8 +467,9 @@ public class TableStateEngineTests
     private static int CountTrackedTiles(TableGameState state)
     {
         var handTiles = state.Hands.Sum(hand => hand.Tiles.Count);
+        var meldTiles = state.ExposedMelds.Sum(seatMelds => seatMelds.Melds.Sum(meld => meld.TileIds.Count));
         var discardTiles = state.DiscardPile.Count;
-        return state.Wall.Count + handTiles + discardTiles;
+        return state.Wall.Count + handTiles + meldTiles + discardTiles;
     }
 
     private static void ExhaustWallPreservingTileConservation(TableGameState state)
@@ -481,5 +546,22 @@ public class TableStateEngineTests
         }
 
         throw new InvalidOperationException($"Seat {seatIndex} has no discard tile that avoids opening a claim window.");
+    }
+
+    private int FindDiscardTileWithClaimWindow(TableGameState state, int seatIndex)
+    {
+        var serializer = new TableStateSerializer();
+        var hand = state.Hands.Single(currentHand => currentHand.SeatIndex == seatIndex);
+        foreach (var tileId in hand.Tiles.OrderBy(tile => tile))
+        {
+            var probe = serializer.Deserialize(serializer.Serialize(state));
+            _ = _engine.ApplyHumanDiscard(probe, seatIndex, tileId);
+            if (probe.ClaimWindow?.SelectedOpportunity is not null)
+            {
+                return tileId;
+            }
+        }
+
+        throw new InvalidOperationException($"Seat {seatIndex} has no discard tile that opens a claim window.");
     }
 }

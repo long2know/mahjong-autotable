@@ -39,6 +39,24 @@ public static class TableStateHasher
                     hand.SeatIndex,
                     hand.Tiles
                 }),
+            ExposedMelds = (state.ExposedMelds ?? [])
+                .OrderBy(seatMelds => seatMelds.SeatIndex)
+                .Select(seatMelds => new
+                {
+                    seatMelds.SeatIndex,
+                    Melds = seatMelds.Melds
+                        .OrderBy(meld => meld.SourceActionSequence)
+                        .ThenBy(meld => meld.SourceTurnNumber)
+                        .ThenBy(meld => meld.ClaimType)
+                        .Select(meld => new
+                        {
+                            ClaimType = meld.ClaimType.ToString(),
+                            meld.ClaimedFromSeatIndex,
+                            meld.SourceTurnNumber,
+                            meld.SourceActionSequence,
+                            TileIds = meld.TileIds.OrderBy(tileId => tileId)
+                        })
+                }),
             DiscardPile = state.DiscardPile.Select(discard => new
             {
                 discard.SeatIndex,

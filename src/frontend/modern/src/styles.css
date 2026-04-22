@@ -154,6 +154,46 @@ body {
   font-size: 12px;
 }
 
+.seat-melds {
+  display: grid;
+  gap: 6px;
+}
+
+.seat-melds > small {
+  color: #8a8886;
+  font-size: 12px;
+}
+
+.seat-meld {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+}
+
+.seat-meld-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.seat-meld-header strong {
+  font-size: 12px;
+}
+
+.seat-meld-header small {
+  color: #605e5c;
+  font-size: 11px;
+}
+
+.seat-meld-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .table-center {
   grid-area: center;
   border-radius: 12px;
