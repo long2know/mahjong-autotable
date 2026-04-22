@@ -140,6 +140,80 @@
 - Procedural atlas: no external assets, ship with confidence, license-clean
 
 
+### Phase 2 AutotableClient Interaction (2026-04-17)
+
+**Completed:** Full Phase 2 implementation — input handling, action buttons, and API integration.
+
+**API Endpoints Confirmed (Program.cs):**
+- `POST /api/game/{id}/draw` — body: `{ playerId }` (camelCase JSON)
+- `POST /api/game/{id}/discard` — body: `{ playerId, tileId }` (camelCase JSON)
+- `POST /api/game/{id}/meld` — body: `{ playerId, type, tileIds }` (camelCase JSON)
+- `POST /api/game/{id}/win` — body: `{ playerId, isSelfDraw, discarderPlayerId }` (camelCase JSON)
+- All responses: `200 OK` with response DTO, or `409 Conflict` / `404 Not Found` with `{ message }` error body
+- ASP.NET uses camelCase JSON serialization by default (System.Text.Json)
+
+**Raycast Click-to-Discard:**
+- Raycaster uses normalized device coords from pointer events on canvas container
+- Tile meshes in local player's hand store `userData.tileId` for identification
+- Discard eligibility: `isMyTurn && handCount % 3 === 2` (after draw, before discard)
+- Optimistic disabling: `inputHandler.setEnabled(false)` during API call prevents double-submit
+- Error handling: alert() on failure, log to console
+
+**HUD Action Buttons (hud.ts):**
+- Fixed toolbar center-bottom with inline styles (no separate CSS file)
+- Draw button: enabled when `isMyTurn && handCount % 3 === 1`
+- Self-Draw Win button: enabled when `isMyTurn && handCount % 3 === 2`
+- Claim buttons (Chow/Pung/Kong/Win/Pass): shown for 5 seconds after non-self discard
+- Client-side meld validation: counts matching tiles, calculates possible chow sequences
+- Chow disambiguation: picks lowest numerically valid combination automatically
+- Kong/Pung: auto-selects all matching tiles (no picker UI)
+- Pass button: clears claim offer UI (no server call)
+
+**Claim Offer Flow:**
+- Trigger: `lastDiscardPlayerId !== null && lastDiscardPlayerId !== myPlayerId`
+- 5-second timeout window (`CLAIM_WINDOW_MS = 5000`)
+- `calculateMeldOptions()` checks hand for valid Chow/Pung/Kong combinations with last discard tile
+- Chow sequences: tries `[target-2, target-1]`, `[target-1, target+1]`, `[target, target+1]` offsets
+- Server is the authority; client predictions are hints (POST /meld may return 409 if invalid)
+
+**Input Locking:**
+- `isActionInProgress` flag prevents concurrent API calls
+- `inputHandler.setEnabled(false)` during in-flight requests
+- Re-enabled in `finally` block to ensure unlock on success/error
+
+**Error Handling:**
+- All fetch calls wrapped in try/catch with `ActionResult<T>` return type
+- Non-200 responses: parse JSON error body, fallback to HTTP status text
+- Network errors: catch and return generic "Network error" message
+- User feedback: `alert()` for transient errors (Phase 2 scope; toast system deferred)
+
+**State Helpers (not added — inline logic kept simple):**
+- Considered `isMyTurn()`, `canDraw()`, `canClaim()` helpers in state.ts
+- Decided to keep logic inline in hud.ts and input.ts for Phase 2 (fewer abstractions, easier to debug)
+- Future refactor opportunity if logic becomes duplicated
+
+**Build Results:**
+- ✅ `npm run build`: TypeScript clean, Vite build produces 548 KB bundle (140 KB gzip)
+- ✅ `dotnet build`: 0 errors, 0 warnings
+- ✅ `dotnet test`: 2341/2341 passed (unchanged from Phase 1 baseline)
+
+**TypeScript Strict Mode Fixes:**
+- Array destructuring with tuple check: `offsets[0]`, `offsets[1]` with `=== undefined` guards
+- InputEvent union type: explicit import in main.ts to avoid complex type inference
+- Scene return value: `{ camera, scene }` tuple for input handler access
+
+**Phase 2 Gotchas:**
+1. **Scene camera/scene export:** Changed `initScene()` return type from `void` to `{ camera, scene }` to enable raycaster setup. No breaking change for existing code (return value can be ignored).
+2. **userData typing:** THREE.js `userData` is `Record<string, any>`; must cast or use bracket notation for strict mode. Used bracket notation: `object.userData['tileId']`.
+3. **Claim timeout lifecycle:** Timeout stored in HudActions instance to clear on Pass or new state. Important: check if timeout exists before clearing to avoid errors.
+4. **Chow offset logic:** Original tuple destructuring `[offset1, offset2]` failed strict checks because array elements might be undefined. Fixed with indexed access + explicit undefined checks.
+
+**Manual Smoke Test (not performed in Phase 2 build):**
+- Phase 2 ships code-complete; smoke test deferred to coordinator validation
+- Test steps: start API, create game, visit `?game=<id>&player=<id>`, click tiles and buttons
+- Expected: Draw/Discard/Meld/Win actions POST to server, state refetches, scene updates
+
+
 ## Upcoming: TS/Three.js Autotable Client
 
 **2026-04-17:** Kusanagi architected new TypeScript + three.js client (branch: `squad/autotable-client`) modeled on pwmarcz/autotable. Togusa will lead implementation when Stephen green-lights Phase 0 scaffold.

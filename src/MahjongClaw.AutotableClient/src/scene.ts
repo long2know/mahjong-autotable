@@ -21,7 +21,7 @@ const SEAT_POSITIONS: SeatPosition[] = [
   { seat: 'North', position: new THREE.Vector3(-15, 0, 0), rotation: -Math.PI / 2 },
 ];
 
-export function initScene(container: HTMLElement, tileAtlas: TileAtlas): void {
+export function initScene(container: HTMLElement, tileAtlas: TileAtlas): { camera: THREE.Camera; scene: THREE.Scene } {
   console.log('[Scene] Initializing state-driven scene...');
   
   // Scene setup
@@ -184,6 +184,8 @@ export function initScene(container: HTMLElement, tileAtlas: TileAtlas): void {
         if (handTile) {
           const tileId = tileIdFromLabel(handTile.label) ?? 'back';
           tile = createTileMesh(tileId, true, atlas);
+          // Store tile ID for raycasting
+          tile.userData['tileId'] = handTile.id;
         } else {
           tile = createTileMesh('back', false, atlas);
         }
@@ -274,4 +276,6 @@ export function initScene(container: HTMLElement, tileAtlas: TileAtlas): void {
 
   animate();
   console.log('[Scene] State-driven scene initialized');
+  
+  return { camera, scene };
 }

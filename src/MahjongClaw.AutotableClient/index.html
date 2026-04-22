@@ -28,6 +28,7 @@
         line-height: 1.6;
         min-width: 200px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        z-index: 100;
       }
       #hud .label {
         color: #aaaaaa;
@@ -40,6 +41,10 @@
       #hud .separator {
         border-top: 1px solid #444444;
         margin: 8px 0;
+      }
+      #hud-actions-container {
+        position: fixed;
+        z-index: 100;
       }
     </style>
   </head>
@@ -55,6 +60,7 @@
       <div class="label">You</div>
       <div class="value" id="hud-you">--</div>
     </div>
+    <div id="hud-actions-container"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
