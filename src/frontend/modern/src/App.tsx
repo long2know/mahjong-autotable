@@ -17,6 +17,12 @@ interface TableSeatHandState {
   tiles: number[];
 }
 
+interface TableSeatViewHandState {
+  seatIndex: number;
+  tileCount: number;
+  tiles: number[] | null;
+}
+
 interface TableAction {
   sequence: number;
   actionType: string;
@@ -68,6 +74,32 @@ interface TableDto {
   updatedUtc: string;
   lastActionUtc: string | null;
   state: TableGameState;
+}
+
+interface TableSeatViewState {
+  stateVersion: number;
+  actionSequence: number;
+  activeSeat: number;
+  turnNumber: number;
+  drawNumber: number;
+  phase: TableTurnPhase;
+  metadata: TableStateMetadata;
+  integrity: TableIntegrityState;
+  wallCount: number;
+  seats: TableSeatState[];
+  hands: TableSeatViewHandState[];
+  discardPile: TableDiscard[];
+}
+
+interface TableSeatViewDto {
+  id: string;
+  ruleSet: string;
+  viewerSeatIndex: number;
+  stateVersion: number;
+  createdUtc: string;
+  updatedUtc: string;
+  lastActionUtc: string | null;
+  state: TableSeatViewState;
 }
 
 interface AdvanceBotsResponse {
@@ -208,6 +240,8 @@ function seatArea(seatIndex: number): 'south' | 'west' | 'north' | 'east' {
 export function App() {
   const [healthStatus, setHealthStatus] = useState<'checking' | 'ok' | 'down'>('checking');
   const [table, setTable] = useState<TableDto | null>(null);
+  const [tableView, setTableView] = useState<TableSeatViewDto | null>(null);
+  const [viewerSeatIndex, setViewerSeatIndex] = useState(humanSeatIndex);
   const [events, setEvents] = useState<TableEventDto[]>([]);
   const [selectedTile, setSelectedTile] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -215,18 +249,18 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const seatMap = useMemo(
-    () => new Map((table?.state.seats ?? []).map((seat) => [seat.seatIndex, seat])),
-    [table]
+    () => new Map((tableView?.state.seats ?? []).map((seat) => [seat.seatIndex, seat])),
+    [tableView]
   );
 
   const handMap = useMemo(
-    () => new Map((table?.state.hands ?? []).map((hand) => [hand.seatIndex, hand])),
-    [table]
+    () => new Map((tableView?.state.hands ?? []).map((hand) => [hand.seatIndex, hand])),
+    [tableView]
   );
 
   const sortedSeats = useMemo(
-    () => [...(table?.state.seats ?? [])].sort((left, right) => left.seatIndex - right.seatIndex),
-    [table]
+    () => [...(tableView?.state.seats ?? [])].sort((left, right) => left.seatIndex - right.seatIndex),
+    [tableView]
   );
 
   const humanSeat = seatMap.get(humanSeatIndex) ?? null;
@@ -235,14 +269,21 @@ export function App() {
     [handMap]
   );
 
+  const viewerHandTiles = useMemo(
+    () => [...(handMap.get(viewerSeatIndex)?.tiles ?? [])].sort((left, right) => left - right),
+    [handMap, viewerSeatIndex]
+  );
+
   const canDiscard =
     table !== null &&
+    tableView !== null &&
     humanSeat !== null &&
-    table.state.activeSeat === humanSeatIndex &&
-    table.state.phase === 'AwaitingDiscard' &&
+    viewerSeatIndex === humanSeatIndex &&
+    tableView.state.activeSeat === humanSeatIndex &&
+    tableView.state.phase === 'AwaitingDiscard' &&
     humanHandTiles.length > 0;
 
-  const centerDiscards = useMemo(() => table?.state.discardPile.slice(-24) ?? [], [table]);
+  const centerDiscards = useMemo(() => tableView?.state.discardPile.slice(-24) ?? [], [tableView]);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -258,6 +299,13 @@ export function App() {
       `/api/tables/${tableId}/events?limit=${eventWindowSize}`
     );
     setEvents(payload.events);
+  }, []);
+
+  const loadSeatView = useCallback(async (tableId: string, seatIndex: number) => {
+    const payload = await readJson<TableSeatViewDto>(
+      `/api/tables/${tableId}/view?seatIndex=${seatIndex}`
+    );
+    setTableView(payload);
   }, []);
 
   const advanceBotsToHumanTurn = useCallback(async (currentTable: TableDto) => {
@@ -311,6 +359,7 @@ export function App() {
       const progression = await advanceBotsToHumanTurn(createdTable);
       setTable(progression.table);
       await loadEvents(progression.table.id);
+      await loadSeatView(progression.table.id, viewerSeatIndex);
 
       const botSummary =
         progression.totalActions > 0
@@ -322,7 +371,7 @@ export function App() {
         }${botSummary}`
       );
     });
-  }, [advanceBotsToHumanTurn, loadEvents, runOperation]);
+  }, [advanceBotsToHumanTurn, loadEvents, loadSeatView, runOperation, viewerSeatIndex]);
 
   const refreshTable = useCallback(async () => {
     if (table === null) {
@@ -333,9 +382,10 @@ export function App() {
       const next = await readJson<TableDto>(`/api/tables/${table.id}`);
       setTable(next);
       await loadEvents(next.id);
+      await loadSeatView(next.id, viewerSeatIndex);
       setStatusMessage('Table refreshed from backend.');
     });
-  }, [loadEvents, runOperation, table]);
+  }, [loadEvents, loadSeatView, runOperation, table, viewerSeatIndex]);
 
   const advanceBotsManual = useCallback(async () => {
     if (table === null) {
@@ -346,11 +396,12 @@ export function App() {
       const progression = await advanceBotsToHumanTurn(table);
       setTable(progression.table);
       await loadEvents(progression.table.id);
+      await loadSeatView(progression.table.id, viewerSeatIndex);
       setStatusMessage(
         `Bot progression complete: ${progression.totalActions} action(s), ${formatStopReason(progression.stopReason)}.`
       );
     });
-  }, [advanceBotsToHumanTurn, loadEvents, runOperation, table]);
+  }, [advanceBotsToHumanTurn, loadEvents, loadSeatView, runOperation, table, viewerSeatIndex]);
 
   const discardSelectedTile = useCallback(async () => {
     if (table === null || selectedTile === null || !canDiscard) {
@@ -370,12 +421,13 @@ export function App() {
       const progression = await advanceBotsToHumanTurn(discardPayload.table);
       setTable(progression.table);
       await loadEvents(progression.table.id);
+      await loadSeatView(progression.table.id, viewerSeatIndex);
 
       setStatusMessage(
         `You discarded ${describeTile(selectedTile).label}. Bots played ${progression.totalActions} action(s) and stopped at ${formatStopReason(progression.stopReason)}.`
       );
     });
-  }, [advanceBotsToHumanTurn, canDiscard, loadEvents, runOperation, selectedTile, table]);
+  }, [advanceBotsToHumanTurn, canDiscard, loadEvents, loadSeatView, runOperation, selectedTile, table, viewerSeatIndex]);
 
   const verifyReplayStrict = useCallback(async () => {
     if (table === null) {
@@ -393,16 +445,37 @@ export function App() {
 
       setTable(payload.table);
       await loadEvents(payload.table.id);
+      await loadSeatView(payload.table.id, viewerSeatIndex);
       setStatusMessage(`Replay integrity verified: ${payload.integrityMatch ? 'match' : 'mismatch'}.`);
     });
-  }, [loadEvents, runOperation, table]);
+  }, [loadEvents, loadSeatView, runOperation, table, viewerSeatIndex]);
+
+  const changePerspective = useCallback(
+    async (nextSeatIndex: number) => {
+      setViewerSeatIndex(nextSeatIndex);
+      setSelectedTile(null);
+      if (table === null) {
+        return;
+      }
+
+      await runOperation(async () => {
+        await loadSeatView(table.id, nextSeatIndex);
+        setStatusMessage(
+          nextSeatIndex === humanSeatIndex
+            ? 'Viewing seat 0 perspective. Gameplay controls enabled.'
+            : `Viewing seat ${nextSeatIndex} perspective (read-only).`
+        );
+      });
+    },
+    [loadSeatView, runOperation, table]
+  );
 
   useEffect(() => {
     void checkHealth();
   }, [checkHealth]);
 
   useEffect(() => {
-    if (table === null) {
+    if (tableView === null) {
       setSelectedTile(null);
       return;
     }
@@ -416,7 +489,7 @@ export function App() {
     if (selectedTile === null || !availableTiles.includes(selectedTile)) {
       setSelectedTile([...availableTiles].sort((left, right) => left - right)[0] ?? null);
     }
-  }, [handMap, selectedTile, table]);
+  }, [handMap, selectedTile, tableView, viewerSeatIndex]);
 
   return (
     <main className="app-shell">
@@ -432,6 +505,23 @@ export function App() {
             Refresh
           </Button>
         </div>
+        <div className="perspective-row">
+          <label htmlFor="seatPerspective">Perspective seat</label>
+          <select
+            id="seatPerspective"
+            value={viewerSeatIndex}
+            onChange={(event) => {
+              void changePerspective(Number(event.target.value));
+            }}
+            disabled={busy}
+          >
+            {[0, 1, 2, 3].map((seatIndex) => (
+              <option key={seatIndex} value={seatIndex}>
+                Seat {seatIndex}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <p className={`status-line ${healthStatus}`}>
           Backend status:{' '}
@@ -445,31 +535,37 @@ export function App() {
         {errorMessage && <p className="error-line">{errorMessage}</p>}
       </Card>
 
-      {table && (
+      {table && tableView && (
         <>
           <Card className="panel">
             <CardHeader header={<Text weight="semibold">Table {table.id.slice(0, 8)}</Text>} />
             <div className="table-layout">
               {sortedSeats.map((seat) => {
-                const handCount = handMap.get(seat.seatIndex)?.tiles.length ?? 0;
+                const projectedHand = handMap.get(seat.seatIndex);
+                const handCount = projectedHand?.tileCount ?? 0;
+                const isViewer = seat.seatIndex === viewerSeatIndex;
                 const isHuman = seat.seatType === 'Human' || seat.seatIndex === humanSeatIndex;
-                const isActive = seat.seatIndex === table.state.activeSeat;
-                const seatDiscards = table.state.discardPile
+                const isActive = seat.seatIndex === tableView.state.activeSeat;
+                const seatDiscards = tableView.state.discardPile
                   .filter((discard) => discard.seatIndex === seat.seatIndex)
                   .slice(-5);
 
                 return (
                   <section
                     key={seat.seatIndex}
-                    className={`seat-zone area-${seatArea(seat.seatIndex)} ${isActive ? 'active' : ''}`}
+                    className={`seat-zone area-${seatArea(seat.seatIndex)} ${isActive ? 'active' : ''} ${isViewer ? 'viewer' : ''}`}
                   >
                     <header>
                       <strong>
-                        Seat {seat.seatIndex} · {isHuman ? 'You' : 'Bot'}
+                        Seat {seat.seatIndex} · {isViewer ? 'Viewer' : isHuman ? 'You' : 'Bot'}
                       </strong>
                       <span>{isActive ? 'Active turn' : 'Waiting'}</span>
                     </header>
-                    <p>{isHuman ? `Your tiles: ${handCount}` : `Concealed tiles: ${handCount}`}</p>
+                    <p>
+                      {projectedHand?.tiles
+                        ? `Visible tiles: ${handCount}`
+                        : `Concealed tiles: ${handCount}`}
+                    </p>
                     <div className="mini-discard-row">
                       {seatDiscards.length === 0 ? (
                         <small>No discards</small>
@@ -493,19 +589,19 @@ export function App() {
                 <div className="metrics-grid compact">
                   <div>
                     <span>Phase</span>
-                    <strong>{table.state.phase}</strong>
+                    <strong>{tableView.state.phase}</strong>
                   </div>
                   <div>
                     <span>Turn</span>
-                    <strong>{table.state.turnNumber}</strong>
+                    <strong>{tableView.state.turnNumber}</strong>
                   </div>
                   <div>
                     <span>Active seat</span>
-                    <strong>{table.state.activeSeat}</strong>
+                    <strong>{tableView.state.activeSeat}</strong>
                   </div>
                   <div>
                     <span>Wall</span>
-                    <strong>{table.state.wall.length}</strong>
+                    <strong>{tableView.state.wallCount}</strong>
                   </div>
                 </div>
                 <div className="center-discards-grid">
@@ -528,25 +624,27 @@ export function App() {
           </Card>
 
           <Card className="panel">
-            <CardHeader header={<Text weight="semibold">Your hand</Text>} />
+            <CardHeader header={<Text weight="semibold">Seat {viewerSeatIndex} hand</Text>} />
             <Body1>
-              {canDiscard
+              {viewerSeatIndex !== humanSeatIndex
+                ? `Read-only perspective for seat ${viewerSeatIndex}. Switch to seat 0 to discard.`
+                : canDiscard
                 ? 'Select a tile and discard to continue the round.'
-                : table.state.phase === 'WallExhausted'
+                : tableView.state.phase === 'WallExhausted'
                   ? 'Wall exhausted. Start a new table to play again.'
-                  : `Waiting for seat ${table.state.activeSeat}.`}
+                  : `Waiting for seat ${tableView.state.activeSeat}.`}
             </Body1>
             <div className="human-hand-row">
-              {humanHandTiles.map((tileId) => {
+              {viewerHandTiles.map((tileId) => {
                 const face = describeTile(tileId);
                 const isSelected = selectedTile === tileId;
                 return (
                   <button
-                    key={`${tileId}-${table.state.actionSequence}`}
+                    key={`${tileId}-${tableView.state.actionSequence}`}
                     type="button"
                     className={`tile-face hand-tile ${face.tone} ${isSelected ? 'selected' : ''}`}
                     onClick={() => setSelectedTile(tileId)}
-                    disabled={!canDiscard || busy}
+                    disabled={!canDiscard || busy || viewerSeatIndex !== humanSeatIndex}
                   >
                     {face.label}
                   </button>
