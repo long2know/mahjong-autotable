@@ -8,9 +8,29 @@ import * as actions from './actions';
 import { globalToastManager } from './toast';
 import { gameEndOverlay } from './overlay';
 import * as audio from './audio';
+import { mountLobby, unmountLobby } from './lobby';
+import { showWaitingOverlay, hideWaitingOverlay, isVisible as isWaitingVisible } from './waiting';
 
 async function main() {
-  console.log('Mahjong Claw Autotable Client - Phase 4');
+  console.log('Mahjong Claw Autotable Client - Phase 5');
+  
+  // Check for game query param to determine routing
+  const params = new URLSearchParams(window.location.search);
+  const gameId = params.get('game');
+  const playerId = params.get('player');
+  
+  if (!gameId) {
+    // Show lobby if no game ID
+    console.log('[Main] No game ID found, showing lobby');
+    const lobbyContainer = document.getElementById('canvas-container');
+    if (lobbyContainer) {
+      mountLobby(lobbyContainer);
+    }
+    return;
+  }
+  
+  // Game ID present, initialize game scene
+  console.log('[Main] Game ID found, initializing game scene');
 
   const container = document.getElementById('canvas-container');
   if (!container) {
@@ -151,6 +171,18 @@ async function main() {
       return;
     }
     
+    // Show or hide waiting overlay based on game status
+    if (state.status === 'Waiting' && config.gameId && config.playerId) {
+      if (!isWaitingVisible()) {
+        showWaitingOverlay(config.gameId, config.playerId, state);
+      } else {
+        // Update the existing waiting overlay
+        showWaitingOverlay(config.gameId, config.playerId, state);
+      }
+    } else if (state.status === 'Active' && isWaitingVisible()) {
+      hideWaitingOverlay();
+    }
+    
     const wallRemaining = state.wallTotal - state.tilesInPlay;
     if (hudWall) {
       hudWall.textContent = wallRemaining.toString();
@@ -199,7 +231,7 @@ async function main() {
     }
   });
   
-  console.log('[Main] Bootstrap complete. Use ?game=<id>&player=<id> to connect to a game.');
+  console.log('[Main] Bootstrap complete.');
 }
 
 main().catch(console.error);

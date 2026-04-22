@@ -1,0 +1,164 @@
+Autotable Client Phase 5 Architecture
+=====================================
+
+┌─────────────────────────────────────────────────────────────┐
+│                    Browser: localhost:5173                  │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+                ┌──────────────────────┐
+                │   URL Query Check    │
+                │  ?game= present?     │
+                └──────────────────────┘
+                       │        │
+           No game ID  │        │  Has game ID
+                       ▼        ▼
+          ┌──────────────┐  ┌──────────────────┐
+          │    LOBBY     │  │   GAME SCENE     │
+          │   (lobby.ts) │  │ (Phases 0-4)     │
+          └──────────────┘  └──────────────────┘
+                │                    │
+                │                    ▼
+                │         ┌──────────────────────┐
+                │         │ State Check:         │
+                │         │ status === 'Waiting' │
+                │         └──────────────────────┘
+                │              │           │
+                │        Yes   │           │  No (Active)
+                │              ▼           ▼
+                │    ┌──────────────┐  ┌──────────────┐
+                │    │   WAITING    │  │   GAMEPLAY   │
+                │    │  OVERLAY     │  │   (3D Scene) │
+                │    │ (waiting.ts) │  │              │
+                │    └──────────────┘  └──────────────┘
+                │                             │
+                │                             ▼
+                │                    ┌─────────────────┐
+                │                    │ Status Check:   │
+                │                    │ === 'Completed' │
+                │                    └─────────────────┘
+                │                             │
+                │                        Yes  │
+                │                             ▼
+                │                    ┌─────────────────┐
+                │                    │  GAME END       │
+                │                    │  OVERLAY        │
+                │                    │  (overlay.ts)   │
+                │                    └─────────────────┘
+                │
+                ▼
+  ┌────────────────────────────────────┐
+  │  Lobby Actions:                    │
+  │  • Create Game  → POST /api/game/  │
+  │  • Join Game    → POST /{id}/join  │
+  │                                     │
+  │  On Success:                        │
+  │  → Redirect to ?game={id}&player={} │
+  └────────────────────────────────────┘
+
+
+API Endpoints Used (Program.cs)
+================================
+POST /api/game/                    - Create game (returns hostPlayerId)
+POST /api/game/{id}/join           - Join game (returns playerId)
+POST /api/game/{id}/start          - Start game (host only)
+GET  /api/game/{id}/state          - Fetch game state
+POST /api/game/{id}/draw           - Draw tile
+POST /api/game/{id}/discard        - Discard tile
+POST /api/game/{id}/meld           - Declare meld
+POST /api/game/{id}/win            - Declare win
+
+SignalR Hub: /hubs/game
+Events: PlayerJoined, GameStarted, TileDrawn, TileDiscarded, MeldDeclared, GameWon
+
+
+File Structure (Phase 5)
+=========================
+src/MahjongClaw.AutotableClient/src/
+├── main.ts           - Entry point, routing logic
+├── lobby.ts          - Lobby UI (create/join)       ✨ NEW
+├── waiting.ts        - Waiting overlay              ✨ NEW
+├── scene.ts          - 3D scene setup
+├── state.ts          - GameState (+ hostPlayerId)   ✨ UPDATED
+├── net.ts            - SignalR + fetch state
+├── actions.ts        - API wrappers
+├── input.ts          - Raycasting
+├── hud.ts            - Action buttons + HUD
+├── camera.ts         - Camera modes
+├── animation.ts      - Tween manager
+├── toast.ts          - Notifications
+├── overlay.ts        - Game end overlay
+├── audio.ts          - Audio hooks (no-op)
+├── tile.ts           - Tile mesh creation
+├── tileAtlas.ts      - Procedural texture atlas
+└── types.ts          - DTO interfaces
+
+index.html            - HTML shell                   ✨ UPDATED
+                       (+ CSS for lobby-mode)
+
+
+Routing Flow (main.ts)
+======================
+1. Parse URLSearchParams at startup
+2. If no ?game= → mountLobby(), exit early
+3. If ?game= → initialize 3D scene (Phases 0-4 path)
+4. Subscribe to state changes:
+   - If status='Waiting' → showWaitingOverlay()
+   - If status='Active' → hideWaitingOverlay()
+   - If status='Completed' → show game end overlay
+
+
+Lobby → Game Flow
+==================
+User visits http://localhost:5173/
+       ↓
+   Lobby UI
+       ↓
+ Fill "Create Game" form
+       ↓
+ POST /api/game/ { hostName, mode, botSeatCount }
+       ↓
+ Server returns { id, hostPlayerId }
+       ↓
+ Redirect to ?game={id}&player={hostPlayerId}
+       ↓
+ 3D scene loads
+       ↓
+ Fetch GET /api/game/{id}/state → status='Waiting'
+       ↓
+ Waiting overlay shows
+       ↓
+ Click "Start Game" → POST /api/game/{id}/start
+       ↓
+ Server triggers GameStarted event → status='Active'
+       ↓
+ Waiting overlay dismisses
+       ↓
+ Gameplay begins
+
+
+Join Flow (separate player)
+============================
+User visits http://localhost:5173/
+       ↓
+   Lobby UI
+       ↓
+ Fill "Join Game" form (paste game ID, name, seat)
+       ↓
+ POST /api/game/{id}/join { name, seat }
+       ↓
+ Server returns { id (playerId), gameId }
+       ↓
+ Redirect to ?game={gameId}&player={playerId}
+       ↓
+ 3D scene loads
+       ↓
+ Fetch state → status='Waiting'
+       ↓
+ Waiting overlay shows (non-host sees waiting message)
+       ↓
+ Wait for host to start...
+       ↓
+ GameStarted event → status='Active'
+       ↓
+ Overlay dismisses, gameplay begins

@@ -33,6 +33,7 @@ export interface GameState {
   status: string;
   currentPlayerId: string | null;
   dealerId: string | null;
+  hostPlayerId?: string | null;
   round: number;
   roundWind: string | null;
   ruleset: string;
