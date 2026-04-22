@@ -77,6 +77,46 @@ app.MapPost("/api/tables", async (
     }
 });
 
+app.MapPost("/api/tables/{id:guid}/next-hand", async (
+    Guid id,
+    AppDbContext db,
+    ITableStateEngine engine,
+    ITableSessionEventStore eventStore,
+    ITableStateSerializer serializer,
+    CancellationToken cancellationToken) =>
+{
+    var currentSession = await db.TableSessions.FirstOrDefaultAsync(table => table.Id == id, cancellationToken);
+    if (currentSession is null)
+    {
+        return Results.NotFound();
+    }
+
+    var currentState = serializer.Deserialize(currentSession.StateJson);
+    engine.NormalizePersistedState(currentState, currentSession.StateVersion);
+    var botSeatIndexes = currentState.Seats
+        .Where(seat => seat.SeatType == TableSeatType.Bot)
+        .Select(seat => seat.SeatIndex)
+        .ToArray();
+    var nextSeed = unchecked(currentState.Metadata.Seed + 1);
+    var nextState = engine.CreateInitialState(botSeatIndexes, nextSeed);
+
+    var nextSession = new TableSession
+    {
+        RuleSet = currentSession.RuleSet,
+        StateVersion = nextState.StateVersion,
+        StateJson = serializer.Serialize(nextState),
+        CreatedUtc = DateTime.UtcNow,
+        UpdatedUtc = DateTime.UtcNow,
+        LastActionUtc = null
+    };
+
+    db.TableSessions.Add(nextSession);
+    await eventStore.PersistNewEventsAsync(nextSession, nextState, cancellationToken);
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Created($"/api/tables/{nextSession.Id}", nextSession.ToDto(nextState));
+});
+
 app.MapGet("/api/tables/{id:guid}", async (
     Guid id,
     AppDbContext db,
