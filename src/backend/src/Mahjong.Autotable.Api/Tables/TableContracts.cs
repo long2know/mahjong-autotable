@@ -65,6 +65,37 @@ public sealed record TableEventsResponse(
     long ActionSequence,
     IReadOnlyList<TableEventDto> Events);
 
+public sealed record TableSeatViewHand(
+    int SeatIndex,
+    int TileCount,
+    IReadOnlyList<int>? Tiles);
+
+public sealed record TableSeatViewState(
+    int StateVersion,
+    long ActionSequence,
+    int ActiveSeat,
+    int TurnNumber,
+    int DrawNumber,
+    TableTurnPhase Phase,
+    TableStateMetadata Metadata,
+    TableIntegrityState Integrity,
+    int WallCount,
+    IReadOnlyList<TableSeatState> Seats,
+    IReadOnlyList<TableSeatViewHand> Hands,
+    IReadOnlyList<TableDiscard> DiscardPile,
+    TableLastActionState? LastAction,
+    TableClaimWindowState? ClaimWindow);
+
+public sealed record TableSeatViewDto(
+    Guid Id,
+    string RuleSet,
+    int ViewerSeatIndex,
+    int StateVersion,
+    DateTime CreatedUtc,
+    DateTime UpdatedUtc,
+    DateTime? LastActionUtc,
+    TableSeatViewState State);
+
 public static class TableMappings
 {
     public static TableDto ToDto(this TableSession session, TableGameState state) =>
@@ -89,4 +120,50 @@ public static class TableMappings
             evt.StateHash,
             evt.OccurredUtc,
             evt.PersistedUtc);
+
+    public static TableSeatViewDto ToSeatViewDto(
+        this TableSession session,
+        TableGameState state,
+        int viewerSeatIndex)
+    {
+        if (state.Seats.All(seat => seat.SeatIndex != viewerSeatIndex))
+        {
+            throw new ArgumentOutOfRangeException(nameof(viewerSeatIndex), $"Seat {viewerSeatIndex} does not exist.");
+        }
+
+        var projectedHands = state.Hands
+            .OrderBy(hand => hand.SeatIndex)
+            .Select(hand =>
+                new TableSeatViewHand(
+                    hand.SeatIndex,
+                    hand.Tiles.Count,
+                    hand.SeatIndex == viewerSeatIndex
+                        ? hand.Tiles.OrderBy(tileId => tileId).ToList()
+                        : null))
+            .ToList();
+
+        return new TableSeatViewDto(
+            session.Id,
+            session.RuleSet,
+            viewerSeatIndex,
+            state.StateVersion,
+            session.CreatedUtc,
+            session.UpdatedUtc,
+            session.LastActionUtc,
+            new TableSeatViewState(
+                state.StateVersion,
+                state.ActionSequence,
+                state.ActiveSeat,
+                state.TurnNumber,
+                state.DrawNumber,
+                state.Phase,
+                state.Metadata,
+                state.Integrity,
+                state.Wall.Count,
+                state.Seats.OrderBy(seat => seat.SeatIndex).ToList(),
+                projectedHands,
+                state.DiscardPile.ToList(),
+                state.LastAction,
+                state.ClaimWindow));
+    }
 }

@@ -20,3 +20,4 @@
 - Replaced the minimal modern placeholder page with a backend-driven control panel for table creation, human discard actions, bot advancement, replay verification, and persisted event inspection.
 - Added explicit bot-advance API support for "run until next human turn or wall exhaustion" to remove client-side `maxActions` tuning from the primary gameplay loop.
 - Added claim-window scaffolding metadata on discard state transitions with deterministic precedence selection (`hu > kong > pung > chow`) to prepare for upcoming claim-resolution flows.
+- Added seat-scoped table projection contracts (`/api/tables/{id}/view?seatIndex=`) that hide opponent tiles and wall contents for privacy-safe multiplayer clients.
