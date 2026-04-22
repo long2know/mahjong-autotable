@@ -820,15 +820,56 @@ gameGroup.MapPost("/{id:guid}/win", async (
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
     var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
     var turnState = TurnActionStateResolver.Resolve(game.Status, handTileCount, meldTileCount, declaredKongCount);
+    var isDiscardWinClaim = !request.IsSelfDraw;
+    DiscardEntity? claimableDiscard = null;
+    TileEntity? claimableDiscardTile = null;
 
-    if (!turnState.HasAction(TurnAction.Win))
+    if (isDiscardWinClaim)
     {
-        return Results.Conflict(new { message = $"Player cannot declare win during {turnState.Phase} phase." });
+        claimableDiscard = game.Discards
+            .OrderByDescending(discard => discard.Sequence)
+            .FirstOrDefault();
+
+        if (claimableDiscard is null || claimableDiscard.PlayerId == request.PlayerId)
+        {
+            return Results.Conflict(new { message = "No claimable discard is available for a discard win." });
+        }
+
+        if (request.DiscarderPlayerId is not null && request.DiscarderPlayerId != claimableDiscard.PlayerId)
+        {
+            return Results.Conflict(new { message = "DiscarderPlayerId does not match the latest claimable discard." });
+        }
+
+        claimableDiscardTile = game.Tiles.FirstOrDefault(tile =>
+            tile.Id == claimableDiscard.TileId &&
+            string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase));
+
+        if (claimableDiscardTile is null)
+        {
+            return Results.Conflict(new { message = "Latest claimable discard tile was not found." });
+        }
+
+        if (!turnState.HasAction(TurnAction.Draw))
+        {
+            return Results.Conflict(new { message = $"Player cannot claim discard win during {turnState.Phase} phase." });
+        }
+
+        if (!TurnFlowValidator.CanDraw(handTileCount, meldTileCount, declaredKongCount))
+        {
+            return Results.Conflict(new { message = "Player must hold 13 owned tiles (plus one per declared kong) before claiming discard win." });
+        }
     }
-
-    if (!TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount, declaredKongCount))
+    else
     {
-        return Results.Conflict(new { message = "Player must hold 14 owned tiles (plus one per declared kong) before declaring win." });
+        if (!turnState.HasAction(TurnAction.Win))
+        {
+            return Results.Conflict(new { message = $"Player cannot declare win during {turnState.Phase} phase." });
+        }
+
+        if (!TurnFlowValidator.CanDeclareWin(handTileCount, meldTileCount, declaredKongCount))
+        {
+            return Results.Conflict(new { message = "Player must hold 14 owned tiles (plus one per declared kong) before declaring win." });
+        }
     }
 
     var playerTiles = game.Tiles
@@ -840,7 +881,11 @@ gameGroup.MapPost("/{id:guid}/win", async (
         return Results.NotFound(new { message = "Player tiles were not found." });
     }
 
-    if (!TryBuildTileHand(playerTiles, out var tileHand))
+    var evaluationTiles = claimableDiscardTile is null
+        ? playerTiles
+        : playerTiles.Append(claimableDiscardTile).ToList();
+
+    if (!TryBuildTileHand(evaluationTiles, out var tileHand))
     {
         return Results.Conflict(new { message = "Player tiles are invalid." });
     }
@@ -856,9 +901,12 @@ gameGroup.MapPost("/{id:guid}/win", async (
     Guid? nextDealerId = null;
     int? nextRound = null;
     string? birdSeat = null;
+    var resolvedDiscarderPlayerId = request.IsSelfDraw
+        ? null
+        : request.DiscarderPlayerId ?? claimableDiscard?.PlayerId;
     if (ruleset == MahjongRuleset.Changsha258)
     {
-        if (!request.IsSelfDraw && request.DiscarderPlayerId is null)
+        if (!request.IsSelfDraw && resolvedDiscarderPlayerId is null)
         {
             return Results.BadRequest(new { message = "DiscarderPlayerId is required for discard wins." });
         }
@@ -868,7 +916,7 @@ gameGroup.MapPost("/{id:guid}/win", async (
             return Results.BadRequest(new { message = "DiscarderPlayerId must be omitted for self-draw wins." });
         }
 
-        if (request.DiscarderPlayerId == request.PlayerId)
+        if (resolvedDiscarderPlayerId == request.PlayerId)
         {
             return Results.BadRequest(new { message = "Winner and discarder cannot be the same player." });
         }
@@ -970,7 +1018,7 @@ gameGroup.MapPost("/{id:guid}/win", async (
             DealerId: game.DealerId ?? request.PlayerId,
             IsSelfDraw: request.IsSelfDraw,
             IsBigWin: changshaEvaluation.IsBigWin,
-            DiscarderId: request.IsSelfDraw ? null : request.DiscarderPlayerId,
+            DiscarderId: resolvedDiscarderPlayerId,
             BirdRank: request.BirdRanks is null ? request.BirdRank : null,
             BirdRanks: request.BirdRanks,
             IsMultipleWin: request.IsMultipleWin);
