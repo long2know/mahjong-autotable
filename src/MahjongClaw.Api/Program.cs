@@ -807,7 +807,9 @@ gameGroup.MapPost("/{id:guid}/win", async (
         return Results.NotFound(new { message = "Player not found in game." });
     }
 
-    if (game.CurrentPlayerId != request.PlayerId)
+    var isDiscardWinClaim = !request.IsSelfDraw;
+
+    if (game.CurrentPlayerId != request.PlayerId && !isDiscardWinClaim)
     {
         return Results.Conflict(new { message = "It is not this player's turn." });
     }
@@ -820,7 +822,6 @@ gameGroup.MapPost("/{id:guid}/win", async (
         string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase));
     var declaredKongCount = CountDeclaredKongs(game.Tiles, request.PlayerId);
     var turnState = TurnActionStateResolver.Resolve(game.Status, handTileCount, meldTileCount, declaredKongCount);
-    var isDiscardWinClaim = !request.IsSelfDraw;
     DiscardEntity? claimableDiscard = null;
     TileEntity? claimableDiscardTile = null;
 
