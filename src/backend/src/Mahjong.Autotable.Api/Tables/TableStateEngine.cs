@@ -7,6 +7,7 @@ public interface ITableStateEngine
     TableGameState ReplayFromSeed(TableGameState snapshot);
     ReplayVerificationResult VerifyReplayIntegrity(TableGameState snapshot);
     DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId);
+    ClaimResolutionResult ResolveClaimWindow(TableGameState state, string decision);
     BotAdvanceResult AdvanceBots(TableGameState state, int maxActions);
     BotAdvanceResult AdvanceBotsUntilHumanTurnOrWallExhausted(TableGameState state);
 }
@@ -26,8 +27,17 @@ public sealed class ReplayVerificationResult
     public required long ReplayedActionSequence { get; init; }
 }
 
+public sealed class ClaimResolutionResult
+{
+    public required string AppliedDecision { get; init; }
+    public required TableAction ResolutionAction { get; init; }
+    public required TableAction? DrawAction { get; init; }
+}
+
 public sealed class TableStateEngine : ITableStateEngine
 {
+    private const string ClaimResolvePassActionType = "claim-resolve-pass";
+    private const string ClaimResolveTakeSelectedActionType = "claim-resolve-take-selected";
     public const int SeatCount = 4;
     public const int TotalTiles = 136;
     public const string RngAlgorithmId = "fisher-yates-v1";
@@ -118,23 +128,37 @@ public sealed class TableStateEngine : ITableStateEngine
             .ToArray();
 
         var replay = CreateInitialState(botSeatIndexes, snapshot.Metadata.Seed);
-        var discardActions = snapshot.ActionLog
-            .Where(action => action.ActionType.Equals("discard", StringComparison.OrdinalIgnoreCase))
+        var actions = snapshot.ActionLog
             .OrderBy(action => action.Sequence);
 
-        foreach (var action in discardActions)
+        foreach (var action in actions)
         {
-            var tileId = action.TileId;
-            if (!tileId.HasValue)
+            if (action.ActionType.Equals("discard", StringComparison.OrdinalIgnoreCase))
             {
-                ThrowInvariant(replay, "Discard action is missing tile id for replay.");
+                var tileId = action.TileId;
+                if (!tileId.HasValue)
+                {
+                    ThrowInvariant(replay, "Discard action is missing tile id for replay.");
+                }
+
+                var replaySeat = GetSeat(replay, action.SeatIndex);
+                var requiredSeatType = replaySeat.SeatType == TableSeatType.Human
+                    ? TableSeatType.Human
+                    : TableSeatType.Bot;
+                _ = ApplyDiscard(replay, action.SeatIndex, tileId.GetValueOrDefault(), requiredSeatType);
+                continue;
             }
 
-            var replaySeat = GetSeat(replay, action.SeatIndex);
-            var requiredSeatType = replaySeat.SeatType == TableSeatType.Human
-                ? TableSeatType.Human
-                : TableSeatType.Bot;
-            _ = ApplyDiscard(replay, action.SeatIndex, tileId.GetValueOrDefault(), requiredSeatType);
+            if (action.ActionType.Equals(ClaimResolvePassActionType, StringComparison.OrdinalIgnoreCase))
+            {
+                _ = ResolveClaimWindow(replay, TableClaimResolutionDecisionValues.Pass);
+                continue;
+            }
+
+            if (action.ActionType.Equals(ClaimResolveTakeSelectedActionType, StringComparison.OrdinalIgnoreCase))
+            {
+                _ = ResolveClaimWindow(replay, TableClaimResolutionDecisionValues.TakeSelected);
+            }
         }
 
         return replay;
@@ -159,6 +183,29 @@ public sealed class TableStateEngine : ITableStateEngine
     public DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId)
         => ApplyDiscard(state, seatIndex, tileId, TableSeatType.Human);
 
+    public ClaimResolutionResult ResolveClaimWindow(TableGameState state, string decision)
+    {
+        ValidateState(state);
+
+        if (state.Phase == TableTurnPhase.WallExhausted)
+        {
+            ThrowRule(state, TableActionErrorCodes.RoundNotActive, "Round is no longer active.");
+        }
+
+        if (state.Phase != TableTurnPhase.AwaitingClaimResolution || state.ClaimWindow is null)
+        {
+            ThrowRule(state, TableActionErrorCodes.ClaimWindowNotOpen, "No claim window is currently awaiting resolution.");
+        }
+
+        var normalizedDecision = NormalizeClaimDecision(state, decision);
+        return normalizedDecision switch
+        {
+            TableClaimResolutionDecisionValues.Pass => ApplyClaimPass(state),
+            TableClaimResolutionDecisionValues.TakeSelected => ApplyClaimTakeSelected(state),
+            _ => throw new InvalidOperationException($"Unsupported claim resolution decision '{normalizedDecision}'.")
+        };
+    }
+
     public BotAdvanceResult AdvanceBots(TableGameState state, int maxActions)
     {
         ValidateState(state);
@@ -167,6 +214,15 @@ public sealed class TableStateEngine : ITableStateEngine
 
         while (actions.Count < boundedActions)
         {
+            if (state.Phase == TableTurnPhase.AwaitingClaimResolution)
+            {
+                return new BotAdvanceResult
+                {
+                    Actions = actions,
+                    StopReason = BotAdvanceStopReason.ClaimResolutionRequired
+                };
+            }
+
             if (state.Phase == TableTurnPhase.WallExhausted)
             {
                 return new BotAdvanceResult
@@ -229,6 +285,15 @@ public sealed class TableStateEngine : ITableStateEngine
 
         while (true)
         {
+            if (state.Phase == TableTurnPhase.AwaitingClaimResolution)
+            {
+                return new BotAdvanceResult
+                {
+                    Actions = actions,
+                    StopReason = BotAdvanceStopReason.ClaimResolutionRequired
+                };
+            }
+
             if (state.Phase == TableTurnPhase.WallExhausted)
             {
                 return new BotAdvanceResult
@@ -380,15 +445,11 @@ public sealed class TableStateEngine : ITableStateEngine
             tileId,
             state.TurnNumber,
             discardAction.Sequence);
-
-        state.ActiveSeat = (state.ActiveSeat + 1) % SeatCount;
         state.TurnNumber++;
-        RefreshIntegrity(state);
-        discardAction.StateHash = state.Integrity.StateHash;
 
-        if (state.Wall.Count == 0)
+        if (state.ClaimWindow is not null)
         {
-            state.Phase = TableTurnPhase.WallExhausted;
+            state.Phase = TableTurnPhase.AwaitingClaimResolution;
             RefreshIntegrity(state);
             discardAction.StateHash = state.Integrity.StateHash;
             return new DiscardActionResult
@@ -398,23 +459,24 @@ public sealed class TableStateEngine : ITableStateEngine
             };
         }
 
-        var drawSeat = state.ActiveSeat;
-        var drawTileId = DrawFromWall(state.Wall);
-        var nextHand = GetHandForSeat(state, drawSeat);
-        nextHand.Tiles.Add(drawTileId);
-        state.DrawNumber++;
-        state.Phase = TableTurnPhase.AwaitingDiscard;
-
-        var drawAction = AppendAction(
-            state,
-            drawSeat,
-            state.TurnNumber,
-            "draw",
-            drawTileId,
-            $"tile-{drawTileId}");
-
+        var canDraw = PreparePostDiscardContinuation(state, seatIndex);
         RefreshIntegrity(state);
-        drawAction.StateHash = state.Integrity.StateHash;
+        discardAction.StateHash = state.Integrity.StateHash;
+        if (!canDraw)
+        {
+            return new DiscardActionResult
+            {
+                DiscardAction = discardAction,
+                DrawAction = null
+            };
+        }
+
+        var drawAction = DrawForActiveSeat(state);
+        RefreshIntegrity(state);
+        if (drawAction is not null)
+        {
+            drawAction.StateHash = state.Integrity.StateHash;
+        }
 
         return new DiscardActionResult
         {
@@ -423,7 +485,7 @@ public sealed class TableStateEngine : ITableStateEngine
         };
     }
 
-    private static TableClaimWindowState BuildClaimWindowState(
+    private static TableClaimWindowState? BuildClaimWindowState(
         TableGameState state,
         int discardSeatIndex,
         int discardTileId,
@@ -432,6 +494,11 @@ public sealed class TableStateEngine : ITableStateEngine
     {
         var opportunities = GetClaimOpportunities(state, discardSeatIndex, discardTileId)
             .ToList();
+
+        if (opportunities.Count == 0)
+        {
+            return null;
+        }
 
         return new TableClaimWindowState
         {
@@ -537,6 +604,150 @@ public sealed class TableStateEngine : ITableStateEngine
         var hasMiddleRun = rank >= 1 && rank <= 7 && suitedTiles.Contains(rank - 1) && suitedTiles.Contains(rank + 1);
         var hasUpperRun = rank <= 6 && suitedTiles.Contains(rank + 1) && suitedTiles.Contains(rank + 2);
         return hasLowerRun || hasMiddleRun || hasUpperRun;
+    }
+
+    private static string NormalizeClaimDecision(TableGameState state, string decision)
+    {
+        if (string.IsNullOrWhiteSpace(decision))
+        {
+            ThrowRule(
+                state,
+                TableActionErrorCodes.InvalidClaimDecision,
+                $"Claim decision must be one of: {TableClaimResolutionDecisionValues.Pass}, {TableClaimResolutionDecisionValues.TakeSelected}.");
+        }
+
+        var normalized = decision.Trim().ToLowerInvariant();
+        if (normalized is TableClaimResolutionDecisionValues.Pass or TableClaimResolutionDecisionValues.TakeSelected)
+        {
+            return normalized;
+        }
+
+        ThrowRule(
+            state,
+            TableActionErrorCodes.InvalidClaimDecision,
+            $"Claim decision must be one of: {TableClaimResolutionDecisionValues.Pass}, {TableClaimResolutionDecisionValues.TakeSelected}.");
+        return string.Empty;
+    }
+
+    private static ClaimResolutionResult ApplyClaimPass(TableGameState state)
+    {
+        var claimWindow = state.ClaimWindow!;
+        var resolutionAction = AppendAction(
+            state,
+            claimWindow.DiscardSeatIndex,
+            claimWindow.DiscardTurnNumber,
+            ClaimResolvePassActionType,
+            claimWindow.DiscardTileId,
+            TableClaimResolutionDecisionValues.Pass);
+
+        state.ClaimWindow = null;
+        var canDraw = PreparePostDiscardContinuation(state, claimWindow.DiscardSeatIndex);
+        RefreshIntegrity(state);
+        resolutionAction.StateHash = state.Integrity.StateHash;
+        if (!canDraw)
+        {
+            return new ClaimResolutionResult
+            {
+                AppliedDecision = TableClaimResolutionDecisionValues.Pass,
+                ResolutionAction = resolutionAction,
+                DrawAction = null
+            };
+        }
+
+        var drawAction = DrawForActiveSeat(state);
+        RefreshIntegrity(state);
+        if (drawAction is not null)
+        {
+            drawAction.StateHash = state.Integrity.StateHash;
+        }
+
+        return new ClaimResolutionResult
+        {
+            AppliedDecision = TableClaimResolutionDecisionValues.Pass,
+            ResolutionAction = resolutionAction,
+            DrawAction = drawAction
+        };
+    }
+
+    private static ClaimResolutionResult ApplyClaimTakeSelected(TableGameState state)
+    {
+        var claimWindow = state.ClaimWindow!;
+        if (claimWindow.SelectedOpportunity is null)
+        {
+            ThrowRule(state, TableActionErrorCodes.ClaimSelectionUnavailable, "No selected claim opportunity is available.");
+        }
+
+        RemoveClaimedDiscard(state, claimWindow);
+
+        var selected = claimWindow.SelectedOpportunity;
+        var claimantHand = GetHandForSeat(state, selected.SeatIndex);
+        claimantHand.Tiles.Add(claimWindow.DiscardTileId);
+
+        var resolutionAction = AppendAction(
+            state,
+            selected.SeatIndex,
+            claimWindow.DiscardTurnNumber,
+            ClaimResolveTakeSelectedActionType,
+            claimWindow.DiscardTileId,
+            $"{TableClaimResolutionDecisionValues.TakeSelected}:{selected.SeatIndex}:{selected.ClaimType.ToString().ToLowerInvariant()}");
+
+        state.ClaimWindow = null;
+        state.ActiveSeat = selected.SeatIndex;
+        state.Phase = TableTurnPhase.AwaitingDiscard;
+        RefreshIntegrity(state);
+        resolutionAction.StateHash = state.Integrity.StateHash;
+
+        return new ClaimResolutionResult
+        {
+            AppliedDecision = TableClaimResolutionDecisionValues.TakeSelected,
+            ResolutionAction = resolutionAction,
+            DrawAction = null
+        };
+    }
+
+    private static void RemoveClaimedDiscard(TableGameState state, TableClaimWindowState claimWindow)
+    {
+        var discardIndex = state.DiscardPile.FindLastIndex(discard =>
+            discard.SeatIndex == claimWindow.DiscardSeatIndex &&
+            discard.TileId == claimWindow.DiscardTileId &&
+            discard.TurnNumber == claimWindow.DiscardTurnNumber);
+
+        if (discardIndex < 0)
+        {
+            ThrowInvariant(state, "Claimed discard is missing from discard pile.");
+        }
+
+        state.DiscardPile.RemoveAt(discardIndex);
+    }
+
+    private static bool PreparePostDiscardContinuation(TableGameState state, int discardSeatIndex)
+    {
+        state.ActiveSeat = (discardSeatIndex + 1) % SeatCount;
+        if (state.Wall.Count == 0)
+        {
+            state.Phase = TableTurnPhase.WallExhausted;
+            return false;
+        }
+
+        state.Phase = TableTurnPhase.AwaitingDiscard;
+        return true;
+    }
+
+    private static TableAction DrawForActiveSeat(TableGameState state)
+    {
+        var drawSeat = state.ActiveSeat;
+        var drawTileId = DrawFromWall(state.Wall);
+        var nextHand = GetHandForSeat(state, drawSeat);
+        nextHand.Tiles.Add(drawTileId);
+        state.DrawNumber++;
+
+        return AppendAction(
+            state,
+            drawSeat,
+            state.TurnNumber,
+            "draw",
+            drawTileId,
+            $"tile-{drawTileId}");
     }
 
     private static TableSeatState GetSeat(TableGameState state, int seatIndex)

@@ -309,6 +309,37 @@ body {
   padding-bottom: 4px;
 }
 
+.claim-policy {
+  margin: 10px 0 8px;
+  color: #444;
+}
+
+.claim-opportunities {
+  margin: 0 0 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.claim-opportunity {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.claim-opportunity.selected {
+  border-color: #0f6cbd;
+  box-shadow: 0 0 0 2px rgba(15, 108, 189, 0.2);
+}
+
+.claim-opportunity small {
+  color: #605e5c;
+}
+
 .advanced-events {
   margin-top: 12px;
 }

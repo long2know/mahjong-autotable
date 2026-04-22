@@ -22,3 +22,4 @@
 - Added claim-window scaffolding metadata on discard state transitions with deterministic precedence selection (`hu > kong > pung > chow`) to prepare for upcoming claim-resolution flows.
 - Added seat-scoped table projection contracts (`/api/tables/{id}/view?seatIndex=`) that hide opponent tiles and wall contents for privacy-safe multiplayer clients.
 - Replaced bot minimum-tile discards with deterministic hand-shape heuristics so bots preserve pairs/sequences more realistically.
+- Upgraded claim scaffolding into executable backend actions: discard now pauses on claim opportunities, `/api/tables/{id}/claims/resolve` applies deterministic `pass`/`take-selected` outcomes, and replay/integrity checks include claim-resolution actions.
