@@ -47,9 +47,10 @@ infra/
     - `hu` claim opportunities are now evaluated from concealed hand + discard tile using deterministic standard-hand decomposition; selecting `hu` transitions the round to `RoundComplete` with win metadata.
     - `kong` claims perform a deterministic supplemental draw when wall tiles remain.
     - Response includes updated `table`, `appliedDecision`, and emitted action metadata (`resolutionAction`, optional `drawAction`).
-  - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `ClaimResolutionRequired`, `MaxActionsReached`, `WallExhausted`).
+  - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `ClaimResolutionRequired`, `RoundComplete`, `MaxActionsReached`, `WallExhausted`).
     - Request: `{ "advanceUntilHumanTurnOrWallExhausted": true }` (default) to safely run until the next human decision point without client-side action budgeting.
     - Optional capped mode: `{ "advanceUntilHumanTurnOrWallExhausted": false, "maxActions": 8 }`.
+    - While advancing, backend now auto-resolves claim windows when the selected claim winner is a bot (`take-selected`) and only returns `ClaimResolutionRequired` for human-selected claim windows.
     - Bot discard selection now uses deterministic hand-shape heuristics (set/sequence retention) instead of always dropping the minimum tile id.
   - `GET /api/tables/{id}/events` returns the append-only persisted action stream (`sequence`, action payload, `stateVersion`, `stateHash`, and timestamps).
     - Query options: `afterSequence` (exclusive lower bound) and `limit` (max 500, default 200).
