@@ -12,6 +12,7 @@ public sealed record AdvanceBotsRequest(
     bool AdvanceUntilHumanTurnOrWallExhausted = true);
 
 public sealed record DiscardActionRequest(int SeatIndex, int TileId, int? ExpectedStateVersion = null);
+public sealed record ResolveClaimRequest(string Decision, int? ExpectedStateVersion = null);
 
 public sealed record TableDto(
     Guid Id,
@@ -30,6 +31,12 @@ public sealed record AdvanceBotsResponse(
 public sealed record DiscardActionResponse(
     TableDto Table,
     TableAction DiscardAction,
+    TableAction? DrawAction);
+
+public sealed record ResolveClaimResponse(
+    TableDto Table,
+    string AppliedDecision,
+    TableAction ResolutionAction,
     TableAction? DrawAction);
 
 public sealed record TableActionError(

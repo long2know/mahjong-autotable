@@ -283,6 +283,69 @@ app.MapPost("/api/tables/{id:guid}/actions/discard", async (
     }
 });
 
+app.MapPost("/api/tables/{id:guid}/claims/resolve", async (
+    Guid id,
+    ResolveClaimRequest request,
+    HttpContext httpContext,
+    AppDbContext db,
+    ITableStateEngine engine,
+    ITableSessionEventStore eventStore,
+    ITableStateSerializer serializer,
+    CancellationToken cancellationToken) =>
+{
+    var session = await db.TableSessions.FirstOrDefaultAsync(table => table.Id == id, cancellationToken);
+    if (session is null)
+    {
+        return Results.NotFound();
+    }
+
+    var state = serializer.Deserialize(session.StateJson);
+    engine.NormalizePersistedState(state, session.StateVersion);
+
+    if (request.ExpectedStateVersion.HasValue && request.ExpectedStateVersion.Value != state.StateVersion)
+    {
+        var error = ToActionError(
+            TableActionErrorCodes.ConcurrencyConflict,
+            $"Expected state version {request.ExpectedStateVersion.Value}, current version is {state.StateVersion}.",
+            state.StateVersion,
+            state.ActionSequence,
+            httpContext.TraceIdentifier);
+        return Results.Conflict(error);
+    }
+
+    var integrity = engine.VerifyReplayIntegrity(state);
+    if (!integrity.IntegrityMatch)
+    {
+        return Results.Conflict(ToIntegrityConflict(state, httpContext.TraceIdentifier, integrity));
+    }
+
+    try
+    {
+        var result = engine.ResolveClaimWindow(state, request.Decision);
+
+        session.StateJson = serializer.Serialize(state);
+        session.StateVersion = state.StateVersion;
+        session.UpdatedUtc = DateTime.UtcNow;
+        session.LastActionUtc = result.DrawAction?.OccurredUtc ?? result.ResolutionAction.OccurredUtc;
+        await eventStore.PersistNewEventsAsync(session, state, cancellationToken);
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var tableDto = session.ToDto(state);
+        return Results.Ok(new ResolveClaimResponse(tableDto, result.AppliedDecision, result.ResolutionAction, result.DrawAction));
+    }
+    catch (TableRuleException exception)
+    {
+        var error = ToActionError(
+            exception.Code,
+            exception.Message,
+            exception.StateVersion,
+            exception.ActionSequence,
+            httpContext.TraceIdentifier);
+        return Results.BadRequest(error);
+    }
+});
+
 app.MapPost("/api/tables/{id:guid}/replay/verify", async (
     Guid id,
     bool strict,
@@ -351,3 +414,7 @@ static TableActionError ToIntegrityConflict(
         correlationId);
 
 app.Run();
+
+public partial class Program
+{
+}

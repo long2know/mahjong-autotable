@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Body1, Button, Card, CardHeader, Text } from '@fluentui/react-components';
 
 type TableSeatType = 'Human' | 'Bot';
-type TableTurnPhase = 'AwaitingDiscard' | 'WallExhausted';
+type TableTurnPhase = 'AwaitingDiscard' | 'AwaitingClaimResolution' | 'WallExhausted';
+type ClaimResolutionDecision = 'pass' | 'take-selected';
 
 type TileSuitTone = 'dots' | 'bamboo' | 'characters' | 'wind' | 'dragon' | 'unknown';
 
@@ -50,6 +51,30 @@ interface TableIntegrityState {
   stateHash: string;
 }
 
+interface TableLastActionState {
+  sequence: number;
+  seatIndex: number;
+  actionType: string;
+  tileId: number | null;
+  detail: string;
+}
+
+interface TableClaimOpportunity {
+  seatIndex: number;
+  claimType: string;
+  priority: number;
+}
+
+interface TableClaimWindowState {
+  sourceActionSequence: number;
+  discardSeatIndex: number;
+  discardTileId: number;
+  discardTurnNumber: number;
+  precedencePolicy: string;
+  opportunities: TableClaimOpportunity[];
+  selectedOpportunity: TableClaimOpportunity | null;
+}
+
 interface TableGameState {
   stateVersion: number;
   actionSequence: number;
@@ -59,10 +84,12 @@ interface TableGameState {
   phase: TableTurnPhase;
   metadata: TableStateMetadata;
   integrity: TableIntegrityState;
+  lastAction: TableLastActionState | null;
   wall: number[];
   seats: TableSeatState[];
   hands: TableSeatHandState[];
   discardPile: TableDiscard[];
+  claimWindow: TableClaimWindowState | null;
   actionLog: TableAction[];
 }
 
@@ -89,6 +116,8 @@ interface TableSeatViewState {
   seats: TableSeatState[];
   hands: TableSeatViewHandState[];
   discardPile: TableDiscard[];
+  lastAction: TableLastActionState | null;
+  claimWindow: TableClaimWindowState | null;
 }
 
 interface TableSeatViewDto {
@@ -122,6 +151,8 @@ interface ReplayVerificationResponse {
   replayedStateVersion: number;
   replayedActionSequence: number;
 }
+
+type ClaimResolutionApiResponse = TableDto | { table: TableDto };
 
 interface TableEventDto {
   sequence: number;
@@ -221,6 +252,14 @@ function formatStopReason(reason: string): string {
   }
 }
 
+function formatClaimType(claimType: string): string {
+  return claimType.toUpperCase();
+}
+
+function getResolvedTable(payload: ClaimResolutionApiResponse): TableDto {
+  return 'table' in payload ? payload.table : payload;
+}
+
 function seatArea(seatIndex: number): 'south' | 'west' | 'north' | 'east' {
   if (seatIndex === 0) {
     return 'south';
@@ -284,6 +323,12 @@ export function App() {
     humanHandTiles.length > 0;
 
   const centerDiscards = useMemo(() => tableView?.state.discardPile.slice(-24) ?? [], [tableView]);
+  const claimWindow = tableView?.state.claimWindow ?? null;
+  const canResolveClaim =
+    table !== null &&
+    claimWindow !== null &&
+    claimWindow.opportunities.length > 0 &&
+    viewerSeatIndex === humanSeatIndex;
 
   const checkHealth = useCallback(async () => {
     try {
@@ -450,6 +495,38 @@ export function App() {
     });
   }, [loadEvents, loadSeatView, runOperation, table, viewerSeatIndex]);
 
+  const resolveClaimWindow = useCallback(
+    async (decision: ClaimResolutionDecision) => {
+      if (!canResolveClaim || table === null) {
+        return;
+      }
+
+      await runOperation(async () => {
+        const payload = await readJson<ClaimResolutionApiResponse>(`/api/tables/${table.id}/claims/resolve`, {
+          method: 'POST',
+          body: JSON.stringify({
+            decision,
+            expectedStateVersion: table.stateVersion
+          })
+        });
+
+        const resolvedTable = getResolvedTable(payload);
+        const progression = await advanceBotsToHumanTurn(resolvedTable);
+        setTable(progression.table);
+        await loadEvents(progression.table.id);
+        await loadSeatView(progression.table.id, viewerSeatIndex);
+
+        const decisionLabel = decision === 'take-selected' ? 'took selected claim' : 'passed claim window';
+        const botSummary =
+          progression.totalActions > 0
+            ? ` Bots played ${progression.totalActions} action(s) (${formatStopReason(progression.stopReason)}).`
+            : '';
+        setStatusMessage(`You ${decisionLabel}.${botSummary}`);
+      });
+    },
+    [advanceBotsToHumanTurn, canResolveClaim, loadEvents, loadSeatView, runOperation, table, viewerSeatIndex]
+  );
+
   const changePerspective = useCallback(
     async (nextSeatIndex: number) => {
       setViewerSeatIndex(nextSeatIndex);
@@ -495,7 +572,10 @@ export function App() {
     <main className="app-shell">
       <Card className="panel">
         <CardHeader header={<Text weight="semibold">Mahjong Autotable · Playable Modern Table</Text>} />
-        <Body1>Start a table, click a tile to discard, and bots auto-play until your next turn.</Body1>
+        <Body1>
+          Start a table, click a tile to discard, resolve claim windows when prompted, and bots auto-play until your
+          next turn.
+        </Body1>
 
         <div className="actions-row">
           <Button appearance="primary" onClick={createTable} disabled={busy}>
@@ -654,6 +734,76 @@ export function App() {
             <div className="actions-row">
               <Button appearance="primary" onClick={discardSelectedTile} disabled={busy || !canDiscard || selectedTile === null}>
                 Discard selected tile
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="panel">
+            <CardHeader header={<Text weight="semibold">Claim resolution</Text>} />
+            {claimWindow === null || claimWindow.opportunities.length === 0 ? (
+              <Body1>No open claim window.</Body1>
+            ) : (
+              <>
+                <Body1>
+                  Discard by seat {claimWindow.discardSeatIndex}: {describeTile(claimWindow.discardTileId).label} (turn{' '}
+                  {claimWindow.discardTurnNumber}).
+                </Body1>
+                <p className="claim-policy">
+                  Policy: <strong>{claimWindow.precedencePolicy}</strong>
+                </p>
+                <div className="claim-opportunities">
+                  {claimWindow.opportunities.map((opportunity, index) => {
+                    const isSelected =
+                      claimWindow.selectedOpportunity !== null &&
+                      claimWindow.selectedOpportunity.seatIndex === opportunity.seatIndex &&
+                      claimWindow.selectedOpportunity.claimType === opportunity.claimType &&
+                      claimWindow.selectedOpportunity.priority === opportunity.priority;
+                    return (
+                      <div
+                        key={`${opportunity.seatIndex}-${opportunity.claimType}-${index}`}
+                        className={`claim-opportunity ${isSelected ? 'selected' : ''}`}
+                      >
+                        <span>
+                          Seat {opportunity.seatIndex} · {formatClaimType(opportunity.claimType)}
+                        </span>
+                        <small>Priority {opportunity.priority}</small>
+                      </div>
+                    );
+                  })}
+                </div>
+                <Body1>
+                  Selected winner:{' '}
+                  {claimWindow.selectedOpportunity === null
+                    ? 'none'
+                    : `Seat ${claimWindow.selectedOpportunity.seatIndex} · ${formatClaimType(claimWindow.selectedOpportunity.claimType)}`}
+                  .
+                </Body1>
+              </>
+            )}
+            <Body1>
+              {viewerSeatIndex !== humanSeatIndex
+                ? `Read-only perspective for seat ${viewerSeatIndex}. Switch to seat 0 to resolve claims.`
+                : claimWindow === null || claimWindow.opportunities.length === 0
+                  ? 'No action needed.'
+                  : 'Choose pass or take-selected to resolve the current claim window.'}
+            </Body1>
+            <div className="actions-row">
+              <Button
+                onClick={() => {
+                  void resolveClaimWindow('pass');
+                }}
+                disabled={busy || !canResolveClaim}
+              >
+                Pass
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={() => {
+                  void resolveClaimWindow('take-selected');
+                }}
+                disabled={busy || !canResolveClaim || claimWindow?.selectedOpportunity === null}
+              >
+                Take selected
               </Button>
             </div>
           </Card>

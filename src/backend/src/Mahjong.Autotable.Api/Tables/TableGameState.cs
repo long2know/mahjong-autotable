@@ -16,6 +16,7 @@ public sealed class TableSeatState
 public enum TableTurnPhase
 {
     AwaitingDiscard,
+    AwaitingClaimResolution,
     WallExhausted
 }
 
@@ -59,6 +60,12 @@ public enum TableClaimType
     Kong,
     Pung,
     Chow
+}
+
+public static class TableClaimResolutionDecisionValues
+{
+    public const string Pass = "pass";
+    public const string TakeSelected = "take-selected";
 }
 
 public sealed class TableClaimOpportunity
@@ -113,6 +120,7 @@ public sealed class TableGameState
 public enum BotAdvanceStopReason
 {
     HumanTurn,
+    ClaimResolutionRequired,
     MaxActionsReached,
     WallExhausted
 }

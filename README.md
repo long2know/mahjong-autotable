@@ -38,9 +38,14 @@ infra/
   - `POST /api/tables/{id}/actions/discard` submits a human discard through server validation.
     - Request: `{ "seatIndex": 0, "tileId": 87, "expectedStateVersion": 3 }` (`expectedStateVersion` optional optimistic concurrency token).
     - Rejections return structured contract payloads (`code`, `message`, `stateVersion`, `actionSequence`, `correlationId`).
-    - Error codes now include `ROUND_NOT_ACTIVE`, `INVALID_PHASE`, `NOT_ACTIVE_SEAT`, `SEAT_NOT_FOUND`, `TILE_NOT_IN_HAND`, `CONCURRENCY_CONFLICT`, and `STATE_INVARIANT_BROKEN`.
-    - State now includes `claimWindow` scaffolding metadata (opportunities + selected winner by precedence policy `hu > kong > pung > chow`) to support upcoming claim-resolution phases.
-  - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `MaxActionsReached`, `WallExhausted`).
+    - Error codes now include `ROUND_NOT_ACTIVE`, `INVALID_PHASE`, `NOT_ACTIVE_SEAT`, `SEAT_NOT_FOUND`, `TILE_NOT_IN_HAND`, `CLAIM_WINDOW_NOT_OPEN`, `INVALID_CLAIM_DECISION`, `CLAIM_SELECTION_UNAVAILABLE`, `CONCURRENCY_CONFLICT`, and `STATE_INVARIANT_BROKEN`.
+    - State now includes `claimWindow` metadata (opportunities + selected winner by precedence policy `hu > kong > pung > chow`) when a discard creates claim opportunities.
+  - `POST /api/tables/{id}/claims/resolve` resolves an open claim window with deterministic phase-1 behavior.
+    - Request: `{ "decision": "pass", "expectedStateVersion": 4 }` or `{ "decision": "take-selected", "expectedStateVersion": 4 }`.
+    - `pass` clears the window and continues normal flow (next seat draw/discard turn).
+    - `take-selected` assigns control to the selected claim seat and keeps play deterministic without full meld/scoring settlement.
+    - Response includes updated `table`, `appliedDecision`, and emitted action metadata (`resolutionAction`, optional `drawAction`).
+  - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `ClaimResolutionRequired`, `MaxActionsReached`, `WallExhausted`).
     - Request: `{ "advanceUntilHumanTurnOrWallExhausted": true }` (default) to safely run until the next human decision point without client-side action budgeting.
     - Optional capped mode: `{ "advanceUntilHumanTurnOrWallExhausted": false, "maxActions": 8 }`.
     - Bot discard selection now uses deterministic hand-shape heuristics (set/sequence retention) instead of always dropping the minimum tile id.
@@ -48,7 +53,7 @@ infra/
     - Query options: `afterSequence` (exclusive lower bound) and `limit` (max 500, default 200).
   - `POST /api/tables/{id}/replay/verify` replays accepted discard actions from seed and returns integrity comparison metadata (`integrityMatch`, `expectedStateHash`, `replayedStateHash`).
     - Optional query: `strict=true` returns `409` with `STATE_INVARIANT_BROKEN` when replay integrity does not match.
-  - State-mutating endpoints (`/actions/discard`, `/bots/advance`) now enforce replay integrity before applying new actions and reject mismatched snapshots with `STATE_INVARIANT_BROKEN`.
+  - State-mutating endpoints (`/actions/discard`, `/claims/resolve`, `/bots/advance`) now enforce replay integrity before applying new actions and reject mismatched snapshots with `STATE_INVARIANT_BROKEN`.
 
 Key config (`appsettings.json`):
 
@@ -64,7 +69,7 @@ Key config (`appsettings.json`):
 - **Full stack (backend + modern frontend):** select `F5 Full Stack (Backend + Modern Frontend)`.
 - **Autotable baseline only:** select `Backend + Autotable Baseline`.
 - Full stack F5 runs `npm install && npm run dev` for the modern frontend terminal session.
-- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
+- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, claim-resolution panel with pass/take-selected actions, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
 
 ### CLI
 
@@ -105,4 +110,4 @@ docker run --rm -p 8080:8080 -v $(pwd)/data:/app/data mahjong-autotable:autotabl
 ## Notes
 
 - Frontend modernization is optional and incremental; no forced rewrite in this scaffold.
-- Claim windows, kong variants, win validation, and scoring/settlement are still deferred to upcoming Changsha phases.
+- Full meld/win settlement and scoring remain deferred; current claim resolution is a safe phase-1 executable action (`pass` or `take-selected`).

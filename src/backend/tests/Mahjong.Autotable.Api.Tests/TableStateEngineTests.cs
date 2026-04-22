@@ -71,7 +71,7 @@ public class TableStateEngineTests
         var state = _engine.CreateInitialState(seed: 51);
         var initialStateVersion = state.StateVersion;
         var initialActionSequence = state.ActionSequence;
-        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        var tileId = FindDiscardTileWithoutClaimWindow(state, 0);
 
         var result = _engine.ApplyHumanDiscard(state, 0, tileId);
 
@@ -91,7 +91,7 @@ public class TableStateEngineTests
     {
         var state = _engine.CreateInitialState(seed: 72);
         var beforeHash = state.Integrity.StateHash;
-        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        var tileId = FindDiscardTileWithoutClaimWindow(state, 0);
 
         _engine.ApplyHumanDiscard(state, 0, tileId);
 
@@ -118,7 +118,8 @@ public class TableStateEngineTests
 
         var result = _engine.ApplyHumanDiscard(state, 0, discardTileId);
 
-        Assert.NotNull(result.DrawAction);
+        Assert.Null(result.DrawAction);
+        Assert.Equal(TableTurnPhase.AwaitingClaimResolution, state.Phase);
         var claimWindow = Assert.IsType<TableClaimWindowState>(state.ClaimWindow);
         Assert.Equal(result.DiscardAction.Sequence, claimWindow.SourceActionSequence);
         Assert.Equal(TableStateEngine.ClaimPrecedencePolicy, claimWindow.PrecedencePolicy);
@@ -150,7 +151,8 @@ public class TableStateEngineTests
 
         var result = _engine.ApplyHumanDiscard(state, 0, discardTileId);
 
-        Assert.NotNull(result.DrawAction);
+        Assert.Null(result.DrawAction);
+        Assert.Equal(TableTurnPhase.AwaitingClaimResolution, state.Phase);
         var claimWindow = Assert.IsType<TableClaimWindowState>(state.ClaimWindow);
         Assert.Contains(claimWindow.Opportunities, opportunity =>
             opportunity.SeatIndex == 1 && opportunity.ClaimType == TableClaimType.Chow);
@@ -180,7 +182,7 @@ public class TableStateEngineTests
     public void ReplayFromSeed_WithAcceptedActions_ReproducesIntegrityHash()
     {
         var state = _engine.CreateInitialState(seed: 104);
-        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        var tileId = FindDiscardTileWithoutClaimWindow(state, 0);
         _engine.ApplyHumanDiscard(state, 0, tileId);
         _engine.AdvanceBots(state, 12);
 
@@ -195,7 +197,7 @@ public class TableStateEngineTests
     public void ReplayFromSeed_WhenActionLogIsTampered_DoesNotMatchIntegrityHash()
     {
         var state = _engine.CreateInitialState(seed: 121);
-        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        var tileId = FindDiscardTileWithoutClaimWindow(state, 0);
         _engine.ApplyHumanDiscard(state, 0, tileId);
         state.ActionLog[0].Detail = "tampered-action";
         _engine.NormalizePersistedState(state, state.StateVersion);
@@ -209,7 +211,7 @@ public class TableStateEngineTests
     public void VerifyReplayIntegrity_WhenStateIsUntampered_ReturnsMatch()
     {
         var state = _engine.CreateInitialState(seed: 131);
-        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        var tileId = FindDiscardTileWithoutClaimWindow(state, 0);
         _engine.ApplyHumanDiscard(state, 0, tileId);
         _engine.AdvanceBots(state, 4);
 
@@ -225,7 +227,7 @@ public class TableStateEngineTests
     public void VerifyReplayIntegrity_WhenStateIsTampered_ReturnsMismatch()
     {
         var state = _engine.CreateInitialState(seed: 132);
-        var tileId = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        var tileId = FindDiscardTileWithoutClaimWindow(state, 0);
         _engine.ApplyHumanDiscard(state, 0, tileId);
         state.ActionLog[0].Detail = "tampered-action";
         _engine.NormalizePersistedState(state, state.StateVersion);
@@ -240,7 +242,7 @@ public class TableStateEngineTests
     public void ApplyHumanDiscard_AndBotAdvance_PreserveTileConservation()
     {
         var state = _engine.CreateInitialState(seed: 67);
-        var humanTile = state.Hands.Single(hand => hand.SeatIndex == 0).Tiles.Min();
+        var humanTile = FindDiscardTileWithoutClaimWindow(state, 0);
 
         var humanResult = _engine.ApplyHumanDiscard(state, 0, humanTile);
         Assert.NotNull(humanResult.DrawAction);
@@ -248,6 +250,60 @@ public class TableStateEngineTests
 
         var botResult = _engine.AdvanceBots(state, 20);
         Assert.NotEmpty(botResult.Actions);
+        Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
+    }
+
+    [Fact]
+    public void ResolveClaimWindow_WithPass_ClearsWindowAndContinuesFlow()
+    {
+        var state = _engine.CreateInitialState(seed: 240);
+
+        const int discardLogicalTile = 8;
+        var discardTileId = discardLogicalTile * 4;
+        var pungTileOne = discardTileId + 1;
+        var pungTileTwo = discardTileId + 2;
+
+        ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(state, 2, pungTileOne, pungTileTwo);
+
+        _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+
+        var result = _engine.ResolveClaimWindow(state, TableClaimResolutionDecisionValues.Pass);
+
+        Assert.Equal(TableClaimResolutionDecisionValues.Pass, result.AppliedDecision);
+        Assert.Equal("claim-resolve-pass", result.ResolutionAction.ActionType);
+        Assert.NotNull(result.DrawAction);
+        Assert.Null(state.ClaimWindow);
+        Assert.Equal(1, state.ActiveSeat);
+        Assert.Equal(TableTurnPhase.AwaitingDiscard, state.Phase);
+        Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
+    }
+
+    [Fact]
+    public void ResolveClaimWindow_WithTakeSelected_MovesControlToSelectedSeat()
+    {
+        var state = _engine.CreateInitialState(seed: 241);
+
+        const int discardLogicalTile = 3;
+        var discardTileId = discardLogicalTile * 4;
+        var pungTileOne = discardTileId + 1;
+        var pungTileTwo = discardTileId + 2;
+
+        ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(state, 2, pungTileOne, pungTileTwo);
+
+        _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+
+        var result = _engine.ResolveClaimWindow(state, TableClaimResolutionDecisionValues.TakeSelected);
+
+        Assert.Equal(TableClaimResolutionDecisionValues.TakeSelected, result.AppliedDecision);
+        Assert.Equal("claim-resolve-take-selected", result.ResolutionAction.ActionType);
+        Assert.Null(result.DrawAction);
+        Assert.Null(state.ClaimWindow);
+        Assert.Equal(2, state.ActiveSeat);
+        Assert.Equal(TableTurnPhase.AwaitingDiscard, state.Phase);
+        Assert.Contains(discardTileId, state.Hands.Single(hand => hand.SeatIndex == 2).Tiles);
+        Assert.DoesNotContain(state.DiscardPile, discard => discard.TileId == discardTileId && discard.SeatIndex == 0);
         Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
     }
 
@@ -408,5 +464,22 @@ public class TableStateEngineTests
 
             throw new InvalidOperationException($"Tile {tileId} not found in tracked state.");
         }
+    }
+
+    private int FindDiscardTileWithoutClaimWindow(TableGameState state, int seatIndex)
+    {
+        var serializer = new TableStateSerializer();
+        var hand = state.Hands.Single(currentHand => currentHand.SeatIndex == seatIndex);
+        foreach (var tileId in hand.Tiles.OrderBy(tile => tile))
+        {
+            var probe = serializer.Deserialize(serializer.Serialize(state));
+            var result = _engine.ApplyHumanDiscard(probe, seatIndex, tileId);
+            if (probe.ClaimWindow is null && result.DrawAction is not null)
+            {
+                return tileId;
+            }
+        }
+
+        throw new InvalidOperationException($"Seat {seatIndex} has no discard tile that avoids opening a claim window.");
     }
 }
