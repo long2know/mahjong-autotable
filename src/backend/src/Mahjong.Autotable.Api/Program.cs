@@ -28,9 +28,15 @@ app.UseStaticFiles();
 var autotablePath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "../../../frontend/autotable"));
 if (Directory.Exists(autotablePath))
 {
+    var autotableFileProvider = new PhysicalFileProvider(autotablePath);
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = autotableFileProvider,
+        RequestPath = "/autotable"
+    });
     app.UseStaticFiles(new StaticFileOptions
     {
-        FileProvider = new PhysicalFileProvider(autotablePath),
+        FileProvider = autotableFileProvider,
         RequestPath = "/autotable"
     });
 }

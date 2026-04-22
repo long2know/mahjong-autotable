@@ -10,7 +10,7 @@ src/
     Mahjong.Autotable.slnx
     src/Mahjong.Autotable.Api/      # .NET 10 API + static hosting
   frontend/
-    autotable/                      # baseline/autotable-first assets
+    autotable/                      # mirrored upstream autotable perspective assets
     modern/                         # optional React + Fluent UI 9 + TS + Vite shell
 infra/
   docker/
@@ -74,6 +74,7 @@ Key config (`appsettings.json`):
 
 - **Full stack (backend + modern frontend):** select `F5 Full Stack (Backend + Modern Frontend)`.
 - **Autotable baseline only:** select `Backend + Autotable Baseline`.
+- `.NET Backend` and `Backend + Autotable Baseline` both open the original autotable baseline (`/autotable/`).
 - Full stack F5 runs `npm install && npm run dev` for the modern frontend terminal session.
 - The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, exposed meld display per seat, claim-resolution panel with pass/take-selected actions, round-complete winner messaging for `hu` claims, one-click **Next hand** restart flow, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
 
