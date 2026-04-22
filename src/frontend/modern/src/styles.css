@@ -29,6 +29,26 @@ body {
   margin-top: 12px;
 }
 
+.perspective-row {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.perspective-row label {
+  font-size: 13px;
+  color: #444;
+}
+
+.perspective-row select {
+  border: 1px solid #c8ccd0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: #fff;
+  color: #1f1f1f;
+}
+
 .status-line {
   margin: 8px 0 0;
   color: #605e5c;
@@ -73,6 +93,12 @@ body {
 .seat-zone.active {
   border-color: #0f6cbd;
   box-shadow: 0 0 0 2px rgba(15, 108, 189, 0.2);
+}
+
+.seat-zone.viewer {
+  border-style: solid;
+  border-color: #8764b8;
+  box-shadow: 0 0 0 2px rgba(135, 100, 184, 0.2);
 }
 
 .seat-zone header {
