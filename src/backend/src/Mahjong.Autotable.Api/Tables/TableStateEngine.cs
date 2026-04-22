@@ -8,6 +8,7 @@ public interface ITableStateEngine
     ReplayVerificationResult VerifyReplayIntegrity(TableGameState snapshot);
     DiscardActionResult ApplyHumanDiscard(TableGameState state, int seatIndex, int tileId);
     BotAdvanceResult AdvanceBots(TableGameState state, int maxActions);
+    BotAdvanceResult AdvanceBotsUntilHumanTurnOrWallExhausted(TableGameState state);
 }
 
 public sealed class DiscardActionResult
@@ -213,6 +214,43 @@ public sealed class TableStateEngine : ITableStateEngine
             Actions = actions,
             StopReason = BotAdvanceStopReason.MaxActionsReached
         };
+    }
+
+    public BotAdvanceResult AdvanceBotsUntilHumanTurnOrWallExhausted(TableGameState state)
+    {
+        ValidateState(state);
+        var actions = new List<TableAction>();
+
+        while (true)
+        {
+            if (state.Phase == TableTurnPhase.WallExhausted)
+            {
+                return new BotAdvanceResult
+                {
+                    Actions = actions,
+                    StopReason = BotAdvanceStopReason.WallExhausted
+                };
+            }
+
+            var seat = GetSeat(state, state.ActiveSeat);
+            if (seat.SeatType == TableSeatType.Human)
+            {
+                return new BotAdvanceResult
+                {
+                    Actions = actions,
+                    StopReason = BotAdvanceStopReason.HumanTurn
+                };
+            }
+
+            var hand = GetHandForSeat(state, seat.SeatIndex);
+            var tileId = hand.Tiles.Min();
+            var result = ApplyDiscard(state, seat.SeatIndex, tileId, TableSeatType.Bot);
+            actions.Add(result.DiscardAction);
+            if (result.DrawAction is not null)
+            {
+                actions.Add(result.DrawAction);
+            }
+        }
     }
 
     private static HashSet<int> NormalizeBots(IReadOnlyCollection<int>? botSeatIndexes)

@@ -9,3 +9,4 @@
 
 - Team initialized with Hicks as Frontend Dev.
 - Frontend approach starts from autotable behavior and adds targeted modernization only when it is low-risk.
+- Modern frontend now uses a graphical 4-seat table layout with clickable tile faces and automatic bot progression until the next human turn.

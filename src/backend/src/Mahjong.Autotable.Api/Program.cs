@@ -149,7 +149,9 @@ app.MapPost("/api/tables/{id:guid}/bots/advance", async (
     BotAdvanceResult result;
     try
     {
-        result = engine.AdvanceBots(state, request.MaxActions);
+        result = request.AdvanceUntilHumanTurnOrWallExhausted
+            ? engine.AdvanceBotsUntilHumanTurnOrWallExhausted(state)
+            : engine.AdvanceBots(state, request.MaxActions);
     }
     catch (TableRuleException exception)
     {

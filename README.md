@@ -37,6 +37,8 @@ infra/
     - Rejections return structured contract payloads (`code`, `message`, `stateVersion`, `actionSequence`, `correlationId`).
     - Error codes now include `ROUND_NOT_ACTIVE`, `INVALID_PHASE`, `NOT_ACTIVE_SEAT`, `SEAT_NOT_FOUND`, `TILE_NOT_IN_HAND`, `CONCURRENCY_CONFLICT`, and `STATE_INVARIANT_BROKEN`.
   - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `MaxActionsReached`, `WallExhausted`).
+    - Request: `{ "advanceUntilHumanTurnOrWallExhausted": true }` (default) to safely run until the next human decision point without client-side action budgeting.
+    - Optional capped mode: `{ "advanceUntilHumanTurnOrWallExhausted": false, "maxActions": 8 }`.
   - `GET /api/tables/{id}/events` returns the append-only persisted action stream (`sequence`, action payload, `stateVersion`, `stateHash`, and timestamps).
     - Query options: `afterSequence` (exclusive lower bound) and `limit` (max 500, default 200).
   - `POST /api/tables/{id}/replay/verify` replays accepted discard actions from seed and returns integrity comparison metadata (`integrityMatch`, `expectedStateHash`, `replayedStateHash`).
@@ -57,7 +59,7 @@ Key config (`appsettings.json`):
 - **Full stack (backend + modern frontend):** select `F5 Full Stack (Backend + Modern Frontend)`.
 - **Autotable baseline only:** select `Backend + Autotable Baseline`.
 - Full stack F5 runs `npm install && npm run dev` for the modern frontend terminal session.
-- The modern frontend currently provides a backend-wired control panel (create table, discard, advance bots, replay verify, and event stream inspection) while full tabletop UI integration continues.
+- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, clickable human hand, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools).
 
 ### CLI
 

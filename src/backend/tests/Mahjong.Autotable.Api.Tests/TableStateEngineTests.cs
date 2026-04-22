@@ -232,6 +232,36 @@ public class TableStateEngineTests
     }
 
     [Fact]
+    public void AdvanceBotsUntilHumanTurnOrWallExhausted_FromBotTurn_AdvancesToHuman()
+    {
+        var state = _engine.CreateInitialState(seed: 41);
+        state.ActiveSeat = 1;
+
+        var result = _engine.AdvanceBotsUntilHumanTurnOrWallExhausted(state);
+
+        Assert.Equal(BotAdvanceStopReason.HumanTurn, result.StopReason);
+        Assert.Equal(6, result.Actions.Count);
+        Assert.Equal(0, state.ActiveSeat);
+        Assert.Equal(TableTurnPhase.AwaitingDiscard, state.Phase);
+        Assert.Equal(TableStateEngine.TotalTiles, CountTrackedTiles(state));
+    }
+
+    [Fact]
+    public void AdvanceBotsUntilHumanTurnOrWallExhausted_WhenWallIsExhausted_Halts()
+    {
+        var state = _engine.CreateInitialState(seed: 42);
+        state.ActiveSeat = 1;
+        ExhaustWallPreservingTileConservation(state);
+
+        var result = _engine.AdvanceBotsUntilHumanTurnOrWallExhausted(state);
+
+        Assert.Equal(BotAdvanceStopReason.WallExhausted, result.StopReason);
+        Assert.Single(result.Actions);
+        Assert.Equal("discard", result.Actions[0].ActionType);
+        Assert.Equal(TableTurnPhase.WallExhausted, state.Phase);
+    }
+
+    [Fact]
     public void CreateInitialState_AllBots_ThrowsArgumentException()
     {
         Assert.Throws<ArgumentException>(() => _engine.CreateInitialState([0, 1, 2, 3]));
