@@ -460,6 +460,57 @@ public class TableStateEngineTests
     }
 
     [Fact]
+    public void AdvanceBots_WhenClaimWindowSelectedBot_AutoResolvesTakeSelected()
+    {
+        var state = _engine.CreateInitialState(seed: 246);
+
+        const int discardLogicalTile = 7;
+        var discardTileId = discardLogicalTile * 4;
+        var pungTileOne = discardTileId + 1;
+        var pungTileTwo = discardTileId + 2;
+        var spareCopy = discardTileId + 3;
+
+        ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(state, 1, spareCopy);
+        ForceTilesIntoSeat(state, 2, pungTileOne, pungTileTwo);
+
+        _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+
+        var result = _engine.AdvanceBots(state, 1);
+
+        Assert.Equal(BotAdvanceStopReason.MaxActionsReached, result.StopReason);
+        var resolutionAction = Assert.Single(result.Actions);
+        Assert.Equal("claim-resolve-take-selected", resolutionAction.ActionType);
+        Assert.Equal(2, state.ActiveSeat);
+        Assert.Equal(TableTurnPhase.AwaitingDiscard, state.Phase);
+    }
+
+    [Fact]
+    public void AdvanceBots_WhenClaimWindowSelectedHuman_RequiresManualResolution()
+    {
+        var state = _engine.CreateInitialState(botSeatIndexes: [2, 3], seed: 247);
+
+        const int discardLogicalTile = 5;
+        var discardTileId = discardLogicalTile * 4;
+        var pungTileOne = discardTileId + 1;
+        var pungTileTwo = discardTileId + 2;
+        var spareCopy = discardTileId + 3;
+
+        ForceTilesIntoSeat(state, 0, discardTileId);
+        ForceTilesIntoSeat(state, 1, pungTileOne, pungTileTwo, spareCopy);
+
+        _ = _engine.ApplyHumanDiscard(state, 0, discardTileId);
+        var selected = Assert.IsType<TableClaimOpportunity>(state.ClaimWindow?.SelectedOpportunity);
+        Assert.Equal(1, selected.SeatIndex);
+
+        var result = _engine.AdvanceBots(state, 8);
+
+        Assert.Empty(result.Actions);
+        Assert.Equal(BotAdvanceStopReason.ClaimResolutionRequired, result.StopReason);
+        Assert.Equal(TableTurnPhase.AwaitingClaimResolution, state.Phase);
+    }
+
+    [Fact]
     public void AdvanceBots_WhenRoundIsComplete_HaltsWithoutActions()
     {
         var state = _engine.CreateInitialState(seed: 245);

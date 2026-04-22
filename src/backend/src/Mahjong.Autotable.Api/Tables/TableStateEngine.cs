@@ -247,11 +247,33 @@ public sealed class TableStateEngine : ITableStateEngine
 
             if (state.Phase == TableTurnPhase.AwaitingClaimResolution)
             {
-                return new BotAdvanceResult
+                if (!CanAutoResolveClaimWindowForBot(state))
                 {
-                    Actions = actions,
-                    StopReason = BotAdvanceStopReason.ClaimResolutionRequired
-                };
+                    return new BotAdvanceResult
+                    {
+                        Actions = actions,
+                        StopReason = BotAdvanceStopReason.ClaimResolutionRequired
+                    };
+                }
+
+                var resolutionActionCost = GetClaimResolutionActionCost(state);
+                if (actions.Count + resolutionActionCost > boundedActions)
+                {
+                    return new BotAdvanceResult
+                    {
+                        Actions = actions,
+                        StopReason = BotAdvanceStopReason.MaxActionsReached
+                    };
+                }
+
+                var resolution = ResolveClaimWindow(state, TableClaimResolutionDecisionValues.TakeSelected);
+                actions.Add(resolution.ResolutionAction);
+                if (resolution.DrawAction is not null)
+                {
+                    actions.Add(resolution.DrawAction);
+                }
+
+                continue;
             }
 
             if (state.Phase == TableTurnPhase.WallExhausted)
@@ -327,11 +349,23 @@ public sealed class TableStateEngine : ITableStateEngine
 
             if (state.Phase == TableTurnPhase.AwaitingClaimResolution)
             {
-                return new BotAdvanceResult
+                if (!CanAutoResolveClaimWindowForBot(state))
                 {
-                    Actions = actions,
-                    StopReason = BotAdvanceStopReason.ClaimResolutionRequired
-                };
+                    return new BotAdvanceResult
+                    {
+                        Actions = actions,
+                        StopReason = BotAdvanceStopReason.ClaimResolutionRequired
+                    };
+                }
+
+                var resolution = ResolveClaimWindow(state, TableClaimResolutionDecisionValues.TakeSelected);
+                actions.Add(resolution.ResolutionAction);
+                if (resolution.DrawAction is not null)
+                {
+                    actions.Add(resolution.DrawAction);
+                }
+
+                continue;
             }
 
             if (state.Phase == TableTurnPhase.WallExhausted)
@@ -362,6 +396,29 @@ public sealed class TableStateEngine : ITableStateEngine
                 actions.Add(result.DrawAction);
             }
         }
+    }
+
+    private static bool CanAutoResolveClaimWindowForBot(TableGameState state)
+    {
+        var selected = state.ClaimWindow?.SelectedOpportunity;
+        if (selected is null)
+        {
+            return false;
+        }
+
+        var selectedSeat = GetSeat(state, selected.SeatIndex);
+        return selectedSeat.SeatType == TableSeatType.Bot;
+    }
+
+    private static int GetClaimResolutionActionCost(TableGameState state)
+    {
+        var selectedClaimType = state.ClaimWindow?.SelectedOpportunity?.ClaimType;
+        if (selectedClaimType == TableClaimType.Kong && state.Wall.Count > 0)
+        {
+            return 2;
+        }
+
+        return 1;
     }
 
     private static HashSet<int> NormalizeBots(IReadOnlyCollection<int>? botSeatIndexes)
