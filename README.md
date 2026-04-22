@@ -43,7 +43,8 @@ infra/
   - `POST /api/tables/{id}/claims/resolve` resolves an open claim window with deterministic phase-1 behavior.
     - Request: `{ "decision": "pass", "expectedStateVersion": 4 }` or `{ "decision": "take-selected", "expectedStateVersion": 4 }`.
     - `pass` clears the window and continues normal flow (next seat draw/discard turn).
-    - `take-selected` assigns control to the selected claim seat and keeps play deterministic without full meld/scoring settlement.
+    - `take-selected` now applies exposed meld semantics for `pung` / `chow` / `kong` (consumes claim tiles from concealed hand, removes claimed discard, and records an exposed meld on the claiming seat).
+    - `kong` claims perform a deterministic supplemental draw when wall tiles remain.
     - Response includes updated `table`, `appliedDecision`, and emitted action metadata (`resolutionAction`, optional `drawAction`).
   - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `ClaimResolutionRequired`, `MaxActionsReached`, `WallExhausted`).
     - Request: `{ "advanceUntilHumanTurnOrWallExhausted": true }` (default) to safely run until the next human decision point without client-side action budgeting.
@@ -69,7 +70,7 @@ Key config (`appsettings.json`):
 - **Full stack (backend + modern frontend):** select `F5 Full Stack (Backend + Modern Frontend)`.
 - **Autotable baseline only:** select `Backend + Autotable Baseline`.
 - Full stack F5 runs `npm install && npm run dev` for the modern frontend terminal session.
-- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, claim-resolution panel with pass/take-selected actions, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
+- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, exposed meld display per seat, claim-resolution panel with pass/take-selected actions, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
 
 ### CLI
 
@@ -110,4 +111,4 @@ docker run --rm -p 8080:8080 -v $(pwd)/data:/app/data mahjong-autotable:autotabl
 ## Notes
 
 - Frontend modernization is optional and incremental; no forced rewrite in this scaffold.
-- Full meld/win settlement and scoring remain deferred; current claim resolution is a safe phase-1 executable action (`pass` or `take-selected`).
+- Win settlement and scoring remain deferred; claim resolution now executes deterministic meld application while broader Changsha settlement remains in follow-up phases.

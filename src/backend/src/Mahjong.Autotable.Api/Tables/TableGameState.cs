@@ -86,6 +86,21 @@ public sealed class TableClaimWindowState
     public TableClaimOpportunity? SelectedOpportunity { get; set; }
 }
 
+public sealed class TableMeldState
+{
+    public TableClaimType ClaimType { get; set; }
+    public List<int> TileIds { get; set; } = [];
+    public int ClaimedFromSeatIndex { get; set; }
+    public int SourceTurnNumber { get; set; }
+    public long SourceActionSequence { get; set; }
+}
+
+public sealed class TableSeatMeldState
+{
+    public int SeatIndex { get; set; }
+    public List<TableMeldState> Melds { get; set; } = [];
+}
+
 public sealed class TableAction
 {
     public long Sequence { get; set; }
@@ -112,6 +127,7 @@ public sealed class TableGameState
     public List<int> Wall { get; set; } = [];
     public List<TableSeatState> Seats { get; set; } = [];
     public List<TableSeatHandState> Hands { get; set; } = [];
+    public List<TableSeatMeldState> ExposedMelds { get; set; } = [];
     public List<TableDiscard> DiscardPile { get; set; } = [];
     public TableClaimWindowState? ClaimWindow { get; set; }
     public List<TableAction> ActionLog { get; set; } = [];

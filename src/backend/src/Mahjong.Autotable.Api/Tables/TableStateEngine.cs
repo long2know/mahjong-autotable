@@ -38,6 +38,8 @@ public sealed class TableStateEngine : ITableStateEngine
 {
     private const string ClaimResolvePassActionType = "claim-resolve-pass";
     private const string ClaimResolveTakeSelectedActionType = "claim-resolve-take-selected";
+    private const string ClaimTakeSelectedDetailPrefix = "take-selected-v2:";
+    private const string ClaimTakeSelectedLegacyDetailPrefix = "take-selected:";
     public const int SeatCount = 4;
     public const int TotalTiles = 136;
     public const string RngAlgorithmId = "fisher-yates-v1";
@@ -60,6 +62,9 @@ public sealed class TableStateEngine : ITableStateEngine
         var wall = CreateShuffledWall(resolvedSeed);
         var hands = Enumerable.Range(0, SeatCount)
             .Select(index => new TableSeatHandState { SeatIndex = index })
+            .ToList();
+        var exposedMelds = Enumerable.Range(0, SeatCount)
+            .Select(index => new TableSeatMeldState { SeatIndex = index })
             .ToList();
 
         for (var round = 0; round < 13; round++)
@@ -86,6 +91,7 @@ public sealed class TableStateEngine : ITableStateEngine
             },
             Seats = seats,
             Hands = hands,
+            ExposedMelds = exposedMelds,
             Wall = wall
         };
 
@@ -95,6 +101,8 @@ public sealed class TableStateEngine : ITableStateEngine
 
     public void NormalizePersistedState(TableGameState state, int persistedStateVersion)
     {
+        state.ExposedMelds ??= [];
+        EnsureSeatMeldCollections(state);
         ValidateState(state);
         state.StateVersion = Math.Max(state.StateVersion, persistedStateVersion);
         state.ActionSequence = Math.Max(state.ActionSequence, GetMaxActionSequence(state));
@@ -157,7 +165,11 @@ public sealed class TableStateEngine : ITableStateEngine
 
             if (action.ActionType.Equals(ClaimResolveTakeSelectedActionType, StringComparison.OrdinalIgnoreCase))
             {
-                _ = ResolveClaimWindow(replay, TableClaimResolutionDecisionValues.TakeSelected);
+                var replayLegacyTakeSelected = IsLegacyTakeSelectedDetail(action.Detail);
+                _ = ResolveClaimWindowInternal(
+                    replay,
+                    TableClaimResolutionDecisionValues.TakeSelected,
+                    replayLegacyTakeSelected);
             }
         }
 
@@ -185,6 +197,14 @@ public sealed class TableStateEngine : ITableStateEngine
 
     public ClaimResolutionResult ResolveClaimWindow(TableGameState state, string decision)
     {
+        return ResolveClaimWindowInternal(state, decision, replayLegacyTakeSelected: false);
+    }
+
+    private static ClaimResolutionResult ResolveClaimWindowInternal(
+        TableGameState state,
+        string decision,
+        bool replayLegacyTakeSelected)
+    {
         ValidateState(state);
 
         if (state.Phase == TableTurnPhase.WallExhausted)
@@ -201,7 +221,9 @@ public sealed class TableStateEngine : ITableStateEngine
         return normalizedDecision switch
         {
             TableClaimResolutionDecisionValues.Pass => ApplyClaimPass(state),
-            TableClaimResolutionDecisionValues.TakeSelected => ApplyClaimTakeSelected(state),
+            TableClaimResolutionDecisionValues.TakeSelected => replayLegacyTakeSelected
+                ? ApplyClaimTakeSelectedLegacy(state)
+                : ApplyClaimTakeSelected(state),
             _ => throw new InvalidOperationException($"Unsupported claim resolution decision '{normalizedDecision}'.")
         };
     }
@@ -350,6 +372,26 @@ public sealed class TableStateEngine : ITableStateEngine
         return set;
     }
 
+    private static void EnsureSeatMeldCollections(TableGameState state)
+    {
+        var existingSeatIndexes = state.ExposedMelds
+            .Select(seatMelds => seatMelds.SeatIndex)
+            .ToHashSet();
+
+        foreach (var seatIndex in Enumerable.Range(0, SeatCount))
+        {
+            if (existingSeatIndexes.Contains(seatIndex))
+            {
+                continue;
+            }
+
+            state.ExposedMelds.Add(new TableSeatMeldState
+            {
+                SeatIndex = seatIndex
+            });
+        }
+    }
+
     private static void ValidateState(TableGameState state)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -382,7 +424,20 @@ public sealed class TableStateEngine : ITableStateEngine
             ThrowInvariant(state, "Hand seat indexes must map to 0-3 exactly once.");
         }
 
-        var trackedTiles = state.Wall.Count + state.Hands.Sum(hand => hand.Tiles.Count) + state.DiscardPile.Count;
+        state.ExposedMelds ??= [];
+        var meldSeatIndexes = state.ExposedMelds.Select(seatMelds => seatMelds.SeatIndex).ToArray();
+        if (meldSeatIndexes.Any(index => index is < 0 or >= SeatCount))
+        {
+            ThrowInvariant(state, "Meld seat indexes must be between 0 and 3.");
+        }
+
+        if (meldSeatIndexes.Length != meldSeatIndexes.Distinct().Count())
+        {
+            ThrowInvariant(state, "Meld seat indexes must be unique.");
+        }
+
+        var meldTileCount = state.ExposedMelds.Sum(seatMelds => seatMelds.Melds.Sum(meld => meld.TileIds.Count));
+        var trackedTiles = state.Wall.Count + state.Hands.Sum(hand => hand.Tiles.Count) + state.DiscardPile.Count + meldTileCount;
         if (trackedTiles != TotalTiles)
         {
             ThrowInvariant(state, "Tile conservation invariant failed.");
@@ -606,6 +661,17 @@ public sealed class TableStateEngine : ITableStateEngine
         return hasLowerRun || hasMiddleRun || hasUpperRun;
     }
 
+    private static bool IsLegacyTakeSelectedDetail(string detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            return true;
+        }
+
+        return detail.StartsWith(ClaimTakeSelectedLegacyDetailPrefix, StringComparison.OrdinalIgnoreCase)
+            && !detail.StartsWith(ClaimTakeSelectedDetailPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string NormalizeClaimDecision(TableGameState state, string decision)
     {
         if (string.IsNullOrWhiteSpace(decision))
@@ -681,6 +747,74 @@ public sealed class TableStateEngine : ITableStateEngine
 
         var selected = claimWindow.SelectedOpportunity;
         var claimantHand = GetHandForSeat(state, selected.SeatIndex);
+        var consumedTiles = ConsumeMeldTilesFromHand(state, claimantHand, claimWindow.DiscardTileId, selected.ClaimType);
+        var meldTileIds = consumedTiles
+            .Append(claimWindow.DiscardTileId)
+            .OrderBy(tileId => tileId / 4)
+            .ThenBy(tileId => tileId)
+            .ToList();
+
+        var seatMelds = GetOrCreateSeatMelds(state, selected.SeatIndex);
+        seatMelds.Melds.Add(new TableMeldState
+        {
+            ClaimType = selected.ClaimType,
+            TileIds = meldTileIds,
+            ClaimedFromSeatIndex = claimWindow.DiscardSeatIndex,
+            SourceTurnNumber = claimWindow.DiscardTurnNumber,
+            SourceActionSequence = claimWindow.SourceActionSequence
+        });
+
+        var resolutionAction = AppendAction(
+            state,
+            selected.SeatIndex,
+            claimWindow.DiscardTurnNumber,
+            ClaimResolveTakeSelectedActionType,
+            claimWindow.DiscardTileId,
+            $"{ClaimTakeSelectedDetailPrefix}{selected.SeatIndex}:{selected.ClaimType.ToString().ToLowerInvariant()}");
+
+        state.ClaimWindow = null;
+        state.ActiveSeat = selected.SeatIndex;
+        state.Phase = TableTurnPhase.AwaitingDiscard;
+        RefreshIntegrity(state);
+        resolutionAction.StateHash = state.Integrity.StateHash;
+
+        TableAction? drawAction = null;
+        if (selected.ClaimType == TableClaimType.Kong)
+        {
+            if (state.Wall.Count == 0)
+            {
+                state.Phase = TableTurnPhase.WallExhausted;
+                RefreshIntegrity(state);
+                resolutionAction.StateHash = state.Integrity.StateHash;
+            }
+            else
+            {
+                drawAction = DrawForActiveSeat(state);
+                RefreshIntegrity(state);
+                drawAction.StateHash = state.Integrity.StateHash;
+            }
+        }
+
+        return new ClaimResolutionResult
+        {
+            AppliedDecision = TableClaimResolutionDecisionValues.TakeSelected,
+            ResolutionAction = resolutionAction,
+            DrawAction = drawAction
+        };
+    }
+
+    private static ClaimResolutionResult ApplyClaimTakeSelectedLegacy(TableGameState state)
+    {
+        var claimWindow = state.ClaimWindow!;
+        if (claimWindow.SelectedOpportunity is null)
+        {
+            ThrowRule(state, TableActionErrorCodes.ClaimSelectionUnavailable, "No selected claim opportunity is available.");
+        }
+
+        RemoveClaimedDiscard(state, claimWindow);
+
+        var selected = claimWindow.SelectedOpportunity;
+        var claimantHand = GetHandForSeat(state, selected.SeatIndex);
         claimantHand.Tiles.Add(claimWindow.DiscardTileId);
 
         var resolutionAction = AppendAction(
@@ -703,6 +837,146 @@ public sealed class TableStateEngine : ITableStateEngine
             ResolutionAction = resolutionAction,
             DrawAction = null
         };
+    }
+
+    private static IReadOnlyList<int> ConsumeMeldTilesFromHand(
+        TableGameState state,
+        TableSeatHandState claimantHand,
+        int discardTileId,
+        TableClaimType claimType)
+    {
+        var discardLogical = discardTileId / 4;
+        return claimType switch
+        {
+            TableClaimType.Pung => RemoveMatchingTilesForClaim(state, claimantHand, discardLogical, 2, "pung"),
+            TableClaimType.Kong => RemoveMatchingTilesForClaim(state, claimantHand, discardLogical, 3, "kong"),
+            TableClaimType.Chow => RemoveChowTilesForClaim(state, claimantHand, discardLogical),
+            TableClaimType.Hu => ThrowUnsupportedHuClaim(state),
+            _ => ThrowUnknownClaimType(state, claimType)
+        };
+    }
+
+    private static IReadOnlyList<int> RemoveMatchingTilesForClaim(
+        TableGameState state,
+        TableSeatHandState claimantHand,
+        int discardLogical,
+        int count,
+        string claimName)
+    {
+        var matches = claimantHand.Tiles
+            .Where(tileId => tileId / 4 == discardLogical)
+            .OrderBy(tileId => tileId)
+            .Take(count)
+            .ToList();
+        if (matches.Count != count)
+        {
+            ThrowInvariant(state, $"Seat {claimantHand.SeatIndex} cannot satisfy {claimName} claim for tile {discardLogical}.");
+        }
+
+        foreach (var tileId in matches)
+        {
+            claimantHand.Tiles.Remove(tileId);
+        }
+
+        return matches;
+    }
+
+    private static IReadOnlyList<int> RemoveChowTilesForClaim(
+        TableGameState state,
+        TableSeatHandState claimantHand,
+        int discardLogical)
+    {
+        foreach (var (leftLogical, rightLogical) in GetChowPairCandidates(discardLogical))
+        {
+            if (TryTakeChowTilePair(claimantHand, leftLogical, rightLogical, out var tiles))
+            {
+                return tiles;
+            }
+        }
+
+        ThrowInvariant(state, $"Seat {claimantHand.SeatIndex} cannot satisfy chow claim for tile {discardLogical}.");
+        return [];
+    }
+
+    private static bool TryTakeChowTilePair(
+        TableSeatHandState claimantHand,
+        int leftLogical,
+        int rightLogical,
+        out IReadOnlyList<int> tiles)
+    {
+        var leftTileId = claimantHand.Tiles
+            .Where(tileId => tileId / 4 == leftLogical)
+            .OrderBy(tileId => tileId)
+            .FirstOrDefault(-1);
+        if (leftTileId < 0)
+        {
+            tiles = [];
+            return false;
+        }
+
+        var rightTileId = claimantHand.Tiles
+            .Where(tileId => tileId / 4 == rightLogical)
+            .OrderBy(tileId => tileId)
+            .FirstOrDefault(-1);
+        if (rightTileId < 0)
+        {
+            tiles = [];
+            return false;
+        }
+
+        claimantHand.Tiles.Remove(leftTileId);
+        claimantHand.Tiles.Remove(rightTileId);
+        tiles = leftTileId <= rightTileId
+            ? [leftTileId, rightTileId]
+            : [rightTileId, leftTileId];
+        return true;
+    }
+
+    private static IEnumerable<(int LeftLogical, int RightLogical)> GetChowPairCandidates(int discardLogical)
+    {
+        var rank = discardLogical % 9;
+        if (rank >= 2)
+        {
+            yield return (discardLogical - 2, discardLogical - 1);
+        }
+
+        if (rank >= 1 && rank <= 7)
+        {
+            yield return (discardLogical - 1, discardLogical + 1);
+        }
+
+        if (rank <= 6)
+        {
+            yield return (discardLogical + 1, discardLogical + 2);
+        }
+    }
+
+    private static IReadOnlyList<int> ThrowUnsupportedHuClaim(TableGameState state)
+    {
+        ThrowRule(state, TableActionErrorCodes.ClaimSelectionUnavailable, "Hu claim resolution is not yet implemented.");
+        return [];
+    }
+
+    private static IReadOnlyList<int> ThrowUnknownClaimType(TableGameState state, TableClaimType claimType)
+    {
+        ThrowInvariant(state, $"Unknown claim type '{claimType}'.");
+        return [];
+    }
+
+    private static TableSeatMeldState GetOrCreateSeatMelds(TableGameState state, int seatIndex)
+    {
+        var seatMelds = state.ExposedMelds.SingleOrDefault(current => current.SeatIndex == seatIndex);
+        if (seatMelds is not null)
+        {
+            return seatMelds;
+        }
+
+        var created = new TableSeatMeldState
+        {
+            SeatIndex = seatIndex
+        };
+        state.ExposedMelds.Add(created);
+        return created;
     }
 
     private static void RemoveClaimedDiscard(TableGameState state, TableClaimWindowState claimWindow)

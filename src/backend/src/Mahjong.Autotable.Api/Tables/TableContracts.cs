@@ -89,6 +89,7 @@ public sealed record TableSeatViewState(
     int WallCount,
     IReadOnlyList<TableSeatState> Seats,
     IReadOnlyList<TableSeatViewHand> Hands,
+    IReadOnlyList<TableSeatMeldState> ExposedMelds,
     IReadOnlyList<TableDiscard> DiscardPile,
     TableLastActionState? LastAction,
     TableClaimWindowState? ClaimWindow);
@@ -169,6 +170,9 @@ public static class TableMappings
                 state.Wall.Count,
                 state.Seats.OrderBy(seat => seat.SeatIndex).ToList(),
                 projectedHands,
+                (state.ExposedMelds ?? [])
+                    .OrderBy(seatMelds => seatMelds.SeatIndex)
+                    .ToList(),
                 state.DiscardPile.ToList(),
                 state.LastAction,
                 state.ClaimWindow));
