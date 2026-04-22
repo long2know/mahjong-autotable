@@ -197,7 +197,7 @@ public sealed class TableStateEngine : ITableStateEngine
             }
 
             var hand = GetHandForSeat(state, seat.SeatIndex);
-            var tileId = hand.Tiles.Min();
+            var tileId = SelectBotDiscardTile(hand.Tiles);
             var result = ApplyDiscard(state, seat.SeatIndex, tileId, TableSeatType.Bot);
             actions.Add(result.DiscardAction);
             if (result.DrawAction is not null)
@@ -249,7 +249,7 @@ public sealed class TableStateEngine : ITableStateEngine
             }
 
             var hand = GetHandForSeat(state, seat.SeatIndex);
-            var tileId = hand.Tiles.Min();
+            var tileId = SelectBotDiscardTile(hand.Tiles);
             var result = ApplyDiscard(state, seat.SeatIndex, tileId, TableSeatType.Bot);
             actions.Add(result.DiscardAction);
             if (result.DrawAction is not null)
@@ -594,6 +594,62 @@ public sealed class TableStateEngine : ITableStateEngine
         var tileId = wall[lastIndex];
         wall.RemoveAt(lastIndex);
         return tileId;
+    }
+
+    private static int SelectBotDiscardTile(IReadOnlyList<int> tiles)
+    {
+        if (tiles.Count == 0)
+        {
+            throw new InvalidOperationException("Bot hand cannot be empty.");
+        }
+
+        var logicalCounts = tiles
+            .GroupBy(tileId => tileId / 4)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        return tiles
+            .OrderBy(tileId => ComputeBotTileKeepScore(tileId, logicalCounts))
+            .ThenByDescending(tileId => tileId)
+            .First();
+    }
+
+    private static int ComputeBotTileKeepScore(int tileId, IReadOnlyDictionary<int, int> logicalCounts)
+    {
+        var logicalTile = tileId / 4;
+        var keepScore = 0;
+
+        if (logicalCounts.TryGetValue(logicalTile, out var duplicateCount) && duplicateCount > 1)
+        {
+            keepScore += (duplicateCount - 1) * 6;
+        }
+
+        if (logicalTile >= 27)
+        {
+            return keepScore;
+        }
+
+        var rank = logicalTile % 9;
+        if (rank > 0 && logicalCounts.ContainsKey(logicalTile - 1))
+        {
+            keepScore += 3;
+        }
+
+        if (rank < 8 && logicalCounts.ContainsKey(logicalTile + 1))
+        {
+            keepScore += 3;
+        }
+
+        if (rank > 1 && logicalCounts.ContainsKey(logicalTile - 2))
+        {
+            keepScore += 1;
+        }
+
+        if (rank < 7 && logicalCounts.ContainsKey(logicalTile + 2))
+        {
+            keepScore += 1;
+        }
+
+        return keepScore;
     }
 
     private static TableAction AppendAction(

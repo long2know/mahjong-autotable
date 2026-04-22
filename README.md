@@ -43,6 +43,7 @@ infra/
   - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `MaxActionsReached`, `WallExhausted`).
     - Request: `{ "advanceUntilHumanTurnOrWallExhausted": true }` (default) to safely run until the next human decision point without client-side action budgeting.
     - Optional capped mode: `{ "advanceUntilHumanTurnOrWallExhausted": false, "maxActions": 8 }`.
+    - Bot discard selection now uses deterministic hand-shape heuristics (set/sequence retention) instead of always dropping the minimum tile id.
   - `GET /api/tables/{id}/events` returns the append-only persisted action stream (`sequence`, action payload, `stateVersion`, `stateHash`, and timestamps).
     - Query options: `afterSequence` (exclusive lower bound) and `limit` (max 500, default 200).
   - `POST /api/tables/{id}/replay/verify` replays accepted discard actions from seed and returns integrity comparison metadata (`integrityMatch`, `expectedStateHash`, `replayedStateHash`).

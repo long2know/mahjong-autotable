@@ -266,6 +266,21 @@ public class TableStateEngineTests
     }
 
     [Fact]
+    public void AdvanceBots_HeuristicDoesNotBreakPairsByDefault()
+    {
+        var state = _engine.CreateInitialState(seed: 77);
+        state.ActiveSeat = 1;
+
+        ForceTilesIntoSeat(state, 1, 0, 1);
+
+        var result = _engine.AdvanceBots(state, 2);
+
+        var discardAction = Assert.Single(result.Actions, action => action.ActionType == "discard");
+        Assert.NotNull(discardAction.TileId);
+        Assert.DoesNotContain(discardAction.TileId!.Value, new[] { 0, 1 });
+    }
+
+    [Fact]
     public void AdvanceBots_WhenMaxActionsCannotFitFullTurn_DoesNotPartiallyAdvance()
     {
         var state = _engine.CreateInitialState(seed: 22);
