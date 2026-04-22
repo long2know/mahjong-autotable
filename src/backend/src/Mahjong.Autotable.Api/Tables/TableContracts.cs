@@ -7,7 +7,9 @@ public sealed record CreateTableRequest(
     IReadOnlyList<int>? BotSeatIndexes = null,
     int? Seed = null);
 
-public sealed record AdvanceBotsRequest(int MaxActions = 8);
+public sealed record AdvanceBotsRequest(
+    int MaxActions = 8,
+    bool AdvanceUntilHumanTurnOrWallExhausted = true);
 
 public sealed record DiscardActionRequest(int SeatIndex, int TileId, int? ExpectedStateVersion = null);
 
