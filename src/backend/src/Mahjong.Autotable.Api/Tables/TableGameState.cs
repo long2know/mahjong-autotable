@@ -17,6 +17,7 @@ public enum TableTurnPhase
 {
     AwaitingDiscard,
     AwaitingClaimResolution,
+    RoundComplete,
     WallExhausted
 }
 
@@ -101,6 +102,16 @@ public sealed class TableSeatMeldState
     public List<TableMeldState> Melds { get; set; } = [];
 }
 
+public sealed class TableWinState
+{
+    public int WinningSeatIndex { get; set; }
+    public TableClaimType WinningClaimType { get; set; }
+    public int WinningTileId { get; set; }
+    public int SourceSeatIndex { get; set; }
+    public int SourceTurnNumber { get; set; }
+    public long SourceActionSequence { get; set; }
+}
+
 public sealed class TableAction
 {
     public long Sequence { get; set; }
@@ -130,6 +141,7 @@ public sealed class TableGameState
     public List<TableSeatMeldState> ExposedMelds { get; set; } = [];
     public List<TableDiscard> DiscardPile { get; set; } = [];
     public TableClaimWindowState? ClaimWindow { get; set; }
+    public TableWinState? Win { get; set; }
     public List<TableAction> ActionLog { get; set; } = [];
 }
 
@@ -137,6 +149,7 @@ public enum BotAdvanceStopReason
 {
     HumanTurn,
     ClaimResolutionRequired,
+    RoundComplete,
     MaxActionsReached,
     WallExhausted
 }

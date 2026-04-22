@@ -91,6 +91,17 @@ public static class TableStateHasher
                             state.ClaimWindow.SelectedOpportunity.Priority
                         }
                 },
+            Win = state.Win is null
+                ? null
+                : new
+                {
+                    state.Win.WinningSeatIndex,
+                    WinningClaimType = state.Win.WinningClaimType.ToString(),
+                    state.Win.WinningTileId,
+                    state.Win.SourceSeatIndex,
+                    state.Win.SourceTurnNumber,
+                    state.Win.SourceActionSequence
+                },
             ActionLog = state.ActionLog.Select(action => new
             {
                 action.Sequence,

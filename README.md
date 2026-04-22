@@ -44,6 +44,7 @@ infra/
     - Request: `{ "decision": "pass", "expectedStateVersion": 4 }` or `{ "decision": "take-selected", "expectedStateVersion": 4 }`.
     - `pass` clears the window and continues normal flow (next seat draw/discard turn).
     - `take-selected` now applies exposed meld semantics for `pung` / `chow` / `kong` (consumes claim tiles from concealed hand, removes claimed discard, and records an exposed meld on the claiming seat).
+    - `hu` claim opportunities are now evaluated from concealed hand + discard tile using deterministic standard-hand decomposition; selecting `hu` transitions the round to `RoundComplete` with win metadata.
     - `kong` claims perform a deterministic supplemental draw when wall tiles remain.
     - Response includes updated `table`, `appliedDecision`, and emitted action metadata (`resolutionAction`, optional `drawAction`).
   - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `ClaimResolutionRequired`, `MaxActionsReached`, `WallExhausted`).
@@ -70,7 +71,7 @@ Key config (`appsettings.json`):
 - **Full stack (backend + modern frontend):** select `F5 Full Stack (Backend + Modern Frontend)`.
 - **Autotable baseline only:** select `Backend + Autotable Baseline`.
 - Full stack F5 runs `npm install && npm run dev` for the modern frontend terminal session.
-- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, exposed meld display per seat, claim-resolution panel with pass/take-selected actions, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
+- The modern frontend now provides a playable tabletop loop with graphical tile rendering (4-seat layout, seat-perspective selector powered by `/api/tables/{id}/view`, clickable seat-0 human hand, exposed meld display per seat, claim-resolution panel with pass/take-selected actions, round-complete winner messaging for `hu` claims, bot auto-progression, center discard visualization, and strict replay verification under Advanced tools). Non-seat-0 perspectives are read-only.
 
 ### CLI
 
@@ -111,4 +112,4 @@ docker run --rm -p 8080:8080 -v $(pwd)/data:/app/data mahjong-autotable:autotabl
 ## Notes
 
 - Frontend modernization is optional and incremental; no forced rewrite in this scaffold.
-- Win settlement and scoring remain deferred; claim resolution now executes deterministic meld application while broader Changsha settlement remains in follow-up phases.
+- Changsha-specific scoring and payment settlement remain deferred; the engine now executes deterministic claim application and a round-complete win surface for `hu` discard claims.

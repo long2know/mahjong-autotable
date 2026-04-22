@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Body1, Button, Card, CardHeader, Text } from '@fluentui/react-components';
 
 type TableSeatType = 'Human' | 'Bot';
-type TableTurnPhase = 'AwaitingDiscard' | 'AwaitingClaimResolution' | 'WallExhausted';
+type TableTurnPhase = 'AwaitingDiscard' | 'AwaitingClaimResolution' | 'RoundComplete' | 'WallExhausted';
 type ClaimResolutionDecision = 'pass' | 'take-selected';
 
 type TileSuitTone = 'dots' | 'bamboo' | 'characters' | 'wind' | 'dragon' | 'unknown';
@@ -88,6 +88,15 @@ interface TableClaimWindowState {
   selectedOpportunity: TableClaimOpportunity | null;
 }
 
+interface TableWinState {
+  winningSeatIndex: number;
+  winningClaimType: string;
+  winningTileId: number;
+  sourceSeatIndex: number;
+  sourceTurnNumber: number;
+  sourceActionSequence: number;
+}
+
 interface TableGameState {
   stateVersion: number;
   actionSequence: number;
@@ -104,6 +113,7 @@ interface TableGameState {
   exposedMelds: TableSeatMeldState[];
   discardPile: TableDiscard[];
   claimWindow: TableClaimWindowState | null;
+  win: TableWinState | null;
   actionLog: TableAction[];
 }
 
@@ -132,6 +142,7 @@ interface TableSeatViewState {
   exposedMelds: TableSeatMeldState[];
   discardPile: TableDiscard[];
   lastAction: TableLastActionState | null;
+  win: TableWinState | null;
   claimWindow: TableClaimWindowState | null;
 }
 
@@ -262,6 +273,8 @@ function formatStopReason(reason: string): string {
       return 'wall exhausted';
     case 'MaxActionsReached':
       return 'continuing bot sequence';
+    case 'RoundComplete':
+      return 'round complete';
     default:
       return reason;
   }
@@ -344,6 +357,7 @@ export function App() {
 
   const centerDiscards = useMemo(() => tableView?.state.discardPile.slice(-24) ?? [], [tableView]);
   const claimWindow = tableView?.state.claimWindow ?? null;
+  const roundWin = tableView?.state.win ?? null;
   const canResolveClaim =
     table !== null &&
     claimWindow !== null &&
@@ -758,6 +772,10 @@ export function App() {
                 ? `Read-only perspective for seat ${viewerSeatIndex}. Switch to seat 0 to discard.`
                 : canDiscard
                 ? 'Select a tile and discard to continue the round.'
+                : tableView.state.phase === 'RoundComplete'
+                  ? roundWin === null
+                    ? 'Round complete.'
+                    : `Round complete. Seat ${roundWin.winningSeatIndex} wins on ${describeTile(roundWin.winningTileId).label}.`
                 : tableView.state.phase === 'WallExhausted'
                   ? 'Wall exhausted. Start a new table to play again.'
                   : `Waiting for seat ${tableView.state.activeSeat}.`}

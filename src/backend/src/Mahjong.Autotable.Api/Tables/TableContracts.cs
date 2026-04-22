@@ -92,6 +92,7 @@ public sealed record TableSeatViewState(
     IReadOnlyList<TableSeatMeldState> ExposedMelds,
     IReadOnlyList<TableDiscard> DiscardPile,
     TableLastActionState? LastAction,
+    TableWinState? Win,
     TableClaimWindowState? ClaimWindow);
 
 public sealed record TableSeatViewDto(
@@ -175,6 +176,7 @@ public static class TableMappings
                     .ToList(),
                 state.DiscardPile.ToList(),
                 state.LastAction,
+                state.Win,
                 state.ClaimWindow));
     }
 }
