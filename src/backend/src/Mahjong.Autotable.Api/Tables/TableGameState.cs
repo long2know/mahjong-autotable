@@ -53,6 +53,32 @@ public sealed class TableDiscard
     public DateTime OccurredUtc { get; init; }
 }
 
+public enum TableClaimType
+{
+    Hu,
+    Kong,
+    Pung,
+    Chow
+}
+
+public sealed class TableClaimOpportunity
+{
+    public int SeatIndex { get; init; }
+    public TableClaimType ClaimType { get; init; }
+    public int Priority { get; init; }
+}
+
+public sealed class TableClaimWindowState
+{
+    public long SourceActionSequence { get; set; }
+    public int DiscardSeatIndex { get; set; }
+    public int DiscardTileId { get; set; }
+    public int DiscardTurnNumber { get; set; }
+    public string PrecedencePolicy { get; set; } = string.Empty;
+    public List<TableClaimOpportunity> Opportunities { get; set; } = [];
+    public TableClaimOpportunity? SelectedOpportunity { get; set; }
+}
+
 public sealed class TableAction
 {
     public long Sequence { get; set; }
@@ -80,6 +106,7 @@ public sealed class TableGameState
     public List<TableSeatState> Seats { get; set; } = [];
     public List<TableSeatHandState> Hands { get; set; } = [];
     public List<TableDiscard> DiscardPile { get; set; } = [];
+    public TableClaimWindowState? ClaimWindow { get; set; }
     public List<TableAction> ActionLog { get; set; } = [];
 }
 

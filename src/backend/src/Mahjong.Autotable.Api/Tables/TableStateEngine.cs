@@ -31,6 +31,7 @@ public sealed class TableStateEngine : ITableStateEngine
     public const int SeatCount = 4;
     public const int TotalTiles = 136;
     public const string RngAlgorithmId = "fisher-yates-v1";
+    public const string ClaimPrecedencePolicy = "hu>kong>pung>chow|next-seat-tiebreak";
 
     public TableGameState CreateInitialState(IReadOnlyCollection<int>? botSeatIndexes = null, int? seed = null)
     {
@@ -96,6 +97,11 @@ public sealed class TableStateEngine : ITableStateEngine
         if (state.LastAction is null && state.ActionLog.Count > 0)
         {
             state.LastAction = ToLastAction(state.ActionLog[^1]);
+        }
+
+        if (state.ClaimWindow is not null && string.IsNullOrWhiteSpace(state.ClaimWindow.PrecedencePolicy))
+        {
+            state.ClaimWindow.PrecedencePolicy = ClaimPrecedencePolicy;
         }
 
         RefreshIntegrity(state);
@@ -368,6 +374,12 @@ public sealed class TableStateEngine : ITableStateEngine
             TurnNumber = state.TurnNumber,
             OccurredUtc = discardAction.OccurredUtc
         });
+        state.ClaimWindow = BuildClaimWindowState(
+            state,
+            seatIndex,
+            tileId,
+            state.TurnNumber,
+            discardAction.Sequence);
 
         state.ActiveSeat = (state.ActiveSeat + 1) % SeatCount;
         state.TurnNumber++;
@@ -409,6 +421,122 @@ public sealed class TableStateEngine : ITableStateEngine
             DiscardAction = discardAction,
             DrawAction = drawAction
         };
+    }
+
+    private static TableClaimWindowState BuildClaimWindowState(
+        TableGameState state,
+        int discardSeatIndex,
+        int discardTileId,
+        int discardTurnNumber,
+        long sourceActionSequence)
+    {
+        var opportunities = GetClaimOpportunities(state, discardSeatIndex, discardTileId)
+            .ToList();
+
+        return new TableClaimWindowState
+        {
+            SourceActionSequence = sourceActionSequence,
+            DiscardSeatIndex = discardSeatIndex,
+            DiscardTileId = discardTileId,
+            DiscardTurnNumber = discardTurnNumber,
+            PrecedencePolicy = ClaimPrecedencePolicy,
+            Opportunities = opportunities,
+            SelectedOpportunity = SelectClaimOpportunity(opportunities, discardSeatIndex)
+        };
+    }
+
+    private static IEnumerable<TableClaimOpportunity> GetClaimOpportunities(
+        TableGameState state,
+        int discardSeatIndex,
+        int discardTileId)
+    {
+        var discardLogical = discardTileId / 4;
+        foreach (var seat in state.Seats)
+        {
+            if (seat.SeatIndex == discardSeatIndex)
+            {
+                continue;
+            }
+
+            var hand = GetHandForSeat(state, seat.SeatIndex);
+            var logicalTiles = hand.Tiles.Select(tile => tile / 4).ToList();
+            var matchingCount = logicalTiles.Count(tile => tile == discardLogical);
+
+            if (matchingCount >= 3)
+            {
+                yield return new TableClaimOpportunity
+                {
+                    SeatIndex = seat.SeatIndex,
+                    ClaimType = TableClaimType.Kong,
+                    Priority = GetClaimPriority(TableClaimType.Kong)
+                };
+            }
+            else if (matchingCount >= 2)
+            {
+                yield return new TableClaimOpportunity
+                {
+                    SeatIndex = seat.SeatIndex,
+                    ClaimType = TableClaimType.Pung,
+                    Priority = GetClaimPriority(TableClaimType.Pung)
+                };
+            }
+
+            if (IsNextSeat(discardSeatIndex, seat.SeatIndex) && IsChowCandidate(logicalTiles, discardLogical))
+            {
+                yield return new TableClaimOpportunity
+                {
+                    SeatIndex = seat.SeatIndex,
+                    ClaimType = TableClaimType.Chow,
+                    Priority = GetClaimPriority(TableClaimType.Chow)
+                };
+            }
+        }
+    }
+
+    private static TableClaimOpportunity? SelectClaimOpportunity(
+        IReadOnlyCollection<TableClaimOpportunity> opportunities,
+        int discardSeatIndex) =>
+        opportunities
+            .OrderByDescending(opportunity => opportunity.Priority)
+            .ThenBy(opportunity => GetRelativeDistance(discardSeatIndex, opportunity.SeatIndex))
+            .ThenBy(opportunity => opportunity.SeatIndex)
+            .ThenBy(opportunity => opportunity.ClaimType)
+            .FirstOrDefault();
+
+    private static int GetClaimPriority(TableClaimType claimType) =>
+        claimType switch
+        {
+            TableClaimType.Hu => 4,
+            TableClaimType.Kong => 3,
+            TableClaimType.Pung => 2,
+            TableClaimType.Chow => 1,
+            _ => 0
+        };
+
+    private static bool IsNextSeat(int discardSeatIndex, int seatIndex) =>
+        (discardSeatIndex + 1) % SeatCount == seatIndex;
+
+    private static int GetRelativeDistance(int discardSeatIndex, int seatIndex) =>
+        (seatIndex - discardSeatIndex + SeatCount) % SeatCount;
+
+    private static bool IsChowCandidate(IReadOnlyCollection<int> logicalTiles, int discardLogical)
+    {
+        if (discardLogical is < 0 or >= 27)
+        {
+            return false;
+        }
+
+        var suitOffset = discardLogical / 9;
+        var rank = discardLogical % 9;
+        var suitedTiles = logicalTiles
+            .Where(tile => tile / 9 == suitOffset)
+            .Select(tile => tile % 9)
+            .ToHashSet();
+
+        var hasLowerRun = rank >= 2 && suitedTiles.Contains(rank - 2) && suitedTiles.Contains(rank - 1);
+        var hasMiddleRun = rank >= 1 && rank <= 7 && suitedTiles.Contains(rank - 1) && suitedTiles.Contains(rank + 1);
+        var hasUpperRun = rank <= 6 && suitedTiles.Contains(rank + 1) && suitedTiles.Contains(rank + 2);
+        return hasLowerRun || hasMiddleRun || hasUpperRun;
     }
 
     private static TableSeatState GetSeat(TableGameState state, int seatIndex)

@@ -45,6 +45,34 @@ public static class TableStateHasher
                 discard.TileId,
                 discard.TurnNumber
             }),
+            ClaimWindow = state.ClaimWindow is null
+                ? null
+                : new
+                {
+                    state.ClaimWindow.SourceActionSequence,
+                    state.ClaimWindow.DiscardSeatIndex,
+                    state.ClaimWindow.DiscardTileId,
+                    state.ClaimWindow.DiscardTurnNumber,
+                    state.ClaimWindow.PrecedencePolicy,
+                    Opportunities = state.ClaimWindow.Opportunities
+                        .OrderBy(opportunity => opportunity.SeatIndex)
+                        .ThenByDescending(opportunity => opportunity.Priority)
+                        .ThenBy(opportunity => opportunity.ClaimType)
+                        .Select(opportunity => new
+                        {
+                            opportunity.SeatIndex,
+                            ClaimType = opportunity.ClaimType.ToString(),
+                            opportunity.Priority
+                        }),
+                    SelectedOpportunity = state.ClaimWindow.SelectedOpportunity is null
+                        ? null
+                        : new
+                        {
+                            state.ClaimWindow.SelectedOpportunity.SeatIndex,
+                            ClaimType = state.ClaimWindow.SelectedOpportunity.ClaimType.ToString(),
+                            state.ClaimWindow.SelectedOpportunity.Priority
+                        }
+                },
             ActionLog = state.ActionLog.Select(action => new
             {
                 action.Sequence,

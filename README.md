@@ -36,6 +36,7 @@ infra/
     - Request: `{ "seatIndex": 0, "tileId": 87, "expectedStateVersion": 3 }` (`expectedStateVersion` optional optimistic concurrency token).
     - Rejections return structured contract payloads (`code`, `message`, `stateVersion`, `actionSequence`, `correlationId`).
     - Error codes now include `ROUND_NOT_ACTIVE`, `INVALID_PHASE`, `NOT_ACTIVE_SEAT`, `SEAT_NOT_FOUND`, `TILE_NOT_IN_HAND`, `CONCURRENCY_CONFLICT`, and `STATE_INVARIANT_BROKEN`.
+    - State now includes `claimWindow` scaffolding metadata (opportunities + selected winner by precedence policy `hu > kong > pung > chow`) to support upcoming claim-resolution phases.
   - `POST /api/tables/{id}/bots/advance` advances bot seats through the same discard validation pipeline used by humans until a halt condition (`HumanTurn`, `MaxActionsReached`, `WallExhausted`).
     - Request: `{ "advanceUntilHumanTurnOrWallExhausted": true }` (default) to safely run until the next human decision point without client-side action budgeting.
     - Optional capped mode: `{ "advanceUntilHumanTurnOrWallExhausted": false, "maxActions": 8 }`.
