@@ -927,7 +927,12 @@ public static class BotDiscardAdvisor
             return 4 - ownedCount - visibleCount > 0;
         }
 
-        if (HasTileInHand(rank - 1))
+        var hasLowerNeighbor = HasTileInHand(rank - 1);
+        var hasUpperNeighbor = HasTileInHand(rank + 1);
+        var hasLowerGap = HasTileInHand(rank - 2);
+        var hasUpperGap = HasTileInHand(rank + 2);
+
+        if (hasLowerNeighbor)
         {
             var hasCompletion = HasLiveTile(rank - 2) || HasLiveTile(rank + 1);
             if (!hasCompletion)
@@ -936,12 +941,23 @@ public static class BotDiscardAdvisor
             }
         }
 
-        if (HasTileInHand(rank + 1))
+        if (hasUpperNeighbor)
         {
             var hasCompletion = HasLiveTile(rank - 1) || HasLiveTile(rank + 2);
             if (!hasCompletion)
             {
                 penalty -= 4;
+            }
+        }
+
+        if (!hasLowerNeighbor && !hasUpperNeighbor && (hasLowerGap || hasUpperGap))
+        {
+            var hasLiveLowerMiddle = hasLowerGap && HasLiveTile(rank - 1);
+            var hasLiveUpperMiddle = hasUpperGap && HasLiveTile(rank + 1);
+
+            if (!hasLiveLowerMiddle && !hasLiveUpperMiddle)
+            {
+                penalty -= 3;
             }
         }
 
