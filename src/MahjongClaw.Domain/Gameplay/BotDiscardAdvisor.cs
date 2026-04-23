@@ -283,6 +283,15 @@ public static class BotDiscardAdvisor
             ? -10
             : 0;
 
+        var fallbackNonSmallWinPairBonus = ruleset == MahjongRuleset.Changsha258
+            && smallWinPairCount == 0
+            && pairCount == 1
+            && tileMatchCount >= 2
+            && !Changsha258Ruleset.IsSmallWinPair(tile)
+            && !hasLiveSmallWinPairCandidate
+            ? 6
+            : 0;
+
         var soleSmallWinPairKeepBonus = 0;
         if (ruleset == MahjongRuleset.Changsha258
             && tileMatchCount == 2
@@ -619,7 +628,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + fallbackNonSmallWinPairBonus + meldSuitFocusBonus + meldExtensionBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus;
     }
 
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(

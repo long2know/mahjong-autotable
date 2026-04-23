@@ -507,6 +507,37 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_KeepsOnlyNonSmallWinPair_WhenNoSmallWinPairIsLive()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5)
+        };
+
+        var visibleTiles = new List<Tile>();
+        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        {
+            foreach (var rank in new[] { 2, 5, 8 })
+            {
+                var tile = new Tile(suit, rank);
+                var handCount = handTiles.Count(candidate => candidate.Equals(tile));
+                for (var i = 0; i < 4 - handCount; i++)
+                {
+                    visibleTiles.Add(tile);
+                }
+            }
+        }
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_KeepsSoleLiveSmallWinSingletonCandidate_WhenChangsha258Ruleset()
     {
         var handTiles = new List<Tile>
