@@ -83,6 +83,9 @@ public static class BotDiscardAdvisor
         }
 
         var hasLiveSmallWinPairCandidate = HasLiveSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts, ruleset);
+        var hasStrongSmallWinPairCandidate = ruleset == MahjongRuleset.Changsha258 && visibleCounts.Count > 0
+            ? HasStrongSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts)
+            : hasLiveSmallWinPairCandidate;
         var liveSmallWinPairCandidates = ruleset == MahjongRuleset.Changsha258 && visibleCounts.Count > 0
             ? BuildLiveSmallWinPairCandidates(handCounts, ownedCounts, visibleCounts)
             : null;
@@ -101,6 +104,7 @@ public static class BotDiscardAdvisor
                             meldTiles,
                             ruleset,
                             hasLiveSmallWinPairCandidate,
+                            hasStrongSmallWinPairCandidate,
                             liveSmallWinPairCandidates,
                             ownedCounts,
                             visibleCounts)
@@ -174,6 +178,7 @@ public static class BotDiscardAdvisor
         IReadOnlyList<Tile> meldTiles,
         MahjongRuleset ruleset,
         bool hasLiveSmallWinPairCandidate,
+        bool hasStrongSmallWinPairCandidate,
         IReadOnlySet<Tile>? liveSmallWinPairCandidates,
         IReadOnlyDictionary<Tile, int> ownedCounts,
         IReadOnlyDictionary<Tile, int> visibleCounts)
@@ -289,7 +294,7 @@ public static class BotDiscardAdvisor
             && pairCount == 1
             && tileMatchCount >= 2
             && !Changsha258Ruleset.IsSmallWinPair(tile)
-            && hasLiveSmallWinPairCandidate
+            && hasStrongSmallWinPairCandidate
             ? -10
             : 0;
 
@@ -298,7 +303,7 @@ public static class BotDiscardAdvisor
             && pairCount == 1
             && tileMatchCount >= 2
             && !Changsha258Ruleset.IsSmallWinPair(tile)
-            && !hasLiveSmallWinPairCandidate
+            && !hasStrongSmallWinPairCandidate
             ? 6
             : 0;
 
@@ -836,6 +841,47 @@ public static class BotDiscardAdvisor
                 }
             }
             else if (remainingCopies >= 2)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasStrongSmallWinPairCandidate(
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        if (visibleCounts.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var tile in Changsha258SmallWinPairTiles)
+        {
+            handCounts.TryGetValue(tile, out var handCount);
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+
+            var remainingCopies = 4 - ownedCount - visibleCount;
+            if (handCount >= 2)
+            {
+                return true;
+            }
+
+            if (handCount == 1)
+            {
+                if (remainingCopies >= 2)
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (remainingCopies >= 3)
             {
                 return true;
             }
