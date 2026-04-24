@@ -216,6 +216,8 @@ public static class BotDiscardAdvisor
             score += 2;
         }
 
+        var concealedKongBonus = tileMatchCount >= 4 ? 8 : 0;
+
         var pairCount = tileCounts.Count(static entry => entry.Value >= 2);
         var smallWinPairCount = ruleset == MahjongRuleset.Changsha258
             ? tileCounts.Count(static entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
@@ -539,7 +541,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus;
         }
 
         var rankCounts = suitTiles
@@ -657,7 +659,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + fallbackNonSmallWinPairBonus + meldSuitFocusBonus + meldExtensionBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + fallbackNonSmallWinPairBonus + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus;
     }
 
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
