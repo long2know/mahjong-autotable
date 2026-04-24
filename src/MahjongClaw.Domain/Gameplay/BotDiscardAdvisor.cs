@@ -124,6 +124,23 @@ public static class BotDiscardAdvisor
             })
             .ToList();
 
+        var concealedKongTiles = handCounts
+            .Where(entry => entry.Value >= 4)
+            .Select(entry => entry.Key)
+            .ToHashSet();
+
+        if (concealedKongTiles.Count > 0)
+        {
+            var nonKongCandidates = candidates
+                .Where(candidate => !concealedKongTiles.Contains(candidate.Tile))
+                .ToList();
+
+            if (nonKongCandidates.Count > 0)
+            {
+                candidates = nonKongCandidates;
+            }
+        }
+
         var prioritizedCandidates = candidates;
         var maxSmallWinOuts = 0;
 
