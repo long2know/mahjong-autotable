@@ -95,7 +95,15 @@ public static class BotDiscardAdvisor
                 {
                     Tile = tile,
                     Index = index,
-                    Score = GetBotTileKeepScore(tile, handTiles, meldTiles, ruleset, hasLiveSmallWinPairCandidate, liveSmallWinPairCandidates)
+                    Score = GetBotTileKeepScore(
+                            tile,
+                            handTiles,
+                            meldTiles,
+                            ruleset,
+                            hasLiveSmallWinPairCandidate,
+                            liveSmallWinPairCandidates,
+                            ownedCounts,
+                            visibleCounts)
                         + GetTileAvailabilityPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetDeadAdjacencyPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetChangshaSmallWinPairVisibilityAdjustment(tile, handCounts, ownedCounts, visibleCounts, ruleset)
@@ -166,7 +174,9 @@ public static class BotDiscardAdvisor
         IReadOnlyList<Tile> meldTiles,
         MahjongRuleset ruleset,
         bool hasLiveSmallWinPairCandidate,
-        IReadOnlySet<Tile>? liveSmallWinPairCandidates)
+        IReadOnlySet<Tile>? liveSmallWinPairCandidates,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
     {
         if (ruleset == MahjongRuleset.Changsha258 && !Changsha258Ruleset.IsAllowedTile(tile))
         {
@@ -314,6 +324,20 @@ public static class BotDiscardAdvisor
             && liveSmallWinPairCandidates.Contains(tile))
         {
             soleSmallWinPairSingletonBonus = 14;
+
+            if (visibleCounts.Count > 0)
+            {
+                ownedCounts.TryGetValue(tile, out var ownedCount);
+                visibleCounts.TryGetValue(tile, out var visibleCount);
+                var remainingCopies = 4 - ownedCount - visibleCount;
+
+                soleSmallWinPairSingletonBonus = remainingCopies switch
+                {
+                    <= 1 => 8,
+                    2 => 11,
+                    _ => 14
+                };
+            }
         }
 
         var suitedPairCount = handTiles
