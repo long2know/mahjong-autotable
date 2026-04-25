@@ -155,6 +155,11 @@ public static class BotDiscardAdvisor
                 }
 
                 ownedCounts.TryGetValue(tile, out var ownedCount);
+                if (ownedCount >= 4)
+                {
+                    return false;
+                }
+
                 visibleCounts.TryGetValue(tile, out var visibleCount);
                 return 4 - ownedCount - visibleCount <= 0;
             });
