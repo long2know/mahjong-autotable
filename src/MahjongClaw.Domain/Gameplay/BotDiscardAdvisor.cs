@@ -128,11 +128,34 @@ public static class BotDiscardAdvisor
             .Where(entry => entry.Value >= 4)
             .Select(entry => entry.Key)
             .ToHashSet();
+        var promotableKongTiles = meldTiles
+            .GroupBy(static tile => tile)
+            .Where(group => group.Count() == 3)
+            .Select(group => group.Key)
+            .ToHashSet();
 
-        if (concealedKongTiles.Count > 0)
+        if (ruleset == MahjongRuleset.Changsha258 && promotableKongTiles.Count > 0)
         {
+            promotableKongTiles.RemoveWhere(tile =>
+            {
+                if (!Changsha258Ruleset.IsSmallWinPair(tile))
+                {
+                    return false;
+                }
+
+                ownedCounts.TryGetValue(tile, out var ownedCount);
+                visibleCounts.TryGetValue(tile, out var visibleCount);
+                return 4 - ownedCount - visibleCount <= 0;
+            });
+        }
+
+        if (concealedKongTiles.Count > 0 || promotableKongTiles.Count > 0)
+        {
+            var protectedKongTiles = new HashSet<Tile>(concealedKongTiles);
+            protectedKongTiles.UnionWith(promotableKongTiles);
+
             var nonKongCandidates = candidates
-                .Where(candidate => !concealedKongTiles.Contains(candidate.Tile))
+                .Where(candidate => !protectedKongTiles.Contains(candidate.Tile))
                 .ToList();
 
             if (nonKongCandidates.Count > 0)
