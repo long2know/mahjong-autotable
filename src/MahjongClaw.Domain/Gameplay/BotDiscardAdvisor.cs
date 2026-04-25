@@ -1241,6 +1241,37 @@ public static class BotDiscardAdvisor
             return true;
         }
 
-        return ownedTiles.All(static tile => Changsha258Ruleset.SmallWinPairRanks.Contains(tile.Rank));
+        if (ownedTiles.All(static tile => Changsha258Ruleset.SmallWinPairRanks.Contains(tile.Rank)))
+        {
+            return true;
+        }
+
+        return HasAllPungsBigWinCandidate(ownedTiles, meldTiles);
+    }
+
+    private static bool HasAllPungsBigWinCandidate(IReadOnlyList<Tile> ownedTiles, IReadOnlyList<Tile> meldTiles)
+    {
+        if (ownedTiles.Count == 0)
+        {
+            return false;
+        }
+
+        if (meldTiles.Count > 0)
+        {
+            var meldGroups = meldTiles
+                .GroupBy(static tile => tile)
+                .Select(static group => group.Count());
+
+            if (meldGroups.Any(static count => count is not 3 and not 4))
+            {
+                return false;
+            }
+        }
+
+        var pungCandidates = ownedTiles
+            .GroupBy(static tile => tile)
+            .Count(static group => group.Count() >= 3);
+
+        return pungCandidates >= 3;
     }
 }
