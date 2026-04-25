@@ -1409,6 +1409,32 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
+    if (turnState.HasAction(TurnAction.Meld)
+        && BotMeldAdvisor.TrySelectConcealedKong(botHand, ruleset, out var kongTile))
+    {
+        var kongTiles = handTiles
+            .Where(tile => TileEntityMatches(tile, kongTile))
+            .Take(4)
+            .ToList();
+
+        if (kongTiles.Count == 4)
+        {
+            var kongApplied = await TryApplyBotConcealedKongAsync(
+                game,
+                botPlayer,
+                kongTiles,
+                drawResponse,
+                dbContext,
+                hubContext,
+                cancellationToken);
+
+            if (kongApplied)
+            {
+                return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+            }
+        }
+    }
+
     var visibleTileEntities = game.Tiles
         .Where(tile => string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase)
             || (string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase) && tile.PlayerId != botPlayer.Id))
@@ -1465,6 +1491,75 @@ static int CountDeclaredKongs(IEnumerable<TileEntity> tiles, Guid playerId)
         .Where(tile => tile.PlayerId == playerId && string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase))
         .GroupBy(tile => new { tile.Suit, tile.Rank, tile.Wind, tile.Dragon })
         .Count(group => group.Count() == 4);
+
+static async Task<bool> TryApplyBotConcealedKongAsync(
+    GameEntity game,
+    PlayerEntity botPlayer,
+    IReadOnlyList<TileEntity> kongTiles,
+    DrawTileResponse? drawResponse,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken)
+{
+    if (kongTiles.Count != 4)
+    {
+        return false;
+    }
+
+    if (drawResponse is not null)
+    {
+        await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
+    }
+
+    var meld = new MeldEntity
+    {
+        GameId = game.Id,
+        PlayerId = botPlayer.Id,
+        Type = MeldType.Kong.ToString(),
+        Kind = KongKindParser.ToMeldTypeString(KongKind.Concealed)
+    };
+
+    dbContext.Melds.Add(meld);
+    game.Melds.Add(meld);
+
+    foreach (var tile in kongTiles)
+    {
+        tile.Location = "Meld";
+        tile.Meld = meld;
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    var replacementTile = game.Tiles
+        .Where(t => t.Location == "Wall")
+        .OrderBy(t => t.Sequence)
+        .FirstOrDefault();
+
+    if (replacementTile is not null)
+    {
+        replacementTile.Location = "Hand";
+        replacementTile.PlayerId = botPlayer.Id;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var replacementDraw = new DrawTileResponse(
+            replacementTile.Id,
+            replacementTile.Suit,
+            replacementTile.Rank,
+            replacementTile.Wind,
+            replacementTile.Dragon);
+        await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", replacementDraw, cancellationToken);
+    }
+
+    var meldResponse = new MeldResponse(meld.Id, meld.Type, kongTiles.Select(tile => tile.Id).ToList());
+    await SendToGameWithAliases(hubContext, game.Id, "MeldDeclared", meldResponse, cancellationToken);
+    return true;
+}
+
+static bool TileEntityMatches(TileEntity tileEntity, Tile tile)
+    => string.Equals(tileEntity.Suit, tile.Suit.ToString(), StringComparison.OrdinalIgnoreCase)
+        && tileEntity.Rank == tile.Rank
+        && string.Equals(tileEntity.Wind, tile.Wind?.ToString(), StringComparison.OrdinalIgnoreCase)
+        && string.Equals(tileEntity.Dragon, tile.Dragon?.ToString(), StringComparison.OrdinalIgnoreCase);
 
 static bool TryGetLatestDiscardTileForBotClaim(GameEntity game, Guid botPlayerId, out TileEntity latestDiscardTile)
 {
