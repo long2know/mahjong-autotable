@@ -155,9 +155,14 @@ public static class BotDiscardAdvisor
                 }
 
                 ownedCounts.TryGetValue(tile, out var ownedCount);
+                handCounts.TryGetValue(tile, out var handCount);
+                var hasSmallWinPairInHand = handCounts.Any(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+
                 if (ownedCount >= 4)
                 {
-                    return false;
+                    return handCount == 1
+                        && !hasSmallWinPairInHand
+                        && enforceSmallWinPairBias;
                 }
 
                 visibleCounts.TryGetValue(tile, out var visibleCount);
