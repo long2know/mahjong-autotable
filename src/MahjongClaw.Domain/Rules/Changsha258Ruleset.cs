@@ -176,11 +176,6 @@ public static class Changsha258Ruleset
             return false;
         }
 
-        if (!orderedTiles.Any(tile => counts[tile] >= 2 && IsSmallWinPair(tile)))
-        {
-            return false;
-        }
-
         var pairTile = orderedTiles.First(tile => counts[tile] >= 2);
         hand = new WinningHand(Array.Empty<Meld>(), pairTile, WinningPattern.SevenPairs);
         return true;
