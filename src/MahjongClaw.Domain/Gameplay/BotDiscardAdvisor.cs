@@ -224,9 +224,12 @@ public static class BotDiscardAdvisor
                 .ToList();
         }
 
+        var useRemainingCopyTieBreaker = visibleCounts.Count > 0
+            && (ruleset == MahjongRuleset.ChineseOfficial || !enforceSmallWinPairBias);
+
         return prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
-            .ThenBy(candidate => ruleset == MahjongRuleset.ChineseOfficial && visibleCounts.Count > 0 ? candidate.RemainingCopies : 0)
+            .ThenBy(candidate => useRemainingCopyTieBreaker ? candidate.RemainingCopies : 0)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
             .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
             .ThenBy(candidate => candidate.Tile.Suit)
