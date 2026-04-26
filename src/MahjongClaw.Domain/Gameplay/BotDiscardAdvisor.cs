@@ -98,6 +98,9 @@ public static class BotDiscardAdvisor
             .Select((tile, index) =>
             {
                 var winningOutSummary = CountWinningDrawOutsAfterDiscard(handTiles, meldTiles, visibleCounts, index, ruleset);
+                ownedCounts.TryGetValue(tile, out var ownedCount);
+                visibleCounts.TryGetValue(tile, out var visibleCount);
+                var remainingCopies = Math.Max(0, 4 - ownedCount - visibleCount);
                 return new
                 {
                     Tile = tile,
@@ -125,6 +128,7 @@ public static class BotDiscardAdvisor
                         + (lastSmallWinSingleton is not null && tile.Equals(lastSmallWinSingleton)
                             ? LastSmallWinSingletonKeepBonus
                             : 0),
+                    RemainingCopies = remainingCopies,
                     WinningDrawOuts = winningOutSummary.TileTypes,
                     WinningDrawOutCopies = winningOutSummary.RemainingCopies,
                     SmallWinningDrawOuts = winningOutSummary.SmallWinTileTypes,
@@ -222,6 +226,7 @@ public static class BotDiscardAdvisor
 
         return prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
+            .ThenBy(candidate => ruleset == MahjongRuleset.ChineseOfficial && visibleCounts.Count > 0 ? candidate.RemainingCopies : 0)
             .ThenBy(candidate => candidate.Tile.IsHonor ? 0 : 1)
             .ThenBy(candidate => IsTerminalSuitedTile(candidate.Tile) ? 0 : 1)
             .ThenBy(candidate => candidate.Tile.Suit)
