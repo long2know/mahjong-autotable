@@ -111,4 +111,101 @@ public class BotMeldAdvisorTests
         result.Should().BeTrue();
         kongTile.Should().Be(new Tile(TileSuit.Dots, 3));
     }
+
+    [Fact]
+    public void TrySelectPromotedKong_ThrowsForNullHand()
+    {
+        Action act = () => BotMeldAdvisor.TrySelectPromotedKong(null!, Array.Empty<Tile>(), MahjongRuleset.ChineseOfficial, out _);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void TrySelectPromotedKong_ThrowsForNullMelds()
+    {
+        var hand = new List<Tile> { new(TileSuit.Characters, 1) };
+
+        Action act = () => BotMeldAdvisor.TrySelectPromotedKong(hand, null!, MahjongRuleset.ChineseOfficial, out _);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void TrySelectPromotedKong_ReturnsFalse_WhenNoPromotedKongAvailable()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7)
+        };
+
+        var result = BotMeldAdvisor.TrySelectPromotedKong(handTiles, meldTiles, MahjongRuleset.ChineseOfficial, out _);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TrySelectPromotedKong_PrioritizesHonorKong_ForChineseOfficial()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 9)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        var result = BotMeldAdvisor.TrySelectPromotedKong(handTiles, meldTiles, MahjongRuleset.ChineseOfficial, out var kongTile);
+
+        result.Should().BeTrue();
+        kongTile.Should().Be(new Tile(TileSuit.Dragons, 0, null, Dragon.Red));
+    }
+
+    [Fact]
+    public void TrySelectPromotedKong_SkipsSoleSmallWinPair_ForChangsha258()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 4), new(TileSuit.Characters, 6)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        var result = BotMeldAdvisor.TrySelectPromotedKong(handTiles, meldTiles, MahjongRuleset.Changsha258, out _);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TrySelectPromotedKong_PrefersNonSmallWinPair_ForChangsha258()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3)
+        };
+
+        var result = BotMeldAdvisor.TrySelectPromotedKong(handTiles, meldTiles, MahjongRuleset.Changsha258, out var kongTile);
+
+        result.Should().BeTrue();
+        kongTile.Should().Be(new Tile(TileSuit.Dots, 3));
+    }
 }

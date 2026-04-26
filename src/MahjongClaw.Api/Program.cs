@@ -1409,20 +1409,14 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot hand contains invalid tile data.");
     }
 
-    if (turnState.HasAction(TurnAction.Meld)
-        && BotMeldAdvisor.TrySelectConcealedKong(botHand, ruleset, out var kongTile))
+    if (turnState.HasAction(TurnAction.Meld))
     {
-        var kongTiles = handTiles
-            .Where(tile => TileEntityMatches(tile, kongTile))
-            .Take(4)
-            .ToList();
-
-        if (kongTiles.Count == 4)
+        if (BotMeldAdvisor.TrySelectPromotedKong(botHand, botMeldHandForDiscard, ruleset, out var promotedKongTile))
         {
-            var kongApplied = await TryApplyBotConcealedKongAsync(
+            var kongApplied = await TryApplyBotPromotedKongAsync(
                 game,
                 botPlayer,
-                kongTiles,
+                promotedKongTile,
                 drawResponse,
                 dbContext,
                 hubContext,
@@ -1431,6 +1425,31 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
             if (kongApplied)
             {
                 return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+            }
+        }
+
+        if (BotMeldAdvisor.TrySelectConcealedKong(botHand, ruleset, out var kongTile))
+        {
+            var kongTiles = handTiles
+                .Where(tile => TileEntityMatches(tile, kongTile))
+                .Take(4)
+                .ToList();
+
+            if (kongTiles.Count == 4)
+            {
+                var kongApplied = await TryApplyBotConcealedKongAsync(
+                    game,
+                    botPlayer,
+                    kongTiles,
+                    drawResponse,
+                    dbContext,
+                    hubContext,
+                    cancellationToken);
+
+                if (kongApplied)
+                {
+                    return await ExecuteBotTurnAsync(game, dbContext, hubContext, cancellationToken);
+                }
             }
         }
     }
@@ -1551,6 +1570,132 @@ static async Task<bool> TryApplyBotConcealedKongAsync(
     }
 
     var meldResponse = new MeldResponse(meld.Id, meld.Type, kongTiles.Select(tile => tile.Id).ToList());
+    await SendToGameWithAliases(hubContext, game.Id, "MeldDeclared", meldResponse, cancellationToken);
+    return true;
+}
+
+static async Task<bool> TryApplyBotPromotedKongAsync(
+    GameEntity game,
+    PlayerEntity botPlayer,
+    Tile kongTile,
+    DrawTileResponse? drawResponse,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken)
+{
+    var meldTiles = game.Tiles
+        .Where(tile => tile.PlayerId == botPlayer.Id
+            && string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase)
+            && TileEntityMatches(tile, kongTile))
+        .ToList();
+
+    if (meldTiles.Count != 3)
+    {
+        return false;
+    }
+
+    var meldId = meldTiles[0].MeldId;
+    if (meldId is null)
+    {
+        return false;
+    }
+
+    var meld = game.Melds.FirstOrDefault(candidate => candidate.Id == meldId);
+    if (meld is null || !string.Equals(meld.Type, "Pung", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var handTile = game.Tiles.FirstOrDefault(tile => tile.PlayerId == botPlayer.Id
+        && string.Equals(tile.Location, "Hand", StringComparison.OrdinalIgnoreCase)
+        && TileEntityMatches(tile, kongTile));
+
+    if (handTile is null)
+    {
+        return false;
+    }
+
+    if (drawResponse is not null)
+    {
+        await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", drawResponse, cancellationToken);
+    }
+
+    meld.Type = MeldType.Kong.ToString();
+    meld.Kind = KongKindParser.ToMeldTypeString(KongKind.Promoted);
+
+    handTile.Location = "Meld";
+    handTile.Meld = meld;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    if (TryBuildTileHand(new[] { handTile }, out var kongTileHand) && kongTileHand.Count == 1)
+    {
+        var promotedTile = kongTileHand[0];
+        var eligibleOpponents = new List<Guid>();
+
+        foreach (var opponent in game.Players.Where(p => p.Id != botPlayer.Id))
+        {
+            var opponentHandTiles = game.Tiles
+                .Where(t => t.PlayerId == opponent.Id &&
+                           string.Equals(t.Location, "Hand", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (!TryBuildTileHand(opponentHandTiles, out var opponentTileHand))
+            {
+                continue;
+            }
+
+            var opponentKongCount = game.Melds
+                .Count(m => m.PlayerId == opponent.Id &&
+                           (string.Equals(m.Type, "Kong", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(m.Kind, "ConcealedKong", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(m.Kind, "ExposedKong", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(m.Kind, "PromotedKong", StringComparison.OrdinalIgnoreCase)));
+
+            if (ChangshaRobbingKongDetector.CanRobPromotedKong(opponentTileHand, promotedTile, opponentKongCount))
+            {
+                eligibleOpponents.Add(opponent.Id);
+            }
+        }
+
+        if (eligibleOpponents.Any())
+        {
+            var robOpportunity = new
+            {
+                TileId = handTile.Id,
+                Suit = handTile.Suit,
+                Rank = handTile.Rank,
+                Wind = handTile.Wind,
+                Dragon = handTile.Dragon,
+                KongPlayerId = botPlayer.Id,
+                EligibleOpponents = eligibleOpponents
+            };
+            await SendToGameWithAliases(hubContext, game.Id, "KongRobOpportunity", robOpportunity, cancellationToken);
+        }
+    }
+
+    var replacementTile = game.Tiles
+        .Where(t => t.Location == "Wall")
+        .OrderBy(t => t.Sequence)
+        .FirstOrDefault();
+
+    if (replacementTile is not null)
+    {
+        replacementTile.Location = "Hand";
+        replacementTile.PlayerId = botPlayer.Id;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var replacementDraw = new DrawTileResponse(
+            replacementTile.Id,
+            replacementTile.Suit,
+            replacementTile.Rank,
+            replacementTile.Wind,
+            replacementTile.Dragon);
+        await SendToGameWithAliases(hubContext, game.Id, "TileDrawn", replacementDraw, cancellationToken);
+    }
+
+    var meldTileIds = meldTiles.Select(tile => tile.Id).Append(handTile.Id).ToList();
+    var meldResponse = new MeldResponse(meld.Id, meld.Type, meldTileIds);
     await SendToGameWithAliases(hubContext, game.Id, "MeldDeclared", meldResponse, cancellationToken);
     return true;
 }
