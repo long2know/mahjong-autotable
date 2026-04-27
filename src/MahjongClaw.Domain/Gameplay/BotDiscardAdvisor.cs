@@ -63,7 +63,7 @@ public static class BotDiscardAdvisor
             .ToDictionary(group => group.Key, group => group.Count());
 
         var enforceSmallWinPairBias = ruleset == MahjongRuleset.Changsha258
-            && !IsChangshaBigWinEyeFlexible(handTiles, meldTiles);
+            && !Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
 
         Tile? lastSmallWinSingleton = null;
         if (enforceSmallWinPairBias)
@@ -1237,61 +1237,4 @@ public static class BotDiscardAdvisor
             .SelectMany(suit => Changsha258Ruleset.SortedSmallWinPairRanks.Select(rank => new Tile(suit, rank)))
             .ToArray();
 
-    private static bool IsChangshaBigWinEyeFlexible(IReadOnlyList<Tile> handTiles, IReadOnlyList<Tile> meldTiles)
-    {
-        if (handTiles.Count == 0 && meldTiles.Count == 0)
-        {
-            return false;
-        }
-
-        var ownedTiles = handTiles.Concat(meldTiles).ToList();
-        if (ownedTiles.Count < 7)
-        {
-            return false;
-        }
-
-        var suits = ownedTiles
-            .Where(static tile => Changsha258Ruleset.AllowedSuits.Contains(tile.Suit))
-            .Select(static tile => tile.Suit)
-            .Distinct()
-            .ToList();
-
-        if (suits.Count == 1)
-        {
-            return true;
-        }
-
-        if (ownedTiles.All(static tile => Changsha258Ruleset.SmallWinPairRanks.Contains(tile.Rank)))
-        {
-            return true;
-        }
-
-        return HasAllPungsBigWinCandidate(ownedTiles, meldTiles);
-    }
-
-    private static bool HasAllPungsBigWinCandidate(IReadOnlyList<Tile> ownedTiles, IReadOnlyList<Tile> meldTiles)
-    {
-        if (ownedTiles.Count == 0)
-        {
-            return false;
-        }
-
-        if (meldTiles.Count > 0)
-        {
-            var meldGroups = meldTiles
-                .GroupBy(static tile => tile)
-                .Select(static group => group.Count());
-
-            if (meldGroups.Any(static count => count is not 3 and not 4))
-            {
-                return false;
-            }
-        }
-
-        var pungCandidates = ownedTiles
-            .GroupBy(static tile => tile)
-            .Count(static group => group.Count() >= 3);
-
-        return pungCandidates >= 3;
-    }
 }

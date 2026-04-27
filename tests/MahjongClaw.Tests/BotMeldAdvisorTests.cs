@@ -95,6 +95,24 @@ public class BotMeldAdvisorTests
     }
 
     [Fact]
+    public void TrySelectConcealedKong_AllowsSmallWinPair_WhenChangshaBigWinEyeFlexible()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        var result = BotMeldAdvisor.TrySelectConcealedKong(tiles, MahjongRuleset.Changsha258, out var kongTile);
+
+        result.Should().BeTrue();
+        kongTile.Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void TrySelectConcealedKong_PrefersNonSmallWinPair_ForChangsha258()
     {
         var tiles = new List<Tile>
@@ -186,6 +204,28 @@ public class BotMeldAdvisorTests
         var result = BotMeldAdvisor.TrySelectPromotedKong(handTiles, meldTiles, MahjongRuleset.Changsha258, out _);
 
         result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TrySelectPromotedKong_AllowsSmallWinPair_WhenChangshaBigWinEyeFlexible()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        var result = BotMeldAdvisor.TrySelectPromotedKong(handTiles, meldTiles, MahjongRuleset.Changsha258, out var kongTile);
+
+        result.Should().BeTrue();
+        kongTile.Should().Be(new Tile(TileSuit.Dots, 2));
     }
 
     [Fact]

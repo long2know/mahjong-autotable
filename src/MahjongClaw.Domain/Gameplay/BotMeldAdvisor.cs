@@ -39,19 +39,23 @@ public static class BotMeldAdvisor
 
         if (ruleset == MahjongRuleset.Changsha258)
         {
-            var smallWinPairs = handCounts
-                .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
-                .Select(entry => entry.Key)
-                .ToHashSet();
-
-            candidates = candidates
-                .Where(candidate => !ShouldAvoidChangshaSmallWinKong(candidate, smallWinPairs))
-                .ToList();
-
-            if (candidates.Count == 0)
+            var allowFlexibleEye = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>());
+            if (!allowFlexibleEye)
             {
-                kongTile = null!;
-                return false;
+                var smallWinPairs = handCounts
+                    .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                    .Select(entry => entry.Key)
+                    .ToHashSet();
+
+                candidates = candidates
+                    .Where(candidate => !ShouldAvoidChangshaSmallWinKong(candidate, smallWinPairs))
+                    .ToList();
+
+                if (candidates.Count == 0)
+                {
+                    kongTile = null!;
+                    return false;
+                }
             }
         }
 
@@ -108,19 +112,23 @@ public static class BotMeldAdvisor
 
         if (ruleset == MahjongRuleset.Changsha258)
         {
-            var smallWinPairs = handCounts
-                .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
-                .Select(entry => entry.Key)
-                .ToHashSet();
-
-            candidates = candidates
-                .Where(candidate => !ShouldAvoidChangshaSmallWinKong(candidate, smallWinPairs))
-                .ToList();
-
-            if (candidates.Count == 0)
+            var allowFlexibleEye = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
+            if (!allowFlexibleEye)
             {
-                kongTile = null!;
-                return false;
+                var smallWinPairs = handCounts
+                    .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                    .Select(entry => entry.Key)
+                    .ToHashSet();
+
+                candidates = candidates
+                    .Where(candidate => !ShouldAvoidChangshaSmallWinKong(candidate, smallWinPairs))
+                    .ToList();
+
+                if (candidates.Count == 0)
+                {
+                    kongTile = null!;
+                    return false;
+                }
             }
         }
 

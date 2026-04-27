@@ -103,6 +103,40 @@ public static class Changsha258Ruleset
             && SmallWinPairRanks.Contains(pair.Rank);
     }
 
+    public static bool IsBigWinEyeFlexibleCandidate(IReadOnlyList<Tile> handTiles, IReadOnlyList<Tile> meldTiles)
+    {
+        ArgumentNullException.ThrowIfNull(handTiles);
+        ArgumentNullException.ThrowIfNull(meldTiles);
+
+        if (handTiles.Any(static tile => tile is null) || meldTiles.Any(static tile => tile is null))
+        {
+            throw new ArgumentException("Tiles cannot contain null values.");
+        }
+
+        if (handTiles.Count == 0 && meldTiles.Count == 0)
+        {
+            return false;
+        }
+
+        var ownedTiles = handTiles.Concat(meldTiles).ToList();
+        if (ownedTiles.Count < 7)
+        {
+            return false;
+        }
+
+        if (IsPureSuit(ownedTiles))
+        {
+            return true;
+        }
+
+        if (IsAllTwoFiveEight(ownedTiles))
+        {
+            return true;
+        }
+
+        return HasAllPungsBigWinCandidate(ownedTiles, meldTiles);
+    }
+
     public static bool IsAllowedTile(Tile tile)
     {
         ArgumentNullException.ThrowIfNull(tile);
@@ -249,6 +283,32 @@ public static class Changsha258Ruleset
 
     private static bool IsAllTwoFiveEight(IReadOnlyList<Tile> allTiles)
         => allTiles.All(tile => SmallWinPairRanks.Contains(tile.Rank));
+
+    private static bool HasAllPungsBigWinCandidate(IReadOnlyList<Tile> ownedTiles, IReadOnlyList<Tile> meldTiles)
+    {
+        if (ownedTiles.Count == 0)
+        {
+            return false;
+        }
+
+        if (meldTiles.Count > 0)
+        {
+            var meldGroups = meldTiles
+                .GroupBy(static tile => tile)
+                .Select(static group => group.Count());
+
+            if (meldGroups.Any(static count => count is not 3 and not 4))
+            {
+                return false;
+            }
+        }
+
+        var pungCandidates = ownedTiles
+            .GroupBy(static tile => tile)
+            .Count(static group => group.Count() >= 3);
+
+        return pungCandidates >= 3;
+    }
 
     private static bool HasRequiredKongs(IReadOnlyDictionary<Tile, int> counts, int requiredKongs)
         => requiredKongs <= 0
