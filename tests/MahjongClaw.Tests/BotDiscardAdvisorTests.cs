@@ -421,7 +421,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_PrioritizesSmallWinOuts_WhenChangsha258Ruleset()
+    public void SelectDiscardIndex_PrioritizesBigWinOutsOverSmallWinOuts_WhenChangsha258EyeIsFlexible()
     {
         var tiles = new List<Tile>
         {
@@ -435,7 +435,7 @@ public class BotDiscardAdvisorTests
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
 
-        tiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 7));
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
     }
 
     [Fact]

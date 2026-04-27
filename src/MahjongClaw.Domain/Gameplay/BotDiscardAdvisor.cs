@@ -198,7 +198,7 @@ public static class BotDiscardAdvisor
         var prioritizedCandidates = candidates;
         var maxSmallWinOuts = 0;
 
-        if (ruleset == MahjongRuleset.Changsha258)
+        if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias)
         {
             maxSmallWinOuts = prioritizedCandidates.Max(candidate => candidate.SmallWinningDrawOuts);
             if (maxSmallWinOuts > 0)
