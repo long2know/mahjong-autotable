@@ -924,6 +924,11 @@ public static class BotDiscardAdvisor
             visibleCounts.TryGetValue(tile, out var visibleCount);
 
             var remainingCopies = 4 - ownedCount - visibleCount;
+            if (handCount >= 2)
+            {
+                return true;
+            }
+
             if (handCount > 0)
             {
                 if (remainingCopies >= 1)
