@@ -123,6 +123,7 @@ public static class BotDiscardAdvisor
                             ownedCounts,
                             visibleCounts)
                         + GetTileAvailabilityPenalty(tile, handCounts, ownedCounts, visibleCounts)
+                        + GetStrictDeadTilePenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetDeadAdjacencyPenalty(tile, handCounts, ownedCounts, visibleCounts)
                         + GetChangshaSmallWinPairVisibilityAdjustment(
                             tile,
@@ -1195,6 +1196,45 @@ public static class BotDiscardAdvisor
         }
 
         return remainingSelf <= 0 ? -1 : 0;
+    }
+
+    private static int GetStrictDeadTilePenalty(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts)
+    {
+        if (visibleCounts.Count == 0)
+        {
+            return 0;
+        }
+
+        handCounts.TryGetValue(tile, out var handCount);
+        if (handCount != 1)
+        {
+            return 0;
+        }
+
+        ownedCounts.TryGetValue(tile, out var ownedCount);
+        visibleCounts.TryGetValue(tile, out var visibleCount);
+        if (4 - ownedCount - visibleCount > 0)
+        {
+            return 0;
+        }
+
+        if (tile.IsHonor)
+        {
+            return -6;
+        }
+
+        if (!IsSuitedTile(tile))
+        {
+            return -4;
+        }
+
+        return HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts)
+            ? 0
+            : -6;
     }
 
     private static bool HasSequencePotential(
