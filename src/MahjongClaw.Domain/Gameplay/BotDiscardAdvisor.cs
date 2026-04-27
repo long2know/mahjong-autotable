@@ -65,6 +65,14 @@ public static class BotDiscardAdvisor
         var enforceSmallWinPairBias = ruleset == MahjongRuleset.Changsha258
             && !Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
 
+        var hasLiveSmallWinPairCandidate = enforceSmallWinPairBias
+            && HasLiveSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts, ruleset);
+
+        if (enforceSmallWinPairBias && !hasLiveSmallWinPairCandidate)
+        {
+            enforceSmallWinPairBias = false;
+        }
+
         Tile? lastSmallWinSingleton = null;
         if (enforceSmallWinPairBias)
         {
@@ -85,8 +93,6 @@ public static class BotDiscardAdvisor
             }
         }
 
-        var hasLiveSmallWinPairCandidate = enforceSmallWinPairBias
-            && HasLiveSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts, ruleset);
         var hasStrongSmallWinPairCandidate = enforceSmallWinPairBias && visibleCounts.Count > 0
             ? HasStrongSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts)
             : hasLiveSmallWinPairCandidate;
