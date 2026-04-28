@@ -161,6 +161,33 @@ public static class BotDiscardAdvisor
             })
             .ToList();
 
+        if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias)
+        {
+            var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+            if (smallWinPairCount >= 1)
+            {
+                var deadOffRankPairCandidates = candidates
+                    .Where(candidate =>
+                    {
+                        handCounts.TryGetValue(candidate.Tile, out var handCount);
+                        if (handCount < 2 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                        {
+                            return false;
+                        }
+
+                        ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
+                        visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
+                        return 4 - ownedCount - visibleCount <= 0;
+                    })
+                    .ToList();
+
+                if (deadOffRankPairCandidates.Count > 0)
+                {
+                    candidates = deadOffRankPairCandidates;
+                }
+            }
+        }
+
         var concealedKongTiles = handCounts
             .Where(entry => entry.Value >= 4)
             .Select(entry => entry.Key)
@@ -365,15 +392,30 @@ public static class BotDiscardAdvisor
             score += 2;
         }
 
+        var applySmallWinPairBias = enforceSmallWinPairBias && ruleset == MahjongRuleset.Changsha258;
+
         var deadPairPenalty = 0;
-        if (ruleset == MahjongRuleset.ChineseOfficial && tileMatchCount == 2 && pairCount >= 2)
+        if (tileMatchCount == 2 && pairCount >= 2)
         {
             ownedCounts.TryGetValue(tile, out var ownedCount);
             visibleCounts.TryGetValue(tile, out var visibleCount);
             var remainingCopies = 4 - ownedCount - visibleCount;
+
             if (remainingCopies <= 0)
             {
-                deadPairPenalty = -4;
+                if (ruleset == MahjongRuleset.ChineseOfficial)
+                {
+                    deadPairPenalty = -4;
+                }
+                else if (applySmallWinPairBias
+                         && smallWinPairCount >= 1
+                         && !Changsha258Ruleset.IsSmallWinPair(tile))
+                {
+                    // Once a valid 2/5/8 eye is already secured in Changsha,
+                    // dead off-rank pairs are low-value baggage and should be
+                    // broken before live, connected singletons.
+                    deadPairPenalty = -18;
+                }
             }
         }
 
@@ -401,8 +443,6 @@ public static class BotDiscardAdvisor
                 };
             }
         }
-
-        var applySmallWinPairBias = enforceSmallWinPairBias && ruleset == MahjongRuleset.Changsha258;
         var smallWinPairBonus = 0;
         if (applySmallWinPairBias && Changsha258Ruleset.IsSmallWinPair(tile))
         {
