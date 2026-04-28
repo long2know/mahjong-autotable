@@ -119,6 +119,30 @@ public sealed class ChangshaWinTypeEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_DoesNotClassifyPureSuitAsMissingOneSuit_WhenInitialDeal()
+    {
+        List<Tile> pureSuitTiles =
+        [
+            new Tile(TileSuit.Characters, 1), new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3),
+            new Tile(TileSuit.Characters, 3), new Tile(TileSuit.Characters, 4), new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Characters, 6), new Tile(TileSuit.Characters, 7), new Tile(TileSuit.Characters, 8),
+            new Tile(TileSuit.Characters, 7), new Tile(TileSuit.Characters, 8), new Tile(TileSuit.Characters, 9),
+            new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5)
+        ];
+
+        var pureSuitHand = ResolveWinningHand(pureSuitTiles);
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(
+            pureSuitTiles,
+            pureSuitHand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.PureSuit);
+        evaluation.WinTypes.Should().NotContain(ChangshaWinType.MissingOneSuit);
+        evaluation.IsBigWin.Should().BeTrue();
+        evaluation.IsSmallWin.Should().BeFalse();
+    }
+
+    [Fact]
     public void Evaluate_DetectsSevenPairsAndLuxurySevenPairs_WhenQuadExists()
     {
         List<Tile> tiles =

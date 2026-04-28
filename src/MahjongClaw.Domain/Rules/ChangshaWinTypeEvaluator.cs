@@ -193,7 +193,9 @@ public static class ChangshaWinTypeEvaluator
             .Distinct()
             .Count();
 
-        return suitedPresence <= 2;
+        // MissingOneSuit (缺一色) should apply only when exactly two suits are present.
+        // PureSuit (清一色) is a distinct pattern and should not be double-counted here.
+        return suitedPresence == 2;
     }
 
     private static bool HasAtLeastTwoTriplets(IReadOnlyList<Tile> tiles)
