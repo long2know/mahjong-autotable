@@ -14,11 +14,20 @@ public static class OpponentMeldThreatAnalyzer
         }
 
         return opponentMeldTiles
-            .GroupBy(static entry => new { entry.PlayerId, entry.Tile })
-            .Where(group => group.Count() == 3)
-            .SelectMany(group => Enumerable.Repeat(group.Key.Tile, group.Count()))
+            .GroupBy(static entry => new { entry.PlayerId, entry.MeldId })
+            .Where(static meldGroup =>
+            {
+                if (meldGroup.Count() != 3)
+                {
+                    return false;
+                }
+
+                var firstTile = meldGroup.First().Tile;
+                return meldGroup.All(entry => entry.Tile == firstTile);
+            })
+            .SelectMany(static meldGroup => Enumerable.Repeat(meldGroup.First().Tile, meldGroup.Count()))
             .ToArray();
     }
 }
 
-public readonly record struct OpponentMeldTileView(Guid PlayerId, Tile Tile);
+public readonly record struct OpponentMeldTileView(Guid PlayerId, Guid MeldId, Tile Tile);

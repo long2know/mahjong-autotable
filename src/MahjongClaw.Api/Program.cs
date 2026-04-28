@@ -1477,12 +1477,15 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
     var opponentMeldTileViews = new List<OpponentMeldTileView>(visibleMeldTileEntities.Count);
     foreach (var tileEntity in visibleMeldTileEntities)
     {
-        if (tileEntity.PlayerId is null || !TryBuildTileHand([tileEntity], out var tileHand) || tileHand.Count != 1)
+        if (tileEntity.PlayerId is null
+            || tileEntity.MeldId is null
+            || !TryBuildTileHand([tileEntity], out var tileHand)
+            || tileHand.Count != 1)
         {
-            return BotTurnExecutionResult.Fail(409, "Bot visible meld tiles contain invalid tile/player data.");
+            return BotTurnExecutionResult.Fail(409, "Bot visible meld tiles contain invalid tile/player/meld data.");
         }
 
-        opponentMeldTileViews.Add(new OpponentMeldTileView(tileEntity.PlayerId.Value, tileHand[0]));
+        opponentMeldTileViews.Add(new OpponentMeldTileView(tileEntity.PlayerId.Value, tileEntity.MeldId.Value, tileHand[0]));
     }
 
     var opponentKongThreatTiles = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(opponentMeldTileViews);

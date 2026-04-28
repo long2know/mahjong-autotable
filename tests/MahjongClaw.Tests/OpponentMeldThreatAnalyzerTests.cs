@@ -19,7 +19,7 @@ public class OpponentMeldThreatAnalyzerTests
     {
         var input = new List<OpponentMeldTileView>
         {
-            new(Guid.NewGuid(), null!)
+            new(Guid.NewGuid(), Guid.NewGuid(), null!)
         };
 
         Action act = () => OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(input);
@@ -34,12 +34,35 @@ public class OpponentMeldThreatAnalyzerTests
         var p1 = Guid.NewGuid();
         var p2 = Guid.NewGuid();
         var p3 = Guid.NewGuid();
+        var m1 = Guid.NewGuid();
+        var m2 = Guid.NewGuid();
+        var m3 = Guid.NewGuid();
 
         var input = new List<OpponentMeldTileView>
         {
-            new(p1, new Tile(TileSuit.Dots, 3)), new(p1, new Tile(TileSuit.Dots, 4)), new(p1, new Tile(TileSuit.Dots, 5)),
-            new(p2, new Tile(TileSuit.Dots, 2)), new(p2, new Tile(TileSuit.Dots, 3)), new(p2, new Tile(TileSuit.Dots, 4)),
-            new(p3, new Tile(TileSuit.Dots, 1)), new(p3, new Tile(TileSuit.Dots, 2)), new(p3, new Tile(TileSuit.Dots, 3))
+            new(p1, m1, new Tile(TileSuit.Dots, 3)), new(p1, m1, new Tile(TileSuit.Dots, 4)), new(p1, m1, new Tile(TileSuit.Dots, 5)),
+            new(p2, m2, new Tile(TileSuit.Dots, 2)), new(p2, m2, new Tile(TileSuit.Dots, 3)), new(p2, m2, new Tile(TileSuit.Dots, 4)),
+            new(p3, m3, new Tile(TileSuit.Dots, 1)), new(p3, m3, new Tile(TileSuit.Dots, 2)), new(p3, m3, new Tile(TileSuit.Dots, 3))
+        };
+
+        var threats = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(input);
+
+        threats.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildPromotableKongThreatTiles_DoesNotFlagSamePlayerCrossMeldChowAggregation()
+    {
+        var playerId = Guid.NewGuid();
+        var m1 = Guid.NewGuid();
+        var m2 = Guid.NewGuid();
+        var m3 = Guid.NewGuid();
+
+        var input = new List<OpponentMeldTileView>
+        {
+            new(playerId, m1, new Tile(TileSuit.Dots, 1)), new(playerId, m1, new Tile(TileSuit.Dots, 2)), new(playerId, m1, new Tile(TileSuit.Dots, 3)),
+            new(playerId, m2, new Tile(TileSuit.Dots, 2)), new(playerId, m2, new Tile(TileSuit.Dots, 3)), new(playerId, m2, new Tile(TileSuit.Dots, 4)),
+            new(playerId, m3, new Tile(TileSuit.Dots, 3)), new(playerId, m3, new Tile(TileSuit.Dots, 4)), new(playerId, m3, new Tile(TileSuit.Dots, 5))
         };
 
         var threats = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(input);
@@ -52,15 +75,17 @@ public class OpponentMeldThreatAnalyzerTests
     {
         var p1 = Guid.NewGuid();
         var p2 = Guid.NewGuid();
+        var pungMeld = Guid.NewGuid();
+        var chowMeld = Guid.NewGuid();
 
         var input = new List<OpponentMeldTileView>
         {
-            new(p1, new Tile(TileSuit.Dots, 9)),
-            new(p1, new Tile(TileSuit.Dots, 9)),
-            new(p1, new Tile(TileSuit.Dots, 9)),
-            new(p2, new Tile(TileSuit.Dots, 1)),
-            new(p2, new Tile(TileSuit.Dots, 2)),
-            new(p2, new Tile(TileSuit.Dots, 3))
+            new(p1, pungMeld, new Tile(TileSuit.Dots, 9)),
+            new(p1, pungMeld, new Tile(TileSuit.Dots, 9)),
+            new(p1, pungMeld, new Tile(TileSuit.Dots, 9)),
+            new(p2, chowMeld, new Tile(TileSuit.Dots, 1)),
+            new(p2, chowMeld, new Tile(TileSuit.Dots, 2)),
+            new(p2, chowMeld, new Tile(TileSuit.Dots, 3))
         };
 
         var threats = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(input);
@@ -73,13 +98,14 @@ public class OpponentMeldThreatAnalyzerTests
     public void BuildPromotableKongThreatTiles_IgnoresExposedKongGroups()
     {
         var p1 = Guid.NewGuid();
+        var kongMeld = Guid.NewGuid();
 
         var input = new List<OpponentMeldTileView>
         {
-            new(p1, new Tile(TileSuit.Dots, 7)),
-            new(p1, new Tile(TileSuit.Dots, 7)),
-            new(p1, new Tile(TileSuit.Dots, 7)),
-            new(p1, new Tile(TileSuit.Dots, 7))
+            new(p1, kongMeld, new Tile(TileSuit.Dots, 7)),
+            new(p1, kongMeld, new Tile(TileSuit.Dots, 7)),
+            new(p1, kongMeld, new Tile(TileSuit.Dots, 7)),
+            new(p1, kongMeld, new Tile(TileSuit.Dots, 7))
         };
 
         var threats = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(input);
