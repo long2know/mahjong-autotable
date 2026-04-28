@@ -170,7 +170,7 @@ public static class BotDiscardAdvisor
                     .Where(candidate =>
                     {
                         handCounts.TryGetValue(candidate.Tile, out var handCount);
-                        if (handCount < 2 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                        if (handCount != 2 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
                         {
                             return false;
                         }

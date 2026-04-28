@@ -681,6 +681,32 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotForceDeadOffRankQuadDiscard_WhenItLosesImmediateWinningOut()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Characters, 1)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().BeOneOf(new Tile(TileSuit.Bamboos, 2), new Tile(TileSuit.Characters, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_KeepsSoleLiveSmallWinPairCandidate_WhenChangsha258Ruleset()
     {
         var handTiles = new List<Tile>
