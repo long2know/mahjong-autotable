@@ -384,6 +384,7 @@ public static class BotDiscardAdvisor
         var concealedKongBonus = tileMatchCount >= 4 ? 8 : 0;
 
         var pairCount = tileCounts.Count(static entry => entry.Value >= 2);
+        var actualPairCount = tileCounts.Count(static entry => entry.Value == 2);
         var smallWinPairCount = ruleset == MahjongRuleset.Changsha258
             ? tileCounts.Count(static entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
             : 0;
@@ -415,6 +416,12 @@ public static class BotDiscardAdvisor
                     // dead off-rank pairs are low-value baggage and should be
                     // broken before live, connected singletons.
                     deadPairPenalty = -18;
+                }
+                else if (ruleset == MahjongRuleset.Changsha258
+                         && actualPairCount >= 2
+                         && !Changsha258Ruleset.IsSmallWinPair(tile))
+                {
+                    deadPairPenalty = -8;
                 }
             }
         }

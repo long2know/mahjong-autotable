@@ -134,6 +134,11 @@ public static class Changsha258Ruleset
             return true;
         }
 
+        if (IsSevenPairsCandidate(handTiles, meldTiles))
+        {
+            return true;
+        }
+
         return HasAllPungsBigWinCandidate(ownedTiles, meldTiles);
     }
 
@@ -143,6 +148,20 @@ public static class Changsha258Ruleset
 
         return AllowedSuits.Contains(tile.Suit)
             && tile.Rank is >= MinSuitedRank and <= MaxSuitedRank;
+    }
+
+    private static bool IsSevenPairsCandidate(IReadOnlyList<Tile> handTiles, IReadOnlyList<Tile> meldTiles)
+    {
+        if (meldTiles.Count > 0)
+        {
+            return false;
+        }
+
+        var pairCount = handTiles
+            .GroupBy(static tile => tile)
+            .Count(static group => group.Count() >= 2);
+
+        return pairCount >= 6;
     }
 
     private static bool TryBuildCounts(IReadOnlyList<Tile> tiles, out Dictionary<Tile, int> counts)
