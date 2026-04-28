@@ -9,33 +9,44 @@ public static class BotDiscardAdvisor
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
     private static readonly IReadOnlyList<Tile> Changsha258SmallWinPairTiles = BuildChangshaSmallWinPairTiles();
     private const int LastSmallWinSingletonKeepBonus = 12;
+    private const int OpponentKongFeedAvoidBonus = 12;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, IReadOnlyList<Tile> meldTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
-        => SelectDiscardIndexInternal(handTiles, meldTiles, Array.Empty<Tile>(), ruleset);
+        => SelectDiscardIndexInternal(handTiles, meldTiles, Array.Empty<Tile>(), Array.Empty<Tile>(), ruleset);
 
     public static int SelectDiscardIndex(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyList<Tile> visibleTiles,
         MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
+        => SelectDiscardIndex(handTiles, meldTiles, visibleTiles, Array.Empty<Tile>(), ruleset);
+
+    public static int SelectDiscardIndex(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        IReadOnlyList<Tile> visibleTiles,
+        IReadOnlyList<Tile> visibleMeldTiles,
+        MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
     {
         ArgumentNullException.ThrowIfNull(visibleTiles);
+        ArgumentNullException.ThrowIfNull(visibleMeldTiles);
 
-        if (visibleTiles.Any(static tile => tile is null))
+        if (visibleTiles.Any(static tile => tile is null) || visibleMeldTiles.Any(static tile => tile is null))
         {
             throw new ArgumentException("Tiles cannot contain null values.", nameof(visibleTiles));
         }
 
-        return SelectDiscardIndexInternal(handTiles, meldTiles, visibleTiles, ruleset);
+        return SelectDiscardIndexInternal(handTiles, meldTiles, visibleTiles, visibleMeldTiles, ruleset);
     }
 
     private static int SelectDiscardIndexInternal(
         IReadOnlyList<Tile> handTiles,
         IReadOnlyList<Tile> meldTiles,
         IReadOnlyList<Tile> visibleTiles,
+        IReadOnlyList<Tile> visibleMeldTiles,
         MahjongRuleset ruleset)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
@@ -52,6 +63,9 @@ public static class BotDiscardAdvisor
         }
 
         var visibleCounts = visibleTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var visibleMeldCounts = visibleMeldTiles
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
         var handCounts = handTiles
@@ -132,6 +146,7 @@ public static class BotDiscardAdvisor
                             visibleCounts,
                             ruleset,
                             enforceSmallWinPairBias)
+                        + GetOpponentMeldKongAvoidBonus(tile, visibleMeldCounts)
                         + (lastSmallWinSingleton is not null && tile.Equals(lastSmallWinSingleton)
                             ? LastSmallWinSingletonKeepBonus
                             : 0),
@@ -1112,6 +1127,19 @@ public static class BotDiscardAdvisor
             2 => -5,
             _ => 0
         };
+    }
+
+    private static int GetOpponentMeldKongAvoidBonus(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> visibleMeldCounts)
+    {
+        if (visibleMeldCounts.Count == 0)
+        {
+            return 0;
+        }
+
+        visibleMeldCounts.TryGetValue(tile, out var meldCount);
+        return meldCount >= 3 ? OpponentKongFeedAvoidBonus : 0;
     }
 
     private static int GetDeadAdjacencyPenalty(

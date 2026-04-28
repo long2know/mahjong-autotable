@@ -1454,9 +1454,14 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         }
     }
 
+    var visibleMeldTileEntities = game.Tiles
+        .Where(tile => string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase)
+            && tile.PlayerId != botPlayer.Id)
+        .ToList();
+
     var visibleTileEntities = game.Tiles
-        .Where(tile => string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase)
-            || (string.Equals(tile.Location, "Meld", StringComparison.OrdinalIgnoreCase) && tile.PlayerId != botPlayer.Id))
+        .Where(tile => string.Equals(tile.Location, "Discard", StringComparison.OrdinalIgnoreCase))
+        .Concat(visibleMeldTileEntities)
         .ToList();
 
     if (!TryBuildTileHand(visibleTileEntities, out var visibleTiles))
@@ -1464,7 +1469,12 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot visible tiles contain invalid tile data.");
     }
 
-    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHandForDiscard, visibleTiles, ruleset);
+    if (!TryBuildTileHand(visibleMeldTileEntities, out var visibleMeldTiles))
+    {
+        return BotTurnExecutionResult.Fail(409, "Bot visible meld tiles contain invalid tile data.");
+    }
+
+    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHandForDiscard, visibleTiles, visibleMeldTiles, ruleset);
     var discardTile = handTiles[discardIndex];
     discardTile.Location = "Discard";
 
