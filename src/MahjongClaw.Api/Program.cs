@@ -1474,7 +1474,20 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         return BotTurnExecutionResult.Fail(409, "Bot visible meld tiles contain invalid tile data.");
     }
 
-    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHandForDiscard, visibleTiles, visibleMeldTiles, ruleset);
+    var opponentMeldTileViews = new List<OpponentMeldTileView>(visibleMeldTileEntities.Count);
+    foreach (var tileEntity in visibleMeldTileEntities)
+    {
+        if (tileEntity.PlayerId is null || !TryBuildTileHand([tileEntity], out var tileHand) || tileHand.Count != 1)
+        {
+            return BotTurnExecutionResult.Fail(409, "Bot visible meld tiles contain invalid tile/player data.");
+        }
+
+        opponentMeldTileViews.Add(new OpponentMeldTileView(tileEntity.PlayerId.Value, tileHand[0]));
+    }
+
+    var opponentKongThreatTiles = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(opponentMeldTileViews);
+
+    var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHandForDiscard, visibleTiles, opponentKongThreatTiles, ruleset);
     var discardTile = handTiles[discardIndex];
     discardTile.Location = "Discard";
 
