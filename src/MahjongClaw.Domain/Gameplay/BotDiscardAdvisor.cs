@@ -240,6 +240,21 @@ public static class BotDiscardAdvisor
                     }
                 }
             }
+
+            var ownedTiles = handTiles.Concat(meldTiles).ToList();
+            var twoFiveEightCount = ownedTiles.Count(tile => Changsha258Ruleset.SmallWinPairRanks.Contains(tile.Rank));
+            var offRankCount = ownedTiles.Count - twoFiveEightCount;
+            if (ownedTiles.Count >= 10 && offRankCount is > 0 and <= 2)
+            {
+                var offRankCandidates = candidates
+                    .Where(candidate => !Changsha258Ruleset.SmallWinPairRanks.Contains(candidate.Tile.Rank))
+                    .ToList();
+
+                if (offRankCandidates.Count > 0)
+                {
+                    candidates = offRankCandidates;
+                }
+            }
         }
 
         var prioritizedCandidates = candidates;

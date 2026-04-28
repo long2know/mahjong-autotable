@@ -1155,6 +1155,24 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithChangsha258NearAllTwoFiveEight_TradesOffRankTilesFirst()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 8), new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 5), new(TileSuit.Characters, 8),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Rank.Should().Be(3);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithMelds_PrioritizesKeepingDominantMeldSuit()
     {
         var handTiles = new List<Tile>
