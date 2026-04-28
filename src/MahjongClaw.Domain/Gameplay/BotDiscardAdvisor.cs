@@ -199,6 +199,7 @@ public static class BotDiscardAdvisor
         if (ruleset == MahjongRuleset.Changsha258)
         {
             var suitCounts = handTiles
+                .Concat(meldTiles)
                 .Where(static tile => !tile.IsHonor)
                 .GroupBy(static tile => tile.Suit)
                 .ToDictionary(group => group.Key, group => group.Count());
