@@ -306,6 +306,25 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.Changsha258 && !enforceSmallWinPairBias)
+        {
+            var maxBigWinOuts = prioritizedCandidates.Max(candidate => candidate.BigWinningDrawOuts);
+            if (maxBigWinOuts > 0)
+            {
+                prioritizedCandidates = prioritizedCandidates
+                    .Where(candidate => candidate.BigWinningDrawOuts == maxBigWinOuts)
+                    .ToList();
+
+                var maxBigWinCopies = prioritizedCandidates.Max(candidate => candidate.BigWinningDrawOutCopies);
+                if (maxBigWinCopies > 0)
+                {
+                    prioritizedCandidates = prioritizedCandidates
+                        .Where(candidate => candidate.BigWinningDrawOutCopies == maxBigWinCopies)
+                        .ToList();
+                }
+            }
+        }
+
         var maxWinningDrawOuts = prioritizedCandidates.Max(candidate => candidate.WinningDrawOuts);
         if (maxWinningDrawOuts > 0)
         {
