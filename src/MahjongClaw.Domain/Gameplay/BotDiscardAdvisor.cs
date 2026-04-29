@@ -87,6 +87,9 @@ public static class BotDiscardAdvisor
             enforceSmallWinPairBias = false;
         }
 
+        var hasSmallWinTileInHand = enforceSmallWinPairBias
+            && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
+
         Tile? lastSmallWinSingleton = null;
         if (enforceSmallWinPairBias)
         {
@@ -339,7 +342,9 @@ public static class BotDiscardAdvisor
         }
 
         var useRemainingCopyTieBreaker = visibleCounts.Count > 0
-            && (ruleset == MahjongRuleset.ChineseOfficial || !enforceSmallWinPairBias);
+            && (ruleset == MahjongRuleset.ChineseOfficial
+                || !enforceSmallWinPairBias
+                || (maxSmallWinOuts == 0 && !hasSmallWinTileInHand));
 
         return prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
