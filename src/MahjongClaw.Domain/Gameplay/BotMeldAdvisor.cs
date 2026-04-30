@@ -9,15 +9,23 @@ public static class BotMeldAdvisor
         IReadOnlyList<Tile> handTiles,
         MahjongRuleset ruleset,
         out Tile kongTile)
+        => TrySelectConcealedKong(handTiles, Array.Empty<Tile>(), ruleset, out kongTile);
+
+    public static bool TrySelectConcealedKong(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        MahjongRuleset ruleset,
+        out Tile kongTile)
     {
         ArgumentNullException.ThrowIfNull(handTiles);
+        ArgumentNullException.ThrowIfNull(meldTiles);
 
         if (handTiles.Count == 0)
         {
             throw new ArgumentException("Hand cannot be empty.", nameof(handTiles));
         }
 
-        if (handTiles.Any(static tile => tile is null))
+        if (handTiles.Any(static tile => tile is null) || meldTiles.Any(static tile => tile is null))
         {
             throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
         }
@@ -37,9 +45,15 @@ public static class BotMeldAdvisor
             return false;
         }
 
+        if (ShouldAvoidSevenPairsConcealedKong(handCounts, meldTiles))
+        {
+            kongTile = null!;
+            return false;
+        }
+
         if (ruleset == MahjongRuleset.Changsha258)
         {
-            var allowFlexibleEye = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>());
+            var allowFlexibleEye = Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
             if (!allowFlexibleEye)
             {
                 var smallWinPairs = handCounts
@@ -144,6 +158,19 @@ public static class BotMeldAdvisor
 
         kongTile = prioritizedCandidates[0];
         return true;
+    }
+
+    private static bool ShouldAvoidSevenPairsConcealedKong(
+        IReadOnlyDictionary<Tile, int> handCounts,
+        IReadOnlyList<Tile> meldTiles)
+    {
+        if (meldTiles.Count > 0)
+        {
+            return false;
+        }
+
+        var pairCount = handCounts.Values.Sum(static count => count / 2);
+        return pairCount >= 6;
     }
 
     private static bool ShouldAvoidChangshaSmallWinKong(Tile candidate, IReadOnlySet<Tile> smallWinPairs)

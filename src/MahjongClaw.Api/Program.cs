@@ -1428,7 +1428,7 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
             }
         }
 
-        if (BotMeldAdvisor.TrySelectConcealedKong(botHand, ruleset, out var kongTile))
+        if (BotMeldAdvisor.TrySelectConcealedKong(botHand, botMeldHandForDiscard, ruleset, out var kongTile))
         {
             var kongTiles = handTiles
                 .Where(tile => TileEntityMatches(tile, kongTile))

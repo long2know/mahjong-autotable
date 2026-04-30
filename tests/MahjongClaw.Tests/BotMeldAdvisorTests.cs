@@ -131,6 +131,44 @@ public class BotMeldAdvisorTests
     }
 
     [Fact]
+    public void TrySelectConcealedKong_SkipsSevenPairsCandidate_ForChineseOfficial()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Dots, 7)
+        };
+
+        var result = BotMeldAdvisor.TrySelectConcealedKong(tiles, MahjongRuleset.ChineseOfficial, out _);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TrySelectConcealedKong_SkipsSevenPairsCandidate_ForChangsha258()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 4),
+            new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 9)
+        };
+
+        var result = BotMeldAdvisor.TrySelectConcealedKong(tiles, MahjongRuleset.Changsha258, out _);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
     public void TrySelectPromotedKong_ThrowsForNullHand()
     {
         Action act = () => BotMeldAdvisor.TrySelectPromotedKong(null!, Array.Empty<Tile>(), MahjongRuleset.ChineseOfficial, out _);
