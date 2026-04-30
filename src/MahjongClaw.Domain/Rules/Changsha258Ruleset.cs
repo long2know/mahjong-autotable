@@ -287,7 +287,38 @@ public static class Changsha258Ruleset
     private static bool IsEligibleRandomEyeBigWin(IReadOnlyList<Tile> allTiles, IReadOnlyList<Meld> melds)
         => IsPureSuit(allTiles)
             || IsAllTwoFiveEight(allTiles)
+            || IsSanTong(allTiles)
             || melds.All(static meld => meld.Type is MeldType.Pung or MeldType.Kong);
+
+    private static bool IsSanTong(IReadOnlyList<Tile> allTiles)
+    {
+        var tripletGroups = allTiles
+            .Where(static tile => AllowedSuits.Contains(tile.Suit))
+            .GroupBy(static tile => tile)
+            .Where(group => group.Count() >= 3)
+            .ToList();
+
+        if (tripletGroups.Count < 3)
+        {
+            return false;
+        }
+
+        var tripletsGroupedByRank = tripletGroups
+            .Select(group => group.Key)
+            .GroupBy(static tile => tile.Rank)
+            .ToList();
+
+        foreach (var rankGroup in tripletsGroupedByRank)
+        {
+            var suits = rankGroup.Select(tile => tile.Suit).Distinct().ToList();
+            if (suits.Count == 3)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsPureSuit(IReadOnlyList<Tile> allTiles)
     {
