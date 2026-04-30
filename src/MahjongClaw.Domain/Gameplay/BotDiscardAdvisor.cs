@@ -237,7 +237,21 @@ public static class BotDiscardAdvisor
 
             if (nonKongCandidates.Count > 0)
             {
-                candidates = nonKongCandidates;
+                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOutCopies = candidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var bestNonKongOuts = nonKongCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestNonKongOutCopies = nonKongCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestNonKongOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                if (bestNonKongOuts == bestOverallOuts
+                    && bestNonKongOutCopies == bestOverallOutCopies)
+                {
+                    candidates = nonKongCandidates;
+                }
             }
         }
 
