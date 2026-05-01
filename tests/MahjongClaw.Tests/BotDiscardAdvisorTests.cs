@@ -1352,6 +1352,30 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_UsesRemainingCopyTieBreaker()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 3)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            Array.Empty<Tile>(),
+            visibleMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 3));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_DiscardsDeadPair_WhenMultiplePairsAvailable()
     {
         var handTiles = new List<Tile>

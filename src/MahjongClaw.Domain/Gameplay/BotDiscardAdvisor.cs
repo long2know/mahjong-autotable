@@ -63,6 +63,7 @@ public static class BotDiscardAdvisor
         }
 
         var visibleCounts = visibleTiles
+            .Concat(visibleMeldTiles)
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
         var visibleMeldCounts = visibleMeldTiles
@@ -1272,7 +1273,7 @@ public static class BotDiscardAdvisor
         }
 
         visibleMeldCounts.TryGetValue(tile, out var meldCount);
-        return meldCount >= 3 ? OpponentKongFeedAvoidBonus : 0;
+        return meldCount == 3 ? OpponentKongFeedAvoidBonus : 0;
     }
 
     private static int GetDeadAdjacencyPenalty(
