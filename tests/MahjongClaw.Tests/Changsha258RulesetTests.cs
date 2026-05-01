@@ -120,6 +120,19 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void IsBigWinEyeFlexibleCandidate_ReturnsTrue_ForSanTongTriplets()
+    {
+        var handTiles = new[]
+        {
+            new Tile(TileSuit.Characters, 4), new Tile(TileSuit.Characters, 4), new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Dots, 4), new Tile(TileSuit.Dots, 4), new Tile(TileSuit.Dots, 4),
+            new Tile(TileSuit.Bamboos, 4), new Tile(TileSuit.Bamboos, 4), new Tile(TileSuit.Bamboos, 4)
+        }.ToList();
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeTrue();
+    }
+
+    [Fact]
     public void TryGetWinningHand_Throws_WhenTilesNull()
     {
         var act = () => Changsha258Ruleset.TryGetWinningHand(null!, out _);

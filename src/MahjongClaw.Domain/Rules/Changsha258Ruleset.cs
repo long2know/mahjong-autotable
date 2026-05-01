@@ -134,6 +134,11 @@ public static class Changsha258Ruleset
             return true;
         }
 
+        if (IsSanTong(ownedTiles))
+        {
+            return true;
+        }
+
         if (IsSevenPairsCandidate(handTiles, meldTiles))
         {
             return true;
