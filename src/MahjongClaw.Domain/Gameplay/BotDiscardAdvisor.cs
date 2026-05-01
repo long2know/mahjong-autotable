@@ -255,37 +255,36 @@ public static class BotDiscardAdvisor
             }
         }
 
-        if (ruleset == MahjongRuleset.Changsha258)
-        {
-            var suitCounts = handTiles
-                .Concat(meldTiles)
-                .Where(static tile => !tile.IsHonor)
-                .GroupBy(static tile => tile.Suit)
-                .ToDictionary(group => group.Key, group => group.Count());
+        var ownedTiles = handTiles.Concat(meldTiles).ToList();
+        var suitCounts = ownedTiles
+            .Where(static tile => !tile.IsHonor)
+            .GroupBy(static tile => tile.Suit)
+            .ToDictionary(group => group.Key, group => group.Count());
 
-            if (suitCounts.Count > 1)
+        if (suitCounts.Count > 0)
+        {
+            var maxSuitCount = suitCounts.Values.Max();
+            var dominantSuits = suitCounts
+                .Where(entry => entry.Value == maxSuitCount)
+                .Select(entry => entry.Key)
+                .ToList();
+
+            if (dominantSuits.Count == 1 && maxSuitCount >= 12)
             {
-                var maxSuitCount = suitCounts.Values.Max();
-                var dominantSuits = suitCounts
-                    .Where(entry => entry.Value == maxSuitCount)
-                    .Select(entry => entry.Key)
+                var dominantSuit = dominantSuits[0];
+                var offSuitCandidates = candidates
+                    .Where(candidate => candidate.Tile.IsHonor || candidate.Tile.Suit != dominantSuit)
                     .ToList();
 
-                if (dominantSuits.Count == 1 && maxSuitCount >= 12)
+                if (offSuitCandidates.Count > 0)
                 {
-                    var dominantSuit = dominantSuits[0];
-                    var offSuitCandidates = candidates
-                        .Where(candidate => !candidate.Tile.IsHonor && candidate.Tile.Suit != dominantSuit)
-                        .ToList();
-
-                    if (offSuitCandidates.Count > 0)
-                    {
-                        candidates = offSuitCandidates;
-                    }
+                    candidates = offSuitCandidates;
                 }
             }
+        }
 
-            var ownedTiles = handTiles.Concat(meldTiles).ToList();
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
             var twoFiveEightCount = ownedTiles.Count(tile => Changsha258Ruleset.SmallWinPairRanks.Contains(tile.Rank));
             var offRankCount = ownedTiles.Count - twoFiveEightCount;
             if (ownedTiles.Count >= 10 && offRankCount is > 0 and <= 2)
