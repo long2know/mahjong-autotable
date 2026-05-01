@@ -255,6 +255,40 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (visibleMeldCounts.Count > 0)
+        {
+            var opponentKongThreatTiles = visibleMeldCounts
+                .Where(entry => entry.Value >= 3)
+                .Select(entry => entry.Key)
+                .ToHashSet();
+
+            if (opponentKongThreatTiles.Count > 0)
+            {
+                var nonThreatCandidates = candidates
+                    .Where(candidate => !opponentKongThreatTiles.Contains(candidate.Tile))
+                    .ToList();
+
+                if (nonThreatCandidates.Count > 0)
+                {
+                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestOverallOutCopies = candidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var bestNonThreatOuts = nonThreatCandidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestNonThreatOutCopies = nonThreatCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestNonThreatOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    if (bestNonThreatOuts == bestOverallOuts
+                        && bestNonThreatOutCopies == bestOverallOutCopies)
+                    {
+                        candidates = nonThreatCandidates;
+                    }
+                }
+            }
+        }
+
         var ownedTiles = handTiles.Concat(meldTiles).ToList();
         var suitCounts = ownedTiles
             .Where(static tile => !tile.IsHonor)
