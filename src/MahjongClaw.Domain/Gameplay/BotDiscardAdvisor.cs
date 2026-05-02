@@ -197,11 +197,11 @@ public static class BotDiscardAdvisor
 
         if (changshaSmallWinPairCount >= 1 && !filteredByDeadOffRankPair)
         {
-            var deadOffRankSingletonCandidates = candidates
+            var deadSingletonCandidates = candidates
                 .Where(candidate =>
                 {
                     handCounts.TryGetValue(candidate.Tile, out var handCount);
-                    if (handCount != 1 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    if (handCount != 1)
                     {
                         return false;
                     }
@@ -217,9 +217,9 @@ public static class BotDiscardAdvisor
                 })
                 .ToList();
 
-            if (deadOffRankSingletonCandidates.Count > 0)
+            if (deadSingletonCandidates.Count > 0)
             {
-                candidates = deadOffRankSingletonCandidates;
+                candidates = deadSingletonCandidates;
             }
         }
 
