@@ -62,8 +62,9 @@ public static class BotDiscardAdvisor
             throw new ArgumentException("Tiles cannot contain null values.", nameof(handTiles));
         }
 
+        // visibleTiles should represent all visible tiles (discards + melds). visibleMeldTiles
+        // is reserved for kong-threat weighting, so avoid double-counting meld visibility here.
         var visibleCounts = visibleTiles
-            .Concat(visibleMeldTiles)
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
         var visibleMeldCounts = visibleMeldTiles

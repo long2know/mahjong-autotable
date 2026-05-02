@@ -1365,10 +1365,12 @@ public class BotDiscardAdvisorTests
             new(TileSuit.Dots, 3), new(TileSuit.Dots, 3)
         };
 
+        var visibleTiles = visibleMeldTiles.ToList();
+
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
             handTiles,
             Array.Empty<Tile>(),
-            Array.Empty<Tile>(),
+            visibleTiles,
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
