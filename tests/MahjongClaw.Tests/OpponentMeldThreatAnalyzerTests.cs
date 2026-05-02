@@ -112,4 +112,30 @@ public class OpponentMeldThreatAnalyzerTests
 
         threats.Should().BeEmpty();
     }
+
+    [Fact]
+    public void BuildPromotableKongThreatTiles_ExcludesSpecifiedPlayers()
+    {
+        var excludedPlayer = Guid.NewGuid();
+        var opponentPlayer = Guid.NewGuid();
+        var excludedMeld = Guid.NewGuid();
+        var opponentMeld = Guid.NewGuid();
+
+        var input = new List<OpponentMeldTileView>
+        {
+            new(excludedPlayer, excludedMeld, new Tile(TileSuit.Dots, 2)),
+            new(excludedPlayer, excludedMeld, new Tile(TileSuit.Dots, 2)),
+            new(excludedPlayer, excludedMeld, new Tile(TileSuit.Dots, 2)),
+            new(opponentPlayer, opponentMeld, new Tile(TileSuit.Bamboos, 9)),
+            new(opponentPlayer, opponentMeld, new Tile(TileSuit.Bamboos, 9)),
+            new(opponentPlayer, opponentMeld, new Tile(TileSuit.Bamboos, 9))
+        };
+
+        var threats = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(
+            input,
+            new HashSet<Guid> { excludedPlayer });
+
+        threats.Should().HaveCount(3)
+            .And.OnlyContain(tile => tile == new Tile(TileSuit.Bamboos, 9));
+    }
 }

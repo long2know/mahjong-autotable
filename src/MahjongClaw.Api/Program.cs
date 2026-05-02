@@ -1488,7 +1488,9 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
         opponentMeldTileViews.Add(new OpponentMeldTileView(tileEntity.PlayerId.Value, tileEntity.MeldId.Value, tileHand[0]));
     }
 
-    var opponentKongThreatTiles = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(opponentMeldTileViews);
+    var opponentKongThreatTiles = OpponentMeldThreatAnalyzer.BuildPromotableKongThreatTiles(
+        opponentMeldTileViews,
+        new HashSet<Guid> { botPlayer.Id });
 
     var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(botHand, botMeldHandForDiscard, visibleTiles, opponentKongThreatTiles, ruleset);
     var discardTile = handTiles[discardIndex];

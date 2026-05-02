@@ -4,7 +4,9 @@ namespace MahjongClaw.Domain.Gameplay;
 
 public static class OpponentMeldThreatAnalyzer
 {
-    public static IReadOnlyList<Tile> BuildPromotableKongThreatTiles(IReadOnlyList<OpponentMeldTileView> opponentMeldTiles)
+    public static IReadOnlyList<Tile> BuildPromotableKongThreatTiles(
+        IReadOnlyList<OpponentMeldTileView> opponentMeldTiles,
+        IReadOnlySet<Guid>? excludedPlayerIds = null)
     {
         ArgumentNullException.ThrowIfNull(opponentMeldTiles);
 
@@ -13,7 +15,11 @@ public static class OpponentMeldThreatAnalyzer
             throw new ArgumentException("Tiles cannot contain null values.", nameof(opponentMeldTiles));
         }
 
-        return opponentMeldTiles
+        var filteredTiles = excludedPlayerIds is null || excludedPlayerIds.Count == 0
+            ? opponentMeldTiles
+            : opponentMeldTiles.Where(entry => !excludedPlayerIds.Contains(entry.PlayerId)).ToList();
+
+        return filteredTiles
             .GroupBy(static entry => new { entry.PlayerId, entry.MeldId })
             .Where(static meldGroup =>
             {
