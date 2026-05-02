@@ -166,30 +166,60 @@ public static class BotDiscardAdvisor
             })
             .ToList();
 
-        if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias)
+        var changshaSmallWinPairCount = ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias
+            ? handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+            : 0;
+        var filteredByDeadOffRankPair = false;
+
+        if (changshaSmallWinPairCount >= 1)
         {
-            var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
-            if (smallWinPairCount >= 1)
-            {
-                var deadOffRankPairCandidates = candidates
-                    .Where(candidate =>
-                    {
-                        handCounts.TryGetValue(candidate.Tile, out var handCount);
-                        if (handCount != 2 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
-                        {
-                            return false;
-                        }
-
-                        ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
-                        visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
-                        return 4 - ownedCount - visibleCount <= 0;
-                    })
-                    .ToList();
-
-                if (deadOffRankPairCandidates.Count > 0)
+            var deadOffRankPairCandidates = candidates
+                .Where(candidate =>
                 {
-                    candidates = deadOffRankPairCandidates;
-                }
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 2 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
+                    visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
+                    return 4 - ownedCount - visibleCount <= 0;
+                })
+                .ToList();
+
+            if (deadOffRankPairCandidates.Count > 0)
+            {
+                candidates = deadOffRankPairCandidates;
+                filteredByDeadOffRankPair = true;
+            }
+        }
+
+        if (changshaSmallWinPairCount >= 1 && !filteredByDeadOffRankPair)
+        {
+            var deadOffRankSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 1 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
+                    visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
+                    if (4 - ownedCount - visibleCount > 0)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                })
+                .ToList();
+
+            if (deadOffRankSingletonCandidates.Count > 0)
+            {
+                candidates = deadOffRankSingletonCandidates;
             }
         }
 
