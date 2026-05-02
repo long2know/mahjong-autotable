@@ -1305,7 +1305,7 @@ public static class BotDiscardAdvisor
         }
 
         visibleMeldCounts.TryGetValue(tile, out var meldCount);
-        return meldCount == 3 ? OpponentKongFeedAvoidBonus : 0;
+        return meldCount >= 3 ? OpponentKongFeedAvoidBonus : 0;
     }
 
     private static int GetDeadAdjacencyPenalty(
