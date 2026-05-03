@@ -223,6 +223,40 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (visibleCounts.Count > 0)
+        {
+            var deadHonorSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    if (!candidate.Tile.IsHonor || candidate.RemainingCopies > 0)
+                    {
+                        return false;
+                    }
+
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    return handCount == 1;
+                })
+                .ToList();
+
+            if (deadHonorSingletonCandidates.Count > 0)
+            {
+                var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestOverallOutCopies = candidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                var bestDeadOuts = deadHonorSingletonCandidates.Max(candidate => candidate.WinningDrawOuts);
+                var bestDeadOutCopies = deadHonorSingletonCandidates
+                    .Where(candidate => candidate.WinningDrawOuts == bestDeadOuts)
+                    .Max(candidate => candidate.WinningDrawOutCopies);
+
+                if (bestDeadOuts == bestOverallOuts && bestDeadOutCopies == bestOverallOutCopies)
+                {
+                    candidates = deadHonorSingletonCandidates;
+                }
+            }
+        }
+
         var concealedKongTiles = handCounts
             .Where(entry => entry.Value >= 4)
             .Select(entry => entry.Key)
