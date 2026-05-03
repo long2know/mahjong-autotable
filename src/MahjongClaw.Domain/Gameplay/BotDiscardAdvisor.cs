@@ -492,7 +492,10 @@ public static class BotDiscardAdvisor
         var tileCounts = handTiles
             .GroupBy(static other => other)
             .ToDictionary(group => group.Key, group => group.Count());
-        var honorCount = handTiles.Count(static other => other.IsHonor);
+        var focusTiles = meldTiles.Count == 0
+            ? handTiles
+            : handTiles.Concat(meldTiles).ToList();
+        var honorCount = focusTiles.Count(static other => other.IsHonor);
         tileCounts.TryGetValue(tile, out var tileMatchCount);
         var meldMatchCount = meldTiles.Count(other => other.Equals(tile));
         var meldExtensionBonus = meldMatchCount >= 3 ? 6 : 0;
@@ -679,10 +682,6 @@ public static class BotDiscardAdvisor
             .Where(static other => !other.IsHonor)
             .GroupBy(static other => (other.Suit, other.Rank))
             .Count(group => group.Count() >= 2);
-
-        var focusTiles = meldTiles.Count == 0
-            ? handTiles
-            : handTiles.Concat(meldTiles).ToList();
 
         var suitTiles = handTiles
             .Where(other => other.Suit == tile.Suit)
