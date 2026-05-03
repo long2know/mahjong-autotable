@@ -350,6 +350,23 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.ChineseOfficial)
+        {
+            var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
+            var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
+            if (honorCount >= 10 && suitedCount is > 0 and <= 2)
+            {
+                var offHonorCandidates = candidates
+                    .Where(candidate => !candidate.Tile.IsHonor)
+                    .ToList();
+
+                if (offHonorCandidates.Count > 0)
+                {
+                    candidates = offHonorCandidates;
+                }
+            }
+        }
+
         if (ruleset == MahjongRuleset.Changsha258)
         {
             var twoFiveEightCount = ownedTiles.Count(tile => Changsha258Ruleset.SmallWinPairRanks.Contains(tile.Rank));
