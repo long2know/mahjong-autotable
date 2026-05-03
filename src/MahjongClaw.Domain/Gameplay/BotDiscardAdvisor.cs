@@ -438,10 +438,19 @@ public static class BotDiscardAdvisor
                 .ToList();
         }
 
+        var lowestScore = prioritizedCandidates.Min(candidate => candidate.Score);
+        var lowestScoreCandidates = prioritizedCandidates
+            .Where(candidate => candidate.Score == lowestScore)
+            .ToList();
+        var lowestScoreHasSmallWinTile = ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && lowestScoreCandidates.Any(candidate => Changsha258Ruleset.IsSmallWinPair(candidate.Tile));
+
         var useRemainingCopyTieBreaker = visibleCounts.Count > 0
             && (ruleset == MahjongRuleset.ChineseOfficial
                 || !enforceSmallWinPairBias
-                || (maxSmallWinOuts == 0 && !hasSmallWinTileInHand));
+                || (maxSmallWinOuts == 0 && !hasSmallWinTileInHand)
+                || (ruleset == MahjongRuleset.Changsha258 && !lowestScoreHasSmallWinTile));
 
         return prioritizedCandidates
             .OrderBy(candidate => candidate.Score)
