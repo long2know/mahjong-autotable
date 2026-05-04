@@ -78,6 +78,16 @@ public static class BotDiscardAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
 
+        Tile? soleChineseOfficialPairTile = null;
+        if (ruleset == MahjongRuleset.ChineseOfficial)
+        {
+            var pairEntries = handCounts.Where(entry => entry.Value >= 2).ToList();
+            if (pairEntries.Count == 1 && pairEntries[0].Value == 2)
+            {
+                soleChineseOfficialPairTile = pairEntries[0].Key;
+            }
+        }
+
         var enforceSmallWinPairBias = ruleset == MahjongRuleset.Changsha258
             && !Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, meldTiles);
 
@@ -470,6 +480,18 @@ public static class BotDiscardAdvisor
             prioritizedCandidates = prioritizedCandidates
                 .Where(candidate => candidate.WinningDrawOutCopies == maxWinningDrawOutCopies)
                 .ToList();
+        }
+
+        if (soleChineseOfficialPairTile is not null)
+        {
+            var nonPairCandidates = prioritizedCandidates
+                .Where(candidate => !candidate.Tile.Equals(soleChineseOfficialPairTile))
+                .ToList();
+
+            if (nonPairCandidates.Count > 0)
+            {
+                prioritizedCandidates = nonPairCandidates;
+            }
         }
 
         var lowestScore = prioritizedCandidates.Min(candidate => candidate.Score);

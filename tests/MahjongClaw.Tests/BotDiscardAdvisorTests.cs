@@ -116,6 +116,25 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PreservesOnlyPair_WhenChineseOfficialRuleset()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 8)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 1));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesKeepingConcealedKong()
     {
         var tiles = new List<Tile>
