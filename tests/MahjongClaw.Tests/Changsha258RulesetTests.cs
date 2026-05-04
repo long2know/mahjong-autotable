@@ -133,6 +133,27 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
+    public void IsBigWinEyeFlexibleCandidate_ReturnsFalse_ForPureSuitBelowThreshold()
+    {
+        var handTiles = Enumerable.Range(1, 9)
+            .Select(rank => new Tile(TileSuit.Characters, rank))
+            .ToList();
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsBigWinEyeFlexibleCandidate_ReturnsTrue_ForPureSuitAtThreshold()
+    {
+        var handTiles = Enumerable.Range(1, 9)
+            .Select(rank => new Tile(TileSuit.Characters, rank))
+            .ToList();
+        handTiles.Add(new Tile(TileSuit.Characters, 1));
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeTrue();
+    }
+
+    [Fact]
     public void TryGetWinningHand_Throws_WhenTilesNull()
     {
         var act = () => Changsha258Ruleset.TryGetWinningHand(null!, out _);

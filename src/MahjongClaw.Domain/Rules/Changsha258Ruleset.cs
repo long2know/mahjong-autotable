@@ -21,6 +21,7 @@ public static class Changsha258Ruleset
     public const int MinSuitedRank = 1;
     public const int MaxSuitedRank = 9;
     public const int TileSetSize = 108;
+    public const int BigWinPureSuitEyeFlexibleThreshold = 10;
 
     public static bool TryGetRequiredKongCount(int tileCount, out int requiredKongs)
     {
@@ -126,7 +127,7 @@ public static class Changsha258Ruleset
 
         if (IsPureSuit(ownedTiles))
         {
-            return true;
+            return ownedTiles.Count >= BigWinPureSuitEyeFlexibleThreshold;
         }
 
         if (IsAllTwoFiveEight(ownedTiles))
