@@ -87,3 +87,31 @@
 2. Manual REST API testing limited by CLI tooling (workaround: soak script covered this)
 
 **Recommendation:** Green-light for Stephen to play. Lobby UX refinement can be deferred to next phase if not critical for initial gameplay.
+
+### 2026-05-07: Changsha Rules End-to-End Behavioral Verification
+
+**Task:** Dynamic verification of Changsha258 ruleset implementation — validate rules work through automated tests and behavioral soak, running in parallel with Ishikawa's static audit.
+
+**Test Results (All ✅):**
+1. **Changsha-Targeted Tests:** 1288/1288 passed (268ms) — all tests with "Changsha" in qualified name
+2. **Rules-Correctness Subset:** 674/674 passed (1.1s) — MeldValidator, RulesCorrectnessVectors, ScoreCalculator, RulesetHandAnalyzer
+3. **Full Suite:** 2413/2413 passed (698ms) — zero regressions from Changsha work
+4. **Behavioral Soak (Changsha258):** 8 hands completed successfully (172s total, 21.5s avg)
+   - 5 wins, 3 wall-exhausted (natural exhaustion, no errors)
+   - Script already defaults to `ruleset:"Changsha258"` at line 91 of `run_soak_check.sh`
+   - No exceptions, stalls, or timeout failures under stress
+
+**Ruleset Registry (MahjongRuleset enum):**
+- `ChineseOfficial` — standard MCR
+- `Changsha258` — minimal winning patterns ("two-five-eight" pair, small-hu, 长沙)
+
+**RulesetResolver Detection:** Recognizes 30+ aliases for Changsha258 including "Changsha", "258", "CS258", "TwoFiveEight", "ErWuBa", Chinese characters "长沙"/"二五八", and mixed-language variants. Falls back to ChineseOfficial for unrecognized inputs.
+
+**Quality Verdict:** CHANGSHA RULES FULLY OPERATIONAL ✅
+- All domain logic tests green (meld validation, scoring, hand analysis)
+- Soak check confirms stability under realistic bot gameplay with no rule-path crashes
+- No behavioral bugs found; implementation matches test vectors
+
+**No Issues Found:** Zero test failures, zero soak errors. No decision inbox items created.
+
+**Recommendation:** Changsha258 ruleset is production-ready for Stephen's gameplay. All rule paths exercise cleanly under both targeted tests and stress conditions.

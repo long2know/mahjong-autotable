@@ -5,23 +5,25 @@
 
 ---
 
-## D1. Two-Bird Draw in Settlement
+## D1. Two-Bird Draw in Settlement — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (shipped 2026-04-17)
 
 **Scope:** Spec draws TWO bird tiles; impl only supports single `BirdRank: int?`.
 
 **Owner:** Ishikawa (API/DTO) + Togusa (domain logic)
 **Effort:** M
 **Files:**
-- `WinRequest` DTO (Program.cs L1330) — add `BirdRanks: int[]?`
-- `ChangshaSettlementRequest` — add `BirdRanks: IReadOnlyList<int>?`
-- `ChangshaSettlementCalculator` — iterate multiple birds
-- Client UI (bird tile picker) — update to select 2 tiles
-- Tests for two-bird settlement
+- ✅ `WinRequest` DTO (Program.cs) — `BirdRanks: int[]?` added
+- ✅ `ChangshaSettlementRequest` — `BirdRanks: IReadOnlyList<int>?` added (L18)
+- ✅ `ChangshaSettlementCalculator` — `ApplyMultiBirdAdjustments()` implemented (L179-244)
+- ✅ Client UI — 2-bird picker support added
+- ✅ Tests — covered in `ChangshaSettlementCalculatorTests.cs`
 
 **Acceptance:**
-- Two bird ranks can be provided; each independently resolves a seat and doubles.
-- Backward compat: single `BirdRank` still accepted (convert to single-element list).
-- Client updated, docs synced.
+- ✅ Two bird ranks can be provided; each independently resolves a seat and doubles.
+- ✅ Backward compat: single `BirdRank` still accepted (convert to single-element list).
+- ✅ Client updated, docs synced.
 
 **Dependencies:** None
 **Decision:** IN — additive DTO field with backward compat; domain logic localized.
@@ -46,79 +48,96 @@
 
 ---
 
-## D3. Round-Wind Rotation (E→S→W→N after 4 Dealer Rotations)
+## D3. Round-Wind Rotation (E→S→W→N after 4 Dealer Rotations) — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (shipped 2026-04-17)
 
 **Scope:** Round wind (prevailing wind) never rotates in current impl.
 
 **Owner:** Togusa
 **Effort:** S
 **Files:**
-- `GameEntity` — add `RoundWind: string` (default "East")
-- `ChangshaSettlementCalculator` or a new helper — increment `NextRoundIncrement` only when rotating off East dealer 4 times
-- Possibly adjust evaluation if round wind affects scoring (check spec — likely no impact in Changsha 258)
+- ✅ `GameEntity` — `RoundWind: string?` + `DealerRotationCount: int` added (L12-13)
+- ✅ Migration: `AddRoundWindAndRotationCount` (20260417214010)
+- ✅ `/win` endpoint — rotation logic implemented (L1041-1053)
+- ✅ Tests — rotation logic covered
 
 **Acceptance:**
-- After 4 consecutive dealer rotations (each player deals once), round wind advances E→S→W→N.
-- Tests validate wind progression.
+- ✅ After 4 consecutive dealer rotations (each player deals once), round wind advances E→S→W→N.
+- ✅ Tests validate wind progression.
 
 **Dependencies:** None
 **Decision:** IN — small additive column + localized logic.
 
 ---
 
-## D4. Three Same (San Tong) Starting-Hand Win Type
+## D4. Three Same (San Tong) Starting-Hand Win Type — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (shipped 2026-04-17)
 
 **Scope:** Spec mentions San Tong as a starting-hand big-win type; not in `ChangshaWinType` enum.
 
 **Owner:** Togusa
 **Effort:** S
 **Files:**
-- `ChangshaWinTypes.cs` — add `SanTong` enum value
-- `ChangshaWinTypeEvaluator.cs` — add detection (`IsSanTong(tiles)`: three identical triplets at initial deal)
+- ✅ `ChangshaWinTypes.cs` — `SanTong` enum value added (L10)
+- ✅ `ChangshaWinTypeEvaluator.cs` — detection implemented (L64-67, L220-248)
+- ✅ `Changsha258Ruleset.cs` — `IsSanTong()` helper (L299-327)
+- ✅ Tests — covered in evaluator tests
 
 **Acceptance:**
-- `SanTong` detected when player holds 3 distinct triplets of same rank across suits at initial deal.
-- Adds to big-win set.
-- Unit tests.
+- ✅ `SanTong` detected when player holds 3 distinct triplets of same rank across suits at initial deal.
+- ✅ Adds to big-win set (L22 in evaluator).
+- ✅ Unit tests passing.
 
 **Dependencies:** None
 **Decision:** IN — evaluator-only, no API change.
 
 ---
 
-## D5. Luxurious Seven Pairs ×2 Multiplier
+## D5. Luxurious Seven Pairs ×2 Multiplier — ⚠️ DOMAIN ✅ / API ❌
+
+**Status:** ⚠️ **PARTIAL** — Domain logic shipped, API integration missing (critical bug)
 
 **Scope:** `LuxurySevenPairs` is detected but settlement doesn't apply ×2 multiplier.
 
 **Owner:** Togusa
 **Effort:** S
 **Files:**
-- `ChangshaSettlementCalculator` — check win types, apply ×2 when LuxurySevenPairs present
+- ✅ `ChangshaSettlementCalculator` — multiplier logic implemented (L148-159), dealer-only doubling
+- ✅ Domain tests — passing (`ChangshaSettlementCalculatorTests.cs`)
+- ❌ **API integration bug:** `/win` endpoint does NOT pass `WinTypes` parameter to settlement request (L1016-1025, L1921-1927)
 
 **Acceptance:**
-- Payment doubled for LuxurySevenPairs wins.
-- Unit tests confirm multiplier.
+- ✅ Payment doubled for LuxurySevenPairs wins (domain).
+- ✅ Unit tests confirm multiplier (domain).
+- ❌ **API does not wire `changshaEvaluation.WinTypes` to settlement request** — multiplier will never trigger in production.
 
-**Dependencies:** None (requires passing win types to settlement — confirm interface allows it or add parameter)
+**Dependencies:** None (requires passing win types to settlement — interface supports it)
 **Decision:** IN — localized to settlement calc.
+
+**FIX NEEDED:** Add `WinTypes: changshaEvaluation.WinTypes` to both `ChangshaSettlementRequest` calls in `/win` endpoint.
 
 ---
 
-## D6. Full Beggar's Hand (Quan Qiu Ren / FullyReliant) Detection
+## D6. Full Beggar's Hand (Quan Qiu Ren / FullyReliant) Detection — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (shipped 2026-04-17)
 
 **Scope:** `IsFullyReliant` flag exists in `ChangshaWinContext` but never set by runtime.
 
 **Owner:** Togusa (detection) + Ishikawa (API integration)
 **Effort:** M
 **Files:**
-- `/win` endpoint — compute fully-reliant status from meld history (all melds from discards, no self-drawn sets)
-- Pass flag through to evaluator
-- Tests
+- ✅ `/win` endpoint — meld-source tracking implemented (L957-1004, bot path L1861-1899)
+- ✅ `ChangshaFullyReliantDetector` — domain helper (L3-18)
+- ✅ `MeldInfo` record + `TileSource` enum — domain model (L20-26)
+- ✅ Tests — `ChangshaFullyReliantDetectorTests.cs` (5 tests)
 
 **Acceptance:**
-- `IsFullyReliant` set when player's entire hand (except final tile) came from other players' discards.
-- Detected at `/win` call using meld records.
-- Unit + integration tests.
+- ✅ `IsFullyReliant` set when player's entire hand (except final tile) came from other players' discards.
+- ✅ Detected at `/win` call using meld records (ConcealedKong = self-drawn, others = claimed).
+- ✅ Unit + integration tests passing.
 
 **Dependencies:** None
 **Decision:** IN — data already exists in melds; logic is straightforward.
@@ -168,60 +187,75 @@
 
 ---
 
-## M3. Kong Subtypes (Concealed / Exposed / Promoted) + Replacement Tile Draw
+## M3. Kong Subtypes (Concealed / Exposed / Promoted) + Replacement Tile Draw — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (shipped 2026-04-17)
 
 **Scope:** Kong types not differentiated; replacement draw not implemented.
 
 **Owner:** Togusa (domain) + Ishikawa (API)
 **Effort:** M
 **Files:**
-- `MeldEntity.Type` — extend to include `ConcealedKong`, `ExposedKong`, `PromotedKong`
-- `/meld` endpoint — auto-draw replacement tile after kong
-- Tests
+- ✅ `KongKind` enum — domain model (L3-8)
+- ✅ `KongKindParser` — Parse/TryParse/ToMeldTypeString (L10-52)
+- ✅ `MeldEntity.Kind` — string field added (L9)
+- ✅ Migration: `AddMeldKind` (20260417214202)
+- ✅ `/meld` endpoint — kind classification (L647-679) + replacement draw (L747-769)
+- ✅ SignalR event: `TileDrawn` broadcast after kong
+- ✅ Tests — domain tests + API integration
 
 **Acceptance:**
-- Kong type stored and reported.
-- Replacement tile drawn server-side immediately after kong.
-- Existing tests pass.
+- ✅ Kong type stored and reported (Concealed/Exposed/Promoted).
+- ✅ Replacement tile drawn server-side immediately after kong.
+- ✅ Existing tests pass (2,413 / 2,413).
 
 **Dependencies:** None
 **Decision:** IN — no schema migration (Type is string), logic is contained.
 
 ---
 
-## M4. Robbing-the-Kong Auto-Detection
+## M4. Robbing-the-Kong Auto-Detection — ✅ SHIPPED (partial)
+
+**Status:** ✅ **DETECTION COMPLETE** (shipped 2026-04-17); interruptive claim flow deferred to M1
 
 **Scope:** `IsRobbingKong` flag exists but runtime never detects it.
 
 **Owner:** Togusa
 **Effort:** S
 **Files:**
-- `/meld` endpoint (promoted kong path) — check if any opponent can win on that tile before allowing
-- If win possible, broadcast opportunity (integrates with M1 claim)
-- `/win` auto-set `IsRobbingKong` when winning on kong tile
+- ✅ `ChangshaRobbingKongDetector` — domain helper (L6-29)
+- ✅ `/meld` endpoint — promoted kong detection (L692-744)
+- ✅ SignalR event: `KongRobOpportunity` broadcast with eligible opponents
+- ✅ Tests — `ChangshaRobbingKongDetectorTests.cs` (4 tests)
+- ⏸️ Interruptive claim flow — deferred to M1 (no `/claim` endpoint)
+- ⏸️ `/win` auto-set `IsRobbingKong` — client/API can manually set flag; full integration with M1
 
 **Acceptance:**
-- When player promotes pung to kong, opponents can declare win on that tile.
-- `IsRobbingKong` set in resulting win context.
+- ✅ When player promotes pung to kong, opponents can declare win on that tile (detection works).
+- ✅ `KongRobOpportunity` broadcast includes eligible opponent list.
+- ⏸️ Interruptive claim flow (blocking kong until pass/claim) — deferred to M1.
 
 **Dependencies:** M1 (claim arbitration) for full flow; partial detection can land now.
 **Decision:** IN (partial) — add detection + flag setting; full interruptive flow deferred with M1.
 
 ---
 
-## M5. Last-Tile / Bottom-of-the-Ocean Server-Side Detection
+## M5. Last-Tile / Bottom-of-the-Ocean Server-Side Detection — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (shipped 2026-04-17)
 
 **Scope:** `IsLastTileDraw` / `IsLastTileDiscard` are client-provided; server should detect.
 
 **Owner:** Ishikawa
 **Effort:** S
 **Files:**
-- `/win` endpoint — check `wallTiles.Count == 0` to set last-tile flags
-- Tests
+- ✅ `/win` endpoint — server-authoritative detection (L940-955, bot path L1857-1859)
+- ✅ Logic: `wallRemaining = game.Tiles.Count(t => t.Location == "Wall")`, override flags if `== 0`
+- ✅ Tests — covered in API integration tests
 
 **Acceptance:**
-- Server overrides client flags when wall is exhausted.
-- Unit tests confirm detection.
+- ✅ Server overrides client flags when wall is exhausted.
+- ✅ Unit tests confirm detection.
 
 **Dependencies:** None
 **Decision:** IN — simple wall-count check in /win.
@@ -314,20 +348,20 @@
 
 # Summary Table
 
-| ID | Title | Effort | Owner | Decision | Dependencies |
-|----|-------|--------|-------|----------|--------------|
-| D1 | Two-Bird Settlement | M | Ishikawa+Togusa | IN | — |
-| D2 | Multi-Winner Dealer | S | Togusa | DEFER | M6 |
-| D3 | Round-Wind Rotation | S | Togusa | IN | — |
-| D4 | San Tong Win Type | S | Togusa | IN | — |
-| D5 | LuxurySevenPairs ×2 | S | Togusa | IN | — |
-| D6 | FullyReliant Detection | M | Togusa+Ishikawa | IN | — |
-| M1 | Claim Arbitration | L | Ishikawa+Togusa+Batou | DEFER | M2 |
-| M2 | Chow Prior-Player | S | Togusa+Ishikawa | DEFER | M1 |
-| M3 | Kong Subtypes | M | Togusa+Ishikawa | IN | — |
-| M4 | Robbing-the-Kong | S | Togusa | IN (partial) | — |
-| M5 | Last-Tile Detection | S | Ishikawa | IN | — |
-| M6 | Multi-Winner Proper | L | Togusa+Ishikawa | DEFER | — |
-| M7 | Missed-Win Lock | M | Togusa | DEFER | M1 |
-| M8 | Settlement Ledger | L | Ishikawa+Togusa | DEFER | — |
-| BONUS | E2E Fix | S | Saito | IN | — |
+| ID | Title | Effort | Owner | Decision | Status |
+|----|-------|--------|-------|----------|--------|
+| D1 | Two-Bird Settlement | M | Ishikawa+Togusa | IN | ✅ SHIPPED |
+| D2 | Multi-Winner Dealer | S | Togusa | DEFER | ❌ DEFERRED (depends M6) |
+| D3 | Round-Wind Rotation | S | Togusa | IN | ✅ SHIPPED |
+| D4 | San Tong Win Type | S | Togusa | IN | ✅ SHIPPED |
+| D5 | LuxurySevenPairs ×2 | S | Togusa | IN | ⚠️ DOMAIN ✅ / API ❌ (critical bug) |
+| D6 | FullyReliant Detection | M | Togusa+Ishikawa | IN | ✅ SHIPPED |
+| M1 | Claim Arbitration | L | Ishikawa+Togusa+Batou | DEFER | ❌ DEFERRED |
+| M2 | Chow Prior-Player | S | Togusa+Ishikawa | DEFER | ❌ DEFERRED (with M1) |
+| M3 | Kong Subtypes | M | Togusa+Ishikawa | IN | ✅ SHIPPED |
+| M4 | Robbing-the-Kong | S | Togusa | IN (partial) | ✅ DETECTION SHIPPED (interruptive flow → M1) |
+| M5 | Last-Tile Detection | S | Ishikawa | IN | ✅ SHIPPED |
+| M6 | Multi-Winner Proper | L | Togusa+Ishikawa | DEFER | ❌ DEFERRED |
+| M7 | Missed-Win Lock | M | Togusa | DEFER | ❌ DEFERRED (needs M1) |
+| M8 | Settlement Ledger | L | Ishikawa+Togusa | DEFER | ❌ DEFERRED |
+| BONUS | E2E Fix | S | Saito | IN | ✅ SHIPPED |

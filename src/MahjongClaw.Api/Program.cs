@@ -1023,7 +1023,8 @@ gameGroup.MapPost("/{id:guid}/win", async (
             DiscarderId: resolvedDiscarderPlayerId,
             BirdRank: request.BirdRanks is null ? request.BirdRank : null,
             BirdRanks: request.BirdRanks,
-            IsMultipleWin: request.IsMultipleWin);
+            IsMultipleWin: request.IsMultipleWin,
+            WinTypes: changshaEvaluation.WinTypes);
 
         var settlementResult = ChangshaSettlementCalculator.Calculate(settlementRequest);
 
@@ -1949,7 +1950,8 @@ static bool TryApplyChangshaBotWin(
         DealerId: game.DealerId ?? winnerId,
         IsSelfDraw: isSelfDraw,
         IsBigWin: changshaEvaluation.IsBigWin,
-        DiscarderId: isSelfDraw ? null : discarderId);
+        DiscarderId: isSelfDraw ? null : discarderId,
+        WinTypes: changshaEvaluation.WinTypes);
 
     var settlementResult = ChangshaSettlementCalculator.Calculate(settlementRequest);
 
