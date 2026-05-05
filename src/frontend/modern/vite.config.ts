@@ -8,6 +8,10 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:5114',
         changeOrigin: true
+      },
+      '/autotable': {
+        target: 'http://localhost:5114',
+        changeOrigin: true
       }
     }
   },
