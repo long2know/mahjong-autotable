@@ -30,11 +30,25 @@ dotnet build MahjongClaw.slnx -c Release
 ```
 dotnet run --project src/MahjongClaw.Api
 ```
+API will run at http://localhost:5270
 
-## Run Client
+## Run Clients
+
+### Autotable Client (3D — Recommended)
+```
+cd src/MahjongClaw.AutotableClient
+npm install  # first time only
+npm run dev
+```
+Visit http://localhost:5173/ → Create game → Start → Play
+
+### Blazor Client (2D — Alternative)
 ```
 dotnet run --project src/MahjongClaw.Client
 ```
+Visit http://localhost:5299/ → Create game → Start → Play
+
+Both clients connect to the same API. You can run both simultaneously.
 
 ## Test
 ```

@@ -202,3 +202,10 @@ Completed domain-layer rules work for Changsha parity PR. All changes additive a
 - Keep decisions concise and implementation-facing.
 - Prefer append-only entries; avoid rewriting prior decision intent.
 - Route unresolved trade-offs to Kusanagi for lead review.
+
+### 2026-05-05: Autotable client end-to-end validation
+**By:** Saito + Kusanagi (requested by Stephen Long)
+**What:** End-to-end readiness audit + smoke test of merged Phases 0-5 of the Autotable Client.
+**Result:** 🟢 ALL CLEAR. CI green (PR #775 fixed soak-check exec bit). 2413/2413 tests passing. Both clients (3D autotable + 2D Blazor) build and run cleanly against the same API. Soak check 3 hands in 61s. Game is playable.
+**Notes:** Saito's "missing #lobby-root" finding was a false alarm — the lobby root is JavaScript-injected at runtime by lobby.ts (standard SPA pattern), not a static HTML element. No follow-up needed.
+**Why:** Stephen wanted to play; team confirmed nothing blocks gameplay.

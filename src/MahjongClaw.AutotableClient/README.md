@@ -11,10 +11,7 @@ TypeScript + three.js 3D client for Mahjong Claw — state-driven rendering with
    ```
    API will run at http://localhost:5270
 
-2. **Create a game** using existing Blazor client or via REST:
-   - Option A: Visit http://localhost:5270 → use Blazor client to create game
-   - Option B: `curl -X POST http://localhost:5270/api/game -H "Content-Type: application/json" -d '{"hostName":"Alice","mode":"HumanVsBot","botSeatCount":3}'`
-   - Note the returned game `id` from the response
+2. **No additional setup needed** — Phase 5 lobby lets you create/join games directly in the Autotable client (see below)
 
 ## Setup
 
@@ -30,17 +27,18 @@ Start the Vite dev server:
 npm run dev
 ```
 
-Visit http://localhost:5173?game=<GAME_ID>&player=<PLAYER_ID> where:
-- `<GAME_ID>`: The GUID of the game you created (e.g., `123e4567-e89b-12d3-a456-426614174000`)
-- `<PLAYER_ID>`: Your player GUID (optional; omit to spectate)
+Visit http://localhost:5173/
 
-### Example
+**Phase 5 Lobby (shipped):**
+- No `?game=` param → lobby appears
+- Click "Create Game" → enter your name → "Create & Enter"
+- Click "Start Game" → 3 bots auto-fill → play!
 
+**Direct game link (optional):**
+If you have a game ID, you can jump straight to it:
 ```
-http://localhost:5173?game=123e4567-e89b-12d3-a456-426614174000&player=987fcdeb-51a2-43f8-9b1d-789012345678
+http://localhost:5173?game=<GAME_ID>&player=<PLAYER_ID>
 ```
-
-Without a `game` query param, the client will display an empty table.
 
 ## Build
 
@@ -125,18 +123,18 @@ npm run preview
 - **Audio hooks**: No-op system ready for Phase 5 audio assets
   - Wired for 'draw', 'discard', 'meld', 'win' events
 
-## Out of Scope (Phase 4)
+## Out of Scope (Phase 5 Complete)
 
-- No lobby/create-game UI (Phase 5)
+- ✅ Lobby/create-game UI — SHIPPED in Phase 5
 - No actual audio files (hooks only)
-- No mobile touch controls
+- No mobile touch controls polish
 - No settings panel
 - No spectator chat
 
 ## Testing a Game
 
-1. Start API: `dotnet run --project src/MahjongClaw.Api`
-2. Create game via Blazor or REST (note game ID + player ID)
-3. Start Autotable: `npm run dev`
-4. Visit with query params: `http://localhost:5173?game=<id>&player=<id>`
-5. Play turns via Blazor client or REST; Autotable updates in real-time
+1. Start API: `dotnet run --project src/MahjongClaw.Api` (from repo root)
+2. Start Autotable: `npm run dev` (from this directory)
+3. Visit http://localhost:5173/
+4. Use lobby to create game → start → play
+5. Click tiles to discard, use Draw/Meld/Win buttons

@@ -26,3 +26,14 @@
   - **Coordination for Togusa:** He leads implementation (not Blazor dev). Phase 0 is scaffolding only — Vite + three.js + SignalR connection. No interaction. Saito handles test coverage.
   - Autotable (pwmarcz) is MIT; architecture reference is fine, but source our own tile assets — autotable art license unclear.
   - Keep Blazor client alive during build; retire only after Phase 5 parity proven.
+
+- **2026-05-05: Final Readiness Audit** — Stephen wants to play after Phases 0-5 shipped:
+  - **Zero blockers found.** Both clients (Autotable 3D + Blazor 2D) fully functional for complete hand playthrough.
+  - Tests: 2413/2413 passing. CI green (PR #775 soak-check exec bit fix landed).
+  - Recent commits: 25 bot tuning PRs (discard heuristics, kong safety) — all stable.
+  - Open issues: Only 1 (#602 old CI PR draft) — no blockers.
+  - Autotable parity gaps: All core gameplay + Phase 5 lobby shipped. Missing: open tables list (no API), lobby metrics (no backend), ruleset dropdown (locked to Changsha), bot debug button. None block play.
+  - **Fixed:** Updated README.md to mention Autotable client. Updated Autotable README to remove outdated "create via Blazor" text (Phase 5 lobby exists now).
+  - **Created:** QUICK_START.md with copy-paste commands for Stephen.
+  - **Deliverable:** `.squad/decisions/inbox/kusanagi-readiness-2026-05-05.md` — comprehensive audit report.
+  - **Lesson:** When evaluating "is it shippable?", focus on critical path completeness (create→join→play→win), not feature completeness. Nice-to-have gaps (debug tools, metrics, multi-ruleset UI) don't block the core experience. Both clients work; Stephen can play.
