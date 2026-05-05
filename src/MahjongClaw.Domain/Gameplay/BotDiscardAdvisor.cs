@@ -10,6 +10,7 @@ public static class BotDiscardAdvisor
     private static readonly IReadOnlyList<Tile> Changsha258SmallWinPairTiles = BuildChangshaSmallWinPairTiles();
     private const int LastSmallWinSingletonKeepBonus = 12;
     private const int OpponentKongFeedAvoidBonus = 12;
+    private const int OpponentKongFeedOutsTolerance = 1;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
@@ -82,7 +83,7 @@ public static class BotDiscardAdvisor
         if (ruleset == MahjongRuleset.ChineseOfficial)
         {
             var pairEntries = handCounts.Where(entry => entry.Value >= 2).ToList();
-            if (pairEntries.Count == 1 && pairEntries[0].Value == 2)
+            if (pairEntries.Count == 1 && pairEntries[0].Value == 2 && !pairEntries[0].Key.IsFlower)
             {
                 soleChineseOfficialPairTile = pairEntries[0].Key;
             }
@@ -356,8 +357,11 @@ public static class BotDiscardAdvisor
                         .Where(candidate => candidate.WinningDrawOuts == bestNonThreatOuts)
                         .Max(candidate => candidate.WinningDrawOutCopies);
 
-                    if (bestNonThreatOuts == bestOverallOuts
-                        && bestNonThreatOutCopies == bestOverallOutCopies)
+                    var withinOutsTolerance = bestNonThreatOuts >= bestOverallOuts - OpponentKongFeedOutsTolerance;
+                    var matchesBestCopies = bestNonThreatOuts == bestOverallOuts
+                        && bestNonThreatOutCopies == bestOverallOutCopies;
+
+                    if (withinOutsTolerance || matchesBestCopies)
                     {
                         candidates = nonThreatCandidates;
                     }
