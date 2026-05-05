@@ -400,7 +400,8 @@ gameGroup.MapPost("/{id:guid}/draw", async (
 
     if (tile is null)
     {
-        return Results.Conflict(new { message = "No tiles left in wall." });
+        await CompleteDrawnGameAsync(game, request.PlayerId, dbContext, hubContext, cancellationToken);
+        return Results.Conflict(new { message = "No tiles left in wall. Hand ends in a draw." });
     }
 
     tile.Location = "Hand";
@@ -1083,6 +1084,29 @@ gameGroup.MapPost("/{id:guid}/win", async (
 
 app.Run();
 
+static async Task CompleteDrawnGameAsync(
+    GameEntity game,
+    Guid? finalPlayerId,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken)
+{
+    if (string.Equals(game.Status, "Completed", StringComparison.OrdinalIgnoreCase))
+    {
+        return;
+    }
+
+    game.Status = "Completed";
+
+    if (finalPlayerId is not null)
+    {
+        game.CurrentPlayerId = finalPlayerId;
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+    await SendToGameWithAliases(hubContext, game.Id, "GameStateUpdated", new { Reason = "WallExhausted" }, cancellationToken);
+}
+
 static async Task SendToGameWithAliases(IHubContext<GameHub> hubContext, Guid gameId, string eventName, object payload, CancellationToken cancellationToken)
 {
     await SendToGame(hubContext, gameId, eventName, payload, cancellationToken);
@@ -1321,7 +1345,8 @@ static async Task<BotTurnExecutionResult> ExecuteBotTurnAsync(
 
         if (tile is null)
         {
-            return BotTurnExecutionResult.Fail(409, "No tiles left in wall.");
+            await CompleteDrawnGameAsync(game, botPlayer.Id, dbContext, hubContext, cancellationToken);
+            return BotTurnExecutionResult.Ok(new BotTurnResponse(null, null, null, null, false));
         }
 
         tile.Location = "Hand";

@@ -768,9 +768,16 @@
         try
         {
             var result = await Api.TriggerBotTurnAsync(GameId.Value, _disposeCts.Token);
-            LiveStatus = result.Won
-                ? $"{currentPlayer.Name} won the hand."
-                : $"{currentPlayer.Name} played a turn.";
+            if (IsBotTurnDraw(result))
+            {
+                LiveStatus = "Wall exhausted — hand ended in a draw.";
+            }
+            else
+            {
+                LiveStatus = result.Won
+                    ? $"{currentPlayer.Name} won the hand."
+                    : $"{currentPlayer.Name} played a turn.";
+            }
 
             await RefreshLiveStateAsync(triggerBotTurn: false);
         }
@@ -1201,6 +1208,13 @@
 
     private static bool IsBotName(string name)
         => name.StartsWith("Bot", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBotTurnDraw(GameApiClient.BotTurnResponse response)
+        => !response.Won
+           && response.DrawnTileId is null
+           && response.DiscardId is null
+           && response.DiscardTileId is null
+           && response.NextPlayerId is null;
 
     private bool HasLegalAction(string action)
         => _liveState?.LegalActions?.Any(candidate =>
