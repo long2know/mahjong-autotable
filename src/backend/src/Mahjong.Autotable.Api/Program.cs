@@ -2,6 +2,7 @@ using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
 using Mahjong.Autotable.Api.Persistence;
 using Mahjong.Autotable.Api.Tables;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 
@@ -29,6 +30,10 @@ var autotablePath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRoo
 if (Directory.Exists(autotablePath))
 {
     var autotableFileProvider = new PhysicalFileProvider(autotablePath);
+    var contentTypeProvider = new FileExtensionContentTypeProvider();
+    contentTypeProvider.Mappings[".glb"] = "model/gltf-binary";
+    contentTypeProvider.Mappings[".gltf"] = "model/gltf+json";
+
     app.UseDefaultFiles(new DefaultFilesOptions
     {
         FileProvider = autotableFileProvider,
@@ -37,7 +42,8 @@ if (Directory.Exists(autotablePath))
     app.UseStaticFiles(new StaticFileOptions
     {
         FileProvider = autotableFileProvider,
-        RequestPath = "/autotable"
+        RequestPath = "/autotable",
+        ContentTypeProvider = contentTypeProvider
     });
 }
 
