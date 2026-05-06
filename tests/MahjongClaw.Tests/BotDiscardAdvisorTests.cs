@@ -1380,6 +1380,26 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesPureSuitAtBigWinThreshold_WhenChangsha258Ruleset()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 6)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Suit.Should().Be(TileSuit.Characters);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesPureSuitHonors_WhenChineseOfficialRuleset()
     {
         var handTiles = new List<Tile>

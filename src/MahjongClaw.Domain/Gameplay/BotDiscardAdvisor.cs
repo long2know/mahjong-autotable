@@ -383,7 +383,9 @@ public static class BotDiscardAdvisor
                 .Select(entry => entry.Key)
                 .ToList();
 
-            var pureSuitThreshold = ruleset == MahjongRuleset.Changsha258 ? 11 : 12;
+            var pureSuitThreshold = ruleset == MahjongRuleset.Changsha258
+                ? Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold
+                : 12;
             if (dominantSuits.Count == 1 && maxSuitCount >= pureSuitThreshold)
             {
                 var dominantSuit = dominantSuits[0];
