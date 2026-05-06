@@ -24,6 +24,8 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 app.UseCors();
 
+var pendingClaimWindows = new Dictionary<Guid, PendingClaimWindow>();
+
 app.MapGet("/", () => "Mahjong Claw API");
 app.MapHub<GameHub>("/hubs/game");
 
@@ -491,22 +493,83 @@ gameGroup.MapPost("/{id:guid}/discard", async (
     dbContext.Discards.Add(discard);
     game.Discards.Add(discard);
 
-    var currentPlayer = game.Players.FirstOrDefault(player => player.Id == request.PlayerId);
-    if (currentPlayer is not null)
-    {
-        var nextPlayerId = GetNextPlayerId(game, currentPlayer);
-        if (nextPlayerId is not null)
-        {
-            game.CurrentPlayerId = nextPlayerId;
-        }
-    }
-
     await dbContext.SaveChangesAsync(cancellationToken);
 
     var response = new DiscardTileResponse(discard.Id, tile.Id, discard.Sequence);
     await SendToGameWithAliases(hubContext, game.Id, "TileDiscarded", response, cancellationToken);
-    await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+
+    await OpenClaimWindowAsync(game, tile, request.PlayerId, dbContext, hubContext, pendingClaimWindows, cancellationToken);
     return Results.Ok(response);
+});
+
+gameGroup.MapPost("/{id:guid}/claim", async (
+    Guid id,
+    ClaimSubmissionRequest request,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games
+        .Include(g => g.Players)
+        .Include(g => g.Tiles)
+        .Include(g => g.Melds)
+        .Include(g => g.Discards)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!pendingClaimWindows.TryGetValue(game.Id, out var claimWindow))
+    {
+        return Results.Conflict(new { message = "No active claim window." });
+    }
+
+    if (!claimWindow.EligiblePlayerIds.Contains(request.PlayerId))
+    {
+        return Results.Conflict(new { message = "Player is not eligible to claim." });
+    }
+
+    if (claimWindow.SubmittedClaims.Any(c => c.PlayerId == request.PlayerId))
+    {
+        return Results.Conflict(new { message = "Player has already submitted a claim." });
+    }
+
+    List<Tile>? meldTiles = null;
+    if (request.MeldTileIds is not null && request.MeldTileIds.Count > 0)
+    {
+        var tileEntities = game.Tiles
+            .Where(t => request.MeldTileIds.Contains(t.Id) && 
+                       t.PlayerId == request.PlayerId &&
+                       string.Equals(t.Location, "Hand", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (!TryBuildTileHand(tileEntities, out var tiles))
+        {
+            return Results.BadRequest(new { message = "Invalid meld tiles." });
+        }
+        meldTiles = tiles;
+    }
+
+    var claimRequest = new ClaimRequest(
+        request.PlayerId,
+        request.ClaimType,
+        meldTiles,
+        request.WinContext);
+
+    claimWindow.SubmittedClaims.Add(claimRequest);
+
+    await SendToGameWithAliases(hubContext, game.Id, "ClaimSubmitted", 
+        new { PlayerId = request.PlayerId, ClaimType = request.ClaimType.ToString() }, 
+        cancellationToken);
+
+    if (claimWindow.HasAllResponses() || claimWindow.IsExpired(DateTime.UtcNow))
+    {
+        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, cancellationToken);
+    }
+
+    return Results.Ok(new { success = true });
 });
 
 gameGroup.MapPost("/{id:guid}/bot/turn", async (
@@ -2048,6 +2111,347 @@ static Guid? GetNextPlayerId(GameEntity game, PlayerEntity currentPlayer)
     return null;
 }
 
+static async Task OpenClaimWindowAsync(
+    GameEntity game,
+    TileEntity discardedTile,
+    Guid discarderId,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
+    CancellationToken cancellationToken)
+{
+    var allPlayerIds = game.Players.Select(p => p.Id).ToList();
+    var eligiblePlayerIds = allPlayerIds.Where(id => id != discarderId).ToList();
+
+    if (eligiblePlayerIds.Count == 0)
+    {
+        var currentPlayer = game.Players.FirstOrDefault(p => p.Id == discarderId);
+        if (currentPlayer is not null)
+        {
+            var nextPlayerId = GetNextPlayerId(game, currentPlayer);
+            if (nextPlayerId is not null)
+            {
+                game.CurrentPlayerId = nextPlayerId;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+        return;
+    }
+
+    if (!TryBuildTileHand(new[] { discardedTile }, out var tiles) || tiles.Count == 0)
+    {
+        var currentPlayer = game.Players.FirstOrDefault(p => p.Id == discarderId);
+        if (currentPlayer is not null)
+        {
+            var nextPlayerId = GetNextPlayerId(game, currentPlayer);
+            if (nextPlayerId is not null)
+            {
+                game.CurrentPlayerId = nextPlayerId;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+        return;
+    }
+
+    var botPlayerCount = game.Players.Count(p => IsBotPlayer(p));
+    var timeoutMs = botPlayerCount >= 3 ? 250 : 3000;
+
+    var claimWindow = new PendingClaimWindow
+    {
+        DiscardedTileId = discardedTile.Id,
+        DiscardedTile = tiles[0],
+        DiscarderId = discarderId,
+        EligiblePlayerIds = eligiblePlayerIds,
+        OpenedAtUtc = DateTime.UtcNow,
+        TimeoutMs = timeoutMs
+    };
+
+    pendingClaimWindows[game.Id] = claimWindow;
+
+    await SendToGameWithAliases(hubContext, game.Id, "ClaimWindowOpened", new
+    {
+        DiscardedTileId = discardedTile.Id,
+        DiscarderId = discarderId,
+        EligiblePlayerIds = eligiblePlayerIds,
+        TimeoutMs = timeoutMs
+    }, cancellationToken);
+
+    _ = Task.Run(async () =>
+    {
+        await Task.Delay(timeoutMs, CancellationToken.None);
+        
+        if (pendingClaimWindows.TryGetValue(game.Id, out var window) && 
+            window.DiscardedTileId == discardedTile.Id)
+        {
+            using var scope = dbContext.Database.BeginTransaction();
+            try
+            {
+                var freshGame = await dbContext.Games
+                    .Include(g => g.Players)
+                    .Include(g => g.Tiles)
+                    .Include(g => g.Melds)
+                    .Include(g => g.Discards)
+                    .FirstOrDefaultAsync(g => g.Id == game.Id, CancellationToken.None);
+
+                if (freshGame is not null)
+                {
+                    await ResolveClaimWindowAsync(freshGame, window, dbContext, hubContext, pendingClaimWindows, CancellationToken.None);
+                    await scope.CommitAsync(CancellationToken.None);
+                }
+            }
+            catch
+            {
+                await scope.RollbackAsync(CancellationToken.None);
+            }
+        }
+    }, CancellationToken.None);
+
+    await ProcessBotClaimsAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, cancellationToken);
+}
+
+static async Task ProcessBotClaimsAsync(
+    GameEntity game,
+    PendingClaimWindow claimWindow,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
+    CancellationToken cancellationToken)
+{
+    foreach (var botPlayerId in claimWindow.EligiblePlayerIds)
+    {
+        var botPlayer = game.Players.FirstOrDefault(p => p.Id == botPlayerId);
+        if (botPlayer is null || !IsBotPlayer(botPlayer))
+        {
+            continue;
+        }
+
+        var handTiles = game.Tiles
+            .Where(t => t.PlayerId == botPlayerId && 
+                       string.Equals(t.Location, "Hand", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var meldTiles = game.Tiles
+            .Where(t => t.PlayerId == botPlayerId && 
+                       string.Equals(t.Location, "Meld", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (!TryBuildTileHand(handTiles, out var hand) || !TryBuildTileHand(meldTiles, out var melds))
+        {
+            continue;
+        }
+
+        var ruleset = RulesetResolver.Resolve(game.Ruleset);
+        var shouldClaimWin = BotClaimAdvisor.ShouldClaimDiscardWin(hand, melds, claimWindow.DiscardedTile, ruleset);
+
+        if (shouldClaimWin)
+        {
+            var winClaim = new ClaimRequest(botPlayerId, ClaimType.Win, null, null);
+            claimWindow.SubmittedClaims.Add(winClaim);
+            
+            await SendToGameWithAliases(hubContext, game.Id, "ClaimSubmitted", 
+                new { PlayerId = botPlayerId, ClaimType = "Win" }, 
+                cancellationToken);
+        }
+        else
+        {
+            var passClaim = new ClaimRequest(botPlayerId, ClaimType.Pass);
+            claimWindow.SubmittedClaims.Add(passClaim);
+            
+            await SendToGameWithAliases(hubContext, game.Id, "ClaimSubmitted", 
+                new { PlayerId = botPlayerId, ClaimType = "Pass" }, 
+                cancellationToken);
+        }
+    }
+
+    if (claimWindow.HasAllResponses())
+    {
+        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, cancellationToken);
+    }
+}
+
+static async Task ResolveClaimWindowAsync(
+    GameEntity game,
+    PendingClaimWindow claimWindow,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
+    CancellationToken cancellationToken)
+{
+    pendingClaimWindows.Remove(game.Id);
+
+    var playerSeats = game.Players.ToDictionary(
+        p => p.Id,
+        p => Enum.Parse<Wind>(p.Seat, true));
+
+    var winningClaim = ClaimArbitrator.Resolve(
+        claimWindow.SubmittedClaims,
+        claimWindow.DiscarderId,
+        playerSeats);
+
+    if (winningClaim is null)
+    {
+        await SendToGameWithAliases(hubContext, game.Id, "ClaimResolved", 
+            new { Result = "NoClaim" }, 
+            cancellationToken);
+
+        var discarder = game.Players.FirstOrDefault(p => p.Id == claimWindow.DiscarderId);
+        if (discarder is not null)
+        {
+            var nextPlayerId = GetNextPlayerId(game, discarder);
+            if (nextPlayerId is not null)
+            {
+                game.CurrentPlayerId = nextPlayerId;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+        return;
+    }
+
+    if (winningClaim.ClaimType == ClaimType.Chow)
+    {
+        if (!ChowEligibilityRule.IsEligibleForChow(winningClaim.PlayerId, claimWindow.DiscarderId, playerSeats))
+        {
+            await SendToGameWithAliases(hubContext, game.Id, "ClaimResolved", 
+                new { Result = "InvalidChowSeat", Message = "Chow can only be claimed from immediate prior player." }, 
+                cancellationToken);
+
+            var discarder = game.Players.FirstOrDefault(p => p.Id == claimWindow.DiscarderId);
+            if (discarder is not null)
+            {
+                var nextPlayerId = GetNextPlayerId(game, discarder);
+                if (nextPlayerId is not null)
+                {
+                    game.CurrentPlayerId = nextPlayerId;
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                }
+            }
+
+            await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+            return;
+        }
+    }
+
+    await SendToGameWithAliases(hubContext, game.Id, "ClaimResolved", new
+    {
+        Result = "ClaimExecuted",
+        PlayerId = winningClaim.PlayerId,
+        ClaimType = winningClaim.ClaimType.ToString()
+    }, cancellationToken);
+
+    if (winningClaim.ClaimType == ClaimType.Win)
+    {
+        await ExecuteWinClaimAsync(game, winningClaim, claimWindow, dbContext, hubContext, cancellationToken);
+    }
+    else if (winningClaim.ClaimType == ClaimType.Pung || 
+             winningClaim.ClaimType == ClaimType.ExposedKong || 
+             winningClaim.ClaimType == ClaimType.Chow)
+    {
+        await ExecuteMeldClaimAsync(game, winningClaim, claimWindow, dbContext, hubContext, cancellationToken);
+    }
+}
+
+static async Task ExecuteWinClaimAsync(
+    GameEntity game,
+    ClaimRequest claim,
+    PendingClaimWindow claimWindow,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken)
+{
+    var discardedTileEntity = game.Tiles.FirstOrDefault(t => t.Id == claimWindow.DiscardedTileId);
+    if (discardedTileEntity is null)
+    {
+        return;
+    }
+
+    discardedTileEntity.Location = "Hand";
+    discardedTileEntity.PlayerId = claim.PlayerId;
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    game.Status = "Completed";
+    game.CurrentPlayerId = claim.PlayerId;
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await SendToGameWithAliases(hubContext, game.Id, "GameWon", new WinResponse(
+        game.Id,
+        game.Status,
+        claim.PlayerId), cancellationToken);
+}
+
+static async Task ExecuteMeldClaimAsync(
+    GameEntity game,
+    ClaimRequest claim,
+    PendingClaimWindow claimWindow,
+    MahjongClawDbContext dbContext,
+    IHubContext<GameHub> hubContext,
+    CancellationToken cancellationToken)
+{
+    var discardedTileEntity = game.Tiles.FirstOrDefault(t => t.Id == claimWindow.DiscardedTileId);
+    if (discardedTileEntity is null)
+    {
+        return;
+    }
+
+    discardedTileEntity.Location = "Meld";
+    discardedTileEntity.PlayerId = claim.PlayerId;
+
+    var meldTileEntities = new List<TileEntity> { discardedTileEntity };
+
+    if (claim.MeldTiles is not null)
+    {
+        foreach (var claimTile in claim.MeldTiles)
+        {
+            var matchingTile = game.Tiles.FirstOrDefault(te =>
+                te.PlayerId == claim.PlayerId &&
+                string.Equals(te.Location, "Hand", StringComparison.OrdinalIgnoreCase) &&
+                te.Suit == claimTile.Suit.ToString() &&
+                te.Rank == claimTile.Rank);
+
+            if (matchingTile is not null)
+            {
+                matchingTile.Location = "Meld";
+                meldTileEntities.Add(matchingTile);
+            }
+        }
+    }
+
+    var meldType = claim.ClaimType switch
+    {
+        ClaimType.Chow => "Chow",
+        ClaimType.Pung => "Pung",
+        ClaimType.ExposedKong => "ExposedKong",
+        _ => "Pung"
+    };
+
+    var meld = new MeldEntity
+    {
+        GameId = game.Id,
+        PlayerId = claim.PlayerId,
+        Type = meldType
+    };
+
+    game.Melds.Add(meld);
+    dbContext.Melds.Add(meld);
+
+    foreach (var tile in meldTileEntities)
+    {
+        tile.MeldId = meld.Id;
+    }
+
+    game.CurrentPlayerId = claim.PlayerId;
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    var response = new MeldResponse(
+        meld.Id,
+        meldType,
+        meldTileEntities.Select(t => t.Id).ToList());
+
+    await SendToGameWithAliases(hubContext, game.Id, "MeldDeclared", response, cancellationToken);
+}
+
 void DealStartingHands(GameEntity game, IReadOnlyList<TileEntity> tiles)
 {
     var seatOrder = new[] { "East", "South", "West", "North" };
@@ -2134,6 +2538,11 @@ internal record BotTurnExecutionResult(bool Success, BotTurnResponse? Response, 
 }
 internal record MeldRequest(Guid PlayerId, string Type, IReadOnlyList<Guid> TileIds);
 internal record MeldResponse(Guid MeldId, string Type, IReadOnlyList<Guid> TileIds);
+internal record ClaimSubmissionRequest(
+    Guid PlayerId,
+    ClaimType ClaimType,
+    IReadOnlyList<Guid>? MeldTileIds = null,
+    ChangshaWinContext? WinContext = null);
 internal record WinRequest(
     Guid PlayerId,
     bool IsSelfDraw = true,

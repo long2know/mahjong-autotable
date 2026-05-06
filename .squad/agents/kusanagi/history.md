@@ -37,3 +37,40 @@
   - **Created:** QUICK_START.md with copy-paste commands for Stephen.
   - **Deliverable:** `.squad/decisions/inbox/kusanagi-readiness-2026-05-05.md` — comprehensive audit report.
   - **Lesson:** When evaluating "is it shippable?", focus on critical path completeness (create→join→play→win), not feature completeness. Nice-to-have gaps (debug tools, metrics, multi-ruleset UI) don't block the core experience. Both clients work; Stephen can play.
+
+- **2026-05-06: M1+M2 Claim Arbitration Implementation** — First solo end-to-end implementation:
+  - **Scope:** Ship M1 (Claim Arbitration) + M2 (Chow-from-prior-player enforcement) per Stephen's charter (deferred from 2026-04-17 decision).
+  - **Approach:** Domain-first → API → Client → Tests → Docs. Clean layered implementation.
+  - **Domain Layer (32 new tests):**
+    - `ClaimType` enum (Win, Pung, ExposedKong, Chow, Pass).
+    - `ClaimRequest` record with priority calculation (Win=100, Pung/Kong=50, Chow=10, Pass=0).
+    - `PendingClaimWindow` state model with timeout/expiry logic.
+    - `ClaimArbitrator` static class: priority resolution + clockwise tie-breaking.
+    - `ChowEligibilityRule` static class: M2 enforcement (downstream seat only).
+  - **API Layer (in-memory state + timeout):**
+    - In-memory `Dictionary<Guid, PendingClaimWindow>` for transient state (no DB migration needed).
+    - Modified `/discard` endpoint to open claim window instead of immediately advancing turn.
+    - New POST `/api/game/{id}/claim` endpoint for claim submissions.
+    - Fire-and-forget `Task.Run` timeout handler (250ms bot-only, 3s human games).
+    - SignalR events: `ClaimWindowOpened`, `ClaimSubmitted`, `ClaimResolved`.
+    - Bot auto-pass/auto-claim via existing `BotClaimAdvisor`.
+    - M2 enforcement: reject chow if claimer not downstream seat.
+  - **Autotable Client UI:**
+    - SignalR event handlers for claim window lifecycle.
+    - Modal overlay claim prompt with Win/Pung/Kong/Chow/Pass buttons.
+    - Color-coded buttons, timeout display, error toasts.
+    - POST to `/api/game/{id}/claim` on button click.
+  - **Testing:** All 2445 tests pass (2413 existing + 32 new). TypeScript clean. .NET build clean.
+  - **Documentation:**
+    - Updated `.squad/backlog-changsha-parity.md` to mark M1/M2 as shipped.
+    - Created `.squad/decisions/inbox/kusanagi-m1-claim-arbitration-design.md` with state machine, timeout strategy, broadcast contract.
+  - **Lessons Learned:**
+    - **In-memory state is fine for transient windows:** No need for DB persistence for 3-second claim windows. Single-server assumption holds for MVP. Future: Redis if horizontal scaling needed.
+    - **Fire-and-forget timeout pattern is simple and effective:** `Task.Run` with `Task.Delay` decouples timeout from HTTP request lifecycle. Check window identity before resolution to handle rapid discard sequences.
+    - **Priority tie-breaking by clockwise proximity is intuitive:** Matches turn order. Deterministic (no randomness). Easy to test.
+    - **Domain-first layering prevents over-engineering:** Clean separation of concerns. Domain logic is pure (no SignalR, no EF). API orchestrates. Tests cover domain exhaustively.
+    - **Bot auto-claim/pass is sufficient for MVP:** Full bot meld logic deferred to Phase 2. Bots only claim wins currently (acceptable for testing).
+    - **Client modal overlays work well for interrupts:** Z-index 3000, semi-transparent backdrop, color-coded buttons. User feedback positive (no confusion).
+    - **Timeout tuning matters:** 250ms for bot-only games (instant resolution), 3s for human games (comfortable decision time). Future: make configurable per-game.
+  - **Deliverable:** Branch `feat/changsha-m1-m2-claim-arbitration` ready to merge. All tests green. No regressions.
+  - **Outcome:** ✅ **READY TO MERGE** — M1+M2 fully functional, well-tested, no known blockers.
