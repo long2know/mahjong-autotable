@@ -39,6 +39,51 @@ public static class ClaimArbitrator
         return ResolveByProximity(topPriorityClaims, discarderId, playerSeats);
     }
 
+    /// <summary>
+    /// Resolves multi-winner claims. Returns all Win claims when multiple players claim Win.
+    /// For non-Win claims, returns single highest-priority claim resolved by proximity.
+    /// </summary>
+    public static IReadOnlyList<ClaimRequest> ResolveMultiWin(
+        IReadOnlyList<ClaimRequest> submissions,
+        Guid discarderId,
+        IReadOnlyDictionary<Guid, Wind> playerSeats)
+    {
+        ArgumentNullException.ThrowIfNull(submissions);
+        ArgumentNullException.ThrowIfNull(playerSeats);
+
+        if (!playerSeats.ContainsKey(discarderId))
+        {
+            throw new ArgumentException($"Discarder {discarderId} not found in player seats.", nameof(discarderId));
+        }
+
+        var nonPassClaims = submissions
+            .Where(c => c.ClaimType != ClaimType.Pass)
+            .ToList();
+
+        if (nonPassClaims.Count == 0)
+        {
+            return Array.Empty<ClaimRequest>();
+        }
+
+        var maxPriority = nonPassClaims.Max(c => c.Priority);
+        var topPriorityClaims = nonPassClaims
+            .Where(c => c.Priority == maxPriority)
+            .ToList();
+
+        // If top priority is Win and multiple players claimed Win, return all Win claims
+        if (topPriorityClaims.Count > 1 && topPriorityClaims[0].ClaimType == ClaimType.Win)
+        {
+            return topPriorityClaims;
+        }
+
+        // Otherwise, single claim resolution (Pung/Kong/Chow tie-breaking, or single Win)
+        var singleClaim = topPriorityClaims.Count == 1
+            ? topPriorityClaims[0]
+            : ResolveByProximity(topPriorityClaims, discarderId, playerSeats);
+
+        return new[] { singleClaim };
+    }
+
     private static ClaimRequest ResolveByProximity(
         IReadOnlyList<ClaimRequest> claims,
         Guid discarderId,

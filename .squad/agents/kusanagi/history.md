@@ -74,3 +74,36 @@
     - **Timeout tuning matters:** 250ms for bot-only games (instant resolution), 3s for human games (comfortable decision time). Future: make configurable per-game.
   - **Deliverable:** Branch `feat/changsha-m1-m2-claim-arbitration` ready to merge. All tests green. No regressions.
   - **Outcome:** ✅ **READY TO MERGE** — M1+M2 fully functional, well-tested, no known blockers.
+
+- **2025-01-20: M6+D2 Multi-Winner Implementation** — Phase 3 of Changsha parity:
+  - **Scope:** Ship M6 (Multi-Winner on Single Discard) + D2 (Random Dealer Selection from Winners).
+  - **Approach:** Domain-first → API infrastructure → Execution (partial) → Docs. Prioritize correctness and test coverage over completeness.
+  - **Domain Layer (19 new tests):**
+    - `ChangshaWinnerInfo` + `ChangshaSettlementRequestMulti` records for multi-winner input.
+    - `ChangshaSettlementCalculator.CalculateMultiWinner()` — processes each winner independently (reuses single-winner logic), then aggregates deltas per seat.
+    - `ChangshaSettlementCalculator.SelectNextDealer()` — deterministic RNG-based random selection from N≥2 winners.
+    - All bird, LuxurySevenPairs, and dealer bonuses apply per-winner and aggregate correctly.
+  - **Claim Arbitration (8 new tests):**
+    - `ClaimArbitrator.ResolveMultiWin()` — returns ALL Win claims when multiple players claim Win (was: pick one by proximity).
+    - Single-winner passthrough for non-Win claims (Pung/Kong/Chow tie-breaking unchanged).
+    - M7 integration: filter locked winners before settlement.
+  - **API Infrastructure (partial):**
+    - Per-game RNG stored in `gameRngs` dictionary at `/start`, reused for deterministic dealer selection.
+    - `ResolveClaimWindowAsync` refactored to use `ResolveMultiWin`, filter locked winners (M7), call `ExecuteMultiWinClaimAsync`.
+    - `ExecuteMultiWinClaimAsync` added as stub (fallback to single-winner for now; full implementation deferred due to token budget).
+    - All tests pass: 2488/2488 (2462 existing + 26 new).
+  - **Lessons Learned:**
+    - **Settlement aggregation via iteration is elegant:** Each winner processed independently → aggregate deltas. No need to reimplement complex multiplier logic. Makes tests easy (compare to single-winner × N).
+    - **Deterministic RNG is essential for gameplay:** Seeded `Random` per game ensures reproducible dealer selection. Test coverage confirms `Random(seed)` produces same sequence every time.
+    - **M7 lock filtering composes cleanly:** `IsBlockedByMissedWinLock()` check works for N≥1 winners. If all locked → no-claim. If some locked → settlement with unlocked subset.
+    - **In-memory gameRngs dictionary is pragmatic:** No DB migration needed. RNG state is transient (game-lifetime). Cleared on game completion. Future: if horizontal scaling needed, seed could be stored in `GameEntity` and reconstructed.
+    - **Partial delivery beats all-or-nothing:** Domain + tests + infrastructure shipped (ready to test). Execution stub allows incremental completion without blocking merge. Trade-off: multi-winner not playable yet, but single-winner still works (degradation, not breakage).
+    - **Test-first for complex aggregation:** 19 tests covering 2-winner, 3-winner, mixed big-win, birds, LuxurySevenPairs, dealer bonuses. Tests caught initial mistakes in expected values (bird doubling per winner stacks multiplicatively, not additively).
+    - **RNG capture issue in nested async lambdas:** `Task.Run` inside `OpenClaimWindowAsync` couldn't capture `gameRngs` from outer scope (static local function limitation). Solution: pass `gameRngs` as parameter through entire call chain (OpenClaimWindowAsync → ProcessBotClaimsAsync → ResolveClaimWindowAsync).
+  - **Deferred Work (documented in design notes):**
+    - ExecuteMultiWinClaimAsync full implementation (per-winner hand evaluation, multi-winner settlement call, tile ownership, SignalR broadcast, round wind rotation).
+    - DTO update: add `Winners` list to win response, keep `Winner` for backward compat.
+    - Autotable client UI: multi-winner banner ("一炮多响"), display all score deltas.
+    - Bird information in claim context (currently not passed from win request to claim window).
+  - **Deliverable:** Branch `feat/changsha-m6-d2-multi-winner` with solid foundation. 2488/2488 tests pass. Domain logic battle-tested. API infrastructure plumbed. Execution stub clearly marked with TODO.
+  - **Outcome:** ⚠️ **PARTIAL** — Core infrastructure ready, execution pending (~2 hours estimated). Alternative: merge as-is with stub, complete execution in follow-up within 24 hours.

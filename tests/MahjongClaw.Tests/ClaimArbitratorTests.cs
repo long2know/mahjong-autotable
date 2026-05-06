@@ -236,4 +236,99 @@ public sealed class ClaimArbitratorTests
         // So West (Player3) is closer
         Assert.Equal(Player3, result.PlayerId);
     }
+
+    [Fact]
+    public void ResolveMultiWin_TwoWinClaims_ReturnsBoth()
+    {
+        var winClaim1 = new ClaimRequest(Player2, ClaimType.Win);
+        var winClaim2 = new ClaimRequest(Player3, ClaimType.Win);
+        var claims = new[] { winClaim1, winClaim2 };
+        
+        var result = ClaimArbitrator.ResolveMultiWin(claims, Player1, FourPlayerSeats);
+        
+        Assert.Equal(2, result.Count);
+        Assert.Contains(result, c => c.PlayerId == Player2 && c.ClaimType == ClaimType.Win);
+        Assert.Contains(result, c => c.PlayerId == Player3 && c.ClaimType == ClaimType.Win);
+    }
+
+    [Fact]
+    public void ResolveMultiWin_ThreeWinClaims_ReturnsAll()
+    {
+        var winClaim1 = new ClaimRequest(Player2, ClaimType.Win);
+        var winClaim2 = new ClaimRequest(Player3, ClaimType.Win);
+        var winClaim3 = new ClaimRequest(Player4, ClaimType.Win);
+        var claims = new[] { winClaim1, winClaim2, winClaim3 };
+        
+        var result = ClaimArbitrator.ResolveMultiWin(claims, Player1, FourPlayerSeats);
+        
+        Assert.Equal(3, result.Count);
+        Assert.Contains(result, c => c.PlayerId == Player2);
+        Assert.Contains(result, c => c.PlayerId == Player3);
+        Assert.Contains(result, c => c.PlayerId == Player4);
+    }
+
+    [Fact]
+    public void ResolveMultiWin_SingleWinClaim_ReturnsSingle()
+    {
+        var winClaim = new ClaimRequest(Player2, ClaimType.Win);
+        var claims = new[] { winClaim };
+        
+        var result = ClaimArbitrator.ResolveMultiWin(claims, Player1, FourPlayerSeats);
+        
+        Assert.Single(result);
+        Assert.Equal(Player2, result[0].PlayerId);
+        Assert.Equal(ClaimType.Win, result[0].ClaimType);
+    }
+
+    [Fact]
+    public void ResolveMultiWin_TwoPungClaims_ReturnsSingleByProximity()
+    {
+        var pungClaim1 = new ClaimRequest(Player2, ClaimType.Pung);
+        var pungClaim2 = new ClaimRequest(Player4, ClaimType.Pung);
+        var claims = new[] { pungClaim1, pungClaim2 };
+        
+        var result = ClaimArbitrator.ResolveMultiWin(claims, Player1, FourPlayerSeats);
+        
+        Assert.Single(result);
+        Assert.Equal(Player2, result[0].PlayerId);  // Player2 is next clockwise from Player1
+        Assert.Equal(ClaimType.Pung, result[0].ClaimType);
+    }
+
+    [Fact]
+    public void ResolveMultiWin_WinAndPung_ReturnsOnlyWin()
+    {
+        var winClaim = new ClaimRequest(Player3, ClaimType.Win);
+        var pungClaim = new ClaimRequest(Player2, ClaimType.Pung);
+        var claims = new[] { winClaim, pungClaim };
+        
+        var result = ClaimArbitrator.ResolveMultiWin(claims, Player1, FourPlayerSeats);
+        
+        Assert.Single(result);
+        Assert.Equal(Player3, result[0].PlayerId);
+        Assert.Equal(ClaimType.Win, result[0].ClaimType);
+    }
+
+    [Fact]
+    public void ResolveMultiWin_NoClaims_ReturnsEmpty()
+    {
+        var claims = Array.Empty<ClaimRequest>();
+        
+        var result = ClaimArbitrator.ResolveMultiWin(claims, Player1, FourPlayerSeats);
+        
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void ResolveMultiWin_OnlyPassClaims_ReturnsEmpty()
+    {
+        var claims = new[]
+        {
+            new ClaimRequest(Player2, ClaimType.Pass),
+            new ClaimRequest(Player3, ClaimType.Pass)
+        };
+        
+        var result = ClaimArbitrator.ResolveMultiWin(claims, Player1, FourPlayerSeats);
+        
+        Assert.Empty(result);
+    }
 }

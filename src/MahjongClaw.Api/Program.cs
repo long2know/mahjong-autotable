@@ -26,6 +26,7 @@ app.UseCors();
 
 var pendingClaimWindows = new Dictionary<Guid, PendingClaimWindow>();
 var missedWinLocks = new Dictionary<Guid, Dictionary<Guid, MissedWinLock>>();
+var gameRngs = new Dictionary<Guid, Random>(); // Game-specific RNG for deterministic dealer selection
 
 app.MapGet("/", () => "Mahjong Claw API");
 app.MapHub<GameHub>("/hubs/game");
@@ -203,6 +204,7 @@ gameGroup.MapPost("/{id:guid}/start", async (
     if (game.Tiles.Count == 0)
     {
         var rng = new Random();
+        gameRngs[game.Id] = rng; // Store RNG for later use (dealer selection on multi-winner)
         var ruleset = RulesetResolver.Resolve(game.Ruleset);
         var wall = WallBuilder.BuildShuffledWall(rng, ruleset);
         var tileEntities = wall.Tiles.Select((tile, index) => new TileEntity
@@ -502,7 +504,7 @@ gameGroup.MapPost("/{id:guid}/discard", async (
     // Clear missed-win lock when player discards (their turn is over)
     ClearMissedWinLock(game.Id, request.PlayerId, missedWinLocks);
 
-    await OpenClaimWindowAsync(game, tile, request.PlayerId, dbContext, hubContext, pendingClaimWindows, missedWinLocks, cancellationToken);
+    await OpenClaimWindowAsync(game, tile, request.PlayerId, dbContext, hubContext, pendingClaimWindows, missedWinLocks, gameRngs, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -570,7 +572,7 @@ gameGroup.MapPost("/{id:guid}/claim", async (
 
     if (claimWindow.HasAllResponses() || claimWindow.IsExpired(DateTime.UtcNow))
     {
-        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, cancellationToken);
+        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, gameRngs, cancellationToken);
     }
 
     return Results.Ok(new { success = true });
@@ -1135,6 +1137,22 @@ gameGroup.MapPost("/{id:guid}/win", async (
 
     await dbContext.SaveChangesAsync(cancellationToken);
 
+    // Build Winners list for single-winner (for client consistency)
+    List<WinnerDetail>? winners = null;
+    if (changshaEvaluation is not null && scoreDeltas is not null)
+    {
+        var winnerPlayer = game.Players.First(p => p.Id == request.PlayerId);
+        var winnerDelta = scoreDeltas.First(sd => sd.PlayerId == request.PlayerId);
+        var isDealer = game.DealerId == request.PlayerId;
+        winners = [new WinnerDetail(
+            PlayerId: request.PlayerId,
+            PlayerName: winnerPlayer.Name,
+            WinTypes: changshaEvaluation.WinTypes.Select(wt => wt.ToString()).ToList(),
+            ScoreDelta: winnerDelta.Delta,
+            IsBigWin: changshaEvaluation.IsBigWin,
+            IsDealer: isDealer)];
+    }
+
     var response = new WinResponse(
         game.Id,
         game.Status,
@@ -1145,7 +1163,8 @@ gameGroup.MapPost("/{id:guid}/win", async (
         scoreDeltas,
         nextDealerId,
         nextRound,
-        birdSeat);
+        birdSeat,
+        winners);
     await SendToGameWithAliases(hubContext, game.Id, "GameWon", response, cancellationToken);
     return Results.Ok(response);
 });
@@ -2123,6 +2142,7 @@ static async Task OpenClaimWindowAsync(
     IHubContext<GameHub> hubContext,
     Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
     Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
+    Dictionary<Guid, Random> gameRngs,
     CancellationToken cancellationToken)
 {
     var allPlayerIds = game.Players.Select(p => p.Id).ToList();
@@ -2202,7 +2222,7 @@ static async Task OpenClaimWindowAsync(
 
                 if (freshGame is not null)
                 {
-                    await ResolveClaimWindowAsync(freshGame, window, dbContext, hubContext, pendingClaimWindows, missedWinLocks, CancellationToken.None);
+                    await ResolveClaimWindowAsync(freshGame, window, dbContext, hubContext, pendingClaimWindows, missedWinLocks, gameRngs, CancellationToken.None);
                     await scope.CommitAsync(CancellationToken.None);
                 }
             }
@@ -2213,7 +2233,7 @@ static async Task OpenClaimWindowAsync(
         }
     }, CancellationToken.None);
 
-    await ProcessBotClaimsAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, cancellationToken);
+    await ProcessBotClaimsAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, gameRngs, cancellationToken);
 }
 
 static async Task ProcessBotClaimsAsync(
@@ -2223,6 +2243,7 @@ static async Task ProcessBotClaimsAsync(
     IHubContext<GameHub> hubContext,
     Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
     Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
+    Dictionary<Guid, Random> gameRngs,
     CancellationToken cancellationToken)
 {
     foreach (var botPlayerId in claimWindow.EligiblePlayerIds)
@@ -2272,7 +2293,7 @@ static async Task ProcessBotClaimsAsync(
 
     if (claimWindow.HasAllResponses())
     {
-        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, cancellationToken);
+        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, gameRngs, cancellationToken);
     }
 }
 
@@ -2283,6 +2304,7 @@ static async Task ResolveClaimWindowAsync(
     IHubContext<GameHub> hubContext,
     Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
     Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
+    Dictionary<Guid, Random> gameRngs,
     CancellationToken cancellationToken)
 {
     pendingClaimWindows.Remove(game.Id);
@@ -2294,12 +2316,12 @@ static async Task ResolveClaimWindowAsync(
     // Process missed-win locks for players who passed on a winning opportunity
     await ProcessMissedWinLocksAsync(game, claimWindow, dbContext, missedWinLocks);
 
-    var winningClaim = ClaimArbitrator.Resolve(
+    var resolvedClaims = ClaimArbitrator.ResolveMultiWin(
         claimWindow.SubmittedClaims,
         claimWindow.DiscarderId,
         playerSeats);
 
-    if (winningClaim is null)
+    if (resolvedClaims.Count == 0)
     {
         await SendToGameWithAliases(hubContext, game.Id, "ClaimResolved", 
             new { Result = "NoClaim" }, 
@@ -2320,13 +2342,27 @@ static async Task ResolveClaimWindowAsync(
         return;
     }
 
-    // Check if the winning claim is blocked by a missed-win lock
-    if (winningClaim.ClaimType == ClaimType.Win)
+    var winClaims = resolvedClaims.Where(c => c.ClaimType == ClaimType.Win).ToList();
+    
+    if (winClaims.Count > 0)
     {
-        if (IsBlockedByMissedWinLock(game.Id, winningClaim.PlayerId, claimWindow.DiscardedTile, missedWinLocks))
+        // Filter out locked winners (M7 interaction)
+        var unlockedWinClaims = new List<ClaimRequest>();
+        foreach (var winClaim in winClaims)
         {
+            if (IsBlockedByMissedWinLock(game.Id, winClaim.PlayerId, claimWindow.DiscardedTile, missedWinLocks))
+            {
+                // Winner is locked, exclude from winners list
+                continue;
+            }
+            unlockedWinClaims.Add(winClaim);
+        }
+
+        if (unlockedWinClaims.Count == 0)
+        {
+            // All winners were locked
             await SendToGameWithAliases(hubContext, game.Id, "ClaimResolved", 
-                new { Result = "BlockedByMissedWinLock", Message = "Cannot win on a tile you previously passed on until you discard." }, 
+                new { Result = "BlockedByMissedWinLock", Message = "All winning claims blocked by missed-win locks." }, 
                 cancellationToken);
 
             var discarder = game.Players.FirstOrDefault(p => p.Id == claimWindow.DiscarderId);
@@ -2343,11 +2379,18 @@ static async Task ResolveClaimWindowAsync(
             await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
             return;
         }
+
+        // Execute multi-winner settlement
+        await ExecuteMultiWinClaimAsync(game, unlockedWinClaims, claimWindow, dbContext, hubContext, gameRngs, missedWinLocks, cancellationToken);
+        return;
     }
 
-    if (winningClaim.ClaimType == ClaimType.Chow)
+    // Single non-win claim (Pung/Kong/Chow)
+    var singleClaim = resolvedClaims[0];
+
+    if (singleClaim.ClaimType == ClaimType.Chow)
     {
-        if (!ChowEligibilityRule.IsEligibleForChow(winningClaim.PlayerId, claimWindow.DiscarderId, playerSeats))
+        if (!ChowEligibilityRule.IsEligibleForChow(singleClaim.PlayerId, claimWindow.DiscarderId, playerSeats))
         {
             await SendToGameWithAliases(hubContext, game.Id, "ClaimResolved", 
                 new { Result = "InvalidChowSeat", Message = "Chow can only be claimed from immediate prior player." }, 
@@ -2372,30 +2415,24 @@ static async Task ResolveClaimWindowAsync(
     await SendToGameWithAliases(hubContext, game.Id, "ClaimResolved", new
     {
         Result = "ClaimExecuted",
-        PlayerId = winningClaim.PlayerId,
-        ClaimType = winningClaim.ClaimType.ToString()
+        PlayerId = singleClaim.PlayerId,
+        ClaimType = singleClaim.ClaimType.ToString()
     }, cancellationToken);
 
-    if (winningClaim.ClaimType == ClaimType.Win)
-    {
-        await ExecuteWinClaimAsync(game, winningClaim, claimWindow, dbContext, hubContext, cancellationToken);
-    }
-    else if (winningClaim.ClaimType == ClaimType.Pung || 
-             winningClaim.ClaimType == ClaimType.ExposedKong || 
-             winningClaim.ClaimType == ClaimType.Chow)
-    {
-        await ExecuteMeldClaimAsync(game, winningClaim, claimWindow, dbContext, hubContext, missedWinLocks, cancellationToken);
-    }
+    await ExecuteMeldClaimAsync(game, singleClaim, claimWindow, dbContext, hubContext, missedWinLocks, cancellationToken);
 }
 
-static async Task ExecuteWinClaimAsync(
+static async Task ExecuteMultiWinClaimAsync(
     GameEntity game,
-    ClaimRequest claim,
+    IReadOnlyList<ClaimRequest> winClaims,
     PendingClaimWindow claimWindow,
     MahjongClawDbContext dbContext,
     IHubContext<GameHub> hubContext,
+    Dictionary<Guid, Random> gameRngs,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
     CancellationToken cancellationToken)
 {
+    // Move discarded tile to first winner's hand (physical ownership)
     var discardedTileEntity = game.Tiles.FirstOrDefault(t => t.Id == claimWindow.DiscardedTileId);
     if (discardedTileEntity is null)
     {
@@ -2403,17 +2440,212 @@ static async Task ExecuteWinClaimAsync(
     }
 
     discardedTileEntity.Location = "Hand";
-    discardedTileEntity.PlayerId = claim.PlayerId;
+    discardedTileEntity.PlayerId = winClaims[0].PlayerId;
     await dbContext.SaveChangesAsync(cancellationToken);
 
+    // Get RNG for this game
+    if (!gameRngs.TryGetValue(game.Id, out var rng))
+    {
+        rng = new Random();
+        gameRngs[game.Id] = rng;
+    }
+
+    // Build settlement seats
+    if (!TryBuildChangshaSettlementSeats(game.Players, out var settlementSeats, out var seatBuildError))
+    {
+        return;
+    }
+
+    // Evaluate each winner's hand
+    var winners = new List<ChangshaWinnerInfo>();
+    var winnerDetails = new List<WinnerDetail>(); // For response DTO
+    var ruleset = RulesetResolver.Resolve(game.Ruleset);
+
+    foreach (var winClaim in winClaims)
+    {
+        // Fetch winner's tiles
+        var winnerTiles = game.Tiles
+            .Where(tile => tile.PlayerId == winClaim.PlayerId && (tile.Location == "Hand" || tile.Location == "Meld"))
+            .ToList();
+
+        // Add discarded tile for evaluation
+        var evaluationTiles = winnerTiles.Append(discardedTileEntity).ToList();
+
+        if (!TryBuildTileHand(evaluationTiles, out var tileHand))
+        {
+            continue; // Skip invalid hand
+        }
+
+        if (!RulesetHandAnalyzer.TryGetWinningHand(tileHand, ruleset, out var winningHand) || winningHand is null)
+        {
+            continue; // Skip non-winning hand
+        }
+
+        // Detect fully reliant per winner
+        var isFullyReliant = false;
+        var playerMelds = game.Melds.Where(m => m.PlayerId == winClaim.PlayerId).ToList();
+        
+        if (playerMelds.Any())
+        {
+            var meldInfos = new List<MeldInfo>();
+            
+            foreach (var meld in playerMelds)
+            {
+                var meldType = meld.Type;
+                var meldKind = meld.Kind;
+                
+                TileSource meldSource;
+                if (string.Equals(meldType, "Kong", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.Equals(meldKind, "ConcealedKong", StringComparison.OrdinalIgnoreCase))
+                    {
+                        meldSource = TileSource.SelfDrawn;
+                    }
+                    else
+                    {
+                        meldSource = TileSource.ClaimedDiscard;
+                    }
+                }
+                else
+                {
+                    meldSource = TileSource.ClaimedDiscard;
+                }
+                
+                meldInfos.Add(new MeldInfo(meldSource));
+            }
+            
+            var winningTileSource = TileSource.ClaimedDiscard; // Always discard for multi-winner
+            isFullyReliant = ChangshaFullyReliantDetector.IsFullyReliant(meldInfos, winningTileSource);
+        }
+        else
+        {
+            // No melds, won from discard = fully reliant
+            isFullyReliant = true;
+        }
+
+        // Server-side last-tile detection
+        var wallRemaining = game.Tiles.Count(t => string.Equals(t.Location, "Wall", StringComparison.OrdinalIgnoreCase));
+        var isLastTileDiscard = wallRemaining == 0;
+
+        // Build win context (multi-winner is always discard-based)
+        var winContext = new ChangshaWinContext(
+            IsInitialDeal: false,
+            IsHeavenly: false,
+            IsEarthly: false,
+            IsLastTileDraw: false,
+            IsLastTileDiscard: isLastTileDiscard,
+            IsWinAfterKong: false,
+            IsRobbingKong: false,
+            IsKongOnCannon: false,
+            IsFullyReliant: isFullyReliant);
+
+        // Evaluate win types
+        var changshaEvaluation = ChangshaWinTypeEvaluator.Evaluate(tileHand, winningHand, winContext);
+
+        // Add to winners list
+        winners.Add(new ChangshaWinnerInfo(
+            WinnerId: winClaim.PlayerId,
+            WinTypes: changshaEvaluation.WinTypes,
+            IsBigWin: changshaEvaluation.IsBigWin));
+
+        // Store for response
+        var winnerPlayer = game.Players.First(p => p.Id == winClaim.PlayerId);
+        var isDealer = game.DealerId == winClaim.PlayerId;
+        winnerDetails.Add(new WinnerDetail(
+            PlayerId: winClaim.PlayerId,
+            PlayerName: winnerPlayer.Name,
+            WinTypes: changshaEvaluation.WinTypes.Select(wt => wt.ToString()).ToList(),
+            ScoreDelta: 0, // Will be filled after settlement
+            IsBigWin: changshaEvaluation.IsBigWin,
+            IsDealer: isDealer));
+    }
+
+    if (winners.Count == 0)
+    {
+        return; // No valid winners
+    }
+
+    // Build multi-winner settlement request
+    var settlementRequest = new ChangshaSettlementRequestMulti(
+        Seats: settlementSeats,
+        Winners: winners,
+        DealerId: game.DealerId ?? winClaims[0].PlayerId,
+        IsSelfDraw: false, // Multi-winner is always discard-based
+        DiscarderId: claimWindow.DiscarderId,
+        BirdRank: null, // Bird info not available in claim context (limitation noted in design)
+        BirdRanks: null);
+
+    // Calculate multi-winner settlement
+    var settlementResult = ChangshaSettlementCalculator.CalculateMultiWinner(settlementRequest, rng);
+
+    // Apply score deltas
+    foreach (var delta in settlementResult.ScoreDeltas)
+    {
+        var player = game.Players.First(candidate => candidate.Id == delta.PlayerId);
+        player.Score = delta.NewScore;
+    }
+
+    // Update winner details with actual score deltas
+    for (int i = 0; i < winnerDetails.Count; i++)
+    {
+        var detail = winnerDetails[i];
+        var delta = settlementResult.ScoreDeltas.First(d => d.PlayerId == detail.PlayerId);
+        winnerDetails[i] = detail with { ScoreDelta = delta.Delta };
+    }
+
+    // Update dealer and round wind
+    var previousDealerId = game.DealerId;
+    game.DealerId = settlementResult.NextDealerId;
+    game.Round = Math.Max(1, game.Round + settlementResult.NextRoundIncrement);
+
+    if (previousDealerId != game.DealerId)
+    {
+        game.DealerRotationCount++;
+        
+        if (game.DealerRotationCount > 0 && game.DealerRotationCount % 4 == 0)
+        {
+            game.RoundWind = game.RoundWind switch
+            {
+                "East" => "South",
+                "South" => "West",
+                "West" => "North",
+                "North" => "East",
+                _ => "East"
+            };
+        }
+    }
+
+    // Clear M7 missed-win locks for all winners (their hands are fully resolved)
+    foreach (var winClaim in winClaims)
+    {
+        ClearMissedWinLock(game.Id, winClaim.PlayerId, missedWinLocks);
+    }
+
+    // Mark game as completed
     game.Status = "Completed";
-    game.CurrentPlayerId = claim.PlayerId;
+    game.CurrentPlayerId = winClaims[0].PlayerId; // First winner for backward compat
+
     await dbContext.SaveChangesAsync(cancellationToken);
 
-    await SendToGameWithAliases(hubContext, game.Id, "GameWon", new WinResponse(
-        game.Id,
-        game.Status,
-        claim.PlayerId), cancellationToken);
+    // Build response
+    var scoreDeltas = settlementResult.ScoreDeltas
+        .Select(delta => new PlayerScoreDelta(delta.PlayerId, delta.Delta, delta.NewScore))
+        .ToList();
+
+    var response = new WinResponse(
+        GameId: game.Id,
+        Status: game.Status,
+        PlayerId: winClaims[0].PlayerId, // First winner for backward compat
+        ChangshaWinTypes: winnerDetails[0].WinTypes,
+        IsBigWin: winnerDetails[0].IsBigWin,
+        IsSmallWin: !winnerDetails[0].IsBigWin,
+        ScoreDeltas: scoreDeltas,
+        NextDealerId: settlementResult.NextDealerId,
+        NextRound: game.Round,
+        BirdSeat: settlementResult.BirdSeat?.ToString(),
+        Winners: winnerDetails);
+
+    await SendToGameWithAliases(hubContext, game.Id, "GameWon", response, cancellationToken);
 }
 
 static async Task ExecuteMeldClaimAsync(
@@ -2678,14 +2910,22 @@ internal record WinRequest(
     bool IsKongOnCannon = false,
     bool IsFullyReliant = false);
 internal record PlayerScoreDelta(Guid PlayerId, int Delta, int NewScore);
+internal record WinnerDetail(
+    Guid PlayerId,
+    string PlayerName,
+    IReadOnlyList<string> WinTypes,
+    int ScoreDelta,
+    bool IsBigWin,
+    bool IsDealer);
 internal record WinResponse(
     Guid GameId,
     string Status,
-    Guid PlayerId,
+    Guid PlayerId, // First winner for backward compatibility
     IReadOnlyList<string>? ChangshaWinTypes = null,
     bool? IsBigWin = null,
     bool? IsSmallWin = null,
     IReadOnlyList<PlayerScoreDelta>? ScoreDeltas = null,
     Guid? NextDealerId = null,
     int? NextRound = null,
-    string? BirdSeat = null);
+    string? BirdSeat = null,
+    IReadOnlyList<WinnerDetail>? Winners = null); // New field for multi-winner support

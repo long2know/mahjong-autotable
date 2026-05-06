@@ -38,5 +38,20 @@ export interface MeldResponse {
 export interface WinResponse {
   gameId: string;
   status: string;
-  playerId: string;
+  playerId: string; // First winner for backward compatibility
+  changshaWinTypes?: string[];
+  isBigWin?: boolean;
+  isSmallWin?: boolean;
+  scoreDeltas?: Array<{ playerId: string; delta: number; newScore: number }>;
+  nextDealerId?: string;
+  nextRound?: number;
+  birdSeat?: string;
+  winners?: Array<{
+    playerId: string;
+    playerName: string;
+    winTypes: string[];
+    scoreDelta: number;
+    isBigWin: boolean;
+    isDealer: boolean;
+  }>;
 }

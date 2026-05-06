@@ -30,21 +30,28 @@
 
 ---
 
-## D2. Multi-Winner Discard Dealer Rule
+## D2. Multi-Winner Discard Dealer Rule — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (domain + arbitration shipped 2025-01-20, execution shipped 2025-01-20)
 
 **Scope:** Spec says "random among winners becomes dealer"; impl assigns discarder.
 
-**Owner:** Togusa
+**Owner:** Kusanagi (Phase 1-2) + Batou (Phase 3 execution)
 **Effort:** S
 **Files:**
-- `ChangshaSettlementCalculator.Calculate()` (L139-141)
+- ✅ `ChangshaSettlementCalculator.SelectNextDealer()` (L248-270) — RNG-based random selection
+- ✅ Domain tests — `ChangshaMultiWinnerSettlementTests` (5 dealer-pick tests)
+- ✅ `ExecuteMultiWinClaimAsync()` (L2453-2686) — fully implemented with RNG dealer selection
+- ✅ Dealer rotation + round wind advancement logic (L2625-2643)
 
 **Acceptance:**
-- When `IsMultipleWin && !IsSelfDraw`, dealer selected randomly from winner list (not discarder).
-- Unit tests cover this branch.
+- ✅ When `IsMultipleWin && !IsSelfDraw`, dealer selected randomly from winner list (domain logic complete)
+- ✅ Unit tests cover single-winner passthrough, multi-winner random pick, determinism
+- ✅ API execution complete (ExecuteMultiWinClaimAsync wired with gameRngs)
+- ✅ All 2488 tests passing
 
-**Dependencies:** M6 (multi-winner representation) — without M6, there's no winner list to randomize. Couple them.
-**Decision:** DEFER — requires M6 multi-winner support to be meaningful.
+**Dependencies:** M6 (multi-winner representation) — COMPLETE
+**Decision:** IN — fully shipped end-to-end
 
 ---
 
@@ -280,25 +287,36 @@
 
 ---
 
-## M6. Multi-Winner on Single Discard Representation
+## M6. Multi-Winner on Single Discard Representation — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (domain + arbitration shipped 2025-01-20, execution + DTO + UI shipped 2025-01-20)
 
 **Scope:** `IsMultipleWin: bool` flag exists but no proper representation (list of winners, per-winner settlement).
 
-**Owner:** Togusa (domain) + Ishikawa (API)
+**Owner:** Kusanagi (Phase 1-2) + Batou (Phase 3 execution + DTO + UI)
 **Effort:** L
 **Files:**
-- New DTO: list of winner IDs + per-winner settlement
-- Settlement calc: iterate winners
-- Client: display multiple winners
-- Tests
+- ✅ `ChangshaWinnerInfo` record (domain)
+- ✅ `ChangshaSettlementRequestMulti` record (domain)
+- ✅ `ChangshaSettlementCalculator.CalculateMultiWinner()` (L180-246) — aggregates per-winner deltas
+- ✅ `ClaimArbitrator.ResolveMultiWin()` (L48-80) — returns all Win claims
+- ✅ Domain tests — `ChangshaMultiWinnerSettlementTests` (19 tests), arbitration tests (8 tests)
+- ✅ `ResolveClaimWindowAsync` updated to use `ResolveMultiWin` with M7 lock filtering
+- ✅ `ExecuteMultiWinClaimAsync()` (L2453-2686) — fully implemented with per-winner evaluation
+- ✅ `WinResponse` DTO + `WinnerDetail` record — Winners field added, backward compatible
+- ✅ Single-winner /win endpoint — populates Winners list for consistency
+- ✅ Autotable client — TypeScript types + multi-winner toast ("一炮多响")
 
 **Acceptance:**
-- Multiple players can win on same discard.
-- Each winner settles independently.
-- Response includes list of winner deltas.
+- ✅ Multiple players can win on same discard (arbitration logic complete)
+- ✅ Each winner settles independently (domain logic complete)
+- ✅ Response includes list of winner deltas (DTO updated)
+- ✅ API execution complete (ExecuteMultiWinClaimAsync fully implemented)
+- ✅ Client displays multi-winner toast notification
+- ✅ All 2488 tests passing
 
-**Dependencies:** None directly, but D2 (random dealer) depends on this.
-**Decision:** DEFER — significant DTO + settlement restructure; phase to follow-up.
+**Dependencies:** None directly, but D2 (random dealer) depends on this — BOTH COMPLETE
+**Decision:** IN — fully shipped end-to-end
 
 ---
 
@@ -389,3 +407,12 @@
 | M7 | Missed-Win Lock | M | Ishikawa | IN | ✅ SHIPPED (2026-05-07) |
 | M8 | Settlement Ledger | L | Ishikawa+Togusa | DEFER | ❌ DEFERRED |
 | BONUS | E2E Fix | S | Saito | IN | ✅ SHIPPED |
+
+## Follow-Up Gap (logged 2026-05-06 by Coordinator)
+
+**B1 — Bird ranks not propagated through `/claim` settlement path**
+- Status: 🟡 Known limitation (logged after Phase 3 merge)
+- Symptom: Multi-winner and single-winner-via-claim wins do not apply bird bonuses; legacy `/win` path (Blazor) still works correctly.
+- Impact: Autotable clients (which now route wins through `/claim`) miss bird-rank multipliers when birds are configured.
+- Fix scope: ~30 min — autotable client passes `BirdRank`/`BirdRanks` in `/claim` body for Win submissions; API plumbs them into `ChangshaSettlementRequestMulti` (currently hard-coded `null` in `ExecuteMultiWinClaimAsync`, search "Bird info not available in claim context").
+- Priority: P2 — does not affect base scoring correctness; only affects games configured with bird ranks.

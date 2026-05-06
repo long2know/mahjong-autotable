@@ -18,6 +18,20 @@ public sealed record ChangshaSettlementRequest(
     bool IsMultipleWin = false,
     IReadOnlyList<ChangshaWinType>? WinTypes = null);
 
+public sealed record ChangshaWinnerInfo(
+    Guid WinnerId,
+    IReadOnlyList<ChangshaWinType> WinTypes,
+    bool IsBigWin);
+
+public sealed record ChangshaSettlementRequestMulti(
+    IReadOnlyList<ChangshaSettlementSeat> Seats,
+    IReadOnlyList<ChangshaWinnerInfo> Winners,
+    Guid DealerId,
+    bool IsSelfDraw,
+    Guid? DiscarderId = null,
+    int? BirdRank = null,
+    IReadOnlyList<int>? BirdRanks = null);
+
 public sealed record ChangshaSettlementResult(
     IReadOnlyList<ChangshaSeatDelta> ScoreDeltas,
     Guid NextDealerId,
@@ -174,6 +188,165 @@ public static class ChangshaSettlementCalculator
             nextDealerId,
             NextRoundIncrement: 1,
             birdSeat);
+    }
+
+    public static ChangshaSettlementResult CalculateMultiWinner(
+        ChangshaSettlementRequestMulti request,
+        Random rng)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Seats);
+        ArgumentNullException.ThrowIfNull(request.Winners);
+        ArgumentNullException.ThrowIfNull(rng);
+
+        if (request.Seats.Count != 4)
+        {
+            throw new ArgumentException("Changsha settlement requires exactly four seats.", nameof(request));
+        }
+
+        if (request.Winners.Count == 0)
+        {
+            throw new ArgumentException("At least one winner is required.", nameof(request));
+        }
+
+        var seatsByPlayer = request.Seats.ToDictionary(seat => seat.PlayerId);
+        if (!seatsByPlayer.ContainsKey(request.DealerId))
+        {
+            throw new ArgumentException("Dealer must belong to one of the four seats.", nameof(request));
+        }
+
+        foreach (var winner in request.Winners)
+        {
+            if (!seatsByPlayer.ContainsKey(winner.WinnerId))
+            {
+                throw new ArgumentException($"Winner {winner.WinnerId} must belong to one of the four seats.", nameof(request));
+            }
+        }
+
+        if (!request.IsSelfDraw)
+        {
+            if (request.DiscarderId is null)
+            {
+                throw new ArgumentException("Discarder is required for discard wins.", nameof(request));
+            }
+
+            if (!seatsByPlayer.ContainsKey(request.DiscarderId.Value))
+            {
+                throw new ArgumentException("Discarder must belong to one of the four seats.", nameof(request));
+            }
+
+            foreach (var winner in request.Winners)
+            {
+                if (request.DiscarderId == winner.WinnerId)
+                {
+                    throw new ArgumentException("Winner and discarder cannot be the same player for discard wins.", nameof(request));
+                }
+            }
+        }
+
+        if (request.BirdRank is < 1 or > 9)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.BirdRank), "Bird rank must be between 1 and 9.");
+        }
+
+        if (request.BirdRanks is not null && request.BirdRanks.Any(rank => rank is < 1 or > 9))
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.BirdRanks), "All bird ranks must be between 1 and 9.");
+        }
+
+        if (request.BirdRanks is not null && request.BirdRank is not null)
+        {
+            throw new ArgumentException("Cannot specify both BirdRank and BirdRanks; use BirdRanks for multi-bird scenarios.", nameof(request));
+        }
+
+        // Aggregate deltas across all winners
+        var aggregatedDeltas = request.Seats.ToDictionary(seat => seat.PlayerId, static _ => 0);
+
+        Wind? birdSeat = null;
+        IReadOnlyList<int> effectiveBirdRanks = request.BirdRanks ?? (request.BirdRank is { } single ? [single] : []);
+        
+        if (effectiveBirdRanks.Count > 0)
+        {
+            var birdSeats = effectiveBirdRanks.Select(rank => ResolveBirdSeat(request.Seats, request.DealerId, rank)).ToList();
+            birdSeat = birdSeats.FirstOrDefault();
+        }
+
+        // Process each winner independently
+        foreach (var winner in request.Winners)
+        {
+            var singleWinnerRequest = new ChangshaSettlementRequest(
+                request.Seats,
+                winner.WinnerId,
+                request.DealerId,
+                request.IsSelfDraw,
+                winner.IsBigWin,
+                request.DiscarderId,
+                request.BirdRank,
+                request.BirdRanks,
+                IsMultipleWin: request.Winners.Count > 1,
+                winner.WinTypes);
+
+            var singleResult = Calculate(singleWinnerRequest);
+
+            // Aggregate deltas
+            foreach (var delta in singleResult.ScoreDeltas)
+            {
+                aggregatedDeltas[delta.PlayerId] += delta.Delta;
+            }
+        }
+
+        // Build final score deltas
+        var finalDeltas = request.Seats
+            .Select(seat => new ChangshaSeatDelta(
+                seat.PlayerId,
+                aggregatedDeltas[seat.PlayerId],
+                seat.CurrentScore + aggregatedDeltas[seat.PlayerId]))
+            .ToList();
+
+        // Select next dealer
+        var nextDealerId = SelectNextDealer(
+            request.Winners.Select(w => w.WinnerId).ToList(),
+            request.DiscarderId,
+            request.IsSelfDraw,
+            rng);
+
+        return new ChangshaSettlementResult(
+            finalDeltas,
+            nextDealerId,
+            NextRoundIncrement: 1,
+            birdSeat);
+    }
+
+    public static Guid SelectNextDealer(
+        IReadOnlyList<Guid> winnerIds,
+        Guid? discarderId,
+        bool isSelfDraw,
+        Random rng)
+    {
+        ArgumentNullException.ThrowIfNull(winnerIds);
+        ArgumentNullException.ThrowIfNull(rng);
+
+        if (winnerIds.Count == 0)
+        {
+            throw new ArgumentException("At least one winner is required.", nameof(winnerIds));
+        }
+
+        // Single winner: winner becomes dealer
+        if (winnerIds.Count == 1)
+        {
+            return winnerIds[0];
+        }
+
+        // Multiple winners on discard: pick randomly (D2 rule)
+        if (!isSelfDraw)
+        {
+            var randomIndex = rng.Next(winnerIds.Count);
+            return winnerIds[randomIndex];
+        }
+
+        // Multiple winners on self-draw (edge case, shouldn't happen)
+        // Return first winner
+        return winnerIds[0];
     }
 
     private static void ApplyMultiBirdAdjustments(

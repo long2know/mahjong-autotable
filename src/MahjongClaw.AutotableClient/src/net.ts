@@ -149,6 +149,13 @@ export async function initSignalR(gameId?: string, playerId?: string): Promise<v
     console.log('[SignalR] GameWon:', data);
     clientState.applySignalREvent('GameWon', data);
     audio.play('win');
+    
+    // Show multi-winner toast if applicable
+    if (data.winners && data.winners.length > 1) {
+      const winnerNames = data.winners.map(w => w.playerName).join(', ');
+      globalToastManager.show(`一炮多响 Multi-Winner! Winners: ${winnerNames}`);
+    }
+    
     refetchState();
   });
 
@@ -156,6 +163,13 @@ export async function initSignalR(gameId?: string, playerId?: string): Promise<v
     console.log('[SignalR] WinDeclared (alias):', data);
     clientState.applySignalREvent('WinDeclared', data);
     audio.play('win');
+    
+    // Show multi-winner toast if applicable
+    if (data.winners && data.winners.length > 1) {
+      const winnerNames = data.winners.map(w => w.playerName).join(', ');
+      globalToastManager.show(`一炮多响 Multi-Winner! Winners: ${winnerNames}`);
+    }
+    
     refetchState();
   });
 
