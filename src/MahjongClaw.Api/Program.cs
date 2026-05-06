@@ -40,12 +40,31 @@ gameGroup.MapPost("/", async (
     CancellationToken cancellationToken) =>
 {
     var ruleset = RulesetResolver.Resolve(request?.Ruleset);
+    
+    // B1: Validate bird ranks
+    if (request?.BirdRank is < 1 or > 9)
+    {
+        return Results.BadRequest(new { message = "BirdRank must be between 1 and 9." });
+    }
+    
+    if (request?.BirdRanks is not null && request.BirdRanks.Any(rank => rank is < 1 or > 9))
+    {
+        return Results.BadRequest(new { message = "All BirdRanks must be between 1 and 9." });
+    }
+    
+    if (request?.BirdRanks is not null && request?.BirdRank is not null)
+    {
+        return Results.BadRequest(new { message = "Cannot specify both BirdRank and BirdRanks; use BirdRanks for multi-bird scenarios." });
+    }
+    
     var game = new GameEntity
     {
         Id = Guid.NewGuid(),
         Status = "Waiting",
         Round = 1,
-        Ruleset = ruleset.ToString()
+        Ruleset = ruleset.ToString(),
+        BirdRank = request?.BirdRank,
+        BirdRanks = request?.BirdRanks is not null ? System.Text.Json.JsonSerializer.Serialize(request.BirdRanks) : null
     };
 
     dbContext.Games.Add(game);
@@ -230,6 +249,60 @@ gameGroup.MapPost("/{id:guid}/start", async (
     await SendToGameWithAliases(hubContext, game.Id, "GameStarted", response, cancellationToken);
     await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
     return Results.Ok(response);
+});
+
+gameGroup.MapGet("/{id:guid}/history", async (
+    Guid id,
+    MahjongClawDbContext dbContext,
+    CancellationToken cancellationToken) =>
+{
+    var game = await dbContext.Games
+        .AsNoTracking()
+        .Include(g => g.Players)
+        .FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
+    
+    if (game is null)
+    {
+        return Results.NotFound();
+    }
+    
+    var handResults = await dbContext.HandResults
+        .AsNoTracking()
+        .Include(hr => hr.Winners)
+        .Include(hr => hr.SeatDeltas)
+        .Where(hr => hr.GameId == id)
+        .OrderBy(hr => hr.HandNumber)
+        .ToListAsync(cancellationToken);
+    
+    var playerNameMap = game.Players.ToDictionary(p => p.Id, p => p.Name);
+    
+    var history = handResults.Select(hr =>
+    {
+        var winners = hr.Winners.Select(w => new
+        {
+            PlayerName = playerNameMap.TryGetValue(w.PlayerId, out var name) ? name : "Unknown",
+            WinTypes = System.Text.Json.JsonSerializer.Deserialize<List<string>>(w.WinTypesJson) ?? [],
+            IsBigWin = w.IsBigWin,
+            ScoreDelta = hr.SeatDeltas.FirstOrDefault(sd => sd.PlayerId == w.PlayerId)?.Delta ?? 0
+        }).ToList();
+        
+        var totalDeltas = hr.SeatDeltas.ToDictionary(
+            sd => playerNameMap.TryGetValue(sd.PlayerId, out var name) ? name : "Unknown",
+            sd => sd.NewScore);
+        
+        return new
+        {
+            HandNumber = hr.HandNumber,
+            CompletedAtUtc = hr.CompletedAtUtc,
+            DealerName = playerNameMap.TryGetValue(hr.DealerId, out var dealerName) ? dealerName : "Unknown",
+            RoundWind = hr.RoundWind,
+            Winners = winners,
+            WallExhausted = hr.WallExhausted,
+            TotalDeltas = totalDeltas
+        };
+    }).ToList();
+    
+    return Results.Ok(history);
 });
 
 gameGroup.MapGet("/{id:guid}/state", async (
@@ -1083,6 +1156,21 @@ gameGroup.MapPost("/{id:guid}/win", async (
             return Results.Conflict(new { message = seatBuildError });
         }
 
+        // B1: Use bird ranks from request if provided, otherwise from game entity
+        int? birdRank = request.BirdRank ?? game.BirdRank;
+        int[]? birdRanks = request.BirdRanks;
+        if (birdRanks is null && game.BirdRanks is not null)
+        {
+            try
+            {
+                birdRanks = System.Text.Json.JsonSerializer.Deserialize<int[]>(game.BirdRanks);
+            }
+            catch
+            {
+                // Ignore deserialization errors, keep null
+            }
+        }
+
         var settlementRequest = new ChangshaSettlementRequest(
             settlementSeats,
             WinnerId: request.PlayerId,
@@ -1090,8 +1178,8 @@ gameGroup.MapPost("/{id:guid}/win", async (
             IsSelfDraw: request.IsSelfDraw,
             IsBigWin: changshaEvaluation.IsBigWin,
             DiscarderId: resolvedDiscarderPlayerId,
-            BirdRank: request.BirdRanks is null ? request.BirdRank : null,
-            BirdRanks: request.BirdRanks,
+            BirdRank: birdRanks is null ? birdRank : null,
+            BirdRanks: birdRanks,
             IsMultipleWin: request.IsMultipleWin,
             WinTypes: changshaEvaluation.WinTypes);
 
@@ -1132,12 +1220,7 @@ gameGroup.MapPost("/{id:guid}/win", async (
         birdSeat = settlementResult.BirdSeat?.ToString();
     }
 
-    game.Status = "Completed";
-    game.CurrentPlayerId = request.PlayerId;
-
-    await dbContext.SaveChangesAsync(cancellationToken);
-
-    // Build Winners list for single-winner (for client consistency)
+    // Build Winners list for single-winner (for client consistency and M8 persistence)
     List<WinnerDetail>? winners = null;
     if (changshaEvaluation is not null && scoreDeltas is not null)
     {
@@ -1151,6 +1234,25 @@ gameGroup.MapPost("/{id:guid}/win", async (
             ScoreDelta: winnerDelta.Delta,
             IsBigWin: changshaEvaluation.IsBigWin,
             IsDealer: isDealer)];
+    }
+
+    game.Status = "Completed";
+    game.CurrentPlayerId = request.PlayerId;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+    
+    // M8: Persist hand result after scores updated
+    if (scoreDeltas is not null)
+    {
+        await PersistHandResultAsync(
+            game,
+            dbContext,
+            winners,
+            scoreDeltas,
+            request.IsSelfDraw,
+            resolvedDiscarderPlayerId,
+            wallExhausted: false,
+            cancellationToken);
     }
 
     var response = new WinResponse(
@@ -1191,6 +1293,22 @@ static async Task CompleteDrawnGameAsync(
     }
 
     await dbContext.SaveChangesAsync(cancellationToken);
+    
+    // M8: Persist wall-exhausted hand result with zero deltas
+    var scoreDeltas = game.Players
+        .Select(p => new PlayerScoreDelta(p.Id, 0, p.Score))
+        .ToList();
+    
+    await PersistHandResultAsync(
+        game,
+        dbContext,
+        winners: null,
+        scoreDeltas,
+        isSelfDraw: false,
+        discarderId: null,
+        wallExhausted: true,
+        cancellationToken);
+    
     await SendToGameWithAliases(hubContext, game.Id, "GameStateUpdated", new { Reason = "WallExhausted" }, cancellationToken);
 }
 
@@ -2566,14 +2684,29 @@ static async Task ExecuteMultiWinClaimAsync(
     }
 
     // Build multi-winner settlement request
+    // B1: Read bird ranks from Game entity (configured at game start)
+    int? birdRank = game.BirdRank;
+    IReadOnlyList<int>? birdRanks = null;
+    if (game.BirdRanks is not null)
+    {
+        try
+        {
+            birdRanks = System.Text.Json.JsonSerializer.Deserialize<int[]>(game.BirdRanks);
+        }
+        catch
+        {
+            // Ignore deserialization errors, fallback to single BirdRank
+        }
+    }
+    
     var settlementRequest = new ChangshaSettlementRequestMulti(
         Seats: settlementSeats,
         Winners: winners,
         DealerId: game.DealerId ?? winClaims[0].PlayerId,
         IsSelfDraw: false, // Multi-winner is always discard-based
         DiscarderId: claimWindow.DiscarderId,
-        BirdRank: null, // Bird info not available in claim context (limitation noted in design)
-        BirdRanks: null);
+        BirdRank: birdRanks is null ? birdRank : null,
+        BirdRanks: birdRanks);
 
     // Calculate multi-winner settlement
     var settlementResult = ChangshaSettlementCalculator.CalculateMultiWinner(settlementRequest, rng);
@@ -2621,7 +2754,6 @@ static async Task ExecuteMultiWinClaimAsync(
         ClearMissedWinLock(game.Id, winClaim.PlayerId, missedWinLocks);
     }
 
-    // Mark game as completed
     game.Status = "Completed";
     game.CurrentPlayerId = winClaims[0].PlayerId; // First winner for backward compat
 
@@ -2631,6 +2763,17 @@ static async Task ExecuteMultiWinClaimAsync(
     var scoreDeltas = settlementResult.ScoreDeltas
         .Select(delta => new PlayerScoreDelta(delta.PlayerId, delta.Delta, delta.NewScore))
         .ToList();
+    
+    // M8: Persist multi-winner hand result
+    await PersistHandResultAsync(
+        game,
+        dbContext,
+        winnerDetails,
+        scoreDeltas,
+        isSelfDraw: false,
+        claimWindow.DiscarderId,
+        wallExhausted: false,
+        cancellationToken);
 
     var response = new WinResponse(
         GameId: game.Id,
@@ -2802,6 +2945,95 @@ static void ClearMissedWinLock(
     }
 }
 
+static async Task<int> GetNextHandNumberAsync(Guid gameId, MahjongClawDbContext dbContext, CancellationToken cancellationToken)
+{
+    var maxHandNumber = await dbContext.HandResults
+        .Where(hr => hr.GameId == gameId)
+        .Select(hr => (int?)hr.HandNumber)
+        .MaxAsync(cancellationToken);
+    
+    return (maxHandNumber ?? 0) + 1;
+}
+
+static async Task PersistHandResultAsync(
+    GameEntity game,
+    MahjongClawDbContext dbContext,
+    IReadOnlyList<WinnerDetail>? winners,
+    IReadOnlyList<PlayerScoreDelta> scoreDeltas,
+    bool isSelfDraw,
+    Guid? discarderId,
+    bool wallExhausted,
+    CancellationToken cancellationToken)
+{
+    var handNumber = await GetNextHandNumberAsync(game.Id, dbContext, cancellationToken);
+    var completedAtUtc = DateTimeOffset.UtcNow;
+    
+    var handResult = new HandResultEntity
+    {
+        Id = Guid.NewGuid(),
+        GameId = game.Id,
+        HandNumber = handNumber,
+        CompletedAtUtc = completedAtUtc,
+        DealerId = game.DealerId ?? Guid.Empty,
+        RoundWind = game.RoundWind ?? "East",
+        IsSelfDraw = isSelfDraw,
+        DiscarderId = discarderId,
+        WallExhausted = wallExhausted,
+        CreatedAtUtc = completedAtUtc
+    };
+    
+    dbContext.HandResults.Add(handResult);
+    
+    if (winners is not null)
+    {
+        foreach (var winner in winners)
+        {
+            var winnerEntity = new HandResultWinnerEntity
+            {
+                Id = Guid.NewGuid(),
+                HandResultId = handResult.Id,
+                PlayerId = winner.PlayerId,
+                WinTypesJson = System.Text.Json.JsonSerializer.Serialize(winner.WinTypes),
+                IsBigWin = winner.IsBigWin,
+                IsDealer = winner.IsDealer,
+                CreatedAtUtc = completedAtUtc
+            };
+            dbContext.HandResultWinners.Add(winnerEntity);
+        }
+    }
+    
+    foreach (var delta in scoreDeltas)
+    {
+        var category = "Winnings";
+        if (wallExhausted && delta.Delta == 0)
+        {
+            category = "ZeroNoGame";
+        }
+        else if (delta.Delta < 0)
+        {
+            category = "Loss";
+        }
+        else if (delta.Delta > 0 && winners?.Any(w => w.PlayerId == delta.PlayerId) != true)
+        {
+            category = "BirdMatch";
+        }
+        
+        var seatDelta = new HandResultSeatDeltaEntity
+        {
+            Id = Guid.NewGuid(),
+            HandResultId = handResult.Id,
+            PlayerId = delta.PlayerId,
+            Delta = delta.Delta,
+            NewScore = delta.NewScore,
+            DeltaCategory = category,
+            CreatedAtUtc = completedAtUtc
+        };
+        dbContext.HandResultSeatDeltas.Add(seatDelta);
+    }
+    
+    await dbContext.SaveChangesAsync(cancellationToken);
+}
+
 void DealStartingHands(GameEntity game, IReadOnlyList<TileEntity> tiles)
 {
     var seatOrder = new[] { "East", "South", "West", "North" };
@@ -2846,7 +3078,13 @@ void DealTiles(PlayerEntity player, IReadOnlyList<TileEntity> wallTiles, ref int
     }
 }
 
-internal record CreateGameRequest(string? HostName, string? Mode, int? BotSeatCount, string? Ruleset = null);
+internal record CreateGameRequest(
+    string? HostName, 
+    string? Mode, 
+    int? BotSeatCount, 
+    string? Ruleset = null,
+    int? BirdRank = null,
+    int[]? BirdRanks = null);
 internal record CreateGameResponse(Guid Id, string Status, int Round, DateTimeOffset CreatedAt, Guid? HostPlayerId, string Ruleset);
 internal record JoinGameRequest(string Name, string Seat);
 internal record JoinGameResponse(Guid PlayerId, Guid GameId, string Name, string Seat, int Score);

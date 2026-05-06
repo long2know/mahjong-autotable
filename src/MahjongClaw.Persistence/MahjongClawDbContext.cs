@@ -16,6 +16,9 @@ public sealed class MahjongClawDbContext : DbContext
     public DbSet<TileEntity> Tiles => Set<TileEntity>();
     public DbSet<MeldEntity> Melds => Set<MeldEntity>();
     public DbSet<DiscardEntity> Discards => Set<DiscardEntity>();
+    public DbSet<HandResultEntity> HandResults => Set<HandResultEntity>();
+    public DbSet<HandResultWinnerEntity> HandResultWinners => Set<HandResultWinnerEntity>();
+    public DbSet<HandResultSeatDeltaEntity> HandResultSeatDeltas => Set<HandResultSeatDeltaEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,6 +34,7 @@ public sealed class MahjongClawDbContext : DbContext
                 .HasDefaultValue("East");
             entity.Property(e => e.DealerRotationCount)
                 .HasDefaultValue(0);
+            entity.Property(e => e.BirdRanks).HasMaxLength(256);
             entity.HasMany(e => e.Players)
                 .WithOne(e => e.Game)
                 .HasForeignKey(e => e.GameId);
@@ -86,6 +90,34 @@ public sealed class MahjongClawDbContext : DbContext
             entity.HasOne(e => e.Tile)
                 .WithMany()
                 .HasForeignKey(e => e.TileId);
+        });
+
+        modelBuilder.Entity<HandResultEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.RoundWind).HasMaxLength(16);
+            entity.HasOne(e => e.Game)
+                .WithMany()
+                .HasForeignKey(e => e.GameId);
+            entity.HasMany(e => e.Winners)
+                .WithOne(e => e.HandResult)
+                .HasForeignKey(e => e.HandResultId);
+            entity.HasMany(e => e.SeatDeltas)
+                .WithOne(e => e.HandResult)
+                .HasForeignKey(e => e.HandResultId);
+            entity.HasIndex(e => new { e.GameId, e.HandNumber });
+        });
+
+        modelBuilder.Entity<HandResultWinnerEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.WinTypesJson).HasMaxLength(2048);
+        });
+
+        modelBuilder.Entity<HandResultSeatDeltaEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DeltaCategory).HasMaxLength(32);
         });
     }
 }

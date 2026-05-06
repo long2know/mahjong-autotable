@@ -12,6 +12,8 @@ public sealed class GameEntity
     public string? RoundWind { get; set; }
     public int DealerRotationCount { get; set; }
     public string Ruleset { get; set; } = nameof(MahjongRuleset.Changsha258);
+    public int? BirdRank { get; set; }
+    public string? BirdRanks { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public ICollection<PlayerEntity> Players { get; set; } = new List<PlayerEntity>();

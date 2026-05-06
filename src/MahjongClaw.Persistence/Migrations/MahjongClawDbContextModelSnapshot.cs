@@ -55,6 +55,13 @@ namespace MahjongClaw.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("BirdRank")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BirdRanks")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -93,6 +100,114 @@ namespace MahjongClaw.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Games");
+                });
+
+            modelBuilder.Entity("MahjongClaw.Persistence.Entities.HandResultEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CompletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DealerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("DiscarderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("GameId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HandNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsSelfDraw")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RoundWind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("WallExhausted")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GameId", "HandNumber");
+
+                    b.ToTable("HandResults");
+                });
+
+            modelBuilder.Entity("MahjongClaw.Persistence.Entities.HandResultSeatDeltaEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Delta")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DeltaCategory")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("HandResultId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NewScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HandResultId");
+
+                    b.ToTable("HandResultSeatDeltas");
+                });
+
+            modelBuilder.Entity("MahjongClaw.Persistence.Entities.HandResultWinnerEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("HandResultId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsBigWin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsDealer")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WinTypesJson")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HandResultId");
+
+                    b.ToTable("HandResultWinners");
                 });
 
             modelBuilder.Entity("MahjongClaw.Persistence.Entities.MeldEntity", b =>
@@ -234,6 +349,39 @@ namespace MahjongClaw.Persistence.Migrations
                     b.Navigation("Tile");
                 });
 
+            modelBuilder.Entity("MahjongClaw.Persistence.Entities.HandResultEntity", b =>
+                {
+                    b.HasOne("MahjongClaw.Persistence.Entities.GameEntity", "Game")
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Game");
+                });
+
+            modelBuilder.Entity("MahjongClaw.Persistence.Entities.HandResultSeatDeltaEntity", b =>
+                {
+                    b.HasOne("MahjongClaw.Persistence.Entities.HandResultEntity", "HandResult")
+                        .WithMany("SeatDeltas")
+                        .HasForeignKey("HandResultId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("HandResult");
+                });
+
+            modelBuilder.Entity("MahjongClaw.Persistence.Entities.HandResultWinnerEntity", b =>
+                {
+                    b.HasOne("MahjongClaw.Persistence.Entities.HandResultEntity", "HandResult")
+                        .WithMany("Winners")
+                        .HasForeignKey("HandResultId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("HandResult");
+                });
+
             modelBuilder.Entity("MahjongClaw.Persistence.Entities.MeldEntity", b =>
                 {
                     b.HasOne("MahjongClaw.Persistence.Entities.GameEntity", "Game")
@@ -296,6 +444,13 @@ namespace MahjongClaw.Persistence.Migrations
                     b.Navigation("Players");
 
                     b.Navigation("Tiles");
+                });
+
+            modelBuilder.Entity("MahjongClaw.Persistence.Entities.HandResultEntity", b =>
+                {
+                    b.Navigation("SeatDeltas");
+
+                    b.Navigation("Winners");
                 });
 
             modelBuilder.Entity("MahjongClaw.Persistence.Entities.MeldEntity", b =>

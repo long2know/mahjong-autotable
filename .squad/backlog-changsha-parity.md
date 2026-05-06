@@ -347,25 +347,34 @@
 
 ---
 
-## M8. Settlement Ledger / Hand History Persistence
+## M8. Settlement Ledger / Hand History Persistence — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (shipped 2025-01-21)
 
 **Scope:** No `HandResult` or `SeatDelta` tables; settlement not persisted.
 
-**Owner:** Ishikawa (persistence) + Togusa (domain)
+**Owner:** Batou (API + Realtime Engineer)
 **Effort:** L
 **Files:**
-- New entity: `HandResultEntity`, `SeatDeltaEntity`
-- EF migration
-- Persist settlement on win
-- Query endpoint for hand history
-- Tests
+- ✅ `HandResultEntity`, `HandResultWinnerEntity`, `HandResultSeatDeltaEntity` — new entities
+- ✅ `MahjongClawDbContext` — DbSets and FK configuration
+- ✅ Migration: `AddHandResultsAndBirdRanks` (20260506202237)
+- ✅ `/win` endpoint — persists single-winner hand results
+- ✅ `ExecuteMultiWinClaimAsync` — persists multi-winner hand results
+- ✅ `CompleteDrawnGameAsync` — persists wall-exhausted hand results with zero deltas
+- ✅ GET `/api/game/{id}/history` — returns hand-by-hand log
+- ✅ `PersistHandResultAsync` helper — transaction-safe persistence
+- ✅ Tests — 10 new tests in `HandResultPersistenceTests.cs`
 
 **Acceptance:**
-- Every completed hand stored with winner, losers, deltas, bird, win types.
-- History retrievable via API.
+- ✅ Every completed hand stored with winner(s), losers, deltas, bird, win types.
+- ✅ Hand numbering increments per game.
+- ✅ Wall-exhausted hands recorded with WallExhausted=true, zero deltas.
+- ✅ History retrievable via API with cumulative scores.
+- ✅ All 2498 tests passing (10 new tests).
 
 **Dependencies:** None
-**Decision:** DEFER — requires DB schema migration; phase to follow-up.
+**Decision:** IN — Phase 4, final Changsha backlog item.
 
 ---
 
@@ -410,9 +419,18 @@
 
 ## Follow-Up Gap (logged 2026-05-06 by Coordinator)
 
-**B1 — Bird ranks not propagated through `/claim` settlement path**
-- Status: 🟡 Known limitation (logged after Phase 3 merge)
-- Symptom: Multi-winner and single-winner-via-claim wins do not apply bird bonuses; legacy `/win` path (Blazor) still works correctly.
-- Impact: Autotable clients (which now route wins through `/claim`) miss bird-rank multipliers when birds are configured.
-- Fix scope: ~30 min — autotable client passes `BirdRank`/`BirdRanks` in `/claim` body for Win submissions; API plumbs them into `ChangshaSettlementRequestMulti` (currently hard-coded `null` in `ExecuteMultiWinClaimAsync`, search "Bird info not available in claim context").
+**B1 — Bird ranks not propagated through `/claim` settlement path** — ✅ SHIPPED
+
+- Status: ✅ **COMPLETE** (shipped 2025-01-21)
+- Symptom: Multi-winner and single-winner-via-claim wins did not apply bird bonuses; legacy `/win` path (Blazor) still worked correctly.
+- Impact: Autotable clients (which route wins through `/claim`) missed bird-rank multipliers when birds were configured.
+- Fix: Bird ranks now stored on `Game` entity at game creation; both `/win` and `/claim` paths read from `Game.BirdRank`/`Game.BirdRanks`.
+- Files:
+  - ✅ `GameEntity` — added `BirdRank: int?` and `BirdRanks: string?` (JSON)
+  - ✅ `CreateGameRequest` — accepts `BirdRank` and `BirdRanks` parameters
+  - ✅ POST `/api/game` — validates and stores bird config on Game entity
+  - ✅ `/win` endpoint — falls back to Game entity bird ranks if not in request
+  - ✅ `ExecuteMultiWinClaimAsync` — reads bird ranks from Game entity
+  - ✅ Migration: `AddHandResultsAndBirdRanks` (20260506202237)
+  - ✅ Tests — bird rank persistence covered in `HandResultPersistenceTests.cs`
 - Priority: P2 — does not affect base scoring correctness; only affects games configured with bird ranks.

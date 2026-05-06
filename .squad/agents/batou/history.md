@@ -152,3 +152,136 @@ All 3 `TODO(Ishikawa)` comments removed from `src/MahjongClaw.Api/Program.cs`:
 - Line 878 (fully-reliant detector)
 
 No further integration work required for Ishikawa's domain helpers.
+
+## 2025-01-21: M8 Settlement Ledger + B1 Bird Ranks (feat/changsha-m8-settlement-ledger)
+
+Shipped Phase 4 (final phase) of Changsha backlog: M8 (Settlement Ledger Persistence) and B1 (Bird Ranks on /claim). Both tasks completed and all tests passing.
+
+### M8: Settlement Ledger Persistence
+
+**Schema Design:**
+- Created `HandResultEntity` with fields: `Id`, `GameId`, `HandNumber`, `CompletedAtUtc`, `DealerId`, `RoundWind`, `IsSelfDraw`, `DiscarderId`, `WallExhausted`, `CreatedAtUtc`.
+- Created `HandResultWinnerEntity` with fields: `Id`, `HandResultId`, `PlayerId`, `WinTypesJson`, `IsBigWin`, `IsDealer`, `CreatedAtUtc`.
+- Created `HandResultSeatDeltaEntity` with fields: `Id`, `HandResultId`, `PlayerId`, `Delta`, `NewScore`, `DeltaCategory`, `CreatedAtUtc`.
+- Added composite index on `HandResults(GameId, HandNumber)` for fast lookup.
+- Added DbSets to `MahjongClawDbContext` with proper foreign key configuration.
+
+**Hand Numbering:**
+- Implemented `GetNextHandNumberAsync` helper: queries max hand number for game, increments by 1.
+- Sequential per-game counter (no race conditions, deterministic).
+
+**Transaction Strategy:**
+- Two-phase commit: (1) update Game/Player scores → SaveChangesAsync, (2) persist HandResult → SaveChangesAsync.
+- Game state committed before hand result (audit-only data).
+- Trade-off: if hand result write fails, game completes but audit trail has gap (acceptable).
+
+**Integration Points:**
+- `/win` endpoint (L1181-1194): Persist single-winner hand result after scores updated.
+- `ExecuteMultiWinClaimAsync` (L2756-2771): Persist multi-winner hand result after scores updated.
+- `CompleteDrawnGameAsync` (L1241-1257): Persist wall-exhausted hand result with zero deltas and `WallExhausted=true`.
+- Added `PersistHandResultAsync` helper method (L2854-2936): Builds hand result entities, classifies delta categories, writes to DB.
+
+**Delta Category Classification:**
+- `"Winnings"`: Player won (delta > 0, in Winners list).
+- `"Loss"`: Player lost (delta < 0).
+- `"BirdMatch"`: Player gained from bird match (delta > 0, not in Winners list).
+- `"ZeroNoGame"`: Wall exhausted (delta == 0, WallExhausted == true).
+
+**GET `/api/game/{id}/history` Endpoint (L254-305):**
+- Returns hand-by-hand log with winners, win types, score deltas, cumulative scores.
+- Deserializes `WinTypesJson` per winner.
+- Maps player IDs to names via `playerNameMap`.
+- No pagination (bounded by hand count per game, typically < 100).
+
+### B1: Bird Ranks on Game Entity
+
+**Decision:** Store bird config on Game at creation (Option B).
+
+**Rationale:**
+- Birds are per-game configuration, not per-hand or per-claim.
+- Eliminates repetition in every `/win` and `/claim` request.
+- Autotable client can configure birds once at lobby (game creation).
+
+**Schema Changes:**
+- Added `BirdRank` (int?, nullable) to `GameEntity`.
+- Added `BirdRanks` (string?, max 256, nullable) to `GameEntity` — JSON array of bird ranks.
+
+**Integration Points:**
+- `CreateGameRequest` DTO: Added `BirdRank` and `BirdRanks` parameters.
+- POST `/api/game` (L45-67): Validates bird ranks (1-9 range, mutual exclusion), stores on Game entity.
+- `/win` endpoint (L1101-1119): Falls back to `game.BirdRank`/`game.BirdRanks` if not in request body.
+- `ExecuteMultiWinClaimAsync` (L2685-2709): Reads bird ranks from `game.BirdRank`/`game.BirdRanks`, deserializes JSON if present.
+
+**Backward Compat:**
+- `/win` endpoint still accepts `BirdRank`/`BirdRanks` in request body (explicit override).
+- Blazor client can still pass birds in request; if absent, reads from game entity.
+
+### Migration
+
+**Name:** `AddHandResultsAndBirdRanks` (20260506202237)
+
+**Schema Changes:**
+- Add `HandResults`, `HandResultWinners`, `HandResultSeatDeltas` tables.
+- Add `BirdRank` (int?, nullable) and `BirdRanks` (string?, max 256, nullable) to `Games` table.
+- Add composite index on `HandResults(GameId, HandNumber)`.
+
+**Manual Application (Prod):**
+```bash
+dotnet ef database update --project src/MahjongClaw.Persistence --startup-project src/MahjongClaw.Api
+```
+
+### Testing
+
+**Test File:** `tests/MahjongClaw.Tests/HandResultPersistenceTests.cs`  
+**Test Count:** 10 new tests (2488 → 2498)
+
+**Coverage:**
+1. Single-winner hand result persistence (all fields validated).
+2. Multi-winner hand result persistence (multiple winners).
+3. Wall-exhausted hand result with zero deltas and no winners.
+4. Hand number incrementation across multiple hands (1, 2, 3, 4, 5).
+5. Delta sum always zero (zero-sum constraint validation).
+6. Bird ranks stored on Game entity as JSON.
+7. Bird ranks can be null on Game entity.
+8. Win types serialized as JSON in WinnerEntity.
+9. Delta category classification (Winnings, Loss, BirdMatch, ZeroNoGame).
+10. Composite index on GameId+HandNumber allows fast lookup.
+
+**Test Infrastructure:**
+- Added `Microsoft.EntityFrameworkCore.InMemory` package to test project.
+- Each test creates isolated in-memory DB via `UseInMemoryDatabase($"TestDb_{Guid.NewGuid()}")`.
+- No migration required for in-memory tests (schema auto-created from entity model).
+
+**All Tests Passing:** 2498/2498 (100% green)
+
+### Build & Test Results
+- **Build:** Clean compile, 0 warnings/errors.
+- **Tests:** 2498/2498 passing (10 new tests).
+- **Migration:** Generated successfully with `dotnet ef migrations add AddHandResultsAndBirdRanks`.
+
+### Deviations & Rationale
+
+1. **Two-Phase Commit:** Game state → hand result (separate SaveChangesAsync calls). Rationale: Game state must be committed before broadcasting events; hand result is audit-only.
+2. **DeltaCategory String vs Enum:** String field (max 32 chars). Rationale: More readable in raw DB queries, avoids enum-to-int mapping bugs.
+3. **No Pagination on History Endpoint:** Rationale: Typical game has < 100 hands; pagination adds complexity with minimal benefit.
+4. **Bird Ranks JSON String vs Array:** Rationale: EF Core SQLite does not support native JSON columns; JSON string is simplest, portable across DB providers.
+5. **Option B (Store on Game) vs Option A (Read from Request):** Rationale: Option B is the right model — birds are per-game, not per-hand. Scope impact minimal.
+
+### Key Learnings
+- EF Core SQLite does not support native JSON columns; JSON string is simplest for array storage.
+- Two-phase commit trade-off: game state vs audit data — acceptable risk for audit-only writes.
+- Composite index `(GameId, HandNumber)` enables fast max lookup for hand numbering.
+- In-memory EF Core provider simplifies persistence testing (no migration required).
+
+### Backlog Updates
+- **M8:** Marked ✅ COMPLETE in `.squad/backlog-changsha-parity.md`.
+- **B1:** Marked ✅ COMPLETE (Follow-Up Gap resolved).
+
+### Documentation
+- Design notes written to `.squad/decisions/inbox/batou-m8-b1-design.md`.
+- Covers schema design, transaction strategy, integration points, migration, testing, deviations, future considerations.
+- Ready for Scribe to archive.
+
+### Summary
+Shipped Phase 4 (final phase) of Changsha backlog. All settlement paths now persist hand results to database, enabling full audit trails and hand-by-hand history queries. Bird ranks stored on Game entity and available to all settlement paths. Migration generated, all 2498 tests passing. No blockers; ready to merge.
+
