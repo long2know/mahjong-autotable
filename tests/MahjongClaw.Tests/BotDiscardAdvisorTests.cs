@@ -1513,7 +1513,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithVisibleMeldTiles_PrefersNonFeedWhenWinningOutsTie()
+    public void SelectDiscardIndex_WithVisibleMeldTiles_PrefersDeadSingletonDiscard_WhenOutsTie()
     {
         var handTiles = new List<Tile>
         {
@@ -1536,7 +1536,7 @@ public class BotDiscardAdvisorTests
             visibleMeldTiles,
             MahjongRuleset.ChineseOfficial);
 
-        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 9));
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 9));
     }
 
     [Fact]
@@ -1595,6 +1595,32 @@ public class BotDiscardAdvisorTests
             MahjongRuleset.ChineseOfficial);
 
         handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Characters, 9));
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_WithVisibleMeldTiles_IgnoresDeadKongThreatTiles()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5)
+        };
+
+        var visibleMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9), new(TileSuit.Dots, 9)
+        };
+
+        var visibleTiles = visibleMeldTiles.ToList();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            visibleMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 9));
     }
 
     [Fact]
