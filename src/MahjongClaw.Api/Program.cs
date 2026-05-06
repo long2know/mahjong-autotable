@@ -25,6 +25,7 @@ var app = builder.Build();
 app.UseCors();
 
 var pendingClaimWindows = new Dictionary<Guid, PendingClaimWindow>();
+var missedWinLocks = new Dictionary<Guid, Dictionary<Guid, MissedWinLock>>();
 
 app.MapGet("/", () => "Mahjong Claw API");
 app.MapHub<GameHub>("/hubs/game");
@@ -498,7 +499,10 @@ gameGroup.MapPost("/{id:guid}/discard", async (
     var response = new DiscardTileResponse(discard.Id, tile.Id, discard.Sequence);
     await SendToGameWithAliases(hubContext, game.Id, "TileDiscarded", response, cancellationToken);
 
-    await OpenClaimWindowAsync(game, tile, request.PlayerId, dbContext, hubContext, pendingClaimWindows, cancellationToken);
+    // Clear missed-win lock when player discards (their turn is over)
+    ClearMissedWinLock(game.Id, request.PlayerId, missedWinLocks);
+
+    await OpenClaimWindowAsync(game, tile, request.PlayerId, dbContext, hubContext, pendingClaimWindows, missedWinLocks, cancellationToken);
     return Results.Ok(response);
 });
 
@@ -566,7 +570,7 @@ gameGroup.MapPost("/{id:guid}/claim", async (
 
     if (claimWindow.HasAllResponses() || claimWindow.IsExpired(DateTime.UtcNow))
     {
-        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, cancellationToken);
+        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, cancellationToken);
     }
 
     return Results.Ok(new { success = true });
@@ -2118,6 +2122,7 @@ static async Task OpenClaimWindowAsync(
     MahjongClawDbContext dbContext,
     IHubContext<GameHub> hubContext,
     Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
     CancellationToken cancellationToken)
 {
     var allPlayerIds = game.Players.Select(p => p.Id).ToList();
@@ -2197,7 +2202,7 @@ static async Task OpenClaimWindowAsync(
 
                 if (freshGame is not null)
                 {
-                    await ResolveClaimWindowAsync(freshGame, window, dbContext, hubContext, pendingClaimWindows, CancellationToken.None);
+                    await ResolveClaimWindowAsync(freshGame, window, dbContext, hubContext, pendingClaimWindows, missedWinLocks, CancellationToken.None);
                     await scope.CommitAsync(CancellationToken.None);
                 }
             }
@@ -2208,7 +2213,7 @@ static async Task OpenClaimWindowAsync(
         }
     }, CancellationToken.None);
 
-    await ProcessBotClaimsAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, cancellationToken);
+    await ProcessBotClaimsAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, cancellationToken);
 }
 
 static async Task ProcessBotClaimsAsync(
@@ -2217,6 +2222,7 @@ static async Task ProcessBotClaimsAsync(
     MahjongClawDbContext dbContext,
     IHubContext<GameHub> hubContext,
     Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
     CancellationToken cancellationToken)
 {
     foreach (var botPlayerId in claimWindow.EligiblePlayerIds)
@@ -2266,7 +2272,7 @@ static async Task ProcessBotClaimsAsync(
 
     if (claimWindow.HasAllResponses())
     {
-        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, cancellationToken);
+        await ResolveClaimWindowAsync(game, claimWindow, dbContext, hubContext, pendingClaimWindows, missedWinLocks, cancellationToken);
     }
 }
 
@@ -2276,6 +2282,7 @@ static async Task ResolveClaimWindowAsync(
     MahjongClawDbContext dbContext,
     IHubContext<GameHub> hubContext,
     Dictionary<Guid, PendingClaimWindow> pendingClaimWindows,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
     CancellationToken cancellationToken)
 {
     pendingClaimWindows.Remove(game.Id);
@@ -2283,6 +2290,9 @@ static async Task ResolveClaimWindowAsync(
     var playerSeats = game.Players.ToDictionary(
         p => p.Id,
         p => Enum.Parse<Wind>(p.Seat, true));
+
+    // Process missed-win locks for players who passed on a winning opportunity
+    await ProcessMissedWinLocksAsync(game, claimWindow, dbContext, missedWinLocks);
 
     var winningClaim = ClaimArbitrator.Resolve(
         claimWindow.SubmittedClaims,
@@ -2308,6 +2318,31 @@ static async Task ResolveClaimWindowAsync(
 
         await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
         return;
+    }
+
+    // Check if the winning claim is blocked by a missed-win lock
+    if (winningClaim.ClaimType == ClaimType.Win)
+    {
+        if (IsBlockedByMissedWinLock(game.Id, winningClaim.PlayerId, claimWindow.DiscardedTile, missedWinLocks))
+        {
+            await SendToGameWithAliases(hubContext, game.Id, "ClaimResolved", 
+                new { Result = "BlockedByMissedWinLock", Message = "Cannot win on a tile you previously passed on until you discard." }, 
+                cancellationToken);
+
+            var discarder = game.Players.FirstOrDefault(p => p.Id == claimWindow.DiscarderId);
+            if (discarder is not null)
+            {
+                var nextPlayerId = GetNextPlayerId(game, discarder);
+                if (nextPlayerId is not null)
+                {
+                    game.CurrentPlayerId = nextPlayerId;
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                }
+            }
+
+            await ExecuteBotTurnChainAsync(game, dbContext, hubContext, cancellationToken);
+            return;
+        }
     }
 
     if (winningClaim.ClaimType == ClaimType.Chow)
@@ -2349,7 +2384,7 @@ static async Task ResolveClaimWindowAsync(
              winningClaim.ClaimType == ClaimType.ExposedKong || 
              winningClaim.ClaimType == ClaimType.Chow)
     {
-        await ExecuteMeldClaimAsync(game, winningClaim, claimWindow, dbContext, hubContext, cancellationToken);
+        await ExecuteMeldClaimAsync(game, winningClaim, claimWindow, dbContext, hubContext, missedWinLocks, cancellationToken);
     }
 }
 
@@ -2387,6 +2422,7 @@ static async Task ExecuteMeldClaimAsync(
     PendingClaimWindow claimWindow,
     MahjongClawDbContext dbContext,
     IHubContext<GameHub> hubContext,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks,
     CancellationToken cancellationToken)
 {
     var discardedTileEntity = game.Tiles.FirstOrDefault(t => t.Id == claimWindow.DiscardedTileId);
@@ -2450,6 +2486,88 @@ static async Task ExecuteMeldClaimAsync(
         meldTileEntities.Select(t => t.Id).ToList());
 
     await SendToGameWithAliases(hubContext, game.Id, "MeldDeclared", response, cancellationToken);
+
+    // Clear missed-win lock when player makes a meld (hand changed)
+    ClearMissedWinLock(game.Id, claim.PlayerId, missedWinLocks);
+}
+
+static async Task ProcessMissedWinLocksAsync(
+    GameEntity game,
+    PendingClaimWindow claimWindow,
+    MahjongClawDbContext dbContext,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks)
+{
+    var ruleset = RulesetResolver.Resolve(game.Ruleset);
+
+    foreach (var claim in claimWindow.SubmittedClaims)
+    {
+        if (claim.ClaimType != ClaimType.Pass)
+        {
+            continue;
+        }
+
+        var handTiles = game.Tiles
+            .Where(t => t.PlayerId == claim.PlayerId && 
+                       string.Equals(t.Location, "Hand", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        
+        var meldTiles = game.Tiles
+            .Where(t => t.PlayerId == claim.PlayerId && 
+                       string.Equals(t.Location, "Meld", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (!TryBuildTileHand(handTiles, out var hand) || !TryBuildTileHand(meldTiles, out var melds))
+        {
+            continue;
+        }
+
+        var missedWinLock = MissedWinLockTracker.CreateLock(hand, melds, claimWindow.DiscardedTile, ruleset);
+        
+        if (missedWinLock is not null)
+        {
+            if (!missedWinLocks.ContainsKey(game.Id))
+            {
+                missedWinLocks[game.Id] = new Dictionary<Guid, MissedWinLock>();
+            }
+            
+            missedWinLocks[game.Id][claim.PlayerId] = missedWinLock;
+        }
+    }
+}
+
+static bool IsBlockedByMissedWinLock(
+    Guid gameId,
+    Guid playerId,
+    Tile discardedTile,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks)
+{
+    if (!missedWinLocks.TryGetValue(gameId, out var gameLocks))
+    {
+        return false;
+    }
+
+    if (!gameLocks.TryGetValue(playerId, out var playerLock))
+    {
+        return false;
+    }
+
+    return playerLock.IsLockedOnTile(discardedTile);
+}
+
+static void ClearMissedWinLock(
+    Guid gameId,
+    Guid playerId,
+    Dictionary<Guid, Dictionary<Guid, MissedWinLock>> missedWinLocks)
+{
+    if (missedWinLocks.TryGetValue(gameId, out var gameLocks))
+    {
+        gameLocks.Remove(playerId);
+        
+        if (gameLocks.Count == 0)
+        {
+            missedWinLocks.Remove(gameId);
+        }
+    }
 }
 
 void DealStartingHands(GameEntity game, IReadOnlyList<TileEntity> tiles)

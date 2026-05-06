@@ -302,24 +302,30 @@
 
 ---
 
-## M7. Missed-Win Lock
+## M7. Missed-Win Lock — ✅ SHIPPED
+
+**Status:** ✅ **COMPLETE** (shipped 2026-05-07)
 
 **Scope:** Passing a win should lock that wait until player discards again.
 
-**Owner:** Togusa
+**Owner:** Ishikawa (Domain Rules Engineer)
 **Effort:** M
 **Files:**
-- Track passed waits per player (in-memory or entity)
-- `/win` validation: reject if winning on a previously passed wait
-- Clear lock after player discards
-- Tests
+- ✅ `src/MahjongClaw.Domain/Gameplay/MissedWinLock.cs` — value object (IReadOnlySet<Tile> locked tiles)
+- ✅ `src/MahjongClaw.Domain/Gameplay/MissedWinLockTracker.cs` — CreateLock + ComputeWaitSet helpers
+- ✅ `src/MahjongClaw.Api/Program.cs` — in-memory lock storage, Pass tracking, Win validation, discard clearing
+- ✅ `tests/MahjongClaw.Tests/MissedWinLockTests.cs` — 16 comprehensive tests
 
 **Acceptance:**
-- Player who passes on a winning discard cannot win on same tile until they discard.
-- Tests validate lock/unlock.
+- ✅ Player who passes on a winning discard is locked from winning on any tile in their wait set.
+- ✅ Lock cleared when locked player discards or makes a meld.
+- ✅ Wait set computed by testing all 27 possible tiles (brute-force, correct by construction).
+- ✅ Lock checked server-side during claim arbitration, rejects Win claim if locked.
+- ✅ Self-draw wins unaffected (lock applies to claims only).
+- ✅ All 2462 tests passing (2445 existing + 17 new).
 
-**Dependencies:** M1 (claim flow) for pass action; can partially implement now with voluntary pass.
-**Decision:** DEFER — requires claim window semantics from M1.
+**Dependencies:** M1 (claim flow with Pass semantics) — shipped 2026-05-06.
+**Decision:** IN — Phase 2, M7 after M1.
 
 ---
 
@@ -380,6 +386,6 @@
 | M4 | Robbing-the-Kong | S | Togusa | IN (partial) | ✅ DETECTION SHIPPED (interruptive flow → M1) |
 | M5 | Last-Tile Detection | S | Ishikawa | IN | ✅ SHIPPED |
 | M6 | Multi-Winner Proper | L | Togusa+Ishikawa | DEFER | ❌ DEFERRED |
-| M7 | Missed-Win Lock | M | Togusa | DEFER | ❌ DEFERRED (needs M1) |
+| M7 | Missed-Win Lock | M | Ishikawa | IN | ✅ SHIPPED (2026-05-07) |
 | M8 | Settlement Ledger | L | Ishikawa+Togusa | DEFER | ❌ DEFERRED |
 | BONUS | E2E Fix | S | Saito | IN | ✅ SHIPPED |
