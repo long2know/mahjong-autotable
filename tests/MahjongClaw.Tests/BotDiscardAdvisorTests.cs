@@ -924,6 +924,35 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_BreaksOffRankPair_WhenOnlySingleSmallWinCopyIsLive()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6)
+        };
+
+        var visibleTiles = new List<Tile>();
+        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        {
+            foreach (var rank in new[] { 2, 5, 8 })
+            {
+                var copies = suit == TileSuit.Dots && rank == 2 ? 2 : 3;
+                for (var i = 0; i < copies; i++)
+                {
+                    visibleTiles.Add(new Tile(suit, rank));
+                }
+            }
+        }
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 3));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_KeepsExhaustedSmallWinPair_WhenPairAlreadyFormed()
     {
         var handTiles = new List<Tile>
