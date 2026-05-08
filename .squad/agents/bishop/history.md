@@ -26,3 +26,22 @@
 - Completed Changsha backend gap audit: 3/18 behaviors implemented, 5 partial, 10 missing. Largest gaps are tile set (136 → 112), 红中 wildcard, win patterns, scoring, self-draw win, and banker rotation. 10 ordered work items documented in `docs/rules/changsha-backend-gap.md`. Build green, 38/38 tests pass (0 Changsha-specific).
 
 📌 Team update (2026-05-05T17-00-21Z): Backend audit decision merged to `.squad/decisions.md`. Vasquez completed Changsha canonical spec at `docs/rules/changsha-spec.md` (108 tiles, dice break, batch deal, 258 pair rule, no dead wall). Hicks produced frontend plan with Option B selected (backend-authoritative + autotable viewport + Fluent UI) at `docs/rules/changsha-frontend-plan.md`. Hudson identified 80 test scenarios with 8 contradictions at `docs/rules/changsha-test-catalog.md`. Blockers on `/autotable/ws` endpoint confirmation and fan table delivery from Vasquez.
+
+📌 Changsha v1 implementation wave (Bishop):
+- Implemented full Changsha v1 backend in `Changsha/` namespace under `Mahjong.Autotable.Api`:
+  - **Domain layer**: Tile/Suit/Wind enums, Meld, WinResult, ScoreResult, ChangshaGameState types
+  - **ChangshaDeckBuilder**: 108-tile deck (3 suits × 9 ranks × 4 copies), tile ID 0–107
+  - **DiceService**: 2d6 deterministic via seeded RNG
+  - **BreakPointService**: wall selection and break point per spec §2 (counterclockwise count, right-end stack count)
+  - **DealService**: batch-of-4 deal, dealer gets 14, others get 13, 55 remaining
+  - **ChangshaWinDetector**: 4 patterns — Standard (258 pair rule), Seven Pairs, All Pungs, Full Flush
+  - **ScoringService**: Small/Big Win payment calculator per spec §5 (1/2, 3/4, 6/7 tables, flush doubling)
+  - **ClaimAdjudicator**: hu > kong = pung > chow priority, chow next-seat only
+  - **ChangshaGameStateMachine**: pure-functional event-sourced transitions through all game phases
+  - **ChangshaHub**: SignalR hub at `/hubs/changsha` with skeleton event/command structure
+  - **ChangshaBotPolicy**: heuristic discard/claim/win AI, tested for legal play
+  - **Persistence**: ChangshaGame + ChangshaGameEvent entities, AppDbContext config, DatabaseBootstrapper tables
+  - **SignalR contract**: `docs/rules/changsha-signalr-contract.md` — TypeScript interfaces for Hicks
+- 68 new service-level unit tests in `ChangshaServices/` (all passing)
+- Build: 0 warnings, 0 errors; Tests: 106 passed, 0 failed, 77 skipped (Hudson's awaiting integration)
+- Deferred to v2: bird-catching, ready-kong dice, instant wins, pao chains
