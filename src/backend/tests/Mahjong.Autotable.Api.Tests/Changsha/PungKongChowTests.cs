@@ -1,149 +1,109 @@
+using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Tables;
+using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
+using static Mahjong.Autotable.Api.Tests.Changsha._TestHarness.ChangshaTestHelpers;
 
 namespace Mahjong.Autotable.Api.Tests.Changsha;
 
 /// <summary>
-/// CAT-E: Pung / Kong Tests
-/// Tests P0 scenarios for meld claims and priority resolution.
+/// CAT-E: Claim resolution — Pung, Kong, Chow.
 /// </summary>
 public class PungKongChowTests
 {
-    [Fact(Skip = "Awaiting Bishop's IClaimAdjudicator")]
-    [Trait("Category", "Changsha")]
-    public void PungClaim_InterruptsTurnOrder_PlayerBecomesActive()
+    private static IReadOnlyList<ChangshaHandState> SeatedHands(params (int seat, IEnumerable<int> tiles)[] hands)
     {
-        // E-01: Any player can claim a discard for pung even if not their turn
-        
-        // Arrange: Seat 1 discards, seat 3 (out of turn) has 2 matching tiles
-        // var adjudicator = new ChangshaClaimAdjudicator();
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(activeSeat: 1);
-        // var discardedTile = new Tile(TileSuit.Characters, 3);
-        
-        // Act: Seat 3 claims pung
-        // var claim = new PungClaim(seatIndex: 3, tiles: new[] {
-        //     new Tile(TileSuit.Characters, 3),
-        //     new Tile(TileSuit.Characters, 3)
-        // });
-        // var result = adjudicator.ValidateClaim(state, claim, discardedTile);
-        
-        // Assert: Claim valid
-        // Assert.True(result.IsValid);
-        
-        // Act: Apply claim
-        // var newState = stateMachine.ApplyPungClaim(state, claim, discardedTile);
-        
-        // Assert: Seat 3 becomes active player
-        // Assert.Equal(3, newState.ActiveSeat);
-        
-        // Assert: Pung revealed in exposed melds
-        // Assert.Contains(newState.ExposedMelds[3], m => m.Type == MeldType.Pung);
+        var seats = new List<ChangshaHandState>();
+        for (var i = 0; i < 4; i++)
+        {
+            var h = hands.FirstOrDefault(x => x.seat == i);
+            seats.Add(new ChangshaHandState
+            {
+                SeatIndex = i,
+                ConcealedTiles = (h.tiles ?? Enumerable.Empty<int>()).ToList()
+            });
+        }
+        return seats;
     }
 
-    [Fact(Skip = "Awaiting Bishop's IClaimAdjudicator")]
-    [Trait("Category", "Changsha")]
-    public void ConcealedKong_FromOwnDraw_DrawsReplacementTile()
+    [Fact, Trait("Category", "Changsha")]
+    public void Pung_OpportunityDetected_WhenSeatHoldsPairOfDiscarded()
     {
-        // E-02: Player draws fourth identical tile, can declare concealed kong and draw replacement
-        
-        // Arrange: Player has 3 identical tiles, draws 4th from wall
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameStateWithHand(seatIndex: 2, tiles: new[] {
-        //     new Tile(TileSuit.Bamboo, 8),
-        //     new Tile(TileSuit.Bamboo, 8),
-        //     new Tile(TileSuit.Bamboo, 8),
-        //     new Tile(TileSuit.Bamboo, 8) // Just drew this
-        // });
-        
-        // Act: Declare concealed kong
-        // var newState = stateMachine.ApplyKongDeclaration(state, seatIndex: 2, 
-        //     tiles: TileSuit.Bamboo_8_x4, isConcealed: true);
-        
-        // Assert: Kong revealed (outer tiles face-down in representation)
-        // var kong = newState.ExposedMelds[2].First(m => m.Type == MeldType.ConcealedKong);
-        // Assert.Equal(4, kong.Tiles.Count);
-        
-        // Assert: Player draws replacement tile (hand back to 14 tiles after kong reveal)
-        // Assert.Equal(14, newState.Hands[2].TileCount); // 14 - 4 (kong) + 1 (replacement) + ...
+        var hands = SeatedHands(
+            (1, Tiles((Suit.Wan, 3), (Suit.Wan, 3))));
+        var discard = Tid(Suit.Wan, 3, 2);
+        var opps = new ClaimAdjudicator().GetOpportunities(0, discard, hands);
+
+        Assert.Contains(opps, o => o.SeatIndex == 1 && o.ClaimType == TableClaimType.Pung);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IClaimAdjudicator")]
-    [Trait("Category", "Changsha")]
-    public void ExposedKong_FromDiscard_DrawsReplacementTile()
+    [Fact, Trait("Category", "Changsha")]
+    public void Kong_OpportunityDetected_WhenSeatHoldsTriplet()
     {
-        // E-03: Player can claim a discard to form exposed kong (4 identical) and draw replacement
-        
-        // Arrange: Seat 0 discards, seat 2 has 3 identical tiles
-        // var adjudicator = new ChangshaClaimAdjudicator();
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(activeSeat: 0);
-        // var discardedTile = new Tile(TileSuit.Dots, 2);
-        
-        // Act: Seat 2 claims kong
-        // var claim = new KongClaim(seatIndex: 2, tiles: new[] {
-        //     new Tile(TileSuit.Dots, 2),
-        //     new Tile(TileSuit.Dots, 2),
-        //     new Tile(TileSuit.Dots, 2)
-        // });
-        // var newState = stateMachine.ApplyKongClaim(state, claim, discardedTile);
-        
-        // Assert: Kong revealed (all face-up)
-        // var kong = newState.ExposedMelds[2].First(m => m.Type == MeldType.ExposedKong);
-        // Assert.Equal(4, kong.Tiles.Count);
-        // Assert.True(kong.IsExposed);
-        
-        // Assert: Replacement tile drawn
-        // Assert.Equal(14, newState.Hands[2].TileCount); // Maintains 14 after kong + replacement
+        var hands = SeatedHands(
+            (2, Tiles((Suit.Tiao, 7), (Suit.Tiao, 7), (Suit.Tiao, 7))));
+        var discard = Tid(Suit.Tiao, 7, 3);
+        var opps = new ClaimAdjudicator().GetOpportunities(0, discard, hands);
+
+        Assert.Contains(opps, o => o.SeatIndex == 2 && o.ClaimType == TableClaimType.Kong);
+        // Kong outranks Pung
+        Assert.Equal(3, opps.Single(o => o.SeatIndex == 2 && o.ClaimType == TableClaimType.Kong).Priority);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IClaimAdjudicator")]
-    [Trait("Category", "Changsha")]
-    public void MultipleClaimsPriority_WinBeatsKong_KongBeatsPung_PungBeatsChow()
+    [Fact, Trait("Category", "Changsha")]
+    public void Chow_OnlyPermittedFromNextSeat_CounterClockwise()
     {
-        // E-08: If multiple players want a discard, priority: win > pung/kong > chow
-        
-        // Arrange: Tile discarded, multiple claims submitted
-        // var adjudicator = new ChangshaClaimAdjudicator();
-        // var state = CreateGameState(activeSeat: 0);
-        // var discardedTile = new Tile(TileSuit.Characters, 5);
-        
-        // var winClaim = new WinClaim(seatIndex: 3); // Player 3 can win
-        // var pungClaim = new PungClaim(seatIndex: 2); // Player 2 can pung
-        // var chowClaim = new ChowClaim(seatIndex: 1); // Player 1 (next) can chow
-        
-        // Act: Resolve priority
-        // var winner = adjudicator.ResolvePriority(state, new[] { winClaim, pungClaim, chowClaim }, discardedTile);
-        
-        // Assert: Win claim takes priority
-        // Assert.Equal(winClaim, winner);
-        
-        // Act: Test without win claim
-        // var winnerNoClaim = adjudicator.ResolvePriority(state, new[] { pungClaim, chowClaim }, discardedTile);
-        
-        // Assert: Pung takes priority over chow
-        // Assert.Equal(pungClaim, winnerNoClaim);
+        // Discard from seat 0 → only seat 1 may chow.
+        var commonChowHand = Tiles((Suit.Wan, 4), (Suit.Wan, 6));
+        var hands = SeatedHands(
+            (1, commonChowHand),
+            (2, commonChowHand),
+            (3, commonChowHand));
+        var discard = Tid(Suit.Wan, 5, 0);
+        var opps = new ClaimAdjudicator().GetOpportunities(0, discard, hands);
+
+        var chows = opps.Where(o => o.ClaimType == TableClaimType.Chow).ToList();
+        Assert.Single(chows);
+        Assert.Equal(1, chows[0].SeatIndex);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IClaimAdjudicator")]
-    [Trait("Category", "Changsha")]
-    public void MultipleWinClaims_ProximityRule_ClosestCounterclockwiseWins()
+    [Fact, Trait("Category", "Changsha")]
+    public void ClaimPriority_HuBeatsKongBeatsPungBeatsChow()
     {
-        // E-09 (P1 but critical): If multiple players can win from same discard, 
-        // closest in turn order (counterclockwise from discarder) wins
-        
-        // Arrange: Seat 0 discards, seats 2 and 3 both claim win
-        // var adjudicator = new ChangshaClaimAdjudicator();
-        // var state = CreateGameState(activeSeat: 0);
-        // var discardedTile = new Tile(TileSuit.Bamboo, 4);
-        
-        // var winClaim2 = new WinClaim(seatIndex: 2); // 2 seats away CCW
-        // var winClaim3 = new WinClaim(seatIndex: 3); // 3 seats away CCW
-        
-        // Act: Resolve proximity
-        // var winner = adjudicator.ResolveMultipleWins(state, new[] { winClaim2, winClaim3 }, 
-        //     discarderSeat: 0, discardedTile);
-        
-        // Assert: Seat 2 wins (closer in CCW order: 0 → 1 → 2)
-        // Assert.Equal(2, winner.SeatIndex);
+        // Seat 1 (next): Chow possible
+        // Seat 2: Kong (triplet)
+        // Seat 3: Pung (pair)
+        var hands = SeatedHands(
+            (1, Tiles((Suit.Tong, 4), (Suit.Tong, 6))),
+            (2, Tiles((Suit.Tong, 5), (Suit.Tong, 5), (Suit.Tong, 5))),
+            (3, Tiles((Suit.Tong, 5), (Suit.Tong, 5))));
+        var discard = Tid(Suit.Tong, 5, 3);
+        var opps = new ClaimAdjudicator().GetOpportunities(0, discard, hands);
+
+        var winner = opps.OrderByDescending(o => o.Priority).First();
+        Assert.Equal(TableClaimType.Kong, winner.ClaimType);
+        Assert.Equal(2, winner.SeatIndex);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public void Pung_AppliedToHand_ProducesExposedMeldAndAdvancesActiveSeat()
+    {
+        // Use a real game state so all invariants are intact.
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 11);
+        var dealer = state.DealerSeatIndex;
+        // Inject pair into seat 1.
+        state.Hands[1].ConcealedTiles.Add(Tid(Suit.Tong, 5, 0));
+        state.Hands[1].ConcealedTiles.Add(Tid(Suit.Tong, 5, 1));
+        var t5 = Tid(Suit.Tong, 5, 2);
+        state.Hands[dealer].ConcealedTiles.Add(t5);
+
+        ChangshaGameStateMachine.Discard(state, dealer, t5);
+        ChangshaGameStateMachine.ResolveClaim(state, 1, TableClaimType.Pung);
+
+        Assert.Single(state.Hands[1].Melds);
+        Assert.Equal(MeldKind.Pung, state.Hands[1].Melds[0].Kind);
+        Assert.Equal(3, state.Hands[1].Melds[0].TileIds.Count);
+        // Active seat is now the claimer.
+        Assert.Equal(1, state.ActiveSeatIndex);
+        Assert.Equal(ChangshaPhase.AwaitingDiscard, state.Phase);
     }
 }
