@@ -45,3 +45,13 @@
 - 68 new service-level unit tests in `ChangshaServices/` (all passing)
 - Build: 0 warnings, 0 errors; Tests: 106 passed, 0 failed, 77 skipped (Hudson's awaiting integration)
 - Deferred to v2: bird-catching, ready-kong dice, instant wins, pao chains
+
+📌 Changsha v1 Phase 2 — full hub lifecycle (Bishop, branch stlong/changsha-v1-phase2):
+- New `IChangshaGameRuntime` singleton service (`Changsha/Runtime/`) that owns in-memory `ChangshaGameInstance` records, drives the full state-machine lifecycle, schedules bot decisions (350 ms turn / 250 ms claim / 5 s window), opens & resolves claim windows with priority adjudication, and persists JSON snapshots to `ChangshaGames` after every transition via `IServiceScopeFactory`.
+- Rewrote `ChangshaHub` as a thin command dispatcher; implemented every command from `docs/rules/changsha-signalr-contract.md`: CreateGame, JoinTable, TakeSeat, FillWithBots, StartGame, AcknowledgeDeal, Discard, Claim, Pass, DeclareKong, DeclareWin, ReconnectGame.
+- Wire-shaped events emitted to clients: GameCreated, PlayerSeated, GameStarted, DiceRolled, BreakPointSet, TilesDealt (4 batches × 4 seats with seat-private tile id routing), TurnStarted, TileDrawn, TileDiscarded, ClaimWindowOpen, ClaimMade, KongReplacementDrawn, WinDeclared, ScoringComplete, BankerRotated, RoundChanged, HandFinished (via ScoringComplete isDraw), GameEnded, FullState.
+- Reconnection: `ReconnectGame` re-binds the connection ID to the seat and emits a `FullState` snapshot with seat-private concealed tiles.
+- Determinism: `CreateGame` accepts optional `seed`; subsequent hand dice seeds derive deterministically (`seed + handNumber`).
+- CORS policy `ChangshaCors` allow-lists localhost:5173 / 5114 / 7135.
+- Three SignalR E2E tests in `tests/.../Hub/`: 4-bot full hand to win/draw, human discard → TileDiscarded, reconnect → FullState. All pass in <3s.
+- Build: 0 warnings, 0 errors. Tests: 109 passing (was 106), 77 skipped (Hudson's). Decisions captured in `.squad/decisions/inbox/bishop-changsha-v2-runtime.md`.
