@@ -1,5 +1,21 @@
-import { Button, Card, Text } from '@fluentui/react-components';
-import { useChangshaGame } from '../changsha/useChangshaGame';
+import { useEffect, useRef } from 'react';
+import {
+  Button,
+  Card,
+  Spinner,
+  Text,
+  Toast,
+  ToastTitle,
+  ToastBody,
+  Toaster,
+  useToastController,
+  useId,
+} from '@fluentui/react-components';
+import {
+  useChangshaGame,
+  setUseMockOverride,
+  shouldUseMock,
+} from '../changsha/useChangshaGame';
 import {
   ChangshaHud,
   DiceRollModal,
@@ -7,66 +23,262 @@ import {
   ClaimPromptModal,
   FanBreakdownPanel,
 } from '../changsha/components';
-import type { SeatIndex } from '../changsha/types';
+import { attachAutotableBridge, diffAndSend, type BridgeHandle } from '../changsha/autotableBridge';
+import type { ChangshaGameState, SeatIndex } from '../changsha/types';
 
 const USER_SEAT: SeatIndex = 0;
 
-export function ChangshaTablePage() {
-  const { state, actions } = useChangshaGame();
-
-  const isDev = import.meta.env.DEV;
-
-  return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: 16 }}>
-      {/* Top: HUD */}
-      <ChangshaHud state={state} />
-
-      {/* Center: Autotable placeholder (Phase 2 will embed iframe/canvas here) */}
+function ConnectionBanner({
+  status,
+  isLive,
+  lastError,
+  onReconnect,
+}: {
+  status: string;
+  isLive: boolean;
+  lastError?: { message: string };
+  onReconnect: () => void;
+}) {
+  if (!isLive) {
+    return (
       <div
         style={{
-          margin: '16px 0',
-          minHeight: 320,
-          border: '2px dashed #bbb',
-          borderRadius: 12,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#f0f4f8',
+          padding: '6px 12px',
+          background: '#fef3c7',
+          color: '#92400e',
+          borderRadius: 6,
+          marginBottom: 8,
         }}
       >
-        {/* Phase 2: embed autotable iframe or Three.js canvas here */}
-        <Text size={400} style={{ color: '#888' }}>
-          🀄 Autotable 3D viewport placeholder — Phase 2
-        </Text>
+        🛠 Mock state — offline UI sandbox. Use the toggle to switch to live.
       </div>
+    );
+  }
+  if (status === 'connecting') {
+    return (
+      <div
+        style={{
+          padding: '6px 12px',
+          background: '#e0f2fe',
+          color: '#075985',
+          borderRadius: 6,
+          marginBottom: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <Spinner size="extra-tiny" />
+        <span>Connecting to Changsha hub…</span>
+      </div>
+    );
+  }
+  if (status === 'reconnecting') {
+    return (
+      <div
+        style={{
+          padding: '6px 12px',
+          background: '#fef3c7',
+          color: '#92400e',
+          borderRadius: 6,
+          marginBottom: 8,
+        }}
+      >
+        🔄 Connection interrupted — reconnecting…
+      </div>
+    );
+  }
+  if (status === 'disconnected' || status === 'failed') {
+    return (
+      <div
+        style={{
+          padding: '6px 12px',
+          background: '#fee2e2',
+          color: '#991b1b',
+          borderRadius: 6,
+          marginBottom: 8,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <span>⚠ Disconnected{lastError ? ` — ${lastError.message}` : ''}</span>
+        <Button size="small" appearance="primary" onClick={onReconnect}>
+          Reconnect
+        </Button>
+      </div>
+    );
+  }
+  return null;
+}
 
-      {/* Bottom: Player hand */}
-      <Card style={{ marginBottom: 16 }}>
-        <PlayerHandPanel state={state} userSeat={USER_SEAT} onDiscard={actions.discard} />
-      </Card>
+function ModeToggle({ isLive }: { isLive: boolean }) {
+  const flip = () => {
+    setUseMockOverride(isLive ? true : false);
+    window.location.reload();
+  };
+  return (
+    <Button size="small" appearance="subtle" onClick={flip}>
+      Mode: <strong style={{ marginLeft: 4 }}>{isLive ? 'Live server' : 'Mock state'}</strong>
+      &nbsp;(click to switch)
+    </Button>
+  );
+}
 
-      {/* Phase indicator */}
-      <Text size={200} block style={{ textAlign: 'center', marginBottom: 8 }}>
-        Phase: <strong>{state.phase}</strong> · Wall: {state.wallRemaining} · Discards:{' '}
-        {state.discardPile.length}
-      </Text>
+function AutotableViewport({ state }: { state: ChangshaGameState }) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const bridgeRef = useRef<BridgeHandle | null>(null);
+  const prevStateRef = useRef<ChangshaGameState | undefined>(undefined);
 
-      {/* Modals */}
-      <DiceRollModal
-        state={state}
-        userSeat={USER_SEAT}
-        onRoll={actions.rollDice}
-        onConfirm={() => {
-          actions.confirmDice();
-          // Auto-deal after confirming dice
-          setTimeout(() => actions.dealMock(), 400);
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const bridge = attachAutotableBridge(iframe, (msg) => {
+      // Phase 3: inbound canvas events would be wired to discard / claim here.
+      // eslint-disable-next-line no-console
+      console.debug('[changsha bridge] inbound', msg);
+    });
+    bridgeRef.current = bridge;
+    return () => {
+      bridge.dispose();
+      bridgeRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const bridge = bridgeRef.current;
+    if (!bridge) return;
+    diffAndSend(bridge, prevStateRef.current, state);
+    prevStateRef.current = state;
+  }, [state]);
+
+  return (
+    <div
+      style={{
+        margin: '12px 0',
+        position: 'relative',
+        borderRadius: 12,
+        overflow: 'hidden',
+        border: '1px solid #b8c4d1',
+        background: '#0b1d2a',
+      }}
+    >
+      <iframe
+        ref={iframeRef}
+        id="autotable-frame"
+        title="Autotable 3D viewport"
+        src="/autotable/"
+        style={{
+          width: '100%',
+          height: 480,
+          border: 'none',
+          display: 'block',
         }}
       />
-      <ClaimPromptModal state={state} userSeat={USER_SEAT} onClaim={actions.resolveClaim} />
-      <FanBreakdownPanel state={state} onContinue={actions.continueAfterScoring} />
+    </div>
+  );
+}
 
-      {/* Dev-only demo controls */}
-      {isDev && (
+export function ChangshaTablePage() {
+  const game = useChangshaGame({ userSeat: USER_SEAT });
+  const { state, actions, isLive, connectionStatus, lastError, reconnect } = game;
+  const toasterId = useId('changsha-toaster');
+  const { dispatchToast } = useToastController(toasterId);
+  const lastSeenError = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!lastError) return;
+    if (lastSeenError.current === lastError.message) return;
+    lastSeenError.current = lastError.message;
+    dispatchToast(
+      <Toast>
+        <ToastTitle>Server error</ToastTitle>
+        <ToastBody>{lastError.message}</ToastBody>
+      </Toast>,
+      { intent: 'error', timeout: 5000 }
+    );
+  }, [lastError, dispatchToast]);
+
+  const isDevModeToggleVisible = import.meta.env.DEV || shouldUseMock();
+  const showLoadingShell = isLive && connectionStatus === 'connecting' && !state.gameId;
+
+  return (
+    <div style={{ maxWidth: 1080, margin: '0 auto', padding: 16 }}>
+      <Toaster toasterId={toasterId} />
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 8,
+        }}
+      >
+        <Text size={500} weight="semibold">
+          🀄 Changsha Mahjong
+        </Text>
+        <ModeToggle isLive={isLive} />
+      </div>
+
+      <ConnectionBanner
+        status={connectionStatus}
+        isLive={isLive}
+        lastError={lastError}
+        onReconnect={reconnect}
+      />
+
+      {showLoadingShell ? (
+        <Card
+          style={{
+            padding: 32,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <Spinner size="large" />
+          <Text>Establishing connection to Changsha hub…</Text>
+        </Card>
+      ) : (
+        <>
+          <ChangshaHud state={state} />
+
+          <AutotableViewport state={state} />
+
+          <Card style={{ marginBottom: 16 }}>
+            <PlayerHandPanel state={state} userSeat={USER_SEAT} onDiscard={actions.discard} />
+          </Card>
+
+          <Text size={200} block style={{ textAlign: 'center', marginBottom: 8 }}>
+            Phase: <strong>{state.phase}</strong> · Wall: {state.wallRemaining} · Discards:{' '}
+            {state.discardPile.length}
+            {isLive && (
+              <>
+                {' · '}
+                <em style={{ color: '#475569' }}>connection: {connectionStatus}</em>
+              </>
+            )}
+          </Text>
+
+          <DiceRollModal
+            state={state}
+            userSeat={USER_SEAT}
+            onRoll={actions.rollDice}
+            onConfirm={() => {
+              actions.confirmDice();
+              if (!isLive) {
+                setTimeout(() => actions.dealMock(), 400);
+              }
+            }}
+          />
+          <ClaimPromptModal state={state} userSeat={USER_SEAT} onClaim={actions.resolveClaim} />
+          <FanBreakdownPanel state={state} onContinue={actions.continueAfterScoring} />
+        </>
+      )}
+
+      {isDevModeToggleVisible && !isLive && (
         <Card
           style={{
             position: 'fixed',
