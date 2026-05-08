@@ -974,6 +974,33 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_DoesNotBreakOffRankPair_WhenAdjacentSmallWinSingletonIsDead()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8),
+            new(TileSuit.Bamboos, 7)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 5)
+        };
+
+        Changsha258Ruleset.IsBigWinEyeFlexibleCandidate(handTiles, Array.Empty<Tile>()).Should().BeFalse();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_WithVisibleTiles_PrioritizesDeadHonorSingleton_WhenOutsTie()
     {
         var handTiles = new List<Tile>
