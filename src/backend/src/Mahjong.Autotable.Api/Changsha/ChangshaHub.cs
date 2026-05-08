@@ -1,134 +1,85 @@
+using Mahjong.Autotable.Api.Changsha.Runtime;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Mahjong.Autotable.Api.Changsha;
 
 /// <summary>
-/// SignalR hub for Changsha Mahjong real-time communication.
-/// See docs/rules/changsha-signalr-contract.md for the authoritative contract.
+/// SignalR hub for Changsha Mahjong. Thin command/dispatch layer over IChangshaGameRuntime.
+/// All state mutation lives in the runtime; the hub validates connection identity and
+/// adapts inbound RPCs to runtime calls. See docs/rules/changsha-signalr-contract.md.
 /// </summary>
 public sealed class ChangshaHub : Hub
 {
-    // ── Client → Server commands ──────────────────────────────────
+    private readonly IChangshaGameRuntime _runtime;
 
-    public async Task CreateGame(string ruleSet, int[]? botSeatIndexes = null, int? seed = null)
+    public ChangshaHub(IChangshaGameRuntime runtime)
     {
-        var resolvedSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
-        var (state, events) = ChangshaGameStateMachine.CreateGame(resolvedSeed, botSeatIndexes);
-
-        var gameId = state.GameId;
-        await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
-
-        await Clients.Group(gameId).SendAsync("GameCreated", new
-        {
-            gameId,
-            ruleSet = "changsha-v1",
-            seats = state.Seats.Select(s => new
-            {
-                s.SeatIndex,
-                wind = s.Wind.ToString().ToLowerInvariant(),
-                s.PlayerId,
-                s.IsBot,
-                s.IsDealer,
-                tileCount = 0,
-                melds = Array.Empty<object>(),
-                discards = Array.Empty<int>()
-            })
-        });
+        _runtime = runtime;
     }
 
-    public async Task JoinTable(string gameId)
+    // ── Client → Server commands ──────────────────────────────────────
+
+    public async Task<object> CreateGame(string ruleSet, int[]? botSeatIndexes = null, int? seed = null)
     {
-        await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
-        await Clients.Caller.SendAsync("JoinedTable", new { gameId, success = true });
+        var gameId = await _runtime.CreateGameAsync(seed, botSeatIndexes, Context.ConnectionId, Context.ConnectionAborted);
+        return new { gameId };
     }
 
-    public async Task TakeSeat(string gameId, int seatIndex)
+    public async Task<object> JoinTable(string gameId)
     {
-        await Clients.Group(gameId).SendAsync("PlayerSeated", new
-        {
-            gameId,
-            seatIndex,
-            playerId = Context.ConnectionId,
-            isBot = false
-        });
+        await _runtime.JoinTableAsync(gameId, Context.ConnectionId, Context.ConnectionAborted);
+        return new { success = true };
     }
 
-    public async Task StartGame(string gameId)
+    public async Task<object> TakeSeat(string gameId, int? seatIndex = null)
     {
-        await Clients.Group(gameId).SendAsync("GameStarted", new
-        {
-            gameId,
-            dealerSeatIndex = 0,
-            roundWind = "east",
-            handNumber = 1
-        });
+        var seat = await _runtime.TakeSeatAsync(gameId, Context.ConnectionId, seatIndex, Context.ConnectionAborted);
+        return new { success = true, seatIndex = seat };
     }
 
-    public async Task Discard(string gameId, int seatIndex, int tileId)
+    public async Task<object> FillWithBots(string gameId)
     {
-        await Clients.Group(gameId).SendAsync("TileDiscarded", new
-        {
-            gameId,
-            seatIndex,
-            tileId,
-            turnNumber = 0
-        });
+        await _runtime.FillEmptySeatsWithBotsAsync(gameId, Context.ConnectionAborted);
+        return new { success = true };
     }
 
-    public async Task Claim(string gameId, int seatIndex, string type, int[]? tileIds = null)
+    public async Task<object> StartGame(string gameId)
     {
-        await Clients.Group(gameId).SendAsync("ClaimMade", new
-        {
-            gameId,
-            claimingSeatIndex = seatIndex,
-            claimType = type,
-            tileId = 0,
-            meld = new { type, tileIds = tileIds ?? [] }
-        });
+        await _runtime.StartGameAsync(gameId, Context.ConnectionAborted);
+        return new { success = true };
     }
 
-    public async Task DeclareKong(string gameId, int seatIndex, int[] tileIds)
+    public Task AcknowledgeDeal(string gameId, int seatIndex) =>
+        _runtime.AcknowledgeDealAsync(gameId, seatIndex, Context.ConnectionAborted);
+
+    public Task Discard(string gameId, int seatIndex, int tileId) =>
+        _runtime.DiscardAsync(gameId, seatIndex, tileId, Context.ConnectionAborted);
+
+    public Task Claim(string gameId, int seatIndex, string type, int[]? tileIds = null) =>
+        _runtime.ClaimAsync(gameId, seatIndex, type, tileIds, Context.ConnectionAborted);
+
+    public Task Pass(string gameId, int seatIndex) =>
+        _runtime.PassAsync(gameId, seatIndex, Context.ConnectionAborted);
+
+    public Task DeclareKong(string gameId, int seatIndex, int[] tileIds) =>
+        _runtime.DeclareKongAsync(gameId, seatIndex, tileIds, Context.ConnectionAborted);
+
+    public Task DeclareWin(string gameId, int seatIndex) =>
+        _runtime.DeclareWinAsync(gameId, seatIndex, Context.ConnectionAborted);
+
+    public async Task<object> ReconnectGame(string gameId, int seatIndex)
     {
-        await Clients.Group(gameId).SendAsync("ClaimMade", new
-        {
-            gameId,
-            claimingSeatIndex = seatIndex,
-            claimType = "kong",
-            tileId = tileIds.Length > 0 ? tileIds[0] : 0,
-            meld = new { type = "kong", tileIds }
-        });
+        var ok = await _runtime.ReconnectAsync(gameId, seatIndex, Context.ConnectionId, Context.ConnectionAborted);
+        return new { success = ok };
     }
 
-    public async Task DeclareWin(string gameId, int seatIndex)
-    {
-        await Clients.Group(gameId).SendAsync("WinDeclared", new
-        {
-            gameId,
-            winResult = new
-            {
-                winningSeatIndex = seatIndex,
-                winType = "selfDraw",
-                winPattern = "standard",
-                winningTileId = 0,
-                sourceSeatIndex = seatIndex
-            }
-        });
-    }
+    // ── Lifecycle ─────────────────────────────────────────────────────
 
-    public async Task Pass(string gameId, int seatIndex)
-    {
-        await Clients.Caller.SendAsync("ClaimPassed", new { gameId, seatIndex });
-    }
-
-    // ── Lifecycle ─────────────────────────────────────────────────
-
-    public override async Task OnConnectedAsync()
-    {
-        await base.OnConnectedAsync();
-    }
+    public override Task OnConnectedAsync() => base.OnConnectedAsync();
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        await _runtime.HandleDisconnectAsync(Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }
 }

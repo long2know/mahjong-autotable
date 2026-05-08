@@ -7,7 +7,7 @@ public class ScoringServiceTests
     private readonly ScoringService _svc = new();
 
     [Fact]
-    public void SmallWin_SelfDraw_NonDealer_EachPays2()
+    public void SmallWin_SelfDraw_NonDealer_DealerPays2_OthersPay1()
     {
         var win = new WinResult
         {
@@ -22,12 +22,13 @@ public class ScoringServiceTests
         Assert.Equal(ScoreCategory.SmallWin, result.Category);
         Assert.Equal(3, result.Payments.Count);
 
-        // Each of 3 other players pays 2
-        Assert.All(result.Payments, p =>
+        // Spec §5.1: Small Win self-draw — dealer pays 2, other non-dealers pay 1.
+        var dealerPayment = Assert.Single(result.Payments, p => p.FromSeatIndex == 0);
+        Assert.Equal(2, dealerPayment.Amount);
+        foreach (var p in result.Payments.Where(p => p.FromSeatIndex != 0))
         {
-            Assert.Equal(1, p.ToSeatIndex);
-            Assert.Equal(2, p.Amount);
-        });
+            Assert.Equal(1, p.Amount);
+        }
     }
 
     [Fact]
@@ -123,7 +124,7 @@ public class ScoringServiceTests
     }
 
     [Fact]
-    public void FullFlush_Doubles_BigWinPayment()
+    public void FullFlush_BigWin_FlatPayment_NoDoubling()
     {
         var win = new WinResult
         {
@@ -136,6 +137,7 @@ public class ScoringServiceTests
 
         var result = _svc.CalculateScore(win, dealerSeatIndex: 0, isFullFlush: true);
         Assert.Single(result.Payments);
-        Assert.Equal(12, result.Payments[0].Amount); // 6 * 2
+        // Spec §5.1 (v1): Big Win categories pay a flat amount; Full Flush does NOT double.
+        Assert.Equal(6, result.Payments[0].Amount);
     }
 }

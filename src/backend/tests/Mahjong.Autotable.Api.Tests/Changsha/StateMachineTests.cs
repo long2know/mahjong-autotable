@@ -1,175 +1,94 @@
-using Mahjong.Autotable.Api.Tables;
+using Mahjong.Autotable.Api.Changsha;
+using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
 
 namespace Mahjong.Autotable.Api.Tests.Changsha;
 
 /// <summary>
-/// CAT-I: State Machine Tests
-/// Tests for deterministic state transitions, event logging, and integrity.
+/// CAT-I: State machine, event log, and version invariants.
 /// </summary>
 public class StateMachineTests
 {
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void StateMachine_CreateInitialState_HasValidIntegrity()
+    [Fact, Trait("Category", "Changsha")]
+    public void CreateGame_StartsInSeating_EmitsGameCreatedEvent()
     {
-        // Verify initial state has proper integrity hash and version
-        
-        // Arrange & Act: Create initial state
-        // var stateMachine = new ChangshaGameStateMachine(seed: 999);
-        // var state = stateMachine.CreateInitialState();
-        
-        // Assert: State has integrity hash
-        // Assert.False(string.IsNullOrWhiteSpace(state.Integrity.StateHash));
-        
-        // Assert: State version is 1
-        // Assert.Equal(1, state.StateVersion);
-        
-        // Assert: Metadata contains seed
-        // Assert.Equal(999, state.Metadata.Seed);
+        var (state, events) = ChangshaGameStateMachine.CreateGame(seed: 5);
+
+        Assert.Equal(ChangshaPhase.Seating, state.Phase);
+        Assert.Equal(4, state.Seats.Count);
+        Assert.Contains(events, e => e.EventType == "game-created");
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void StateMachine_ApplyAction_IncreasesStateVersion()
+    [Fact, Trait("Category", "Changsha")]
+    public void StartGame_TransitionsToRollingDice()
     {
-        // Each action increments state version for optimistic concurrency
-        
-        // Arrange: Initial state at version 1
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = stateMachine.CreateInitialState();
-        // Assert.Equal(1, state.StateVersion);
-        
-        // Act: Apply discard action
-        // var newState = stateMachine.ApplyDiscard(state, seatIndex: 0, tileIndex: 0);
-        
-        // Assert: Version incremented
-        // Assert.Equal(2, newState.StateVersion);
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 5);
+        ChangshaGameStateMachine.StartGame(state);
+
+        Assert.Equal(ChangshaPhase.RollingDice, state.Phase);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void StateMachine_WithSameSeed_ProducesDeterministicSequence()
+    [Fact, Trait("Category", "Changsha")]
+    public void Phase_MisuseFromSeating_DealRequiresDealingPhase_Throws()
     {
-        // Same seed + same actions = identical state hashes
-        
-        // Arrange: Two machines with same seed
-        // var machine1 = new ChangshaGameStateMachine(seed: 111);
-        // var machine2 = new ChangshaGameStateMachine(seed: 111);
-        
-        // Act: Create initial states
-        // var state1 = machine1.CreateInitialState();
-        // var state2 = machine2.CreateInitialState();
-        
-        // Assert: Identical state hashes
-        // Assert.Equal(state1.Integrity.StateHash, state2.Integrity.StateHash);
-        
-        // Act: Apply same discard action
-        // var next1 = machine1.ApplyDiscard(state1, seatIndex: 0, tileIndex: 5);
-        // var next2 = machine2.ApplyDiscard(state2, seatIndex: 0, tileIndex: 5);
-        
-        // Assert: Still identical
-        // Assert.Equal(next1.Integrity.StateHash, next2.Integrity.StateHash);
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 5);
+        Assert.Throws<InvalidOperationException>(() => ChangshaGameStateMachine.Deal(state));
     }
 
-    [Fact(Skip = "Awaiting Bishop's TableSessionEventStore")]
-    [Trait("Category", "Changsha")]
-    public void EventLog_AppendOnly_RecordsAllActions()
+    [Fact, Trait("Category", "Changsha")]
+    public void StateVersion_Monotonically_Increases()
     {
-        // Event log must capture all actions for replay
-        
-        // Arrange: State machine with event logging
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var eventStore = new TableSessionEventStore();
-        // var state = stateMachine.CreateInitialState();
-        
-        // Act: Apply sequence of actions
-        // var state2 = stateMachine.ApplyDiscard(state, seatIndex: 0, tileIndex: 0);
-        // eventStore.AppendEvent(new DiscardEvent(seatIndex: 0, tileIndex: 0, turnNumber: 1));
-        
-        // var state3 = stateMachine.ApplyDraw(state2, seatIndex: 1);
-        // eventStore.AppendEvent(new DrawEvent(seatIndex: 1, turnNumber: 2));
-        
-        // Assert: Event log has 2 events
-        // var events = eventStore.GetAllEvents();
-        // Assert.Equal(2, events.Count);
-        // Assert.IsType<DiscardEvent>(events[0]);
-        // Assert.IsType<DrawEvent>(events[1]);
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 5);
+        var v0 = state.StateVersion;
+        ChangshaGameStateMachine.StartGame(state);
+        var v1 = state.StateVersion;
+        ChangshaGameStateMachine.RollDice(state, new DiceService(5));
+        var v2 = state.StateVersion;
+
+        Assert.True(v1 > v0);
+        Assert.True(v2 > v1);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void StateMachine_InvalidAction_ThrowsRuleException()
+    [Fact, Trait("Category", "Changsha")]
+    public void EventSequence_AlwaysIncrementing_NoGaps()
     {
-        // Illegal actions must throw TableRuleException
-        
-        // Arrange: Player with 13 tiles tries to discard (should have 14)
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(activeSeat: 2, seatHandCounts: new[] { 13, 13, 13, 13 });
-        
-        // Act & Assert: Discard with 13 tiles throws
-        // var ex = Assert.Throws<TableRuleException>(() =>
-        //     stateMachine.ApplyDiscard(state, seatIndex: 2, tileIndex: 0));
-        
-        // Assert.Equal(TableActionErrorCodes.InvalidHandSize, ex.ErrorCode);
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 3);
+        var sequences = state.EventLog.Select(e => e.Sequence).ToList();
+
+        Assert.NotEmpty(sequences);
+        for (var i = 1; i < sequences.Count; i++)
+            Assert.Equal(sequences[i - 1] + 1, sequences[i]);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void StateMachine_PhaseGating_EnforcesAwaitingDiscardBeforeDraw()
+    [Fact, Trait("Category", "Changsha")]
+    public void EventLog_RecordsAllPhaseTransitions()
     {
-        // Phase-based turn gating: AwaitingDiscard → Draw → AwaitingDiscard
-        
-        // Arrange: State in AwaitingDiscard phase
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(phase: TableTurnPhase.AwaitingDiscard, activeSeat: 1);
-        
-        // Act: Apply discard
-        // var state2 = stateMachine.ApplyDiscard(state, seatIndex: 1, tileIndex: 3);
-        
-        // Assert: Phase advances, next player draws
-        // Assert.Equal(2, state2.ActiveSeat);
-        // Assert.Equal(TableTurnPhase.AwaitingDraw, state2.Phase); // or auto-transitions
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 3);
+        var types = state.EventLog.Select(e => e.EventType).ToList();
+
+        Assert.Contains("game-created", types);
+        Assert.Contains("game-started", types);
+        Assert.Contains("dice-rolled", types);
+        Assert.Contains("tiles-dealt", types);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void StateMachine_TileConservation_AllTilesAccountedFor()
+    [Fact, Trait("Category", "Changsha")]
+    public void DeterministicReplay_SameSeed_ProducesSameEventTypes()
     {
-        // At any point, 108 tiles must be accounted for across wall + hands + discards + melds
-        
-        // Arrange: Initial state
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = stateMachine.CreateInitialState();
-        
-        // Act: Count tiles
-        // var wallTiles = state.Wall.RemainingTiles;
-        // var handTiles = state.Hands.Sum(h => h.TileCount);
-        // var discardTiles = state.DiscardPile.TileCount;
-        // var meldTiles = state.ExposedMelds.Sum(m => m.Melds.Sum(meld => meld.Tiles.Count));
-        
-        // Assert: Total is always 108
-        // Assert.Equal(108, wallTiles + handTiles + discardTiles + meldTiles);
+        var s1 = ChangshaTestHelpers.NewGameDealtTo(seed: 77);
+        var s2 = ChangshaTestHelpers.NewGameDealtTo(seed: 77);
+
+        Assert.Equal(
+            s1.EventLog.Select(e => e.EventType).ToList(),
+            s2.EventLog.Select(e => e.EventType).ToList());
+        Assert.Equal(s1.Hands[0].ConcealedTiles, s2.Hands[0].ConcealedTiles);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void StateMachine_Replay_ReconstructsIdenticalState()
+    [Fact, Trait("Category", "Changsha")]
+    public void DeclareSelfDrawWin_OnNonWinningHand_Throws()
     {
-        // Event replay from seed must produce identical state
-        
-        // Arrange: Original game sequence
-        // var machine = new ChangshaGameStateMachine(seed: 555);
-        // var state1 = machine.CreateInitialState();
-        // var state2 = machine.ApplyDiscard(state1, seatIndex: 0, tileIndex: 7);
-        // var state3 = machine.ApplyDraw(state2, seatIndex: 1);
-        
-        // Act: Replay from same seed and same actions
-        // var replayMachine = new ChangshaGameStateMachine(seed: 555);
-        // var replayState1 = replayMachine.CreateInitialState();
-        // var replayState2 = replayMachine.ApplyDiscard(replayState1, seatIndex: 0, tileIndex: 7);
-        // var replayState3 = replayMachine.ApplyDraw(replayState2, seatIndex: 1);
-        
-        // Assert: Final states identical
-        // Assert.Equal(state3.Integrity.StateHash, replayState3.Integrity.StateHash);
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 1);
+        // The dealer's randomly dealt hand is overwhelmingly unlikely to be a winning hand.
+        Assert.Throws<InvalidOperationException>(() =>
+            ChangshaGameStateMachine.DeclareSelfDrawWin(state, state.DealerSeatIndex));
     }
 }

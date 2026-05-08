@@ -1,135 +1,107 @@
-using Mahjong.Autotable.Api.Tables;
+using Mahjong.Autotable.Api.Changsha;
 
 namespace Mahjong.Autotable.Api.Tests.Changsha;
 
 /// <summary>
-/// CAT-H: Banker / Round Rotation Tests
-/// Tests P0 scenarios for dealer determination and rotation rules.
+/// CAT-H: Banker rotation per spec §6.2.
+/// Dealer keeps seat ONLY if dealer wins; otherwise rotate counter-clockwise (including draws).
 /// </summary>
 public class BankerRotationTests
 {
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void InitialDealer_RandomAssignment_SelectsFairly()
+    private static ChangshaGameState NewEndHandState(int dealerSeat = 0)
     {
-        // H-01: First dealer selected randomly (system random)
-        
-        // Arrange: Initialize game with random dealer selection
-        // var stateMachine = new ChangshaGameStateMachine(seed: null); // Random seed
-        
-        // Act: Create initial state
-        // var state = stateMachine.CreateInitialState();
-        
-        // Assert: Dealer seat is 0-3
-        // Assert.InRange(state.DealerSeat, 0, 3);
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 1);
+        state.DealerSeatIndex = dealerSeat;
+        foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == dealerSeat;
+        state.Phase = ChangshaPhase.EndHand;
+        return state;
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void InitialDealer_WithFixedSeed_IsDeterministic()
+    [Fact, Trait("Category", "Changsha")]
+    public void DealerWins_DealerRetainsSeat()
     {
-        // H-01 determinism: Same seed produces same dealer
-        
-        // Arrange: Two state machines with same seed
-        // var machine1 = new ChangshaGameStateMachine(seed: 789);
-        // var machine2 = new ChangshaGameStateMachine(seed: 789);
-        
-        // Act: Create initial states
-        // var state1 = machine1.CreateInitialState();
-        // var state2 = machine2.CreateInitialState();
-        
-        // Assert: Same dealer seat
-        // Assert.Equal(state1.DealerSeat, state2.DealerSeat);
+        var state = NewEndHandState(dealerSeat: 0);
+        state.CurrentWin = new WinResult
+        {
+            WinningSeatIndex = 0, SourceSeatIndex = 0, Method = WinMethod.SelfDraw,
+            Pattern = WinPattern.Standard, WinningTileId = 0
+        };
+
+        ChangshaGameStateMachine.RotateBanker(state);
+
+        Assert.Equal(0, state.DealerSeatIndex);
+        Assert.True(state.Seats[0].IsDealer);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void DealerRotation_WinnerBecomesDealer_NextHand()
+    [Fact, Trait("Category", "Changsha")]
+    public void NonDealerWins_DealerRotatesCounterClockwise()
     {
-        // H-02: Winner of previous hand becomes dealer for next hand
-        
-        // Arrange: Seat 2 wins current hand, dealer is seat 0
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(dealerSeat: 0);
-        // var winResult = new WinResult(winnerSeat: 2, winType: WinType.SmallWin);
-        
-        // Act: Transition to next hand
-        // var nextState = stateMachine.StartNextHand(state, winResult);
-        
-        // Assert: Seat 2 is now dealer
-        // Assert.Equal(2, nextState.DealerSeat);
+        var state = NewEndHandState(dealerSeat: 0);
+        state.CurrentWin = new WinResult
+        {
+            WinningSeatIndex = 2, SourceSeatIndex = 1, Method = WinMethod.Discard,
+            Pattern = WinPattern.Standard, WinningTileId = 0
+        };
+
+        ChangshaGameStateMachine.RotateBanker(state);
+
+        Assert.Equal(1, state.DealerSeatIndex);
+        Assert.True(state.Seats[1].IsDealer);
+        Assert.False(state.Seats[0].IsDealer);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void DealerRotation_WinnerIsDealer_DealerRetained()
+    [Fact, Trait("Category", "Changsha")]
+    public void Draw_DealerRotatesCounterClockwise()
     {
-        // H-02 variation: Dealer wins, retains dealer position
-        
-        // Arrange: Seat 0 (dealer) wins current hand
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(dealerSeat: 0);
-        // var winResult = new WinResult(winnerSeat: 0, winType: WinType.BigWin);
-        
-        // Act: Transition to next hand
-        // var nextState = stateMachine.StartNextHand(state, winResult);
-        
-        // Assert: Seat 0 remains dealer
-        // Assert.Equal(0, nextState.DealerSeat);
+        var state = NewEndHandState(dealerSeat: 1);
+        // CurrentWin null → draw
+
+        ChangshaGameStateMachine.RotateBanker(state);
+
+        Assert.Equal(2, state.DealerSeatIndex);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void DealerRotation_DrawGame_RotatesCounterclockwise()
+    [Fact, Trait("Category", "Changsha")]
+    public void Rotation_FromSeat3_WrapsToSeat0()
     {
-        // H-03 (P1 but important): If hand ends in draw, dealer rotates counterclockwise
-        // Simplified interpretation: Dealer advances CCW (0 → 1 → 2 → 3 → 0)
-        
-        // Arrange: Hand ends in draw, dealer is seat 1
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(dealerSeat: 1, phase: TableTurnPhase.WallExhausted);
-        // var drawResult = new DrawResult(reason: DrawReason.WallExhausted);
-        
-        // Act: Transition to next hand
-        // var nextState = stateMachine.StartNextHand(state, drawResult);
-        
-        // Assert: Dealer advances counterclockwise: 1 → 2
-        // Assert.Equal(2, nextState.DealerSeat);
+        var state = NewEndHandState(dealerSeat: 3);
+        ChangshaGameStateMachine.RotateBanker(state);
+        Assert.Equal(0, state.DealerSeatIndex);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void RoundWind_AfterFourHands_AdvancesEastToSouth()
+    [Fact, Trait("Category", "Changsha")]
+    public void RoundWind_AdvancesAfterFourHands_EastToSouth()
     {
-        // H-06 (P1 but foundational): After 4 hands, round wind advances
-        // East → South → West → North
-        
-        // Arrange: Complete 4 hands in East round
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(roundWind: RoundWind.East, handNumber: 4);
-        
-        // Act: Start 5th hand
-        // var nextState = stateMachine.StartNextHand(state, new WinResult(winnerSeat: 2, winType: WinType.SmallWin));
-        
-        // Assert: Round wind advances to South
-        // Assert.Equal(RoundWind.South, nextState.RoundWind);
-        // Assert.Equal(1, nextState.HandNumberInRound); // Reset hand counter
+        var state = NewEndHandState(dealerSeat: 0);
+        state.HandInRound = 4;
+        state.RoundNumber = 1;
+
+        ChangshaGameStateMachine.RotateBanker(state); // 4→5 → wraps → round 2
+
+        Assert.Equal(1, state.HandInRound);
+        Assert.Equal(2, state.RoundNumber);
+        Assert.Equal(Wind.South, state.RoundWind);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void GameEnd_After16Hands_GameCompletes()
+    [Fact, Trait("Category", "Changsha")]
+    public void Game_Ends_AfterFourthRoundCompletes()
     {
-        // H-07 (P2 but important): Game ends after 4 rounds × 4 hands = 16 hands
-        
-        // Arrange: Complete North round, hand 4
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(roundWind: RoundWind.North, handNumber: 4);
-        
-        // Act: Complete final hand
-        // var finalResult = stateMachine.CompleteHand(state, new WinResult(winnerSeat: 3, winType: WinType.BigWin));
-        
-        // Assert: Game marked as complete
-        // Assert.True(finalResult.IsGameComplete);
+        var state = NewEndHandState(dealerSeat: 0);
+        state.HandInRound = 4;
+        state.RoundNumber = 4;
+
+        ChangshaGameStateMachine.RotateBanker(state);
+
+        Assert.Equal(ChangshaPhase.EndGame, state.Phase);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public void Rotate_EmitsBankerRotatedEvent()
+    {
+        var state = NewEndHandState(dealerSeat: 0);
+
+        var events = ChangshaGameStateMachine.RotateBanker(state);
+
+        Assert.Contains(events, e => e.EventType == "banker-rotated");
     }
 }

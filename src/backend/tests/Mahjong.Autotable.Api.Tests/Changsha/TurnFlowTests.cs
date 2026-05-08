@@ -1,135 +1,123 @@
+using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Tables;
+using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
 
 namespace Mahjong.Autotable.Api.Tests.Changsha;
 
 /// <summary>
-/// CAT-D: Turn Flow (Draw / Discard) Tests
-/// Tests P0 scenarios for basic turn mechanics and wall exhaustion.
+/// CAT-D: Turn Flow Tests (Draw → Discard → Claim Window)
 /// </summary>
 public class TurnFlowTests
 {
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void TurnDraw_PlayerDrawsFromWall_HandIncreasesBy1()
+    private static int FindNonClaimableTile(ChangshaGameState state, int seatIndex)
     {
-        // D-01: Active player draws one tile from draw wall at start of turn
-        
-        // Arrange: Player with 13 tiles, wall with tiles remaining
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(activeSeat: 1, seatHandCounts: new[] { 13, 13, 13, 13 }, wallTiles: 55);
-        
-        // Act: Execute draw action
-        // var newState = stateMachine.ApplyDraw(state);
-        
-        // Assert: Active player now has 14 tiles
-        // Assert.Equal(14, newState.Hands[1].TileCount);
-        
-        // Assert: Wall reduced by 1
-        // Assert.Equal(54, newState.Wall.RemainingTiles);
+        // Pick a tile from the seat's hand whose discard would not open a claim window.
+        var hand = state.Hands[seatIndex];
+        var adjudicator = new ClaimAdjudicator();
+        foreach (var t in hand.ConcealedTiles)
+        {
+            var opps = adjudicator.GetOpportunities(seatIndex, t, state.Hands);
+            if (opps.Count == 0) return t;
+        }
+        return hand.ConcealedTiles[^1];
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void TurnDiscard_PlayerDiscardsOneTile_HandReducesTo13()
+    [Fact, Trait("Category", "Changsha")]
+    public void DrawTile_FromFrontOfWall_AddsToActiveSeatHand()
     {
-        // D-02: After evaluating hand, player discards one tile, ending turn with 13 tiles
-        
-        // Arrange: Player with 14 tiles
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(activeSeat: 1, seatHandCounts: new[] { 13, 14, 13, 13 });
-        
-        // Act: Execute discard action for tile index 0
-        // var newState = stateMachine.ApplyDiscard(state, seatIndex: 1, tileIndex: 0);
-        
-        // Assert: Player now has 13 tiles
-        // Assert.Equal(13, newState.Hands[1].TileCount);
-        
-        // Assert: Discard pile increased by 1
-        // Assert.Equal(1, newState.DiscardPile.TileCount);
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 11);
+        var dealer = state.DealerSeatIndex;
+        var beforeWall = state.Wall.Count;
+        var beforeHand = state.Hands[dealer].ConcealedTiles.Count;
+
+        var tile = FindNonClaimableTile(state, dealer);
+        ChangshaGameStateMachine.Discard(state, dealer, tile);
+        // After discard, advance past any claim window.
+        if (state.Phase == ChangshaPhase.AwaitingClaim)
+            ChangshaGameStateMachine.PassClaim(state);
+
+        // Now next seat draws.
+        var nextSeat = state.ActiveSeatIndex;
+        var beforeNext = state.Hands[nextSeat].ConcealedTiles.Count;
+        ChangshaGameStateMachine.DrawTile(state);
+
+        Assert.Equal(beforeNext + 1, state.Hands[nextSeat].ConcealedTiles.Count);
+        Assert.Equal(beforeWall - 1, state.Wall.Count);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void TurnOrder_NoClaimsOnDiscard_NextPlayerIsCounterclockwise()
+    [Fact, Trait("Category", "Changsha")]
+    public void Discard_RemovesTileFromHand_AddsToDiscardPile()
     {
-        // D-03: By default, next player is to the right (counterclockwise)
-        
-        // Arrange: Player at seat 1 discards, no claims
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(activeSeat: 1);
-        
-        // Act: Apply discard with no claims
-        // var newState = stateMachine.ApplyDiscard(state, seatIndex: 1, tileIndex: 0);
-        
-        // Assert: Active seat advances counterclockwise: 1 → 2
-        // Assert.Equal(2, newState.ActiveSeat);
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 11);
+        var dealer = state.DealerSeatIndex;
+        var tile = FindNonClaimableTile(state, dealer);
+
+        ChangshaGameStateMachine.Discard(state, dealer, tile);
+
+        Assert.DoesNotContain(tile, state.Hands[dealer].ConcealedTiles);
+        Assert.Contains(state.DiscardPile, d => d.TileId == tile && d.SeatIndex == dealer);
     }
 
-    [Fact(Skip = "Awaiting Bishop's ChangshaGameStateMachine")]
-    [Trait("Category", "Changsha")]
-    public void WallExhaustion_LastTileDrawn_NoWin_HandEndsInDraw()
+    [Fact, Trait("Category", "Changsha")]
+    public void Discard_FromWrongSeat_Throws()
     {
-        // D-05: If wall exhausted and no one wins, hand ends in draw (流局)
-        
-        // Arrange: Wall with 1 tile remaining, no winning conditions
-        // var stateMachine = new ChangshaGameStateMachine();
-        // var state = CreateGameState(activeSeat: 2, wallTiles: 1);
-        
-        // Act: Draw last tile without winning
-        // var newState = stateMachine.ApplyDraw(state);
-        
-        // Assert: Wall exhausted
-        // Assert.Equal(0, newState.Wall.RemainingTiles);
-        
-        // Act: Check if hand ends
-        // var phaseAfterDiscard = stateMachine.ApplyDiscard(newState, seatIndex: 2, tileIndex: 0);
-        
-        // Assert: Game phase is Draw/WallExhausted
-        // Assert.Equal(TableTurnPhase.WallExhausted, phaseAfterDiscard.Phase);
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 11);
+        var dealer = state.DealerSeatIndex;
+        var notDealer = (dealer + 1) % 4;
+
+        Assert.Throws<InvalidOperationException>(() =>
+            ChangshaGameStateMachine.Discard(state, notDealer, state.Hands[notDealer].ConcealedTiles[0]));
     }
 
-    [Fact(Skip = "Awaiting Bishop's IClaimAdjudicator")]
-    [Trait("Category", "Changsha")]
-    public void ChowClaim_NotNextPlayer_Rejected()
+    [Fact, Trait("Category", "Changsha")]
+    public void Discard_TileNotInHand_Throws()
     {
-        // D-06: Changsha prohibits chow except from player immediately before you
-        
-        // Arrange: Seat 0 discards, seat 2 (not next) attempts chow
-        // var adjudicator = new ChangshaClaimAdjudicator();
-        // var state = CreateGameState(activeSeat: 0);
-        // var discardedTile = new Tile(TileSuit.Bamboo, 5);
-        
-        // Act: Seat 2 attempts to chow
-        // var claim = new ChowClaim(seatIndex: 2, tiles: new[] { 
-        //     new Tile(TileSuit.Bamboo, 4), 
-        //     new Tile(TileSuit.Bamboo, 6) 
-        // });
-        // var result = adjudicator.ValidateClaim(state, claim, discardedTile);
-        
-        // Assert: Claim rejected (seat 2 is not immediately after seat 0)
-        // Assert.False(result.IsValid);
-        // Assert.Contains("next player only", result.ErrorMessage);
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 11);
+        var dealer = state.DealerSeatIndex;
+        var foreignTile = Enumerable.Range(0, 108)
+            .First(t => !state.Hands[dealer].ConcealedTiles.Contains(t));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            ChangshaGameStateMachine.Discard(state, dealer, foreignTile));
     }
 
-    [Fact(Skip = "Awaiting Bishop's IClaimAdjudicator")]
-    [Trait("Category", "Changsha")]
-    public void ChowClaim_FromImmediatePriorPlayer_Accepted()
+    [Fact, Trait("Category", "Changsha")]
+    public void Discard_OpensClaimWindow_WhenOtherSeatHasMatchingPair()
     {
-        // D-07: Player may chow a discard from the player immediately before them (to their left)
-        
-        // Arrange: Seat 0 discards, seat 1 (next in CCW order) attempts chow
-        // var adjudicator = new ChangshaClaimAdjudicator();
-        // var state = CreateGameState(activeSeat: 0);
-        // var discardedTile = new Tile(TileSuit.Dots, 7);
-        
-        // Act: Seat 1 (next player) attempts valid chow
-        // var claim = new ChowClaim(seatIndex: 1, tiles: new[] { 
-        //     new Tile(TileSuit.Dots, 5), 
-        //     new Tile(TileSuit.Dots, 6) 
-        // });
-        // var result = adjudicator.ValidateClaim(state, claim, discardedTile);
-        
-        // Assert: Claim accepted
-        // Assert.True(result.IsValid);
+        // Construct a hand-built state where seat 1 holds a pair of dots-5 and seat 0 discards dots-5.
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 11);
+        // Force seat 1 to hold two copies of Tong-5 (we mutate the test state directly).
+        state.Hands[1].ConcealedTiles.Add(ChangshaTestHelpers.Tid(Suit.Tong, 5, 0));
+        state.Hands[1].ConcealedTiles.Add(ChangshaTestHelpers.Tid(Suit.Tong, 5, 1));
+        // Ensure seat 0 holds Tong-5 copy 2 (different copy id) for discard.
+        var dealer = state.DealerSeatIndex;
+        var t5 = ChangshaTestHelpers.Tid(Suit.Tong, 5, 2);
+        state.Hands[dealer].ConcealedTiles.Add(t5);
+
+        ChangshaGameStateMachine.Discard(state, dealer, t5);
+
+        Assert.Equal(ChangshaPhase.AwaitingClaim, state.Phase);
+        Assert.NotNull(state.ClaimWindow);
+        Assert.Contains(state.ClaimWindow!.Opportunities, o =>
+            o.SeatIndex == 1 && o.ClaimType == TableClaimType.Pung);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public void PassClaim_AdvancesToNextSeatCounterClockwise()
+    {
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 11);
+        var dealer = state.DealerSeatIndex;
+        // Force a claimable discard via injected pung opportunity.
+        state.Hands[1].ConcealedTiles.Add(ChangshaTestHelpers.Tid(Suit.Tong, 5, 0));
+        state.Hands[1].ConcealedTiles.Add(ChangshaTestHelpers.Tid(Suit.Tong, 5, 1));
+        var t5 = ChangshaTestHelpers.Tid(Suit.Tong, 5, 2);
+        state.Hands[dealer].ConcealedTiles.Add(t5);
+
+        ChangshaGameStateMachine.Discard(state, dealer, t5);
+        Assert.Equal(ChangshaPhase.AwaitingClaim, state.Phase);
+
+        ChangshaGameStateMachine.PassClaim(state);
+        Assert.Equal(ChangshaPhase.AwaitingDiscard, state.Phase);
+        Assert.Equal((dealer + 1) % 4, state.ActiveSeatIndex);
     }
 }

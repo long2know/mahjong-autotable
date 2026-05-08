@@ -1,4 +1,5 @@
 using Mahjong.Autotable.Api.Changsha;
+using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
 using Mahjong.Autotable.Api.Persistence;
@@ -17,7 +18,26 @@ builder.Services.AddScoped<ITableStateSerializer, TableStateSerializer>();
 builder.Services.AddScoped<ITableSessionEventStore, TableSessionEventStore>();
 builder.Services.AddSignalR();
 
+builder.Services.Configure<ChangshaRuntimeOptions>(builder.Configuration.GetSection("ChangshaRuntime"));
+builder.Services.AddSingleton<IChangshaGameRuntime, ChangshaGameRuntime>();
+
+const string ChangshaCorsPolicy = "ChangshaCors";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(ChangshaCorsPolicy, policy => policy
+        .WithOrigins(
+            "http://localhost:5173",
+            "https://localhost:5173",
+            "http://localhost:5114",
+            "https://localhost:7135")
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials());
+});
+
 var app = builder.Build();
+
+app.UseCors(ChangshaCorsPolicy);
 
 using (var scope = app.Services.CreateScope())
 {

@@ -1,259 +1,147 @@
-using Mahjong.Autotable.Api.Tables;
+using Mahjong.Autotable.Api.Changsha;
 
 namespace Mahjong.Autotable.Api.Tests.Changsha;
 
 /// <summary>
-/// CAT-G: Scoring Tests
-/// Tests P0 scenarios for Small Win and Big Win scoring with dealer bonus.
-/// V1 uses simplified 1/6/7 model (G-09) per spec resolution.
+/// CAT-G: Scoring tests per Changsha spec §5.1.
+///
+/// Spec payment table (v1):
+///   Small Win self-draw: each non-winner pays 1 (or 2 if dealer involved)
+///   Small Win discard:   discarder pays 2 (or 3 if dealer involved)  → simplified to 1/2 per spec lock
+///   Big Win   self-draw: each pays 3 (or 4 if dealer involved)
+///   Big Win   discard:   discarder pays 6 (or 7 if dealer involved)
+///   Full Flush: SINGLE-tier Big Win, no doubling.
 /// </summary>
 public class ScoringTests
 {
-    // V1 SCOPE: Simplified scoring model per G-09 (S1 model)
-    // Small Win = 1 point, Big Win = 6 points (non-dealer) / 7 points (dealer)
+    private static WinResult MakeWin(int winnerSeat, int sourceSeat, WinMethod method,
+        WinPattern pattern, bool fullFlush = false)
+        => new()
+        {
+            WinningSeatIndex = winnerSeat,
+            SourceSeatIndex = sourceSeat,
+            Method = method,
+            Pattern = pattern,
+            WinningTileId = 0,
+            IsFullFlush = fullFlush
+        };
 
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
+    [Fact, Trait("Category", "Changsha")]
     public void SmallWin_NonDealerSelfDraw_DealerPays2_OthersPay1()
     {
-        // G-01 + G-09: Non-dealer wins by self-draw
-        // Simplified model: Small Win = 1 point base
-        // Dealer pays double (2), other non-dealers pay 1 each
-        
-        // Arrange: Seat 2 (non-dealer) wins by self-draw
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 2,
-        //     winType: WinType.SmallWin,
-        //     isSelfdraw: true,
-        //     dealerSeat: 0
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Dealer pays 2, others pay 1, winner receives 4 total
-        // Assert.Equal(-2, scores[0]); // Dealer
-        // Assert.Equal(-1, scores[1]); // Non-dealer
-        // Assert.Equal(4, scores[2]);  // Winner
-        // Assert.Equal(-1, scores[3]); // Non-dealer
+        // Non-dealer (seat 2) self-draws Standard. Dealer (seat 0) involvement → pays 2.
+        // Other non-dealers pay 1 each. Total = 2 + 1 + 1 = 4.
+        // FAIL (expected) — see Bishop bug 1: ScoringService applies a flat SmallWinSelfDrawBase=2.
+        var win = MakeWin(winnerSeat: 2, sourceSeat: 2, WinMethod.SelfDraw, WinPattern.Standard);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: false);
+
+        Assert.Equal(ScoreCategory.SmallWin, result.Category);
+
+        var fromDealer = result.Payments.Single(p => p.FromSeatIndex == 0).Amount;
+        var fromOther1 = result.Payments.Single(p => p.FromSeatIndex == 1).Amount;
+        var fromOther3 = result.Payments.Single(p => p.FromSeatIndex == 3).Amount;
+
+        Assert.Equal(2, fromDealer);
+        Assert.Equal(1, fromOther1);
+        Assert.Equal(1, fromOther3);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
-    public void SmallWin_DealerSelfDraw_EachPlayerPays2()
+    [Fact, Trait("Category", "Changsha")]
+    public void SmallWin_DealerSelfDraw_AllOthersPay2()
     {
-        // G-02 + G-09: Dealer wins by self-draw
-        // Simplified model: Small Win = 1 point, dealer receives/pays double
-        // Each non-dealer pays 2
-        
-        // Arrange: Seat 0 (dealer) wins by self-draw
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 0,
-        //     winType: WinType.SmallWin,
-        //     isSelfdraw: true,
-        //     dealerSeat: 0
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Each non-dealer pays 2, dealer receives 6 total
-        // Assert.Equal(6, scores[0]);  // Dealer (winner)
-        // Assert.Equal(-2, scores[1]); // Non-dealer
-        // Assert.Equal(-2, scores[2]); // Non-dealer
-        // Assert.Equal(-2, scores[3]); // Non-dealer
+        // Dealer (seat 0) self-draws Standard. Each non-dealer pays 2 (dealer involved).
+        var win = MakeWin(winnerSeat: 0, sourceSeat: 0, WinMethod.SelfDraw, WinPattern.Standard);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: false);
+
+        Assert.Equal(ScoreCategory.SmallWin, result.Category);
+        Assert.All(result.Payments, p => Assert.Equal(2, p.Amount));
+        Assert.Equal(3, result.Payments.Count);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
-    public void SmallWin_NonDealerWinsFromDiscard_DiscarderPays1()
+    [Fact, Trait("Category", "Changsha")]
+    public void SmallWin_DiscardFromNonDealer_DiscarderPays1()
     {
-        // G-03 + G-09: Non-dealer wins from discard
-        // Discarder pays 1 point (or 2 if discarder is dealer)
-        
-        // Arrange: Seat 2 (non-dealer) wins from seat 3's discard
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 2,
-        //     winType: WinType.SmallWin,
-        //     isSelfdraw: false,
-        //     dealerSeat: 0,
-        //     discarderSeat: 3
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Discarder (non-dealer) pays 1, winner receives 1
-        // Assert.Equal(0, scores[0]);  // Dealer (not involved)
-        // Assert.Equal(0, scores[1]);  // Not involved
-        // Assert.Equal(1, scores[2]);  // Winner
-        // Assert.Equal(-1, scores[3]); // Discarder
+        // Seat 1 (non-dealer) wins on seat 2's (non-dealer) discard. No dealer involved → 1.
+        var win = MakeWin(winnerSeat: 1, sourceSeat: 2, WinMethod.Discard, WinPattern.Standard);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: false);
+
+        Assert.Single(result.Payments);
+        Assert.Equal(1, result.Payments[0].Amount);
+        Assert.Equal(2, result.Payments[0].FromSeatIndex);
+        Assert.Equal(1, result.Payments[0].ToSeatIndex);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
-    public void SmallWin_NonDealerWinsFromDealerDiscard_DealerPays2()
+    [Fact, Trait("Category", "Changsha")]
+    public void SmallWin_DiscardWhenDealerInvolved_DiscarderPays2()
     {
-        // G-03 + G-09: Non-dealer wins from dealer's discard
-        // Dealer pays double (2 points)
-        
-        // Arrange: Seat 1 (non-dealer) wins from seat 0 (dealer) discard
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 1,
-        //     winType: WinType.SmallWin,
-        //     isSelfdraw: false,
-        //     dealerSeat: 0,
-        //     discarderSeat: 0
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Dealer pays 2, winner receives 2
-        // Assert.Equal(-2, scores[0]); // Dealer (discarder)
-        // Assert.Equal(2, scores[1]);  // Winner
-        // Assert.Equal(0, scores[2]);  // Not involved
-        // Assert.Equal(0, scores[3]);  // Not involved
+        // Dealer (seat 0) discards, seat 2 wins → dealer involved → 2.
+        var win = MakeWin(winnerSeat: 2, sourceSeat: 0, WinMethod.Discard, WinPattern.Standard);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: false);
+
+        Assert.Single(result.Payments);
+        Assert.Equal(2, result.Payments[0].Amount);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
-    public void SmallWin_DealerWinsFromDiscard_DiscarderPays2()
+    [Fact, Trait("Category", "Changsha")]
+    public void BigWin_NonDealerSelfDraw_DealerPays4_OthersPay3()
     {
-        // G-04 + G-09: Dealer wins from discard
-        // Discarder pays 2 (1 base + 1 dealer bonus)
-        
-        // Arrange: Seat 0 (dealer) wins from seat 2's discard
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 0,
-        //     winType: WinType.SmallWin,
-        //     isSelfdraw: false,
-        //     dealerSeat: 0,
-        //     discarderSeat: 2
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Discarder pays 2, dealer receives 2
-        // Assert.Equal(2, scores[0]);  // Dealer (winner)
-        // Assert.Equal(0, scores[1]);  // Not involved
-        // Assert.Equal(-2, scores[2]); // Discarder
-        // Assert.Equal(0, scores[3]);  // Not involved
+        // Non-dealer (seat 1) self-draws AllPungs.
+        var win = MakeWin(winnerSeat: 1, sourceSeat: 1, WinMethod.SelfDraw, WinPattern.AllPungs);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: false);
+
+        Assert.Equal(ScoreCategory.BigWin, result.Category);
+
+        Assert.Equal(4, result.Payments.Single(p => p.FromSeatIndex == 0).Amount);
+        Assert.Equal(3, result.Payments.Single(p => p.FromSeatIndex == 2).Amount);
+        Assert.Equal(3, result.Payments.Single(p => p.FromSeatIndex == 3).Amount);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
-    public void BigWin_NonDealerSelfDraw_DealerPays7_OthersPay6()
-    {
-        // G-05 + G-09: Non-dealer wins Big Win by self-draw
-        // Simplified model: Big Win = 6 points (non-dealer), 7 points from dealer
-        
-        // Arrange: Seat 3 (non-dealer) wins Seven Pairs by self-draw
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 3,
-        //     winType: WinType.BigWin,
-        //     patterns: new[] { WinPattern.SevenPairs },
-        //     isSelfdraw: true,
-        //     dealerSeat: 0
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Dealer pays 7, others pay 6, winner receives 19 total
-        // Assert.Equal(-7, scores[0]); // Dealer
-        // Assert.Equal(-6, scores[1]); // Non-dealer
-        // Assert.Equal(-6, scores[2]); // Non-dealer
-        // Assert.Equal(19, scores[3]); // Winner
-    }
-
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
-    public void BigWin_DealerSelfDraw_EachPlayerPays7()
-    {
-        // G-06 + G-09: Dealer wins Big Win by self-draw
-        // Each non-dealer pays 7 points
-        
-        // Arrange: Seat 0 (dealer) wins All Pungs by self-draw
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 0,
-        //     winType: WinType.BigWin,
-        //     patterns: new[] { WinPattern.AllPungs },
-        //     isSelfdraw: true,
-        //     dealerSeat: 0
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Each non-dealer pays 7, dealer receives 21 total
-        // Assert.Equal(21, scores[0]); // Dealer (winner)
-        // Assert.Equal(-7, scores[1]); // Non-dealer
-        // Assert.Equal(-7, scores[2]); // Non-dealer
-        // Assert.Equal(-7, scores[3]); // Non-dealer
-    }
-
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
+    [Fact, Trait("Category", "Changsha")]
     public void BigWin_NonDealerWinsFromDiscard_DiscarderPays6()
     {
-        // G-07 + G-09: Non-dealer wins Big Win from discard
-        // Discarder pays 6 (or 7 if discarder is dealer)
-        
-        // Arrange: Seat 1 (non-dealer) wins Full Flush from seat 2's discard
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 1,
-        //     winType: WinType.BigWin,
-        //     patterns: new[] { WinPattern.FullFlush },
-        //     isSelfdraw: false,
-        //     dealerSeat: 0,
-        //     discarderSeat: 2
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Discarder pays 6, winner receives 6
-        // Assert.Equal(0, scores[0]);  // Dealer (not involved)
-        // Assert.Equal(6, scores[1]);  // Winner
-        // Assert.Equal(-6, scores[2]); // Discarder
-        // Assert.Equal(0, scores[3]);  // Not involved
+        // Non-dealer wins on non-dealer discard, AllPungs (no flush).
+        var win = MakeWin(winnerSeat: 1, sourceSeat: 2, WinMethod.Discard, WinPattern.AllPungs);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: false);
+
+        Assert.Equal(ScoreCategory.BigWin, result.Category);
+        Assert.Equal(6, result.Payments[0].Amount);
     }
 
-    [Fact(Skip = "Awaiting Bishop's IScoringService")]
-    [Trait("Category", "Changsha")]
+    [Fact, Trait("Category", "Changsha")]
     public void BigWin_DealerWinsFromDiscard_DiscarderPays7()
     {
-        // G-08 + G-09: Dealer wins Big Win from discard
-        // Discarder pays 7 (6 base + 1 dealer bonus)
-        
-        // Arrange: Seat 0 (dealer) wins Full Flush from seat 3's discard
-        // var scoringService = new ChangshaScoringService();
-        // var winResult = new WinResult(
-        //     winnerSeat: 0,
-        //     winType: WinType.BigWin,
-        //     patterns: new[] { WinPattern.FullFlush },
-        //     isSelfdraw: false,
-        //     dealerSeat: 0,
-        //     discarderSeat: 3
-        // );
-        
-        // Act: Calculate scores
-        // var scores = scoringService.CalculateScores(winResult);
-        
-        // Assert: Discarder pays 7, dealer receives 7
-        // Assert.Equal(7, scores[0]);  // Dealer (winner)
-        // Assert.Equal(0, scores[1]);  // Not involved
-        // Assert.Equal(0, scores[2]);  // Not involved
-        // Assert.Equal(-7, scores[3]); // Discarder
+        // Dealer wins on a non-dealer discard, AllPungs.
+        var win = MakeWin(winnerSeat: 0, sourceSeat: 2, WinMethod.Discard, WinPattern.AllPungs);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: false);
+
+        Assert.Equal(7, result.Payments[0].Amount);
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public void FullFlush_BigWin_SingleTier_NoDoubling()
+    {
+        // Per spec lock: Full Flush is a single-tier Big Win — no x2 multiplier.
+        // FAIL (expected) — see Bishop bug 2: ScoringService applies flushMultiplier=2 for big-win flush.
+        var win = MakeWin(winnerSeat: 1, sourceSeat: 2, WinMethod.Discard, WinPattern.FullFlush, fullFlush: true);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: true);
+
+        Assert.Equal(ScoreCategory.BigWin, result.Category);
+        Assert.Equal(6, result.Payments[0].Amount); // not 12
+    }
+
+    [Fact, Trait("Category", "Changsha")]
+    public void Score_PaymentsBalance_ZeroSum()
+    {
+        // Payments must net to zero across the table.
+        var win = MakeWin(winnerSeat: 2, sourceSeat: 2, WinMethod.SelfDraw, WinPattern.Standard);
+        var result = new ScoringService().CalculateScore(win, dealerSeatIndex: 0, isFullFlush: false);
+
+        var totals = new int[4];
+        foreach (var p in result.Payments)
+        {
+            totals[p.FromSeatIndex] -= p.Amount;
+            totals[p.ToSeatIndex]   += p.Amount;
+        }
+        Assert.Equal(0, totals.Sum());
     }
 }

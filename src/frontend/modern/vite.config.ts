@@ -12,6 +12,11 @@ export default defineConfig({
       '/autotable': {
         target: 'http://localhost:5114',
         changeOrigin: true
+      },
+      '/hubs': {
+        target: 'http://localhost:5114',
+        changeOrigin: true,
+        ws: true
       }
     }
   },
