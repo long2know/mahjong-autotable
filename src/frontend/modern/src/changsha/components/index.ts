@@ -4,4 +4,5 @@ export { RoundWindIndicator } from './RoundWindIndicator';
 export { ChangshaHud } from './ChangshaHud';
 export { FanBreakdownPanel } from './FanBreakdownPanel';
 export { PlayerHandPanel } from './PlayerHandPanel';
+export { TileFace } from './TileFace';
 export { ClaimPromptModal } from './ClaimPromptModal';

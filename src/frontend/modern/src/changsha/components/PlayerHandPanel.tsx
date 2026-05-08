@@ -1,24 +1,13 @@
-import { Button, Text } from '@fluentui/react-components';
+import { Text } from '@fluentui/react-components';
 import type { ChangshaGameState, SeatIndex, MeldState } from '../types';
-import { tileGlyph, tileLabel, tileFromId } from '../tileUtils';
+import { tileLabel, tileFromId } from '../tileUtils';
+import { TileFace } from './TileFace';
 
 interface PlayerHandPanelProps {
   state: ChangshaGameState;
   userSeat: SeatIndex;
   onDiscard: (tileId: number) => void;
 }
-
-const tileButtonStyle: React.CSSProperties = {
-  fontSize: 28,
-  minWidth: 40,
-  height: 48,
-  padding: '2px 6px',
-  margin: 2,
-  cursor: 'pointer',
-  border: '1px solid #ccc',
-  borderRadius: 6,
-  backgroundColor: '#fffde7',
-};
 
 function renderMeld(meld: MeldState, idx: number) {
   const isConcealed = meld.type === 'concealedKong';
@@ -33,17 +22,22 @@ function renderMeld(meld: MeldState, idx: number) {
         border: '1px solid #aaa',
         borderRadius: 6,
         backgroundColor: isConcealed ? '#e0e0e0' : '#e8f5e9',
+        alignItems: 'center',
       }}
     >
       {meld.tileIds.map((tid) => {
         const t = tileFromId(tid);
         return (
-          <span key={tid} style={{ fontSize: 24 }} title={tileLabel(t)}>
-            {isConcealed ? '🀫' : tileGlyph(t)}
-          </span>
+          <TileFace
+            key={tid}
+            tile={t}
+            size="sm"
+            faceDown={isConcealed}
+            title={tileLabel(t)}
+          />
         );
       })}
-      <Text size={100} style={{ alignSelf: 'flex-end' }}>
+      <Text size={100} style={{ alignSelf: 'flex-end', marginLeft: 4 }}>
         {meld.type}
       </Text>
     </span>
@@ -61,6 +55,10 @@ export function PlayerHandPanel({ state, userSeat, onDiscard }: PlayerHandPanelP
   }
 
   const isMyTurn = state.activeSeat === userSeat && state.phase === 'awaitingDiscard';
+  const claimTileId =
+    state.phase === 'awaitingClaim' && state.discardPile.length
+      ? state.discardPile[state.discardPile.length - 1].id
+      : undefined;
 
   return (
     <div style={{ padding: '8px 16px' }}>
@@ -72,21 +70,17 @@ export function PlayerHandPanel({ state, userSeat, onDiscard }: PlayerHandPanelP
           {hand.melds.map((m, i) => renderMeld(m, i))}
         </div>
       )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
         {hand.concealed.map((tile) => (
           <div key={tile.id} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
-            <button
-              style={{
-                ...tileButtonStyle,
-                cursor: isMyTurn ? 'pointer' : 'default',
-                opacity: isMyTurn ? 1 : 0.7,
-              }}
-              title={`${tileLabel(tile)} — click to discard`}
+            <TileFace
+              tile={tile}
+              size="md"
+              highlighted={tile.id === claimTileId}
               disabled={!isMyTurn}
-              onClick={() => onDiscard(tile.id)}
-            >
-              {tileGlyph(tile)}
-            </button>
+              onClick={isMyTurn ? () => onDiscard(tile.id) : undefined}
+              title={`${tileLabel(tile)} — ${isMyTurn ? 'click to discard' : 'waiting'}`}
+            />
             <Text size={100}>{tileLabel(tile)}</Text>
           </div>
         ))}
