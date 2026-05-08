@@ -121,3 +121,5 @@ $ dotnet test --filter Category=Changsha
 - The two RED tests will go GREEN automatically once Bishop applies the fixes; no test rewrites needed.
 - BotMatchHarness uses `total = concealed + meldTileCount == 13 ? draw : discard` heuristic to handle post-claim states correctly. Watch for kong-replacement scenarios in v2.
 - TurnFlow & PungKongChow tests inject paired tiles into a real seeded game state (rather than building bespoke game-state fixtures) — robust against future state-machine refactors as long as the public command surface stays the same.
+
+📌 Team update (2026-05-08T19:51:39Z): Phase 2 bugfix tail shipped — both ScoringService bugs fixed (commit 9807b70). Tests now 70 GREEN, 0 RED, 7 skipped (v2 deferral). Changsha v1 Phase 2 complete: 179 API tests passed, 0 failed, 0 build warnings. Branch ready for merge. Deferred to v2: 13-orphans, kong-rob, stacking patterns, bot timeout-fallback API, optimistic concurrency API.

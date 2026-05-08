@@ -56,6 +56,8 @@
 - Three SignalR E2E tests in `tests/.../Hub/`: 4-bot full hand to win/draw, human discard → TileDiscarded, reconnect → FullState. All pass in <3s.
 - Build: 0 warnings, 0 errors. Tests: 109 passing (was 106), 77 skipped (Hudson's). Decisions captured in `.squad/decisions/inbox/bishop-changsha-v2-runtime.md`.
 
+📌 Team update (2026-05-08T19:51:39Z): Phase 2 shipped — full ChangshaHub lifecycle with 12 client commands, in-memory game-instance management, claim window resolution with 350ms turn / 250ms claim / 5s timeout, FullState reconnection, wire-event contract compliance, E2E SignalR tests (3 GREEN). Frontend wired live SignalR (reducer pattern + reconnect strategy), built 27-tile SVG component, shipped autotable iframe bridge (one-way parent→child Phase 2). Tests uncovered 2 ScoringService bugs (dealer-aware Small Win payment, Full Flush doubling) — both fixed via commit 9807b70. Final: 179 passed, 0 failed, 7 deferred (v2), 0 build warnings. Branch ready for merge.
+
 ## Learnings
 - **Dealer-aware payment pattern (Changsha §5.1):** every payment branch — Small Win and Big Win, self-draw and discard — must check `dealerInvolved = (payer == dealer || winner == dealer)` and add the +1 dealer bonus. The SmallWin self-draw branch had previously been written as a flat constant; mirror the BigWin shape across all four branches to keep the table symmetric.
 - **v1 no-stacking rule:** Big Win categories (AllPungs, SevenPairs, FullFlush) all pay the same flat amount in v1. No FullFlush doubling, no multi-pattern stacking. Multipliers are deferred to v2; do not reintroduce a `flushMultiplier` or similar without a spec change.
