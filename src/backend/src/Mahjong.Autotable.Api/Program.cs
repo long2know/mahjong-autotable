@@ -1,3 +1,4 @@
+using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
 using Mahjong.Autotable.Api.Persistence;
@@ -14,6 +15,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddScoped<ITableStateEngine, TableStateEngine>();
 builder.Services.AddScoped<ITableStateSerializer, TableStateSerializer>();
 builder.Services.AddScoped<ITableSessionEventStore, TableSessionEventStore>();
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 
@@ -464,6 +466,8 @@ static TableActionError ToIntegrityConflict(
         state.StateVersion,
         state.ActionSequence,
         correlationId);
+
+app.MapHub<ChangshaHub>("/hubs/changsha");
 
 app.Run();
 
