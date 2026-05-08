@@ -13,6 +13,7 @@ public static class DatabaseBootstrapper
         {
             await EnsureSqliteTableSessionColumnsAsync(db, cancellationToken);
             await EnsureSqliteTableSessionEventsTableAsync(db, cancellationToken);
+            await EnsureSqliteChangshaTablesAsync(db, cancellationToken);
         }
     }
 
@@ -100,6 +101,73 @@ public static class DatabaseBootstrapper
             createIndex.CommandText = """
                 CREATE UNIQUE INDEX IF NOT EXISTS "IX_TableSessionEvents_TableSessionId_Sequence"
                 ON "TableSessionEvents" ("TableSessionId", "Sequence");
+                """;
+            await createIndex.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private static async Task EnsureSqliteChangshaTablesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var createGames = connection.CreateCommand())
+            {
+                createGames.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "ChangshaGames" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_ChangshaGames" PRIMARY KEY,
+                        "RuleSet" TEXT NOT NULL DEFAULT 'changsha-v1',
+                        "Seed" INTEGER NOT NULL,
+                        "StateJson" TEXT NOT NULL,
+                        "StateVersion" INTEGER NOT NULL DEFAULT 1,
+                        "CurrentHandNumber" INTEGER NOT NULL DEFAULT 1,
+                        "CurrentRoundNumber" INTEGER NOT NULL DEFAULT 1,
+                        "CreatedUtc" TEXT NOT NULL,
+                        "UpdatedUtc" TEXT NOT NULL
+                    );
+                    """;
+                await createGames.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createEvents = connection.CreateCommand())
+            {
+                createEvents.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "ChangshaGameEvents" (
+                        "Id" INTEGER NOT NULL CONSTRAINT "PK_ChangshaGameEvents" PRIMARY KEY AUTOINCREMENT,
+                        "GameId" TEXT NOT NULL,
+                        "Sequence" INTEGER NOT NULL,
+                        "EventType" TEXT NOT NULL,
+                        "SeatIndex" INTEGER NOT NULL,
+                        "TurnNumber" INTEGER NOT NULL,
+                        "TileId" INTEGER NULL,
+                        "Detail" TEXT NOT NULL,
+                        "HandNumber" INTEGER NOT NULL DEFAULT 1,
+                        "StateVersion" INTEGER NOT NULL,
+                        "OccurredUtc" TEXT NOT NULL,
+                        "PersistedUtc" TEXT NOT NULL,
+                        CONSTRAINT "FK_ChangshaGameEvents_ChangshaGames_GameId" FOREIGN KEY ("GameId") REFERENCES "ChangshaGames" ("Id") ON DELETE CASCADE
+                    );
+                    """;
+                await createEvents.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using var createIndex = connection.CreateCommand();
+            createIndex.CommandText = """
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_ChangshaGameEvents_GameId_Sequence"
+                ON "ChangshaGameEvents" ("GameId", "Sequence");
                 """;
             await createIndex.ExecuteNonQueryAsync(cancellationToken);
         }

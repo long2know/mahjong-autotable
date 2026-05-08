@@ -7,6 +7,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<TableSession> TableSessions => Set<TableSession>();
     public DbSet<TableSessionEvent> TableSessionEvents => Set<TableSessionEvent>();
+    public DbSet<ChangshaGame> ChangshaGames => Set<ChangshaGame>();
+    public DbSet<ChangshaGameEvent> ChangshaGameEvents => Set<ChangshaGameEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +30,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasOne<TableSession>()
                 .WithMany()
                 .HasForeignKey(x => x.TableSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ChangshaGame>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RuleSet).HasMaxLength(50);
+            entity.Property(x => x.StateJson).HasColumnType("TEXT");
+            entity.Property(x => x.StateVersion).HasDefaultValue(1);
+        });
+
+        modelBuilder.Entity<ChangshaGameEvent>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.EventType).HasMaxLength(64);
+            entity.Property(x => x.Detail).HasMaxLength(256);
+            entity.HasIndex(x => new { x.GameId, x.Sequence }).IsUnique();
+            entity.HasOne<ChangshaGame>()
+                .WithMany()
+                .HasForeignKey(x => x.GameId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
