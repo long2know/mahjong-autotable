@@ -1,11 +1,11 @@
 import { Button, Text } from '@fluentui/react-components';
-import type { ChangshaGameState, SeatIndex, Tile, Meld } from '../types';
-import { tileGlyph, tileLabel } from '../tileUtils';
+import type { ChangshaGameState, SeatIndex, MeldState } from '../types';
+import { tileGlyph, tileLabel, tileFromId } from '../tileUtils';
 
 interface PlayerHandPanelProps {
   state: ChangshaGameState;
   userSeat: SeatIndex;
-  onDiscard: (tileId: string) => void;
+  onDiscard: (tileId: number) => void;
 }
 
 const tileButtonStyle: React.CSSProperties = {
@@ -20,7 +20,8 @@ const tileButtonStyle: React.CSSProperties = {
   backgroundColor: '#fffde7',
 };
 
-function renderMeld(meld: Meld, idx: number) {
+function renderMeld(meld: MeldState, idx: number) {
+  const isConcealed = meld.type === 'concealedKong';
   return (
     <span
       key={idx}
@@ -31,14 +32,17 @@ function renderMeld(meld: Meld, idx: number) {
         padding: '2px 4px',
         border: '1px solid #aaa',
         borderRadius: 6,
-        backgroundColor: meld.concealed ? '#e0e0e0' : '#e8f5e9',
+        backgroundColor: isConcealed ? '#e0e0e0' : '#e8f5e9',
       }}
     >
-      {meld.tiles.map((t) => (
-        <span key={t.id} style={{ fontSize: 24 }} title={tileLabel(t)}>
-          {meld.concealed ? '🀫' : tileGlyph(t)}
-        </span>
-      ))}
+      {meld.tileIds.map((tid) => {
+        const t = tileFromId(tid);
+        return (
+          <span key={tid} style={{ fontSize: 24 }} title={tileLabel(t)}>
+            {isConcealed ? '🀫' : tileGlyph(t)}
+          </span>
+        );
+      })}
       <Text size={100} style={{ alignSelf: 'flex-end' }}>
         {meld.type}
       </Text>
@@ -56,7 +60,7 @@ export function PlayerHandPanel({ state, userSeat, onDiscard }: PlayerHandPanelP
     );
   }
 
-  const isMyTurn = state.activeSeat === userSeat && state.phase === 'play';
+  const isMyTurn = state.activeSeat === userSeat && state.phase === 'awaitingDiscard';
 
   return (
     <div style={{ padding: '8px 16px' }}>

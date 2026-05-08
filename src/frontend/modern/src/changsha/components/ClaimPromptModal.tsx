@@ -21,13 +21,13 @@ const CLAIM_LABELS: Record<string, string> = {
   pung: '碰 Pung',
   kong: '杠 Kong',
   chow: '吃 Chow',
-  win: '胡 Win',
+  hu: '胡 Win',
 };
 
 export function ClaimPromptModal({ state, userSeat, onClaim }: ClaimPromptModalProps) {
   const userClaims =
     state.pendingClaims?.filter((c) => c.seatIndex === userSeat) ?? [];
-  const open = state.phase === 'claim-window' && userClaims.length > 0;
+  const open = state.phase === 'awaitingClaim' && userClaims.length > 0;
 
   const [countdown, setCountdown] = useState(5);
 
