@@ -35,7 +35,8 @@ public sealed class ScoringService : IScoringService
     // Payment table per spec §5
     private const int SmallWinDiscardBase = 1;
     private const int SmallWinDiscardDealer = 2;
-    private const int SmallWinSelfDrawBase = 2;
+    private const int SmallWinSelfDrawBase = 1;
+    private const int SmallWinSelfDrawDealer = 2;
 
     private const int BigWinDiscardBase = 6;
     private const int BigWinDiscardDealer = 7;
@@ -46,15 +47,14 @@ public sealed class ScoringService : IScoringService
     {
         var payments = new List<PaymentEntry>();
         var category = ClassifyWin(win);
-        var flushMultiplier = isFullFlush && category == ScoreCategory.BigWin ? 2 : 1;
 
         if (win.Method == WinMethod.SelfDraw)
         {
-            CalculateSelfDrawPayments(win, dealerSeatIndex, category, flushMultiplier, payments);
+            CalculateSelfDrawPayments(win, dealerSeatIndex, category, payments);
         }
         else
         {
-            CalculateDiscardPayments(win, dealerSeatIndex, category, flushMultiplier, payments);
+            CalculateDiscardPayments(win, dealerSeatIndex, category, payments);
         }
 
         var basePoints = payments.Sum(p => p.Amount);
@@ -83,7 +83,6 @@ public sealed class ScoringService : IScoringService
         WinResult win,
         int dealerSeatIndex,
         ScoreCategory category,
-        int flushMultiplier,
         List<PaymentEntry> payments)
     {
         for (var seat = 0; seat < 4; seat++)
@@ -96,11 +95,11 @@ public sealed class ScoringService : IScoringService
 
             if (category == ScoreCategory.BigWin)
             {
-                amount = (dealerInvolved ? BigWinSelfDrawDealer : BigWinSelfDrawBase) * flushMultiplier;
+                amount = dealerInvolved ? BigWinSelfDrawDealer : BigWinSelfDrawBase;
             }
             else
             {
-                amount = SmallWinSelfDrawBase;
+                amount = dealerInvolved ? SmallWinSelfDrawDealer : SmallWinSelfDrawBase;
             }
 
             payments.Add(new PaymentEntry
@@ -117,7 +116,6 @@ public sealed class ScoringService : IScoringService
         WinResult win,
         int dealerSeatIndex,
         ScoreCategory category,
-        int flushMultiplier,
         List<PaymentEntry> payments)
     {
         var dealerInvolved = win.SourceSeatIndex == dealerSeatIndex
@@ -126,7 +124,7 @@ public sealed class ScoringService : IScoringService
 
         if (category == ScoreCategory.BigWin)
         {
-            amount = (dealerInvolved ? BigWinDiscardDealer : BigWinDiscardBase) * flushMultiplier;
+            amount = dealerInvolved ? BigWinDiscardDealer : BigWinDiscardBase;
         }
         else
         {

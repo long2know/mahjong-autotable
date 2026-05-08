@@ -55,3 +55,7 @@
 - CORS policy `ChangshaCors` allow-lists localhost:5173 / 5114 / 7135.
 - Three SignalR E2E tests in `tests/.../Hub/`: 4-bot full hand to win/draw, human discard → TileDiscarded, reconnect → FullState. All pass in <3s.
 - Build: 0 warnings, 0 errors. Tests: 109 passing (was 106), 77 skipped (Hudson's). Decisions captured in `.squad/decisions/inbox/bishop-changsha-v2-runtime.md`.
+
+## Learnings
+- **Dealer-aware payment pattern (Changsha §5.1):** every payment branch — Small Win and Big Win, self-draw and discard — must check `dealerInvolved = (payer == dealer || winner == dealer)` and add the +1 dealer bonus. The SmallWin self-draw branch had previously been written as a flat constant; mirror the BigWin shape across all four branches to keep the table symmetric.
+- **v1 no-stacking rule:** Big Win categories (AllPungs, SevenPairs, FullFlush) all pay the same flat amount in v1. No FullFlush doubling, no multi-pattern stacking. Multipliers are deferred to v2; do not reintroduce a `flushMultiplier` or similar without a spec change.
