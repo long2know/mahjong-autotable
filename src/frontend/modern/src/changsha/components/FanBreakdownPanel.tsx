@@ -10,14 +10,19 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@fluentui/react-components';
-import type { ChangshaGameState, SeatIndex } from '../types';
+import type { ChangshaGameState, WinPattern } from '../types';
 
-const PATTERN_LABELS: Record<string, string> = {
-  '清一色': '清一色 — Flush (Big Win)',
-  '碰碰胡': '碰碰胡 — All Pungs',
-  '七对子': '七对子 — Seven Pairs',
-  '自摸': '自摸 — Self-Draw',
-  '点炮': '点炮 — Discard Win',
+const PATTERN_LABELS: Record<WinPattern, string> = {
+  fullFlush: '清一色 — Flush (Big Win)',
+  allPungs: '碰碰胡 — All Pungs',
+  sevenPairs: '七对子 — Seven Pairs',
+  standard: '标准胡 — Standard Win',
+};
+
+const WIN_TYPE_LABELS: Record<string, string> = {
+  selfDraw: '自摸 — Self-Draw',
+  discard: '点炮 — Discard Win',
+  robbingKong: '抢杠 — Robbing Kong',
 };
 
 interface FanBreakdownPanelProps {
@@ -28,10 +33,13 @@ interface FanBreakdownPanelProps {
 export function FanBreakdownPanel({ state, onContinue }: FanBreakdownPanelProps) {
   if (state.phase !== 'scoring' || !state.lastWin) return null;
   const win = state.lastWin;
-  const winnerNick = state.seats.find((s) => s.index === win.seatIndex)?.nick ?? `Seat ${win.seatIndex}`;
-  const patternDisplay = PATTERN_LABELS[win.pattern] ?? win.pattern;
+  const score = state.lastScore;
+  const winnerNick =
+    state.seats.find((s) => s.index === win.winningSeatIndex)?.nick ?? `Seat ${win.winningSeatIndex}`;
+  const patternDisplay = PATTERN_LABELS[win.winPattern] ?? win.winPattern;
+  const winTypeDisplay = WIN_TYPE_LABELS[win.winType] ?? win.winType;
 
-  const seatNick = (si: SeatIndex) =>
+  const seatNick = (si: number) =>
     state.seats.find((s) => s.index === si)?.nick ?? `Seat ${si}`;
 
   return (
@@ -46,24 +54,32 @@ export function FanBreakdownPanel({ state, onContinue }: FanBreakdownPanelProps)
       <Text size={400} weight="semibold" block style={{ margin: '8px 0' }}>
         {patternDisplay}
       </Text>
-      <Table size="small" style={{ marginTop: 12 }}>
-        <TableHeader>
-          <TableRow>
-            <TableHeaderCell>From</TableHeaderCell>
-            <TableHeaderCell>To</TableHeaderCell>
-            <TableHeaderCell>Amount</TableHeaderCell>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {win.payments.map((p, i) => (
-            <TableRow key={i}>
-              <TableCell>{seatNick(p.from)}</TableCell>
-              <TableCell>{seatNick(p.to)}</TableCell>
-              <TableCell>{p.amount}</TableCell>
+      <Text size={300} block>
+        {winTypeDisplay}
+        {score ? ` · ${score.category === 'bigWin' ? 'Big Win' : 'Small Win'} (${score.basePoints} pts)` : ''}
+      </Text>
+      {score && (
+        <Table size="small" style={{ marginTop: 12 }}>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>From</TableHeaderCell>
+              <TableHeaderCell>To</TableHeaderCell>
+              <TableHeaderCell>Amount</TableHeaderCell>
+              <TableHeaderCell>Reason</TableHeaderCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {score.payments.map((p, i) => (
+              <TableRow key={i}>
+                <TableCell>{seatNick(p.fromSeatIndex)}</TableCell>
+                <TableCell>{seatNick(p.toSeatIndex)}</TableCell>
+                <TableCell>{p.amount}</TableCell>
+                <TableCell>{p.reason}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
       <div style={{ marginTop: 16, textAlign: 'center' }}>
         <Button appearance="primary" onClick={onContinue}>
           Continue

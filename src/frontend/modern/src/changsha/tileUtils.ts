@@ -1,4 +1,4 @@
-import type { Suit, Tile, SeatIndex, Wind } from './types';
+import type { Suit, Tile, Wind } from './types';
 
 /** Unicode glyph lookup: suit → rank (1-9) → character */
 const TILE_GLYPHS: Record<Suit, string[]> = {
@@ -12,6 +12,15 @@ const SUIT_LABELS: Record<Suit, string> = {
   tong: '筒',
   tiao: '条',
 };
+
+const SUITS: Suit[] = ['wan', 'tong', 'tiao'];
+
+/** Derive suit and rank from a tile id (0-107, per SignalR contract) */
+export function tileFromId(id: number): Tile {
+  const suit = SUITS[Math.floor(id / 4 / 9)];
+  const rank = (Math.floor(id / 4) % 9) + 1;
+  return { id, suit, rank };
+}
 
 export function tileGlyph(tile: Tile): string {
   return TILE_GLYPHS[tile.suit][tile.rank - 1];
@@ -36,23 +45,7 @@ export function windEnglish(wind: Wind): string {
   return wind.charAt(0).toUpperCase() + wind.slice(1);
 }
 
-export function seatWindForIndex(bankerSeat: SeatIndex, seatIndex: SeatIndex): Wind {
-  const winds: Wind[] = ['east', 'south', 'west', 'north'];
-  return winds[(seatIndex - bankerSeat + 4) % 4];
-}
-
-/** Generate a 108-tile set (suits only, 4 copies each) */
+/** Generate a 108-tile set (suits only, 4 copies each) as Tile[] */
 export function generateFullTileSet(): Tile[] {
-  const tiles: Tile[] = [];
-  const suits: Suit[] = ['wan', 'tong', 'tiao'];
-  let id = 0;
-  for (const suit of suits) {
-    for (let rank = 1; rank <= 9; rank++) {
-      for (let copy = 0; copy < 4; copy++) {
-        tiles.push({ suit, rank: rank as Tile['rank'], id: `${suit}-${rank}-${copy}` });
-        id++;
-      }
-    }
-  }
-  return tiles;
+  return Array.from({ length: 108 }, (_, i) => tileFromId(i));
 }

@@ -1,14 +1,16 @@
 # Changsha Mahjong (长沙麻将) — Canonical Rules Specification
 
-> **Version:** 1.0
+> **Version:** 1.1 (v1 Locked Scope)
 > **Author:** Vasquez (Rules Engineer)
-> **Date:** 2026-04-22
-> **Status:** Draft — pending product review of Open Questions
+> **Date:** 2026-05-06 (Updated from 2026-04-22)
+> **Status:** V1 LOCKED — Implementation-ready baseline
 >
 > **Sources cross-referenced:**
-> 1. [MahjongPros Beginner's Guide](https://mahjongpros.com/blogs/how-to-play/beginners-guide-to-changsha-mahjong) — PRIMARY
+> 1. [MahjongPros Beginner's Guide](https://mahjongpros.com/blogs/how-to-play/beginners-guide-to-changsha-mahjong) — PRIMARY (AUTHORITATIVE)
 > 2. [Reddit: Better Know a Variant — Changsha Mahjong](https://old.reddit.com/r/Mahjong/comments/xp6crv/) — community rules overview
 > 3. [Baidu Encyclopedia — 长沙麻将](https://baike.baidu.com/en/item/Changsha%20Mahjong/36618) — Tencent QQ Game rules
+>
+> **V1 Scope:** This revision locks the v1 implementation scope per user decisions (2026-05-06). Features deferred to v2 are explicitly marked.
 
 ---
 
@@ -16,13 +18,13 @@
 
 ### Composition
 
-Changsha Mahjong uses **only the three numbered suits** — no winds, no dragons, no flowers, no jokers.
+**V1 SCOPE:** Changsha Mahjong uses **exactly 108 tiles** — only the three numbered suits. NO winds, NO dragons, NO flowers, NO jokers, NO wildcards.
 
 | Suit | Chinese | Tiles | Count |
 |------|---------|-------|-------|
-| Characters (万子) | Wàn | 1万–9万, 4 copies each | 36 |
-| Dots / Circles (筒子) | Tǒng | 1筒–9筒, 4 copies each | 36 |
-| Bamboo / Strips (条子) | Tiáo | 1条–9条, 4 copies each | 36 |
+| Characters (万子) | Wàn | 1万, 2万, 3万, 4万, 5万, 6万, 7万, 8万, 9万 (4 copies each) | 36 |
+| Dots / Circles (筒子) | Tǒng | 1筒, 2筒, 3筒, 4筒, 5筒, 6筒, 7筒, 8筒, 9筒 (4 copies each) | 36 |
+| Bamboo / Strips (条子) | Tiáo | 1条, 2条, 3条, 4条, 5条, 6条, 7条, 8条, 9条 (4 copies each) | 36 |
 | **Total** | | | **108** |
 
 ### Tile ID Mapping (for engine)
@@ -35,8 +37,9 @@ Each physical tile maps to a unique integer ID 0–107:
 Logical tile = `tileId / 4` (0–26). Suit = `logicalTile / 9` (0=Char, 1=Dot, 2=Bamboo). Rank = `logicalTile % 9 + 1` (1–9).
 
 ### Key Notes
-- **No 红中 (Red Dragon) as wildcard (癞子):** All three sources confirm standard Changsha uses only the 108 suit tiles. Some regional/app variants include a 红中 wildcard, but this is not standard Changsha rules. Our v1 implementation does NOT include wildcards.
-- **No honor tiles of any kind** — winds and dragons are fully excluded.
+- **No 红中 (Red Dragon) wildcard (癞子) in v1:** All three sources confirm standard Changsha uses only the 108 suit tiles. Some regional/app variants include a 红中 wildcard, but this is NOT standard Changsha and is explicitly excluded from v1.
+- **No honor tiles of any kind** — winds and dragons are fully excluded from v1.
+- **No flowers, seasons, or bonus tiles** — v1 uses ONLY the 108 numbered suit tiles.
 
 ---
 
@@ -121,6 +124,8 @@ Each turn:
 
 ### 3.2 Claiming Discards
 
+**V1 SCOPE:** Chow IS ALLOWED in Changsha Mahjong (next-seat only). This is confirmed by all three authoritative sources.
+
 | Claim Type | Chinese | Who Can Claim | Requirement |
 |-----------|---------|---------------|-------------|
 | **Hu (胡)** | 胡 | Any player | Tile completes a winning hand |
@@ -128,9 +133,11 @@ Each turn:
 | **Pung (碰)** | 碰 | Any player | Player holds 2 matching tiles |
 | **Chow (吃)** | 吃 | Next player in turn order ONLY | Tile completes a sequence in the same suit |
 
-**⚠️ IMPORTANT: Chow IS allowed in Changsha Mahjong.** All three sources confirm this. Chow is restricted to the player whose turn is next (the player immediately counterclockwise from the discarder). The only exception: a chow that completes a winning hand can be claimed by any player (effectively a Hu claim).
+**Chow restriction:** Chow is restricted to the player whose turn is next (the player immediately counterclockwise from the discarder). Exception: a chow that completes a winning hand can be claimed by any player (effectively a Hu claim).
 
 ### 3.3 Claim Priority
+
+**V1 SCOPE:** Multi-claim priority is locked per user decision.
 
 When multiple players want the same discarded tile:
 
@@ -139,9 +146,9 @@ Hu > Kong = Pung > Chow
 ```
 
 - **Hu** always takes precedence.
-- **Kong and Pung** take precedence over Chow.
-- **Multiple Hu claims:** The player closest counterclockwise from the discarder wins priority. Multiple players CAN win on the same discard (多家胡 — see Scoring).
-- **Same priority tie:** Closest player counterclockwise from the discarder wins.
+- **Kong and Pung** take precedence over Chow (same priority tier).
+- **Multiple Hu claims:** Closest player counterclockwise from the discarder wins priority. **V1 IMPLEMENTATION:** Only one winner per discard (proximity rule). Multiple simultaneous wins are deferred to v2.
+- **Same priority tie (Kong/Pung):** Closest player counterclockwise from the discarder wins.
 
 ### 3.4 Kong Handling
 
@@ -165,15 +172,18 @@ Hu > Kong = Pung > Chow
 
 #### 3.4.4 Ready Kong with Dice Roll (Changsha-Specific)
 
-This is a distinctive Changsha mechanic:
-- When declaring a kong, if the player is in **tenpai (ready/waiting to win)**, they may choose to **roll the dice** for their replacement tile instead of drawing from the back of the wall.
-- The player takes the **lower die value**, counts that many stacks from the back end of the wall (not including the last stack), and draws from that stack.
-- **If the player wins** on this replacement tile → scored as a **Big Win** (杠上开花 with dice bonus).
-- **If the player cannot win** → their **hand is frozen**: they must discard the replacement tile, and they cannot change their hand for the rest of the game (except to declare another win).
-- **If an opponent wins** on the discarded replacement tile → also scored as a **Big Win** (杠上炮).
-- The player may **choose not to roll dice** and simply draw from the back of the wall normally.
+**V1 SCOPE:** DEFERRED TO V2.
 
-> **Implementation note:** This mechanic is a significant variant feature. For v1, recommend implementing kong replacement from back-of-wall only, with ready-kong dice roll as a follow-up feature (see Open Questions).
+This is a distinctive Changsha mechanic where a player in tenpai (ready) may roll dice to select their kong replacement tile from a specific position in the wall, with hand-freezing penalties on failure. This adds significant state complexity and is excluded from v1.
+
+**For v2 reference:**
+- When declaring a kong in tenpai, player may choose to roll dice for replacement tile.
+- Take lower die value, count from back of wall, draw from that stack.
+- Win on replacement → Big Win (杠上开花 with dice bonus).
+- Cannot win → hand frozen, must discard replacement tile, cannot change hand further.
+- Opponent wins on discarded replacement → Big Win (杠上炮).
+
+> **V1 Implementation:** Kong replacement always draws from back of wall (no dice option).
 
 #### 3.4.5 Kong Payment
 
@@ -196,6 +206,18 @@ Per Baidu: If a player misses a win from a discard (chooses not to claim Hu), th
 
 ## 4. Winning (胡)
 
+**V1 SCOPE:** V1 supports the following winning patterns:
+1. **Standard 4-sets-1-pair with 258 pair rule** (Small Win baseline)
+2. **七对子 (Seven Pairs)** — Big Win
+3. **碰碰胡 (All Pungs)** — Big Win
+4. **清一色 (Full Flush)** — Big Win
+
+All other patterns (instant wins, robbing-the-kong, special hands) are deferred to v2.
+
+Win methods in v1:
+- **自摸 (Self-draw):** Win by drawing the completing tile from the wall yourself.
+- **点炮 (Discard claim):** Win by claiming another player's discarded tile.
+
 ### 4.1 Standard Winning Hand
 
 A complete hand consists of **14 tiles** arranged as:
@@ -203,220 +225,242 @@ A complete hand consists of **14 tiles** arranged as:
 
 **The 258 Generals Rule (258将):** In a standard winning hand, the pair **must** be formed by tiles numbered **2, 5, or 8** from any suit. This is the defining feature of Changsha Mahjong (also called "258 Mahjong"). Examples of valid pairs: 2万2万, 5筒5筒, 8条8条.
 
-**Win methods:**
-- **Self-draw (自摸, Zìmō):** Win by drawing the completing tile from the wall yourself.
-- **Discard claim (点炮, Diǎnpào / 胡):** Win by claiming another player's discarded tile.
-- **Robbing the Kong (抢杠胡):** When an opponent attempts to extend a melded pung into an added kong, you may claim the added tile to win. Only applies to added (exposed) kongs, NOT concealed kongs.
+This is the **Small Win** baseline pattern.
 
-### 4.2 Instant Win Conditions (开局胡 — Starting Hand Wins)
+### 4.2 Big Win Hands (V1 Supported)
 
-These are checked immediately after the deal, **before any discards**. The hand does NOT need to follow the standard 4-melds-and-a-pair structure. Each is scored as a **Small Win by self-draw.**
-
-| Hand | Chinese | Condition |
-|------|---------|-----------|
-| **Four Joys** | 四喜 (Sì Xǐ) | Starting hand contains 4 identical tiles (a kong) |
-| **All Pure / Board Hu** | 板板胡 (Bǎn Bǎn Hú) | Starting hand contains NO tiles numbered 2, 5, or 8 |
-| **Voided Suit** | 缺一色 (Quē Yī Sè) | Starting hand is missing tiles from one of the three suits entirely |
-| **Six Six Straight** | 六六顺 (Liù Liù Shùn) | Starting hand contains two pungs (two sets of three identical tiles) |
-
-**Notes:**
-- Multiple instant win conditions can be met simultaneously and they **stack** (e.g., Four Joys + Six Six Straight = double basic win).
-- Multiple players can declare instant wins on the same deal.
-- Instant wins are optional (player may choose not to declare and play on).
-- **Bird tile bonus is NOT drawn** for instant wins (per MahjongPros).
-
-### 4.3 Small Win Hands
-
-A "Small Win" (小胡) is any standard winning hand where:
-- 4 melds + 1 pair of 2/5/8 generals
-- None of the Big Win special conditions apply
-
-### 4.4 Big Win Hands
-
-Big wins come in two categories: **draw-based** (based on how the winning tile was obtained) and **hand-based** (based on the tile composition).
-
-#### Draw-Based Big Wins (require 258 pair)
-
-| Hand | Chinese | Condition |
-|------|---------|-----------|
-| **Blessing of Heaven** | 天和 (Tiān Hé) | Dealer wins on their initial 14-tile hand (before any discard) |
-| **Blessing of Earth** | 地和 (Dì Hé) | Non-dealer wins on their first drawn tile, with no open melds declared |
-| **Win After Kong** | 杠上开花 (Gāng Shàng Kāi Huā) | Win by drawing a replacement tile after declaring a kong |
-| **Kong on Cannon** | 杠上炮 (Gāng Shàng Pào) | Opponent wins on the tile you discard after a kong replacement draw |
-| **Robbing the Kong** | 抢杠胡 (Qiǎng Gāng Hú) | Win by claiming the tile an opponent adds to extend a pung into a kong |
-| **Last Tile Draw (Haidilao)** | 海底捞月 (Hǎi Dǐ Lāo Yuè) | Win by self-drawing the very last tile in the wall |
-| **Last Tile Discard (Haidipao)** | 河底捞鱼 (Hé Dǐ Lāo Yú) | Win by claiming the discard of the player who drew the last wall tile |
-
-#### Hand-Based Big Wins (do NOT require 258 pair — any pair allowed)
+The following Big Win patterns are supported in v1. All of these **do NOT require a 258 pair** — any pair is allowed (confirmed by sources: "random eye" exemption for Big Wins).
 
 | Hand | Chinese | Condition |
 |------|---------|-----------|
 | **All Pungs** | 碰碰胡 (Pèng Pèng Hú) | 4 pungs/kongs + any pair. No sequences. May be open. |
-| **All Generals** | 将将胡 (Jiāng Jiāng Hú) | Every tile in hand is a 2, 5, or 8. Any structure. May be open. |
-| **Full Flush** | 清一色 (Qīng Yī Sè) | All tiles from one suit only. Any melds. May be open. |
+| **Full Flush** | 清一色 (Qīng Yī Sè) | All tiles from one suit only. Any melds (sequences allowed). May be open. |
 | **Seven Pairs** | 七对子 (Qī Duì Zi) | Exactly 7 pairs. Must be concealed. |
-| **Full Beggar's Hand** | 全求人 (Quán Qiú Rén) | 4 open melds claimed from discards + waiting for last tile to win via discard. |
-| **Luxury Seven Pairs** | 豪华七对 (Háo Huá Qī Duì) | 5 pairs + 1 four-of-a-kind (within the 14 tiles). Must be concealed. Scored as **Big Win × 2**. |
 
-### 4.5 Stacking Rules
+### 4.3 Patterns Deferred to V2
 
-- **Multiple instant wins stack** additively (e.g., two conditions = double small win).
-- **Multiple big wins stack** additively (e.g., Seven Pairs + Last Tile Draw = double big win).
-- **Small wins do NOT stack with big wins** — if a hand qualifies for both, it is scored as a big win only.
-- **Full Flush compounds** with other big wins: per Baidu, if a hand is Full Flush AND another big win, the score is doubled on top of the big win multiplier.
+The following patterns from the canonical sources are **explicitly excluded from v1** and deferred to v2:
 
-### 4.6 Seabed Tile Rules (海底牌)
+**Instant Win Conditions (开局胡 — Starting Hand Wins):**
+- 四喜 (Four Joys) — starting hand contains a kong
+- 板板胡 (All Pure / Board Hu) — no 2/5/8 tiles
+- 缺一色 (Voided Suit) — missing one suit entirely
+- 六六顺 (Six Six Straight) — two pungs in starting hand
+- 三同 (Three Same) — same number from all three suits in pairs (optional variant)
 
-When only **one tile remains** in the wall:
-1. The player whose turn it is may **choose to draw or pass** to the next player.
-2. If a player **draws and wins** → Big Win (Haidilao 海底捞月).
-3. If a player **draws and cannot win** → must discard it. Other players may claim it for a win (Haidipao 河底捞鱼, also Big Win).
-4. If all four players **pass** → hand ends in a **draw** (流局).
-5. If the last tile was drawn as a **kong replacement tile**, seabed rules do not apply for that hand.
+**Draw-Based Big Wins:**
+- 天和 (Blessing of Heaven) — dealer wins on initial 14 tiles
+- 地和 (Blessing of Earth) — non-dealer wins on first draw
+- 杠上开花 (Win After Kong) — win on kong replacement tile
+- 杠上炮 (Kong on Cannon) — opponent wins on your post-kong discard
+- 抢杠胡 (Robbing the Kong) — win by claiming opponent's added kong tile
+- 海底捞月 (Last Tile Draw) — win by self-drawing last tile
+- 河底捞鱼 (Last Tile Discard) — win by claiming discard of last tile drawer
+
+**Hand-Based Big Wins:**
+- 将将胡 (All Generals) — every tile is 2/5/8
+- 全求人 (Full Beggar's Hand) — 4 open melds + win via discard
+- 豪华七对 (Luxury Seven Pairs) — 5 pairs + 1 four-of-a-kind
+
+**Rationale:** These patterns add significant complexity (instant win flow, seabed tile rules, robbing-the-kong interrupts, frozen hand states) and are deferred to maintain v1 delivery focus on core gameplay loop.
 
 ---
 
 ## 5. Scoring (番 / Fan)
 
+**V1 SCOPE:** Two-tier scoring system locked per user decision. Bird-catching deferred to v2.
+
 ### 5.1 Payment Structure
 
 Changsha uses a **two-tier scoring system**: Small Win and Big Win.
 
-#### Payment Table (from Reddit/MahjongPros — normalized unit system)
+#### V1 Payment Table (Authoritative — MahjongPros Source)
 
-| Scenario | Non-Dealer Pays/Receives | Dealer Pays/Receives |
-|----------|-------------------------|---------------------|
-| **Small Win** | 1 | 2 |
-| **Big Win (self-draw)** | 3 | 4 |
-| **Big Win (discard)** | 6 | 7 |
+| Win Type | Method | Non-Dealer Payment | Dealer Payment |
+|----------|--------|-------------------|----------------|
+| **Small Win** | Self-draw (自摸) | Each opponent pays 1 | Each opponent pays 2 |
+| **Small Win** | Discard (点炮) | Discarder pays 1 | Discarder pays 2 |
+| **Big Win** | Self-draw (自摸) | Each opponent pays 3 | Each opponent pays 4 |
+| **Big Win** | Discard (点炮) | Discarder pays 6 | Discarder pays 7 |
 
 **Payment rules:**
 - **Self-draw (自摸):** ALL three opponents pay the winner.
 - **Discard (点炮):** Only the **discarder** pays the winner.
-- **Dealer bonus:** +1 to payment whenever the dealer is involved (either as payer or winner). This is already reflected in the table above.
+- **Dealer bonus:** +1 to payment whenever the dealer is involved as winner or payer.
 
-#### Alternative Point Values (Baidu/Tencent QQ)
+#### V1 Worked Examples
 
-Baidu uses absolute point values (10/20/60/70) rather than unit ratios. For our implementation, we use the **unit ratio system** with a configurable base multiplier.
+**Example 1: Small Win by Self-Draw (Non-Dealer Winner)**
+- Non-dealer wins by self-draw
+- Payment: Each of the 3 opponents pays 1 unit
+- If one opponent is dealer: that opponent pays 2 units (dealer bonus)
+- Total received: 1 + 1 + 2 = 4 units (or 1 + 1 + 1 = 3 if no dealer among losers)
 
-| Scenario | Base Unit | Dealer Bonus |
-|----------|-----------|-------------|
-| Small Win Self-draw | Each opponent pays 1 (dealer pays 2) | +1 for dealer |
-| Small Win Discard | Discarder pays 1 (2 if dealer involved) | +1 for dealer |
-| Big Win Self-draw | Each opponent pays 3 (dealer: 4) | +1 for dealer |
-| Big Win Discard | Discarder pays 6 (7 if dealer involved) | +1 for dealer |
+**Example 2: Small Win by Self-Draw (Dealer Winner)**
+- Dealer wins by self-draw
+- Payment: Each opponent pays 2 units (dealer as winner bonus)
+- Total received: 2 + 2 + 2 = 6 units
 
-### 5.2 Bird Catching (扎鸟 Zhā Niǎo)
+**Example 3: Small Win by Discard (Non-Dealer Winner from Non-Dealer)**
+- Non-dealer wins by claiming non-dealer's discard
+- Payment: Discarder pays 1 unit
+- Total received: 1 unit
 
-After a player wins, the **bird tile mechanic** activates:
+**Example 4: Small Win by Discard (Non-Dealer Winner from Dealer)**
+- Non-dealer wins by claiming dealer's discard
+- Payment: Dealer pays 2 units (dealer as payer bonus)
+- Total received: 2 units
 
-1. **Draw the bird tile:** The next tile from the draw wall is revealed (1 tile in standard rules, some variants draw 2).
-2. **Map the tile number to a player:**
-   - 1, 5, 9 → Dealer (seat 0)
-   - 2, 6 → Player to dealer's right (seat 1)
-   - 3, 7 → Opposite player (seat 2)
-   - 4, 8 → Player to dealer's left (seat 3)
-3. **Apply the multiplier:**
-   - **Discard win:** If the bird matches the **winner** OR the **discarder** → that player's payment is **doubled**.
-   - **Self-draw win:** If the bird matches the **winner** → all opponents pay double. If it matches a **specific opponent** → only that opponent pays double.
-4. **Two bird tiles (variant):** If two bird tiles both match the winner/discarder → payment is **tripled**.
-5. **No birds for instant wins:** Bird tiles are NOT drawn for starting hand instant win conditions.
-6. **Seabed bird:** If the winner won on the last tile, the last tile itself serves as the bird tile (no additional draw needed).
+**Example 5: Small Win by Discard (Dealer Winner)**
+- Dealer wins by claiming any discard
+- Payment: Discarder pays 2 units (dealer as winner bonus)
+- Total received: 2 units
 
-### 5.3 Kong Payments
+**Example 6: Big Win by Self-Draw (Non-Dealer Winner)**
+- Non-dealer wins All Pungs by self-draw
+- Payment: Each opponent pays 3 units; dealer pays 4
+- Total received: 3 + 3 + 4 = 10 units
 
-Kong declarations trigger immediate micro-payments, separate from final hand scoring:
-- When any kong is declared (open, concealed, or added), the other three players each pay the kong declarer an agreed-upon amount.
-- This payment occurs regardless of who ultimately wins the hand.
+**Example 7: Big Win by Self-Draw (Dealer Winner)**
+- Dealer wins Seven Pairs by self-draw
+- Payment: Each opponent pays 4 units (dealer as winner bonus)
+- Total received: 4 + 4 + 4 = 12 units
 
-### 5.4 Multiple Winners (多家胡)
+**Example 8: Big Win by Discard (Non-Dealer Winner from Non-Dealer)**
+- Non-dealer wins Full Flush by claiming non-dealer's discard
+- Payment: Discarder pays 6 units
+- Total received: 6 units
 
-Multiple players CAN win on the same discarded tile. Each winner is scored and paid independently by the discarder.
+**Example 9: Big Win by Discard (Non-Dealer Winner from Dealer)**
+- Non-dealer wins Seven Pairs by claiming dealer's discard
+- Payment: Dealer pays 7 units (dealer as payer bonus)
+- Total received: 7 units
+
+**Example 10: Big Win by Discard (Dealer Winner)**
+- Dealer wins All Pungs by claiming any discard
+- Payment: Discarder pays 7 units (dealer as winner bonus)
+- Total received: 7 units
+
+### 5.2 Base Unit Configuration
+
+The payment unit values (1, 2, 3, 4, 6, 7) are multipliers on a configurable **base unit**. The base unit is a table-level configuration parameter.
+
+**Default recommendation:** 1 unit = 10 points (giving payments of 10/20/30/40/60/70 in the Baidu/Tencent model).
+
+Alternative configurations:
+- 1 unit = 1 point (minimalist)
+- 1 unit = 100 points (high-stakes)
+
+V1 implementation should accept base unit as a table creation parameter.
+
+### 5.3 Features Deferred to V2
+
+**Bird Catching (扎鸟 Zhā Niǎo):** Post-win bird tile mechanics where the next tile from the wall is revealed, mapped to a player by rank (1/5/9→dealer, 2/6→right, 3/7→opposite, 4/8→left), and used to apply payment multipliers (double/triple). Deferred to v2 due to:
+- Source contradiction on bird count (1 vs. 2 tiles)
+- Complexity in payment multiplier chaining
+- Non-critical to core gameplay loop
+
+**Contradiction resolution (for v2):** MahjongPros is authoritative — **1 bird tile** is standard (per Reddit and Baidu confirmation). Two bird tiles is a regional variant.
+
+**Kong Payments:** Micro-payments on kong declaration (each opponent pays kong declarer immediately, separate from hand scoring). Deferred to v2 as a secondary scoring mechanic.
+
+**Multiple Winners (多家胡):** Multiple players winning on the same discard. V1 uses proximity rule (closest counterclockwise wins). V2 may implement simultaneous multiple wins with independent payments.
 
 ---
 
 ## 6. Game End & Dealer Rotation
 
+**V1 SCOPE:** 16 hands per game (4 rounds × 4 hands). Banker rotation locked per user decision.
+
 ### 6.1 Hand End Conditions
 
 A hand (局) ends when:
-1. A player declares **Hu** (win).
+1. A player declares **Hu** (win) — either by self-draw or discard claim.
 2. The wall is **exhausted** and no player can win (流局 — draw).
-3. An **instant win** is declared post-deal (game continues after payout, per Baidu; alternatively, a fresh deal starts — see Open Questions).
 
-### 6.2 Dealer Rotation
+### 6.2 Banker Rotation (V1 Rules)
+
+**V1 LOCKED DECISION:** Banker rotation per user specification.
 
 | Condition | Next Dealer |
 |-----------|-------------|
-| Single winner | Winner becomes dealer |
-| Draw — someone drew last tile | Player who drew the last tile becomes dealer |
-| Draw — all passed on seabed tile | Player who had first opportunity to draw the seabed tile |
-| Multiple winners on discard | The discarder becomes dealer |
-| Multiple instant winners | Bird tile determines dealer (per Reddit) |
+| Winner (self-draw or discard) | **Winner keeps seat** if winner is current dealer; otherwise **rotate counter-clockwise** |
+| Draw (wall exhausted) | **Rotate counter-clockwise** |
 
-### 6.3 Round Structure
+**Clarification:** "Keep seat on win, rotate counter-clockwise on loss" means:
+- If the **current dealer wins**, they remain dealer for the next hand.
+- If a **non-dealer wins**, the dealer position rotates counter-clockwise (East → North → West → South → East).
+- On **draw** (no winner), rotate counter-clockwise.
 
-- A **round (圈)** consists of enough hands for each player to be dealer once (typically 4 hands, but can be more if the dealer retains the seat by winning).
-- Round wind changes after each complete rotation: East → South → West → North.
-- A full **game (局)** typically consists of 4 rounds (East round, South round, West round, North round), but this is configurable.
+**Example rotation sequence (starting with Seat 0 as dealer):**
+- Hand 1: Seat 0 is dealer. Seat 0 wins → Hand 2: Seat 0 is dealer.
+- Hand 2: Seat 0 is dealer. Seat 2 wins → Hand 3: Seat 3 is dealer (rotated counter-clockwise from Seat 0).
+- Hand 3: Seat 3 is dealer. Draw → Hand 4: Seat 2 is dealer (rotated counter-clockwise from Seat 3).
+
+### 6.3 Round Structure (V1 Game Length)
+
+**V1 LOCKED:** A game consists of **4 rounds × 4 hands = 16 hands total**.
+
+- **Round 1 (East Round):** Hands 1-4
+- **Round 2 (South Round):** Hands 5-8
+- **Round 3 (West Round):** Hands 9-12
+- **Round 4 (North Round):** Hands 13-16
+
+Round wind changes every 4 hands regardless of dealer retention. **Note:** In traditional play, a round ends when each player has been dealer once. V1 uses a fixed 4-hands-per-round structure for simplicity.
+
+**Alternative interpretation (for v2 consideration):** If implementing "true round" semantics, a round ends when each player has been dealer at least once (which may take more than 4 hands if the dealer retains the seat by winning). V1 uses the simpler fixed-length model.
 
 ---
 
 ## 7. State Machine
 
-### 7.1 States
+**V1 SCOPE:** State machine simplified to exclude instant wins, bird-catching, seabed choice, and robbing-the-kong.
+
+### 7.1 States (V1)
 
 ```
 SEATING
   → ROLLING_DICE
     → DEALING
-      → CHECKING_INSTANT_WINS
-        → IN_HAND (active player has 14 tiles)
-          → AWAITING_DISCARD
-            → CLAIM_WINDOW_OPEN
-              → CLAIM_RESOLUTION
-                → [back to IN_HAND for next player or claiming player]
-          → DECLARING_KONG
-            → DRAWING_REPLACEMENT
-              → [back to AWAITING_DISCARD]
-        → SCORING
-          → BIRD_CATCHING
-            → PAYMENT
-              → ROTATING_DEALER
-                → [back to ROLLING_DICE or END_GAME]
+      → IN_HAND (active player has 14 tiles)
+        → AWAITING_DISCARD
+          → CLAIM_WINDOW_OPEN
+            → CLAIM_RESOLUTION
+              → [back to IN_HAND for next player or claiming player]
+        → DECLARING_KONG
+          → DRAWING_REPLACEMENT
+            → [back to AWAITING_DISCARD]
+      → SCORING (win declared)
+        → PAYMENT
+          → ROTATING_DEALER
+            → [back to ROLLING_DICE or END_GAME]
       → WALL_EXHAUSTED (draw)
         → ROTATING_DEALER
           → [back to ROLLING_DICE or END_GAME]
   → END_GAME
 ```
 
-### 7.2 State Transitions
+### 7.2 State Transitions (V1)
 
 | From | Trigger | To | Effect |
 |------|---------|-----|--------|
 | SEATING | All 4 players seated | ROLLING_DICE | Assign dealer (East) |
 | ROLLING_DICE | Dice rolled | DEALING | Determine break point; set draw wall pointer |
-| DEALING | All tiles dealt | CHECKING_INSTANT_WINS | Dealer has 14, others have 13 |
-| CHECKING_INSTANT_WINS | No instant wins (or all resolved) | AWAITING_DISCARD | Active seat = dealer |
-| CHECKING_INSTANT_WINS | Instant win declared | SCORING | Score instant win(s), game continues or redeals |
+| DEALING | All tiles dealt | IN_HAND (dealer) | Dealer has 14, others have 13; dealer is active |
+| IN_HAND | Player draws tile | AWAITING_DISCARD | Add tile to hand (14 tiles) |
 | AWAITING_DISCARD | Player discards tile | CLAIM_WINDOW_OPEN | Remove tile from hand, add to discard pile |
-| CLAIM_WINDOW_OPEN | No claims (timeout/all pass) | IN_HAND (next player) | Next player draws from wall |
+| CLAIM_WINDOW_OPEN | No claims (timeout/all pass) | IN_HAND (next player) | Next player counterclockwise draws from wall |
 | CLAIM_WINDOW_OPEN | Hu claimed | SCORING | Round ends, score the win |
 | CLAIM_WINDOW_OPEN | Pung/Kong/Chow claimed | IN_HAND (claimer) | Form meld, claimer becomes active |
-| IN_HAND | Player draws tile | AWAITING_DISCARD | Add tile to hand (14 tiles) |
 | IN_HAND | Self-draw Hu detected | SCORING | Player declares win |
 | DECLARING_KONG | Kong declared (any type) | DRAWING_REPLACEMENT | Expose kong, queue replacement draw |
 | DRAWING_REPLACEMENT | Tile drawn from back of wall | AWAITING_DISCARD | Player has 14 tiles again |
-| DRAWING_REPLACEMENT | Replacement tile wins | SCORING | 杠上开花 — Big Win |
-| SCORING | Score calculated | BIRD_CATCHING | Reveal bird tile(s) |
-| BIRD_CATCHING | Bird resolved | PAYMENT | Apply multipliers, settle payments |
-| PAYMENT | Payments settled | ROTATING_DEALER | Determine next dealer |
-| ROTATING_DEALER | Not end of game | ROLLING_DICE | New hand begins |
-| ROTATING_DEALER | End of game | END_GAME | Final scores tallied |
-| AWAITING_DISCARD (wall=1) | Player draws last tile | SEABED_CHOICE | Player may win, discard, or pass |
-| SEABED_CHOICE | Player passes | SEABED_CHOICE (next) | Offer to next player |
-| SEABED_CHOICE | All pass | WALL_EXHAUSTED | Hand ends in draw |
-| WALL_EXHAUSTED | — | ROTATING_DEALER | Determine next dealer per draw rules |
+| SCORING | Score calculated | PAYMENT | Settle payments between players |
+| PAYMENT | Payments settled | ROTATING_DEALER | Determine next dealer per v1 rules |
+| ROTATING_DEALER | Not end of game (< 16 hands) | ROLLING_DICE | New hand begins |
+| ROTATING_DEALER | End of game (16 hands complete) | END_GAME | Final scores tallied |
+| IN_HAND (wall empty) | Last tile drawn | WALL_EXHAUSTED | Hand ends in draw (流局) |
+| WALL_EXHAUSTED | — | ROTATING_DEALER | Rotate dealer counter-clockwise |
 
 ### 7.3 Concurrency: Claim Window Timing
 
@@ -513,37 +557,89 @@ The claim window must have a **deterministic resolution mechanism**:
 
 ---
 
-## 9. Open Questions
+## 9. Open Questions — V1 Resolution Status
 
-These require explicit product direction before implementation:
+All open questions from the original spec have been resolved or deferred for v1 implementation.
 
-1. **Instant win game flow:** When an instant win is declared post-deal, does the game continue with the same tiles (Baidu suggests this for the online version), or is it a fresh deal? MahjongPros is ambiguous. Baidu says "the game will continue afterwards and the tiles are not reshuffled."
+### RESOLVED (V1 Decisions Locked)
 
-2. **Ready kong dice roll scope for v1:** The ready kong mechanic (rolling dice for kong replacement, hand freezing on failure) is unique to Changsha but adds significant state complexity. Should we implement this in v1 or defer to v2?
+1. **Instant win game flow** — **DEFERRED TO V2.** All instant win patterns excluded from v1.
 
-3. **Bird tile count:** MahjongPros says "draw two additional tiles" as birds. Reddit says "the next tile (the bird tile)" — singular. Baidu says "the next tile drawn immediately from the wall is the bird" — also singular. Standard seems to be 1 bird tile; 2 is a variant. Which should v1 use?
+2. **Ready kong dice roll scope for v1** — **DEFERRED TO V2.** Kong replacement always draws from back of wall in v1 (no dice option).
 
-4. **Kong payment amounts:** What is the base amount for kong micro-payments? Is it configurable per table? Default suggestion: 1 unit per opponent per kong.
+3. **Bird tile count** — **RESOLVED for v2:** 1 bird tile is standard (MahjongPros authoritative, confirmed by Reddit/Baidu). **DEFERRED TO V2:** Bird-catching excluded from v1.
 
-5. **Scoring unit value:** What is 1 unit worth? Is this configurable per table (e.g., "1 unit = 1 point" or "1 unit = 10 points")? Recommend making the base unit a table configuration parameter.
+4. **Kong payment amounts** — **DEFERRED TO V2.** Kong micro-payments excluded from v1.
 
-6. **Big win self-draw vs discard scoring divergence:** Reddit shows different values for big win self-draw (3/4) vs big win discard (6/7). MahjongPros shows flat 6/7 for all big wins. Reddit notes "The scoring for big wins is often streamlined as 6/7 on both self-draw and discard." Which model should v1 use?
+5. **Scoring unit value** — **RESOLVED:** Base unit is a configurable table parameter. Default recommendation: 1 unit = 10 points (matching Baidu's 10/20/30/40/60/70 model). V1 implementation accepts base unit as table creation config.
 
-7. **Full Flush compounding:** Baidu states Full Flush doubles the score when combined with another big win. Reddit and MahjongPros treat big wins as additive stacks. Should Full Flush be treated as a doubler or as an additional additive big win?
+6. **Big win self-draw vs discard scoring divergence** — **RESOLVED:** V1 uses MahjongPros model (authoritative): Small Win 1/2, Big Win self-draw 3/4, Big Win discard 6/7.
 
-8. **Multiple Hu priority:** When multiple players win on the same discard, Reddit says the discarder pays all winners independently. Confirm: does the discarder pay the full amount to EACH winner?
+7. **Full Flush compounding** — **RESOLVED for v2:** In v1, Full Flush is a Big Win (single tier). Stacking/compounding with other Big Wins deferred to v2 when multiple special patterns are supported.
 
-9. **San Tong (三同) instant win:** MahjongPros lists "Three Same" as an optional instant win condition (same number from all three suits, each in a pair). Should v1 include this?
+8. **Multiple Hu priority** — **RESOLVED:** V1 uses proximity rule — only one winner per discard (closest counterclockwise). Multiple simultaneous wins deferred to v2.
 
-10. **Dealer retention:** Some variants allow the dealer to retain their position if they win. Our sources focus on winner-becomes-dealer. Confirm: dealer always rotates to the winner, even if the current dealer wins (meaning they keep being dealer)?
+9. **San Tong (三同) instant win** — **DEFERRED TO V2.** All instant wins excluded from v1.
 
-11. **Physical wall rendering:** With 108 tiles, the wall doesn't divide evenly into 4 walls of equal length. Should the frontend render walls of 14/14/13/13 stacks, or use a different arrangement?
+10. **Dealer retention** — **RESOLVED:** Dealer keeps seat on win, rotates counter-clockwise on loss (non-dealer win or draw). This is the v1 locked rule per user decision.
+
+11. **Physical wall rendering** — **IMPLEMENTATION NOTE, NOT A RULE:** With 108 tiles, frontend can render walls as 14/14/13/13 stacks or use any balanced distribution. This is a presentation concern, not a gameplay rule. Backend wall is a flat 108-tile ordered list.
+
+### ADDITIONAL RESOLUTIONS (Hudson's Contradictions)
+
+See §10 below for detailed contradiction resolutions.
 
 ---
 
-## 10. Assumptions
+## 10. Hudson's Test Catalog Contradictions — Resolution
 
-These assumptions were made where sources were silent or ambiguous:
+Hudson identified 8 source contradictions in the test catalog. All are resolved below per v1 decisions, with MahjongPros as the authoritative source.
+
+### OQ-1: Number of Bird Tiles Drawn
+**Contradiction:** S1 (MahjongPros) states "draw two additional tiles" for bird. S2 (Baidu) states "the next tile drawn immediately from the wall is the 'bird'" (singular).
+**V1 RESOLUTION:** DEFERRED TO V2. Bird-catching excluded from v1.
+**V2 DECISION:** **1 bird tile** is standard (S2 and Reddit confirm singular). Two bird tiles is a regional variant. MahjongPros' "two tiles" reference may be a translation ambiguity or regional variant. Standard Changsha uses 1 bird tile.
+
+### OQ-2: Multiple Win Resolution - Payment Model
+**Contradiction:** S1 suggests proximity rule (closest in turn order wins). S2 mentions "Multiple Win" where several players can win off same tile.
+**V1 RESOLUTION:** **RESOLVED.** V1 uses **proximity rule** — only one winner per discard (closest player counterclockwise from discarder). Multiple simultaneous wins deferred to v2.
+**Rationale:** Simplifies v1 state machine and payment flow. Proximity rule is unambiguous and consistent with standard mahjong claim priority.
+
+### OQ-3: Dealer Determination After Multiple Starting Instant Wins (Red Dragon Reference)
+**Contradiction:** S2 states "player who draws the Red Dragon becomes the dealer" when multiple players have starting instant wins. But Changsha tile set explicitly excludes Red Dragon (红中).
+**V1 RESOLUTION:** DEFERRED TO V2. All instant wins excluded from v1.
+**V2 DECISION:** This is a **source error** (Baidu referencing a different variant). For v2, use seat proximity rule: closest player counterclockwise from current dealer becomes next dealer, or use bird tile to determine dealer (per Reddit alternate method).
+
+### OQ-4: Starting Hand Instant Wins - Game Continuation
+**Contradiction:** S1 and S2 mention starting instant wins can be declared, and S2 says "the game will continue afterwards." Unclear if hand ends and redeals, or payment made and hand continues.
+**V1 RESOLUTION:** DEFERRED TO V2. All instant wins excluded from v1.
+**V2 DECISION:** Per S2 (Baidu) online rules, **game continues** after instant win payout (no redeal). Winner keeps tiles and may win again. This is the standard online implementation for flow efficiency.
+
+### OQ-5: Kong Replacement Draw - Dice vs. End of Wall
+**Contradiction:** S1 says player can choose dice roll or draw from end of wall. S2 adds dice can only be rolled if hand is in ready state.
+**V1 RESOLUTION:** **RESOLVED.** Kong replacement always draws from **back of wall** (no dice option in v1). Ready-kong dice mechanic deferred to v2.
+**V2 DECISION:** Implement S2 model (dice only if ready) as it adds strategic depth and risk/reward to kong declarations.
+
+### OQ-6: Scoring Model - S1 vs. S2
+**Contradiction:** S1 uses simplified 1/6/7 point model. S2 uses 10/20/60/70 point model.
+**V1 RESOLUTION:** **RESOLVED.** V1 uses **S1 (MahjongPros) unit model: 1/2/3/4/6/7** with configurable base unit multiplier. Default base unit = 10 points (producing 10/20/30/40/60/70 matching S2 for backward compatibility).
+**Rationale:** MahjongPros is authoritative. Unit model is more flexible and allows easy table configuration. Base multiplier of 10 aligns with traditional scoring.
+
+### OQ-7: Seven Pairs - Can Use 258 Pair or Any Pair?
+**Gap:** Sources don't explicitly state if Seven Pairs requires a 258 pair.
+**V1 RESOLUTION:** **RESOLVED.** Seven Pairs is a Big Win and uses the **"random eye" exemption** — any pair is allowed (no 258 requirement). This is consistent with All Pungs and Full Flush (both Big Wins exempt from 258 pair rule per sources).
+**Rationale:** S1 and S2 both categorize Seven Pairs as a Big Win and state hand-based Big Wins do not require 258 pair. No exception mentioned for Seven Pairs.
+
+### OQ-8: Full Beggar's Hand - Exposed Melds Count
+**Contradiction:** S1 says "melded sets through Chow or Pong," but Changsha normally restricts chow. Implies Full Beggar's Hand allows chow calls.
+**V1 RESOLUTION:** DEFERRED TO V2. Full Beggar's Hand excluded from v1 (not in 4 supported hand patterns).
+**V2 DECISION:** Full Beggar's Hand does allow chow when forming exposed melds (explicitly stated in S1). The "next-seat only" restriction still applies to chow claims. This is NOT a contradiction — chow is allowed in Changsha, and Full Beggar's Hand requires all melds to be exposed (including chows).
+
+---
+
+## 11. Assumptions (V1 Scope)
+
+These assumptions were made where sources were silent or ambiguous. Trimmed to v1-relevant items.
 
 1. **Turn direction is counterclockwise** when viewed from above (standard Chinese mahjong convention). All three sources reference "to the right" which maps to counterclockwise in standard Chinese seating.
 
@@ -553,18 +649,77 @@ These assumptions were made where sources were silent or ambiguous:
 
 4. **Dealer is seat index 0** (East position). Non-dealer seats are 1 (South), 2 (West), 3 (North) — following standard Chinese cardinal direction mapping counterclockwise.
 
-5. **Kong replacement tiles come from the back end of the wall** (opposite end from normal draws). When the wall is a list, this means drawing from index 0 while normal draws come from the end.
+5. **Kong replacement tiles come from the back end of the wall** (opposite end from normal draws). When the wall is a list, this means drawing from index 0 while normal draws come from the end (or vice versa depending on implementation choice).
 
-6. **Concealed kong cannot be robbed** — confirmed by both MahjongPros and Reddit. Only added/extended kongs can be robbed.
+6. **Concealed kong cannot be robbed** — confirmed by both MahjongPros and Reddit. Only added/extended kongs can be robbed. (Robbing-the-kong deferred to v2.)
 
 7. **Seven Pairs must be concealed** — all seven pairs must come from self-drawn tiles, no open melds.
 
-8. **Luxury Seven Pairs counts as Big Win × 2** — the four-of-a-kind within the seven pairs doubles the big win payout. Only MahjongPros explicitly states this.
+8. **Wall shuffling uses Fisher-Yates algorithm** with a seed for deterministic replay. The dice roll only determines the logical break point, not the physical arrangement (which is solely a rendering concern in digital play).
 
-9. **For the missed win rule (过胡)**, the restriction is tile-specific: missing a win on a 5万 only prevents you from winning on 5万 from discards until you next draw. You can still win on other tiles or by self-draw.
+9. **Banker rotation rule** (v1 locked): Banker keeps seat on win, rotates counter-clockwise on loss (non-dealer win or draw).
 
-10. **Multiple instant winners at deal time:** Per MahjongPros, the game continues after instant win payouts (no redeal). Each instant winner is paid independently. Bird tiles are not drawn for instant wins.
+10. **Game length** (v1 locked): 16 hands total (4 rounds × 4 hands per round). Round wind changes every 4 hands.
 
-11. **Wall shuffling uses the existing Fisher-Yates algorithm** with a seed for deterministic replay. The dice roll only determines the logical break point, not the physical arrangement (which is solely a rendering concern in digital play).
+---
 
-12. **"All Generals" (将将胡) allows any structure** — the only requirement is that every tile in the hand is a 2, 5, or 8. It does not need to conform to 4-melds-and-a-pair (per Baidu: "Every tile in the player's hand is a Two, Five, or Eight").
+## 12. V1 Conformance Checklist
+
+This checklist confirms full v1 implementation. Bishop and Hudson use this as build-complete signal.
+
+### Tile Set & Wall
+- [ ] Tile set: exactly 108 tiles (Characters 1-9 ×4, Dots 1-9 ×4, Bamboo 1-9 ×4)
+- [ ] No honors (winds/dragons), no flowers, no wildcards in tile set
+- [ ] Dice roll (2d6) determines break point in wall
+- [ ] Deal flow: 3 rounds of 4 tiles + 1 round of 1 tile + dealer's extra tile (dealer: 14, others: 13)
+- [ ] Wall is drawable to last tile (no dead wall)
+
+### Turn Flow
+- [ ] Counterclockwise turn order
+- [ ] Draw → evaluate → discard cycle (14 tiles in hand when active)
+- [ ] Chow allowed (next-seat only)
+- [ ] Pung/Kong allowed (any player)
+- [ ] Claim priority: Hu > Kong = Pung > Chow (proximity breaks ties)
+- [ ] Kong replacement draws from back of wall (not dice-based in v1)
+- [ ] Concealed kong, exposed kong, added kong all supported
+
+### Winning Patterns (V1 Only)
+- [ ] Standard 4-sets-1-pair with 258 pair rule (Small Win)
+- [ ] 七对子 (Seven Pairs) — concealed, any pair (Big Win)
+- [ ] 碰碰胡 (All Pungs) — 4 pungs/kongs + any pair (Big Win)
+- [ ] 清一色 (Full Flush) — all one suit, any pair (Big Win)
+- [ ] Win methods: self-draw (自摸) and discard claim (点炮)
+- [ ] NO instant wins, NO robbing-the-kong, NO seabed special wins in v1
+
+### Scoring
+- [ ] Small Win self-draw: each opponent pays 1 (dealer pays 2)
+- [ ] Small Win discard: discarder pays 1 (dealer pays 2 if involved)
+- [ ] Big Win self-draw: each opponent pays 3 (dealer pays 4)
+- [ ] Big Win discard: discarder pays 6 (dealer pays 7 if involved)
+- [ ] Base unit configurable at table creation (default: 1 unit = 10 points)
+- [ ] Dealer bonus (+1) applied when dealer is winner or payer
+- [ ] NO bird-catching, NO kong micro-payments in v1
+
+### Banker & Game Flow
+- [ ] Banker keeps seat on win, rotates counter-clockwise on loss
+- [ ] Game length: 16 hands (4 rounds × 4 hands)
+- [ ] Round wind changes every 4 hands
+- [ ] Wall exhausted → draw (流局) → rotate banker counter-clockwise
+- [ ] Only one winner per discard (proximity rule; no multiple simultaneous wins in v1)
+
+### State Machine
+- [ ] States: SEATING → ROLLING_DICE → DEALING → IN_HAND → AWAITING_DISCARD → CLAIM_WINDOW_OPEN → SCORING → PAYMENT → ROTATING_DEALER → [loop or END_GAME]
+- [ ] NO CHECKING_INSTANT_WINS, NO BIRD_CATCHING, NO SEABED_CHOICE states in v1
+- [ ] Deterministic: seeded RNG, ordered action log, reproducible replay
+
+### Implementation Quality
+- [ ] Hu validation enforces 258 pair for standard wins
+- [ ] Big Win patterns exempt from 258 pair rule
+- [ ] Seat-scoped state projection (no privileged bot information leaks)
+- [ ] Authoritative backend (frontend renders from projected state only)
+- [ ] Claim window timeout with deterministic resolution
+- [ ] Bot and human actions use same validation pipeline
+
+---
+
+**V1 COMPLETE** when all checkboxes above are validated. This is the locked contract for Bishop (backend) and Hudson (test framework).

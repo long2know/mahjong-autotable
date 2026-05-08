@@ -2,9 +2,9 @@ import { useCallback, useState } from 'react';
 import type {
   ChangshaGameState,
   SeatIndex,
-  Tile,
   SeatHand,
   PendingClaim,
+  DiceResult,
 } from './types';
 import { generateFullTileSet } from './tileUtils';
 
@@ -46,16 +46,17 @@ export function useChangshaGame() {
   const [state, setState] = useState<ChangshaGameState>(initialState);
 
   const rollDice = useCallback(() => {
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
-    const sum = d1 + d2;
-    const wallIndex = ((sum - 1) % 4) as 0 | 1 | 2 | 3;
+    const die1 = Math.floor(Math.random() * 6) + 1;
+    const die2 = Math.floor(Math.random() * 6) + 1;
+    const sum = die1 + die2;
+    const wallIndex = ((sum - 1) % 4);
     const stackIndex = sum;
+    const dice: DiceResult = { die1, die2, sum };
     setState((s) => ({
       ...s,
-      phase: 'rolling',
-      lastDice: [d1, d2],
-      breakPoint: { wallIndex, stackIndex },
+      phase: 'rollingDice',
+      lastDice: dice,
+      breakPoint: { wallIndex, stackIndex, tileIndex: wallIndex * 27 + stackIndex },
     }));
   }, []);
 
@@ -77,14 +78,14 @@ export function useChangshaGame() {
     const dealt = 13 * 4 + 1; // 53 tiles dealt
     setState((s) => ({
       ...s,
-      phase: 'play',
+      phase: 'awaitingDiscard',
       hands,
       wallRemaining: 108 - dealt,
       activeSeat: 0,
     }));
   }, []);
 
-  const discard = useCallback((tileId: string) => {
+  const discard = useCallback((tileId: number) => {
     setState((s) => {
       const myHand = s.hands.find((h) => h.seatIndex === 0);
       if (!myHand) return s;
@@ -110,15 +111,15 @@ export function useChangshaGame() {
     ];
     setState((s) => ({
       ...s,
-      phase: 'claim-window',
+      phase: 'awaitingClaim',
       pendingClaims: claims,
     }));
   }, []);
 
-  const resolveClaim = useCallback((claimType: string | null) => {
+  const resolveClaim = useCallback((_claimType: string | null) => {
     setState((s) => ({
       ...s,
-      phase: 'play',
+      phase: 'awaitingDiscard',
       pendingClaims: undefined,
     }));
   }, []);
@@ -128,12 +129,19 @@ export function useChangshaGame() {
       ...s,
       phase: 'scoring',
       lastWin: {
-        seatIndex: 0,
-        pattern: '清一色',
+        winningSeatIndex: 0,
+        winType: 'selfDraw',
+        winPattern: 'fullFlush',
+        winningTileId: 0,
+        sourceSeatIndex: 0,
+      },
+      lastScore: {
+        category: 'bigWin',
+        basePoints: 6,
         payments: [
-          { from: 1, to: 0, amount: 6 },
-          { from: 2, to: 0, amount: 6 },
-          { from: 3, to: 0, amount: 6 },
+          { fromSeatIndex: 1, toSeatIndex: 0, amount: 6, reason: 'bigWin-selfDraw' },
+          { fromSeatIndex: 2, toSeatIndex: 0, amount: 6, reason: 'bigWin-selfDraw' },
+          { fromSeatIndex: 3, toSeatIndex: 0, amount: 6, reason: 'bigWin-selfDraw' },
         ],
       },
     }));
@@ -142,15 +150,16 @@ export function useChangshaGame() {
   const continueAfterScoring = useCallback(() => {
     setState((s) => ({
       ...s,
-      phase: 'play',
+      phase: 'awaitingDiscard',
       lastWin: undefined,
+      lastScore: undefined,
       seats: s.seats.map((seat) => {
-        const win = s.lastWin;
-        if (!win) return seat;
+        const score = s.lastScore;
+        if (!score) return seat;
         let delta = 0;
-        for (const p of win.payments) {
-          if (p.to === seat.index) delta += p.amount;
-          if (p.from === seat.index) delta -= p.amount;
+        for (const p of score.payments) {
+          if (p.toSeatIndex === seat.index) delta += p.amount;
+          if (p.fromSeatIndex === seat.index) delta -= p.amount;
         }
         return { ...seat, score: seat.score + delta };
       }),

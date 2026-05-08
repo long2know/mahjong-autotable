@@ -35,11 +35,10 @@ const diceStyle: React.CSSProperties = {
 const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 
 export function DiceRollModal({ state, userSeat, onRoll, onConfirm }: DiceRollModalProps) {
-  const open = state.phase === 'rolling' || (state.phase === 'seating' && state.lastDice === undefined);
+  const open = state.phase === 'rollingDice' || state.phase === 'seating';
   const isUserBanker = state.bankerSeat === userSeat;
   const hasRolled = state.lastDice !== undefined;
 
-  // Animate rolling
   const [animating, setAnimating] = useState(false);
   const [displayDice, setDisplayDice] = useState<[number, number]>([1, 1]);
 
@@ -61,17 +60,18 @@ export function DiceRollModal({ state, userSeat, onRoll, onConfirm }: DiceRollMo
     };
   }, [animating]);
 
-  // When dice land, show actual values
-  const shown = animating ? displayDice : (state.lastDice ?? [1, 1]);
+  const shown = animating
+    ? displayDice
+    : state.lastDice
+      ? [state.lastDice.die1, state.lastDice.die2] as [number, number]
+      : [1, 1] as [number, number];
 
   const handleRoll = useCallback(() => {
     setAnimating(true);
-    // Fire the actual roll after animation delay
     setTimeout(() => onRoll(), 1200);
   }, [onRoll]);
 
-  // Only show when in the right phase
-  if (state.phase !== 'rolling' && !(state.phase === 'seating')) return null;
+  if (!open) return null;
 
   const bankerNick = state.seats.find((s) => s.index === state.bankerSeat)?.nick ?? 'Banker';
 
@@ -87,7 +87,7 @@ export function DiceRollModal({ state, userSeat, onRoll, onConfirm }: DiceRollMo
             </div>
             {hasRolled && !animating && state.breakPoint && (
               <Text align="center" block style={{ marginTop: 12 }}>
-                Sum: {state.lastDice![0] + state.lastDice![1]} — Break point: Wall{' '}
+                Sum: {state.lastDice!.sum} — Break point: Wall{' '}
                 {state.breakPoint.wallIndex}, stack {state.breakPoint.stackIndex}
               </Text>
             )}

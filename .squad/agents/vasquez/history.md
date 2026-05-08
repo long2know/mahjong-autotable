@@ -25,3 +25,72 @@
   - Decisions recorded to `.squad/decisions/inbox/vasquez-changsha-spec.md`.
 
 📌 Team update (2026-05-05T17-00-21Z): Changsha spec decision merged to `.squad/decisions.md` (Active Decisions section). Backend audit at `docs/rules/changsha-backend-gap.md`, frontend plan at `docs/rules/changsha-frontend-plan.md`, test catalog with 8 contradictions identified at `docs/rules/changsha-test-catalog.md`. High-priority rule contradictions (bird count, scoring model, multi-win resolution, instant win continuation) must be resolved before implementation begins. Orchestration logs filed to `.squad/orchestration-log/`.
+
+## V1 Spec Lock (2026-05-06)
+
+**Task:** Lock Changsha spec to v1 scope per user decisions. Resolve all open questions and Hudson's 8 test catalog contradictions.
+
+**Branch:** `stlong/changsha-v1`
+
+### Work Completed
+
+1. **Spec revision** (`docs/rules/changsha-spec.md` v1.0 → v1.1):
+   - Header updated: status "Draft" → "V1 LOCKED — Implementation-ready baseline"
+   - §1 Tile Set: explicit 108 count, v1 exclusions (no honors/flowers/wildcards)
+   - §3 Turn Flow: chow confirmed allowed, claim priority locked (proximity rule)
+   - §4 Winning: restructured to 4 v1 patterns only (standard 4+1, Seven Pairs, All Pungs, Full Flush); all other patterns deferred to v2
+   - §5 Scoring: locked MahjongPros model (1/2/3/4/6/7 with configurable base unit); 10 worked payment examples added; bird-catching/kong-payments/multiple-Hu deferred to v2
+   - §6 Game End: 16-hand lock (4 rounds × 4 hands); banker rotation clarified (keep seat on win, rotate CCW on loss)
+   - §7 State Machine: simplified to v1 flow (no instant wins, no bird-catching, no seabed choice states)
+   - §9 Open Questions: all 11 marked RESOLVED or DEFERRED-V2
+   - §10 Hudson Contradictions: NEW section resolving all 8 source contradictions from test catalog
+   - §11 Assumptions: trimmed to v1 scope (10 items)
+   - §12 V1 Conformance Checklist: NEW — 60-item build-complete checklist for Bishop/Hudson
+
+2. **Contradictions resolved**:
+   - OQ-1 (Bird count): 1 tile standard, deferred to v2
+   - OQ-2 (Multiple Hu): proximity rule locked for v1
+   - OQ-3 (Red Dragon dealer): source error identified, deferred to v2
+   - OQ-4 (Instant win flow): continue-no-redeal per Baidu, deferred to v2
+   - OQ-5 (Kong dice): back-of-wall only in v1, dice deferred to v2
+   - OQ-6 (Scoring model): MahjongPros authoritative (1/2/3/4/6/7)
+   - OQ-7 (Seven Pairs 258): random-eye exemption (any pair)
+   - OQ-8 (Full Beggar chow): not a contradiction (chow IS allowed), deferred to v2
+
+3. **V1 scope locked**:
+   - Tile set: 108 (suits only, no honors/flowers/wildcards)
+   - Win patterns: 4 only (standard 4+1 with 258 pair, Seven Pairs, All Pungs, Full Flush)
+   - Win methods: self-draw + discard claim (no robbing-kong, no instant wins, no seabed)
+   - Scoring: 2-tier (Small 1/2, Big 3/4/6/7) with dealer bonus, configurable base unit
+   - Claim priority: Win > Kong = Pung > Chow (proximity breaks ties)
+   - Chow: ALLOWED (next-seat only)
+   - Banker rotation: keep seat on win, rotate CCW on loss
+   - Game length: 16 hands (4 rounds × 4 hands)
+   - Deferred to v2: instant wins, draw-based Big Wins, bird-catching, kong payments, multiple simultaneous Hu, seabed choice, ready-kong dice
+
+4. **Decision record**: `.squad/decisions/inbox/vasquez-v1-spec-lock.md`
+
+5. **Commits**:
+   - Commit 1: "docs(changsha): lock spec to v1 scope (108 tiles, no honors, 4 hand patterns)"
+   - Commit 2: "docs(changsha): resolve 8 test catalog contradictions + add v1 conformance checklist"
+
+### Key Rulings
+
+- **MahjongPros is authoritative** for v1 (primary source)
+- **Big Wins exempt from 258 pair rule** — any pair allowed (Seven Pairs, All Pungs, Full Flush)
+- **Chow IS allowed** in Changsha (next-seat only) — all sources confirm
+- **Proximity rule for multiple Hu** in v1 (closest counterclockwise wins); simultaneous wins deferred to v2
+- **Kong replacement from back of wall** in v1 (no dice option); ready-kong dice deferred to v2
+- **1 bird tile** standard (not 2); bird-catching deferred to v2
+- **Banker keeps seat on win**, rotates counter-clockwise on loss (non-dealer win or draw)
+- **16 hands per game** (4 rounds × 4 hands); round wind changes every 4 hands
+
+### Ambiguities Remaining
+
+**ZERO.** All v1 scope rules are unambiguous and implementation-ready. Conformance checklist (§12) is the build-complete contract for Bishop and Hudson.
+
+### Files Modified
+
+- `docs/rules/changsha-spec.md` (v1.0 → v1.1, 680 lines)
+- `.squad/decisions/inbox/vasquez-v1-spec-lock.md` (new)
+- `.squad/agents/vasquez/history.md` (this update)
