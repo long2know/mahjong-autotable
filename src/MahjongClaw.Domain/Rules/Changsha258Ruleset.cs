@@ -165,7 +165,7 @@ public static class Changsha258Ruleset
 
         var pairCount = handTiles
             .GroupBy(static tile => tile)
-            .Count(static group => group.Count() >= 2);
+            .Sum(static group => group.Count() / 2);
 
         return pairCount >= 6;
     }
