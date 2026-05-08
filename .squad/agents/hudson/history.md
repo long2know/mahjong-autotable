@@ -86,3 +86,38 @@ All 74 active tests blocked on Bishop's service implementations in critical path
 - Win detector must validate 258 pair requirement strictly for Small Win, with explicit Big Win exemptions — catalog contradictions suggest risk of loose validation
 
 **Status:** P0 test suite COMPLETE and pushed (commit `132400f`). Ready for Bishop to begin TDD workflow: uncomment one test, implement until green, repeat. Tests serve as executable specification and regression safety net. DO NOT merge Bishop's code without corresponding green tests.
+
+---
+
+## 2025-05-08 — Changsha v1 Phase 2 (turn-on tests)
+
+**Charter:** un-skip the 74 P0 tests and drive them GREEN against Bishop's shipped service interfaces. Acceptance bar ≥60 of 74 GREEN.
+
+**Result:** **68 GREEN / 2 RED / 7 skipped of 77.**
+Acceptance bar exceeded by 8.
+
+**Work delivered:**
+- New shared harness at `tests/.../Changsha/_TestHarness/`:
+  - `ChangshaTestHelpers.cs` (Tid, Logical, Tiles, HandOf, NewGameDealtTo)
+  - `BotMatchHarness.cs` (drives state machine + 4 ChangshaBotPolicy instances to hand-end)
+- Re-wrote all 11 catalog files (CAT-A through CAT-K) with real assertions against shipped APIs (`ChangshaDeckBuilder`, `DiceService`, `BreakPointService`, `DealService`, `ChangshaWinDetector`, `ClaimAdjudicator`, `ScoringService`, `ChangshaGameStateMachine`, `ChangshaBotPolicy`).
+- Two RED tests are documented Bishop bugs in `ScoringService` (see `.squad/decisions/inbox/hudson-changsha-v2-bugs.md`):
+  1. `SmallWinSelfDrawBase = 2` flat (no dealer-involvement adjustment) — spec §5.1 wants 1/2.
+  2. `flushMultiplier = 2` for Big Win Full Flush — spec v1 has no doubling.
+- Seven skipped tests are deferred-v2 patterns (13-orphans, robbing-kong, stacking, decision-timeout API, optimistic concurrency API).
+
+**Decision records:**
+- `.squad/decisions/inbox/hudson-changsha-v2-tests.md` — coverage matrix.
+- `.squad/decisions/inbox/hudson-changsha-v2-bugs.md` — two Bishop bugs with file/line, repro tests, suggested fixes.
+
+**Verification:**
+```
+$ dotnet build  → 0 warnings, 0 errors
+$ dotnet test --filter Category=Changsha
+  Failed: 2, Passed: 68, Skipped: 7, Total: 77
+```
+
+**Skeptical notes:**
+- The two RED tests will go GREEN automatically once Bishop applies the fixes; no test rewrites needed.
+- BotMatchHarness uses `total = concealed + meldTileCount == 13 ? draw : discard` heuristic to handle post-claim states correctly. Watch for kong-replacement scenarios in v2.
+- TurnFlow & PungKongChow tests inject paired tiles into a real seeded game state (rather than building bespoke game-state fixtures) — robust against future state-machine refactors as long as the public command surface stays the same.
