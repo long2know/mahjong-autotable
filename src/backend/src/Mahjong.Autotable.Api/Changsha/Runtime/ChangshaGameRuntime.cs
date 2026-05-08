@@ -1,0 +1,1367 @@
+using System.Collections.Concurrent;
+using Mahjong.Autotable.Api.Data;
+using Mahjong.Autotable.Api.Data.Entities;
+using Mahjong.Autotable.Api.Tables;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using System.Text.Json;
+
+namespace Mahjong.Autotable.Api.Changsha.Runtime;
+
+/// <summary>
+/// Drives the full Changsha hub lifecycle. Singleton-scoped: holds in-memory game instances,
+/// dispatches state-machine commands, broadcasts wire-shaped events, schedules bot decisions,
+/// manages claim-window timers, and persists snapshots after each transition.
+/// See `.squad/decisions/inbox/bishop-changsha-v2-runtime.md` for the architecture rationale.
+/// </summary>
+public interface IChangshaGameRuntime
+{
+    Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostConnectionId, CancellationToken ct = default);
+    Task JoinTableAsync(string gameId, string connectionId, CancellationToken ct = default);
+    Task<int> TakeSeatAsync(string gameId, string connectionId, int? seatIndex, CancellationToken ct = default);
+    Task FillEmptySeatsWithBotsAsync(string gameId, CancellationToken ct = default);
+    Task StartGameAsync(string gameId, CancellationToken ct = default);
+    Task AcknowledgeDealAsync(string gameId, int seatIndex, CancellationToken ct = default);
+    Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default);
+    Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default);
+    Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default);
+    Task DeclareKongAsync(string gameId, int seatIndex, int[] tileIds, CancellationToken ct = default);
+    Task DeclareWinAsync(string gameId, int seatIndex, CancellationToken ct = default);
+    Task<bool> ReconnectAsync(string gameId, int seatIndex, string connectionId, CancellationToken ct = default);
+    Task HandleDisconnectAsync(string connectionId, CancellationToken ct = default);
+
+    /// <summary>Test/diagnostic accessor: returns true if the game exists in memory.</summary>
+    bool TryGetSnapshot(string gameId, out ChangshaGameState? state);
+}
+
+public sealed class ChangshaGameRuntime : IChangshaGameRuntime
+{
+    private readonly IHubContext<ChangshaHub> _hub;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ChangshaRuntimeOptions _options;
+    private readonly ILogger<ChangshaGameRuntime> _logger;
+    private readonly ConcurrentDictionary<string, ChangshaGameInstance> _games = new();
+    private readonly ChangshaBotPolicy _botPolicy = new();
+
+    private static readonly JsonSerializerOptions SnapshotJson = new()
+    {
+        WriteIndented = false,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    public ChangshaGameRuntime(
+        IHubContext<ChangshaHub> hub,
+        IServiceScopeFactory scopeFactory,
+        IOptions<ChangshaRuntimeOptions> options,
+        ILogger<ChangshaGameRuntime> logger)
+    {
+        _hub = hub;
+        _scopeFactory = scopeFactory;
+        _options = options.Value;
+        _logger = logger;
+    }
+
+    public bool TryGetSnapshot(string gameId, out ChangshaGameState? state)
+    {
+        if (_games.TryGetValue(gameId, out var instance))
+        {
+            state = instance.State;
+            return true;
+        }
+        state = null;
+        return false;
+    }
+
+    // ── CreateGame ────────────────────────────────────────────────────
+
+    public async Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostConnectionId, CancellationToken ct = default)
+    {
+        var resolvedSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
+        var (state, _) = ChangshaGameStateMachine.CreateGame(resolvedSeed, botSeatIndexes);
+        var instance = new ChangshaGameInstance(state.GameId, state);
+        _games[state.GameId] = instance;
+
+        if (!string.IsNullOrEmpty(hostConnectionId))
+        {
+            await _hub.Groups.AddToGroupAsync(hostConnectionId, state.GameId, ct);
+        }
+
+        await PersistSnapshotAsync(instance, ct);
+
+        await _hub.Clients.Group(state.GameId).SendAsync("GameCreated", new
+        {
+            gameId = state.GameId,
+            ruleSet = "changsha-v1",
+            seats = state.Seats.Select(SeatToWire).ToList()
+        }, ct);
+
+        return state.GameId;
+    }
+
+    // ── JoinTable ─────────────────────────────────────────────────────
+
+    public async Task JoinTableAsync(string gameId, string connectionId, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        await _hub.Groups.AddToGroupAsync(connectionId, gameId, ct);
+
+        // Replay current state to the joining client so they can render.
+        await SendFullStateAsync(instance, connectionId, seatIndex: null, ct);
+    }
+
+    // ── TakeSeat ──────────────────────────────────────────────────────
+
+    public async Task<int> TakeSeatAsync(string gameId, string connectionId, int? seatIndex, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            int chosenSeat;
+            if (seatIndex.HasValue)
+            {
+                chosenSeat = seatIndex.Value;
+                if (chosenSeat is < 0 or > 3)
+                    throw new HubException($"Seat {chosenSeat} is out of range.");
+
+                if (instance.SeatConnections.TryGetValue(chosenSeat, out var existing) && existing != connectionId)
+                    throw new HubException($"Seat {chosenSeat} is already taken.");
+            }
+            else
+            {
+                chosenSeat = Enumerable.Range(0, 4)
+                    .FirstOrDefault(i => !instance.SeatConnections.ContainsKey(i) && !instance.State.Seats[i].IsBot, -1);
+                if (chosenSeat < 0)
+                    throw new HubException("No free seats available.");
+            }
+
+            var seat = instance.State.Seats[chosenSeat];
+            seat.IsBot = false;
+            seat.PlayerId = connectionId;
+            instance.SeatConnections[chosenSeat] = connectionId;
+            instance.LastActivityUtc = DateTime.UtcNow;
+
+            await _hub.Groups.AddToGroupAsync(connectionId, gameId, ct);
+            await _hub.Clients.Group(gameId).SendAsync("PlayerSeated", new
+            {
+                gameId,
+                seatIndex = chosenSeat,
+                playerId = connectionId,
+                isBot = false
+            }, ct);
+
+            await PersistSnapshotAsync(instance, ct);
+            return chosenSeat;
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+    }
+
+    public async Task FillEmptySeatsWithBotsAsync(string gameId, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                if (instance.SeatConnections.ContainsKey(i)) continue;
+                var seat = instance.State.Seats[i];
+                if (seat.IsBot) continue;
+                seat.IsBot = true;
+                seat.PlayerId = $"bot-{i}";
+                await _hub.Clients.Group(gameId).SendAsync("PlayerSeated", new
+                {
+                    gameId,
+                    seatIndex = i,
+                    playerId = seat.PlayerId,
+                    isBot = true
+                }, ct);
+            }
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+    }
+
+    // ── StartGame ─────────────────────────────────────────────────────
+
+    public async Task StartGameAsync(string gameId, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            ChangshaGameStateMachine.StartGame(instance.State);
+            await BroadcastGameStartedAsync(instance, ct);
+
+            // Drive RollDice → Deal in one shot for v1 (no separate user-driven RollDice).
+            var diceService = new DiceService(instance.State.Seed);
+            ChangshaGameStateMachine.RollDice(instance.State, diceService);
+            await BroadcastDiceAsync(instance, ct);
+
+            ChangshaGameStateMachine.Deal(instance.State);
+            await BroadcastDealAsync(instance, ct);
+
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+
+        // After deal, await client AckDeal (if humans) or auto-ack and start the turn.
+        await TryAdvanceAfterDealAsync(instance, ct);
+    }
+
+    public async Task AcknowledgeDealAsync(string gameId, int seatIndex, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        bool ready;
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            instance.DealAcks.Add(seatIndex);
+            ready = HasAllHumanAcks(instance);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+        if (ready) await TryAdvanceAfterDealAsync(instance, ct);
+    }
+
+    private static bool HasAllHumanAcks(ChangshaGameInstance instance)
+    {
+        for (var i = 0; i < 4; i++)
+        {
+            if (instance.State.Seats[i].IsBot) continue;
+            if (!instance.SeatConnections.ContainsKey(i)) continue;
+            if (!instance.DealAcks.Contains(i)) return false;
+        }
+        return true;
+    }
+
+    private async Task TryAdvanceAfterDealAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        await instance.Lock.WaitAsync(ct);
+        bool started;
+        try
+        {
+            started = !instance.DealAcks.Contains(-1) && instance.State.Phase == ChangshaPhase.AwaitingDiscard;
+            if (started)
+            {
+                instance.DealAcks.Add(-1); // sentinel: turn-loop started
+            }
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+        if (!started) return;
+
+        await EmitTurnStartedAsync(instance, ct);
+        await ScheduleBotIfNeededAsync(instance, ct);
+    }
+
+    // ── Discard ───────────────────────────────────────────────────────
+
+    public async Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        bool openedClaim;
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            EnsureSeatOwner(instance, seatIndex);
+            ChangshaGameStateMachine.Discard(instance.State, seatIndex, tileId);
+            await EmitDiscardAsync(instance, seatIndex, tileId, ct);
+            openedClaim = instance.State.Phase == ChangshaPhase.AwaitingClaim;
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+
+        if (openedClaim)
+        {
+            await OpenClaimWindowAsync(instance, ct);
+        }
+        else
+        {
+            await DriveAfterAdvanceAsync(instance, ct);
+        }
+    }
+
+    public async Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        var parsed = ParseClaimType(claimType);
+
+        bool resolveNow;
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            EnsureSeatOwner(instance, seatIndex);
+            if (instance.State.Phase != ChangshaPhase.AwaitingClaim || instance.State.ClaimWindow is null)
+                throw new HubException("No claim window is open.");
+
+            // Validate the seat actually has an opportunity for this type.
+            var window = instance.State.ClaimWindow;
+            var hasOpp = window.Opportunities.Any(o => o.SeatIndex == seatIndex && o.ClaimType == parsed);
+            if (!hasOpp)
+                throw new HubException($"Seat {seatIndex} cannot claim {claimType} on this discard.");
+
+            instance.PendingClaims[seatIndex] = new ClaimResponse(parsed, tileIds);
+            resolveNow = AllClaimsIn(instance);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+
+        if (resolveNow) await ResolveClaimWindowAsync(instance, ct);
+    }
+
+    public async Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        bool resolveNow;
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            EnsureSeatOwner(instance, seatIndex);
+            if (instance.State.Phase != ChangshaPhase.AwaitingClaim || instance.State.ClaimWindow is null)
+                return; // late pass — ignore quietly
+            instance.PendingClaims[seatIndex] = new ClaimResponse(null, null);
+            resolveNow = AllClaimsIn(instance);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+
+        if (resolveNow) await ResolveClaimWindowAsync(instance, ct);
+    }
+
+    private static bool AllClaimsIn(ChangshaGameInstance instance)
+    {
+        if (instance.State.ClaimWindow is null) return false;
+        var eligible = instance.State.ClaimWindow.Opportunities.Select(o => o.SeatIndex).Distinct();
+        return eligible.All(s => instance.PendingClaims.ContainsKey(s));
+    }
+
+    // ── DeclareKong / DeclareWin ──────────────────────────────────────
+
+    public async Task DeclareKongAsync(string gameId, int seatIndex, int[] tileIds, CancellationToken ct = default)
+    {
+        if (tileIds is null || tileIds.Length == 0)
+            throw new HubException("DeclareKong requires at least one tile id.");
+
+        var instance = Require(gameId);
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            EnsureSeatOwner(instance, seatIndex);
+            var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+
+            // Decide concealed vs added
+            var logicalCounts = hand.ConcealedTiles
+                .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+                .ToDictionary(g => g.Key, g => g.Count());
+            var firstLogical = ChangshaDeckBuilder.GetLogicalTile(tileIds[0]);
+
+            if (logicalCounts.TryGetValue(firstLogical, out var c) && c >= 4)
+            {
+                ChangshaGameStateMachine.DeclareConcealedKong(instance.State, seatIndex, firstLogical);
+                await EmitConcealedKongAsync(instance, seatIndex, firstLogical, ct);
+            }
+            else
+            {
+                ChangshaGameStateMachine.DeclareAddedKong(instance.State, seatIndex, tileIds[0]);
+                await EmitAddedKongAsync(instance, seatIndex, tileIds[0], ct);
+            }
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+    }
+
+    public async Task DeclareWinAsync(string gameId, int seatIndex, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        bool scored = false;
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            EnsureSeatOwner(instance, seatIndex);
+            ChangshaGameStateMachine.DeclareSelfDrawWin(instance.State, seatIndex);
+            await EmitWinDeclaredAsync(instance, ct);
+            ChangshaGameStateMachine.Score(instance.State);
+            scored = true;
+            await EmitScoringAndHandFinishedAsync(instance, ct);
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+
+        if (scored) await StartNextHandOrEndAsync(instance, ct);
+    }
+
+    // ── Reconnect / Disconnect ────────────────────────────────────────
+
+    public async Task<bool> ReconnectAsync(string gameId, int seatIndex, string connectionId, CancellationToken ct = default)
+    {
+        if (!_games.TryGetValue(gameId, out var instance)) return false;
+
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            instance.SeatConnections[seatIndex] = connectionId;
+            var seat = instance.State.Seats[seatIndex];
+            seat.IsBot = false;
+            seat.PlayerId = connectionId;
+        }
+        finally { instance.Lock.Release(); }
+
+        await _hub.Groups.AddToGroupAsync(connectionId, gameId, ct);
+        await SendFullStateAsync(instance, connectionId, seatIndex, ct);
+        return true;
+    }
+
+    public async Task HandleDisconnectAsync(string connectionId, CancellationToken ct = default)
+    {
+        foreach (var (gameId, instance) in _games)
+        {
+            await instance.Lock.WaitAsync(ct);
+            try
+            {
+                var matched = instance.SeatConnections
+                    .Where(kvp => kvp.Value == connectionId)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                foreach (var seat in matched)
+                    instance.SeatConnections.TryRemove(seat, out _);
+            }
+            finally { instance.Lock.Release(); }
+        }
+    }
+
+    // ── Drive loop after discard / pass-claim ────────────────────────
+
+    private async Task DriveAfterAdvanceAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        await instance.Lock.WaitAsync(ct);
+        bool needTurn = false;
+        bool exhausted = false;
+        try
+        {
+            if (instance.State.Phase == ChangshaPhase.AwaitingDiscard)
+            {
+                // Active seat needs to draw before discarding.
+                ChangshaGameStateMachine.DrawTile(instance.State);
+                if (instance.State.Phase == ChangshaPhase.WallExhausted)
+                {
+                    exhausted = true;
+                }
+                else
+                {
+                    await EmitTileDrawnAsync(instance, instance.State.ActiveSeatIndex, ct);
+                    needTurn = true;
+                }
+                await PersistSnapshotAsync(instance, ct);
+            }
+            else if (instance.State.Phase == ChangshaPhase.WallExhausted)
+            {
+                exhausted = true;
+            }
+        }
+        finally { instance.Lock.Release(); }
+
+        if (exhausted)
+        {
+            await HandleWallExhaustedAsync(instance, ct);
+            return;
+        }
+        if (needTurn)
+        {
+            await EmitTurnStartedAsync(instance, ct);
+            await ScheduleBotIfNeededAsync(instance, ct);
+        }
+    }
+
+    // ── Claim-window orchestration ────────────────────────────────────
+
+    private async Task OpenClaimWindowAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        await instance.Lock.WaitAsync(ct);
+        ChangshaClaimWindow window;
+        try
+        {
+            window = instance.State.ClaimWindow!;
+            instance.PendingClaims.Clear();
+            instance.ClaimWindowCts?.Cancel();
+            instance.ClaimWindowCts?.Dispose();
+            instance.ClaimWindowCts = CancellationTokenSource.CreateLinkedTokenSource(instance.LifecycleCts.Token);
+        }
+        finally { instance.Lock.Release(); }
+
+        await _hub.Clients.Group(instance.GameId).SendAsync("ClaimWindowOpen", new
+        {
+            gameId = instance.GameId,
+            discardSeatIndex = window.DiscardSeatIndex,
+            discardTileId = window.DiscardTileId,
+            opportunities = window.Opportunities.Select(o => new
+            {
+                seatIndex = o.SeatIndex,
+                claimType = ClaimToWire(o.ClaimType),
+                priority = o.Priority,
+            }).ToList(),
+            timeoutMs = _options.ClaimWindowTimeoutMs
+        }, ct);
+
+        // Schedule timeout
+        _ = ClaimTimeoutAsync(instance, instance.ClaimWindowCts.Token);
+
+        // Schedule bot decisions
+        foreach (var opp in window.Opportunities.GroupBy(o => o.SeatIndex))
+        {
+            var seatIdx = opp.Key;
+            if (instance.State.Seats[seatIdx].IsBot)
+                _ = BotClaimAsync(instance, seatIdx, instance.ClaimWindowCts.Token);
+        }
+    }
+
+    private async Task ClaimTimeoutAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(_options.ClaimWindowTimeoutMs, ct);
+        }
+        catch (OperationCanceledException) { return; }
+
+        // Auto-pass anyone who hasn't responded
+        await instance.Lock.WaitAsync(CancellationToken.None);
+        try
+        {
+            if (instance.State.ClaimWindow is null) return;
+            foreach (var seat in instance.State.ClaimWindow.Opportunities.Select(o => o.SeatIndex).Distinct())
+            {
+                if (!instance.PendingClaims.ContainsKey(seat))
+                    instance.PendingClaims[seat] = new ClaimResponse(null, null);
+            }
+        }
+        finally { instance.Lock.Release(); }
+        await ResolveClaimWindowAsync(instance, CancellationToken.None);
+    }
+
+    private async Task BotClaimAsync(ChangshaGameInstance instance, int seatIndex, CancellationToken ct)
+    {
+        try { await Task.Delay(_options.BotClaimDelayMs, ct); }
+        catch (OperationCanceledException) { return; }
+
+        TableClaimType? decided;
+        await instance.Lock.WaitAsync(CancellationToken.None);
+        try
+        {
+            if (instance.State.ClaimWindow is null) return;
+            if (instance.PendingClaims.ContainsKey(seatIndex)) return;
+            var action = _botPolicy.DecideAction(instance.State, seatIndex);
+            decided = action.Type == BotActionType.Claim ? action.ClaimType : null;
+            instance.PendingClaims[seatIndex] = new ClaimResponse(decided, null);
+        }
+        finally { instance.Lock.Release(); }
+
+        if (AllClaimsInChecked(instance))
+            await ResolveClaimWindowAsync(instance, CancellationToken.None);
+    }
+
+    private bool AllClaimsInChecked(ChangshaGameInstance instance)
+    {
+        instance.Lock.Wait();
+        try { return AllClaimsIn(instance); }
+        finally { instance.Lock.Release(); }
+    }
+
+    private async Task ResolveClaimWindowAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        await instance.Lock.WaitAsync(ct);
+        bool huScored = false;
+        bool advance = false;
+        bool didTakeClaim = false;
+        try
+        {
+            if (instance.State.ClaimWindow is null) return; // already resolved
+            instance.ClaimWindowCts?.Cancel();
+
+            // Pick winner across responded seats.
+            var window = instance.State.ClaimWindow;
+            var responded = instance.PendingClaims
+                .Where(kvp => kvp.Value?.ClaimType is not null)
+                .Select(kvp => new { Seat = kvp.Key, kvp.Value!.ClaimType })
+                .ToList();
+
+            if (responded.Count == 0)
+            {
+                ChangshaGameStateMachine.PassClaim(instance.State);
+                advance = true;
+            }
+            else
+            {
+                // Prefer Hu > Kong > Pung > Chow with CCW distance tie-break
+                int Priority(TableClaimType? t) => t switch
+                {
+                    TableClaimType.Hu => 4,
+                    TableClaimType.Kong => 3,
+                    TableClaimType.Pung => 2,
+                    TableClaimType.Chow => 1,
+                    _ => 0
+                };
+                var winner = responded
+                    .OrderByDescending(r => Priority(r.ClaimType))
+                    .ThenBy(r => (r.Seat - window.DiscardSeatIndex + 4) % 4)
+                    .First();
+
+                ChangshaGameStateMachine.ResolveClaim(instance.State, winner.Seat, winner.ClaimType!.Value);
+                await EmitClaimMadeAsync(instance, winner.Seat, winner.ClaimType.Value,
+                    window.DiscardTileId, ct);
+
+                didTakeClaim = true;
+                if (winner.ClaimType == TableClaimType.Hu)
+                {
+                    // Discard win — score
+                    ChangshaGameStateMachine.Score(instance.State);
+                    await EmitScoringAndHandFinishedAsync(instance, ct);
+                    huScored = true;
+                }
+                else if (winner.ClaimType == TableClaimType.Kong)
+                {
+                    // Replacement was drawn inside ResolveClaim
+                    var hand = instance.State.Hands.Single(h => h.SeatIndex == winner.Seat);
+                    if (hand.ConcealedTiles.Count > 0)
+                    {
+                        var replacementTile = hand.ConcealedTiles[^1];
+                        await EmitKongReplacementAsync(instance, winner.Seat, replacementTile, ct);
+                    }
+                }
+                // After non-Hu claim, claimer is now active and must discard. No DrawTile.
+            }
+
+            instance.PendingClaims.Clear();
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally { instance.Lock.Release(); }
+
+        if (huScored)
+        {
+            await StartNextHandOrEndAsync(instance, ct);
+            return;
+        }
+        if (advance)
+        {
+            await DriveAfterAdvanceAsync(instance, ct);
+            return;
+        }
+        if (didTakeClaim)
+        {
+            // claimer to discard — emit TurnStarted and schedule bot
+            await EmitTurnStartedAsync(instance, ct);
+            await ScheduleBotIfNeededAsync(instance, ct);
+        }
+    }
+
+    // ── Bot scheduling for own turn ───────────────────────────────────
+
+    private Task ScheduleBotIfNeededAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        var seat = instance.State.ActiveSeatIndex;
+        if (instance.State.Phase != ChangshaPhase.AwaitingDiscard) return Task.CompletedTask;
+        if (!instance.State.Seats[seat].IsBot) return Task.CompletedTask;
+
+        _ = RunBotTurnAsync(instance, seat, instance.LifecycleCts.Token);
+        return Task.CompletedTask;
+    }
+
+    private async Task RunBotTurnAsync(ChangshaGameInstance instance, int seatIndex, CancellationToken ct)
+    {
+        try { await Task.Delay(_options.BotTurnDelayMs, ct); }
+        catch (OperationCanceledException) { return; }
+
+        try
+        {
+            BotAction action;
+            await instance.Lock.WaitAsync(ct);
+            try
+            {
+                if (instance.State.Phase != ChangshaPhase.AwaitingDiscard
+                    || instance.State.ActiveSeatIndex != seatIndex)
+                    return;
+                action = _botPolicy.DecideAction(instance.State, seatIndex);
+            }
+            finally { instance.Lock.Release(); }
+
+            switch (action.Type)
+            {
+                case BotActionType.DeclareWin:
+                    await DeclareWinAsync(instance.GameId, seatIndex, ct);
+                    break;
+                case BotActionType.DeclareConcealedKong:
+                    {
+                        // We need a tileId of that logical to pass through DeclareKongAsync.
+                        var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+                        var tileIds = hand.ConcealedTiles
+                            .Where(t => ChangshaDeckBuilder.GetLogicalTile(t) == action.LogicalTile!.Value)
+                            .Take(4).ToArray();
+                        await DeclareKongAsync(instance.GameId, seatIndex, tileIds, ct);
+                        // After kong replacement draw, schedule another bot decision
+                        await ScheduleBotIfNeededAsync(instance, ct);
+                        break;
+                    }
+                case BotActionType.DeclareAddedKong:
+                    await DeclareKongAsync(instance.GameId, seatIndex, new[] { action.TileId!.Value }, ct);
+                    await ScheduleBotIfNeededAsync(instance, ct);
+                    break;
+                case BotActionType.Discard:
+                    await DiscardAsync(instance.GameId, seatIndex, action.TileId!.Value, ct);
+                    break;
+                default:
+                    // Fallback safety: discard the highest tile
+                    {
+                        var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+                        if (hand.ConcealedTiles.Count > 0)
+                            await DiscardAsync(instance.GameId, seatIndex, hand.ConcealedTiles[^1], ct);
+                        break;
+                    }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Bot turn failed for game {GameId} seat {Seat}", instance.GameId, seatIndex);
+        }
+    }
+
+    // ── Hand finished / next hand ─────────────────────────────────────
+
+    private async Task HandleWallExhaustedAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            ChangshaGameStateMachine.HandleWallExhausted(instance.State);
+            await EmitHandFinishedDrawAsync(instance, ct);
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally { instance.Lock.Release(); }
+        await StartNextHandOrEndAsync(instance, ct);
+    }
+
+    private async Task StartNextHandOrEndAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        bool ended;
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            ChangshaGameStateMachine.RotateBanker(instance.State);
+            await EmitBankerRotatedAsync(instance, ct);
+            ended = instance.State.Phase == ChangshaPhase.EndGame;
+            if (ended)
+            {
+                await EmitGameEndedAsync(instance, ct);
+            }
+            else
+            {
+                // Start next hand
+                var dice = new DiceService(instance.State.Seed + instance.State.HandNumber);
+                ChangshaGameStateMachine.RollDice(instance.State, dice);
+                await BroadcastDiceAsync(instance, ct);
+                ChangshaGameStateMachine.Deal(instance.State);
+                await BroadcastDealAsync(instance, ct);
+                instance.DealAcks.Clear();
+            }
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally { instance.Lock.Release(); }
+
+        if (!ended) await TryAdvanceAfterDealAsync(instance, ct);
+    }
+
+    // ── Event emitters (wire-shape per docs/rules/changsha-signalr-contract.md) ──
+
+    private static object SeatToWire(ChangshaSeatState s) => new
+    {
+        seatIndex = s.SeatIndex,
+        wind = s.Wind.ToString().ToLowerInvariant(),
+        playerId = s.PlayerId,
+        isBot = s.IsBot,
+        isDealer = s.IsDealer,
+        tileCount = 0,
+        melds = Array.Empty<object>(),
+        discards = Array.Empty<int>()
+    };
+
+    private async Task BroadcastGameStartedAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        await _hub.Clients.Group(instance.GameId).SendAsync("GameStarted", new
+        {
+            gameId = instance.GameId,
+            dealerSeatIndex = instance.State.DealerSeatIndex,
+            roundWind = instance.State.RoundWind.ToString().ToLowerInvariant(),
+            handNumber = instance.State.HandNumber
+        }, ct);
+    }
+
+    private async Task BroadcastDiceAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        var roll = instance.State.LastDiceRoll!.Value;
+        var bp = instance.State.BreakPoint!.Value;
+        await _hub.Clients.Group(instance.GameId).SendAsync("DiceRolled", new
+        {
+            gameId = instance.GameId,
+            rollerSeatIndex = instance.State.DealerSeatIndex,
+            dice = new { die1 = roll.Die1, die2 = roll.Die2, sum = roll.Sum }
+        }, ct);
+        await _hub.Clients.Group(instance.GameId).SendAsync("BreakPointSet", new
+        {
+            gameId = instance.GameId,
+            breakPoint = new { wallIndex = bp.WallIndex, stackIndex = bp.StackIndex, tileIndex = bp.TileIndex }
+        }, ct);
+    }
+
+    private async Task BroadcastDealAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        // Emit 4 batches × 4 seats. Batches 1–3: 4 tiles each per seat; batch 4: remainder (1 + dealer's extra).
+        const int batches = 4;
+        for (var b = 1; b <= batches; b++)
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                var seatIdx = (instance.State.DealerSeatIndex + i) % 4;
+                var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIdx);
+                int from = b switch
+                {
+                    1 => 0, 2 => 4, 3 => 8, 4 => 12, _ => 0
+                };
+                int take = b == 4
+                    ? hand.ConcealedTiles.Count - from
+                    : Math.Min(4, Math.Max(0, hand.ConcealedTiles.Count - from));
+                if (take <= 0) continue;
+                var slice = hand.ConcealedTiles.Skip(from).Take(take).ToArray();
+                var totalCount = from + take;
+                var isComplete = b == 4 && i == 3;
+
+                // Send full payload to seat owner (private), public payload to group (no tileIds).
+                if (instance.SeatConnections.TryGetValue(seatIdx, out var connId))
+                {
+                    await _hub.Clients.Client(connId).SendAsync("TilesDealt", new
+                    {
+                        gameId = instance.GameId,
+                        seatIndex = seatIdx,
+                        tileIds = slice,
+                        tileCount = totalCount,
+                        batchNumber = b,
+                        isComplete
+                    }, ct);
+                    await _hub.Clients.GroupExcept(instance.GameId, connId).SendAsync("TilesDealt", new
+                    {
+                        gameId = instance.GameId,
+                        seatIndex = seatIdx,
+                        tileIds = Array.Empty<int>(),
+                        tileCount = totalCount,
+                        batchNumber = b,
+                        isComplete
+                    }, ct);
+                }
+                else
+                {
+                    await _hub.Clients.Group(instance.GameId).SendAsync("TilesDealt", new
+                    {
+                        gameId = instance.GameId,
+                        seatIndex = seatIdx,
+                        tileIds = Array.Empty<int>(),
+                        tileCount = totalCount,
+                        batchNumber = b,
+                        isComplete
+                    }, ct);
+                }
+
+                if (_options.DealBatchDelayMs > 0) await Task.Delay(_options.DealBatchDelayMs, ct);
+            }
+        }
+    }
+
+    private async Task EmitTurnStartedAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        await _hub.Clients.Group(instance.GameId).SendAsync("TurnStarted", new
+        {
+            gameId = instance.GameId,
+            seatIndex = instance.State.ActiveSeatIndex,
+            turnNumber = instance.State.TurnNumber,
+            wallRemaining = instance.State.Wall.Count,
+            phase = instance.State.Phase.ToString()
+        }, ct);
+    }
+
+    private async Task EmitTileDrawnAsync(ChangshaGameInstance instance, int seatIndex, CancellationToken ct)
+    {
+        var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+        var tileId = hand.ConcealedTiles[^1];
+        if (instance.SeatConnections.TryGetValue(seatIndex, out var connId))
+        {
+            await _hub.Clients.Client(connId).SendAsync("TileDrawn", new
+            {
+                gameId = instance.GameId,
+                seatIndex,
+                tileId = (int?)tileId,
+                wallRemaining = instance.State.Wall.Count,
+                isReplacementDraw = false
+            }, ct);
+            await _hub.Clients.GroupExcept(instance.GameId, connId).SendAsync("TileDrawn", new
+            {
+                gameId = instance.GameId,
+                seatIndex,
+                tileId = (int?)null,
+                wallRemaining = instance.State.Wall.Count,
+                isReplacementDraw = false
+            }, ct);
+        }
+        else
+        {
+            await _hub.Clients.Group(instance.GameId).SendAsync("TileDrawn", new
+            {
+                gameId = instance.GameId,
+                seatIndex,
+                tileId = (int?)null,
+                wallRemaining = instance.State.Wall.Count,
+                isReplacementDraw = false
+            }, ct);
+        }
+    }
+
+    private async Task EmitKongReplacementAsync(ChangshaGameInstance instance, int seatIndex, int tileId, CancellationToken ct)
+    {
+        if (instance.SeatConnections.TryGetValue(seatIndex, out var connId))
+        {
+            await _hub.Clients.Client(connId).SendAsync("KongReplacementDrawn", new
+            {
+                gameId = instance.GameId,
+                seatIndex,
+                tileId = (int?)tileId,
+                wallRemaining = instance.State.Wall.Count
+            }, ct);
+            await _hub.Clients.GroupExcept(instance.GameId, connId).SendAsync("KongReplacementDrawn", new
+            {
+                gameId = instance.GameId,
+                seatIndex,
+                tileId = (int?)null,
+                wallRemaining = instance.State.Wall.Count
+            }, ct);
+        }
+        else
+        {
+            await _hub.Clients.Group(instance.GameId).SendAsync("KongReplacementDrawn", new
+            {
+                gameId = instance.GameId,
+                seatIndex,
+                tileId = (int?)null,
+                wallRemaining = instance.State.Wall.Count
+            }, ct);
+        }
+    }
+
+    private async Task EmitDiscardAsync(ChangshaGameInstance instance, int seatIndex, int tileId, CancellationToken ct)
+    {
+        await _hub.Clients.Group(instance.GameId).SendAsync("TileDiscarded", new
+        {
+            gameId = instance.GameId,
+            seatIndex,
+            tileId,
+            turnNumber = instance.State.TurnNumber
+        }, ct);
+    }
+
+    private async Task EmitClaimMadeAsync(ChangshaGameInstance instance, int seatIndex, TableClaimType type, int tileId, CancellationToken ct)
+    {
+        var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+        var meld = hand.Melds.LastOrDefault();
+        await _hub.Clients.Group(instance.GameId).SendAsync("ClaimMade", new
+        {
+            gameId = instance.GameId,
+            claimingSeatIndex = seatIndex,
+            claimType = ClaimToWire(type),
+            tileId,
+            meld = meld is null ? null : new
+            {
+                type = MeldKindToWire(meld.Kind),
+                tileIds = meld.TileIds.ToArray(),
+                claimedFrom = meld.ClaimedFromSeatIndex
+            }
+        }, ct);
+    }
+
+    private async Task EmitConcealedKongAsync(ChangshaGameInstance instance, int seatIndex, int logicalTile, CancellationToken ct)
+    {
+        var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+        var meld = hand.Melds.LastOrDefault(m => m.Kind == MeldKind.ConcealedKong);
+        await _hub.Clients.Group(instance.GameId).SendAsync("ClaimMade", new
+        {
+            gameId = instance.GameId,
+            claimingSeatIndex = seatIndex,
+            claimType = "kong",
+            tileId = meld?.TileIds[0] ?? 0,
+            meld = meld is null ? null : new
+            {
+                type = "concealedKong",
+                tileIds = meld.TileIds.ToArray(),
+                claimedFrom = (int?)null
+            }
+        }, ct);
+
+        if (hand.ConcealedTiles.Count > 0)
+            await EmitKongReplacementAsync(instance, seatIndex, hand.ConcealedTiles[^1], ct);
+    }
+
+    private async Task EmitAddedKongAsync(ChangshaGameInstance instance, int seatIndex, int tileId, CancellationToken ct)
+    {
+        var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+        var meld = hand.Melds.LastOrDefault(m => m.Kind == MeldKind.AddedKong);
+        await _hub.Clients.Group(instance.GameId).SendAsync("ClaimMade", new
+        {
+            gameId = instance.GameId,
+            claimingSeatIndex = seatIndex,
+            claimType = "kong",
+            tileId,
+            meld = meld is null ? null : new
+            {
+                type = "addedKong",
+                tileIds = meld.TileIds.ToArray(),
+                claimedFrom = meld.ClaimedFromSeatIndex
+            }
+        }, ct);
+
+        if (hand.ConcealedTiles.Count > 0)
+            await EmitKongReplacementAsync(instance, seatIndex, hand.ConcealedTiles[^1], ct);
+    }
+
+    private async Task EmitWinDeclaredAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        var win = instance.State.CurrentWin!;
+        var hand = instance.State.Hands.Single(h => h.SeatIndex == win.WinningSeatIndex);
+        await _hub.Clients.Group(instance.GameId).SendAsync("WinDeclared", new
+        {
+            gameId = instance.GameId,
+            winResult = new
+            {
+                winningSeatIndex = win.WinningSeatIndex,
+                winType = WinMethodToWire(win.Method),
+                winPattern = WinPatternToWire(win.Pattern),
+                winningTileId = win.WinningTileId,
+                sourceSeatIndex = win.SourceSeatIndex
+            },
+            hand = new
+            {
+                concealedTiles = hand.ConcealedTiles.ToArray(),
+                melds = hand.Melds.Select(m => new
+                {
+                    type = MeldKindToWire(m.Kind),
+                    tileIds = m.TileIds.ToArray(),
+                    claimedFrom = m.ClaimedFromSeatIndex
+                }).ToArray()
+            }
+        }, ct);
+    }
+
+    private async Task EmitScoringAndHandFinishedAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        var win = instance.State.CurrentWin;
+        var score = instance.State.CurrentScore!;
+        var hs = new
+        {
+            handNumber = instance.State.HandNumber,
+            roundWind = instance.State.RoundWind.ToString().ToLowerInvariant(),
+            dealerSeatIndex = instance.State.DealerSeatIndex,
+            winResult = win is null ? null : new
+            {
+                winningSeatIndex = win.WinningSeatIndex,
+                winType = WinMethodToWire(win.Method),
+                winPattern = WinPatternToWire(win.Pattern),
+                winningTileId = win.WinningTileId,
+                sourceSeatIndex = win.SourceSeatIndex
+            },
+            scoreResult = new
+            {
+                category = score.Category.ToString().ToLowerInvariant() switch
+                {
+                    "smallwin" => "smallWin",
+                    "bigwin" => "bigWin",
+                    var s => s
+                },
+                basePoints = score.BasePoints,
+                payments = score.Payments.Select(p => new
+                {
+                    fromSeatIndex = p.FromSeatIndex,
+                    toSeatIndex = p.ToSeatIndex,
+                    amount = p.Amount,
+                    reason = p.Reason
+                }).ToArray()
+            },
+            isDraw = false
+        };
+        var gs = BuildGameSummary(instance);
+
+        await _hub.Clients.Group(instance.GameId).SendAsync("ScoringComplete", new
+        {
+            gameId = instance.GameId,
+            handSummary = hs,
+            gameSummary = gs
+        }, ct);
+    }
+
+    private async Task EmitHandFinishedDrawAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        var hs = new
+        {
+            handNumber = instance.State.HandNumber,
+            roundWind = instance.State.RoundWind.ToString().ToLowerInvariant(),
+            dealerSeatIndex = instance.State.DealerSeatIndex,
+            winResult = (object?)null,
+            scoreResult = (object?)null,
+            isDraw = true
+        };
+        await _hub.Clients.Group(instance.GameId).SendAsync("ScoringComplete", new
+        {
+            gameId = instance.GameId,
+            handSummary = hs,
+            gameSummary = BuildGameSummary(instance)
+        }, ct);
+    }
+
+    private async Task EmitBankerRotatedAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        // Reason isn't tracked explicitly — derive from CurrentWin (already cleared by RotateBanker).
+        // Use the most recent banker-rotated event from the log for detail parsing.
+        var bankerEvt = instance.State.EventLog.LastOrDefault(e => e.EventType == "banker-rotated");
+        string reason = "drawRotation";
+        int previous = instance.State.DealerSeatIndex;
+        if (bankerEvt is not null)
+        {
+            // detail format: "previous:N,reason:..."
+            foreach (var part in bankerEvt.Detail.Split(','))
+            {
+                var kv = part.Split(':');
+                if (kv.Length != 2) continue;
+                if (kv[0] == "previous" && int.TryParse(kv[1], out var p)) previous = p;
+                if (kv[0] == "reason") reason = kv[1] switch
+                {
+                    "winnerRotation" => "winnerBecomesDealer",
+                    "dealerRetained" => "dealerRetained",
+                    "drawRotation" => "drawRotation",
+                    _ => kv[1]
+                };
+            }
+        }
+        await _hub.Clients.Group(instance.GameId).SendAsync("BankerRotated", new
+        {
+            gameId = instance.GameId,
+            previousDealerSeatIndex = previous,
+            newDealerSeatIndex = instance.State.DealerSeatIndex,
+            reason
+        }, ct);
+    }
+
+    private async Task EmitGameEndedAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        var gs = BuildGameSummary(instance);
+        var winnerKvp = instance.State.CumulativeScores.OrderByDescending(kvp => kvp.Value).First();
+        await _hub.Clients.Group(instance.GameId).SendAsync("GameEnded", new
+        {
+            gameId = instance.GameId,
+            gameSummary = gs,
+            finalScores = instance.State.CumulativeScores,
+            winner = new { seatIndex = winnerKvp.Key, score = winnerKvp.Value }
+        }, ct);
+    }
+
+    private static object BuildGameSummary(ChangshaGameInstance instance) => new
+    {
+        gameId = instance.GameId,
+        totalHands = instance.State.HandNumber,
+        currentRound = instance.State.RoundNumber,
+        roundWind = instance.State.RoundWind.ToString().ToLowerInvariant(),
+        handInRound = instance.State.HandInRound,
+        dealerSeatIndex = instance.State.DealerSeatIndex,
+        scores = instance.State.CumulativeScores
+    };
+
+    private async Task SendFullStateAsync(ChangshaGameInstance instance, string connectionId, int? seatIndex, CancellationToken ct)
+    {
+        var state = instance.State;
+        var seats = state.Seats.Select(s =>
+        {
+            var hand = state.Hands.FirstOrDefault(h => h.SeatIndex == s.SeatIndex);
+            var concealed = (seatIndex == s.SeatIndex && hand is not null) ? hand.ConcealedTiles.ToArray() : null;
+            var melds = hand?.Melds.Select(m => new
+            {
+                type = MeldKindToWire(m.Kind),
+                tileIds = m.TileIds.ToArray(),
+                claimedFrom = m.ClaimedFromSeatIndex
+            }).ToArray() ?? Array.Empty<object>();
+            var discards = state.DiscardPile
+                .Where(d => d.SeatIndex == s.SeatIndex)
+                .Select(d => d.TileId).ToArray();
+            return new
+            {
+                seatIndex = s.SeatIndex,
+                wind = s.Wind.ToString().ToLowerInvariant(),
+                playerId = s.PlayerId,
+                isBot = s.IsBot,
+                isDealer = s.IsDealer,
+                tileCount = hand?.ConcealedTiles.Count ?? 0,
+                concealedTiles = concealed,
+                melds,
+                discards
+            };
+        }).ToArray();
+
+        var payload = new
+        {
+            gameId = instance.GameId,
+            phase = state.Phase.ToString(),
+            roundWind = state.RoundWind.ToString().ToLowerInvariant(),
+            roundNumber = state.RoundNumber,
+            handNumber = state.HandNumber,
+            handInRound = state.HandInRound,
+            dealerSeatIndex = state.DealerSeatIndex,
+            activeSeatIndex = state.ActiveSeatIndex,
+            wallRemaining = state.Wall.Count,
+            seats,
+            discardPile = state.DiscardPile.Select(d => new { seatIndex = d.SeatIndex, tileId = d.TileId, turnNumber = d.TurnNumber }).ToArray(),
+            claimWindow = state.ClaimWindow is null ? null : new
+            {
+                discardSeatIndex = state.ClaimWindow.DiscardSeatIndex,
+                discardTileId = state.ClaimWindow.DiscardTileId,
+                opportunities = state.ClaimWindow.Opportunities.Select(o => new
+                {
+                    seatIndex = o.SeatIndex,
+                    claimType = ClaimToWire(o.ClaimType),
+                    priority = o.Priority,
+                }).ToArray()
+            },
+            scores = state.CumulativeScores
+        };
+
+        await _hub.Clients.Client(connectionId).SendAsync("FullState", payload, ct);
+    }
+
+    // ── Persistence (singleton-safe via scope factory) ────────────────
+
+    private async Task PersistSnapshotAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        if (!_options.PersistSnapshots) return;
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var json = JsonSerializer.Serialize(instance.State, SnapshotJson);
+            var gameGuid = Guid.Parse(instance.GameId);
+            var entity = await db.ChangshaGames.FirstOrDefaultAsync(g => g.Id == gameGuid, ct);
+            if (entity is null)
+            {
+                entity = new ChangshaGame
+                {
+                    Id = gameGuid,
+                    Seed = instance.State.Seed,
+                    StateJson = json,
+                    StateVersion = instance.State.StateVersion,
+                    CurrentHandNumber = instance.State.HandNumber,
+                    CurrentRoundNumber = instance.State.RoundNumber,
+                    CreatedUtc = instance.CreatedUtc,
+                    UpdatedUtc = DateTime.UtcNow
+                };
+                db.ChangshaGames.Add(entity);
+            }
+            else
+            {
+                entity.StateJson = json;
+                entity.StateVersion = instance.State.StateVersion;
+                entity.CurrentHandNumber = instance.State.HandNumber;
+                entity.CurrentRoundNumber = instance.State.RoundNumber;
+                entity.UpdatedUtc = DateTime.UtcNow;
+            }
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist snapshot for game {GameId}", instance.GameId);
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────
+
+    private ChangshaGameInstance Require(string gameId)
+    {
+        if (!_games.TryGetValue(gameId, out var instance))
+            throw new HubException($"Unknown gameId {gameId}.");
+        return instance;
+    }
+
+    private static void EnsureSeatOwner(ChangshaGameInstance instance, int seatIndex)
+    {
+        if (seatIndex is < 0 or > 3)
+            throw new HubException($"Seat {seatIndex} is out of range.");
+    }
+
+    private static TableClaimType ParseClaimType(string s) => s.ToLowerInvariant() switch
+    {
+        "hu" => TableClaimType.Hu,
+        "kong" => TableClaimType.Kong,
+        "pung" => TableClaimType.Pung,
+        "chow" => TableClaimType.Chow,
+        _ => throw new HubException($"Unknown claim type {s}.")
+    };
+
+    private static string ClaimToWire(TableClaimType t) => t switch
+    {
+        TableClaimType.Hu => "hu",
+        TableClaimType.Kong => "kong",
+        TableClaimType.Pung => "pung",
+        TableClaimType.Chow => "chow",
+        _ => "pass"
+    };
+
+    private static string MeldKindToWire(MeldKind k) => k switch
+    {
+        MeldKind.Chow => "chow",
+        MeldKind.Pung => "pung",
+        MeldKind.ExposedKong => "exposedKong",
+        MeldKind.ConcealedKong => "concealedKong",
+        MeldKind.AddedKong => "addedKong",
+        _ => "pung"
+    };
+
+    private static string WinMethodToWire(WinMethod m) => m switch
+    {
+        WinMethod.SelfDraw => "selfDraw",
+        WinMethod.Discard => "discard",
+        WinMethod.RobbingKong => "robbingKong",
+        _ => "selfDraw"
+    };
+
+    private static string WinPatternToWire(WinPattern p) => p switch
+    {
+        WinPattern.Standard => "standard",
+        WinPattern.SevenPairs => "sevenPairs",
+        WinPattern.AllPungs => "allPungs",
+        WinPattern.FullFlush => "fullFlush",
+        _ => "standard"
+    };
+}
