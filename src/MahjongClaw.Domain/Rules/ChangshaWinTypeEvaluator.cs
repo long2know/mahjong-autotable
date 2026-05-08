@@ -18,8 +18,10 @@ public static class ChangshaWinTypeEvaluator
         ChangshaWinType.WinAfterKong,
         ChangshaWinType.RobbingKong,
         ChangshaWinType.KongOnCannon,
-        ChangshaWinType.FullyReliant,
-        ChangshaWinType.SanTong
+        ChangshaWinType.FullyReliant
+        // SanTong (三同) is a Starting Hand Instant Win classified as a Small Win
+        // per mahjongpros canonical rules — alongside Four Joys, All Pure, Voided
+        // Suit, and Six Six Straight. Do not add it to BigWinTypes.
     };
 
     public static ChangshaWinEvaluation Evaluate(

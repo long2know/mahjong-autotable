@@ -371,26 +371,10 @@ public static class ChangshaSettlementCalculator
                 return;
             }
             
-            // Birds landed on losers - each matching bird adds one extra base payment.
-            foreach (var birdSeatGroup in birdSeats.GroupBy(static seat => seat))
-            {
-                var birdSeat = birdSeatGroup.Key;
-                var hitCount = birdSeatGroup.Count();
-
-                var birdPlayer = request.Seats.FirstOrDefault(seat => seat.Seat == birdSeat);
-                if (birdPlayer is null || birdPlayer.PlayerId == request.WinnerId)
-                {
-                    continue;
-                }
-
-                if (!loserBasePayments.TryGetValue(birdPlayer.PlayerId, out var loserPayment))
-                {
-                    continue;
-                }
-
-                deltas[birdPlayer.PlayerId] -= loserPayment * hitCount;
-                deltas[request.WinnerId] += loserPayment * hitCount;
-            }
+            // Per canonical (mahjongpros §"Capturing the Bird"): on self-draw,
+            // only birds matching the WINNER's seat double/triple the payment.
+            // Birds landing on losing seats are ignored — they do NOT charge an
+            // extra base payment from that loser.
             return;
         }
 

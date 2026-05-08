@@ -65,8 +65,11 @@ public sealed class ChangshaSettlementCalculatorTests
     }
 
     [Fact]
-    public void Calculate_DoublesOnlyBirdPlayer_WhenBirdHitsLoserOnSelfDraw()
+    public void Calculate_SelfDrawBirdOnLoser_AppliesNoBonus()
     {
+        // Per canonical mahjongpros rules (and Ishikawa final audit 2026-05-08
+        // NEW-2): on self-draw, only birds matching the WINNER's seat double or
+        // triple the payment. Birds landing on losing seats are ignored.
         var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
             BuildSeats(),
             WinnerId: SouthId,
@@ -76,8 +79,8 @@ public sealed class ChangshaSettlementCalculatorTests
             BirdRank: 3));
 
         DeltaFor(result, EastId).Should().Be(-20);
-        DeltaFor(result, SouthId).Should().Be(+50);
-        DeltaFor(result, WestId).Should().Be(-20);
+        DeltaFor(result, SouthId).Should().Be(+40);
+        DeltaFor(result, WestId).Should().Be(-10);
         DeltaFor(result, NorthId).Should().Be(-10);
         result.BirdSeat.Should().Be(Wind.West);
     }
@@ -151,8 +154,11 @@ public sealed class ChangshaSettlementCalculatorTests
     }
 
     [Fact]
-    public void Calculate_TwoBirds_BothHitSameLoser_ApplyExtraPaymentPerBird()
+    public void Calculate_TwoBirds_BothHitSameLoser_AppliesNoBonusOnSelfDraw()
     {
+        // Per canonical mahjongpros rules (and Ishikawa final audit 2026-05-08
+        // NEW-2): on self-draw, only winner-matched birds count. Multiple birds
+        // landing on the same losing seat are ignored.
         var result = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
             BuildSeats(),
             WinnerId: SouthId,
@@ -162,8 +168,8 @@ public sealed class ChangshaSettlementCalculatorTests
             BirdRanks: [3, 7]));
 
         DeltaFor(result, EastId).Should().Be(-20);
-        DeltaFor(result, SouthId).Should().Be(+60);
-        DeltaFor(result, WestId).Should().Be(-30);
+        DeltaFor(result, SouthId).Should().Be(+40);
+        DeltaFor(result, WestId).Should().Be(-10);
         DeltaFor(result, NorthId).Should().Be(-10);
     }
 
@@ -218,6 +224,34 @@ public sealed class ChangshaSettlementCalculatorTests
         DeltaFor(result, SouthId).Should().Be(+520);
         DeltaFor(result, WestId).Should().Be(-120);
         DeltaFor(result, NorthId).Should().Be(-120);
+    }
+
+    [Fact]
+    public void Calculate_SelfDrawBirdOnLoserButNotWinner_AppliesNoBirdBonus()
+    {
+        // Regression for Ishikawa final audit 2026-05-08 NEW-2: on self-draw,
+        // birds must match the WINNER's seat to count. Birds landing on
+        // losing seats (winner has no bird match) must NOT charge any extra
+        // payment — totals must equal the no-bird baseline.
+        var noBird = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
+            BuildSeats(),
+            WinnerId: SouthId,
+            DealerId: EastId,
+            IsSelfDraw: true,
+            IsBigWin: false));
+
+        var withLoserBird = ChangshaSettlementCalculator.Calculate(new ChangshaSettlementRequest(
+            BuildSeats(),
+            WinnerId: SouthId,
+            DealerId: EastId,
+            IsSelfDraw: true,
+            IsBigWin: false,
+            BirdRanks: [3, 7, 4, 8]));
+
+        DeltaFor(withLoserBird, EastId).Should().Be(DeltaFor(noBird, EastId));
+        DeltaFor(withLoserBird, SouthId).Should().Be(DeltaFor(noBird, SouthId));
+        DeltaFor(withLoserBird, WestId).Should().Be(DeltaFor(noBird, WestId));
+        DeltaFor(withLoserBird, NorthId).Should().Be(DeltaFor(noBird, NorthId));
     }
 
     private static IReadOnlyList<ChangshaSettlementSeat> BuildSeats()

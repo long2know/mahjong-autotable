@@ -212,7 +212,12 @@ public sealed class ChangshaWinTypeEvaluatorTests
             new ChangshaWinContext(IsInitialDeal: true));
 
         evaluation.WinTypes.Should().Contain(ChangshaWinType.SanTong);
-        evaluation.IsBigWin.Should().BeTrue();
+        // SanTong (三同) is a Starting Hand Instant Win classified as Small per
+        // canonical mahjongpros rules — see Ishikawa final audit 2026-05-08
+        // (NEW-1). Previously this test asserted IsBigWin = true; that assertion
+        // was wrong.
+        evaluation.IsBigWin.Should().BeFalse();
+        evaluation.IsSmallWin.Should().BeTrue();
     }
 
     [Fact]
@@ -252,6 +257,75 @@ public sealed class ChangshaWinTypeEvaluatorTests
             new ChangshaWinContext(IsInitialDeal: true));
 
         evaluation.WinTypes.Should().NotContain(ChangshaWinType.SanTong);
+    }
+
+    [Fact]
+    public void Evaluate_SanTongOnly_IsClassifiedAsSmallWin_NotBigWin()
+    {
+        // Regression for Ishikawa final audit 2026-05-08 NEW-1: SanTong (三同)
+        // is a Starting Hand Instant Win classified as Small per canonical
+        // mahjongpros rules — it must settle at small-win amounts, not big-win.
+        List<Tile> sanTongTiles =
+        [
+            new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5),
+            new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3), new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 2)
+        ];
+
+        var hand = ResolveWinningHand(sanTongTiles);
+        var evaluation = ChangshaWinTypeEvaluator.Evaluate(
+            sanTongTiles,
+            hand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        evaluation.WinTypes.Should().Contain(ChangshaWinType.SanTong);
+        evaluation.IsBigWin.Should().BeFalse();
+        evaluation.IsSmallWin.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Evaluate_SanTongClassification_MatchesPeerSmallStartingHand_MissingOneSuit()
+    {
+        // SanTong should classify the same way (small-win) as the peer Starting
+        // Hand Instant Win Condition "MissingOneSuit" — both are listed under
+        // mahjongpros §"Starting Hand Instant Win Conditions" as Small Wins.
+        List<Tile> sanTongTiles =
+        [
+            new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5), new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5), new Tile(TileSuit.Bamboos, 5),
+            new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 3), new Tile(TileSuit.Characters, 4),
+            new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 2)
+        ];
+
+        var sanTongHand = ResolveWinningHand(sanTongTiles);
+        var sanTong = ChangshaWinTypeEvaluator.Evaluate(
+            sanTongTiles,
+            sanTongHand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        List<Tile> twoSuitTiles =
+        [
+            new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 2), new Tile(TileSuit.Characters, 2),
+            new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5), new Tile(TileSuit.Characters, 5),
+            new Tile(TileSuit.Dots, 3), new Tile(TileSuit.Dots, 4), new Tile(TileSuit.Dots, 5),
+            new Tile(TileSuit.Dots, 6), new Tile(TileSuit.Dots, 7), new Tile(TileSuit.Dots, 8),
+            new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 2)
+        ];
+        var twoSuitHand = ResolveWinningHand(twoSuitTiles);
+        var missingOneSuit = ChangshaWinTypeEvaluator.Evaluate(
+            twoSuitTiles,
+            twoSuitHand,
+            new ChangshaWinContext(IsInitialDeal: true));
+
+        missingOneSuit.WinTypes.Should().Contain(ChangshaWinType.MissingOneSuit);
+        missingOneSuit.IsBigWin.Should().BeFalse();
+        missingOneSuit.IsSmallWin.Should().BeTrue();
+
+        sanTong.IsBigWin.Should().Be(missingOneSuit.IsBigWin);
+        sanTong.IsSmallWin.Should().Be(missingOneSuit.IsSmallWin);
     }
 
     private static WinningHand ResolveWinningHand(IReadOnlyList<Tile> tiles)
