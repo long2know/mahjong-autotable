@@ -422,7 +422,7 @@ public static class BotDiscardAdvisor
         if (visibleMeldCounts.Count > 0)
         {
             var opponentKongThreatTiles = visibleMeldCounts
-                .Where(entry => entry.Value == 3)
+                .Where(entry => entry.Value == 3 || entry.Value >= 6)
                 .Select(entry => entry.Key)
                 .Where(tile =>
                 {
@@ -515,6 +515,23 @@ public static class BotDiscardAdvisor
                 if (offHonorCandidates.Count > 0)
                 {
                     candidates = offHonorCandidates;
+                }
+            }
+
+            if (meldTiles.Count == 0)
+            {
+                var orphanCount = ownedTiles.Count(tile => tile.IsHonor || IsTerminalSuitedTile(tile));
+                var nonOrphanCount = ownedTiles.Count - orphanCount;
+                if (orphanCount >= 11 && nonOrphanCount is > 0 and <= 3)
+                {
+                    var nonOrphanCandidates = candidates
+                        .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
+                        .ToList();
+
+                    if (nonOrphanCandidates.Count > 0)
+                    {
+                        candidates = nonOrphanCandidates;
+                    }
                 }
             }
         }
@@ -1744,7 +1761,7 @@ public static class BotDiscardAdvisor
         }
 
         visibleMeldCounts.TryGetValue(tile, out var meldCount);
-        return meldCount == 3 ? OpponentKongFeedAvoidBonus : 0;
+        return meldCount == 3 || meldCount >= 6 ? OpponentKongFeedAvoidBonus : 0;
     }
 
     private static int GetDeadAdjacencyPenalty(
