@@ -408,7 +408,7 @@ public static class BotDiscardAdvisor
         if (visibleMeldCounts.Count > 0)
         {
             var opponentKongThreatTiles = visibleMeldCounts
-                .Where(entry => entry.Value >= 3)
+                .Where(entry => entry.Value == 3)
                 .Select(entry => entry.Key)
                 .Where(tile =>
                 {
@@ -1730,7 +1730,7 @@ public static class BotDiscardAdvisor
         }
 
         visibleMeldCounts.TryGetValue(tile, out var meldCount);
-        return meldCount >= 3 ? OpponentKongFeedAvoidBonus : 0;
+        return meldCount == 3 ? OpponentKongFeedAvoidBonus : 0;
     }
 
     private static int GetDeadAdjacencyPenalty(
