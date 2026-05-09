@@ -247,6 +247,20 @@ public static class BotDiscardAdvisor
                         }
                     }
                 }
+
+                if (liveSmallWinSingletons.Count > 0 && deadSmallWinSingletons.Count > 0)
+                {
+                    var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
+                    var deadSingletonCandidates = candidates
+                        .Where(candidate => deadTiles.Contains(candidate.Tile)
+                            && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts))
+                        .ToList();
+
+                    if (deadSingletonCandidates.Count > 0)
+                    {
+                        candidates = deadSingletonCandidates;
+                    }
+                }
             }
         }
 
