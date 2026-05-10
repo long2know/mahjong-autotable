@@ -424,21 +424,6 @@ public static class BotDiscardAdvisor
             var opponentKongThreatTiles = visibleMeldCounts
                 .Where(entry => entry.Value == 3 || entry.Value >= 6)
                 .Select(entry => entry.Key)
-                .Where(tile =>
-                {
-                    handCounts.TryGetValue(tile, out var handCount);
-                    if (handCount == 1)
-                    {
-                        ownedCounts.TryGetValue(tile, out var ownedCount);
-                        visibleCounts.TryGetValue(tile, out var visibleCount);
-                        if (4 - ownedCount - visibleCount <= 0)
-                        {
-                            return false;
-                        }
-                    }
-
-                    return true;
-                })
                 .ToHashSet();
 
             if (opponentKongThreatTiles.Count > 0)

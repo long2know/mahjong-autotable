@@ -2606,4 +2606,36 @@ public class BotDiscardAdvisorTests
 
         tiles[discardIndex].Should().Be(new Tile(TileSuit.Winds, 0, Wind.East));
     }
+
+    [Fact]
+    public void SelectDiscardIndex_AvoidsLastCopyWhenOpponentHasPromotedKongThreat()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8),
+            new(TileSuit.Bamboos, 2)
+        };
+
+        var opponentMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 2),
+            new(TileSuit.Bamboos, 2)
+        };
+
+        var visibleTiles = opponentMeldTiles.ToList();
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            opponentMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Bamboos, 2));
+    }
 }
