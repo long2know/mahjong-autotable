@@ -100,6 +100,9 @@ public static class BotDiscardAdvisor
             enforceSmallWinPairBias = false;
         }
 
+        var hasSmallWinTileInHand = enforceSmallWinPairBias
+            && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
+
         var forcedDiscardIndex = TrySelectChangshaDeadSmallWinSingletonDiscardIndex(
             handTiles,
             handCounts,
@@ -112,12 +115,9 @@ public static class BotDiscardAdvisor
             return forcedDiscardIndex.Value;
         }
 
-        var hasSmallWinTileInHand = enforceSmallWinPairBias
-            && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
-
         var hasStrongSmallWinPairCandidate = enforceSmallWinPairBias && visibleCounts.Count > 0
             ? HasStrongSmallWinPairCandidate(handCounts, ownedCounts, visibleCounts)
-            : hasLiveSmallWinPairCandidate;
+            : hasSmallWinTileInHand;
 
         Tile? lastSmallWinSingleton = null;
         if (enforceSmallWinPairBias)

@@ -366,6 +366,22 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotBreakOnlyPair_WhenNoSmallWinTilesInHand()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 4), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Should().NotBe(new Tile(TileSuit.Characters, 3));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrefersBreakingNonSmallWinPair_WhenSmallWinPairStillPossible()
     {
         var tiles = new List<Tile>
