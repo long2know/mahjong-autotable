@@ -10,6 +10,7 @@ public static class BotDiscardAdvisor
     private static readonly IReadOnlyList<Tile> Changsha258SmallWinPairTiles = BuildChangshaSmallWinPairTiles();
     private const int LastSmallWinSingletonKeepBonus = 12;
     private const int OpponentKongFeedAvoidBonus = 12;
+    private const int OpponentKongFeedLastCopyAvoidBonus = 10;
     private const int OpponentKongFeedOutsTolerance = 1;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
@@ -164,6 +165,11 @@ public static class BotDiscardAdvisor
                 ownedCounts.TryGetValue(tile, out var ownedCount);
                 visibleCounts.TryGetValue(tile, out var visibleCount);
                 var remainingCopies = Math.Max(0, 4 - ownedCount - visibleCount);
+                var opponentKongFeedBonus = GetOpponentMeldKongAvoidBonus(tile, visibleMeldCounts);
+                var lastCopyKongFeedBonus = opponentKongFeedBonus > 0 && remainingCopies == 0
+                    ? OpponentKongFeedLastCopyAvoidBonus
+                    : 0;
+
                 return new
                 {
                     Tile = tile,
@@ -189,7 +195,8 @@ public static class BotDiscardAdvisor
                             visibleCounts,
                             ruleset,
                             enforceSmallWinPairBias)
-                        + GetOpponentMeldKongAvoidBonus(tile, visibleMeldCounts)
+                        + opponentKongFeedBonus
+                        + lastCopyKongFeedBonus
                         + (lastSmallWinSingleton is not null && tile.Equals(lastSmallWinSingleton)
                             ? LastSmallWinSingletonKeepBonus
                             : 0),
@@ -545,7 +552,7 @@ public static class BotDiscardAdvisor
         {
             var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
             var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
-            if (honorCount >= 10 && suitedCount is > 0 and <= 2)
+            if (honorCount >= 9 && suitedCount is > 0 and <= 3)
             {
                 var offHonorCandidates = candidates
                     .Where(candidate => !candidate.Tile.IsHonor)
