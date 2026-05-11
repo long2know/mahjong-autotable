@@ -293,6 +293,60 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && visibleCounts.Count > 0
+            && changshaSmallWinPairCount > 1
+            && !filteredByDeadOffRankPair)
+        {
+            var smallWinPairEntries = handCounts
+                .Where(entry => entry.Value == 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                .Select(entry =>
+                {
+                    ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                    visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                    return new
+                    {
+                        Tile = entry.Key,
+                        RemainingCopies = 4 - ownedCount - visibleCount
+                    };
+                })
+                .ToList();
+
+            var liveSmallWinPairs = smallWinPairEntries
+                .Where(entry => entry.RemainingCopies > 0)
+                .ToList();
+            var deadSmallWinPairs = smallWinPairEntries
+                .Where(entry => entry.RemainingCopies <= 0)
+                .ToList();
+
+            if (liveSmallWinPairs.Count > 0 && deadSmallWinPairs.Count > 0)
+            {
+                var deadTiles = deadSmallWinPairs.Select(entry => entry.Tile).ToHashSet();
+                var deadPairCandidates = candidates
+                    .Where(candidate => deadTiles.Contains(candidate.Tile))
+                    .ToList();
+
+                if (deadPairCandidates.Count > 0)
+                {
+                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestOverallOutCopies = candidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var bestDeadOuts = deadPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestDeadOutCopies = deadPairCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestDeadOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    if (bestDeadOuts == bestOverallOuts && bestDeadOutCopies == bestOverallOutCopies)
+                    {
+                        candidates = deadPairCandidates;
+                    }
+                }
+            }
+        }
+
         if (changshaSmallWinPairCount >= 1 && !filteredByDeadOffRankPair)
         {
             var deadSingletonCandidates = candidates
