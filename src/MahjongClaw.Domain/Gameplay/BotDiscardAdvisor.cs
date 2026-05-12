@@ -1308,24 +1308,31 @@ public static class BotDiscardAdvisor
                 .Append(drawTileType)
                 .ToList();
 
-            if (RulesetHandAnalyzer.TryGetWinningHand(candidateHand, ruleset, out var winningHand))
+            if (!RulesetHandAnalyzer.TryGetWinningHand(candidateHand, ruleset, out var winningHand))
             {
-                winningDrawOuts++;
-                winningDrawOutCopies += remainingCopies;
+                continue;
+            }
 
-                if (ruleset == MahjongRuleset.Changsha258 && winningHand is not null)
+            if (winningHand is null || !ScoreCalculator.MeetsRulesetMinimumFan(winningHand, ruleset))
+            {
+                continue;
+            }
+
+            winningDrawOuts++;
+            winningDrawOutCopies += remainingCopies;
+
+            if (ruleset == MahjongRuleset.Changsha258)
+            {
+                var evaluation = ChangshaWinTypeEvaluator.Evaluate(candidateHand, winningHand);
+                if (evaluation.IsBigWin)
                 {
-                    var evaluation = ChangshaWinTypeEvaluator.Evaluate(candidateHand, winningHand);
-                    if (evaluation.IsBigWin)
-                    {
-                        bigWinDrawOuts++;
-                        bigWinDrawOutCopies += remainingCopies;
-                    }
-                    else
-                    {
-                        smallWinDrawOuts++;
-                        smallWinDrawOutCopies += remainingCopies;
-                    }
+                    bigWinDrawOuts++;
+                    bigWinDrawOutCopies += remainingCopies;
+                }
+                else
+                {
+                    smallWinDrawOuts++;
+                    smallWinDrawOutCopies += remainingCopies;
                 }
             }
         }
