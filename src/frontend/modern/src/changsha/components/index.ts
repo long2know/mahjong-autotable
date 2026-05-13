@@ -6,3 +6,5 @@ export { FanBreakdownPanel } from './FanBreakdownPanel';
 export { PlayerHandPanel } from './PlayerHandPanel';
 export { TileFace } from './TileFace';
 export { ClaimPromptModal } from './ClaimPromptModal';
+export { LobbyCard } from './LobbyCard';
+export { OpponentDiscardTrays } from './OpponentDiscardTrays';

@@ -136,6 +136,40 @@ export interface GameEndedEvent {
   winner: { seatIndex: number; score: number };
 }
 
+/**
+ * Server-issued snapshot sent on JoinTable / ReconnectGame.
+ * `seats[*].concealedTiles` is populated only for the seat owned by the
+ * requesting client; for everyone else only the count is sent.
+ */
+export interface SeatStateSnapshot {
+  seatIndex: number;
+  playerId?: string;
+  isBot: boolean;
+  seatWind?: Wind;
+  score: number;
+  tileCount: number;
+  concealedTiles: number[] | null;
+  melds: MeldState[];
+  discards: number[];
+}
+export interface FullStateEvent {
+  gameId: string;
+  ruleSet: 'changsha-v1';
+  phase: string;
+  bankerSeatIndex: number;
+  roundWind: Wind;
+  handNumber: number;
+  roundNumber: number;
+  wallRemaining: number;
+  activeSeatIndex?: number;
+  lastDice?: DiceResult;
+  breakPoint?: BreakPoint;
+  seats: SeatStateSnapshot[];
+  discardPile: Array<{ tileId: number; seatIndex: number }>;
+  pendingClaims?: ClaimOpportunity[];
+  lastWin?: WinResult;
+}
+
 export interface ServerEventHandlers {
   GameCreated?: (p: GameCreatedEvent) => void;
   PlayerSeated?: (p: PlayerSeatedEvent) => void;
@@ -155,6 +189,7 @@ export interface ServerEventHandlers {
   RoundChanged?: (p: RoundChangedEvent) => void;
   HandFinished?: (p: HandFinishedEvent) => void;
   GameEnded?: (p: GameEndedEvent) => void;
+  FullState?: (p: FullStateEvent) => void;
 }
 
 const SERVER_EVENT_NAMES: (keyof ServerEventHandlers)[] = [
@@ -176,6 +211,7 @@ const SERVER_EVENT_NAMES: (keyof ServerEventHandlers)[] = [
   'RoundChanged',
   'HandFinished',
   'GameEnded',
+  'FullState',
 ];
 
 // ── Client → Server command payloads ──────────────────────────────
@@ -190,7 +226,10 @@ export interface JoinTablePayload {
 }
 export interface TakeSeatPayload {
   gameId: string;
-  seatIndex: number;
+  /** Optional — server picks an empty seat when omitted (`int?` on hub). */
+  seatIndex?: number | null;
+  /** Optional displayed player name (e.g. for non-bot user). */
+  playerName?: string;
 }
 export interface StartGamePayload {
   gameId: string;
@@ -223,6 +262,13 @@ export interface DeclareWinPayload {
   seatIndex: number;
 }
 export interface PassPayload {
+  gameId: string;
+  seatIndex: number;
+}
+export interface FillWithBotsPayload {
+  gameId: string;
+}
+export interface ReconnectGamePayload {
   gameId: string;
   seatIndex: number;
 }
@@ -279,36 +325,56 @@ export function attachServerEventHandlers(
 }
 
 // ── Strongly-typed invoke wrappers ────────────────────────────────
+//
+// IMPORTANT: SignalR's `connection.invoke(method, ...args)` passes args to
+// the .NET hub POSITIONALLY. Earlier versions of this file used to send
+// payload objects (e.g. `c.invoke('CreateGame', { ruleSet, … })`); the .NET
+// hub would silently bind the whole object to the first parameter and
+// coerce nonsense values everywhere else. The wrappers below mirror each
+// hub method's signature one positional argument at a time.
 
 export const invoke = {
-  createGame: (c: HubConnection, p: CreateGamePayload): Promise<{ gameId: string }> =>
-    c.invoke('CreateGame', p),
+  createGame: (
+    c: HubConnection,
+    p: CreateGamePayload
+  ): Promise<{ gameId: string }> =>
+    c.invoke('CreateGame', p.ruleSet, p.botSeatIndexes ?? null, p.seed ?? null),
   joinTable: (c: HubConnection, p: JoinTablePayload): Promise<{ success: boolean }> =>
-    c.invoke('JoinTable', p),
+    c.invoke('JoinTable', p.gameId),
   takeSeat: (
     c: HubConnection,
     p: TakeSeatPayload
-  ): Promise<{ success: boolean; seatIndex: number }> => c.invoke('TakeSeat', p),
+  ): Promise<{ success: boolean; seatIndex: number }> =>
+    c.invoke('TakeSeat', p.gameId, p.seatIndex ?? null),
+  fillWithBots: (
+    c: HubConnection,
+    p: FillWithBotsPayload
+  ): Promise<{ success: boolean }> => c.invoke('FillWithBots', p.gameId),
   startGame: (c: HubConnection, p: StartGamePayload): Promise<{ success: boolean }> =>
-    c.invoke('StartGame', p),
+    c.invoke('StartGame', p.gameId),
   rollDice: (c: HubConnection, p: RollDicePayload): Promise<{ dice: DiceResult }> =>
-    c.invoke('RollDice', p),
+    c.invoke('RollDice', p.gameId),
   acknowledgeDeal: (c: HubConnection, p: AcknowledgeDealPayload): Promise<void> =>
-    c.invoke('AcknowledgeDeal', p),
-  discard: (c: HubConnection, p: DiscardPayload): Promise<void> => c.invoke('Discard', p),
-  claim: (c: HubConnection, p: ClaimPayload): Promise<void> => c.invoke('Claim', p),
+    c.invoke('AcknowledgeDeal', p.gameId, p.seatIndex),
+  discard: (c: HubConnection, p: DiscardPayload): Promise<void> =>
+    c.invoke('Discard', p.gameId, p.seatIndex, p.tileId),
+  claim: (c: HubConnection, p: ClaimPayload): Promise<void> =>
+    c.invoke('Claim', p.gameId, p.seatIndex, p.type, p.tileIds ?? null),
   declareKong: (c: HubConnection, p: DeclareKongPayload): Promise<void> =>
-    c.invoke('DeclareKong', p),
+    c.invoke('DeclareKong', p.gameId, p.seatIndex, p.tileIds),
   declareWin: (c: HubConnection, p: DeclareWinPayload): Promise<void> =>
-    c.invoke('DeclareWin', p),
-  pass: (c: HubConnection, p: PassPayload): Promise<void> => c.invoke('Pass', p),
+    c.invoke('DeclareWin', p.gameId, p.seatIndex),
+  pass: (c: HubConnection, p: PassPayload): Promise<void> =>
+    c.invoke('Pass', p.gameId, p.seatIndex),
   /**
-   * Reconnect after a transport interruption. The contract specifies that
-   * clients re-send JoinTable to trigger event-log replay; we expose this
-   * as a separate method name for clarity at the hook layer.
+   * Reconnect after a transport interruption. The hub's ReconnectGame
+   * method takes (gameId, seatIndex) and replays a FullState event.
    */
-  reconnectGame: (c: HubConnection, p: JoinTablePayload): Promise<{ success: boolean }> =>
-    c.invoke('JoinTable', p),
+  reconnectGame: (
+    c: HubConnection,
+    p: ReconnectGamePayload
+  ): Promise<{ success: boolean }> =>
+    c.invoke('ReconnectGame', p.gameId, p.seatIndex),
 };
 
 export type ConnectionStatus =

@@ -6,6 +6,12 @@
  * Pair with useChangshaMockGame for offline/dev work; useChangshaGame
  * (in ./useChangshaGame.ts) selects between the two based on env + a
  * localStorage override.
+ *
+ * Phase 3 additions:
+ *   - Lobby actions: createGame, fillWithBots, takeSeat, startGame,
+ *     reconnectGame, leaveGame.
+ *   - localStorage persistence for game id / seat / player name so a
+ *     refresh mid-hand reconnects automatically via ReconnectGame.
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { HubConnection } from '@microsoft/signalr';
@@ -24,33 +30,63 @@ import {
 } from './changshaReducer';
 import type { ClaimType, SeatIndex } from './types';
 
+export const LS_KEYS = {
+  gameId: 'mj-autotable:changsha:gameId',
+  seatIndex: 'mj-autotable:changsha:seatIndex',
+  playerName: 'mj-autotable:changsha:playerName',
+} as const;
+
+function readLS(key: string): string | null {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+  } catch {
+    return null;
+  }
+}
+function writeLS(key: string, value: string | null) {
+  try {
+    if (typeof window === 'undefined') return;
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  } catch {
+    // ignore — private browsing or quota
+  }
+}
+
 export interface UseLiveChangshaOptions {
   hubUrl?: string;
-  /** Auto-create a game on first connect using this seed (dev convenience). */
-  autoCreateOnConnect?: boolean;
-  /** Local seat index this client controls. */
+  /** Local seat index this client controls (default 0). */
   userSeat?: SeatIndex;
 }
 
-export interface ChangshaActions {
+export interface ChangshaLiveActions {
   rollDice: () => void;
   confirmDice: () => void;
   dealMock: () => void;
   discard: (tileId: number) => void;
   simulateClaimWindow: () => void;
-  resolveClaim: (claimType: string | null) => void;
+  resolveClaim: (claimType: string | null, tileIds?: number[]) => void;
   simulateWin: () => void;
   continueAfterScoring: () => void;
   resetDemo: () => void;
-  // Live-only commands (ignored by mock; safe to call regardless)
   declareKong: (tileIds: number[]) => void;
   declareWin: () => void;
   pass: () => void;
+  // Lobby orchestration (Phase 3)
+  createGame: (opts?: {
+    seed?: number;
+    botSeatIndexes?: number[];
+  }) => Promise<string | null>;
+  fillWithBots: () => Promise<void>;
+  takeSeat: (seatIndex: SeatIndex, playerName?: string) => Promise<void>;
+  startGame: () => Promise<void>;
+  reconnectGame: (gameId: string, seatIndex: SeatIndex) => Promise<boolean>;
+  leaveGame: () => void;
 }
 
-export interface UseChangshaGameResult {
+export interface UseLiveChangshaResult {
   state: ReturnType<typeof initialChangshaState>;
-  actions: ChangshaActions;
+  actions: ChangshaLiveActions;
   connectionStatus: ConnectionStatus;
   lastError?: { code?: string; message: string };
   isLive: true;
@@ -59,8 +95,21 @@ export interface UseChangshaGameResult {
 
 export function useLiveChangshaGame(
   opts: UseLiveChangshaOptions = {}
-): UseChangshaGameResult {
-  const userSeat: SeatIndex = opts.userSeat ?? 0;
+): UseLiveChangshaResult {
+  const initialSeat: SeatIndex = (() => {
+    const ls = readLS(LS_KEYS.seatIndex);
+    if (ls !== null) {
+      const n = Number.parseInt(ls, 10);
+      if (n >= 0 && n <= 3) return n as SeatIndex;
+    }
+    return opts.userSeat ?? 0;
+  })();
+  const [userSeat, setUserSeat] = useState<SeatIndex>(initialSeat);
+  const userSeatRef = useRef<SeatIndex>(initialSeat);
+  useEffect(() => {
+    userSeatRef.current = userSeat;
+  }, [userSeat]);
+
   const [state, dispatch] = useReducer(changshaReducer, undefined, initialChangshaState);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [lastError, setLastError] = useState<{ code?: string; message: string } | undefined>();
@@ -68,9 +117,11 @@ export function useLiveChangshaGame(
   const gameIdRef = useRef<string>('');
   const [reconnectNonce, setReconnectNonce] = useState(0);
 
-  // Track gameId from state for invokes
   useEffect(() => {
-    if (state.gameId) gameIdRef.current = state.gameId;
+    if (state.gameId) {
+      gameIdRef.current = state.gameId;
+      writeLS(LS_KEYS.gameId, state.gameId);
+    }
   }, [state.gameId]);
 
   // Open & manage the connection lifecycle
@@ -96,27 +147,40 @@ export function useLiveChangshaGame(
       RoundChanged: (p) => dispatch({ type: 'RoundChanged', payload: p }),
       HandFinished: (p) => dispatch({ type: 'HandFinished', payload: p }),
       GameEnded: (p) => dispatch({ type: 'GameEnded', payload: p }),
+      FullState: (p) => dispatch({ type: 'FullState', payload: p }),
     };
 
     const conn = createChangshaConnection({
       hubUrl: opts.hubUrl,
-      seatIndex: userSeat,
     });
     connRef.current = conn;
 
     const detach = attachServerEventHandlers(conn, handlers);
 
+    const tryRehydrate = (c: HubConnection) => {
+      const persistedGameId = readLS(LS_KEYS.gameId);
+      const persistedSeatRaw = readLS(LS_KEYS.seatIndex);
+      if (!persistedGameId) return;
+      const persistedSeat = persistedSeatRaw !== null ? Number.parseInt(persistedSeatRaw, 10) : NaN;
+      const seatToUse: SeatIndex =
+        Number.isFinite(persistedSeat) && persistedSeat >= 0 && persistedSeat <= 3
+          ? (persistedSeat as SeatIndex)
+          : userSeatRef.current;
+      invoke
+        .reconnectGame(c, { gameId: persistedGameId, seatIndex: seatToUse })
+        .catch((err) => {
+          // Game probably no longer exists; clear stale persisted state.
+          if (typeof err?.message === 'string' && /not found|notFound|gameNotFound/i.test(err.message)) {
+            writeLS(LS_KEYS.gameId, null);
+          }
+          setLastError({ message: `Reconnect rehydrate failed: ${String(err?.message ?? err)}` });
+        });
+    };
+
     conn.onreconnecting(() => setConnectionStatus('reconnecting'));
     conn.onreconnected(() => {
       setConnectionStatus('connected');
-      // Rehydrate via JoinTable replay if we know our game id.
-      if (gameIdRef.current) {
-        invoke
-          .reconnectGame(conn, { gameId: gameIdRef.current })
-          .catch((err) =>
-            setLastError({ message: `Reconnect rehydrate failed: ${String(err?.message ?? err)}` })
-          );
-      }
+      tryRehydrate(conn);
     });
     conn.onclose((err) => {
       setConnectionStatus('disconnected');
@@ -129,6 +193,7 @@ export function useLiveChangshaGame(
       .then(() => {
         if (cancelled) return;
         setConnectionStatus(describeConnectionState(conn.state));
+        tryRehydrate(conn);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -143,20 +208,30 @@ export function useLiveChangshaGame(
       connRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts.hubUrl, userSeat, reconnectNonce]);
+  }, [opts.hubUrl, reconnectNonce]);
 
   // ── Action helpers ────────────────────────────────────────────
   const guardedInvoke = useCallback(
-    async (label: string, fn: () => Promise<unknown>) => {
+    async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
       try {
-        await fn();
+        return await fn();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setLastError({ message: `${label} failed: ${msg}` });
+        return null;
       }
     },
     []
   );
+
+  const requireConnected = useCallback((label: string): HubConnection | null => {
+    const c = connRef.current;
+    if (!c || c.state !== HubConnectionState.Connected) {
+      setLastError({ message: `${label}: hub not connected` });
+      return null;
+    }
+    return c;
+  }, []);
 
   const rollDice = useCallback(() => {
     const c = connRef.current;
@@ -168,12 +243,12 @@ export function useLiveChangshaGame(
     const c = connRef.current;
     if (!c || c.state !== HubConnectionState.Connected) return;
     void guardedInvoke('AcknowledgeDeal', () =>
-      invoke.acknowledgeDeal(c, { gameId: gameIdRef.current, seatIndex: userSeat })
+      invoke.acknowledgeDeal(c, { gameId: gameIdRef.current, seatIndex: userSeatRef.current })
     );
-  }, [guardedInvoke, userSeat]);
+  }, [guardedInvoke]);
 
   const dealMock = useCallback(() => {
-    // Live server deals automatically after dice ack; this is a no-op placeholder.
+    // Live server deals automatically after StartGame; this is a no-op placeholder.
   }, []);
 
   const discard = useCallback(
@@ -181,31 +256,36 @@ export function useLiveChangshaGame(
       const c = connRef.current;
       if (!c || c.state !== HubConnectionState.Connected) return;
       void guardedInvoke('Discard', () =>
-        invoke.discard(c, { gameId: gameIdRef.current, seatIndex: userSeat, tileId })
+        invoke.discard(c, {
+          gameId: gameIdRef.current,
+          seatIndex: userSeatRef.current,
+          tileId,
+        })
       );
     },
-    [guardedInvoke, userSeat]
+    [guardedInvoke]
   );
 
   const resolveClaim = useCallback(
-    (claimType: string | null) => {
+    (claimType: string | null, tileIds?: number[]) => {
       const c = connRef.current;
       if (!c || c.state !== HubConnectionState.Connected) return;
       if (!claimType) {
         void guardedInvoke('Pass', () =>
-          invoke.pass(c, { gameId: gameIdRef.current, seatIndex: userSeat })
+          invoke.pass(c, { gameId: gameIdRef.current, seatIndex: userSeatRef.current })
         );
         return;
       }
       void guardedInvoke('Claim', () =>
         invoke.claim(c, {
           gameId: gameIdRef.current,
-          seatIndex: userSeat,
+          seatIndex: userSeatRef.current,
           type: claimType as ClaimType,
+          tileIds,
         })
       );
     },
-    [guardedInvoke, userSeat]
+    [guardedInvoke]
   );
 
   const declareKong = useCallback(
@@ -215,29 +295,114 @@ export function useLiveChangshaGame(
       void guardedInvoke('DeclareKong', () =>
         invoke.declareKong(c, {
           gameId: gameIdRef.current,
-          seatIndex: userSeat,
+          seatIndex: userSeatRef.current,
           tileIds,
         })
       );
     },
-    [guardedInvoke, userSeat]
+    [guardedInvoke]
   );
 
   const declareWin = useCallback(() => {
     const c = connRef.current;
     if (!c || c.state !== HubConnectionState.Connected) return;
     void guardedInvoke('DeclareWin', () =>
-      invoke.declareWin(c, { gameId: gameIdRef.current, seatIndex: userSeat })
+      invoke.declareWin(c, { gameId: gameIdRef.current, seatIndex: userSeatRef.current })
     );
-  }, [guardedInvoke, userSeat]);
+  }, [guardedInvoke]);
 
   const passClaim = useCallback(() => {
     const c = connRef.current;
     if (!c || c.state !== HubConnectionState.Connected) return;
     void guardedInvoke('Pass', () =>
-      invoke.pass(c, { gameId: gameIdRef.current, seatIndex: userSeat })
+      invoke.pass(c, { gameId: gameIdRef.current, seatIndex: userSeatRef.current })
     );
-  }, [guardedInvoke, userSeat]);
+  }, [guardedInvoke]);
+
+  // ── Lobby orchestration (Phase 3) ─────────────────────────────
+  const createGame = useCallback(
+    async (createOpts?: { seed?: number; botSeatIndexes?: number[] }): Promise<string | null> => {
+      const c = requireConnected('CreateGame');
+      if (!c) return null;
+      const result = await guardedInvoke('CreateGame', () =>
+        invoke.createGame(c, {
+          ruleSet: 'changsha-v1',
+          botSeatIndexes: createOpts?.botSeatIndexes,
+          seed: createOpts?.seed,
+        })
+      );
+      const gameId = result?.gameId;
+      if (gameId) {
+        gameIdRef.current = gameId;
+        writeLS(LS_KEYS.gameId, gameId);
+      }
+      return gameId ?? null;
+    },
+    [guardedInvoke, requireConnected]
+  );
+
+  const fillWithBots = useCallback(async () => {
+    const c = requireConnected('FillWithBots');
+    if (!c) return;
+    await guardedInvoke('FillWithBots', () =>
+      invoke.fillWithBots(c, { gameId: gameIdRef.current })
+    );
+  }, [guardedInvoke, requireConnected]);
+
+  const takeSeat = useCallback(
+    async (seatIndex: SeatIndex, playerName?: string) => {
+      const c = requireConnected('TakeSeat');
+      if (!c) return;
+      const result = await guardedInvoke('TakeSeat', () =>
+        invoke.takeSeat(c, {
+          gameId: gameIdRef.current,
+          seatIndex,
+          playerName,
+        })
+      );
+      const assigned = (result?.seatIndex ?? seatIndex) as SeatIndex;
+      setUserSeat(assigned);
+      userSeatRef.current = assigned;
+      writeLS(LS_KEYS.seatIndex, String(assigned));
+      if (playerName) writeLS(LS_KEYS.playerName, playerName);
+    },
+    [guardedInvoke, requireConnected]
+  );
+
+  const startGame = useCallback(async () => {
+    const c = requireConnected('StartGame');
+    if (!c) return;
+    await guardedInvoke('StartGame', () =>
+      invoke.startGame(c, { gameId: gameIdRef.current })
+    );
+  }, [guardedInvoke, requireConnected]);
+
+  const reconnectGame = useCallback(
+    async (gameId: string, seatIndex: SeatIndex): Promise<boolean> => {
+      const c = requireConnected('ReconnectGame');
+      if (!c) return false;
+      const result = await guardedInvoke('ReconnectGame', () =>
+        invoke.reconnectGame(c, { gameId, seatIndex })
+      );
+      if (result?.success) {
+        gameIdRef.current = gameId;
+        writeLS(LS_KEYS.gameId, gameId);
+        setUserSeat(seatIndex);
+        userSeatRef.current = seatIndex;
+        writeLS(LS_KEYS.seatIndex, String(seatIndex));
+        return true;
+      }
+      return false;
+    },
+    [guardedInvoke, requireConnected]
+  );
+
+  const leaveGame = useCallback(() => {
+    writeLS(LS_KEYS.gameId, null);
+    writeLS(LS_KEYS.seatIndex, null);
+    gameIdRef.current = '';
+    dispatch({ type: 'reset' });
+  }, []);
 
   const simulateClaimWindow = useCallback(() => {
     // No-op in live mode — server controls claim windows.
@@ -276,6 +441,12 @@ export function useLiveChangshaGame(
       declareKong,
       declareWin,
       pass: passClaim,
+      createGame,
+      fillWithBots,
+      takeSeat,
+      startGame,
+      reconnectGame,
+      leaveGame,
     },
     connectionStatus,
     lastError,

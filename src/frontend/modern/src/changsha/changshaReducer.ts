@@ -12,6 +12,7 @@ import type {
   SeatHand,
   SeatIndex,
   SeatInfo,
+  Tile,
   Wind,
 } from './types';
 import { tileFromId } from './tileUtils';
@@ -34,6 +35,7 @@ import type {
   RoundChangedEvent,
   HandFinishedEvent,
   GameEndedEvent,
+  FullStateEvent,
 } from './signalrClient';
 
 export type GameAction =
@@ -55,7 +57,8 @@ export type GameAction =
   | { type: 'BankerRotated'; payload: BankerRotatedEvent }
   | { type: 'RoundChanged'; payload: RoundChangedEvent }
   | { type: 'HandFinished'; payload: HandFinishedEvent }
-  | { type: 'GameEnded'; payload: GameEndedEvent };
+  | { type: 'GameEnded'; payload: GameEndedEvent }
+  | { type: 'FullState'; payload: FullStateEvent };
 
 const SEATS: SeatIndex[] = [0, 1, 2, 3];
 const SEAT_WINDS: Wind[] = ['east', 'south', 'west', 'north'];
@@ -105,6 +108,21 @@ function setHand(
 
 function asSeatIndex(n: number): SeatIndex {
   return (n % 4) as SeatIndex;
+}
+
+/**
+ * Server serializes the C# `GamePhase` enum verbatim, so phase strings
+ * arrive in PascalCase (e.g. "AwaitingDiscard") while the frontend type
+ * uses camelCase (e.g. "awaitingDiscard"). Normalise to camelCase; pass
+ * through unchanged when the string is already in the expected form.
+ */
+function phaseFromWire(raw: string | undefined): GamePhase {
+  if (!raw) return 'lobby';
+  if (raw.length === 0) return 'lobby';
+  const first = raw.charAt(0);
+  // Already camelCase — keep it.
+  if (first === first.toLowerCase()) return raw as GamePhase;
+  return (first.toLowerCase() + raw.slice(1)) as GamePhase;
 }
 
 export function changshaReducer(
@@ -202,7 +220,7 @@ export function changshaReducer(
         ...state,
         activeSeat: asSeatIndex(action.payload.seatIndex),
         wallRemaining: action.payload.wallRemaining,
-        phase: action.payload.phase as GamePhase,
+        phase: phaseFromWire(action.payload.phase as unknown as string),
       };
     }
 
@@ -227,6 +245,7 @@ export function changshaReducer(
       const { seatIndex, tileId } = action.payload;
       const si = asSeatIndex(seatIndex);
       const tile = tileFromId(tileId);
+      const prevLog = state.discardLog ?? [];
       return {
         ...state,
         hands: setHand(state, si, (h) => ({
@@ -234,6 +253,7 @@ export function changshaReducer(
           concealed: h.concealed.filter((t) => t.id !== tileId),
         })),
         discardPile: [...state.discardPile, tile],
+        discardLog: [...prevLog, { tileId, seatIndex: si }],
         phase: 'awaitingClaim',
       };
     }
@@ -245,6 +265,7 @@ export function changshaReducer(
         pendingClaims: action.payload.opportunities.map((o) => ({
           seatIndex: asSeatIndex(o.seatIndex),
           type: o.claimType,
+          tileIds: o.tileIds,
         })),
       };
     }
@@ -351,6 +372,60 @@ export function changshaReducer(
           ...s,
           score: action.payload.finalScores[s.index] ?? s.score,
         })),
+      };
+    }
+
+    case 'FullState': {
+      const p = action.payload;
+      const seats: SeatInfo[] = SEATS.map((i) => {
+        const incoming = p.seats.find((s) => s.seatIndex === i);
+        const existing = state.seats.find((s) => s.index === i);
+        return {
+          index: i,
+          nick: incoming?.playerId || existing?.nick || `Seat ${i}`,
+          isBot: incoming?.isBot ?? existing?.isBot ?? false,
+          seatWind: (incoming?.seatWind ?? existing?.seatWind ?? SEAT_WINDS[i]) as Wind,
+          score: incoming?.score ?? existing?.score ?? 0,
+        };
+      });
+      const hands: SeatHand[] = SEATS.map((i) => {
+        const incoming = p.seats.find((s) => s.seatIndex === i);
+        const concealedIds = incoming?.concealedTiles ?? null;
+        const concealed: Tile[] = concealedIds
+          ? concealedIds.map(tileFromId)
+          : (state.hands.find((h) => h.seatIndex === i)?.concealed ?? []);
+        const melds: MeldState[] = incoming?.melds ?? [];
+        return { seatIndex: i, concealed, melds };
+      });
+      const discardPile: Tile[] = p.discardPile.map((d) => tileFromId(d.tileId));
+      const discardLog = p.discardPile.map((d) => ({
+        tileId: d.tileId,
+        seatIndex: asSeatIndex(d.seatIndex),
+      }));
+      const pendingClaims = p.pendingClaims?.map((o) => ({
+        seatIndex: asSeatIndex(o.seatIndex),
+        type: o.claimType,
+        tileIds: o.tileIds,
+      }));
+      return {
+        ...state,
+        gameId: p.gameId,
+        bankerSeat: asSeatIndex(p.bankerSeatIndex),
+        prevalentWind: p.roundWind,
+        currentRound: p.roundNumber,
+        currentHand: p.handNumber,
+        seats,
+        phase: phaseFromWire(p.phase),
+        lastDice: p.lastDice ?? state.lastDice,
+        breakPoint: p.breakPoint ?? state.breakPoint,
+        hands,
+        wallRemaining: p.wallRemaining,
+        discardPile,
+        discardLog,
+        activeSeat:
+          typeof p.activeSeatIndex === 'number' ? asSeatIndex(p.activeSeatIndex) : state.activeSeat,
+        pendingClaims,
+        lastWin: p.lastWin ?? state.lastWin,
       };
     }
 

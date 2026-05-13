@@ -3,18 +3,18 @@
  *
  * Asserts that the `invoke` helpers in signalrClient.ts wrap
  * HubConnection.invoke with the contractually-correct method name and
- * payload object, that attachServerEventHandlers wires conn.on for every
- * supplied handler, and that describeConnectionState maps
- * HubConnectionState to our public ConnectionStatus values.
+ * POSITIONAL arguments (matching the .NET hub signatures verbatim), that
+ * attachServerEventHandlers wires conn.on for every supplied handler, and
+ * that describeConnectionState maps HubConnectionState to our public
+ * ConnectionStatus values.
  *
- * Notes:
- * - The wrappers pass a single payload object to .NET hubs today (the
- *   server contract documents method-name + payload). Hicks's Phase 3
- *   work-in-progress (uncommitted) flips this to positional args plus
- *   `fillWithBots` / `ReconnectGame(gameId, seatIndex)`; tests will need
- *   to follow at his PR time — for now they pin the committed shape.
- * - reconnectGame is intentionally a JoinTable alias in the committed
- *   contract; the server replays state via event-log replay.
+ * Notes (Phase 3, stlong/changsha-v1-phase3):
+ * - The wrappers now pass args positionally to .NET hubs. The earlier
+ *   shape (single payload object) silently mapped to the first parameter
+ *   on the .NET side and produced coerced garbage for the rest — see
+ *   ChangshaHub.cs for the real signatures.
+ * - reconnectGame now invokes the dedicated ReconnectGame(gameId, seatIndex)
+ *   hub method, which replays a FullState event for the requesting seat.
  * - The wrapper does not expose a state-change event of its own;
  *   disconnection observation is exercised via describeConnectionState
  *   (which the live hook in useLiveChangshaGame consumes).
@@ -59,69 +59,56 @@ function makeFakeConnection(): {
 }
 
 // ── invoke.* wrappers ─────────────────────────────────────────────────────
-// The committed wrappers send a single payload object as the second arg
-// to HubConnection.invoke. These tests pin that envelope so any drift to
-// positional-args (Hicks Phase 3 WIP) surfaces here at PR time.
+// Phase 3 contract: positional args mirroring ChangshaHub.cs.
 
 describe('signalrClient / invoke wrappers', () => {
-  it('createGame calls invoke("CreateGame", payload)', async () => {
+  it('createGame calls invoke("CreateGame", ruleSet, botSeatIndexes, seed)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
-    const payload = {
-      ruleSet: 'changsha-v1' as const,
+    await invoke.createGame(conn, {
+      ruleSet: 'changsha-v1',
       botSeatIndexes: [1, 2, 3],
       seed: 42,
-    };
-    await invoke.createGame(conn, payload);
-    expect(invokeSpy).toHaveBeenCalledWith('CreateGame', payload);
+    });
+    expect(invokeSpy).toHaveBeenCalledWith('CreateGame', 'changsha-v1', [1, 2, 3], 42);
   });
 
-  it('joinTable calls invoke("JoinTable", payload)', async () => {
+  it('joinTable calls invoke("JoinTable", gameId)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.joinTable(conn, { gameId: 'g-1' });
-    expect(invokeSpy).toHaveBeenCalledWith('JoinTable', { gameId: 'g-1' });
+    expect(invokeSpy).toHaveBeenCalledWith('JoinTable', 'g-1');
   });
 
-  it('takeSeat calls invoke("TakeSeat", payload)', async () => {
+  it('takeSeat calls invoke("TakeSeat", gameId, seatIndex)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.takeSeat(conn, { gameId: 'g-1', seatIndex: 0 });
-    expect(invokeSpy).toHaveBeenCalledWith('TakeSeat', {
-      gameId: 'g-1',
-      seatIndex: 0,
-    });
+    expect(invokeSpy).toHaveBeenCalledWith('TakeSeat', 'g-1', 0);
   });
 
-  it('startGame calls invoke("StartGame", payload)', async () => {
+  it('startGame calls invoke("StartGame", gameId)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.startGame(conn, { gameId: 'g-1' });
-    expect(invokeSpy).toHaveBeenCalledWith('StartGame', { gameId: 'g-1' });
+    expect(invokeSpy).toHaveBeenCalledWith('StartGame', 'g-1');
   });
 
-  it('rollDice calls invoke("RollDice", payload)', async () => {
+  it('rollDice calls invoke("RollDice", gameId)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.rollDice(conn, { gameId: 'g-1' });
-    expect(invokeSpy).toHaveBeenCalledWith('RollDice', { gameId: 'g-1' });
+    expect(invokeSpy).toHaveBeenCalledWith('RollDice', 'g-1');
   });
 
-  it('acknowledgeDeal calls invoke("AcknowledgeDeal", payload)', async () => {
+  it('acknowledgeDeal calls invoke("AcknowledgeDeal", gameId, seatIndex)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.acknowledgeDeal(conn, { gameId: 'g-1', seatIndex: 0 });
-    expect(invokeSpy).toHaveBeenCalledWith('AcknowledgeDeal', {
-      gameId: 'g-1',
-      seatIndex: 0,
-    });
+    expect(invokeSpy).toHaveBeenCalledWith('AcknowledgeDeal', 'g-1', 0);
   });
 
-  it('discard calls invoke("Discard", payload)', async () => {
+  it('discard calls invoke("Discard", gameId, seatIndex, tileId)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.discard(conn, { gameId: 'g-1', seatIndex: 0, tileId: 42 });
-    expect(invokeSpy).toHaveBeenCalledWith('Discard', {
-      gameId: 'g-1',
-      seatIndex: 0,
-      tileId: 42,
-    });
+    expect(invokeSpy).toHaveBeenCalledWith('Discard', 'g-1', 0, 42);
   });
 
-  it('claim calls invoke("Claim", payload) with tileIds for chow', async () => {
+  it('claim calls invoke("Claim", gameId, seatIndex, type, tileIds) for chow', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.claim(conn, {
       gameId: 'g-1',
@@ -129,60 +116,47 @@ describe('signalrClient / invoke wrappers', () => {
       type: 'chow',
       tileIds: [4, 5, 6],
     });
-    expect(invokeSpy).toHaveBeenCalledWith('Claim', {
-      gameId: 'g-1',
-      seatIndex: 1,
-      type: 'chow',
-      tileIds: [4, 5, 6],
-    });
+    expect(invokeSpy).toHaveBeenCalledWith('Claim', 'g-1', 1, 'chow', [4, 5, 6]);
   });
 
-  it('claim works without tileIds (pung / kong path)', async () => {
+  it('claim passes null tileIds when omitted (pung / kong path)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.claim(conn, { gameId: 'g-1', seatIndex: 1, type: 'pung' });
-    expect(invokeSpy).toHaveBeenCalledWith('Claim', {
-      gameId: 'g-1',
-      seatIndex: 1,
-      type: 'pung',
-    });
+    expect(invokeSpy).toHaveBeenCalledWith('Claim', 'g-1', 1, 'pung', null);
   });
 
-  it('pass calls invoke("Pass", payload)', async () => {
+  it('pass calls invoke("Pass", gameId, seatIndex)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.pass(conn, { gameId: 'g-1', seatIndex: 2 });
-    expect(invokeSpy).toHaveBeenCalledWith('Pass', {
-      gameId: 'g-1',
-      seatIndex: 2,
-    });
+    expect(invokeSpy).toHaveBeenCalledWith('Pass', 'g-1', 2);
   });
 
-  it('declareKong calls invoke("DeclareKong", payload)', async () => {
+  it('declareKong calls invoke("DeclareKong", gameId, seatIndex, tileIds)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.declareKong(conn, {
       gameId: 'g-1',
       seatIndex: 0,
       tileIds: [12, 13, 14, 15],
     });
-    expect(invokeSpy).toHaveBeenCalledWith('DeclareKong', {
-      gameId: 'g-1',
-      seatIndex: 0,
-      tileIds: [12, 13, 14, 15],
-    });
+    expect(invokeSpy).toHaveBeenCalledWith('DeclareKong', 'g-1', 0, [12, 13, 14, 15]);
   });
 
-  it('declareWin calls invoke("DeclareWin", payload)', async () => {
+  it('declareWin calls invoke("DeclareWin", gameId, seatIndex)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
     await invoke.declareWin(conn, { gameId: 'g-1', seatIndex: 0 });
-    expect(invokeSpy).toHaveBeenCalledWith('DeclareWin', {
-      gameId: 'g-1',
-      seatIndex: 0,
-    });
+    expect(invokeSpy).toHaveBeenCalledWith('DeclareWin', 'g-1', 0);
   });
 
-  it('reconnectGame is a JoinTable alias (server replays via event log)', async () => {
+  it('fillWithBots calls invoke("FillWithBots", gameId)', async () => {
     const { conn, invokeSpy } = makeFakeConnection();
-    await invoke.reconnectGame(conn, { gameId: 'g-1' });
-    expect(invokeSpy).toHaveBeenCalledWith('JoinTable', { gameId: 'g-1' });
+    await invoke.fillWithBots(conn, { gameId: 'g-1' });
+    expect(invokeSpy).toHaveBeenCalledWith('FillWithBots', 'g-1');
+  });
+
+  it('reconnectGame invokes ReconnectGame(gameId, seatIndex) and triggers FullState replay', async () => {
+    const { conn, invokeSpy } = makeFakeConnection();
+    await invoke.reconnectGame(conn, { gameId: 'g-1', seatIndex: 0 });
+    expect(invokeSpy).toHaveBeenCalledWith('ReconnectGame', 'g-1', 0);
   });
 });
 
