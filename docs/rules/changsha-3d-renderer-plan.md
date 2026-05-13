@@ -1,3 +1,7 @@
+> **⚠️ SUPERSEDED — see `.squad/decisions/inbox/ripley-pivot-plan.md`.**
+> The architecture described below was abandoned in the pivot to autotable-vendored Changsha-native. Kept for archaeology only; will be hard-deleted in Phase E.
+---
+
 # Changsha 3D Renderer — Scoping Spike
 
 > Author: Hicks (Frontend Dev) · Status: spike (read-only) · Date: 2026-05-13

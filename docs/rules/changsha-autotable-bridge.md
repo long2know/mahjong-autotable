@@ -1,3 +1,7 @@
+> **⚠️ SUPERSEDED — see `.squad/decisions/inbox/ripley-pivot-plan.md`.**
+> The architecture described below was abandoned in the pivot to autotable-vendored Changsha-native. Kept for archaeology only; will be hard-deleted in Phase E.
+---
+
 # Changsha ↔ Autotable Bridge Protocol
 
 > Status: **v1 (Phase 2)** · Owner: Hicks (Frontend Dev)

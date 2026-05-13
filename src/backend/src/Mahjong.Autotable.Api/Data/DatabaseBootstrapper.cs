@@ -11,13 +11,19 @@ public static class DatabaseBootstrapper
 
         if (db.Database.IsSqlite())
         {
-            await EnsureSqliteTableSessionColumnsAsync(db, cancellationToken);
-            await EnsureSqliteTableSessionEventsTableAsync(db, cancellationToken);
+            // Phase A (autotable-vendored pivot): drop the legacy 136-tile
+            // TableSessions + TableSessionEvents tables on startup if a
+            // pre-pivot SQLite database is still present. The EF Core entities
+            // and `/api/tables/*` REST surface have been hard-deleted; only
+            // Changsha-native tables remain. This bootstrap drop replaces a
+            // formal migration because the project never wired EF Core
+            // migrations (it relied on EnsureCreatedAsync + manual ALTERs).
+            await DropLegacyTableSessionsAsync(db, cancellationToken);
             await EnsureSqliteChangshaTablesAsync(db, cancellationToken);
         }
     }
 
-    private static async Task EnsureSqliteTableSessionColumnsAsync(AppDbContext db, CancellationToken cancellationToken)
+    private static async Task DropLegacyTableSessionsAsync(AppDbContext db, CancellationToken cancellationToken)
     {
         var connection = db.Database.GetDbConnection();
         var closeWhenDone = connection.State != ConnectionState.Open;
@@ -28,81 +34,13 @@ public static class DatabaseBootstrapper
 
         try
         {
-            var existingColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            await using (var command = connection.CreateCommand())
-            {
-                command.CommandText = "PRAGMA table_info('TableSessions');";
-                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-                while (await reader.ReadAsync(cancellationToken))
-                {
-                    existingColumns.Add(reader.GetString(1));
-                }
-            }
+            await using var dropEvents = connection.CreateCommand();
+            dropEvents.CommandText = "DROP TABLE IF EXISTS \"TableSessionEvents\";";
+            await dropEvents.ExecuteNonQueryAsync(cancellationToken);
 
-            if (!existingColumns.Contains("StateVersion"))
-            {
-                await using var alterStateVersion = connection.CreateCommand();
-                alterStateVersion.CommandText =
-                    "ALTER TABLE \"TableSessions\" ADD COLUMN \"StateVersion\" INTEGER NOT NULL DEFAULT 1;";
-                await alterStateVersion.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            if (!existingColumns.Contains("LastActionUtc"))
-            {
-                await using var alterLastAction = connection.CreateCommand();
-                alterLastAction.CommandText =
-                    "ALTER TABLE \"TableSessions\" ADD COLUMN \"LastActionUtc\" TEXT NULL;";
-                await alterLastAction.ExecuteNonQueryAsync(cancellationToken);
-            }
-        }
-        finally
-        {
-            if (closeWhenDone)
-            {
-                await connection.CloseAsync();
-            }
-        }
-    }
-
-    private static async Task EnsureSqliteTableSessionEventsTableAsync(AppDbContext db, CancellationToken cancellationToken)
-    {
-        var connection = db.Database.GetDbConnection();
-        var closeWhenDone = connection.State != ConnectionState.Open;
-        if (closeWhenDone)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        try
-        {
-            await using (var createTable = connection.CreateCommand())
-            {
-                createTable.CommandText = """
-                    CREATE TABLE IF NOT EXISTS "TableSessionEvents" (
-                        "Id" INTEGER NOT NULL CONSTRAINT "PK_TableSessionEvents" PRIMARY KEY AUTOINCREMENT,
-                        "TableSessionId" TEXT NOT NULL,
-                        "Sequence" INTEGER NOT NULL,
-                        "ActionType" TEXT NOT NULL,
-                        "SeatIndex" INTEGER NOT NULL,
-                        "TurnNumber" INTEGER NOT NULL,
-                        "TileId" INTEGER NULL,
-                        "Detail" TEXT NOT NULL,
-                        "StateVersion" INTEGER NOT NULL,
-                        "StateHash" TEXT NOT NULL,
-                        "OccurredUtc" TEXT NOT NULL,
-                        "PersistedUtc" TEXT NOT NULL,
-                        CONSTRAINT "FK_TableSessionEvents_TableSessions_TableSessionId" FOREIGN KEY ("TableSessionId") REFERENCES "TableSessions" ("Id") ON DELETE CASCADE
-                    );
-                    """;
-                await createTable.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            await using var createIndex = connection.CreateCommand();
-            createIndex.CommandText = """
-                CREATE UNIQUE INDEX IF NOT EXISTS "IX_TableSessionEvents_TableSessionId_Sequence"
-                ON "TableSessionEvents" ("TableSessionId", "Sequence");
-                """;
-            await createIndex.ExecuteNonQueryAsync(cancellationToken);
+            await using var dropSessions = connection.CreateCommand();
+            dropSessions.CommandText = "DROP TABLE IF EXISTS \"TableSessions\";";
+            await dropSessions.ExecuteNonQueryAsync(cancellationToken);
         }
         finally
         {
