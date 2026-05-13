@@ -297,14 +297,21 @@ public static class BotDiscardAdvisor
 
                 if (liveSmallWinSingletons.Count == 1)
                 {
-                    var protectedTile = liveSmallWinSingletons[0].Tile;
+                    var liveSingleton = liveSmallWinSingletons[0];
+                    var pairCount = handCounts.Count(entry => entry.Value >= 2);
+                    var protectedTile = liveSingleton.Tile;
                     var nonProtectedCandidates = candidates
                         .Where(candidate => !candidate.Tile.Equals(protectedTile))
                         .ToList();
 
                     if (nonProtectedCandidates.Count > 0)
                     {
-                        candidates = nonProtectedCandidates;
+                        var shouldProtect = liveSingleton.RemainingCopies >= 2 || pairCount != 1;
+
+                        if (shouldProtect)
+                        {
+                            candidates = nonProtectedCandidates;
+                        }
                     }
                 }
             }
@@ -609,9 +616,12 @@ public static class BotDiscardAdvisor
 
             if (meldTiles.Count == 0)
             {
-                var orphanCount = ownedTiles.Count(tile => tile.IsHonor || IsTerminalSuitedTile(tile));
-                var nonOrphanCount = ownedTiles.Count - orphanCount;
-                if (orphanCount >= 11 && nonOrphanCount is > 0 and <= 3)
+                var orphanTiles = ownedTiles
+                    .Where(tile => tile.IsHonor || IsTerminalSuitedTile(tile))
+                    .ToList();
+                var distinctOrphanTypes = orphanTiles.Distinct().Count();
+                var nonOrphanCount = ownedTiles.Count - orphanTiles.Count;
+                if (distinctOrphanTypes >= 11 && nonOrphanCount is > 0 and <= 3)
                 {
                     var nonOrphanCandidates = candidates
                         .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
