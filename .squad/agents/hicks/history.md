@@ -104,3 +104,153 @@ Learnings:
   for the new content to confirm the change stuck. (See: my Phase 3
   WIP pre-summary lost the four largest file rewrites this way; had
   to redo them from scratch this pass.)
+
+### 2026-05-13: 3D Renderer Scoping Spike
+
+Branch `stlong/changsha-3d-renderer-spike`. Deliverable:
+`docs/rules/changsha-3d-renderer-plan.md`. Read-only spike: no code
+changed, no bundle touched. Inbox memo at
+`.squad/decisions/inbox/hicks-3d-renderer-spike.md`.
+
+**Recommended strategy:** **C — Fake autotable WS server.** Collocate a
+WebSocket endpoint inside the .NET backend that speaks upstream's
+`NEW`/`JOIN`/`JOINED`/`UPDATE` collection protocol. Translate
+authoritative `ChangshaGameState` into upstream's seven collections
+(`match`, `seats`, `things`, `nicks`, `mouse`, `sound`, `dice`). Bundle
+stays byte-identical; no JavaScript modifications.
+
+**Headline finding:** The "theater" assertion is exactly correct.
+`grep -c "changsha-bridge" src/frontend/autotable/autotable.9519e86d.js`
+returns 0. The minified bundle exposes only `window.__THREE__`. There is
+no `message`-event listener and no `customEvent` listener. The receiver
+script's `CustomEvent` dispatches are completely unheard. The only
+canvas-side effect today is `document.getElementById('dice-img').style.opacity = '1'`
+from the receiver.
+
+**Surprises while reading upstream:**
+
+1. The upstream server (`server/game.ts`) has **zero game-rules
+   awareness** — it's a flat key-value store with `unique`/`ephemeral`/
+   `perPlayer` constraints. This is exactly the abstraction we want to
+   imitate: dumb storage that the React + backend pair drives. Means
+   our fake WS server can be small (~250 LOC, no game logic).
+
+2. Tile atlas mapping is **trivially compatible with Changsha v1**:
+   `upstreamTypeIndex = Math.floor(changshaTileId / 4)` for any id
+   0–107 lands cleanly in atlas cells (0,0) through (2,3) — wan, tong,
+   tiao all 1–9. No new glyphs needed; winds/dragons/red-fives at
+   atlas cells 27–36 are inert for v1.
+
+3. Dice are **not three.js meshes.** Upstream draws them on a 2D canvas
+   texture mapped onto the center pad mesh — Center.drawDice() uses
+   `ctx.drawImage(diceImg, ...)`. To show our authoritative dice it
+   suffices to push a `dice = [0, { dice: [d1,d2], state: 'rolled' }]`
+   collection update; upstream renders the result for ~1 s.
+
+4. Upstream uses **152 wall slots** (4 seats × 19 cols × 2 layers) but
+   only 136 are populated in Riichi. Changsha's 108 fit cleanly with
+   14/14/13/13 split across the four seats, leaving 44 right-edge
+   slots empty — visually correct for Changsha's wall ratio.
+
+5. Player actions are **expressed as slot-name changes**, not as
+   "discard" or "claim" semantic events. The translator's inverse
+   function (Phase 5b) has to detect patterns like
+   `things[i].slotName: hand.*@s → discard.*@s` and infer "discard".
+   Claim semantics (pung/kong/chow/hu) are genuinely ambiguous from
+   the canvas; the React modal still owns that picker.
+
+6. The bundle's `client-ui.ts` auto-reconnects 15× at 2 s intervals if
+   the WS drops. Our endpoint must stay always-available (respond to
+   JOIN with an empty UPDATE if no Changsha game is bound) to avoid
+   flapping.
+
+**Complexity estimate:** Phase 5a (walls + hands visible) **L** ~900
+LOC, 3–5 days. Phase 5b (canvas-drag discard) **M** +400 LOC, ~2 days.
+Phase 5c (batch-draw animation, SFX, break-point marker) **M** +300
+LOC, ~2 days.
+
+**Top 3 risks:** (1) silent breakage if upstream renames wall/hand/
+discard/meld slot names, (2) discard-confirmation race between fast
+drag and server echo (Phase 5b only), (3) bundle's own Deal button
+firing a Riichi deal in embedded mode if sidebar isn't hidden.
+
+**Open questions filed for Stephen:** 8 items including auto-roll
+vs click-to-roll, preserve standalone `/autotable/` sandbox?, canonical
+14/14/13/13 vs symmetric 14/13/14/13 wall split, WS endpoint path
+(`/autotable/ws` vs `/api/autotable/ws`).
+
+### 2026-05-13: Phase 5a Frontend Wiring
+
+Branch `stlong/changsha-3d-phase5a`. Wired the iframe to live Changsha
+game state and added the camera-toggle HUD button. Disjoint from
+Bishop's backend Strategy C and Hudson's parallel tests.
+
+**Shipped:**
+- `src/frontend/autotable/index.html` — `?embedded=1` sets
+  `data-changsha-embedded="1"` on `<html>`; CSS hides `#sidebar` and
+  `.seat-buttons`. Standalone `/autotable/` sandbox (Default #2)
+  preserved when the query param is absent.
+- `src/frontend/modern/src/pages/ChangshaTablePage.tsx` — exported
+  pure helper `buildAutotableIframeSrc(gameId, seatIndex?) →
+  '/autotable/?gameId=…&embedded=1&seat=…'`. `AutotableViewport`
+  receives `userSeat`, wraps `src` in `useMemo([state.gameId,
+  userSeat])` so unrelated re-renders don't reload the iframe (would
+  drop the WS). Camera button overlaid top-right (absolute,
+  `zIndex: 10`).
+- `src/frontend/modern/src/changsha/components/CameraToggleButton.tsx`
+  — Fluent UI 9 `Button` + `Tooltip` "🎥 Toggle View" (with `P`
+  keybind hint).
+- `src/frontend/autotable/changsha-bridge-receiver.js` — extended
+  with `case 'camera-toggle'`: dispatches `KeyboardEvent('keydown',
+  { key:'p', code:'KeyP', keyCode:80, which:80, bubbles:true })` on
+  `document`. Preserves the existing CustomEvent re-emission pattern.
+- `src/frontend/modern/src/changsha/autotableBridge.ts` — extended
+  the `BridgeOutboundMessage` union with `camera-toggle` so
+  `bridge.send({ type: 'camera-toggle' })` typechecks.
+
+## Learnings
+
+- **Upstream WS URL resolution (verified by reading the minified
+  bundle at offset 1003085):**
+  ```js
+  getUrl() {
+    let e = location.pathname.substring(1, location.pathname.lastIndexOf("/") + 1);
+    let t = location.protocol === "https:" ? "wss:" : "ws:";
+    return `${t}//${location.host}/${e}ws`;
+  }
+  ```
+  With iframe at `/autotable/?gameId=X` the WS lands at
+  `wss://{host}/autotable/ws`. Default #7 path is correct — Bishop's
+  endpoint at `/autotable/ws` matches with no coordination change.
+- **Bundle's auto-connect is gated on `?gameId=…` being present.**
+  `start()` (offset 1002975) reads `getUrlState()` and only calls
+  `client.join(this.url, gameId)` if the gameId is non-null. Without
+  the query param the WS stays disconnected forever. So passing
+  `gameId` in the URL is **load-bearing**, not advisory.
+- **Sidebar selectors:** `#sidebar` (the entire right rail with Deal,
+  Setup, Connect, Disconnect, More, Status) and `.seat-buttons` (the
+  four "Take seat" / "Kick" rows positioned around the table). Both
+  must hide in embedded mode — both fire upstream-protocol actions
+  that conflict with our authoritative state.
+- **Camera-toggle approach:** rather than reaching into the bundle's
+  internal `settings.perspective` element (would require a bundle-aware
+  selector), the receiver synthesizes a `keydown` event on `document`
+  with `bubbles: true`. Upstream's `Camera.onKeyDown` is attached at
+  the `window` level (offset 1011975) — bubble phase catches it. Match
+  is `case "p"` (lowercase) in the switch. Resilient to bundle
+  rebuilds: only assumes the `P` keybind exists, not any internal
+  layout.
+- **Hudson's vitest test files** in `__tests__/` add the test contract
+  (`buildAutotableIframeSrc` helper, camera-toggle keydown spec) that
+  I implemented to. Two pre-existing issues in his files surfaced
+  during my build: (a) `RECEIVER_PATH` has one too many `..` in
+  `autotableBridge.cameraToggle.test.ts`; (b) `node:fs` / `node:path`
+  / `__dirname` need `@types/node` for `tsc -b` to be clean. Both
+  flagged in handoff memo, not my files to fix.
+- **`useMemo` deps for iframe src:** `[state.gameId, userSeat]`.
+  Reload IS appropriate when these change (new game or seat change
+  drops the old WS session anyway); reload is NOT appropriate on
+  every render (would reset the bundle's three.js scene mid-game).
+  Component re-renders dozens of times per game cycle (every state
+  diff fires the `diffAndSend` effect); without `useMemo` the iframe
+  would thrash.

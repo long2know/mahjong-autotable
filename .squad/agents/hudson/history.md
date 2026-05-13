@@ -114,3 +114,29 @@ Acceptance bar exceeded by 8.
 
 **Phase 3 Status:** Merged to main in PR #25 (SHA a03feda). 47 tests covering state machine correctness and API contract stability—regression guard against future reducer/bridge/client changes.
 
+## Learnings — Phase 5a Frontend Test Coverage (2026-05-13)
+
+**Wave:** Phase 5a — Strategy C wire-up (iframe URL params, camera-toggle bridge, sidebar hide when embedded). Tests written against Hicks's actual Phase 5a commit `1c1bd4a` (landed mid-session via `git fetch`).
+
+**Frontend test count:** 48 → 60 active + 2 skipped = 62 total (delta +12 active, +2 intentionally skipped).
+
+**New test files (4):**
+- `changshaTablePage.iframeUrl.test.tsx` — 4 active tests. Imports Hicks's exported `buildAutotableIframeSrc(gameId, seatIndex?)` from `pages/ChangshaTablePage.tsx` and pins the canonical `/autotable/?gameId=&embedded=1&seat=` URL format. Spectator path (omit `seat` when `seatIndex` undefined) verified. Value-stability (same inputs → identical strings) underwrites Hicks's `useMemo([state.gameId, userSeat])` in `AutotableViewport`.
+- `autotableBridge.cameraToggle.test.ts` — 3 active tests. Loads `changsha-bridge-receiver.js` via `require('node:fs')` + `eval` inside jsdom (module-level one-time load to avoid stacked window listeners). Asserts `{ proto:'changsha-bridge/1', type:'camera-toggle' }` → synthetic `keydown(key='p', code='KeyP', bubbles:true)` on `document`. Negative control confirms wrong-proto messages are dropped.
+- `autotableBridge.embedded.test.ts` — 2 active + 2 skipped. **Active:** static fixture check parses `src/frontend/autotable/index.html` and asserts the inline `<script>` reads `URLSearchParams(...).has('embedded')` and sets `data-changsha-embedded="1"` on `<html>`, plus a CSS rule `html[data-changsha-embedded="1"] #sidebar { display:none }`. This guards against an accidental upstream re-mirror clobbering Hicks's edits. **Skipped (permanent):** manual e2e repro for runtime behavior (jsdom can't navigate to bundle HTML). **Skipped (not-implemented):** fallback receiver-based path — only used if a future refactor moves the logic into the receiver.
+- `changshaReducer.signalrIntegration.test.ts` — 3 active tests. Regression guard: snapshots the 20-discriminator `GameAction` union (alphabetically sorted), verifies `reset` restores the expected `initialChangshaState` shape (4 `SeatHand` entries with empty `concealed[]`, 4 `SeatInfo` with default east/south/west/north winds), and module-export smoke for `useChangshaGame` / `useLiveChangshaGame` / `useChangshaMockGame`.
+
+**Seams that needed mocking / scaffolding:**
+1. **Receiver script in jsdom.** Vite's `?raw` suffix is blocked by `server.fs.allow` because `src/frontend/autotable/` is outside the modern frontend root. Fell back to `require('node:fs')` with local ambient declarations (`declare const require: ...`, `declare const __dirname: string`) — frontend `tsconfig.json` intentionally omits `@types/node` to keep app code browser-only, so the test files pull node types at runtime without polluting wider build.
+2. **Receiver IIFE listener stacking.** The receiver registers `window.addEventListener('message', ...)` anonymously. Re-loading per-test would stack listeners. Solved with a module-level `receiverLoaded` guard + `ensureReceiverLoaded()` so the receiver loads exactly once per test file (per-worker isolation handles cross-file safety).
+3. **Index.html fixture parsing.** The canonical sidebar-hide implementation lives in an inline `<script>` in `index.html` — unreachable from jsdom. Static-fixture regex assertions cover the source-level invariant; the manual repro covers runtime behavior.
+
+**Skip-marked tests + un-skip instructions (2 total):**
+- `embedded: ?embedded=1 hides upstream sidebar (manual/index.html)` — **stays skipped permanently**. Manual repro path inlined in test body (verify via `http://localhost:5114/autotable/?embedded=1`). Covered statically by the index.html-parse test.
+- `embedded: fallback path via receiver` — **stays skipped** unless a future refactor moves sidebar-hide into the receiver script instead of `index.html`.
+
+**Phase 5b followups filed:** None code-blocking. Future component-render test for iframe-src memoization (mock `useChangshaGame`, render `ChangshaTablePage`, verify identity across re-renders) is noted in the decisions inbox as an optional Phase 5b hardening.
+
+**Test count delta:** +12 tests (well above 7-8 target — extras are negative controls + fixture checks that pinned more contract surface than the brief required).
+
+

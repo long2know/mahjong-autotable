@@ -791,3 +791,109 @@ Ranked by risk per effort. Numbers in `[brackets]` are estimated days.
 ## Recommendation
 
 Merge this stream's infra commit independently of Hicks's Phase 3 Stream B. The 47 tests pin a meaningful baseline of frontend correctness and create the framework for everything in the "next wave" list above. Future PRs touching the reducer, bridge, or SignalR client will surface contract drift here rather than at runtime.
+
+### 2026-05-13: 3D Renderer Spike — Strategy C Recommended
+
+**By:** Hicks (Frontend Dev)
+**Date:** 2026-05-13
+**Branch:** `stlong/changsha-3d-renderer-spike`
+**Full spike:** `docs/rules/changsha-3d-renderer-plan.md`
+
+## TL;DR
+
+The autotable 3D viewport at `/changsha` is theater. The bundled
+`autotable.9519e86d.js` registers zero listeners for the
+`changsha-bridge:*` CustomEvents the receiver dispatches, and the bundle
+exposes no JavaScript surface beyond `window.__THREE__`. The only
+observable canvas effect of the current bridge is fading in the
+`#dice-img` sprite.
+
+## Recommended strategy
+
+**Strategy C — Fake autotable WS server.** Collocate a `/autotable/ws`
+WebSocket endpoint in `Mahjong.Autotable.Api` that speaks upstream's
+`NEW`/`JOIN`/`JOINED`/`UPDATE` protocol verbatim. Translate authoritative
+`ChangshaGameState` into the seven upstream collections
+(`match`, `seats`, `things`, `nicks`, `mouse`, `sound`, `dice`). The
+bundle connects to it unchanged — same byte-identical bundle, same
+WebSocket protocol upstream has shipped for years.
+
+**Why not the others:**
+- **A (fork client.ts + rebuild):** loses byte-identity with upstream, pulls Parcel into our build, ~600–900 LOC.
+- **B (patch bundle via WebSocket proxy):** fragile across rebuilds, requires re-implementing the server's unique/ephemeral/perPlayer constraints client-side.
+- **D (re-render in React/three.js):** ~XL effort to rebuild ~3 KLOC of working three.js code (movement physics, drop shadows, hover outlines, mouse-tracker, dice sprite). High UX-payoff risk for no UX upside.
+
+## Complexity
+
+**Phase 5a (MVP, walls + dealt hands visible in 3D):** **L** —
+~900 LOC new + ~35 modified, ~3–5 days.
+
+**Phase 5b (canvas → discard):** **M** — additional ~400 LOC, ~2 days.
+
+**Phase 5c (animation polish + SFX):** **M** — additional ~300 LOC, ~2 days.
+
+## Top 3 risks
+
+1. **Upstream slot-name churn.** Translator hard-codes
+   `wall.{col}.{layer}@{seat}`, `hand.{idx}@{seat}`,
+   `discard.{r}.{c}@{seat}`, `meld.{i}.{j}@{seat}`. If upstream renames
+   any of these, integration breaks silently. Mitigation: startup
+   self-test that JOINs as a synthetic client and verifies the
+   collection shape. **Likelihood: low** — upstream protocol unchanged
+   in 3+ years.
+
+2. **Race between canvas-driven discard and server confirmation.** Once
+   Phase 5b ships canvas drag-discard, a fast player can drag a second
+   tile before the server's `TileDiscarded` echo arrives. Translator
+   must reconcile (echo wins, but bundle UX should snap-back). Owned
+   risk for Phase 5b, not 5a.
+
+3. **Bundle's own deal button fires a Riichi deal on click.** If
+   sidebar visible in embedded mode, user clicks Deal → 136-tile
+   client-side Riichi state overrides our 108-tile authoritative state
+   visually for a frame, then snaps back. Mitigation: hide sidebar via
+   `?embedded=1` URL parameter check in `index.html`.
+
+## Phase 5a expected scope
+
+**Files added (all backend):**
+- `Autotable/AutotableProtocol.cs` (~80 LOC)
+- `Autotable/AutotableSlotMap.cs` (~120 LOC)
+- `Autotable/ChangshaToAutotableTranslator.cs` (~250 LOC)
+- `Autotable/AutotableWsEndpoint.cs` (~250 LOC)
+- `test/AutotableTranslatorTests.cs` (~200 LOC)
+
+**Files edited:**
+- `Program.cs` (+~10 LOC, register WS endpoint)
+- `src/frontend/autotable/index.html` (+~5 LOC, hide sidebar when embedded)
+- `src/frontend/modern/src/pages/ChangshaTablePage.tsx` (+~20 LOC, pass `?gameId=&embedded=1` to iframe `src`)
+
+**Files NOT touched:**
+- `autotable.9519e86d.js` and every bundled asset stay byte-identical
+  (preserves the upstream-mirror guarantee in `src/frontend/autotable/README.md`).
+
+**Exit criteria for Phase 5a:**
+- ✅ All 251 existing tests still pass.
+- ✅ ~15–20 new translator/endpoint tests pass.
+- ✅ Manual: after `StartGame`, iframe shows 108 face-down wall tiles in
+  Changsha's 14/14/13/13 wall arrangement, 53 hand tiles distributed
+  4×13/14, dice on the center pad showing our authoritative roll,
+  dealer marker on the correct seat.
+- ✅ No regression in the React HUD (banker badge, dice modal, fan panel
+  continue to render correctly).
+
+## Open questions filed in the spike (for Stephen)
+
+1. Auto-roll dice vs visual click-to-roll?
+2. Preserve the standalone sandbox at `/autotable/`?
+3. Add a perspective/flat camera toggle in the React HUD or keep upstream's `P` keybind?
+4. Confirm 4-side radial discard layout (upstream) over the per-seat-stack 2D layout (Phase 3 React)?
+5. Replay animations on mid-hand reconnect or snap to state?
+6. Canonical 14/14/13/13 wall split, or simpler 14/13/14/13 symmetric?
+7. Throttling for concurrent spectator games?
+8. WS endpoint path: `/autotable/ws`, `/api/autotable/ws`, or Changsha-specific?
+
+## Status
+
+Spike-only. No code modified. Awaiting Stephen's directive to proceed
+with Phase 5a under the recommended strategy.

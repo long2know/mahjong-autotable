@@ -33,6 +33,14 @@ public interface IChangshaGameRuntime
 
     /// <summary>Test/diagnostic accessor: returns true if the game exists in memory.</summary>
     bool TryGetSnapshot(string gameId, out ChangshaGameState? state);
+
+    /// <summary>
+    /// Raised after every applied state mutation, with the affected <c>gameId</c>.
+    /// Subscribers (e.g. the autotable WS endpoint) read the current snapshot via
+    /// <see cref="TryGetSnapshot"/> and broadcast it. Handlers must not throw; the
+    /// event is intentionally fire-and-forget (synchronous invocation).
+    /// </summary>
+    event Action<string>? StateChanged;
 }
 
 public sealed class ChangshaGameRuntime : IChangshaGameRuntime
@@ -43,6 +51,8 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     private readonly ILogger<ChangshaGameRuntime> _logger;
     private readonly ConcurrentDictionary<string, ChangshaGameInstance> _games = new();
     private readonly ChangshaBotPolicy _botPolicy = new();
+
+    public event Action<string>? StateChanged;
 
     private static readonly JsonSerializerOptions SnapshotJson = new()
     {
@@ -1275,6 +1285,19 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     private async Task PersistSnapshotAsync(ChangshaGameInstance instance, CancellationToken ct)
     {
+        // Notify subscribers (e.g. AutotableWsEndpoint) on every state mutation.
+        // Done before the DB write so a slow disk doesn't gate the broadcast.
+        // Handler exceptions are swallowed to keep the runtime resilient.
+        var handler = StateChanged;
+        if (handler is not null)
+        {
+            try { handler.Invoke(instance.GameId); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "StateChanged handler threw for game {GameId}", instance.GameId);
+            }
+        }
+
         if (!_options.PersistSnapshots) return;
         try
         {

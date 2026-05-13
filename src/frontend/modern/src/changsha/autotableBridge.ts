@@ -48,7 +48,8 @@ export type BridgeOutboundMessage =
       tileIds: number[];
       meldType: string;
     }
-  | { proto: typeof BRIDGE_PROTOCOL; type: 'reset' };
+  | { proto: typeof BRIDGE_PROTOCOL; type: 'reset' }
+  | { proto: typeof BRIDGE_PROTOCOL; type: 'camera-toggle' };
 
 export type BridgeInboundMessage =
   | { proto: typeof BRIDGE_PROTOCOL; type: 'ready' }

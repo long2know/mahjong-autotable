@@ -1,3 +1,4 @@
+using Mahjong.Autotable.Api.Autotable;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
@@ -20,6 +21,7 @@ builder.Services.AddSignalR();
 
 builder.Services.Configure<ChangshaRuntimeOptions>(builder.Configuration.GetSection("ChangshaRuntime"));
 builder.Services.AddSingleton<IChangshaGameRuntime, ChangshaGameRuntime>();
+builder.Services.AddSingleton<AutotableConnectionManager>();
 
 const string ChangshaCorsPolicy = "ChangshaCors";
 builder.Services.AddCors(options =>
@@ -38,6 +40,10 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors(ChangshaCorsPolicy);
+
+// Raw WebSockets (separate transport from SignalR) — required for the
+// upstream pwmarcz/autotable bundle's WS protocol at /autotable/ws.
+app.UseWebSockets();
 
 using (var scope = app.Services.CreateScope())
 {
@@ -488,6 +494,13 @@ static TableActionError ToIntegrityConflict(
         correlationId);
 
 app.MapHub<ChangshaHub>("/hubs/changsha");
+
+// Autotable WS endpoint — speaks upstream NEW/JOIN/JOINED/UPDATE protocol
+// so the byte-identical autotable.9519e86d.js bundle connects unchanged.
+// Force singleton manager construction so it subscribes to runtime events
+// before any games are created.
+_ = app.Services.GetRequiredService<AutotableConnectionManager>();
+app.MapAutotableWs();
 
 app.Run();
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Button,
   Card,
@@ -24,11 +24,42 @@ import {
   FanBreakdownPanel,
   LobbyCard,
   OpponentDiscardTrays,
+  CameraToggleButton,
 } from '../changsha/components';
 import { attachAutotableBridge, diffAndSend, type BridgeHandle } from '../changsha/autotableBridge';
 import type { ChangshaGameState, SeatIndex } from '../changsha/types';
 
 const USER_SEAT: SeatIndex = 0;
+
+/**
+ * Phase 5a iframe URL spec (per spike §6 / Default #3):
+ *   /autotable/?gameId={id}&embedded=1&seat={N}
+ *
+ * - `gameId`     → upstream bundle's `getUrlState()` reads it; required to
+ *                  trigger `start()` → `client.join(this.url, gameId)`
+ *                  against Bishop's fake-autotable WS at `/autotable/ws`.
+ * - `embedded=1` → tells `index.html` to hide the upstream sidebar /
+ *                  seat-buttons so the bundle's own 136-tile Deal button
+ *                  cannot conflict with our authoritative 108-tile state.
+ * - `seat`       → OPTIONAL. Advisory hint to Bishop's translator on the
+ *                  WS handshake. Omit for spectator / pre-seat states.
+ *
+ * Stability contract: same (gameId, seatIndex) inputs MUST produce
+ * identical strings — `useMemo` in `AutotableViewport` relies on this to
+ * avoid iframe remounts on unrelated re-renders.
+ */
+export function buildAutotableIframeSrc(
+  gameId: string,
+  seatIndex?: number
+): string {
+  const params = new URLSearchParams();
+  params.set('gameId', gameId);
+  params.set('embedded', '1');
+  if (typeof seatIndex === 'number') {
+    params.set('seat', String(seatIndex));
+  }
+  return `/autotable/?${params.toString()}`;
+}
 
 function ConnectionBanner({
   status,
@@ -128,10 +159,25 @@ function ModeToggle({ isLive }: { isLive: boolean }) {
   );
 }
 
-function AutotableViewport({ state }: { state: ChangshaGameState }) {
+function AutotableViewport({
+  state,
+  userSeat,
+}: {
+  state: ChangshaGameState;
+  userSeat: SeatIndex;
+}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const bridgeRef = useRef<BridgeHandle | null>(null);
   const prevStateRef = useRef<ChangshaGameState | undefined>(undefined);
+
+  // Phase 5a: iframe URL must carry the live gameId so the bundle's
+  // getUrlState() returns non-null and start() auto-connects via JOIN.
+  // Reload IS appropriate when gameId or seatIndex changes; other
+  // re-renders must NOT reload the bundle (slow + drops the WS session).
+  const iframeSrc = useMemo(
+    () => buildAutotableIframeSrc(state.gameId, userSeat),
+    [state.gameId, userSeat]
+  );
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -146,7 +192,7 @@ function AutotableViewport({ state }: { state: ChangshaGameState }) {
       bridge.dispose();
       bridgeRef.current = null;
     };
-  }, []);
+  }, [iframeSrc]);
 
   useEffect(() => {
     const bridge = bridgeRef.current;
@@ -154,6 +200,10 @@ function AutotableViewport({ state }: { state: ChangshaGameState }) {
     diffAndSend(bridge, prevStateRef.current, state);
     prevStateRef.current = state;
   }, [state]);
+
+  const handleCameraToggle = useCallback(() => {
+    bridgeRef.current?.send({ type: 'camera-toggle' });
+  }, []);
 
   return (
     <div
@@ -170,7 +220,7 @@ function AutotableViewport({ state }: { state: ChangshaGameState }) {
         ref={iframeRef}
         id="autotable-frame"
         title="Autotable 3D viewport"
-        src="/autotable/"
+        src={iframeSrc}
         style={{
           width: '100%',
           height: 480,
@@ -178,6 +228,16 @@ function AutotableViewport({ state }: { state: ChangshaGameState }) {
           display: 'block',
         }}
       />
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          zIndex: 10,
+        }}
+      >
+        <CameraToggleButton onToggle={handleCameraToggle} />
+      </div>
     </div>
   );
 }
@@ -278,7 +338,7 @@ export function ChangshaTablePage() {
         <>
           <ChangshaHud state={state} />
 
-          <AutotableViewport state={state} />
+          <AutotableViewport state={state} userSeat={USER_SEAT} />
 
           <OpponentDiscardTrays state={state} userSeat={USER_SEAT} />
 
