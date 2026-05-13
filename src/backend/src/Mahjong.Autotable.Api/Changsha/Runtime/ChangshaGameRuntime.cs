@@ -608,7 +608,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             var window = instance.State.ClaimWindow;
             var responded = instance.PendingClaims
                 .Where(kvp => kvp.Value?.ClaimType is not null)
-                .Select(kvp => new { Seat = kvp.Key, kvp.Value!.ClaimType })
+                .Select(kvp => new { Seat = kvp.Key, kvp.Value!.ClaimType, kvp.Value!.TileIds })
                 .ToList();
 
             if (responded.Count == 0)
@@ -618,21 +618,30 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             }
             else
             {
-                // Prefer Hu > Kong > Pung > Chow with CCW distance tie-break
-                int Priority(TableClaimType? t) => t switch
-                {
-                    TableClaimType.Hu => 4,
-                    TableClaimType.Kong => 3,
-                    TableClaimType.Pung => 2,
-                    TableClaimType.Chow => 1,
-                    _ => 0
-                };
+                // Single source of truth for priority — see ChangshaClaimPriority.
+                // Hu > {Kong, Pung} > Chow, then CCW distance from discarder.
                 var winner = responded
-                    .OrderByDescending(r => Priority(r.ClaimType))
-                    .ThenBy(r => (r.Seat - window.DiscardSeatIndex + 4) % 4)
+                    .OrderByDescending(r => ChangshaClaimPriority.TierOf(r.ClaimType!.Value))
+                    .ThenBy(r => ChangshaClaimPriority.CounterClockwiseDistance(window.DiscardSeatIndex, r.Seat))
+                    .ThenBy(r => r.Seat)
                     .First();
 
-                ChangshaGameStateMachine.ResolveClaim(instance.State, winner.Seat, winner.ClaimType!.Value);
+                // Once-per-game legacy-client warning: a chow claim with no explicit tileIds
+                // means we'll fall back to lowest-rank pattern selection. Log so we know stale
+                // clients are in the wild.
+                if (winner.ClaimType == TableClaimType.Chow
+                    && (winner.TileIds is null || winner.TileIds.Length == 0)
+                    && !instance.LoggedLegacyChowWarning)
+                {
+                    _logger.LogWarning(
+                        "Changsha game {GameId} seat {Seat} sent a Chow claim with no tileIds; "
+                        + "falling back to lowest-rank pattern. (Logged once per game.)",
+                        instance.GameId, winner.Seat);
+                    instance.LoggedLegacyChowWarning = true;
+                }
+
+                ChangshaGameStateMachine.ResolveClaim(
+                    instance.State, winner.Seat, winner.ClaimType!.Value, winner.TileIds);
                 await EmitClaimMadeAsync(instance, winner.Seat, winner.ClaimType.Value,
                     window.DiscardTileId, ct);
 

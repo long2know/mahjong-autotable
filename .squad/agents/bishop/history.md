@@ -79,3 +79,20 @@
 - **Vasquez:** v1-scoped gameplay loop is conformant (three nuances flagged: banker rotation, kong priority, missed-win rule)
 - **Hicks:** Frontend unplayable from UI (no lobby, no tile selection, 3D is theater)
 - **Hudson:** Backend rules engine proven by 73 green tests; frontend entirely unproven (zero coverage)
+
+### 2026-05-13: Phase 3 Stream B — Five surgical v1 fixes shipped
+- **FIX-1 Banker rotation canonical (Vasquez v1.2 lock):** `ChangshaStateMachine.RotateBanker` rewritten — winner becomes dealer; washout keeps seat; `HandNumber` always increments. No more `(dealer ± 1) % 4`. Reasons: `dealerRetained` / `winnerBecomesDealer` / `washoutDealerRetained`.
+- **FIX-2 Kong/Pung same-tier with CCW tiebreak:** Extracted `ChangshaClaimPriority` as the single source of truth (`TierOf`: Hu=3, Kong=Pung=2, Chow=1; `CounterClockwiseDistance`). `ClaimAdjudicator` and `ChangshaGameRuntime` both consume the helper — duplicate inline priority table removed.
+- **FIX-3 Per-hand wall seed mixing:** `Deal` now uses `new Random(HashCode.Combine(state.Seed, state.HandNumber))`. 16-hand games now play 16 different walls; same `(seed, handNumber)` still produces an identical replay.
+- **FIX-4 Chow `tileIds` honored:** New `ResolveClaim` overload accepts `int[]? chosenTileIds`; validation throws `TableRuleException` with code `CHOW_TILES_INVALID` on bad submissions. Legacy callers (null/empty) get the lowest-pattern fallback with a once-per-game LogWarning.
+- **FIX-5 Missed-win (§3.6):** New `MissedWinSeats` HashSet on game state. Filtered out of Hu opportunities in `Discard`; populated by `FlagMissedWinSeats` from Hu/Pass/non-Hu resolution branches; cleared in `Deal`. Self-draw unaffected; Pung/Kong/Chow still allowed for flagged seats.
+- **Tests:** 179 → 203 passing (+24); 0 failures; 7 v2-skipped untouched. Rewrote `BankerRotationTests` and the bug-asserting `Kong_TakesPriorityOverPung`; new files `WallSeedTests`, `ChowTileIdsTests`, `MissedWinTests`. Build clean.
+- **Frontend contract impact:** new error code `CHOW_TILES_INVALID`; new `BankerRotated.reason = "winnerBecomesDealer"`. Same-tier Kong/Pung adjudication now CCW-aware. No wire schema breaks.
+- **Still deferred (out of stream B scope):** `DiceService` seed still raw addition; persistence hydration on startup not reinstated; no 16-hand E2E hub test.
+- Decisions captured in `.squad/decisions/inbox/bishop-phase3-stream-b.md`.
+
+## Learnings
+- **Centralize priority tables before fixing claim adjudication.** The Kong/Pung bug existed in two places (`ClaimAdjudicator` and the runtime's inline ordering) and the test suite only caught one. Always extract a helper *first*, then fix once, so drift is structurally impossible. The `ChangshaClaimPriority.PriorityTablesAgree_NoDrift` test asserts the contract holds.
+- **`HashCode.Combine` returns `int` and is the right primitive for seed mixing** when you need a deterministic, well-distributed derivative seed. Raw addition (`seed + handNumber`) produces correlated walls when `handNumber` is small.
+- **Snapshot back-compat for new state fields:** adding a `HashSet<int>` member with `new()` default lets System.Text.Json deserialize older `StateJson` blobs cleanly — no migration needed for in-flight games.
+- **Banker rotation test rewrites must preserve old assertion strings where possible** — the existing `BankerRotation_DealerWins_DealerRetained` test still uses the `"dealerRetained"` reason because the new code intentionally emits that string when the winner equals the previous dealer. Preserving the wire/audit vocabulary across a rule rewrite avoids spurious churn.

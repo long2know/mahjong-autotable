@@ -25,8 +25,12 @@ public class ClaimAdjudicatorTests
     }
 
     [Fact]
-    public void Kong_TakesPriorityOverPung()
+    public void KongAndPung_SameTier_CCWClosestSeatWins_KongCloserCCW()
     {
+        // v1.2: Kong and Pung are the SAME tier; CCW seat-proximity tiebreak decides.
+        // Discarder seat 0; seat 1 has Kong, seat 2 has Pung.
+        // Seat 1 is closer CCW (distance 1) than seat 2 (distance 2), so seat 1 wins.
+        // (Outcome happens to be Kong — but the rationale is seat proximity, NOT Kong > Pung.)
         var hands = new List<ChangshaHandState>
         {
             new() { SeatIndex = 0, ConcealedTiles = [] },
@@ -37,8 +41,94 @@ public class ClaimAdjudicatorTests
 
         var winner = _svc.Adjudicate(0, 3, hands, []);
         Assert.NotNull(winner);
+        Assert.Equal(1, winner.SeatIndex); // closer CCW
         Assert.Equal(TableClaimType.Kong, winner.ClaimType);
+    }
+
+    [Fact]
+    public void KongAndPung_SameTier_PungCloserCCW_BeatsKong()
+    {
+        // Counterexample proving Kong is NOT strictly above Pung.
+        // Discarder seat 0; seat 1 has Pung, seat 3 has Kong.
+        // Seat 1 is closer CCW (distance 1) than seat 3 (distance 3), so seat 1 (Pung) wins.
+        var hands = new List<ChangshaHandState>
+        {
+            new() { SeatIndex = 0, ConcealedTiles = [] },
+            new() { SeatIndex = 1, ConcealedTiles = [0, 1] }, // Pung (2 matching)
+            new() { SeatIndex = 2, ConcealedTiles = [] },
+            new() { SeatIndex = 3, ConcealedTiles = [0, 1, 2] } // Kong (3 matching)
+        };
+
+        var winner = _svc.Adjudicate(0, 3, hands, []);
+        Assert.NotNull(winner);
         Assert.Equal(1, winner.SeatIndex);
+        Assert.Equal(TableClaimType.Pung, winner.ClaimType); // Pung beats Kong by CCW proximity
+    }
+
+    [Theory]
+    [InlineData(0, 1, 3)] // discarder 0: seat 1 (Pung) beats seat 3 (Kong)
+    [InlineData(1, 2, 0)] // discarder 1: seat 2 (Pung) beats seat 0 (Kong)
+    [InlineData(2, 3, 1)] // discarder 2: seat 3 (Pung) beats seat 1 (Kong)
+    [InlineData(3, 0, 2)] // discarder 3: seat 0 (Pung) beats seat 2 (Kong)
+    public void ClaimPriority_PungAndKong_SameTier_CCWProximityTiebreak(int discarderSeat, int pungSeat, int kongSeat)
+    {
+        var hands = Enumerable.Range(0, 4)
+            .Select(i => new ChangshaHandState { SeatIndex = i, ConcealedTiles = new List<int>() })
+            .ToList();
+        // Seed all of seat 'pungSeat' with 2 matching, 'kongSeat' with 3 matching of the same logical tile.
+        // Use logical tile 0 (tile IDs 0..3).
+        hands[pungSeat].ConcealedTiles = [0, 1];
+        hands[kongSeat].ConcealedTiles = [0, 1, 2];
+        // Discard the 4th copy of logical tile 0 (tile ID 3).
+        var winner = _svc.Adjudicate(discarderSeat, 3, hands, []);
+        Assert.NotNull(winner);
+        Assert.Equal(pungSeat, winner.SeatIndex); // CCW proximity wins
+        Assert.Equal(TableClaimType.Pung, winner.ClaimType);
+    }
+
+    [Fact]
+    public void ClaimPriority_PriorityTablesAgree_NoDrift()
+    {
+        // The adjudicator and the runtime resolver MUST agree on (tier, CCW-distance) ordering
+        // for every claim type. Both call sites now go through ChangshaClaimPriority — assert that.
+        foreach (var t in new[] { TableClaimType.Hu, TableClaimType.Kong, TableClaimType.Pung, TableClaimType.Chow })
+        {
+            var tier = ChangshaClaimPriority.TierOf(t);
+            Assert.True(tier >= 1 && tier <= 3, $"Tier for {t} out of bounds: {tier}");
+        }
+        // Hu strictly above Kong/Pung
+        Assert.True(ChangshaClaimPriority.TierOf(TableClaimType.Hu)
+                  > ChangshaClaimPriority.TierOf(TableClaimType.Kong));
+        Assert.True(ChangshaClaimPriority.TierOf(TableClaimType.Hu)
+                  > ChangshaClaimPriority.TierOf(TableClaimType.Pung));
+        // Kong and Pung SAME tier (v1.2 lock)
+        Assert.Equal(
+            ChangshaClaimPriority.TierOf(TableClaimType.Kong),
+            ChangshaClaimPriority.TierOf(TableClaimType.Pung));
+        // Chow strictly below Kong/Pung
+        Assert.True(ChangshaClaimPriority.TierOf(TableClaimType.Pung)
+                  > ChangshaClaimPriority.TierOf(TableClaimType.Chow));
+        // CCW distance contract: 0 (same seat), 1 (next CCW), 2, 3
+        for (var d = 0; d < 4; d++)
+        for (var c = 0; c < 4; c++)
+        {
+            var dist = ChangshaClaimPriority.CounterClockwiseDistance(d, c);
+            Assert.Equal((c - d + 4) % 4, dist);
+        }
+
+        // The Adjudicator surfaces the same Priority value that the helper computes.
+        var hands = new List<ChangshaHandState>
+        {
+            new() { SeatIndex = 0, ConcealedTiles = [] },
+            new() { SeatIndex = 1, ConcealedTiles = [0, 1, 2] }, // Kong
+            new() { SeatIndex = 2, ConcealedTiles = [0, 1] },    // Pung
+            new() { SeatIndex = 3, ConcealedTiles = [] }
+        };
+        var opps = _svc.GetOpportunities(0, 3, hands);
+        foreach (var opp in opps)
+        {
+            Assert.Equal(ChangshaClaimPriority.TierOf(opp.ClaimType), opp.Priority);
+        }
     }
 
     [Fact]

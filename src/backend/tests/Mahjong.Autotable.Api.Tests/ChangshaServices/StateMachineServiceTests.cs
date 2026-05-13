@@ -149,8 +149,9 @@ public class StateMachineServiceTests
     }
 
     [Fact]
-    public void BankerRotation_NonDealerWins_RotatesCounterClockwise()
+    public void BankerRotation_NonDealerWins_WinnerBecomesDealer()
     {
+        // Canonical v1.2 rule (per spec §6.2): winner becomes the next dealer, not (dealer+1)%4.
         var (state, _) = ChangshaGameStateMachine.CreateGame(42);
         state.Phase = ChangshaPhase.EndHand;
         state.CurrentWin = new WinResult
@@ -164,19 +165,20 @@ public class StateMachineServiceTests
         state.DealerSeatIndex = 0;
 
         ChangshaGameStateMachine.RotateBanker(state);
-        Assert.Equal(1, state.DealerSeatIndex); // rotated
+        Assert.Equal(2, state.DealerSeatIndex); // winner becomes dealer
     }
 
     [Fact]
-    public void BankerRotation_Draw_RotatesCounterClockwise()
+    public void BankerRotation_Washout_DealerKeepsSeat()
     {
+        // Canonical v1.2 rule: on washout (no winner), dealer keeps the seat.
         var (state, _) = ChangshaGameStateMachine.CreateGame(42);
         state.Phase = ChangshaPhase.EndHand;
         state.CurrentWin = null;
         state.DealerSeatIndex = 0;
 
         ChangshaGameStateMachine.RotateBanker(state);
-        Assert.Equal(1, state.DealerSeatIndex);
+        Assert.Equal(0, state.DealerSeatIndex);
     }
 
     [Fact]

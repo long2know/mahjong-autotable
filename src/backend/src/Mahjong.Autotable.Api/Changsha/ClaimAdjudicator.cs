@@ -3,10 +3,15 @@ using Mahjong.Autotable.Api.Tables;
 namespace Mahjong.Autotable.Api.Changsha;
 
 /// <summary>
-/// Resolves claim priority for a discarded tile.
-/// Priority: Hu > Kong = Pung > Chow > Pass
-/// Multiple Hu: closest counterclockwise from discarder wins.
-/// Chow: only allowed from next seat (counterclockwise from discarder).
+/// Resolves claim priority for a discarded tile per spec §3.3.
+///
+/// Priority tiers (highest → lowest):
+///   Hu &gt; {Kong, Pung} &gt; Chow &gt; Pass
+///
+/// Kong and Pung are the SAME tier (v1.2 lock 2026-05-13). Within a tier, ties
+/// are broken by counter-clockwise distance from the discarder — closest seat wins.
+///
+/// Chow is restricted to the immediate next seat (CCW) from the discarder.
 /// </summary>
 public interface IClaimAdjudicator
 {
@@ -24,7 +29,7 @@ public interface IClaimAdjudicator
 
 public sealed class ClaimAdjudicator : IClaimAdjudicator
 {
-    private const int SeatCount = 4;
+    private const int SeatCount = ChangshaClaimPriority.SeatCount;
 
     public ChangshaClaimOpportunity? Adjudicate(
         int discardSeatIndex,
@@ -59,28 +64,28 @@ public sealed class ClaimAdjudicator : IClaimAdjudicator
                 {
                     SeatIndex = hand.SeatIndex,
                     ClaimType = TableClaimType.Hu,
-                    Priority = 4
+                    Priority = ChangshaClaimPriority.TierOf(TableClaimType.Hu)
                 });
             }
 
-            // Check Kong (3 matching in hand)
+            // Check Kong (3 matching in hand) — same tier as Pung
             if (matchingCount >= 3)
             {
                 opportunities.Add(new ChangshaClaimOpportunity
                 {
                     SeatIndex = hand.SeatIndex,
                     ClaimType = TableClaimType.Kong,
-                    Priority = 3
+                    Priority = ChangshaClaimPriority.TierOf(TableClaimType.Kong)
                 });
             }
-            // Check Pung (2 matching in hand)
+            // Check Pung (2 matching in hand) — same tier as Kong
             else if (matchingCount >= 2)
             {
                 opportunities.Add(new ChangshaClaimOpportunity
                 {
                     SeatIndex = hand.SeatIndex,
                     ClaimType = TableClaimType.Pung,
-                    Priority = 2
+                    Priority = ChangshaClaimPriority.TierOf(TableClaimType.Pung)
                 });
             }
 
@@ -92,7 +97,7 @@ public sealed class ClaimAdjudicator : IClaimAdjudicator
                 {
                     SeatIndex = hand.SeatIndex,
                     ClaimType = TableClaimType.Chow,
-                    Priority = 1
+                    Priority = ChangshaClaimPriority.TierOf(TableClaimType.Chow)
                 });
             }
         }
@@ -109,16 +114,13 @@ public sealed class ClaimAdjudicator : IClaimAdjudicator
 
         return opportunities
             .OrderByDescending(o => o.Priority)
-            .ThenBy(o => GetCounterClockwiseDistance(discardSeatIndex, o.SeatIndex))
+            .ThenBy(o => ChangshaClaimPriority.CounterClockwiseDistance(discardSeatIndex, o.SeatIndex))
             .ThenBy(o => o.SeatIndex)
             .First();
     }
 
     private static bool IsNextSeat(int discardSeatIndex, int seatIndex) =>
         (discardSeatIndex + 1) % SeatCount == seatIndex;
-
-    private static int GetCounterClockwiseDistance(int from, int to) =>
-        (to - from + SeatCount) % SeatCount;
 
     private static bool IsChowCandidate(IReadOnlyCollection<int> logicalTiles, int discardLogical)
     {
