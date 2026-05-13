@@ -12,6 +12,7 @@ public static class BotDiscardAdvisor
     private const int OpponentKongFeedAvoidBonus = 12;
     private const int OpponentKongFeedLastCopyAvoidBonus = 10;
     private const int OpponentKongFeedOutsTolerance = 1;
+    private const int DeadSmallWinPairOutsTolerance = 1;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
@@ -384,7 +385,11 @@ public static class BotDiscardAdvisor
                         .Where(candidate => candidate.WinningDrawOuts == bestDeadOuts)
                         .Max(candidate => candidate.WinningDrawOutCopies);
 
-                    if (bestDeadOuts == bestOverallOuts && bestDeadOutCopies == bestOverallOutCopies)
+                    var withinOutsTolerance = bestDeadOuts >= bestOverallOuts - DeadSmallWinPairOutsTolerance;
+                    var withinCopyTolerance = bestDeadOuts < bestOverallOuts
+                        || bestDeadOutCopies >= bestOverallOutCopies - DeadSmallWinPairOutsTolerance;
+
+                    if (withinOutsTolerance && withinCopyTolerance)
                     {
                         candidates = deadPairCandidates;
                     }
