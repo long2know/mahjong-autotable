@@ -9,6 +9,11 @@
         "build",
         "${workspaceFolder}/src/backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj"
       ],
+      "options": {
+        "env": {
+          "PATH": "${env:HOME}/.dotnet:/usr/share/dotnet:/usr/local/share/dotnet:${env:PATH}"
+        }
+      },
       "problemMatcher": "$msCompile"
     },
     {
@@ -21,6 +26,11 @@
         "--project",
         "${workspaceFolder}/src/backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj"
       ],
+      "options": {
+        "env": {
+          "PATH": "${env:HOME}/.dotnet:/usr/share/dotnet:/usr/local/share/dotnet:${env:PATH}"
+        }
+      },
       "isBackground": true,
       "problemMatcher": {
         "owner": "custom",
