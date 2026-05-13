@@ -2,6 +2,46 @@
 
 ## Active Decisions
 
+### 2026-05-13T17:45Z: User directive — Phase 5a defaults locked
+**By:** Stephen Long (via Copilot)
+**What:** Accepted all 8 Hicks-recommended defaults from the 3D renderer spike. Phase 5a proceeds under Strategy C (Fake autotable WS server).
+
+Locked defaults:
+1. **Dice roll**: auto-roll on hand start (matches Phase 3 modal flow). No visual click-to-roll required.
+2. **Standalone `/autotable/` sandbox**: preserved post-embed wiring. Useful for debugging the upstream view in isolation.
+3. **Camera toggle**: HUD button + upstream's `P` keybind both supported. React HUD posts `{ type: 'camera-toggle' }` to iframe; receiver simulates the `P` keypress on `document`.
+4. **Discard layout**: 4-side radial layout in the 3D view (upstream-style). React's per-seat 2D stacks remain as the fallback when the iframe is hidden or fails to load.
+5. **Reconnect**: snap to current state on mid-hand reconnect. No replay buffer. Simpler and avoids divergence risk.
+6. **Wall split**: canonical **14/14/13/13** across the four seats (108 ÷ 4 asymmetric). Matches canonical Changsha rules tiebreaker (MahjongPros).
+7. **WS endpoint path**: `/autotable/ws` (mirrors upstream's expectation). Bishop confirms the bundle's `getUrl()` resolves there from the iframe location.
+8. **Throttling**: deferred to Phase 5d (per-seat camera + spectator). Phase 5a allows single concurrent game per backend instance.
+
+**Outcome:** Shipped via PR #26 squash-merged at `ce1bda6` on main.
+
+### 2026-05-13: Bishop — Phase 5a Backend (Strategy C Autotable WS Endpoint)
+**By:** Bishop (Backend Dev)
+**What:** Backend now exposes a fake upstream `pwmarcz/autotable` WS server at `/autotable/ws` that speaks `NEW`/`JOIN`/`JOINED`/`UPDATE` verbatim. Hicks's unchanged `autotable.9519e86d.js` bundle connects and renders authoritative Changsha state in 3D — walls, hands (own seat face-up, others face-down), discards, and melds (concealed kongs face-down).
+
+Files added: `AutotableProtocol.cs` (~140 LOC), `AutotableSlotMap.cs` (~130 LOC), `ChangshaToAutotableTranslator.cs` (~260 LOC), `AutotableWsEndpoint.cs` (~280 LOC). 23 new tests added. Wall split enforced as 14/14/13/13 per Default #6. `fives='000'` forces byte-identical bundle behavior with no translation table.
+
+**Outcome:** Shipped via PR #26 squash-merged at `ce1bda6` on main. Backend tests: 203 → 226 passing (+23).
+
+### 2026-05-13: Hicks — Phase 5a Frontend Wiring
+**By:** Hicks (Frontend Dev)
+**What:** Iframe is now wired to live Changsha game state at `/autotable/?gameId={id}&embedded=1&seat={N}`. URL format enforces `gameId` (mandatory for bundle auto-connect), `embedded=1` (hides upstream sidebar via CSS), and optional `seat` parameter. Camera-toggle HUD button wired via `postMessage` → synthetic `KeyboardEvent('P')` on `document` to trigger upstream's perspective toggle.
+
+Files: `index.html` (+1 LOC), `ChangshaTablePage.tsx` (+57/-13), `autotableBridge.ts` (+1), `changsha-bridge-receiver.js` (+16), `CameraToggleButton.tsx` (+43 new), index re-export. `useMemo([gameId, userSeat])` prevents iframe reload on parent re-renders.
+
+**Outcome:** Shipped via PR #26 squash-merged at `ce1bda6` on main. Frontend tests: 48 → 60 active (48/48 owned vitest tests green).
+
+### 2026-05-13: Hudson — Phase 5a Frontend Test Coverage
+**By:** Hudson (QA & Test Framework)
+**What:** Locked down the Phase 5a frontend contract with 12 new vitest cases (10 active + 2 intentionally skipped). Test suites cover iframe URL building (`buildAutotableIframeSrc`), camera-toggle message contract, embedded-mode sidebar hiding (static fixture + negative control), and reducer regression guard (GameAction union snapshot).
+
+Test progression: 48 active → 60 active + 2 skipped (62 total). Static fixture parse pattern for jsdom-unreachable DOM contracts. Helper-export pinning provides value-stability coverage without full React render.
+
+**Outcome:** Shipped via PR #26 squash-merged at `ce1bda6` on main. No regressions; 48/48 baseline tests green + 12 new Phase 5a tests green.
+
 ### 2026-04-20: Project baseline and rules direction
 **By:** Stephen Long (with Squad)
 **What:** Use `pwmarcz/autotable` as the base framework and prioritize Changsha Mahjong support first, while keeping an expansion path for broader Chinese rules.
