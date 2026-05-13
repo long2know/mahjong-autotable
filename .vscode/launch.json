@@ -19,13 +19,6 @@
       }
     },
     {
-      "name": "Frontend Modern (Vite)",
-      "type": "node-terminal",
-      "request": "launch",
-      "command": "npm install && npm run dev",
-      "cwd": "${workspaceFolder}/src/frontend/modern"
-    },
-    {
       "name": "Backend + Autotable Baseline",
       "type": "coreclr",
       "request": "launch",
@@ -41,15 +34,23 @@
         "pattern": "Now listening on:\\s+(https?://\\S+)",
         "uriFormat": "%s/autotable/"
       }
+    },
+    {
+      "name": "Autotable (Parcel watch)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npx parcel watch index.html about.html --public-url . --no-source-maps --dist-dir ../autotable",
+      "cwd": "${workspaceFolder}/src/frontend/autotable-src"
     }
   ],
   "compounds": [
     {
-      "name": "F5 Full Stack (Backend + Modern Frontend)",
+      "name": "F5 Full Stack (Backend + Autotable)",
       "configurations": [
         ".NET Backend",
-        "Frontend Modern (Vite)"
-      ]
+        "Autotable (Parcel watch)"
+      ],
+      "stopAll": true
     }
   ]
 }

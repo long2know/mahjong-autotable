@@ -1,18 +1,34 @@
-# Autotable baseline assets
+# Autotable static bundle (generated)
 
-This directory contains a mirrored static build of the upstream Autotable client from `https://pwmarcz.pl/autotable/`.
+This directory is the **Parcel build output** of `src/frontend/autotable-src/`.
+The .NET backend serves it verbatim at `/autotable/`.
 
-- Purpose: preserve the original perspective/table visual baseline while Changsha gameplay logic is integrated in backend APIs.
-- Served by backend at `/autotable/` (see `Mahjong.Autotable.Api` static file mapping).
-- Source project: `https://github.com/pwmarcz/autotable`.
+**Do not edit files in this folder.** Any change here will be clobbered on
+the next `parcel build`. Edit the TypeScript / HTML / CSS sources under
+`../autotable-src/` and rebuild.
 
-The mirrored files are intentionally committed so local `F5` runs and Docker images do not depend on external asset CDNs.
+## Rebuilding
 
-## Differences from upstream defaults
+```bash
+cd ../autotable-src
+npm install        # one-time
+npx parcel build index.html about.html --public-url . --no-source-maps \
+    --cache-dir .cache/build/ --dist-dir ../autotable
+```
 
-| Setting | Upstream | Ours | Reason |
-|---------|----------|------|--------|
-| `perspective` | unchecked | **checked** | Better 3D visual baseline for gameplay |
-| `tile-labels` | unchecked | **checked** | Shows tile face textures by default (without this, tiles render as plain colored blocks) |
+The same invocation runs continuously under the `autotable: watch` VS Code
+task (see `.vscode/tasks.json`) — F5 from VS Code starts the backend and the
+Parcel watcher together via the `F5 Full Stack (Backend + Autotable)` compound.
 
-The bundled JS (`autotable.9519e86d.js`) is byte-identical to the upstream deployed bundle.
+## Provenance
+
+Vendored from `https://github.com/pwmarcz/autotable` master at the upstream
+SHA recorded in `../autotable-src/UPSTREAM_SHA`. Upstream's MIT code license
+lives in `../autotable-src/COPYING`; image and sound assets retain their
+original CC BY-NC-SA / CC0 licenses as documented in `../autotable-src/about.html`.
+
+Local-only modifications applied to upstream sources for our build:
+- `index.html`: `perspective` and `tile-labels` checkboxes default to `checked`
+  (better visual baseline; matches the previously shipped static bundle).
+- `index.html` + `about.html`: Google Analytics tracking block (pwmarcz.pl
+  property) removed.

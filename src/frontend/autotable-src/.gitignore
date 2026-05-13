@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.cache/
+*.blend1
+.vscode/
+.parcel-cache/
+
+# NOTE: upstream's .gitignore ignored *.auto.* because Inkscape/Blender
+# regenerated them at `make files` time. We commit the prebuilt assets
+# under img/ so Parcel can build without Inkscape/Blender (Ripley pivot
+# plan §2 Phase A, "no asset edits in v1").
+!img/*.auto.png
+!img/*.auto.glb

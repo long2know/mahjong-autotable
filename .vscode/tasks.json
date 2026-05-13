@@ -45,38 +45,28 @@
       }
     },
     {
-      "label": "frontend: install",
+      "label": "autotable: watch",
       "type": "process",
-      "command": "npm",
+      "command": "npx",
       "args": [
-        "install"
+        "parcel",
+        "watch",
+        "index.html",
+        "about.html",
+        "--public-url",
+        ".",
+        "--no-source-maps",
+        "--dist-dir",
+        "../autotable"
       ],
       "options": {
-        "cwd": "${workspaceFolder}/src/frontend/modern"
-      }
-    },
-    {
-      "label": "frontend: run",
-      "type": "process",
-      "command": "npm",
-      "args": [
-        "run",
-        "dev"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}/src/frontend/modern"
+        "cwd": "${workspaceFolder}/src/frontend/autotable-src"
       },
       "isBackground": true,
-      "problemMatcher": {
-        "owner": "custom",
-        "pattern": {
-          "regexp": ".*"
-        },
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": ".*vite.*",
-          "endsPattern": ".*Local:.*"
-        }
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
       }
     }
   ]

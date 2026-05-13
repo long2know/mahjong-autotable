@@ -259,3 +259,188 @@ Bishop's backend Strategy C and Hudson's parallel tests.
 - **`useMemo([gameId, userSeat])` essential to prevent iframe reload on parent re-renders.** React suspends the iframe's three.js scene and WS session during reload. The component re-renders dozens of times per game cycle (every state diff fires effects), so reloading on every parent render would be catastrophic. Reload is appropriate only when gameId or userSeat changes (new game or seat → drops old WS session anyway). The `useMemo` is the load-bearing optimization.
 - **`?embedded=1` query param is the load-bearing sidebar-hide trigger.** The inline `<script>` in `index.html` reads `URLSearchParams(window.location.search).has('embedded')` and sets `html[data-changsha-embedded="1"]` attribute before `<body>` parses. CSS rules `html[data-changsha-embedded="1"] #sidebar, html[data-changsha-embedded="1"] .seat-buttons { display:none !important; }` execute immediately — no flash, no layout shift. Without the parameter, the attribute is not set, sidebar renders normally (Default #2 — sandbox preserved).
 - **`KeyboardEvent` synthesis on `document` (not `window`) catches upstream's listener.** The bundle registers `window.addEventListener("keydown", ...)` at offset 1011975 of `autotable.9519e86d.js`. A `document.dispatchEvent(new KeyboardEvent(..., {bubbles:true}))` reaches `window` via the bubble phase. Event properties must be exact: `key='p'` (lowercase, upstream switch is `case "p"`), `code='KeyP'`, `keyCode=80`, `which=80`, `bubbles=true`. Resilient design: only assumes the `P` keybind exists, not any internal bundle layout changes.
+
+### 2026-05-13: Autotable TS Modification Inventory (Stephen's pivot directive)
+
+In response to copilot-directive-2026-05-13T2300Z — Stephen's architectural
+reckoning ("we want to simply use autotable and implement changsha rules with
+it"). Read `/tmp/autotable-upstream/` (the unvendored upstream clone) end to
+end and filed an honest scope inventory at
+`.squad/decisions/inbox/hicks-autotable-ts-inventory.md`. NO path proposed —
+Ripley synthesises.
+
+## Learnings
+
+- **Upstream is a 3D physics dollhouse, not a Mahjong rules engine.** Across
+  `world.ts` (708 LOC), `setup.ts` (326 LOC), `client.ts` (210 LOC) — there
+  is NO win detection, NO claim adjudication, NO shanten, NO yaku check, NO
+  legal-move hint, NO pao logic, NO multi-winner draw handling. The only
+  "scoring" upstream has is `Setup.getScores()` which sums point-stick `typeIndex`
+  values in `tray.{i}.{j}@seat` slots. **All Changsha rules must live on the
+  backend; the client is a viewport.**
+- **Tile atlas is Changsha-compatible AS-IS.** `thing-group.ts:217-220` maps
+  typeIndex → atlas cell via `x=(typeIndex%37)%8, y=floor((typeIndex%37)/8)`.
+  typeIndex 0–8 = wan, 9–17 = tong, 18–26 = tiao, 27–30 = winds, 31–33 =
+  dragons, 34–36 = red fives. Changsha keeps 0–26 only. **No tile SVG or GLB
+  changes needed** — honors/red-fives cells just go unused.
+- **Native autotable UI has no Pon/Kan/Chi/Riichi/Hu buttons.** Claims happen
+  by physically dragging the discarded tile from opponent's pile into your
+  own meld area. Riichi declaration = dragging a 1000-point stick out of the
+  tray (group `riichi`, type STICK, `setup-slots.ts:209-219`). Stephen's "use
+  autotable's own UI controls" intent therefore implies a **drag-to-claim**
+  model unless we add new HTML/CSS/wiring. Biggest single UX divergence from
+  the current React app.
+- **Protocol is a 4-message generic key-value store**, not a Mahjong
+  protocol. NEW/JOIN/JOINED/UPDATE. Collections: match, seats, things, nicks,
+  mouse (rate-limited 100ms), sound (ephemeral), dice (ephemeral).
+  Constraints: `unique`, `ephemeral`, `perPlayer`, `rateLimit`, `sendOnConnect`.
+  Server `game.ts` (213 LOC) is "dumb storage". Changsha-specific concepts
+  (claim windows, gangshanghua, pao, 258 eye, multi-winner) are not native;
+  extension pattern is to **add new collections** (e.g. `changsha.claim`,
+  `changsha.scoring`, `changsha.break`, `changsha.banker`) — upstream-style
+  clients ignore unknown collections, so it's backward-compatible.
+- **Hand-tile privacy is broken at the protocol layer.** `things` collection
+  sends every tile's typeIndex to all connected clients regardless of which
+  seat the tile is in. Hands are face-down VISUALLY (rotation = STANDING) but
+  the typeIndex is in the payload. **Anyone with the network tab can read all
+  hands.** Our `AutotableWsEndpoint.cs` MUST filter per-viewer based on `?seat=N`
+  for hand slots, otherwise cheating is trivial. The upstream design ASSUMES
+  all-public state. This is a v3-blocker if not already handled.
+- **Build chain depends on Inkscape + Blender CLI.** `Makefile` rules:
+  `img/tiles.auto.png` ← `img/tiles.svg` via Inkscape; `img/models.auto.glb`
+  ← `img/models.blend` via Blender + `export.py`. Neither is in our build
+  environment. If we never re-export geometry we can skip Blender; we'd still
+  need Inkscape (or pre-generate PNGs once and commit them) for any SVG tile
+  glyph swap.
+- **Riichi-specific bits cluster in 7 files but each touch is tiny.** Grep
+  for `honba|riichi|kita|fives|red.fives` hits `types.ts`, `setup.ts`,
+  `setup-slots.ts`, `setup-deal.ts`, `world.ts`, `center.ts`, `game-ui.ts`,
+  `client.ts`, `slot.ts`. Each Riichi assumption is well-localised — making
+  `Conditions.fives` optional triggers maybe 15 TS errors, all in well-known
+  spots. **No deep entanglement.** A Changsha branch in `setup.ts:tileIndex`
+  + a `CHANGSHA` GameType in `types.ts` is the seed.
+- **Upstream protocol is bidirectional UPDATE.** Client → server UPDATE means
+  "I want to mutate things[7] to slotName='discard.0.0@2'". Server echoes to
+  all peers. For Changsha command channel, we'd extend with a
+  `changsha.command` ephemeral collection: client pushes
+  `{kind:'declareWin', seat:2}`, server validates + emits a `changsha.scoring`
+  UPDATE. Native fit — no new message types needed.
+- **Bot-management UI is new territory.** Upstream has no concept of bots.
+  Adding a "Fill with Bots" button is a ~80-LOC sidebar patch in `index.html`
+  + `game-ui.ts` to send a `changsha.command.fillWithBots` UPDATE.
+- **/changsha React shell is ~3,500 LOC of deletion candidate.** Components
+  (DiceRollModal, BankerBadge, RoundWindIndicator, ChangshaHud,
+  FanBreakdownPanel, PlayerHandPanel, ClaimPromptModal, OpponentDiscardTrays,
+  CameraToggleButton, LobbyCard, TileFace), reducer, signalrClient, bridge
+  modules, mock mode — all duplicate functionality that would live inside
+  the autotable bundle under Stephen's pivot. Net code count drops.
+- **Tile glyphs are CC BY-NC-SA.** `img/tiles.svg` is Non-Commercial.
+  Worth flagging if the project trajectory turns commercial.
+
+### 2026-05-13: Phase A shipped — autotable vendored in-tree, modern/+bridge scrubbed
+
+Branch `stlong/autotable-vendored-pivot`, baseline `b5dacea`. Per Ripley's
+`ripley-pivot-plan.md` §2 Phase A and Stephen's acceptance directive
+`copilot-directive-2026-05-13T2320Z-accept-defaults-mvp.md`. File scope:
+`src/frontend/**`, `.vscode/*`, `.squad/config.json`. Bishop owns backend in
+a parallel branch — no overlap.
+
+**Upstream SHA captured:** `8b81d92aa37997dcfbcc6724d3bd3f694f9cc53a`
+(pwmarcz/autotable master, "Show dice for 1 second"). Recorded at
+`src/frontend/autotable-src/UPSTREAM_SHA` for future cherry-picks.
+
+**What shipped**
+- `src/frontend/autotable-src/` — pwmarcz/autotable master vendored verbatim
+  (decision #1 default, in-tree fork, not a submodule). Upstream `COPYING`
+  retained verbatim; CC-BY-NC-SA tile-image notices in `about.html` retained.
+  `.git` removed, `UPSTREAM_SHA` written, `.gitignore` updated to keep prebuilt
+  `img/*.auto.png` + `img/*.auto.glb` (since we don't run upstream's Inkscape /
+  Blender Makefile targets — `img/*.auto.*` were sourced from the previously
+  shipped `autotable/` bundle).
+- Two upstream-source patches applied before build:
+  - `index.html`: `perspective` + `tile-labels` checkboxes default to
+    `checked` (matches previously shipped visual baseline, per the legacy
+    `autotable/README.md`).
+  - `index.html` + `about.html`: Google Analytics tracking block
+    (UA-50655023-2, pwmarcz.pl property) removed.
+- `src/frontend/autotable/` — wiped and repopulated with the Parcel 2.15
+  build output of `autotable-src/`. New JS hash is `autotable-src.eb80a662.js`
+  (the prior `autotable.9519e86d.js` is replaced; Parcel derives bundle name
+  from the shared parent of the two entry HTMLs, so the prefix changes from
+  `autotable` to `autotable-src` — functionally inert, the index.html
+  references whatever Parcel emits).
+- Bridge cruft fully removed: `changsha-bridge-receiver.js` (154 LOC) gone;
+  the `<style id=changsha-embedded-mode>` block and `?embedded=1` shim that
+  were injected into the legacy `index.html` are absent from the regenerated
+  build (upstream source never had them).
+- `src/frontend/modern/` — deleted entirely. 40 files, ~7,094 LOC of hand-
+  written TS/TSX/CSS/HTML + ~5,000 LOC of `package-lock.json`.
+- `.vscode/launch.json`:
+  - Deleted `Frontend Modern (Vite)` config and the
+    `F5 Full Stack (Backend + Modern Frontend)` compound.
+  - Added `Autotable (Parcel watch)` (`type: node-terminal`, runs
+    `npx parcel watch index.html about.html --public-url . --no-source-maps
+    --dist-dir ../autotable` from `src/frontend/autotable-src`).
+  - Added compound `F5 Full Stack (Backend + Autotable)` referencing
+    `.NET Backend` + `Autotable (Parcel watch)`, `stopAll: true`.
+  - Preserved byte-identical: `.NET Backend` and
+    `Backend + Autotable Baseline` configs, both still carry
+    `PATH: ${env:HOME}/.dotnet:/usr/share/dotnet:/usr/local/share/dotnet:${env:PATH}`
+    (PRs #27 + #28).
+- `.vscode/tasks.json`:
+  - Deleted `frontend: install` and `frontend: run` (pointed at the dying
+    `modern/`).
+  - Added `autotable: watch` (same parcel watch invocation as the launch
+    config, but as a `process` task for the compound to chain off).
+  - Preserved byte-identical: `backend: build` and `backend: run`, both
+    still carry the same PATH augmentation.
+- `.squad/config.json`: `defaultModel` bumped from `claude-opus-4.7` to
+  `claude-opus-4.7-xhigh` per the acceptance directive's session preference.
+
+**LOC delta (commit will report exactly)**
+- Added: `src/frontend/autotable-src/` ≈ 6,200 LOC (upstream TS sources +
+  prebuilt assets + lockfile) + commit-output Parcel bundle.
+- Deleted: `src/frontend/modern/` ≈ 7,094 LOC hand-written + ~5,000 LOC
+  lockfile; bridge-receiver 154 LOC; legacy minified `autotable.9519e86d.js`
+  is replaced not deleted (new hash).
+- Net repo delta: ~−5,000 LOC of bridge / React-SPA cruft after Parcel
+  bundle is accounted for.
+
+**Build smoke test (verbatim final lines of `parcel build`)**
+```
+✨ Built in 2.68s
+../autotable/autotable-src.eb80a662.js           1.02 MB    804ms
+../autotable/models.auto.72ee60ea.glb          206.66 kB    302ms
+```
+All 22 emitted assets present in `src/frontend/autotable/`. The
+`.auto.<hash>.png` filenames for prebuilt assets land with the exact same
+Parcel hashes as the prior bundle (`tiles-labels.auto.9a041239.png`,
+`models.auto.72ee60ea.glb`, etc.) — confirming the source bytes for those
+assets are byte-identical to what shipped before.
+
+**Backend follow-up needed (Bishop's scope, NOT touched here)**
+None blocking. The .NET backend's static-file middleware still points at
+`src/frontend/autotable/`, which still exists and is still populated — the
+served URLs just now route to a fresh-but-shape-identical bundle. The
+backend serves `index.html` at `/autotable/` via `DefaultFiles`; that
+behaviour is preserved.
+
+**Weird things**
+- Parcel names the bundle `autotable-src.<hash>.js` (not
+  `autotable.<hash>.js`) because the two HTML entries share their parent
+  directory `autotable-src` and Parcel uses the common directory name when
+  multiple HTML entries share a JS bundle. The prior bundle was named
+  `autotable.9519e86d.js` because it was built in a folder literally
+  named `autotable/`. Renaming the vendor folder to `src/frontend/autotable/`
+  would restore the old prefix, but the existing folder `src/frontend/autotable/`
+  is the **output** folder (statically served), so we cannot collide names.
+  The output filename is self-referential — `index.html` points at whatever
+  Parcel emits — so this is cosmetic.
+- Upstream's `img/about/*.png` and `img/about/game.mp4` ship as git-LFS
+  pointer stubs (~130 bytes each). Parcel happily bundled the stubs and
+  emitted 130-byte "images" on the first build. Fixed by overwriting the
+  pointer stubs with the real bytes pulled from the previously shipped
+  `src/frontend/autotable/` bundle (e.g. `dealer.a27808af.png` → `img/about/dealer.png`).
+  Rebuilt clean — `dealer.a27808af.png` now correctly emits as a 43 KB PNG
+  with the original Parcel hash, confirming source identity.
+
