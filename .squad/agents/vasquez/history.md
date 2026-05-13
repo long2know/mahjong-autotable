@@ -26,6 +26,8 @@
 
 📌 Team update (2026-05-05T17-00-21Z): Changsha spec decision merged to `.squad/decisions.md` (Active Decisions section). Backend audit at `docs/rules/changsha-backend-gap.md`, frontend plan at `docs/rules/changsha-frontend-plan.md`, test catalog with 8 contradictions identified at `docs/rules/changsha-test-catalog.md`. High-priority rule contradictions (bird count, scoring model, multi-win resolution, instant win continuation) must be resolved before implementation begins. Orchestration logs filed to `.squad/orchestration-log/`.
 
+📌 Team update (2026-05-13T10-00-00Z): Phase 3 wave complete. Bishop shipped 5 backend fixes + 203 passing tests; Hicks shipped lobby + claim UX + SignalR fixes; Hudson shipped vitest infra + 47 frontend tests. Banker rotation v1.2 now canonical (winner-becomes-dealer; washout keeps seat). All four streams merged to main in PR #25 (SHA a03feda). See `.squad/orchestration-log/` and `.squad/decisions.md` Phase 3 section for full details.
+
 ## V1 Spec Lock (2026-05-06)
 
 **Task:** Lock Changsha spec to v1 scope per user decisions. Resolve all open questions and Hudson's 8 test catalog contradictions.

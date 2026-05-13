@@ -27,6 +27,8 @@
 
 📌 Team update (2026-05-05T17-00-21Z): Backend audit decision merged to `.squad/decisions.md`. Vasquez completed Changsha canonical spec at `docs/rules/changsha-spec.md` (108 tiles, dice break, batch deal, 258 pair rule, no dead wall). Hicks produced frontend plan with Option B selected (backend-authoritative + autotable viewport + Fluent UI) at `docs/rules/changsha-frontend-plan.md`. Hudson identified 80 test scenarios with 8 contradictions at `docs/rules/changsha-test-catalog.md`. Blockers on `/autotable/ws` endpoint confirmation and fan table delivery from Vasquez.
 
+📌 Team update (2026-05-13T10-00-00Z): Phase 3 wave complete. Vasquez locked v1.2 spec (winner-becomes-dealer, washout keeps seat); Hicks shipped lobby + claim UX + SignalR fixes; Hudson shipped vitest infra + 47 tests. Five backend fixes: banker rotation, Kong/Pung priority, per-hand wall seed, chow tileIds, missed-win enforcement. 203 passing tests, 0 failures. All merged to main in PR #25 (SHA a03feda). See `.squad/orchestration-log/2026-05-13T10-00-bishop.md` for full details.
+
 📌 Changsha v1 implementation wave (Bishop):
 - Implemented full Changsha v1 backend in `Changsha/` namespace under `Mahjong.Autotable.Api`:
   - **Domain layer**: Tile/Suit/Wind enums, Meld, WinResult, ScoreResult, ChangshaGameState types
