@@ -123,3 +123,53 @@ $ dotnet test --filter Category=Changsha
 - TurnFlow & PungKongChow tests inject paired tiles into a real seeded game state (rather than building bespoke game-state fixtures) — robust against future state-machine refactors as long as the public command surface stays the same.
 
 📌 Team update (2026-05-08T19:51:39Z): Phase 2 bugfix tail shipped — both ScoringService bugs fixed (commit 9807b70). Tests now 70 GREEN, 0 RED, 7 skipped (v2 deferral). Changsha v1 Phase 2 complete: 179 API tests passed, 0 failed, 0 build warnings. Branch ready for merge. Deferred to v2: 13-orphans, kong-rob, stacking patterns, bot timeout-fallback API, optimistic concurrency API.
+
+---
+
+## 2026-05-13 — Changsha Playability Coverage Audit (read-only)
+
+**Charter:** answer Stephen's deep-analysis question — "are we *finally* able to play Changsha mahjong with the autotable 3-D board?" Specifically: what is proven by tests vs. what is on faith. No new tests written this pass.
+
+**Deliverable:** `.squad/decisions/inbox/hudson-changsha-coverage-audit.md` — per-category gap matrix (CAT-A..K), answers to 8 critical questions, top-5 ranked tests to add, skeptical notes.
+
+**Baseline confirmed via test run:**
+- `dotnet test --filter Category=Changsha` → 73 passed / 0 failed / 7 skipped of 80
+- `dotnet test --filter Category=ChangshaHubE2E` → 3 passed / 0 failed
+- `ChangshaServices/*` (no category trait) → 56 passed in unit form
+- Frontend (`src/frontend/modern/`) → 0 tests; no vitest/jest dep; no `test` script
+
+**Honest verdict:**
+The backend Changsha v1 rules engine is meaningfully proven. The SignalR runtime is happy-path proven. The modern frontend (reducer / signalrClient / autotableBridge / useChangshaGame) is **entirely untested** — and that's exactly the layer the question is about.
+
+**Biggest hole:** zero frontend test infrastructure. `autotableBridge.ts` translates backend state to the 3-D viewport's protocol — single most fragile module in the stack, no automated proof.
+
+**Honest second-biggest hole:** `Bot_CompletesFullHand_WithoutIllegalMoves` accepts `WinnerDeclared OR WallExhausted` and seed-42 produces washout. The Hu → Score → RotateBanker chain through bots is not separately proven.
+
+**Other concrete findings:**
+- Two duplicated claim-priority tables exist (ClaimAdjudicator + ChangshaGameRuntime). They can drift; neither runtime-level multi-claim race is tested.
+- Big-win dealer-self-draw and dealer-discarder-to-non-dealer scoring branches are not separately asserted — exactly Bishop's recent bug class.
+- Reconnect E2E proves rehydration message arrives; it does NOT prove the resumed game is playable (no follow-up Discard or tile-equality assertion).
+- `ClaimAsync` vs `PassAsync` post-window-close behaviour is inconsistent (throws vs. silent return) and untested.
+- `CreateGame` hard-codes `DealerSeatIndex = 0` — no random-dealer logic, no test for H-01.
+- 6 of 7 currently-skipped tests are honest v2 deferrals; 1 (`Bot_TimeoutFallback_DeferredV2`) sits on a false-blocker premise and can be written now.
+- `StateJson` persistence round-trip is unverified — schema-evolution risk is invisible.
+
+**Top-5 tests to add (ranked, do NOT write in this pass):**
+1. Frontend vitest suite for `changshaReducer` + `autotableBridge` + `signalrClient` (the gap that most directly maps to Stephen's question).
+2. Bot win-path assertion with seed-search lock-in (covers Hu → Score → RotateBanker that washout-only path skips).
+3. Runtime multi-claim race + proximity tie-break test (closes the two-priority-tables drift risk).
+4. Reconnect-resumes-playable-game extension to the existing E2E (asserts hand equality + follow-up command works).
+5. Scoring `[Theory]` over (pattern × method × dealer-involvement × full-flush) with zero-sum invariant per row.
+
+**Skeptical notes:**
+- The bot harness uses `total = concealed + meldTileCount == 13 ? draw : discard` heuristic; correct under v1 but watch for kong-replacement edge cases in v2 where total can exceed 13 momentarily.
+- The Hub E2E configures `BotTurnDelayMs=1, ClaimWindowTimeoutMs=50` — real-network timing bugs (e.g., out-of-order delivery) are invisible at these speeds.
+- The catalog labels (A..N) drift from the task labels (A..K); audit explicitly maps them.
+
+**Status:** Audit complete. Awaiting Stephen's verdict on whether (a) v1 ships with current backend confidence + zero frontend confidence, or (b) we pause for the top-5 before claiming "playable Changsha v1". No code changes made.
+
+
+### 2026-05-13: Audit fan-out — Peer verdicts
+- **Vasquez:** v1-scoped gameplay loop is conformant (three nuances: banker rotation, kong priority, missed-win rule)
+- **Bishop:** Three real conformance bugs (kong priority, per-hand seed, banker rotation direction)
+- **Hicks:** Frontend unplayable from UI (no lobby, no tile selection, 3D is theater)

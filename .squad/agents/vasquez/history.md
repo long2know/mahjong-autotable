@@ -94,3 +94,36 @@
 - `docs/rules/changsha-spec.md` (v1.0 → v1.1, 680 lines)
 - `.squad/decisions/inbox/vasquez-v1-spec-lock.md` (new)
 - `.squad/agents/vasquez/history.md` (this update)
+
+## V1 Conformance Audit (2026-05-13)
+
+**Task:** Spec-vs-source-vs-code conformance audit ahead of any external v1 release. Read-only.
+
+**Result:** Changsha gameplay loop is playable end-to-end at the 3D autotable. 9 areas fully conformant, 4 partial, 0 missing, 7 ⏸ deferred-v2-by-design.
+
+**Top findings (in priority order):**
+1. **Banker rotation diverges from all three canonical sources.** All sources say "winner becomes dealer." Spec/code use a cyclic +1 CCW rotation that only retains the dealer when the dealer themselves wins. This is a deliberate v1 simplification per Stephen's lock, but it is *visible* to any player who knows real Changsha. Recommend surfacing as a configurable table option before external release.
+2. **Chow `tileIds` disambiguation is accepted on the wire but discarded server-side.** `RemoveChowTiles` always picks the first valid pattern. Edge case: holding `{1,2}` and `{4,5}` when `3` is discarded — players cannot choose `{4,5}`.
+3. **Missed-win rule (过胡) is in spec §3.6 but not enforced.** `ClaimAdjudicator` re-emits Hu opportunities unconditionally; passing on a Hu does not lock the seat out of winning on that logical tile until next draw.
+
+**Spec hygiene items noted (non-blocking):**
+- §2.7 (Instant Win Check) contradicts §4.3 (instant wins deferred to v2). §2.7 is legacy v1.0 text that needs to be struck or qualified.
+- §5.2 base-unit configurability is locked but `ScoringService` returns raw values (1/2/3/4/6/7). Productization item for Bishop.
+- §2.4 dice "count stacks" interpretation differs from S1's "count tiles" (which contradicts itself elsewhere). Recommend footnoting.
+
+**Important learnings for the team:**
+- **MahjongPros (S1) has at least two arithmetic errors:** (a) wall-build paragraph sums to 106 not 108 tiles; (b) deal paragraph describes only two batch-of-4 rounds (yielding 9 tiles) before the +1 round. The spec silently corrects both. Future readers of S1 should be aware.
+- **S3 references "Red Dragon" in the dealer-determination tie-break** despite Changsha excluding Red Dragon entirely. This is a S3 source error (likely cross-pollination from another Tencent variant) — confirmed via S1/S2 consensus that no honor tiles exist.
+- **The win detector correctly treats starting-hand wins as Standard small wins** rather than Tian Hu/Di Hu big wins — consistent with v1 deferral. If we later add instant-win classification, it overlays on top, not replaces.
+- **Replay determinism is solid:** seed → wall shuffle is reproducible; per-hand dice = `seed + HandNumber` so each hand's break point is reproducible; append-only `EventLog` + monotonic `StateVersion` give full replay capability.
+
+**Files Modified:**
+- `.squad/decisions/inbox/vasquez-changsha-conformance-audit.md` (new — full audit, 20 areas)
+- `.squad/agents/vasquez/history.md` (this update)
+
+**No production code touched.**
+
+### 2026-05-13: Audit fan-out — Peer verdicts
+- **Bishop:** Three real conformance bugs (kong priority, per-hand seed reuse, banker rotation direction inverted)
+- **Hicks:** Frontend unplayable from UI (no lobby, no tile selection, 3D is theater)
+- **Hudson:** Frontend entirely unproven (zero test coverage); backend rules engine proven by 73 green tests

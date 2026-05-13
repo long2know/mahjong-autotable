@@ -61,3 +61,21 @@
 ## Learnings
 - **Dealer-aware payment pattern (Changsha §5.1):** every payment branch — Small Win and Big Win, self-draw and discard — must check `dealerInvolved = (payer == dealer || winner == dealer)` and add the +1 dealer bonus. The SmallWin self-draw branch had previously been written as a flat constant; mirror the BigWin shape across all four branches to keep the table symmetric.
 - **v1 no-stacking rule:** Big Win categories (AllPungs, SevenPairs, FullFlush) all pay the same flat amount in v1. No FullFlush doubling, no multi-pattern stacking. Multipliers are deferred to v2; do not reintroduce a `flushMultiplier` or similar without a spec change.
+
+📌 Backend conformance audit (2026-05-13, read-only) — `.squad/decisions/inbox/bishop-changsha-backend-audit.md`:
+- Traced every locked v1 rule to file:line. 18 rules conform, 4 partial, 3 silent bugs, 2 not-enforced.
+- **Silent bugs ranked by player-visibility:**
+  1. **Kong > Pung strict priority** (`ClaimAdjudicator.cs:73`, `ChangshaGameRuntime.cs:622-628`). Spec §3.3 makes Kong and Pung the same tier; CCW proximity should decide. Test `Kong_TakesPriorityOverPung` hard-asserts the bug.
+  2. **Seed re-used every hand** (`ChangshaStateMachine.cs:80`). `new Random(state.Seed)` runs on every Deal — every hand of a single game uses the identical shuffled wall. Determinism for replay survives; fairness across the 16-hand arc is broken.
+  3. **Banker rotation direction** (`ChangshaStateMachine.cs:458,465`). Code does `(dealer + 1) % 4`; spec §6.2 example says Seat 0 → Seat 3 i.e. `(dealer - 1) % 4`. Spec self-contradicts on "counter-clockwise" meaning — escalate to Vasquez before flipping.
+- **Not enforced (rules without code):** missed-win rule (§3.6, no `MissedHuLogicalTiles` tracking); base-unit multiplier (§5.2, `CreateGameAsync` takes no `baseUnit`).
+- **Persistence is diagnostic-only:** snapshots written via `PersistSnapshotAsync` but `ChangshaGameRuntime._games` never hydrated from `ChangshaGame.StateJson` on startup → process restart loses every in-flight game.
+- **Reconnect emits a state snapshot, not an event replay** — animation continuity (deal batch flicker, claim-window timer) is lost across long disconnects.
+- **E2E coverage gap:** `ChangshaHubE2ETests` only proves single-hand completion. No test drives a real 16-hand bot game through to `GameEnded`. Without it, no fix to banker rotation or seed-per-hand can be regression-checked end-to-end.
+- **ScoringService class-level XML doc** (`ScoringService.cs:1-27`) contains stale narrative ("Small Win self-draw = 2 each pays 2") that contradicts its own constants. Code is correct; comment is misleading.
+- Total expected diff to land full v1 conformance: ~190 lines src + ~80 lines test, single PR. Ordered fix plan in the inbox doc.
+
+### 2026-05-13: Audit fan-out — Peer verdicts
+- **Vasquez:** v1-scoped gameplay loop is conformant (three nuances flagged: banker rotation, kong priority, missed-win rule)
+- **Hicks:** Frontend unplayable from UI (no lobby, no tile selection, 3D is theater)
+- **Hudson:** Backend rules engine proven by 73 green tests; frontend entirely unproven (zero coverage)
