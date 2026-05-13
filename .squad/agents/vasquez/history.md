@@ -164,3 +164,5 @@
 **Production code:** Untouched (read-only per Phase 3 charter — Bishop owns the code fix).
 
 **Key learning for the team:** When a spec, an implementation, and three canonical sources give three different answers to one rule, the answer is almost always "the spec was wrong and the implementation drifted from a separately-wrong spec." Re-anchor on the canonical sources, document the anchor, then push the implementation back. Don't try to retrofit a coherent story onto incoherent code/text.
+
+📌 Team update (2026-05-13T17-40-17Z): 3D Renderer spike complete — Hicks identified a canonical wall-split open question (14/14/13/13 vs 14/13/14/13 symmetric) for Stephen's product decision. Q6 from the spike may need Vasquez's rules ruling if Stephen chooses the asymmetric option.
