@@ -178,3 +178,79 @@ firing a Riichi deal in embedded mode if sidebar isn't hidden.
 vs click-to-roll, preserve standalone `/autotable/` sandbox?, canonical
 14/14/13/13 vs symmetric 14/13/14/13 wall split, WS endpoint path
 (`/autotable/ws` vs `/api/autotable/ws`).
+
+### 2026-05-13: Phase 5a Frontend Wiring
+
+Branch `stlong/changsha-3d-phase5a`. Wired the iframe to live Changsha
+game state and added the camera-toggle HUD button. Disjoint from
+Bishop's backend Strategy C and Hudson's parallel tests.
+
+**Shipped:**
+- `src/frontend/autotable/index.html` — `?embedded=1` sets
+  `data-changsha-embedded="1"` on `<html>`; CSS hides `#sidebar` and
+  `.seat-buttons`. Standalone `/autotable/` sandbox (Default #2)
+  preserved when the query param is absent.
+- `src/frontend/modern/src/pages/ChangshaTablePage.tsx` — exported
+  pure helper `buildAutotableIframeSrc(gameId, seatIndex?) →
+  '/autotable/?gameId=…&embedded=1&seat=…'`. `AutotableViewport`
+  receives `userSeat`, wraps `src` in `useMemo([state.gameId,
+  userSeat])` so unrelated re-renders don't reload the iframe (would
+  drop the WS). Camera button overlaid top-right (absolute,
+  `zIndex: 10`).
+- `src/frontend/modern/src/changsha/components/CameraToggleButton.tsx`
+  — Fluent UI 9 `Button` + `Tooltip` "🎥 Toggle View" (with `P`
+  keybind hint).
+- `src/frontend/autotable/changsha-bridge-receiver.js` — extended
+  with `case 'camera-toggle'`: dispatches `KeyboardEvent('keydown',
+  { key:'p', code:'KeyP', keyCode:80, which:80, bubbles:true })` on
+  `document`. Preserves the existing CustomEvent re-emission pattern.
+- `src/frontend/modern/src/changsha/autotableBridge.ts` — extended
+  the `BridgeOutboundMessage` union with `camera-toggle` so
+  `bridge.send({ type: 'camera-toggle' })` typechecks.
+
+## Learnings
+
+- **Upstream WS URL resolution (verified by reading the minified
+  bundle at offset 1003085):**
+  ```js
+  getUrl() {
+    let e = location.pathname.substring(1, location.pathname.lastIndexOf("/") + 1);
+    let t = location.protocol === "https:" ? "wss:" : "ws:";
+    return `${t}//${location.host}/${e}ws`;
+  }
+  ```
+  With iframe at `/autotable/?gameId=X` the WS lands at
+  `wss://{host}/autotable/ws`. Default #7 path is correct — Bishop's
+  endpoint at `/autotable/ws` matches with no coordination change.
+- **Bundle's auto-connect is gated on `?gameId=…` being present.**
+  `start()` (offset 1002975) reads `getUrlState()` and only calls
+  `client.join(this.url, gameId)` if the gameId is non-null. Without
+  the query param the WS stays disconnected forever. So passing
+  `gameId` in the URL is **load-bearing**, not advisory.
+- **Sidebar selectors:** `#sidebar` (the entire right rail with Deal,
+  Setup, Connect, Disconnect, More, Status) and `.seat-buttons` (the
+  four "Take seat" / "Kick" rows positioned around the table). Both
+  must hide in embedded mode — both fire upstream-protocol actions
+  that conflict with our authoritative state.
+- **Camera-toggle approach:** rather than reaching into the bundle's
+  internal `settings.perspective` element (would require a bundle-aware
+  selector), the receiver synthesizes a `keydown` event on `document`
+  with `bubbles: true`. Upstream's `Camera.onKeyDown` is attached at
+  the `window` level (offset 1011975) — bubble phase catches it. Match
+  is `case "p"` (lowercase) in the switch. Resilient to bundle
+  rebuilds: only assumes the `P` keybind exists, not any internal
+  layout.
+- **Hudson's vitest test files** in `__tests__/` add the test contract
+  (`buildAutotableIframeSrc` helper, camera-toggle keydown spec) that
+  I implemented to. Two pre-existing issues in his files surfaced
+  during my build: (a) `RECEIVER_PATH` has one too many `..` in
+  `autotableBridge.cameraToggle.test.ts`; (b) `node:fs` / `node:path`
+  / `__dirname` need `@types/node` for `tsc -b` to be clean. Both
+  flagged in handoff memo, not my files to fix.
+- **`useMemo` deps for iframe src:** `[state.gameId, userSeat]`.
+  Reload IS appropriate when these change (new game or seat change
+  drops the old WS session anyway); reload is NOT appropriate on
+  every render (would reset the bundle's three.js scene mid-game).
+  Component re-renders dozens of times per game cycle (every state
+  diff fires the `diffAndSend` effect); without `useMemo` the iframe
+  would thrash.

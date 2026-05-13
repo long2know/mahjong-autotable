@@ -109,6 +109,22 @@
       case 'claimMade':
         dispatchAutotableEvent('claimMade', msg);
         break;
+      case 'camera-toggle':
+        // Synthesize a "P" keypress so upstream's onKeyDown handler toggles
+        // perspective mode. The bundle listens on window via
+        // window.addEventListener('keydown', onKeyDown). Dispatching on
+        // document with bubbles:true reaches it. Matches upstream's switch
+        // on lowercase e.key.
+        try {
+          var ev = new KeyboardEvent('keydown', {
+            key: 'p', code: 'KeyP', keyCode: 80, which: 80, bubbles: true
+          });
+          document.dispatchEvent(ev);
+        } catch (e) {
+          console.error('[changsha-bridge] camera-toggle dispatch failed', e);
+        }
+        dispatchAutotableEvent('camera-toggle', msg);
+        break;
     }
     updateOverlayFromState();
   }
