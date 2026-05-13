@@ -32,6 +32,9 @@ internal sealed class ChangshaGameInstance : IAsyncDisposable
     /// <summary>Bot driver loop cancellation (cancelled when game is removed).</summary>
     public CancellationTokenSource LifecycleCts { get; } = new();
 
+    /// <summary>Set true the first time a chow claim arrives without explicit tileIds.</summary>
+    public bool LoggedLegacyChowWarning { get; set; }
+
     public ChangshaGameInstance(string gameId, ChangshaGameState state)
     {
         GameId = gameId;

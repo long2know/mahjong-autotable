@@ -13,4 +13,5 @@ public static class TableActionErrorCodes
     public const string ClaimSelectionUnavailable = "CLAIM_SELECTION_UNAVAILABLE";
     public const string ConcurrencyConflict = "CONCURRENCY_CONFLICT";
     public const string StateInvariantBroken = "STATE_INVARIANT_BROKEN";
+    public const string ChowTilesInvalid = "CHOW_TILES_INVALID";
 }

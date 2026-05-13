@@ -45,8 +45,10 @@ public class PungKongChowTests
         var opps = new ClaimAdjudicator().GetOpportunities(0, discard, hands);
 
         Assert.Contains(opps, o => o.SeatIndex == 2 && o.ClaimType == TableClaimType.Kong);
-        // Kong outranks Pung
-        Assert.Equal(3, opps.Single(o => o.SeatIndex == 2 && o.ClaimType == TableClaimType.Kong).Priority);
+        // Kong and Pung are the SAME tier (v1.2 §3.3); Kong opportunity carries the shared tier.
+        Assert.Equal(
+            ChangshaClaimPriority.TierOf(TableClaimType.Kong),
+            opps.Single(o => o.SeatIndex == 2 && o.ClaimType == TableClaimType.Kong).Priority);
     }
 
     [Fact, Trait("Category", "Changsha")]

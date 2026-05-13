@@ -1,16 +1,21 @@
 # Changsha Mahjong (长沙麻将) — Canonical Rules Specification
 
-> **Version:** 1.1 (v1 Locked Scope)
+> **Version:** 1.2 (v1 Locked Scope — Canonical Banker Rotation)
 > **Author:** Vasquez (Rules Engineer)
-> **Date:** 2026-05-06 (Updated from 2026-04-22)
+> **Date:** 2026-05-13 (Updated from 2026-05-06)
 > **Status:** V1 LOCKED — Implementation-ready baseline
+>
+> **Changelog:**
+> - **v1.2 (2026-05-13):** Banker rotation now canonical winner-becomes-dealer per MahjongPros (was simplified `+1 mod 4` in v1.1).
+> - **v1.1 (2026-05-06):** V1 scope locked. Open questions resolved. Hudson's 8 test catalog contradictions addressed.
+> - **v1.0 (2026-04-22):** Initial spec.
 >
 > **Sources cross-referenced:**
 > 1. [MahjongPros Beginner's Guide](https://mahjongpros.com/blogs/how-to-play/beginners-guide-to-changsha-mahjong) — PRIMARY (AUTHORITATIVE)
 > 2. [Reddit: Better Know a Variant — Changsha Mahjong](https://old.reddit.com/r/Mahjong/comments/xp6crv/) — community rules overview
 > 3. [Baidu Encyclopedia — 长沙麻将](https://baike.baidu.com/en/item/Changsha%20Mahjong/36618) — Tencent QQ Game rules
 >
-> **V1 Scope:** This revision locks the v1 implementation scope per user decisions (2026-05-06). Features deferred to v2 are explicitly marked.
+> **V1 Scope:** This revision locks the v1 implementation scope per user decisions (2026-05-06, refined 2026-05-13). Features deferred to v2 are explicitly marked.
 
 ---
 
@@ -345,13 +350,13 @@ Changsha uses a **two-tier scoring system**: Small Win and Big Win.
 
 The payment unit values (1, 2, 3, 4, 6, 7) are multipliers on a configurable **base unit**. The base unit is a table-level configuration parameter.
 
-**Default recommendation:** 1 unit = 10 points (giving payments of 10/20/30/40/60/70 in the Baidu/Tencent model).
+**Default:** base unit = **1** — payments are emitted as the raw unit values listed in §5.1 (1/2/3/4/6/7). This is the simplest configuration and matches the v1 implementation default.
 
 Alternative configurations:
-- 1 unit = 1 point (minimalist)
-- 1 unit = 100 points (high-stakes)
+- Base unit = 10 → payments of 10/20/30/40/60/70 (matches Baidu/Tencent display model)
+- Base unit = 100 → high-stakes play
 
-V1 implementation should accept base unit as a table creation parameter.
+V1 implementation must accept base unit as a table creation parameter, default = 1.
 
 ### 5.3 Features Deferred to V2
 
@@ -378,24 +383,35 @@ A hand (局) ends when:
 1. A player declares **Hu** (win) — either by self-draw or discard claim.
 2. The wall is **exhausted** and no player can win (流局 — draw).
 
-### 6.2 Banker Rotation (V1 Rules)
+### 6.2 Banker Rotation (V1 Canonical Rule)
 
-**V1 LOCKED DECISION:** Banker rotation per user specification.
+**V1 LOCKED DECISION (v1.2):** Banker rotation follows the canonical Changsha rule confirmed by all three authoritative sources: **the winner of a hand becomes the dealer for the next hand.** On washout (wall exhausted with no winner), the dealer keeps the seat. The hand counter increments regardless.
 
-| Condition | Next Dealer |
-|-----------|-------------|
-| Winner (self-draw or discard) | **Winner keeps seat** if winner is current dealer; otherwise **rotate counter-clockwise** |
-| Draw (wall exhausted) | **Rotate counter-clockwise** |
+| Condition | Next Dealer | Hand Counter |
+|-----------|-------------|--------------|
+| Winner declared (self-draw 自摸 or discard claim 点炮) | **Winner becomes next dealer** — set `DealerSeatIndex = winnerSeatIndex` | +1 |
+| Washout (wall exhausted, no winner) — 流局 | **Current dealer keeps the seat** — `DealerSeatIndex` unchanged | +1 |
 
-**Clarification:** "Keep seat on win, rotate counter-clockwise on loss" means:
-- If the **current dealer wins**, they remain dealer for the next hand.
-- If a **non-dealer wins**, the dealer position rotates counter-clockwise (East → North → West → South → East).
-- On **draw** (no winner), rotate counter-clockwise.
+**Source consensus (all three agree):**
+- **MahjongPros (S1, authoritative):** *"The winner of the previous game becomes the new dealer."*
+- **Baidu/Tencent (S2):** *"In subsequent rounds, whoever wins a hand becomes the dealer for the next round."*
+- **Reddit (S3):** Winner-becomes-dealer (community rules overview).
 
-**Example rotation sequence (starting with Seat 0 as dealer):**
-- Hand 1: Seat 0 is dealer. Seat 0 wins → Hand 2: Seat 0 is dealer.
-- Hand 2: Seat 0 is dealer. Seat 2 wins → Hand 3: Seat 3 is dealer (rotated counter-clockwise from Seat 0).
-- Hand 3: Seat 3 is dealer. Draw → Hand 4: Seat 2 is dealer (rotated counter-clockwise from Seat 3).
+**Worked example (starting with Seat 0 as dealer):**
+- Hand 1: dealer = Seat 0. Seat 2 wins → **Hand 2: dealer = Seat 2.**
+- Hand 2: dealer = Seat 2. Washout (wall exhausted, no winner) → **Hand 3: dealer = Seat 2 (unchanged).**
+- Hand 3: dealer = Seat 2. Seat 1 wins → **Hand 4: dealer = Seat 1.**
+- Hand 4: dealer = Seat 1. Seat 0 wins → Hand 5: dealer = Seat 0.
+
+**Implementation contract:**
+- On hand-end with a winner: `state.DealerSeatIndex = winnerSeatIndex` (no cyclic rotation).
+- On hand-end without a winner (washout): leave `state.DealerSeatIndex` unchanged.
+- Increment `state.HandNumber` in both cases.
+- **No `+1 mod 4` and no `-1 mod 4` arithmetic.** There is no seat-cyclic rotation in canonical Changsha.
+
+**Note on the v1.1 simplification (now superseded):** v1.1 said "dealer keeps seat on dealer win, otherwise rotate counter-clockwise." That was a v1 simplification which contradicted all three canonical sources and the spec's own internal example. v1.2 removes it. The actual Changsha rule is simpler: the winner is the next dealer; only a washout leaves the seat unchanged.
+
+**Note on draw-handling nuance (deferred to v2):** Both MahjongPros and Baidu describe a finer-grained washout rule (e.g., MahjongPros: *"the player that draws the last tile becomes the dealer"*; Baidu: *"if a player takes the bottom tile and no one wins, that player becomes the dealer"*). V1 simplifies these to **"washout keeps the dealer seat"** because v1 has no concept of "who drew the last tile" and the simpler rule is unambiguous, deterministic, and consistent with the dominant majority of online digital implementations. The fine-grained washout-dealer rule is captured as a v2 refinement.
 
 ### 6.3 Round Structure (V1 Game Length)
 
@@ -456,11 +472,11 @@ SEATING
 | DECLARING_KONG | Kong declared (any type) | DRAWING_REPLACEMENT | Expose kong, queue replacement draw |
 | DRAWING_REPLACEMENT | Tile drawn from back of wall | AWAITING_DISCARD | Player has 14 tiles again |
 | SCORING | Score calculated | PAYMENT | Settle payments between players |
-| PAYMENT | Payments settled | ROTATING_DEALER | Determine next dealer per v1 rules |
-| ROTATING_DEALER | Not end of game (< 16 hands) | ROLLING_DICE | New hand begins |
+| PAYMENT | Payments settled | ROTATING_DEALER | Set next dealer = winner seat (canonical v1.2 rule) |
+| ROTATING_DEALER | Not end of game (< 16 hands) | ROLLING_DICE | New hand begins; increment HandNumber |
 | ROTATING_DEALER | End of game (16 hands complete) | END_GAME | Final scores tallied |
 | IN_HAND (wall empty) | Last tile drawn | WALL_EXHAUSTED | Hand ends in draw (流局) |
-| WALL_EXHAUSTED | — | ROTATING_DEALER | Rotate dealer counter-clockwise |
+| WALL_EXHAUSTED | — | ROTATING_DEALER | Dealer keeps seat (canonical v1.2 washout rule); increment HandNumber |
 
 ### 7.3 Concurrency: Claim Window Timing
 
@@ -571,7 +587,7 @@ All open questions from the original spec have been resolved or deferred for v1 
 
 4. **Kong payment amounts** — **DEFERRED TO V2.** Kong micro-payments excluded from v1.
 
-5. **Scoring unit value** — **RESOLVED:** Base unit is a configurable table parameter. Default recommendation: 1 unit = 10 points (matching Baidu's 10/20/30/40/60/70 model). V1 implementation accepts base unit as table creation config.
+5. **Scoring unit value** — **RESOLVED:** Base unit is a configurable table parameter. **Default base unit = 1** (payments emitted as raw unit values 1/2/3/4/6/7). Tables may override to base unit = 10 to display Baidu/Tencent-style 10/20/30/40/60/70 totals, or higher for high-stakes play. V1 implementation accepts base unit as table creation config; ScoringService default is 1.
 
 6. **Big win self-draw vs discard scoring divergence** — **RESOLVED:** V1 uses MahjongPros model (authoritative): Small Win 1/2, Big Win self-draw 3/4, Big Win discard 6/7.
 
@@ -581,7 +597,7 @@ All open questions from the original spec have been resolved or deferred for v1 
 
 9. **San Tong (三同) instant win** — **DEFERRED TO V2.** All instant wins excluded from v1.
 
-10. **Dealer retention** — **RESOLVED:** Dealer keeps seat on win, rotates counter-clockwise on loss (non-dealer win or draw). This is the v1 locked rule per user decision.
+10. **Dealer retention** — **RESOLVED (v1.2, 2026-05-13):** **Winner of a hand becomes the next dealer.** On washout, the current dealer keeps the seat. Hand counter increments regardless. This matches all three canonical sources (MahjongPros, Baidu, Reddit) and supersedes the v1.1 simplification (`+1 CCW on non-dealer-win`). See §6.2 for full contract and worked example.
 
 11. **Physical wall rendering** — **IMPLEMENTATION NOTE, NOT A RULE:** With 108 tiles, frontend can render walls as 14/14/13/13 stacks or use any balanced distribution. This is a presentation concern, not a gameplay rule. Backend wall is a flat 108-tile ordered list.
 
@@ -622,8 +638,8 @@ Hudson identified 8 source contradictions in the test catalog. All are resolved 
 
 ### OQ-6: Scoring Model - S1 vs. S2
 **Contradiction:** S1 uses simplified 1/6/7 point model. S2 uses 10/20/60/70 point model.
-**V1 RESOLUTION:** **RESOLVED.** V1 uses **S1 (MahjongPros) unit model: 1/2/3/4/6/7** with configurable base unit multiplier. Default base unit = 10 points (producing 10/20/30/40/60/70 matching S2 for backward compatibility).
-**Rationale:** MahjongPros is authoritative. Unit model is more flexible and allows easy table configuration. Base multiplier of 10 aligns with traditional scoring.
+**V1 RESOLUTION:** **RESOLVED.** V1 uses **S1 (MahjongPros) unit model: 1/2/3/4/6/7** with configurable base unit multiplier. **Default base unit = 1** (payments emitted as raw unit values). Tables may override to 10 to match S2's 10/20/30/40/60/70 display, or higher for high-stakes play.
+**Rationale:** MahjongPros is authoritative. Unit model is more flexible and allows easy table configuration. Default = 1 keeps the implementation and test fixtures simple; display-scale multipliers are a presentation concern.
 
 ### OQ-7: Seven Pairs - Can Use 258 Pair or Any Pair?
 **Gap:** Sources don't explicitly state if Seven Pairs requires a 258 pair.
@@ -657,7 +673,7 @@ These assumptions were made where sources were silent or ambiguous. Trimmed to v
 
 8. **Wall shuffling uses Fisher-Yates algorithm** with a seed for deterministic replay. The dice roll only determines the logical break point, not the physical arrangement (which is solely a rendering concern in digital play).
 
-9. **Banker rotation rule** (v1 locked): Banker keeps seat on win, rotates counter-clockwise on loss (non-dealer win or draw).
+9. **Banker rotation rule** (v1.2 canonical, 2026-05-13): **Winner of a hand becomes the next dealer.** On washout (wall exhausted with no winner), the dealer keeps the seat. Hand counter increments after every hand. There is no cyclic `+1` or `-1` seat rotation in v1.
 
 10. **Game length** (v1 locked): 16 hands total (4 rounds × 4 hands per round). Round wind changes every 4 hands.
 
@@ -696,15 +712,17 @@ This checklist confirms full v1 implementation. Bishop and Hudson use this as bu
 - [ ] Small Win discard: discarder pays 1 (dealer pays 2 if involved)
 - [ ] Big Win self-draw: each opponent pays 3 (dealer pays 4)
 - [ ] Big Win discard: discarder pays 6 (dealer pays 7 if involved)
-- [ ] Base unit configurable at table creation (default: 1 unit = 10 points)
+- [ ] Base unit configurable at table creation (default base unit = 1; payments emitted as raw 1/2/3/4/6/7)
 - [ ] Dealer bonus (+1) applied when dealer is winner or payer
 - [ ] NO bird-catching, NO kong micro-payments in v1
 
 ### Banker & Game Flow
-- [ ] Banker keeps seat on win, rotates counter-clockwise on loss
+- [ ] Winner of a hand becomes the next dealer (canonical v1.2 rule, per MahjongPros / Baidu / Reddit)
+- [ ] Washout (wall exhausted, no winner) → dealer keeps the seat (no rotation)
+- [ ] Hand counter increments after every hand (win or washout)
+- [ ] No `+1 mod 4` or `-1 mod 4` cyclic rotation logic anywhere in v1
 - [ ] Game length: 16 hands (4 rounds × 4 hands)
 - [ ] Round wind changes every 4 hands
-- [ ] Wall exhausted → draw (流局) → rotate banker counter-clockwise
 - [ ] Only one winner per discard (proximity rule; no multiple simultaneous wins in v1)
 
 ### State Machine

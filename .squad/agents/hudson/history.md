@@ -173,3 +173,39 @@ The backend Changsha v1 rules engine is meaningfully proven. The SignalR runtime
 - **Vasquez:** v1-scoped gameplay loop is conformant (three nuances: banker rotation, kong priority, missed-win rule)
 - **Bishop:** Three real conformance bugs (kong priority, per-hand seed, banker rotation direction)
 - **Hicks:** Frontend unplayable from UI (no lobby, no tile selection, 3D is theater)
+
+## Learnings
+
+### 2026-05-13 — Frontend test infrastructure (Phase 3 Stream C)
+**Mission:** Establish a working vitest test runner for the modern React frontend and ship a first wave covering the layers driving the autotable 3D viewport.
+
+**Delivered:**
+- vitest 4.1.6 + @vitest/ui + jsdom 29 + @testing-library/{react,jest-dom,user-event} installed as devDependencies in `src/frontend/modern/package.json`.
+- `vite.config.ts` extended with a `test` block (jsdom env, explicit imports — `globals: false`, setupFiles pointing to `src/test/setup.ts`, include `src/**/*.{test,spec}.{ts,tsx}`).
+- `src/frontend/modern/src/test/setup.ts` registers `@testing-library/jest-dom/vitest` matchers and polyfills `window.matchMedia` (Fluent UI 9 hits it during render).
+- npm scripts added: `test`, `test:watch`, `test:ui`.
+- 47 tests across 4 files in `src/frontend/modern/src/changsha/__tests__/`:
+  - `changshaReducer.test.ts` — 19 tests across all 18 reducer actions (GameCreated, PlayerSeated, GameStarted/DiceRolled/BreakPointSet, TilesDealt with per-seat hand splitting, TileDiscarded, ClaimWindowOpen, ClaimMade for pung/kong/chow with explicit tileIds, WinDeclared, ScoringComplete, BankerRotated, HandFinished, RoundChanged, GameEnded, reset).
+  - `autotableBridge.test.ts` — 5 tests covering queue-then-flush on ready, envelope shape (`proto: 'changsha-bridge/1'` sentinel), source-of-message filtering, malformed/garbage drop, dispose teardown.
+  - `signalrClient.test.ts` — 19 tests covering every invoke wrapper (createGame, joinTable, takeSeat, startGame, rollDice, acknowledgeDeal, discard, claim with/without tileIds, pass, declareKong, declareWin, reconnectGame), `attachServerEventHandlers` registration/forwarding/teardown/exception isolation, and `describeConnectionState` mapping.
+  - `useChangshaMockGame.test.ts` — 4 tests asserting hook mounts, exposes the expected action surface, dealMock produces the canonical 14/13/13/13 hand split, discard removes the local tile and appends to the shared discard pile, resetDemo wipes state.
+
+**Verification:**
+- `cd src/frontend/modern && npm test` → 47 passed / 0 failed / 0 todo in 3.7s.
+- `cd src/frontend/modern && npm run build` → green (verified in isolation; pre-existing Hicks Phase 3 WIP for `useLiveChangshaGame.ts` / new components currently in the working tree have internal inconsistencies that Hicks needs to land coherently — out of my stream's scope).
+
+**Discipline calls:**
+- Naming in the task brief used aspirational event names (PungClaimed/KongClaimed/ChowClaimed, DealCompleted, DiscardMade, etc.). The actual committed reducer dispatches on `ClaimMade` (with `meld.type` discriminating), `TilesDealt`, `TileDiscarded`, etc. I tested **current behavior**, not the brief's wording, per the task's "adjust the test to match current behavior" clause. The reducer was NOT modified.
+- The autotableBridge envelope is `{ proto: 'changsha-bridge/1', type, ... }` with origin enforced by `ev.source === iframe.contentWindow` and inbound dispatch via callback (not CustomEvent). Tests pin that real shape, not the brief's `{ type, version, payload }` description.
+- `reconnectGame` is committed as a `JoinTable` alias in `signalrClient.ts`; Hicks's uncommitted WIP retypes this to `ReconnectGame(gameId, seatIndex)`. Tests pin the committed alias — when his Phase 3 PR lands he must update tests in the same diff.
+
+**Coverage gaps left for next wave:**
+- `useLiveChangshaGame.ts` — Hicks's stream, not yet test-friendly (uses real SignalR client construction in module scope).
+- `useChangshaGame.ts` — mock/live picker; trivially covered by separate hooks tests in future.
+- React components (DiceRollModal, BankerBadge, ChangshaHud, PlayerHandPanel, ChangshaTablePage, etc.) — Hicks's territory; should be tested via @testing-library/react after his Phase 3 refactor lands.
+- `tileUtils.ts` — pure helpers, low-risk; deferred.
+- `diffAndSend` in autotableBridge — Phase 3 will exercise this far harder once 3D scene wiring is real; deferred to next wave.
+
+**Skeptical notes:**
+- The bridge ignores messages by `source !== iframe.contentWindow` not by `origin`. That's the right call in jsdom (jsdom does not enforce same-origin on iframe.contentWindow), but in production this still leaves the bridge unprotected if a malicious page injects an iframe that shares the same contentWindow reference via clobbering. Worth a Phase 3 review.
+- `useChangshaMockGame` exposes 9 actions; `useLiveChangshaGame` exposes a superset (`declareKong`, `declareWin`, `pass`). The unified `useChangshaGame` typing has optional keys for those — components that call them must guard with `?.()`. Not test-covered today; failure mode is silent no-op.

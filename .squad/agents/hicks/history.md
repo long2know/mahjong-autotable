@@ -31,3 +31,74 @@
 - **Vasquez:** v1-scoped gameplay loop is conformant (three nuances flagged)
 - **Bishop:** Three real conformance bugs (kong priority, per-hand seed, banker rotation direction inverted)
 - **Hudson:** Backend rules engine proven by 73 green tests; frontend entirely unproven (zero coverage)
+
+### 2026-05-13: Phase 3 Stream A shipped — Changsha Lobby + Claim UX
+
+Branch `stlong/changsha-v1-phase3`, commit `f6c298e`. 14 files touched
+(+1248 / −209), 48/48 vitest tests green, build clean. Inbox memo at
+`.squad/decisions/inbox/hicks-phase3-stream-a.md`.
+
+Shipped:
+- `LobbyCard` component with player-name input + "Play vs Bots" button;
+  `ChangshaTablePage` orchestrates `createGame → takeSeat → fillWithBots
+  → startGame`; localStorage keys `mj-autotable:changsha:{gameId,
+  seatIndex, playerName}` for mid-hand reconnect via `ReconnectGame`.
+- `DiceRollModal` rewritten — server auto-rolls inside `StartGame`,
+  modal animates while waiting then displays rolled values + break
+  point.
+- `PlayerHandPanel`: sorted concealed (Wan → Tiao → Tong) via
+  `sortHandForDisplay`; Concealed Kong (`findConcealedKongs`), Added
+  Kong (`findAddedKongs`), and Zimo overlays.
+- `ClaimPromptModal`: discard preview, chow combo picker
+  (`computeChowCombos` over the user's concealed tiles + the discard),
+  Win! surface for hu, sorted priority order, correct chow `tileIds`.
+- `OpponentDiscardTrays` — grid layout (top/left/right) around the
+  autotable viewport using new `state.discardLog` per-seat attribution.
+
+Cross-cutting fixes required to make the lobby actually work:
+- **SignalR positional-args bug** (critical, pre-existing): every
+  `invoke.*` wrapper was sending `connection.invoke(method, payload)`
+  with the payload as a single object — .NET hubs take positional
+  args, so the previous wrappers silently bound the whole payload to
+  the first parameter and coerced garbage everywhere else. Every
+  live-mode hub call was dead. Rewrote all wrappers (`createGame`,
+  `joinTable`, `takeSeat`, `fillWithBots`, `startGame`, `rollDice`,
+  `acknowledgeDeal`, `discard`, `claim`, `declareKong`, `declareWin`,
+  `pass`, `reconnectGame`) to mirror `ChangshaHub.cs` signatures
+  positionally.
+- `reconnectGame` previously aliased `JoinTable`; replaced with a call
+  to the dedicated `ReconnectGame(gameId, seatIndex)` hub method.
+- New `FullStateEvent` type + reducer case to rehydrate seats / hands
+  / discard pile / dice / breakpoint / phase from server snapshot.
+- `phaseFromWire` normalises PascalCase server enum strings
+  ("AwaitingDiscard") to the camelCase `GamePhase` union.
+
+Tests: `src/frontend/modern/src/changsha/__tests__/signalrClient.test.ts`
+updated to match the new positional contract. Hudson's own docstring
+in that file had explicitly anticipated this update at Phase 3 PR time,
+so this is the planned roll-forward rather than a contract break.
+
+Deferred to v3.1:
+- 3D mesh rendering inside the autotable iframe (atlas textures, wall
+  + tile meshes, real dice geometry showing rolled face).
+- Bidirectional canvas → hub events (click-tile-in-3D triggers
+  `Discard`).
+- Mid-hand reconnect animation replays (snapshot lands but doesn't
+  re-animate claims/draws).
+- Server-supplied chow combo hints — client computes locally today.
+- Bundle code-splitting (still emits the pre-existing 600 KB warning).
+
+Learnings:
+- SignalR JS `connection.invoke(method, ...args)` is variadic
+  positional. Always mirror the .NET hub method signature one
+  positional argument at a time, NEVER pass a single envelope object
+  unless the hub method literally takes a single DTO parameter.
+- `.NET` enum-to-string defaults to PascalCase. If the wire protocol
+  uses an enum, always run incoming strings through a normaliser
+  before assigning to a camelCase string-union type — silent
+  membership failure is otherwise easy to miss.
+- The Edit tool can silently no-op if the `old_str` block doesn't
+  match exactly. After non-trivial multi-line edits, always re-grep
+  for the new content to confirm the change stuck. (See: my Phase 3
+  WIP pre-summary lost the four largest file rewrites this way; had
+  to redo them from scratch this pass.)

@@ -136,6 +136,8 @@ export interface SeatHand {
 export interface PendingClaim {
   seatIndex: SeatIndex;
   type: ClaimType;
+  /** Forward-compat: optional, server may supply combo hints for chow. */
+  tileIds?: number[];
 }
 
 export interface ChangshaGameState {
@@ -151,6 +153,13 @@ export interface ChangshaGameState {
   hands: SeatHand[];
   wallRemaining: number;
   discardPile: Tile[];
+  /**
+   * Per-discard attribution. Parallel to discardPile in length and order,
+   * but each entry records WHICH seat threw the tile. Populated by
+   * TileDiscarded events and FullState snapshots. Optional for back-compat
+   * with mock-mode initial states that don't set it.
+   */
+  discardLog?: Array<{ tileId: number; seatIndex: SeatIndex }>;
   activeSeat?: SeatIndex;
   pendingClaims?: PendingClaim[];
   lastWin?: WinResult;

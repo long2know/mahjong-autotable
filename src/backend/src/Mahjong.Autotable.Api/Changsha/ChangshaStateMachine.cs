@@ -76,8 +76,11 @@ public sealed class ChangshaGameStateMachine
     {
         RequirePhase(state, ChangshaPhase.Dealing);
 
-        // Build wall from seed with break point applied
-        var rng = new Random(state.Seed);
+        // Per-hand wall seed mixing — different hands of the same game produce different
+        // shuffled walls while remaining deterministic for replay (same seed + HandNumber
+        // → identical wall). Fixes pre-Phase-3 bug where every hand of a game used the
+        // same `state.Seed` and therefore the same wall ordering.
+        var rng = new Random(HashCode.Combine(state.Seed, state.HandNumber));
         var wall = BuildShuffledWall(rng);
 
         // Apply break point — reorder wall so drawing starts from break point
@@ -110,6 +113,7 @@ public sealed class ChangshaGameStateMachine
         state.ClaimWindow = null;
         state.CurrentWin = null;
         state.CurrentScore = null;
+        state.MissedWinSeats.Clear(); // §3.6: missed-win flags reset on new hand
 
         state.Phase = ChangshaPhase.AwaitingDiscard;
 
@@ -165,6 +169,17 @@ public sealed class ChangshaGameStateMachine
         var adjudicator = new ClaimAdjudicator();
         var opportunities = adjudicator.GetOpportunities(seatIndex, tileId, state.Hands);
 
+        // §3.6 missed-win (过胡): seats that previously declined a winning discard this hand
+        // cannot win on a subsequent discard. Strip their Hu opportunities here so the rest of
+        // the resolver never sees them. Pung/Kong/Chow remain eligible.
+        if (state.MissedWinSeats.Count > 0)
+        {
+            opportunities = opportunities
+                .Where(o => !(o.ClaimType == Tables.TableClaimType.Hu
+                              && state.MissedWinSeats.Contains(o.SeatIndex)))
+                .ToList();
+        }
+
         if (opportunities.Count > 0)
         {
             state.ClaimWindow = new ChangshaClaimWindow
@@ -190,6 +205,19 @@ public sealed class ChangshaGameStateMachine
         ChangshaGameState state,
         int claimingSeatIndex,
         Tables.TableClaimType claimType)
+        => ResolveClaim(state, claimingSeatIndex, claimType, chosenTileIds: null);
+
+    /// <summary>
+    /// Resolves a claim. For Chow claims, <paramref name="chosenTileIds"/> may carry the 2 concealed
+    /// tile IDs the claimant wishes to combine with the discarded tile. When provided, the IDs are
+    /// validated (both held + form a valid sequential chow with the discard); when null/empty the
+    /// resolver falls back to the lowest-rank valid pattern for legacy-client compatibility.
+    /// </summary>
+    public static List<ChangshaEvent> ResolveClaim(
+        ChangshaGameState state,
+        int claimingSeatIndex,
+        Tables.TableClaimType claimType,
+        int[]? chosenTileIds)
     {
         RequirePhase(state, ChangshaPhase.AwaitingClaim);
         var claimWindow = state.ClaimWindow
@@ -232,7 +260,7 @@ public sealed class ChangshaGameStateMachine
         }
         else if (claimType == Tables.TableClaimType.Chow)
         {
-            var consumed = RemoveChowTiles(hand, discardLogical);
+            var consumed = RemoveChowTiles(hand, claimWindow.DiscardTileId, chosenTileIds);
             var meldTiles = consumed.Append(claimWindow.DiscardTileId).OrderBy(t => t).ToList();
             hand.Melds.Add(new Meld
             {
@@ -245,6 +273,11 @@ public sealed class ChangshaGameStateMachine
         events.Add(CreateEvent(state, "claim-resolved", claimingSeatIndex,
             tileId: claimWindow.DiscardTileId,
             detail: $"type:{claimType}"));
+
+        // §3.6 missed-win: this claim was NOT a Hu. Any seat that had a Hu opportunity in
+        // this window but didn't take it is now blocked from winning on subsequent discards
+        // this hand.
+        FlagMissedWinSeats(state, claimWindow, declaringHuSeat: -1);
 
         state.ClaimWindow = null;
         state.ActiveSeatIndex = claimingSeatIndex;
@@ -276,6 +309,10 @@ public sealed class ChangshaGameStateMachine
         RequirePhase(state, ChangshaPhase.AwaitingClaim);
         var claimWindow = state.ClaimWindow
             ?? throw new InvalidOperationException("No claim window open.");
+
+        // §3.6 missed-win: every seat that had a Hu opportunity in this window has now passed
+        // on a winning discard. Mark them so their future Hu claims this hand are rejected.
+        FlagMissedWinSeats(state, claimWindow, declaringHuSeat: -1);
 
         state.ClaimWindow = null;
         AdvanceToNextPlayer(state, claimWindow.DiscardSeatIndex);
@@ -445,25 +482,21 @@ public sealed class ChangshaGameStateMachine
         var previousDealer = state.DealerSeatIndex;
         string reason;
 
+        // Canonical Changsha v1.2 banker rotation (per docs/rules/changsha-spec.md §6.2):
+        //   - Winner: winner becomes next dealer (degenerates to "dealer keeps seat" if dealer won).
+        //   - Washout: current dealer keeps the seat.
+        // No cyclic +1/-1 rotation in v1.
         if (state.CurrentWin is not null)
         {
-            if (state.CurrentWin.WinningSeatIndex == state.DealerSeatIndex)
-            {
-                // Dealer won → dealer keeps seat
-                reason = "dealerRetained";
-            }
-            else
-            {
-                // Non-dealer won → rotate counterclockwise
-                state.DealerSeatIndex = (state.DealerSeatIndex + 1) % SeatCount;
-                reason = "winnerRotation";
-            }
+            state.DealerSeatIndex = state.CurrentWin.WinningSeatIndex;
+            reason = state.DealerSeatIndex == previousDealer
+                ? "dealerRetained"
+                : "winnerBecomesDealer";
         }
         else
         {
-            // Draw → rotate counterclockwise
-            state.DealerSeatIndex = (state.DealerSeatIndex + 1) % SeatCount;
-            reason = "drawRotation";
+            // Washout — dealer keeps the seat (state.DealerSeatIndex unchanged).
+            reason = "washoutDealerRetained";
         }
 
         // Update seat dealer flags
@@ -531,6 +564,10 @@ public sealed class ChangshaGameStateMachine
             IsFullFlush = result.IsFullFlush
         };
 
+        // §3.6 missed-win: if multiple seats had Hu in this window and only one declared,
+        // the others have effectively passed on a winning discard and are now blocked.
+        FlagMissedWinSeats(state, claimWindow, declaringHuSeat: claimingSeatIndex);
+
         state.ClaimWindow = null;
         state.ActiveSeatIndex = claimingSeatIndex;
         state.Phase = ChangshaPhase.Scoring;
@@ -538,6 +575,24 @@ public sealed class ChangshaGameStateMachine
         return [CreateEvent(state, "win-declared", claimingSeatIndex,
             tileId: claimWindow.DiscardTileId,
             detail: $"method:discard,pattern:{result.Pattern}")];
+    }
+
+    /// <summary>
+    /// §3.6 — Marks every seat that had a Hu opportunity in <paramref name="claimWindow"/>
+    /// but did NOT win on this discard. Those seats are forbidden from winning on subsequent
+    /// discards within the same hand (self-draw remains allowed). Cleared on <see cref="Deal"/>.
+    /// </summary>
+    private static void FlagMissedWinSeats(
+        ChangshaGameState state,
+        ChangshaClaimWindow claimWindow,
+        int declaringHuSeat)
+    {
+        foreach (var opp in claimWindow.Opportunities)
+        {
+            if (opp.ClaimType != Tables.TableClaimType.Hu) continue;
+            if (opp.SeatIndex == declaringHuSeat) continue;
+            state.MissedWinSeats.Add(opp.SeatIndex);
+        }
     }
 
     private static void AdvanceToNextPlayer(ChangshaGameState state, int currentSeatIndex)
@@ -615,12 +670,86 @@ public sealed class ChangshaGameStateMachine
         return matches;
     }
 
-    private static List<int> RemoveChowTiles(ChangshaHandState hand, int discardLogical)
+    /// <summary>
+    /// Removes the 2 concealed tiles that complete a chow with <paramref name="discardTileId"/>.
+    /// When <paramref name="chosenTileIds"/> is supplied (the modern client contract), those exact
+    /// tiles are validated and removed. When null/empty (legacy clients), falls back to the
+    /// lowest-rank valid pattern. Throws <see cref="Tables.TableRuleException"/> with code
+    /// <c>CHOW_TILES_INVALID</c> when supplied IDs fail validation.
+    /// </summary>
+    private static List<int> RemoveChowTiles(
+        ChangshaHandState hand,
+        int discardTileId,
+        int[]? chosenTileIds)
+    {
+        var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
+
+        if (chosenTileIds is { Length: > 0 })
+        {
+            return RemoveChowTilesByChoice(hand, discardTileId, discardLogical, chosenTileIds);
+        }
+
+        return RemoveChowTilesByLowestPattern(hand, discardLogical);
+    }
+
+    private static List<int> RemoveChowTilesByChoice(
+        ChangshaHandState hand,
+        int discardTileId,
+        int discardLogical,
+        int[] chosenTileIds)
+    {
+        if (chosenTileIds.Length != 2)
+            throw new Tables.TableRuleException(
+                Tables.TableActionErrorCodes.ChowTilesInvalid,
+                $"Chow requires exactly 2 tile ids; got {chosenTileIds.Length}.",
+                stateVersion: 0, actionSequence: 0);
+
+        var a = chosenTileIds[0];
+        var b = chosenTileIds[1];
+        if (a == b)
+            throw new Tables.TableRuleException(
+                Tables.TableActionErrorCodes.ChowTilesInvalid,
+                "Chow tile ids must be distinct.",
+                stateVersion: 0, actionSequence: 0);
+
+        if (!hand.ConcealedTiles.Contains(a) || !hand.ConcealedTiles.Contains(b))
+            throw new Tables.TableRuleException(
+                Tables.TableActionErrorCodes.ChowTilesInvalid,
+                $"Chow tile ids [{a},{b}] are not both in the claimant's concealed hand.",
+                stateVersion: 0, actionSequence: 0);
+
+        // Validate the three tiles form a sequential chow in a single suit.
+        var logicals = new[]
+        {
+            discardLogical,
+            ChangshaDeckBuilder.GetLogicalTile(a),
+            ChangshaDeckBuilder.GetLogicalTile(b)
+        };
+        var suits = logicals.Select(l => l / 9).Distinct().Count();
+        if (suits != 1)
+            throw new Tables.TableRuleException(
+                Tables.TableActionErrorCodes.ChowTilesInvalid,
+                $"Chow tiles must all share a suit (discard logical {discardLogical}).",
+                stateVersion: 0, actionSequence: 0);
+
+        var sorted = logicals.OrderBy(l => l).ToArray();
+        if (sorted[1] - sorted[0] != 1 || sorted[2] - sorted[1] != 1)
+            throw new Tables.TableRuleException(
+                Tables.TableActionErrorCodes.ChowTilesInvalid,
+                $"Chow tiles must be three consecutive ranks; got logicals [{sorted[0]},{sorted[1]},{sorted[2]}].",
+                stateVersion: 0, actionSequence: 0);
+
+        // All checks pass — consume the two chosen tiles from the hand.
+        hand.ConcealedTiles.Remove(a);
+        hand.ConcealedTiles.Remove(b);
+        return [a, b];
+    }
+
+    private static List<int> RemoveChowTilesByLowestPattern(ChangshaHandState hand, int discardLogical)
     {
         var rank = discardLogical % 9;
-        var suitBase = (discardLogical / 9) * 9;
 
-        // Try each possible chow pattern
+        // Try each possible chow pattern (lowest-rank first).
         var patterns = new List<(int, int)>();
         if (rank >= 2) patterns.Add((discardLogical - 2, discardLogical - 1));
         if (rank >= 1 && rank <= 7) patterns.Add((discardLogical - 1, discardLogical + 1));

@@ -44,13 +44,22 @@ export interface UseChangshaGameResult {
     dealMock: () => void;
     discard: (tileId: number) => void;
     simulateClaimWindow: () => void;
-    resolveClaim: (claimType: string | null) => void;
+    resolveClaim: (claimType: string | null, tileIds?: number[]) => void;
     simulateWin: () => void;
     continueAfterScoring: () => void;
     resetDemo: () => void;
     declareKong?: (tileIds: number[]) => void;
     declareWin?: () => void;
     pass?: () => void;
+    createGame?: (opts?: {
+      seed?: number;
+      botSeatIndexes?: number[];
+    }) => Promise<string | null>;
+    fillWithBots?: () => Promise<void>;
+    takeSeat?: (seatIndex: SeatIndex, playerName?: string) => Promise<void>;
+    startGame?: () => Promise<void>;
+    reconnectGame?: (gameId: string, seatIndex: SeatIndex) => Promise<boolean>;
+    leaveGame?: () => void;
   };
   isLive: boolean;
   connectionStatus: ConnectionStatus;

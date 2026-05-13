@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   Button,
   Card,
@@ -22,6 +22,8 @@ import {
   PlayerHandPanel,
   ClaimPromptModal,
   FanBreakdownPanel,
+  LobbyCard,
+  OpponentDiscardTrays,
 } from '../changsha/components';
 import { attachAutotableBridge, diffAndSend, type BridgeHandle } from '../changsha/autotableBridge';
 import type { ChangshaGameState, SeatIndex } from '../changsha/types';
@@ -203,6 +205,24 @@ export function ChangshaTablePage() {
   const isDevModeToggleVisible = import.meta.env.DEV || shouldUseMock();
   const showLoadingShell = isLive && connectionStatus === 'connecting' && !state.gameId;
 
+  // Lobby is shown when phase is lobby OR there is no active gameId.
+  const showLobby = state.phase === 'lobby' || !state.gameId;
+  const canStartFromLobby = !isLive || connectionStatus === 'connected';
+
+  const handlePlayVsBots = useCallback(
+    async (playerName: string, seat: SeatIndex) => {
+      if (!actions.createGame || !actions.fillWithBots || !actions.takeSeat || !actions.startGame) {
+        throw new Error('Lobby commands are not available in this mode.');
+      }
+      const gameId = await actions.createGame({ botSeatIndexes: [1, 2, 3] });
+      if (!gameId) throw new Error('Server did not return a game id.');
+      await actions.takeSeat(seat, playerName);
+      await actions.fillWithBots();
+      await actions.startGame();
+    },
+    [actions]
+  );
+
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: 16 }}>
       <Toaster toasterId={toasterId} />
@@ -218,7 +238,14 @@ export function ChangshaTablePage() {
         <Text size={500} weight="semibold">
           🀄 Changsha Mahjong
         </Text>
-        <ModeToggle isLive={isLive} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!showLobby && actions.leaveGame && (
+            <Button size="small" appearance="outline" onClick={actions.leaveGame}>
+              Leave game
+            </Button>
+          )}
+          <ModeToggle isLive={isLive} />
+        </div>
       </div>
 
       <ConnectionBanner
@@ -241,14 +268,28 @@ export function ChangshaTablePage() {
           <Spinner size="large" />
           <Text>Establishing connection to Changsha hub…</Text>
         </Card>
+      ) : showLobby ? (
+        <LobbyCard
+          onPlayVsBots={handlePlayVsBots}
+          canStart={canStartFromLobby}
+          connectionHint={isLive ? connectionStatus : undefined}
+        />
       ) : (
         <>
           <ChangshaHud state={state} />
 
           <AutotableViewport state={state} />
 
+          <OpponentDiscardTrays state={state} userSeat={USER_SEAT} />
+
           <Card style={{ marginBottom: 16 }}>
-            <PlayerHandPanel state={state} userSeat={USER_SEAT} onDiscard={actions.discard} />
+            <PlayerHandPanel
+              state={state}
+              userSeat={USER_SEAT}
+              onDiscard={actions.discard}
+              onDeclareKong={actions.declareKong}
+              onDeclareWin={actions.declareWin}
+            />
           </Card>
 
           <Text size={200} block style={{ textAlign: 'center', marginBottom: 8 }}>
@@ -273,7 +314,11 @@ export function ChangshaTablePage() {
               }
             }}
           />
-          <ClaimPromptModal state={state} userSeat={USER_SEAT} onClaim={actions.resolveClaim} />
+          <ClaimPromptModal
+            state={state}
+            userSeat={USER_SEAT}
+            onClaim={actions.resolveClaim}
+          />
           <FanBreakdownPanel state={state} onContinue={actions.continueAfterScoring} />
         </>
       )}

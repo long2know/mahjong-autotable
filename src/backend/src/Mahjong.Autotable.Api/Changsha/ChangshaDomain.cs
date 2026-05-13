@@ -157,6 +157,14 @@ public sealed class ChangshaGameState
     public WinResult? CurrentWin { get; set; }
     public ScoreResult? CurrentScore { get; set; }
 
+    /// <summary>
+    /// Seats that have declined a winning discard during the current hand. Per spec §3.6
+    /// (missed-win 过胡), a seat that passes on a winnable discard is forbidden from
+    /// claiming Win on subsequent discards within the same hand. Self-draw wins are still
+    /// allowed. Cleared on every new hand by <see cref="ChangshaGameStateMachine.Deal"/>.
+    /// </summary>
+    public HashSet<int> MissedWinSeats { get; set; } = new();
+
     // Cumulative scores
     public Dictionary<int, int> CumulativeScores { get; set; } = new();
 
