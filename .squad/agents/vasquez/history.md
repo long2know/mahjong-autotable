@@ -127,3 +127,38 @@
 - **Bishop:** Three real conformance bugs (kong priority, per-hand seed reuse, banker rotation direction inverted)
 - **Hicks:** Frontend unplayable from UI (no lobby, no tile selection, 3D is theater)
 - **Hudson:** Frontend entirely unproven (zero test coverage); backend rules engine proven by 73 green tests
+
+### 2026-05-13: Banker rotation canonical lock (Phase 3, v1.2)
+
+**Task:** Resolve the banker-rotation ambiguity that surfaced from Bishop's and my own conformance audits. Spec/code/sources gave three different behaviors:
+- Spec §6.2 text (v1.1): "dealer keeps seat on dealer-win; rotate CCW otherwise" (simplified v1 rule).
+- Spec §6.2 example: `-1 mod 4` (Seat 0 → Seat 3).
+- Backend `ChangshaStateMachine.cs:458,465`: `+1 mod 4` (direction-inverted vs. example).
+- Canonical sources: **winner becomes dealer** (no cyclic rotation).
+
+**Decision (locked, v1.2):** **Winner of a hand becomes the dealer for the next hand. On washout, the current dealer keeps the seat. Hand counter increments regardless.** No `+1 mod 4`, no `-1 mod 4`, no seat-cyclic logic of any kind.
+
+**Verification:** Re-fetched MahjongPros, Baidu, Reddit via web_fetch. All three explicitly say winner-becomes-dealer. MahjongPros is the locked tiebreaker per Stephen's 2026-05-13 directive — no tiebreaker invocation actually needed because the three sources agree.
+
+**V2 deferral noted:** Both MahjongPros and Baidu describe a finer-grained washout rule (e.g., MahjongPros: "the player that draws the last tile becomes the dealer"; Baidu: "if a player takes the bottom tile and no one wins, that player becomes the dealer"). V1 simplifies to "washout keeps the dealer seat" — unambiguous, deterministic, no new state required, matches dominant digital implementations. Captured as a v2 refinement in §6.2.
+
+**Documentation:**
+- `docs/rules/changsha-spec.md` bumped v1.1 → v1.2 with changelog.
+- §6.2 rewritten with source quotes, worked example, implementation contract.
+- §7.2 state-transition table corrected for both PAYMENT and WALL_EXHAUSTED transitions.
+- §9 OQ-10, §11 assumption #9, §12 conformance checklist all updated.
+- §5.2 base unit default clarified to 1 (raw values), with 10/100 as optional overrides — addresses the v1 conformance audit's noted gap between spec ("1 unit = 10 points") and `ScoringService` (raw 1/2/3/4/6/7).
+- §3.3 Claim Priority and §3.6 Missed Win re-verified — no spec change needed (both already correctly stated; implementation gaps are Bishop's, not spec's).
+
+**Impact handoff:**
+- **Bishop:** Replace `(state.DealerSeatIndex + 1) % 4` with `state.DealerSeatIndex = winnerSeatIndex` (winner branch only); leave unchanged on washout. Increment `HandNumber` in both branches.
+- **Hudson:** Add parametric test asserting dealer sequence across a 4-hand replay including a washout. Include negative assertions that `+1 mod 4` and `-1 mod 4` behaviors are gone.
+
+**Files modified:**
+- `docs/rules/changsha-spec.md` (v1.1 → v1.2)
+- `.squad/decisions/inbox/vasquez-banker-rotation-lock.md` (new — full decision record with source quotes, Bishop/Hudson handoff)
+- `.squad/agents/vasquez/history.md` (this entry)
+
+**Production code:** Untouched (read-only per Phase 3 charter — Bishop owns the code fix).
+
+**Key learning for the team:** When a spec, an implementation, and three canonical sources give three different answers to one rule, the answer is almost always "the spec was wrong and the implementation drifted from a separately-wrong spec." Re-anchor on the canonical sources, document the anchor, then push the implementation back. Don't try to retrofit a coherent story onto incoherent code/text.
