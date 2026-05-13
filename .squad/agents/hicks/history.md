@@ -104,3 +104,77 @@ Learnings:
   for the new content to confirm the change stuck. (See: my Phase 3
   WIP pre-summary lost the four largest file rewrites this way; had
   to redo them from scratch this pass.)
+
+### 2026-05-13: 3D Renderer Scoping Spike
+
+Branch `stlong/changsha-3d-renderer-spike`. Deliverable:
+`docs/rules/changsha-3d-renderer-plan.md`. Read-only spike: no code
+changed, no bundle touched. Inbox memo at
+`.squad/decisions/inbox/hicks-3d-renderer-spike.md`.
+
+**Recommended strategy:** **C — Fake autotable WS server.** Collocate a
+WebSocket endpoint inside the .NET backend that speaks upstream's
+`NEW`/`JOIN`/`JOINED`/`UPDATE` collection protocol. Translate
+authoritative `ChangshaGameState` into upstream's seven collections
+(`match`, `seats`, `things`, `nicks`, `mouse`, `sound`, `dice`). Bundle
+stays byte-identical; no JavaScript modifications.
+
+**Headline finding:** The "theater" assertion is exactly correct.
+`grep -c "changsha-bridge" src/frontend/autotable/autotable.9519e86d.js`
+returns 0. The minified bundle exposes only `window.__THREE__`. There is
+no `message`-event listener and no `customEvent` listener. The receiver
+script's `CustomEvent` dispatches are completely unheard. The only
+canvas-side effect today is `document.getElementById('dice-img').style.opacity = '1'`
+from the receiver.
+
+**Surprises while reading upstream:**
+
+1. The upstream server (`server/game.ts`) has **zero game-rules
+   awareness** — it's a flat key-value store with `unique`/`ephemeral`/
+   `perPlayer` constraints. This is exactly the abstraction we want to
+   imitate: dumb storage that the React + backend pair drives. Means
+   our fake WS server can be small (~250 LOC, no game logic).
+
+2. Tile atlas mapping is **trivially compatible with Changsha v1**:
+   `upstreamTypeIndex = Math.floor(changshaTileId / 4)` for any id
+   0–107 lands cleanly in atlas cells (0,0) through (2,3) — wan, tong,
+   tiao all 1–9. No new glyphs needed; winds/dragons/red-fives at
+   atlas cells 27–36 are inert for v1.
+
+3. Dice are **not three.js meshes.** Upstream draws them on a 2D canvas
+   texture mapped onto the center pad mesh — Center.drawDice() uses
+   `ctx.drawImage(diceImg, ...)`. To show our authoritative dice it
+   suffices to push a `dice = [0, { dice: [d1,d2], state: 'rolled' }]`
+   collection update; upstream renders the result for ~1 s.
+
+4. Upstream uses **152 wall slots** (4 seats × 19 cols × 2 layers) but
+   only 136 are populated in Riichi. Changsha's 108 fit cleanly with
+   14/14/13/13 split across the four seats, leaving 44 right-edge
+   slots empty — visually correct for Changsha's wall ratio.
+
+5. Player actions are **expressed as slot-name changes**, not as
+   "discard" or "claim" semantic events. The translator's inverse
+   function (Phase 5b) has to detect patterns like
+   `things[i].slotName: hand.*@s → discard.*@s` and infer "discard".
+   Claim semantics (pung/kong/chow/hu) are genuinely ambiguous from
+   the canvas; the React modal still owns that picker.
+
+6. The bundle's `client-ui.ts` auto-reconnects 15× at 2 s intervals if
+   the WS drops. Our endpoint must stay always-available (respond to
+   JOIN with an empty UPDATE if no Changsha game is bound) to avoid
+   flapping.
+
+**Complexity estimate:** Phase 5a (walls + hands visible) **L** ~900
+LOC, 3–5 days. Phase 5b (canvas-drag discard) **M** +400 LOC, ~2 days.
+Phase 5c (batch-draw animation, SFX, break-point marker) **M** +300
+LOC, ~2 days.
+
+**Top 3 risks:** (1) silent breakage if upstream renames wall/hand/
+discard/meld slot names, (2) discard-confirmation race between fast
+drag and server echo (Phase 5b only), (3) bundle's own Deal button
+firing a Riichi deal in embedded mode if sidebar isn't hidden.
+
+**Open questions filed for Stephen:** 8 items including auto-roll
+vs click-to-roll, preserve standalone `/autotable/` sandbox?, canonical
+14/14/13/13 vs symmetric 14/13/14/13 wall split, WS endpoint path
+(`/autotable/ws` vs `/api/autotable/ws`).
