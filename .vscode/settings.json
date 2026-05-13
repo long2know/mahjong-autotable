@@ -1,0 +1,17 @@
+{
+  "//": "Tells the C# Dev Kit, OmniSharp, and .NET Install Tool extensions where to find the dotnet binary when it isn't on the system PATH.",
+  "//1": "Required on Linux when .NET was installed via dotnet-install.sh (default location: $HOME/.dotnet) and VS Code was launched from a desktop session that did not source ~/.bashrc / ~/.profile.",
+  "//2": "Windows devs: this path will not resolve. Override in your User settings (Ctrl+,) or set DOTNET_ROOT — the installer adds dotnet to system PATH so this setting is harmless if dotnet is already discoverable.",
+  "dotnet.dotnetPath": "${env:HOME}/.dotnet/dotnet",
+  "omnisharp.dotnetPath": "${env:HOME}/.dotnet",
+  "dotnetAcquisitionExtension.existingDotnetPath": [
+    {
+      "extensionId": "ms-dotnettools.csharp",
+      "path": "${env:HOME}/.dotnet/dotnet"
+    },
+    {
+      "extensionId": "ms-dotnettools.csdevkit",
+      "path": "${env:HOME}/.dotnet/dotnet"
+    }
+  ]
+}
