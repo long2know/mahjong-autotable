@@ -1910,7 +1910,18 @@ public static class BotDiscardAdvisor
         }
 
         visibleMeldCounts.TryGetValue(tile, out var meldCount);
-        return meldCount == 3 || meldCount >= 6 ? OpponentKongFeedAvoidBonus : 0;
+
+        if (meldCount == 3)
+        {
+            return OpponentKongFeedAvoidBonus;
+        }
+
+        if (meldCount >= 6)
+        {
+            return OpponentKongFeedAvoidBonus * (meldCount / 3);
+        }
+
+        return 0;
     }
 
     private static int GetDeadAdjacencyPenalty(
