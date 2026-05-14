@@ -415,6 +415,23 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotDiscardSoleSmallWinPair_WhenDominantSuitFilterActive()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 2), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7), new(TileSuit.Dots, 8), new(TileSuit.Dots, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Suit.Should().Be(TileSuit.Dots);
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DiscardsExtraSmallWinSingleton_WhenPairAlreadySecured()
     {
         var tiles = new List<Tile>
