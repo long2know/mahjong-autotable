@@ -85,8 +85,11 @@ public static class BotDiscardAdvisor
         Tile? soleChineseOfficialPairTile = null;
         if (ruleset == MahjongRuleset.ChineseOfficial)
         {
-            var pairEntries = handCounts.Where(entry => entry.Value >= 2).ToList();
-            if (pairEntries.Count == 1 && pairEntries[0].Value == 2 && !pairEntries[0].Key.IsFlower)
+            var pairEntries = handCounts
+                .Where(entry => entry.Value == 2 && !entry.Key.IsFlower)
+                .ToList();
+
+            if (pairEntries.Count == 1)
             {
                 soleChineseOfficialPairTile = pairEntries[0].Key;
             }
@@ -299,14 +302,23 @@ public static class BotDiscardAdvisor
                 if (liveSmallWinSingletons.Count == 1)
                 {
                     var liveSingleton = liveSmallWinSingletons[0];
-                    var protectedTile = liveSingleton.Tile;
-                    var nonProtectedCandidates = candidates
-                        .Where(candidate => !candidate.Tile.Equals(protectedTile))
-                        .ToList();
+                    var pairCount = handCounts.Count(entry => entry.Value >= 2);
+                    var hasAlternateLiveSmallWinCandidates = liveSmallWinPairCandidates is not null
+                        && liveSmallWinPairCandidates.Count > 1;
 
-                    if (nonProtectedCandidates.Count > 0)
+                    if (liveSingleton.RemainingCopies >= 2
+                        || pairCount == 0
+                        || hasAlternateLiveSmallWinCandidates)
                     {
-                        candidates = nonProtectedCandidates;
+                        var protectedTile = liveSingleton.Tile;
+                        var nonProtectedCandidates = candidates
+                            .Where(candidate => !candidate.Tile.Equals(protectedTile))
+                            .ToList();
+
+                        if (nonProtectedCandidates.Count > 0)
+                        {
+                            candidates = nonProtectedCandidates;
+                        }
                     }
                 }
             }
