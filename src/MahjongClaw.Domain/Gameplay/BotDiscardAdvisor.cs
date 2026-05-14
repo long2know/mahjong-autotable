@@ -299,7 +299,6 @@ public static class BotDiscardAdvisor
                 if (liveSmallWinSingletons.Count == 1)
                 {
                     var liveSingleton = liveSmallWinSingletons[0];
-                    var pairCount = handCounts.Count(entry => entry.Value >= 2);
                     var protectedTile = liveSingleton.Tile;
                     var nonProtectedCandidates = candidates
                         .Where(candidate => !candidate.Tile.Equals(protectedTile))
@@ -307,12 +306,7 @@ public static class BotDiscardAdvisor
 
                     if (nonProtectedCandidates.Count > 0)
                     {
-                        var shouldProtect = liveSingleton.RemainingCopies >= 2 || pairCount != 1;
-
-                        if (shouldProtect)
-                        {
-                            candidates = nonProtectedCandidates;
-                        }
+                        candidates = nonProtectedCandidates;
                     }
                 }
             }
