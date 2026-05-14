@@ -634,6 +634,22 @@ public static class BotDiscardAdvisor
                     .Where(candidate => candidate.Tile.IsHonor || candidate.Tile.Suit != dominantSuit)
                     .ToList();
 
+                if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias && offSuitCandidates.Count > 0)
+                {
+                    var smallWinPairTiles = handCounts
+                        .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                        .Select(entry => entry.Key)
+                        .ToList();
+
+                    if (smallWinPairTiles.Count == 1)
+                    {
+                        var protectedTile = smallWinPairTiles[0];
+                        offSuitCandidates = offSuitCandidates
+                            .Where(candidate => !candidate.Tile.Equals(protectedTile))
+                            .ToList();
+                    }
+                }
+
                 if (offSuitCandidates.Count > 0)
                 {
                     candidates = offSuitCandidates;
