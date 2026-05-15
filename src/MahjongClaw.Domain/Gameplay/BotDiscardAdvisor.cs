@@ -82,6 +82,10 @@ public static class BotDiscardAdvisor
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
 
+        var sevenPairsPairCount = meldTiles.Count == 0
+            ? handCounts.Sum(static entry => entry.Value / 2)
+            : 0;
+
         Tile? soleChineseOfficialPairTile = null;
         if (ruleset == MahjongRuleset.ChineseOfficial)
         {
@@ -320,6 +324,28 @@ public static class BotDiscardAdvisor
                             candidates = nonProtectedCandidates;
                         }
                     }
+                }
+            }
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && !hasSmallWinTileInHand)
+        {
+            var pairCount = handCounts.Count(entry => entry.Value >= 2);
+            if (pairCount >= 2)
+            {
+                var offRankPairCandidates = candidates
+                    .Where(candidate =>
+                    {
+                        handCounts.TryGetValue(candidate.Tile, out var handCount);
+                        return handCount == 2 && !Changsha258Ruleset.IsSmallWinPair(candidate.Tile);
+                    })
+                    .ToList();
+
+                if (offRankPairCandidates.Count > 0)
+                {
+                    candidates = offRankPairCandidates;
                 }
             }
         }
@@ -636,29 +662,40 @@ public static class BotDiscardAdvisor
             if (dominantSuits.Count == 1 && maxSuitCount >= pureSuitThreshold)
             {
                 var dominantSuit = dominantSuits[0];
-                var offSuitCandidates = candidates
-                    .Where(candidate => candidate.Tile.IsHonor || candidate.Tile.Suit != dominantSuit)
-                    .ToList();
+                var hasSevenPairsPotential = ruleset == MahjongRuleset.ChineseOfficial
+                    && meldTiles.Count == 0
+                    && sevenPairsPairCount >= 3
+                    && (ownedTiles.Any(tile => !tile.IsHonor && tile.Suit != dominantSuit)
+                        || ownedTiles
+                            .GroupBy(static tile => tile)
+                            .Any(group => group.Key.IsHonor && group.Count() >= 3));
 
-                if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias && offSuitCandidates.Count > 0)
+                if (!hasSevenPairsPotential)
                 {
-                    var smallWinPairTiles = handCounts
-                        .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
-                        .Select(entry => entry.Key)
+                    var offSuitCandidates = candidates
+                        .Where(candidate => candidate.Tile.IsHonor || candidate.Tile.Suit != dominantSuit)
                         .ToList();
 
-                    if (smallWinPairTiles.Count == 1)
+                    if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias && offSuitCandidates.Count > 0)
                     {
-                        var protectedTile = smallWinPairTiles[0];
-                        offSuitCandidates = offSuitCandidates
-                            .Where(candidate => !candidate.Tile.Equals(protectedTile))
+                        var smallWinPairTiles = handCounts
+                            .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                            .Select(entry => entry.Key)
                             .ToList();
-                    }
-                }
 
-                if (offSuitCandidates.Count > 0)
-                {
-                    candidates = offSuitCandidates;
+                        if (smallWinPairTiles.Count == 1)
+                        {
+                            var protectedTile = smallWinPairTiles[0];
+                            offSuitCandidates = offSuitCandidates
+                                .Where(candidate => !candidate.Tile.Equals(protectedTile))
+                                .ToList();
+                        }
+                    }
+
+                    if (offSuitCandidates.Count > 0)
+                    {
+                        candidates = offSuitCandidates;
+                    }
                 }
             }
         }
@@ -718,6 +755,18 @@ public static class BotDiscardAdvisor
         }
 
         var prioritizedCandidates = candidates;
+        if (ruleset == MahjongRuleset.ChineseOfficial && sevenPairsPairCount >= 6)
+        {
+            var tripletCandidates = prioritizedCandidates
+                .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count) && count == 3)
+                .ToList();
+
+            if (tripletCandidates.Count > 0)
+            {
+                prioritizedCandidates = tripletCandidates;
+            }
+        }
+
         var maxSmallWinOuts = 0;
 
         if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias)
@@ -905,11 +954,14 @@ public static class BotDiscardAdvisor
         }
 
         var sevenPairsBias = 0;
-        if (meldTiles.Count == 0 && pairCount >= 3)
+        var sevenPairsPairCount = meldTiles.Count == 0
+            ? tileCounts.Sum(static entry => entry.Value / 2)
+            : 0;
+        if (meldTiles.Count == 0 && sevenPairsPairCount >= 3)
         {
             if (tileMatchCount >= 2)
             {
-                sevenPairsBias = pairCount switch
+                sevenPairsBias = sevenPairsPairCount switch
                 {
                     >= 6 => 3,
                     5 => 2,
@@ -919,7 +971,7 @@ public static class BotDiscardAdvisor
             }
             else
             {
-                sevenPairsBias = pairCount switch
+                sevenPairsBias = sevenPairsPairCount switch
                 {
                     >= 6 => -3,
                     5 => -2,
@@ -927,6 +979,12 @@ public static class BotDiscardAdvisor
                     _ => -1
                 };
             }
+        }
+
+        var sevenPairsTripletBonus = 0;
+        if (meldTiles.Count == 0 && sevenPairsPairCount >= 3 && tileMatchCount >= 3)
+        {
+            sevenPairsTripletBonus = tileMatchCount >= 4 ? 6 : 4;
         }
         var smallWinPairBonus = 0;
         if (applySmallWinPairBias && Changsha258Ruleset.IsSmallWinPair(tile))
@@ -1256,7 +1314,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + adjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + sevenPairsTripletBonus + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + adjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty;
         }
 
         var rankCounts = suitTiles
@@ -1374,7 +1432,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + nearPureSuitPenalty + sevenPairsBias + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + fallbackNonSmallWinPairBonus + adjacentSmallWinSingletonPenalty + deadAdjacentSmallWinPairRelief + deadAdjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + nearPureSuitPenalty + sevenPairsBias + sevenPairsTripletBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + fallbackNonSmallWinPairBonus + adjacentSmallWinSingletonPenalty + deadAdjacentSmallWinPairRelief + deadAdjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty;
     }
 
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(
