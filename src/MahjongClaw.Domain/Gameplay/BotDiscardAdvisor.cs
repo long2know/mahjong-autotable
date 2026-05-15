@@ -86,7 +86,7 @@ public static class BotDiscardAdvisor
         if (ruleset == MahjongRuleset.ChineseOfficial)
         {
             var pairEntries = handCounts
-                .Where(entry => entry.Value == 2 && !entry.Key.IsFlower)
+                .Where(entry => entry.Value >= 2 && !entry.Key.IsFlower)
                 .ToList();
 
             if (pairEntries.Count == 1)

@@ -2894,4 +2894,21 @@ public class BotDiscardAdvisorTests
 
         handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 2));
     }
+
+    [Fact]
+    public void SelectDiscardIndex_PreservesSoleTripletPairCandidate_ForChineseOfficial()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 3), new(TileSuit.Characters, 4),
+            new(TileSuit.Characters, 5), new(TileSuit.Characters, 6), new(TileSuit.Characters, 7),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 7)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.ChineseOfficial);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 7));
+    }
 }
