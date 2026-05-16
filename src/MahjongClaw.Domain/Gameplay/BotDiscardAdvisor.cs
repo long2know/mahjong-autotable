@@ -8,6 +8,7 @@ public static class BotDiscardAdvisor
     private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
     private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
     private static readonly IReadOnlyList<Tile> Changsha258SmallWinPairTiles = BuildChangshaSmallWinPairTiles();
+    private static readonly IReadOnlyList<Tile> ChineseOfficialOrphanTileTypes = BuildChineseOfficialOrphanTileTypes();
     private const int LastSmallWinSingletonKeepBonus = 12;
     private const int OpponentKongFeedAvoidBonus = 12;
     private const int OpponentKongFeedLastCopyAvoidBonus = 10;
@@ -725,13 +726,21 @@ public static class BotDiscardAdvisor
                 var nonOrphanCount = ownedTiles.Count - orphanTiles.Count;
                 if (distinctOrphanTypes >= 11 && nonOrphanCount is > 0 and <= 3)
                 {
-                    var nonOrphanCandidates = candidates
-                        .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
-                        .ToList();
+                    var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
+                        ownedCounts,
+                        visibleCounts,
+                        distinctOrphanTypes);
 
-                    if (nonOrphanCandidates.Count > 0)
+                    if (hasLiveThirteenOrphansPath)
                     {
-                        candidates = nonOrphanCandidates;
+                        var nonOrphanCandidates = candidates
+                            .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
+                            .ToList();
+
+                        if (nonOrphanCandidates.Count > 0)
+                        {
+                            candidates = nonOrphanCandidates;
+                        }
                     }
                 }
             }
@@ -1555,6 +1564,62 @@ public static class BotDiscardAdvisor
             .Concat(windTiles)
             .Concat(dragonTiles)
             .ToArray();
+    }
+
+    private static IReadOnlyList<Tile> BuildChineseOfficialOrphanTileTypes()
+    {
+        var suitedOrphans = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos }
+            .SelectMany(static suit => new[] { 1, 9 }.Select(rank => new Tile(suit, rank)));
+        var windTiles = Enum
+            .GetValues<Wind>()
+            .Select(wind => new Tile(TileSuit.Winds, 0, wind));
+        var dragonTiles = Enum
+            .GetValues<Dragon>()
+            .Select(dragon => new Tile(TileSuit.Dragons, 0, null, dragon));
+
+        return suitedOrphans
+            .Concat(windTiles)
+            .Concat(dragonTiles)
+            .ToArray();
+    }
+
+    private static bool HasLiveThirteenOrphansPath(
+        IReadOnlyDictionary<Tile, int> ownedCounts,
+        IReadOnlyDictionary<Tile, int> visibleCounts,
+        int distinctOrphanTypes)
+    {
+        var orphanTypeCount = ChineseOfficialOrphanTileTypes.Count;
+
+        if (distinctOrphanTypes >= orphanTypeCount)
+        {
+            foreach (var tile in ChineseOfficialOrphanTileTypes)
+            {
+                ownedCounts.TryGetValue(tile, out var ownedCount);
+                visibleCounts.TryGetValue(tile, out var visibleCount);
+                if (4 - ownedCount - visibleCount > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        foreach (var tile in ChineseOfficialOrphanTileTypes)
+        {
+            if (ownedCounts.ContainsKey(tile))
+            {
+                continue;
+            }
+
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+            if (4 - visibleCount > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static IReadOnlySet<Tile> BuildLiveSmallWinPairCandidates(
