@@ -722,8 +722,25 @@ public static class BotDiscardAdvisor
                 var orphanTiles = ownedTiles
                     .Where(tile => tile.IsHonor || IsTerminalSuitedTile(tile))
                     .ToList();
-                var distinctOrphanTypes = orphanTiles.Distinct().Count();
                 var nonOrphanCount = ownedTiles.Count - orphanTiles.Count;
+
+                if (nonOrphanCount == 0)
+                {
+                    var duplicateOrphanCandidates = candidates
+                        .Where(candidate =>
+                        {
+                            handCounts.TryGetValue(candidate.Tile, out var count);
+                            return count >= 2 && (candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile));
+                        })
+                        .ToList();
+
+                    if (duplicateOrphanCandidates.Count > 0)
+                    {
+                        candidates = duplicateOrphanCandidates;
+                    }
+                }
+
+                var distinctOrphanTypes = orphanTiles.Distinct().Count();
                 if (distinctOrphanTypes >= 11 && nonOrphanCount is > 0 and <= 3)
                 {
                     var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
