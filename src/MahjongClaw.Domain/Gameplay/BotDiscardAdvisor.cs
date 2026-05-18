@@ -111,6 +111,20 @@ public static class BotDiscardAdvisor
             enforceSmallWinPairBias = false;
         }
 
+        Tile? soleChangshaSmallWinPairTile = null;
+        if (enforceSmallWinPairBias)
+        {
+            var smallWinPairs = handCounts
+                .Where(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                .Select(entry => entry.Key)
+                .ToList();
+
+            if (smallWinPairs.Count == 1)
+            {
+                soleChangshaSmallWinPairTile = smallWinPairs[0];
+            }
+        }
+
         var hasSmallWinTileInHand = enforceSmallWinPairBias
             && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
 
@@ -850,6 +864,18 @@ public static class BotDiscardAdvisor
         {
             var nonPairCandidates = prioritizedCandidates
                 .Where(candidate => !candidate.Tile.Equals(soleChineseOfficialPairTile))
+                .ToList();
+
+            if (nonPairCandidates.Count > 0)
+            {
+                prioritizedCandidates = nonPairCandidates;
+            }
+        }
+
+        if (soleChangshaSmallWinPairTile is not null)
+        {
+            var nonPairCandidates = prioritizedCandidates
+                .Where(candidate => !candidate.Tile.Equals(soleChangshaSmallWinPairTile))
                 .ToList();
 
             if (nonPairCandidates.Count > 0)
