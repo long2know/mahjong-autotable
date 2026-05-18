@@ -717,17 +717,33 @@ public static class BotDiscardAdvisor
 
         if (ruleset == MahjongRuleset.ChineseOfficial)
         {
-            var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
-            var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
-            if (honorCount >= 9 && suitedCount is > 0 and <= 3)
+            var terminalOrHonorCount = ownedTiles.Count(static tile => tile.IsHonor || IsTerminalSuitedTile(tile));
+            var nonTerminalSuitedCount = ownedTiles.Count(static tile => !tile.IsHonor && !IsTerminalSuitedTile(tile));
+            if (terminalOrHonorCount >= 11 && nonTerminalSuitedCount > 0)
             {
-                var offHonorCandidates = candidates
-                    .Where(candidate => !candidate.Tile.IsHonor)
+                var nonTerminalCandidates = candidates
+                    .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
                     .ToList();
 
-                if (offHonorCandidates.Count > 0)
+                if (nonTerminalCandidates.Count > 0)
                 {
-                    candidates = offHonorCandidates;
+                    candidates = nonTerminalCandidates;
+                }
+            }
+            else
+            {
+                var honorCount = ownedTiles.Count(static tile => tile.IsHonor);
+                var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
+                if (honorCount >= 9 && suitedCount is > 0 and <= 3)
+                {
+                    var offHonorCandidates = candidates
+                        .Where(candidate => !candidate.Tile.IsHonor)
+                        .ToList();
+
+                    if (offHonorCandidates.Count > 0)
+                    {
+                        candidates = offHonorCandidates;
+                    }
                 }
             }
 
