@@ -88,6 +88,7 @@ public static class BotDiscardAdvisor
             : 0;
 
         Tile? soleChineseOfficialPairTile = null;
+        var allowBreakingSolePairForTerminalHonorLean = false;
         if (ruleset == MahjongRuleset.ChineseOfficial)
         {
             var pairEntries = handCounts
@@ -721,6 +722,8 @@ public static class BotDiscardAdvisor
             var nonTerminalSuitedCount = ownedTiles.Count(static tile => !tile.IsHonor && !IsTerminalSuitedTile(tile));
             if (terminalOrHonorCount >= 11 && nonTerminalSuitedCount > 0)
             {
+                allowBreakingSolePairForTerminalHonorLean = true;
+
                 var nonTerminalCandidates = candidates
                     .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
                     .ToList();
@@ -878,13 +881,20 @@ public static class BotDiscardAdvisor
 
         if (soleChineseOfficialPairTile is not null)
         {
-            var nonPairCandidates = prioritizedCandidates
-                .Where(candidate => !candidate.Tile.Equals(soleChineseOfficialPairTile))
-                .ToList();
+            var protectSolePair = !allowBreakingSolePairForTerminalHonorLean
+                || soleChineseOfficialPairTile.IsHonor
+                || IsTerminalSuitedTile(soleChineseOfficialPairTile);
 
-            if (nonPairCandidates.Count > 0)
+            if (protectSolePair)
             {
-                prioritizedCandidates = nonPairCandidates;
+                var nonPairCandidates = prioritizedCandidates
+                    .Where(candidate => !candidate.Tile.Equals(soleChineseOfficialPairTile))
+                    .ToList();
+
+                if (nonPairCandidates.Count > 0)
+                {
+                    prioritizedCandidates = nonPairCandidates;
+                }
             }
         }
 
