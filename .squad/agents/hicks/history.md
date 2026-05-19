@@ -444,3 +444,9 @@ behaviour is preserved.
   Rebuilt clean — `dealer.a27808af.png` now correctly emits as a 43 KB PNG
   with the original Parcel hash, confirming source identity.
 
+
+## Architectural Pivot — Phase A SHIPPED (2026-05-13)
+
+**Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
+**Timestamp:** 2026-05-13T23:10Z
+**Contribution:** Produced autotable TS modification inventory (3 vendoring paths, Parcel vs Vite analysis, 9 risk flags), executed Phase A frontend vendor (pwmarcz/autotable @ 8b81d92 → `src/frontend/autotable-src/`, deleted `src/frontend/modern/` ~7,094 LOC, deleted bridge receiver ~154 LOC, updated .vscode F5 compound launch with `autotable: watch` task).

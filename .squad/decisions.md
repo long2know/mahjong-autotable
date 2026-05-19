@@ -937,3 +937,456 @@ WebSocket protocol upstream has shipped for years.
 
 Spike-only. No code modified. Awaiting Stephen's directive to proceed
 with Phase 5a under the recommended strategy.
+## User Directives — Architectural Pivot (Stephen Long, 2026-05-13)
+
+### 2026-05-13T23:00Z: User directive — Architectural pivot
+**By:** Stephen Long (via Copilot)
+**What:** Autotable IS the framework. Changsha rules must be implemented INSIDE autotable (its TypeScript codebase and protocol), NOT bolted on via a separate React/Fluent UI SPA with an iframe bridge. The user's words: *"Do you not understand that we want to simply use autotable and implement changsha rules with it??"* Confirmed by his original day-one ask: *"Since autotable is our basis... if it's a lot of work or tricky to pivot the code base to [React/Fluent], don't try to go down that path initially."*
+**Why:** Core architectural intent we misread. The current architecture — separate `/changsha` SPA + Strategy C "fake autotable WS" bridge — needs to be replaced with autotable-native: autotable's own UI, autotable's own WS protocol spoken natively by the .NET backend, and Changsha rules patched into autotable's TS source (108-tile set, 258 eye, scoring, claim grammar).
+**Implications:**
+- The `/changsha` React SPA + bridge receiver + Strategy C fake WS endpoint are candidates for removal.
+- Backend `ChangshaGameRuntime` keeps its rules engine but exposes via autotable's NEW/JOIN/JOINED/UPDATE WS protocol — not SignalR with a Changsha-specific contract.
+- Autotable TS code itself needs Changsha modifications (tiles, scoring, claims).
+- React/Fluent UI may survive only as a thin lobby (optional) — not as the game UI.
+
+### 2026-05-13T23:06Z: User directive — Pivot to autotable-vendored, Changsha-native (BINDING)
+**By:** Stephen Long (via Copilot)
+**What (verbatim):** *"Can we not just make a clone/copy of the autotable source code and implement changsha rules within it? Maybe we should just do that and get rid of all the cruft/junk that you created?"*
+**Authoritative sources Stephen anchored:**
+- Autotable source: https://github.com/pwmarcz/autotable
+- Changsha rules: https://mahjongpros.com/blogs/how-to-play/beginners-guide-to-changsha-mahjong
+
+**The binding plan:**
+1. **Vendor in autotable source.** Clone pwmarcz/autotable INTO this repo as the primary frontend codebase. Not a git submodule, not an iframe — a real fork we can modify file-by-file. Likely path: `src/frontend/autotable/` replaces the current static bundle with the actual TypeScript source + build chain. Final path can be picked by Hicks but the intent is "this IS our frontend codebase now."
+2. **Implement Changsha rules INSIDE that vendored source.** Modify autotable's TS directly: 108-tile set, 258 eye, Changsha scoring (Big/Small Wins, special hands), claim grammar (pung, chow-next-player-only, kong + gangshanghua bonus), no riichi/dora/furiten. Vasquez's rules diff manifest is the authoritative spec.
+3. **Backend speaks autotable's native WS protocol.** The .NET backend implements pwmarcz/autotable's NEW/JOIN/JOINED/UPDATE protocol natively (replacing the Node.js reference server). Backend Changsha state engine drives autotable's collection updates.
+4. **Delete the cruft Stephen named:**
+   - The entire `src/frontend/modern/` React/Fluent UI 9 SPA at `/changsha` — the lobby, the game UI, the Play-vs-Bots flow, all of it.
+   - The Strategy C "fake autotable WS" bridge layer in the backend (`src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableWsEndpoint.cs`, `ChangshaToAutotableTranslator.cs`, related plumbing).
+   - The `changsha-bridge-receiver.js` injected script.
+   - The SignalR Changsha-specific contract (if Bishop confirms autotable's native protocol replaces it cleanly).
+   - The iframe-embed mode and parent→child postMessage protocol.
+5. **Keep:** the Changsha rules engine logic (state machine, dice service, break-point service, hand evaluator, scoring), the .NET project structure, EF Core persistence, the docs/rules/ source-of-truth files, the test suite (rules portion).
+**Out of scope (for now):**
+- React/Fluent UI everywhere. Stephen's original day-one note explicitly said *"if it's a lot of work or tricky to pivot the code base to [React/Fluent], don't try to go down that path initially."* Autotable's native UI is the game UI.
+- A separate lobby app. If we need a "create/join game" screen, it lives within autotable's UI conventions.
+**Why:** This was the ORIGINAL architectural intent we misread. The current bolt-on architecture (separate React SPA + iframe + Strategy C bridge) is being explicitly rejected by the user. Three agents already mid-flight (Bishop salvage map, Hicks TS modification inventory, Vasquez rules diff) — their outputs become the implementation roadmap for THIS plan, not option-finding for alternatives.
+
+### 2026-05-13T23:15Z: User directive — Preserve F5-from-VS Code local dev (BINDING constraint on pivot)
+**By:** Stephen Long (via Copilot)
+**What (verbatim):** *"Also - keep in mind I still want to be able to launch the app with vscode.."*
+**Scope:** Applied as a constraint on Ripley's pivot plan (`.squad/decisions/inbox/ripley-pivot-plan.md`). After the pivot, the user must still be able to hit F5 in VS Code and get a working local-dev experience: .NET backend up, autotable bundle being served, and ideally autotable's TypeScript hot-rebuilding on file save so frontend iteration doesn't require manual rebuilds.
+
+**Constraints the plan must respect:**
+1. `.vscode/launch.json` and `.vscode/tasks.json` must remain functional — F5 launches the backend with no manual prep steps required.
+2. The disappearance of `src/frontend/modern/` (and its Vite dev server) must not regress local dev for autotable's frontend.
+3. PATH augmentation work already shipped in PR #27 + #28 must remain intact through the pivot — those fixes were independent of the architecture.
+4. The vendored autotable (Parcel-based per pwmarcz/autotable upstream) needs a dev-loop story: Parcel's watch/HMR server alongside the backend, OR a build-on-save task, OR keep Parcel's `make watch` running in a separate terminal that the user launches via a VS Code task. Ripley to recommend.
+
+**Decision to add to plan §4:** What's the preferred F5 dev shape — compound launch (backend + Parcel watch in one F5 keystroke), VS Code task running Parcel separately, or simple rebuild-on-save? Default recommendation needed.
+
+
+### 2026-05-13T23:20Z: Pivot Plan Accepted (Stephen — MVP fast-cuts elected)
+**Captured:** 2026-05-13T23:20Z
+**By:** Stephen Long (in-session, ask_user response)
+**Status:** BINDING — Phase A fires immediately.
+
+**Decision:** Stephen accepted **all 16 defaults** in §4 of Ripley's pivot plan AND elected the **MVP fast-cuts (a) + (b) + (c)** Ripley offered in §6.
+
+**User input:** *"Accept all defaults + take MVP fast-cuts (a) + (b) + (c) for faster v1"*
+
+**MVP Fast-Cut Overrides:**
+
+(a) **Single-game-per-instance deployment.** No matchmaking, no game discovery, no replay-on-reconnect, no multi-game lobby. The autotable sidebar shows only ONE game; "Connect" enters; no `New game / Join existing` distinction. 4 seats: seat 0 = human, seats 1–3 = bots. `POST /api/changsha/games` endpoint collapses to single seed-bound game per process. Multi-human play deferred to v1.1.
+
+(b) **Drag-to-meld with first-valid-drag server arbiter.** Overrides decision #7 (claim grammar). The `changsha.claim` custom collection is NOT needed in Phase C. Claim affordance becomes: drag a tile onto the most recent discard slot → server validates against open claim opportunities → first valid drag wins. Hu stays a button. With fast-cut (a) (1 human + 3 bots), the race is effectively eliminated because bot timing is server-controlled. Remaining 3 custom collections (`changsha.scoring`, `changsha.banker`, `changsha.lifecycle`) DO ship in Phase C.
+
+(c) **Defer Vasquez conformance gaps to v1.1.** Phase D does NOT fix chow tile-ID honoring or 过胡 enforcement. Both gaps remain as known limitations, documented in `docs/known-limitations.md` (Phase E). Vasquez audits Phase D against the MVP-acceptable subset of the spec.
+
+**Net effect on phase plan:**
+- Phase A — unchanged.
+- Phase B — unchanged.
+- Phase C — drops `changsha.claim` collection design; collapses `POST /api/changsha/games` to single-game endpoint. Per-viewer `things` privacy filter (decision #6) STILL ships.
+- Phase D — drops claim-window panel + countdown overlay; drops chow tile-ID + 过胡 fixes. Adds drag-to-meld server arbiter (~120 LOC).
+- Phase E — unchanged. Adds `docs/known-limitations.md`.
+
+---
+
+## Architectural Pivot Plan Evidence & Details
+
+### Bishop — Backend Salvage Inventory (excerpt)
+
+**Purpose:** Map every component in `src/backend/src/Mahjong.Autotable.Api/` against the autotable-native target.
+
+**Key findings:**
+- ~2,500 LOC of pure Changsha logic survives intact: state machine (808 LOC), win detector (308 LOC), scoring (142 LOC), claim adjudicator (141 LOC), bot policy (217 LOC), dice/deal services (~200 LOC), deck builder. These have zero transport coupling.
+- ~2,400 LOC of legacy 136-tile Western-rules engine (`Tables/*`) scheduled for deletion; includes 8 REST `/api/tables/*` endpoints plus 2 EF entities.
+- ~800 LOC of bridge/translator code (`Autotable/*` namespace) survives but repackaged as the new primary transport (not a bridge anymore).
+- Risk flags: per-viewer `things` filtering (novel), inbound-UPDATE validation (greenfield), synthetic ephemeral collections for unmapped events (ClaimWindowOpen, ScoringComplete, BankerRotated, etc.).
+
+---
+
+### Hicks — Autotable TS Modification Inventory (excerpt)
+
+**Purpose:** Honest inventory of what changes in autotable's TypeScript to make it Changsha-native.
+
+**Key findings:**
+- **Three vendoring paths:** (A) Git submodule (clean history, footgun for CI), (B) In-tree fork at `src/frontend/autotable-src/` (recommended — matches `modern/` already in-tree, no submodule trap), (C) Vendor-copy (functionally identical to B, loses audit trail).
+- **Bundler choice:** Keep Parcel 2.15 (recommended — bundler migration 1–2 weeks of Bootstrap 4 + jQuery + `url:` import rewrites; upstream uses Parcel, pwmarcz rejects non-Riichi PRs so upstream merges are rare).
+- **Parcel build chain:** Needs Make + Inkscape (tile SVG → PNG) + Blender (`models.blend` → `.glb`). Mitigation: commit prebuilt PNG/GLB as canonical for v1; gate Inkscape/Blender targets behind `make assets` opt-in.
+- **Modified files (Phase B scope):** 6 files across setup.ts, setup-deal.ts, setup-slots.ts, types.ts, things.ts, world.ts, game-ui.ts; ~400 LOC of edits (mostly deletions, simple swaps).
+- **Risk flags:** Riichi-shape grep leaks (honba, riichi, fives, kita scattered ~8 files), wall-arithmetic off-by-one (14/14/13/13 split most cognitively loaded).
+
+---
+
+### Vasquez — Rules Diff Manifest (excerpt)
+
+**Purpose:** Authoritative Changsha vs Riichi divergence spec to drive Hicks's TS modifications and backend rules graft.
+
+**14 divergence axes identified; key findings:**
+- **Tile set:** 108 tiles (no honors, no red-five variants) vs Riichi's 136 + configurables.
+- **Wall layout:** 14/14/13/13 asymmetric distribution (vs 17 each in Riichi), no dead wall, no dora indicator slot, no rinshan slot.
+- **Hand size:** Dealer +1 at start (14 for dealer, 13 for others), active player 14 during turn — both KEEP.
+- **Claim grammar:** Pung (2 + discard), Chow (next-player-only + discard), Kong (4 + discard + replacement from back wall), Hu (胡, win). No Riichi, no optional claims, no waiting patterns.
+- **Scoring:** Small Win (self-pick) = 1×base, Big Win (point-to) = dealer bonus if dealer wins. No dora, no fu-counting, no mangan tiers.
+- **9 open Q's on implementation details** (tile ID honoring in chow, 过胡 per-tile lockout, marker animation timing, etc.) — many deferred to Phase D/v1.1 per MVP fast-cuts.
+
+---
+
+## Architectural Pivot Plan (Ripley — 2026-05-13)
+
+# Ripley — Pivot Plan (autotable-vendored, Changsha-native)
+
+> **Author:** Ripley (Lead)
+> **Date:** 2026-05-13
+> **Binds against:** `.squad/decisions/inbox/copilot-directive-2026-05-13T2306Z-pivot-binding.md`
+> **Synthesises:**
+> - `.squad/decisions/inbox/bishop-backend-salvage-inventory.md`
+> - `.squad/decisions/inbox/hicks-autotable-ts-inventory.md`
+> - `.squad/decisions/inbox/vasquez-rules-diff-manifest.md`
+> **Status:** Awaiting Stephen's batch-answer on §4 before any code change ships.
+
+---
+
+## 1. Thesis
+
+Vendor pwmarcz/autotable as an in-tree fork at `src/frontend/autotable-src/`, modify its TypeScript directly so the only game it knows how to render is Changsha (108 tiles, 14/14/13/13 wall, no honors / no dora / no riichi, 258-eye, Big/Small Win scoring, drag-driven claims with Pung/Chow/Kong/Hu overlays). The .NET backend keeps Bishop's pure rules engine intact (~2,500 LOC of `Changsha/*.cs` — state machine, win detector, scoring, claim adjudicator, bot policy) and becomes the authoritative server for autotable's own `NEW`/`JOIN`/`JOINED`/`UPDATE` WS protocol — extended with three small custom collections (`changsha.claim`, `changsha.scoring`, `changsha.banker`) that have no native carrier. SignalR, the React/Fluent UI 9 SPA at `/changsha`, the iframe-postMessage bridge, the `changsha-bridge-receiver.js` shim, and the legacy 136-tile `TableStateEngine` plus its `/api/tables/*` REST surface all die on a posted schedule. Net delta: ~3,500 LOC of frontend deleted, ~1,500 LOC added; ~2,400 LOC of legacy backend deleted, ~600 LOC of runtime repointed.
+
+---
+
+## 2. Phased plan
+
+Five phases, each shippable in isolation. After every phase a user can play *something* — degraded but real — so we never go dark for more than one merge cycle.
+
+### Phase A — Vendor + Scrub
+
+**Goal.** Get autotable source in-tree, building, and serving at `/autotable/` from our own build, with the dead React/bridge cruft physically removed.
+
+**Deliverables.**
+- New folder `src/frontend/autotable-src/` containing pwmarcz/autotable `master` (recommended Option B: in-tree fork, no submodule — Hicks §1) with `COPYING` + `CC BY-NC-SA` notices preserved verbatim.
+- Keep upstream **Parcel 2.15** build chain unchanged (recommended in §7 — Vite migration is out of scope for the pivot). Add `Makefile` invocation to the Docker image and CI; if Inkscape/Blender aren't available we ship the prebuilt artefacts that already live under `src/frontend/autotable/` and only rebuild on TS changes (no asset edits in v1).
+- Replace `src/frontend/autotable/autotable.9519e86d.js` with the build output of the in-tree source. Delete `changsha-bridge-receiver.js`, the `<style id="changsha-embedded-mode">` block, and the `data-changsha-embedded` shim from `index.html` (Hicks §6.1).
+- Delete `src/frontend/modern/` in full — `autotableBridge.ts`, `ChangshaTablePage.tsx`, `useLiveChangshaGame.ts`, `signalrClient.ts`, `changshaReducer.ts`, all `components/`, all `__tests__/`, the Vite config, the `package.json` for it (Hicks §6.2). ~3,500 LOC gone.
+- Delete `src/backend/.../Tables/TableStateEngine.cs`, `TableContracts.cs`, `TableGameState.cs`, `TableStateHasher.cs`, `TableStateSerializer.cs`, `TableSessionEventStore.cs`, the two EF entities (`TableSession`, `TableSessionEvent`), the eight `/api/tables/*` minimal-API endpoints in `Program.cs` (lines 86–494), and the four test files (`TableStateEngineTests.cs`, `TableSeatViewProjectionTests.cs`, `TableSessionEventStoreTests.cs`, `ClaimResolutionApiTests.cs`) — ~2,400 LOC src + ~1,120 LOC tests (Bishop Bucket C).
+- Drop SQLite tables `TableSessions` + `TableSessionEvents` in `DatabaseBootstrapper`.
+- `.vscode/launch.json` + `.vscode/tasks.json` updated for the new compound-launch shape; PATH augmentation from PRs #27 + #28 preserved verbatim.
+- Annotate `docs/rules/changsha-3d-renderer-plan.md`, `changsha-autotable-bridge.md`, `changsha-frontend-plan.md`, `changsha-signalr-contract.md` with a `SUPERSEDED — see ripley-pivot-plan.md` header.
+
+**Local Dev (F5) story.** Stephen's binding constraint (`copilot-directive-2026-05-13T2315Z-f5-dev.md`): one F5 keystroke in VS Code = full dev loop, no manual prep. Post-pivot shape:
+- `.vscode/launch.json` — kill the existing `Frontend Modern (Vite)` config and the `F5 Full Stack (Backend + Modern Frontend)` compound (both die with `modern/`). Add a new `Autotable (Parcel watch)` config (`type: node-terminal`, running the watcher in `src/frontend/autotable-src/`) plus a new compound **`F5 Full Stack (Backend + Autotable)`** that boots `.NET Backend` + `Autotable (Parcel watch)` together. F5 becomes one keystroke → backend listening on `:5114` + Parcel rebuilding on every TS save.
+- `.vscode/tasks.json` — add a new `autotable: watch` task: `type: process`, `command: make`, `args: ["parcel"]` (or `npm` / `["run", "watch"]` if we add a script wrapper to `package.json`), `options.cwd: ${workspaceFolder}/src/frontend/autotable-src`, `isBackground: true`. Delete the existing `frontend: install` / `frontend: run` tasks (which point at `modern/`) alongside `modern/` itself. `backend: build` and `backend: run` stay verbatim.
+- **PATH augmentation from PRs #27 + #28 preserved untouched.** Every existing `options.env.PATH` and `configurations[*].env.PATH` entry stays byte-identical. The pivot only adds new task/launch entries; it does not edit the existing PATH-augmented ones.
+- The existing Vite proxy in `src/frontend/modern/vite.config.ts` (which routed `/api` + `/autotable` + WS to `:5114`) becomes obsolete the moment `modern/` is deleted — already on the delete manifest in §3. No replacement needed: the backend at `:5114` is the only origin the browser ever hits.
+- **Parcel dev-server vs watch.** Investigated `/tmp/autotable-upstream/` — upstream's `Makefile` exposes `make parcel` which runs `./node_modules/.bin/parcel --no-hmr index.html about.html` (Parcel 2's dev-server subcommand on default port 1234, HMR explicitly off); upstream's `package.json` exposes no `watch` npm script. Two shapes work; pick one as default:
+  - **Recommended (simpler):** the new `autotable: watch` task runs `./node_modules/.bin/parcel watch index.html about.html --dist-dir build/` (Parcel 2 watch-only mode — no HTTP server, no port-1234 dependency, just incremental rebuilds to `build/`). The .NET backend's static-file middleware serves `src/frontend/autotable-src/build/` verbatim at `/autotable/`. User refreshes the browser to see TS changes. One origin, one port, zero proxy plumbing.
+  - **Alternative (HMR polish):** keep upstream's `make parcel` (Parcel dev server on `:1234`). Backend at `:5114` serves a dev `index.html` shim that links `<script src="http://localhost:1234/index.HASH.js">`, so Parcel's HMR websocket reaches the browser. More moving parts; defer to v1.1 unless HMR materially speeds iteration. Decision deferred to §4 Q16.
+
+**Dependencies.** None. This is the cleanup pass.
+
+**Exit criteria.** `make build` (in `src/frontend/autotable-src/`) emits the same byte-identical bundle behaviour the repo ships today. `dotnet build` shows 0 warnings, 0 errors. The remaining test suite (~226 passing minus the deleted ~50 tests under `Tables/*` and `Autotable/*`) is green. A user navigating to `/autotable/` gets the **stock Riichi 3D table** and can run a local 4-player setup. Nothing Changsha works yet — but nothing is broken either, and the repo is now ~5,000 LOC lighter. **F5-from-VS Code regression check:** on a fresh checkout, the user can hit F5 once and reach a working `/autotable/` page in the browser without any manual prep beyond a one-time `dotnet restore` and `cd src/frontend/autotable-src && npm install` (or the upstream-equivalent `make` bootstrap) per workstation.
+
+**Owner.** Hicks (vendoring + bundle wiring), Bishop (legacy delete + EF migration), multi.
+
+**Effort.** Medium. Mechanical deletes dominate; the vendor copy + build wiring is the only thing with real engineering risk.
+
+**Risks.**
+- *Build chain reproducibility.* Upstream uses Parcel + Inkscape + Blender; we currently ship prebuilt artefacts. If we never re-export `models.blend` or `tiles.svg` in v1 we don't need Inkscape/Blender, but the Makefile assumes them. Mitigation: commit the existing `.png`/`.glb` outputs as canonical for v1; gate the Inkscape/Blender targets behind a `make assets` opt-in.
+- *Submodule-vs-fork regret.* Once we copy upstream in-tree we lose `git submodule update --remote`. Mitigation: tag the import commit with `upstream/<sha>` for future cherry-picks. Recommendation in §7 is firm.
+
+---
+
+### Phase B — Tile / Asset Surgery (Changsha-shaped scene)
+
+**Goal.** The vendored autotable scene renders a 108-tile Changsha wall (14/14/13/13), no honors, no dora, no riichi sticks, no point-stick tray — but still uses upstream's local `Setup.deal()` for the actual placement. No backend integration yet.
+
+**Deliverables.**
+- `src/setup.ts`: `addTiles` loop `for (let i = 0; i < 108; i++)`; rewrite `tileIndex(i)` to `Math.floor(i / 4)` returning logical 0–26; delete the red-fives branch and the BAMBOO/THREE_PLAYER conditionals. Delete `addSticks` for Changsha or hide tray slots (Vasquez §1.14).
+- `src/setup-deal.ts`: rewrite `DEALS.CHANGSHA.HANDS` for 4-4-4-1+1 across the 54-stack wall with 14/14/13/13 distribution + dealer +1 (Vasquez §1.5, item 11). Delete `WINDS` dealType. Keep `UNSHUFFLED` for debug.
+- `src/setup-slots.ts`: add `SLOT_GROUPS.CHANGSHA` cloned from `FOUR_PLAYER` minus `riichi` slot, minus tray-stick slots, with the wall row width matching 14/14/13/13. Delete `riichi` slot/group (Vasquez §1.14).
+- `src/types.ts`: collapse `GameType` to `CHANGSHA` only (recommendation §4 Q4 default); drop `Conditions.fives`, drop `Conditions.points`, drop `Conditions.back` (recommendation §4 Q5 default); add `Conditions.baseUnit: number` (default 1).
+- `src/things.ts`: delete the `riichi` stick definition; keep the `MARKER` dealer chip (Vasquez §1.14, Q7).
+- `src/world.ts`: delete the riichi-stick collision branch (`target.group === 'riichi'`); delete `toggleHonba`; modify dealer-toggle to be **display-only** (banker is authoritative server-side, no client cycling).
+- `game-ui.ts` + `index.html`: hide `#fives`, `#points`, `#toggle-honba`, `#reset-points`; relabel `#deal-type` to expose only Changsha-HANDS; rename claim labels to **Chinese-character primary with pinyin sublabel** (`碰 Pung`, `吃 Chow`, `杠 Kong`, `胡 Hu` — recommendation §4 Q9 default).
+
+**Dependencies.** Phase A complete.
+
+**Exit criteria.** Opening `/autotable/` shows a Changsha-shaped 108-tile wall, dealer marker, no honor tiles in the catalog, no riichi sticks, no dora indicator slot, no point-stick tray. Clicking **Deal** runs upstream's local shuffle and places 14/14/13/13. Drag-to-discard works (laissez-faire upstream behaviour). User-visible result: you can sit at a Changsha-correct *empty* table and play with the tiles like a sandbox. No rules enforcement yet. **Shippable as a demo.**
+
+**Owner.** Hicks. Vasquez reviews against the manifest checklist.
+
+**Effort.** Medium. ~400 LOC of TS edits across 6 files; most lines are deletions or simple-value swaps.
+
+**Risks.**
+- *Riichi-shape grep leaks.* `honba` / `riichi` / `fives` / `kita` are scattered across ~8 files (Hicks R3). A single TS-error cascade on `Conditions` is likely; budget half a day of compile-error chasing.
+- *Wall-arithmetic off-by-one.* Hicks called out the 14/14/13/13 split as the most cognitively loaded part; recommend Vasquez pairs on the deal-table generation and Bishop's `BreakPointService` tests get ported to a Jest/TS smoke test as a cross-check (Vasquez Q4).
+
+---
+
+### Phase C — Backend speaks autotable WS natively (still rules-blind from the client's POV)
+
+**Goal.** The .NET backend serves `/autotable/ws` as the *authoritative* transport (not a `StateChanged` subscriber). Bundle reconnects against it, the existing `ChangshaToAutotableTranslator` produces the snapshot, bots play a hand end-to-end with the backend driving every `things` mutation. SignalR is gone.
+
+**Deliverables.**
+- *Promote* `src/backend/.../Autotable/*` out of the bridge subfolder: `AutotableProtocol.cs`, `AutotableSlotMap.cs`, `ChangshaToAutotableTranslator.cs`, `AutotableWsEndpoint.cs` all survive physically (Bishop Bucket C "conceptually deleted but repackaged" — ~840 LOC). Rename namespace to `…Api/Transport/` or similar. These are now the primary transport, not the bridge.
+- Repoint `ChangshaGameRuntime.cs` (Bishop B1) — delete all 37 `_hub.Clients.*` / `_hub.Groups.*` calls; the runtime now calls into `AutotableConnectionManager` (or a slim `IAutotableTransport` extracted from it) to push collection-delta UPDATEs. Per-seat private payloads route via the connection-manager's `Guid` per-WS-connection identity instead of `Context.ConnectionId`. Estimate: 400–600 LOC delta.
+- Repoint `ChangshaGameInstance.cs` — swap `SeatConnections: Dictionary<int, string>` for `Dictionary<int, Guid>` (Bishop B2, ~20 LOC).
+- Delete `ChangshaHub.cs` (85 LOC) and the `AddSignalR()` + `MapHub<ChangshaHub>()` lines from `Program.cs` (Bishop B4).
+- Implement **inbound UPDATE handling** with authentication + validation: every client-initiated `things[tileId] = { slotName }` is matched to the connection's seat, validated against the current Changsha state ("is it your turn? is this tile in your hand? is the destination slot legal?"), and either applied via the state machine or rejected by re-broadcasting `allEntries` with `full: true` (upstream protocol's standard rejection mechanism). This is the only way drag-to-discard actually works (Bishop risk #4).
+- Add **lobby HTTP endpoint** `POST /api/changsha/games { seed?, bots: [int] }` returning `{ gameId }` (recommendation §7, Default for Bishop D1).
+- Add **per-viewer `things` filtering** in `AutotableWsEndpoint` (recommendation §7, Default for Bishop D2 + Hicks R1): when the WS connection is authenticated to seat *S*, replace the `typeIndex` of any tile in `hand.*@s` for `s ≠ S` with `-1` (or the `back` sentinel). This is the **single most important security fix in the whole pivot**; without it every player can read every hand by opening DevTools.
+- Repoint the 2 SignalR E2E tests (`ChangshaHubE2ETests.cs`, `ChangshaHubTestHarness.cs`) onto the WS endpoint — same behavioural assertions, new wire format (Bishop B7). Repoint the 19 `AutotableTranslatorTests.cs` + 4 `AutotableWsEndpointTests.cs` to live in the new namespace.
+- Re-author `docs/rules/changsha-signalr-contract.md` as `docs/rules/changsha-autotable-protocol.md` — same hook list, expressed as autotable collection deltas (Bishop B6).
+
+**Dependencies.** Phase A. Phase B is not strictly required but ships in parallel — Phase C drives the unmodified Riichi bundle just as happily as the Changsha-shaped one, so the two streams can land independently.
+
+**Exit criteria.** A 4-bot Changsha hand (no humans) plays end-to-end via the autotable WS: dice roll, deal, draws, discards, claims, scoring, banker rotation. The runtime emits everything as `things` / `match` / `seats` / `dice` / `nicks` deltas. SignalR no longer exists in the codebase. Hand-tile privacy verified with a network-tab inspection: a connection bound to seat 0 sees only seat 0's tile faces in concealed slots. `dotnet test` green with the repointed harness.
+
+**Owner.** Bishop primary. Hicks reviews protocol fit. Vasquez verifies the bot-driven hand matches `docs/rules/changsha-spec.md` behaviour.
+
+**Effort.** Large. The crux of the whole pivot. The runtime repoint is dense, the per-viewer filter is novel, and inbound-UPDATE validation is greenfield.
+
+**Risks.**
+- *Protocol carrier gap.* Six runtime events (`ClaimWindowOpen`, `WinDeclared`, `ScoringComplete`, `BankerRotated`, `KongReplacementDrawn`-as-event, `GameEnded`) have no native carrier (Bishop risk #1). Phase C ships them as **synthetic ephemeral collections** — `changsha.claim`, `changsha.scoring`, `changsha.banker`, `changsha.lifecycle` — backwards-compatible with upstream's "ignore unknown kinds" semantics. The collections are wired server-side in Phase C but consumed UI-side in Phase D.
+- *Inbound-UPDATE validation engine doesn't exist.* The legacy `TableStateEngine.ApplyHumanDiscard` is in Bucket C. Bishop must add a thin `ChangshaStateMachine.ValidateInboundMove(state, seat, tileId, targetSlot) → bool` helper before the WS endpoint can stop discarding bundle UPDATEs.
+- *Per-viewer filter performance.* Server now serialises 4 distinct snapshots per game (one per seat). Acceptable for v1's single-game-per-instance Default #8; revisit if multi-game scale matters.
+
+---
+
+### Phase D — Rules graft (claim UI, scoring panel, banker visual, 过胡 lockout)
+
+**Goal.** The 6 Changsha concepts that have no native autotable carrier get rendered correctly in the vendored TS UI. A human player can claim, declare Hu, see the scoring readout, and feel the banker rotate.
+
+**Deliverables.**
+- New `client.ts` collection adapters:
+  - `changsha.claim` ephemeral, key = seatIndex: `{ claimType: 'pung'|'chow'|'kong'|'hu', tileId, sourceTile, deadline }`.
+  - `changsha.scoring` ephemeral, key = 0: `{ winners, classification: 'small'|'big', pattern, payments, baseUnit }`.
+  - `changsha.banker` sendOnConnect, key = 0: `{ seat, reason: 'win'|'self-pick-draw'|'washout'|'rotation' }`.
+  - `changsha.lifecycle` ephemeral, key = 0: `{ phase: 'seating'|'rolling-dice'|'dealing'|'awaiting-discard'|'awaiting-claim'|'scoring'|'end-hand'|'rotating-banker' }`.
+- New UI overlays (~400 LOC of HTML/CSS/TS per Hicks §3, "button-driven Changsha"):
+  - **Claim window panel** — overlays bottom-centre when `changsha.claim` opens; buttons for `碰 Pung` / `吃 Chow` / `杠 Kong` / `胡 Hu` / `过 Pass`; 5-second countdown ring; closes on first valid action or timeout. The button emits a `changsha.command` UPDATE the backend consumes.
+  - **Hu declaration button** — replaces the missing upstream "win" affordance. Single button (Vasquez Q5 default); fires `changsha.command.declareHu`. Win method (自摸 vs 点炮) is inferred server-side from phase.
+  - **Score panel** — replaces the stick tray entirely with a per-seat numeric total + per-hand delta. Renders verbatim what `changsha.scoring` carries (Vasquez Q6 default — no frontend math).
+  - **Banker marker animation** — `MARKER` thing repositions from the old dealer's seat to the new dealer on `changsha.banker` updates (Vasquez Q7 default).
+  - **Concealed-kong rendering convention** — outer pair face-down on ankan (Vasquez Q9 default; upstream already supports rotation).
+- Client-side **过胡 lockout indicator** — a small "X" badge over the Hu button when the seat has missed-win-locked the current tile (Vasquez §1.7, V1 conformance audit finding #3). The lockout state is server-authoritative; client only reads.
+- Backend gap closures Vasquez flagged from the conformance audit:
+  - `ClaimAdjudicator` honours the explicit `tileIds` the client sends for chow disambiguation (Vasquez Q8); stop auto-picking the first valid pattern.
+  - `ChangshaStateMachine` enforces 过胡 per-tile lockout on Hu-pass (Vasquez §1.7).
+- Chow tile labels: relabel claim buttons to Chinese-primary + pinyin (carried from Phase B; no new work, just listing the dependency).
+
+**Dependencies.** Phases B + C complete.
+
+**Exit criteria.** A human-vs-3-bots game completes end-to-end with full Changsha behaviour: dice roll, dealer-extra tile, 4-4-4-1+1 deal, drag-to-discard, claim overlays appearing for Pung/Chow/Kong/Hu opportunities, claim resolution with CCW tiebreak, kong-replacement from back-end-of-wall, Hu declaration, Small/Big Win classification, payment with dealer +1, banker rotates to winner, 过胡 lockout enforced on missed wins. The 16-hand game length cycles round winds correctly as display markers. **This is "Changsha v1 playable" — the milestone Stephen actually asked for.**
+
+**Owner.** Hicks (UI overlays + collection adapters) primary. Vasquez (rules-engine gap closures: 过胡 + chow tile-ID honoring) parallel. Bishop reviews collection schema.
+
+**Effort.** Large. The claim overlay alone is ~150 LOC of TS plus HTML/CSS; scoring panel ~80 LOC; 过胡 backend work ~60 LOC plus tests.
+
+**Risks.**
+- *Drag-to-claim ambiguity.* Hicks R2. If the claim window panel doesn't always show up before a player can drag a discarded tile, we get race conditions. Mitigation: server holds discards in a transient `discard.pending@s` slot for the 5-second window; only on window resolution does it move to the canonical discard pile. UI affordance: drag is *disabled* on pending discards; only the claim panel resolves them.
+- *Multi-winner Hu (deferred to v2)* edge case: spec §3.3 says proximity rule (single winner); make sure the claim adjudicator doesn't accidentally allow two simultaneous Hu's during the 5-second window.
+
+---
+
+### Phase E — Smoke / polish / lobby
+
+**Goal.** Production-ready surface: lobby entry, mid-hand reconnect, Docker single-image build, deletion of any last bridge / SignalR references in docs, observability for the new transport.
+
+**Deliverables.**
+- **Lobby** — recommendation §7: a **thin "create / join game" surface inside autotable's existing sidebar** (Hicks Path 1 + Bishop D1). New sidebar control under `#deal`: "New Changsha Game", "Add Bot to Seat N" (×3), "Join by code". Calls `POST /api/changsha/games` then issues `JOIN { gameId }`. No React. `/changsha` URL becomes a permanent redirect to `/autotable/?game=…`.
+- **Mid-hand reconnect** — `localStorage('mj-autotable:changsha:gameId')` + `JOIN` snapshot path verified end-to-end. Already works in upstream; just confirm the Changsha-extended collections (`changsha.banker`, etc.) ship with `sendOnConnect: true`.
+- **CORS** — drop `localhost:5173` from `ChangshaCorsPolicy` (Bishop D7 default). Keep `localhost:5114` / `7135` for backend dev.
+- **Persistence-on-restart** — *deferred to a follow-up unless Stephen flags it*. The pre-existing `_games` in-memory volatility (Bishop risk #6) is a known gap; the pivot doesn't introduce it. Listed in §5.
+- **Docs sweep** — delete `docs/rules/changsha-3d-renderer-plan.md`, `changsha-autotable-bridge.md`, `changsha-frontend-plan.md`, `changsha-signalr-contract.md` (they were marked SUPERSEDED in Phase A; now they go). Author a fresh `docs/architecture.md` describing the post-pivot single-transport, single-frontend shape.
+- **Docker** — `infra/docker/Dockerfile`: drop the `runtime-modern` target; `runtime-autotable` becomes the only image. Build stage adds `make build` against `src/frontend/autotable-src/`.
+- **Optional: standalone Riichi sandbox** — recommendation §7: **drop it** (Hicks R8). Stephen's directive collapses autotable to Changsha-only; carrying Riichi as a hidden `?gameType=RIICHI` flag is dead-code surface area. Variant tests can stay in the upstream-tagged commit for archaeology.
+
+**Dependencies.** Phases A–D complete.
+
+**Exit criteria.** A user lands on `/`, clicks "New Game", picks 3 bots, plays a full 16-hand match, sees the final scores, can refresh mid-hand and reconnect. Docker single-image build green. Zero references to SignalR, bridge, postMessage, or `modern/` in the codebase. `docs/architecture.md` accurately describes the production shape.
+
+**Owner.** Hicks (lobby UI), Bishop (lobby endpoint + CORS + Docker), Vasquez (final spec-vs-behaviour pass on a full 16-hand game), multi.
+
+**Effort.** Medium. Mostly polish; the lobby is ~80 LOC if we stick to Path 1.
+
+**Risks.**
+- *Persistence-on-restart still broken.* If the deployed instance restarts, every active table dies. This isn't a pivot-introduced bug, but Phase E is the natural moment to address it. Defaulted to "out of scope for v1 pivot" in §5; flag if Stephen disagrees.
+- *Asset-license footgun.* `img/tiles.svg` is CC BY-NC-SA. Commercial deployment requires re-licensed glyphs (Hicks R9). Non-blocking for v1; flagged in §5.
+
+---
+
+## 3. Delete manifest (consolidated, by phase)
+
+| Phase | Path / scope | LOC | What dies |
+|---|---|---:|---|
+| A | `src/frontend/modern/` (entire tree — components, bridge, signalrClient, reducer, mock infra, tests) | ~3,500 | React/Fluent UI 9 SPA, autotableBridge, useLiveChangshaGame, ChangshaTablePage iframe, all `__tests__` |
+| A | `src/frontend/autotable/changsha-bridge-receiver.js` + `<script>` tag + `<style id="changsha-embedded-mode">` + `data-changsha-embedded` shim | 155 + ~30 | postMessage bridge receiver |
+| A | `src/backend/.../Tables/TableStateEngine.cs` + `TableContracts.cs` + `TableGameState.cs` + `TableStateHasher.cs` + `TableStateSerializer.cs` + `TableSessionEventStore.cs` + `Data/Entities/TableSession.cs` + `Data/Entities/TableSessionEvent.cs` | ~2,000 | Legacy 136-tile Western-rules engine |
+| A | `Program.cs` lines 86–494 (`/api/tables/*` × 8 endpoints) | ~390 | Legacy REST surface |
+| A | Tests: `TableStateEngineTests.cs` (720), `TableSeatViewProjectionTests.cs` (51), `TableSessionEventStoreTests.cs` (120), `ClaimResolutionApiTests.cs` (230) | ~1,120 | Legacy engine tests |
+| A (docs) | `docs/rules/changsha-3d-renderer-plan.md`, `…-autotable-bridge.md`, `…-frontend-plan.md`, `…-signalr-contract.md` | n/a | Strategy C design docs (marked SUPERSEDED in A, hard-deleted in E) |
+| C | `src/backend/.../Changsha/ChangshaHub.cs` | 85 | SignalR hub dispatcher |
+| C | `Program.cs` `AddSignalR()` + `MapHub<ChangshaHub>()` + SignalR CORS allowance | ~10 | SignalR wiring |
+| C | `Hub/ChangshaHubTestHarness.cs` + `Hub/ChangshaHubE2ETests.cs` | 202 | Repointed onto WS, not deleted — but the SignalR-specific harness goes |
+| E | The four "SUPERSEDED" docs from Phase A | n/a | Hard delete |
+| E | `infra/docker/Dockerfile` `runtime-modern` target | small | React image |
+| E | `localhost:5173` from `ChangshaCorsPolicy` | trivial | Vite SPA CORS allowance |
+
+**Survives despite being in `Autotable/` today (Phase C repackages, doesn't delete):** `AutotableProtocol.cs` (~140), `AutotableSlotMap.cs` (~130), `ChangshaToAutotableTranslator.cs` (~260), `AutotableWsEndpoint.cs` (~280), and their 566 LOC of tests. These are the new transport's foundation; physical move under `Transport/`.
+
+**Grand total deletion:** ~6,000 LOC src + ~1,300 LOC tests across Phases A + C + E.
+
+---
+
+## 4. Decisions Stephen needs to make BEFORE Phase A starts
+
+Numbered. Each has a default; if Stephen says nothing, we ship the default. Switching cost is opinionated.
+
+1. **Vendoring strategy** — submodule, in-tree fork, or vendor-copy?
+   **Default:** In-tree fork at `src/frontend/autotable-src/`, tagged with `upstream/<sha>` for future cherry-picks. Reason: matches how `src/frontend/modern/` already lived; no submodule footgun for CI / Copilot agents; pwmarcz rejects non-Riichi PRs anyway (per Hicks §1) so upstream sync is rare.
+   **Switching cost:** Low. Can be moved to a submodule any time before Phase B asset edits land.
+
+2. **Bundler** — keep upstream Parcel 2.15, or migrate to Vite alongside our existing Vite frontend?
+   **Default:** Keep Parcel. Reason: bundler migration is 1–2 weeks of unglamorous regression hunting (Bootstrap 4 + jQuery + `url:` imports → BS5 + Vite `?url`); the *modern* React app is being deleted in Phase A so the "consolidate to one bundler" pressure disappears.
+   **Switching cost:** Medium. Adding Vite later requires re-doing every `url:` import and re-validating three.js mesh loading.
+
+3. **Lobby** — autotable's native sidebar IS the lobby (Path 1), thin React lobby + native game (Path 2), or autotable's Connect/Setup UI verbatim?
+   **Default:** Path 1, sidebar IS the lobby. Reason: matches Stephen's screenshot literally; no second bundler / second visual language; ~80 LOC vs ~200 LOC.
+   **Switching cost:** Low. Path 2 is additive — a React lobby can be bolted on later without changing the autotable game canvas.
+
+4. **`GameType` enum** — keep upstream variants (`FOUR_PLAYER`, `THREE_PLAYER`, `BAMBOO`, `MINEFIELD`, `FOUR_PLAYER_DEMO`) as legacy / no-op options, or collapse to `CHANGSHA` only?
+   **Default:** Collapse to `CHANGSHA` only (Vasquez Q2). Drop `Conditions.gameType` entirely; replace with Changsha-specific config. Reason: binding directive says "autotable IS Changsha"; legacy enums are dead code that invites drift.
+   **Switching cost:** Medium. Once the deal tables / slot groups assume Changsha-only, reintroducing Riichi requires re-vendoring upstream's `setup-deal.ts`.
+
+5. **Claim labels** — Chinese characters (碰/吃/杠/胡), pinyin (Pung/Chow/Kong/Hu), or both?
+   **Default:** Chinese-character primary with pinyin sublabel (Vasquez Q5). Example: `碰 Pung`.
+   **Switching cost:** Low. UI-string change.
+
+6. **Concealed-tile privacy at protocol layer** — per-viewer `things` filtering server-side, or accept the upstream all-public model?
+   **Default:** Server-side filter per-viewer in `AutotableWsEndpoint` (Bishop D2 + Hicks R1). Reason: without this, any player reading WS frames in DevTools sees every concealed hand. Non-negotiable for a game played beyond a trust circle.
+   **Switching cost:** High. Designing this in retroactively means re-doing the snapshot path and every translator test.
+
+7. **Claim grammar** — extend the WS protocol with custom collections (`changsha.claim` etc.) for explicit Pung/Chow/Kong/Hu intents, or drag-to-meld with server-side first-valid-drag arbiter?
+   **Default:** Custom collections + button overlay (Bishop D3 + Hicks R2). Reason: drag-only is the most autotable-native UX but has irreducible race / ambiguity (Hicks R2); Stephen's earlier React lobby exposed buttons, so the muscle memory is button-driven. Buttons + custom collections are backwards-compatible with upstream's "ignore unknown kinds."
+   **Switching cost:** Medium. The custom collections survive even if we later add a drag affordance.
+
+8. **Deal-batch ack gating** — keep the per-seat `AcknowledgeDeal` quorum, or drop it and let bundle animate freely?
+   **Default:** Drop deal-acks (Bishop D4). Reason: autotable has no deal-ack concept; the bundle animates `things` movements over its own physics timer; keeping ack gating means a custom WS message for no behavioural gain. Turn 1 starts on a fixed server-side timeout (e.g., 1500 ms after the last deal-batch UPDATE).
+   **Switching cost:** Low. Re-adding is a single ephemeral collection.
+
+9. **Score display** — render verbatim from `changsha.scoring` (no frontend math, raw units), or apply the base-unit multiplier client-side?
+   **Default:** Verbatim, no frontend math (Vasquez Q6). The base-unit multiplier is applied in `ScoringService` server-side. Frontend reads numbers, renders numbers.
+   **Switching cost:** Low.
+
+10. **`Conditions.back` cosmetic option** — survive as a tile-back-color toggle, or remove for simplicity?
+    **Default:** Remove (Vasquez Q3). Halves the tile-type space (27 logical types instead of `27 × 2`); the upstream `+ 37 * conditions.back` complication disappears.
+    **Switching cost:** Low. Cosmetic only.
+
+11. **Hu claim affordance** — single Hu/胡 button (server infers self-draw vs discard), or two buttons (Tsumo / Ron)?
+    **Default:** Single Hu/胡 button (Vasquez §1.7, recommendation §4 Q5 default). Win method is inferred from phase context server-side.
+    **Switching cost:** Low. UI change.
+
+12. **Marker repositioning** — animate dealer marker on banker rotation, or static "dealer is seat N" text?
+    **Default:** Animate the `MARKER` thing to the new dealer's slot (Vasquez Q7). The infrastructure is free — upstream already supports thing-slot animation.
+    **Switching cost:** Low.
+
+13. **`/api/tables/*` REST + `TableStateEngine`** — hard-delete in Phase A, or keep for archaeology?
+    **Default:** Hard-delete in Phase A (Bishop D5). Reason: no surviving frontend consumes them; their 1,120 LOC of tests go red the moment the controllers are removed regardless of when. Killing them in Phase A consolidates the cruft sweep.
+    **Switching cost:** High to resurrect (mechanical, but 2,400 LOC src + 1,120 LOC tests); near-zero to keep deleted.
+
+14. **Replay-integrity verifier** — port the legacy `VerifyReplayIntegrity` + `STATE_INVARIANT_BROKEN` to the Changsha runtime in scope of the pivot, or defer?
+    **Default:** Defer (Bishop D8). Reason: not blocking gameplay; v1 is single-game-per-instance per Default #8; replay determinism survives anyway through seeded RNG. Adds ~200 LOC of dead-but-correct code we don't need yet.
+    **Switching cost:** Low — additive feature, can land in v1.1.
+
+15. **Vasquez conformance audit gaps** (chow tile-ID honoring, 过胡 enforcement) — fix inside Phase D as part of the rules graft, or split into a pre-pivot bugfix PR?
+    **Default:** Fix inside Phase D (Vasquez Q8 + §1.7). Reason: both gaps are user-visible only once the UI surfaces claims; bundling with the claim-window work avoids touch-and-revisit.
+    **Switching cost:** Low.
+
+16. **F5 dev shape** — compound launch (one F5 = backend + Parcel watch in parallel), VS Code task running Parcel separately (user launches Parcel in a terminal alongside an F5'd backend), or simple build-on-save (no watch process; a save-hook task fires `parcel build` per save)?
+    **Default:** Compound launch. Reason: matches Stephen's binding constraint (`copilot-directive-2026-05-13T2315Z-f5-dev.md`) — F5 = working dev loop with no manual prep. Cost is ~30 lines of `.vscode/*` config; benefit is the user never has to think about which terminals are running which watcher. Investigated `/tmp/autotable-upstream/Makefile` and `/tmp/autotable-upstream/package.json`: upstream already exposes a `make parcel` target (Parcel 2.15 dev server, `--no-hmr`) and no native `watch` npm script — we wrap that (or `parcel watch --dist-dir build/`) in a VS Code task and reference it from a `node-terminal` config inside `launch.json`'s compound.
+    **Switching cost:** Low. `.vscode/*` files are pure config; can be swapped to any of the three alternatives any time without touching application code.
+
+---
+
+## 5. Decisions that can wait
+
+These appear in the inventories but Stephen does NOT need to think about today.
+
+- **Asset re-licensing** for `img/tiles.svg` (CC BY-NC-SA — Hicks R9). Non-blocking for personal/non-commercial use. Revisit if/when the project goes commercial. **Phase: post-v1.**
+- **Persistence-on-restart hydration** (Bishop D6, risk #6). Pre-existing gap, not introduced by the pivot. Revisit when multi-game or production deploy is in scope. **Phase: post-Phase-E (v1.1).**
+- **Replay integrity verifier** for Changsha (Bishop D8). See decision 14 above; deferred by default. **Phase: v1.1.**
+- **Bundler migration** to Vite (Hicks R5). Deferred by decision 2. **Phase: post-v1 if at all.**
+- **Standalone Riichi sandbox** preservation (Hicks R8). Defaulted to "drop it." **Phase: never, unless Stephen flags.**
+- **Asset rebuilds** requiring Inkscape / Blender (Hicks R4). Not needed unless tile glyphs change. **Phase: revisit if/when we want new mesh variants.**
+- **v2 rules concepts** — bird catching, ready-kong dice, robbing-the-kong, win-after-kong, seabed wins, instant wins, heaven/earth blessings, All Generals, Full Beggar's Hand, Luxury Seven Pairs, kong micro-payments, multi-winner Hu (Vasquez §2.1). **Phase: v2.**
+- **Bot-management UI placement detail** (Hicks open Q10). Defaulted to "sidebar control under `#deal`" in Phase E. Revisit if Stephen wants a richer lobby. **Phase: E.**
+- **Three.js version drift** (Hicks R6). LOW risk; revisit only if we ever do React-side 3D again. **Phase: never expected.**
+
+---
+
+## 6. Critical risks (top 3)
+
+### Risk 1 — Hand-tile privacy is broken at the protocol layer (Hicks R1, Bishop D2)
+**What.** Upstream autotable sends every `things[*].slotName` to all connected clients with the `tileId` payload intact. Concealed-hand secrecy is **purely visual** (rotation index 2 = face-down). Cheating is trivial: open DevTools, inspect WS frames, read every opponent's hand. Upstream tolerates this because it's a friend-trust game.
+**Phase exposed.** Phase C, the moment the backend becomes the authoritative transport.
+**Mitigation.** Server-side per-viewer `things` filter in `AutotableWsEndpoint` (decision 6, defaulted to "ship the filter"). For any `things[tileId]` whose `slotName` matches `hand.*@s` for `s ≠ viewerSeat`, replace `tileId` with a sentinel (`-1` or `back`-type). Cost: 4× snapshot serialisation per game (acceptable at single-game scale). Verify by network-tab inspection in Phase C exit criteria.
+
+### Risk 2 — Protocol-carrier gap for Changsha-specific events (Bishop risk #1)
+**What.** Six runtime events (`ClaimWindowOpen`, `WinDeclared`, `ScoringComplete`, `BankerRotated`, claim-grammar variant of `ClaimMade`, `GameEnded`) have **no native projection** into upstream's `match`/`seats`/`things`/`nicks`/`dice` collections. Without addressing this, half the game's state is invisible to the client.
+**Phase exposed.** Phase C (events fire but go nowhere) and Phase D (UI overlays need to consume them).
+**Mitigation.** Phase C ships four custom ephemeral collections — `changsha.claim`, `changsha.scoring`, `changsha.banker`, `changsha.lifecycle` — wired into `client.ts`'s collection registry. Upstream's protocol ignores unknown kinds, so the extension is non-breaking. The cost is design — those four collection schemas must be locked before Phase C ends or Phase D blocks. Recommendation: Bishop drafts schemas during Phase C kickoff, Hicks reviews against UI needs, Vasquez verifies against `docs/rules/changsha-spec.md`.
+
+### Risk 3 — Inbound-UPDATE validation engine doesn't exist yet (Bishop risk #4)
+**What.** Today the bridge is one-way; bundle UPDATEs are logged and discarded. The pivot makes drag-to-discard the primary input. Every inbound UPDATE must be (a) authenticated to a seat, (b) validated against the current Changsha state (whose turn? legal tile? legal destination?), and (c) either applied via the state machine or rejected by re-broadcasting `allEntries` with `full: true`. The legacy `TableStateEngine.ApplyHumanDiscard` exists but is in Bucket C; the Changsha runtime currently expects already-validated commands.
+**Phase exposed.** Phase C (the moment drag-to-discard is the only input path).
+**Mitigation.** Add `ChangshaStateMachine.ValidateInboundMove(state, seat, tileId, targetSlot) → ValidationResult` as a Phase C prerequisite. ~80 LOC + unit tests. Reuse the slot-name grammar from `AutotableSlotMap`. Cross-check: every existing claim-adjudicator / state-machine test in Bucket A should still pass, because they exercise the same state transitions from a different entry point.
+
+---
+
+## 7. Recommendations on scope (opinionated picks)
+
+- **Vendoring:** In-tree fork at `src/frontend/autotable-src/`. Not a submodule (CI/Copilot-agent footgun), not a verbatim drop (loses upstream-sha audit trail). See decision 1.
+- **Build chain:** Keep upstream Parcel 2.15. Don't migrate to Vite. The Vite-everywhere consolidation pressure disappears with the React app's deletion. See decision 2.
+- **Lobby:** Path 1 — autotable's existing sidebar IS the lobby. Add 2–3 sidebar controls ("New Changsha Game", "Add Bot", "Join by code"). No React. ~80 LOC. See decision 3.
+- **Test surface:**
+  - **Rewrite:** `Hub/ChangshaHubTestHarness.cs`, `Hub/ChangshaHubE2ETests.cs` (202 LOC) → WS-driven equivalents. Same behavioural assertions, new wire format. Phase C deliverable.
+  - **Repoint:** `Autotable/AutotableTranslatorTests.cs` (349 LOC), `Autotable/AutotableWsEndpointTests.cs` (217 LOC) → live under the new `Transport/` namespace. Phase C.
+  - **Delete:** `TableStateEngineTests.cs` (720), `TableSeatViewProjectionTests.cs` (51), `TableSessionEventStoreTests.cs` (120), `ClaimResolutionApiTests.cs` (230). Phase A.
+  - **Keep verbatim:** all of Bucket A — `ChangshaServices/*` (227 LOC), `Changsha/*` (1,813 LOC). Zero touch. These are the family jewels.
+- **CI gates:** add a TypeScript `tsc --noEmit` step on `src/frontend/autotable-src/` (upstream's existing type-check). Don't add new lint/build tooling beyond what each side already has.
+
+---
+
+## 8. What I'd cut from scope if Stephen wanted MVP faster
+
+Three concrete cuts. Each independently shaves real time.
+
+1. **Defer multiplayer entirely; ship "1 human + 3 bots, single game per backend instance."** Phase C's per-viewer privacy filter still ships (don't compromise on that). But the lobby's "Join by code" disappears, mid-hand reconnect can be browser-localStorage only, and we don't worry about two human players hitting the same backend. This collapses Phase E by ~half. **Cost of switching later:** Low — multiplayer is additive once the per-viewer filter and `_games` dictionary already exist.
+
+2. **Drop the claim-window overlay; ship drag-to-meld with a server-side first-valid-drag arbiter.** This trades UI polish for a chunk of Phase D. The 5-second window still exists server-side; the server simply applies the first legal `things[tileId] = { slotName: meld.*@s }` update it receives. Saves ~150 LOC of TS overlay work plus the `changsha.claim` collection's complexity. **Cost of switching later:** Medium — adding explicit claim buttons later requires retrofitting the priority semantics; Hicks R2 flagged this as a real ambiguity risk if shipped without buttons. Only cut if Stephen explicitly accepts the race-condition tradeoff for MVP.
+
+3. **Defer Vasquez's two conformance gaps** (chow tile-ID honoring, 过胡 lockout) **to v1.1.** Ship Phase D without them; document the deviation in `docs/rules/changsha-deviations-v1.md`. The chow gap means the backend picks a sequence for you if multiple are possible (annoying, not unfair); the 过胡 gap means you can re-Hu on a tile you passed (minor permissiveness). **Cost of switching later:** Low — Vasquez has both gaps scoped; the fixes are ~60–100 LOC each, no migration debt.
+
+---
+
+*End plan. Awaiting Stephen's batch-answer on §4 decisions 1–15 before Phase A kicks off.*

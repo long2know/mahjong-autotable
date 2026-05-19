@@ -167,3 +167,9 @@
 - **Verification:** `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → 0 warnings, 0 errors. `dotnet test src/backend/Mahjong.Autotable.slnx --nologo` → `Failed: 0, Passed: 188, Skipped: 7, Total: 195`.
 - **Branch pushed:** `stlong/autotable-vendored-pivot` → `origin`, upstream set.
 - **Not touched (file-scope discipline):** `src/frontend/**` (Hicks), `.vscode/*` (Hicks), `.squad/config.json` (Hicks), and the other agents' history.md modifications that were already in the working tree from a prior session.
+
+## Architectural Pivot — Phase A SHIPPED (2026-05-13)
+
+**Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
+**Timestamp:** 2026-05-13T23:20Z
+**Contribution:** Produced backend salvage inventory (Bishop bucket mapping: KEEP/REPOINT/DELETE across 60+ files), executed Phase A backend purge (deleted Tables/* ~2,400 LOC src + ~1,120 LOC tests, 8 /api/tables/* endpoints, 2 EF entities), extracted TableClaimType enum to its own file for Changsha runtime.

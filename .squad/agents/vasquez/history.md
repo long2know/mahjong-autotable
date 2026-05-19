@@ -166,3 +166,33 @@
 **Key learning for the team:** When a spec, an implementation, and three canonical sources give three different answers to one rule, the answer is almost always "the spec was wrong and the implementation drifted from a separately-wrong spec." Re-anchor on the canonical sources, document the anchor, then push the implementation back. Don't try to retrofit a coherent story onto incoherent code/text.
 
 📌 Team update (2026-05-13T17-40-17Z): 3D Renderer spike complete — Hicks identified a canonical wall-split open question (14/14/13/13 vs 14/13/14/13 symmetric) for Stephen's product decision. Q6 from the spike may need Vasquez's rules ruling if Stephen chooses the asymmetric option.
+
+## Rules Diff Manifest — Riichi vs Changsha (2026-05-13T23:00Z directive)
+
+**Task:** Produce the authoritative rules diff that Hicks will follow when modifying autotable's vendored TS source per Stephen's binding pivot (autotable IS Changsha, not Changsha-bolted-on-top).
+
+**Deliverable:** `.squad/decisions/inbox/vasquez-rules-diff-manifest.md` (~57 KB). 14 divergence axes; 13 v1 concepts to ADD + 12 v2-deferred; 31 concepts to REMOVE; 9 open questions tagged for Stephen.
+
+### Learnings — rule clarifications locked down
+
+- **Chow restriction is identical between Riichi and Changsha** ("only the next player in turn order"). The Riichi-convention phrasing ("from the player on your left") and the Changsha-spec phrasing ("immediately counterclockwise from the discarder") describe the same seat. Not a divergence — both restrict chow to the player who would naturally draw next if no one claims. A future engineer reading the spec from a Riichi background should not assume Changsha's chow rule is more permissive; it isn't.
+- **Pao (sekinin barai) is structurally absent in Changsha**, but Changsha's standard discard-claim payment model (`点炮` → discarder pays alone for **every** win, not just yakuman) functionally encodes the same "discarder bears full cost" semantics as Riichi pao — just universally, not as a narrow yakuman-only rule. There is no separate pao tracking needed.
+- **Furiten does NOT translate to Changsha's 过胡 rule.** Furiten is a *standing* tenpai restriction tied to your own discard pile (locked from ron on any winning tile you've ever discarded). 过胡 (过水) is a *per-tile transient* lockout triggered by *passing on a Hu opportunity*, lasting only until your next draw. Different triggers, different scope, different durations. Implementations must not collapse them into one mechanism.
+- **Riichi-only mechanics that "feel like" they'd carry over but do not:** ippatsu, double riichi, ura-dora, kan-dora, tenpai-at-draw payments (流局聴牌払い), honba counters, Nagashi Mangan, kyuushu kyuuhai abortive draws, four-kans / four-winds / four-riichi / triple-ron abortive draws. None map to a Changsha concept. All must be removed cleanly rather than translated.
+- **Riichi's separate Ron and Tsumo claim buttons collapse to a single Hu/胡 in Changsha.** The win method (self-draw vs discard) is inferred from context (active player + recency of draw/discard), not selected by the user. This is a UI-shape divergence with consequence: any Riichi-shaped "tsumo button shown to the active player only after their draw, ron button shown to non-active players in the claim window" affordance pattern must be redesigned for Changsha.
+- **No yaku gate in Changsha.** A complete 4-melds-plus-258-pair hand is a valid Hu regardless of "value." Riichi's mandatory `≥1 han yaku to win` rule has no analog. The Hu validator must NOT reject hands for lacking yaku — it should only check structural validity (4+1 + 258 pair, or any of the Big Win patterns).
+- **The autotable upstream TS source is rules-agnostic at the table-layout level** (it just moves tiles into slots per a deal pattern). The Riichi-shaped concepts are in: tile counts (136), deal patterns (`DEALS.FOUR_PLAYER.HANDS` with 12 dice-conditional placement entries), stick groups (riichi 1000-point stick, denomination sticks), slot layouts (`fr("riichi")` per variant), `WINDS` dealType, `Conditions.fives` and `Conditions.points`, and the `GameType` variant enum. These are the surgical strike points for Hicks's codemod — not "rules code" because there isn't any, but rather "Riichi-shaped *artifacts* of the table-setup system."
+- **The `GameType` enum's other variants (THREE_PLAYER / BAMBOO / MINEFIELD) are Japanese-mahjong variants** out of scope per the binding directive. Cleanest path is to delete them entirely from the Changsha-native fork; second-cleanest is to keep `FOUR_PLAYER` and rename it to `CHANGSHA` while deleting the others.
+- **Wall split is asymmetric (14/14/13/13)** for Changsha because 108 ÷ 4 = 27 tiles per player wall = 13.5 stacks. Per the Phase 5a Default #6 lock, two players get 14-stack walls and two get 13-stack walls. The codemod's wall-builder must encode this asymmetry; the canonical Riichi 17-stacks-per-player is the wrong default.
+
+**Files modified:**
+- `.squad/decisions/inbox/vasquez-rules-diff-manifest.md` (new — full diff spec, 14 axes)
+- `.squad/agents/vasquez/history.md` (this entry)
+
+**Production code:** Untouched (this is a specification artifact for the codemod, not the codemod itself).
+
+## Architectural Pivot — Phase A SHIPPED (2026-05-13)
+
+**Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
+**Timestamp:** 2026-05-13T22:50Z
+**Contribution:** Produced authoritative Changsha vs Riichi rules divergence manifest (14 axes, 13 ADD, 31 REMOVE, 9 open Q's), binding specification for Hicks's TS modifications and Ripley's 5-phase pivot plan. Key findings: 108-tile set (no honors), 14/14/13/13 asymmetric wall (no dead wall), claim grammar (Pung/Chow-next-only/Kong/Hu), Small/Big Win scoring, 过胡 per-tile lockout.
