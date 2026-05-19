@@ -196,3 +196,44 @@
 **Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
 **Timestamp:** 2026-05-13T22:50Z
 **Contribution:** Produced authoritative Changsha vs Riichi rules divergence manifest (14 axes, 13 ADD, 31 REMOVE, 9 open Q's), binding specification for Hicks's TS modifications and Ripley's 5-phase pivot plan. Key findings: 108-tile set (no honors), 14/14/13/13 asymmetric wall (no dead wall), claim grammar (Pung/Chow-next-only/Kong/Hu), Small/Big Win scoring, 过胡 per-tile lockout.
+
+## Phase D-tests — Acceptance Test Suite SHIPPED (2026-05-19)
+
+**Branch:** `stlong/phase-b-changsha-scene`
+**Timestamp:** 2026-05-19T15:50Z
+**Contribution:** 10 acceptance test files (1 fixture + 9 test classes, 1,242
+LoC, 44 methods → 66 invocations) defining the executable contract for "fully
+playable Changsha" across all 8 rule axes (§1.5 deal, §1.6 chow restriction,
+§1.7 claim priority, §1.8 pung→kong, §1.10 258-pair, §1.11 Big Wins, §1.13
+banker rotation, §3.6 missed-win lockout) plus an end-to-end synthesis suite.
+After running: **62 passed / 0 failed / 4 skipped** — the Changsha rule engine
+is **closer to playable than expected**; the 4 skips document the precise
+remaining Phase D-backend gaps (诈胡 penalty payment, per-draw 过胡 decay,
+13-Orphans Big Win, autotable WS-relay test). Drove `ChangshaGameStateMachine`
+directly (pure functional commands) — no live HTTP, no SignalR coupling. All
+files compile clean on their own; Bishop's concurrent Autotable WIP currently
+doesn't build in isolation but is unrelated to my scope.
+
+**Files added:**
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/AcceptanceFixture.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/DealAndDicePhaseTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/ClaimPriorityTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/PungPromotionToKongTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/ChowFromLeftNeighborTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/HuValidation258Tests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/HuValidationBigWinsTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/BankerRotationTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/MissedWinPenaltyTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/EndToEndPlayableTests.cs`
+- `.squad/decisions/inbox/vasquez-phase-d-test-coverage.md` (decision drop)
+- `.squad/agents/vasquez/history.md` (this entry)
+
+**Production code:** Untouched. Disjoint from Bishop's Phase D-backend wiring
+and Hicks's Phase D-frontend scene scope.
+
+**Key findings flagged to Stephen:**
+1. Engine surface is more complete than the brief implied — only 2 small rule
+   refinements (诈胡 penalty, per-draw 过胡 decay) remain in the rules layer.
+2. The "fully playable" gate is mostly a wiring problem now (autotable WS
+   pipe ↔ `IChangshaGameRuntime`), not a rules problem.
+3. 13-Orphans is the only un-implemented Big Win; deferred as optional v2.
