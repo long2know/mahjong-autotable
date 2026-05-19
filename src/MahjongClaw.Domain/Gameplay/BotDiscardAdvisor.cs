@@ -716,11 +716,28 @@ public static class BotDiscardAdvisor
                         .Where(candidate => candidate.WinningDrawOuts == bestNonThreatOuts)
                         .Max(candidate => candidate.WinningDrawOutCopies);
 
+                    var bestThreatCandidate = candidates
+                        .Where(candidate => opponentKongThreatTiles.Contains(candidate.Tile))
+                        .OrderByDescending(candidate => candidate.WinningDrawOuts)
+                        .ThenByDescending(candidate => candidate.WinningDrawOutCopies)
+                        .FirstOrDefault();
+
+                    var singleCopyThreatCarriesOnlyWinningPath = false;
+                    if (bestThreatCandidate is not null
+                        && bestOverallOuts > 0
+                        && bestNonThreatOuts == 0
+                        && bestThreatCandidate.WinningDrawOuts == bestOverallOuts
+                        && handCounts.TryGetValue(bestThreatCandidate.Tile, out var threatHandCount)
+                        && threatHandCount == 1)
+                    {
+                        singleCopyThreatCarriesOnlyWinningPath = true;
+                    }
+
                     var withinOutsTolerance = bestNonThreatOuts >= bestOverallOuts - OpponentKongFeedOutsTolerance;
                     var matchesBestCopies = bestNonThreatOuts == bestOverallOuts
                         && bestNonThreatOutCopies == bestOverallOutCopies;
 
-                    if (withinOutsTolerance || matchesBestCopies)
+                    if ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies)
                     {
                         candidates = nonThreatCandidates;
                     }

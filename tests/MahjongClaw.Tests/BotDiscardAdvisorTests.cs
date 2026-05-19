@@ -3084,6 +3084,62 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_AllowsKongThreatDiscard_WhenItPreservesOnlyWinningPath()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Bamboos, 6),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Bamboos, 4)
+        };
+
+        var opponentMeldTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 8)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Characters, 4),
+            new(TileSuit.Bamboos, 3),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Characters, 7),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Characters, 6)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            opponentMeldTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 8));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_ProtectsLastLiveChangshaSmallWinSingleton_WhenNoStrongAlternatives()
     {
         var handTiles = new List<Tile>
