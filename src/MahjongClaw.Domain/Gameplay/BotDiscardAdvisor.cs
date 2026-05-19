@@ -293,6 +293,23 @@ public static class BotDiscardAdvisor
                         candidates = deadSingletonCandidates;
                     }
                 }
+
+                if (liveSmallWinSingletons.Count > 1 && deadSmallWinSingletons.Count == 0)
+                {
+                    var bestSingleton = liveSmallWinSingletons
+                        .OrderByDescending(entry => entry.RemainingCopies)
+                        .ThenByDescending(entry => HasAdjacentSmallWinSingletonInHand(handCounts, entry.Tile) ? 1 : 0)
+                        .First();
+
+                    var nonProtectedCandidates = candidates
+                        .Where(candidate => !candidate.Tile.Equals(bestSingleton.Tile))
+                        .ToList();
+
+                    if (nonProtectedCandidates.Count > 0)
+                    {
+                        candidates = nonProtectedCandidates;
+                    }
+                }
             }
         }
 
