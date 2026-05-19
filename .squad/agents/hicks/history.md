@@ -527,3 +527,106 @@ disabled claim buttons, etc).
    only HANDS / INITIAL / UNSHUFFLED.
 4. Click `Deal` with `Hands` selected — 13 tiles fly to each seat, one
    extra to the dealer's `hand.extra` position (14 total dealer hand).
+
+
+## Architectural Pivot — Phase D-frontend SHIPPED (2026-05-20)
+
+**Branch:** stlong/phase-b-changsha-scene
+**Timestamp:** 2026-05-20T17:00Z
+**Scope:** src/frontend/autotable-src/** (wire to Bishop's Phase D-backend
+protocol — claim arc, scoring panel, dice viz, bot banner, face privacy).
+**Bound by:** Phase D-frontend charter (Stephen, 2026-05-20); Bishop's
+parallel D-backend protocol contract; Defaults #5 (Chinese-primary claim
+labels) and #11 (single Hu button).
+
+### Files modified (6 source files in `src/frontend/autotable-src/`)
+
+- `src/types.ts` — Added `ClaimWindowEntry`, `HandResultEntry`, `ScoreDelta`,
+  `DiceEntry`. Extended `DiceInfo` with optional `d1/d2/breakPoint` so
+  Bishop's new dice payload and the legacy local-deal payload can both
+  ride the existing `dice` collection. Added optional `face?: number | null`
+  to `ThingInfo` for per-viewer tile privacy.
+- `src/client.ts` — Registered `claim` collection (`Collection<string,
+  ClaimWindowEntry>`, ephemeral) and `result` collection (`Collection<string,
+  HandResultEntry>`, persistent). Widened `dice` collection key from
+  `number` to `string | number` so Bishop can push key `'current'` and the
+  local-deal path can keep using key `0`.
+- `src/game-ui.ts` — Phase-D wiring (the heavy lift, +407 LOC). Subscribes
+  to `client.claim.on('update')`, enables matching buttons + renders
+  countdown ticking every 100 ms, auto-passes on deadline expiry, sends
+  `claim[selfSeat] = {action, type}` on click. Subscribes to
+  `client.result.on('update')` and renders the Bootstrap-modal scoring
+  panel (gold headline, score-delta table, suit-colored 2D winning-hand
+  tiles, Next Hand button that posts `match[1] = {action:'nextHand'}`).
+  Subscribes to `client.dice.on('update')` and shows a top-center HUD
+  with dice glyphs + break-point column for 3 seconds. Maintains a
+  bottom-left bot banner driven by the `Bot ` nick-prefix convention
+  (until Bishop ships an explicit `is_bot` seat flag).
+- `src/world.ts` — Honors the new `ThingInfo.face` privacy field: when
+  `face === null` and the slot has >1 rotation, coerces `rotationIndex`
+  to the last (face-down) rotation. Belt-and-braces against a backend
+  that strips face without also flipping rotation.
+- `index.html` — Added a 5th claim button `跳过 Pass` (`btn-secondary`),
+  a `#claim-countdown` div under the claim row, a new `#result-modal`
+  with mahjong-themed scoring panel, a `#dice-hud` top-center overlay,
+  and a `#bot-banner` bottom-left text element.
+- `src/style.css` — Styles for `#claim-countdown`, `.result-modal-content`
+  (felt green + brass border + suit-color tile cells), `#dice-hud`, and
+  `#bot-banner`. +91 LOC.
+
+### LOC delta (frontend source only)
+```
+6 files changed, 629 insertions(+), 18 deletions(-)
+```
+Net add: **+611 LOC** to the vendored source (heaviest in game-ui.ts
+which absorbed the bulk of the UI wiring).
+
+### Build outcome
+- `npx parcel build index.html about.html --public-url . --no-source-maps
+   --cache-dir .cache/build/ --dist-dir ../autotable` → **✨ Built in 2.40s**,
+  22 assets.
+- Bundle: `autotable-src.9d857456.js` (1.01 MB; same as Phase B's 1.01 MB
+  — Parcel minification absorbs the +611 LOC).
+- `npx tsc --noEmit --strict --target es6 --moduleResolution bundler
+   --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts` →
+  **0 errors**.
+- Per the charter's `src/frontend/autotable-src/**` scope-lock, the static
+  `src/frontend/autotable/` bundle output was **not** staged. F5 compound
+  launch will regenerate it on next start.
+
+### Implementation choices documented separately
+See `.squad/decisions/inbox/hicks-phase-d-frontend.md` for the protocol-
+contract adapter notes (dice shape duality, Next-Hand match-key sentinel,
+tile face privacy via rotation coercion) and UI-design discretionary calls
+(button-countdown vs modal, 2D tile cells in result panel, etc).
+
+### Known constraints / Phase E TODOs
+- No disambiguation UI when one seat can both Pung and Kong on the same
+  discard — user just picks one button. Default #11 said single Hu button;
+  charter didn't ask for multi-meld disambiguation. Flag for Stephen if
+  he wants it.
+- Drag-to-meld interaction (MVP fast-cut b, Vasquez Q9 / Hicks R2) remains
+  explicitly out of scope — buttons-only per Pivot plan §2 Phase D.
+- Winning hand in the result modal renders as 2D suit-colored cells, not
+  a 3D animated meld in the scene. Phase E polish if Stephen wants that.
+- `face: null` privacy ships via rotation coercion only — the
+  InstancedThingGroup's UV math is untouched. A back-only mesh variant
+  would require regenerating the InstancedMesh on every face flip and is
+  not worth the cost while rotation already hides the front face.
+
+### Smoke-test recipe (for Stephen)
+1. F5 in VS Code (compound launch).
+2. Browse `http://localhost:5114/autotable/`.
+3. Take seat 0 — bot banner appears bottom-left ("Bots filled seats 1, 2, 3
+   / Bot Alpha (S) / Bot Bravo (W) / Bot Charlie (N)"). If banner missing,
+   bot nicks are not `Bot `-prefixed — coordinate with Bishop.
+4. Click Deal — 108 tiles deal, top-center HUD shows dice + break point
+   for 3 s.
+5. When a bot discards a tile that gives you a claim, the 碰 / 吃 / 杠 / 胡
+   buttons light up according to server's `available`; countdown ticks
+   `Decide in 5.0s` → `0.0s`. Click any enabled claim button or `跳过 Pass`;
+   buttons re-disable immediately. Auto-pass fires at 0.0s if you do
+   nothing.
+6. On hand end, centered modal appears with gold headline (胡! / 流局 Draw
+   / 诈胡 False Hu), score-delta table, and winning-hand tiles as 2D
+   cells. Click `下一局 Next Hand` to advance the server.

@@ -100,7 +100,16 @@ export class World {
 
       const thing = this.things.get(thingIndex)!;
       const slot = this.slots.get(thingInfo.slotName)!;
-      thing.moveTo(slot, thingInfo.rotationIndex);
+      // Phase D — tile face privacy. Bishop's WS endpoint strips `face` to
+      // null on tiles concealed from this viewer. The bundle defends against
+      // a backend that forgets to flip rotationIndex by coercing the visible
+      // rotation to a face-down index (the slot's last rotation, which by
+      // setup-slots convention is the back-up orientation for hand slots).
+      let rotationIndex = thingInfo.rotationIndex;
+      if (thingInfo.face === null && slot.rotations.length > 1) {
+        rotationIndex = slot.rotations.length - 1;
+      }
+      thing.moveTo(slot, rotationIndex);
       thing.sent = true;
 
       thing.claimedBy = thingInfo.claimedBy;

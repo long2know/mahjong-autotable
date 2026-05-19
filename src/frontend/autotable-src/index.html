@@ -106,24 +106,35 @@
                 <div class="d-flex mt-1">
                     <button class="btn btn-dark btn-sm mr-1 w-100" id="claim-pung" disabled
                             data-toggle="tooltip" data-placement="top"
-                            title="Claim a Pung (triplet). Wired in Phase D.">
+                            title="Claim a Pung (triplet).">
                         碰 <small>Pung</small>
                     </button>
                     <button class="btn btn-dark btn-sm mr-1 w-100" id="claim-chow" disabled
                             data-toggle="tooltip" data-placement="top"
-                            title="Claim a Chow (sequence). Wired in Phase D.">
+                            title="Claim a Chow (sequence).">
                         吃 <small>Chow</small>
                     </button>
                     <button class="btn btn-dark btn-sm mr-1 w-100" id="claim-kong" disabled
                             data-toggle="tooltip" data-placement="top"
-                            title="Claim a Kong (four-of-a-kind). Wired in Phase D.">
+                            title="Claim a Kong (four-of-a-kind).">
                         杠 <small>Kong</small>
                     </button>
                     <button class="btn btn-warning btn-sm w-100" id="claim-hu" disabled
                             data-toggle="tooltip" data-placement="top"
-                            title="Declare Hu (win). Wired in Phase D.">
+                            title="Declare Hu (win).">
                         胡 <small>Hu</small>
                     </button>
+                </div>
+                <div class="d-flex mt-1">
+                    <button class="btn btn-secondary btn-sm w-100" id="claim-pass" disabled
+                            data-toggle="tooltip" data-placement="top"
+                            title="Pass on this claim window.">
+                        跳过 <small>Pass</small>
+                    </button>
+                </div>
+                <div class="mt-1 text-warning" id="claim-countdown"
+                     style="display: none; font-size: 0.8rem;">
+                    Decide in <span id="claim-countdown-value">5.0</span>s
                 </div>
             </div>
 
@@ -220,6 +231,51 @@
             </div>
         </div>
     </div>
+
+    <!-- Phase D — Hand result modal (rendered on `result.current` UPDATE). -->
+    <div class="modal" id="result-modal" tabindex="-1" aria-hidden="true"
+         data-backdrop="static" data-keyboard="false">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content result-modal-content">
+                <div class="modal-body text-light text-center">
+                    <h2 id="result-headline" class="mb-1">胡!</h2>
+                    <div id="result-winner" class="mb-3 text-warning"></div>
+                    <table class="table table-sm table-dark mx-auto" id="result-score">
+                        <thead>
+                            <tr>
+                                <th>座位 Seat</th>
+                                <th>玩家 Player</th>
+                                <th>分 Score Δ</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <div class="mt-3">
+                        <div class="text-white-50 mb-1">
+                            <small>胡牌 Winning hand</small>
+                        </div>
+                        <div id="result-hand" class="d-flex flex-wrap justify-content-center"></div>
+                    </div>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-warning" id="result-next">
+                        下一局 <small>Next Hand</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase D — Dice + break-point HUD (briefly shown on first deal). -->
+    <div id="dice-hud" style="display: none;">
+        <span class="dice-face" id="dice-hud-d1">⚀</span>
+        <span class="dice-face" id="dice-hud-d2">⚀</span>
+        <span class="dice-sum">= <span id="dice-hud-sum">2</span></span>
+        <span class="dice-break">→ break @ <span id="dice-hud-break">2</span></span>
+    </div>
+
+    <!-- Phase D — Bot banner (bottom-left): announces auto-fill. -->
+    <div id="bot-banner" style="display: none;"></div>
 
     <script type="module" src="./src/index.ts"></script>
 </body>

@@ -5,7 +5,16 @@ import { EventEmitter } from 'events';
 import { Entry } from '../server/protocol';
 
 import { BaseClient, Game } from './base-client';
-import { ThingInfo, MatchInfo, MouseInfo, SoundInfo, SeatInfo, DiceInfo } from './types';
+import {
+  ThingInfo,
+  MatchInfo,
+  MouseInfo,
+  SoundInfo,
+  SeatInfo,
+  DiceInfo,
+  ClaimWindowEntry,
+  HandResultEntry,
+} from './types';
 
 
 export class Client extends BaseClient {
@@ -15,7 +24,13 @@ export class Client extends BaseClient {
   nicks: Collection<string, string>;
   mouse: Collection<string, MouseInfo>;
   sound: Collection<number, SoundInfo>;
-  dice: Collection<number, DiceInfo>;
+  // dice was numeric-keyed in upstream; widened to string|number so Bishop's
+  // `'current'` key (Phase D protocol) and the legacy local-deal key 0 both
+  // work without a collection rename or a parallel event system.
+  dice: Collection<string | number, DiceInfo>;
+  // Phase D — Changsha protocol extensions emitted by AutotableWsEndpoint.
+  claim: Collection<string, ClaimWindowEntry>;
+  result: Collection<string, HandResultEntry>;
 
   seat: number | null = 0;
   seatPlayers: Array<string | null> = new Array(4).fill(null);
@@ -32,6 +47,8 @@ export class Client extends BaseClient {
     this.mouse = new Collection('mouse', this, { rateLimit: 100, perPlayer: true });
     this.sound = new Collection('sound', this, { ephemeral: true });
     this.dice = new Collection('dice', this, { ephemeral: true });
+    this.claim = new Collection('claim', this, { ephemeral: true });
+    this.result = new Collection('result', this);
     this.seats.on('update', this.onSeats.bind(this));
   }
 

@@ -169,3 +169,99 @@
     width: 100%;
     min-height: 85vh;
 }
+
+/* Phase D — claim countdown text under the claim button row. */
+#claim-countdown {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Phase D — hand-result modal styling.  Reuses Bootstrap .modal layout,
+ * paints a mahjong-felt-green border to match the table top. */
+.result-modal-content {
+    background-color: #1f3a26;
+    border: 2px solid #c8a046;
+    border-radius: 0.5rem;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+}
+.result-modal-content .table {
+    background-color: rgba(0, 0, 0, 0.25);
+}
+.result-modal-content #result-headline {
+    font-size: 2.5rem;
+    color: #ffd75e;
+    font-weight: bold;
+}
+.result-modal-content .result-tile {
+    width: 36px;
+    height: 50px;
+    margin: 2px;
+    background-color: #f4ead5;
+    color: #2a2a2a;
+    border: 1px solid #6b5a2a;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Verdana', sans-serif;
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+.result-modal-content .result-tile.suit-m { color: #a83232; }
+.result-modal-content .result-tile.suit-p { color: #1d4a8a; }
+.result-modal-content .result-tile.suit-s { color: #1d6e3a; }
+
+/* Phase D — dice + break-point HUD (top-center). */
+#dice-hud {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    background-color: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    font-family: Verdana, Arial, sans-serif;
+    box-shadow: 0 0 12px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+}
+#dice-hud .dice-face {
+    font-size: 1.6rem;
+    margin-right: 4px;
+}
+#dice-hud .dice-sum {
+    margin: 0 6px;
+    color: #ffd75e;
+    font-weight: bold;
+}
+#dice-hud .dice-break {
+    margin-left: 8px;
+    color: #adebad;
+}
+
+/* Phase D — bot fill banner (bottom-left). */
+#bot-banner {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    z-index: 50;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #e0e0e0;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-family: Verdana, Arial, sans-serif;
+    font-size: 0.85rem;
+    max-width: 260px;
+    line-height: 1.35;
+    pointer-events: none;
+}
+#bot-banner .bot-banner-title {
+    color: #ffd75e;
+    font-weight: bold;
+    display: block;
+    margin-bottom: 2px;
+}
+#bot-banner .bot-row {
+    display: block;
+}
