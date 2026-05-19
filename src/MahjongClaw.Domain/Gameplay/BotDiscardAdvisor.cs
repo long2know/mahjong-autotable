@@ -271,7 +271,8 @@ public static class BotDiscardAdvisor
                     {
                         var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
                         var deadCandidates = candidates
-                            .Where(candidate => deadTiles.Contains(candidate.Tile))
+                            .Where(candidate => deadTiles.Contains(candidate.Tile)
+                                && !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts))
                             .ToList();
 
                         if (deadCandidates.Count > 0)
@@ -1958,10 +1959,18 @@ public static class BotDiscardAdvisor
         var deadTiles = deadSmallWinSingletons.Select(entry => entry.Tile).ToHashSet();
         for (var i = 0; i < handTiles.Count; i++)
         {
-            if (deadTiles.Contains(handTiles[i]))
+            var tile = handTiles[i];
+            if (!deadTiles.Contains(tile))
             {
-                return i;
+                continue;
             }
+
+            if (HasSequencePotential(tile, handCounts, ownedCounts, visibleCounts))
+            {
+                continue;
+            }
+
+            return i;
         }
 
         return null;
