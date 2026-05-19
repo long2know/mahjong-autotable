@@ -450,3 +450,80 @@ behaviour is preserved.
 **Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
 **Timestamp:** 2026-05-13T23:10Z
 **Contribution:** Produced autotable TS modification inventory (3 vendoring paths, Parcel vs Vite analysis, 9 risk flags), executed Phase A frontend vendor (pwmarcz/autotable @ 8b81d92 → `src/frontend/autotable-src/`, deleted `src/frontend/modern/` ~7,094 LOC, deleted bridge receiver ~154 LOC, updated .vscode F5 compound launch with `autotable: watch` task).
+
+
+## Architectural Pivot — Phase B SHIPPED (2026-05-19)
+
+**Branch:** stlong/phase-b-changsha-scene
+**Timestamp:** 2026-05-19T15:35Z
+**Scope:** src/frontend/autotable-src/** (Changsha-shape the vendored scene)
+**Bound by:** Ripley pivot plan §2 Phase B + Vasquez rules diff §1.1–1.14 +
+Stephen's directive (all 16 §4 defaults accepted + MVP fast-cuts a/b/c).
+
+### Files modified (7 source files in `src/frontend/autotable-src/`)
+- `src/types.ts` — `GameType` collapsed to `CHANGSHA` only; `Fives`/`Points`/`POINTS`
+  type-aliases + table deleted; `DealType.WINDS` dropped; `Conditions.{back,fives,points}`
+  → `Conditions.baseUnit: number` (default 1).
+- `src/setup-deal.ts` — full rewrite. `DEALS.CHANGSHA.{INITIAL,HANDS,UNSHUFFLED}`
+  only. `INITIAL`/`UNSHUFFLED` fill 28/28/26/26 walls. `HANDS` deals 13 into
+  each player's `hand.0..hand.12` + 1 into dealer's `hand.extra@0` + 14/15/13/13
+  remainder into walls (53 dealt + 55 in walls = 108).
+- `src/setup-slots.ts` — `SLOT_GROUPS` collapsed to a single `CHANGSHA` entry
+  (clone of FOUR_PLAYER minus `tray`/`payment`/`riichi` slot bindings). `riichi`
+  `START` slot definition deleted. `fixupSlots` param renamed `_gameType`.
+- `src/setup.ts` — `i < 108` loop; `tileIndex(i) = Math.floor(i / 4)`;
+  `addSticks()` method + its caller deleted; `getScores()` stubbed to return
+  `[null,null,null,null,null]`; `replace(conditions)` signature trimmed.
+- `src/world.ts` — `toggleHonba()` deleted; `deal(dealType)` signature
+  simplified; `MatchInfo.honba` pinned to `0` in every assignment; `resetPoints()`
+  deleted; riichi-stick drop-collision branch deleted; Phase D TODO comment
+  added over `toggleDealer()`.
+- `src/game-ui.ts` — full rewrite (only #deal, #toggle-dealer, #take-seat-N,
+  #kick-N, #leave-seat, #toggle-setup, #deal-type, #setup-desc bound; dropped
+  fives/points/honba/reset-points UI).
+- `index.html` — Riichi-only controls (#fives, #points, #toggle-honba,
+  #reset-points, #game-type) hidden via `style="display: none"` to preserve
+  any stray `getElementById` callsites. Added a four-button claim section:
+  `碰 Pung` / `吃 Chow` / `杠 Kong` / `胡 Hu` (yellow Hu = `btn-warning`;
+  others = `btn-dark`), all `disabled`, with title "Wired in Phase D."
+
+### LOC delta
+```
+7 files changed, 106 insertions(+), 539 deletions(-)
+```
+Net trim: **-433 LOC** from the vendored source.
+
+### Build outcome
+- `npx parcel build index.html about.html …` → **✨ Built in 2.69s**, 22 assets.
+- Bundle: `autotable-src.3e0763b1.js` (1.01 MB; was 1.02 MB pre-trim).
+- `npx tsc --noEmit --strict … src/index.ts` → **0 errors**.
+- Stale Phase A bundle `autotable-src.eb80a662.js` `git rm`'d; new bundle
+  staged in commit.
+
+### Implementation choices documented separately
+See `.squad/decisions/inbox/hicks-phase-b-implementation.md` for the 9 in-flight
+discretionary calls (deal arithmetic, wall remainder, `things.ts` no-op,
+disabled claim buttons, etc).
+
+### Known quirks (sandbox-acceptable, deferred to Phase C/D)
+- Seat 1's wall ends up at 7.5 stacks (15 tiles in a 14-tile column,
+  leaving wall.8.1 empty). Visually shows one half-stack at the right end
+  of seat 1's wall. Documented in `setup-deal.ts` inline comment.
+- Dealer-toggle still cycles seats 0..3 client-side (TODO Phase D wires
+  `changsha.banker`).
+- Claim buttons are decorative `disabled` stubs (no `onclick`); Phase D
+  will either wire them to the claim window or replace them with the
+  drag-to-meld interaction per MVP fast-cut (b).
+- `getScores()` returns nulls; center renderer's `drawScore` early-exits
+  on null so the scoreboard stays blank. Phase D wires `changsha.scoring`.
+
+### Smoke-test recipe (for Stephen)
+1. F5 in VS Code (compound launch starts backend + autotable watch).
+2. Browse `http://localhost:5114/autotable/`.
+3. Expect: 108 tiles in a 14/14/13/13 wall ring; dealer-position marker
+   visible; no riichi sticks anywhere; no dora-indicator area; no
+   point-stick tray at any seat; sidebar shows 碰 Pung / 吃 Chow /
+   杠 Kong / 胡 Hu buttons (greyed/disabled); deal-type dropdown lists
+   only HANDS / INITIAL / UNSHUFFLED.
+4. Click `Deal` with `Hands` selected — 13 tiles fly to each seat, one
+   extra to the dealer's `hand.extra` position (14 total dealer hand).
