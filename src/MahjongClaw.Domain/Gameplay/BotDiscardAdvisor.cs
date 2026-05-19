@@ -14,6 +14,7 @@ public static class BotDiscardAdvisor
     private const int OpponentKongFeedLastCopyAvoidBonus = 10;
     private const int OpponentKongFeedOutsTolerance = 1;
     private const int DeadSmallWinPairOutsTolerance = 1;
+    private const int NearDeadSmallWinPairOutsTolerance = 1;
     private const int NearDeadOffRankPairOutsTolerance = 1;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
@@ -507,6 +508,58 @@ public static class BotDiscardAdvisor
                     if (withinOutsTolerance && withinCopyTolerance)
                     {
                         candidates = deadPairCandidates;
+                    }
+                }
+            }
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258
+            && enforceSmallWinPairBias
+            && visibleCounts.Count > 0
+            && changshaSmallWinPairCount > 1
+            && !filteredByDeadOffRankPair)
+        {
+            var nearDeadSmallWinPairs = handCounts
+                .Where(entry => entry.Value == 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                .Select(entry =>
+                {
+                    ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                    visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                    return new
+                    {
+                        Tile = entry.Key,
+                        RemainingCopies = 4 - ownedCount - visibleCount
+                    };
+                })
+                .Where(entry => entry.RemainingCopies == 1)
+                .ToList();
+
+            if (nearDeadSmallWinPairs.Count > 0)
+            {
+                var nearDeadTiles = nearDeadSmallWinPairs.Select(entry => entry.Tile).ToHashSet();
+                var nearDeadPairCandidates = candidates
+                    .Where(candidate => nearDeadTiles.Contains(candidate.Tile))
+                    .ToList();
+
+                if (nearDeadPairCandidates.Count > 0)
+                {
+                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestOverallOutCopies = candidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var bestNearDeadOuts = nearDeadPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestNearDeadOutCopies = nearDeadPairCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadSmallWinPairOutsTolerance;
+                    var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
+                        || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadSmallWinPairOutsTolerance;
+
+                    if (withinOutsTolerance && withinCopyTolerance)
+                    {
+                        candidates = nearDeadPairCandidates;
                     }
                 }
             }
