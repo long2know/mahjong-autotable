@@ -45,6 +45,114 @@ public sealed class AutotableInboundMessage
     public bool? Full { get; set; }
 }
 
+/// <summary>
+/// Changsha-specific collection kinds layered on top of the upstream autotable protocol.
+/// These reuse the same <c>UPDATE { entries: [[kind, key, value], …] }</c> envelope —
+/// no new message types — and live alongside upstream collections (<c>things</c>,
+/// <c>seats</c>, <c>nicks</c>, <c>match</c>, <c>mouse</c>, <c>sound</c>, <c>dice</c>).
+///
+/// <list type="bullet">
+///   <item><b><c>claim</c></b> (Bishop Phase D-backend §2): keyed by seat index (0..3),
+///   value = <c>{ available: ["Pung","Chow","Kong","Hu"], deadline: long, source: int,
+///   tile: int }</c>. Server-emitted when a discard opens a claim window for that seat;
+///   client-emitted when a player presses a claim button (or "pass"). Cleared with a
+///   tombstone (value=<c>null</c>) when the window closes.</item>
+///
+///   <item><b><c>result</c></b> (Bishop Phase D-backend §2): keyed by the literal string
+///   <c>"current"</c>, value = <c>{ winner: int, type: "Hu"|"Draw"|"ZhaHu",
+///   score: { seat: points }[], hand: int[], nextBanker: int }</c>. Server-emitted on
+///   hand end (Hu, washout, or false-Hu penalty). Used by the autotable scene to drive
+///   the result panel + banker arrow rotation. Lives until the next deal clears it.</item>
+/// </list>
+/// </summary>
+public static class ChangshaCollectionKinds
+{
+    public const string Claim = "claim";
+    public const string Result = "result";
+}
+
+/// <summary>
+/// Server-emitted snapshot of an open claim window for one seat. Maps to the
+/// <see cref="ChangshaCollectionKinds.Claim"/> collection value.
+/// </summary>
+public sealed class ClaimWindowEntry
+{
+    [JsonPropertyName("available")]
+    public List<string> Available { get; set; } = [];
+
+    /// <summary>UTC unix millis at which auto-pass kicks in.</summary>
+    [JsonPropertyName("deadline")]
+    public long DeadlineUnixMs { get; set; }
+
+    /// <summary>Seat that discarded the tile triggering the window.</summary>
+    [JsonPropertyName("source")]
+    public int SourceSeat { get; set; }
+
+    /// <summary>Changsha tile id of the discarded tile.</summary>
+    [JsonPropertyName("tile")]
+    public int TileId { get; set; }
+}
+
+/// <summary>
+/// Server-emitted hand result. Maps to the <see cref="ChangshaCollectionKinds.Result"/>
+/// collection value under key <c>"current"</c>.
+/// </summary>
+public sealed class HandResultEntry
+{
+    [JsonPropertyName("winner")]
+    public int Winner { get; set; }
+
+    /// <summary>One of <c>"Hu"</c>, <c>"Draw"</c>, <c>"ZhaHu"</c>.</summary>
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    /// <summary>Cumulative net payments per seat for this hand (positive = gained).</summary>
+    [JsonPropertyName("score")]
+    public Dictionary<int, int> Score { get; set; } = new();
+
+    /// <summary>Tile ids in the winning hand (concealed + meld) for the result panel.</summary>
+    [JsonPropertyName("hand")]
+    public List<int> Hand { get; set; } = [];
+
+    /// <summary>Banker seat for the next hand per Changsha v1.2 rotation.</summary>
+    [JsonPropertyName("nextBanker")]
+    public int NextBanker { get; set; }
+}
+
+/// <summary>Helpers for shaping outbound Changsha-collection entries.</summary>
+public static class ChangshaCollectionEncoder
+{
+    /// <summary>
+    /// Encodes a claim window for <paramref name="seat"/> as the <c>claim</c> collection
+    /// entry the bundle expects. Caller decides timeout policy.
+    /// </summary>
+    public static CollectionEntry EncodeClaimWindow(
+        int seat,
+        IEnumerable<string> available,
+        int sourceSeat,
+        int tileId,
+        long deadlineUnixMs)
+        => new(ChangshaCollectionKinds.Claim, seat, new ClaimWindowEntry
+        {
+            Available = available.ToList(),
+            DeadlineUnixMs = deadlineUnixMs,
+            SourceSeat = sourceSeat,
+            TileId = tileId
+        });
+
+    /// <summary>Encodes a tombstone for <paramref name="seat"/>'s claim window (window closed).</summary>
+    public static CollectionEntry EncodeClaimWindowClosed(int seat)
+        => new(ChangshaCollectionKinds.Claim, seat, null);
+
+    /// <summary>Encodes the current hand's result as the <c>result["current"]</c> entry.</summary>
+    public static CollectionEntry EncodeHandResult(HandResultEntry result)
+        => new(ChangshaCollectionKinds.Result, "current", result);
+
+    /// <summary>Encodes a tombstone for the current hand result (cleared on next deal).</summary>
+    public static CollectionEntry EncodeHandResultCleared()
+        => new(ChangshaCollectionKinds.Result, "current", null);
+}
+
 /// <summary>Outbound <c>JOINED</c> envelope.</summary>
 public sealed class JoinedMessage
 {

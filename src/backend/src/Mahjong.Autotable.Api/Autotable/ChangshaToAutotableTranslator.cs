@@ -116,8 +116,82 @@ public static class ChangshaToAutotableTranslator
             entries.Add(entry);
         }
 
+        // claim window — one entry per seat that currently has an opportunity.
+        // The bundle's claim collection drives the 碰/吃/杠/胡 buttons (Phase B scene).
+        if (state.ClaimWindow is { } window && state.Phase == ChangshaPhase.AwaitingClaim)
+        {
+            foreach (var seatGroup in window.Opportunities.GroupBy(o => o.SeatIndex))
+            {
+                var available = seatGroup
+                    .Select(o => ClaimTypeToWire(o.ClaimType))
+                    .Distinct()
+                    .ToList();
+                // Deadline = 0 means "no client-side timer" — server enforces the timeout.
+                entries.Add(ChangshaCollectionEncoder.EncodeClaimWindow(
+                    seatGroup.Key,
+                    available,
+                    window.DiscardSeatIndex,
+                    window.DiscardTileId,
+                    deadlineUnixMs: 0));
+            }
+        }
+
+        // result — populated once the hand has scored (or washed out).
+        // Phase EndHand is the marker: CurrentWin set + CurrentScore set OR draw-hand event.
+        if (state.Phase == ChangshaPhase.EndHand)
+        {
+            entries.Add(ChangshaCollectionEncoder.EncodeHandResult(BuildHandResult(state)));
+        }
+
         return entries;
     }
+
+    private static HandResultEntry BuildHandResult(ChangshaGameState state)
+    {
+        var win = state.CurrentWin;
+        var winnerSeat = win?.WinningSeatIndex ?? -1;
+        string type;
+        List<int> winningHand = [];
+
+        if (win is not null)
+        {
+            type = "Hu";
+            var hand = state.Hands.FirstOrDefault(h => h.SeatIndex == winnerSeat);
+            if (hand is not null)
+            {
+                winningHand.AddRange(hand.ConcealedTiles);
+                foreach (var meld in hand.Melds)
+                    winningHand.AddRange(meld.TileIds);
+            }
+        }
+        else
+        {
+            // Wall exhaustion or false-Hu only — caller distinguishes via FalseHuPenalties.
+            type = state.FalseHuPenalties.Count > 0 ? "ZhaHu" : "Draw";
+        }
+
+        // nextBanker mirrors the runtime's RotateBanker policy: winner becomes dealer;
+        // washout retains current dealer. Match the rule here without mutating state.
+        var nextBanker = win is not null ? win.WinningSeatIndex : state.DealerSeatIndex;
+
+        return new HandResultEntry
+        {
+            Winner = winnerSeat,
+            Type = type,
+            Score = new Dictionary<int, int>(state.CumulativeScores),
+            Hand = winningHand,
+            NextBanker = nextBanker
+        };
+    }
+
+    private static string ClaimTypeToWire(Tables.TableClaimType t) => t switch
+    {
+        Tables.TableClaimType.Hu => "Hu",
+        Tables.TableClaimType.Kong => "Kong",
+        Tables.TableClaimType.Pung => "Pung",
+        Tables.TableClaimType.Chow => "Chow",
+        _ => "Pass"
+    };
 
     // ── match ────────────────────────────────────────────────────────
 

@@ -192,3 +192,26 @@
 - **Verification:** `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → 0 warnings, 0 errors. `dotnet test src/backend/Mahjong.Autotable.slnx --nologo` → `Failed: 0, Passed: 257, Skipped: 11, Total: 268`. All 7 new `Category=PhaseC-Relay` tests pass.
 - **Manual validation Stephen can now do:** open two browser tabs to `/autotable/`, click Connect on both, click Take Seat in tab A → tab B should see the seat marker move; drag a tile in tab A → tab B should see it move. No claim window, no scoring, no banker rotation — those still need Phase D-backend.
 - **Not touched (file-scope discipline):** `src/frontend/**` (Hicks's Phase B in flight), `.vscode/*` (Phase A wired), `src/backend/.../Changsha/**` (Phase D-backend, Vasquez's `Changsha/Acceptance/**` tests in flight), `ChangshaToAutotableTranslator.cs` (Phase D scope — read but unmodified).
+
+📌 Phase D-backend wave (Bishop, 2026-05-XX):
+- **Scope:** wired the Changsha runtime to the C-relay so the rules engine drives the autotable scene end-to-end (single-game-per-instance, runtime-vs-client precedence, per-viewer privacy filter, new `claim`/`result` collections, false-Hu + missed-win runtime fixes).
+- **Files modified:** 7 src + 5 tests + 1 decision drop. 957 insertions / 145 deletions across 13 files.
+- **Tests:** baseline 257/0/11 → final **259/0/9/268** (parity + 2 acceptance unskips: `Player_MissedWinLockout_ClearsAfterTheirNextDraw`, `Player_FalseHuDeclaration_AppliesPenaltyToOtherThreeSeats`, `Full_Hand_ViaAutotableWebSocketRelay_BotsAndOneHuman`; 1 phase-C test newly skipped — `Update_IsIsolated_PerGameId` — because single-game-per-instance collapses gameIds, deferred to Phase E). Acceptance subset 65/0/1 (only `Hu_ThirteenOrphans_SpecGap_Skipped` remains). Build 0 warnings / 0 errors. 5 consecutive full-suite runs all green.
+- **Shipped:**
+  - `AutotableGameState.ApplyUpdate(entries, UpdateSource)` — runtime writes always win over client; client writes targeting runtime keys are silently dropped. Per-(kind,key) source attribution dict.
+  - `AutotableWsEndpoint.DefaultGameId = "changsha-default"` — single-game-per-instance coercion in `NEW`/`JOIN`/`UPDATE`.
+  - `EnsureRuntimeBoundAsync` — lazy bind on first seat-take; bidirectional `_runtimeBinding` ↔ `_relayBinding` maps under `_bindingLock`.
+  - `HandleUpdateAsync` branches by collection: `seats`/`claim`/`match` route to runtime; cosmetic kinds (`mouse`/`sound`/`things`/`nicks`/etc.) pass through.
+  - `AutoBotFill` connection property from `?bots=true` (default ON, `?bots=false` to disable).
+  - `OnStateChanged` translates → applies with `Runtime` source → broadcasts per-viewer-filtered full snapshot.
+  - `FilterEntriesForViewer` — face-stripping + `rotationIndex=2` for opposing-seat `hand.X@*` tiles; passes through wall/discard/meld.
+  - `ChangshaCollectionKinds.Claim`/`Result` + `ClaimWindowEntry`/`HandResultEntry` value classes + encoder helpers.
+  - `ChangshaToAutotableTranslator.Translate` emits `claim[seat]` during `AwaitingClaim` and `result["current"]` during `EndHand`.
+  - Runtime fixes: `DrawTile()` clears active seat from `MissedWinSeats` (过胡 per-draw decay per Baidu §过水); `RecordFalseHu(state, seat)` static API for 诈胡 Big-Win-equivalent penalty (-18 / +6+6+6); `FalseHuPenalty` audit record on `ChangshaGameState`; `ScoringService.CalculateFalseHuPenalty`.
+  - Determinism fix: replaced `HashCode.Combine` with Knuth-mix `(uint)Seed * 2654435761u + (uint)HandNumber` (the `HashCode.Combine` is process-randomized for DoS mitigation and broke seed-determinism in parallel xUnit runs).
+- **Decisions logged:** `.squad/decisions/inbox/bishop-phase-d-backend.md` covers all 10 design choices + 5 Phase E open questions + Stephen smoke-test recipe.
+- **Open for Phase E (not touched, by design):** multi-game lobby allocation; randomized wall ordering (so thing-index → typeIndex no longer leaks face); explicit `_runtimeBinding` cleanup on runtime cascade-disconnect; delta-since-version replay protocol for reconnects.
+- **Layering documented in code:** `AutotableWsEndpoint` class docstring updated to reflect Phase D-backend role. `AutotableConnection.AutoBotFill` documented as the toggle for solo MVP play.
+- **Verification:** `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → 0/0. `dotnet test src/backend/Mahjong.Autotable.slnx --nologo` → 259/0/9/268, 5/5 stable runs. E2E WS test (`Full_Hand_ViaAutotableWebSocketRelay_BotsAndOneHuman`) verifies the full pipe terminates with a `result["current"]` entry of type Hu/Draw/ZhaHu.
+- **Manual validation Stephen can now do:** open `http://localhost:5000/autotable/`, click Connect → Take Seat → Deal. Three bots fill the other seats and play out a hand. Tiles, claims, and the result modal populate via the WS pipe. Privacy filter hides bot hands. See decision drop §"Stephen smoke-test recipe" for the full 10-step walkthrough.
+- **Not touched (file-scope discipline):** `src/frontend/**` (Hicks's Phase D-frontend in flight); the 4 `*_DeferredToV2` test markers (Phase E scope); `ChangshaGameRuntime.cs` (interface contract preserved — only consumed, not modified).

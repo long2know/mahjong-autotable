@@ -19,30 +19,32 @@ namespace Mahjong.Autotable.Api.Autotable;
 /// <c>window.location.pathname = '/autotable/'</c> resolves to
 /// <c>autotable/ws</c> (Default #7, Stephen accepted).</para>
 ///
-/// <para><b>Phase C-relay (this layer):</b> bidirectional bundle ↔ bundle
-/// multiplayer pipe. <c>UPDATE</c> messages from one connection are stored in
-/// the per-game <see cref="AutotableGameState"/> and broadcast to every
-/// <i>other</i> connection sharing the same <c>gameId</c>. A late joiner
-/// receives the accumulated snapshot on <c>JOINED</c>. No rules enforcement
-/// — that's Phase D-backend.</para>
+/// <para><b>Phase D-backend (this layer, current):</b> the Changsha rules engine
+/// drives the autotable scene end-to-end. Each runtime <c>StateChanged</c>
+/// translates to a delta of autotable collection entries (<c>match</c>,
+/// <c>seats</c>, <c>nicks</c>, <c>dice</c>, <c>things</c>, <c>claim</c>,
+/// <c>result</c>) which is stored in the per-game <see cref="AutotableGameState"/>
+/// with <see cref="UpdateSource.Runtime"/> attribution, then broadcast to every
+/// connection (per-viewer privacy filter applied). Client UPDATEs continue to relay
+/// as in Phase C, but cannot overwrite runtime-owned entries
+/// (see <see cref="AutotableGameState.ApplyUpdate(System.Collections.Generic.IEnumerable{CollectionEntry}, UpdateSource)"/>).</para>
 ///
-/// <para><b>Phase D-backend (next, not in this file yet):</b> the Changsha
-/// runtime will drive authoritative state changes that get merged into the
-/// per-game collections and broadcast to every connection. The translator-fed
-/// <see cref="ChangshaToAutotableTranslator"/> snapshot path is preserved
-/// for that integration — currently it contributes the <c>match[0]</c> entry
-/// (forcing <c>fives='000'</c>) plus, when a Changsha game is bound, the full
-/// table snapshot, which is merged into the relay state on <c>JOIN</c>.</para>
-///
-/// <para><b>Always-available pattern (spike §3.6):</b> if a JOIN names a
-/// gameId not bound to any Changsha game, the endpoint still responds with
-/// <c>JOINED</c> + an empty <c>UPDATE</c> so the bundle's 15× auto-reconnect
-/// loop stays quiet. Phase C-relay extends this by creating an empty per-game
-/// state on demand, allowing subsequent UPDATE relays to proceed normally.</para>
+/// <para><b>Single-game-per-instance (Default #8):</b> all NEW/JOIN messages
+/// resolve to the deterministic relay gameId <c>"changsha-default"</c>, which is
+/// lazily bound to one Changsha runtime game. Hicks's Phase D-frontend "Take Seat"
+/// click sends a <c>seats</c> UPDATE that this endpoint routes to
+/// <see cref="IChangshaGameRuntime.TakeSeatAsync"/>, optionally followed by
+/// <see cref="IChangshaGameRuntime.FillEmptySeatsWithBotsAsync"/> for solo play
+/// (query param <c>?bots=true</c>, default ON).</para>
 /// </summary>
 public static class AutotableWsEndpoint
 {
     public const string Path = "/autotable/ws";
+    /// <summary>
+    /// Deterministic single-game-per-instance relay gameId (Default #8). All inbound
+    /// NEW/JOIN/UPDATE messages resolve to this gameId — Phase E will widen.
+    /// </summary>
+    public const string DefaultGameId = "changsha-default";
 
     /// <summary>Maps the autotable WS handler onto the application pipeline.</summary>
     public static IEndpointConventionBuilder MapAutotableWs(this IEndpointRouteBuilder endpoints) =>
@@ -84,6 +86,12 @@ public sealed class AutotableConnectionManager : IDisposable
     private readonly ILogger<AutotableConnectionManager> _logger;
     private readonly ConcurrentDictionary<Guid, AutotableConnection> _connections = new();
     private readonly ConcurrentDictionary<string, AutotableGameState> _games = new(StringComparer.Ordinal);
+    // Relay gameId → Changsha runtime gameId. Lazily populated on first seat take.
+    private readonly ConcurrentDictionary<string, string> _runtimeBinding = new(StringComparer.Ordinal);
+    // Reverse map for OnStateChanged → relayGameId lookup.
+    private readonly ConcurrentDictionary<string, string> _relayBinding = new(StringComparer.Ordinal);
+    // Lock to serialise lazy runtime-game creation per relay gameId.
+    private readonly SemaphoreSlim _bindingLock = new(1, 1);
     private readonly Action<string> _stateChangedHandler;
 
     public AutotableConnectionManager(
@@ -110,20 +118,40 @@ public sealed class AutotableConnectionManager : IDisposable
         return _games.TryGetValue(gameId, out var state) ? state.Snapshot().Count : 0;
     }
 
+    /// <summary>Test hook: reports the runtime gameId bound to a relay gameId, if any.</summary>
+    public string? GetRuntimeGameIdBoundTo(string relayGameId)
+        => _runtimeBinding.TryGetValue(relayGameId ?? string.Empty, out var rid) ? rid : null;
+
+    /// <summary>
+    /// Test hook: injects a relay→runtime gameId binding without going through
+    /// the WS seat-take flow. Used by Phase 5a/Phase C-relay tests that pre-create
+    /// a runtime game via <see cref="IChangshaGameRuntime.CreateGameAsync"/> and
+    /// need that game to drive snapshots delivered through the WS endpoint.
+    /// </summary>
+    public void BindRuntimeGameForTest(string relayGameId, string runtimeGameId)
+    {
+        _runtimeBinding[relayGameId] = runtimeGameId;
+        _relayBinding[runtimeGameId] = relayGameId;
+    }
+
     public async Task HandleConnectionAsync(WebSocket ws, IQueryCollection query, CancellationToken serverShutdown)
     {
+        // Phase D-backend: single-game-per-instance. Ignore any client-supplied
+        // gameId; everyone joins the same default game. Bots default to ON for
+        // solo MVP play — Stephen can disable via ?bots=false.
         var queryGameId = query.TryGetValue("gameId", out var g) ? g.ToString() : null;
         int? viewerSeat = null;
         if (query.TryGetValue("seat", out var s) && int.TryParse(s.ToString(), out var parsedSeat) && parsedSeat is >= 0 and <= 3)
         {
             viewerSeat = parsedSeat;
         }
+        var autoBotFill = !query.TryGetValue("bots", out var b) || !string.Equals(b.ToString(), "false", StringComparison.OrdinalIgnoreCase);
 
-        var connection = new AutotableConnection(ws, queryGameId, viewerSeat);
+        var connection = new AutotableConnection(ws, queryGameId, viewerSeat) { AutoBotFill = autoBotFill };
         _connections[connection.Id] = connection;
         _logger.LogInformation(
-            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat})",
-            connection.Id, queryGameId, viewerSeat);
+            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, bots={Bots})",
+            connection.Id, queryGameId, viewerSeat, autoBotFill);
 
         try
         {
@@ -202,52 +230,30 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private async Task HandleNewAsync(AutotableConnection connection, CancellationToken ct)
     {
-        // Upstream behavior (server.ts): allocate a fresh gameId not already
-        // in use and join the client to a brand new Game. Phase C-relay
-        // mirrors that — we own the gameId namespace and the game is empty
-        // until the first bundle uploads its sendOnConnect entries.
-        string gameId;
-        do
-        {
-            gameId = RandomGameId();
-        } while (_games.ContainsKey(gameId));
-
+        // Phase D-backend single-game default: NEW and JOIN both resolve to the
+        // single default gameId. Bundle's NEW path triggers sendOnConnect (the
+        // meta-collection declarations) which is still useful.
+        var gameId = AutotableWsEndpoint.DefaultGameId;
         var state = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
         connection.GameId = gameId;
 
-        // NEW always makes this connection the first joiner of a fresh game,
-        // which triggers the bundle's sendOnConnect path (uploads the initial
-        // wall of 136 things + the match conditions).
-        var isFirst = ReferenceEquals(state, _games[gameId]) && ConnectionsInGame(gameId, except: connection.Id) == 0;
+        var isFirst = ReferenceEquals(state, _games[gameId])
+            && ConnectionsInGame(gameId, except: connection.Id) == 0
+            && state.Snapshot().Count == 0;
         await SendJoinedAsync(connection, gameId, isFirst, ct);
         await SendFullSnapshotAsync(connection, gameId, ct);
     }
 
     private async Task HandleJoinAsync(AutotableConnection connection, string? gameId, CancellationToken ct)
     {
-        // Bundle's gameId from JOIN takes precedence over the query param so
-        // a stale URL doesn't override a fresh React-driven JOIN.
-        var resolved = !string.IsNullOrEmpty(gameId) ? gameId : connection.GameId;
-        if (string.IsNullOrEmpty(resolved))
-        {
-            resolved = RandomGameId();
-        }
+        // Phase D-backend: ignore client-supplied gameId; force the single default
+        // game. Future Phase E will widen to lobby-allocated multi-game ids.
+        var resolved = AutotableWsEndpoint.DefaultGameId;
 
-        // Track whether the game state existed before we touched it. If it
-        // did not, this connection is the first joiner and gets isFirst=true
-        // — that's the signal upstream <c>Collection.onConnect</c> uses to
-        // upload meta-collections (unique / ephemeral / perPlayer) and the
-        // initial sendOnConnect payload. Without it, late joiners would see
-        // an empty table forever.
         var existedBefore = _games.ContainsKey(resolved);
         var state = _games.GetOrAdd(resolved, id => new AutotableGameState(id));
         connection.GameId = resolved;
 
-        // First-joiner check is "no other connections bound to this gameId."
-        // This is more robust than a one-shot "starting" flag because if a
-        // game was created by HandleNewAsync but its sole connection dropped
-        // before any state was uploaded, the next JOIN should still be
-        // treated as the first joiner (state is empty).
         var others = ConnectionsInGame(resolved, except: connection.Id);
         var isFirst = !existedBefore || (others == 0 && state.Snapshot().Count == 0);
         await SendJoinedAsync(connection, resolved, isFirst, ct);
@@ -272,10 +278,186 @@ public sealed class AutotableConnectionManager : IDisposable
         if (entries is null || entries.Count == 0) return;
 
         var state = _games.GetOrAdd(connection.GameId, id => new AutotableGameState(id));
-        var applied = state.ApplyUpdate(entries);
+
+        // Phase D-backend §4 — branch by collection name. Game-affecting kinds
+        // route to the Changsha runtime (their authoritative effect comes back
+        // through the StateChanged → translator → ApplyUpdate(Runtime) loop).
+        // Cosmetic kinds (mouse, sound, dice, things) pass through as Client.
+        var passthroughEntries = new List<CollectionEntry>(entries.Count);
+        foreach (var entry in entries)
+        {
+            switch (entry.Kind)
+            {
+                case "seats":
+                    // Hicks's "Take Seat" click — route to runtime.TakeSeatAsync,
+                    // optionally auto-fill remaining seats with bots for solo play.
+                    await TryHandleSeatTakeAsync(connection, entry, ct);
+                    // Mirror upstream's perPlayer semantics so the seat shows up
+                    // immediately for other clients; runtime will reconfirm on its
+                    // next StateChanged push.
+                    passthroughEntries.Add(entry);
+                    break;
+
+                case ChangshaCollectionKinds.Claim:
+                    // Hicks's 碰/吃/杠/胡 click. Route to ClaimAsync / PassAsync.
+                    await TryHandleClaimActionAsync(connection, entry, ct);
+                    // Don't relay — runtime will re-broadcast claim state.
+                    break;
+
+                case "match":
+                    // Match update from bundle. If the game hasn't started yet,
+                    // treat any client-driven match push as a "Deal" command.
+                    await TryHandleMatchActionAsync(connection, entry, ct);
+                    passthroughEntries.Add(entry);
+                    break;
+
+                case ChangshaCollectionKinds.Result:
+                    // Result is server-emitted only — ignore client pushes.
+                    break;
+
+                default:
+                    // mouse, sound, dice, things, nicks, ephemeral, unique, perPlayer
+                    // — pure cosmetic / meta. Pass through to the relay store.
+                    passthroughEntries.Add(entry);
+                    break;
+            }
+        }
+
+        if (passthroughEntries.Count == 0) return;
+
+        var applied = state.ApplyUpdate(passthroughEntries, UpdateSource.Client);
         if (applied.Count == 0) return;
 
         await BroadcastToOthersAsync(connection, applied, full: false, ct);
+    }
+
+    // ── Inbound action routing (seats / claim / match) ───────────────
+
+    private async Task TryHandleSeatTakeAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
+    {
+        // value shape: { seat: int } (per upstream Player.svelte). null = leave.
+        if (entry.Value is null) return;
+        if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
+        if (!je.TryGetProperty("seat", out var seatEl)) return;
+        if (seatEl.ValueKind != JsonValueKind.Number) return;
+        if (!seatEl.TryGetInt32(out var seatIndex)) return;
+        if (seatIndex is < 0 or > 3) return;
+
+        try
+        {
+            var runtimeGameId = await EnsureRuntimeBoundAsync(connection.GameId!, ct);
+            await _runtime.TakeSeatAsync(runtimeGameId, connection.PlayerId, seatIndex, ct);
+
+            if (connection.AutoBotFill)
+            {
+                await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Seat take failed for connection {ConnectionId} seat {Seat}", connection.Id, seatIndex);
+        }
+    }
+
+    private async Task TryHandleClaimActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
+    {
+        if (entry.Value is null) return;
+        var seatIndex = entry.Key switch
+        {
+            long l => (int)l,
+            int i => i,
+            string s when int.TryParse(s, out var p) => p,
+            _ => -1
+        };
+        if (seatIndex is < 0 or > 3) return;
+        if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
+
+        // Client format: { action: "Pung"|"Chow"|"Kong"|"Hu"|"Pass", tileIds?: int[] }
+        if (!je.TryGetProperty("action", out var actionEl) || actionEl.ValueKind != JsonValueKind.String) return;
+        var action = actionEl.GetString() ?? string.Empty;
+
+        int[]? tileIds = null;
+        if (je.TryGetProperty("tileIds", out var tileIdsEl) && tileIdsEl.ValueKind == JsonValueKind.Array)
+        {
+            tileIds = new int[tileIdsEl.GetArrayLength()];
+            for (var i = 0; i < tileIds.Length; i++) tileIds[i] = tileIdsEl[i].GetInt32();
+        }
+
+        try
+        {
+            if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+            if (string.Equals(action, "Pass", StringComparison.OrdinalIgnoreCase))
+            {
+                await _runtime.PassAsync(runtimeGameId, seatIndex, ct);
+            }
+            else
+            {
+                await _runtime.ClaimAsync(runtimeGameId, seatIndex, action, tileIds, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Claim {Action} failed for seat {Seat}", action, seatIndex);
+        }
+    }
+
+    private async Task TryHandleMatchActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
+    {
+        if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
+
+        // A match[0] push with `dealCommand: "start"` is Hicks's "Deal" button.
+        // We also fall back to "any match push with dealer field while seating"
+        // for compatibility with the upstream bundle's vanilla Deal control.
+        var isDealCommand = false;
+        if (je.TryGetProperty("dealCommand", out var cmdEl) && cmdEl.ValueKind == JsonValueKind.String)
+        {
+            isDealCommand = string.Equals(cmdEl.GetString(), "start", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!isDealCommand) return;
+
+        try
+        {
+            if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+            if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
+            if (snap.Phase != ChangshaPhase.Seating) return;
+
+            // Ensure all four seats are filled (auto-fill bots before starting).
+            if (connection.AutoBotFill)
+            {
+                await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
+            }
+            await _runtime.StartGameAsync(runtimeGameId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Deal command failed for connection {ConnectionId}", connection.Id);
+        }
+    }
+
+    /// <summary>
+    /// Lazily binds <paramref name="relayGameId"/> to a Changsha runtime game.
+    /// Idempotent: subsequent calls return the same runtime gameId.
+    /// </summary>
+    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, CancellationToken ct)
+    {
+        if (_runtimeBinding.TryGetValue(relayGameId, out var existing)) return existing;
+
+        await _bindingLock.WaitAsync(ct);
+        try
+        {
+            if (_runtimeBinding.TryGetValue(relayGameId, out existing)) return existing;
+            // botSeatIndexes = empty so the runtime starts with all-human seats;
+            // we'll convert seats to bots on demand via FillEmptySeatsWithBotsAsync.
+            var runtimeGameId = await _runtime.CreateGameAsync(seed: null, botSeatIndexes: Array.Empty<int>(), hostConnectionId: null, ct);
+            _runtimeBinding[relayGameId] = runtimeGameId;
+            _relayBinding[runtimeGameId] = relayGameId;
+            return runtimeGameId;
+        }
+        finally
+        {
+            _bindingLock.Release();
+        }
     }
 
     private async Task HandleDisconnectAsync(AutotableConnection connection)
@@ -330,54 +512,50 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private async Task SendFullSnapshotAsync(AutotableConnection connection, string? gameId, CancellationToken ct)
     {
-        // Translator output is always emitted (even for "no Changsha game" —
-        // it still ships the match[0] entry that forces fives='000'). When a
-        // Changsha game IS bound, the translator's per-viewer perspective
-        // wins over any stored bundle state by being applied to the game
-        // store first; the resulting merged snapshot is what we send.
-        ChangshaGameState? state = null;
-        if (!string.IsNullOrEmpty(gameId))
+        if (string.IsNullOrEmpty(gameId))
         {
-            _runtime.TryGetSnapshot(gameId, out state);
+            // No game bound — ship only the translator's match[0] override
+            // so the bundle creates tiles with fives='000'.
+            var translatorEntriesNoGame = ChangshaToAutotableTranslator.Translate(state: null,
+                viewerSeat: connection.ViewerSeat, viewerPlayerId: connection.PlayerId);
+            var msg = new UpdateMessage { Entries = translatorEntriesNoGame.ToList(), Full = true };
+            await SendJsonAsync(connection, msg, ct);
+            return;
+        }
+
+        // Look up the bound runtime game (may be null if no seat has been
+        // taken yet). The translator absorbs nulls and degrades to match-only.
+        ChangshaGameState? runtimeState = null;
+        if (_runtimeBinding.TryGetValue(gameId, out var runtimeGameId))
+        {
+            _runtime.TryGetSnapshot(runtimeGameId, out runtimeState);
         }
 
         var translatorEntries = ChangshaToAutotableTranslator.Translate(
-            state,
+            runtimeState,
             viewerSeat: connection.ViewerSeat,
             viewerPlayerId: connection.PlayerId);
 
-        // Merge translator output INTO the per-game store so it's visible to
-        // every future joiner, then dump the full merged snapshot.
+        var gameState = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
+
+        // When a runtime game is backing the relay gameId, apply the translator
+        // output with Runtime source so it OVERWRITES any client-pushed entries
+        // for the same (collection, key). The viewer snapshot returned to this
+        // connection is the merged result, then filtered for privacy.
         IReadOnlyList<CollectionEntry> snapshot;
-        if (!string.IsNullOrEmpty(gameId))
+        if (runtimeState is not null)
         {
-            var gameState = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
-            // Only apply translator entries when there's a backing Changsha
-            // game — otherwise we'd persist the match[0] override into every
-            // ad-hoc bundle game and clobber the bundle's own match entry on
-            // late joins. The match[0] from translator IS still sent in the
-            // outbound update via the union below.
-            if (state is not null)
-            {
-                gameState.ApplyUpdate(translatorEntries);
-                snapshot = gameState.Snapshot();
-            }
-            else
-            {
-                var stored = gameState.Snapshot();
-                snapshot = MergeSnapshots(translatorEntries, stored);
-            }
+            gameState.ApplyUpdate(translatorEntries, UpdateSource.Runtime);
+            snapshot = gameState.Snapshot();
         }
         else
         {
-            snapshot = translatorEntries;
+            var stored = gameState.Snapshot();
+            snapshot = MergeSnapshots(translatorEntries, stored);
         }
 
-        var update = new UpdateMessage
-        {
-            Entries = snapshot.ToList(),
-            Full = true
-        };
+        var filtered = FilterEntriesForViewer(snapshot, connection.ViewerSeat);
+        var update = new UpdateMessage { Entries = filtered.ToList(), Full = true };
         await SendJsonAsync(connection, update, ct);
     }
 
@@ -415,6 +593,108 @@ public sealed class AutotableConnectionManager : IDisposable
         return merged;
     }
 
+    /// <summary>
+    /// Per-viewer privacy filter (Phase D-backend §3 / Ripley pivot decision #6).
+    /// For every <c>things</c> entry whose <c>slotName</c> places the tile in another
+    /// seat's hand, override <c>rotationIndex</c> to face-down and strip face data.
+    /// Open melds, discards, and the wall stay as the translator emitted them
+    /// (the wall is already face-down; discards/melds are public). The viewer's
+    /// own hand is unaffected.
+    /// <para>Note: in v1 the bundle's thing-index encodes typeIndex (face) intrinsically
+    /// because we lock conditions.fives='000' for a clean 1:1 mapping. The filter
+    /// strips the explicit face field and forces face-down rendering; v2 will
+    /// shuffle physical tile-ids so the index itself reveals nothing.</para>
+    /// </summary>
+    private static IReadOnlyList<CollectionEntry> FilterEntriesForViewer(
+        IReadOnlyList<CollectionEntry> entries,
+        int? viewerSeat)
+    {
+        if (entries.Count == 0) return entries;
+
+        var filtered = new List<CollectionEntry>(entries.Count);
+        foreach (var entry in entries)
+        {
+            if (entry.Kind != "things" || entry.Value is null)
+            {
+                filtered.Add(entry);
+                continue;
+            }
+
+            if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object)
+            {
+                filtered.Add(entry);
+                continue;
+            }
+
+            if (!je.TryGetProperty("slotName", out var slotNameEl) || slotNameEl.ValueKind != JsonValueKind.String)
+            {
+                filtered.Add(entry);
+                continue;
+            }
+
+            var slotName = slotNameEl.GetString() ?? string.Empty;
+            // hand.<seat>@<index> — concealed-hand slots are the privacy target.
+            // wall.* and discard.* and meld.* are publicly visible.
+            if (!slotName.StartsWith("hand.", StringComparison.Ordinal))
+            {
+                filtered.Add(entry);
+                continue;
+            }
+
+            // Extract the seat index from "hand.<seat>@<index>".
+            var dot = slotName.IndexOf('.');
+            var at = slotName.IndexOf('@');
+            if (dot < 0 || at <= dot + 1)
+            {
+                filtered.Add(entry);
+                continue;
+            }
+            if (!int.TryParse(slotName.AsSpan(dot + 1, at - dot - 1), out var slotSeat))
+            {
+                filtered.Add(entry);
+                continue;
+            }
+
+            if (viewerSeat.HasValue && slotSeat == viewerSeat.Value)
+            {
+                // Viewer's own hand — keep face-up.
+                filtered.Add(entry);
+                continue;
+            }
+
+            // Other seat's hand — force face-down rotation + strip face.
+            filtered.Add(new CollectionEntry(entry.Kind, entry.Key,
+                StripFaceAndForceFaceDown(je)));
+        }
+        return filtered;
+    }
+
+    private static JsonElement StripFaceAndForceFaceDown(JsonElement original)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms))
+        {
+            w.WriteStartObject();
+            foreach (var prop in original.EnumerateObject())
+            {
+                if (prop.NameEquals("face")) continue;
+                if (prop.NameEquals("rotationIndex"))
+                {
+                    // HandRotFaceDown = 2 (per upstream setup-slots.ts hand rotations).
+                    w.WriteNumber("rotationIndex", 2);
+                    continue;
+                }
+                prop.WriteTo(w);
+            }
+            // Explicitly write face=null so any future bundle that respects the
+            // field renders only the back even when looking from the viewer's angle.
+            w.WriteNull("face");
+            w.WriteEndObject();
+        }
+        ms.Position = 0;
+        return JsonDocument.Parse(ms).RootElement.Clone();
+    }
+
     private async Task BroadcastToOthersAsync(
         AutotableConnection sender,
         IReadOnlyList<CollectionEntry> entries,
@@ -423,23 +703,49 @@ public sealed class AutotableConnectionManager : IDisposable
     {
         if (string.IsNullOrEmpty(sender.GameId) || entries.Count == 0) return;
 
-        var message = new UpdateMessage
-        {
-            Entries = entries.ToList(),
-            Full = full
-        };
-
         foreach (var peer in _connections.Values)
         {
             if (peer.Id == sender.Id) continue;
             if (!string.Equals(peer.GameId, sender.GameId, StringComparison.Ordinal)) continue;
             try
             {
+                var perViewer = FilterEntriesForViewer(entries, peer.ViewerSeat);
+                if (perViewer.Count == 0) continue;
+                var message = new UpdateMessage { Entries = perViewer.ToList(), Full = full };
                 await SendJsonAsync(peer, message, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex, "Failed to broadcast UPDATE to peer {PeerId}", peer.Id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Broadcasts <paramref name="entries"/> to every connection in
+    /// <paramref name="relayGameId"/> (no sender to skip — runtime is the source).
+    /// Per-viewer privacy filter applied.
+    /// </summary>
+    private async Task BroadcastToAllAsync(
+        string relayGameId,
+        IReadOnlyList<CollectionEntry> entries,
+        bool full,
+        CancellationToken ct)
+    {
+        if (entries.Count == 0) return;
+        foreach (var peer in _connections.Values)
+        {
+            if (!string.Equals(peer.GameId, relayGameId, StringComparison.Ordinal)) continue;
+            try
+            {
+                var perViewer = FilterEntriesForViewer(entries, peer.ViewerSeat);
+                if (perViewer.Count == 0) continue;
+                var message = new UpdateMessage { Entries = perViewer.ToList(), Full = full };
+                await SendJsonAsync(peer, message, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to broadcast runtime UPDATE to peer {PeerId}", peer.Id);
             }
         }
     }
@@ -484,14 +790,15 @@ public sealed class AutotableConnectionManager : IDisposable
     /// bundle games — Phase D-backend will own the merge between runtime
     /// authority and the bundle-driven relay state.</para>
     /// </summary>
-    private void OnStateChanged(string gameId)
+    private void OnStateChanged(string runtimeGameId)
     {
         // Fire-and-forget broadcast. State events arrive on runtime worker
         // threads — we don't want to block them on WS sends.
+        if (!_relayBinding.TryGetValue(runtimeGameId, out var relayGameId)) return;
         foreach (var connection in _connections.Values)
         {
-            if (!string.Equals(connection.GameId, gameId, StringComparison.Ordinal)) continue;
-            _ = BroadcastSnapshotAsync(connection, gameId);
+            if (!string.Equals(connection.GameId, relayGameId, StringComparison.Ordinal)) continue;
+            _ = BroadcastSnapshotAsync(connection, relayGameId);
         }
     }
 
@@ -507,21 +814,10 @@ public sealed class AutotableConnectionManager : IDisposable
         }
     }
 
-    private static readonly char[] GameIdChars = "0123456789ABCDEFGJKLMNPQRSTUVWXYZ".ToCharArray();
-
-    private static string RandomGameId()
-    {
-        var chars = new char[5];
-        for (var i = 0; i < 5; i++)
-        {
-            chars[i] = GameIdChars[Random.Shared.Next(GameIdChars.Length)];
-        }
-        return new string(chars);
-    }
-
     public void Dispose()
     {
         _runtime.StateChanged -= _stateChangedHandler;
+        _bindingLock.Dispose();
     }
 }
 
@@ -534,6 +830,13 @@ public sealed class AutotableConnection
     public int? ViewerSeat { get; }
     public string PlayerId { get; } = Guid.NewGuid().ToString("N").Substring(0, 8);
     public SemaphoreSlim SendLock { get; } = new(1, 1);
+
+    /// <summary>
+    /// When true, taking a seat triggers auto-fill of remaining seats with bots
+    /// (Phase D-backend §7). Bundle clients default to true via the <c>?bots=true</c>
+    /// query param; the E2E test can disable it for deterministic seat-take tests.
+    /// </summary>
+    public bool AutoBotFill { get; init; } = true;
 
     public AutotableConnection(WebSocket socket, string? gameId, int? viewerSeat)
     {

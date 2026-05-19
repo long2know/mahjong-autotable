@@ -28,6 +28,14 @@ namespace Mahjong.Autotable.Api.Changsha;
 public interface IScoringService
 {
     ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush);
+
+    /// <summary>
+    /// Builds the payment list for a 诈胡 (false-Hu) penalty per Baidu §诈胡处罚 — the
+    /// offending seat pays <see cref="ScoringService.FalseHuPenaltyPerOpponent"/> to each
+    /// of the other three seats (Big-Win equivalent). Stateless; the caller is responsible
+    /// for applying the returned payments to <c>CumulativeScores</c>.
+    /// </summary>
+    FalseHuPenalty CalculateFalseHuPenalty(int offendingSeatIndex);
 }
 
 public sealed class ScoringService : IScoringService
@@ -42,6 +50,12 @@ public sealed class ScoringService : IScoringService
     private const int BigWinDiscardDealer = 7;
     private const int BigWinSelfDrawBase = 3;
     private const int BigWinSelfDrawDealer = 4;
+
+    /// <summary>
+    /// 诈胡 (false-Hu) per-opponent penalty: Big-Win equivalent (6 points to each of the
+    /// three opponents per Baidu §诈胡处罚). Caller pays 18 total; opponents split evenly.
+    /// </summary>
+    public const int FalseHuPenaltyPerOpponent = 6;
 
     public ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush)
     {
@@ -63,6 +77,28 @@ public sealed class ScoringService : IScoringService
         {
             Category = category,
             BasePoints = basePoints,
+            Payments = payments
+        };
+    }
+
+    public FalseHuPenalty CalculateFalseHuPenalty(int offendingSeatIndex)
+    {
+        var payments = new List<PaymentEntry>();
+        for (var seat = 0; seat < 4; seat++)
+        {
+            if (seat == offendingSeatIndex) continue;
+            payments.Add(new PaymentEntry
+            {
+                FromSeatIndex = offendingSeatIndex,
+                ToSeatIndex = seat,
+                Amount = FalseHuPenaltyPerOpponent,
+                Reason = "falseHu-penalty"
+            });
+        }
+        return new FalseHuPenalty
+        {
+            OffendingSeatIndex = offendingSeatIndex,
+            PenaltyPerOpponent = FalseHuPenaltyPerOpponent,
             Payments = payments
         };
     }

@@ -106,7 +106,7 @@ public class HuValidationBigWinsTests
             $"Got Pattern={result.Pattern}, IsFullFlush={result.IsFullFlush}, IsSevenPairs={result.IsSevenPairs}.");
     }
 
-    [Fact(Skip = "Phase D-backend gap: 13-Orphans (十三幺) Big Win not in v1 detector. Add WinPattern.ThirteenOrphans + Detector.CheckThirteenOrphans()."), Trait("Category", "Acceptance")]
+    [Fact(Skip = "Deferred to Phase E (v2): 13-Orphans (十三幺) Big Win pattern. Out of scope for v1 MVP — Stephen and Vasquez agreed in Phase D-tests review. Implement WinPattern.ThirteenOrphans + Detector.CheckThirteenOrphans() when this becomes a v2 priority."), Trait("Category", "Acceptance")]
     public void Hu_ThirteenOrphans_SpecGap_Skipped()
     {
         // Reddit §"Big hands" lists 13-Orphans as a Big Win in some Changsha variants.

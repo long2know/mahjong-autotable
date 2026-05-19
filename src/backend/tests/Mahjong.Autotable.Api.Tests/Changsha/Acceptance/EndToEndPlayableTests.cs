@@ -1,5 +1,8 @@
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Mahjong.Autotable.Api.Tests.Changsha.Acceptance;
 
@@ -103,20 +106,124 @@ public class EndToEndPlayableTests
             Assert.False(state.Seats[dealerBefore].IsDealer);
     }
 
-    [Fact(Skip = "Phase D-backend gap: end-to-end WS-relay test requires Bishop's Phase D pipe. The relay must broadcast tiles-dealt + claim-window-open + win-declared as autotable collection mutations. Once Bishop's Phase D pipe lands, replace this skip with a TestServer-backed harness similar to ChangshaHubE2ETests.E2E1_AllBots_PlaysAtLeastOneHandAndCompletes."), Trait("Category", "Acceptance")]
-    public void Full_Hand_ViaAutotableWebSocketRelay_BotsAndOneHuman()
+    [Fact, Trait("Category", "Acceptance")]
+    public async Task Full_Hand_ViaAutotableWebSocketRelay_BotsAndOneHuman()
     {
-        // Once Phase D-backend wires the rules engine to autotable's WS pipe (Bishop's scope),
-        // this test should:
-        //   1. Stand up the in-memory TestServer (WebApplicationFactory<Program>).
-        //   2. Connect a single client to /ws/autotable (or whichever path Bishop chose).
-        //   3. Send NEW + JOIN messages; assert JOINED responses.
-        //   4. Drive seat 0 with a scripted discard sequence; bots run on seats 1–3.
-        //   5. Assert the inbound UPDATE collection-mutation stream carries:
-        //      - "match" with dealer + handNumber
-        //      - "dice" with dice + state:"rolled"
-        //      - "things" with seat-0's hand tiles (private) + others' hand placeholders (public)
-        //      - "changsha.scoring" / "changsha.banker" / "changsha.lifecycle" mutations
-        //   6. Hand terminates in WinDeclared or WallExhausted.
+        // Phase D-backend acceptance: stand up the full WS pipe, drive a hand
+        // to completion via the runtime (4 bots), and assert the result entry
+        // arrives over the WS to a connected client. Confirms the runtime →
+        // translator → AutotableGameState (Runtime source) → WS broadcast loop
+        // is intact end-to-end.
+        var dataDir = System.IO.Path.Combine(AppContext.BaseDirectory, "test-data");
+        Directory.CreateDirectory(dataDir);
+        var tempDb = System.IO.Path.Combine(dataDir, $"mahjong-e2e-{Guid.NewGuid():N}.db");
+
+        await using var factory = new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>()
+            .WithWebHostBuilder(b =>
+            {
+                b.UseEnvironment("Development");
+                b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={tempDb}");
+                b.ConfigureServices(s =>
+                {
+                    s.Configure<Mahjong.Autotable.Api.Changsha.Runtime.ChangshaRuntimeOptions>(o =>
+                    {
+                        o.BotTurnDelayMs = 1;
+                        o.BotClaimDelayMs = 1;
+                        o.ClaimWindowTimeoutMs = 50;
+                        o.DealBatchDelayMs = 0;
+                        o.PersistSnapshots = false;
+                    });
+                });
+            });
+        try
+        {
+            // Use a seed known to produce a winner (per Full_Hand_WithWinner_...
+            // the harness finds one within 50 attempts; seed 1 is the first hit).
+            // The runtime can be all-bots — Phase D-backend's pipe is the
+            // subject under test, not human input.
+            var runtime = factory.Services.GetRequiredService<Mahjong.Autotable.Api.Changsha.Runtime.IChangshaGameRuntime>();
+            var manager = factory.Services.GetRequiredService<Mahjong.Autotable.Api.Autotable.AutotableConnectionManager>();
+
+            string? runtimeGameId = null;
+            string? observedResultType = null;
+            // Loop seeds: keep building games until one produces a result we can
+            // observe through the WS. (Wall-exhaustion also counts — it ships
+            // a `result` entry with type=Draw.)
+            for (var seed = 1; seed <= 50 && observedResultType is null; seed++)
+            {
+                if (runtimeGameId is not null)
+                {
+                    // Clear binding so the next iteration sees a fresh snapshot.
+                    manager.BindRuntimeGameForTest(Mahjong.Autotable.Api.Autotable.AutotableWsEndpoint.DefaultGameId, runtimeGameId);
+                }
+                runtimeGameId = await runtime.CreateGameAsync(seed: seed, botSeatIndexes: new[] { 0, 1, 2, 3 }, hostConnectionId: null);
+                manager.BindRuntimeGameForTest(Mahjong.Autotable.Api.Autotable.AutotableWsEndpoint.DefaultGameId, runtimeGameId);
+
+                using var ws = await factory.Server.CreateWebSocketClient()
+                    .ConnectAsync(new Uri(factory.Server.BaseAddress, "autotable/ws?seat=0&bots=false"), CancellationToken.None);
+
+                // JOIN — endpoint coerces gameId to DefaultGameId regardless.
+                var joinMsg = System.Text.Json.JsonSerializer.Serialize(new { type = "JOIN", gameId = Mahjong.Autotable.Api.Autotable.AutotableWsEndpoint.DefaultGameId });
+                await ws.SendAsync(System.Text.Encoding.UTF8.GetBytes(joinMsg), System.Net.WebSockets.WebSocketMessageType.Text, true, CancellationToken.None);
+
+                // Consume JOINED + initial full UPDATE.
+                _ = await ReadEnvelopeAsync(ws, 5000);
+                _ = await ReadEnvelopeAsync(ws, 5000);
+
+                // Drive the hand to completion.
+                await runtime.StartGameAsync(runtimeGameId);
+
+                // Listen up to ~5s for the result entry.
+                var deadline = DateTime.UtcNow.AddSeconds(5);
+                while (DateTime.UtcNow < deadline && observedResultType is null)
+                {
+                    System.Text.Json.JsonElement env;
+                    try { env = await ReadEnvelopeAsync(ws, 1500); }
+                    catch (OperationCanceledException) { continue; }
+                    if (env.GetProperty("type").GetString() != "UPDATE") continue;
+                    foreach (var entry in env.GetProperty("entries").EnumerateArray())
+                    {
+                        if (entry[0].GetString() != Mahjong.Autotable.Api.Autotable.ChangshaCollectionKinds.Result) continue;
+                        var val = entry[2];
+                        if (val.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                            val.TryGetProperty("type", out var typeProp))
+                        {
+                            observedResultType = typeProp.GetString();
+                            break;
+                        }
+                    }
+                }
+
+                try
+                {
+                    if (ws.State == System.Net.WebSockets.WebSocketState.Open)
+                        await ws.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "done", CancellationToken.None);
+                }
+                catch { }
+            }
+
+            Assert.NotNull(observedResultType);
+            Assert.True(
+                observedResultType is "Hu" or "Draw" or "ZhaHu",
+                $"Expected result.type to be Hu/Draw/ZhaHu — got '{observedResultType}'");
+        }
+        finally
+        {
+            try { if (File.Exists(tempDb)) File.Delete(tempDb); } catch { }
+        }
+    }
+
+    private static async Task<System.Text.Json.JsonElement> ReadEnvelopeAsync(System.Net.WebSockets.WebSocket ws, int timeoutMs)
+    {
+        using var cts = new CancellationTokenSource(timeoutMs);
+        var buffer = new byte[64 * 1024];
+        var sb = new System.Text.StringBuilder();
+        System.Net.WebSockets.WebSocketReceiveResult result;
+        do
+        {
+            result = await ws.ReceiveAsync(buffer, cts.Token);
+            sb.Append(System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count));
+        } while (!result.EndOfMessage);
+        return System.Text.Json.JsonDocument.Parse(sb.ToString()).RootElement.Clone();
     }
 }

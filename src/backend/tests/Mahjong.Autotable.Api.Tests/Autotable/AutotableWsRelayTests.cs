@@ -65,9 +65,10 @@ public class AutotableWsRelayTests : IAsyncLifetime
         await using var alice = await OpenAndJoinAsync("GAME-A", seat: 0);
         await using var bob = await OpenAndJoinAsync("GAME-A", seat: 1);
 
-        // Alice writes seats[Alice.playerId] = { seat: 0 } (Take Seat).
-        var entryValue = JsonSerializer.SerializeToElement(new { seat = 0 });
-        await alice.SendUpdateAsync(new[] { new object[] { "seats", alice.PlayerId, entryValue } });
+        // Use a "mouse" entry (cosmetic, non-runtime-routed in Phase D-backend)
+        // so the relay path is exercised in isolation from the Changsha routing.
+        var entryValue = JsonSerializer.SerializeToElement(new { x = 1.0, y = 2.0, z = 3.0 });
+        await alice.SendUpdateAsync(new[] { new object[] { "mouse", alice.PlayerId, entryValue } });
 
         var relayed = await bob.ReadEnvelopeAsync(timeoutMs: 2000);
         Assert.Equal("UPDATE", relayed.GetProperty("type").GetString());
@@ -75,9 +76,9 @@ public class AutotableWsRelayTests : IAsyncLifetime
 
         var entries = relayed.GetProperty("entries");
         Assert.Equal(1, entries.GetArrayLength());
-        Assert.Equal("seats", entries[0][0].GetString());
+        Assert.Equal("mouse", entries[0][0].GetString());
         Assert.Equal(alice.PlayerId, entries[0][1].GetString());
-        Assert.Equal(0, entries[0][2].GetProperty("seat").GetInt32());
+        Assert.Equal(1.0, entries[0][2].GetProperty("x").GetDouble());
     }
 
     // ── 2. Sender does NOT receive its own UPDATE back ────────────────
@@ -88,8 +89,8 @@ public class AutotableWsRelayTests : IAsyncLifetime
         await using var alice = await OpenAndJoinAsync("GAME-B", seat: 0);
         await using var bob = await OpenAndJoinAsync("GAME-B", seat: 1);
 
-        var entryValue = JsonSerializer.SerializeToElement(new { seat = 0 });
-        await alice.SendUpdateAsync(new[] { new object[] { "seats", alice.PlayerId, entryValue } });
+        var entryValue = JsonSerializer.SerializeToElement(new { x = 1.0, y = 2.0, z = 3.0 });
+        await alice.SendUpdateAsync(new[] { new object[] { "mouse", alice.PlayerId, entryValue } });
 
         // Bob must receive it.
         _ = await bob.ReadEnvelopeAsync(timeoutMs: 2000);
@@ -158,8 +159,9 @@ public class AutotableWsRelayTests : IAsyncLifetime
 
         var joined = await session.ReadEnvelopeAsync();
         Assert.Equal("JOINED", joined.GetProperty("type").GetString());
-        var gameId = joined.GetProperty("gameId").GetString();
-        Assert.False(string.IsNullOrEmpty(gameId));
+        // Phase D-backend single-game: NEW resolves to the default gameId
+        // (rather than a freshly allocated random id). Phase E will widen.
+        Assert.Equal(AutotableWsEndpoint.DefaultGameId, joined.GetProperty("gameId").GetString());
         // NEW is by definition the first joiner of a fresh game — bundle's
         // sendOnConnect path relies on this.
         Assert.True(joined.GetProperty("isFirst").GetBoolean());
@@ -177,7 +179,7 @@ public class AutotableWsRelayTests : IAsyncLifetime
 
     // ── 5. Per-game isolation — UPDATE in game A doesn't leak to game B ─
 
-    [Fact, Trait("Category", "PhaseC-Relay")]
+    [Fact(Skip = "Phase D-backend: single-game-per-instance coerces all gameIds to the default. Multi-game isolation will be revisited in Phase E."), Trait("Category", "PhaseC-Relay")]
     public async Task Update_IsIsolated_PerGameId()
     {
         await using var aliceGameA = await OpenAndJoinAsync("ISO-A", seat: 0);

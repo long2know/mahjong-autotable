@@ -126,16 +126,42 @@ public class MissedWinPenaltyTests
         Assert.Contains("not a winning hand", ex.Message);
     }
 
-    [Fact(Skip = "Phase D-backend gap: 诈胡 payment penalty not yet defined. Runtime throws on non-winning Hu declaration; spec calls for a payment to the other three seats. Add WinResult.IsFalseDeclaration + ScoringService.CalculateFalseHuPenalty + state.FalseHuPenalties list. Reference: Baidu §诈胡处罚."), Trait("Category", "Acceptance")]
+    [Fact, Trait("Category", "Acceptance")]
     public void Player_FalseHuDeclaration_AppliesPenaltyToOtherThreeSeats()
     {
         // Once Phase D-backend implements the penalty:
         //   1. The runtime should NOT throw; it should record the false declaration.
         //   2. The penalty payment should be applied (typical: Big-Win equivalent, ~6 units to each).
         //   3. CumulativeScores must reflect the deductions.
+        var state = AcceptanceFixture.NewDealtGame(seed: 99, dealerSeat: 0);
+        // Ensure baseline scores exist for all four seats (zero) so the assertions below
+        // can index into CumulativeScores without nullables.
+        for (var s = 0; s < 4; s++)
+            if (!state.CumulativeScores.ContainsKey(s)) state.CumulativeScores[s] = 0;
+
+        // (1) RecordFalseHu does NOT throw and returns a penalty descriptor.
+        var penalty = ChangshaGameStateMachine.RecordFalseHu(state, seatIndex: 0);
+        Assert.NotNull(penalty);
+
+        // (2) Big-Win equivalent: 6 units to each of the three opponents.
+        Assert.Equal(6, penalty.PenaltyPerOpponent);
+        Assert.Equal(3, penalty.Payments.Count);
+
+        // (3) Cumulative scores: caller -18, each opponent +6.
+        Assert.Equal(-18, state.CumulativeScores[0]);
+        Assert.Equal(6, state.CumulativeScores[1]);
+        Assert.Equal(6, state.CumulativeScores[2]);
+        Assert.Equal(6, state.CumulativeScores[3]);
+
+        // Zero-sum invariant (Vasquez §5).
+        Assert.Equal(0, state.CumulativeScores.Values.Sum());
+
+        // Audit log records the offence.
+        Assert.Single(state.FalseHuPenalties);
+        Assert.Equal(0, state.FalseHuPenalties[0].OffendingSeatIndex);
     }
 
-    [Fact(Skip = "Phase D-backend gap: missed-win must freeze the player until their next draw (per-tile lockout decays at draw time). Today the lockout persists for the whole hand. Reference: Baidu §过水 — \"until your next draw.\""), Trait("Category", "Acceptance")]
+    [Fact, Trait("Category", "Acceptance")]
     public void Player_MissedWinLockout_ClearsAfterTheirNextDraw()
     {
         // Today's implementation: MissedWinSeats persists for the entire hand until Deal() clears it.
@@ -143,5 +169,21 @@ public class MissedWinPenaltyTests
         // Phase D-backend must:
         //   1. On DrawTile() for a missed-win seat, remove them from MissedWinSeats.
         //   2. Keep them blocked until then.
+        var state = BuildSeat1Tenpai();
+
+        // Seat 0 discards Wan-1; seat 1 (tenpai for Wan-1) passes → locked out.
+        ChangshaGameStateMachine.Discard(state, 0, Tid(Suit.Wan, 1, 0));
+        ChangshaGameStateMachine.PassClaim(state);
+        Assert.Contains(1, state.MissedWinSeats);
+
+        // Advance the turn until seat 1 draws. The first AdvanceToNextPlayer after a
+        // passed claim makes seat 1 active (CCW from discarder seat 0).
+        Assert.Equal(1, state.ActiveSeatIndex);
+        Assert.Equal(ChangshaPhase.AwaitingDiscard, state.Phase);
+
+        ChangshaGameStateMachine.DrawTile(state);
+
+        // Lockout cleared by the draw.
+        Assert.DoesNotContain(1, state.MissedWinSeats);
     }
 }

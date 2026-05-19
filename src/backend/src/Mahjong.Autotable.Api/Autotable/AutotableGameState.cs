@@ -28,9 +28,25 @@ namespace Mahjong.Autotable.Api.Autotable;
 /// <see cref="ApplyUpdate"/> and <see cref="Snapshot"/>. Broadcast to other
 /// connections is performed outside the lock by the caller.</para>
 /// </summary>
+/// <summary>
+/// Identifies who wrote a given collection entry into the per-game store. Used by
+/// <see cref="AutotableGameState.ApplyUpdate(System.Collections.Generic.IEnumerable{CollectionEntry}, UpdateSource)"/>
+/// to enforce runtime-vs-client precedence per Bishop Phase D-backend decision #1 — the Changsha
+/// runtime is authoritative; client UPDATEs cannot overwrite a key the runtime owns.
+/// </summary>
+public enum UpdateSource
+{
+    /// <summary>The autotable bundle pushed this entry via inbound WS UPDATE. Advisory only.</summary>
+    Client = 0,
+    /// <summary>The Changsha rules engine pushed this entry via the translator. Authoritative.</summary>
+    Runtime = 1
+}
+
 public sealed class AutotableGameState
 {
     private readonly Dictionary<string, Dictionary<object, JsonElement>> _collections = new(StringComparer.Ordinal);
+    // Source attribution per (kind, normalizedKey). Absent entries default to Client.
+    private readonly Dictionary<string, Dictionary<object, UpdateSource>> _sources = new(StringComparer.Ordinal);
     private readonly HashSet<string> _ephemeralKinds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _uniqueFields = new(StringComparer.Ordinal);
     private readonly HashSet<string> _perPlayerKinds = new(StringComparer.Ordinal);
@@ -48,6 +64,11 @@ public sealed class AutotableGameState
     /// list to broadcast. Ephemeral kinds are NOT stored but ARE included in
     /// the broadcast list. Entries with <c>value == null</c> remove the key
     /// (upstream's tombstone semantics).
+    /// <para><b>Precedence (Bishop Phase D-backend §1):</b> when <paramref name="source"/>
+    /// is <see cref="UpdateSource.Client"/>, an entry is REJECTED if the existing entry's
+    /// source is <see cref="UpdateSource.Runtime"/> — the rules engine wins. Rejected entries
+    /// are excluded from the returned broadcast list so peers don't see speculative client
+    /// state. <see cref="UpdateSource.Runtime"/> always overwrites regardless of prior source.</para>
     /// </summary>
     /// <remarks>
     /// Mirrors upstream <c>server/game.ts:update()</c>. The meta-collections
@@ -58,7 +79,9 @@ public sealed class AutotableGameState
     /// meta-tables takes effect immediately for subsequent entries in the
     /// same call.
     /// </remarks>
-    public IReadOnlyList<CollectionEntry> ApplyUpdate(IEnumerable<CollectionEntry> entries)
+    public IReadOnlyList<CollectionEntry> ApplyUpdate(
+        IEnumerable<CollectionEntry> entries,
+        UpdateSource source = UpdateSource.Client)
     {
         if (entries is null) return Array.Empty<CollectionEntry>();
 
@@ -78,16 +101,28 @@ public sealed class AutotableGameState
                 if (!_ephemeralKinds.Contains(entry.Kind))
                 {
                     var collection = GetOrCreate(entry.Kind);
+                    var sourceMap = GetOrCreateSourceMap(entry.Kind);
                     var normalizedKey = NormalizeKey(entry.Key);
+
+                    // Client cannot overwrite a Runtime-owned entry — the rules
+                    // engine has the authoritative state.
+                    if (source == UpdateSource.Client
+                        && sourceMap.TryGetValue(normalizedKey, out var existing)
+                        && existing == UpdateSource.Runtime)
+                    {
+                        continue;
+                    }
 
                     if (entry.Value is null
                         || (entry.Value is JsonElement je && je.ValueKind == JsonValueKind.Null))
                     {
                         collection.Remove(normalizedKey);
+                        sourceMap.Remove(normalizedKey);
                     }
                     else
                     {
                         collection[normalizedKey] = CloneValue(entry.Value);
+                        sourceMap[normalizedKey] = source;
                     }
                 }
 
@@ -135,13 +170,44 @@ public sealed class AutotableGameState
                 if (!_collections.TryGetValue(kind, out var collection)) continue;
                 if (!collection.ContainsKey(playerId)) continue;
                 collection.Remove(playerId);
+                if (_sources.TryGetValue(kind, out var sourceMap))
+                    sourceMap.Remove(playerId);
                 tombstones.Add(new CollectionEntry(kind, playerId, null));
             }
         }
         return tombstones;
     }
 
+    /// <summary>
+    /// Test/diagnostic accessor: reports which source last wrote a given
+    /// (kind, key) entry, or null if the entry is absent. Useful for runtime-vs-client
+    /// precedence assertions and the per-viewer privacy filter (Runtime-owned `things`
+    /// entries are filtered server-side; Client-owned passes through unchanged because
+    /// the bundle that pushed them already saw the same data).
+    /// </summary>
+    public UpdateSource? GetSource(string kind, object key)
+    {
+        if (string.IsNullOrEmpty(kind)) return null;
+        var normalizedKey = NormalizeKey(key);
+        lock (_lock)
+        {
+            if (_sources.TryGetValue(kind, out var sourceMap) && sourceMap.TryGetValue(normalizedKey, out var s))
+                return s;
+            return null;
+        }
+    }
+
     // ── helpers ──────────────────────────────────────────────────────
+
+    private Dictionary<object, UpdateSource> GetOrCreateSourceMap(string kind)
+    {
+        if (!_sources.TryGetValue(kind, out var map))
+        {
+            map = new Dictionary<object, UpdateSource>();
+            _sources[kind] = map;
+        }
+        return map;
+    }
 
     private void ApplyMetaSideEffect(CollectionEntry entry)
     {

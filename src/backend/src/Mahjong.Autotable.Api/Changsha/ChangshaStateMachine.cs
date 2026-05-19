@@ -80,7 +80,14 @@ public sealed class ChangshaGameStateMachine
         // shuffled walls while remaining deterministic for replay (same seed + HandNumber
         // → identical wall). Fixes pre-Phase-3 bug where every hand of a game used the
         // same `state.Seed` and therefore the same wall ordering.
-        var rng = new Random(HashCode.Combine(state.Seed, state.HandNumber));
+        //
+        // NOTE: deliberately NOT using <see cref="HashCode.Combine"/> — that helper is
+        // randomized per-process (DoS mitigation) and breaks seed-determinism across
+        // process boundaries, surfacing as rare flakes in parallel xUnit runs. We use
+        // a deterministic mix (Knuth-style hash combiner) here so the wall ordering is
+        // a pure function of (Seed, HandNumber).
+        var mixed = unchecked((int)((uint)state.Seed * 2654435761u + (uint)state.HandNumber));
+        var rng = new Random(mixed);
         var wall = BuildShuffledWall(rng);
 
         // Apply break point — reorder wall so drawing starts from break point
@@ -139,6 +146,11 @@ public sealed class ChangshaGameStateMachine
         var tileId = DrawFromFront(state);
         var hand = GetHand(state, state.ActiveSeatIndex);
         hand.ConcealedTiles.Add(tileId);
+
+        // §3.6 missed-win (过胡) decay: per Baidu §过水 — the lockout is "until your next draw."
+        // Drawing a tile clears the active seat's lockout, restoring their ability to declare Hu
+        // on subsequent discards within this hand. Self-draw was never blocked.
+        state.MissedWinSeats.Remove(state.ActiveSeatIndex);
 
         return [CreateEvent(state, "tile-drawn", state.ActiveSeatIndex, tileId: tileId,
             detail: $"wall-remaining:{state.Wall.Count}")];
@@ -472,6 +484,37 @@ public sealed class ChangshaGameStateMachine
         RequirePhase(state, ChangshaPhase.WallExhausted);
         state.Phase = ChangshaPhase.EndHand;
         return [CreateEvent(state, "draw-hand", -1, detail: "wall-exhausted")];
+    }
+
+    /// <summary>
+    /// Records a 诈胡 (false-Hu) declaration per Baidu §诈胡处罚 and applies the resulting
+    /// penalty payments to <see cref="ChangshaGameState.CumulativeScores"/>. Stateless wrt
+    /// the hand/turn machine — the offending player keeps their seat and the hand continues
+    /// unchanged (Score/RotateBanker are not driven from here). Idempotency: each call appends
+    /// a new entry to <see cref="ChangshaGameState.FalseHuPenalties"/>.
+    /// </summary>
+    public static FalseHuPenalty RecordFalseHu(ChangshaGameState state, int seatIndex)
+    {
+        if (seatIndex is < 0 or > 3)
+            throw new ArgumentOutOfRangeException(nameof(seatIndex));
+
+        var penalty = new ScoringService().CalculateFalseHuPenalty(seatIndex);
+
+        foreach (var payment in penalty.Payments)
+        {
+            if (!state.CumulativeScores.ContainsKey(payment.FromSeatIndex))
+                state.CumulativeScores[payment.FromSeatIndex] = 0;
+            if (!state.CumulativeScores.ContainsKey(payment.ToSeatIndex))
+                state.CumulativeScores[payment.ToSeatIndex] = 0;
+            state.CumulativeScores[payment.FromSeatIndex] -= payment.Amount;
+            state.CumulativeScores[payment.ToSeatIndex] += payment.Amount;
+        }
+
+        state.FalseHuPenalties.Add(penalty);
+        CreateEvent(state, "false-hu-penalty", seatIndex,
+            detail: $"perOpponent:{penalty.PenaltyPerOpponent}");
+
+        return penalty;
     }
 
     public static List<ChangshaEvent> RotateBanker(ChangshaGameState state)

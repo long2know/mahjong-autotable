@@ -74,6 +74,18 @@ public sealed class WinResult
     public bool IsFullFlush { get; init; }
 }
 
+/// <summary>
+/// 诈胡 (false-Hu) penalty assessment per Baidu §诈胡处罚 — a seat that declared Hu
+/// on a non-winning hand pays a Big-Win-equivalent penalty to each opponent. The
+/// per-opponent amount is fixed at <see cref="ScoringService.FalseHuPenaltyPerOpponent"/>.
+/// </summary>
+public sealed class FalseHuPenalty
+{
+    public required int OffendingSeatIndex { get; init; }
+    public required int PenaltyPerOpponent { get; init; }
+    public required List<PaymentEntry> Payments { get; init; }
+}
+
 public sealed class PaymentEntry
 {
     public required int FromSeatIndex { get; init; }
@@ -161,9 +173,18 @@ public sealed class ChangshaGameState
     /// Seats that have declined a winning discard during the current hand. Per spec §3.6
     /// (missed-win 过胡), a seat that passes on a winnable discard is forbidden from
     /// claiming Win on subsequent discards within the same hand. Self-draw wins are still
-    /// allowed. Cleared on every new hand by <see cref="ChangshaGameStateMachine.Deal"/>.
+    /// allowed. Per Baidu §过水 the lockout decays "until your next draw" — see
+    /// <see cref="ChangshaGameStateMachine.DrawTile"/>. Cleared on every new hand by
+    /// <see cref="ChangshaGameStateMachine.Deal"/>.
     /// </summary>
     public HashSet<int> MissedWinSeats { get; set; } = new();
+
+    /// <summary>
+    /// Append-only log of 诈胡 (false-Hu) penalties applied during this game. Each entry
+    /// records the offending seat plus the payments that were applied to
+    /// <see cref="CumulativeScores"/>. See <see cref="ChangshaGameStateMachine.RecordFalseHu"/>.
+    /// </summary>
+    public List<FalseHuPenalty> FalseHuPenalties { get; set; } = new();
 
     // Cumulative scores
     public Dictionary<int, int> CumulativeScores { get; set; } = new();
