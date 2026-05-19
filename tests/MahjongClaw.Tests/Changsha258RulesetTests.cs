@@ -120,7 +120,7 @@ public class Changsha258RulesetTests
     }
 
     [Fact]
-    public void IsBigWinEyeFlexibleCandidate_ReturnsTrue_ForSanTongTriplets()
+    public void IsBigWinEyeFlexibleCandidate_ReturnsTrue_ForTripletDenseHand()
     {
         var handTiles = new[]
         {

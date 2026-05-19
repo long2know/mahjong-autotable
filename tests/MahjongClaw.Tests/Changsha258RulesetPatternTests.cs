@@ -26,7 +26,7 @@ public class Changsha258RulesetPatternTests
     }
 
     [Fact]
-    public void TryGetWinningHand_AllowsRandomPair_WhenSanTongBigWinPresent()
+    public void TryGetWinningHand_RequiresSmallWinPair_WhenSanTongTripletsPresent()
     {
         var tiles = new List<Tile>
         {
@@ -37,8 +37,25 @@ public class Changsha258RulesetPatternTests
             new(TileSuit.Dots, 7), new(TileSuit.Dots, 7)
         };
 
+        Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeFalse();
+        hand.Should().BeNull();
+    }
+
+    [Fact]
+    public void TryGetWinningHand_AllowsSmallWinPair_WhenSanTongTripletsPresent()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 3), new(TileSuit.Characters, 3), new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
         Changsha258Ruleset.TryGetWinningHand(tiles, out var hand).Should().BeTrue();
         hand.Should().NotBeNull();
         hand!.Pattern.Should().Be(WinningPattern.Standard);
+        hand.Pair.Should().Be(new Tile(TileSuit.Dots, 2));
     }
 }
