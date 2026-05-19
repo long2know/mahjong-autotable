@@ -736,8 +736,9 @@ public static class BotDiscardAdvisor
                     var withinOutsTolerance = bestNonThreatOuts >= bestOverallOuts - OpponentKongFeedOutsTolerance;
                     var matchesBestCopies = bestNonThreatOuts == bestOverallOuts
                         && bestNonThreatOutCopies == bestOverallOutCopies;
+                    var losesAllWinningOuts = bestOverallOuts > 0 && bestNonThreatOuts == 0;
 
-                    if ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies)
+                    if (!losesAllWinningOuts && ((withinOutsTolerance && !singleCopyThreatCarriesOnlyWinningPath) || matchesBestCopies))
                     {
                         candidates = nonThreatCandidates;
                     }
