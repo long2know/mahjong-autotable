@@ -10,7 +10,8 @@ namespace Mahjong.Autotable.Api.Autotable;
 /// <summary>
 /// ASP.NET Core WebSocket endpoint that speaks the upstream pwmarcz/autotable
 /// <c>NEW</c> / <c>JOIN</c> / <c>JOINED</c> / <c>UPDATE</c> protocol verbatim.
-/// The byte-identical <c>autotable.9519e86d.js</c> bundle connects here unchanged.
+/// The byte-identical vendored bundle (under <c>src/frontend/autotable-src/</c>)
+/// connects here unchanged.
 ///
 /// <para><b>Path:</b> <c>/autotable/ws</c> — verified against upstream
 /// <c>client-ui.ts:getUrl()</c>:
@@ -18,18 +19,26 @@ namespace Mahjong.Autotable.Api.Autotable;
 /// <c>window.location.pathname = '/autotable/'</c> resolves to
 /// <c>autotable/ws</c> (Default #7, Stephen accepted).</para>
 ///
-/// <para><b>Phase 5a scope:</b> server → bundle only. Bundle-initiated UPDATE
-/// messages (mouse moves, drag events) are logged at Debug and discarded.
-/// Phase 5b will translate those into Changsha hub commands.</para>
+/// <para><b>Phase C-relay (this layer):</b> bidirectional bundle ↔ bundle
+/// multiplayer pipe. <c>UPDATE</c> messages from one connection are stored in
+/// the per-game <see cref="AutotableGameState"/> and broadcast to every
+/// <i>other</i> connection sharing the same <c>gameId</c>. A late joiner
+/// receives the accumulated snapshot on <c>JOINED</c>. No rules enforcement
+/// — that's Phase D-backend.</para>
+///
+/// <para><b>Phase D-backend (next, not in this file yet):</b> the Changsha
+/// runtime will drive authoritative state changes that get merged into the
+/// per-game collections and broadcast to every connection. The translator-fed
+/// <see cref="ChangshaToAutotableTranslator"/> snapshot path is preserved
+/// for that integration — currently it contributes the <c>match[0]</c> entry
+/// (forcing <c>fives='000'</c>) plus, when a Changsha game is bound, the full
+/// table snapshot, which is merged into the relay state on <c>JOIN</c>.</para>
 ///
 /// <para><b>Always-available pattern (spike §3.6):</b> if a JOIN names a
 /// gameId not bound to any Changsha game, the endpoint still responds with
 /// <c>JOINED</c> + an empty <c>UPDATE</c> so the bundle's 15× auto-reconnect
-/// loop stays quiet.</para>
-///
-/// <para><b>Single-game-per-instance (Default #8):</b> connection routing
-/// uses the WS query string <c>?gameId=X&amp;seat=N</c>. <c>seat</c> is
-/// optional and selects the viewer perspective for hand visibility.</para>
+/// loop stays quiet. Phase C-relay extends this by creating an empty per-game
+/// state on demand, allowing subsequent UPDATE relays to proceed normally.</para>
 /// </summary>
 public static class AutotableWsEndpoint
 {
@@ -52,14 +61,29 @@ public static class AutotableWsEndpoint
 }
 
 /// <summary>
-/// Tracks live WS connections and routes Changsha runtime state-change events
-/// to the right bundles. Registered as a singleton.
+/// Tracks live WS connections, holds per-game collaborative state, and routes
+/// both bundle-originated UPDATE relays and Changsha runtime state-change
+/// events to the right bundles. Registered as a singleton.
+///
+/// <para><b>Phase C-relay layering:</b></para>
+/// <list type="bullet">
+///   <item><b>Bundle → Server → Other bundles:</b> <c>UPDATE</c> is stored in
+///   <see cref="AutotableGameState"/> for the gameId and broadcast to every
+///   other connection in that gameId (sender is NOT echoed — already applied
+///   locally).</item>
+///   <item><b>Changsha runtime → Server → All bundles (legacy / Phase D):</b>
+///   <see cref="IChangshaGameRuntime.StateChanged"/> still fires a full
+///   translator snapshot to every connection in the affected gameId. Phase
+///   D-backend will fold this into the per-game store so the two paths stay
+///   consistent.</item>
+/// </list>
 /// </summary>
 public sealed class AutotableConnectionManager : IDisposable
 {
     private readonly IChangshaGameRuntime _runtime;
     private readonly ILogger<AutotableConnectionManager> _logger;
     private readonly ConcurrentDictionary<Guid, AutotableConnection> _connections = new();
+    private readonly ConcurrentDictionary<string, AutotableGameState> _games = new(StringComparer.Ordinal);
     private readonly Action<string> _stateChangedHandler;
 
     public AutotableConnectionManager(
@@ -73,6 +97,18 @@ public sealed class AutotableConnectionManager : IDisposable
     }
 
     public int ConnectionCount => _connections.Count;
+    public int GameCount => _games.Count;
+
+    /// <summary>
+    /// Test/diagnostic hook: returns the number of stored entries across all
+    /// non-ephemeral collections for the given game. Useful for waiting on
+    /// the async UPDATE → store pipeline in integration tests.
+    /// </summary>
+    public int GetStoredEntryCount(string gameId)
+    {
+        if (string.IsNullOrEmpty(gameId)) return 0;
+        return _games.TryGetValue(gameId, out var state) ? state.Snapshot().Count : 0;
+    }
 
     public async Task HandleConnectionAsync(WebSocket ws, IQueryCollection query, CancellationToken serverShutdown)
     {
@@ -100,8 +136,7 @@ public sealed class AutotableConnectionManager : IDisposable
         }
         finally
         {
-            _connections.TryRemove(connection.Id, out _);
-            _logger.LogInformation("Autotable WS disconnected (connectionId={ConnectionId})", connection.Id);
+            await HandleDisconnectAsync(connection);
         }
     }
 
@@ -157,13 +192,7 @@ public sealed class AutotableConnectionManager : IDisposable
                 await HandleJoinAsync(connection, message.GameId, ct);
                 break;
             case "UPDATE":
-                // Phase 5a is one-way (server → bundle). Bundle-initiated
-                // canvas mutations (drags, mouse moves, take-seat clicks)
-                // are discarded; Phase 5b will translate them into Changsha
-                // hub commands. Log only at Debug so the channel stays clean.
-                _logger.LogDebug(
-                    "Discarded bundle UPDATE (connectionId={ConnectionId}, entries={Count})",
-                    connection.Id, message.Entries?.Count ?? 0);
+                await HandleUpdateAsync(connection, message.Entries, ct);
                 break;
             default:
                 _logger.LogDebug("Unknown autotable message type {Type}", message.Type);
@@ -173,16 +202,25 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private async Task HandleNewAsync(AutotableConnection connection, CancellationToken ct)
     {
-        // Upstream behavior: server allocates a new 5-char gameId and joins
-        // the client to it. For Phase 5a we don't create a Changsha game on
-        // demand — we just allocate a synthetic gameId and respond with an
-        // empty snapshot (always-available pattern). The bundle will then
-        // sit at the empty-table state until JOIN is re-issued with our
-        // real gameId from the React parent.
-        var gameId = RandomGameId();
+        // Upstream behavior (server.ts): allocate a fresh gameId not already
+        // in use and join the client to a brand new Game. Phase C-relay
+        // mirrors that — we own the gameId namespace and the game is empty
+        // until the first bundle uploads its sendOnConnect entries.
+        string gameId;
+        do
+        {
+            gameId = RandomGameId();
+        } while (_games.ContainsKey(gameId));
+
+        var state = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
         connection.GameId = gameId;
-        await SendJoinedAsync(connection, gameId, isFirst: false, ct);
-        await SendFullSnapshotAsync(connection, gameId: null, ct);
+
+        // NEW always makes this connection the first joiner of a fresh game,
+        // which triggers the bundle's sendOnConnect path (uploads the initial
+        // wall of 136 things + the match conditions).
+        var isFirst = ReferenceEquals(state, _games[gameId]) && ConnectionsInGame(gameId, except: connection.Id) == 0;
+        await SendJoinedAsync(connection, gameId, isFirst, ct);
+        await SendFullSnapshotAsync(connection, gameId, ct);
     }
 
     private async Task HandleJoinAsync(AutotableConnection connection, string? gameId, CancellationToken ct)
@@ -195,9 +233,88 @@ public sealed class AutotableConnectionManager : IDisposable
             resolved = RandomGameId();
         }
 
+        // Track whether the game state existed before we touched it. If it
+        // did not, this connection is the first joiner and gets isFirst=true
+        // — that's the signal upstream <c>Collection.onConnect</c> uses to
+        // upload meta-collections (unique / ephemeral / perPlayer) and the
+        // initial sendOnConnect payload. Without it, late joiners would see
+        // an empty table forever.
+        var existedBefore = _games.ContainsKey(resolved);
+        var state = _games.GetOrAdd(resolved, id => new AutotableGameState(id));
         connection.GameId = resolved;
-        await SendJoinedAsync(connection, resolved, isFirst: false, ct);
+
+        // First-joiner check is "no other connections bound to this gameId."
+        // This is more robust than a one-shot "starting" flag because if a
+        // game was created by HandleNewAsync but its sole connection dropped
+        // before any state was uploaded, the next JOIN should still be
+        // treated as the first joiner (state is empty).
+        var others = ConnectionsInGame(resolved, except: connection.Id);
+        var isFirst = !existedBefore || (others == 0 && state.Snapshot().Count == 0);
+        await SendJoinedAsync(connection, resolved, isFirst, ct);
         await SendFullSnapshotAsync(connection, resolved, ct);
+    }
+
+    private async Task HandleUpdateAsync(
+        AutotableConnection connection,
+        List<CollectionEntry>? entries,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(connection.GameId))
+        {
+            // Pre-JOIN UPDATE — no game to route to. Drop quietly; the bundle
+            // sends JOIN immediately after connect so this is rare.
+            _logger.LogDebug(
+                "Discarded UPDATE from connection {ConnectionId} — no gameId yet (entries={Count})",
+                connection.Id, entries?.Count ?? 0);
+            return;
+        }
+
+        if (entries is null || entries.Count == 0) return;
+
+        var state = _games.GetOrAdd(connection.GameId, id => new AutotableGameState(id));
+        var applied = state.ApplyUpdate(entries);
+        if (applied.Count == 0) return;
+
+        await BroadcastToOthersAsync(connection, applied, full: false, ct);
+    }
+
+    private async Task HandleDisconnectAsync(AutotableConnection connection)
+    {
+        _connections.TryRemove(connection.Id, out _);
+
+        var gameId = connection.GameId;
+        if (!string.IsNullOrEmpty(gameId))
+        {
+            // Upstream parity (server/game.ts:leave) — null out per-player
+            // collection entries owned by this player and broadcast the
+            // tombstones to remaining peers, so their seat/nick disappears.
+            if (_games.TryGetValue(gameId, out var state))
+            {
+                var tombstones = state.RemovePlayerEntries(connection.PlayerId);
+                if (tombstones.Count > 0)
+                {
+                    try
+                    {
+                        await BroadcastToOthersAsync(connection, tombstones, full: false, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Failed to broadcast per-player tombstones for {ConnectionId}", connection.Id);
+                    }
+                }
+            }
+
+            // Ref-count cleanup: if no connections remain in this game, drop
+            // its state. Mirrors upstream's expiry behaviour without the 2h
+            // grace window (Phase C-relay is per-session sandbox semantics —
+            // if everyone leaves, the game is gone).
+            if (ConnectionsInGame(gameId, except: null) == 0)
+            {
+                _games.TryRemove(gameId, out _);
+            }
+        }
+
+        _logger.LogInformation("Autotable WS disconnected (connectionId={ConnectionId})", connection.Id);
     }
 
     private async Task SendJoinedAsync(AutotableConnection connection, string gameId, bool isFirst, CancellationToken ct)
@@ -213,23 +330,118 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private async Task SendFullSnapshotAsync(AutotableConnection connection, string? gameId, CancellationToken ct)
     {
+        // Translator output is always emitted (even for "no Changsha game" —
+        // it still ships the match[0] entry that forces fives='000'). When a
+        // Changsha game IS bound, the translator's per-viewer perspective
+        // wins over any stored bundle state by being applied to the game
+        // store first; the resulting merged snapshot is what we send.
         ChangshaGameState? state = null;
         if (!string.IsNullOrEmpty(gameId))
         {
             _runtime.TryGetSnapshot(gameId, out state);
         }
 
-        var entries = ChangshaToAutotableTranslator.Translate(
+        var translatorEntries = ChangshaToAutotableTranslator.Translate(
             state,
             viewerSeat: connection.ViewerSeat,
             viewerPlayerId: connection.PlayerId);
 
+        // Merge translator output INTO the per-game store so it's visible to
+        // every future joiner, then dump the full merged snapshot.
+        IReadOnlyList<CollectionEntry> snapshot;
+        if (!string.IsNullOrEmpty(gameId))
+        {
+            var gameState = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
+            // Only apply translator entries when there's a backing Changsha
+            // game — otherwise we'd persist the match[0] override into every
+            // ad-hoc bundle game and clobber the bundle's own match entry on
+            // late joins. The match[0] from translator IS still sent in the
+            // outbound update via the union below.
+            if (state is not null)
+            {
+                gameState.ApplyUpdate(translatorEntries);
+                snapshot = gameState.Snapshot();
+            }
+            else
+            {
+                var stored = gameState.Snapshot();
+                snapshot = MergeSnapshots(translatorEntries, stored);
+            }
+        }
+        else
+        {
+            snapshot = translatorEntries;
+        }
+
         var update = new UpdateMessage
         {
-            Entries = entries.ToList(),
+            Entries = snapshot.ToList(),
             Full = true
         };
         await SendJsonAsync(connection, update, ct);
+    }
+
+    /// <summary>
+    /// Translator entries come first so that, on collision (same kind + key),
+    /// the stored bundle value wins (it's the most recent). This is the
+    /// no-Changsha-game path — when no runtime is backing the gameId the
+    /// translator only contributes the <c>match[0]</c> fives override, and
+    /// any bundle that has uploaded its own match wins.
+    /// </summary>
+    private static IReadOnlyList<CollectionEntry> MergeSnapshots(
+        IReadOnlyList<CollectionEntry> translatorEntries,
+        IReadOnlyList<CollectionEntry> storedEntries)
+    {
+        var index = new Dictionary<(string, string), int>();
+        var merged = new List<CollectionEntry>(translatorEntries.Count + storedEntries.Count);
+        foreach (var e in translatorEntries)
+        {
+            index[(e.Kind, e.Key.ToString() ?? string.Empty)] = merged.Count;
+            merged.Add(e);
+        }
+        foreach (var e in storedEntries)
+        {
+            var key = (e.Kind, e.Key.ToString() ?? string.Empty);
+            if (index.TryGetValue(key, out var existingPos))
+            {
+                merged[existingPos] = e;
+            }
+            else
+            {
+                index[key] = merged.Count;
+                merged.Add(e);
+            }
+        }
+        return merged;
+    }
+
+    private async Task BroadcastToOthersAsync(
+        AutotableConnection sender,
+        IReadOnlyList<CollectionEntry> entries,
+        bool full,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(sender.GameId) || entries.Count == 0) return;
+
+        var message = new UpdateMessage
+        {
+            Entries = entries.ToList(),
+            Full = full
+        };
+
+        foreach (var peer in _connections.Values)
+        {
+            if (peer.Id == sender.Id) continue;
+            if (!string.Equals(peer.GameId, sender.GameId, StringComparison.Ordinal)) continue;
+            try
+            {
+                await SendJsonAsync(peer, message, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to broadcast UPDATE to peer {PeerId}", peer.Id);
+            }
+        }
     }
 
     private async Task SendJsonAsync(AutotableConnection connection, object payload, CancellationToken ct)
@@ -249,6 +461,29 @@ public sealed class AutotableConnectionManager : IDisposable
         }
     }
 
+    private int ConnectionsInGame(string? gameId, Guid? except)
+    {
+        if (string.IsNullOrEmpty(gameId)) return 0;
+        var count = 0;
+        foreach (var c in _connections.Values)
+        {
+            if (!string.Equals(c.GameId, gameId, StringComparison.Ordinal)) continue;
+            if (except.HasValue && c.Id == except.Value) continue;
+            count++;
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// Phase D-backend hook (PRESERVED, not deleted in Phase C-relay): when
+    /// the Changsha runtime emits a state-change, we broadcast a full
+    /// translator snapshot to every connection bound to that gameId. The
+    /// snapshot is per-viewer so different seats may see different face-up
+    /// orientations of the same hand.
+    /// <para>Currently the runtime is not actively pushing for in-progress
+    /// bundle games — Phase D-backend will own the merge between runtime
+    /// authority and the bundle-driven relay state.</para>
+    /// </summary>
     private void OnStateChanged(string gameId)
     {
         // Fire-and-forget broadcast. State events arrive on runtime worker

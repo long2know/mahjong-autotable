@@ -173,3 +173,22 @@
 **Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
 **Timestamp:** 2026-05-13T23:20Z
 **Contribution:** Produced backend salvage inventory (Bishop bucket mapping: KEEP/REPOINT/DELETE across 60+ files), executed Phase A backend purge (deleted Tables/* ~2,400 LOC src + ~1,120 LOC tests, 8 /api/tables/* endpoints, 2 EF entities), extracted TableClaimType enum to its own file for Changsha runtime.
+
+### 2026-05-19 (Phase C-relay — bidirectional bundle ↔ bundle multiplayer pipe)
+- **Branch:** `stlong/phase-b-changsha-scene` (HEAD @ `21aba22` before commit)
+- **Files added:** 2 src (`Autotable/AutotableGameState.cs` 215 LOC) and 1 test (`Autotable/AutotableWsRelayTests.cs` 310 LOC).
+- **Files modified:** 1 src (`Autotable/AutotableWsEndpoint.cs` +160 LOC net) and 1 test (`Autotable/AutotableWsEndpointTests.cs` doc/comment update only).
+- **Tests:** 250 → 257 passing (+7 new in `Category=PhaseC-Relay`); 11 skipped unchanged; 0 failed. Build: 0 warnings, 0 errors.
+- **Shipped:**
+  - `AutotableGameState` per-game collaborative store with full upstream `ephemeral`/`unique`/`perPlayer` meta-collection semantics. Mirrors `server/game.ts:update` minus the `checkUnique` rejection path (Phase D-backend).
+  - `HandleUpdateAsync` flipped from Phase 5a discard-with-log to: store in per-game state, then broadcast incremental UPDATE to every OTHER connection in the same `gameId` (sender NOT echoed — Stephen directive).
+  - `HandleJoinAsync` derives `isFirst` from "no peers AND empty store" rather than a one-shot `starting` flag, so a `NEW`-then-drop-before-upload sequence still lets the next joiner upload sendOnConnect entries.
+  - `SendFullSnapshotAsync` splits the merge strategy: when a Changsha runtime backs the gameId (Phase D-backend path), translator entries are applied into the per-game store first (runtime-authoritative); when no runtime, translator + stored are merged in-memory with stored winning on collision (avoids clobbering bundle's `match[0]` on every late join).
+  - `HandleDisconnectAsync` ref-counts game state: drops `_games[gameId]` only when the last connection in that game closes. Per-player tombstones (`seats[playerId]=null`, `nicks[playerId]=null`, …) broadcast to remaining peers on disconnect — mirrors upstream `leave()`.
+  - `GetStoredEntryCount(gameId)` test/diagnostic hook to defeat the WS-send vs server-read race in integration tests.
+- **Decisions logged:** `.squad/decisions/inbox/bishop-phase-c-relay.md` covers (a) sender no-echo divergence from upstream, (b) runtime-vs-ad-hoc snapshot merge strategy, (c) meta-collection semantics preserved end-to-end, (d) immediate game-state cleanup (no 2h grace), (e) connection-count-derived `isFirst` flag.
+- **Open for Phase D-backend:** translator-vs-relay merge precedence on runtime push; inbound-UPDATE validation entry point at `HandleUpdateAsync`; per-viewer `things` privacy filter at `BroadcastToOthersAsync`; conflict resolution for `unique` collections (re-echo on rejection vs targeted reject envelope); game-ID handoff with React (HTTP lobby vs `NEW`-driven allocation).
+- **Layering documented in code:** `AutotableWsEndpoint` class docstring now explicitly calls out Phase C-relay vs Phase D-backend boundaries. The existing `OnStateChanged` Changsha runtime hook is preserved untouched — Phase D will own its merge with the new relay path.
+- **Verification:** `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → 0 warnings, 0 errors. `dotnet test src/backend/Mahjong.Autotable.slnx --nologo` → `Failed: 0, Passed: 257, Skipped: 11, Total: 268`. All 7 new `Category=PhaseC-Relay` tests pass.
+- **Manual validation Stephen can now do:** open two browser tabs to `/autotable/`, click Connect on both, click Take Seat in tab A → tab B should see the seat marker move; drag a tile in tab A → tab B should see it move. No claim window, no scoring, no banker rotation — those still need Phase D-backend.
+- **Not touched (file-scope discipline):** `src/frontend/**` (Hicks's Phase B in flight), `.vscode/*` (Phase A wired), `src/backend/.../Changsha/**` (Phase D-backend, Vasquez's `Changsha/Acceptance/**` tests in flight), `ChangshaToAutotableTranslator.cs` (Phase D scope — read but unmodified).

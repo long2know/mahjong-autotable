@@ -13,7 +13,10 @@ namespace Mahjong.Autotable.Api.Tests.Autotable;
 /// <summary>
 /// CAT-PHASE5A: End-to-end WS endpoint tests using <see cref="WebApplicationFactory{TEntryPoint}"/>.
 /// Verifies JOIN → JOINED + full UPDATE, the always-available pattern for unknown gameIds,
-/// runtime state-change → UPDATE broadcast, and the one-way Phase 5a discard policy.
+/// and runtime state-change → UPDATE broadcast. The Phase 5a "one-way discard" policy
+/// for bundle-initiated UPDATEs has been replaced by the Phase C-relay bidirectional
+/// pipe (see <see cref="AutotableWsRelayTests"/>); the pre-JOIN drop is the only
+/// remaining discard path and is exercised here.
 /// </summary>
 public class AutotableWsEndpointTests : IAsyncLifetime
 {
@@ -131,7 +134,11 @@ public class AutotableWsEndpointTests : IAsyncLifetime
         Assert.True(followUp.GetProperty("full").GetBoolean());
     }
 
-    // ── bundle-initiated UPDATE is silently discarded ─────────────────
+    // ── bundle-initiated UPDATE *before* JOIN is dropped quietly ──────
+    //
+    // Note: post-JOIN UPDATE is now relayed (Phase C-relay) — see
+    // AutotableWsRelayTests for that path. Only the pre-JOIN case (no
+    // gameId to route to) is silently dropped.
 
     [Fact, Trait("Category", "Phase5a")]
     public async Task BundleInitiatedUpdate_IsDiscardedQuietly()
