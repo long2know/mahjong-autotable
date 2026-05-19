@@ -62,45 +62,40 @@
             <div id=setup-group class=collapse data-toggle=true>
                 <select class="dark-select form-control form-control-sm mt-2" id=deal-type>
                     <option disabled value>Deal:</option>
-                    <option value=UNSHUFFLED>Only walls (not shuffled)</option>
                     <option value=HANDS selected>Hands</option>
                     <option value=INITIAL>Only walls</option>
-                    <option value=WINDS>Wind tiles (for seats)</option>
+                    <option value=UNSHUFFLED>Only walls (not shuffled)</option>
                 </select>
-                <select class="dark-select form-control form-control-sm mt-2" id=game-type>
-                    <option disabled value>Game type:</option>
-                    <option value=FOUR_PLAYER selected>4-player</option>
-                    <option value=THREE_PLAYER>3-player</option>
-                    <option value=MINEFIELD>2-player Minefield</option>
-                    <option value=BAMBOO>2-player Bamboo</option>
-                    <option value=FOUR_PLAYER_DEMO>Demo</option>
+                <select class="dark-select form-control form-control-sm mt-2" id=game-type disabled style=display:none>
+                    <option value=CHANGSHA selected>Changsha</option>
                 </select>
-                <select class="dark-select form-control form-control-sm mt-2" id=fives>
-                    <option disabled value>Red fives:</option>
-                    <option value=000>No red fives</option>
-                    <option value=111 selected>1-1-1</option>
-                    <option value=121>1-2-1</option>
-                </select>
-                <div class="d-flex mt-2">
-                    <select class="dark-select form-control form-control-sm mr-2 w-100" id=points>
-                        <option disabled value>Starting points:</option>
-                        <option value=25 selected>25k</option>
-                        <option value=30>30k</option>
-                        <option value=35>35k</option>
-                        <option value=40>40k</option>
-                        <option value=100 selected>100k</option>
-                    </select>
-                    <button class="btn btn-dark btn-progress-main btn-sm flex-shrink-1" id=reset-points data-toggle=tooltip data-placement=top title="Click and hold to reset point sticks">
-                        <div class=btn-progress></div>
-                        <span class=btn-progress-text>Reset</span>
-                    </button>
-                </div>
+                <select id=fives style=display:none></select>
+                <select id=points style=display:none></select>
+                <button id=reset-points style=display:none></button>
                 <br>
             </div>
 
             <div class="d-flex mt-2">
-                <button class="btn btn-secondary btn-sm mr-2 w-100" id=toggle-dealer>Dealer</button>
-                <button class="btn btn-secondary btn-sm w-100" id=toggle-honba>Honba</button>
+                <button class="btn btn-secondary btn-sm w-100" id=toggle-dealer>Dealer</button>
+                <button id=toggle-honba style=display:none></button>
+            </div>
+
+            <div class=mt-3>
+                <small class=text-white-50>Claims</small>
+                <div class="d-flex mt-1">
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id=claim-pung disabled data-toggle=tooltip data-placement=top title="Claim a Pung (triplet). Wired in Phase D.">
+                        碰 <small>Pung</small>
+                    </button>
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id=claim-chow disabled data-toggle=tooltip data-placement=top title="Claim a Chow (sequence). Wired in Phase D.">
+                        吃 <small>Chow</small>
+                    </button>
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id=claim-kong disabled data-toggle=tooltip data-placement=top title="Claim a Kong (four-of-a-kind). Wired in Phase D.">
+                        杠 <small>Kong</small>
+                    </button>
+                    <button class="btn btn-sm btn-warning w-100" id=claim-hu disabled data-toggle=tooltip data-placement=top title="Declare Hu (win). Wired in Phase D.">
+                        胡 <small>Hu</small>
+                    </button>
+                </div>
             </div>
 
             <div class="d-flex mt-4" id=server>
@@ -197,6 +192,6 @@
         </div>
     </div>
 
-    <script type=module src=autotable-src.eb80a662.js></script>
+    <script type=module src=autotable-src.3e0763b1.js></script>
 
 

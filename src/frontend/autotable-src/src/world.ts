@@ -7,7 +7,7 @@ import { MouseTracker } from "./mouse-tracker";
 import { Setup } from './setup';
 import { ObjectView, Render } from "./object-view";
 import { SoundPlayer } from "./sound-player";
-import { Conditions, ThingInfo, SoundType, Fives, Place, ThingType, Size, DealType, GameType, Points, DiceInfo } from "./types";
+import { Conditions, ThingInfo, SoundType, Place, ThingType, Size, DealType, DiceInfo } from "./types";
 import { Slot } from "./slot";
 import { Thing } from "./thing";
 
@@ -68,17 +68,14 @@ export class World {
     this.sendUpdate();
   }
 
+  // TODO Phase D: banker rotation becomes server-authoritative; this client-side
+  // dealer cycler must collapse to display-only once the changsha.banker
+  // collection arrives.
   toggleDealer(): void {
     const match = this.client.match.get(0) ?? { dealer: 3, honba: 0, conditions: Conditions.initial()};
     match.dealer = (match.dealer + 1) % 4;
     this.client.match.set(0, match);
   }
-
-  toggleHonba(): void {
-    const match = this.client.match.get(0) ?? { dealer: 0, honba: 0, conditions: Conditions.initial()};
-    match.honba = (match.honba + 1) % 8;
-    this.client.match.set(0, match);
-  };
 
   private onSeat(): void {
     this.seat = this.client.seat;
@@ -149,9 +146,9 @@ export class World {
     this.objectView;
   }
 
-  updateConditions(conditions: Conditions, replacePoints: boolean = false): void {
+  updateConditions(conditions: Conditions): void {
     this.conditions = conditions;
-    this.setup.replace(conditions, replacePoints);
+    this.setup.replace(conditions);
     this.setupView();
   }
 
@@ -206,7 +203,7 @@ export class World {
     };
   }
 
-  deal(dealType: DealType, gameType: GameType, fives: Fives, points: Points): void {
+  deal(dealType: DealType): void {
     if (this.seat === null) {
       return;
     }
@@ -217,47 +214,19 @@ export class World {
     this.selected.splice(0);
     this.checkPushes();
 
-    const back = 1 - this.conditions.back;
-    const conditions = { ...this.conditions, back, gameType, fives, points, dealType };
+    const conditions = { ...this.conditions, dealType };
 
-    let match = this.client.match.get(0);
-    let honba;
-    if (!match || match.dealer !== this.seat) {
-      honba = 0;
-    } else if (dealType === DealType.HANDS) {
-      honba = (match.honba + 1) % 8;
-    } else {
-      honba = match.honba;
-    }
-
-    match = {dealer: this.seat, honba, conditions};
+    // Changsha has no honba (Vasquez §1.9); pin to 0 so the center renderer
+    // never paints it.
+    const match = {dealer: this.seat, honba: 0, conditions};
 
     this.updateConditions(conditions);
     const dice = this.setup.deal(this.seat);
     const diceInfo: DiceInfo = {dice, state: this.setup.usesDice() ? 'rolled': 'ignore'};
 
     this.client.transaction(() => {
-      this.client.match.set(0, match!);
-      this.client.dice.set(0, diceInfo);
-      this.sendUpdate(true);
-    });
-  }
-
-  resetPoints(points: Points): void {
-    for (const thing of this.things.values()) {
-      thing.release();
-    }
-    this.selected.splice(0);
-    this.checkPushes();
-
-    const conditions = { ...this.conditions, points };
-    this.updateConditions(conditions, true);
-
-    let match = this.client.match.get(0)!;
-    match = { ...match, conditions };
-
-    this.client.transaction(() => {
       this.client.match.set(0, match);
+      this.client.dice.set(0, diceInfo);
       this.sendUpdate(true);
     });
   }
@@ -527,15 +496,12 @@ export class World {
 
     const sourceSlots = [];
     let discardSide = null;
-    let hasStick = false;
     for (const thing of this.movement.things()) {
       const source = thing.slot;
       const target = this.movement.get(thing)!;
       if (target.group === 'discard' &&
         !(source.group === 'discard' && source.seat === target.seat)) {
         discardSide = target.seat;
-      } else if (target.group === 'riichi') {
-        hasStick = true;
       }
       sourceSlots.push(source);
     }
@@ -546,9 +512,6 @@ export class World {
 
     if (discardSide !== null) {
       this.soundPlayer.play(SoundType.DISCARD, discardSide);
-    }
-    if (hasStick) {
-      this.soundPlayer.play(SoundType.STICK, null);
     }
   }
 

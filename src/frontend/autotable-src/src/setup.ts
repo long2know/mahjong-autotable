@@ -1,6 +1,6 @@
 import { shuffle } from "./utils";
-import { Conditions, DealType, ThingType, GameType, Points, GAME_TYPES } from "./types";
-import { DEALS, DealPart, POINTS } from "./setup-deal";
+import { Conditions, DealType, ThingType, GameType, GAME_TYPES } from "./types";
+import { DEALS, DealPart } from "./setup-deal";
 import { makeSlots } from "./setup-slots";
 import { Slot } from "./slot";
 import { Thing } from "./thing";
@@ -24,7 +24,6 @@ export class Setup {
 
     this.addSlots(conditions.gameType);
     this.addTiles(conditions);
-    this.addSticks(conditions.gameType, conditions.points);
     this.addMarker();
     this.deal(0);
   }
@@ -38,11 +37,9 @@ export class Setup {
     const wallSlots = this.wallSlots().map(slot => slot.name);
     this.maybeShuffle(wallSlots, conditions);
     let j = 0;
-    for (let i = 0; i < 136; i++) {
-      const tileIndex = this.tileIndex(i, conditions);
-      if (tileIndex !== null) {
-        this.addThing(ThingType.TILE, tileIndex, wallSlots[j++]);
-      }
+    for (let i = 0; i < 108; i++) {
+      const tileIndex = this.tileIndex(i);
+      this.addThing(ThingType.TILE, tileIndex, wallSlots[j++]);
     }
   }
 
@@ -52,20 +49,10 @@ export class Setup {
     }
   }
 
-  replace(conditions: Conditions, replacePoints: boolean): void {
-    // console.log('replace', conditions);
-
+  replace(conditions: Conditions): void {
     const whatReplace: Record<ThingType, boolean> = {
-      TILE: (
-        conditions.gameType !== this.conditions.gameType ||
-        conditions.back !== this.conditions.back ||
-        conditions.fives !== this.conditions.fives
-      ),
-      STICK: (
-        replacePoints ||
-        conditions.gameType !== this.conditions.gameType ||
-        conditions.points !== this.conditions.points
-      ),
+      TILE: conditions.gameType !== this.conditions.gameType,
+      STICK: false,
       MARKER: conditions.gameType !== this.conditions.gameType,
     };
 
@@ -82,10 +69,6 @@ export class Setup {
     if (whatReplace.TILE) {
       this.counters.set(ThingType.TILE, 0);
       this.addTiles(conditions);
-    }
-    if (whatReplace.STICK) {
-      this.counters.set(ThingType.STICK, 0);
-      this.addSticks(conditions.gameType, conditions.points);
     }
     if (whatReplace.MARKER) {
       this.counters.set(ThingType.MARKER, 0);
@@ -108,49 +91,20 @@ export class Setup {
     this.conditions = conditions;
   }
 
-  private tileIndex(i: number, conditions: Conditions): number | null {
-    let tileIndex = Math.floor(i / 4);
-
-    if (conditions.fives !== '000') {
-      if (tileIndex === 4 && i % 4 === 0) {
-        tileIndex = 34;
-      } else if (tileIndex === 13 &&
-          (i % 4 === 0 || (i % 4 === 1 && conditions.fives === '121'))) {
-        tileIndex = 35;
-      } else if (tileIndex === 22 && i % 4 === 0) {
-        tileIndex = 36;
-      }
-    }
-
-    if (conditions.gameType === GameType.BAMBOO) {
-      if (!((18 <= tileIndex && tileIndex < 27) || tileIndex === 36)) {
-        return null;
-      }
-    }
-
-    if (conditions.gameType === GameType.THREE_PLAYER) {
-      if ((1 <= tileIndex && tileIndex < 8) || tileIndex === 34) {
-        return null;
-      }
-    }
-
-    tileIndex += 37 * conditions.back;
-    return tileIndex;
+  private tileIndex(i: number): number {
+    // Changsha: logical tile = floor(i / 4) over 108 tiles → ids 0..26
+    // (3 suits × 9 ranks × 4 copies). No honors, no red fives, no back colors.
+    return Math.floor(i / 4);
   }
 
   deal(seat: number): [number, number] {
     const gameType = this.conditions.gameType;
     const dealType = this.conditions.dealType;
-    // console.log('deal', gameType, dealType);
 
     const dice: [number, number] = [
       Math.floor(Math.random() * 6 + 1),
       Math.floor(Math.random() * 6 + 1)
     ];
-    const roll = dice[0] + dice[1];
-    // Debug
-    // const roll = (window.ROLL && window.ROLL < 12) ? window.ROLL + 1 : 2;
-    // window.ROLL = roll;
 
     if (GAME_TYPES[gameType].seats.indexOf(seat) === -1) {
       seat = 0;
@@ -165,6 +119,7 @@ export class Setup {
 
     this.maybeShuffle(tiles);
 
+    const roll = dice[0] + dice[1];
     for (const part of dealParts) {
       this.dealPart(part, tiles, roll, seat);
     }
@@ -195,9 +150,7 @@ export class Setup {
       this.maybeShuffle(searched);
 
       for (let i = 0; i < searched.length; i++) {
-        // HACK: typeIndex includes back color
-        const idx = tiles.findIndex(tile =>
-          (tile.typeIndex === searched[i] || tile.typeIndex === searched[i] + 37));
+        const idx = tiles.findIndex(tile => tile.typeIndex === searched[i]);
         if (idx === -1) {
           throw `not found: ${searched[i]}`;
         }
@@ -232,30 +185,6 @@ export class Setup {
         thing.moveTo(slot, dealPart.rotationIndex);
       }
     }
-  }
-
-  private addSticks(gameType: GameType, points: Points): void {
-    const seats = GAME_TYPES[gameType].seats;
-    const add = (index: number, n: number, slot: number): void => {
-      for (const seat of seats) {
-        for (let j = 0; j < n; j++) {
-          this.addThing(ThingType.STICK, index, `tray.${slot}.${j}@${seat}`);
-        }
-      }
-    };
-
-    // Debt
-    add(5, POINTS[points][0], 0);
-    // 10k
-    add(4, POINTS[points][1], 1);
-    // 5k
-    add(3, POINTS[points][2], 2);
-    // 1k
-    add(2, POINTS[points][3], 3);
-    // 500
-    add(1, POINTS[points][4], 4);
-    // 100
-    add(0, POINTS[points][5], 5);
   }
 
   private addMarker(): void {
@@ -303,24 +232,12 @@ export class Setup {
     this.pushes.push(...Slot.computePushes([...this.slots.values()]));
   }
 
+  // Changsha scoring is server-authoritative numeric units, not physical sticks
+  // (Vasquez §1.14). Phase B has no score state, so we return all nulls and the
+  // center renderer skips the score draw (see center.ts:drawScore).
+  // Phase C/D will replace this with a numeric-units readout sourced from the
+  // changsha.scoring collection.
   getScores(): Array<number | null> {
-    const scores = new Array(4).fill(-20000);
-    scores.push((25000 + 20000) * 4); // remaining
-    const stickScores = [100, 500, 1000, 5000, 10000, 10000];
-
-    for (const slot of this.slots.values()) {
-      if (slot.group === 'tray' && slot.thing !== null) {
-        const score = stickScores[slot.thing.typeIndex];
-        scores[slot.seat!] += score;
-        scores[4] -= score;
-      }
-    }
-
-    const result = new Array(4).fill(null);
-    for (const seat of GAME_TYPES[this.conditions.gameType].seats) {
-      result[seat] = scores[seat];
-    }
-
-    return result;
+    return [null, null, null, null, null];
   }
 }
