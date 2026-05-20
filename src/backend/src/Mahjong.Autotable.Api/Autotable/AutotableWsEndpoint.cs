@@ -719,16 +719,33 @@ public sealed class AutotableConnectionManager : IDisposable
     }
 
     /// <summary>
-    /// Per-viewer privacy filter (Phase D-backend §3 / Ripley pivot decision #6).
-    /// For every <c>things</c> entry whose <c>slotName</c> places the tile in another
-    /// seat's hand, override <c>rotationIndex</c> to face-down and strip face data.
-    /// Open melds, discards, and the wall stay as the translator emitted them
-    /// (the wall is already face-down; discards/melds are public). The viewer's
-    /// own hand is unaffected.
+    /// Per-viewer privacy filter (Phase D-backend §3 / Ripley pivot decision #6 /
+    /// Phase G slot-parse cleanup).
+    ///
+    /// <para><b>Rule:</b> for every <c>things</c> entry whose <c>slotName</c> ends in
+    /// <c>@{seat}</c>, the entry "belongs" to that seat. If the owning seat is not the
+    /// viewer (or the viewer is a spectator), the <c>face</c> field is stripped and
+    /// — for hand slots only — the <c>rotationIndex</c> is forced face-down (2,
+    /// per upstream <c>setup-slots.ts</c> hand rotations). Wall / discard / meld slots
+    /// keep their translator-supplied rotation because those slots are publicly visible
+    /// (discards face-up, melds face-up except concealed kong, walls face-down).
+    /// The face strip is the only privacy mutation those entries see.</para>
+    ///
+    /// <para><b>Slot-suffix convention</b> (per <see cref="AutotableSlotMap.HandSlot"/>):
+    /// hand slots are formatted <c>hand.{handIdx}@{seat}</c>. The owning seat is the
+    /// integer AFTER the last <c>@</c> — <em>not</em> the digit between <c>.</c> and
+    /// <c>@</c>, which is the per-seat hand index. Wall / discard / meld slots follow
+    /// the same <c>{kind}…@{seat}</c> suffix convention. Slots without <c>@</c> carry
+    /// no per-seat privacy semantics and pass through untouched. Slots with an
+    /// unparseable suffix (<c>trailing@</c>, <c>garbled@abc</c>) also pass through
+    /// — privacy fails open on malformed input so a parse glitch never silently
+    /// hides the table.</para>
+    ///
     /// <para>Note: in v1 the bundle's thing-index encodes typeIndex (face) intrinsically
     /// because we lock conditions.fives='000' for a clean 1:1 mapping. The filter
-    /// strips the explicit face field and forces face-down rendering; v2 will
-    /// shuffle physical tile-ids so the index itself reveals nothing.</para>
+    /// strips the explicit face field so any future bundle that respects it renders
+    /// only the back even when looking from the viewer's angle. v2 will shuffle
+    /// physical tile-ids so the index itself reveals nothing.</para>
     /// </summary>
     private static IReadOnlyList<CollectionEntry> FilterEntriesForViewer(
         IReadOnlyList<CollectionEntry> entries,
@@ -758,23 +775,16 @@ public sealed class AutotableConnectionManager : IDisposable
             }
 
             var slotName = slotNameEl.GetString() ?? string.Empty;
-            // hand.<seat>@<index> — concealed-hand slots are the privacy target.
-            // wall.* and discard.* and meld.* are publicly visible.
-            if (!slotName.StartsWith("hand.", StringComparison.Ordinal))
-            {
-                filtered.Add(entry);
-                continue;
-            }
 
-            // Extract the seat index from "hand.<seat>@<index>".
-            var dot = slotName.IndexOf('.');
-            var at = slotName.IndexOf('@');
-            if (dot < 0 || at <= dot + 1)
+            // Parse owning seat from after the LAST '@'. No '@' or unparseable
+            // suffix → not seat-scoped → pass through.
+            var at = slotName.LastIndexOf('@');
+            if (at < 0 || at == slotName.Length - 1)
             {
                 filtered.Add(entry);
                 continue;
             }
-            if (!int.TryParse(slotName.AsSpan(dot + 1, at - dot - 1), out var slotSeat))
+            if (!int.TryParse(slotName.AsSpan(at + 1), out var slotSeat))
             {
                 filtered.Add(entry);
                 continue;
@@ -782,19 +792,28 @@ public sealed class AutotableConnectionManager : IDisposable
 
             if (viewerSeat.HasValue && slotSeat == viewerSeat.Value)
             {
-                // Viewer's own hand — keep face-up.
+                // Viewer's own slot — keep face-up.
                 filtered.Add(entry);
                 continue;
             }
 
-            // Other seat's hand — force face-down rotation + strip face.
+            // Foreign seat (or spectator) — strip the face. For hand slots only,
+            // also force the rotation to face-down so the bundle renderer flips the
+            // tile back. Discard / meld / wall slots keep their public rotation.
+            var forceHandFaceDown = slotName.StartsWith("hand.", StringComparison.Ordinal);
             filtered.Add(new CollectionEntry(entry.Kind, entry.Key,
-                StripFaceAndForceFaceDown(je)));
+                StripFace(je, forceHandFaceDown)));
         }
         return filtered;
     }
 
-    private static JsonElement StripFaceAndForceFaceDown(JsonElement original)
+    /// <summary>
+    /// Strips the <c>face</c> field and, when <paramref name="forceHandFaceDown"/>
+    /// is true, overrides <c>rotationIndex</c> to 2 (upstream HandRotFaceDown).
+    /// For non-hand slots the original rotation is preserved so discards stay
+    /// face-up and concealed-kong melds keep their authored face-down rotation.
+    /// </summary>
+    private static JsonElement StripFace(JsonElement original, bool forceHandFaceDown)
     {
         using var ms = new MemoryStream();
         using (var w = new Utf8JsonWriter(ms))
@@ -803,7 +822,7 @@ public sealed class AutotableConnectionManager : IDisposable
             foreach (var prop in original.EnumerateObject())
             {
                 if (prop.NameEquals("face")) continue;
-                if (prop.NameEquals("rotationIndex"))
+                if (forceHandFaceDown && prop.NameEquals("rotationIndex"))
                 {
                     // HandRotFaceDown = 2 (per upstream setup-slots.ts hand rotations).
                     w.WriteNumber("rotationIndex", 2);

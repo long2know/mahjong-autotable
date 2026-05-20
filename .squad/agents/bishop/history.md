@@ -267,3 +267,80 @@ Did NOT touch:
 - **Hicks (frontend):** `pickup["current"]` is on the wire — needs UI for the break-point gem, the active-pickup highlight, per-seat tile slice animations, the `Roll dice` button gate (`dealMode=manual` + `phase=RollingDice`), the variant select dropdown with `dealMode` toggle, and the bot-pickup auto-tick.
 - **Vasquez:** fix the slot-format check in `Pickup_PrivacyMask_OpposingHandsHaveFacesStripped` (5-minute edit: `slot.StartsWith("hand.0")` → `slot.EndsWith("@0")`).
 - **Bishop (next session, follow-up):** wire `ChangshaGameRuntime` bot-pickup-tick scheduler once Hicks's UI lands; fix `FilterEntriesForViewer` slot parsing; consider Vasquez's V2 shanten counter for Hard tier.
+
+### 2026-05-19 (Phase G — bot pickup tick scheduler + privacy-mask slot-parse fix)
+
+- **Branch:** `stlong/phase-g-bot-scheduler-lobby` (cut from `main` @ `1e9134a`)
+- **Files modified (production only):**
+  - `src/backend/src/Mahjong.Autotable.Api/Changsha/Runtime/ChangshaGameRuntime.cs` (+~55 LOC):
+    extended `ScheduleBotIfNeededAsync` with an `IsPickupPhase` branch that schedules
+    `RunBotPickupAsync`; added `RunBotPickupAsync` (mirrors `RunBotTurnAsync` but acts on
+    `state.PickupSeatIndex` and calls `TakeTilesFromWallAsync` after `BotPickupDelayMs`);
+    wired `RollDiceAsync` → `ScheduleBotIfNeededAsync` (kicks the chain when
+    `BeginManualDeal` parks at `BreakPointMarked`); wired `TakeTilesFromWallAsync` →
+    `ScheduleBotIfNeededAsync` in the still-in-pickup branch (so the chain continues
+    CCW after a human or bot pickup); the AwaitingDiscard branch is unchanged because
+    `TryAdvanceAfterDealAsync` already schedules the discard-turn bot.
+  - `src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableWsEndpoint.cs`
+    (`FilterEntriesForViewer`): replaced the buggy `IndexOf('.')..IndexOf('@')` parse
+    (which extracted the hand index, not the seat — privacy was inverted) with
+    `LastIndexOf('@') + int.TryParse(slot.AsSpan(at + 1), ...)`; face-strip is now
+    universal on any `@`-suffixed foreign slot, but rotation override (face-down=2)
+    only fires on `hand.*` so discards/melds keep their public translator rotation;
+    spectators (viewerSeat=null) mask every `@`-suffixed entry. Helper renamed
+    `StripFaceAndForceFaceDown` → `StripFace(je, bool forceHandFaceDown)`. XML doc
+    updated with the slot-suffix convention.
+- **Files untouched (file-scope discipline):** test files, frontend, `Changsha/Bot/*`,
+  `ChangshaStateMachine.cs`, `ChangshaToAutotableTranslator.cs`, options class
+  (`BotPickupDelayMs = 500` from Phase F already exists; no knob changes needed).
+
+## Learnings
+
+- **Bot-scheduler contract for manual-deal pickup.** `ScheduleBotIfNeededAsync` is the
+  single entry point for "the runtime just transitioned; schedule a bot tick if the
+  next actor is a bot." Pre-Phase-G it only handled own-turn discards (`AwaitingDiscard`
+  + `ActiveSeatIndex` is bot → `RunBotTurnAsync`). Phase G adds the pickup branch:
+  `IsPickupPhase(state.Phase)` + `state.PickupSeatIndex` is a bot → `RunBotPickupAsync`.
+  Pattern: callers (`RollDiceAsync`, `TakeTilesFromWallAsync`) invoke
+  `ScheduleBotIfNeededAsync` AFTER releasing the instance lock; the helper itself does
+  not lock — it reads state under racy semantics, schedules a task that re-validates
+  under the lock, and the task short-circuits if state has moved on. The chain
+  self-perpetuates because `TakeTilesFromWallAsync` calls back into the scheduler.
+- **`state.PickupSeatIndex` is `int?`** (null when not in pickup) — must be unwrapped
+  with a pattern match (`is not int s`) before indexing into `state.Seats`.
+- **Slot-suffix convention.** `AutotableSlotMap.HandSlot(seat, handIdx)` formats
+  `"hand.{handIdx}@{seat}"` — the seat is **after** the last `@`, not between `.` and
+  `@`. The pre-Phase-G `FilterEntriesForViewer` parsed it backwards, which
+  double-violated privacy (viewer's hand.1@self was masked; opponents' hand.0@other was
+  leaked). Vasquez's `PrivacyMaskAcceptanceTests` locks the contract: face-strip is
+  universal on any `@`-suffixed foreign slot (so `weird@foo@1` is masked), but
+  rotation override only fires on `hand.*` (so `discard.X@N` stays face-up,
+  `meld.X@N` keeps its authored rotation). The `StartsWith("hand.")` gate guards
+  rotation only; face-strip is gated solely on the seat suffix parse.
+- **Bot lifecycle cancellation.** Bot pickup tasks use `instance.LifecycleCts.Token`
+  (same as `RunBotTurnAsync`); `ChangshaGameInstance.DisposeAsync` cancels that source,
+  so the scheduler unwinds cleanly when a game is torn down (relay clear, server shutdown).
+- **`TakeTilesFromWallAsync` re-entrance is fine.** `RunBotPickupAsync` calls
+  `TakeTilesFromWallAsync` from outside the lock; that method re-acquires the lock,
+  runs the state-machine validation, and re-invokes the scheduler — natural recursion
+  terminates when (a) phase reaches `AwaitingDiscard` (handed to
+  `TryAdvanceAfterDealAsync`), (b) `PickupSeatIndex` is human (scheduler no-ops), or
+  (c) the lifecycle CTS fires.
+
+### Verification
+
+- `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → 0 warnings / 0 errors, ~6s.
+- `dotnet test src/backend/Mahjong.Autotable.slnx --nologo --no-build` → **330 passed /
+  0 failed / 9 skipped of 339 total**, ~15s. Phase F baseline (319/0/9) plus Vasquez's
+  Phase G additions (6 in `BotPickupSchedulerAcceptanceTests`, 5 in
+  `PrivacyMaskAcceptanceTests`) all green. Re-ran three times back-to-back; no flakes.
+
+### Open / handed off
+
+- **Hicks (frontend):** the bot-pickup auto-tick is now server-driven — the UI no
+  longer needs a client-side timer for bot seats. The `pickup["current"]` entry
+  continues to flow on every transition; bots will appear to "take their tiles" on
+  the same timeline as humans (`BotPickupDelayMs = 500ms` between server-side ticks).
+- **Bishop (next session, optional):** the privacy filter cleanup could grow a small
+  unit-test fixture exercising spectators + multi-seat hand entries, but that's
+  test work (Vasquez's seat). The runtime + filter changes themselves are complete.
