@@ -348,6 +348,62 @@
          indicated by pickup.breakPoint after the dice roll resolves. -->
     <div id="break-marker" style="display: none;">▼</div>
 
+    <!-- Phase G — Lobby toggle (top-left).  Opens the lobby panel so users
+         can pick variant / dealMode / botCount / botDifficulty without
+         editing the URL bar.  Hidden via body.lobby-active while the panel
+         is open. -->
+    <button id="lobby-toggle" type="button" title="Open lobby">
+        <span class="lobby-toggle-icon">☰</span>
+        <span class="lobby-toggle-label">Lobby</span>
+    </button>
+
+    <!-- Phase G — Lobby panel (top-left overlay).  Pickers map 1:1 to the
+         Phase F query params; Apply & Start rebuilds the URL and calls
+         window.location.replace() so a fresh game starts with the new
+         settings.  Soft hot-swap is deferred to V2. -->
+    <div id="lobby-panel" role="dialog" aria-label="Lobby">
+        <div class="lobby-header">
+            <h2 class="lobby-title">🀄 Lobby</h2>
+            <button id="lobby-close" type="button" class="lobby-close-btn"
+                    aria-label="Close lobby" title="Close">×</button>
+        </div>
+        <div class="lobby-body">
+            <fieldset class="lobby-fieldset" id="lobby-variant-fieldset">
+                <legend>Variant</legend>
+                <label><input type="radio" name="lobby-variant" value="changsha" checked> Changsha</label>
+                <label><input type="radio" name="lobby-variant" value="four-player"> Riichi — 4 player</label>
+                <label><input type="radio" name="lobby-variant" value="three-player"> Riichi — 3 player</label>
+                <label><input type="radio" name="lobby-variant" value="bamboo"> Bamboo</label>
+                <label><input type="radio" name="lobby-variant" value="minefield"> Minefield</label>
+            </fieldset>
+
+            <fieldset class="lobby-fieldset" id="lobby-deal-mode-fieldset">
+                <legend>Deal mode <small class="lobby-hint">(Changsha only)</small></legend>
+                <label><input type="radio" name="lobby-deal-mode" value="manual" checked> Manual (click to pick)</label>
+                <label><input type="radio" name="lobby-deal-mode" value="auto"> Auto (instant deal)</label>
+            </fieldset>
+
+            <fieldset class="lobby-fieldset" id="lobby-bot-count-fieldset">
+                <legend>Bots</legend>
+                <label><input type="radio" name="lobby-bot-count" value="0"> 0 bots</label>
+                <label><input type="radio" name="lobby-bot-count" value="3" checked> 3 bots</label>
+                <label><input type="radio" name="lobby-bot-count" value="4"> 4 bots <small class="lobby-hint">(spectator)</small></label>
+            </fieldset>
+
+            <fieldset class="lobby-fieldset" id="lobby-bot-difficulty-fieldset">
+                <legend>Bot difficulty</legend>
+                <label><input type="radio" name="lobby-bot-difficulty" value="Easy"> Easy</label>
+                <label><input type="radio" name="lobby-bot-difficulty" value="Medium" checked> Medium</label>
+                <label><input type="radio" name="lobby-bot-difficulty" value="Hard"> Hard</label>
+            </fieldset>
+        </div>
+        <div class="lobby-footer">
+            <button id="lobby-apply" type="button" class="btn btn-warning btn-sm">
+                Apply &amp; Start
+            </button>
+        </div>
+    </div>
+
     <script type="module" src="./src/index.ts"></script>
 </body>
 </html>

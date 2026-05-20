@@ -285,6 +285,11 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             instance.Lock.Release();
         }
         StateChanged?.Invoke(instance.GameId);
+
+        // Phase G §1 — kick off the bot pickup chain. BeginManualDeal lands in
+        // BreakPointMarked with PickupSeatIndex == DealerSeatIndex; if the dealer
+        // (or any seat reached down the CCW chain) is a bot, this fires the tick.
+        await ScheduleBotIfNeededAsync(instance, ct);
     }
 
     public async Task TakeTilesFromWallAsync(string gameId, int seatIndex, int count, CancellationToken ct = default)
@@ -308,6 +313,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         if (instance.State.Phase == ChangshaPhase.AwaitingDiscard)
         {
             await TryAdvanceAfterDealAsync(instance, ct);
+        }
+        else
+        {
+            // Phase G §1 — still in pickup phase. Keep the bot chain marching CCW;
+            // if the next PickupSeatIndex is a human, ScheduleBotIfNeededAsync no-ops
+            // and the runtime blocks waiting for that seat's `take` action.
+            await ScheduleBotIfNeededAsync(instance, ct);
         }
     }
 
@@ -785,12 +797,62 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     private Task ScheduleBotIfNeededAsync(ChangshaGameInstance instance, CancellationToken ct)
     {
+        // Phase G §1 — manual-deal pickup chain. While IsPickupPhase the active
+        // actor is PickupSeatIndex (NOT ActiveSeatIndex — that's the dealer until
+        // AwaitingDiscard). Schedule a pickup tick only if that seat is a bot;
+        // a human pickup seat stalls the chain until the UI sends `take`.
+        if (ChangshaGameStateMachine.IsPickupPhase(instance.State.Phase))
+        {
+            var pickupSeatNullable = instance.State.PickupSeatIndex;
+            if (pickupSeatNullable is not int pickupSeat) return Task.CompletedTask;
+            if (pickupSeat < 0 || pickupSeat >= instance.State.Seats.Count) return Task.CompletedTask;
+            if (!instance.State.Seats[pickupSeat].IsBot) return Task.CompletedTask;
+
+            _ = RunBotPickupAsync(instance, pickupSeat, instance.LifecycleCts.Token);
+            return Task.CompletedTask;
+        }
+
         var seat = instance.State.ActiveSeatIndex;
         if (instance.State.Phase != ChangshaPhase.AwaitingDiscard) return Task.CompletedTask;
         if (!instance.State.Seats[seat].IsBot) return Task.CompletedTask;
 
         _ = RunBotTurnAsync(instance, seat, instance.LifecycleCts.Token);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Phase G §1 — bot pickup tick. Mirrors <see cref="RunBotTurnAsync"/> for
+    /// manual-deal pickup phases. Sleeps <see cref="ChangshaRuntimeOptions.BotPickupDelayMs"/>,
+    /// re-validates the pickup invariants under the instance lock (phase may have
+    /// changed, seat may have been claimed by a reconnecting human, instance may be
+    /// disposing), then calls <see cref="TakeTilesFromWallAsync"/> — which itself
+    /// re-invokes <see cref="ScheduleBotIfNeededAsync"/> so the chain continues.
+    /// </summary>
+    private async Task RunBotPickupAsync(ChangshaGameInstance instance, int seatIndex, CancellationToken ct)
+    {
+        try { await Task.Delay(_options.BotPickupDelayMs, ct); }
+        catch (OperationCanceledException) { return; }
+
+        int expected;
+        try
+        {
+            await instance.Lock.WaitAsync(ct);
+            try
+            {
+                if (!ChangshaGameStateMachine.IsPickupPhase(instance.State.Phase)) return;
+                if (instance.State.PickupSeatIndex is not int currentPicker || currentPicker != seatIndex) return;
+                if (!instance.State.Seats[seatIndex].IsBot) return;
+                expected = ChangshaGameStateMachine.ExpectedPickupCount(instance.State.Phase);
+            }
+            finally { instance.Lock.Release(); }
+
+            await TakeTilesFromWallAsync(instance.GameId, seatIndex, expected, ct);
+        }
+        catch (OperationCanceledException) { /* lifecycle teardown */ }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Bot pickup failed for game {GameId} seat {Seat}", instance.GameId, seatIndex);
+        }
     }
 
     private async Task RunBotTurnAsync(ChangshaGameInstance instance, int seatIndex, CancellationToken ct)

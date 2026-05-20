@@ -692,3 +692,103 @@ Four switches layered onto Wave 3:
 - Should `Take N` be enabled even when N > remaining wall tiles?  Probably no — bundle currently sends `count: pickup.count` straight through; backend should reject if wall depleted.
 - Should the break marker position be computed in `world.ts` from the actual 3D wall geometry, or stay as CSS-positioned per-seat overlay?  MVP picked CSS; Phase G can promote to true 3D overlay if visual feedback is unconvincing.
 - Variant switch via dropdown currently triggers a soft warning in the variant badge ("↻ Reload to change to ..."), not an auto-reload.  Acceptable UX? Or should we `location.reload()` after a 2 s confirmation?
+
+---
+
+## Phase G — Sidebar lobby UI (2025-05-21)
+
+**Branch:** `stlong/phase-g-bot-scheduler-lobby` off `1e9134a` (Phase F merge).
+**Bundle SHA:** `autotable-src.33f97fad.js` (1.03 MB) + `autotable-src.7934372e.css` (7.8 kB).
+**Replaces:** `autotable-src.6d5fae4c.js` + `autotable-src.1c6f6789.css`.
+
+### What I shipped
+Path-1 sidebar lobby (plain TS + HTML + CSS, NO React, inside the existing
+autotable bundle) so users can pick `variant` / `dealMode` / `botCount` /
+`botDifficulty` without editing the URL bar.  Anchored top-left, dark
+semi-opaque panel with brass-gold accent matching the rest of the
+autotable chrome.  Visible by default on a bare URL; otherwise reached
+via the top-left **☰ Lobby** toggle.
+
+### Files touched
+| File | Purpose |
+|---|---|
+| `src/lobby.ts` | NEW — 200 LOC: URL parse/build, picker read/write, gating, show/hide, Apply & Start nav |
+| `index.html` | `#lobby-toggle` button + `#lobby-panel` markup (4 fieldsets, radio buttons) |
+| `src/index.ts` | `initLobby()` call before `assetLoader.loadAll()` |
+| `src/style.css` | +135 LOC `#lobby-*` styling, `body.lobby-active` gate, `.lobby-disabled` greying |
+
+No `world.ts`, no `client.ts`, no `game-ui.ts`, no setup pipeline, no
+backend, no tests touched — strict Phase G scope.
+
+### Learnings worth remembering
+1. **Lobby is a one-way bridge into the existing query-param backend.**
+   `Apply & Start` builds the URL and calls `window.location.replace()`;
+   the rest of the system (Phase F game-ui's `resolvePhaseFParams`,
+   Bishop's `AutotableWsEndpoint` URL parser) reads its existing URL
+   params unchanged.  No new IPC, no new event types, no new collection
+   registration — keep the bridge as thin as possible.
+2. **`window.location.replace()` not `assign()`.**  Avoids back-button
+   bouncing between game configurations; the lobby semantics are
+   "abandon current game, start fresh," not "navigate."
+3. **Skip irrelevant params on emit.**  `dealMode` is Changsha-only;
+   `botDifficulty` is bots>0 only.  Suppressing them when irrelevant
+   keeps URLs scan-readable and avoids confusing the backend with a
+   `dealMode=manual` on Riichi where the term has no meaning.
+4. **PascalCase vs lowercase for `botDifficulty` matters.**  The
+   backend's `AutotableConnection.BotDifficulty` is PascalCase
+   (`Easy/Medium/Hard`), but Phase F's frontend `game-ui.ts` parser
+   accepts only lowercase.  Lobby reads case-insensitively, always emits
+   PascalCase — matches the spec example in the Phase G charter and the
+   backend's parser.
+5. **CSS `body.lobby-active` for toggle suppression beats per-element
+   show/hide bookkeeping.**  Single class flip in JS, single CSS rule
+   (`body.lobby-active #lobby-toggle { display: none; }`).  Mirrors the
+   Phase F `body.variant-changsha` / `.variant-riichi` pattern.
+6. **`.lobby-disabled` opacity + `disabled` on radio inputs.**  Visual
+   greying alone isn't enough — keyboard and screen-reader users need
+   the `disabled` attribute on the actual `<input type="radio">`.  Toggle
+   both in the same `refreshDisabledStates()` pass.
+7. **Show-on-load policy: bare URL only.**  `window.location.search === ''`
+   is the trigger.  Once the user has applied a setting, subsequent
+   loads carry params, so the lobby stays out of the way unless the
+   user explicitly opens it.  This is the right default for "I want to
+   play, not configure."
+8. **Parcel rebuild prunes nothing.**  Old hashed `.js`/`.css` linger in
+   the dist dir until you `rm` them manually.  Phase F + Phase G have
+   both bitten me on this — staging the new bundle without removing the
+   old leaves a half-megabyte of dead code in the deploy artifact.
+   Should consider a `prebuild` script that `rm`'s `dist/autotable-src.*`
+   before parcel runs (Phase H polish).
+
+### Smoke recipe
+1. Browse to `/autotable/` (bare URL, no query string).  Lobby auto-opens.
+2. Pick Changsha + Manual + 3 bots + Medium → click **Apply & Start**.
+3. URL becomes
+   `/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium`.
+   Fresh game starts.
+4. Click top-left **☰ Lobby** to re-open mid-game without losing settings
+   (until Apply is clicked).
+5. Switch variant to Riichi 4p → `dealMode` fieldset greys out + radios
+   disabled.  Switch bots to 0 → `botDifficulty` fieldset greys out.
+
+### Deferrals
+- **Soft hot-swap of variant / bot config** mid-session — V2 / Phase H.
+  Requires a clean dispose path on the setup pipeline so the tile
+  catalogue and slot groups can be rebuilt without leaving dangling
+  Things in the scene graph (same blocker Phase F flagged).
+- **localStorage persistence of lobby pickers** — intentionally
+  URL-only.  URL is the source of truth; localStorage in `game-ui.ts`
+  remains for in-game pickers that aren't full-game restarts.
+- **Multi-human lobby** (create / join by code, nicknames) — out of
+  scope; single-game-per-instance is the Wave-3 / Phase F assumption.
+- **Mobile-responsive width** — fixed 320 px, fine for desktop / tablet.
+
+## Phase G — Sidebar lobby UI + bot-pickup timer awareness (2026-05-20T20-30-58Z)
+
+**Shipped by:** Hicks (frontend)
+
+Phase G shipped pre-game sidebar lobby picker (variant/dealMode/botCount/botDifficulty selection) on bare `/autotable/` URL so users don't edit query params. One-way bridge to Phase F query-param backend; lobby auto-closes on navigate. Bundle transition: `6d5fae4c.js` + `1c6f6789.css` → `33f97fad.js` + `7934372e.css`. 200 LOC lobby module + 135 LOC styling. tsc strict ✓; parcel build ✓.
+
+**Key learnings:** Gating logic (dealMode disabled on non-Changsha, botDifficulty disabled when botCount=0) must be bidirectional (read AND write). URL parsing lenient for back-compat (kebab or SCREAMING_SNAKE for variant). Show-on-load policy: bare URL only (once any param applied, lobby hidden behind toggle).
+
+**Cross-agent awareness:** Bot-pickup now server-driven per Bishop (500ms ticks); UI no longer needs client-side timer for bot seats.
