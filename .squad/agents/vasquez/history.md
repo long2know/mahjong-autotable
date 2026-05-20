@@ -332,3 +332,106 @@ Ripley's design names the property `state.DealMode`. If Bishop chooses
 `state.Mode` or `state.Conditions.DealMode` instead, my reflection lookups
 fail with a descriptive message telling him what name to use. Bishop will
 either rename to match or my test will get a one-line fix.
+
+---
+
+## Phase G — Bot pickup scheduler + privacy mask acceptance tests (2026-06-11)
+
+**Branch:** `stlong/phase-g-bot-scheduler-lobby` off `main` @ `1e9134a`
+**Role this wave:** acceptance test author. Disjoint from Bishop's production
+work (bot pickup tick scheduler + privacy filter slot-parse cleanup; both
+already shipped on this branch's tip) and from Hicks's frontend work.
+
+### What I shipped
+
+**Two new acceptance test files** — `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/`:
+
+- **`BotPickupSchedulerAcceptanceTests.cs`** (6 facts, 31 assertions): all
+  pickup phases bot-driven when seat is bot / chain halts on human seat /
+  cursor advances CCW through `BreakPointMarked` → `PickupRound1/2/3` →
+  `SingleTilePickup` → `DealerExtra` → `AwaitingDiscard`; `BotPickupDelayMs`
+  knob respected (lower bound 13×200×0.5ms / upper bound 13×200×3ms); auto-deal
+  mode does NOT trigger the scheduler (regression gate); pending pickup tasks
+  cancel cleanly on game teardown (reflection on `_games` + `LifecycleCts`
+  cooperative cancel).
+
+- **`PrivacyMaskAcceptanceTests.cs`** (5 facts, 29 assertions): non-`@` slots
+  pass through; foreign-seat hand slots masked; own-seat hand slots preserved;
+  spectator (`viewerSeat == null`) sees all hands masked; malformed slots
+  (multi-`@`, trailing `@`, non-numeric suffix) gracefully passed through
+  via `LastIndexOf('@')` + soft-parse semantics — no exceptions, count
+  preserved.
+
+**Total: 11 facts, 60 assertions.**
+
+### Contract locks
+
+1. **Bot pickup tick scheduler** — `BotPickupDelayMs` (default 500ms, configurable
+   via `IOptions<ChangshaRuntimeOptions>`). The scheduler MUST gate on
+   `state.Seats[pickupSeat].IsBot` AND `IsPickupPhase(state.Phase)` AND
+   `state.PickupSeatIndex == pickupSeat` under the instance lock before firing,
+   so that human seats stall the chain and cancelled lifecycle CTSes drop the
+   task silently.
+
+2. **Privacy filter slot-parse** — `FilterEntriesForViewer` uses the
+   `LastIndexOf('@')` boundary; legacy `IndexOf('.') ... IndexOf('@')` slice
+   parse (which extracted the `handIdx` instead of the seat) is gone.
+   Non-`@`, non-`hand.` slots pass through unchanged.
+
+### Test posture — reflection where useful
+
+- `BotPickupSchedulerAcceptanceTests` builds a real `ChangshaGameRuntime` via
+  `WebApplicationFactory<Program>` (per-test inline harness so `BotPickupDelayMs`
+  is per-test configurable — see line 36 `RuntimeHarness` class). State is read
+  via the runtime's `TryGetSnapshot` public API; pickup actions drive through
+  `RollDiceAsync` + `TakeTilesFromWallAsync` public methods. Reflection is only
+  used for the teardown test (no public `RemoveGame` API yet).
+
+- `PrivacyMaskAcceptanceTests` reaches the private static
+  `FilterEntriesForViewer` via reflection. The lookup probes three candidate
+  hosts (`AutotableConnectionManager`, `AutotableWsEndpoint`, `PrivacyFilter`)
+  so a future refactor into a dedicated `PrivacyFilter` class won't break the
+  suite.
+
+### Result: 11/11 GREEN at commit time (no expected red)
+
+Both contracts were ALREADY shipped on the branch tip — Bishop landed the
+scheduler (`ChangshaGameRuntime.RunBotPickupAsync` line ~831 + `ScheduleBotIfNeededAsync`
+line ~798) and the privacy filter cleanup (`AutotableConnectionManager.FilterEntriesForViewer`
+lines 739–795 with `LastIndexOf('@')` parse) before I wrote the tests. The tests
+therefore serve as a **regression lock**: any drift in either contract will
+turn one or more of these 11 tests red.
+
+### Verification
+
+- `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → **0/0**.
+- `dotnet test src/backend/Mahjong.Autotable.slnx --nologo --no-build --filter "FullyQualifiedName~BotPickupScheduler|FullyQualifiedName~PrivacyMask"` →
+  **12/0/0** stable across 3 consecutive runs.
+- Full suite: **330/0/9** stable across 3 consecutive runs (no flakes, no
+  regressions). The 9 skipped are pre-existing; the 330 passed includes my
+  11 new + 319 existing.
+
+### Files I did NOT touch (forbidden surface)
+
+- ANY production code under `src/backend/src/**` (Bishop's surface).
+- ANY frontend file (Hicks's surface).
+- `AcceptanceFixture.cs` or any existing acceptance test file (additive only).
+- `.csproj` files.
+
+### One stability bump
+
+Initial test 3 (`Bot_Pickup_Continues_Through_All_Three_Rounds`) flaked under
+full-suite concurrent load — root cause was a race between phase entering
+`AwaitingDiscard` and the dealer bot's first auto-discard (BotTurnDelayMs=1
+in my test harness). Fix: set `BotTurnDelayMs = 30_000` in test 3's harness so
+the post-deal snapshot reads stable hand counts before any discard fires. Test
+re-ran clean across 3+ full-suite runs.
+
+### Open assumption (low risk)
+
+Test 6's reflection-based teardown reaches into `_games` (the runtime's
+private `ConcurrentDictionary<string, ChangshaGameInstance>`). If Bishop
+renames the field or refactors to an alternate registry, test 6 turns red
+with the descriptive "Bishop should expose a public RemoveGame/DisposeGame
+API" message and Bishop adds a one-line public teardown method. That's an
+upgrade path, not a regression.
