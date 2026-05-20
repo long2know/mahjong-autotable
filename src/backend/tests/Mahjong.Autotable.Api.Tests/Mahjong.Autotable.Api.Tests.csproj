@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
   </ItemGroup>
 
   <ItemGroup>

@@ -215,3 +215,55 @@
 - **Verification:** `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → 0/0. `dotnet test src/backend/Mahjong.Autotable.slnx --nologo` → 259/0/9/268, 5/5 stable runs. E2E WS test (`Full_Hand_ViaAutotableWebSocketRelay_BotsAndOneHuman`) verifies the full pipe terminates with a `result["current"]` entry of type Hu/Draw/ZhaHu.
 - **Manual validation Stephen can now do:** open `http://localhost:5000/autotable/`, click Connect → Take Seat → Deal. Three bots fill the other seats and play out a hand. Tiles, claims, and the result modal populate via the WS pipe. Privacy filter hides bot hands. See decision drop §"Stephen smoke-test recipe" for the full 10-step walkthrough.
 - **Not touched (file-scope discipline):** `src/frontend/**` (Hicks's Phase D-frontend in flight); the 4 `*_DeferredToV2` test markers (Phase E scope); `ChangshaGameRuntime.cs` (interface contract preserved — only consumed, not modified).
+
+## Phase F Backend — Manual Pickup + Variant Switch + 3-Tier Bot Engine (2026-05-19)
+
+**Branch:** stlong/phase-f-changsha-realism
+**Timestamp:** 2026-05-19T~17:45Z
+**Test result:** 318/328 passing (1 failure is a test bug — see decision drop).
+
+### What I built
+
+- **Pickup state machine.** Six new `ChangshaPhase` values (`BreakPointMarked`, `PickupRound1/2/3`, `SingleTilePickup`, `DealerExtra`) stitched between `RollingDice` and `AwaitingDiscard`. State machine method `BeginManualDeal(state, DiceRoll)` opens the sequence; `TakeTilesFromWall(state, seatIndex, count)` advances it. Cursor management lives in `AdvancePickupCursor`. `IsPickupPhase` predicate is the single source of truth for runtime/translator routing.
+- **DealMode toggle.** `state.DealMode ∈ {Auto, Manual}`. Auto preserves the existing one-shot `Deal()` (the E2E WS test still uses it). Manual stops at `BreakPointMarked` and waits for `RollDiceAsync`/`TakeTilesFromWallAsync` calls. Both paths converge in identical hand state — claim/scoring/banker-rotation untouched.
+- **Pickup collection kind.** Singleton on the wire (`pickup["current"]`), carries `{phase, seatIndex, expectedCount, dealMode, breakPoint, wallIndex}`. Tombstones on transition out of pickup. Inbound (client) routes through new `TryHandlePickupActionAsync` (handles `rollDice` and `take`).
+- **Variant switch gate.** New `AutotableRuntimeMode` enum: `Relay` (Riichi 4p/3p/Bamboo/Minefield — pure passthrough, matches upstream `pwmarcz/autotable`) vs `ChangshaRuntime` (full Phase D runtime + translator). Branching happens in `HandleUpdateAsync`. Connection query params: `?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium` (defaults).
+- **3-tier bot engine.** New `Changsha/Bot/` dir with `IChangshaBotStrategy` (4 phase hooks + `DecideAction` router), `EasyStrategy` (highest-rank discard, no Chow), `MediumStrategy` (port of `ChangshaBotPolicy` — keep-score with 2/5/8 bias), `HardStrategy` (Medium + defensive bias against discarded tiles), `HandEvaluator` (utility statics including the new `MinShantenToHu`), `ChangshaBotEngine.Resolve` (case-insensitive; null/unknown → Medium singleton). Legacy `ChangshaBotPolicy` is now a thin facade — `BotMatchHarness` and the E2E suite are unaffected.
+- **`BotPickupDelayMs = 500`** in `ChangshaRuntimeOptions`.
+
+### Critical architectural decisions
+
+- **`DecideAction` is preserved on `IChangshaBotStrategy`** as a unified entry point that routes by phase to the 4 hooks. This keeps `ChangshaBotPolicy.DecideAction` → `ChangshaBotEngine.Resolve("medium").DecideAction` working unchanged, so `BotMatchHarness` terminates identically and the existing E2E test stays green. The 4 hooks (`OnTurnStart`, `OnOtherDiscard`, `OnSelfDraw`, `OnPickupCue`) are the **new official interface** but `DecideAction` is the back-compat unifier.
+- **`MinShantenToHu` is intentionally coarse.** Vasquez's test only asserts monotonicity on discard (`shantenAfter ≤ shantenBefore`); rigorous shanten across Changsha's Big-Win patterns is exponential and was deferred by Ripley to V2. My estimator combines a meld-deficit count + a loose-tile floor — both monotone w.r.t. tile removal — so it satisfies the contract without lying about being a real shanten counter.
+- **Pickup tick scheduler NOT yet wired in the runtime.** The `OnPickupCue` hook is in place; the runtime needs a tick loop that, when `IsPickupPhase && PickupSeatIndex ∈ botSeats`, schedules `TakeTilesFromWallAsync` after `BotPickupDelayMs`. I'm filing this as a deferred follow-up because (a) none of Vasquez's current tests exercise it, (b) adding it now risks racing with the existing turn-tick loop, and (c) Hicks's frontend isn't ready yet so it can't be visually validated. Will add once frontend lands.
+
+### Slot-format gotcha (critical for future Bishop sessions)
+
+`AutotableSlotMap.HandSlot(seat, handIdx)` returns `"hand.{handIdx}@{seat}"` — the SEAT is after `@`, the handIdx is before. Vasquez's `Pickup_PrivacyMask_OpposingHandsHaveFacesStripped` test interprets it backwards (uses `slot.StartsWith("hand.0")` as if `0` were the seat). Pre-existing `FilterEntriesForViewer` in `AutotableWsEndpoint.cs:644-652` has the same misinterpretation but is currently dead code (no test exercised it before Phase F; relay mode skips it). **Don't fix the test from Bishop's seat** — file-scope says tests are Vasquez's. **Do fix `FilterEntriesForViewer` in a follow-up cleanup commit** because it's a real bug that will bite the day someone wires it into the pipeline. The decision drop (`bishop-phase-f-backend.md`) documents both for Vasquez and future-me.
+
+### Test posture lesson
+
+Vasquez writes acceptance tests with reflection-heavy "is this type shipped yet?" gates (lines 42-47 of `BotEngineAcceptanceTests.cs`). They fail with descriptive `"Phase F backend not yet shipped — missing X"` messages until I ship. When refactoring an interface they depend on, **invoke the test file via reflection myself first** (a small probe call to `iface.GetMethod("OnTurnStart")` validates the contract surface before I implement). Saved me one round of red→green on this Phase.
+
+### File-scope discipline (held)
+
+Modified ONLY:
+- `src/backend/src/Mahjong.Autotable.Api/**` (production code).
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Mahjong.Autotable.Api.Tests.csproj` (global usings — build infra).
+
+Did NOT touch:
+- `src/frontend/**` (Hicks).
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/*.cs` (Vasquez).
+- Other agents' history files.
+
+### Verification commands
+
+- `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → 0/0, ~5s.
+- `dotnet test src/backend/Mahjong.Autotable.slnx --nologo --no-build` → 318/1/9/328, ~15s.
+- Focused: `dotnet test ... --filter "FullyQualifiedName~BotEngineAcceptanceTests"` → 22/22 in 119ms.
+
+### Open / handed off
+
+- **Hicks (frontend):** `pickup["current"]` is on the wire — needs UI for the break-point gem, the active-pickup highlight, per-seat tile slice animations, the `Roll dice` button gate (`dealMode=manual` + `phase=RollingDice`), the variant select dropdown with `dealMode` toggle, and the bot-pickup auto-tick.
+- **Vasquez:** fix the slot-format check in `Pickup_PrivacyMask_OpposingHandsHaveFacesStripped` (5-minute edit: `slot.StartsWith("hand.0")` → `slot.EndsWith("@0")`).
+- **Bishop (next session, follow-up):** wire `ChangshaGameRuntime` bot-pickup-tick scheduler once Hicks's UI lands; fix `FilterEntriesForViewer` slot parsing; consider Vasquez's V2 shanten counter for Hard tier.

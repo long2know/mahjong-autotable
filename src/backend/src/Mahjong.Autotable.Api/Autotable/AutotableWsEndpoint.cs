@@ -147,11 +147,38 @@ public sealed class AutotableConnectionManager : IDisposable
         }
         var autoBotFill = !query.TryGetValue("bots", out var b) || !string.Equals(b.ToString(), "false", StringComparison.OrdinalIgnoreCase);
 
-        var connection = new AutotableConnection(ws, queryGameId, viewerSeat) { AutoBotFill = autoBotFill };
+        // Phase F §1.4 — variant / dealMode / botCount / botDifficulty.
+        // Empty-string values fall back to the default (matches the "" query
+        // case in VariantSwitchAcceptanceTests where no params yield Changsha).
+        var variant = "changsha";
+        if (query.TryGetValue("variant", out var v) && !string.IsNullOrEmpty(v.ToString()))
+            variant = v.ToString();
+
+        var dealMode = "manual";
+        if (query.TryGetValue("dealMode", out var dm) && !string.IsNullOrEmpty(dm.ToString()))
+            dealMode = dm.ToString();
+
+        var botCount = 3;
+        if (query.TryGetValue("botCount", out var bc) && int.TryParse(bc.ToString(), out var parsedBotCount) && parsedBotCount is >= 0 and <= 3)
+            botCount = parsedBotCount;
+
+        var botDifficulty = "Medium";
+        if (query.TryGetValue("botDifficulty", out var bd) && !string.IsNullOrEmpty(bd.ToString()))
+            botDifficulty = bd.ToString();
+
+        var connection = new AutotableConnection(ws, queryGameId, viewerSeat)
+        {
+            AutoBotFill = autoBotFill,
+            Variant = variant,
+            DealMode = dealMode,
+            BotCount = botCount,
+            BotDifficulty = botDifficulty,
+        };
         _connections[connection.Id] = connection;
         _logger.LogInformation(
-            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, bots={Bots})",
-            connection.Id, queryGameId, viewerSeat, autoBotFill);
+            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, bots={Bots}, variant={Variant}, dealMode={DealMode}, botCount={BotCount}, botDifficulty={BotDifficulty}, runtimeMode={RuntimeMode})",
+            connection.Id, queryGameId, viewerSeat, autoBotFill,
+            variant, dealMode, botCount, botDifficulty, connection.RuntimeMode);
 
         try
         {
@@ -279,6 +306,17 @@ public sealed class AutotableConnectionManager : IDisposable
 
         var state = _games.GetOrAdd(connection.GameId, id => new AutotableGameState(id));
 
+        // Phase F §1.2 — Relay-mode connections forward every entry verbatim. The
+        // backend never routes their UPDATEs into the Changsha runtime, and never
+        // strips runtime-only kinds (the upstream variants don't emit them anyway).
+        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime)
+        {
+            var relayApplied = state.ApplyUpdate(entries, UpdateSource.Client);
+            if (relayApplied.Count == 0) return;
+            await BroadcastToOthersAsync(connection, relayApplied, full: false, ct);
+            return;
+        }
+
         // Phase D-backend §4 — branch by collection name. Game-affecting kinds
         // route to the Changsha runtime (their authoritative effect comes back
         // through the StateChanged → translator → ApplyUpdate(Runtime) loop).
@@ -302,6 +340,14 @@ public sealed class AutotableConnectionManager : IDisposable
                     // Hicks's 碰/吃/杠/胡 click. Route to ClaimAsync / PassAsync.
                     await TryHandleClaimActionAsync(connection, entry, ct);
                     // Don't relay — runtime will re-broadcast claim state.
+                    break;
+
+                case ChangshaCollectionKinds.Pickup:
+                    // Phase F §3 — manual pickup. Routed to RollDiceAsync /
+                    // TakeTilesFromWallAsync on the runtime; the runtime then emits
+                    // a fresh translator snapshot containing the updated pickup
+                    // entry. Don't relay — the runtime owns this kind.
+                    await TryHandlePickupActionAsync(connection, entry, ct);
                     break;
 
                 case "match":
@@ -342,6 +388,10 @@ public sealed class AutotableConnectionManager : IDisposable
         if (seatEl.ValueKind != JsonValueKind.Number) return;
         if (!seatEl.TryGetInt32(out var seatIndex)) return;
         if (seatIndex is < 0 or > 3) return;
+
+        // Phase F §1.2 — Relay-mode connections do NOT bind a Changsha runtime.
+        // The bundle's local Setup drives the deal; the backend only relays.
+        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return;
 
         try
         {
@@ -398,6 +448,81 @@ public sealed class AutotableConnectionManager : IDisposable
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Claim {Action} failed for seat {Seat}", action, seatIndex);
+        }
+    }
+
+    /// <summary>
+    /// Phase F §3 — manual-pickup routing. Pickup entries from the bundle carry
+    /// the player's intent for the current step of the deal:
+    /// <list type="bullet">
+    ///   <item><c>{ action: "rollDice" }</c> — dealer's dice click (transition
+    ///   <see cref="ChangshaPhase.RollingDice"/> → <see cref="ChangshaPhase.BreakPointMarked"/>).</item>
+    ///   <item><c>{ action: "take", count: N }</c> — current pickup seat takes
+    ///   <c>N</c> tiles from the wall front. <c>count</c> may also be supplied
+    ///   as <c>wallTileIds: int[]</c> (server picks the first N from the wall).</item>
+    /// </list>
+    /// The seat is taken from the entry key (the bundle keys pickup by seat) or
+    /// inferred from <see cref="ChangshaGameState.PickupSeatIndex"/> when absent.
+    /// </summary>
+    private async Task TryHandlePickupActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
+    {
+        if (entry.Value is null) return;
+        if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
+        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+
+        // Seat: prefer explicit key (an int seat), fall back to "seatIndex" prop,
+        // else use the runtime's current pickup cursor.
+        var seatFromKey = entry.Key switch
+        {
+            long l => (int)l,
+            int i => i,
+            string s when int.TryParse(s, out var p) => p,
+            _ => -1
+        };
+        int seatIndex = seatFromKey;
+        if (seatIndex is < 0 or > 3)
+        {
+            if (je.TryGetProperty("seatIndex", out var seatEl) && seatEl.ValueKind == JsonValueKind.Number && seatEl.TryGetInt32(out var s))
+                seatIndex = s;
+        }
+
+        var action = string.Empty;
+        if (je.TryGetProperty("action", out var actionEl) && actionEl.ValueKind == JsonValueKind.String)
+            action = actionEl.GetString() ?? string.Empty;
+
+        try
+        {
+            if (string.Equals(action, "rollDice", StringComparison.OrdinalIgnoreCase))
+            {
+                if (seatIndex is < 0 or > 3)
+                {
+                    if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
+                    seatIndex = snap.DealerSeatIndex;
+                }
+                await _runtime.RollDiceAsync(runtimeGameId, seatIndex, ct);
+                return;
+            }
+
+            if (string.Equals(action, "take", StringComparison.OrdinalIgnoreCase))
+            {
+                if (seatIndex is < 0 or > 3)
+                {
+                    if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null || snap.PickupSeatIndex is null) return;
+                    seatIndex = snap.PickupSeatIndex.Value;
+                }
+                int count = 0;
+                if (je.TryGetProperty("count", out var countEl) && countEl.ValueKind == JsonValueKind.Number && countEl.TryGetInt32(out var c))
+                    count = c;
+                else if (je.TryGetProperty("wallTileIds", out var idsEl) && idsEl.ValueKind == JsonValueKind.Array)
+                    count = idsEl.GetArrayLength();
+                if (count <= 0) return;
+                await _runtime.TakeTilesFromWallAsync(runtimeGameId, seatIndex, count, ct);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Pickup action {Action} failed for seat {Seat}", action, seatIndex);
         }
     }
 
@@ -821,6 +946,32 @@ public sealed class AutotableConnectionManager : IDisposable
     }
 }
 
+/// <summary>
+/// Phase F §1 — the WS endpoint runs in one of two modes per connection, decided
+/// by the <c>?variant=</c> query param at handshake. Other connections sharing the
+/// same gameId may run in a different mode (a Relay-mode bundle observing a
+/// Changsha-bound game) but the per-connection routing decisions are local —
+/// runtime binding is owned by Changsha-mode connections only.
+/// </summary>
+public enum AutotableRuntimeMode
+{
+    /// <summary>
+    /// Pure relay (Phase C behaviour): the backend forwards bundle UPDATEs verbatim
+    /// to other connections in the same gameId and does NOT bind a Changsha runtime.
+    /// Used for upstream's pure-bundle variants (four_player, three_player, bamboo,
+    /// minefield) where the bundle's local Setup drives the deal.
+    /// </summary>
+    Relay = 0,
+
+    /// <summary>
+    /// Changsha rules engine drives the game (Phase D-backend behaviour): the backend
+    /// lazily binds a <see cref="IChangshaGameRuntime"/> game on the first seat-take,
+    /// and runtime <c>StateChanged</c> events drive <c>things</c> / <c>seats</c> /
+    /// <c>match</c> / <c>claim</c> / <c>result</c> / <c>pickup</c> via the translator.
+    /// </summary>
+    ChangshaRuntime = 1,
+}
+
 /// <summary>Single bundle connection — one per (WebSocket, gameId, viewerSeat).</summary>
 public sealed class AutotableConnection
 {
@@ -837,6 +988,45 @@ public sealed class AutotableConnection
     /// query param; the E2E test can disable it for deterministic seat-take tests.
     /// </summary>
     public bool AutoBotFill { get; init; } = true;
+
+    /// <summary>
+    /// Phase F §1.4 — the upstream variant requested by the connection. Defaults to
+    /// <c>"changsha"</c>; other accepted values are <c>"four_player"</c>,
+    /// <c>"three_player"</c>, <c>"bamboo"</c>, <c>"minefield"</c>. The value is
+    /// preserved verbatim from the query string (not normalised) so the bundle's
+    /// "set up Game" picker round-trips its label.
+    /// </summary>
+    public string Variant { get; init; } = "changsha";
+
+    /// <summary>
+    /// Phase F §1.4 — the deal mode the bundle is asking for. <c>"manual"</c> drives
+    /// the post-Phase-F pickup state machine (default for Changsha); <c>"auto"</c>
+    /// keeps the legacy single-shot <see cref="ChangshaGameStateMachine.Deal"/> path.
+    /// </summary>
+    public string DealMode { get; init; } = "manual";
+
+    /// <summary>
+    /// Phase F §1.4 — desired number of bot opponents for solo play (0..3). The
+    /// runtime fills empty seats up to this count after the first seat-take.
+    /// </summary>
+    public int BotCount { get; init; } = 3;
+
+    /// <summary>
+    /// Phase F §1.4 — bot difficulty (case-insensitive: <c>"Easy"</c> / <c>"Medium"</c> /
+    /// <c>"Hard"</c>). Routed through <see cref="ChangshaBotEngine.Resolve"/> at decision
+    /// time; defaults to Medium for parity with the legacy <see cref="ChangshaBotPolicy"/>.
+    /// </summary>
+    public string BotDifficulty { get; init; } = "Medium";
+
+    /// <summary>
+    /// Phase F §1.4 — derived from <see cref="Variant"/>. <c>changsha</c> ⇒
+    /// <see cref="AutotableRuntimeMode.ChangshaRuntime"/>; every other variant ⇒
+    /// <see cref="AutotableRuntimeMode.Relay"/>.
+    /// </summary>
+    public AutotableRuntimeMode RuntimeMode =>
+        string.Equals(Variant, "changsha", StringComparison.OrdinalIgnoreCase)
+            ? AutotableRuntimeMode.ChangshaRuntime
+            : AutotableRuntimeMode.Relay;
 
     public AutotableConnection(WebSocket socket, string? gameId, int? viewerSeat)
     {

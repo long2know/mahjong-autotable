@@ -119,7 +119,19 @@ public enum ChangshaPhase
 {
     Seating,
     RollingDice,
-    Dealing,
+    Dealing,                // Auto-deal one-shot path (DealMode.Auto)
+
+    // ── Phase F: manual-pickup sub-phases between Dealing and AwaitingDiscard ──
+    // Grafted into the existing state machine — DealMode.Auto path skips them and
+    // jumps directly Dealing → AwaitingDiscard. DealMode.Manual path walks each
+    // pickup phase under runtime-driven (RollDice + TakeTilesFromWall) commands.
+    BreakPointMarked,       // dice rolled, break point set, awaiting first round-1 pickup
+    PickupRound1,           // round 1 — each seat takes 4 (cursor rotates clockwise from dealer)
+    PickupRound2,           // round 2 — each seat takes 4 (cumulative 8)
+    PickupRound3,           // round 3 — each seat takes 4 (cumulative 12)
+    SingleTilePickup,       // each seat takes 1 single tile (cumulative 13)
+    DealerExtra,            // dealer takes the 14th tile, must discard next
+
     AwaitingDiscard,
     AwaitingClaim,
     DeclaringKong,
@@ -129,6 +141,21 @@ public enum ChangshaPhase
     RotatingBanker,
     WallExhausted,
     EndGame
+}
+
+/// <summary>
+/// Phase F deal modes. <c>Auto</c> is the existing one-shot path (Wave-3 behaviour:
+/// <c>RollDice → Deal</c> deposits 14/13/13/13 atomically). <c>Manual</c> activates the
+/// pickup state machine (§2 of Ripley's Phase F design): the dealer clicks a Roll Dice
+/// affordance, then each seat clicks to take 4/4/4/1 tiles per Chinese custom, then the
+/// dealer takes a 14th tile and the hand begins.
+/// </summary>
+public enum DealMode
+{
+    /// <summary>Default for Changsha when started via tests / non-WS code paths.</summary>
+    Auto = 0,
+    /// <summary>Default for Changsha when started via the autotable WS endpoint (Phase F).</summary>
+    Manual = 1
 }
 
 public sealed class ChangshaGameState
@@ -192,6 +219,21 @@ public sealed class ChangshaGameState
     // Dice
     public DiceRoll? LastDiceRoll { get; set; }
     public BreakPointResult? BreakPoint { get; set; }
+
+    // ── Phase F: manual-pickup cursor ──
+    /// <summary>Deal mode for the current hand. <see cref="DealMode.Auto"/> means the existing
+    /// one-shot <see cref="ChangshaGameStateMachine.Deal"/> path; <see cref="DealMode.Manual"/>
+    /// activates the multi-phase pickup state machine driven by
+    /// <see cref="ChangshaGameStateMachine.BeginManualDeal"/> and
+    /// <see cref="ChangshaGameStateMachine.TakeTilesFromWall"/>.</summary>
+    public DealMode DealMode { get; set; } = DealMode.Auto;
+    /// <summary>The seat whose turn it is to pick up tiles. Non-null only while
+    /// <see cref="Phase"/> is one of the pickup phases.</summary>
+    public int? PickupSeatIndex { get; set; }
+    /// <summary>Zero-based offset into the pickup round. Resets on every new round.
+    /// Used by <see cref="ChangshaGameStateMachine.AdvancePickupCursor"/> to know when a
+    /// round is complete (offset reaches 4) and the next phase should begin.</summary>
+    public int PickupRoundIndex { get; set; }
 
     // Event log (append-only)
     public List<ChangshaEvent> EventLog { get; set; } = [];

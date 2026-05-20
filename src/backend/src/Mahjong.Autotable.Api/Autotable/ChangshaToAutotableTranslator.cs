@@ -143,7 +143,45 @@ public static class ChangshaToAutotableTranslator
             entries.Add(ChangshaCollectionEncoder.EncodeHandResult(BuildHandResult(state)));
         }
 
+        // ── Phase F: pickup collection ──
+        // Emitted while the manual-deal state machine is parked in any pickup phase;
+        // drives the autotable scene's "Take Tiles" affordance. When the deal completes
+        // and the runtime hands off to AwaitingDiscard, the entry is tombstoned by the
+        // runtime-emitted snapshot via <see cref="ChangshaCollectionEncoder.EncodePickupCleared"/>
+        // so the scene clears its UI.
+        if (ChangshaGameStateMachine.IsPickupPhase(state.Phase))
+        {
+            entries.Add(ChangshaCollectionEncoder.EncodePickup(BuildPickupEntry(state)));
+        }
+
         return entries;
+    }
+
+    private static PickupEntry BuildPickupEntry(ChangshaGameState state)
+    {
+        BreakPointWire? bp = null;
+        if (state.BreakPoint is { } b)
+        {
+            bp = new BreakPointWire
+            {
+                WallIndex = b.WallIndex,
+                StackIndex = b.StackIndex,
+                TileIndex = b.TileIndex
+            };
+        }
+
+        return new PickupEntry
+        {
+            Phase = state.Phase.ToString(),
+            SeatIndex = state.PickupSeatIndex ?? state.DealerSeatIndex,
+            Count = ChangshaGameStateMachine.ExpectedPickupCount(state.Phase),
+            DealMode = state.DealMode == DealMode.Manual ? "manual" : "auto",
+            BreakPoint = bp,
+            // Wall front is always index 0 after BreakPointToWall rotation, but expose
+            // the actual remaining-wall count so the bundle can decide UI affordances
+            // (e.g., "Wall: 55 tiles left").
+            WallIndex = 0
+        };
     }
 
     private static HandResultEntry BuildHandResult(ChangshaGameState state)

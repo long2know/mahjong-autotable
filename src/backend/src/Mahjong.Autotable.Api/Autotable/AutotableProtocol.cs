@@ -63,12 +63,22 @@ public sealed class AutotableInboundMessage
 ///   score: { seat: points }[], hand: int[], nextBanker: int }</c>. Server-emitted on
 ///   hand end (Hu, washout, or false-Hu penalty). Used by the autotable scene to drive
 ///   the result panel + banker arrow rotation. Lives until the next deal clears it.</item>
+///
+///   <item><b><c>pickup</c></b> (Bishop Phase F §2): keyed by the literal string
+///   <c>"current"</c>, value = <c>{ phase: string, seatIndex: int, count: int,
+///   dealMode: "auto"|"manual", breakPoint: {wallIndex, stackIndex, tileIndex},
+///   wallIndex: int }</c>. Server-emitted whenever the active pickup phase or cursor
+///   advances (BreakPointMarked, PickupRound1..3, SingleTilePickup, DealerExtra).
+///   Tombstoned (value=<c>null</c>) when phase transitions to <c>AwaitingDiscard</c>
+///   (manual deal complete). Drives the autotable scene's "Take Tiles" affordance and
+///   bot pickup animation.</item>
 /// </list>
 /// </summary>
 public static class ChangshaCollectionKinds
 {
     public const string Claim = "claim";
     public const string Result = "result";
+    public const string Pickup = "pickup";
 }
 
 /// <summary>
@@ -151,6 +161,76 @@ public static class ChangshaCollectionEncoder
     /// <summary>Encodes a tombstone for the current hand result (cleared on next deal).</summary>
     public static CollectionEntry EncodeHandResultCleared()
         => new(ChangshaCollectionKinds.Result, "current", null);
+
+    // ── Phase F: pickup-state collection ──
+
+    /// <summary>
+    /// Encodes the current pickup cursor as the <c>pickup["current"]</c> entry. Emitted
+    /// whenever the pickup phase or active seat changes during a Manual deal. Drives the
+    /// autotable scene's "Take Tiles" button visibility per seat. Caller is expected to
+    /// derive <paramref name="count"/> from <c>ChangshaGameStateMachine.ExpectedPickupCount(phase)</c>.
+    /// </summary>
+    public static CollectionEntry EncodePickup(PickupEntry pickup)
+        => new(ChangshaCollectionKinds.Pickup, "current", pickup);
+
+    /// <summary>Encodes a tombstone for the pickup cursor (manual deal complete).</summary>
+    public static CollectionEntry EncodePickupCleared()
+        => new(ChangshaCollectionKinds.Pickup, "current", null);
+}
+
+/// <summary>
+/// Server-emitted snapshot of the pickup cursor while a Manual deal is in progress.
+/// Maps to the <see cref="ChangshaCollectionKinds.Pickup"/> collection value under
+/// key <c>"current"</c>.
+/// </summary>
+public sealed class PickupEntry
+{
+    /// <summary>One of <c>BreakPointMarked</c>, <c>PickupRound1</c>, <c>PickupRound2</c>,
+    /// <c>PickupRound3</c>, <c>SingleTilePickup</c>, or <c>DealerExtra</c>.</summary>
+    [JsonPropertyName("phase")]
+    public string Phase { get; set; } = string.Empty;
+
+    /// <summary>Seat whose turn it is to take tiles from the wall (0..3).</summary>
+    [JsonPropertyName("seatIndex")]
+    public int SeatIndex { get; set; }
+
+    /// <summary>Number of tiles the active seat should take from the wall front.
+    /// 4 during PickupRound1..3, 1 during SingleTilePickup and DealerExtra.</summary>
+    [JsonPropertyName("count")]
+    public int Count { get; set; }
+
+    /// <summary>One of <c>"auto"</c>, <c>"manual"</c>. Echoed from
+    /// <c>ChangshaGameState.DealMode</c> so the bundle can render the same cursor
+    /// in both modes (auto-deal mode tombstones the entry immediately).</summary>
+    [JsonPropertyName("dealMode")]
+    public string DealMode { get; set; } = "manual";
+
+    /// <summary>Break-point address (wall index / stack index / tile index within stack).
+    /// Computed by <see cref="BreakPointService.ComputeBreakPoint"/> from the dice roll.
+    /// Sent so the bundle can render the dealer's break point marker between rounds.</summary>
+    [JsonPropertyName("breakPoint")]
+    public BreakPointWire? BreakPoint { get; set; }
+
+    /// <summary>Current zero-based offset into <c>ChangshaGameState.Wall</c> where the
+    /// next pickup will draw from. Lets the bundle preview which slots will be removed
+    /// next without re-deriving from <c>BreakPoint</c>.</summary>
+    [JsonPropertyName("wallIndex")]
+    public int WallIndex { get; set; }
+}
+
+/// <summary>JSON-friendly mirror of <c>Changsha.BreakPointResult</c> (record struct).
+/// Lives in this protocol-layer file so the autotable WS contract is fully described
+/// alongside the rest of the wire format.</summary>
+public sealed class BreakPointWire
+{
+    [JsonPropertyName("wallIndex")]
+    public int WallIndex { get; set; }
+
+    [JsonPropertyName("stackIndex")]
+    public int StackIndex { get; set; }
+
+    [JsonPropertyName("tileIndex")]
+    public int TileIndex { get; set; }
 }
 
 /// <summary>Outbound <c>JOINED</c> envelope.</summary>
