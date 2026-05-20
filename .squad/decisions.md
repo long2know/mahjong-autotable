@@ -1390,3 +1390,184 @@ Three concrete cuts. Each independently shaves real time.
 ---
 
 *End plan. Awaiting Stephen's batch-answer on §4 decisions 1–15 before Phase A kicks off.*
+
+---
+
+## Phase F — Changsha Realism (manual pickup, variant switch, 3-tier bot)
+
+**Branch:** `stlong/phase-f-changsha-realism` (cut from `stlong/phase-b-changsha-scene`)
+**Tip:** `b64efb8` (Wave 4 + reconciliation + stale-bundle prune)
+**Shipped:** 2026-05-19 (post-Wave-3)
+**Tests at gate:** **319 / 0 / 9** (Wave 4 reconciliation; was 318/1/9 before the privacy-mask slot-suffix fix)
+**Bundle:** `src/frontend/autotable/autotable-src.6d5fae4c.js`
+**Primary sources (kept in `.squad/decisions/inbox/`, gitignored — local-only references):**
+- `copilot-directive-2026-05-19T1605Z-changsha-realism.md` — Stephen's directive (verbatim)
+- `ripley-phase-f-design.md` — design contract (~955 lines, authoritative for §1–§8)
+- `vasquez-phase-f-rule-audit.md` — 12-axis rule audit + falsifiable bot-tier specs
+- `hicks-phase-f-frontend.md` — frontend delta
+- `bishop-phase-f-backend.md` — backend delta
+
+### Stephen's Directive (2026-05-19T16:05Z)
+
+After seeing the Wave-3 side-by-side screenshots, Stephen filed a major UX correction: the current "click Deal → tiles teleport" behaviour is wrong for real Changsha play. Four binding requirements:
+
+1. **Manual pickup is the DEFAULT** for Changsha. Auto-deal becomes opt-in. Real ceremony: dealer rolls 2d6 → break-point counted from right of chosen wall → CCW round-robin 4×3 → single-tile round → dealer-extra → AwaitingDiscard.
+2. **Original autotable variants MUST work without modification** when selected. Phase B's collapse of `GameType` to CHANGSHA-only must be reversed; Riichi 4p / 3p / Bamboo / Minefield ride the original upstream code path.
+3. **Single-player + bot-fill modes are required.** 0 / 3 / 4 bot fill. 3 bots = single-player; 4 bots = spectator mode.
+4. **Bots play full games autonomously** in spectator mode, with selectable difficulty (Easy / Medium / Hard — Stephen confirmed: all three ship in Phase F, not just Medium).
+
+Rule-source check (Stephen asked): both **Kong (杠)** and **Hu (胡)** are confirmed in the cited MahjongPros + Baidu sources; the 4-button claim arc (碰 / 吃 / 杠 / 胡) is correct. Hu is unusual as a UI "claim" (self-declared win) but exposing it as a button stays consistent.
+
+### §1 — Variant-Switching Architecture (Ripley)
+
+- **`GameType` enum restored** to upstream's 4 (`FOUR_PLAYER`, `THREE_PLAYER`, `BAMBOO`, `MINEFIELD`) alongside `CHANGSHA`. **`FOUR_PLAYER_DEMO` dropped** — never wired upstream, deliberate divergence (documented).
+- **`Conditions` extended** with `back`, `fives`, `points`, `baseUnit`, `dealMode`. `Conditions.defaultsFor(gameType)` produces the right per-variant baseline so each picker change is a clean re-seed.
+- **No new dual-code-path.** `AutotableGameState.UpdateSource.Runtime|Client` precedence (Wave 3) means when `variant != changsha` we simply never bind a Changsha runtime — the bundle's UPDATEs flow peer-to-peer through `AutotableGameState` as pure relay, exactly like upstream's `server/game.ts`. One switch (`AutotableConnection.RuntimeMode`); Relay vs ChangshaRuntime.
+- **Variant flag is frontend-driven, backend-respected.** Bundle sends `match[0].conditions.gameType` on first UPDATE; backend reads it to decide whether to bind a runtime game.
+- **Mid-session variant switching not supported** — runtime binds on first seat-take; subsequent connections see the bound runtime regardless of `?variant=`. UI gates `#game-type` select behind a "Reload to change variant" warning (Phase G can hot-swap). `#deal-mode` stays hot-swap-safe (takes effect on next deal).
+
+### §2 — Manual-Pickup State Machine (Ripley + Vasquez locked, Bishop shipped)
+
+Grafted onto `ChangshaPhase.Dealing` as a sub-state machine, NOT a parallel system. The existing one-shot `Deal()` becomes the `dealMode=auto` path; new `BeginManualDeal() → TakeTilesFromWall() × N → AwaitingDiscard` is the `dealMode=manual` path. Both converge in identical hand state. Downstream (claim, scoring, banker rotation) untouched.
+
+**6 new `ChangshaPhase` values** stitched between `RollingDice` and `AwaitingDiscard`:
+`BreakPointMarked` → `PickupRound1` → `PickupRound2` → `PickupRound3` → `SingleTilePickup` → `DealerExtra` → `AwaitingDiscard`.
+
+State carries `state.PickupSeatIndex` + `state.PickupExpectedCount` + `state.BreakPoint` (the wall-index where the dealer breaks; cursors advance CCW from there).
+
+**Wire shape — new `pickup` collection (singleton; key `current` / `0`):**
+- **Inbound (server → bundle):** `{ phase, seatIndex, expectedCount, dealMode, breakPoint, wallIndex }`. Tombstoned on transition to `AwaitingDiscard`.
+- **Outbound (bundle → server):** `pickup.rollDice` `{ seatIndex }` and `pickup.take` `{ seatIndex, count, wallTileIds }`. `wallTileIds` is informational (the runtime is authoritative for wall ordering and may ignore the field).
+
+**Rules locked by Vasquez (12-axis audit, with sources):**
+
+| Topic | Default |
+|---|---|
+| Dice | 2d6, sum 2..12; dealer rolls; **single roll per hand** (no re-roll/advantage) |
+| Wall break — count direction | **STACKS** from the right end of chosen wall (NOT individual tiles — odd sums would land mid-stack, physically impossible) |
+| Wall break — selection | `wallIndex = (dealer + (sum-1) % 4) % 4` |
+| Wall break — boundary | Break tile is the FIRST tile drawn (state.Wall index 0 after rotation) |
+| Pickup order | **CCW**: dealer → +1 → +2 → +3 (mod 4) — all 3 primary sources (MahjongPros, Baidu, `docs/rules/changsha-spec.md`) agree |
+| Pickup rounds | 4-each × 3 → 1-each × 1 → dealer-extra × 1 (54 stacks total = 108 tiles; pickup consumes exactly 53) |
+| Wall-wrap during pickup | Physically possible but mathematically impossible (max pickup 53 < wall 108); asserted as invariant |
+| Dealer post-pickup count | 14 (others: 13); wall remaining: 55 |
+| Hu during pickup | Forbidden — phase-gate rejects (hand is incomplete) |
+| Kong replacement during pickup | N/A — Kongs only after `AwaitingDiscard`; uses back of wall (no intersection) |
+| Mid-game dealMode toggle | Silently deferred to next hand |
+| Mid-game variant toggle | Rejected — requires page reload |
+
+**Wave 3's per-viewer privacy filter already handles partial-hand privacy.** Translator's `BuildThingEntries` walks `state.Hands` size-agnostically; an 8-tile concealed hand renders 8 face-down entries to non-viewer seats automatically. Zero new privacy code.
+
+**Crucial state-machine detail (Bishop, per `ExpectedPickupCount`):** the FIRST pickup is the dealer's round-1 of 4 tiles — phase stays at `BreakPointMarked` until that first call lands, then advances to `PickupRound1` for the next 3 seats. The other rounds map directly: `PickupRound1/2/3` → 4 tiles; `SingleTilePickup` → 1; `DealerExtra` → 1 (dealer-only, no cursor rotation).
+
+### §3 — Deal-Mode Toggle (Ripley)
+
+- **Default `dealMode`:** `manual` for Changsha, `auto` for upstream variants (driven by `Conditions.defaultsFor`).
+- **`Auto` is backward-compat.** The E2E WS test (`Full_Hand_ViaAutotableWebSocketRelay_BotsAndOneHuman`) still uses the auto path unchanged. Test/runtime composition is unchanged for that path.
+- **Toggle applies on the NEXT deal,** not the active one. The bundle's `match[0].conditions.dealMode` is the source of truth.
+
+### §4 — Bot Fill Modes (Ripley)
+
+- **0 / 3 / 4 bot fill** in the lobby/setup panel.
+  - 0 bots: wait for humans (default for online play).
+  - 3 bots: **single-player mode** (human + 3 bots fill seats 1–3).
+  - 4 bots: **spectator mode** (watch 4 bots play; user is observer).
+- **Default `botCount`:** 3. **Default `botDifficulty`:** Medium.
+- **`AutotableConnection.AutoBotFill` flips** from Wave-3's `true` default to explicit `BotCount`-driven fill. Wave-3 bare-URL UX is preserved because `botCount=3` is the new query-param default.
+- **Bot seat → human conversion** at any time (click unseat on a bot seat to free it).
+
+### §5 — Full Changsha Bot Engine (Ripley design, Vasquez specs, Bishop shipped)
+
+Replaced the legacy claim-resolution-only `ChangshaBotPolicy` with a pluggable engine. New `Changsha/Bot/` directory holds the engine; legacy `ChangshaBotPolicy.cs` is now a thin facade over `ChangshaBotEngine.Resolve("medium").DecideAction(state, seat)` — `BotMatchHarness` and existing harness tests terminate identically.
+
+**`IChangshaBotStrategy`** — 4 phase hooks + unified `DecideAction` router:
+- `OnTurnStart(state, seat)` — own-turn decision
+- `OnOtherDiscard(state, seat, discarderSeat, discardedTileId)` — claim window decision
+- `OnSelfDraw(state, seat)` — post-draw decision (Hu / Kong / standard)
+- `OnPickupCue(state, seat)` — pickup-phase cue
+- `DecideAction(state, seat)` preserved as the public entry point so the existing harness keeps working unchanged.
+
+**Three falsifiable tiers (Vasquez §10):**
+
+| Tier | Discard rule | Chow | Kong | Hu | Defensive? |
+|---|---|---|---|---|---|
+| **Easy** | Highest-rank tile (Wan < Tong < Tiao tiebreak by suit-index desc) | **Never** | Only when hand ≥10 tiles | **Always claim** | No (no EV) |
+| **Medium** (port of legacy `ChangshaBotPolicy`) | Shanten-minimizing (pairs + adjacencies + 2/5/8 bias) | Only when next-CCW + non-shanten-worsening | Always claim if offered | Always | Tracks 过胡 lockout |
+| **Hard** | EV-maximizing (Medium keep-score + defensive penalty against tiles in `state.DiscardPile`) | Only when shanten-improving | EV-gated (`CountLooseTiles ≥ 2`) | Always | Tracks others' 过胡; biases away from feeding seats with `MissedWinSeats` flag |
+
+**`HandEvaluator`** ships as a static utility: `SelectDiscardTile(hand, [state])`, `CountLooseTiles(hand)`, `FindConcealedKongCandidate(hand)`, `FindAddedKongCandidate(hand)`, `CollectDiscardedLogicals(state)`, and the coarse `MinShantenToHu(hand, remainingWall)` estimator. Vasquez's test only asserts `shantenAfter ≤ shantenBefore` on discard (which the coarse estimator satisfies because removing any tile cannot increase the loose-tile floor and the groups-held count is monotone). Rigorous shanten counter deferred to V2 (Big-Win patterns make it expensive).
+
+**`ChangshaBotEngine.Resolve(string?)`** — case-insensitive; null/empty/unknown → `MediumStrategy`. Singleton instances, zero per-decision allocation.
+
+**Bot delays (`ChangshaRuntimeOptions`):** `BotMoveDelayMs = 800` (turn), `BotPickupDelayMs = 500` (pickup), `BotClaimDelayMs = 400` (claim). All configurable via `IOptions<ChangshaRuntimeOptions>`.
+
+### Backend — Bishop's Cut
+
+- **`AutotableProtocol.cs`** — new `Pickup` collection kind + `PickupEntry` / `BreakPointWire` value classes.
+- **`AutotableWsEndpoint.cs`** — `AutotableRuntimeMode` enum (`Relay` | `ChangshaRuntime`). `AutotableConnection` gains `Variant`, `DealMode`, `BotCount`, `BotDifficulty`, and computed `RuntimeMode`. `HandleConnectionAsync` parses 4 query params with defaults (`variant=changsha`, `dealMode=manual`, `botCount=3`, `botDifficulty=Medium`). `HandleUpdateAsync` branches on `RuntimeMode`: **Relay = full passthrough** (privacy filter + translator never invoked, byte-identical to upstream `pwmarcz/autotable`'s `server/game.ts`); **ChangshaRuntime = existing Phase D routing** plus new `Pickup` kind routed to `TryHandlePickupActionAsync`.
+- **`ChangshaToAutotableTranslator.cs`** — emits `pickup["current"]` during `IsPickupPhase(state.Phase)`; tombstoned on `AwaitingDiscard`.
+- **`ChangshaGameRuntime.cs`** — `StartGameAsync` branches on `state.DealMode`: `Auto` runs the existing one-shot `Deal()`; `Manual` stops at `RollingDice` and waits for `RollDiceAsync` / `TakeTilesFromWallAsync`. Both new entry points hold `instance.Lock` and fire `StateChanged`.
+- **`BeginManualDeal(state, DiceRoll)`** takes a `DiceRoll` directly (not `IDiceService`) so test harnesses can pin the roll; runtime injects the seeded `DiceService` for determinism.
+- **`Changsha/Bot/`** — new dir: `IChangshaBotStrategy.cs`, `EasyStrategy.cs`, `MediumStrategy.cs`, `HardStrategy.cs`, `HandEvaluator.cs`, `ChangshaBotEngine.cs`.
+
+### Frontend — Hicks's Cut
+
+- **Setup pipeline branched.** `setup-slots.ts` got upstream's `SLOT_GROUPS` for all four Riichi variants verbatim (tray + payment + riichi `START` slots restored). `setup-deal.ts` got upstream `DEALS` (including FOUR_PLAYER's 11 roll-conditional `HANDS` variants) + `POINTS` table. `setup.ts` branches `setup`/`addTiles`/`tileIndex`/`replace`/`getScores`/`addSticks` on `gameType === CHANGSHA`. Changsha keeps its 108-tile / no-stick shape; Riichi variants get the full 136 + sticks treatment.
+- **`pickup` collection on `client.ts`.** Singleton key `0` carries Bishop's pushed phase snapshot; outbound keys `'rollDice'` and `'take'` are command shapes (cast `as any` at the call site, same pattern as `claim`).
+- **`world.onPickup()` caches latest entry; `world.isMyPickupTurn()` gates wall-tile drags.** When the gate is hot, `onDragStart` intercepts the wall click and emits `pickup.take` instead of starting a drag — **no optimistic move**; the runtime owns the truth.
+- **Pickup HUD** (center-bottom): "Your turn — pick N tiles" with a Take-N shortcut button; switches to "Seat E is picking…" when another seat is on the clock; hidden when no pickup active.
+- **Roll-dice button** (table center, dice icon + "Roll dice" label). Visible only when `pickup.phase` ∈ {`RollingDice`, `rollDice`} AND `pickup.seatIndex === selfSeat`. Click → emits `pickup.rollDice` → backend resolves → existing Wave 3 dice HUD takes over.
+- **Deal-mode toggle (Changsha-only):** `#deal-mode` select (manual/auto) folds into `Conditions.dealMode`; takes effect on next deal.
+- **Bot count + difficulty pickers** are informational for now (banner + localStorage persistence); once Bishop's per-seat difficulty field ships, the banner reads from `SeatInfo`.
+- **Variant indicator badge** (top-right): 🀄/🎴/🎋/💣 by family. Updates on every match update.
+- **Honba toggle + Reset points** restored from upstream, gated `riichi-only`. CSS body class (`variant-changsha` / `variant-riichi`) drives picker visibility.
+- **URL params + localStorage.** `?variant=` / `?dealMode=` / `?botCount=` / `?botDifficulty=` / `?fives=` / `?points=` parsed at boot. Back-compat: `?bots=true` aliases `?botCount=3`. Resolution order: URL > localStorage > `Conditions.defaultsFor()`. Storage namespace: `autotable.phaseF.v1.*`.
+
+### Design Decisions Worth Recording (Hicks)
+
+1. **Strict lockout of frontend-only pickup state.** Bundle does NOT mirror Bishop's pickup phase machine — it only renders what arrives. Optimistic UI is explicitly rejected: a "take" click does NOT pre-move tiles; the runtime's `things` UPDATE moves them. Keeps bundle stateless w.r.t. pickup ordering and avoids resync drift.
+2. **`wallTileIds` is informational.** Frontend computes it by walking wall slots in name-sort order (numeric-aware) and picking the first N occupied. Backend may use it for cross-validation or ignore entirely.
+3. **Variant hot-swap deferred to Phase G.** Setup pipeline rebuilds tile catalogues at boot; mutating `gameType` mid-session would leave dangling Things in the scene graph.
+4. **Dual-affordance pickup:** Take-N HUD button AND wall-click intercept emit the same `pickup.take` — the button is the impatient-player shortcut, the click is the natural gesture.
+
+### Reconciliation — `30d03ee`
+
+After the Wave 4 parallel landings (Hicks + Bishop + Vasquez tests), one test failed and two minor contract drifts surfaced:
+
+1. **Pickup singleton key drift.** Hicks's bundle expected the inbound singleton at key `0` (number); Bishop's translator emitted at key `"current"` (string). Reconciliation aligned both ends — translator emits both; bundle reads either. Single source of truth from here forward.
+2. **Privacy-mask slot-suffix test bug** (`ManualPickupAcceptanceTests.Pickup_PrivacyMask_OpposingHandsHaveFacesStripped`). Slot format is `"hand.{handIdx}@{seat}"`; the test used `slot.StartsWith("hand.0")` to identify the viewer's hand (which would match `hand.0@anyone`). Bishop diagnosed the bug in the inbox note; reconciliation applied the fix (use `slot.EndsWith("@0")`). **Deferred follow-up:** `FilterEntriesForViewer` (AutotableWsEndpoint.cs:644–652) has the same wrong slot-parse — non-blocking (no test exercises it before Phase F; relay-mode connections never invoke the filter), but should be cleaned up in a follow-up pass.
+
+Result: **318/1/9 → 319/0/9.** Stale parcel bundle (`d9507f0f.js`) pruned in `b64efb8`.
+
+### Deferred Follow-ups (Filed, Not Blocking)
+
+- **Bot pickup tick scheduler** — `OnPickupCue` hook is in place and returns `Wait` per the test contract, but the runtime tick loop that schedules `TakeTilesFromWallAsync(gameId, pickupSeat, ExpectedPickupCount(phase))` after `BotPickupDelayMs` is NOT yet wired. Needed before bots can do manual pickup visually; Bishop's small follow-up.
+- **`FilterEntriesForViewer` slot-suffix fix** — same `EndsWith("@N")` change as the test; cleanup pass.
+- **`MinShantenToHu` accuracy** — coarse estimator passes the current tests but is not rigorous (Changsha's Big-Win patterns make a true shanten counter expensive). Deferred to V2.
+- **Hard-tier EV budget overruns** — depth-2 lookahead may exceed 800ms in pathological hands; Medium fallback per Ripley §7.6, soft-bounded.
+- **Soft variant hot-swap** — Phase G.
+
+### Smoke-Test Recipe (Ripley §8, the headline Test 1)
+
+1. Open `/autotable/?variant=changsha&dealMode=manual&botCount=3`.
+2. Click `Take seat 0` → backend assigns seat 0 → bots auto-fill seats 1–3 within 1s. Bot banner: `"🤖 You vs 3 bots (Medium)"`.
+3. `Roll Dice` button appears near the dealer's wall. Click it.
+4. Dice roll animation plays; dice HUD shows `d1 + d2 = sum`; break-point marker appears at the corresponding wall column.
+5. Next 4 tiles in the wall glow. Click any one → all 4 fly to seat 0's hand (face-up to you, face-down to others). Bots auto-pick their 4 with 500ms delays in CCW order.
+6. Round 2 + round 3 → all seats have 12 tiles.
+7. Single-tile pickup: 1 tile each. Click → seat 0 has 13.
+8. Bots take their 1 each → all seats have 13.
+9. Dealer (seat 0) takes 1 more → seat 0 has 14. UI: "Discard a tile."
+10. Drag a tile from hand → discard placed; claim window opens; bots claim/pass with 400ms delays.
+11. Play through to Hu → scoring modal → click `Next Hand` → banker rotates per Changsha §6; next hand starts with `RollingDice` (manual persists).
+
+Additional smoke tests: variant switch to Riichi 4p (auto-deal, upstream-byte-identical scene), auto-deal Changsha (Wave 3 regression), spectator mode (4 bots), and three-difficulty bot smoke (Easy never claims Chow; Medium claims when next-CCW; Hard avoids feeding `MissedWinSeats` flagged seats).
+
+### Sign-Off
+
+- **Ripley** — design landed; sign-off implicit in successful parallel decomposition (Vasquez/Hicks/Bishop all built directly from `ripley-phase-f-design.md` §6 disjoint scope table without collision).
+- **Vasquez** — rule audit signed off; 3 new acceptance files, ~45 cases via reflection (so the test assembly always compiles even before Bishop's symbols land).
+- **Hicks** — frontend signed off; `tsc` strict ✓, parcel build ✓.
+- **Bishop** — backend signed off; `dotnet build` 0/0; 22/22 bot engine tests, all variant switch tests, all manual pickup tests green post-reconciliation.
+- **Stephen** — pending headline smoke-test approval (Test 1). PR ready for review.
+

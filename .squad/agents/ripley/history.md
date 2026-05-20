@@ -49,3 +49,46 @@ Stephen bolted a binding constraint onto the pivot mid-flight (`copilot-directiv
 **Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
 **Timestamp:** 2026-05-13T23:05Z
 **Contribution:** Synthesized 5-phase pivot plan from parallel inventories (Bishop/Hicks/Vasquez), articulated 16 numbered architectural defaults (vendoring, bundler, lobby, claims, privacy, etc.), drafted 3 MVP fast-cuts (single-game-per-instance, drag-to-meld, defer Vasquez gaps), incorporated F5 dev-loop constraint amendment (compound launch + Parcel watch task). Plan awaited Stephen's batch-decision; after acceptance, Phase A executed in parallel by Bishop + Hicks.
+
+## Phase F Design — DESIGN LANDED (2026-05-19)
+
+**Branch:** stlong/phase-b-changsha-scene (recommend cutting `stlong/phase-f-changsha-realism` for actual work)
+**Timestamp:** 2026-05-19T~17:00Z (post-Wave-3-launch, gating Vasquez/Hicks/Bishop fan-out)
+**Drop:** `.squad/decisions/inbox/ripley-phase-f-design.md` (~955 lines)
+
+### Scope
+
+Stephen issued a major UX-correction directive: the current "click Deal → auto-deal" behavior is wrong for real Changsha play. Phase F design covers (1) variant switching Changsha ↔ original autotable variants with backend-runtime-vs-relay dual mode, (2) a manual-pickup state machine with 5 new ChangshaPhase enum values driving the dice-roll → break-point → round-robin-4×3 → single-tile → dealer-extra sequence per MahjongPros/Baidu, (3) `dealMode: manual|auto` toggle (manual default for Changsha, auto default for Riichi), (4) bot fill modes (0/3/4 with single-player + spectator), and (5) full Changsha bot engine via pluggable `IChangshaBotStrategy` (Easy/Medium/Hard, with Medium = port of existing `ChangshaBotPolicy`).
+
+### Architectural Keystones
+
+1. **Runtime-vs-relay duality already exists.** `AutotableGameState.UpdateSource.Runtime|Client` precedence (Wave 3) means when `variant!=changsha` we simply never bind a Changsha runtime game — the bundle's UPDATEs flow peer-to-peer through `AutotableGameState` as pure relay, exactly like upstream's `server/game.ts`. No new dual-code-path; one switch (`AutotableConnection.RuntimeMode`).
+2. **Manual pickup is a sub-state machine grafted on `ChangshaPhase.Dealing`,** not a parallel system. The existing one-shot `Deal()` becomes the `dealMode=auto` path; new `BeginManualDeal() → TakeTilesFromWall() × N → AwaitingDiscard` is the `dealMode=manual` path. Both converge in identical hand state. Downstream (claim, scoring, banker rotation) untouched.
+3. **Wave 3's per-viewer privacy filter already handles partial-hand privacy correctly.** Translator's `BuildThingEntries` walks `state.Hands` size-agnostically; an 8-tile concealed hand renders 8 face-down entries to non-viewer seats automatically. Zero new privacy code.
+4. **One new collection kind: `pickup`.** Singleton entry (key=0) carrying `{phase, seatIndex, count, dealMode, breakPoint, wallIndex}`. Server emits during pickup; tombstones on `AwaitingDiscard`. Inbound (client) entries `pickup.rollDice` and `pickup.take` route to two new runtime methods (`RollDiceAsync`, `TakeTilesFromWallAsync`).
+
+### Disjoint Scope Locks for Vasquez/Hicks/Bishop
+
+Wrote the §6 table explicitly enumerating READ+WRITE / READ-only / MUST-NOT-TOUCH per agent. Bishop = bottleneck (12+ files including new `Changsha/Bot/` directory with 6 new files for the strategy engine). Hicks = second bottleneck (10 TS/HTML/CSS files + rebuilt parcel bundle). Vasquez = fast (3 new test files + `AcceptanceFixture.cs` helper edit). Coordinator can fan out all three in parallel — strict-disjoint scopes prevent file-level collision.
+
+### Locked Defaults (per Stephen's "accept defaults" earlier)
+
+Difficulty levels: all three Easy/Medium/Hard ship in Phase F (Stephen confirmed). Default variant: Changsha. Default dealMode: manual for Changsha, auto for everything else (preserves upstream UX). Default botCount: 3. Default botDifficulty: Medium. Default bot speed: 800ms move / 500ms pickup / 400ms claim (configurable via `ChangshaRuntimeOptions`). `AutotableConnection.AutoBotFill` flips from Wave-3's `true` default to explicit `BotCount`-driven fill — Wave 3 bare-URL UX is preserved because `botCount=3` is the new query-param default.
+
+### Top Risks Captured
+
+1. Pickup state machine has 6 distinct phases — easy to bug. Mitigated by Vasquez's `ManualPickupAcceptanceTests.cs` covering every transition + every invalid-seat/count rejection (target ~18 cases).
+2. Mid-session variant switching can't hot-swap (runtime is already bound). Mitigated by gating the `#game-type` select behind a "Reload to change variant" warning; `#deal-mode` stays hot-swap.
+3. Hard-tier bot performance (EV depth-2 lookahead) might exceed 800ms budget. Mitigated by per-(hand,draw) EV cache + Medium-tier fallback under budget pressure.
+
+### Cut Lines
+
+In priority order if Phase F runs over: cut Hard difficulty (→ Phase F.1), then break-point marker icon (→ "highlight only"), then spectator mode (→ 0/3 only). Do NOT cut manual pickup, variant switching, or single-player bot fill — those are the directive.
+
+### Exit Gate
+
+§8.4 in the design doc: 5 named smoke tests (Changsha manual + bots, Riichi 4p variant switch, Changsha auto-deal regression, spectator mode, 3-difficulty bot smoke), `dotnet test` 250+ green, `parcel build` clean, all three agents sign off, Scribe merges, Stephen approves headline smoke test.
+
+### Self-Critique
+
+The §2.4 doc has a corrective breadcrumb (initial mislabeling of `PickupRound3` as count 1, with correction below) — left in deliberately as a "trust but verify" hint for Bishop. The corrected `ExpectedPickupCount` switch is canonical. Also: `FOUR_PLAYER_DEMO` is intentionally dropped on restore — documented as deliberate divergence from upstream rather than oversight. The translator's existing hardcoded `gameType="FOUR_PLAYER"` in `BuildMatch` (line 204) was a Wave 3 lie that Bishop needs to fix when restoring variant authority.
