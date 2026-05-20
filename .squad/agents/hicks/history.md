@@ -630,3 +630,65 @@ tile face privacy via rotation coercion) and UI-design discretionary calls
 6. On hand end, centered modal appears with gold headline (胡! / 流局 Draw
    / 诈胡 False Hu), score-delta table, and winning-hand tiles as 2D
    cells. Click `下一局 Next Hand` to advance the server.
+
+---
+
+## Phase F — Variant switching + manual pickup + bot UI (2025-05-19)
+
+**Branch:** `stlong/phase-f-changsha-realism` off `d461726` (Wave 3 Changsha runtime).
+**Bundle SHA:** `autotable-src.d9507f0f.js` (1.03 MB) — clean tsc-strict + parcel.
+
+### What I shipped
+Four switches layered onto Wave 3:
+1. **Variant switching** — restored upstream `GameType` enum (CHANGSHA + 4 Riichi variants), `Conditions.defaultsFor(gameType)` factory.
+2. **Manual-pickup state machine** — new `pickup` collection (singleton key 0 in / command keys 'rollDice' + 'take' out), drag-intercept gate, take-N HUD button.
+3. **Deal-mode toggle** — Changsha-only `manual`/`auto` select that flows into `Conditions.dealMode`.
+4. **Bot count + difficulty pickers** — informational for now (Bishop owns the engine); persist via localStorage; extend the bot banner.
+
+### Files touched
+| File | Purpose |
+|---|---|
+| `types.ts` | GameType, Conditions, PickupEntry |
+| `setup-slots.ts` | Upstream SLOT_GROUPS + tray/payment/riichi START slots restored |
+| `setup-deal.ts` | Upstream DEALS (incl. 11 FOUR_PLAYER roll variants) + POINTS table |
+| `setup.ts` | Variant-branched `setup`/`addTiles`/`tileIndex`/`replace`/`getScores`/`addSticks` |
+| `client.ts` | `pickup` collection registration (Collection<string\|number, PickupEntry>) |
+| `world.ts` | Pickup gating, drag-intercept, `toggleHonba`, `resetPoints`, `deal(overrides)` |
+| `game-ui.ts` | All Phase F DOM wiring — pickers, pickup HUD, roll-dice, variant badge, URL params, localStorage |
+| `index.html` | Setup-group rebuild + pickup HUD + roll-dice + variant badge + break marker |
+| `style.css` | Variant-class visibility, variant badge, pickup HUD, roll-dice, break marker, wall-glow |
+| `src/frontend/autotable/**` | Parcel rebuild |
+
+### Learnings worth remembering
+1. **`Fives` and `Points` are string-typed unions, not numbers.**  Fives: `'000' | '111' | '121'`.  Points: `'25' | '30' | '35' | '40' | '100'`.  Don't `parseInt` them — pass the string straight through.  I wasted a tsc round-trip on this.
+2. **Collection key widening is a pattern.**  Phase D widened `dice` to `Collection<string | number, DiceInfo>` so Bishop's `'current'` key worked alongside legacy `0`.  I did the same for `pickup` (`'rollDice'` + `'take'` outbound, `0` inbound) — saves a parallel event system.  Future Bishop collections needing inbound-vs-outbound shapes should follow the same widening pattern.
+3. **Don't optimistically mutate scene state from frontend protocol commands.**  When the player clicks a wall tile during pickup, I emit `pickup.take` and STOP — no preview move.  The runtime's `things` UPDATE moves the tile.  This avoids resync drift when the backend rejects (e.g. wrong seat, wrong count, wrong phase).  Phase D-frontend's claim arc follows the same rule.
+4. **Variant hot-swap is hard.**  The setup pipeline rebuilds the entire tile catalogue at construction.  Live variant change leaves orphan Things in the scene graph.  Phase F warns "Reload to change variant" rather than attempting a hot-swap; Phase G can promote when setup gets a clean dispose path.
+5. **CSS body classes as variant gates.**  Setting `body.variant-changsha` or `body.variant-riichi` and gating `.changsha-only` / `.riichi-only` with `!important display: none` is cleaner than per-element `.style.display` bookkeeping.  Pickers stay declared in the HTML; CSS hides the wrong ones.
+6. **URL → localStorage → defaults priority chain.**  Standard pattern but easy to invert by mistake.  URL wins (deep-link friendly), localStorage is the user's persistent choice, `Conditions.defaultsFor(gameType)` is the floor.  My `resolvePhaseFParams()` does this cleanly.
+7. **Variant indicator badge is high-value, low-effort.**  Players don't remember what they clicked 30 seconds ago.  A top-right pill with the variant emoji + name is the single biggest UX-clarity win in Phase F.
+
+### Smoke recipe (Changsha — Wave 3 path, validates no regression)
+1. Open `/autotable/?variant=changsha&dealMode=manual&botCount=0`.
+2. Top-right shows `🀄 Changsha`.  Sidebar setup-group exposes deal-mode, bot pickers; fives/points/honba/reset-points hidden.
+3. Take seat 0.  Bot banner stays hidden (botCount=0).
+4. Click Deal — Wave 3 flow.  108 tiles deal, dice HUD briefly.  No pickup HUD (no `pickup` collection entries yet from backend).
+5. Play through to Hu — scoring modal renders.  No regression vs Phase D-frontend.
+
+### Smoke recipe (post-Bishop — when pickup runtime lands)
+1. Open `/autotable/?variant=changsha&dealMode=manual&botCount=3`.
+2. Take seat 0.  3 bots join.  Bot banner reads `3 bots — Medium · seats 1, 2, 3`.
+3. Roll-dice button appears at center.  Click it.  Backend resolves dice + break-point.
+4. Pickup HUD: "Your turn — pick 4 tiles" + Take 4 button.  Click Take 4 (or click any wall tile).  Runtime moves 4 tiles to hand.
+5. Repeat 3 rounds + single + dealer extra → discard → claim window → Hu.
+
+### Stubs awaiting Bishop
+- Backend `pickup` collection (singleton emit, command-shape ack).
+- Backend bot engine (seat-fill driven by `botCount` + `botDifficulty`).
+- Backend variant gating (skip Changsha state machine when `Conditions.gameType !== CHANGSHA`).
+- Wall-glow class application — CSS hook is `.wall-glow` on wall meshes; needs object-view extension to walk `next-N` wall slots and add/remove the class on `pickup` update.  Phase G.
+
+### Open questions for the team
+- Should `Take N` be enabled even when N > remaining wall tiles?  Probably no — bundle currently sends `count: pickup.count` straight through; backend should reject if wall depleted.
+- Should the break marker position be computed in `world.ts` from the actual 3D wall geometry, or stay as CSS-positioned per-seat overlay?  MVP picked CSS; Phase G can promote to true 3D overlay if visual feedback is unconvincing.
+- Variant switch via dropdown currently triggers a soft warning in the variant badge ("↻ Reload to change to ..."), not an auto-reload.  Acceptable UX? Or should we `location.reload()` after a 2 s confirmation?

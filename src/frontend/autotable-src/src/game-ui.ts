@@ -8,6 +8,11 @@ import {
   HandResultEntry,
   DiceInfo,
   MatchInfo,
+  GameType,
+  Fives,
+  Points,
+  DealMode,
+  PickupEntry,
 } from './types';
 
 // Phase D — claim window expiry uses the deadline (epoch ms) that the server
@@ -16,6 +21,17 @@ const CLAIM_TICK_MS = 100;
 
 // Phase D — dice HUD lifetime (after first-deal roll, before fade-out).
 const DICE_HUD_LIFETIME_MS = 3000;
+
+// Phase F — localStorage namespacing.  We store the user's last-chosen
+// variant + deal-mode + bot config so a refresh re-applies the same setup.
+// Versioned in case the schema needs to change later.
+const LS_KEY_PREFIX = 'autotable.phaseF.v1.';
+const LS_VARIANT       = LS_KEY_PREFIX + 'variant';
+const LS_DEAL_MODE     = LS_KEY_PREFIX + 'dealMode';
+const LS_BOT_COUNT     = LS_KEY_PREFIX + 'botCount';
+const LS_BOT_DIFFICULTY = LS_KEY_PREFIX + 'botDifficulty';
+const LS_FIVES         = LS_KEY_PREFIX + 'fives';
+const LS_POINTS        = LS_KEY_PREFIX + 'points';
 
 type ClaimAction = { action: 'claim'; type: 'Pung' | 'Chow' | 'Kong' | 'Hu' }
                  | { action: 'pass'; type: null };
@@ -39,6 +55,106 @@ function isBotNick(nick: string | null | undefined): boolean {
   return !!nick && nick.startsWith('Bot ');
 }
 
+// Phase F — variant-badge label and CSS body class selection.  Two-character
+// emoji + variant short-name so players never have to open the sidebar to
+// confirm what they're playing.
+function variantLabel(gameType: GameType): string {
+  switch (gameType) {
+    case GameType.CHANGSHA:     return '🀄 Changsha';
+    case GameType.FOUR_PLAYER:  return '🎴 Riichi 4p';
+    case GameType.THREE_PLAYER: return '🎴 Riichi 3p';
+    case GameType.BAMBOO:       return '🎋 Bamboo';
+    case GameType.MINEFIELD:    return '💣 Minefield';
+  }
+}
+
+// Phase F — URL params parsed once at page-load and merged with localStorage.
+// Priority order: URL > localStorage > Conditions defaults.
+interface PhaseFParams {
+  variant?:       GameType;
+  dealMode?:      DealMode;
+  botCount?:      number;
+  botDifficulty?: 'easy' | 'medium' | 'hard';
+  fives?:         Fives;
+  points?:        Points;
+}
+
+function parseUrlParams(): PhaseFParams {
+  const p = new URLSearchParams(window.location.search);
+  const out: PhaseFParams = {};
+
+  const variant = p.get('variant');
+  if (variant) {
+    const upper = variant.toUpperCase().replace(/-/g, '_');
+    if (upper in GameType) {
+      out.variant = upper as GameType;
+    }
+  }
+
+  const dealMode = p.get('dealMode');
+  if (dealMode === 'manual' || dealMode === 'auto') {
+    out.dealMode = dealMode;
+  }
+
+  // Phase F — back-compat: `?bots=true` aliases `?botCount=3`.
+  const bots = p.get('bots');
+  if (bots === 'true' || bots === '1') {
+    out.botCount = 3;
+  }
+  const botCount = p.get('botCount');
+  if (botCount !== null) {
+    const n = parseInt(botCount, 10);
+    if (!isNaN(n) && n >= 0 && n <= 4) out.botCount = n;
+  }
+
+  const diff = p.get('botDifficulty');
+  if (diff === 'easy' || diff === 'medium' || diff === 'hard') {
+    out.botDifficulty = diff;
+  }
+
+  const fives = p.get('fives');
+  if (fives === '000' || fives === '111' || fives === '121') {
+    out.fives = fives;
+  }
+
+  const points = p.get('points');
+  if (points === '25' || points === '30' || points === '35' || points === '40' || points === '100') {
+    out.points = points;
+  }
+
+  return out;
+}
+
+function readLocalStorage(): PhaseFParams {
+  const out: PhaseFParams = {};
+  try {
+    const v = localStorage.getItem(LS_VARIANT);
+    if (v && v in GameType) out.variant = v as GameType;
+    const d = localStorage.getItem(LS_DEAL_MODE);
+    if (d === 'manual' || d === 'auto') out.dealMode = d;
+    const b = localStorage.getItem(LS_BOT_COUNT);
+    if (b !== null) {
+      const n = parseInt(b, 10);
+      if (!isNaN(n) && n >= 0 && n <= 4) out.botCount = n;
+    }
+    const diff = localStorage.getItem(LS_BOT_DIFFICULTY);
+    if (diff === 'easy' || diff === 'medium' || diff === 'hard') out.botDifficulty = diff;
+    const f = localStorage.getItem(LS_FIVES);
+    if (f === '000' || f === '111' || f === '121') out.fives = f;
+    const pts = localStorage.getItem(LS_POINTS);
+    if (pts === '25' || pts === '30' || pts === '35' || pts === '40' || pts === '100') {
+      out.points = pts;
+    }
+  } catch {
+    // localStorage may be blocked (private mode, etc.) — silently fall through.
+  }
+  return out;
+}
+
+function writeLocalStorage(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* ignore */ }
+}
+
 export class GameUi {
   private client: Client;
   private world: World;
@@ -46,11 +162,19 @@ export class GameUi {
   elements: {
     deal: HTMLButtonElement;
     toggleDealer: HTMLButtonElement;
+    toggleHonba: HTMLButtonElement;
     takeSeat: Array<HTMLButtonElement>;
     kick: Array<HTMLButtonElement>;
     leaveSeat: HTMLButtonElement;
     toggleSetup: HTMLButtonElement;
     dealType: HTMLSelectElement;
+    gameType: HTMLSelectElement;
+    dealMode: HTMLSelectElement;
+    botCount: HTMLSelectElement;
+    botDifficulty: HTMLSelectElement;
+    fives: HTMLSelectElement;
+    points: HTMLSelectElement;
+    resetPoints: HTMLButtonElement;
     setupDesc: HTMLElement;
     claim: {
       Pung: HTMLButtonElement;
@@ -73,12 +197,23 @@ export class GameUi {
     diceHudSum: HTMLElement;
     diceHudBreak: HTMLElement;
     botBanner: HTMLElement;
+    variantBadge: HTMLElement;
+    pickupHud: HTMLElement;
+    pickupHudText: HTMLElement;
+    pickupTakeBtn: HTMLButtonElement;
+    pickupTakeCount: HTMLElement;
+    rollDice: HTMLButtonElement;
+    breakMarker: HTMLElement;
   }
 
   // Phase D — claim window state.
   private activeClaim: ClaimWindowEntry | null = null;
   private claimTickHandle: number | null = null;
   private diceHudHandle: number | null = null;
+
+  // Phase F — last parsed Phase F params (URL > localStorage > defaults).
+  // The picker UI keeps this in sync so subsequent deals see the latest.
+  private phaseF: Required<PhaseFParams>;
 
   constructor(client: Client, world: World) {
     this.client = client;
@@ -87,11 +222,19 @@ export class GameUi {
     this.elements = {
       deal: document.getElementById('deal') as HTMLButtonElement,
       toggleDealer: document.getElementById('toggle-dealer') as HTMLButtonElement,
+      toggleHonba:  document.getElementById('toggle-honba') as HTMLButtonElement,
       takeSeat: [],
       kick: [],
       leaveSeat: document.getElementById('leave-seat') as HTMLButtonElement,
       toggleSetup: document.getElementById('toggle-setup') as HTMLButtonElement,
       dealType: document.getElementById('deal-type') as HTMLSelectElement,
+      gameType:      document.getElementById('game-type')      as HTMLSelectElement,
+      dealMode:      document.getElementById('deal-mode')      as HTMLSelectElement,
+      botCount:      document.getElementById('bot-count')      as HTMLSelectElement,
+      botDifficulty: document.getElementById('bot-difficulty') as HTMLSelectElement,
+      fives:         document.getElementById('fives')          as HTMLSelectElement,
+      points:        document.getElementById('points')         as HTMLSelectElement,
+      resetPoints:   document.getElementById('reset-points')   as HTMLButtonElement,
       setupDesc: document.getElementById('setup-desc') as HTMLElement,
       claim: {
         Pung: document.getElementById('claim-pung') as HTMLButtonElement,
@@ -114,6 +257,13 @@ export class GameUi {
       diceHudSum:          document.getElementById('dice-hud-sum') as HTMLElement,
       diceHudBreak:        document.getElementById('dice-hud-break') as HTMLElement,
       botBanner:           document.getElementById('bot-banner') as HTMLElement,
+      variantBadge:        document.getElementById('variant-badge') as HTMLElement,
+      pickupHud:           document.getElementById('pickup-hud') as HTMLElement,
+      pickupHudText:       document.getElementById('pickup-hud-text') as HTMLElement,
+      pickupTakeBtn:       document.getElementById('pickup-take-btn') as HTMLButtonElement,
+      pickupTakeCount:     document.getElementById('pickup-take-count') as HTMLElement,
+      rollDice:            document.getElementById('roll-dice') as HTMLButtonElement,
+      breakMarker:         document.getElementById('break-marker') as HTMLElement,
     };
     for (let i = 0; i < 4; i++) {
       this.elements.takeSeat[i] = document.querySelector(
@@ -123,6 +273,13 @@ export class GameUi {
         `.seat-button-${i} .kick`) as HTMLButtonElement;
     }
 
+    // Phase F — resolve URL > localStorage > defaults BEFORE wiring the
+    // picker so the initial select values match what we'll actually deal.
+    this.phaseF = this.resolvePhaseFParams();
+    this.applyPhaseFToPickers();
+    this.applyVariantBodyClass();
+    this.updateVariantBadge();
+
     this.setupEvents();
     this.setupDealButton();
     this.setupModal();
@@ -130,10 +287,18 @@ export class GameUi {
     this.setupResultModal();
     this.setupDiceHud();
     this.setupBotBanner();
+    this.setupPhaseFPickers();
+    this.setupPickupHud();
   }
 
   private setupEvents(): void {
     this.elements.toggleDealer.onclick = () => this.world.toggleDealer();
+    // Phase F — restored Riichi honba toggle (no-op for Changsha; the button
+    // is hidden by CSS via the `riichi-only` class).
+    this.elements.toggleHonba.onclick = () => {
+      this.world.toggleHonba();
+      this.refreshHonbaLabel();
+    };
 
     this.client.seats.on('update', this.updateSeats.bind(this));
     this.client.nicks.on('update', this.updateSeats.bind(this));
@@ -177,6 +342,22 @@ export class GameUi {
     const match = this.client.match.get(0);
     const conditions = match?.conditions ?? Conditions.initial();
     this.elements.setupDesc.textContent = Conditions.describe(conditions);
+    // Phase F — keep the badge and honba label in sync with whatever the
+    // server-pushed match decided.  Local-deal sets these too via deal().
+    this.updateVariantBadge();
+    this.refreshHonbaLabel();
+  }
+
+  private refreshHonbaLabel(): void {
+    const match = this.client.match.get(0);
+    const honba = match?.honba ?? 0;
+    this.elements.toggleHonba.textContent = `Honba: ${honba}`;
+  }
+
+  private updateVariantBadge(): void {
+    const match = this.client.match.get(0);
+    const conditions = match?.conditions ?? Conditions.initial();
+    this.elements.variantBadge.textContent = variantLabel(conditions.gameType);
   }
 
   private updateSeats(): void {
@@ -223,9 +404,29 @@ export class GameUi {
     this.setupProgressButton(buttonElement, 600, () => {
       const dealType = this.elements.dealType.value as DealType;
 
-      this.world.deal(dealType);
+      // Phase F — fold the latest picker selections into Conditions so the
+      // server (or local-relay path) sees the right variant + fives + points
+      // + deal-mode on this deal.  defaultsFor() gives us safe per-variant
+      // baselines; the picker values then override.
+      const overrides = this.collectConditionOverrides();
+      this.world.deal(dealType, overrides);
       this.hideSetup();
     });
+  }
+
+  /**
+   * Phase F — read every picker and produce a Conditions delta the world's
+   * deal() can merge in.  Pickers that are hidden for the active variant
+   * (e.g. `fives` on Changsha) are still read but their effect is harmless
+   * because Conditions.defaultsFor() resets those fields per-variant first.
+   */
+  private collectConditionOverrides(): Partial<Conditions> {
+    const gameType = this.elements.gameType.value as GameType;
+    const base = Conditions.defaultsFor(gameType);
+    base.fives    = this.elements.fives.value as Fives;
+    base.points   = this.elements.points.value as Points;
+    base.dealMode = this.elements.dealMode.value as DealMode;
+    return base;
   }
 
   private setupProgressButton(
@@ -599,7 +800,13 @@ export class GameUi {
     banner.innerHTML = '';
     const title = document.createElement('span');
     title.className = 'bot-banner-title';
-    title.textContent = `Bots filled ${bots.length === 1 ? 'seat' : 'seats'} `
+    // Phase F — appended difficulty annotation reads the picker, since the
+    // backend's bot engine hasn't shipped yet.  Once it has, this should
+    // prefer a server-pushed `botDifficulty` from a future seats field.
+    const diff = this.phaseF?.botDifficulty ?? 'medium';
+    const diffWord = diff.charAt(0).toUpperCase() + diff.slice(1);
+    title.textContent = `${bots.length} bot${bots.length === 1 ? '' : 's'} — ${diffWord} · `
+      + `seat${bots.length === 1 ? '' : 's'} `
       + bots.map(b => b.seat).join(', ');
     banner.appendChild(title);
     const winds = ['E', 'S', 'W', 'N'];
@@ -610,6 +817,188 @@ export class GameUi {
       banner.appendChild(row);
     }
     banner.style.display = 'block';
+  }
+
+  // ---------------------------------------------------------------------
+  // Phase F — variant / deal-mode / bot pickers + URL params + localStorage.
+  //
+  // Pickers update Conditions.defaultsFor(gameType) at deal-time (see
+  // setupDealButton).  Variant change requires a reload — the setup machinery
+  // recomputes tile catalogues + slot groups at boot from Conditions, so
+  // hot-swapping mid-session would leave dangling Things.
+  // ---------------------------------------------------------------------
+
+  /** URL > localStorage > Conditions defaults.  Called once in the ctor. */
+  private resolvePhaseFParams(): Required<PhaseFParams> {
+    const url = parseUrlParams();
+    const ls  = readLocalStorage();
+    const variant = url.variant ?? ls.variant ?? GameType.CHANGSHA;
+    const defaults = Conditions.defaultsFor(variant);
+    return {
+      variant,
+      dealMode:      url.dealMode      ?? ls.dealMode      ?? defaults.dealMode!,
+      botCount:      url.botCount      ?? ls.botCount      ?? 0,
+      botDifficulty: url.botDifficulty ?? ls.botDifficulty ?? 'medium',
+      fives:         url.fives         ?? ls.fives         ?? defaults.fives!,
+      points:        url.points        ?? ls.points        ?? defaults.points!,
+    };
+  }
+
+  /** Apply the resolved Phase F params to the picker UI on boot. */
+  private applyPhaseFToPickers(): void {
+    this.elements.gameType.value      = this.phaseF.variant;
+    this.elements.dealMode.value      = this.phaseF.dealMode;
+    this.elements.botCount.value      = String(this.phaseF.botCount);
+    this.elements.botDifficulty.value = this.phaseF.botDifficulty;
+    this.elements.fives.value         = this.phaseF.fives;
+    this.elements.points.value        = this.phaseF.points;
+  }
+
+  /**
+   * Phase F — body class toggle drives `.changsha-only` / `.riichi-only`
+   * visibility in style.css.  Called on boot and on variant-picker change
+   * (though the latter recommends a reload before the next deal).
+   */
+  private applyVariantBodyClass(): void {
+    const isChangsha = this.phaseF.variant === GameType.CHANGSHA;
+    document.body.classList.toggle('variant-changsha', isChangsha);
+    document.body.classList.toggle('variant-riichi',  !isChangsha);
+  }
+
+  private setupPhaseFPickers(): void {
+    // Variant — page-reload semantics.  Persist immediately, warn the user.
+    this.elements.gameType.onchange = () => {
+      const newVariant = this.elements.gameType.value as GameType;
+      writeLocalStorage(LS_VARIANT, newVariant);
+      // Soft warning in the variant badge — full hot-swap is Phase G.
+      this.elements.variantBadge.textContent =
+        '↻ Reload to change to ' + variantLabel(newVariant);
+    };
+
+    this.elements.dealMode.onchange = () => {
+      const v = this.elements.dealMode.value as DealMode;
+      this.phaseF.dealMode = v;
+      writeLocalStorage(LS_DEAL_MODE, v);
+    };
+
+    this.elements.botCount.onchange = () => {
+      const v = parseInt(this.elements.botCount.value, 10);
+      this.phaseF.botCount = v;
+      writeLocalStorage(LS_BOT_COUNT, String(v));
+      this.refreshBotBanner();
+    };
+
+    this.elements.botDifficulty.onchange = () => {
+      const v = this.elements.botDifficulty.value as 'easy' | 'medium' | 'hard';
+      this.phaseF.botDifficulty = v;
+      writeLocalStorage(LS_BOT_DIFFICULTY, v);
+      this.refreshBotBanner();
+    };
+
+    this.elements.fives.onchange = () => {
+      const v = this.elements.fives.value as Fives;
+      this.phaseF.fives = v;
+      writeLocalStorage(LS_FIVES, v);
+    };
+
+    this.elements.points.onchange = () => {
+      const v = this.elements.points.value as Points;
+      this.phaseF.points = v;
+      writeLocalStorage(LS_POINTS, v);
+    };
+
+    this.elements.resetPoints.onclick = () => {
+      this.world.resetPoints(this.phaseF.points);
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Phase F — Pickup HUD + roll-dice button.
+  //
+  // The runtime pushes a singleton `pickup` entry describing the current
+  // affordance: who's expected to click, how many tiles, and which phase
+  // we're in.  We translate that into:
+  //   • "Your turn — pick N tiles" banner (with a Take-N button shortcut)
+  //   • "Bot 2 is picking…" banner when another seat is on the clock
+  //   • Roll-dice button (only on RollingDice phase + dealer === self)
+  // ---------------------------------------------------------------------
+
+  private setupPickupHud(): void {
+    this.elements.rollDice.onclick = () => {
+      this.world.emitRollDice();
+    };
+    this.elements.pickupTakeBtn.onclick = () => {
+      this.world.emitTakePickup();
+    };
+    this.client.pickup.on('update', this.onPickupUpdate.bind(this));
+  }
+
+  private onPickupUpdate(entries: Array<[string | number, PickupEntry | null]>): void {
+    // Only the key=0 singleton is the authoritative snapshot.  The string
+    // keys ('rollDice' / 'take') are our outbound commands and we don't
+    // re-render off them.
+    for (const [key,] of entries) {
+      if (key !== 0) continue;
+      const pickup = this.client.pickup.get(0) ?? null;
+      this.renderPickupHud(pickup);
+      this.renderRollDiceButton(pickup);
+      this.renderBreakMarker(pickup);
+    }
+  }
+
+  private renderPickupHud(pickup: PickupEntry | null): void {
+    const hud = this.elements.pickupHud;
+    if (!pickup || pickup.count <= 0) {
+      hud.style.display = 'none';
+      return;
+    }
+    const selfSeat = this.client.seat;
+    const isMine = selfSeat !== null && pickup.seatIndex === selfSeat;
+    if (isMine) {
+      this.elements.pickupHudText.textContent =
+        `Your turn — pick ${pickup.count} tile${pickup.count === 1 ? '' : 's'}`;
+      this.elements.pickupTakeCount.textContent = String(pickup.count);
+      this.elements.pickupTakeBtn.style.display = '';
+    } else {
+      const winds = ['E', 'S', 'W', 'N'];
+      const seatLabel = winds[pickup.seatIndex] ?? `Seat ${pickup.seatIndex}`;
+      this.elements.pickupHudText.textContent =
+        `${seatLabel} is picking ${pickup.count} tile${pickup.count === 1 ? '' : 's'}…`;
+      this.elements.pickupTakeBtn.style.display = 'none';
+    }
+    hud.style.display = 'block';
+  }
+
+  private renderRollDiceButton(pickup: PickupEntry | null): void {
+    const btn = this.elements.rollDice;
+    if (!pickup) {
+      btn.style.display = 'none';
+      return;
+    }
+    // The runtime can spell the phase as either 'RollingDice' or 'rollDice'
+    // depending on JSON-serializer settings; accept both.
+    const phaseStr = String(pickup.phase ?? '').toLowerCase();
+    const isRollPhase = phaseStr === 'rollingdice' || phaseStr === 'rolldice';
+    const selfSeat = this.client.seat;
+    const isMine = selfSeat !== null && pickup.seatIndex === selfSeat;
+    btn.style.display = (isRollPhase && isMine) ? 'flex' : 'none';
+  }
+
+  private renderBreakMarker(pickup: PickupEntry | null): void {
+    const marker = this.elements.breakMarker;
+    if (!pickup || pickup.breakPoint === undefined || pickup.breakPoint === null) {
+      marker.style.display = 'none';
+      return;
+    }
+    // Position the marker at one of 4 seat positions × ~18 wall columns.
+    // The exact 3D-to-2D projection is owned by world.ts; for the MVP we
+    // pin the marker to a small set of seat-local offsets and let the CSS
+    // do the rest.  Bishop's authoritative breakPoint is a column index.
+    const seat = pickup.seatIndex;
+    const col = Math.max(0, Math.min(17, pickup.breakPoint));
+    marker.dataset.seat = String(seat);
+    marker.dataset.col = String(col);
+    marker.style.display = 'block';
   }
 
 }

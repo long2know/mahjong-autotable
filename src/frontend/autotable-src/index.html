@@ -87,18 +87,64 @@
                     <option value="INITIAL">Only walls</option>
                     <option value="UNSHUFFLED">Only walls (not shuffled)</option>
                 </select>
-                <select class="dark-select form-control form-control-sm mt-2" id="game-type" disabled style="display: none">
-                    <option value="CHANGSHA" selected>Changsha</option>
+                <!-- Phase F — variant picker.  Changing this requires a reload
+                     (the page reads ?variant=... on boot to re-seed setup). -->
+                <select class="dark-select form-control form-control-sm mt-2" id="game-type">
+                    <option value="CHANGSHA" selected>Changsha (108)</option>
+                    <option value="FOUR_PLAYER">Riichi — 4 player</option>
+                    <option value="THREE_PLAYER">Riichi — 3 player</option>
+                    <option value="BAMBOO">Bamboo</option>
+                    <option value="MINEFIELD">Minefield</option>
                 </select>
-                <select id="fives" style="display: none"></select>
-                <select id="points" style="display: none"></select>
-                <button id="reset-points" style="display: none"></button>
+                <!-- Phase F — deal-mode toggle.  Changsha-only; Riichi variants
+                     are always classic auto-deal.  Takes effect on NEXT deal. -->
+                <select class="dark-select form-control form-control-sm mt-2 changsha-only" id="deal-mode">
+                    <option disabled value="">Deal mode:</option>
+                    <option value="manual" selected>Manual (click to pick)</option>
+                    <option value="auto">Auto (instant deal)</option>
+                </select>
+                <!-- Phase F — bot count + difficulty (informational; Bishop's
+                     bot engine fills empty seats server-side when this is >0). -->
+                <select class="dark-select form-control form-control-sm mt-2" id="bot-count">
+                    <option disabled value="">Bots:</option>
+                    <option value="0" selected>0 bots</option>
+                    <option value="1">1 bot</option>
+                    <option value="2">2 bots</option>
+                    <option value="3">3 bots</option>
+                    <option value="4">4 bots</option>
+                </select>
+                <select class="dark-select form-control form-control-sm mt-2" id="bot-difficulty">
+                    <option disabled value="">Difficulty:</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+                <!-- Phase F — Riichi-only setup.  Hidden in Changsha. -->
+                <select class="dark-select form-control form-control-sm mt-2 riichi-only" id="fives">
+                    <option disabled value="">Red fives:</option>
+                    <option value="000">0 red fives</option>
+                    <option value="111" selected>3 red fives (1 each)</option>
+                    <option value="121">4 red fives (2 sou + 1 each)</option>
+                </select>
+                <select class="dark-select form-control form-control-sm mt-2 riichi-only" id="points">
+                    <option disabled value="">Starting points:</option>
+                    <option value="25" selected>25000</option>
+                    <option value="30">30000</option>
+                    <option value="35">35000</option>
+                    <option value="40">40000</option>
+                    <option value="100">100000 (tonpuu)</option>
+                </select>
+                <button class="btn btn-dark btn-sm w-100 mt-2 riichi-only" id="reset-points">
+                    Reset points
+                </button>
                 <br>
             </div>
 
             <div class="mt-2 d-flex">
                 <button class="btn btn-secondary btn-sm w-100" id="toggle-dealer">Dealer</button>
-                <button id="toggle-honba" style="display: none"></button>
+                <button class="btn btn-secondary btn-sm w-100 ml-2 riichi-only" id="toggle-honba">
+                    Honba: 0
+                </button>
             </div>
 
             <div class="mt-3">
@@ -276,6 +322,31 @@
 
     <!-- Phase D — Bot banner (bottom-left): announces auto-fill. -->
     <div id="bot-banner" style="display: none;"></div>
+
+    <!-- Phase F — Variant badge (top-right): always-visible label so players
+         confirm what they're playing without opening the sidebar. -->
+    <div id="variant-badge">🀄 Changsha</div>
+
+    <!-- Phase F — Pickup HUD (center-bottom): announces "your turn — pick N
+         tiles" or "Bot 2 is picking…".  The take-shortcut button emits
+         pickup.take so impatient players don't have to click N wall tiles. -->
+    <div id="pickup-hud" style="display: none;">
+        <span id="pickup-hud-text">Your turn — pick 4 tiles</span>
+        <button class="btn btn-warning btn-sm ml-2" id="pickup-take-btn">
+            Take <span id="pickup-take-count">4</span>
+        </button>
+    </div>
+
+    <!-- Phase F — Roll-dice button (center, above the table).  Only shown
+         when pickup.phase === 'RollingDice' and this seat is the dealer. -->
+    <button id="roll-dice" style="display: none;" title="Click to roll the dice and start picking tiles">
+        <img src="img/dice.auto.png" alt="Roll dice">
+        <span class="roll-dice-label">Roll dice</span>
+    </button>
+
+    <!-- Phase F — Break marker overlay.  Painted at the per-seat wall position
+         indicated by pickup.breakPoint after the dice roll resolves. -->
+    <div id="break-marker" style="display: none;">▼</div>
 
     <script type="module" src="./src/index.ts"></script>
 </body>

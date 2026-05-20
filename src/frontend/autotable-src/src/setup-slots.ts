@@ -190,6 +190,34 @@ const START: Record<string, Slot> = {
     rotations: [Rotation.FACE_UP, Rotation.FACE_UP_SIDEWAYS, Rotation.FACE_DOWN, Rotation.FACE_DOWN_SIDEWAYS],
   }),
 
+  'tray': new Slot({
+    name: `tray`,
+    group: `tray`,
+    type: ThingType.STICK,
+    origin: new Vector3(15, -25, 0),
+    rotations: [Rotation.FACE_UP],
+  }),
+
+  'payment': new Slot({
+    name: 'payment',
+    group: 'payment',
+    type: ThingType.STICK,
+    origin: new Vector3(42, 42, 0),
+    rotations: [Rotation.FACE_UP_SIDEWAYS],
+  }),
+
+  'riichi': new Slot({
+    name: 'riichi',
+    group: 'riichi',
+    type: ThingType.STICK,
+    origin: new Vector3(
+      (WORLD_SIZE - Size.STICK.x) / 2,
+      71.5,
+      1.5,
+    ),
+    rotations: [Rotation.FACE_UP],
+  }),
+
   'marker': new Slot({
     name: 'marker',
     group: 'marker',
@@ -202,6 +230,9 @@ const START: Record<string, Slot> = {
 };
 
 export const SLOT_GROUPS: Record<GameType, Array<SlotGroup>> = {
+  // Phase F — Changsha keeps the 108-tile shape Hicks built in Phase B.  No
+  // tray / payment / riichi sticks; Changsha scoring is server-authoritative
+  // numeric units (Vasquez §1.14) and never renders sticks.
   CHANGSHA: [
     [start('hand'), row(14, undefined, {shift: true}), seats()],
     [start('hand.extra'), seats()],
@@ -210,6 +241,60 @@ export const SLOT_GROUPS: Record<GameType, Array<SlotGroup>> = {
     [start('discard'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats()],
     [start('discard.extra'), row(4, undefined, {push: true}), seats()],
     [start('marker'), seats()],
+  ],
+
+  // Phase F — upstream Riichi 4-player, restored from commit 98d4cca^ verbatim.
+  FOUR_PLAYER: [
+    [start('hand'), row(14, undefined, {shift: true}), seats()],
+    [start('hand.extra'), seats()],
+    [start('meld'), column(4), row(4, -Size.TILE.x, {push: true, shift: true}), seats()],
+    [start('wall'), row(19), stack(), seats()],
+    [start('discard'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats()],
+    [start('discard.extra'), row(4, undefined, {push: true}), seats()],
+    [start('tray'), row(6, 24), column(10, -3), seats()],
+    [start('payment'), row(8, 3), seats()],
+    [start('riichi'), seats()],
+    [start('marker'), seats()],
+  ],
+
+  // Phase F — upstream 3-player Riichi (sanma).  Seats [0,1,2] only.
+  THREE_PLAYER: [
+    [start('hand.3p'), row(14, undefined, {shift: true}), seats([0, 1, 2])],
+    [start('meld'), column(4), row(4, -Size.TILE.x, {push: true, shift: true}), seats([0, 1, 2])],
+    [start('kita'), row(4, -Size.TILE.x, {shift: true}), seats([0, 1, 2])],
+    [start('wall'), row(19), stack(), seats()],
+    [start('discard'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats([0, 1, 2])],
+    [start('discard.extra'), row(4, undefined, {push: true}), seats([0, 1, 2])],
+    [start('tray'), row(6, 24), column(10, -3), seats([0, 1, 2])],
+    [start('payment'), row(8, 3), seats()],
+    [start('riichi'), seats([0, 1, 2])],
+    [start('marker'), seats([0, 1, 2])],
+  ],
+
+  // Phase F — upstream 2-player bamboo.  Seats [0,2] only.
+  BAMBOO: [
+    [start('hand'), row(14, undefined, {shift: true}), seats([0, 2])],
+    [start('hand.extra'), seats([0, 2])],
+    [start('meld'), column(4), row(4, -Size.TILE.x, {push: true, shift: true}), seats([0, 2])],
+    [start('wall'), row(19), stack(), seats([0, 2])],
+    [start('discard'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats([0, 2])],
+    [start('tray'), row(6, 24), column(10, -3), seats([0, 2])],
+    [start('payment'), row(8, 3), seats()],
+    [start('riichi'), seats([0, 2])],
+    [start('marker'), seats([0, 2])],
+  ],
+
+  // Phase F — upstream 2-player minefield.  Seats [0,2] hold open hands /
+  // seats [1,3] hold closed walls.
+  MINEFIELD: [
+    [start('hand'), row(13, undefined, {shift: true}), seats([0, 2])],
+    [start('wall'), row(19), stack(), seats([1, 3])],
+    [start('wall.open'), column(2, Size.TILE.y * 1.6), row(17, undefined, {shift: true}), seats([0, 2])],
+    [start('discard'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats([0, 2])],
+    [start('tray'), row(6, 24), column(10, -3), seats([0, 2])],
+    [start('payment'), row(8, 3), seats()],
+    [start('riichi'), seats([0, 2])],
+    [start('marker'), seats([0, 2])],
   ],
 };
 
