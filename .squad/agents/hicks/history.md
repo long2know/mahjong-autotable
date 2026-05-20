@@ -782,3 +782,13 @@ backend, no tests touched — strict Phase G scope.
 - **Multi-human lobby** (create / join by code, nicknames) — out of
   scope; single-game-per-instance is the Wave-3 / Phase F assumption.
 - **Mobile-responsive width** — fixed 320 px, fine for desktop / tablet.
+
+## Phase G — Sidebar lobby UI + bot-pickup timer awareness (2026-05-20T20-30-58Z)
+
+**Shipped by:** Hicks (frontend)
+
+Phase G shipped pre-game sidebar lobby picker (variant/dealMode/botCount/botDifficulty selection) on bare `/autotable/` URL so users don't edit query params. One-way bridge to Phase F query-param backend; lobby auto-closes on navigate. Bundle transition: `6d5fae4c.js` + `1c6f6789.css` → `33f97fad.js` + `7934372e.css`. 200 LOC lobby module + 135 LOC styling. tsc strict ✓; parcel build ✓.
+
+**Key learnings:** Gating logic (dealMode disabled on non-Changsha, botDifficulty disabled when botCount=0) must be bidirectional (read AND write). URL parsing lenient for back-compat (kebab or SCREAMING_SNAKE for variant). Show-on-load policy: bare URL only (once any param applied, lobby hidden behind toggle).
+
+**Cross-agent awareness:** Bot-pickup now server-driven per Bishop (500ms ticks); UI no longer needs client-side timer for bot seats.

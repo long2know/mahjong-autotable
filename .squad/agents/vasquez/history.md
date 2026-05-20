@@ -435,3 +435,13 @@ renames the field or refactors to an alternate registry, test 6 turns red
 with the descriptive "Bishop should expose a public RemoveGame/DisposeGame
 API" message and Bishop adds a one-line public teardown method. That's an
 upgrade path, not a regression.
+
+## Phase G — Bot pickup scheduler + privacy mask acceptance tests (2026-05-20T20-30-58Z)
+
+**Shipped by:** Vasquez (test engineer)
+
+Phase G locked two acceptance contracts via 11 new facts, 60 assertions (6 facts on bot-pickup scheduling, 5 facts on privacy-mask slot-parse fix). Both test files use reflection probes to reach private production methods, ensuring assembly always compiles even before Bishop's symbols land. Test 6 defensively probes three candidate hosts (`AutotableConnectionManager`, `AutotableWsEndpoint`, `PrivacyFilter`) for the filter method — refactor-safe. Timing bounds on bot pickup confirmed: 200ms delay per tile, chain self-perpetuates CCW, cancellation via `LifecycleCts.Token`.
+
+**Key learnings:** Reflection-backed tests are TDD-safe (compile always, fail-red until symbols appear). Privacy filter asymmetry (universal face-strip BUT hand.* rotation-override only) prevents breaking public-visibility invariants on discards/melds. Slot-parsing at `LastIndexOf('@')` vs `.IndexOf('.')` is correctness-critical for multi-@ edge cases.
+
+**Cross-agent coordination:** Bishop's ScheduleBotIfNeededAsync contract verified stable; Hicks confirmed UI now reads bot-tick timing from server. All 330/0/9 tests green.

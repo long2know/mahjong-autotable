@@ -344,3 +344,13 @@ Did NOT touch:
 - **Bishop (next session, optional):** the privacy filter cleanup could grow a small
   unit-test fixture exercising spectators + multi-seat hand entries, but that's
   test work (Vasquez's seat). The runtime + filter changes themselves are complete.
+
+## Phase G — Bot pickup scheduler + privacy mask cleanup (2026-05-20T20-30-58Z)
+
+**Shipped by:** Bishop (backend)
+
+Phase G completed two production issues: bot freeze during manual-deal pickup (ScheduleBotIfNeededAsync not wired), and pre-existing FilterEntriesForViewer slot-parse bug (seat extracted from wrong substring). New contracts locked with Vasquez's 11-fact acceptance test suite (6 facts on bot pickup scheduling, 5 facts on privacy-mask slot parsing). Hicks shipped sidebar lobby UI for pre-game picker. All 330+ tests green; no regressions.
+
+**Key learnings:** Tick schedulers must re-validate state under the instance lock after delay (race-safe); privacy filters require asymmetric rotation override (hand.* face-down only, non-hand keep public translator rotation for discards/melds).
+
+**Cross-agent updates:** Hicks confirmed bot-pickup timer now server-driven; Vasquez's test memos detailed reflection-safe acceptance pattern for future refactors.
