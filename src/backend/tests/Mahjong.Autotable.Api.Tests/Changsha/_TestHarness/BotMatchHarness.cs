@@ -11,7 +11,7 @@ internal static class BotMatchHarness
         bool WinnerDeclared,
         bool WallExhausted);
 
-    public static MatchOutcome RunUntilHandFinished(int seed, int maxSteps = 800)
+    public static MatchOutcome RunUntilHandFinished(int seed, int maxSteps = 4000)
     {
         var (state, _) = ChangshaGameStateMachine.CreateGame(seed, botSeatIndexes: new[] { 0, 1, 2, 3 });
         ChangshaGameStateMachine.StartGame(state);

@@ -444,3 +444,251 @@ behaviour is preserved.
   Rebuilt clean — `dealer.a27808af.png` now correctly emits as a 43 KB PNG
   with the original Parcel hash, confirming source identity.
 
+
+## Architectural Pivot — Phase A SHIPPED (2026-05-13)
+
+**Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
+**Timestamp:** 2026-05-13T23:10Z
+**Contribution:** Produced autotable TS modification inventory (3 vendoring paths, Parcel vs Vite analysis, 9 risk flags), executed Phase A frontend vendor (pwmarcz/autotable @ 8b81d92 → `src/frontend/autotable-src/`, deleted `src/frontend/modern/` ~7,094 LOC, deleted bridge receiver ~154 LOC, updated .vscode F5 compound launch with `autotable: watch` task).
+
+
+## Architectural Pivot — Phase B SHIPPED (2026-05-19)
+
+**Branch:** stlong/phase-b-changsha-scene
+**Timestamp:** 2026-05-19T15:35Z
+**Scope:** src/frontend/autotable-src/** (Changsha-shape the vendored scene)
+**Bound by:** Ripley pivot plan §2 Phase B + Vasquez rules diff §1.1–1.14 +
+Stephen's directive (all 16 §4 defaults accepted + MVP fast-cuts a/b/c).
+
+### Files modified (7 source files in `src/frontend/autotable-src/`)
+- `src/types.ts` — `GameType` collapsed to `CHANGSHA` only; `Fives`/`Points`/`POINTS`
+  type-aliases + table deleted; `DealType.WINDS` dropped; `Conditions.{back,fives,points}`
+  → `Conditions.baseUnit: number` (default 1).
+- `src/setup-deal.ts` — full rewrite. `DEALS.CHANGSHA.{INITIAL,HANDS,UNSHUFFLED}`
+  only. `INITIAL`/`UNSHUFFLED` fill 28/28/26/26 walls. `HANDS` deals 13 into
+  each player's `hand.0..hand.12` + 1 into dealer's `hand.extra@0` + 14/15/13/13
+  remainder into walls (53 dealt + 55 in walls = 108).
+- `src/setup-slots.ts` — `SLOT_GROUPS` collapsed to a single `CHANGSHA` entry
+  (clone of FOUR_PLAYER minus `tray`/`payment`/`riichi` slot bindings). `riichi`
+  `START` slot definition deleted. `fixupSlots` param renamed `_gameType`.
+- `src/setup.ts` — `i < 108` loop; `tileIndex(i) = Math.floor(i / 4)`;
+  `addSticks()` method + its caller deleted; `getScores()` stubbed to return
+  `[null,null,null,null,null]`; `replace(conditions)` signature trimmed.
+- `src/world.ts` — `toggleHonba()` deleted; `deal(dealType)` signature
+  simplified; `MatchInfo.honba` pinned to `0` in every assignment; `resetPoints()`
+  deleted; riichi-stick drop-collision branch deleted; Phase D TODO comment
+  added over `toggleDealer()`.
+- `src/game-ui.ts` — full rewrite (only #deal, #toggle-dealer, #take-seat-N,
+  #kick-N, #leave-seat, #toggle-setup, #deal-type, #setup-desc bound; dropped
+  fives/points/honba/reset-points UI).
+- `index.html` — Riichi-only controls (#fives, #points, #toggle-honba,
+  #reset-points, #game-type) hidden via `style="display: none"` to preserve
+  any stray `getElementById` callsites. Added a four-button claim section:
+  `碰 Pung` / `吃 Chow` / `杠 Kong` / `胡 Hu` (yellow Hu = `btn-warning`;
+  others = `btn-dark`), all `disabled`, with title "Wired in Phase D."
+
+### LOC delta
+```
+7 files changed, 106 insertions(+), 539 deletions(-)
+```
+Net trim: **-433 LOC** from the vendored source.
+
+### Build outcome
+- `npx parcel build index.html about.html …` → **✨ Built in 2.69s**, 22 assets.
+- Bundle: `autotable-src.3e0763b1.js` (1.01 MB; was 1.02 MB pre-trim).
+- `npx tsc --noEmit --strict … src/index.ts` → **0 errors**.
+- Stale Phase A bundle `autotable-src.eb80a662.js` `git rm`'d; new bundle
+  staged in commit.
+
+### Implementation choices documented separately
+See `.squad/decisions/inbox/hicks-phase-b-implementation.md` for the 9 in-flight
+discretionary calls (deal arithmetic, wall remainder, `things.ts` no-op,
+disabled claim buttons, etc).
+
+### Known quirks (sandbox-acceptable, deferred to Phase C/D)
+- Seat 1's wall ends up at 7.5 stacks (15 tiles in a 14-tile column,
+  leaving wall.8.1 empty). Visually shows one half-stack at the right end
+  of seat 1's wall. Documented in `setup-deal.ts` inline comment.
+- Dealer-toggle still cycles seats 0..3 client-side (TODO Phase D wires
+  `changsha.banker`).
+- Claim buttons are decorative `disabled` stubs (no `onclick`); Phase D
+  will either wire them to the claim window or replace them with the
+  drag-to-meld interaction per MVP fast-cut (b).
+- `getScores()` returns nulls; center renderer's `drawScore` early-exits
+  on null so the scoreboard stays blank. Phase D wires `changsha.scoring`.
+
+### Smoke-test recipe (for Stephen)
+1. F5 in VS Code (compound launch starts backend + autotable watch).
+2. Browse `http://localhost:5114/autotable/`.
+3. Expect: 108 tiles in a 14/14/13/13 wall ring; dealer-position marker
+   visible; no riichi sticks anywhere; no dora-indicator area; no
+   point-stick tray at any seat; sidebar shows 碰 Pung / 吃 Chow /
+   杠 Kong / 胡 Hu buttons (greyed/disabled); deal-type dropdown lists
+   only HANDS / INITIAL / UNSHUFFLED.
+4. Click `Deal` with `Hands` selected — 13 tiles fly to each seat, one
+   extra to the dealer's `hand.extra` position (14 total dealer hand).
+
+
+## Architectural Pivot — Phase D-frontend SHIPPED (2026-05-20)
+
+**Branch:** stlong/phase-b-changsha-scene
+**Timestamp:** 2026-05-20T17:00Z
+**Scope:** src/frontend/autotable-src/** (wire to Bishop's Phase D-backend
+protocol — claim arc, scoring panel, dice viz, bot banner, face privacy).
+**Bound by:** Phase D-frontend charter (Stephen, 2026-05-20); Bishop's
+parallel D-backend protocol contract; Defaults #5 (Chinese-primary claim
+labels) and #11 (single Hu button).
+
+### Files modified (6 source files in `src/frontend/autotable-src/`)
+
+- `src/types.ts` — Added `ClaimWindowEntry`, `HandResultEntry`, `ScoreDelta`,
+  `DiceEntry`. Extended `DiceInfo` with optional `d1/d2/breakPoint` so
+  Bishop's new dice payload and the legacy local-deal payload can both
+  ride the existing `dice` collection. Added optional `face?: number | null`
+  to `ThingInfo` for per-viewer tile privacy.
+- `src/client.ts` — Registered `claim` collection (`Collection<string,
+  ClaimWindowEntry>`, ephemeral) and `result` collection (`Collection<string,
+  HandResultEntry>`, persistent). Widened `dice` collection key from
+  `number` to `string | number` so Bishop can push key `'current'` and the
+  local-deal path can keep using key `0`.
+- `src/game-ui.ts` — Phase-D wiring (the heavy lift, +407 LOC). Subscribes
+  to `client.claim.on('update')`, enables matching buttons + renders
+  countdown ticking every 100 ms, auto-passes on deadline expiry, sends
+  `claim[selfSeat] = {action, type}` on click. Subscribes to
+  `client.result.on('update')` and renders the Bootstrap-modal scoring
+  panel (gold headline, score-delta table, suit-colored 2D winning-hand
+  tiles, Next Hand button that posts `match[1] = {action:'nextHand'}`).
+  Subscribes to `client.dice.on('update')` and shows a top-center HUD
+  with dice glyphs + break-point column for 3 seconds. Maintains a
+  bottom-left bot banner driven by the `Bot ` nick-prefix convention
+  (until Bishop ships an explicit `is_bot` seat flag).
+- `src/world.ts` — Honors the new `ThingInfo.face` privacy field: when
+  `face === null` and the slot has >1 rotation, coerces `rotationIndex`
+  to the last (face-down) rotation. Belt-and-braces against a backend
+  that strips face without also flipping rotation.
+- `index.html` — Added a 5th claim button `跳过 Pass` (`btn-secondary`),
+  a `#claim-countdown` div under the claim row, a new `#result-modal`
+  with mahjong-themed scoring panel, a `#dice-hud` top-center overlay,
+  and a `#bot-banner` bottom-left text element.
+- `src/style.css` — Styles for `#claim-countdown`, `.result-modal-content`
+  (felt green + brass border + suit-color tile cells), `#dice-hud`, and
+  `#bot-banner`. +91 LOC.
+
+### LOC delta (frontend source only)
+```
+6 files changed, 629 insertions(+), 18 deletions(-)
+```
+Net add: **+611 LOC** to the vendored source (heaviest in game-ui.ts
+which absorbed the bulk of the UI wiring).
+
+### Build outcome
+- `npx parcel build index.html about.html --public-url . --no-source-maps
+   --cache-dir .cache/build/ --dist-dir ../autotable` → **✨ Built in 2.40s**,
+  22 assets.
+- Bundle: `autotable-src.9d857456.js` (1.01 MB; same as Phase B's 1.01 MB
+  — Parcel minification absorbs the +611 LOC).
+- `npx tsc --noEmit --strict --target es6 --moduleResolution bundler
+   --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts` →
+  **0 errors**.
+- Per the charter's `src/frontend/autotable-src/**` scope-lock, the static
+  `src/frontend/autotable/` bundle output was **not** staged. F5 compound
+  launch will regenerate it on next start.
+
+### Implementation choices documented separately
+See `.squad/decisions/inbox/hicks-phase-d-frontend.md` for the protocol-
+contract adapter notes (dice shape duality, Next-Hand match-key sentinel,
+tile face privacy via rotation coercion) and UI-design discretionary calls
+(button-countdown vs modal, 2D tile cells in result panel, etc).
+
+### Known constraints / Phase E TODOs
+- No disambiguation UI when one seat can both Pung and Kong on the same
+  discard — user just picks one button. Default #11 said single Hu button;
+  charter didn't ask for multi-meld disambiguation. Flag for Stephen if
+  he wants it.
+- Drag-to-meld interaction (MVP fast-cut b, Vasquez Q9 / Hicks R2) remains
+  explicitly out of scope — buttons-only per Pivot plan §2 Phase D.
+- Winning hand in the result modal renders as 2D suit-colored cells, not
+  a 3D animated meld in the scene. Phase E polish if Stephen wants that.
+- `face: null` privacy ships via rotation coercion only — the
+  InstancedThingGroup's UV math is untouched. A back-only mesh variant
+  would require regenerating the InstancedMesh on every face flip and is
+  not worth the cost while rotation already hides the front face.
+
+### Smoke-test recipe (for Stephen)
+1. F5 in VS Code (compound launch).
+2. Browse `http://localhost:5114/autotable/`.
+3. Take seat 0 — bot banner appears bottom-left ("Bots filled seats 1, 2, 3
+   / Bot Alpha (S) / Bot Bravo (W) / Bot Charlie (N)"). If banner missing,
+   bot nicks are not `Bot `-prefixed — coordinate with Bishop.
+4. Click Deal — 108 tiles deal, top-center HUD shows dice + break point
+   for 3 s.
+5. When a bot discards a tile that gives you a claim, the 碰 / 吃 / 杠 / 胡
+   buttons light up according to server's `available`; countdown ticks
+   `Decide in 5.0s` → `0.0s`. Click any enabled claim button or `跳过 Pass`;
+   buttons re-disable immediately. Auto-pass fires at 0.0s if you do
+   nothing.
+6. On hand end, centered modal appears with gold headline (胡! / 流局 Draw
+   / 诈胡 False Hu), score-delta table, and winning-hand tiles as 2D
+   cells. Click `下一局 Next Hand` to advance the server.
+
+---
+
+## Phase F — Variant switching + manual pickup + bot UI (2025-05-19)
+
+**Branch:** `stlong/phase-f-changsha-realism` off `d461726` (Wave 3 Changsha runtime).
+**Bundle SHA:** `autotable-src.d9507f0f.js` (1.03 MB) — clean tsc-strict + parcel.
+
+### What I shipped
+Four switches layered onto Wave 3:
+1. **Variant switching** — restored upstream `GameType` enum (CHANGSHA + 4 Riichi variants), `Conditions.defaultsFor(gameType)` factory.
+2. **Manual-pickup state machine** — new `pickup` collection (singleton key 0 in / command keys 'rollDice' + 'take' out), drag-intercept gate, take-N HUD button.
+3. **Deal-mode toggle** — Changsha-only `manual`/`auto` select that flows into `Conditions.dealMode`.
+4. **Bot count + difficulty pickers** — informational for now (Bishop owns the engine); persist via localStorage; extend the bot banner.
+
+### Files touched
+| File | Purpose |
+|---|---|
+| `types.ts` | GameType, Conditions, PickupEntry |
+| `setup-slots.ts` | Upstream SLOT_GROUPS + tray/payment/riichi START slots restored |
+| `setup-deal.ts` | Upstream DEALS (incl. 11 FOUR_PLAYER roll variants) + POINTS table |
+| `setup.ts` | Variant-branched `setup`/`addTiles`/`tileIndex`/`replace`/`getScores`/`addSticks` |
+| `client.ts` | `pickup` collection registration (Collection<string\|number, PickupEntry>) |
+| `world.ts` | Pickup gating, drag-intercept, `toggleHonba`, `resetPoints`, `deal(overrides)` |
+| `game-ui.ts` | All Phase F DOM wiring — pickers, pickup HUD, roll-dice, variant badge, URL params, localStorage |
+| `index.html` | Setup-group rebuild + pickup HUD + roll-dice + variant badge + break marker |
+| `style.css` | Variant-class visibility, variant badge, pickup HUD, roll-dice, break marker, wall-glow |
+| `src/frontend/autotable/**` | Parcel rebuild |
+
+### Learnings worth remembering
+1. **`Fives` and `Points` are string-typed unions, not numbers.**  Fives: `'000' | '111' | '121'`.  Points: `'25' | '30' | '35' | '40' | '100'`.  Don't `parseInt` them — pass the string straight through.  I wasted a tsc round-trip on this.
+2. **Collection key widening is a pattern.**  Phase D widened `dice` to `Collection<string | number, DiceInfo>` so Bishop's `'current'` key worked alongside legacy `0`.  I did the same for `pickup` (`'rollDice'` + `'take'` outbound, `0` inbound) — saves a parallel event system.  Future Bishop collections needing inbound-vs-outbound shapes should follow the same widening pattern.
+3. **Don't optimistically mutate scene state from frontend protocol commands.**  When the player clicks a wall tile during pickup, I emit `pickup.take` and STOP — no preview move.  The runtime's `things` UPDATE moves the tile.  This avoids resync drift when the backend rejects (e.g. wrong seat, wrong count, wrong phase).  Phase D-frontend's claim arc follows the same rule.
+4. **Variant hot-swap is hard.**  The setup pipeline rebuilds the entire tile catalogue at construction.  Live variant change leaves orphan Things in the scene graph.  Phase F warns "Reload to change variant" rather than attempting a hot-swap; Phase G can promote when setup gets a clean dispose path.
+5. **CSS body classes as variant gates.**  Setting `body.variant-changsha` or `body.variant-riichi` and gating `.changsha-only` / `.riichi-only` with `!important display: none` is cleaner than per-element `.style.display` bookkeeping.  Pickers stay declared in the HTML; CSS hides the wrong ones.
+6. **URL → localStorage → defaults priority chain.**  Standard pattern but easy to invert by mistake.  URL wins (deep-link friendly), localStorage is the user's persistent choice, `Conditions.defaultsFor(gameType)` is the floor.  My `resolvePhaseFParams()` does this cleanly.
+7. **Variant indicator badge is high-value, low-effort.**  Players don't remember what they clicked 30 seconds ago.  A top-right pill with the variant emoji + name is the single biggest UX-clarity win in Phase F.
+
+### Smoke recipe (Changsha — Wave 3 path, validates no regression)
+1. Open `/autotable/?variant=changsha&dealMode=manual&botCount=0`.
+2. Top-right shows `🀄 Changsha`.  Sidebar setup-group exposes deal-mode, bot pickers; fives/points/honba/reset-points hidden.
+3. Take seat 0.  Bot banner stays hidden (botCount=0).
+4. Click Deal — Wave 3 flow.  108 tiles deal, dice HUD briefly.  No pickup HUD (no `pickup` collection entries yet from backend).
+5. Play through to Hu — scoring modal renders.  No regression vs Phase D-frontend.
+
+### Smoke recipe (post-Bishop — when pickup runtime lands)
+1. Open `/autotable/?variant=changsha&dealMode=manual&botCount=3`.
+2. Take seat 0.  3 bots join.  Bot banner reads `3 bots — Medium · seats 1, 2, 3`.
+3. Roll-dice button appears at center.  Click it.  Backend resolves dice + break-point.
+4. Pickup HUD: "Your turn — pick 4 tiles" + Take 4 button.  Click Take 4 (or click any wall tile).  Runtime moves 4 tiles to hand.
+5. Repeat 3 rounds + single + dealer extra → discard → claim window → Hu.
+
+### Stubs awaiting Bishop
+- Backend `pickup` collection (singleton emit, command-shape ack).
+- Backend bot engine (seat-fill driven by `botCount` + `botDifficulty`).
+- Backend variant gating (skip Changsha state machine when `Conditions.gameType !== CHANGSHA`).
+- Wall-glow class application — CSS hook is `.wall-glow` on wall meshes; needs object-view extension to walk `next-N` wall slots and add/remove the class on `pickup` update.  Phase G.
+
+### Open questions for the team
+- Should `Take N` be enabled even when N > remaining wall tiles?  Probably no — bundle currently sends `count: pickup.count` straight through; backend should reject if wall depleted.
+- Should the break marker position be computed in `world.ts` from the actual 3D wall geometry, or stay as CSS-positioned per-seat overlay?  MVP picked CSS; Phase G can promote to true 3D overlay if visual feedback is unconvincing.
+- Variant switch via dropdown currently triggers a soft warning in the variant badge ("↻ Reload to change to ..."), not an auto-reload.  Acceptable UX? Or should we `location.reload()` after a 2 s confirmation?

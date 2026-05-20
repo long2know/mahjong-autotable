@@ -80,20 +80,18 @@ public sealed class ChangshaGameStateMachine
         // shuffled walls while remaining deterministic for replay (same seed + HandNumber
         // → identical wall). Fixes pre-Phase-3 bug where every hand of a game used the
         // same `state.Seed` and therefore the same wall ordering.
-        var rng = new Random(HashCode.Combine(state.Seed, state.HandNumber));
+        //
+        // NOTE: deliberately NOT using <see cref="HashCode.Combine"/> — that helper is
+        // randomized per-process (DoS mitigation) and breaks seed-determinism across
+        // process boundaries, surfacing as rare flakes in parallel xUnit runs. We use
+        // a deterministic mix (Knuth-style hash combiner) here so the wall ordering is
+        // a pure function of (Seed, HandNumber).
+        var mixed = unchecked((int)((uint)state.Seed * 2654435761u + (uint)state.HandNumber));
+        var rng = new Random(mixed);
         var wall = BuildShuffledWall(rng);
 
         // Apply break point — reorder wall so drawing starts from break point
-        if (state.BreakPoint is not null)
-        {
-            var bp = state.BreakPoint.Value;
-            var reordered = new List<int>(ChangshaDeckBuilder.TotalTiles);
-            for (var i = bp.TileIndex; i < wall.Count; i++)
-                reordered.Add(wall[i]);
-            for (var i = 0; i < bp.TileIndex; i++)
-                reordered.Add(wall[i]);
-            wall = reordered;
-        }
+        wall = ApplyBreakPointToWall(wall, state.BreakPoint);
 
         var dealService = new DealService();
         var dealResult = dealService.Deal(wall, state.DealerSeatIndex);
@@ -115,6 +113,10 @@ public sealed class ChangshaGameStateMachine
         state.CurrentScore = null;
         state.MissedWinSeats.Clear(); // §3.6: missed-win flags reset on new hand
 
+        // Auto-deal path tombstones the pickup cursor.
+        state.PickupSeatIndex = null;
+        state.PickupRoundIndex = 0;
+
         state.Phase = ChangshaPhase.AwaitingDiscard;
 
         var events = new List<ChangshaEvent>
@@ -124,6 +126,233 @@ public sealed class ChangshaGameStateMachine
         };
 
         return events;
+    }
+
+    // ── Phase F: manual-pickup deal path ──
+
+    /// <summary>
+    /// Consumes a <see cref="DiceRoll"/> from the dealer's roll, computes the break
+    /// point, builds the shuffled wall, rotates it so <c>state.Wall[0]</c> is the next
+    /// tile to draw, and parks the state machine at
+    /// <see cref="ChangshaPhase.BreakPointMarked"/> with the dealer as the active picker.
+    /// Mirrors the prelude of <see cref="Deal"/> but stops short of depositing tiles
+    /// into hands — those flow in through <see cref="TakeTilesFromWall"/>.
+    /// </summary>
+    /// <remarks>
+    /// Called by <c>ChangshaGameRuntime.RollDiceAsync</c> when the game's
+    /// <see cref="ChangshaGameState.DealMode"/> is <see cref="DealMode.Manual"/>. The
+    /// auto path (<see cref="DealMode.Auto"/>) still uses <see cref="RollDice"/> +
+    /// <see cref="Deal"/> as a single transaction. Both paths share
+    /// <see cref="BuildShuffledWall"/> and <see cref="ApplyBreakPointToWall"/> so the
+    /// wall ordering is bit-identical for a given (Seed, HandNumber, BreakPoint).
+    ///
+    /// <para>Phase transitions during pickup (per Vasquez Phase F acceptance):
+    /// <list type="bullet">
+    ///   <item>RollingDice → BreakPointMarked (this method)</item>
+    ///   <item>BreakPointMarked → PickupRound1 (first TakeTilesFromWall by dealer)</item>
+    ///   <item>PickupRound1 → PickupRound2 → PickupRound3 → SingleTilePickup →
+    ///   DealerExtra → AwaitingDiscard (each subsequent TakeTilesFromWall)</item>
+    /// </list>
+    /// </para>
+    /// </remarks>
+    public static List<ChangshaEvent> BeginManualDeal(ChangshaGameState state, DiceRoll roll)
+    {
+        RequirePhase(state, ChangshaPhase.RollingDice);
+
+        state.LastDiceRoll = roll;
+        var breakPointService = new BreakPointService();
+        state.BreakPoint = breakPointService.ComputeBreakPoint(roll.Sum, state.DealerSeatIndex);
+
+        var mixed = unchecked((int)((uint)state.Seed * 2654435761u + (uint)state.HandNumber));
+        var rng = new Random(mixed);
+        var wall = BuildShuffledWall(rng);
+        state.Wall = ApplyBreakPointToWall(wall, state.BreakPoint);
+
+        // Hands fill incrementally via TakeTilesFromWall — start clean.
+        for (var i = 0; i < SeatCount; i++)
+        {
+            state.Hands[i].ConcealedTiles = new List<int>();
+            state.Hands[i].Melds.Clear();
+        }
+        state.WallDrawIndex = 0;
+        state.WallBackIndex = state.Wall.Count - 1;
+        state.ActiveSeatIndex = state.DealerSeatIndex;
+        state.TurnNumber = 1;
+        state.DiscardPile.Clear();
+        state.ClaimWindow = null;
+        state.CurrentWin = null;
+        state.CurrentScore = null;
+        state.MissedWinSeats.Clear();
+
+        state.DealMode = DealMode.Manual;
+        state.Phase = ChangshaPhase.BreakPointMarked;
+        state.PickupSeatIndex = state.DealerSeatIndex;
+        state.PickupRoundIndex = 0;
+
+        return new List<ChangshaEvent>
+        {
+            CreateEvent(state, "dice-rolled", state.DealerSeatIndex,
+                detail: $"die1:{roll.Die1},die2:{roll.Die2},sum:{roll.Sum}"),
+            CreateEvent(state, "manual-deal-begun", state.DealerSeatIndex,
+                detail: $"wall:{state.Wall.Count},dealer:{state.DealerSeatIndex}")
+        };
+    }
+
+    /// <summary>
+    /// Consumes <paramref name="requestedCount"/> tiles from the front of the wall
+    /// into <paramref name="seatIndex"/>'s hand and advances the pickup cursor.
+    /// Throws when called outside a pickup phase, when the requesting seat is not the
+    /// active picker, when the count disagrees with
+    /// <see cref="ExpectedPickupCount(ChangshaPhase)"/>, or when the wall underflows.
+    /// </summary>
+    public static List<ChangshaEvent> TakeTilesFromWall(
+        ChangshaGameState state,
+        int seatIndex,
+        int requestedCount)
+    {
+        if (!IsPickupPhase(state.Phase))
+        {
+            throw new InvalidOperationException(
+                $"TakeTilesFromWall called in phase {state.Phase}; not a pickup phase.");
+        }
+        if (state.PickupSeatIndex != seatIndex)
+        {
+            throw new InvalidOperationException(
+                $"Seat {seatIndex} is not the active pickup seat (expected {state.PickupSeatIndex}).");
+        }
+        var expected = ExpectedPickupCount(state.Phase);
+        if (requestedCount != expected)
+        {
+            throw new InvalidOperationException(
+                $"Pickup count mismatch: requested {requestedCount}, expected {expected} for phase {state.Phase}.");
+        }
+        if (state.Wall.Count < expected)
+        {
+            throw new InvalidOperationException(
+                $"Wall underflow: requested {expected} tiles, wall has {state.Wall.Count}.");
+        }
+
+        var takenTiles = state.Wall.GetRange(0, expected);
+        state.Wall.RemoveRange(0, expected);
+        state.WallBackIndex = state.Wall.Count - 1;
+        state.Hands[seatIndex].ConcealedTiles.AddRange(takenTiles);
+
+        var prePhase = state.Phase;
+        var pickupEvent = CreateEvent(state, "tiles-picked-up", seatIndex,
+            detail: $"phase:{prePhase},count:{expected},wall-remaining:{state.Wall.Count}");
+
+        AdvancePickupCursor(state);
+
+        var events = new List<ChangshaEvent> { pickupEvent };
+        if (state.Phase == ChangshaPhase.AwaitingDiscard)
+        {
+            events.Add(CreateEvent(state, "tiles-dealt", state.DealerSeatIndex,
+                detail: $"wall-remaining:{state.Wall.Count}"));
+        }
+        return events;
+    }
+
+    /// <summary>The number of tiles the active seat is expected to take while parked
+    /// in <paramref name="phase"/>. Zero for non-pickup phases; callers should still
+    /// gate on <see cref="IsPickupPhase"/>.
+    /// <para>
+    /// Note: <see cref="ChangshaPhase.BreakPointMarked"/> returns 4 because the very
+    /// first pickup from that phase IS the dealer's round-1 take. After that first
+    /// pickup, the phase advances to <see cref="ChangshaPhase.PickupRound1"/>.
+    /// </para>
+    /// </summary>
+    public static int ExpectedPickupCount(ChangshaPhase phase) => phase switch
+    {
+        ChangshaPhase.BreakPointMarked => 4,
+        ChangshaPhase.PickupRound1 => 4,
+        ChangshaPhase.PickupRound2 => 4,
+        ChangshaPhase.PickupRound3 => 4,
+        ChangshaPhase.SingleTilePickup => 1,
+        ChangshaPhase.DealerExtra => 1,
+        _ => 0
+    };
+
+    /// <summary>True when <paramref name="phase"/> is one of the manual-deal pickup phases.</summary>
+    public static bool IsPickupPhase(ChangshaPhase phase) => phase
+        is ChangshaPhase.BreakPointMarked
+        or ChangshaPhase.PickupRound1
+        or ChangshaPhase.PickupRound2
+        or ChangshaPhase.PickupRound3
+        or ChangshaPhase.SingleTilePickup
+        or ChangshaPhase.DealerExtra;
+
+    /// <summary>
+    /// Advances the pickup cursor after a successful <see cref="TakeTilesFromWall"/>.
+    /// Rotates the active picker clockwise from the dealer; transitions to the next
+    /// pickup phase when a round completes (4 picks for the multi-tile rounds + the
+    /// single-tile round; 1 pick for DealerExtra). DealerExtra → AwaitingDiscard
+    /// finalises the deal.
+    /// <para>
+    /// Special case: <see cref="ChangshaPhase.BreakPointMarked"/> transitions to
+    /// <see cref="ChangshaPhase.PickupRound1"/> on the very first advance, so the
+    /// phase the dealer's first 4-pickup completed in is correctly named
+    /// "PickupRound1" even though it was initiated from BreakPointMarked.
+    /// </para>
+    /// </summary>
+    private static void AdvancePickupCursor(ChangshaGameState state)
+    {
+        // BreakPointMarked is a degenerate "start of round 1" — promote to PickupRound1
+        // BEFORE doing the round-complete arithmetic so the round counter works.
+        if (state.Phase == ChangshaPhase.BreakPointMarked)
+        {
+            state.Phase = ChangshaPhase.PickupRound1;
+        }
+
+        state.PickupRoundIndex++;
+
+        var seatsPerRound = state.Phase == ChangshaPhase.DealerExtra ? 1 : SeatCount;
+        if (state.PickupRoundIndex < seatsPerRound)
+        {
+            // Still mid-round — rotate cursor clockwise from dealer.
+            state.PickupSeatIndex = (state.DealerSeatIndex + state.PickupRoundIndex) % SeatCount;
+            return;
+        }
+
+        // Round complete — transition to next phase.
+        state.Phase = state.Phase switch
+        {
+            ChangshaPhase.PickupRound1 => ChangshaPhase.PickupRound2,
+            ChangshaPhase.PickupRound2 => ChangshaPhase.PickupRound3,
+            ChangshaPhase.PickupRound3 => ChangshaPhase.SingleTilePickup,
+            ChangshaPhase.SingleTilePickup => ChangshaPhase.DealerExtra,
+            ChangshaPhase.DealerExtra => ChangshaPhase.AwaitingDiscard,
+            _ => state.Phase
+        };
+        state.PickupRoundIndex = 0;
+
+        if (state.Phase == ChangshaPhase.AwaitingDiscard)
+        {
+            // Manual deal complete — clear pickup cursor and hand off to the discard loop.
+            state.PickupSeatIndex = null;
+            state.ActiveSeatIndex = state.DealerSeatIndex;
+            state.TurnNumber = 1;
+        }
+        else
+        {
+            // Next round starts at the dealer.
+            state.PickupSeatIndex = state.DealerSeatIndex;
+        }
+    }
+
+    /// <summary>Rotates <paramref name="wall"/> so the tile at the break point is
+    /// <c>wall[0]</c>. Returns the original list when <paramref name="breakPoint"/>
+    /// is null. Extracted from <see cref="Deal"/> so the auto and manual deal paths
+    /// share the exact same wall layout for a given (Seed, HandNumber, BreakPoint).</summary>
+    private static List<int> ApplyBreakPointToWall(List<int> wall, BreakPointResult? breakPoint)
+    {
+        if (breakPoint is null) return wall;
+        var bp = breakPoint.Value;
+        var reordered = new List<int>(wall.Count);
+        for (var i = bp.TileIndex; i < wall.Count; i++)
+            reordered.Add(wall[i]);
+        for (var i = 0; i < bp.TileIndex; i++)
+            reordered.Add(wall[i]);
+        return reordered;
     }
 
     public static List<ChangshaEvent> DrawTile(ChangshaGameState state)
@@ -139,6 +368,11 @@ public sealed class ChangshaGameStateMachine
         var tileId = DrawFromFront(state);
         var hand = GetHand(state, state.ActiveSeatIndex);
         hand.ConcealedTiles.Add(tileId);
+
+        // §3.6 missed-win (过胡) decay: per Baidu §过水 — the lockout is "until your next draw."
+        // Drawing a tile clears the active seat's lockout, restoring their ability to declare Hu
+        // on subsequent discards within this hand. Self-draw was never blocked.
+        state.MissedWinSeats.Remove(state.ActiveSeatIndex);
 
         return [CreateEvent(state, "tile-drawn", state.ActiveSeatIndex, tileId: tileId,
             detail: $"wall-remaining:{state.Wall.Count}")];
@@ -472,6 +706,37 @@ public sealed class ChangshaGameStateMachine
         RequirePhase(state, ChangshaPhase.WallExhausted);
         state.Phase = ChangshaPhase.EndHand;
         return [CreateEvent(state, "draw-hand", -1, detail: "wall-exhausted")];
+    }
+
+    /// <summary>
+    /// Records a 诈胡 (false-Hu) declaration per Baidu §诈胡处罚 and applies the resulting
+    /// penalty payments to <see cref="ChangshaGameState.CumulativeScores"/>. Stateless wrt
+    /// the hand/turn machine — the offending player keeps their seat and the hand continues
+    /// unchanged (Score/RotateBanker are not driven from here). Idempotency: each call appends
+    /// a new entry to <see cref="ChangshaGameState.FalseHuPenalties"/>.
+    /// </summary>
+    public static FalseHuPenalty RecordFalseHu(ChangshaGameState state, int seatIndex)
+    {
+        if (seatIndex is < 0 or > 3)
+            throw new ArgumentOutOfRangeException(nameof(seatIndex));
+
+        var penalty = new ScoringService().CalculateFalseHuPenalty(seatIndex);
+
+        foreach (var payment in penalty.Payments)
+        {
+            if (!state.CumulativeScores.ContainsKey(payment.FromSeatIndex))
+                state.CumulativeScores[payment.FromSeatIndex] = 0;
+            if (!state.CumulativeScores.ContainsKey(payment.ToSeatIndex))
+                state.CumulativeScores[payment.ToSeatIndex] = 0;
+            state.CumulativeScores[payment.FromSeatIndex] -= payment.Amount;
+            state.CumulativeScores[payment.ToSeatIndex] += payment.Amount;
+        }
+
+        state.FalseHuPenalties.Add(penalty);
+        CreateEvent(state, "false-hu-penalty", seatIndex,
+            detail: $"perOpponent:{penalty.PenaltyPerOpponent}");
+
+        return penalty;
     }
 
     public static List<ChangshaEvent> RotateBanker(ChangshaGameState state)

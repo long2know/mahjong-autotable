@@ -116,8 +116,120 @@ public static class ChangshaToAutotableTranslator
             entries.Add(entry);
         }
 
+        // claim window — one entry per seat that currently has an opportunity.
+        // The bundle's claim collection drives the 碰/吃/杠/胡 buttons (Phase B scene).
+        if (state.ClaimWindow is { } window && state.Phase == ChangshaPhase.AwaitingClaim)
+        {
+            foreach (var seatGroup in window.Opportunities.GroupBy(o => o.SeatIndex))
+            {
+                var available = seatGroup
+                    .Select(o => ClaimTypeToWire(o.ClaimType))
+                    .Distinct()
+                    .ToList();
+                // Deadline = 0 means "no client-side timer" — server enforces the timeout.
+                entries.Add(ChangshaCollectionEncoder.EncodeClaimWindow(
+                    seatGroup.Key,
+                    available,
+                    window.DiscardSeatIndex,
+                    window.DiscardTileId,
+                    deadlineUnixMs: 0));
+            }
+        }
+
+        // result — populated once the hand has scored (or washed out).
+        // Phase EndHand is the marker: CurrentWin set + CurrentScore set OR draw-hand event.
+        if (state.Phase == ChangshaPhase.EndHand)
+        {
+            entries.Add(ChangshaCollectionEncoder.EncodeHandResult(BuildHandResult(state)));
+        }
+
+        // ── Phase F: pickup collection ──
+        // Emitted while the manual-deal state machine is parked in any pickup phase;
+        // drives the autotable scene's "Take Tiles" affordance. When the deal completes
+        // and the runtime hands off to AwaitingDiscard, the entry is tombstoned by the
+        // runtime-emitted snapshot via <see cref="ChangshaCollectionEncoder.EncodePickupCleared"/>
+        // so the scene clears its UI.
+        if (ChangshaGameStateMachine.IsPickupPhase(state.Phase))
+        {
+            entries.Add(ChangshaCollectionEncoder.EncodePickup(BuildPickupEntry(state)));
+        }
+
         return entries;
     }
+
+    private static PickupEntry BuildPickupEntry(ChangshaGameState state)
+    {
+        BreakPointWire? bp = null;
+        if (state.BreakPoint is { } b)
+        {
+            bp = new BreakPointWire
+            {
+                WallIndex = b.WallIndex,
+                StackIndex = b.StackIndex,
+                TileIndex = b.TileIndex
+            };
+        }
+
+        return new PickupEntry
+        {
+            Phase = state.Phase.ToString(),
+            SeatIndex = state.PickupSeatIndex ?? state.DealerSeatIndex,
+            Count = ChangshaGameStateMachine.ExpectedPickupCount(state.Phase),
+            DealMode = state.DealMode == DealMode.Manual ? "manual" : "auto",
+            BreakPoint = bp,
+            // Wall front is always index 0 after BreakPointToWall rotation, but expose
+            // the actual remaining-wall count so the bundle can decide UI affordances
+            // (e.g., "Wall: 55 tiles left").
+            WallIndex = 0
+        };
+    }
+
+    private static HandResultEntry BuildHandResult(ChangshaGameState state)
+    {
+        var win = state.CurrentWin;
+        var winnerSeat = win?.WinningSeatIndex ?? -1;
+        string type;
+        List<int> winningHand = [];
+
+        if (win is not null)
+        {
+            type = "Hu";
+            var hand = state.Hands.FirstOrDefault(h => h.SeatIndex == winnerSeat);
+            if (hand is not null)
+            {
+                winningHand.AddRange(hand.ConcealedTiles);
+                foreach (var meld in hand.Melds)
+                    winningHand.AddRange(meld.TileIds);
+            }
+        }
+        else
+        {
+            // Wall exhaustion or false-Hu only — caller distinguishes via FalseHuPenalties.
+            type = state.FalseHuPenalties.Count > 0 ? "ZhaHu" : "Draw";
+        }
+
+        // nextBanker mirrors the runtime's RotateBanker policy: winner becomes dealer;
+        // washout retains current dealer. Match the rule here without mutating state.
+        var nextBanker = win is not null ? win.WinningSeatIndex : state.DealerSeatIndex;
+
+        return new HandResultEntry
+        {
+            Winner = winnerSeat,
+            Type = type,
+            Score = new Dictionary<int, int>(state.CumulativeScores),
+            Hand = winningHand,
+            NextBanker = nextBanker
+        };
+    }
+
+    private static string ClaimTypeToWire(Tables.TableClaimType t) => t switch
+    {
+        Tables.TableClaimType.Hu => "Hu",
+        Tables.TableClaimType.Kong => "Kong",
+        Tables.TableClaimType.Pung => "Pung",
+        Tables.TableClaimType.Chow => "Chow",
+        _ => "Pass"
+    };
 
     // ── match ────────────────────────────────────────────────────────
 

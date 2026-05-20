@@ -31,6 +31,24 @@ public interface IChangshaGameRuntime
     Task<bool> ReconnectAsync(string gameId, int seatIndex, string connectionId, CancellationToken ct = default);
     Task HandleDisconnectAsync(string connectionId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Phase F §3 — dealer-driven dice roll for manual deal. Transitions the
+    /// state from <see cref="ChangshaPhase.RollingDice"/> to
+    /// <see cref="ChangshaPhase.BreakPointMarked"/>; the dealer's first 4-tile
+    /// pickup follows via <see cref="TakeTilesFromWallAsync"/>. Auto deal mode
+    /// (Phase D-backend default) does NOT call this method.
+    /// </summary>
+    Task RollDiceAsync(string gameId, int seatIndex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase F §3 — runtime-driven pickup advance. The seat at the current
+    /// pickup cursor takes <paramref name="count"/> tiles from the wall front
+    /// (validated by <see cref="ChangshaGameStateMachine.TakeTilesFromWall"/>:
+    /// <paramref name="seatIndex"/> must equal <see cref="ChangshaGameState.PickupSeatIndex"/>,
+    /// <paramref name="count"/> must equal <see cref="ChangshaGameStateMachine.ExpectedPickupCount"/>).
+    /// </summary>
+    Task TakeTilesFromWallAsync(string gameId, int seatIndex, int count, CancellationToken ct = default);
+
     /// <summary>Test/diagnostic accessor: returns true if the game exists in memory.</summary>
     bool TryGetSnapshot(string gameId, out ChangshaGameState? state);
 
@@ -210,7 +228,16 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             ChangshaGameStateMachine.StartGame(instance.State);
             await BroadcastGameStartedAsync(instance, ct);
 
-            // Drive RollDice → Deal in one shot for v1 (no separate user-driven RollDice).
+            // Phase F §3 — branch on DealMode. Manual deal stops at RollingDice;
+            // the dealer (or auto-ack-on-bot) drives RollDice → pickup loop.
+            if (instance.State.DealMode == DealMode.Manual)
+            {
+                StateChanged?.Invoke(instance.GameId);
+                await PersistSnapshotAsync(instance, ct);
+                return;
+            }
+
+            // Auto deal (default Phase D-backend): drive RollDice → Deal in one shot.
             var diceService = new DiceService(instance.State.Seed);
             ChangshaGameStateMachine.RollDice(instance.State, diceService);
             await BroadcastDiceAsync(instance, ct);
@@ -225,8 +252,63 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             instance.Lock.Release();
         }
 
-        // After deal, await client AckDeal (if humans) or auto-ack and start the turn.
-        await TryAdvanceAfterDealAsync(instance, ct);
+        if (instance.State.DealMode != DealMode.Manual)
+        {
+            // After auto deal, await client AckDeal (if humans) or auto-ack and start the turn.
+            await TryAdvanceAfterDealAsync(instance, ct);
+        }
+    }
+
+    // ── Phase F §3 — Manual deal: RollDice + TakeTilesFromWall ────────
+
+    public async Task RollDiceAsync(string gameId, int seatIndex, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            // Validate: only the dealer rolls.
+            if (seatIndex != instance.State.DealerSeatIndex)
+            {
+                throw new InvalidOperationException(
+                    $"Only dealer seat {instance.State.DealerSeatIndex} may roll dice in manual mode (got {seatIndex}).");
+            }
+
+            var diceService = new DiceService(instance.State.Seed + instance.State.HandNumber);
+            var roll = diceService.Roll();
+            ChangshaGameStateMachine.BeginManualDeal(instance.State, roll);
+            await BroadcastDiceAsync(instance, ct);
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+        StateChanged?.Invoke(instance.GameId);
+    }
+
+    public async Task TakeTilesFromWallAsync(string gameId, int seatIndex, int count, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            ChangshaGameStateMachine.TakeTilesFromWall(instance.State, seatIndex, count);
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+        StateChanged?.Invoke(instance.GameId);
+
+        // If the deal just completed (DealerExtra advanced into AwaitingDiscard),
+        // engage the standard post-deal acknowledgement / turn-loop path so bots
+        // and humans handle the first turn the same way as auto-deal.
+        if (instance.State.Phase == ChangshaPhase.AwaitingDiscard)
+        {
+            await TryAdvanceAfterDealAsync(instance, ct);
+        }
     }
 
     public async Task AcknowledgeDealAsync(string gameId, int seatIndex, CancellationToken ct = default)

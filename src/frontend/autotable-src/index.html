@@ -83,48 +83,105 @@
             <div id="setup-group" class="collapse" data-toggle="true">
                 <select class="dark-select form-control form-control-sm mt-2" id="deal-type">
                     <option disabled value="">Deal:</option>
-                    <option value="UNSHUFFLED">Only walls (not shuffled)</option>
                     <option value="HANDS" selected>Hands</option>
                     <option value="INITIAL">Only walls</option>
-                    <option value="WINDS">Wind tiles (for seats)</option>
+                    <option value="UNSHUFFLED">Only walls (not shuffled)</option>
                 </select>
+                <!-- Phase F — variant picker.  Changing this requires a reload
+                     (the page reads ?variant=... on boot to re-seed setup). -->
                 <select class="dark-select form-control form-control-sm mt-2" id="game-type">
-                    <option disabled value="">Game type:</option>
-                    <option value="FOUR_PLAYER" selected>4-player</option>
-                    <option value="THREE_PLAYER">3-player</option>
-                    <option value="MINEFIELD">2-player Minefield</option>
-                    <option value="BAMBOO">2-player Bamboo</option>
-                    <option value="FOUR_PLAYER_DEMO">Demo</option>
+                    <option value="CHANGSHA" selected>Changsha (108)</option>
+                    <option value="FOUR_PLAYER">Riichi — 4 player</option>
+                    <option value="THREE_PLAYER">Riichi — 3 player</option>
+                    <option value="BAMBOO">Bamboo</option>
+                    <option value="MINEFIELD">Minefield</option>
                 </select>
-                <select class="dark-select form-control form-control-sm mt-2" id="fives">
+                <!-- Phase F — deal-mode toggle.  Changsha-only; Riichi variants
+                     are always classic auto-deal.  Takes effect on NEXT deal. -->
+                <select class="dark-select form-control form-control-sm mt-2 changsha-only" id="deal-mode">
+                    <option disabled value="">Deal mode:</option>
+                    <option value="manual" selected>Manual (click to pick)</option>
+                    <option value="auto">Auto (instant deal)</option>
+                </select>
+                <!-- Phase F — bot count + difficulty (informational; Bishop's
+                     bot engine fills empty seats server-side when this is >0). -->
+                <select class="dark-select form-control form-control-sm mt-2" id="bot-count">
+                    <option disabled value="">Bots:</option>
+                    <option value="0" selected>0 bots</option>
+                    <option value="1">1 bot</option>
+                    <option value="2">2 bots</option>
+                    <option value="3">3 bots</option>
+                    <option value="4">4 bots</option>
+                </select>
+                <select class="dark-select form-control form-control-sm mt-2" id="bot-difficulty">
+                    <option disabled value="">Difficulty:</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+                <!-- Phase F — Riichi-only setup.  Hidden in Changsha. -->
+                <select class="dark-select form-control form-control-sm mt-2 riichi-only" id="fives">
                     <option disabled value="">Red fives:</option>
-                    <option value="000">No red fives</option>
-                    <option value="111" selected>1-1-1</option>
-                    <option value="121">1-2-1</option>
+                    <option value="000">0 red fives</option>
+                    <option value="111" selected>3 red fives (1 each)</option>
+                    <option value="121">4 red fives (2 sou + 1 each)</option>
                 </select>
-                <div class="mt-2 d-flex">
-                    <select class="dark-select form-control form-control-sm mr-2 w-100" id="points">
-                        <option disabled value="">Starting points:</option>
-                        <option value="25" selected>25k</option>
-                        <option value="30">30k</option>
-                        <option value="35">35k</option>
-                        <option value="40">40k</option>
-                        <option value="100" selected>100k</option>
-                    </select>
-                    <button class="btn btn-dark flex-shrink-1 btn-sm btn-progress-main" id="reset-points"
-                        data-toggle="tooltip" data-placement="top"
-                        title="Click and hold to reset point sticks"
-                    >
-                        <div class="btn-progress"></div>
-                        <span class="btn-progress-text">Reset</span>
-                    </button>
-                </div>
+                <select class="dark-select form-control form-control-sm mt-2 riichi-only" id="points">
+                    <option disabled value="">Starting points:</option>
+                    <option value="25" selected>25000</option>
+                    <option value="30">30000</option>
+                    <option value="35">35000</option>
+                    <option value="40">40000</option>
+                    <option value="100">100000 (tonpuu)</option>
+                </select>
+                <button class="btn btn-dark btn-sm w-100 mt-2 riichi-only" id="reset-points">
+                    Reset points
+                </button>
                 <br>
             </div>
 
             <div class="mt-2 d-flex">
-                <button class="btn btn-secondary btn-sm mr-2 w-100" id="toggle-dealer">Dealer</button>
-                <button class="btn btn-secondary btn-sm w-100" id="toggle-honba">Honba</button>
+                <button class="btn btn-secondary btn-sm w-100" id="toggle-dealer">Dealer</button>
+                <button class="btn btn-secondary btn-sm w-100 ml-2 riichi-only" id="toggle-honba">
+                    Honba: 0
+                </button>
+            </div>
+
+            <div class="mt-3">
+                <small class="text-white-50">Claims</small>
+                <div class="d-flex mt-1">
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id="claim-pung" disabled
+                            data-toggle="tooltip" data-placement="top"
+                            title="Claim a Pung (triplet).">
+                        碰 <small>Pung</small>
+                    </button>
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id="claim-chow" disabled
+                            data-toggle="tooltip" data-placement="top"
+                            title="Claim a Chow (sequence).">
+                        吃 <small>Chow</small>
+                    </button>
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id="claim-kong" disabled
+                            data-toggle="tooltip" data-placement="top"
+                            title="Claim a Kong (four-of-a-kind).">
+                        杠 <small>Kong</small>
+                    </button>
+                    <button class="btn btn-warning btn-sm w-100" id="claim-hu" disabled
+                            data-toggle="tooltip" data-placement="top"
+                            title="Declare Hu (win).">
+                        胡 <small>Hu</small>
+                    </button>
+                </div>
+                <div class="d-flex mt-1">
+                    <button class="btn btn-secondary btn-sm w-100" id="claim-pass" disabled
+                            data-toggle="tooltip" data-placement="top"
+                            title="Pass on this claim window.">
+                        跳过 <small>Pass</small>
+                    </button>
+                </div>
+                <div class="mt-1 text-warning" id="claim-countdown"
+                     style="display: none; font-size: 0.8rem;">
+                    Decide in <span id="claim-countdown-value">5.0</span>s
+                </div>
             </div>
 
             <div class="mt-4 d-flex" id="server">
@@ -220,6 +277,76 @@
             </div>
         </div>
     </div>
+
+    <!-- Phase D — Hand result modal (rendered on `result.current` UPDATE). -->
+    <div class="modal" id="result-modal" tabindex="-1" aria-hidden="true"
+         data-backdrop="static" data-keyboard="false">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content result-modal-content">
+                <div class="modal-body text-light text-center">
+                    <h2 id="result-headline" class="mb-1">胡!</h2>
+                    <div id="result-winner" class="mb-3 text-warning"></div>
+                    <table class="table table-sm table-dark mx-auto" id="result-score">
+                        <thead>
+                            <tr>
+                                <th>座位 Seat</th>
+                                <th>玩家 Player</th>
+                                <th>分 Score Δ</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <div class="mt-3">
+                        <div class="text-white-50 mb-1">
+                            <small>胡牌 Winning hand</small>
+                        </div>
+                        <div id="result-hand" class="d-flex flex-wrap justify-content-center"></div>
+                    </div>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-warning" id="result-next">
+                        下一局 <small>Next Hand</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase D — Dice + break-point HUD (briefly shown on first deal). -->
+    <div id="dice-hud" style="display: none;">
+        <span class="dice-face" id="dice-hud-d1">⚀</span>
+        <span class="dice-face" id="dice-hud-d2">⚀</span>
+        <span class="dice-sum">= <span id="dice-hud-sum">2</span></span>
+        <span class="dice-break">→ break @ <span id="dice-hud-break">2</span></span>
+    </div>
+
+    <!-- Phase D — Bot banner (bottom-left): announces auto-fill. -->
+    <div id="bot-banner" style="display: none;"></div>
+
+    <!-- Phase F — Variant badge (top-right): always-visible label so players
+         confirm what they're playing without opening the sidebar. -->
+    <div id="variant-badge">🀄 Changsha</div>
+
+    <!-- Phase F — Pickup HUD (center-bottom): announces "your turn — pick N
+         tiles" or "Bot 2 is picking…".  The take-shortcut button emits
+         pickup.take so impatient players don't have to click N wall tiles. -->
+    <div id="pickup-hud" style="display: none;">
+        <span id="pickup-hud-text">Your turn — pick 4 tiles</span>
+        <button class="btn btn-warning btn-sm ml-2" id="pickup-take-btn">
+            Take <span id="pickup-take-count">4</span>
+        </button>
+    </div>
+
+    <!-- Phase F — Roll-dice button (center, above the table).  Only shown
+         when pickup.phase === 'RollingDice' and this seat is the dealer. -->
+    <button id="roll-dice" style="display: none;" title="Click to roll the dice and start picking tiles">
+        <img src="img/dice.auto.png" alt="Roll dice">
+        <span class="roll-dice-label">Roll dice</span>
+    </button>
+
+    <!-- Phase F — Break marker overlay.  Painted at the per-seat wall position
+         indicated by pickup.breakPoint after the dice roll resolves. -->
+    <div id="break-marker" style="display: none;">▼</div>
 
     <script type="module" src="./src/index.ts"></script>
 </body>

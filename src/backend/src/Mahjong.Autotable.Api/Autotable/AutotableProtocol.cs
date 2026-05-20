@@ -45,6 +45,194 @@ public sealed class AutotableInboundMessage
     public bool? Full { get; set; }
 }
 
+/// <summary>
+/// Changsha-specific collection kinds layered on top of the upstream autotable protocol.
+/// These reuse the same <c>UPDATE { entries: [[kind, key, value], …] }</c> envelope —
+/// no new message types — and live alongside upstream collections (<c>things</c>,
+/// <c>seats</c>, <c>nicks</c>, <c>match</c>, <c>mouse</c>, <c>sound</c>, <c>dice</c>).
+///
+/// <list type="bullet">
+///   <item><b><c>claim</c></b> (Bishop Phase D-backend §2): keyed by seat index (0..3),
+///   value = <c>{ available: ["Pung","Chow","Kong","Hu"], deadline: long, source: int,
+///   tile: int }</c>. Server-emitted when a discard opens a claim window for that seat;
+///   client-emitted when a player presses a claim button (or "pass"). Cleared with a
+///   tombstone (value=<c>null</c>) when the window closes.</item>
+///
+///   <item><b><c>result</c></b> (Bishop Phase D-backend §2): keyed by the literal string
+///   <c>"current"</c>, value = <c>{ winner: int, type: "Hu"|"Draw"|"ZhaHu",
+///   score: { seat: points }[], hand: int[], nextBanker: int }</c>. Server-emitted on
+///   hand end (Hu, washout, or false-Hu penalty). Used by the autotable scene to drive
+///   the result panel + banker arrow rotation. Lives until the next deal clears it.</item>
+///
+///   <item><b><c>pickup</c></b> (Bishop Phase F §2): keyed by the literal string
+///   <c>"current"</c>, value = <c>{ phase: string, seatIndex: int, count: int,
+///   dealMode: "auto"|"manual", breakPoint: {wallIndex, stackIndex, tileIndex},
+///   wallIndex: int }</c>. Server-emitted whenever the active pickup phase or cursor
+///   advances (BreakPointMarked, PickupRound1..3, SingleTilePickup, DealerExtra).
+///   Tombstoned (value=<c>null</c>) when phase transitions to <c>AwaitingDiscard</c>
+///   (manual deal complete). Drives the autotable scene's "Take Tiles" affordance and
+///   bot pickup animation.</item>
+/// </list>
+/// </summary>
+public static class ChangshaCollectionKinds
+{
+    public const string Claim = "claim";
+    public const string Result = "result";
+    public const string Pickup = "pickup";
+}
+
+/// <summary>
+/// Server-emitted snapshot of an open claim window for one seat. Maps to the
+/// <see cref="ChangshaCollectionKinds.Claim"/> collection value.
+/// </summary>
+public sealed class ClaimWindowEntry
+{
+    [JsonPropertyName("available")]
+    public List<string> Available { get; set; } = [];
+
+    /// <summary>UTC unix millis at which auto-pass kicks in.</summary>
+    [JsonPropertyName("deadline")]
+    public long DeadlineUnixMs { get; set; }
+
+    /// <summary>Seat that discarded the tile triggering the window.</summary>
+    [JsonPropertyName("source")]
+    public int SourceSeat { get; set; }
+
+    /// <summary>Changsha tile id of the discarded tile.</summary>
+    [JsonPropertyName("tile")]
+    public int TileId { get; set; }
+}
+
+/// <summary>
+/// Server-emitted hand result. Maps to the <see cref="ChangshaCollectionKinds.Result"/>
+/// collection value under key <c>"current"</c>.
+/// </summary>
+public sealed class HandResultEntry
+{
+    [JsonPropertyName("winner")]
+    public int Winner { get; set; }
+
+    /// <summary>One of <c>"Hu"</c>, <c>"Draw"</c>, <c>"ZhaHu"</c>.</summary>
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    /// <summary>Cumulative net payments per seat for this hand (positive = gained).</summary>
+    [JsonPropertyName("score")]
+    public Dictionary<int, int> Score { get; set; } = new();
+
+    /// <summary>Tile ids in the winning hand (concealed + meld) for the result panel.</summary>
+    [JsonPropertyName("hand")]
+    public List<int> Hand { get; set; } = [];
+
+    /// <summary>Banker seat for the next hand per Changsha v1.2 rotation.</summary>
+    [JsonPropertyName("nextBanker")]
+    public int NextBanker { get; set; }
+}
+
+/// <summary>Helpers for shaping outbound Changsha-collection entries.</summary>
+public static class ChangshaCollectionEncoder
+{
+    /// <summary>
+    /// Encodes a claim window for <paramref name="seat"/> as the <c>claim</c> collection
+    /// entry the bundle expects. Caller decides timeout policy.
+    /// </summary>
+    public static CollectionEntry EncodeClaimWindow(
+        int seat,
+        IEnumerable<string> available,
+        int sourceSeat,
+        int tileId,
+        long deadlineUnixMs)
+        => new(ChangshaCollectionKinds.Claim, seat, new ClaimWindowEntry
+        {
+            Available = available.ToList(),
+            DeadlineUnixMs = deadlineUnixMs,
+            SourceSeat = sourceSeat,
+            TileId = tileId
+        });
+
+    /// <summary>Encodes a tombstone for <paramref name="seat"/>'s claim window (window closed).</summary>
+    public static CollectionEntry EncodeClaimWindowClosed(int seat)
+        => new(ChangshaCollectionKinds.Claim, seat, null);
+
+    /// <summary>Encodes the current hand's result as the <c>result["current"]</c> entry.</summary>
+    public static CollectionEntry EncodeHandResult(HandResultEntry result)
+        => new(ChangshaCollectionKinds.Result, "current", result);
+
+    /// <summary>Encodes a tombstone for the current hand result (cleared on next deal).</summary>
+    public static CollectionEntry EncodeHandResultCleared()
+        => new(ChangshaCollectionKinds.Result, "current", null);
+
+    // ── Phase F: pickup-state collection ──
+
+    /// <summary>
+    /// Encodes the current pickup cursor as the <c>pickup["current"]</c> entry. Emitted
+    /// whenever the pickup phase or active seat changes during a Manual deal. Drives the
+    /// autotable scene's "Take Tiles" button visibility per seat. Caller is expected to
+    /// derive <paramref name="count"/> from <c>ChangshaGameStateMachine.ExpectedPickupCount(phase)</c>.
+    /// </summary>
+    public static CollectionEntry EncodePickup(PickupEntry pickup)
+        => new(ChangshaCollectionKinds.Pickup, "current", pickup);
+
+    /// <summary>Encodes a tombstone for the pickup cursor (manual deal complete).</summary>
+    public static CollectionEntry EncodePickupCleared()
+        => new(ChangshaCollectionKinds.Pickup, "current", null);
+}
+
+/// <summary>
+/// Server-emitted snapshot of the pickup cursor while a Manual deal is in progress.
+/// Maps to the <see cref="ChangshaCollectionKinds.Pickup"/> collection value under
+/// key <c>"current"</c>.
+/// </summary>
+public sealed class PickupEntry
+{
+    /// <summary>One of <c>BreakPointMarked</c>, <c>PickupRound1</c>, <c>PickupRound2</c>,
+    /// <c>PickupRound3</c>, <c>SingleTilePickup</c>, or <c>DealerExtra</c>.</summary>
+    [JsonPropertyName("phase")]
+    public string Phase { get; set; } = string.Empty;
+
+    /// <summary>Seat whose turn it is to take tiles from the wall (0..3).</summary>
+    [JsonPropertyName("seatIndex")]
+    public int SeatIndex { get; set; }
+
+    /// <summary>Number of tiles the active seat should take from the wall front.
+    /// 4 during PickupRound1..3, 1 during SingleTilePickup and DealerExtra.</summary>
+    [JsonPropertyName("count")]
+    public int Count { get; set; }
+
+    /// <summary>One of <c>"auto"</c>, <c>"manual"</c>. Echoed from
+    /// <c>ChangshaGameState.DealMode</c> so the bundle can render the same cursor
+    /// in both modes (auto-deal mode tombstones the entry immediately).</summary>
+    [JsonPropertyName("dealMode")]
+    public string DealMode { get; set; } = "manual";
+
+    /// <summary>Break-point address (wall index / stack index / tile index within stack).
+    /// Computed by <see cref="BreakPointService.ComputeBreakPoint"/> from the dice roll.
+    /// Sent so the bundle can render the dealer's break point marker between rounds.</summary>
+    [JsonPropertyName("breakPoint")]
+    public BreakPointWire? BreakPoint { get; set; }
+
+    /// <summary>Current zero-based offset into <c>ChangshaGameState.Wall</c> where the
+    /// next pickup will draw from. Lets the bundle preview which slots will be removed
+    /// next without re-deriving from <c>BreakPoint</c>.</summary>
+    [JsonPropertyName("wallIndex")]
+    public int WallIndex { get; set; }
+}
+
+/// <summary>JSON-friendly mirror of <c>Changsha.BreakPointResult</c> (record struct).
+/// Lives in this protocol-layer file so the autotable WS contract is fully described
+/// alongside the rest of the wire format.</summary>
+public sealed class BreakPointWire
+{
+    [JsonPropertyName("wallIndex")]
+    public int WallIndex { get; set; }
+
+    [JsonPropertyName("stackIndex")]
+    public int StackIndex { get; set; }
+
+    [JsonPropertyName("tileIndex")]
+    public int TileIndex { get; set; }
+}
+
 /// <summary>Outbound <c>JOINED</c> envelope.</summary>
 public sealed class JoinedMessage
 {

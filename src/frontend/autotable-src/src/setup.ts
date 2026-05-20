@@ -24,7 +24,9 @@ export class Setup {
 
     this.addSlots(conditions.gameType);
     this.addTiles(conditions);
-    this.addSticks(conditions.gameType, conditions.points);
+    if (conditions.gameType !== GameType.CHANGSHA) {
+      this.addSticks(conditions.gameType, conditions.points);
+    }
     this.addMarker();
     this.deal(0);
   }
@@ -38,7 +40,11 @@ export class Setup {
     const wallSlots = this.wallSlots().map(slot => slot.name);
     this.maybeShuffle(wallSlots, conditions);
     let j = 0;
-    for (let i = 0; i < 136; i++) {
+    // Phase F — variant-aware tile catalog.  Changsha runs the Phase B
+    // 108-tile loop (3 suits × 9 ranks × 4 copies).  Upstream variants run
+    // the original 136-tile loop with fives/back/honors/bamboo/3p filters.
+    const tileLimit = conditions.gameType === GameType.CHANGSHA ? 108 : 136;
+    for (let i = 0; i < tileLimit; i++) {
       const tileIndex = this.tileIndex(i, conditions);
       if (tileIndex !== null) {
         this.addThing(ThingType.TILE, tileIndex, wallSlots[j++]);
@@ -52,8 +58,18 @@ export class Setup {
     }
   }
 
-  replace(conditions: Conditions, replacePoints: boolean): void {
-    // console.log('replace', conditions);
+  /**
+   * Replace the scene for a new {@link Conditions}.
+   *
+   * Phase B narrowed this to a Changsha-only no-stick variant.  Phase F
+   * restores the upstream-shaped optional `replacePoints` parameter — Changsha
+   * still doesn't have sticks, but the four restored upstream variants do, and
+   * the bundle's local "Reset points" handler needs to force a stick refresh
+   * even when only `points` changed.
+   */
+  replace(conditions: Conditions, replacePoints: boolean = false): void {
+    const wasChangsha = this.conditions.gameType === GameType.CHANGSHA;
+    const isChangsha = conditions.gameType === GameType.CHANGSHA;
 
     const whatReplace: Record<ThingType, boolean> = {
       TILE: (
@@ -61,7 +77,8 @@ export class Setup {
         conditions.back !== this.conditions.back ||
         conditions.fives !== this.conditions.fives
       ),
-      STICK: (
+      STICK: !isChangsha && (
+        wasChangsha ||
         replacePoints ||
         conditions.gameType !== this.conditions.gameType ||
         conditions.points !== this.conditions.points
@@ -72,7 +89,10 @@ export class Setup {
     const map = new Map<number, string>();
     for (const thing of [...this.things.values()]) {
       thing.prepareMove();
-      if (whatReplace[thing.type]) {
+      // Phase F — when switching INTO Changsha from a stick-bearing variant,
+      // sticks have no home slots (Changsha SLOT_GROUPS omits tray / payment
+      // / riichi). Drop them outright so we don't try to re-place them.
+      if (whatReplace[thing.type] || (isChangsha && thing.type === ThingType.STICK)) {
         this.things.delete(thing.index);
       } else {
         map.set(thing.index, thing.slot.name);
@@ -109,6 +129,14 @@ export class Setup {
   }
 
   private tileIndex(i: number, conditions: Conditions): number | null {
+    // Phase F — Changsha keeps Phase B's logical-tile formula: floor(i/4)
+    // over 108 tiles → ids 0..26 (3 suits × 9 ranks × 4 copies). No honors,
+    // no red fives, no back-colour cycling, no bamboo/3p suit filtering.
+    if (conditions.gameType === GameType.CHANGSHA) {
+      return Math.floor(i / 4);
+    }
+
+    // Upstream 136-tile path, restored verbatim from 98d4cca^.
     let tileIndex = Math.floor(i / 4);
 
     if (conditions.fives !== '000') {
@@ -141,22 +169,23 @@ export class Setup {
   deal(seat: number): [number, number] {
     const gameType = this.conditions.gameType;
     const dealType = this.conditions.dealType;
-    // console.log('deal', gameType, dealType);
 
     const dice: [number, number] = [
       Math.floor(Math.random() * 6 + 1),
       Math.floor(Math.random() * 6 + 1)
     ];
-    const roll = dice[0] + dice[1];
-    // Debug
-    // const roll = (window.ROLL && window.ROLL < 12) ? window.ROLL + 1 : 2;
-    // window.ROLL = roll;
 
     if (GAME_TYPES[gameType].seats.indexOf(seat) === -1) {
       seat = 0;
     }
 
-    const dealParts = DEALS[gameType][dealType]!;
+    const dealParts = DEALS[gameType][dealType];
+    if (dealParts === undefined) {
+      // Phase F — silent no-op when the variant doesn't define this dealType.
+      // E.g. MINEFIELD has no INITIAL deal; auto-deal in manual mode is also
+      // an explicit no-op (backend will drive placement).
+      return dice;
+    }
 
     const tiles = [...this.things.values()].filter(thing => thing.type === ThingType.TILE);
     for (const thing of tiles) {
@@ -165,6 +194,7 @@ export class Setup {
 
     this.maybeShuffle(tiles);
 
+    const roll = dice[0] + dice[1];
     for (const part of dealParts) {
       this.dealPart(part, tiles, roll, seat);
     }
@@ -179,7 +209,8 @@ export class Setup {
   usesDice(): boolean {
     const gameType = this.conditions.gameType;
     const dealType = this.conditions.dealType;
-    const dealParts = DEALS[gameType][dealType]!;
+    const dealParts = DEALS[gameType][dealType];
+    if (!dealParts) return false;
     for (const part of dealParts) {
       if (part.roll) return true;
     }
@@ -195,7 +226,7 @@ export class Setup {
       this.maybeShuffle(searched);
 
       for (let i = 0; i < searched.length; i++) {
-        // HACK: typeIndex includes back color
+        // HACK: typeIndex includes back color (upstream Riichi only).
         const idx = tiles.findIndex(tile =>
           (tile.typeIndex === searched[i] || tile.typeIndex === searched[i] + 37));
         if (idx === -1) {
@@ -234,7 +265,13 @@ export class Setup {
     }
   }
 
+  // Phase F — restored from upstream 98d4cca^.  Renders point sticks in the
+  // per-seat trays for Riichi variants.  Changsha intentionally skips this
+  // path (server-authoritative numeric scoring per Vasquez §1.14).
   private addSticks(gameType: GameType, points: Points): void {
+    if (gameType === GameType.CHANGSHA) {
+      return; // Changsha has no sticks — defensive guard.
+    }
     const seats = GAME_TYPES[gameType].seats;
     const add = (index: number, n: number, slot: number): void => {
       for (const seat of seats) {
@@ -244,18 +281,12 @@ export class Setup {
       }
     };
 
-    // Debt
-    add(5, POINTS[points][0], 0);
-    // 10k
-    add(4, POINTS[points][1], 1);
-    // 5k
-    add(3, POINTS[points][2], 2);
-    // 1k
-    add(2, POINTS[points][3], 3);
-    // 500
-    add(1, POINTS[points][4], 4);
-    // 100
-    add(0, POINTS[points][5], 5);
+    add(5, POINTS[points][0], 0); // -10k debt
+    add(4, POINTS[points][1], 1); // 10k
+    add(3, POINTS[points][2], 2); // 5k
+    add(2, POINTS[points][3], 3); // 1k
+    add(1, POINTS[points][4], 4); // 500
+    add(0, POINTS[points][5], 5); // 100
   }
 
   private addMarker(): void {
@@ -303,9 +334,18 @@ export class Setup {
     this.pushes.push(...Slot.computePushes([...this.slots.values()]));
   }
 
+  // Phase F — variant-aware score readout.
+  //   • Changsha — server-authoritative numeric units (Vasquez §1.14); we
+  //     return all nulls and center.ts skips the score draw.
+  //   • Upstream variants — sum stick values per seat (restored from
+  //     98d4cca^), so the Riichi UI renders real point totals.
   getScores(): Array<number | null> {
+    if (this.conditions.gameType === GameType.CHANGSHA) {
+      return [null, null, null, null, null];
+    }
+
     const scores = new Array(4).fill(-20000);
-    scores.push((25000 + 20000) * 4); // remaining
+    scores.push((25000 + 20000) * 4); // remaining bank
     const stickScores = [100, 500, 1000, 5000, 10000, 10000];
 
     for (const slot of this.slots.values()) {
@@ -320,7 +360,6 @@ export class Setup {
     for (const seat of GAME_TYPES[this.conditions.gameType].seats) {
       result[seat] = scores[seat];
     }
-
     return result;
   }
 }

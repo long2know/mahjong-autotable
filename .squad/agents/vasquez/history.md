@@ -166,3 +166,169 @@
 **Key learning for the team:** When a spec, an implementation, and three canonical sources give three different answers to one rule, the answer is almost always "the spec was wrong and the implementation drifted from a separately-wrong spec." Re-anchor on the canonical sources, document the anchor, then push the implementation back. Don't try to retrofit a coherent story onto incoherent code/text.
 
 📌 Team update (2026-05-13T17-40-17Z): 3D Renderer spike complete — Hicks identified a canonical wall-split open question (14/14/13/13 vs 14/13/14/13 symmetric) for Stephen's product decision. Q6 from the spike may need Vasquez's rules ruling if Stephen chooses the asymmetric option.
+
+## Rules Diff Manifest — Riichi vs Changsha (2026-05-13T23:00Z directive)
+
+**Task:** Produce the authoritative rules diff that Hicks will follow when modifying autotable's vendored TS source per Stephen's binding pivot (autotable IS Changsha, not Changsha-bolted-on-top).
+
+**Deliverable:** `.squad/decisions/inbox/vasquez-rules-diff-manifest.md` (~57 KB). 14 divergence axes; 13 v1 concepts to ADD + 12 v2-deferred; 31 concepts to REMOVE; 9 open questions tagged for Stephen.
+
+### Learnings — rule clarifications locked down
+
+- **Chow restriction is identical between Riichi and Changsha** ("only the next player in turn order"). The Riichi-convention phrasing ("from the player on your left") and the Changsha-spec phrasing ("immediately counterclockwise from the discarder") describe the same seat. Not a divergence — both restrict chow to the player who would naturally draw next if no one claims. A future engineer reading the spec from a Riichi background should not assume Changsha's chow rule is more permissive; it isn't.
+- **Pao (sekinin barai) is structurally absent in Changsha**, but Changsha's standard discard-claim payment model (`点炮` → discarder pays alone for **every** win, not just yakuman) functionally encodes the same "discarder bears full cost" semantics as Riichi pao — just universally, not as a narrow yakuman-only rule. There is no separate pao tracking needed.
+- **Furiten does NOT translate to Changsha's 过胡 rule.** Furiten is a *standing* tenpai restriction tied to your own discard pile (locked from ron on any winning tile you've ever discarded). 过胡 (过水) is a *per-tile transient* lockout triggered by *passing on a Hu opportunity*, lasting only until your next draw. Different triggers, different scope, different durations. Implementations must not collapse them into one mechanism.
+- **Riichi-only mechanics that "feel like" they'd carry over but do not:** ippatsu, double riichi, ura-dora, kan-dora, tenpai-at-draw payments (流局聴牌払い), honba counters, Nagashi Mangan, kyuushu kyuuhai abortive draws, four-kans / four-winds / four-riichi / triple-ron abortive draws. None map to a Changsha concept. All must be removed cleanly rather than translated.
+- **Riichi's separate Ron and Tsumo claim buttons collapse to a single Hu/胡 in Changsha.** The win method (self-draw vs discard) is inferred from context (active player + recency of draw/discard), not selected by the user. This is a UI-shape divergence with consequence: any Riichi-shaped "tsumo button shown to the active player only after their draw, ron button shown to non-active players in the claim window" affordance pattern must be redesigned for Changsha.
+- **No yaku gate in Changsha.** A complete 4-melds-plus-258-pair hand is a valid Hu regardless of "value." Riichi's mandatory `≥1 han yaku to win` rule has no analog. The Hu validator must NOT reject hands for lacking yaku — it should only check structural validity (4+1 + 258 pair, or any of the Big Win patterns).
+- **The autotable upstream TS source is rules-agnostic at the table-layout level** (it just moves tiles into slots per a deal pattern). The Riichi-shaped concepts are in: tile counts (136), deal patterns (`DEALS.FOUR_PLAYER.HANDS` with 12 dice-conditional placement entries), stick groups (riichi 1000-point stick, denomination sticks), slot layouts (`fr("riichi")` per variant), `WINDS` dealType, `Conditions.fives` and `Conditions.points`, and the `GameType` variant enum. These are the surgical strike points for Hicks's codemod — not "rules code" because there isn't any, but rather "Riichi-shaped *artifacts* of the table-setup system."
+- **The `GameType` enum's other variants (THREE_PLAYER / BAMBOO / MINEFIELD) are Japanese-mahjong variants** out of scope per the binding directive. Cleanest path is to delete them entirely from the Changsha-native fork; second-cleanest is to keep `FOUR_PLAYER` and rename it to `CHANGSHA` while deleting the others.
+- **Wall split is asymmetric (14/14/13/13)** for Changsha because 108 ÷ 4 = 27 tiles per player wall = 13.5 stacks. Per the Phase 5a Default #6 lock, two players get 14-stack walls and two get 13-stack walls. The codemod's wall-builder must encode this asymmetry; the canonical Riichi 17-stacks-per-player is the wrong default.
+
+**Files modified:**
+- `.squad/decisions/inbox/vasquez-rules-diff-manifest.md` (new — full diff spec, 14 axes)
+- `.squad/agents/vasquez/history.md` (this entry)
+
+**Production code:** Untouched (this is a specification artifact for the codemod, not the codemod itself).
+
+## Architectural Pivot — Phase A SHIPPED (2026-05-13)
+
+**Branch:** stlong/autotable-vendored-pivot (merged to main @ 55d8dfb)
+**Timestamp:** 2026-05-13T22:50Z
+**Contribution:** Produced authoritative Changsha vs Riichi rules divergence manifest (14 axes, 13 ADD, 31 REMOVE, 9 open Q's), binding specification for Hicks's TS modifications and Ripley's 5-phase pivot plan. Key findings: 108-tile set (no honors), 14/14/13/13 asymmetric wall (no dead wall), claim grammar (Pung/Chow-next-only/Kong/Hu), Small/Big Win scoring, 过胡 per-tile lockout.
+
+## Phase D-tests — Acceptance Test Suite SHIPPED (2026-05-19)
+
+**Branch:** `stlong/phase-b-changsha-scene`
+**Timestamp:** 2026-05-19T15:50Z
+**Contribution:** 10 acceptance test files (1 fixture + 9 test classes, 1,242
+LoC, 44 methods → 66 invocations) defining the executable contract for "fully
+playable Changsha" across all 8 rule axes (§1.5 deal, §1.6 chow restriction,
+§1.7 claim priority, §1.8 pung→kong, §1.10 258-pair, §1.11 Big Wins, §1.13
+banker rotation, §3.6 missed-win lockout) plus an end-to-end synthesis suite.
+After running: **62 passed / 0 failed / 4 skipped** — the Changsha rule engine
+is **closer to playable than expected**; the 4 skips document the precise
+remaining Phase D-backend gaps (诈胡 penalty payment, per-draw 过胡 decay,
+13-Orphans Big Win, autotable WS-relay test). Drove `ChangshaGameStateMachine`
+directly (pure functional commands) — no live HTTP, no SignalR coupling. All
+files compile clean on their own; Bishop's concurrent Autotable WIP currently
+doesn't build in isolation but is unrelated to my scope.
+
+**Files added:**
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/AcceptanceFixture.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/DealAndDicePhaseTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/ClaimPriorityTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/PungPromotionToKongTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/ChowFromLeftNeighborTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/HuValidation258Tests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/HuValidationBigWinsTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/BankerRotationTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/MissedWinPenaltyTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/EndToEndPlayableTests.cs`
+- `.squad/decisions/inbox/vasquez-phase-d-test-coverage.md` (decision drop)
+- `.squad/agents/vasquez/history.md` (this entry)
+
+**Production code:** Untouched. Disjoint from Bishop's Phase D-backend wiring
+and Hicks's Phase D-frontend scene scope.
+
+**Key findings flagged to Stephen:**
+1. Engine surface is more complete than the brief implied — only 2 small rule
+   refinements (诈胡 penalty, per-draw 过胡 decay) remain in the rules layer.
+2. The "fully playable" gate is mostly a wiring problem now (autotable WS
+   pipe ↔ `IChangshaGameRuntime`), not a rules problem.
+3. 13-Orphans is the only un-implemented Big Win; deferred as optional v2.
+
+---
+
+## Phase F — Manual pickup + variant switch + bot tiers acceptance suite (2026-06-04)
+
+**Branch:** `stlong/phase-f-changsha-realism` off `d461726` (Wave 3 Changsha runtime).
+**Role this wave:** rule auditor + acceptance test author. Disjoint from Bishop's
+production work (already partly shipped locally as untracked Bot/ folder and
+ChangshaDomain/StateMachine modifications) and from Hicks's frontend work.
+
+### What I shipped
+
+**1. Rule audit document** — `.squad/decisions/inbox/vasquez-phase-f-rule-audit.md`
+   - 12 rule axes covered (dice geometry, break-point semantics, pickup order,
+     phase sequence, tile counts, Hu mid-pickup, replacement-tile interaction,
+     dealer rotation, missed-win lockout, bot-tier behaviour, variant scoping,
+     re-entry/disconnect).
+   - Cited sources: MahjongPros (English primary), Baidu (English translation),
+     `docs/rules/changsha-spec.md` v1.2, Ripley's Phase F design doc.
+   - GAPS FOUND / DEFAULTS LOCKED tables make Stephen-needed product calls
+     explicit. Recommended Bishop's design choices verbatim where the design
+     already encoded the right answer.
+   - Key locks: 2d6 sum 2-12; break counts STACKS (not tiles) from the right
+     end of the chosen wall; CCW pickup order from dealer; tile counts
+     4+4+4+1+1=14 for dealer / 4+4+4+1=13 for others; no Hu mid-pickup;
+     pickup uses wall-front only (no kong-replacement intersection); dealer
+     rotation unchanged from Wave 3.
+
+**2. Three failing acceptance test files** — all under
+   `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/`:
+
+   - `ManualPickupAcceptanceTests.cs` (14 facts/theories, ~38 expanded cases):
+     dice 2d6 range/determinism, break-point math (Theory × 4 seeds), wall
+     containment, BreakPointMarked phase transition, first-round dealer 4-tile
+     pickup, CCW pickup order, out-of-turn rejection, wrong-count rejection,
+     all three rounds yielding 12 tiles each, single-tile round → 13 each,
+     dealer-extra → 14/13/13/13 + AwaitingDiscard, Hu-mid-pickup rejection,
+     auto-deal mode regression (must skip pickup), per-viewer privacy mask
+     (own hand rotation 1, others 2), and translator pickup-collection emit
+     + tombstone semantics.
+
+   - `VariantSwitchAcceptanceTests.cs` (9 facts/theories, ~17 expanded cases):
+     variant=changsha binds runtime, variant=four_player does NOT, relay-mode
+     bundle forwarding regression, no claim/result/pickup collections in relay
+     mode (Theory × 4 variants), default variant = changsha, AutotableConnection
+     property surface (Variant/DealMode/BotCount/BotDifficulty/RuntimeMode),
+     AutotableRuntimeMode enum members, mixed-mode rejection/lockout, URL
+     parameter parsing (Theory × 4 inline queries).
+
+   - `BotEngineAcceptanceTests.cs` (11 facts/theories, ~28 expanded cases):
+     Easy = discard-highest-rank + never-Chow + always-Hu; Medium =
+     shanten-minimizing discard + claims-Hu-when-offered + respects
+     ClaimAdjudicator's Chow-from-next-only filter; Hard = legal-discard
+     smoke + missed-win lockout respect; ChangshaBotEngine.Resolve
+     case-insensitive (Theory × 7), null/unknown → MediumStrategy; OnPickupCue
+     hook smoke (Theory × 3 difficulties); BotPickupDelayMs default 500;
+     4-bot full hand completes within 200 steps (Theory × 3 seeds).
+
+### Test posture — reflection-pending pattern
+
+All three files reference Phase-F-pending symbols (`DealMode`, new
+`ChangshaPhase` values, `BeginManualDeal`, `TakeTilesFromWall`,
+`PickupSeatIndex`, `ChangshaCollectionKinds.Pickup`, `AutotableRuntimeMode`,
+`AutotableConnection.Variant`, etc.) via `Assembly.GetType` + `MethodInfo`
+reflection. This means **the test assembly always compiles** even when Bishop's
+production code lags. Tests fail RED with descriptive
+`"Phase F backend not yet shipped — missing X. Bishop owns…"` messages until
+Bishop ships each symbol. Critical because Vasquez/Hicks/Bishop share one
+branch — if my tests didn't compile, Bishop's CI would be blocked.
+
+### Result: 60 expanded tests, 31 red / 29 green
+
+The 29 currently-green tests are the regression set (dice, break-point math,
+relay-mode forwarding, bot-vs-bot harness termination, ChangshaBotEngine
+resolver — Bishop has shipped the Bot/ folder locally as untracked). The 31
+red tests pin the work Bishop still owes (DealMode toggle, new pickup phases,
+TakeTilesFromWall, AutotableConnection Variant/DealMode/RuntimeMode props,
+AutotableRuntimeMode enum, BotPickupDelayMs option, etc.).
+
+### Files I did NOT touch (forbidden surface)
+
+- `src/backend/src/**` — all production code untouched (Bishop's surface).
+- `src/frontend/**` — Hicks's surface.
+- `AcceptanceFixture.cs` — chose to colocate reflection helpers inline in
+  each new test file rather than extend the shared fixture; keeps Bishop's
+  parallel work uncoupled.
+- `.csproj` files — left Bishop's pending `Microsoft.AspNetCore.Hosting`
+  global-using untouched; my tests carry an explicit `using` instead.
+
+### Open assumption (low risk)
+
+Ripley's design names the property `state.DealMode`. If Bishop chooses
+`state.Mode` or `state.Conditions.DealMode` instead, my reflection lookups
+fail with a descriptive message telling him what name to use. Bishop will
+either rename to match or my test will get a one-line fix.

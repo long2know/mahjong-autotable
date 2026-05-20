@@ -1,4 +1,4 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.5deba023.css><body>
+<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.1c6f6789.css><body>
     <img id=dice-img src=dice.auto.391822b5.png style=opacity:0>
     <canvas id=center></canvas>
     
@@ -62,45 +62,91 @@
             <div id=setup-group class=collapse data-toggle=true>
                 <select class="dark-select form-control form-control-sm mt-2" id=deal-type>
                     <option disabled value>Deal:</option>
-                    <option value=UNSHUFFLED>Only walls (not shuffled)</option>
                     <option value=HANDS selected>Hands</option>
                     <option value=INITIAL>Only walls</option>
-                    <option value=WINDS>Wind tiles (for seats)</option>
+                    <option value=UNSHUFFLED>Only walls (not shuffled)</option>
                 </select>
+                
                 <select class="dark-select form-control form-control-sm mt-2" id=game-type>
-                    <option disabled value>Game type:</option>
-                    <option value=FOUR_PLAYER selected>4-player</option>
-                    <option value=THREE_PLAYER>3-player</option>
-                    <option value=MINEFIELD>2-player Minefield</option>
-                    <option value=BAMBOO>2-player Bamboo</option>
-                    <option value=FOUR_PLAYER_DEMO>Demo</option>
+                    <option value=CHANGSHA selected>Changsha (108)</option>
+                    <option value=FOUR_PLAYER>Riichi — 4 player</option>
+                    <option value=THREE_PLAYER>Riichi — 3 player</option>
+                    <option value=BAMBOO>Bamboo</option>
+                    <option value=MINEFIELD>Minefield</option>
                 </select>
-                <select class="dark-select form-control form-control-sm mt-2" id=fives>
+                
+                <select class="changsha-only dark-select form-control form-control-sm mt-2" id=deal-mode>
+                    <option disabled value>Deal mode:</option>
+                    <option value=manual selected>Manual (click to pick)</option>
+                    <option value=auto>Auto (instant deal)</option>
+                </select>
+                
+                <select class="dark-select form-control form-control-sm mt-2" id=bot-count>
+                    <option disabled value>Bots:</option>
+                    <option value=0 selected>0 bots</option>
+                    <option value=1>1 bot</option>
+                    <option value=2>2 bots</option>
+                    <option value=3>3 bots</option>
+                    <option value=4>4 bots</option>
+                </select>
+                <select class="dark-select form-control form-control-sm mt-2" id=bot-difficulty>
+                    <option disabled value>Difficulty:</option>
+                    <option value=easy>Easy</option>
+                    <option value=medium selected>Medium</option>
+                    <option value=hard>Hard</option>
+                </select>
+                
+                <select class="dark-select form-control form-control-sm mt-2 riichi-only" id=fives>
                     <option disabled value>Red fives:</option>
-                    <option value=000>No red fives</option>
-                    <option value=111 selected>1-1-1</option>
-                    <option value=121>1-2-1</option>
+                    <option value=000>0 red fives</option>
+                    <option value=111 selected>3 red fives (1 each)</option>
+                    <option value=121>4 red fives (2 sou + 1 each)</option>
                 </select>
-                <div class="d-flex mt-2">
-                    <select class="dark-select form-control form-control-sm mr-2 w-100" id=points>
-                        <option disabled value>Starting points:</option>
-                        <option value=25 selected>25k</option>
-                        <option value=30>30k</option>
-                        <option value=35>35k</option>
-                        <option value=40>40k</option>
-                        <option value=100 selected>100k</option>
-                    </select>
-                    <button class="btn btn-dark btn-progress-main btn-sm flex-shrink-1" id=reset-points data-toggle=tooltip data-placement=top title="Click and hold to reset point sticks">
-                        <div class=btn-progress></div>
-                        <span class=btn-progress-text>Reset</span>
-                    </button>
-                </div>
+                <select class="dark-select form-control form-control-sm mt-2 riichi-only" id=points>
+                    <option disabled value>Starting points:</option>
+                    <option value=25 selected>25000</option>
+                    <option value=30>30000</option>
+                    <option value=35>35000</option>
+                    <option value=40>40000</option>
+                    <option value=100>100000 (tonpuu)</option>
+                </select>
+                <button class="btn btn-dark btn-sm mt-2 riichi-only w-100" id=reset-points>
+                    Reset points
+                </button>
                 <br>
             </div>
 
             <div class="d-flex mt-2">
-                <button class="btn btn-secondary btn-sm mr-2 w-100" id=toggle-dealer>Dealer</button>
-                <button class="btn btn-secondary btn-sm w-100" id=toggle-honba>Honba</button>
+                <button class="btn btn-secondary btn-sm w-100" id=toggle-dealer>Dealer</button>
+                <button class="btn btn-secondary btn-sm ml-2 riichi-only w-100" id=toggle-honba>
+                    Honba: 0
+                </button>
+            </div>
+
+            <div class=mt-3>
+                <small class=text-white-50>Claims</small>
+                <div class="d-flex mt-1">
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id=claim-pung disabled data-toggle=tooltip data-placement=top title="Claim a Pung (triplet).">
+                        碰 <small>Pung</small>
+                    </button>
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id=claim-chow disabled data-toggle=tooltip data-placement=top title="Claim a Chow (sequence).">
+                        吃 <small>Chow</small>
+                    </button>
+                    <button class="btn btn-dark btn-sm mr-1 w-100" id=claim-kong disabled data-toggle=tooltip data-placement=top title="Claim a Kong (four-of-a-kind).">
+                        杠 <small>Kong</small>
+                    </button>
+                    <button class="btn btn-sm btn-warning w-100" id=claim-hu disabled data-toggle=tooltip data-placement=top title="Declare Hu (win).">
+                        胡 <small>Hu</small>
+                    </button>
+                </div>
+                <div class="d-flex mt-1">
+                    <button class="btn btn-secondary btn-sm w-100" id=claim-pass disabled data-toggle=tooltip data-placement=top title="Pass on this claim window.">
+                        跳过 <small>Pass</small>
+                    </button>
+                </div>
+                <div class="mt-1 text-warning" id=claim-countdown style=font-size:.8rem;display:none>
+                    Decide in <span id=claim-countdown-value>5.0</span>s
+                </div>
             </div>
 
             <div class="d-flex mt-4" id=server>
@@ -197,6 +243,70 @@
         </div>
     </div>
 
-    <script type=module src=autotable-src.eb80a662.js></script>
+    
+    <div class=modal id=result-modal tabindex=-1 aria-hidden=true data-backdrop=static data-keyboard=false>
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content result-modal-content">
+                <div class="modal-body text-center text-light">
+                    <h2 id=result-headline class=mb-1>胡!</h2>
+                    <div id=result-winner class="mb-3 text-warning"></div>
+                    <table class="mx-auto table table-dark table-sm" id=result-score>
+                        <thead>
+                            <tr>
+                                <th>座位 Seat</th>
+                                <th>玩家 Player</th>
+                                <th>分 Score Δ</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <div class=mt-3>
+                        <div class="mb-1 text-white-50">
+                            <small>胡牌 Winning hand</small>
+                        </div>
+                        <div id=result-hand class="d-flex flex-wrap justify-content-center"></div>
+                    </div>
+                </div>
+                <div class="justify-content-center modal-footer">
+                    <button type=button class="btn btn-warning" id=result-next>
+                        下一局 <small>Next Hand</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <div id=dice-hud style=display:none>
+        <span class=dice-face id=dice-hud-d1>⚀</span>
+        <span class=dice-face id=dice-hud-d2>⚀</span>
+        <span class=dice-sum>= <span id=dice-hud-sum>2</span></span>
+        <span class=dice-break>→ break @ <span id=dice-hud-break>2</span></span>
+    </div>
+
+    
+    <div id=bot-banner style=display:none></div>
+
+    
+    <div id=variant-badge>🀄 Changsha</div>
+
+    
+    <div id=pickup-hud style=display:none>
+        <span id=pickup-hud-text>Your turn — pick 4 tiles</span>
+        <button class="btn btn-sm btn-warning ml-2" id=pickup-take-btn>
+            Take <span id=pickup-take-count>4</span>
+        </button>
+    </div>
+
+    
+    <button id=roll-dice style=display:none title="Click to roll the dice and start picking tiles">
+        <img src=dice.auto.391822b5.png alt="Roll dice">
+        <span class=roll-dice-label>Roll dice</span>
+    </button>
+
+    
+    <div id=break-marker style=display:none>▼</div>
+
+    <script type=module src=autotable-src.6d5fae4c.js></script>
 
 

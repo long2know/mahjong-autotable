@@ -13,7 +13,10 @@ namespace Mahjong.Autotable.Api.Tests.Autotable;
 /// <summary>
 /// CAT-PHASE5A: End-to-end WS endpoint tests using <see cref="WebApplicationFactory{TEntryPoint}"/>.
 /// Verifies JOIN → JOINED + full UPDATE, the always-available pattern for unknown gameIds,
-/// runtime state-change → UPDATE broadcast, and the one-way Phase 5a discard policy.
+/// and runtime state-change → UPDATE broadcast. The Phase 5a "one-way discard" policy
+/// for bundle-initiated UPDATEs has been replaced by the Phase C-relay bidirectional
+/// pipe (see <see cref="AutotableWsRelayTests"/>); the pre-JOIN drop is the only
+/// remaining discard path and is exercised here.
 /// </summary>
 public class AutotableWsEndpointTests : IAsyncLifetime
 {
@@ -63,13 +66,15 @@ public class AutotableWsEndpointTests : IAsyncLifetime
 
         var joined = await session.ReadEnvelopeAsync();
         Assert.Equal("JOINED", joined.GetProperty("type").GetString());
-        Assert.Equal("DOES-NOT-EXIST", joined.GetProperty("gameId").GetString());
+        // Phase D-backend: gameId is coerced to the single-game-per-instance
+        // default. Client-supplied values are ignored — Phase E will widen.
+        Assert.Equal(AutotableWsEndpoint.DefaultGameId, joined.GetProperty("gameId").GetString());
 
         var update = await session.ReadEnvelopeAsync();
         Assert.Equal("UPDATE", update.GetProperty("type").GetString());
         Assert.True(update.GetProperty("full").GetBoolean());
 
-        // Always-available: only the match entry — no game data.
+        // No runtime is bound yet — translator ships only the match[0] override.
         var entries = update.GetProperty("entries");
         Assert.Equal(1, entries.GetArrayLength());
         Assert.Equal("match", entries[0][0].GetString());
@@ -85,8 +90,13 @@ public class AutotableWsEndpointTests : IAsyncLifetime
         await runtime.StartGameAsync(gameId);
         await Task.Delay(50); // let any deal-batch fanout settle
 
+        // Phase D-backend: inject the relay→runtime binding so the WS endpoint's
+        // default gameId resolves to the pre-created runtime game.
+        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
+        manager.BindRuntimeGameForTest(AutotableWsEndpoint.DefaultGameId, gameId);
+
         await using var session = await OpenAsync(seat: 0);
-        await session.SendJoinAsync(gameId);
+        await session.SendJoinAsync(AutotableWsEndpoint.DefaultGameId);
 
         var joined = await session.ReadEnvelopeAsync();
         Assert.Equal("JOINED", joined.GetProperty("type").GetString());
@@ -115,8 +125,11 @@ public class AutotableWsEndpointTests : IAsyncLifetime
         await runtime.StartGameAsync(gameId);
         await Task.Delay(50);
 
+        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
+        manager.BindRuntimeGameForTest(AutotableWsEndpoint.DefaultGameId, gameId);
+
         await using var session = await OpenAsync(seat: 0);
-        await session.SendJoinAsync(gameId);
+        await session.SendJoinAsync(AutotableWsEndpoint.DefaultGameId);
 
         // Consume initial JOINED + first UPDATE.
         _ = await session.ReadEnvelopeAsync();
@@ -131,7 +144,11 @@ public class AutotableWsEndpointTests : IAsyncLifetime
         Assert.True(followUp.GetProperty("full").GetBoolean());
     }
 
-    // ── bundle-initiated UPDATE is silently discarded ─────────────────
+    // ── bundle-initiated UPDATE *before* JOIN is dropped quietly ──────
+    //
+    // Note: post-JOIN UPDATE is now relayed (Phase C-relay) — see
+    // AutotableWsRelayTests for that path. Only the pre-JOIN case (no
+    // gameId to route to) is silently dropped.
 
     [Fact, Trait("Category", "Phase5a")]
     public async Task BundleInitiatedUpdate_IsDiscardedQuietly()

@@ -7,7 +7,10 @@ import { MouseTracker } from "./mouse-tracker";
 import { Setup } from './setup';
 import { ObjectView, Render } from "./object-view";
 import { SoundPlayer } from "./sound-player";
-import { Conditions, ThingInfo, SoundType, Fives, Place, ThingType, Size, DealType, GameType, Points, DiceInfo } from "./types";
+import {
+  Conditions, ThingInfo, SoundType, Place, ThingType, Size, DealType,
+  DiceInfo, GameType, PickupEntry,
+} from "./types";
 import { Slot } from "./slot";
 import { Thing } from "./thing";
 
@@ -45,6 +48,12 @@ export class World {
 
   conditions: Conditions;
 
+  // Phase F — latest server-pushed pickup affordance.  Drives the "your turn
+  // to pick" gate: when set and `seatIndex === this.seat`, drag-start on a
+  // wall tile is intercepted and `pickup.take` is emitted instead.
+  private pickup: PickupEntry | null = null;
+  private onPickupChanged: ((p: PickupEntry | null) => void) | null = null;
+
   constructor(objectView: ObjectView, soundPlayer: SoundPlayer, client: Client) {
     this.setup = new Setup();
     this.slots = this.setup.slots;
@@ -65,20 +74,27 @@ export class World {
     this.client.things.on('update', this.onThings.bind(this));
     this.client.match.on('update', this.onMatch.bind(this));
     this.client.dice.on('update', this.onDice.bind(this));
+    this.client.pickup.on('update', this.onPickup.bind(this));
     this.sendUpdate();
   }
 
+  // TODO Phase D: banker rotation becomes server-authoritative; this client-side
+  // dealer cycler must collapse to display-only once the changsha.banker
+  // collection arrives.
   toggleDealer(): void {
     const match = this.client.match.get(0) ?? { dealer: 3, honba: 0, conditions: Conditions.initial()};
     match.dealer = (match.dealer + 1) % 4;
     this.client.match.set(0, match);
   }
 
+  // Phase F — restored from upstream (98d4cca^).  Riichi honba counter
+  // rotates through 0..7.  Hidden in Changsha (the button is `display: none`
+  // when conditions.gameType === CHANGSHA).
   toggleHonba(): void {
-    const match = this.client.match.get(0) ?? { dealer: 0, honba: 0, conditions: Conditions.initial()};
+    const match = this.client.match.get(0) ?? { dealer: 0, honba: 0, conditions: Conditions.initial() };
     match.honba = (match.honba + 1) % 8;
     this.client.match.set(0, match);
-  };
+  }
 
   private onSeat(): void {
     this.seat = this.client.seat;
@@ -93,7 +109,8 @@ export class World {
         continue;
       }
 
-      const thing = this.things.get(thingIndex)!;
+      const thing = this.things.get(thingIndex);
+      if (!thing) continue;
       thing.prepareMove();
     }
     for (const [thingIndex, thingInfo] of entries) {
@@ -101,9 +118,20 @@ export class World {
         continue;
       }
 
-      const thing = this.things.get(thingIndex)!;
-      const slot = this.slots.get(thingInfo.slotName)!;
-      thing.moveTo(slot, thingInfo.rotationIndex);
+      const thing = this.things.get(thingIndex);
+      if (!thing) continue;
+      const slot = this.slots.get(thingInfo.slotName);
+      if (!slot) continue;
+      // Phase D — tile face privacy. Bishop's WS endpoint strips `face` to
+      // null on tiles concealed from this viewer. The bundle defends against
+      // a backend that forgets to flip rotationIndex by coercing the visible
+      // rotation to a face-down index (the slot's last rotation, which by
+      // setup-slots convention is the back-up orientation for hand slots).
+      let rotationIndex = thingInfo.rotationIndex;
+      if (thingInfo.face === null && slot.rotations.length > 1) {
+        rotationIndex = slot.rotations.length - 1;
+      }
+      thing.moveTo(slot, rotationIndex);
       thing.sent = true;
 
       thing.claimedBy = thingInfo.claimedBy;
@@ -149,9 +177,93 @@ export class World {
     this.objectView;
   }
 
-  updateConditions(conditions: Conditions, replacePoints: boolean = false): void {
+  // Phase F — runtime-pushed pickup affordance.  Stored locally so subsequent
+  // drag-starts can intercept wall-tile clicks.  Game-ui registers a callback
+  // via setPickupListener() so the HUD can render the "Take N" banner.
+  private onPickup(): void {
+    // The pickup collection is a singleton on key "current" (matching the
+    // result/claim conventions in Phase F).  Outbound command keys
+    // ('rollDice' / 'take' — ours to write, never to read back).  Only
+    // "current" is authoritative.
+    const entry = this.client.pickup.get('current') ?? null;
+    this.pickup = entry;
+    if (this.onPickupChanged) this.onPickupChanged(entry);
+  }
+
+  setPickupListener(fn: ((p: PickupEntry | null) => void) | null): void {
+    this.onPickupChanged = fn;
+  }
+
+  /** True if the runtime currently expects this client's seat to click. */
+  isMyPickupTurn(): boolean {
+    return this.pickup !== null
+        && this.seat !== null
+        && this.pickup.seatIndex === this.seat
+        && this.pickup.count > 0;
+  }
+
+  /** Convenience snapshot for the HUD. */
+  currentPickup(): PickupEntry | null {
+    return this.pickup;
+  }
+
+  /**
+   * Phase F — dealer clicks the dice button.  Server-side this transitions
+   * the RollingDice phase into BreakPointMarked + emits the dice roll.  The
+   * bundle does NOT optimistically render dice; it waits for the server's
+   * `dice` UPDATE.
+   */
+  emitRollDice(): void {
+    if (this.seat === null) return;
+    // Cast: the pickup collection is typed as PickupEntry but command-shaped
+    // outbound entries deliberately differ (see client.ts comment).
+    this.client.pickup.set('rollDice', { seatIndex: this.seat } as any);
+  }
+
+  /**
+   * Phase F — player takes their next N wall tiles.  Backend interprets the
+   * `count` against `state.PickupSeatIndex` and the current phase's expected
+   * count; `wallTileIds` is informational (the runtime owns wall ordering).
+   * Returns true if the emit was attempted.
+   */
+  emitTakePickup(): boolean {
+    if (!this.isMyPickupTurn()) return false;
+    const seatIndex = this.seat!;
+    const count = this.pickup!.count;
+    const wallTileIds = this.peekNextWallTileIds(count);
+    this.client.pickup.set('take', { seatIndex, count, wallTileIds } as any);
+    return true;
+  }
+
+  /**
+   * Best-effort snapshot of the next-N tile IDs in our local wall ordering.
+   * Walks the canonical wall slot order (`wall.<col>.<row>@<seat>`) and
+   * returns the first N occupied slots' `thing.index` values.  The backend
+   * is authoritative for what those tiles actually are — this is purely
+   * informational so test scripts and orchestration logs can confirm the
+   * client picked the expected tile group.
+   */
+  private peekNextWallTileIds(count: number): number[] {
+    if (count <= 0) return [];
+    // Sort wall slot names so we walk a deterministic order.  Slot names
+    // look like `wall.<col>.<row>@<seat>`; sorting lexicographically gets
+    // us close-enough to the original deal order.
+    const wallSlots = [...this.slots.values()]
+      .filter(s => s.group === 'wall' && s.thing !== null)
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const ids: number[] = [];
+    for (const slot of wallSlots) {
+      if (slot.thing) {
+        ids.push(slot.thing.index);
+        if (ids.length >= count) break;
+      }
+    }
+    return ids;
+  }
+
+  updateConditions(conditions: Conditions): void {
     this.conditions = conditions;
-    this.setup.replace(conditions, replacePoints);
+    this.setup.replace(conditions);
     this.setupView();
   }
 
@@ -206,7 +318,12 @@ export class World {
     };
   }
 
-  deal(dealType: DealType, gameType: GameType, fives: Fives, points: Points): void {
+  /**
+   * Phase F — Deal entry point.  Game-ui passes any conditions overrides
+   * (gameType / fives / points / dealMode) so the dropdown UI can mutate the
+   * conditions before the deal happens in one transaction.
+   */
+  deal(dealType: DealType, overrides: Partial<Conditions> = {}): void {
     if (this.seat === null) {
       return;
     }
@@ -217,44 +334,58 @@ export class World {
     this.selected.splice(0);
     this.checkPushes();
 
-    const back = 1 - this.conditions.back;
-    const conditions = { ...this.conditions, back, gameType, fives, points, dealType };
+    // Phase F — upstream's deal toggles the tile-back colour every deal so
+    // shuffling order is visible to humans.  Carry the toggle forward for
+    // non-Changsha variants; Changsha pins back=0 always.
+    const isChangsha = (overrides.gameType ?? this.conditions.gameType) === GameType.CHANGSHA;
+    const nextBack = isChangsha ? 0 : (1 - this.conditions.back);
 
-    let match = this.client.match.get(0);
-    let honba;
-    if (!match || match.dealer !== this.seat) {
-      honba = 0;
-    } else if (dealType === DealType.HANDS) {
-      honba = (match.honba + 1) % 8;
-    } else {
-      honba = match.honba;
-    }
+    const conditions: Conditions = {
+      ...this.conditions,
+      ...overrides,
+      back: nextBack,
+      dealType,
+    };
 
-    match = {dealer: this.seat, honba, conditions};
+    // Changsha has no honba (Vasquez §1.9); pin to 0 so the center renderer
+    // never paints it.  Riichi variants get the upstream's running honba.
+    const existingMatch = this.client.match.get(0);
+    const honba = isChangsha ? 0 : (existingMatch?.honba ?? 0);
+    const match = { dealer: this.seat, honba, conditions };
 
     this.updateConditions(conditions);
     const dice = this.setup.deal(this.seat);
-    const diceInfo: DiceInfo = {dice, state: this.setup.usesDice() ? 'rolled': 'ignore'};
+    const diceInfo: DiceInfo = { dice, state: this.setup.usesDice() ? 'rolled' : 'ignore' };
 
     this.client.transaction(() => {
-      this.client.match.set(0, match!);
+      this.client.match.set(0, match);
       this.client.dice.set(0, diceInfo);
       this.sendUpdate(true);
     });
   }
 
-  resetPoints(points: Points): void {
+  /**
+   * Phase F — restored from upstream (98d4cca^).  Force-replaces the per-seat
+   * stick trays for a new starting-points selection.  Changsha is a no-op
+   * (the variant doesn't render sticks).
+   */
+  resetPoints(points: Conditions['points']): void {
+    if (this.conditions.gameType === GameType.CHANGSHA) return;
+
     for (const thing of this.things.values()) {
       thing.release();
     }
     this.selected.splice(0);
     this.checkPushes();
 
-    const conditions = { ...this.conditions, points };
-    this.updateConditions(conditions, true);
+    const conditions: Conditions = { ...this.conditions, points };
+    this.setup.replace(conditions, /*replacePoints*/ true);
+    this.setupView();
+    this.conditions = conditions;
 
-    let match = this.client.match.get(0)!;
-    match = { ...match, conditions };
+    const existingMatch = this.client.match.get(0)
+      ?? { dealer: 0, honba: 0, conditions: this.conditions };
+    const match = { ...existingMatch, conditions };
 
     this.client.transaction(() => {
       this.client.match.set(0, match);
@@ -426,6 +557,20 @@ export class World {
       return false;
     }
 
+    // Phase F — manual-pickup intercept.  When the runtime expects this seat
+    // to pick the next N wall tiles, a drag-start on a wall tile becomes a
+    // pickup.take emit instead of a free-drag.  We do NOT optimistically
+    // move the tile — the backend will respond with a `things` UPDATE that
+    // places the tile into the hand.
+    if (this.hovered !== null
+        && this.hovered.slot.group === 'wall'
+        && this.isMyPickupTurn()) {
+      this.emitTakePickup();
+      this.hovered = null;
+      this.selected.splice(0);
+      return false;
+    }
+
     if (this.hovered !== null && !this.isHolding()) {
       let toHold;
       if (this.selected.indexOf(this.hovered) !== -1) {
@@ -527,15 +672,12 @@ export class World {
 
     const sourceSlots = [];
     let discardSide = null;
-    let hasStick = false;
     for (const thing of this.movement.things()) {
       const source = thing.slot;
       const target = this.movement.get(thing)!;
       if (target.group === 'discard' &&
         !(source.group === 'discard' && source.seat === target.seat)) {
         discardSide = target.seat;
-      } else if (target.group === 'riichi') {
-        hasStick = true;
       }
       sourceSlots.push(source);
     }
@@ -546,9 +688,6 @@ export class World {
 
     if (discardSide !== null) {
       this.soundPlayer.play(SoundType.DISCARD, discardSide);
-    }
-    if (hasStick) {
-      this.soundPlayer.play(SoundType.STICK, null);
     }
   }
 

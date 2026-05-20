@@ -12,6 +12,13 @@ public sealed class ChangshaRuntimeOptions
     /// <summary>Delay before a bot responds during a claim window.</summary>
     public int BotClaimDelayMs { get; set; } = 250;
 
+    /// <summary>
+    /// Phase F §3 — delay before a bot takes its wall tiles during a manual-deal
+    /// pickup phase. Gives clients time to render the dice roll and break-point
+    /// animations before tiles start flowing into the bot's hand.
+    /// </summary>
+    public int BotPickupDelayMs { get; set; } = 500;
+
     /// <summary>Total claim-window timeout. Clients see this as a countdown hint.</summary>
     public int ClaimWindowTimeoutMs { get; set; } = 5000;
 
