@@ -181,10 +181,11 @@ export class World {
   // drag-starts can intercept wall-tile clicks.  Game-ui registers a callback
   // via setPickupListener() so the HUD can render the "Take N" banner.
   private onPickup(): void {
-    // The pickup collection is a singleton on key 0 (the snapshot) plus the
-    // outbound command keys ('rollDice' / 'take' — ours to write, never to
-    // read back).  Only key 0 is authoritative.
-    const entry = this.client.pickup.get(0) ?? null;
+    // The pickup collection is a singleton on key "current" (matching the
+    // result/claim conventions in Phase F).  Outbound command keys
+    // ('rollDice' / 'take' — ours to write, never to read back).  Only
+    // "current" is authoritative.
+    const entry = this.client.pickup.get('current') ?? null;
     this.pickup = entry;
     if (this.onPickupChanged) this.onPickupChanged(entry);
   }

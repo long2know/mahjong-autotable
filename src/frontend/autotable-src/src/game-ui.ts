@@ -934,12 +934,12 @@ export class GameUi {
   }
 
   private onPickupUpdate(entries: Array<[string | number, PickupEntry | null]>): void {
-    // Only the key=0 singleton is the authoritative snapshot.  The string
-    // keys ('rollDice' / 'take') are our outbound commands and we don't
-    // re-render off them.
+    // Only the "current" singleton is the authoritative snapshot.  Outbound
+    // command keys ('rollDice' / 'take') round-trip back to us through the
+    // collection but carry no inbound state.
     for (const [key,] of entries) {
-      if (key !== 0) continue;
-      const pickup = this.client.pickup.get(0) ?? null;
+      if (key !== 'current') continue;
+      const pickup = this.client.pickup.get('current') ?? null;
       this.renderPickupHud(pickup);
       this.renderRollDiceButton(pickup);
       this.renderBreakMarker(pickup);

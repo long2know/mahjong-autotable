@@ -451,20 +451,20 @@ public class ManualPickupAcceptanceTests
         int RotationOf(Mahjong.Autotable.Api.Autotable.CollectionEntry e) =>
             (int)(e.Value!.GetType().GetProperty("rotationIndex")!.GetValue(e.Value)!);
 
-        // For viewer=0: own hand (seat 0, "hand.0") face-up (rotation 1); others face-down (2).
+        // For viewer=0: own hand (seat 0, slot suffix "@0") face-up (rotation 1); others face-down (2).
         foreach (var e in entriesForSeat0.Where(IsHandThing))
         {
             var slot = (string)e.Value!.GetType().GetProperty("slotName")!.GetValue(e.Value)!;
-            var ownHand = slot.StartsWith("hand.0", StringComparison.Ordinal);
+            var ownHand = slot.EndsWith("@0", StringComparison.Ordinal);
             var expectedRot = ownHand ? 1 : 2;
             Assert.True(RotationOf(e) == expectedRot,
                 $"viewer=0 slot={slot}: expected rotation {expectedRot}, got {RotationOf(e)}.");
         }
-        // For viewer=2: own hand (seat 2) face-up; others face-down.
+        // For viewer=2: own hand (seat 2, slot suffix "@2") face-up; others face-down.
         foreach (var e in entriesForSeat2.Where(IsHandThing))
         {
             var slot = (string)e.Value!.GetType().GetProperty("slotName")!.GetValue(e.Value)!;
-            var ownHand = slot.StartsWith("hand.2", StringComparison.Ordinal);
+            var ownHand = slot.EndsWith("@2", StringComparison.Ordinal);
             var expectedRot = ownHand ? 1 : 2;
             Assert.True(RotationOf(e) == expectedRot,
                 $"viewer=2 slot={slot}: expected rotation {expectedRot}, got {RotationOf(e)}.");
