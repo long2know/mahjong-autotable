@@ -345,10 +345,11 @@ public static class BotDiscardAdvisor
                     var pairCount = handCounts.Count(entry => entry.Value >= 2);
                     var hasAlternateLiveSmallWinCandidates = liveSmallWinPairCandidates is not null
                         && liveSmallWinPairCandidates.Count > 1;
+                    var shouldProtectSingleton = !hasAlternateLiveSmallWinCandidates
+                        || liveSingleton.RemainingCopies >= 2
+                        || pairCount == 0;
 
-                    if (liveSingleton.RemainingCopies >= 2
-                        || pairCount == 0
-                        || hasAlternateLiveSmallWinCandidates)
+                    if (shouldProtectSingleton)
                     {
                         var protectedTile = liveSingleton.Tile;
                         var nonProtectedCandidates = candidates
