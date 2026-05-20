@@ -237,3 +237,98 @@ and Hicks's Phase D-frontend scene scope.
 2. The "fully playable" gate is mostly a wiring problem now (autotable WS
    pipe ↔ `IChangshaGameRuntime`), not a rules problem.
 3. 13-Orphans is the only un-implemented Big Win; deferred as optional v2.
+
+---
+
+## Phase F — Manual pickup + variant switch + bot tiers acceptance suite (2026-06-04)
+
+**Branch:** `stlong/phase-f-changsha-realism` off `d461726` (Wave 3 Changsha runtime).
+**Role this wave:** rule auditor + acceptance test author. Disjoint from Bishop's
+production work (already partly shipped locally as untracked Bot/ folder and
+ChangshaDomain/StateMachine modifications) and from Hicks's frontend work.
+
+### What I shipped
+
+**1. Rule audit document** — `.squad/decisions/inbox/vasquez-phase-f-rule-audit.md`
+   - 12 rule axes covered (dice geometry, break-point semantics, pickup order,
+     phase sequence, tile counts, Hu mid-pickup, replacement-tile interaction,
+     dealer rotation, missed-win lockout, bot-tier behaviour, variant scoping,
+     re-entry/disconnect).
+   - Cited sources: MahjongPros (English primary), Baidu (English translation),
+     `docs/rules/changsha-spec.md` v1.2, Ripley's Phase F design doc.
+   - GAPS FOUND / DEFAULTS LOCKED tables make Stephen-needed product calls
+     explicit. Recommended Bishop's design choices verbatim where the design
+     already encoded the right answer.
+   - Key locks: 2d6 sum 2-12; break counts STACKS (not tiles) from the right
+     end of the chosen wall; CCW pickup order from dealer; tile counts
+     4+4+4+1+1=14 for dealer / 4+4+4+1=13 for others; no Hu mid-pickup;
+     pickup uses wall-front only (no kong-replacement intersection); dealer
+     rotation unchanged from Wave 3.
+
+**2. Three failing acceptance test files** — all under
+   `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/`:
+
+   - `ManualPickupAcceptanceTests.cs` (14 facts/theories, ~38 expanded cases):
+     dice 2d6 range/determinism, break-point math (Theory × 4 seeds), wall
+     containment, BreakPointMarked phase transition, first-round dealer 4-tile
+     pickup, CCW pickup order, out-of-turn rejection, wrong-count rejection,
+     all three rounds yielding 12 tiles each, single-tile round → 13 each,
+     dealer-extra → 14/13/13/13 + AwaitingDiscard, Hu-mid-pickup rejection,
+     auto-deal mode regression (must skip pickup), per-viewer privacy mask
+     (own hand rotation 1, others 2), and translator pickup-collection emit
+     + tombstone semantics.
+
+   - `VariantSwitchAcceptanceTests.cs` (9 facts/theories, ~17 expanded cases):
+     variant=changsha binds runtime, variant=four_player does NOT, relay-mode
+     bundle forwarding regression, no claim/result/pickup collections in relay
+     mode (Theory × 4 variants), default variant = changsha, AutotableConnection
+     property surface (Variant/DealMode/BotCount/BotDifficulty/RuntimeMode),
+     AutotableRuntimeMode enum members, mixed-mode rejection/lockout, URL
+     parameter parsing (Theory × 4 inline queries).
+
+   - `BotEngineAcceptanceTests.cs` (11 facts/theories, ~28 expanded cases):
+     Easy = discard-highest-rank + never-Chow + always-Hu; Medium =
+     shanten-minimizing discard + claims-Hu-when-offered + respects
+     ClaimAdjudicator's Chow-from-next-only filter; Hard = legal-discard
+     smoke + missed-win lockout respect; ChangshaBotEngine.Resolve
+     case-insensitive (Theory × 7), null/unknown → MediumStrategy; OnPickupCue
+     hook smoke (Theory × 3 difficulties); BotPickupDelayMs default 500;
+     4-bot full hand completes within 200 steps (Theory × 3 seeds).
+
+### Test posture — reflection-pending pattern
+
+All three files reference Phase-F-pending symbols (`DealMode`, new
+`ChangshaPhase` values, `BeginManualDeal`, `TakeTilesFromWall`,
+`PickupSeatIndex`, `ChangshaCollectionKinds.Pickup`, `AutotableRuntimeMode`,
+`AutotableConnection.Variant`, etc.) via `Assembly.GetType` + `MethodInfo`
+reflection. This means **the test assembly always compiles** even when Bishop's
+production code lags. Tests fail RED with descriptive
+`"Phase F backend not yet shipped — missing X. Bishop owns…"` messages until
+Bishop ships each symbol. Critical because Vasquez/Hicks/Bishop share one
+branch — if my tests didn't compile, Bishop's CI would be blocked.
+
+### Result: 60 expanded tests, 31 red / 29 green
+
+The 29 currently-green tests are the regression set (dice, break-point math,
+relay-mode forwarding, bot-vs-bot harness termination, ChangshaBotEngine
+resolver — Bishop has shipped the Bot/ folder locally as untracked). The 31
+red tests pin the work Bishop still owes (DealMode toggle, new pickup phases,
+TakeTilesFromWall, AutotableConnection Variant/DealMode/RuntimeMode props,
+AutotableRuntimeMode enum, BotPickupDelayMs option, etc.).
+
+### Files I did NOT touch (forbidden surface)
+
+- `src/backend/src/**` — all production code untouched (Bishop's surface).
+- `src/frontend/**` — Hicks's surface.
+- `AcceptanceFixture.cs` — chose to colocate reflection helpers inline in
+  each new test file rather than extend the shared fixture; keeps Bishop's
+  parallel work uncoupled.
+- `.csproj` files — left Bishop's pending `Microsoft.AspNetCore.Hosting`
+  global-using untouched; my tests carry an explicit `using` instead.
+
+### Open assumption (low risk)
+
+Ripley's design names the property `state.DealMode`. If Bishop chooses
+`state.Mode` or `state.Conditions.DealMode` instead, my reflection lookups
+fail with a descriptive message telling him what name to use. Bishop will
+either rename to match or my test will get a one-line fix.
