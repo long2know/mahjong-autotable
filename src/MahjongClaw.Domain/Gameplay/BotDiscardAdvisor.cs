@@ -16,6 +16,7 @@ public static class BotDiscardAdvisor
     private const int DeadSmallWinPairOutsTolerance = 1;
     private const int NearDeadSmallWinPairOutsTolerance = 1;
     private const int NearDeadOffRankPairOutsTolerance = 1;
+    private const int OffRankPairOutsTolerance = 1;
 
     public static int SelectDiscardIndex(IReadOnlyList<Tile> handTiles, MahjongRuleset ruleset = MahjongRuleset.ChineseOfficial)
         => SelectDiscardIndex(handTiles, Array.Empty<Tile>(), ruleset);
@@ -380,7 +381,24 @@ public static class BotDiscardAdvisor
 
                 if (offRankPairCandidates.Count > 0)
                 {
-                    candidates = offRankPairCandidates;
+                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestOverallOutCopies = candidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var bestOffRankOuts = offRankPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestOffRankOutCopies = offRankPairCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestOffRankOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var withinOutsTolerance = bestOffRankOuts >= bestOverallOuts - OffRankPairOutsTolerance;
+                    var withinCopyTolerance = bestOffRankOuts < bestOverallOuts
+                        || bestOffRankOutCopies >= bestOverallOutCopies - OffRankPairOutsTolerance;
+
+                    if (bestOverallOuts == 0 || (withinOutsTolerance && withinCopyTolerance))
+                    {
+                        candidates = offRankPairCandidates;
+                    }
                 }
             }
         }
