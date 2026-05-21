@@ -1229,6 +1229,18 @@ public static class BotDiscardAdvisor
             ? 6
             : 0;
 
+        var deadFallbackNonSmallWinPairPenalty = 0;
+        if (fallbackNonSmallWinPairBonus > 0 && visibleCounts.Count > 0)
+        {
+            ownedCounts.TryGetValue(tile, out var ownedCount);
+            visibleCounts.TryGetValue(tile, out var visibleCount);
+            if (4 - ownedCount - visibleCount <= 0)
+            {
+                fallbackNonSmallWinPairBonus = 0;
+                deadFallbackNonSmallWinPairPenalty = -8;
+            }
+        }
+
         var hasAdjacentSmallWinSingleton = applySmallWinPairBias
             && smallWinPairCount == 0
             && pairCount == 1
@@ -1500,7 +1512,7 @@ public static class BotDiscardAdvisor
 
             var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
 
-            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + sevenPairsTripletBonus + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + adjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty;
+            return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + sevenPairsTripletBonus + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + adjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty + deadFallbackNonSmallWinPairPenalty;
         }
 
         var rankCounts = suitTiles
@@ -1618,7 +1630,7 @@ public static class BotDiscardAdvisor
             score -= 1;
         }
 
-        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + nearPureSuitPenalty + sevenPairsBias + sevenPairsTripletBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + fallbackNonSmallWinPairBonus + adjacentSmallWinSingletonPenalty + deadAdjacentSmallWinPairRelief + deadAdjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty;
+        return score + suitClusterBonus + suitSingletonPenalty + suitPairBonus + suitFocusPenalty + suitFocusBonus + dominantSuitPenalty + nearPureSuitPenalty + sevenPairsBias + sevenPairsTripletBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + fallbackNonSmallWinPairBonus + adjacentSmallWinSingletonPenalty + deadAdjacentSmallWinPairRelief + deadAdjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty + deadFallbackNonSmallWinPairPenalty;
     }
 
     private static WinningDrawOutSummary CountWinningDrawOutsAfterDiscard(

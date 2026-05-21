@@ -379,6 +379,47 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DiscardsDeadOffRankPair_WhenSmallWinCandidatesAreWeak()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 2)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2)
+        };
+
+        var smallWinRanks = new[] { 2, 5, 8 };
+        var smallWinSuits = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos };
+        foreach (var suit in smallWinSuits)
+        {
+            foreach (var rank in smallWinRanks)
+            {
+                if (suit == TileSuit.Dots && rank == 2)
+                {
+                    continue;
+                }
+
+                visibleTiles.Add(new Tile(suit, rank));
+                visibleTiles.Add(new Tile(suit, rank));
+                visibleTiles.Add(new Tile(suit, rank));
+            }
+        }
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 6));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesBestSmallWinSingleton_WhenMultipleLiveSingles()
     {
         var handTiles = new List<Tile>
