@@ -127,6 +127,88 @@ public sealed class HandResultEntry
     /// <summary>Banker seat for the next hand per Changsha v1.2 rotation.</summary>
     [JsonPropertyName("nextBanker")]
     public int NextBanker { get; set; }
+
+    /// <summary>
+    /// Phase I Wave 1 — nested win metadata mirroring the SignalR <c>WinDeclared</c>
+    /// shape so the frontend result modal (chips, RobbingKong badge) can render
+    /// without a second WS subscription. Null when the hand ended on draw/false-Hu.
+    /// </summary>
+    [JsonPropertyName("winResult")]
+    public WinResultEntry? WinResult { get; set; }
+
+    /// <summary>
+    /// Phase I Wave 1 — nested scoring metadata (category, base points, multiplier,
+    /// payments) so the result modal can render the multiplier breakdown
+    /// (<c>base × patterns = total</c>) without an additional round-trip.
+    /// Null when the hand ended on draw/false-Hu.
+    /// </summary>
+    [JsonPropertyName("scoreResult")]
+    public ScoreResultEntry? ScoreResult { get; set; }
+}
+
+/// <summary>
+/// Phase I Wave 1 — nested win metadata carried inside <see cref="HandResultEntry"/>.
+/// Mirrors the SignalR <c>WinDeclared</c> message shape so the frontend result-modal
+/// chip strip + RobbingKong badge work uniformly across both transports.
+/// </summary>
+public sealed class WinResultEntry
+{
+    [JsonPropertyName("winningSeatIndex")]
+    public int WinningSeatIndex { get; set; }
+
+    /// <summary>One of <c>"selfDraw"</c>, <c>"discard"</c>, <c>"robbingKong"</c>.</summary>
+    [JsonPropertyName("winType")]
+    public string WinType { get; set; } = string.Empty;
+
+    /// <summary>Highest-precedence pattern (camelCase, e.g. <c>"sevenPairs"</c>).</summary>
+    [JsonPropertyName("winPattern")]
+    public string WinPattern { get; set; } = string.Empty;
+
+    [JsonPropertyName("winningTileId")]
+    public int WinningTileId { get; set; }
+
+    [JsonPropertyName("sourceSeatIndex")]
+    public int SourceSeatIndex { get; set; }
+
+    /// <summary>Every Big Win pattern that fired (deterministic enum order).</summary>
+    [JsonPropertyName("allPatterns")]
+    public List<string> AllPatterns { get; set; } = [];
+
+    /// <summary>True when this hand won by 抢杠胡 (robbing the added kong).</summary>
+    [JsonPropertyName("isRobbedKong")]
+    public bool IsRobbedKong { get; set; }
+}
+
+/// <summary>
+/// Phase I Wave 1 — nested scoring metadata carried inside <see cref="HandResultEntry"/>.
+/// Mirrors the SignalR <c>HandFinished</c> message scoreResult shape.
+/// </summary>
+public sealed class ScoreResultEntry
+{
+    /// <summary>One of <c>"smallWin"</c>, <c>"bigWin"</c>.</summary>
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = string.Empty;
+
+    [JsonPropertyName("basePoints")]
+    public int BasePoints { get; set; }
+
+    [JsonPropertyName("payments")]
+    public List<ScorePaymentEntry> Payments { get; set; } = [];
+}
+
+public sealed class ScorePaymentEntry
+{
+    [JsonPropertyName("fromSeatIndex")]
+    public int FromSeatIndex { get; set; }
+
+    [JsonPropertyName("toSeatIndex")]
+    public int ToSeatIndex { get; set; }
+
+    [JsonPropertyName("amount")]
+    public int Amount { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = string.Empty;
 }
 
 /// <summary>Helpers for shaping outbound Changsha-collection entries.</summary>
