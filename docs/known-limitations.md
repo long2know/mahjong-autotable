@@ -4,6 +4,11 @@
 
 ## Changelog
 
+- **Phase I Wave 3** — multi-game WS routing **shipped**.
+  `AutotableWsEndpoint` honours `?gameId=X` and `JOIN.gameId` (was coerced to
+  `changsha-default`). Per-gameId isolation is enforced for state, runtime
+  binding, broadcasts, and lazy bot-spawn. Hydration filter also widens to
+  skip `WallExhausted` (draw-terminal) rows.
 - **Phase I Wave 2** — persistence-on-restart hydration **shipped**.
   `ChangshaGameRuntime.HydrateAsync` re-populates `_games` from the
   `ChangshaGames` table on process boot; non-terminal games survive a restart.
@@ -182,18 +187,6 @@ take effect on the next deal without a reload).
 - Implementation: `src/frontend/autotable-src/src/lobby.ts`.
 - Deferred to: Phase I+ (requires clean disposal of `World.things` keyed by
   variant-specific tile IDs).
-
----
-
-### Single-game-per-instance (no multi-game routing)
-
-The backend currently coerces all `gameId` values to a single default game
-per instance. Multi-game isolation was deferred when Phase A killed the
-React/REST surface and the Phase 5a relay tests were scoped accordingly.
-
-- Pinned by skipped test: `AutotableWsRelayTests.cs:182` ("single-game-per-instance coerces all gameIds to the default. Multi-game isolation will be revisited in Phase E.").
-- Implementation: `Autotable/AutotableConnectionManager` — connection routing.
-- Deferred to: Phase I+ (originally tagged Phase E; rolled forward).
 
 ---
 
