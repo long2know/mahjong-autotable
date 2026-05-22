@@ -259,4 +259,210 @@ public class WinPatternTests
             _ => null
         };
     }
+
+    // ── Phase I Wave 1 — contextual Big Win patterns (天和/地和/海底/河底/杠上开花) ──
+    //
+    // Bishop's Phase I Wave 1 contract (per the Phase I directive + Vasquez spec §4.3):
+    //   - 5 new WinPattern enum values: HeavenlyHand, EarthlyHand, LastTileFromWall,
+    //     LastDiscardCatch, KongReplacementWin (spec §4.3 draw-based big wins).
+    //   - A WinContext (sealed record) carrying 5 boolean flags
+    //     (Is{HeavenlyHand,EarthlyHand,LastTileFromWall,LastDiscardCatch,KongReplacementWin}),
+    //     threaded through IWinDetector.Detect as an optional final parameter.
+    //   - ChangshaGameState.LastDrawWasKongReplacement : bool — transient flag set by
+    //     every kong-replacement draw and cleared on the next DrawTile / Discard.
+    //
+    // Tests below use reflection (Enum.GetNames for the 5 new patterns; Type / PropertyInfo
+    // probes for WinContext + LastDrawWasKongReplacement) so the test assembly compiles
+    // whether Bishop has pushed his contract yet or not. RED-fail messages name the
+    // missing symbol so Bishop has a build-time grep target for the contract owed.
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "Phase-I-1")]
+    public void ContextualWinPatterns_AllFiveEnumValuesDefined()
+    {
+        // Phase I Wave 1 §1: 5 new contextual Big Win patterns must be defined on the
+        // WinPattern enum. Names are canonical per the Phase I directive.
+        var names = Enum.GetNames(typeof(WinPattern));
+        var expected = new[]
+        {
+            "HeavenlyHand", "EarthlyHand", "LastTileFromWall",
+            "LastDiscardCatch", "KongReplacementWin"
+        };
+        var missing = expected.Where(n => !names.Contains(n)).ToList();
+        Assert.True(missing.Count == 0,
+            $"WinPattern is missing Phase I Wave 1 contextual values: [{string.Join(",", missing)}]. " +
+            $"Current values: [{string.Join(",", names)}]. Bishop owes the Phase I Wave 1 contract.");
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "Phase-I-1")]
+    public void ChangshaGameState_HasLastDrawWasKongReplacement_BooleanProperty()
+    {
+        // Phase I Wave 1 §1 — KongReplacementWin (杠上开花) gating signal. The state
+        // machine sets this true on every kong-replacement draw and clears it on the
+        // next regular DrawTile or Discard, so a fresh self-draw "knows" whether the
+        // tile in question was a kong replacement.
+        var prop = typeof(ChangshaGameState).GetProperty("LastDrawWasKongReplacement",
+            BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotNull(prop);
+        Assert.Equal(typeof(bool), prop!.PropertyType);
+        Assert.True(prop.CanRead && prop.CanWrite,
+            "LastDrawWasKongReplacement must be a public read/write bool property (state machine mutates it).");
+
+        // Default must be false so a fresh ChangshaGameState (created via the parameterless
+        // initializer used everywhere) does not accidentally trigger KongReplacementWin
+        // on the dealer's initial 14-tile hand.
+        var fresh = new ChangshaGameState();
+        Assert.False((bool)prop.GetValue(fresh)!,
+            "ChangshaGameState.LastDrawWasKongReplacement must default to false " +
+            "(a fresh state must not retroactively flag HeavenlyHand wins as KongReplacementWin).");
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "Phase-I-1")]
+    public void WinDetector_AcceptsContextualWinContext_OptionalParameter()
+    {
+        // Phase I Wave 1 §1 — the detector must accept the contextual flags through a
+        // dedicated WinContext type passed as an OPTIONAL trailing parameter on
+        // IWinDetector.Detect (default null preserves identical pre-Phase-I behaviour
+        // for every existing caller — bots, replay reconstruction, xUnit fixtures).
+        //
+        // This test pins the shape of Bishop's contract so future refactors don't
+        // silently change the parameter name / nullability / default.
+        var contextType = typeof(WinDetectionResult).Assembly.GetType(
+            "Mahjong.Autotable.Api.Changsha.WinContext");
+        Assert.NotNull(contextType);
+
+        var expectedFlags = new[]
+        {
+            "IsHeavenlyHand", "IsEarthlyHand", "IsLastTileFromWall",
+            "IsLastDiscardCatch", "IsKongReplacementWin"
+        };
+        var missing = expectedFlags
+            .Where(f => contextType!.GetProperty(f, BindingFlags.Public | BindingFlags.Instance) is null)
+            .ToList();
+        Assert.True(missing.Count == 0,
+            $"WinContext is missing Phase I Wave 1 flag properties: [{string.Join(",", missing)}]. " +
+            $"Bishop owes the Phase I Wave 1 contract (sealed record WinContext with 5 bool init-only flags).");
+
+        // The IWinDetector.Detect overload must accept WinContext as a trailing
+        // optional parameter — defaulting to null so legacy callers compile unchanged.
+        var detectMethod = typeof(IWinDetector).GetMethod("Detect",
+            BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotNull(detectMethod);
+        var contextParam = detectMethod!.GetParameters()
+            .FirstOrDefault(p => p.ParameterType == contextType
+                                  || (Nullable.GetUnderlyingType(p.ParameterType) == contextType)
+                                  || p.ParameterType.FullName == contextType!.FullName + "&"
+                                  || p.ParameterType.FullName?.Contains("WinContext") == true);
+        Assert.NotNull(contextParam);
+        Assert.True(contextParam!.IsOptional,
+            "WinContext parameter on IWinDetector.Detect must be optional " +
+            "(default null preserves pre-Phase-I behaviour for every legacy call site).");
+    }
+
+    [Theory, Trait("Category", "Changsha"), Trait("Wave", "Phase-I-1")]
+    [InlineData("HeavenlyHand", "IsHeavenlyHand", "天和")]
+    [InlineData("EarthlyHand", "IsEarthlyHand", "地和")]
+    [InlineData("LastTileFromWall", "IsLastTileFromWall", "海底捞月")]
+    [InlineData("LastDiscardCatch", "IsLastDiscardCatch", "河底捞鱼")]
+    [InlineData("KongReplacementWin", "IsKongReplacementWin", "杠上开花")]
+    public void ContextualPattern_PopulatesAllPatterns_WhenContextFlagSetOnValidHand(
+        string patternName, string contextFlag, string chinese)
+    {
+        // Phase I Wave 1 §1 — for each contextual pattern, when the WinContext flag is
+        // true AND the hand is otherwise a structurally valid mahjong win (Standard 4+1
+        // here — the most basic baseline), the detector must:
+        //   (a) report IsWin == true,
+        //   (b) classify Category == BigWin (contextual patterns promote Small Wins),
+        //   (c) include the new pattern in AllPatterns.
+        //
+        // The hand below is a 4-chow + 258-pair Standard win (NOT FullFlush, NOT AllPungs,
+        // NOT SevenPairs, NOT NineTerminals) so the only firing pattern is the contextual
+        // one under test — proving the contextual gating works in isolation.
+        var names = Enum.GetNames(typeof(WinPattern));
+        Assert.Contains(patternName, names);
+        var pattern = (WinPattern)Enum.Parse(typeof(WinPattern), patternName);
+
+        var hand = HandOf(0,
+            (Suit.Wan, 1), (Suit.Wan, 2), (Suit.Wan, 3),
+            (Suit.Wan, 4), (Suit.Wan, 5), (Suit.Wan, 6),
+            (Suit.Tong, 1), (Suit.Tong, 2), (Suit.Tong, 3),
+            (Suit.Tiao, 4), (Suit.Tiao, 5), (Suit.Tiao, 6),
+            (Suit.Tong, 5), (Suit.Tong, 5));
+
+        var context = BuildWinContextWithFlag(contextFlag, chinese);
+        var result = InvokeDetect(hand, winningTileId: null, WinMethod.SelfDraw, context);
+
+        Assert.True(result.IsWin,
+            $"Detector must accept a structurally valid Standard hand + WinContext.{contextFlag} ({chinese}). " +
+            $"Got IsWin=false.");
+        Assert.Equal(ScoreCategory.BigWin, result.Category);
+        Assert.Contains(pattern, result.AllPatterns);
+    }
+
+    // ── Phase I Wave 1 — reflection probe helpers ──────────────────────────────
+
+    /// <summary>
+    /// Build a <c>WinContext</c> instance with the given boolean flag set to true,
+    /// via reflection so the test assembly compiles before Bishop ships the type.
+    /// Throws a RED-message <c>InvalidOperationException</c> when the type or flag
+    /// is missing so Bishop has a grep target for the contract owed.
+    /// </summary>
+    private static object BuildWinContextWithFlag(string flagName, string chinese)
+    {
+        var contextType = typeof(WinDetectionResult).Assembly.GetType(
+            "Mahjong.Autotable.Api.Changsha.WinContext")
+            ?? throw new InvalidOperationException(
+                $"WinContext type not found in Mahjong.Autotable.Api.Changsha namespace — " +
+                $"Bishop owes the Phase I Wave 1 contract (sealed record WinContext with 5 init-only bools).");
+
+        var instance = Activator.CreateInstance(contextType)
+            ?? throw new InvalidOperationException(
+                $"WinContext could not be instantiated via parameterless ctor — " +
+                $"Bishop's record must support 'new WinContext() {{ /* init-set */ }}'.");
+
+        var prop = contextType.GetProperty(flagName,
+            BindingFlags.Public | BindingFlags.Instance)
+            ?? throw new InvalidOperationException(
+                $"WinContext.{flagName} ({chinese}) property not found — " +
+                $"Bishop owes the Phase I Wave 1 contract. " +
+                $"Existing flags: [{string.Join(",", contextType.GetProperties().Select(p => p.Name))}].");
+
+        // For init-only properties, the setter is technically present (init = SetMethod
+        // tagged with IsExternalInit) — reflection's SetValue still works for tests.
+        prop.SetValue(instance, true);
+        return instance;
+    }
+
+    /// <summary>
+    /// Invoke <see cref="IWinDetector.Detect"/> with a reflection-built
+    /// <c>WinContext</c> so we don't take a direct compile-time dependency on
+    /// Bishop's not-yet-merged shape. Falls through to the legacy 3-arg overload
+    /// (which RED-fails Pattern-not-set on the contextual asserts) if the new
+    /// 4-arg overload is missing.
+    /// </summary>
+    private static WinDetectionResult InvokeDetect(
+        ChangshaHandState hand, int? winningTileId, WinMethod method, object context)
+    {
+        var detector = new ChangshaWinDetector();
+        var detectMethod = typeof(IWinDetector).GetMethod("Detect",
+            BindingFlags.Public | BindingFlags.Instance);
+        if (detectMethod is null)
+            throw new InvalidOperationException("IWinDetector.Detect method not found.");
+
+        var parameters = detectMethod.GetParameters();
+        // Pad parameters with Type.Missing for any optional ones we don't supply.
+        var args = new object?[parameters.Length];
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            args[i] = parameters[i].Name switch
+            {
+                "hand" => hand,
+                "winningTileId" => winningTileId,
+                "method" => method,
+                "context" => context,
+                _ => Type.Missing
+            };
+        }
+        var result = detectMethod.Invoke(detector, args);
+        return (WinDetectionResult)result!;
+    }
 }
