@@ -126,7 +126,7 @@ public class EdgeCaseTests
             $"Bishop owes the Phase H Wave 2 contract (WinResult.IsRobbedKong : bool).");
     }
 
-    [Fact(Skip = "Stacked big-win pattern multipliers deferred to v2"), Trait("Category", "Changsha")]
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "2")]
     public void MultipleBigWinPatterns_ScoresStack_DeferredToV2()
     {
         // Phase H Wave 2 §2.3: a hand that simultaneously satisfies AllPungs and
