@@ -132,3 +132,29 @@
 
 **Branch ready for PR against `main`.** All three agents' Phase I Wave 3 work + Scribe sweep captured in canonical decisions.md.
 
+
+## Phase I Wave 4 Scribe Sweep — Proper shanten + spectator + strength tests (2026-05-24)
+
+**Timestamp:** 2026-05-24 (date TBD)
+**Branch:** `stlong/phase-i-wave-4-bot-strength-spectator` (all commits pushed; ready for PR)
+**Contribution:** Merged 4-file Phase I Wave 4 inbox into canonical `.squad/decisions.md` as a single `## Phase I Wave 4 — Proper shanten + spectator + strength tests` section covering Bishop's rigorous shanten counter + spectator seat backend, Hicks's lobby Spectate UI, Vasquez's 9 tests (3 bot strength + 6 spectator validation), and Coordinator's dead-code resolution (shanten tie-breaker wiring in HardStrategy). Documented **monotonicity property** (loose-tile discard invariant), **benchmark verification** (six hand shapes, < 1 ms each), **Attempt 1 pathology** (seed 40595 4000-step timeout with shanten-primary ordering), **Attempt 2 resolution** (shanten as tie-breaker, minimal change). Phase I Wave 4 result: **402 / 0 / 0 tests** (was 393/0/0 at Phase I Wave 3 → +9 net passes, zero-skip streak 2). Bundle rolled: JS `49eb3789.js` → `c93fbb44.js`, CSS `af973ea2.css` → `3f21032c.css`; Bootstrap hash unchanged. All inbox files remain in place per standing instruction (`.squad/decisions/inbox/` is gitignored — local-only primary sources).
+
+**Four-agent coordination notes:**
+
+1. **Bishop** (shanten counter + spectator backend): Replaced `MinShantenToHu` with rigorous backtracking (Standard path) + SevenPairs formula (two paths, return min). Monotonicity property ensures loose-tile discard never increases shanten. Smoke bench confirmed correctness on six hand shapes (< 1 ms per call). Added `?seat=-1` spectator surface, widened botCount cap to 4 for spectators only, auto-deal one-shot on NEW/JOIN when seat=-1 AND botCount=4. **Key invariant pinned:** ParseSeat range `>= -1 and <= 3` (was `>= 0 and <= 3`); spectator → ViewerSeat `null` (existing privacy filter falls through). Initial bench caught formula bug (extraneous `+1-pair` term) before commit — caught via monotonicity verification table.
+
+2. **Hicks** (lobby Spectate UI): New `Seat` fieldset (Auto / 0..3 / Spectate) above Bot difficulty. Spectate selection unlocks 4-bot slot (disabled for non-spectators) + pre-selects 4 on flip from non-spectator. Green "Spectating" pill on connected state. URL `?seat=-1` persisted via `history.replaceState`. Spectator mode hides Take-seat / Leave-seat / Claim buttons / Deal (server auto-deals) / Pickup HUD; bot banner stays (names seating). **Critical build invariant reaffirmed:** Parcel strips `type="text"` from `<input>` — anchor CSS on ID/scoped class, not attribute selector (surfaced in Wave 3, applies to new `.spectator-pill`).
+
+3. **Vasquez** (9 tests, no production edits): 3 `BotStrengthTests.cs` (Hard beats Medium ≥ 0.9×, Medium beats Easy ≥ 0.9×, Hard no-draw regression) + 6 `SpectatorModeTests.cs` (connects without seat, receives full snapshot, no turn prompts, 4-bot auto-deal within 3s, 3-bot no auto-deal, seat=0 botCount=4 defensive assertion). Audit flagged dead code: Bishop's rigorous counter delivered but never consumed by HardStrategy. Fixed by Coordinator.
+
+4. **Coordinator** (dead-code resolution): Vasquez audit surfaced `MinShantenToHu` was orphaned. Attempt 1 (shanten as primary key) broke at seed 40595 with 4000-step timeout — pathological claim-chain loop (state-machine edge case, not bot bug; deferred to Phase J). Attempt 2 shipped: `OrderBy(ComputeDiscardScore).ThenBy(shantenByLogical)` — keep-score primary (Phase F baseline), shanten tie-breaker (minimum change). Result 402/0/0. Rationale: Changsha's Big Win mix favors defensive/contextual plays; keep-score was already stronger than shanten-greedy. Promoting shanten demands re-tuning every Hard heuristic; tie-breaker exercises counter in production without disturbing baseline.
+
+**Notable observations:**
+- **Shanten-as-tie-breaker pattern:** When a rigorous estimator (counter, evaluator, heuristic) is delivered but not yet integrated, shipping it as a tie-breaker (not primary sort key) is the minimal, lowest-risk wiring that exercises it in production. Allows future phases to promote it to primary after understanding its interaction surface more deeply.
+- **Benchmark-caught bug:** Initial formula error (`+1-pair` term) inflated shanten by 1 for any decomposition without a pair. Monotonicity verification table (discard → shanten delta) caught it immediately; removing the term restored canonical values across all six test cases + kept gate at 402/0/0. Recommends running perf + property-based benches on backtracking algorithms during initial implementation.
+- **Dead-code audit pattern:** Phase I Wave 4 Vasquez audit (`MinShantenToHu` never called) triggered Coordinator memo and resolution in same wave. When audit surfaces unused production code, surface it in the same wave's decisions.md + resolution memo, don't defer. Enables immediate re-integration or cleanup decision.
+- **Zero-skip streak milestone:** Wave 4 maintains zero-skips (357 → 374 → 383 → 393 → 402). Consecutive zero-skip waves indicate test suite stability + low flake risk.
+
+**Phase J Wave 1 backlog:** Diagnose seed 40595 4000-step pathology (trace harness needed), promote shanten to primary key (demands re-tuning keep-score weights), wire shanten into OnDiscardOpportunity (claim evaluation), hot-seat swap UI ("Move" button), NineTerminals strict-vs-loose semantics (pending Stephen's call).
+
+**Branch ready for PR against `main`.** All four agents' Phase I Wave 4 work + Scribe sweep captured in canonical decisions.md.

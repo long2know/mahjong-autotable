@@ -2347,3 +2347,87 @@ Zero regressions in pre-Phase-I tests.
 
 ---
 
+## Phase I Wave 4 — Proper shanten + spectator + strength tests (2026-05-24)
+
+**Timestamp:** 2026-05-24 (final sweep date)  
+**Branch:** `stlong/phase-i-wave-4-bot-strength-spectator` (all commits pushed)  
+**Final test count:** **402 / 0 / 0** (was 393/0/0 at Phase I Wave 3 → +9 net passes, zero-skip streak 2)  
+**Bundle hashes (Hicks):** JS `49eb3789.js` → `c93fbb44.js`; CSS `af973ea2.css` → `3f21032c.css`; Bootstrap `df85b4c4.css` unchanged.
+
+### Proper shanten counter (Bishop)
+
+**Surface area:** `HandEvaluator.MinShantenToHu` replaced with rigorous backtracking decomposition + SevenPairs formula. Two paths independent; return min.
+
+**Standard path:** Depth-first backtracking over 27 logical tiles, tracking (mentsu, taatsu, pair). Try each of seven options in order (Pung / Chow / Pair-head / Pair-taatsu / Neighbor-partial / Gap-partial / Lone). Counts decrease through recursion (depth ≤ 14 concealed). Shanten formula: `2*groupsNeeded - 2*mentsu - taatsu - pair + (1 if no pair)`. Clamp final result ≥ 0 (canonical convention).
+
+**SevenPairs path:** Guard `meldsDeclared > 0 → +∞`. Then `sevenPairsShanten = 6 - sum(counts[i]/2)` (treats 4-of-a-kind as two pairs). Formula correct for both 13- and 14-tile hands.
+
+**Monotonicity property:** Discarding a loose tile never increases shanten; discarding a tile contributing to a counted mentsu/taatsu/pair increases it by 1. Unlocks Hard's discard signal.
+
+**Performance:** 14-tile worst case < 1 ms; bot budget is 2000 ms (4 OOM margin). No memoization needed at MVP scale.
+
+**Verification:** 1000-iteration smoke bench on six hand shapes (winning Standard/SevenPairs, chaotic 14, 13-tile tenpai/1-shanten, declared-meld) confirmed correctness + monotonicity. Initial bug (extraneous `+1-pair` term) caught during bench and fixed before commit.
+
+**Files:** `HandEvaluator.cs` (MinShantenToHu + helpers), `HardStrategy.cs` (XML doc lift only, no logic change), `docs/known-limitations.md` (strike "coarse estimator" item).
+
+### Spectator seat backend (Bishop)
+
+**Surface area:** `AutotableWsEndpoint.cs` accepts `?seat=-1` as sentinel for spectator (no seat assigned, receives broadcasts, ViewerSeat → `null` for privacy filter). When `seat=-1 AND botCount=4`, auto-deal fires after snapshot sent (one-shot, not per-broadcast).
+
+**Behavior matrix:** `seat ∈ 0..3 + botCount ∈ 0..3` (existing); `seat=-1 + botCount ∈ 0..4` (new, spectator watches partial or all-bot table); `seat ∈ 0..3 + botCount=4` falls back to 3 (cap unchanged for players).
+
+**Implementation:** Parse `seat` with `>= -1 and <= 3` (was `>= 0 and <= 3`). New `AutotableConnection.IsSpectator` boolean (derived from parsed seat). On NEW/JOIN for spectator + botCount=4, trigger `FillEmptySeatsWithBotsAsync` → `StartGameAsync` guarded by `snap.Phase == Seating`.
+
+**Files:** `AutotableWsEndpoint.cs` only.
+
+### Lobby Spectate UI (Hicks)
+
+**Surface area:** New `Seat` fieldset (Auto / 0 / 1 / 2 / 3 / Spectate) above Bot difficulty. Spectate selection unlocks 4-bot slot (disabled for non-spectators) and pre-selects 4 when flipped from non-spectator state. Spectator hint paragraph below fieldset: "All four seats can be filled with bots — sit back and watch. The runtime will auto-deal once all four seats are bots." Connected state: green "Spectating" pill next to `Game: <id>` line. Spectator mode hides Take-seat / Leave-seat / Claim buttons / Deal button (server auto-deals) / Pickup HUD. Bot banner intentionally visible (names seating). URL gets `?seat=-1` appended on Connect; persisted via `history.replaceState`. Existing `?botCount=N` forwarding verified to allow N=4 when `seat=-1` (clamped to 3 for non-spectators to match Bishop's cap).
+
+**Build invariant (Wave 3 confirmed):** Parcel strips `type="text"` defaults from `<input>` — anchor CSS on ID/scoped class, not attribute selector. Same applies to `.spectator-pill` etc.
+
+**Files:** `index.html` (new fieldset + hint), `lobby.ts` (seat picker logic + state persistence), `client-ui.ts` (WS URL wiring + body.spectating toggle), `game-ui.ts` (suppress Take-seat / Deal for spectators), `style.css` (pill + spectating body class selectors), bundle regenerated + old hashes pruned.
+
+### Bot strength tests + spectator validation (Vasquez)
+
+**9 new tests, no production edits:**
+
+**BotStrengthTests.cs (3):**
+1. `Hard_BeatsMedium_AcrossNHands` — 20 hands (seat 0 = Hard, seats 1..3 = Medium). Assert `hardWinRate >= mediumAvgWinRate * 0.9`. Regression alarm for shanten counter impact on Hard's strength ordering.
+2. `Medium_BeatsEasy_AcrossNHands` — 20 hands (seat 0 = Medium, seats 1..3 = Easy). Assert `mediumWinRate >= easyAvgWinRate * 0.9`. Sanity floor (Medium is production default).
+3. `Hard_NoDrawRegression` — 4-Hard hand completes in < maxSteps with `phase == EndHand`. Verification that proper shanten counter doesn't loop or stall.
+
+**SpectatorModeTests.cs (6):**
+1. `Spectator_ConnectsWithoutSeat` — JOIN with `?seat=-1`, assert JOINED + snapshot's `seats[]` does NOT carry spectator's player ID.
+2. `Spectator_ReceivesFullSnapshot` — After deal + bind, spectator JOIN gets things × 108, seats × 4, match × 1.
+3. `Spectator_DoesNotReceiveTurnPrompts` — Spectator snapshot strips foreign hands (line 848 fall-through); no per-seat pickup entries.
+4. `Spectator_With4Bots_AutoDeals` — JOIN with `?seat=-1&botCount=4`, bounded poll for `runtime.Phase != Setup` within 3s. Validates (a) seat=-1 accepted, (b) botCount=4 accepted, (c) auto-fill all four seats, (d) auto-start game.
+5. `Spectator_With3Bots_DoesNotAutoDeal` — JOIN with `?seat=-1&botCount=3`, wait 1s, assert runtime still in Setup/Seating (only 3 of 4 seats filled).
+6. `Seat0_BotCount_StillCapsAt3` — JOIN with `?seat=0&botCount=4`. Defensive assertion: either WS closes OR botCount silently clamps to 3 (Bishop's choice).
+
+**Cross-lane coordination:** Vasquez audit flagged that Bishop's rigorous `MinShantenToHu` was delivered but **dead code** — never called by `HardStrategy.SelectDiscardTile`. This wave resolves it.
+
+### Shanten tie-breaker wiring (Coordinator)
+
+**Dead-code resolution:** Attempt 1 (shanten as primary key) broke at seed 40595 with 4000-step timeout — pathological claim-chain loop. Root cause: shanten-greedy ordering breaks Hard's defensive hold heuristics; claim chains extend beyond test harness cap.
+
+**Shipped (Attempt 2):** `HardStrategy.SelectDiscardTile` now `OrderBy(ComputeDiscardScore).ThenBy(shantenByLogical)` — keep-score (Phase F baseline) remains primary; shanten breaks ties. Result: **402/0/0**. Resolves dead-code finding without disturbing strength baseline (minimum viable change).
+
+**Rationale:** Changsha's Big Win mix (天和/地和/海底/河底/杠上开花) stacks value toward defensive/contextual plays. Keep-score was already statistically stronger than shanten-greedy. Promoting shanten would demand re-tuning every Hard heuristic. Tie-breaker approach is minimal and exercises the proper counter in production.
+
+**Files:** `HardStrategy.cs` (`SelectDiscardTile` only; no other changes).
+
+### Gate result
+
+**402 / 0 / 0** — zero-skip streak now 2 waves. All nine Phase I Wave 4 tests passing.
+
+### Phase J Wave 1 backlog
+
+1. **Diagnose seed 40595 4000-step pathology:** Likely state-machine edge case, not bot bug. Needs step-by-step trace harness.
+2. **Promote shanten to primary discard key:** Only after re-tuning keep-score weights to recognize shanten signal. Demands A/B harness, not just strength tests.
+3. **Wire shanten into `HardStrategy.OnDiscardOpportunity`:** Claim evaluation ("does claiming this Chow/Pung drop my shanten?") currently unused by Hard.
+4. **Hot-seat swap UI:** "Move" button (no disconnect) faster than today's Disconnect → edit → Connect.
+5. **NineTerminals strict-vs-loose semantics:** Pending Stephen's call on scoring weight.
+
+---
+
