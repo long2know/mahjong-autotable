@@ -206,6 +206,14 @@
                 <small class="current-game-display server-connected"
                        id="current-game-display">
                     Game: <span id="current-game-id">—</span>
+                    <!-- Phase I Wave 4 — Spectating pill, shown when the
+                         active connection is in spectator mode
+                         (?seat=-1).  Sibling of the game-id label so the
+                         two pills sit on the same row.  client-ui.ts
+                         toggles the .visible class. -->
+                    <span class="spectator-pill" id="spectator-pill" aria-live="polite">
+                        👁 Spectating
+                    </span>
                 </small>
             </div>
 
@@ -418,7 +426,28 @@
                 <legend>Bots</legend>
                 <label><input type="radio" name="lobby-bot-count" value="0"> 0 bots</label>
                 <label><input type="radio" name="lobby-bot-count" value="3" checked> 3 bots</label>
-                <label><input type="radio" name="lobby-bot-count" value="4"> 4 bots <small class="lobby-hint">(spectator)</small></label>
+                <label><input type="radio" name="lobby-bot-count" value="4"> 4 bots <small class="lobby-hint">(spectator only)</small></label>
+            </fieldset>
+
+            <!-- Phase I Wave 4 — seat picker.  Pairs with botCount: Spectate
+                 widens botCount to 0-4 and auto-snaps to 4 for the
+                 all-bots-watch experience the server runtime auto-deals.
+                 Seat 0..3 lets returning players claim a specific wind
+                 without juggling URL params; "Auto" is the legacy flow
+                 where the server seats us in the first open chair. -->
+            <fieldset class="lobby-fieldset" id="lobby-seat-fieldset">
+                <legend>Seat</legend>
+                <label><input type="radio" name="lobby-seat" value="" checked> Auto (take an open seat)</label>
+                <label><input type="radio" name="lobby-seat" value="0"> Seat 0 <small class="lobby-hint">(East 东)</small></label>
+                <label><input type="radio" name="lobby-seat" value="1"> Seat 1 <small class="lobby-hint">(South 南)</small></label>
+                <label><input type="radio" name="lobby-seat" value="2"> Seat 2 <small class="lobby-hint">(West 西)</small></label>
+                <label><input type="radio" name="lobby-seat" value="3"> Seat 3 <small class="lobby-hint">(North 北)</small></label>
+                <label><input type="radio" name="lobby-seat" value="-1"> 👁 Spectate <small class="lobby-hint">(no seat — watch bots play)</small></label>
+                <p id="lobby-spectator-hint" class="lobby-spectator-hint" style="display: none;">
+                    All four seats can be filled with bots — sit back and
+                    watch.  The runtime auto-deals once all four seats are
+                    bots.
+                </p>
             </fieldset>
 
             <fieldset class="lobby-fieldset" id="lobby-bot-difficulty-fieldset">
