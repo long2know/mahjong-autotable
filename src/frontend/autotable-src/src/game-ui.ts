@@ -340,6 +340,14 @@ export class GameUi {
     pickupTakeCount: HTMLElement;
     rollDice: HTMLButtonElement;
     breakMarker: HTMLElement;
+    // Phase J Wave 1 — Hot-seat swap (Move button + inline picker).
+    // Visibility, button states, and click handlers are all owned by
+    // setupMoveSeatPicker / refreshMoveSeatPicker below.  The row container
+    // toggles inline display=block when connected + Phase == Seating.
+    moveSeatRow: HTMLElement;
+    moveSeatBtn: HTMLButtonElement;
+    moveSeatPanel: HTMLElement;
+    moveSeatOptions: Array<HTMLButtonElement>;
   }
 
   // Phase D — claim window state.
@@ -400,6 +408,11 @@ export class GameUi {
       pickupTakeCount:     document.getElementById('pickup-take-count') as HTMLElement,
       rollDice:            document.getElementById('roll-dice') as HTMLButtonElement,
       breakMarker:         document.getElementById('break-marker') as HTMLElement,
+      moveSeatRow:         document.getElementById('move-seat-row') as HTMLElement,
+      moveSeatBtn:         document.getElementById('move-seat-btn') as HTMLButtonElement,
+      moveSeatPanel:       document.getElementById('move-seat-panel') as HTMLElement,
+      moveSeatOptions:     Array.from(
+        document.querySelectorAll<HTMLButtonElement>('#move-seat-panel .move-seat-option')),
     };
     for (let i = 0; i < 4; i++) {
       this.elements.takeSeat[i] = document.querySelector(
@@ -425,6 +438,7 @@ export class GameUi {
     this.setupBotBanner();
     this.setupPhaseFPickers();
     this.setupPickupHud();
+    this.setupMoveSeatPicker();
   }
 
   private setupEvents(): void {
@@ -1438,4 +1452,151 @@ export class GameUi {
     marker.style.display = 'block';
   }
 
+  // ---------------------------------------------------------------------
+  // Phase J Wave 1 — Hot-seat swap.
+  //
+  // Wires the Move button + inline picker.  The flow:
+  //   1. Visibility is gated on connected() AND no active match.  We listen
+  //      to `connect` / `disconnect` on the BaseClient and `update` on the
+  //      match collection to re-evaluate, and also refresh whenever seats
+  //      change so the per-option enabled state stays in sync with who
+  //      currently holds which seat.
+  //   2. Clicking Move toggles the inline picker panel (CSS-styled flex row
+  //      of 5 buttons: Seat 0..3 + Spectate).
+  //   3. The current seat's option is disabled; seats held by other players
+  //      are disabled.  Spectate is always selectable when visible.
+  //   4. Selecting an option performs a soft reconnect: we mutate the page
+  //      URL's `?seat=` param via history.replaceState, then call
+  //      `client.disconnect()`.  client-ui.ts's existing auto-reconnect
+  //      flow (onDisconnect → setTimeout → connect → buildWsUrl) picks up
+  //      the new `?seat=` off the URL on the next attempt.  gameId is
+  //      preserved by definition (we never touch it).  Reconnect timing is
+  //      RECONNECT_DELAY (≈2s) per client-ui.ts:7.
+  //
+  //   The captured `reconnectSeat` in client-ui.ts:onDisconnect ends up
+  //   null after disconnect (perPlayer seats collection clears its entries
+  //   before ClientUi.onDisconnect runs and resets client.seat), so the
+  //   subsequent connect() won't re-seat us with the OLD seat.  The new
+  //   seat comes purely from the URL via buildWsUrl.
+  // ---------------------------------------------------------------------
+  private setupMoveSeatPicker(): void {
+    const btn = this.elements.moveSeatBtn;
+    const panel = this.elements.moveSeatPanel;
+
+    btn.onclick = (e: MouseEvent) => {
+      e.stopPropagation();
+      const open = panel.style.display !== 'none';
+      panel.style.display = open ? 'none' : 'flex';
+      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      if (!open) this.refreshMoveSeatPicker();
+    };
+
+    for (const option of this.elements.moveSeatOptions) {
+      option.onclick = (e: MouseEvent) => {
+        e.stopPropagation();
+        if (option.disabled) return;
+        const raw = option.dataset.seat ?? '';
+        const target = parseInt(raw, 10);
+        if (isNaN(target)) return;
+        this.softReconnectWithSeat(target);
+      };
+    }
+
+    // Click outside closes the picker.  We bind on the document so any
+    // mousedown that isn't inside the picker collapses it; using mousedown
+    // (not click) so the panel doesn't briefly flash before re-closing
+    // when the user clicks the toggle button again.
+    document.addEventListener('mousedown', (e: MouseEvent) => {
+      if (panel.style.display === 'none') return;
+      const target = e.target as Node | null;
+      if (target && (panel.contains(target) || btn.contains(target))) return;
+      panel.style.display = 'none';
+      btn.setAttribute('aria-expanded', 'false');
+    });
+
+    this.client.on('connect', () => this.refreshMoveSeatVisibility());
+    this.client.on('disconnect', () => this.refreshMoveSeatVisibility());
+    this.client.match.on('update', () => this.refreshMoveSeatVisibility());
+    this.client.seats.on('update', () => this.refreshMoveSeatPicker());
+
+    this.refreshMoveSeatVisibility();
+  }
+
+  // Phase J Wave 1 — Move row is shown only while the WS is connected AND
+  // no match has been dealt yet.  `client.connected()` mirrors the WS
+  // open state; `match.get(0)` becomes non-null as soon as Deal kicks off
+  // the first hand (Bishop's runtime pushes the MatchInfo on dealStart).
+  // Between hands the match stays set, so the Move row remains hidden —
+  // which is the safer default (no mid-match seat juggling).
+  private refreshMoveSeatVisibility(): void {
+    const row = this.elements.moveSeatRow;
+    const panel = this.elements.moveSeatPanel;
+    const connected = this.client.connected();
+    const inSeating = this.client.match.get(0) === null;
+    const visible = connected && inSeating;
+    row.style.display = visible ? 'block' : 'none';
+    if (!visible) {
+      panel.style.display = 'none';
+      this.elements.moveSeatBtn.setAttribute('aria-expanded', 'false');
+    } else {
+      this.refreshMoveSeatPicker();
+    }
+  }
+
+  // Phase J Wave 1 — Per-option enabled state.  Disables the current
+  // seat (no-op move) and seats already held by other players.  The
+  // Spectate option (-1) is always selectable when the row is visible.
+  private refreshMoveSeatPicker(): void {
+    const selfSeat = this.client.seat;
+    const spectating = readSpectatorFromUrl();
+    for (const option of this.elements.moveSeatOptions) {
+      const raw = option.dataset.seat ?? '';
+      const seat = parseInt(raw, 10);
+      if (isNaN(seat)) {
+        option.disabled = true;
+        continue;
+      }
+      if (seat === -1) {
+        // Disable Spectate when already spectating.
+        option.disabled = spectating;
+        continue;
+      }
+      if (selfSeat !== null && seat === selfSeat) {
+        option.disabled = true;
+        continue;
+      }
+      const occupant = this.client.seatPlayers[seat];
+      option.disabled = occupant !== null && occupant !== this.client.playerId();
+    }
+  }
+
+  // Phase J Wave 1 — Soft reconnect with the chosen seat.  We rewrite the
+  // page URL's `?seat=` param (preserving the rest of the query, including
+  // the sticky `?gameId=` that client-ui.ts:setUrlState pins on every
+  // connect) and then close the current WS.  client-ui.ts's existing
+  // auto-reconnect kicks in after RECONNECT_DELAY (≈2s) and picks up the
+  // new seat off the URL via buildWsUrl().
+  private softReconnectWithSeat(seat: number): void {
+    if (seat !== -1 && (seat < 0 || seat > 3)) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('seat', String(seat));
+    history.replaceState(undefined, '', url.pathname + url.search);
+
+    // Close the picker so the next connect lands on a clean HUD.
+    this.elements.moveSeatPanel.style.display = 'none';
+    this.elements.moveSeatBtn.setAttribute('aria-expanded', 'false');
+
+    // Drop our local seat ahead of the disconnect so the reconnect doesn't
+    // accidentally re-claim the OLD seat via client-ui.ts's reconnectSeat
+    // capture.  client.seats is perPlayer, so the entry would be cleared
+    // on disconnect anyway, but this belt-and-braces avoids the brief
+    // window where another listener might read the stale value.
+    const playerId = this.client.playerId();
+    if (playerId !== 'offline') {
+      this.client.seats.set(playerId, { seat: null });
+    }
+
+    this.client.disconnect();
+  }
 }

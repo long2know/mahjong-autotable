@@ -2,6 +2,7 @@ import { Vector3 } from "three";
 
 import { Movement } from "./movement";
 import { Client } from "./client";
+import { readSpectatorFromUrl } from "./client-ui";
 import { mostCommon, rectangleOverlap, filterMostCommon, compareZYX } from "./utils";
 import { MouseTracker } from "./mouse-tracker";
 import { Setup } from './setup';
@@ -40,7 +41,14 @@ export class World {
 
   soundPlayer: SoundPlayer;
 
-  seat: number | null = 0;
+  // Phase J Wave 1 — initial seat is 0 for the standard local-deal/non-
+  // connected path (first-person view from seat 0).  For a page that
+  // declares ?seat=-1 (spectator) we start at null so main-view.ts's
+  // existing `fromTop = (seat === null)` branch puts the camera in the
+  // top-down overhead pose from the very first frame, instead of briefly
+  // flashing the seat-0 view until the WS sends the first seats update.
+  // Non-spectator behaviour is unchanged.
+  seat: number | null = readSpectatorFromUrl() ? null : 0;
 
   static WIDTH = 174;
 

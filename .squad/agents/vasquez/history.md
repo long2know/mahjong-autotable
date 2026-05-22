@@ -674,3 +674,34 @@ All three Wave 2 facts use `GameCount` as the assertion hook per Bishop's memo r
 | Medium vs 3×Easy | 3 | 1.33 | 13 | 2.25 |
 | 4×Hard sanity | n/a | n/a | 0 (5 completed) | n/a |
 
+
+---
+
+## Phase J Wave 1 — claim evaluator + hot-seat swap suites (commit `ca9fe03`)
+
+**Gate:** **409 passed / 0 failed / 0 skipped** (+7 from Phase I Wave 4 baseline of 402/0/0; zero skips streak holds).
+
+**Scope completed:**
+
+- **`ClaimEvaluatorTests.cs` (4 facts, +320 LOC)** — pins Bishop's J-1 shanten-aware claim acceptance gate in `HardStrategy.DecideClaimPhase` (commit `361d805`). All four facts use reflection-defensive `ChangshaBotEngine.Resolve("hard")` and call `OnOtherDiscard` directly with a manually-constructed `ChangshaClaimWindow`. Tests: `Hard_RefusesPung_WhenItRaisesShanten` (SevenPairs 5-pair fixture — Pung breaks SevenPairs path, post=2 vs pre=1, Pass), `Hard_AcceptsPung_WhenItDropsShanten` (chained-partial fixture, post=2 vs pre=3, Claim(Pung)), `Hard_AlwaysAcceptsHu_RegardlessOfShantenCheck` (canonical Hu-ready hand with pre-shanten=0 sanity-pin to catch clamp-semantics regressions), `Hard_PrefersHigherPriorityTier_AmongShantenDroppingClaims` (Pung-vs-Chow tie where both drop shanten 2→1, asserts Pung wins via `ClaimAcceptanceRank` lift).
+- **`HotSeatSwapTests.cs` (3 facts, +390 LOC)** — exercises Hicks's J-1 hot-seat swap surface (commit `781798e`) end-to-end via raw WebSocket against `WebApplicationFactory<Program>`. Hicks's diff is frontend-only; the tests verify the existing Phase F seat-take + runtime-binding pipe handles the disconnect/reconnect cycle the bundle's Move button triggers. Tests: `HotSeatSwap_PlayerToPlayer_PreservesGameState` (Alice seat 0 → disconnect → Bob same gameId seat 1, runtime binding survives), `HotSeatSwap_PlayerToSpectator_DoesNotClaimSeat` (Alice seat 0 → disconnect → Watcher `?seat=-1`, spectator's playerId in no seat, prior binding preserved), `HotSeatSwap_SpectatorToPlayer_BindsSeat` (Watcher `?seat=-1` → disconnect → Bob seat 2, seat-take succeeds).
+
+**Methodology — what worked:**
+
+- **Two coordinating memos in inbox, again.** Bishop's `bishop-phase-j-wave-1.md` published the full gate algorithm contract (Hu fast-path, strict-shanten-drop predicate, Hu>Kong>Pung>Chow tie-breaker, chow-pattern selection mirroring `RemoveChowTilesByLowestPattern`) AND the test fixtures he expected to pass — that let me write all 4 ClaimEvaluator tests against the published gate spec. Hicks's `hicks-phase-j-wave-1.md` confirmed his diff was frontend-only and pointed at the existing `?seat=` backend surface, which let me reuse the `SpectatorModeTests` scaffold verbatim.
+- **Probe → fixture-design → test, again.** Built two throwaway probe files (`_kongprobe.cs`, `_pcprobe.cs`) to measure pre/post shanten across candidate hand shapes. The probe surfaced that **Kong-over-Pung tie-breaker is mathematically unreachable** through realistic adjudicator output (the shanten counter treats any 3-of-a-kind as a complete pung, so claiming Kong on a tile the bot already has 3 of cannot strictly drop shanten — verified across 7 distinct candidate fixtures). Reframed Fact 4 from Kong-vs-Pung to Pung-vs-Chow, which exercises the **same** `ClaimAcceptanceRank` tie-breaker mechanism with a fixture I could actually construct. Documented Bishop's Kong-over-Pung lift as defence-in-depth.
+- **SevenPairs as the "raises shanten" lever.** `MinShantenToHu` clamps at zero, so hands at shanten ≤ 0 can't show degradation. SevenPairs disqualifies any hand with declared melds (per `HandEvaluator.cs:283`), so a 5-pair SevenPairs candidate (shanten=1) becomes a Standard-only hand after Pung (shanten=2) — the cleanest "raises shanten" fixture I could construct.
+- **Existing scaffolds carry the new tests.** `WebApplicationFactory<Program>` + the `WsSession` helper pattern from `SpectatorModeTests` was the right reuse for hot-seat swap. Added one new helper (`TakeSeatAsync`) that builds the `seats UPDATE` envelope with the correct `[kind, key, value]` wire shape — mirrors `AutotableWsRelayTests.SendUpdateAsync` but specialised for the seat-take payload. No new test seams required on the production side.
+
+**Surprises:**
+
+- **Bishop's `ClaimAcceptanceRank` Kong-over-Pung lift is theoretically dead code today.** Proof: the shanten counter treats any concealed 3-of-a-kind as a complete pung group, so Kong from discard (requires 3 in hand) moves the pung from concealed-group to declared-meld with zero net structural improvement — post-Kong shanten equals pre-Kong shanten. Pung from the same 3 copies leaves a dangler — typically same or worse. I cannot construct a fixture where both Kong AND Pung strictly drop. The lift is defensible as defence-in-depth (e.g. against a future `MinShantenToHu` rewrite that doesn't treat 3-of-a-kind as complete), and Bishop's stated rationale ("Kong commits four tiles instead of three") is sound, but it is not exercisable through realistic adjudicator output. Pinned the same tie-breaker mechanism via Pung-vs-Chow instead.
+- **Autotable WS disconnect does NOT release runtime seats.** The autotable's `HandleDisconnectAsync` clears `_games[gameId]` (relay store) but does NOT call `ChangshaGameRuntime.HandleDisconnectAsync` — only the SignalR Hub does. So when a player drops via the bundle's auto-reconnect cycle, their seat binding in the runtime persists. Hicks's bundle UI works around this by disabling the current seat in the Move-button picker, so the new connection never tries to retake the old seat. Documented in `HotSeatSwapTests`'s class-level docstring; Test 2's "FreesSeat" wording reframed to "DoesNotClaimSeat" to reflect actual backend behaviour. Heads-up for a future wave: wiring seat-release into the autotable disconnect path would close the loop cleanly.
+
+**Stability:**
+
+- **Phase J Wave 1 filter (`--filter "Wave=Phase-J-1"`):** 7 passed / 0 failed / 0 skipped — 2 consecutive runs all clean.
+- **Full suite:** 409 passed / 0 failed / 0 skipped. Zero skips streak preserved (now 5 consecutive waves green: I.1 → I.2 → I.3 → I.4 → J.1).
+- No production code changed (`src/backend/src/**` untouched on this commit).
+
+**Cross-agent coordination:** Bishop landed shanten gate at `361d805` (+history at `0cfe020`), Hicks landed Move button UI at `781798e` (+history at `7997b74`). My single test commit `ca9fe03` lands cleanly on top. Branch total at HEAD: 5 commits across 3 agents in strict-disjoint lanes (backend / frontend / tests / agent-history); all 409 green with zero skips. Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-1.md`.
