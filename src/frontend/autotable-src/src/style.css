@@ -1070,3 +1070,34 @@ body.spectating #roll-dice { display: none !important; }
     opacity: 0.45;
     cursor: not-allowed;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Phase J Wave 1 — Hot-seat swap.                                        */
+/*                                                                        */
+/* The Move button + inline picker sit between the Game-ID/spectator pill */
+/* row and the Leave-seat row.  Visibility is fully driven by game-ui.ts  */
+/* (inline style.display): shown only while the WS is connected AND no    */
+/* match is in progress (Phase == Seating), so players can't bail         */
+/* mid-hand.  Styles here only describe the picker's appearance.          */
+/* ---------------------------------------------------------------------- */
+
+.move-seat-panel {
+    margin-top: 6px;
+    padding: 6px;
+    background-color: rgba(20, 20, 20, 0.85);
+    border: 1px solid #555;
+    border-radius: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.move-seat-panel .move-seat-option {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+}
+
+.move-seat-panel .move-seat-option:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
