@@ -506,3 +506,45 @@ Wave 2 unlocked 3 V2-deferred Big Win rules (NineTerminals, RobbingKong, Stacked
 **Working-tree wipe (Wave 1 lesson reinforced):** Mid-session, what appeared to be Bishop's amended commit briefly rolled my uncommitted edits + new test file into a `vasquez-wip-2` stash. Recovered via `git stash pop stash@{0}`. Reinforcement: **always check `git stash list` before re-applying work that "appears lost"** when sharing a branch with another agent.
 
 **Cross-agent coordination:** Bishop shipped Wave 2 backend across 4 commits (`a6e876d` NineTerminals, `9784604` AllPatterns + scoring overload, `de6f721` robbing-kong state-machine, `16b7b39` runtime wiring) + history (`a227592`). Hicks shipped Wave 2 frontend at `257faa5` (independent of my surface). My 3 test commits land cleanly on top — green/red as planned per Ripley's coordination memo.
+
+## Phase I Wave 1 — contextual Big Win patterns acceptance tests (2026-05-21)
+
+**Shipped by:** Vasquez (test engineer)
+
+Phase I Wave 1 layered 5 new contextual Big Win headline patterns onto the Wave 2 AllPatterns stacking surface (天和 HeavenlyHand / 地和 EarthlyHand / 海底捞月 LastTileFromWall / 河底捞鱼 LastDiscardCatch / 杠上开花 KongReplacementWin). I shipped 17 new tests across 2 files in 2 commits — `b6a512e` (new `SpecialContextWinsTests.cs` acceptance suite: 9 facts driving the state machine end-to-end per headline) and `cd95b5b` (3 structural facts + 1 Theory × 5 cases appended to `WinPatternTests.cs`). All 17 tests green at commit time against Bishop's production code. Full suite at 374 passed / 0 failed / 1 skipped (357 baseline + 17 net).
+
+**Contracts locked:**
+
+1. **`WinPattern` enum extension** (Bishop's commit `afd59b9`): 5 new values in this exact declaration order after `NineTerminals` — `HeavenlyHand`, `EarthlyHand`, `LastTileFromWall`, `LastDiscardCatch`, `KongReplacementWin`. Pinned by `ContextualWinPatterns_AllFiveEnumValuesDefined`.
+
+2. **`WinContext` sealed record + optional `Detect` 4th param** (Bishop's commit `7509685`): `WinContext` has 5 `bool` init-only flags mirroring the enum names (`IsHeavenlyHand`, `IsEarthlyHand`, `IsLastTileFromWall`, `IsLastDiscardCatch`, `IsKongReplacementWin`). `IWinDetector.Detect(hand, winningTileId, method, WinContext? context = null)` — optional final parameter, every pre-Phase-I caller compiles unchanged. Pinned by `WinDetector_AcceptsContextualWinContext_OptionalParameter`.
+
+3. **`ChangshaGameState.LastDrawWasKongReplacement : bool`** (Bishop's commit `afd59b9`): bookkeeping flag, default `false`, set by `DeclareConcealedKong` / `DeclareAddedKong` / kong-claim path's replacement draw, cleared by every plain `DrawTile` / `Discard` / `Deal` / `BeginManualDeal`. Pinned by `ChangshaGameState_HasLastDrawWasKongReplacement_BooleanProperty`.
+
+4. **Detector precedence — contextual headlines slot between structural and Standard** (Bishop's commit `7509685`): if structural patterns (SevenPairs / AllPungs / FullFlush / NineTerminals) fire they claim the headline `Pattern`; if none fire, the contextual headlines claim it in `HeavenlyHand → EarthlyHand → LastTileFromWall → LastDiscardCatch → KongReplacementWin` order; Standard is the final fallback. ALL firing patterns populate `AllPatterns` in enum-declaration order — feeds Wave 2's `Math.Clamp(count, 1, 3)` multiplier. Pinned by `ContextualPattern_PopulatesAllPatterns_WhenContextFlagSetOnValidHand` (Theory × 5).
+
+5. **State-machine context construction** (Bishop's commit `9e0439c`): `DeclareSelfDrawWin` builds context with `IsHeavenlyHand = (TurnNumber==1 && DealerSeatIndex==self && DiscardPile.Count==0)`, `IsLastTileFromWall = (Wall.Count==0)`, `IsKongReplacementWin = LastDrawWasKongReplacement`. `ResolveHuClaim` builds context with `IsEarthlyHand = (!isKongRobbing && DiscardPile.Count==1 && DiscardPile[0].SeatIndex==DealerSeatIndex && claimingSeat!=DealerSeatIndex && hand.Melds.Count==0)`, `IsLastDiscardCatch = (!isKongRobbing && Wall.Count==0)`. Critically: both contexts are captured BEFORE `RemoveLastDiscard` / hand-mutation so `DiscardPile.Count==1` IS the canonical EarthlyHand signal. Pinned end-to-end by all 9 `SpecialContextWinsTests` facts.
+
+**Test design:**
+
+- **Reflection-defensive helpers** — `ResolveSpecialPatternEnum`, `GetLastDrawWasKongReplacement`, `BuildWinContextWithFlag`, `InvokeDetect` all reach for Bishop's symbols via `Assembly.GetType(...)` / `Enum.GetNames` / `Type.GetProperty(...)`. Missing-symbol probes throw `InvalidOperationException` with named-contract messages. Test assembly stays compilable across every interim commit on the shared branch.
+- **Deterministic scenario builders** — `BuildHandAfterDeal(seed: 42)`, `BuildEarthlyHandScenario`, `BuildKongReplacementScenario` strip the target win tile globally (every hand + the wall) before injecting the test setup. `OverrideHandWith14Tiles` / `OverrideHandWith13Waiting` clear melds + replace concealed exactly so the WinDetector sees deterministic shapes.
+- **Empty-wall shortcuts** — for `LastTileFromWall` / `LastDiscardCatch`, the builder simply truncates `state.Wall` to zero before driving the SM. No dependency on playing 100+ turns to organically exhaust the wall.
+- **Acceptance + unit pair** — same complementary structure as Wave 2 (RobbingKongAcceptanceTests + WinPatternTests). Acceptance suite drives end-to-end (proves SM correctly BUILDS WinContext from game state), unit Theory drives the detector directly (proves context→pattern binding round-trips). Decoupled layers regress independently.
+- **Trait tagging** — every fact carries `[Trait("Category", "Changsha"), Trait("Wave", "Phase-I-1")]`.
+
+**Stale-build trap (reinforced):**
+
+When Bishop pushed `9e0439c` (state-machine wiring) mid-flight, `dotnet test --no-build` ran my new facts against a stale assembly — 2 facts went RED with misleading messages. Solution: drop `--no-build`. Reinforcement of the Wave 2 lesson: when sharing a branch with another active agent, always rebuild before reading red/green signal.
+
+**Contract drift in pre-existing test (resolved by Bishop):**
+
+One full-suite run mid-wave showed `HuValidation258Tests.Hu_FromDiscard_258Compliant_AcceptedViaResolveClaim` RED with `Expected: Standard, Actual: EarthlyHand` — because the test's seed=23 scenario (dealer's first discard, non-dealer Hu, claimant no melds) is now the CANONICAL EarthlyHand fixture. The pre-Phase-I `Pattern == Standard` assertion was correct under the old contract but Bishop's new EarthlyHand correctly fires under the new contract. File sits in my "do not touch" lane; Bishop owned the drift and shipped the one-line fix in commit `0117a30` ("test(rules): align HuValidation258 discard test with new EarthlyHand headline"). Three back-to-back post-fix full-suite runs all 374/0/1 — drift fully resolved.
+
+**Stability:**
+
+- **Phase I Wave 1 filter (`--filter "Wave=Phase-I-1"`):** 17 passed / 0 failed / 0 skipped (9 acceptance + 3 facts + 5 theory cases).
+- **Full suite:** 374 passed / 0 failed / 1 skipped. Skip count unchanged from baseline (only the pre-existing `AutotableWsRelayTests.Update_IsIsolated_PerGameId` cross-process WS isolation issue).
+- **Stability runs:** 3 consecutive full-suite invocations all 374/0/1 — no flakiness.
+
+**Cross-agent coordination:** Bishop shipped Wave 1 backend across 4 source commits (`afd59b9` enum + state flag, `7509685` WinContext + detector, `9e0439c` SM wiring, `419ba7a` WS wire) + 1 cross-lane test alignment (`0117a30` HuValidation258) + history doc (`569f122`). Hicks shipped Wave 1 frontend at `f91c95e` (score-multiplier breakdown + streaming move-log) + history (`ae506fd`) — independent of my surface. My 2 test commits (`b6a512e` + `cd95b5b`) land cleanly on top of Bishop's wiring, all 17 tests green at commit time. Total branch: 7 commits across 3 agents in strict-disjoint lanes, all green at HEAD. Detailed contract table + per-test status table at `.squad/decisions/inbox/vasquez-phase-i-wave-1.md`.
