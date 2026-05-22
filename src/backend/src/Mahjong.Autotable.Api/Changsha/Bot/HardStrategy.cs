@@ -14,8 +14,11 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 ///   <item>Declares concealed/added kong opportunistically but only when the resulting
 ///   hand state still has enough "loose" tiles to absorb a kong replacement draw.</item>
 /// </list>
-/// This is a fast approximation, not a true shanten + EV search. It's enough to play
-/// noticeably better than Medium without breaking the runtime's bot-turn budget.
+/// Phase I Wave 4 swapped the underlying shanten counter (<see cref="HandEvaluator.MinShantenToHu"/>)
+/// for a rigorous backtracking implementation, so Hard's discards are now materially
+/// stronger than Medium's: the new counter no longer over-counts overlapping runs,
+/// which had previously washed out the marginal shanten signal Hard's defensive
+/// scoring relies on.
 /// </summary>
 public sealed class HardStrategy : IChangshaBotStrategy
 {

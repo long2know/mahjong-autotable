@@ -4,6 +4,12 @@
 
 ## Changelog
 
+- **Phase I Wave 4** — proper shanten counter + spectator seat **shipped**.
+  `HandEvaluator.MinShantenToHu` is now a rigorous backtracking counter
+  (Standard 4-groups+pair AND SevenPairs paths; returns the min). The
+  "Bot shanten estimator is coarse" gap below is closed. `?seat=-1`
+  spectator connections receive snapshots but never claim a seat, and
+  pair with `?botCount=4` to trigger auto-deal for all-bots-watch mode.
 - **Phase I Wave 3** — multi-game WS routing **shipped**.
   `AutotableWsEndpoint` honours `?gameId=X` and `JOIN.gameId` (was coerced to
   `changsha-default`). Per-gameId isolation is enforced for state, runtime
@@ -62,27 +68,6 @@ the variant ambiguity to operators.
 - Implementation: `Changsha/ChangshaStateMachine.cs` — `MissedWinSeats` set
   and its lifecycle.
 - Deferred to: V2 (only if Stephen rules the regional variant takes precedence).
-
----
-
-### Bot shanten estimator is coarse
-
-The bot engine's `HandEvaluator.MinShantenToHu` is a fast approximate distance
-counter (`Changsha/Bot/HandEvaluator.cs:114`), not a rigorous shanten solver.
-It returns a coarse estimate that is **monotonic for the "drop a tile"
-comparison** (a discard that increases the estimate is provably worse), which
-is what the bot needs — but the estimate may be off by 1–2 from a true
-shanten count.
-
-**Impact:** Medium- and Hard-tier bots may misjudge close-to-win states,
-holding onto tiles slightly longer than optimal or claiming Chow when a
-patient discard would have been better. The error is bounded and never
-produces an illegal move.
-
-- Implementation: `Changsha/Bot/HandEvaluator.cs:100-151`.
-- Deferred to: Phase I+ — rigorous shanten counting is O(N!) in the general
-  case; will need a domain-specific Changsha solver that exploits the
-  no-honors / 258-pair constraints.
 
 ---
 
