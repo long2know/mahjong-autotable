@@ -758,7 +758,7 @@ post-Vasquez sync: 384/0/0.
 ## Phase I Wave 4 — Proper shanten counter + spectator seat
 
 **Branch:** `stlong/phase-i-wave-4-bot-strength-spectator`
-**Commit:** TBD (will append SHA after commit)
+**Commit:** `954c1ff` (`feat(changsha): Phase I Wave 4 — proper shanten counter + spectator seat`)
 **Baseline:** 393/0/0 → **393/0/0**.
 
 **Surface area:**
