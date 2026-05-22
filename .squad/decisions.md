@@ -2266,5 +2266,84 @@ Zero regressions in pre-Phase-I tests.
 3. **i18n:** Pattern tooltips hardcoded English. Deferred to v1.1.
 4. **Persistence ordering for multi-server:** If Phase J introduces load balancing, confirm SQLite snapshot ordering (chronological game-start vs creation-order) meets rehydration needs across multiple backend instances.
 
+## Phase I Wave 3 — Multi-game vertical slice + zero skips (2026-05-23)
+
+**Timestamp:** 2026-05-23 (final sweep date TBD)  
+**Branch:** `stlong/phase-i-wave-3-multigame-bot-strength` (all commits pushed)  
+**Final test count:** **393 / 0 / 0** (was 383/0/1 at Phase I Wave 2 → +10 net + first zero-skip wave this session)  
+**Bundle hashes (Hicks):** JS `e6653bd3.js` → `49eb3789.js`; CSS `60fe83d8.css` → `af973ea2.css`; Bootstrap `df85b4c4.css` unchanged; old hashes pruned.
+
+### Multi-game WS routing (Bishop)
+
+**Surface area:** `AutotableWsEndpoint.cs:263,278` (two coercion sites removed), plus new `TryNormalizeGameId` helper + `MaxGameIdLength = 64` constant. `ChangshaGameRuntime.cs` hydration filter widen. `docs/known-limitations.md` "Single-game-per-instance" bullet dropped.
+
+**Coercion removal:** `DefaultGameId` was hardcoded at lines 263 (HandleNewAsync) and 278 (HandleJoinAsync), collapsing all connections onto `"changsha-default"`. Now replaced with **validated chain:** JOIN message `gameId` → query param `?gameId=` → `DefaultGameId` fallback.
+
+**Validation rules (verbatim, for contract lock):**
+1. **Trim leading/trailing whitespace** before validation. Empty after trim → fall back to `DefaultGameId`.
+2. **Length cap: 64 chars** after trim. Longer ids close the connection with WS close-code `PolicyViolation` (1008) and reason `"gameId too long"`.
+3. **No `char.IsControl` characters** anywhere in the trimmed value. Rejection reason: `"gameId contains control characters"`.
+4. **Case-sensitive** (`StringComparison.Ordinal`, matching `_games` dict). Clients are responsible for stable, canonical ids; don't lowercase at endpoint.
+5. **Interior whitespace preserved** (trim only leading/trailing). Client regex may tighten via HTML pattern attr (not server-enforced).
+6. **Source priority:** JOIN.gameId (if present + valid) → query param `?gameId=` → `DefaultGameId`.
+7. **Invalid input closes the socket** (not silent coercion) — client bug is clearer on disconnect; WS reconnect loop already handles transients.
+
+**Backward compatibility:** Legacy bundle (no `?gameId=`) falls through to `DefaultGameId` unchanged. Existing relay tests use JOIN-message gameId (not query param), so old assertions re-routed to named ids (`DROP-A`, `KEEP-A`, etc.) exercise the same per-game cleanup logic; behavior preserved.
+
+**WallExhausted hydration filter (closed Wave 2 open Q):** `ChangshaPhase.WallExhausted` (draw terminal, set when wall exhausted before any seat completes) was previously left as a question. Now excluded from hydration; the hand is functionally over before rotation. Filter becomes: `if (state.Phase == ChangshaPhase.EndGame || state.Phase == ChangshaPhase.WallExhausted) continue;`
+
+**Infrastructure note:** `AutotableConnectionManager` is NOT a separate file — the class lives at the bottom of `AutotableWsEndpoint.cs`. Per-game state collections already keyed by gameId (`_games`, `_runtimeBinding`, `_relayBinding`, `ConnectionsInGame`, broadcasts). `_bindingLock` is a singleton across gameIds (coarse but acceptable for MVP; future load-profile flagged if contention observed).
+
+### Lobby Game ID UI (Hicks)
+
+**Surface area:** `index.html` new `#lobby-gameId-row` input above in-game `#server` Connect/Disconnect block. `client-ui.ts` URL → input prefill, WS URL injection, history.replaceState, connected-state display. `lobby.ts` preserves `?gameId=` through Apply & Start nav. `style.css` `.lobby-row`, `.lobby-error`, game-display styling. Bundle rehashed.
+
+**HTML contract:** `maxlength="64"` + `pattern="[A-Za-z0-9_\-\.]+"` (conservative subset of Bishop's server validation). Defaults from URL `?gameId=` query param if present + valid; else `"changsha-default"`.
+
+**Connected-state flow:** On Connect, appends to WS URL + calls `history.replaceState` so refresh re-joins same game. **Switching games requires Disconnect → edit → Connect** — friction is intentional (a Game ID change is effectively a room change). Connected-state: input hidden via `.connected` toggle; replaced with `Game: <id>` display (italic muted + gold monospace).
+
+**Validation failure:** Inline `.lobby-error` red text + red input border + focus jump. Connect blocked until field valid.
+
+**Parcel gotcha (pinned for future frontend work):** Parcel strips default `type="text"` from `<input>`, so `input[type="text"]` selectors miss. Hicks anchored final CSS on ID/scoped class. This is a build-time invariant affecting future input styling — always test selector specificity post-build.
+
+**Build command (unchanged from Phase I Wave 1/2):** `npx parcel build index.html --dist-dir ../autotable --public-url . --no-source-maps --no-cache`.
+
+### Test coverage (Vasquez)
+
+**Final count:** 393 tests (383 baseline + 10 new − 0 skip removals = +10 net passing, **zero skips remaining**). First zero-skip wave this session.
+
+**Tests delivered:**
+
+1. **Unskipped `Update_IsIsolated_PerGameId`** (AutotableWsRelayTests.cs:182): Long-standing Phase D-backend skip (pinned per-game routing bug). Now passes with Bishop's routing fix.
+
+2. **`LateJoin_ToExistingGameId_ReceivesAccumulatedSnapshot_ForThatGameOnly`** (MultiGameRoutingTests.cs): Three sessions across two gameIds — Alice/Bob/Charlie pattern. Alice sends UPDATE to MULTI-A; Bob sends UPDATE to MULTI-B; Charlie late-joins MULTI-A ⇒ must receive Alice's UPDATE, must NOT receive Bob's UPDATE.
+
+3. **`Concurrent_New_InDifferentGameIds_DoesNotCollide`** (MultiGameRoutingTests.cs): Two WS connections in parallel with distinct gameIds (NEW-A, NEW-B). Each sends UPDATE; peer must NOT receive it. Exercises NEW path under multi-game routing.
+
+4. **`GameId_Validation_RejectsControlChars`** (MultiGameRoutingTests.cs, Theory ×3): Validates control-char rejection for `%00` (null), `%07` (bell), `%0A` (LF). Connection closes with PolicyViolation.
+
+5. **`GameId_Validation_RejectsOverLengthIds`** (MultiGameRoutingTests.cs): 65 chars rejected (PolicyViolation).
+
+6. **`GameId_Validation_AcceptsMaxLengthBoundary`** (MultiGameRoutingTests.cs): 64 chars accepted (locks `>` not `>=` in validation).
+
+7. **`GameId_EmptyOrMissing_FallsBackToDefault`** (MultiGameRoutingTests.cs): Conn1: no query param ⇒ `gameId="changsha-default"`. Conn2: same; both see each other (legacy single-game behavior preserved).
+
+8. **`Hydration_ExcludesWallExhaustedRows`** (HydrationOnStartupTests.cs): Direct SQLite insertion of two rows (Phase = WallExhausted, Phase = AwaitingDiscard). Boot fresh runtime; assert only AwaitingDiscard hydrated.
+
+**Cross-lane protocol (pinned for future waves):** Vasquez flipped assertion in `AutotableWsRelayTests.Join_UnknownGameId_RejectsJoinedAndEmptySnapshot` (was pinning old coercion; now expects honored unknown id). When production rules change, test owner flips assertions in same wave — captures the reality post-fix, not the pre-fix bug. This aligns with "rewrite test to match production reality" directive.
+
+**Whitespace-only quirk (pinned for hydration protocol):** `TryNormalizeGameId` returns `true` for whitespace-only input with `normalized = null`. This is what makes the "empty `?gameId=`" fallback work cleanly — handshake doesn't close socket; JOIN's null resolves via fallback chain.
+
+### Gate result
+
+**393 / 0 / 0** — first zero-skip wave this session. All ten Phase I Wave 3 tests passing.
+
+### Open questions for Phase I Wave 4
+
+1. **`_bindingLock` per-game profiling:** Shared singleton across gameIds serializes lazy runtime creation. Acceptable for MVP; real load profile may warrant per-relayGameId lock if contention observed.
+2. **Bot shanten estimator strength improvements:** Still on backlog; Phase I Wave 3 uses existing heuristics. Consider prioritizing for better bot play in multi-game scenario.
+3. **Hard-tier bot WinContext deliberate passthrough audit:** User directive flagged this; Phase A tests pass. Confirm Hard-bot's WinContext handling is intentional (currently derives inside state machine, not passed explicitly).
+4. **Game ID UI hot-seat swap:** Currently Disconnect → edit → Connect. Could implement Move button for faster game switching (deferred to Phase J UI polish).
+
 ---
 
