@@ -792,3 +792,148 @@ Phase G shipped pre-game sidebar lobby picker (variant/dealMode/botCount/botDiff
 **Key learnings:** Gating logic (dealMode disabled on non-Changsha, botDifficulty disabled when botCount=0) must be bidirectional (read AND write). URL parsing lenient for back-compat (kebab or SCREAMING_SNAKE for variant). Show-on-load policy: bare URL only (once any param applied, lobby hidden behind toggle).
 
 **Cross-agent awareness:** Bot-pickup now server-driven per Bishop (500ms ticks); UI no longer needs client-side timer for bot seats.
+
+---
+
+## Phase H Wave 1 — Lobby polish + Dockerfile audit (2026-05-21)
+
+**Branch:** `stlong/phase-h-wave-1-stability-polish` off `730946c` (Phase G merge).
+**Bundle SHA before:** `autotable-src.33f97fad.js` (1.03 MB) + `autotable-src.7934372e.css` (7.8 kB).
+**Bundle SHA after:**  `autotable-src.c97ea9e9.js` (1.03 MB) + `autotable-src.96cb3b60.css` (9.4 kB).
+**Replaces:** prior Phase G bundle (pruned).
+
+### What I shipped — Lobby polish (Task 1)
+
+Four capabilities layered on top of the Phase G sidebar lobby in
+`src/frontend/autotable-src/src/lobby.ts` + `index.html` + `style.css`:
+
+1. **Seed override.**  Optional text input in a collapsible "Advanced"
+   `<details>` section.  Empty/blank → server picks a random seed
+   (current behaviour); filled with `0 ≤ N ≤ 2³¹−1` → URL gets `&seed=N`
+   so the game is byte-reproducible.  Validation: integer-only regex
+   (`/^-?\d+$/`), range check, red-border + inline error if invalid.
+   Apply button is blocked + the seed input focused on invalid input.
+2. **Hand count selector.**  Radio fieldset under Bot difficulty.
+   Options 4 / 8 / 16 / 32 with annotations
+   (quick / East round / half match / full match).  Default = 8.  Always
+   emitted as `&handCount=N` on apply.  Backend doesn't read this yet
+   (Phase H V2 wiring — Bishop) but the lobby contract is in place.
+3. **Save defaults.**  Checkbox left of the Apply button.  When ticked,
+   the resolved state writes to `localStorage` under
+   `mahjong.lobby.defaults` as JSON
+   (`{variant, dealMode, botCount, botDifficulty, seed, handCount}`).
+   On next bare-URL page load the lobby pre-populates from localStorage.
+   Resolution chain: URL params > localStorage > hardcoded DEFAULTS.
+4. **About / Known Limitations link.**  Small footer link below the
+   apply row.  Points at
+   `https://github.com/long2know/mahjong-autotable/blob/main/docs/known-limitations.md`
+   (Ripley owns the doc).  GitHub URL is the chosen target because the
+   backend (Program.cs) only serves `/autotable/*` as static files — a
+   relative `/docs/known-limitations.md` link would 404.  GitHub also
+   renders markdown natively.
+
+### Files touched
+
+| File | Purpose |
+|---|---|
+| `src/lobby.ts` | +220 LOC: types (HandCount), DEFAULTS extended, `coerceSeed`, `parseLocalStorageState`, `resolveInitialState` (URL > LS > DEFAULTS), `writeLocalStorageDefaults`, seed input validation, hand-count picker wiring, save-defaults checkbox, about-link hardening |
+| `index.html` | +45 LOC: hand-count fieldset, `<details class="lobby-advanced">` with `#lobby-seed` text input + `.lobby-seed-error`, footer rebuilt with `.lobby-save-defaults` checkbox + Apply, `.lobby-about` row with `#lobby-about-link` |
+| `src/style.css` | +106 LOC: `.lobby-advanced` collapsible + summary, `#lobby-seed` + `.lobby-seed-invalid` red-border state, `.lobby-seed-error`, `.lobby-advanced-hint`, `.lobby-save-defaults`, `.lobby-about` link styling, footer flex layout updated to space-between |
+| `src/frontend/autotable/**` | Parcel rebuild: new hashed `.js`/`.css`, pruned the Phase G `33f97fad.js` + `7934372e.css` |
+
+No `world.ts`, no `client.ts`, no `game-ui.ts`, no setup pipeline, no
+backend, no tests touched — strict Phase H Wave 1 scope.
+
+### Files touched — Dockerfile audit (Task 2)
+
+| File | Purpose |
+|---|---|
+| `infra/docker/Dockerfile` | Removed `modern-build` stage (node:24-alpine COPY of deleted `src/frontend/modern/`) and the `runtime-modern` final stage that depended on it.  10 lines deleted, no other edits — the SDK build + ASP.NET runtime stage that copies `src/frontend/autotable/` into `/app/wwwroot/autotable` is correct as-is. |
+
+Dockerfile state after: 14 lines, single SDK build stage + single ASPNET
+runtime stage.  No `modern/` references anywhere.
+
+### Learnings worth remembering
+
+1. **Parcel `--public-url .` is required for the autotable bundle.**
+   Upstream Makefile target `build` uses
+   `parcel build *.html --public-url .` — without the flag, Parcel emits
+   absolute URLs (`/icon-96.auto.png`) in the rendered HTML, which
+   404 because the backend serves the bundle from `/autotable/*`.
+   My first build accidentally regressed every asset URL in
+   `about.html` + `index.html` to absolute paths; the diff was a 50-line
+   sea of `href=foo.png` → `href=/foo.png`.  Rebuild with
+   `--public-url .` is byte-identical to Phase G for everything except
+   the changed lobby markup + new hashes.  **Always pass `--public-url .`
+   for any future Parcel build.**  Phase H polish candidate: add a
+   `"build": "parcel build index.html --dist-dir ../autotable --public-url ."`
+   npm script so the flag is impossible to forget.
+
+2. **The autotable-src index.html lives at the project root, not in
+   `src/`.**  The prompt suggested `parcel build src/index.ts src/index.html`
+   but the html entrypoint is actually `index.html` at
+   `src/frontend/autotable-src/index.html`.  Parcel picks up
+   `<script type="module" src="./src/index.ts">` from the html so passing
+   the .ts entry separately is unnecessary and can confuse Parcel about
+   which is the root document.
+
+3. **Optional-vs-null distinction in `Partial<LobbyState>` for the
+   seed.**  `parseUrlState()` returns `Partial<LobbyState>` (each field
+   may be undefined if not specified).  But `seed` is *legitimately*
+   nullable in the resolved state — null means "random."  Resolution
+   logic has to check `url.seed !== undefined` not `url.seed != null`,
+   because an explicit `seed=42` in the URL must override a stored
+   `seed: null` in localStorage, and vice versa.  Easy to miss; cost me
+   a re-read of the resolution chain logic.
+
+4. **`<details>` with custom `summary` styling.**  Set
+   `list-style: revert` on the summary so the disclosure triangle stays
+   visible — the default reset rules in some bootstrap-flavoured CSS
+   strip it.  Keep the summary `outline: none` to avoid double focus
+   rings.
+
+5. **localStorage I/O wrapped in try/catch.**  Privacy mode (Safari),
+   quota exhaustion, and tampered payloads all throw on access.  Wrap
+   `localStorage.getItem` + `JSON.parse` together in one try block;
+   wrap `setItem` in its own.  Don't propagate the failure — the
+   URL-driven Apply still works without LS persistence.
+
+6. **Dockerfile only needs the backend SDK + ASPNET runtime stages.**
+   The pre-built `src/frontend/autotable/` bundle is what gets copied
+   into `wwwroot/autotable`.  No Node stage is needed because the
+   bundle is committed to the repo (the upstream autotable pattern —
+   the build artifact is the deploy artifact).  Phase H V2 candidate:
+   add an optional Node stage that rebuilds the bundle from
+   `autotable-src/` so we can ship without a pre-built bundle in git.
+
+### Smoke recipe (Stephen)
+
+1. `/autotable/` (bare URL).  Lobby auto-opens.  Confirm new sections:
+   "Hands per match" radio (default 8), "Advanced" collapsible (closed),
+   "Save as defaults" checkbox (unchecked) left of Apply,
+   "ℹ︎ About / Known Limitations" footer link.
+2. Click Advanced → seed input appears.  Type `12345` → no red border.
+   Type `99999999999` (too large) → red border + inline error.
+3. Pick Changsha + Manual + 3 bots + Medium + handCount=8 + seed=12345 →
+   tick "Save as defaults" → click **Apply & Start**.
+4. URL becomes
+   `/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=8&seed=12345`.
+   Fresh game.
+5. Reload bare URL (`/autotable/` no params) — lobby reopens with the
+   saved choices pre-populated from localStorage.
+6. Click About link → new tab opens to the GitHub markdown render of
+   `docs/known-limitations.md` on main.
+
+### Deferrals
+
+- **handCount runtime support.**  Backend (Bishop) needs to read
+  `?handCount=N` and end the match after N hands.  Lobby contract is
+  shipped; runtime wiring is V2.
+- **seed deep-linking validation in the backend.**  Bishop's
+  `AutotableWsEndpoint.CreateGameAsync` currently always passes
+  `seed: null`; needs to read `?seed=N` query param and forward.
+- **`--public-url .` baked into a build script.**  Phase H polish.
+- **localStorage versioning.**  Current key is unversioned
+  (`mahjong.lobby.defaults`); when the LobbyState shape changes
+  meaningfully, bump to `.v2` and ignore old payloads on read.
+

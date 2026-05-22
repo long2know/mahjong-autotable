@@ -354,3 +354,169 @@ Phase G completed two production issues: bot freeze during manual-deal pickup (S
 **Key learnings:** Tick schedulers must re-validate state under the instance lock after delay (race-safe); privacy filters require asymmetric rotation override (hand.* face-down only, non-hand keep public translator rotation for discards/melds).
 
 **Cross-agent updates:** Hicks confirmed bot-pickup timer now server-driven; Vasquez's test memos detailed reflection-safe acceptance pattern for future refactors.
+
+## Phase H Wave 1 — StateVersion concurrency + bot decision timeout + CORS cleanup (2026-05-22T00-03-44Z)
+
+**Branch:** `stlong/phase-h-wave-1-stability-polish` (cut from `main` @ `730946c`)
+
+### What I shipped
+
+- **StateVersion optimistic concurrency.** `ChangshaGameState.StateVersion` already
+  existed (added in pre-Phase-A work; increments inside `ChangshaStateMachine.CreateEvent`
+  alongside `EventSequence`). Wired the contract:
+  - New `Mahjong.Autotable.Api.Changsha.ChangshaConcurrencyException : InvalidOperationException`
+    with `ExpectedVersion` / `ActualVersion` properties — matches the task spec verbatim.
+  - Eight public mutation methods on `IChangshaGameRuntime` grew an **optional trailing**
+    `int? expectedVersion = null` parameter (after `CancellationToken ct` — placement
+    chosen to preserve binary-/positional-call compat with `AutotableWsEndpoint.cs`
+    and `ChangshaHub.cs`, both of which were file-scoped off-limits):
+    `StartGameAsync`, `RollDiceAsync`, `TakeTilesFromWallAsync`, `DiscardAsync`,
+    `ClaimAsync`, `PassAsync`, `DeclareKongAsync`, `DeclareWinAsync`.
+  - Private helper `EnsureExpectedVersion(instance, expectedVersion)` runs **inside the
+    instance lock**, BEFORE the state-machine call, so the version cannot move between
+    check and mutation. Null bypasses the check (bot scheduler / server-internal callers
+    are exempt — matches the task contract).
+- **Bot decision timeout fallback.**
+  - New `ChangshaRuntimeOptions.BotDecisionTimeoutMs : int = 2000`.
+  - New static helper `ChangshaBotEngine.DecideActionWithTimeoutAsync(decision, timeoutMs, safeDefault, logger?, ct)`
+    in `Changsha/Bot/ChangshaBotEngine.cs`. Pattern: `Task.Run(decision)` + `Task.WhenAny`
+    against `Task.Delay(timeoutMs)`. On timeout: log a warning, observe the slow task's
+    eventual exception via `ContinueWith(OnlyOnFaulted, ExecuteSynchronously)`, and
+    return `safeDefault()`. `timeoutMs <= 0` disables the timeout (inline decision —
+    legacy behaviour preserved for tests that want to assert no-timeout semantics).
+  - Both bot call sites (`RunBotTurnAsync` and `BotClaimAsync`) now await
+    `DecideActionWithTimeoutAsync` instead of calling `_botPolicy.DecideAction`
+    directly. Safe defaults per the contract:
+    - Own turn → `BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(hand))`
+      (forwards to `MediumStrategy.SelectDiscardTile`, the cheapest deterministic
+      discard heuristic — used since pre-Phase-F).
+    - Claim window → `BotAction.Pass` (no claim; window resolves normally).
+- **CORS cleanup.** Removed `http://localhost:5173` and `https://localhost:5173`
+  (the deleted `modern/` Vite dev server). Kept `http://localhost:5114` (Kestrel HTTP)
+  and `https://localhost:7135` (Kestrel HTTPS) — both used by the in-tree
+  `frontend/autotable/` bundle and ChangshaHub clients. Policy retained; `UseCors`
+  call left in place.
+
+### Files modified (production only, file-scope held)
+
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/ChangshaConcurrencyException.cs` (NEW)
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/Runtime/IChangshaGameRuntime.cs` —
+  interface declaration lives at the top of `ChangshaGameRuntime.cs` (no separate file);
+  added `expectedVersion` to 8 method signatures.
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/Runtime/ChangshaGameRuntime.cs`
+  (+~20 LOC): `EnsureExpectedVersion` helper, version checks in 8 methods, two timeout
+  wraps in `BotClaimAsync` + `RunBotTurnAsync`, `using Mahjong.Autotable.Api.Changsha.Bot`.
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/Runtime/ChangshaRuntimeOptions.cs`
+  (+1 property): `BotDecisionTimeoutMs`.
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/Bot/ChangshaBotEngine.cs`
+  (+~55 LOC): `DecideActionWithTimeoutAsync` static helper + `using ILogger`.
+- `src/backend/src/Mahjong.Autotable.Api/Program.cs`: CORS origins list shrunk
+  from 4 → 2 entries.
+
+### Verification
+
+- `dotnet build src/backend/Mahjong.Autotable.slnx --nologo` → 0 warnings / 0 errors, ~5s.
+- `dotnet test src/backend/Mahjong.Autotable.slnx --nologo --no-build` → **330 passed /
+  0 failed / 9 skipped of 339 total**, ~15s. Phase G baseline (330/0/9) held exactly.
+  The two skipped placeholders Vasquez will unskip (`StateVersion_OptimisticConcurrency_DeferredToV2`,
+  `Bot_TimeoutFallback_DeferredV2`) still appear as `[SKIP]` in my run — coordinator
+  runs the joint pass after Vasquez's commit lands.
+- Three back-to-back clean runs; no flakes.
+
+## Learnings
+
+- **`expectedVersion` placement constraint.** The task asked for "optional trailing
+  parameter `int? expectedVersion = null`". The .NET idiom is "CancellationToken last",
+  but `AutotableWsEndpoint.cs:441,445,502,519` and `ChangshaHub.cs:53,56,59,62,65,68`
+  call mutation methods with positional `ct` — both files were OUT of file scope.
+  Putting `expectedVersion` AFTER `ct` (i.e., `..., CancellationToken ct = default, int? expectedVersion = null`)
+  preserves all positional callers without touching them. Non-idiomatic but the only
+  back-compat-clean placement under the file-scope rules. Future cleanups (e.g. a Wave-2
+  WS-endpoint refactor that wires `expectedVersion` from client messages) can swap to
+  the more conventional `expectedVersion`-before-`ct` order — at that point both
+  callers will be touched anyway.
+- **StateVersion already lives in `ChangshaGameState`** (line 243 of `ChangshaDomain.cs`,
+  default `= 1`), incremented inside `ChangshaStateMachine.CreateEvent` (line 1059)
+  alongside `EventSequence`. The default of 1 — not 0 as the task spec literally said —
+  is preserved because persistence snapshots and replays depend on it. The optimistic
+  concurrency contract only requires monotonic-increment-on-mutation, not a specific
+  starting value. Documented in the inbox decision drop.
+- **Bot decision timeout pattern.** `Task.Run` + `Task.WhenAny(decisionTask, Task.Delay(timeoutMs))`
+  is the chosen wrap. The slow task is fire-and-forget on timeout — strategies are
+  pure (`IChangshaBotStrategy.DecideAction` reads `ChangshaGameState` but never
+  mutates), so the discarded result is safely abandoned. Faulted slow tasks are
+  observed via `ContinueWith(..., OnlyOnFaulted | ExecuteSynchronously)` so the GC
+  doesn't surface them as unhandled. The decision runs inside the instance lock —
+  matches current behaviour, but a hung bot now releases the lock after `timeoutMs`
+  instead of blocking the table forever.
+- **Safe-default discard helper.** `ChangshaBotPolicy.SelectDiscardTile(hand)` is the
+  legacy facade for `MediumStrategy.SelectDiscardTile(hand)` — both `static` and
+  pure-functional. Either works; I chose the facade because it's namespace-resolved
+  in the runtime file without a new `using` (parent namespace import suffices).
+- **Lock-held async timeout is acceptable for per-instance latency.** Each
+  `ChangshaGameInstance.Lock` is a `SemaphoreSlim`; holding it across an `await`
+  blocks only that game's pipeline, not other games. The pre-Phase-H code already
+  held the lock across synchronous bot decisions (typically ≤ 1 ms); the timeout
+  extends the worst-case hold to `BotDecisionTimeoutMs` (2 s default) — acceptable
+  for a buggy-strategy bailout. Other games are isolated by their own locks.
+
+### Open / handed off
+
+- **Vasquez:** unskip `StateVersion_OptimisticConcurrency_DeferredToV2`
+  (`EdgeCaseTests.cs:103`) and `Bot_TimeoutFallback_DeferredV2`
+  (`BotBehaviorTests.cs:142`). Contracts are stable: `ChangshaConcurrencyException`
+  in `Mahjong.Autotable.Api.Changsha`; runtime methods take `int? expectedVersion`
+  as the LAST parameter (after `ct`); `BotDecisionTimeoutMs` on options;
+  `ChangshaBotEngine.DecideActionWithTimeoutAsync(decision, ms, safeDefault, logger?, ct)`
+  is the helper if she wants to test it directly.
+- **Hicks (frontend):** no UI changes required this wave. The runtime accepts
+  `expectedVersion` but the WS endpoint does not yet pipe it from client messages —
+  that's a deferred Wave-2 wire-protocol concern.
+- **Bishop (future):** wire `expectedVersion` through `AutotableWsEndpoint.cs` and
+  `ChangshaHub.cs` once a wire-protocol contract is agreed (probably `version` or
+  `stateVersion` field on inbound mutate messages); add a `BotDecisionTimedOut`
+  hub event if the frontend wants to surface stuck-bot UI; consider migrating the
+  `expectedVersion` parameter to its idiomatic pre-`ct` position once the WS/Hub
+  callers are touched anyway.
+
+### Contract refinements (verified against Vasquez's draft acceptance tests)
+
+After my first commit landed, ran the build with Vasquez's stashed Phase H tests in
+the worktree to verify the contract end-to-end. Two contract gaps surfaced that
+needed surgical follow-ups (still file-scope-clean):
+
+- **Strategy-injection seam (`_botPolicy` → `_strategy : IChangshaBotStrategy`).**
+  Vasquez's `Bot_TimeoutFallback_FallsBackToSafeAction` reflectively scans
+  `ChangshaGameRuntime` private fields for an `IChangshaBotStrategy`-typed slot so
+  it can swap in a "slow strategy" test double. The pre-Phase-H field was
+  `private readonly ChangshaBotPolicy _botPolicy = new();` — a concrete-typed facade
+  that can't be replaced by a strategy. Retyped to
+  `private IChangshaBotStrategy _strategy = ChangshaBotEngine.Default;` (default is
+  `MediumInstance`, the legacy Medium-tier — identical runtime behaviour to the
+  old facade). All call sites updated to `_strategy.DecideAction(...)`. The legacy
+  `ChangshaBotPolicy` class is still used as a STATIC source for
+  `SelectDiscardTile(hand)` in the own-turn safe default, and via
+  `ChangshaBotEngine.Resolve("medium").DecideAction(...)` for `BotMatchHarness`,
+  so backward compatibility is preserved.
+- **`StateVersion` starts at 0.** Pre-Phase-H the field defaulted to `1` and the
+  `game-created` event emitted by `ChangshaStateMachine.CreateGame` immediately
+  bumped it to `2`. Vasquez's `StateVersion_StartsAtZero_OnNewGame` asserts the
+  freshly-created state reads `0`. Made two surgical changes:
+  1. `ChangshaDomain.cs`: `public int StateVersion { get; set; } = 0;`.
+  2. `ChangshaGameRuntime.CreateGameAsync`: `state.StateVersion = 0;` immediately
+     after `ChangshaGameStateMachine.CreateGame(...)` to discard the setup-event's
+     increment. Rationale documented inline: the "game-created" event is setup
+     metadata, not a mutation that consumes a version slot. The first real
+     mutation (`StartGameAsync` → `RollDice` → `Deal`) advances to monotonic 1+.
+  No persistence migration required — old snapshots deserialize with their
+  explicit JSON value, so in-flight games keep their pre-Phase-H version line.
+
+After these two refinements: 339 passed / 1 failed / 7 skipped of 347. The single
+remaining failure is `Bot_Decision_Within_Timeout_ProceedsNormally`, a Vasquez test
+that computes `expectedNatural = ChangshaBotEngine.Default.DecideAction(state, 0)`
+BEFORE `StartGameAsync` — at that moment `state.Phase == Seating` and `DecideAction`
+returns `BotAction.Wait()`. The else-branch of the test then asserts
+`Phase != AwaitingDiscard`, but the runtime correctly moves to `AwaitingDiscard`
+after a discard, so the assertion fails. **Vasquez test bug — flagged in the
+inbox decision drop, not a runtime correctness issue.** Pure-Bishop baseline
+(without Vasquez's stashed tests) remains 330/0/9 — Phase G parity preserved.

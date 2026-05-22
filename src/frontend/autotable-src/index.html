@@ -396,11 +396,56 @@
                 <label><input type="radio" name="lobby-bot-difficulty" value="Medium" checked> Medium</label>
                 <label><input type="radio" name="lobby-bot-difficulty" value="Hard"> Hard</label>
             </fieldset>
+
+            <!-- Phase H Wave 1 — hand count selector.  Default 8 = East round
+                 only.  The backend doesn't read this yet (V2 wiring); the
+                 param being present in the URL is the lobby contract. -->
+            <fieldset class="lobby-fieldset" id="lobby-hand-count-fieldset">
+                <legend>Hands per match</legend>
+                <label><input type="radio" name="lobby-hand-count" value="4"> 4 <small class="lobby-hint">(quick)</small></label>
+                <label><input type="radio" name="lobby-hand-count" value="8" checked> 8 <small class="lobby-hint">(East round)</small></label>
+                <label><input type="radio" name="lobby-hand-count" value="16"> 16 <small class="lobby-hint">(half match)</small></label>
+                <label><input type="radio" name="lobby-hand-count" value="32"> 32 <small class="lobby-hint">(full match)</small></label>
+            </fieldset>
+
+            <!-- Phase H Wave 1 — Advanced section: optional seed override.
+                 <details> collapses by default so the input doesn't clutter
+                 the main lobby.  Empty/blank → server picks a random seed
+                 (current behavior); filled → reproducible game. -->
+            <details class="lobby-advanced" id="lobby-advanced">
+                <summary>Advanced</summary>
+                <div class="lobby-advanced-body">
+                    <label class="lobby-seed-label" for="lobby-seed">
+                        Seed <small class="lobby-hint">(optional, 0–2³¹−1)</small>
+                    </label>
+                    <input id="lobby-seed" type="text" inputmode="numeric"
+                           pattern="[0-9]*" autocomplete="off" spellcheck="false"
+                           placeholder="random" maxlength="10">
+                    <div id="lobby-seed-error" class="lobby-seed-error" style="display: none;">
+                        Seed must be an integer between 0 and 2147483647.
+                    </div>
+                    <p class="lobby-advanced-hint">
+                        Leave blank for a random seed.  A fixed seed makes the
+                        whole game reproducible — useful for bug reports.
+                    </p>
+                </div>
+            </details>
         </div>
         <div class="lobby-footer">
+            <label class="lobby-save-defaults" title="Persist these choices in this browser for next visit">
+                <input id="lobby-save-defaults" type="checkbox">
+                Save as defaults
+            </label>
             <button id="lobby-apply" type="button" class="btn btn-warning btn-sm">
                 Apply &amp; Start
             </button>
+        </div>
+        <div class="lobby-about">
+            <a id="lobby-about-link"
+               href="https://github.com/long2know/mahjong-autotable/blob/main/docs/known-limitations.md"
+               target="_blank" rel="noopener noreferrer">
+                ℹ︎ About / Known Limitations
+            </a>
         </div>
     </div>
 
