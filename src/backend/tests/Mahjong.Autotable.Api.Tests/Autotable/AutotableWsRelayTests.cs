@@ -179,7 +179,10 @@ public class AutotableWsRelayTests : IAsyncLifetime
 
     // ── 5. Per-game isolation — UPDATE in game A doesn't leak to game B ─
 
-    [Fact(Skip = "Phase D-backend: single-game-per-instance coerces all gameIds to the default. Multi-game isolation will be revisited in Phase E."), Trait("Category", "PhaseC-Relay")]
+    // Phase I Wave 3 — unskipped after Bishop lifted DefaultGameId coercion
+    // in HandleNewAsync/HandleJoinAsync. _games is keyed per-gameId so the
+    // isolation check is now exercised end-to-end.
+    [Fact, Trait("Category", "PhaseC-Relay"), Trait("Wave", "Phase-I-3")]
     public async Task Update_IsIsolated_PerGameId()
     {
         await using var aliceGameA = await OpenAndJoinAsync("ISO-A", seat: 0);
