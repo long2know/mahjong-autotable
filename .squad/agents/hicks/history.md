@@ -1353,3 +1353,9 @@ Surface area (Hicks-owned):
   Auto radio — consistent with the Wave 3 pinned finding that we should
   anchor selectors on ID/name attributes, not on attribute defaults
   parcel might strip.
+
+---
+
+## Phase J Wave 1
+
+- Shipped **hot-seat swap** (Move button + inline picker in the in-game HUD, visible only when connected + no match in progress; soft reconnect via `history.replaceState` on `?seat=` + `client.disconnect()` — client-ui.ts's existing auto-reconnect picks up the new seat on its own) AND **spectator camera lock** (one-line tweak: `world.seat` initial value is `null` when `?seat=-1`, so `main-view.ts`'s existing `fromTop` branch puts the camera top-down from the first frame instead of flashing seat-0 view).  Commit `781798e`, bundle `autotable-src.214d524e.js` + `autotable-src.884bb475.css` (pruned the Wave-I.4 hashes).  TS strict exit 0, Parcel build clean (7.75s), backend tests `Passed: 403` unchanged.  `client-ui.ts` / `main-view.ts` untouched — no client-ui.ts edit was needed because `buildWsUrl` already reads `?seat=` off the page URL.
