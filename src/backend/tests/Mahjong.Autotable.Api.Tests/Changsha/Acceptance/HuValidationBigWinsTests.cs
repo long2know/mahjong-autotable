@@ -1,3 +1,4 @@
+using System.Reflection;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Tests.Changsha._TestHarness;
 using static Mahjong.Autotable.Api.Tests.Changsha._TestHarness.ChangshaTestHelpers;
@@ -106,10 +107,66 @@ public class HuValidationBigWinsTests
             $"Got Pattern={result.Pattern}, IsFullFlush={result.IsFullFlush}, IsSevenPairs={result.IsSevenPairs}.");
     }
 
-    [Fact(Skip = "Deferred to Phase E (v2): 13-Orphans (十三幺) Big Win pattern. Out of scope for v1 MVP — Stephen and Vasquez agreed in Phase D-tests review. Implement WinPattern.ThirteenOrphans + Detector.CheckThirteenOrphans() when this becomes a v2 priority."), Trait("Category", "Acceptance")]
-    public void Hu_ThirteenOrphans_SpecGap_Skipped()
+    [Fact, Trait("Category", "Acceptance"), Trait("Wave", "2")]
+    public void Hu_NineTerminals_BigWin_V2()
     {
-        // Reddit §"Big hands" lists 13-Orphans as a Big Win in some Changsha variants.
-        // V1 detector does not implement it; flagged here for Phase D-backend (or v2).
+        // Phase H Wave 2 §2.1: Changsha's 108-tile deck contains no honor tiles, so the
+        // classical 13-Orphans pattern is impossible. The V2 analog is the "9-Terminals"
+        // (九幺) Big Win — 14 tiles all of rank 1 or rank 9, containing all six distinct
+        // terminal tiles (1/9 of each suit) at least once. Replaces the
+        // Hu_ThirteenOrphans_SpecGap_Skipped placeholder per Ripley's design memo §2.1.
+        var nineTerminals = ResolveNineTerminalsEnum();
+
+        // Concrete 14-tile NineTerminals hand:
+        //   1万×3, 9万×3, 1筒×3, 9筒×2, 1条×2, 9条×1 = 14 tiles, all rank 1/9, six distinct.
+        var hand = HandOf(0,
+            (Suit.Wan, 1), (Suit.Wan, 1), (Suit.Wan, 1),
+            (Suit.Wan, 9), (Suit.Wan, 9), (Suit.Wan, 9),
+            (Suit.Tong, 1), (Suit.Tong, 1), (Suit.Tong, 1),
+            (Suit.Tong, 9), (Suit.Tong, 9),
+            (Suit.Tiao, 1), (Suit.Tiao, 1),
+            (Suit.Tiao, 9));
+
+        var result = Detector.Detect(hand);
+
+        Assert.True(result.IsWin,
+            "NineTerminals (Changsha 九幺) Big Win must be a valid Hu — Bishop owes the V2 detection branch.");
+        Assert.Equal(ScoreCategory.BigWin, result.Category);
+
+        var allPatterns = ResolveAllPatterns(result);
+        var nineTerminalsReported = result.Pattern == nineTerminals
+            || (allPatterns is not null && allPatterns.Contains(nineTerminals));
+        Assert.True(nineTerminalsReported,
+            $"NineTerminals must be reported as the (or one of the) detected pattern(s). " +
+            $"Got Pattern={result.Pattern}, AllPatterns=[{(allPatterns is null ? "<missing>" : string.Join(",", allPatterns))}].");
+    }
+
+    // ── Phase H Wave 2 — reflective helpers ──────────────────────────────────────
+
+    private static WinPattern ResolveNineTerminalsEnum()
+    {
+        var names = Enum.GetNames(typeof(WinPattern));
+        if (!names.Contains("NineTerminals"))
+        {
+            throw new InvalidOperationException(
+                "WinPattern.NineTerminals enum value not defined — Bishop owes the Phase H Wave 2 " +
+                "contract (see Ripley's design memo §2.1). Current values: [" +
+                string.Join(",", names) + "].");
+        }
+        return (WinPattern)Enum.Parse(typeof(WinPattern), "NineTerminals");
+    }
+
+    private static IReadOnlyList<WinPattern>? ResolveAllPatterns(WinDetectionResult result)
+    {
+        var prop = typeof(WinDetectionResult).GetProperty("AllPatterns",
+            BindingFlags.Public | BindingFlags.Instance);
+        if (prop is null) return null;
+        var value = prop.GetValue(result);
+        return value switch
+        {
+            IReadOnlyList<WinPattern> readOnlyList => readOnlyList,
+            IEnumerable<WinPattern> enumerable => enumerable.ToList(),
+            _ => null
+        };
     }
 }
