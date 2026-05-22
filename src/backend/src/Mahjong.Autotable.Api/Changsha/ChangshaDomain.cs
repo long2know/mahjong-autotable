@@ -58,7 +58,61 @@ public enum WinPattern
     /// ThirteenOrphans (十三幺) Big Win, which is structurally impossible in Changsha
     /// because the 108-tile deck has no honor tiles. Same precedence tier as FullFlush.
     /// </summary>
-    NineTerminals
+    NineTerminals,
+
+    // ── Phase I Wave 1 — contextual Big Win flags (spec §4.3) ──
+    // These are bonuses layered on top of a structurally valid mahjong hand
+    // (Standard / SevenPairs / AllPungs / FullFlush / NineTerminals). They never
+    // promote an otherwise-invalid hand to a win — see WinContext + WinDetector.
+    // They DO participate in AllPatterns stacking (per Wave 2 multiplier contract).
+
+    /// <summary>
+    /// 天和 (tiān-hé) — "Heavenly Hand". Dealer wins by self-draw on their initial
+    /// 14-tile hand, before any discards/claims/kong replacements have occurred this
+    /// hand. <see cref="ChangshaGameStateMachine.DeclareSelfDrawWin"/> constructs the
+    /// <see cref="WinContext"/> with <c>IsHeavenlyHand</c> when
+    /// <see cref="ChangshaGameState.DiscardPile"/> is empty, the winning seat is the
+    /// dealer, the dealer's hand has no melds, and <c>LastDrawWasKongReplacement</c>
+    /// is false.
+    /// </summary>
+    HeavenlyHand,
+
+    /// <summary>
+    /// 地和 (dì-hé) — "Earthly Hand". Non-dealer wins by claiming Hu on the dealer's
+    /// very first discard, with no intervening actions. <see cref="ChangshaGameStateMachine.ResolveHuClaim"/>
+    /// constructs the <see cref="WinContext"/> with <c>IsEarthlyHand</c> when the
+    /// discard pile has exactly one entry (dealer's first), the claimant is not the
+    /// dealer, the claimant has no melds, and the claim is a regular discard Hu
+    /// (not a robbing-the-added-kong window).
+    /// </summary>
+    EarthlyHand,
+
+    /// <summary>
+    /// 海底捞月 (hǎi-dǐ-lāo-yuè) — "Last Tile from the Wall". Self-draw on the very
+    /// last tile of the wall (wall count == 0 immediately after the draw). Fires when
+    /// <see cref="WinMethod.SelfDraw"/> and <see cref="ChangshaGameState.Wall"/> is
+    /// empty at win-declaration time.
+    /// </summary>
+    LastTileFromWall,
+
+    /// <summary>
+    /// 河底捞鱼 (hé-dǐ-lāo-yú) — "Last Discard Catch". Wins by claiming Hu on a
+    /// discard made when the wall is already exhausted (no more draws possible).
+    /// Fires when <see cref="WinMethod.Discard"/> and <see cref="ChangshaGameState.Wall"/>
+    /// is empty at the time of the claim. Robbing-the-added-kong wins are intentionally
+    /// excluded — the kong target tile was never in the river.
+    /// </summary>
+    LastDiscardCatch,
+
+    /// <summary>
+    /// 杠上开花 (gàng-shàng-kāi-huā) — "Win on Kong Replacement". Self-draw win on
+    /// the replacement tile drawn after declaring a concealed, added, or exposed kong.
+    /// Tracked via the transient <see cref="ChangshaGameState.LastDrawWasKongReplacement"/>
+    /// flag, which is set true on every kong-replacement draw and cleared on the next
+    /// regular <see cref="ChangshaGameStateMachine.DrawTile"/> or
+    /// <see cref="ChangshaGameStateMachine.Discard"/>.
+    /// </summary>
+    KongReplacementWin
 }
 
 public enum WinMethod
@@ -275,6 +329,23 @@ public sealed class ChangshaGameState
     // optimistic-concurrency token by IChangshaGameRuntime's `expectedVersion`
     // parameter — a stale token throws ChangshaConcurrencyException before any mutation.
     public int StateVersion { get; set; } = 0;
+
+    /// <summary>
+    /// Phase I Wave 1 — transient flag tracking whether the most recent tile added to
+    /// the active seat's concealed hand came from a kong replacement draw (concealed,
+    /// added, or exposed kong). Set to <c>true</c> by
+    /// <see cref="ChangshaGameStateMachine.DeclareConcealedKong"/>,
+    /// <see cref="ChangshaGameStateMachine.DeclareAddedKong"/> (via <c>CompleteAddedKong</c>),
+    /// and the Kong branch of <see cref="ChangshaGameStateMachine.ResolveClaim"/>
+    /// whenever the replacement draw succeeds. Cleared to <c>false</c> by
+    /// <see cref="ChangshaGameStateMachine.DrawTile"/> (regular front-of-wall draw) and
+    /// <see cref="ChangshaGameStateMachine.Discard"/> (player has discarded — the
+    /// kong-replacement chain is broken). Used to detect <see cref="WinPattern.KongReplacementWin"/>
+    /// in <see cref="ChangshaGameStateMachine.DeclareSelfDrawWin"/>; also gates
+    /// <see cref="WinPattern.HeavenlyHand"/> detection (a dealer who declared a kong
+    /// before declaring Hu is on a kong-replacement win, not a heavenly hand).
+    /// </summary>
+    public bool LastDrawWasKongReplacement { get; set; } = false;
 }
 
 public sealed class ChangshaSeatState
