@@ -1325,7 +1325,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 winType = WinMethodToWire(win.Method),
                 winPattern = WinPatternToWire(win.Pattern),
                 winningTileId = win.WinningTileId,
-                sourceSeatIndex = win.SourceSeatIndex
+                sourceSeatIndex = win.SourceSeatIndex,
+                allPatterns = win.AllPatterns.Select(WinPatternToWire).ToArray(),
+                isRobbedKong = win.IsRobbedKong
             },
             hand = new
             {
@@ -1355,7 +1357,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 winType = WinMethodToWire(win.Method),
                 winPattern = WinPatternToWire(win.Pattern),
                 winningTileId = win.WinningTileId,
-                sourceSeatIndex = win.SourceSeatIndex
+                sourceSeatIndex = win.SourceSeatIndex,
+                allPatterns = win.AllPatterns.Select(WinPatternToWire).ToArray(),
+                isRobbedKong = win.IsRobbedKong
             },
             scoreResult = new
             {

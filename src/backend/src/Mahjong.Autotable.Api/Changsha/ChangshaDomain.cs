@@ -92,6 +92,16 @@ public sealed class WinResult
     /// spec §3.4.3, so this flag is always paired with Added-kind kongs.
     /// </summary>
     public bool IsRobbedKong { get; init; }
+
+    /// <summary>
+    /// Phase H Wave 2 — every Big Win pattern satisfied by the winning hand, mirrored
+    /// from <see cref="WinDetectionResult.AllPatterns"/> at win-declaration time so the
+    /// stacking multiplier survives the detector → state → scoring boundary. Order is
+    /// deterministic (enum-declaration order). Empty list = single-pattern win (×1
+    /// multiplier). <see cref="ScoringService.CalculateScore(WinResult,int,bool,int)"/>
+    /// uses <c>AllPatterns.Count</c> (clamped to [1, 3]) as the multiplier.
+    /// </summary>
+    public IReadOnlyList<WinPattern> AllPatterns { get; init; } = [];
 }
 
 /// <summary>

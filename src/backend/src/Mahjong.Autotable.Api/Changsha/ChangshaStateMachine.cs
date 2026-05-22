@@ -589,7 +589,8 @@ public sealed class ChangshaGameStateMachine
             Pattern = result.Pattern!.Value,
             WinningTileId = hand.ConcealedTiles[^1], // last drawn tile
             SourceSeatIndex = seatIndex,
-            IsFullFlush = result.IsFullFlush
+            IsFullFlush = result.IsFullFlush,
+            AllPatterns = result.AllPatterns
         };
 
         state.Phase = ChangshaPhase.Scoring;
@@ -789,8 +790,13 @@ public sealed class ChangshaGameStateMachine
             throw new InvalidOperationException("No win to score.");
 
         var scoringService = new ScoringService();
+        // Phase H Wave 2 — pass AllPatterns.Count so the stacking multiplier
+        // (×1/×2/×3 cap, see ScoringService.CalculateScore) applies. Pre-Wave-2
+        // construction sites that didn't populate AllPatterns get the ×1 default
+        // (empty list → Count=0 → clamped to 1 inside ScoringService).
+        var bigWinPatternCount = state.CurrentWin.AllPatterns.Count;
         state.CurrentScore = scoringService.CalculateScore(
-            state.CurrentWin, state.DealerSeatIndex, state.CurrentWin.IsFullFlush);
+            state.CurrentWin, state.DealerSeatIndex, state.CurrentWin.IsFullFlush, bigWinPatternCount);
 
         // Apply payments to cumulative scores
         foreach (var payment in state.CurrentScore.Payments)
@@ -945,7 +951,8 @@ public sealed class ChangshaGameStateMachine
                 ? (claimWindow.KongDeclarerSeatIndex ?? claimWindow.DiscardSeatIndex)
                 : claimWindow.DiscardSeatIndex,
             IsFullFlush = result.IsFullFlush,
-            IsRobbedKong = isKongRobbing
+            IsRobbedKong = isKongRobbing,
+            AllPatterns = result.AllPatterns
         };
 
         // §3.6 missed-win: if multiple seats had Hu in this window and only one declared,
