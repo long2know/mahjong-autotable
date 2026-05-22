@@ -1837,3 +1837,112 @@ Phase G locked two acceptance contracts: (1) RunBotPickupAsync tick scheduler (v
 
 **Verification:** `dotnet build` 0/0. `dotnet test --filter "FullyQualifiedName~BotPickupScheduler|PrivacyMask" --nologo --no-build` → **12/0/0** (11 facts + xUnit bookkeeping). Full suite: **330/0/9/339** → no regressions, no flakes across 3 consecutive runs.
 
+---
+
+## Phase H — Stability + Polish (2026-05-21)
+
+### Lobby polish + Docker cleanup (Hicks)
+
+**By:** Hicks (Frontend Dev), 2026-05-21
+
+Extended Phase G sidebar lobby with four Wave-1 additions: **seed override** (accepts `0 ≤ N ≤ 2³¹−1`), **hand-count selector** (4/8/16/32), **save-defaults checkbox** (writes to localStorage key `mahjong.lobby.defaults`), and **About link** pointing to GitHub-hosted `docs/known-limitations.md`. Frontend scope only; no backend or test changes.
+
+**Bundle hashes:**
+- JS: `autotable-src.33f97fad.js` → `autotable-src.c97ea9e9.js`
+- CSS: `autotable-src.7934372e.css` → `autotable-src.96cb3b60.css`
+
+Old Phase G hashes pruned from `src/frontend/autotable/`.
+
+**URL resolution priority** (for picker pre-population):
+```
+URL params  >  localStorage  >  hardcoded DEFAULTS
+```
+
+**Files modified:** `src/frontend/autotable-src/src/lobby.ts` (NEW, 200 LOC), `index.html`, `game-ui.ts`, `style.css` (+135 LOC).
+
+**⚠️ Build invariant — CRITICAL for all future Parcel builds on this codebase:**
+```bash
+parcel build index.html --dist-dir ../autotable --public-url . --no-source-maps --no-cache
+```
+
+**Without `--public-url .` flag:** Parcel emits absolute asset URLs (`/icon-96.png`, `/autotable-src.css`) into the rendered HTML. The backend serves the bundle from `/autotable/*`, so absolute URLs 404. Future agents MUST use this flag or wrap it in `package.json` scripts (suggested follow-up: add a `"build"` script to `src/frontend/autotable-src/package.json`).
+
+**Verification:** `tsc --noEmit --strict` → exit 0. Parcel build ✨ Built in 7.32s. Smoke test: bare `/autotable/` auto-opens lobby; seed/handCount invalid input properly gated.
+
+### Architecture + V2 design (Ripley)
+
+**By:** Ripley (Lead/Architect), 2026-05-20
+
+Shipped two documentation files binding Phase H structure and Phase H Wave 2 rules planning:
+
+- **`docs/architecture.md`**: System-level overview covering Changsha game rules, state machine phases, the variant-switch architecture, manual-pickup mechanics, bot-tier separation (Easy/Medium/Hard), and the 3×4 bot evaluation matrix.
+- **`docs/known-limitations.md`**: Current limitations (no honors in Changsha, no soft hot-swap for variants, no multi-human lobby, mobile layout not responsive) with follow-up phase references.
+
+**Wave 2 design memo (local inbox, not committed)** locks three rule implementations for Phase H Wave 2:
+
+1. **NineTerminals** — Changsha-adapted "9-Terminals" hand pattern (since Changsha has no honor tiles); replaces classical 13-Orphans. Tile set: all rank-1 and rank-9 tiles, 14 total. Recommend clearly labeling as `WinPattern.NineTerminals` in source with XML doc citing design memo.
+2. **RobbingKong (抢杠胡)** — New state sub-machine between `DeclaringKong` (for added-kong only) and `DrawingReplacement` to open a claim window for other seats to win on the added-kong tile. Applies to **added kong (補杠) only**, not concealed or exposed kongs. State flow: `AwaitingDiscard` → `DeclaringKong [Kind=Added]` → `ClaimWindow` (Hu-only) → either SCORING (RobbingKong method) or `DrawingReplacement`.
+3. **Big-win stacking via `AllPatterns`** — Currently `WinDetectionResult` returns a single highest-precedence `WinPattern`. Phase H Wave 2 adds an `AllPatterns : IReadOnlyList<WinPattern>` field capturing ALL big-win patterns satisfied in the hand (e.g., hand is both AllPungs AND FullFlush). Scorer multiplies base BigWin payout by the count (×1 for 1 pattern, ×2 for 2 patterns, etc.). New detector: `Detect` method populates `AllPatterns` list; existing `Pattern` property remains for backward compat.
+
+**Verification:** Docs landed in `main`; Wave 2 memo provides locked sequencing for Phase H Wave 2 implementation.
+
+### StateVersion + bot timeout + CORS (Bishop)
+
+**By:** Bishop (Backend Dev), 2026-05-22
+
+Three production-code tasks on the backend (no tests, no frontend):
+
+**1. `StateVersion` optimistic concurrency contract:**
+- New exception: `ChangshaConcurrencyException(expectedVersion, actualVersion)` — thrown when a mutation arrives with stale `expectedVersion`.
+- Eight `IChangshaGameRuntime` mutation methods gained trailing `int? expectedVersion = null` parameter (after `CancellationToken ct`).
+- Check runs inside instance lock via `EnsureExpectedVersion(instance, expectedVersion)` helper, BEFORE state-machine call.
+- Semantics: `null` → bypass check (back-compat); `expectedVersion.HasValue && value != state.StateVersion` → throw; `expectedVersion.HasValue && value == state.StateVersion` → proceed and increment naturally.
+- **Note on defaults:** Field defaults to `0` (not 1), incremented by `CreateEvent`. First mutation advances to monotonic 1, 2, 3, … as expected.
+- **No persistence migration:** Old snapshots deserialize with their explicit JSON value; new games follow 0-based contract.
+
+**2. Bot decision timeout fallback:**
+- New option: `ChangshaRuntimeOptions.BotDecisionTimeoutMs` (default 2000ms; `≤0` disables).
+- New engine helper: `ChangshaBotEngine.DecideActionWithTimeoutAsync(decision, timeoutMs, safeDefault, logger, ct)`.
+- Pattern: `Task.Run(decision)` + `Task.WhenAny(decisionTask, Task.Delay(timeoutMs))`.
+- On timeout: logs Warning, observes slow task exception, returns `safeDefault()`.
+- Safe defaults: own turn → `Discard(SelectDiscardTile(hand))`, claim window → `Pass`.
+- **Test seam:** Inject a "slow strategy" sleeping `BotDecisionTimeoutMs + 500` for testability.
+
+**3. CORS cleanup:**
+- Shrunk CORS origins from 4 → 2 entries (removed `http://localhost:5173` and `https://localhost:5173`, the deleted Vite dev server from Phase A).
+- Retained `http://localhost:5114` and `https://localhost:7135` (Kestrel-served backend + autotable bundle).
+
+**Files modified:** `ChangshaConcurrencyException.cs` (NEW), `ChangshaDomain.cs`, `ChangshaGameRuntime.cs`, `ChangshaRuntimeOptions.cs`, `ChangshaBotEngine.cs`, `Program.cs`.
+
+**Verification:** `dotnet build` 0/0 ~5s. `dotnet test --nologo --no-build` → **330/0/9** (Phase G parity). No flakes across 3 runs.
+
+**Handed off to Vasquez:** Unskip two marker tests and exercise StateVersion mismatch (exception) + bot timeout (safe-default discard/pass).
+
+### Tests (Vasquez)
+
+**By:** Vasquez (Rules Engineer), 2026-05-22
+
+Unskipped two Phase G marker skips and shipped 10 new acceptance tests (4 bot timeout + 6 StateVersion + concurrency edge cases) on top of Bishop's Phase H Wave 1 contracts.
+
+**`BotBehaviorTests.cs` — 4 new tests:**
+1. `Bot_TimeoutFallback_FallsBackToSafeAction` (replaces skip) — hung strategy → safe-default.
+2. `Bot_Timeout_Discard_PicksLowestRankSafe` — safe-default matches `MediumStrategy.SelectDiscardTile(hand)`.
+3. `Bot_Timeout_DuringClaim_PassesNotFalseHu` — claim window timeout → Pass (no false Hu).
+4. `Bot_Decision_Within_Timeout_ProceedsNormally` — fast strategy beats timeout → scripted tile lands.
+
+**`EdgeCaseTests.cs` — 6 new tests:**
+1. `StateVersion_StartsAtZero_OnNewGame` (replaces skip) — fresh game = version 0.
+2. `StateVersion_NullExpectedVersion_ProceedsWithoutCheck` — null parameter = back-compat (no check).
+3. `StateVersion_FreshExpectedVersion_Succeeds_Increments` — matching version succeeds AND increments.
+4. `StateVersion_StaleExpectedVersion_ThrowsConcurrencyException` (replaces skip) — mismatch → exception.
+5. `StateVersion_Exception_Includes_Both_Versions` — exception embeds expected + actual.
+6. `StateVersion_BotInvocations_DoNotIncrement_Mismatch` — stale reject does NOT advance version.
+
+**Support code:** `RuntimeHarness : IAsyncDisposable`, reflection-backed probes for symbol resolution (BotDecisionTimeoutMs property, _strategy field, ChangshaConcurrencyException type, expectedVersion parameter), `SlowBotStrategy : IChangshaBotStrategy`, parameter-name-matched positional dispatch.
+
+**Stability:** Phase H filter (`Bot_Timeout|StateVersion`) → **11/0/0** across 2 runs. Full suite: **340/0/7** (was 330/0/9; +10 tests, −2 skips = 8 net new passing). Build: 0 warnings.
+
+**Gate result:** `dotnet test` **340 passed / 0 failed / 7 skipped of 347 total**.
+
+---
+
