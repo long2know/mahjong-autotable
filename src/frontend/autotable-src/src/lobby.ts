@@ -238,6 +238,14 @@ function writeLocalStorageDefaults(state: LobbyState): void {
 
 function buildUrl(state: LobbyState): string {
   const p = new URLSearchParams();
+  // Phase I Wave 3 — preserve any ?gameId= already on the page URL so
+  // a lobby Apply & Start doesn't silently switch the user back to the
+  // default game.  client-ui.ts is the source of truth for editing
+  // gameId; the lobby just passes it through.
+  const currentGameId = new URLSearchParams(window.location.search).get('gameId');
+  if (currentGameId !== null && currentGameId !== '') {
+    p.set('gameId', currentGameId);
+  }
   p.set('variant', state.variant);
   // dealMode is Changsha-only — Riichi variants ignore it.  Emit only
   // when relevant so the URL stays tidy.

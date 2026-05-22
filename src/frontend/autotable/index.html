@@ -1,4 +1,4 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.60fe83d8.css><body>
+<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.af973ea2.css><body>
     <img id=dice-img src=dice.auto.391822b5.png style=opacity:0>
     <canvas id=center></canvas>
     
@@ -149,7 +149,19 @@
                 </div>
             </div>
 
-            <div class="d-flex mt-4" id=server>
+            
+            <div class="lobby-row mt-4" id=lobby-gameId-row>
+                <label for=lobby-gameId class=server-disconnected>Game ID</label>
+                <input id=lobby-gameId maxlength=64 class=server-disconnected placeholder=changsha-default pattern=[A-Za-z0-9_\-\.]+ title="Letters, digits, _, -, . only" autocomplete=off spellcheck=false>
+                <div id=lobby-gameId-error class="lobby-error server-disconnected" style=display:none>
+                    Game ID may only contain letters, digits, _, -, and . (max 64 chars).
+                </div>
+                <small class="current-game-display server-connected" id=current-game-display>
+                    Game: <span id=current-game-id>—</span>
+                </small>
+            </div>
+
+            <div class="d-flex mt-2" id=server>
                 <button class="btn btn-sm btn-warning mr-2 server-disconnected w-100" id=connect>
                     Connect
                 </button>
@@ -395,6 +407,6 @@
         </div>
     </div>
 
-    <script type=module src=autotable-src.e6653bd3.js></script>
+    <script type=module src=autotable-src.49eb3789.js></script>
 
 
