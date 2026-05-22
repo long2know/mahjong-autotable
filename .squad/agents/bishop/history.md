@@ -752,3 +752,108 @@ post-Vasquez sync: 384/0/0.
 
 **Memo:** `.squad/decisions/inbox/bishop-phase-i-wave-3-multigame.md`.
 
+
+---
+
+## Phase I Wave 4 — Proper shanten counter + spectator seat
+
+**Branch:** `stlong/phase-i-wave-4-bot-strength-spectator`
+**Commit:** `954c1ff` (`feat(changsha): Phase I Wave 4 — proper shanten counter + spectator seat`)
+**Baseline:** 393/0/0 → **393/0/0**.
+
+**Surface area:**
+- `Changsha/Bot/HandEvaluator.cs` — `MinShantenToHu` rewritten as a
+  rigorous backtracking counter. Standard 4-groups+pair via
+  `DecomposeStandard` (Pung / Chow / Pair-as-head / Pair-as-partial /
+  Neighbour-partial / Gap-partial / Lone-tile-drop options, restoring
+  state between branches). SevenPairs via direct formula
+  `6 - sum(counts[i] / 2)` with declared-meld guard. Returns
+  `max(0, min(standard, sevenPairs))`. Old "fast approximation" remark
+  in the class-level docstring lifted; `CountLooseTiles` retained
+  unchanged (still used by `HardStrategy`).
+- `Changsha/Bot/HardStrategy.cs` — class-level XML doc trimmed (dropped
+  the "fast approximation, not a true shanten + EV search" sentence
+  now that the underlying counter IS rigorous). No logic change.
+- `Autotable/AutotableWsEndpoint.cs` — `?seat=-1` recognized as spectator
+  sentinel; widens `?botCount=` cap from 3 to 4 only for spectators;
+  `AutotableConnection.IsSpectator` boolean exposed. New
+  `TryAutoDealForSpectatorAsync` fires `FillEmptySeatsWithBotsAsync` +
+  `StartGameAsync` after NEW/JOIN snapshot when a spectator joins with
+  `botCount=4` and the runtime game is still in `Seating`.
+- `docs/known-limitations.md` — struck the "Bot shanten estimator is
+  coarse" item; added a Wave 4 changelog entry.
+
+**Algorithm choice (full detail in memo):**
+- Backtracking decomposition over `counts[27]`, advancing the cursor to
+  the next non-zero tile after each step. Group budget
+  `groupsNeeded = 4 - meldsDeclared` caps `mentsu + taatsu` so excess
+  partials never inflate the score.
+- Canonical shanten formula
+  `2 * groupsNeeded - 2 * useful_mentsu - useful_taatsu - pair`
+  (clamped to ≥0 by the caller). The clamp at zero keeps the existing
+  `MediumBot_DiscardsToReduceShanten` assertion that a winning 14-tile
+  hand reports `shanten == 0` (the bot exits via `DeclareWin` before
+  the discard branch; we never observe the −1 internally).
+- SevenPairs is meld-incompatible (mirrors `ChangshaWinDetector`);
+  returns `int.MaxValue` for hands with declared melds.
+- **Bug caught during the bench:** first formula attempt added an
+  extraneous `+ (1 - pair)` term, inflating shanten by 1 on any
+  decomposition without a chosen head. Removed; canonical values
+  restored. Documented in the memo's "Implementation verification"
+  section.
+
+**Performance (smoke harness, 1000 iters per hand, since deleted):**
+- Worst-case Changsha hand (chaotic 14): 0.33 ms / call.
+- Most hands: 0.05–0.40 ms / call.
+- 5000× margin against the 2000 ms `BotDecisionTimeoutMs`. No
+  memoization needed at this scale.
+
+**Spectator API surface (for Hicks):**
+| Query | Range | Effect |
+|---|---|---|
+| `?seat=N` | `-1` (spectator) or `0..3` (player) | `-1` ⇒ no seat allocation, `ViewerSeat=null`, privacy filter strips every foreign-seat face. Players unchanged. |
+| `?botCount=N` | `0..3` when `seat ∈ 0..3` ; `0..4` when `seat=-1` | Only spectators can request 4 bots. |
+| `?seat=-1&botCount=4` | — | After NEW/JOIN snapshot, backend auto-fills all 4 seats with bots and starts the game. Idempotent — guarded on `Phase == Seating`. |
+
+**Auto-deal trigger location (for Vasquez):**
+- `Autotable/AutotableWsEndpoint.cs` — `TryAutoDealForSpectatorAsync`,
+  called at the tail of both `HandleNewAsync` and `HandleJoinAsync`.
+  Calls `EnsureRuntimeBoundAsync` → `FillEmptySeatsWithBotsAsync` →
+  `StartGameAsync` (the same pair used by `TryHandleMatchActionAsync`
+  for player-initiated Deal). Probe by opening a WS with
+  `?seat=-1&botCount=4`; the runtime should transition from `Seating`
+  through `RollingDice` / pickup automatically.
+
+**Coordination handoff to Vasquez (Wave 4 test owner):**
+- No existing tests pin shanten return values. The acceptance test
+  `MediumBot_DiscardsToReduceShanten` (line 293) is structurally
+  compatible (winning hand → DeclareWin branch fires; the
+  `Assert.Equal(0, shantenBefore)` still holds post-clamp).
+- Suggested new tests:
+  - `MinShantenToHu_WinningHand_ReturnsZero` — pin clamp behaviour.
+  - `MinShantenToHu_LooseDiscard_Monotonic` — drop any tile, shanten
+    should not decrease (proper-counter property).
+  - `MinShantenToHu_SevenPairsBetter_ReturnsSevenPairsShanten` — mixed
+    hand where SevenPairs path beats Standard.
+  - `SpectatorSeat_AutoDeals_WhenAllBots` — connect `?seat=-1&botCount=4`,
+    assert phase transitions through `Seating` → `Dealing` without a
+    manual match push.
+  - `PlayerSeat_BotCountCapStillThree` — connect `?seat=0&botCount=4`
+    and assert `connection.BotCount == 3` (default fallback).
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-i-wave-4-shanten-spectator.md`.
+
+**Surprises:**
+- The first formula iteration had a textbook off-by-one in the
+  no-pair branch; the bench harness caught it cleanly on a 13-tile
+  three-chow-plus-gap-partial fixture. Removing the extraneous term
+  restored canonical values and didn't change anything tested at the
+  gate level (no test exercised the broken state).
+- `FillEmptySeatsWithBotsAsync` is already idempotent and broadcasts
+  PlayerSeated events for each newly-converted seat, so the auto-deal
+  flow rides on top of well-tested existing primitives.
+- Spectator's `ViewerSeat = null` semantics dovetailed with the
+  existing privacy filter — `FilterEntriesForViewer` already treated
+  the null case as "spectator" (all foreign faces stripped). No
+  filter change was needed; the only privacy work was teaching the
+  query parser to accept `-1`.

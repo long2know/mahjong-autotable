@@ -171,9 +171,22 @@ public sealed class AutotableConnectionManager : IDisposable
         }
 
         int? viewerSeat = null;
-        if (query.TryGetValue("seat", out var s) && int.TryParse(s.ToString(), out var parsedSeat) && parsedSeat is >= 0 and <= 3)
+        var isSpectator = false;
+        if (query.TryGetValue("seat", out var s) && int.TryParse(s.ToString(), out var parsedSeat) && parsedSeat is >= -1 and <= 3)
         {
-            viewerSeat = parsedSeat;
+            // Phase I Wave 4 — seat=-1 is the "spectator" sentinel. The connection
+            // joins the game (receives snapshots / updates), but ViewerSeat stays
+            // null so the per-viewer privacy filter treats it as a spectator (all
+            // foreign-seat tiles render face-down) and the connection is never
+            // routed into a seat slot. Players still pass 0..3 as before.
+            if (parsedSeat == -1)
+            {
+                isSpectator = true;
+            }
+            else
+            {
+                viewerSeat = parsedSeat;
+            }
         }
         var autoBotFill = !query.TryGetValue("bots", out var b) || !string.Equals(b.ToString(), "false", StringComparison.OrdinalIgnoreCase);
 
@@ -188,8 +201,11 @@ public sealed class AutotableConnectionManager : IDisposable
         if (query.TryGetValue("dealMode", out var dm) && !string.IsNullOrEmpty(dm.ToString()))
             dealMode = dm.ToString();
 
+        // Phase I Wave 4 — spectators (seat=-1) can fill all four seats with bots
+        // to watch a fully-bot table; player connections keep the existing 0..3 cap.
+        var botCountCap = isSpectator ? 4 : 3;
         var botCount = 3;
-        if (query.TryGetValue("botCount", out var bc) && int.TryParse(bc.ToString(), out var parsedBotCount) && parsedBotCount is >= 0 and <= 3)
+        if (query.TryGetValue("botCount", out var bc) && int.TryParse(bc.ToString(), out var parsedBotCount) && parsedBotCount >= 0 && parsedBotCount <= botCountCap)
             botCount = parsedBotCount;
 
         var botDifficulty = "Medium";
@@ -203,11 +219,12 @@ public sealed class AutotableConnectionManager : IDisposable
             DealMode = dealMode,
             BotCount = botCount,
             BotDifficulty = botDifficulty,
+            IsSpectator = isSpectator,
         };
         _connections[connection.Id] = connection;
         _logger.LogInformation(
-            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, bots={Bots}, variant={Variant}, dealMode={DealMode}, botCount={BotCount}, botDifficulty={BotDifficulty}, runtimeMode={RuntimeMode})",
-            connection.Id, queryGameId, viewerSeat, autoBotFill,
+            "Autotable WS connected (connectionId={ConnectionId}, gameId={GameId}, seat={Seat}, spectator={Spectator}, bots={Bots}, variant={Variant}, dealMode={DealMode}, botCount={BotCount}, botDifficulty={BotDifficulty}, runtimeMode={RuntimeMode})",
+            connection.Id, queryGameId, viewerSeat, isSpectator, autoBotFill,
             variant, dealMode, botCount, botDifficulty, connection.RuntimeMode);
 
         try
@@ -301,6 +318,7 @@ public sealed class AutotableConnectionManager : IDisposable
             && state.Snapshot().Count == 0;
         await SendJoinedAsync(connection, gameId, isFirst, ct);
         await SendFullSnapshotAsync(connection, gameId, ct);
+        await TryAutoDealForSpectatorAsync(connection, ct);
     }
 
     private async Task HandleJoinAsync(AutotableConnection connection, string? gameId, CancellationToken ct)
@@ -340,6 +358,39 @@ public sealed class AutotableConnectionManager : IDisposable
         var isFirst = !existedBefore || (others == 0 && state.Snapshot().Count == 0);
         await SendJoinedAsync(connection, resolved, isFirst, ct);
         await SendFullSnapshotAsync(connection, resolved, ct);
+        await TryAutoDealForSpectatorAsync(connection, ct);
+    }
+
+    /// <summary>
+    /// Phase I Wave 4 — when a spectator connection (<c>?seat=-1</c>) asks for a
+    /// fully-bot table (<c>?botCount=4</c>), kick off the deal automatically so the
+    /// "fun to watch" all-bots mode doesn't require a human to press Deal. Idempotent:
+    /// only fires when the runtime is bindable and the game is still in
+    /// <see cref="ChangshaPhase.Seating"/>. Mirrors the seat-take + deal flow used
+    /// by <see cref="TryHandleMatchActionAsync"/> for player-initiated games.
+    /// </summary>
+    private async Task TryAutoDealForSpectatorAsync(AutotableConnection connection, CancellationToken ct)
+    {
+        if (!connection.IsSpectator) return;
+        if (connection.BotCount != 4) return;
+        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return;
+        if (string.IsNullOrEmpty(connection.GameId)) return;
+
+        try
+        {
+            var runtimeGameId = await EnsureRuntimeBoundAsync(connection.GameId!, ct);
+            if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
+            if (snap.Phase != ChangshaPhase.Seating) return;
+
+            // Fill every seat with a bot (the spectator never occupies one) then
+            // start the game; the runtime drives the deal from there.
+            await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
+            await _runtime.StartGameAsync(runtimeGameId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Auto-deal for spectator connection {ConnectionId} failed", connection.Id);
+        }
     }
 
     private async Task HandleUpdateAsync(
@@ -1133,6 +1184,16 @@ public sealed class AutotableConnection
     /// time; defaults to Medium for parity with the legacy <see cref="ChangshaBotPolicy"/>.
     /// </summary>
     public string BotDifficulty { get; init; } = "Medium";
+
+    /// <summary>
+    /// Phase I Wave 4 — true when the connection joined with <c>?seat=-1</c> (spectator
+    /// mode). Spectator connections receive game snapshots and broadcasts but are never
+    /// routed into a seat slot; their <see cref="ViewerSeat"/> stays <c>null</c> so the
+    /// per-viewer privacy filter strips every foreign-seat face. Widens the
+    /// <c>?botCount=</c> cap from 3 to 4 and, when paired with <c>botCount=4</c>, triggers
+    /// the all-bots auto-deal flow in <see cref="AutotableConnectionManager"/>.
+    /// </summary>
+    public bool IsSpectator { get; init; }
 
     /// <summary>
     /// Phase F §1.4 — derived from <see cref="Variant"/>. <c>changsha</c> ⇒

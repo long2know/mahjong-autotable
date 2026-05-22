@@ -14,8 +14,15 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 ///   <item>Declares concealed/added kong opportunistically but only when the resulting
 ///   hand state still has enough "loose" tiles to absorb a kong replacement draw.</item>
 /// </list>
-/// This is a fast approximation, not a true shanten + EV search. It's enough to play
-/// noticeably better than Medium without breaking the runtime's bot-turn budget.
+/// Phase I Wave 4 swapped the underlying shanten counter (<see cref="HandEvaluator.MinShantenToHu"/>)
+/// for a rigorous backtracking implementation AND wired it into
+/// <see cref="SelectDiscardTile"/> as the keep-score tie-breaker: when two
+/// candidate discards have identical keep-scores, the one whose removal keeps
+/// post-discard shanten lowest wins. Promoting shanten to the primary ordering
+/// key was investigated and rolled back — the Phase F keep-score heuristic was
+/// already statistically stronger than naive shanten-greedy for Changsha's mix
+/// of Big Win patterns, and BotStrengthTests pins this ordering as the no-regression
+/// baseline (see <c>vasquez-phase-i-wave-4.md</c>).
 /// </summary>
 public sealed class HardStrategy : IChangshaBotStrategy
 {
@@ -140,10 +147,48 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
         var discardedLogicals = HandEvaluator.CollectDiscardedLogicals(state);
 
+        // Phase I Wave 4 — keep-score remains the primary discard heuristic
+        // (defensive bias + neighbour preservation has been the production
+        // baseline since Phase F and is what BotStrengthTests pins). The proper
+        // shanten counter from this wave breaks ties between equally-attractive
+        // candidates: when keep-score is identical, prefer the discard whose
+        // removal keeps post-discard shanten lowest.
+        var shantenByLogical = new Dictionary<int, int>();
+        foreach (var logical in logicalCounts.Keys)
+        {
+            shantenByLogical[logical] = ShantenAfterDiscardingLogical(logical, hand);
+        }
+
         return hand.ConcealedTiles
             .OrderBy(t => ComputeDiscardScore(t, logicalCounts, discardedLogicals))
+            .ThenBy(t => shantenByLogical[ChangshaDeckBuilder.GetLogicalTile(t)])
             .ThenByDescending(t => t)
             .First();
+    }
+
+    /// <summary>
+    /// Probes the shanten of the hand assuming one tile of the given logical id is
+    /// discarded. Clones the concealed list to avoid mutating the live hand; melds
+    /// are reference-shared because <see cref="HandEvaluator.MinShantenToHu"/> only
+    /// reads <c>Melds.Count</c>. Returns <see cref="int.MaxValue"/> if no tile of
+    /// that logical id is present (defensive; the caller already filters).
+    /// </summary>
+    private static int ShantenAfterDiscardingLogical(int candidateLogical, ChangshaHandState hand)
+    {
+        var idx = hand.ConcealedTiles.FindIndex(t => ChangshaDeckBuilder.GetLogicalTile(t) == candidateLogical);
+        if (idx < 0)
+            return int.MaxValue;
+
+        var concealedAfter = new List<int>(hand.ConcealedTiles);
+        concealedAfter.RemoveAt(idx);
+
+        var probe = new ChangshaHandState
+        {
+            SeatIndex = hand.SeatIndex,
+            ConcealedTiles = concealedAfter,
+            Melds = hand.Melds
+        };
+        return HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
     }
 
     /// <summary>

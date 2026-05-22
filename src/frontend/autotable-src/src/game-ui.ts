@@ -1,5 +1,6 @@
 import $ from 'jquery';
 import { Client } from "./client";
+import { readSpectatorFromUrl } from './client-ui';
 import { World } from "./world";
 import {
   DealType,
@@ -502,6 +503,22 @@ export class GameUi {
       this.elements.leaveSeat,
       this.elements.toggleSetup,
     ];
+    // Phase I Wave 4 — spectators have no seat and can never take one.
+    // Keep the .seat-buttons row hidden + the toDisable buttons disabled
+    // so the seat-only affordances don't flash visible between connects.
+    // CSS also hides these via body.spectating, but the inline
+    // style.display = 'block' below would override a non-!important rule,
+    // so we short-circuit here for belt-and-braces correctness.
+    const spectating = readSpectatorFromUrl();
+    if (spectating) {
+      (document.querySelector('.seat-buttons')! as HTMLElement).style.display = 'none';
+      for (const button of toDisable) {
+        button.disabled = true;
+      }
+      this.refreshClaimButtons();
+      this.refreshBotBanner();
+      return;
+    }
     if (this.client.seat === null) {
       (document.querySelector('.seat-buttons')! as HTMLElement).style.display = 'block';
       for (let i = 0; i < 4; i++) {
@@ -1194,14 +1211,18 @@ export class GameUi {
 
   private refreshBotBanner(): void {
     const banner = this.elements.botBanner;
-    // Only show when the local player is seated — pre-seat, no banner.
-    if (this.client.seat === null) {
+    // Phase I Wave 4 — for spectators the bot banner IS the HUD: it
+    // names which seats are bots and which difficulty.  For seated
+    // players we keep the pre-Wave-4 behaviour (banner only shows once
+    // the local player is seated).
+    const spectating = readSpectatorFromUrl();
+    if (!spectating && this.client.seat === null) {
       banner.style.display = 'none';
       return;
     }
     const bots: Array<{ seat: number; nick: string }> = [];
     for (let i = 0; i < 4; i++) {
-      if (i === this.client.seat) continue;
+      if (!spectating && i === this.client.seat) continue;
       const playerId = this.client.seatPlayers[i];
       if (playerId === null) continue;
       const nick = this.client.nicks.get(playerId);

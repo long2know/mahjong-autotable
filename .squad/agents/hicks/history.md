@@ -1263,3 +1263,93 @@ way it did pre-Wave-3.
   `pushState` which would have stacked a history entry per connect.
   Refresh-re-joins-same-game wants replaceState; back-button no longer
   bounces between identical game URLs.
+
+### 2026-05-21: Phase I Wave 4 — Lobby Spectate mode + all-bots-watch
+
+Branch `stlong/phase-i-wave-4-bot-strength-spectator`.  Bishop is widening
+the backend caps in parallel so `?seat=-1` becomes a no-seat spectator
+connection and the `botCount` cap lifts from 3 → 4 when paired with
+spectator.  Stephen asked for the "sit back and watch four bots play"
+mode; this delivers the frontend half.
+
+Surface area (Hicks-owned):
+- `src/frontend/autotable-src/index.html` — new `Seat` fieldset between
+  Bots and Bot difficulty with radios for Auto (`""`) / 0..3 / Spectate
+  (`-1`).  Spectator hint paragraph beneath the picker (hidden by
+  default; toggled visible when Spectate is selected).  `current-game-display`
+  gains a `#spectator-pill` sibling so the connected-state Game ID
+  label and the Spectating pill share a row.
+- `src/frontend/autotable-src/src/lobby.ts` — `LobbyState.seat: SeatChoice`
+  (`-1 | 0 | 1 | 2 | 3 | null`).  `parseUrlState` / `parseLocalStorageState`
+  read `seat`; `buildUrl` emits `?seat=` only when an explicit choice was
+  made.  `clampBotCountForSeat` guards `botCount=4` so it only lives in
+  spectator-mode URLs.  Seat-radio onchange snaps `botCount` to 4 on
+  flip-to-Spectate and back down to 3 on flip-away.  `refreshDisabledStates`
+  enables/disables the 4-bot radio + spectator hint.
+- `src/frontend/autotable-src/src/client-ui.ts` — exported
+  `readSpectatorFromUrl()` so game-ui.ts can short-circuit on the same
+  flag.  `buildWsUrl` now forwards `seat` + `botCount` from the page URL
+  onto the WS URL (previously only `gameId` rode the WS URL; the page
+  URL's lobby params never reached `context.Request.Query` on the
+  server).  `applySpectatorClass()` toggles `body.spectating` from
+  ctor + `connect` + `onConnect` (every place the URL might flip).
+  Reconnect-into-seat is suppressed when spectating.
+- `src/frontend/autotable-src/src/game-ui.ts` — `updateSeats` short-circuits
+  for spectators (no take-seat row, no enabled deal/leave buttons).
+  `refreshBotBanner` now renders the bot HUD for spectators too — that's
+  the spectator's primary "who's playing" surface.
+- `src/frontend/autotable-src/src/style.css` — `.spectator-pill` (green
+  family matching the Wave-2 self-draw win-type pill at 311-316),
+  `body.spectating` selectors hiding seat-buttons / #deal / #leave-seat /
+  #toggle-dealer / #claim-* / #pickup-hud / #roll-dice, and a
+  `.lobby-spectator-hint` block + `.lobby-radio-disabled` modifier for
+  the 4-bot greyed-out state.
+
+### URL contract
+
+| Param | Value | Meaning |
+|---|---|---|
+| `seat` | `-1` | Spectator.  WS URL gets `?seat=-1`; body class is `spectating`; pill is visible. |
+| `seat` | `0..3` | Explicit seat take.  Forwarded to WS URL. |
+| `seat` | missing | Auto (legacy "server picks an open seat"). |
+| `botCount` | `0..3` | Existing cap (any seat). |
+| `botCount` | `4` | Allowed iff `seat=-1`; clamped to 3 otherwise by the lobby. |
+
+### Build invariants (CONFIRMED)
+
+- `npx tsc --noEmit --strict --target es6 --moduleResolution bundler
+  --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts`
+  → exit 0
+- `npx parcel build index.html --dist-dir ../autotable --public-url .
+  --no-source-maps --no-cache` → success in ~7 s
+- Wave-3 bundle removed: `autotable-src.49eb3789.js` +
+  `autotable-src.af973ea2.css`
+- New hashes: `autotable-src.c93fbb44.js` + `autotable-src.3f21032c.css`
+- Bootstrap CSS `autotable-src.df85b4c4.css` byte-identical, retained
+
+### Discoveries / notes
+
+- **WS URL was the missing forwarder.**  Bishop's backend has parsed
+  `seat` + `botCount` off `context.Request.Query` since Phase F
+  (AutotableWsEndpoint.cs:174 + :192), but `buildWsUrl` in client-ui.ts
+  only ever appended `gameId`.  The page URL's lobby-chosen botCount
+  therefore never reached the WS Upgrade — the server always defaulted.
+  Wave 4 starts forwarding `seat` + `botCount` explicitly; broader
+  param forwarding (variant/dealMode/botDifficulty) is deferred to keep
+  Wave 4 scope tight, but the helper is structured so future params
+  drop in easily.
+- **Body class layered with !important.**  `body.spectating .seat-buttons
+  { display: none !important; }` is needed because `updateSeats` writes
+  `style.display = 'block'` inline for the seat-buttons container when
+  `client.seat === null`.  I also short-circuited the JS path so both
+  belts agree, but the !important rule is the defensive backstop.
+- **Bot banner becomes the spectator HUD.**  Pre-Wave-4 the banner
+  early-returned when `client.seat === null`; for spectators we now
+  iterate all four seats (no self-seat skip) so the spectator sees
+  who's at the table and what difficulty.
+- **Parcel + boolean `value` attribute.**  `<input value="">` collapses
+  to `<input value>` in the minified dist HTML, which is HTML-spec
+  equivalent to `value=""`.  JS reads `.value === ''` correctly on the
+  Auto radio — consistent with the Wave 3 pinned finding that we should
+  anchor selectors on ID/name attributes, not on attribute defaults
+  parcel might strip.

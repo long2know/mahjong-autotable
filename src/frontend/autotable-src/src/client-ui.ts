@@ -19,6 +19,12 @@ const DEFAULT_GAME_ID = 'changsha-default';
 const GAME_ID_MAX_LENGTH = 64;
 const GAME_ID_PATTERN = /^[A-Za-z0-9_\-\.]+$/;
 
+// Phase I Wave 4 — sentinel seat value the backend (post-Bishop's cap
+// relax) interprets as "spectator: no seat assigned".  Anything in
+// 0..3 is a normal seat take; anything else is rejected by the server
+// and falls back to the legacy "no preference" flow on our side.
+const SPECTATOR_SEAT = -1;
+
 interface GameIdValidation {
   value: string | null;
   error: string | null;
@@ -44,6 +50,17 @@ function validateGameId(raw: string): GameIdValidation {
   return { value: trimmed, error: null };
 }
 
+// Phase I Wave 4 — exported so game-ui.ts can short-circuit the
+// take-seat affordances based on the same URL flag we use to drive the
+// body class and the Spectating pill.
+export function readSpectatorFromUrl(): boolean {
+  const q = new URLSearchParams(window.location.search);
+  const raw = q.get('seat');
+  if (raw === null) return false;
+  const n = parseInt(raw, 10);
+  return !isNaN(n) && n === SPECTATOR_SEAT;
+}
+
 export class ClientUi {
   url: string;
   client: Client;
@@ -53,10 +70,17 @@ export class ClientUi {
   gameIdInput: HTMLInputElement | null;
   gameIdError: HTMLElement | null;
   currentGameIdElement: HTMLElement | null;
+  spectatorPillElement: HTMLElement | null;
 
   disconnecting = false;
   reconnectAttempts: number = 0;
   reconnectSeat: number | null = null;
+  // Phase I Wave 4 — true while the active page URL declares ?seat=-1.
+  // Spectator state is page-URL-driven (set on init, refreshed on each
+  // connect attempt) so a refresh that lands on the same URL re-joins as
+  // spectator without surfacing the take-seat affordances even for the
+  // brief moment between page load and WS JOINED.
+  spectating: boolean = false;
 
   constructor(client: Client) {
     this.url = this.getUrl();
@@ -90,6 +114,7 @@ export class ClientUi {
       document.getElementById('lobby-gameId') as HTMLInputElement | null;
     this.gameIdError = document.getElementById('lobby-gameId-error');
     this.currentGameIdElement = document.getElementById('current-game-id');
+    this.spectatorPillElement = document.getElementById('spectator-pill');
     if (this.gameIdInput !== null) {
       this.gameIdInput.value = this.readInitialGameId();
       this.gameIdInput.addEventListener('input', () => this.clearGameIdError());
@@ -101,6 +126,14 @@ export class ClientUi {
         }
       });
     }
+
+    // Phase I Wave 4 — propagate the page URL's spectator flag onto the
+    // body class + pill element BEFORE the first connect.  This keeps
+    // the take-seat affordances hidden from the moment the page loads
+    // (game-ui.ts updateSeats reads spectatorModeFromUrl()) and ensures
+    // the pill is the right initial state on auto-reconnect.
+    this.spectating = readSpectatorFromUrl();
+    this.applySpectatorClass();
   }
 
   // Phase I Wave 3 — Read ?gameId= from the URL.  Falls back to the
@@ -173,13 +206,40 @@ export class ClientUi {
     return this.readInitialGameId();
   }
 
-  // Phase I Wave 3 — Build the WS connection URL with ?gameId= appended.
-  // Preserves any other query params already on the base URL (currently
-  // none — getUrl() returns a bare path — but defensive against future
-  // additions).
+  // Phase I Wave 4 — Build the WS connection URL with ?gameId= appended,
+  // plus the spectator/seat/botCount query params parsed off the page
+  // URL.  Bishop's WS endpoint reads these from
+  // context.Request.Query at connect time (AutotableWsEndpoint.cs:174 for
+  // seat, :192 for botCount), so they have to ride the WS URL — the page
+  // URL alone doesn't reach the server.
+  //
+  // We forward both seat and botCount so:
+  //   • Spectator (?seat=-1) actually reaches the backend as a "no seat"
+  //     connection — the seat-take auto-fill is suppressed and the runtime
+  //     auto-deals when bots fill the remaining seats.
+  //   • The lobby's chosen botCount actually drives the backend's
+  //     auto-bot-fill on this connection (previously the WS URL only
+  //     carried gameId, so botCount was forever the server default).
   private buildWsUrl(gameId: string): string {
+    const params = new URLSearchParams();
+    params.set('gameId', gameId);
+    const pageQuery = new URLSearchParams(window.location.search);
+    const seatRaw = pageQuery.get('seat');
+    if (seatRaw !== null) {
+      const seatNum = parseInt(seatRaw, 10);
+      if (!isNaN(seatNum) && (seatNum === SPECTATOR_SEAT || (seatNum >= 0 && seatNum <= 3))) {
+        params.set('seat', String(seatNum));
+      }
+    }
+    const botCountRaw = pageQuery.get('botCount');
+    if (botCountRaw !== null) {
+      const bc = parseInt(botCountRaw, 10);
+      if (!isNaN(bc) && bc >= 0 && bc <= 4) {
+        params.set('botCount', String(bc));
+      }
+    }
     const separator = this.url.indexOf('?') >= 0 ? '&' : '?';
-    return `${this.url}${separator}gameId=${encodeURIComponent(gameId)}`;
+    return `${this.url}${separator}${params.toString()}`;
   }
 
   getUrlState(): string | null {
@@ -263,7 +323,20 @@ export class ClientUi {
     // lingering after a successful join).
     this.clearGameIdError();
 
-    if (this.reconnectSeat !== null) {
+    // Phase I Wave 4 — re-evaluate spectator mode against the post-connect
+    // URL (it can change between attempts when the lobby's Apply &
+    // Start lands on a fresh URL, or the user edits ?seat= by hand).
+    this.spectating = readSpectatorFromUrl();
+    this.applySpectatorClass();
+
+    // Phase I Wave 4 — spectators never reconnect into a seat.  The
+    // reconnectSeat is captured pre-disconnect; for spectators that
+    // capture is always null (no seat was taken), but we belt-and-brace
+    // it here so a stray reconnectSeat from a prior seated session
+    // doesn't accidentally seat the spectator.
+    if (this.spectating) {
+      this.reconnectSeat = null;
+    } else if (this.reconnectSeat !== null) {
       this.client.seats.set(this.client.playerId(), { seat: this.reconnectSeat });
     }
   }
@@ -292,6 +365,17 @@ export class ClientUi {
     }
   }
 
+  // Phase I Wave 4 — mirror the URL-derived spectator state onto the body
+  // class + pill element.  Centralised so we can call it from the ctor
+  // (before first connect), onConnect (after a URL transition), and
+  // disconnect (so the body class stays in sync with the URL).
+  private applySpectatorClass(): void {
+    document.body.classList.toggle('spectating', this.spectating);
+    if (this.spectatorPillElement !== null) {
+      this.spectatorPillElement.classList.toggle('visible', this.spectating);
+    }
+  }
+
   setStatus(status: string | null): void {
     if (status !== null) {
       this.statusElement.style.display = 'block';
@@ -316,6 +400,12 @@ export class ClientUi {
       return;
     }
     this.setUrlState(gameId);
+
+    // Phase I Wave 4 — re-evaluate spectator mode every connect attempt
+    // (the URL can shift between attempts when Apply & Start lands on a
+    // fresh URL, or the user hand-edits ?seat=).
+    this.spectating = readSpectatorFromUrl();
+    this.applySpectatorClass();
 
     (document.getElementById('connect')! as HTMLButtonElement).disabled = true;
     this.reconnectSeat = null;

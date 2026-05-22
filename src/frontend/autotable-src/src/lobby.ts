@@ -31,6 +31,18 @@ type BotCount = 0 | 3 | 4;
 type BotDifficulty = 'Easy' | 'Medium' | 'Hard';
 type HandCount = 4 | 8 | 16 | 32;
 
+// Phase I Wave 4 — seat selection.
+//   • null  → no preference (server seats us in the first open chair,
+//             matches the pre-Wave-4 default flow).
+//   • 0..3  → explicit seat take.  The lobby surfaces these so a
+//             returning player can re-claim their wind without juggling
+//             URL params, but the bulk of the wave is about -1.
+//   • -1    → Spectator.  No seat assignment, server broadcasts only.
+//             Pairs with botCount=4 for the all-bots-watch experience
+//             that Bishop's backend cap relax enables (the runtime
+//             auto-deals once all four seats are bots).
+type SeatChoice = -1 | 0 | 1 | 2 | 3 | null;
+
 interface LobbyState {
   variant: Variant;
   dealMode: DealMode;
@@ -44,12 +56,15 @@ interface LobbyState {
   // V2); the param being present in the URL is the lobby contract so the
   // runtime can pick it up later without a frontend redeploy.
   handCount: HandCount;
+  // Phase I Wave 4 — seat selection (see SeatChoice).
+  seat: SeatChoice;
 }
 
 // Hardcoded defaults — the floor of the resolution chain.  Match Phase F's
 // backend defaults (variant=changsha, dealMode=manual, botCount=3,
 // botDifficulty=Medium) plus the Phase H Wave 1 additions
 // (seed=null → server randomises, handCount=8 → East round only).
+// Phase I Wave 4 adds seat=null (let the server seat us — legacy flow).
 // See .squad/decisions.md Phase F §AutotableWsEndpoint.
 const DEFAULTS: LobbyState = {
   variant: 'changsha',
@@ -58,6 +73,7 @@ const DEFAULTS: LobbyState = {
   botDifficulty: 'Medium',
   seed: null,
   handCount: 8,
+  seat: null,
 };
 
 const VARIANTS: ReadonlyArray<Variant> = [
@@ -93,6 +109,24 @@ function isBotCount(n: number): n is BotCount {
 
 function isHandCount(n: number): n is HandCount {
   return (HAND_COUNTS as ReadonlyArray<number>).indexOf(n) !== -1;
+}
+
+// Phase I Wave 4 — accept -1 / 0 / 1 / 2 / 3 as valid seat selections.
+// null is not parsed here; the absence of the URL param maps to null
+// (no preference) in resolveInitialState.
+function isSeatChoice(n: number): n is Exclude<SeatChoice, null> {
+  return n === -1 || n === 0 || n === 1 || n === 2 || n === 3;
+}
+
+// Phase I Wave 4 — botCount=4 is only valid when seat=-1 (spectator).
+// Bishop's server cap is 0–3 for the seated flow; 0–4 for the spectator
+// flow.  We mirror that cap here so the URL we build is always one the
+// server will accept, and so a hand-typed URL with botCount=4 but no
+// seat=-1 doesn't silently get reified to a 4-bot picker that then
+// fails server-side validation.
+function clampBotCountForSeat(botCount: BotCount, seat: SeatChoice): BotCount {
+  if (seat === -1) return botCount;
+  return botCount === 4 ? 3 : botCount;
 }
 
 // Coerce a raw seed candidate (string-or-number) to a valid seed or null.
@@ -158,6 +192,14 @@ function parseUrlState(): Partial<LobbyState> {
     if (!isNaN(hc) && isHandCount(hc)) out.handCount = hc;
   }
 
+  // Phase I Wave 4 — seat selection.  Anything outside {-1, 0..3} is
+  // ignored silently so a hand-typed URL doesn't crash the pre-population.
+  const seatRaw = p.get('seat');
+  if (seatRaw !== null) {
+    const n = parseInt(seatRaw, 10);
+    if (!isNaN(n) && isSeatChoice(n)) out.seat = n;
+  }
+
   return out;
 }
 
@@ -196,6 +238,12 @@ function parseLocalStorageState(): Partial<LobbyState> {
     if (typeof j.handCount === 'number' && isHandCount(j.handCount)) {
       out.handCount = j.handCount;
     }
+    if (typeof j.seat === 'number' && isSeatChoice(j.seat)) {
+      out.seat = j.seat;
+    } else if (j.seat === null) {
+      // Explicit null preserves "no preference" through a round-trip.
+      out.seat = null;
+    }
     return out;
   } catch {
     return {};
@@ -207,16 +255,26 @@ function parseLocalStorageState(): Partial<LobbyState> {
 // source of truth (a shared URL must reproduce the same game settings);
 // localStorage is the user's persistent personal default; DEFAULTS is
 // the floor for first-time users.
+//
+// Phase I Wave 4 — `botCount=4` is only valid when `seat=-1` (Bishop's
+// spectator cap relax).  We clamp here so a hand-typed URL with
+// `?botCount=4` but no `?seat=-1` doesn't slip a 4 into the picker, and
+// so localStorage from a previous spectator session doesn't pollute a
+// fresh play session.
 function resolveInitialState(): LobbyState {
   const url = parseUrlState();
   const ls = parseLocalStorageState();
+  const seat = url.seat !== undefined ? url.seat : (ls.seat !== undefined ? ls.seat : DEFAULTS.seat);
+  const rawBotCount = url.botCount ?? ls.botCount ?? DEFAULTS.botCount;
+  const botCount = clampBotCountForSeat(rawBotCount, seat);
   return {
     variant: url.variant ?? ls.variant ?? DEFAULTS.variant,
     dealMode: url.dealMode ?? ls.dealMode ?? DEFAULTS.dealMode,
-    botCount: url.botCount ?? ls.botCount ?? DEFAULTS.botCount,
+    botCount,
     botDifficulty: url.botDifficulty ?? ls.botDifficulty ?? DEFAULTS.botDifficulty,
     seed: url.seed !== undefined ? url.seed : (ls.seed !== undefined ? ls.seed : DEFAULTS.seed),
     handCount: url.handCount ?? ls.handCount ?? DEFAULTS.handCount,
+    seat,
   };
 }
 
@@ -229,6 +287,7 @@ function writeLocalStorageDefaults(state: LobbyState): void {
       botDifficulty: state.botDifficulty,
       seed: state.seed,
       handCount: state.handCount,
+      seat: state.seat,
     }));
   } catch {
     // localStorage may be disabled (privacy mode, quota); silently ignore
@@ -264,6 +323,12 @@ function buildUrl(state: LobbyState): string {
   if (state.seed !== null) {
     p.set('seed', String(state.seed));
   }
+  // Phase I Wave 4 — emit ?seat= only when the user made an explicit
+  // choice (-1 / 0..3).  A null seat (no preference) leaves the param
+  // off so the legacy server-picks-a-seat path keeps working unchanged.
+  if (state.seat !== null) {
+    p.set('seat', String(state.seat));
+  }
   return window.location.pathname + '?' + p.toString();
 }
 
@@ -294,12 +359,20 @@ export function initLobby(): void {
     document.querySelectorAll<HTMLInputElement>('input[name="lobby-bot-difficulty"]'));
   const handCountInputs = Array.from(
     document.querySelectorAll<HTMLInputElement>('input[name="lobby-hand-count"]'));
+  // Phase I Wave 4 — seat picker.  Values are "" (Auto, no preference),
+  // "-1" (Spectate), or "0".."3" for explicit seats.
+  const seatInputs = Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[name="lobby-seat"]'));
 
   const dealModeFieldset =
     document.getElementById('lobby-deal-mode-fieldset');
   const botDifficultyFieldset =
     document.getElementById('lobby-bot-difficulty-fieldset');
   if (dealModeFieldset === null || botDifficultyFieldset === null) return;
+  // Phase I Wave 4 — the 4-bot radio (spectator-only) lives inside the
+  // existing bot-count fieldset; we toggle it disabled per-seat below.
+  const botCount4Input = botCountInputs.find(i => i.value === '4') ?? null;
+  const spectatorHint = document.getElementById('lobby-spectator-hint');
 
   const seedInput =
     document.getElementById('lobby-seed') as HTMLInputElement | null;
@@ -347,13 +420,25 @@ export function initLobby(): void {
     const bcNum = parseInt(bcRaw, 10);
     const hcNum = parseInt(hcRaw, 10);
     const { seed } = readSeedField();
+    // Phase I Wave 4 — seat radio: "" = Auto (null), "-1" = Spectate,
+    // "0".."3" = explicit seat take.  Default to null when no radio is
+    // checked (the picker is keyboard-navigable so a fresh user can leave
+    // it on the default Auto radio).
+    const seatRaw = seatInputs.find(i => i.checked)?.value ?? '';
+    let seat: SeatChoice = null;
+    if (seatRaw !== '') {
+      const sNum = parseInt(seatRaw, 10);
+      if (!isNaN(sNum) && isSeatChoice(sNum)) seat = sNum;
+    }
+    const botCount: BotCount = isBotCount(bcNum) ? bcNum : DEFAULTS.botCount;
     return {
       variant: isVariant(v) ? v : DEFAULTS.variant,
       dealMode: (dm === 'auto' ? 'auto' : 'manual'),
-      botCount: isBotCount(bcNum) ? bcNum : DEFAULTS.botCount,
+      botCount: clampBotCountForSeat(botCount, seat),
       botDifficulty: (bd === 'Easy' || bd === 'Hard') ? bd : 'Medium',
       handCount: isHandCount(hcNum) ? hcNum : DEFAULTS.handCount,
       seed,
+      seat,
     };
   }
 
@@ -363,6 +448,10 @@ export function initLobby(): void {
     for (const i of botCountInputs) i.checked = (i.value === String(state.botCount));
     for (const i of botDifficultyInputs) i.checked = (i.value === state.botDifficulty);
     for (const i of handCountInputs) i.checked = (i.value === String(state.handCount));
+    // Phase I Wave 4 — seat radio.  Null serialises to "" (the Auto
+    // radio's value); -1/0/1/2/3 select the corresponding explicit radio.
+    const seatValue = state.seat === null ? '' : String(state.seat);
+    for (const i of seatInputs) i.checked = (i.value === seatValue);
     if (seedInput !== null) {
       seedInput.value = state.seed === null ? '' : String(state.seed);
     }
@@ -370,9 +459,10 @@ export function initLobby(): void {
     refreshDisabledStates();
   }
 
-  // Deal mode is Changsha-only; bot difficulty only matters when bots > 0.
-  // Use a CSS class to grey out the fieldset and `disabled` on the inputs
-  // so screen readers + keyboard users see the gating too.
+  // Deal mode is Changsha-only; bot difficulty only matters when bots > 0;
+  // 4-bot only when seat=-1 (spectator).  Use a CSS class to grey out the
+  // fieldset and `disabled` on the inputs so screen readers + keyboard
+  // users see the gating too.
   function refreshDisabledStates(): void {
     const s = readPickers();
     const isChangsha = s.variant === 'changsha';
@@ -382,6 +472,18 @@ export function initLobby(): void {
     const hasBots = s.botCount > 0;
     botDifficultyFieldset!.classList.toggle('lobby-disabled', !hasBots);
     for (const i of botDifficultyInputs) i.disabled = !hasBots;
+
+    // Phase I Wave 4 — the 4-bot radio is spectator-only; disable when
+    // the seat picker isn't on Spectate.  Show the inline hint paragraph
+    // only when Spectate is active.
+    const isSpectator = s.seat === -1;
+    if (botCount4Input !== null) {
+      botCount4Input.disabled = !isSpectator;
+      botCount4Input.parentElement?.classList.toggle('lobby-radio-disabled', !isSpectator);
+    }
+    if (spectatorHint !== null) {
+      spectatorHint.style.display = isSpectator ? 'block' : 'none';
+    }
   }
 
   function showPanel(): void {
@@ -399,6 +501,30 @@ export function initLobby(): void {
 
   for (const i of variantInputs) i.addEventListener('change', refreshDisabledStates);
   for (const i of botCountInputs) i.addEventListener('change', refreshDisabledStates);
+  // Phase I Wave 4 — when the user flips between Spectate and a seated
+  // choice, snap botCount to the value that makes the new mode usable:
+  //   • → Spectate : pre-select 4 bots so the all-bots-watch flow is one
+  //                  click away (overwrites whatever was there — the
+  //                  expectation is "spectate = watch four bots").
+  //   • → seated   : clamp botCount=4 back down to 3 (the server cap for
+  //                  any non-spectator connection).
+  for (const i of seatInputs) {
+    i.addEventListener('change', () => {
+      const seatValue = i.checked ? i.value : '';
+      const isSpectator = seatValue === '-1';
+      if (isSpectator) {
+        if (botCount4Input !== null) botCount4Input.disabled = false;
+        for (const bc of botCountInputs) bc.checked = (bc.value === '4');
+      } else {
+        // Snap botCount=4 down to 3 if it was previously selected.
+        const current = botCountInputs.find(b => b.checked)?.value ?? null;
+        if (current === '4') {
+          for (const bc of botCountInputs) bc.checked = (bc.value === '3');
+        }
+      }
+      refreshDisabledStates();
+    });
+  }
   if (seedInput !== null) {
     seedInput.addEventListener('input', refreshSeedValidity);
     seedInput.addEventListener('blur', refreshSeedValidity);
