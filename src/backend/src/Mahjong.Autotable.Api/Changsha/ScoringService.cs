@@ -110,6 +110,7 @@ public sealed class ScoringService : IScoringService
             WinPattern.SevenPairs => ScoreCategory.BigWin,
             WinPattern.AllPungs => ScoreCategory.BigWin,
             WinPattern.FullFlush => ScoreCategory.BigWin,
+            WinPattern.NineTerminals => ScoreCategory.BigWin,
             WinPattern.Standard => ScoreCategory.SmallWin,
             _ => ScoreCategory.SmallWin
         };

@@ -7,6 +7,8 @@ namespace Mahjong.Autotable.Api.Changsha;
 ///   2. Seven Pairs: 7 distinct pairs (no 258 restriction)
 ///   3. All Pungs: 4 pungs/kongs + pair (no chows)
 ///   4. Full Flush: entire hand is single suit
+///   5. Nine Terminals (Phase H Wave 2 — 九幺): every tile rank 1 or 9, any suit,
+///      with a valid mahjong structure (4 sets + pair OR 7 pairs).
 /// </summary>
 public interface IWinDetector
 {
@@ -36,6 +38,7 @@ public sealed class ChangshaWinDetector : IWinDetector
         var isFlush = CheckFullFlush(concealedTileIds, hand.Melds);
         var isSevenPairs = CheckSevenPairs(concealedTileIds, hand.Melds);
         var isAllPungs = CheckAllPungs(concealedTileIds, hand.Melds);
+        var isNineTerminals = CheckNineTerminals(concealedTileIds, hand.Melds);
         var isStandard = CheckStandardWin(concealedTileIds, hand.Melds);
 
         WinPattern? pattern = null;
@@ -57,6 +60,13 @@ public sealed class ChangshaWinDetector : IWinDetector
         {
             if (pattern is null)
                 pattern = WinPattern.FullFlush;
+            category = ScoreCategory.BigWin;
+        }
+
+        if (isNineTerminals)
+        {
+            if (pattern is null)
+                pattern = WinPattern.NineTerminals;
             category = ScoreCategory.BigWin;
         }
 
@@ -219,6 +229,51 @@ public sealed class ChangshaWinDetector : IWinDetector
         var concealedMeldsNeeded = 4 - melds.Count;
         var expectedConcealed = concealedMeldsNeeded * 3 + 2;
 
+        if (totalConcealed != expectedConcealed)
+            return false;
+
+        return TryDecompositionAnyPair(counts, concealedMeldsNeeded);
+    }
+
+    /// <summary>
+    /// Phase H Wave 2 — 九幺 (Nine Terminals) check. Returns true iff EVERY tile in the
+    /// hand (concealed + meld tiles) is rank 1 or rank 9 of any suit AND the hand forms
+    /// a valid mahjong structure: either 4 sets + 1 pair (any-rank pair, NOT the 258
+    /// rule — that's Standard's restriction), OR 7 pairs.
+    /// Treated as a Big Win at the same precedence tier as FullFlush.
+    /// See Ripley's Phase H design memo §2.1 for the rationale (Changsha analog to
+    /// ThirteenOrphans, which is structurally impossible in a no-honors deck).
+    /// </summary>
+    private static bool CheckNineTerminals(List<int> concealedTileIds, List<Meld> melds)
+    {
+        var allTileIds = new List<int>(concealedTileIds);
+        foreach (var meld in melds)
+            allTileIds.AddRange(meld.TileIds);
+
+        if (allTileIds.Count == 0)
+            return false;
+
+        // Every tile must be rank 1 or rank 9.
+        if (!allTileIds.All(t =>
+        {
+            var rank = ChangshaDeckBuilder.GetRank(t);
+            return rank == 1 || rank == 9;
+        }))
+        {
+            return false;
+        }
+
+        // Validate any-pair meld decomposition (4 sets + pair) OR a 14-tile seven-pairs shape.
+        // Tiles already pre-filtered to rank 1 or 9, so the recursive search inside
+        // CanFormMelds is only walking 6 logical positions per suit's terminals — very cheap.
+        var counts = BuildLogicalCounts(concealedTileIds);
+        var totalConcealed = counts.Sum();
+
+        if (melds.Count == 0 && totalConcealed == 14 && CheckSevenPairsShape(counts))
+            return true;
+
+        var concealedMeldsNeeded = 4 - melds.Count;
+        var expectedConcealed = concealedMeldsNeeded * 3 + 2;
         if (totalConcealed != expectedConcealed)
             return false;
 

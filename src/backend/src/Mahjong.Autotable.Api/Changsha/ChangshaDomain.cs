@@ -48,7 +48,17 @@ public enum WinPattern
     Standard,      // 4 sets + 1 pair (258 pair rule)
     SevenPairs,    // 7 distinct pairs
     AllPungs,      // 碰碰胡 — 4 pungs/kongs + pair
-    FullFlush      // 清一色 — single suit
+    FullFlush,     // 清一色 — single suit
+
+    /// <summary>
+    /// 九幺 (jiǔ-yāo) — Changsha-adapted "Nine Terminals" Big Win. Every tile in the
+    /// 14-tile hand is rank 1 or rank 9 of any suit. The hand must still form a valid
+    /// mahjong structure (4 sets + pair, OR 7 pairs). Introduced in Phase H Wave 2
+    /// (per Ripley's design memo §2.1) as the Changsha analog to the classical
+    /// ThirteenOrphans (十三幺) Big Win, which is structurally impossible in Changsha
+    /// because the 108-tile deck has no honor tiles. Same precedence tier as FullFlush.
+    /// </summary>
+    NineTerminals
 }
 
 public enum WinMethod

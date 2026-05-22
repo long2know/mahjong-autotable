@@ -1589,6 +1589,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         WinPattern.SevenPairs => "sevenPairs",
         WinPattern.AllPungs => "allPungs",
         WinPattern.FullFlush => "fullFlush",
+        WinPattern.NineTerminals => "nineTerminals",
         _ => "standard"
     };
 }
