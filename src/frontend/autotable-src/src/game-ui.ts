@@ -36,12 +36,17 @@ const LS_POINTS        = LS_KEY_PREFIX + 'points';
 type ClaimAction = { action: 'claim'; type: 'Pung' | 'Chow' | 'Kong' | 'Hu' }
                  | { action: 'pass'; type: null };
 
-// Phase H Wave 2 — V2-rules extensions to the wire-protocol `HandResultEntry`.
+// Phase H Wave 2 + Phase I Wave 1 — V2-rules extensions to the wire-protocol
+// `HandResultEntry`.
 //
-// Bishop's WinDetectionResult/WinResult gain two new fields:
+// Bishop's WinDetectionResult / WinResult / ScoreResult contribute these fields:
 //   • AllPatterns: every big-win pattern that fires this hand (SevenPairs,
-//     AllPungs, FullFlush, NineTerminals — enum-declaration order).
+//     AllPungs, FullFlush, NineTerminals, HeavenlyHand, EarthlyHand,
+//     LastTileFromWall, LastDiscardCatch, KongReplacementWin — enum-decl order).
 //   • IsRobbedKong: shortcut flag for WinMethod.RobbingKong (抢杠胡).
+//   • scoreResult { category, basePoints, payments[] }: Phase I Wave 1 — the
+//     full Changsha score-multiplier breakdown so the modal can name the
+//     multiplier source (×N for N stacked Big-Win patterns).
 //
 // These ride the existing `result.current` collection.  Until Bishop's
 // translator commit lands they will simply be absent from the JSON
@@ -51,34 +56,93 @@ type ClaimAction = { action: 'claim'; type: 'Pung' | 'Chow' | 'Kong' | 'Hu' }
 // camelCase wire shape (System.Text.Json default is CamelCase per
 // AutotableProtocol.cs:JsonNamingPolicy.CamelCase).  We tolerate a
 // PascalCase fallback too in case the JSON contract drifts.
+interface ScoreResultPayment {
+  fromSeatIndex?: number;
+  toSeatIndex?: number;
+  amount?: number;
+  reason?: string;
+  // PascalCase fallbacks.
+  FromSeatIndex?: number;
+  ToSeatIndex?: number;
+  Amount?: number;
+  Reason?: string;
+}
+
+interface ScoreResultExtra {
+  category?: string;
+  basePoints?: number;
+  payments?: ReadonlyArray<ScoreResultPayment>;
+  Category?: string;
+  BasePoints?: number;
+  Payments?: ReadonlyArray<ScoreResultPayment>;
+}
+
+interface WinResultExtra {
+  allPatterns?: ReadonlyArray<string>;
+  method?: string;
+  isRobbedKong?: boolean;
+  AllPatterns?: ReadonlyArray<string>;
+  Method?: string;
+  IsRobbedKong?: boolean;
+}
+
 interface ResultExtras {
   pattern?: string;
   method?: string;
   allPatterns?: ReadonlyArray<string>;
   isRobbedKong?: boolean;
+  scoreResult?: ScoreResultExtra;
+  winResult?: WinResultExtra;
   // Defensive aliases (PascalCase) — only used as a fallback.
   Pattern?: string;
   Method?: string;
   AllPatterns?: ReadonlyArray<string>;
   IsRobbedKong?: boolean;
+  ScoreResult?: ScoreResultExtra;
+  WinResult?: WinResultExtra;
 }
 
 // Friendly display names for each WinPattern enum value.  Standard is the
 // baseline non-stacking pattern (per Ripley §2.3) and intentionally absent
 // so a vanilla 4-sets-and-a-pair hand renders no chip.
+//
+// Keys are the camelCase wire vocabulary (see backend WinPatternToWire).
+// The lookup is normalised via `normalizePatternKey` so PascalCase variants
+// (raw enum ToString) resolve to the same label.  Unknown keys fall back to
+// the raw wire string so a forward-compat pattern still renders something.
 const PATTERN_LABELS: Readonly<Record<string, string>> = {
-  SevenPairs:    '七对 Seven Pairs',
-  AllPungs:      '碰碰胡 All Pungs',
-  FullFlush:     '清一色 Full Flush',
-  NineTerminals: '九幺 Nine Terminals',
+  sevenPairs:         '七对 Seven Pairs',
+  allPungs:           '碰碰胡 All Pungs',
+  fullFlush:          '清一色 Full Flush',
+  nineTerminals:      '九幺 Nine Terminals',
+  // Phase I Wave 1 — contextual Big Wins (Bishop's branch).
+  heavenlyHand:       '天和 Heavenly Hand',
+  earthlyHand:        '地和 Earthly Hand',
+  lastTileFromWall:   '海底捞月 Last Tile',
+  lastDiscardCatch:   '河底捞鱼 Last Discard',
+  kongReplacementWin: '杠上开花 Kong Bloom',
 };
 
 const PATTERN_CHIP_CLASSES: Readonly<Record<string, string>> = {
-  SevenPairs:    'pattern-seven-pairs',
-  AllPungs:      'pattern-all-pungs',
-  FullFlush:     'pattern-full-flush',
-  NineTerminals: 'pattern-nine-terminals',
+  sevenPairs:         'pattern-seven-pairs',
+  allPungs:           'pattern-all-pungs',
+  fullFlush:          'pattern-full-flush',
+  nineTerminals:      'pattern-nine-terminals',
+  heavenlyHand:       'pattern-heavenly-hand',
+  earthlyHand:        'pattern-earthly-hand',
+  lastTileFromWall:   'pattern-last-tile',
+  lastDiscardCatch:   'pattern-last-discard',
+  kongReplacementWin: 'pattern-kong-bloom',
 };
+
+// Normalise a pattern key for label lookup.  Backend canonical wire form is
+// camelCase (e.g. `sevenPairs`); legacy code paths or test fixtures may still
+// emit PascalCase (`SevenPairs`).  Lowercasing the first character collapses
+// both spellings to the same key without disturbing the rest.
+function normalizePatternKey(p: string): string {
+  if (!p) return p;
+  return p.charAt(0).toLowerCase() + p.slice(1);
+}
 
 // Phase D — convert a Changsha tile id (0..26 over 3 suits × 9 ranks) to a
 // terse glyph the result modal renders, e.g. tile 0 → "1m", tile 14 → "6p".
@@ -724,6 +788,11 @@ export class GameUi {
     // Phase H Wave 2 — render stacked-pattern chips + RobbingKong badge.
     this.renderResultPatternChips(result);
 
+    // Phase I Wave 1 — render the score-multiplier breakdown (Base/×N/Total
+    // + per-seat payments) underneath the chip strip.  Backward-compat: when
+    // the wire payload carries no `scoreResult`, this block hides itself.
+    this.renderResultScoreBreakdown(result);
+
     // Score deltas table.
     const tbody = this.elements.resultScoreBody;
     tbody.innerHTML = '';
@@ -805,22 +874,142 @@ export class GameUi {
     // Pattern chips — prefer AllPatterns when the backend ships it, else
     // fall back to the legacy single Pattern field.  Standard is intentionally
     // skipped: it's the baseline 4-sets-and-a-pair hand, not a stack-worthy
-    // big-win pattern (Ripley §2.3).
-    const patterns: string[] = allPatterns.length > 0
-      ? Array.from(allPatterns)
-      : (pattern && pattern !== 'Standard' ? [pattern] : []);
+    // big-win pattern (Ripley §2.3).  Match both PascalCase and camelCase
+    // spellings of "standard" so either wire vocabulary skips the chip.
+    const filteredAllPatterns = Array.from(allPatterns)
+      .filter(p => normalizePatternKey(p) !== 'standard');
+    const patterns: string[] = filteredAllPatterns.length > 0
+      ? filteredAllPatterns
+      : (pattern && normalizePatternKey(pattern) !== 'standard' ? [pattern] : []);
 
     for (const p of patterns) {
-      const label = PATTERN_LABELS[p];
-      if (!label) continue;
+      const key = normalizePatternKey(p);
+      const label = PATTERN_LABELS[key] ?? p;
+      const extraClass = PATTERN_CHIP_CLASSES[key] ?? '';
       const chip = document.createElement('span');
-      const extraClass = PATTERN_CHIP_CLASSES[p] ?? '';
       chip.className = `result-pattern-chip${extraClass ? ' ' + extraClass : ''}`;
       chip.textContent = label;
       chipBox.appendChild(chip);
     }
 
     chipBox.style.display = chipBox.childElementCount > 0 ? '' : 'none';
+  }
+
+  // Phase I Wave 1 — score-multiplier breakdown block.
+  //
+  // Layout (rendered between #result-pattern-chips and #result-score):
+  //   🏆 SEAT 2 — BIG WIN                  (or 🎉 SMALL WIN)
+  //   Base: 6  Multiplier: ×3 (3 patterns)
+  //   Total: 18 to claim
+  //   Payments:
+  //     Seat 0 → Seat 2: 6
+  //     Seat 1 → Seat 2: 6
+  //     Seat 3 → Seat 2: 6
+  //
+  // Sources off the wire:
+  //   result.scoreResult.{category, basePoints, payments[]}     (Phase I)
+  //   result.allPatterns[] / result.winResult.allPatterns[]     (Phase H W2)
+  //
+  // The multiplier label is `allPatterns.length` clamped to [1, 3] — matching
+  // the backend ScoringService.CalculateScore clamp (see backend
+  // Changsha/ScoringService.cs:91-93).  When `allPatterns` is empty we fall
+  // back to single-pattern display (no multiplier row).
+  //
+  // The Base displayed is reverse-derived as `basePoints / multiplier` so the
+  // math reads cleanly even though the backend ships the post-multiplier
+  // sum as `basePoints` (sum of payments).  This is purely a presentation
+  // choice — payments[] is the source of truth and is always shown verbatim.
+  private renderResultScoreBreakdown(result: HandResultEntry): void {
+    const extras = result as HandResultEntry & ResultExtras;
+    const scoreResultRaw = extras.scoreResult ?? extras.ScoreResult;
+    const allPatterns =
+      extras.allPatterns ?? extras.AllPatterns ??
+      extras.winResult?.allPatterns ?? extras.WinResult?.AllPatterns ?? [];
+
+    let block = document.getElementById('result-score-breakdown');
+    if (!block) {
+      block = document.createElement('div');
+      block.id = 'result-score-breakdown';
+      const chips = document.getElementById('result-pattern-chips');
+      const parent = chips?.parentElement ?? this.elements.resultWinner.parentElement;
+      const anchor = chips ?? this.elements.resultWinner;
+      parent?.insertBefore(block, anchor.nextSibling);
+    }
+    block.innerHTML = '';
+
+    // Hide block for non-Hu results or when backend hasn't pushed scoreResult.
+    if (result.type !== 'Hu' || !scoreResultRaw) {
+      block.style.display = 'none';
+      return;
+    }
+
+    const categoryRaw = (scoreResultRaw.category ?? scoreResultRaw.Category ?? '').toString();
+    const isBig = categoryRaw.toLowerCase().includes('big');
+    const basePoints = scoreResultRaw.basePoints ?? scoreResultRaw.BasePoints ?? 0;
+    const rawPayments = scoreResultRaw.payments ?? scoreResultRaw.Payments ?? [];
+
+    const patternCount = allPatterns.length;
+    const multiplier = isBig ? Math.max(1, Math.min(3, patternCount || 1)) : 1;
+    const baseBeforeMult = multiplier > 1 ? Math.floor(basePoints / multiplier) : basePoints;
+
+    const winnerNick = this.nickForSeat(result.winner) ?? `Seat ${result.winner}`;
+    const winnerLabel = `Seat ${result.winner}` +
+      (this.nickForSeat(result.winner) ? ` (${winnerNick})` : '');
+
+    // Category banner — names the multiplier source ("BIG WIN" / "SMALL WIN").
+    const banner = document.createElement('div');
+    banner.className = 'result-score-banner ' +
+      (isBig ? 'category-big-win' : 'category-small-win');
+    banner.textContent = isBig
+      ? `🏆 ${winnerLabel} — BIG WIN`
+      : `🎉 ${winnerLabel} — SMALL WIN`;
+    block.appendChild(banner);
+
+    // Base / Multiplier / Total row.  Single-pattern Big Wins and SmallWins
+    // skip the multiplier span so the math line stays terse.
+    const calcRow = document.createElement('div');
+    calcRow.className = 'result-score-calc';
+    const spanBase = document.createElement('span');
+    spanBase.innerHTML = `<strong>Base:</strong> ${baseBeforeMult}`;
+    calcRow.appendChild(spanBase);
+    if (isBig && multiplier > 1) {
+      const spanMult = document.createElement('span');
+      const patternWord = patternCount === 1 ? 'pattern' : 'patterns';
+      spanMult.innerHTML =
+        `<strong>Multiplier:</strong> ×${multiplier} ` +
+        `<small class="result-score-mult-note">(${patternCount} ${patternWord})</small>`;
+      calcRow.appendChild(spanMult);
+    }
+    const spanTotal = document.createElement('span');
+    spanTotal.innerHTML = `<strong>Total:</strong> ${basePoints} to claim`;
+    calcRow.appendChild(spanTotal);
+    block.appendChild(calcRow);
+
+    // Payments list — one row per seat→seat transfer.  Reasons (e.g.
+    // "BigWin-discard-dealer-x3") are tucked into a tooltip so the row stays
+    // glanceable.
+    if (rawPayments.length > 0) {
+      const paymentsBox = document.createElement('div');
+      paymentsBox.className = 'result-score-payments';
+      const heading = document.createElement('div');
+      heading.className = 'result-score-payments-heading';
+      heading.textContent = 'Payments:';
+      paymentsBox.appendChild(heading);
+      for (const p of rawPayments) {
+        const from = p.fromSeatIndex ?? p.FromSeatIndex ?? -1;
+        const to = p.toSeatIndex ?? p.ToSeatIndex ?? -1;
+        const amount = p.amount ?? p.Amount ?? 0;
+        const reason = (p.reason ?? p.Reason ?? '').toString();
+        const row = document.createElement('div');
+        row.className = 'result-score-payment';
+        if (reason) row.title = reason;
+        row.textContent = `Seat ${from} → Seat ${to}: ${amount}`;
+        paymentsBox.appendChild(row);
+      }
+      block.appendChild(paymentsBox);
+    }
+
+    block.style.display = '';
   }
 
   private nickForSeat(seat: number): string | null {

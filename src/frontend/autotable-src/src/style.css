@@ -240,6 +240,13 @@
 .result-pattern-chip.pattern-all-pungs      { background-color: #6e3a2d; color: #ffc4a8; border-color: #c87a5a; }
 .result-pattern-chip.pattern-full-flush     { background-color: #1d4a8a; color: #a8d4ff; border-color: #4a82d4; }
 .result-pattern-chip.pattern-nine-terminals { background-color: #5a4a1f; color: #ffe9a8; border-color: #c8a046; }
+/* Phase I Wave 1 — contextual Big-Win chips.  Distinct hues so a stacked
+ * hand (e.g. 清一色 + 天和) reads at a glance. */
+.result-pattern-chip.pattern-heavenly-hand  { background-color: #5a1f5a; color: #ffc8ff; border-color: #c846c8; }
+.result-pattern-chip.pattern-earthly-hand   { background-color: #2d4a1d; color: #c8ffa8; border-color: #6ec846; }
+.result-pattern-chip.pattern-last-tile      { background-color: #1d5a5a; color: #a8ffff; border-color: #46c8c8; }
+.result-pattern-chip.pattern-last-discard   { background-color: #5a3a1d; color: #ffd8a8; border-color: #c87a32; }
+.result-pattern-chip.pattern-kong-bloom     { background-color: #6e1f2d; color: #ffa8c4; border-color: #c84a5a; }
 .result-method-badge {
     display: inline-block;
     padding: 3px 12px;
@@ -662,4 +669,191 @@ body.lobby-active #lobby-toggle { display: none; }
 #lobby-panel .lobby-about a:hover {
     color: #ffd75e;
     border-bottom-color: #ffd75e;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Phase I Wave 1 — score-multiplier breakdown inside the result modal.   */
+/*                                                                        */
+/* Sits between #result-pattern-chips and #result-score (the cumulative   */
+/* score-delta table).  Hidden on Draw / ZhaHu / pre-V2 wire payloads     */
+/* where Bishop's scoreResult block hasn't shipped yet.                   */
+/* ---------------------------------------------------------------------- */
+#result-score-breakdown {
+    background-color: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(200, 160, 70, 0.45);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 0 auto 0.75rem;
+    max-width: 480px;
+    text-align: center;
+    color: #f5e8c8;
+    font-family: Verdana, Arial, sans-serif;
+}
+#result-score-breakdown .result-score-banner {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+}
+#result-score-breakdown .result-score-banner.category-big-win {
+    color: #ffd75e;
+}
+#result-score-breakdown .result-score-banner.category-small-win {
+    color: #a8e6a8;
+}
+#result-score-breakdown .result-score-calc {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: baseline;
+    gap: 4px 18px;
+    margin-bottom: 6px;
+    font-size: 0.95rem;
+}
+#result-score-breakdown .result-score-calc strong {
+    color: #ffd75e;
+    margin-right: 4px;
+}
+#result-score-breakdown .result-score-mult-note {
+    color: rgba(245, 232, 200, 0.7);
+    font-size: 0.85em;
+    margin-left: 4px;
+}
+#result-score-breakdown .result-score-payments {
+    border-top: 1px dashed rgba(200, 160, 70, 0.35);
+    margin-top: 4px;
+    padding-top: 6px;
+    text-align: left;
+    display: inline-block;
+    min-width: 240px;
+}
+#result-score-breakdown .result-score-payments-heading {
+    color: #ffd75e;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 3px;
+    text-align: center;
+}
+#result-score-breakdown .result-score-payment {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    padding-left: 12px;
+    cursor: help;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Phase I Wave 1 — streaming move-log sidebar.                           */
+/*                                                                        */
+/* Top-right, beneath the variant badge.  Sized to ~280px wide so it      */
+/* doesn't crowd the dice HUD (top-center) on common widths.  Scrolls     */
+/* internally; the host body never gains a scrollbar.                     */
+/* ---------------------------------------------------------------------- */
+#move-log {
+    position: absolute;
+    top: 70px;
+    right: 12px;
+    z-index: 45;
+    width: 300px;
+    max-height: 60vh;
+    background-color: rgba(20, 30, 26, 0.86);
+    border: 1px solid rgba(200, 160, 70, 0.5);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    color: #e8e0c8;
+    font-family: Verdana, Arial, sans-serif;
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    pointer-events: auto;
+}
+#move-log .move-log-header {
+    background-color: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(200, 160, 70, 0.35);
+    padding: 4px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+#move-log .move-log-title {
+    color: #ffd75e;
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
+#move-log .move-log-clear {
+    background: transparent;
+    border: 1px solid rgba(200, 160, 70, 0.35);
+    color: rgba(255, 215, 94, 0.65);
+    border-radius: 3px;
+    width: 22px;
+    height: 22px;
+    line-height: 1;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0;
+}
+#move-log .move-log-clear:hover {
+    color: #ffd75e;
+    border-color: #ffd75e;
+}
+#move-log .move-log-entries {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 4px 8px 6px;
+    scroll-behavior: smooth;
+}
+#move-log .move-log-entries::-webkit-scrollbar {
+    width: 6px;
+}
+#move-log .move-log-entries::-webkit-scrollbar-thumb {
+    background-color: rgba(200, 160, 70, 0.4);
+    border-radius: 3px;
+}
+#move-log .move-log-entry {
+    padding: 2px 0;
+    border-bottom: 1px dotted rgba(200, 160, 70, 0.12);
+    line-height: 1.35;
+    word-break: break-word;
+}
+#move-log .move-log-entry:last-child {
+    border-bottom: none;
+}
+#move-log .move-log-ts {
+    color: rgba(168, 230, 168, 0.75);
+    font-variant-numeric: tabular-nums;
+    margin-right: 4px;
+}
+#move-log .move-log-seat {
+    color: #ffd75e;
+    font-weight: 600;
+}
+#move-log .move-log-action {
+    color: #e8e0c8;
+}
+
+/* Per-category accent stripes — quick visual scan by event class. */
+#move-log .move-log-match   { border-left: 3px solid #c8a046; padding-left: 6px; background-color: rgba(200, 160, 70, 0.08); }
+#move-log .move-log-dice    { border-left: 3px solid #adebad; padding-left: 6px; }
+#move-log .move-log-pickup  { border-left: 3px solid #6ec0c8; padding-left: 6px; }
+#move-log .move-log-discard { border-left: 3px solid rgba(255, 255, 255, 0.18); padding-left: 6px; }
+#move-log .move-log-claim   { border-left: 3px solid #d8b9ff; padding-left: 6px; }
+#move-log .move-log-kong    { border-left: 3px solid #ff8888; padding-left: 6px; }
+#move-log .move-log-win     { border-left: 3px solid #ffd75e; padding-left: 6px; background-color: rgba(255, 215, 94, 0.1); font-weight: 600; }
+
+/* Push the move-log out of the way while the lobby panel is open. */
+body.lobby-active #move-log {
+    display: none;
+}
+
+/* Compact the log on narrower viewports so it doesn't eat the dice HUD. */
+@media (max-width: 1100px) {
+    #move-log {
+        width: 240px;
+        font-size: 0.75rem;
+        max-height: 50vh;
+    }
 }
