@@ -95,3 +95,18 @@
 
 **Branch ready for PR against `main`.** All four agents' Phase I Wave 1 work + coordinator translator fix captured in canonical decisions.md.
 
+## Phase I Wave 2 Scribe Sweep — Persistence hydration + bot contextual coverage + UI polish (2026-05-22)
+
+**Timestamp:** 2026-05-22T23:15Z
+**Branch:** `stlong/phase-i-wave-2-hydration-bot-ctx` (all commits pushed; ready for PR)
+**Contribution:** Merged 3-file Phase I Wave 2 inbox into canonical `.squad/decisions.md` as a single `## Phase I Wave 2 — Persistence hydration + bot contextual coverage + UI polish` section covering Bishop's hydration + Hicks's UI polish + Vasquez's two test suites (Phase A bot-pipeline + Phase B hydration round-trip). Documented **observation-race WinObserver pattern** (StateChanged subscription) for future post-win tests + **modal z-index trap** (1060>1050) + **AppDbContext spelling correction** (not `MahjongDbContext`). Wave 2 result: **383/0/1 tests** (was 374/0/1 at Phase I Wave 1 → +9 net passes). Bundle rolled: JS `4ce16ecc.js` → `e6653bd3.js`, CSS `8ade01c3.css` → `60fe83d8.css`. All inbox files remain in place per standing instruction (`.squad/decisions/inbox/` is gitignored — local-only primary sources).
+
+**Notable:**
+- **Observation-race pattern:** The `WinObserver` IDisposable pattern (subscribe to `StateChanged` fires in `PersistSnapshotAsync` *before* next hand starts) is a reusable solution for tests needing post-win state inspection. Pinned for future test framework improvements.
+- **CSS rule-of-thumb:** Modal tooltips need 10-point z-index buffer above Bootstrap modal base (1050). Hicks's discovery that `.pattern-tooltip` requires `z-index: 1060` + `position: relative` on parent is a design constraint worth surfacing on future tooltip work.
+- **DbContext spelling:** Real name is `AppDbContext`, not `MahjongDbContext` — upstream directive had the typo. Future agents should pin this to avoid repeating it.
+- **Bot WinContext:** Phase A tests confirm bot doesn't need explicit passthrough; context derives inside state machine (correct separation). No bug surfaced.
+
+**Branch ready for PR against `main`.** All three agents' Phase I Wave 2 work captured in canonical decisions.md.
+
+
