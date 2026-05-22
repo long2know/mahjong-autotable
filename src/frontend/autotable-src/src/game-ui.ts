@@ -36,6 +36,50 @@ const LS_POINTS        = LS_KEY_PREFIX + 'points';
 type ClaimAction = { action: 'claim'; type: 'Pung' | 'Chow' | 'Kong' | 'Hu' }
                  | { action: 'pass'; type: null };
 
+// Phase H Wave 2 — V2-rules extensions to the wire-protocol `HandResultEntry`.
+//
+// Bishop's WinDetectionResult/WinResult gain two new fields:
+//   • AllPatterns: every big-win pattern that fires this hand (SevenPairs,
+//     AllPungs, FullFlush, NineTerminals — enum-declaration order).
+//   • IsRobbedKong: shortcut flag for WinMethod.RobbingKong (抢杠胡).
+//
+// These ride the existing `result.current` collection.  Until Bishop's
+// translator commit lands they will simply be absent from the JSON
+// payload — every field below is `?:` so the UI degrades to legacy
+// single-pattern rendering with zero runtime errors.
+//
+// camelCase wire shape (System.Text.Json default is CamelCase per
+// AutotableProtocol.cs:JsonNamingPolicy.CamelCase).  We tolerate a
+// PascalCase fallback too in case the JSON contract drifts.
+interface ResultExtras {
+  pattern?: string;
+  method?: string;
+  allPatterns?: ReadonlyArray<string>;
+  isRobbedKong?: boolean;
+  // Defensive aliases (PascalCase) — only used as a fallback.
+  Pattern?: string;
+  Method?: string;
+  AllPatterns?: ReadonlyArray<string>;
+  IsRobbedKong?: boolean;
+}
+
+// Friendly display names for each WinPattern enum value.  Standard is the
+// baseline non-stacking pattern (per Ripley §2.3) and intentionally absent
+// so a vanilla 4-sets-and-a-pair hand renders no chip.
+const PATTERN_LABELS: Readonly<Record<string, string>> = {
+  SevenPairs:    '七对 Seven Pairs',
+  AllPungs:      '碰碰胡 All Pungs',
+  FullFlush:     '清一色 Full Flush',
+  NineTerminals: '九幺 Nine Terminals',
+};
+
+const PATTERN_CHIP_CLASSES: Readonly<Record<string, string>> = {
+  SevenPairs:    'pattern-seven-pairs',
+  AllPungs:      'pattern-all-pungs',
+  FullFlush:     'pattern-full-flush',
+  NineTerminals: 'pattern-nine-terminals',
+};
+
 // Phase D — convert a Changsha tile id (0..26 over 3 suits × 9 ranks) to a
 // terse glyph the result modal renders, e.g. tile 0 → "1m", tile 14 → "6p".
 // Suit order matches setup-deal.ts (m=characters, p=dots, s=bamboo).
@@ -677,6 +721,9 @@ export class GameUi {
     this.elements.resultHeadline.textContent = headline;
     this.elements.resultWinner.textContent = winnerLine;
 
+    // Phase H Wave 2 — render stacked-pattern chips + RobbingKong badge.
+    this.renderResultPatternChips(result);
+
     // Score deltas table.
     const tbody = this.elements.resultScoreBody;
     tbody.innerHTML = '';
@@ -706,6 +753,74 @@ export class GameUi {
       cell.textContent = text;
       handDiv.appendChild(cell);
     }
+  }
+
+  // Phase H Wave 2 — surface V2 win-detector metadata in the result panel.
+  //
+  // Two new pieces of info ride the wire when Bishop's WinDetectionResult /
+  // WinResult fields populate `result.current`:
+  //   1. allPatterns[] — every big-win pattern that fires this hand
+  //      (SevenPairs, AllPungs, FullFlush, NineTerminals).  Rendered as a
+  //      colour-coded chip strip.  A single-pattern win renders one chip;
+  //      a stacked hand (e.g. 清一色 + 碰碰胡) renders the full strip.
+  //   2. isRobbedKong / method === 'RobbingKong' — 抢杠胡 badge above the
+  //      chips, explaining WHY the win fired (claimed mid-added-kong).
+  //
+  // Fields are optional — when the backend hasn't pushed them yet we render
+  // nothing and the legacy result-modal layout is untouched (chip container
+  // stays display:none, so it occupies zero vertical space).
+  private renderResultPatternChips(result: HandResultEntry): void {
+    const extras = result as HandResultEntry & ResultExtras;
+    const allPatterns = extras.allPatterns ?? extras.AllPatterns ?? [];
+    const pattern = extras.pattern ?? extras.Pattern;
+    const method = extras.method ?? extras.Method;
+    const isRobbedKong = extras.isRobbedKong ?? extras.IsRobbedKong
+                       ?? method === 'RobbingKong';
+
+    let chipBox = document.getElementById('result-pattern-chips');
+    if (!chipBox) {
+      // Lazy-create the chip container immediately after #result-winner so
+      // we don't need to edit index.html (out of Phase H Wave 2 frontend scope).
+      chipBox = document.createElement('div');
+      chipBox.id = 'result-pattern-chips';
+      const winnerEl = this.elements.resultWinner;
+      winnerEl.parentElement?.insertBefore(chipBox, winnerEl.nextSibling);
+    }
+    chipBox.innerHTML = '';
+
+    // Chips/badge only make sense for a real Hu — drop them on Draw / ZhaHu.
+    if (result.type !== 'Hu') {
+      chipBox.style.display = 'none';
+      return;
+    }
+
+    // Robbing-kong badge first — it's the "how" of the win, not a pattern.
+    if (isRobbedKong) {
+      const badge = document.createElement('span');
+      badge.className = 'result-method-badge method-robbing-kong';
+      badge.textContent = '抢杠胡 Robbing Kong';
+      chipBox.appendChild(badge);
+    }
+
+    // Pattern chips — prefer AllPatterns when the backend ships it, else
+    // fall back to the legacy single Pattern field.  Standard is intentionally
+    // skipped: it's the baseline 4-sets-and-a-pair hand, not a stack-worthy
+    // big-win pattern (Ripley §2.3).
+    const patterns: string[] = allPatterns.length > 0
+      ? Array.from(allPatterns)
+      : (pattern && pattern !== 'Standard' ? [pattern] : []);
+
+    for (const p of patterns) {
+      const label = PATTERN_LABELS[p];
+      if (!label) continue;
+      const chip = document.createElement('span');
+      const extraClass = PATTERN_CHIP_CLASSES[p] ?? '';
+      chip.className = `result-pattern-chip${extraClass ? ' ' + extraClass : ''}`;
+      chip.textContent = label;
+      chipBox.appendChild(chip);
+    }
+
+    chipBox.style.display = chipBox.childElementCount > 0 ? '' : 'none';
   }
 
   private nickForSeat(seat: number): string | null {
