@@ -857,3 +857,39 @@ post-Vasquez sync: 384/0/0.
   the null case as "spectator" (all foreign faces stripped). No
   filter change was needed; the only privacy work was teaching the
   query parser to accept `-1`.
+
+## Phase J Wave 1 — Hardening (claim shanten gate + wall-exhaustion review) (2026-05-21T20-45Z)
+
+- **Branch:** `stlong/phase-j-wave-1-hardening` — **Commit:** `361d805`
+  (`feat(bot): Phase J Wave 1 — wire MinShantenToHu into HardStrategy
+  claim evaluator`). Baseline 402/0/0 → 402/0/0. **Task 1 (primary)**
+  shipped: `HardStrategy.DecideClaimPhase` now treats
+  `HandEvaluator.MinShantenToHu` as the **claim acceptance gate** — non-Hu
+  claims (Pung / Kong / Chow) are accepted iff post-claim shanten strictly
+  drops; tie-breaker is Hu > Kong > Pung > Chow (Kong lifted explicitly
+  above Pung since both share tier 2 in `ChangshaClaimPriority.TierOf`);
+  Hu remains unconditional. Chow simulation mirrors
+  `RemoveChowTilesByLowestPattern` so the gate reflects the chow shape
+  the runtime will actually play. Class-level XML doc reworked to drop
+  the Phase F "fussy chow" rule and to document the Wave 1 promotion of
+  shanten from "discard tie-breaker" to "claim gate". Helpers
+  (`ClaimAcceptanceRank`, `ShantenAfterPungClaim`,
+  `ShantenAfterExposedKongClaim`, `ShantenAfterChowClaim`,
+  `TryRemoveByLogical`, `ProbeShantenWithExtraMeld`) all kept private
+  static in `HardStrategy.cs`; `HandEvaluator.cs` untouched. **Task 2
+  (secondary, wall-exhaustion fast-path) deferred / no-op** — the
+  premise doesn't hold in current code:
+  `ChangshaGameStateMachine.AdvanceToNextPlayer` already transitions
+  straight to `WallExhausted` when `state.Wall.Count == 0`, so both the
+  Discard-with-no-claim path and the PassClaim path skip `AwaitingDiscard`
+  on an empty wall; the runtime's `DriveAfterAdvanceAsync` catches the
+  pre-set `WallExhausted` phase at line 732 and dispatches
+  `HandleWallExhaustedAsync` without a no-op `DrawTile`. Adding another
+  short-circuit in the runtime would be functionally inert and risks
+  dropping the defensive `wall-exhausted` event from
+  `ChangshaStateMachine.DrawTile`'s empty-wall guard. Memo:
+  `.squad/decisions/inbox/bishop-phase-j-wave-1.md`. **Coordination
+  handoff to Vasquez:** the new gate is strictly stricter than the prior
+  heuristic for Pung/Chow — any test that pinned Hard taking a specific
+  non-shanten-dropping claim will need a fixture tweak; suggested new
+  tests listed in the memo.
