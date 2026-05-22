@@ -92,3 +92,44 @@ In priority order if Phase F runs over: cut Hard difficulty (→ Phase F.1), the
 ### Self-Critique
 
 The §2.4 doc has a corrective breadcrumb (initial mislabeling of `PickupRound3` as count 1, with correction below) — left in deliberately as a "trust but verify" hint for Bishop. The corrected `ExpectedPickupCount` switch is canonical. Also: `FOUR_PLAYER_DEMO` is intentionally dropped on restore — documented as deliberate divergence from upstream rather than oversight. The translator's existing hardcoded `gameType="FOUR_PLAYER"` in `BuildMatch` (line 204) was a Wave 3 lie that Bishop needs to fix when restoring variant authority.
+
+## Phase H — Architecture + Known-Limitations + V2 Rules Design Memo (2026-05-20)
+
+**Branch:** `stlong/phase-h-wave-1-stability-polish` (cut from `main` @ `730946c`)
+**Drops:**
+- `docs/architecture.md` (NEW, committed) — 3–6 page engineering reference
+- `docs/known-limitations.md` (NEW, committed) — V1 gap surface with skipped-test pin-points
+- `.squad/decisions/inbox/ripley-phase-h-design.md` (NEW, gitignored, local-only) — Wave 1 contracts + Wave 2 V2 rules plan
+
+### Learnings
+
+#### Design highlights — Wave 1 contracts
+- **`StateVersion` already half-built.** The field exists in `ChangshaGameState`, the state machine increments it, and persistence round-trips it. Wave 1 is purely additive: a new `ChangshaConcurrencyException` + an `int? expectedVersion = null` trailing param on the 12 mutating runtime methods + a single `GuardVersion` call inside each. Default null means full backward-compat for tests and the WS endpoint (which is not yet plumbed to echo versions).
+- **Bot timeout has a clean injection point.** `ChangshaBotEngine.Resolve` is a static singleton resolver; wrapping every strategy call in a `CancellationTokenSource(BotDecisionTimeoutMs)` happens inside the engine, not at each caller. Strategies stay timeout-agnostic. Safe-default fallbacks per phase (Pass for claim, `SelectDiscardTile` for own-turn) preserve game progression deterministically.
+- **Wave 1 is 4 commits** (Bishop ×2, Vasquez ×1, Ripley ×1 for docs). Disjoint file scope between Bishop's prod code (`Changsha/{Runtime,Bot}/`) and Vasquez's tests (`tests/Changsha/EdgeCaseTests.cs` + `BotBehaviorTests.cs`). Hicks no-op in Wave 1.
+
+#### Rules-completeness reasoning — Wave 2 V2 surface
+- **ThirteenOrphans has a structural gap in Changsha.** Classical 13-Orphans requires the 13 distinct terminals+honors. Changsha plays with **no honors** (108-tile deck = 3 suits × 9 ranks × 4 copies — verified at `setup.ts:46`). The spec §4.3 doesn't list 13-Orphans as deferred. The test stub comment hedges "Reddit §Big hands lists 13-Orphans in some Changsha variants." Two options surfaced in the memo: (1) ship a `WinPattern.NineTerminals` analog (all rank-1-or-9 tiles, 14 tiles); (2) delete the two test stubs and treat as N/A. Defaulting to option 1 with option 2 as Stephen-veto fallback.
+- **Robbing-Kong is two-tests-one-mechanic.** `RobbingKong_Win` (claimer view) and `ExposedKong_CanBeRobbed` (declarer view) are the same state-machine change: added-kong (補杠) opens a Hu-only claim window between `DeclaringKong` and `DrawingReplacement`. Concealed kong (暗杠) explicitly stays non-robbable per spec — confirmed against MahjongPros + Baidu. `WinMethod.RobbingKong` enum already exists; the detector path is reused; the new work is in `ChangshaStateMachine` + `ClaimAdjudicator` + the `Runtime` wiring.
+- **Stacking is two-tests-one-mechanic too.** `StackedBigWinPatterns` (detector view) + `MultipleBigWinPatterns_ScoresStack` (scoring view) both need `WinDetectionResult.AllPatterns: IReadOnlyList<WinPattern>` populated AND `ScoringService` applying a ×N multiplier to base BigWin payments where N = count of distinct Big-Win patterns satisfied. Spec §5 is silent on the multiplier; the memo proposes ×1 / ×2 / (×3 vestigial) and flags it as needing Stephen sign-off before Wave 2 ships.
+- **Net Wave 2: 5 tests un-skip via 3 rule changes** (NineTerminals/13-Orphans, RobbingKong, Stacking). Estimate **~7 commits** on a future `stlong/phase-h-wave-2-v2-rules` branch (Bishop ×4, Vasquez ×3).
+
+#### Anticipated Wave 2 file scopes
+- **Bishop (prod):** `Changsha/WinDetector.cs`, `Changsha/ChangshaDomain.cs` (enum extension + new fields), `Changsha/ScoringService.cs`, `Changsha/ChangshaStateMachine.cs` (added-kong window graft), `Changsha/ClaimAdjudicator.cs` (Hu-only opportunity overload), `Changsha/Runtime/ChangshaGameRuntime.cs` (wiring).
+- **Vasquez (tests):** `Changsha/WinPatternTests.cs`, `Changsha/EdgeCaseTests.cs`, `Changsha/Acceptance/HuValidationBigWinsTests.cs`, plus two new acceptance files (`RobbingKongAcceptanceTests.cs`, `StackedBigWinScoringTests.cs`).
+- **Hicks:** zero work in Wave 2 (V2 rules are server-authoritative; optional Phase I+ polish to surface stacked patterns in the win panel).
+- Strict-disjoint scope just like Phase F/G — no co-owned files in either wave.
+
+#### Architecture doc — design choices
+- Chose a **Mermaid flowchart** for the high-level diagram (renders natively on GitHub; avoids ASCII art that doesn't survive prose-editing).
+- Tabular module breakdowns with **file:LOC counts** verified via `wc -l` to give reviewers calibration on where complexity lives (the 1,543-line `ChangshaGameRuntime.cs` and the 1,056-line `AutotableWsEndpoint.cs` are the two large surfaces).
+- Section 10 (scope boundaries) is explicit about ownership per agent, intentionally mirrored from each Ripley design memo so contributors and AI agents find the same rules in the architecture doc and in `.squad/`.
+- Did NOT invent a "system context" or "deployment" diagram beyond the actual code paths — kept it grounded.
+
+#### Known-limitations doc — design choices
+- Every entry has the three-part structure: **what is gapped**, **spec section reference**, **skipped test pin-point** (where one exists). This makes the doc both a player-facing FAQ and an engineer-facing TODO.
+- Distinguished "deferred to V2" (with concrete design plan in the inbox memo) from "Phase I+" (no detailed plan yet) to keep the V2 scope tight.
+- Surfaced the **single-game-per-instance** limitation that's pinned by `AutotableWsRelayTests.cs:182` — separately from the V2 rules tests, since it's an infra gap not a rules gap.
+
+#### Process discipline observation
+- Branch `stlong/phase-h-wave-1-stability-polish` already had Bishop and Hicks's in-flight Wave 1 changes (new `ChangshaConcurrencyException.cs`, modified `ChangshaGameRuntime.cs` + `ChangshaBotEngine.cs` + `ChangshaRuntimeOptions.cs`, plus frontend lobby polish + Parcel rebuild) when I started. Stayed strictly in my docs-only scope and committed only the three Ripley files. Other agents own their commits independently.
