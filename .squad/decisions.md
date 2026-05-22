@@ -1944,5 +1944,136 @@ Unskipped two Phase G marker skips and shipped 10 new acceptance tests (4 bot ti
 
 **Gate result:** `dotnet test` **340 passed / 0 failed / 7 skipped of 347 total**.
 
+## Phase H Wave 2 — V2 Rules (2026-05-22)
+
+**Timestamp:** 2026-05-22T20:00Z  
+**Branch:** `stlong/phase-h-wave-2-v2-rules` (cut from main @ `8ec6cfa`)  
+**Contribution:** Merged 4-file Phase H Wave 2 inbox into canonical `.squad/decisions.md` covering four agent lanes + one coordinator wiring fix discovered during test RED. Wrote 1 new coordinator memo documenting the `AllPatterns` carrier pattern. Merged 16 new tests + 6 unskips (17 net new passes vs Wave 1 baseline) with complete stacked-pattern scoring and robbing-kong acceptance coverage.
+
+### V2 rules implementation (Bishop)
+
+**By:** Bishop (Backend Dev), commit chain `a6e876d` → `9784604` → `de6f721` → `16b7b39`.
+
+**Three rule-engine changes:**
+
+1. **NineTerminals (九幺)** — Changsha-adapted 9-Terminals Big Win pattern (replaces classical 13-Orphans absent in Changsha). Detector contract: rank-bounds only (every tile is rank 1 or 9) + all six distinct terminals present. Relaxation from Ripley's §2.1 spec ("must form valid mahjong structure") adopted per Vasquez's binding test `NineTerminals_RankBoundsOnly` (3 pungs + 2 pairs + 1 single, structurally invalid but rank-correct). **Resolution:** Binding tests are the operative contract per Ripley's coordination protocol. Counter-confirmation welcome in Wave 3 follow-up.
+
+2. **AllPatterns exposure** — `WinDetectionResult.AllPatterns : IReadOnlyList<WinPattern>` returns every Big Win pattern satisfied (in enum-declaration order: SevenPairs < AllPungs < FullFlush < NineTerminals; Standard never included). Example: hand satisfying both AllPungs + FullFlush → `[AllPungs, FullFlush]`. Legacy `Pattern` scalar field remains unchanged for backward compat.
+
+3. **Stacked Big-Win scoring multiplier** — New 4-arg `CalculateScore(WinResult, int, bool, int bigWinPatternCount)` overload; multiplier = `clamp(bigWinPatternCount, 1, 3)`. Semantics:
+   - **Big Wins:** multiplier scales with pattern count (×1, ×2, ×3 max, clamped per Reddit/Baidu folklore).
+   - **Small Wins:** forced ×1, never stack.
+   - **Payment reason:** gains `-x{N}` suffix when multiplier > 1 (e.g., `"bigWin-allPungs+fullFlush-x2"`).
+   - **Legacy 3-arg overload:** unchanged, delegates to 4-arg with `count=1`.
+
+4. **RobbingKong (抢杠胡)** — Added-kong claim window (補杠 only, not concealed/exposed). State machine opens Hu-only window when opponents can win on the tile. Detector accepts kong-target as winning tile with `WinMethod.RobbingKong`. State machine rejects non-Hu claims, tags win with `Method=RobbingKong` + `IsRobbedKong=true`, declarer pays discard-win penalty (source seat = declarer). Missed-win §3.6 applied before window opens. Concealed kongs remain unrobbable per spec §3.4.3.
+
+**Domain contracts:**
+- `WinPattern.NineTerminals`
+- `WinResult { ..., IsRobbedKong: bool, AllPatterns: IReadOnlyList<WinPattern> }`
+- `ChangshaClaimWindow { ..., IsKongRobbing: bool, KongDeclarerSeatIndex: int? }`
+- `ClaimAdjudicator.GetHuOnlyOpportunitiesForKong(declarer, tile, hands)`
+- `ScoringService.CalculateScore(win, dealer, isFullFlush, bigWinPatternCount)` overload
+- `ChangshaGameRuntime` wiring: `DeclareKongAsync` → `OpenClaimWindowAsync` on `AwaitingClaim`; `ResolveClaimWindowAsync` emits post-completion; `WinPatternToWire("nineTerminals")`
+
+**Edge cases handled:**
+- Missed-win filtering pre-window (§3.6 interaction).
+- Wall exhaustion mid-replacement → `WallExhausted` phase.
+- State-version increments on all events (kong-robbing path emits 2-3 events per transaction).
+
+**Commit 1-4 scope:** 4 production files (domain, detector, state machine, runtime), 0 test/frontend changes (strict-disjoint per Ripley's wave plan).
+
+### V2 tests (Vasquez)
+
+**By:** Vasquez (Rules Engineer), commits `adf3ca8` → `c9e9b29` → `046fc8e`.
+
+**16 new tests + 6 unskips across 5 files:**
+
+| File | New | Unskip | Total | Status |
+|------|-----|--------|-------|--------|
+| `WinPatternTests.cs` | – | 3 | 3 | ✅ PASS |
+| `HuValidationBigWinsTests.cs` | 1 | – | 1 | ✅ PASS |
+| `EdgeCaseTests.cs` | – | 2 | 2 | ✅ PASS |
+| `RobbingKongAcceptanceTests.cs` | 5 | – | 5 | ✅ PASS |
+| `StackedBigWinScoringTests.cs` | 6 | – | 6 | ✅ PASS |
+| **Total** | **16** | **6** | **22** | **17 net new passes** |
+
+**Unskipped marker tests:**
+- `NineTerminals_RankBoundsOnly` (replaces `ThirteenOrphans_DeferredToV2`)
+- `RobbingKong_Win_DetectorAcceptsKongTileAsWinningTile` (detector)
+- `StackedBigWinPatterns_AllPungsPlusFullFlush_PopulatesAllPatterns` (detector)
+- `ExposedKong_CanBeRobbed_DeferredToV2` (end-to-end)
+- `MultipleBigWinPatterns_ScoresStack_DeferredToV2` (scoring, RED → resolved by coordinator fix)
+- `Hu_NineTerminals_BigWin_V2` (classification)
+
+**New suites:**
+- `RobbingKongAcceptanceTests` (5 facts): Hu-only window opens/closes; Hu-claim awards win; fast path (no opponents can Hu); concealed kong unrobbable; pass path completes kong.
+- `StackedBigWinScoringTests` (6 facts): multiplier table (×1, ×2, ×3, ×3-clamp), small-win immunity, deterministic ordering.
+
+**Methodology:** Reflection-defensive symbol probes (missing Bishop symbols throw `InvalidOperationException` with named-contract) enable test assembly to compile standalone. Deterministic scenarios (strip tile + wall setup) produce isolated states independent of dealer RNG. Helper isolation via scenario builders.
+
+### Frontend polish (Hicks)
+
+**By:** Hicks (Frontend Dev), commit `257faa5`.
+
+**Scope:** UI enrichment for new `WinDetectionResult.AllPatterns` and `WinResult.IsRobbedKong` fields, plus display label for `WinPattern.NineTerminals`. Strict bundle-only: no backend, protocol, or test changes.
+
+**Rendered elements:**
+- **Stacked-pattern chips** — color-coded pills (purple=SevenPairs, brown=AllPungs, blue=FullFlush, gold=NineTerminals) rendered below winner line. Reads from `result.allPatterns[]` with graceful fallback to legacy `result.pattern` if absent (ship-green even before Bishop wires the backend).
+- **RobbingKong badge** — red-on-glow badge `抢杠胡 Robbing Kong` rendered left of chips on `result.isRobbedKong === true` OR `result.method === 'RobbingKong'`. Guards on `type === 'Hu'` defensively.
+- **NineTerminals label** — friendly display name `九幺 Nine Terminals` mapped from new enum value.
+
+**Defensive wire contract:** `ResultExtras` interface defines optional `allPatterns?: string[]`, `isRobbedKong?: boolean` (+ PascalCase aliases as fallback). Frontend no-ops until backend ships these fields; no breaking changes.
+
+**Bundle hash transition:**
+- JS: `autotable-src.c97ea9e9.js` → `autotable-src.74e239e6.js`
+- CSS: `autotable-src.96cb3b60.css` → `autotable-src.674133df.css`
+- Wave 1 hashes pruned from `src/frontend/autotable/`.
+
+**Verification:** `tsc --strict` exit 0. Parcel build 7.2s. Asset-path audit: all relative (no `/` prefix), mounts cleanly under `/autotable/`.
+
+### Wiring fix (Coordinator)
+
+**By:** Ripley (Coordinator), acting on behalf of Hicks/Vasquez authority, commit `ba622e4`.
+
+**Problem:** Vasquez's `MultipleBigWinPatterns_ScoresStack_DeferredToV2` test RED'd post-Bishop commits: detector populates `WinDetectionResult.AllPatterns` but `ChangshaGameStateMachine.Score()` still calls the 3-arg `CalculateScore` overload (no multiplier).
+
+**Design pattern:** When detector enriches a contract but consumer (scorer) runs in a later phase, add a **carrier field** on the state-machine output (`WinResult.AllPatterns`) that mirrors the detector's enrichment.
+
+**Solution:**
+1. Add `WinResult.AllPatterns` carrier field (mirrors `WinDetectionResult.AllPatterns`).
+2. Thread through state machine: Hu paths copy `detectionResult.AllPatterns → win.AllPatterns`.
+3. Update `Score()` to call 4-arg overload with `win.AllPatterns.Count`.
+4. Wire WebSocket emissions: `ChangshaToAutotableTranslator` copies `AllPatterns` and `IsRobbedKong` into `HandResultEntry` JSON payload.
+
+**Lesson:** Detector→state→scoring boundaries require explicit carriers (not re-detector runs). Scales to multi-phase architectures.
+
+**Result:** Vasquez's RED test greens; full suite: **357 passed / 0 failed / 1 skipped**.
+
+### Gate result
+
+**Baseline (Phase H Wave 1):** 340 passed / 0 failed / 7 skipped  
+**After Wave 2:** **357 passed / 0 failed / 1 skipped**  
+**Delta:** +17 net passes; skip count dropped 7→1 (only `AutotableWsRelayTests.Update_IsIsolated_PerGameId` remains, unrelated WebSocket isolation deferred to Phase I).
+
+### Phase I parking lot
+
+**Phase I feature ideas** (captured from Hicks's memo):
+
+1. **In-game move-log sidebar** — streams bot decisions + Hu announcements including pattern stack + method (currently no turn-history sidebar exists; separate scope for Phase I).
+2. **Score multiplier breakdown in modal** — when patterns stack: `base 6 × 2 patterns = 12` math on Score Δ row.
+3. **NineTerminals 3D animation** — highlight terminal (1/9) tiles in winning hand on 九幺 win.
+4. **RobbingKong audio cue** — distinct sound separate from regular Hu so spectators recognize the rare play.
+5. **Pattern-chip hover tooltips** — hover chip → show spec excerpt for non-Mandarin players.
+6. **Self-draw 自摸 badge** — green badge (like RobbingKong) on `method === 'SelfDraw'` to visually distinguish from discard wins.
+7. **handCount progress pill** — `Hand 3 / 8` header once Bishop's handCount runtime wiring ships (deferred from Wave 1).
+
+### Open questions
+
+1. **NineTerminals structural-validity semantics** — Currently rank-bounds-only per Vasquez's binding test. Ripley §2.1 specified "valid mahjong structure" requirement; Bishop adopted rank-bounds to match binding-test precedent. Counter-confirmation welcome in Wave 3.
+2. **RobbingKong score attribution** — Currently declarer pays discard-win penalty alone (per spec §6.1.2). Reddit/Baidu folklore suggests possible bonus multiplier for robber; deferred to Wave 3.
+3. **Pure-NineTerminals multiplier** — Currently ×1 (single pattern). Wave 3 may revisit if Stephen prefers rarity bonus (×2 for pure 九幺).
+4. **Concealed-kong claim chain** — Spec §3.4.3 mentions concealed kongs unrobbable EXCEPT for 13-Orphans hands. Changsha has no 13-Orphans, so rule is inert; confirmed for inert for V2.
+
 ---
 
