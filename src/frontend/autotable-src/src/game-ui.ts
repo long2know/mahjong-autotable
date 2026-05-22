@@ -81,9 +81,17 @@ interface WinResultExtra {
   allPatterns?: ReadonlyArray<string>;
   method?: string;
   isRobbedKong?: boolean;
+  // Phase I Wave 2 — backend `winType` (one of 'selfDraw' / 'discard' /
+  // 'robbingKong') + `sourceSeatIndex` for the discarder/declarer.  Both
+  // confirmed wire fields on WinResultEntry; optional so a pre-W2 payload
+  // degrades to the legacy (no-badge) render.
+  winType?: string;
+  sourceSeatIndex?: number;
   AllPatterns?: ReadonlyArray<string>;
   Method?: string;
   IsRobbedKong?: boolean;
+  WinType?: string;
+  SourceSeatIndex?: number;
 }
 
 interface ResultExtras {
@@ -133,6 +141,25 @@ const PATTERN_CHIP_CLASSES: Readonly<Record<string, string>> = {
   lastTileFromWall:   'pattern-last-tile',
   lastDiscardCatch:   'pattern-last-discard',
   kongReplacementWin: 'pattern-kong-bloom',
+};
+
+// Phase I Wave 2 — per-chip hover tooltip dictionary.  Each entry pairs the
+// 大字 Chinese name with a one-line English description sourced from Bishop's
+// pattern spec (Phase H Wave 2 / Phase I Wave 1 §2).  Lookup is keyed by
+// the normalised camelCase pattern key (same as PATTERN_LABELS); unknown
+// patterns simply skip the tooltip (the chip still renders with the raw
+// wire string).
+const PATTERN_TOOLTIPS: Readonly<Record<string, { cn: string; en: string }>> = {
+  standard:           { cn: '普通胡',       en: 'Standard winning hand: 4 sets + a pair.' },
+  sevenPairs:         { cn: '七对',         en: 'Seven distinct pairs (qī duì) — Big Win.' },
+  allPungs:           { cn: '碰碰胡',       en: 'All pungs / kongs + a pair — Big Win.' },
+  fullFlush:          { cn: '清一色',       en: 'Single suit only (qīng yī sè) — Big Win.' },
+  nineTerminals:      { cn: '幺九',         en: 'All tiles are 1s, 9s, or honors — Big Win.' },
+  heavenlyHand:       { cn: '天和',         en: 'Dealer self-draws on the initial deal — Big Win.' },
+  earthlyHand:        { cn: '地和',         en: 'Non-dealer wins on dealer\'s first discard — Big Win.' },
+  lastTileFromWall:   { cn: '海底捞月',     en: 'Self-draw on the very last wall tile (hǎi dǐ lāo yuè) — Big Win.' },
+  lastDiscardCatch:   { cn: '河底捞鱼',     en: 'Hu the last discard after wall exhaustion (hé dǐ lāo yú) — Big Win.' },
+  kongReplacementWin: { cn: '杠上开花',     en: 'Win on the replacement tile drawn after a kong — Big Win.' },
 };
 
 // Normalise a pattern key for label lookup.  Backend canonical wire form is
@@ -785,6 +812,12 @@ export class GameUi {
     this.elements.resultHeadline.textContent = headline;
     this.elements.resultWinner.textContent = winnerLine;
 
+    // Phase I Wave 2 — self-draw / discard pill next to the winner name.
+    // RobbingKong stays in the chip strip (rendered by renderResultPatternChips)
+    // since it's already the established Wave 2 affordance; the new pill
+    // classes give all three a consistent visual language.
+    this.renderResultWinTypeBadge(result);
+
     // Phase H Wave 2 — render stacked-pattern chips + RobbingKong badge.
     this.renderResultPatternChips(result);
 
@@ -822,6 +855,65 @@ export class GameUi {
       cell.textContent = text;
       handDiv.appendChild(cell);
     }
+  }
+
+  // Phase I Wave 2 — render a 自摸 / 点炮 pill next to the winning seat name
+  // based on the wire `winResult.winType` field (one of 'selfDraw', 'discard',
+  // 'robbingKong' — see backend ChangshaToAutotableTranslator.WinMethodToWire).
+  //
+  // RobbingKong is intentionally NOT rendered here: it stays in the chip
+  // strip (see renderResultPatternChips), where the Wave 2 badge already
+  // lives.  The pill classes are shared so all three render with
+  // consistent styling.
+  //
+  // No-ops on Draw / ZhaHu / pre-W2 wire payloads where `winType` is absent.
+  private renderResultWinTypeBadge(result: HandResultEntry): void {
+    const winnerEl = this.elements.resultWinner;
+    // Drop any previous-render badge first.  textContent reset in
+    // renderResult already wipes children, but be defensive in case the
+    // call order changes.
+    const stale = winnerEl.querySelector('.result-win-type-pill');
+    if (stale) stale.remove();
+    if (result.type !== 'Hu') return;
+
+    const extras = result as HandResultEntry & ResultExtras;
+    const winType = (
+      extras.winResult?.winType ?? extras.WinResult?.WinType ?? ''
+    ).toString();
+    const sourceSeat =
+      extras.winResult?.sourceSeatIndex ?? extras.WinResult?.SourceSeatIndex;
+
+    let cls: string | null = null;
+    let label = '';
+    switch (winType) {
+      case 'selfDraw':
+        cls = 'win-type-self-draw';
+        label = '自摸 Self-Draw';
+        break;
+      case 'discard': {
+        cls = 'win-type-discard';
+        // Name the source seat when the wire payload carries a sane value
+        // (0..3 in a 4-player game; negative / NaN means "unknown").
+        if (typeof sourceSeat === 'number' && sourceSeat >= 0) {
+          const nick = this.nickForSeat(sourceSeat);
+          const seatLabel = nick ? `Seat ${sourceSeat} (${nick})` : `Seat ${sourceSeat}`;
+          label = `点炮 Discard ← ${seatLabel}`;
+        } else {
+          label = '点炮 Discard';
+        }
+        break;
+      }
+      case 'robbingKong':
+        // Render nothing here — the chip-strip badge handles RobbingKong.
+        return;
+      default:
+        return;
+    }
+
+    const pill = document.createElement('span');
+    pill.className = `result-win-type-pill ${cls}`;
+    pill.textContent = label;
+    winnerEl.appendChild(pill);
   }
 
   // Phase H Wave 2 — surface V2 win-detector metadata in the result panel.
@@ -864,10 +956,13 @@ export class GameUi {
     }
 
     // Robbing-kong badge first — it's the "how" of the win, not a pattern.
+    // Phase I Wave 2 — restyled to share the new `.result-win-type-pill`
+    // base class so it lines up visually with the self-draw / discard
+    // pills rendered next to the winner name.
     if (isRobbedKong) {
       const badge = document.createElement('span');
-      badge.className = 'result-method-badge method-robbing-kong';
-      badge.textContent = '抢杠胡 Robbing Kong';
+      badge.className = 'result-win-type-pill win-type-robbing-kong';
+      badge.textContent = '抢杠 Robbing the Kong';
       chipBox.appendChild(badge);
     }
 
@@ -889,6 +984,23 @@ export class GameUi {
       const chip = document.createElement('span');
       chip.className = `result-pattern-chip${extraClass ? ' ' + extraClass : ''}`;
       chip.textContent = label;
+      // Phase I Wave 2 — append a hover-only tooltip with the Chinese name
+      // (大字) + one-line English description.  Pure-CSS reveal:
+      // pointer-events:none keeps the tooltip from blocking clicks.
+      const tip = PATTERN_TOOLTIPS[key];
+      if (tip) {
+        const tooltip = document.createElement('div');
+        tooltip.className = 'pattern-tooltip';
+        const cn = document.createElement('span');
+        cn.className = 'pattern-tooltip-cn';
+        cn.textContent = tip.cn;
+        const en = document.createElement('span');
+        en.className = 'pattern-tooltip-en';
+        en.textContent = tip.en;
+        tooltip.appendChild(cn);
+        tooltip.appendChild(en);
+        chip.appendChild(tooltip);
+      }
       chipBox.appendChild(chip);
     }
 

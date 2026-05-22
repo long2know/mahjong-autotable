@@ -110,6 +110,11 @@ interface WinResultLoose {
   Method?: string;
   isRobbedKong?: boolean;
   IsRobbedKong?: boolean;
+  // Phase I Wave 2 — wire `winType` (one of 'selfDraw' / 'discard' /
+  // 'robbingKong') for the move-log emoji prefix.  Optional so a pre-W2
+  // payload falls through to the legacy (no-emoji) row text.
+  winType?: string;
+  WinType?: string;
 }
 
 interface HandResultLoose {
@@ -439,6 +444,14 @@ export class MoveLog {
       const isRobbed = extras.isRobbedKong ?? extras.IsRobbedKong ??
         extras.winResult?.isRobbedKong ?? extras.WinResult?.IsRobbedKong ??
         (normalizePatternKey(method) === 'robbingKong');
+      // Phase I Wave 2 — `winType` distinguishes self-draw / discard /
+      // robbing-kong wins.  Backend wire vocabulary (camelCase) confirmed
+      // in ChangshaToAutotableTranslator.WinMethodToWire.  Fall back to
+      // `isRobbed` so robbingKong still emojis correctly on a pre-W2
+      // payload that lacks `winType`.
+      const winType = (
+        extras.winResult?.winType ?? extras.WinResult?.WinType ?? ''
+      ).toString();
 
       switch (value.type) {
         case 'Hu': {
@@ -467,9 +480,20 @@ export class MoveLog {
             : (patternsLabel && !contextual
                 ? ` — [${patternsLabel}]${multiplier > 1 ? ` ×${multiplier}` : ''}`
                 : '');
+          // Phase I Wave 2 — single-glyph win-type prefix so a glance at
+          // the move-log sidebar tells you *how* the hand was won.
+          //   🀄 self-draw, 🎯 discard, ⚡ robbing-kong.
+          let prefix = '';
+          if (winType === 'selfDraw') {
+            prefix = '🀄 ';
+          } else if (winType === 'robbingKong' || (!winType && isRobbed)) {
+            prefix = '⚡ ';
+          } else if (winType === 'discard') {
+            prefix = '🎯 ';
+          }
           this.push({
             seat: value.winner,
-            action: `${verb}${tail}`,
+            action: `${prefix}${verb}${tail}`,
             category: 'win',
           });
           break;
