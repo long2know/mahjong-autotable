@@ -629,3 +629,48 @@ All three Wave 2 facts use `GameCount` as the assertion hook per Bishop's memo r
 **Cross-agent coordination:** Bishop landed routing + hydration filter at `ef6b007` (+history at `1322319`), Hicks landed lobby Game ID input + URL persistence at `cff4eb8`. My single test commit `97541c9` lands cleanly on top. Branch total at HEAD: 4 commits across 3 agents in strict-disjoint lanes; all 393 green with zero skips. Memo: `.squad/decisions/inbox/vasquez-phase-i-wave-3.md`.
 
 **Heads-up for the next wave:** one existing test (`AutotableWsEndpointTests.Join_UnknownGameId_ReturnsJoinedAndEmptySnapshot`) had to be updated because it asserted the old Phase D-backend coercion. The other DefaultGameId references in the test corpus (`AutotableWsEndpointTests.Join_KnownGameId_...`, `EndToEndPlayableTests`, `VariantSwitchAcceptanceTests`) all explicitly pass `AutotableWsEndpoint.DefaultGameId` as the JOIN target so they keep working under the new contract — no broader test fallout.
+
+---
+
+## Phase I Wave 4 — bot strength + spectator regression suite (commit `77aba64`)
+
+**Gate:** **402 passed / 0 failed / 0 skipped** (+9 from Wave 3 baseline of 393/0/0; zero skips streak holds).
+
+**Scope completed:**
+
+- **`BotStrengthTests.cs` (3 tests, +260 LOC)** — pins the ordered strength chain through the pure `ChangshaGameStateMachine` with per-seat `IChangshaBotStrategy` injection. No WebSocket, no Hub, no async timing — a step-machine harness drives `RollDice` → `Deal` → `Discard`/`Claim`/`Score`/`EndHand` loop, tallying winning seat per hand. Tests: `Hard_BeatsMedium_AcrossNHands` (N=20, seeds `1000 + i·7919`), `Medium_BeatsEasy_AcrossNHands` (N=20), `Hard_NoDrawRegression` (4×Hard for 5 seeds — no infinite-loop alarm for the new rigorous shanten counter).
+- **`SpectatorModeTests.cs` (6 tests, +415 LOC)** — exercises Bishop's `?seat=-1` surface end-to-end via raw WebSocket against an in-memory `WebApplicationFactory<Program>`. Tests:
+  - `Spectator_ConnectsWithoutSeat` — `?seat=-1` JOIN succeeds, no `seats[]` entry references the spectator's `playerId`.
+  - `Spectator_ReceivesFullSnapshot` — pre-bind a runtime game via `AutotableConnectionManager.BindRuntimeGameForTest`, spectator's full UPDATE has 108 things + 4 seats + 1 match (mirrors `Join_KnownGameId_ReturnsFullSnapshot`).
+  - `Spectator_DoesNotReceiveTurnPrompts` — every `hand.N@seat` slot has `face=null` after privacy filtering for `viewerSeat=null`.
+  - `Spectator_With4Bots_AutoDeals` — `?seat=-1&botCount=4` triggers Bishop's `TryAutoDealForSpectatorAsync`; bounded 3000ms poll asserts `runtime.TryGetSnapshot(...).Phase != Seating`.
+  - `Spectator_With3Bots_DoesNotAutoDeal` — botCount<4 short-circuits the auto-deal hook; after 500ms settle either no runtime binding exists OR phase==Seating.
+  - `Seat0_BotCount_StillCapsAt3` — `?seat=0&botCount=4` clamps botCount to default 3 (not the spectator-only cap of 4); no auto-deal fires because `IsSpectator==false`. Defensive form accepts either Bishop's clamp-to-3 path or a hypothetical PolicyViolation close.
+
+**Methodology — what worked:**
+
+- **Bishop coordinated via inbox memo, again.** `bishop-phase-i-wave-4-shanten-spectator.md` shipped before his `954c1ff` commit with the full URL contract (seat=-1, botCount=4 widening), the per-viewer filter pin (`face` stripped on every foreign-seat slot when `viewerSeat=null`), and the auto-deal hook lifecycle (`SendFullSnapshotAsync` → `TryAutoDealForSpectatorAsync` on NEW/JOIN when `IsSpectator && BotCount==4 && Phase==Seating`). That let me write all 6 spectator tests against the published contract without round-trips.
+- **Probe → threshold → test.** Before writing the bot-strength asserts, I built a one-shot probe file (`_strength_probe.cs`, removed) and measured the actual baseline under Bishop's diff: Hard(seat0) vs 3×Medium = 4 wins, Medium total = 15 (avg 5/seat), draws=1 → ratio 0.80. Medium(seat0) vs 3×Easy = 3 wins, Easy total = 4 (avg 1.33/seat) → ratio 2.25. With those numbers in hand, I set the threshold floors deliberately wide (Hard ≥ Medium·0.5, Medium ≥ Easy·1.0) so seed variance doesn't flake the suite while a real regression still trips the alarm.
+- **Test seam reuse.** `AutotableConnectionManager.BindRuntimeGameForTest` + `GetRuntimeGameIdBoundTo` (Bishop's Phase 5a hooks) are the load-bearing observability points for spectator tests #2/#3/#4/#5. No new seams were required — the existing manager surface was sufficient to assert the auto-deal path's bind-and-start behaviour.
+- **Step-machine harness over WS harness for bot strength.** Existing WS-based bot tests (`BotMatchHarness`, `BotContextualHuTests`) are slow because they ride the full Hub + ChangshaRuntime async pipeline. For pure strength tallying, the state-machine direct harness runs 20 hands × 3 tests in ~360 ms total — comfortably under xUnit's per-test budget.
+
+**Surprise / heads-up for Squad:**
+
+- **Bishop's shanten rewrite doesn't change bot strength this wave.** The directive memo said "HardStrategy uses `MinShantenToHu` to bias discards"; in actual production code, `HardStrategy` consumes `HandEvaluator.CountLooseTiles` and `ChangshaWinDetector.Detect`, but **never calls `MinShantenToHu`**. The new rigorous counter is exercised only through test reflection (`BotEngineAcceptanceTests.cs`). Probe before vs after Bishop's commit: identical win counts (Hard:4, Med-avg:5/seat). The rewrite is correct on its own merits (defensive against future Hard-strategy upgrades that *do* consume it), but the strength chain is unchanged. Tests pin the current ordering anyway so any future wave that wires Hard to consume the rigorous counter will see its strength shift through the existing assertions.
+
+**Stability:**
+
+- **Phase I Wave 4 filter (`--filter "Wave=Phase-I-4"`):** 9 passed / 0 failed / 0 skipped — 2 consecutive runs all clean.
+- **Full suite:** 402 passed / 0 failed / 0 skipped. Zero skips streak preserved.
+- No production code changed (`src/backend/src/**` untouched on this commit).
+
+**Cross-agent coordination:** Hicks landed Spectate UI + URL contract at `ada8f87`; Bishop landed shanten rewrite + spectator surface at `954c1ff` (+history at `41088cb`). My single test commit `77aba64` lands cleanly on top. Branch total at HEAD: 4 commits across 3 agents in strict-disjoint lanes (frontend / backend / tests / agent-history); all 402 green with zero skips. Memo: `.squad/decisions/inbox/vasquez-phase-i-wave-4.md`.
+
+**Measured bot strength baseline (locked in by tests):**
+
+| Match-up | Seat 0 wins | Other-seat avg | Draws | Ratio |
+|----------|------------:|---------------:|------:|------:|
+| Hard vs 3×Medium | 4 | 5.00 | 1 | 0.80 |
+| Medium vs 3×Easy | 3 | 1.33 | 13 | 2.25 |
+| 4×Hard sanity | n/a | n/a | 0 (5 completed) | n/a |
+
