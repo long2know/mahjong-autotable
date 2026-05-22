@@ -68,3 +68,30 @@
 
 **Branch ready for PR against `main`.** All four agents' Wave 2 work + coordinator fix captured in canonical decisions.md.
 
+## Phase I Wave 1 Scribe Sweep — Special-context wins + UX polish (2026-05-22)
+
+**Timestamp:** 2026-05-22T21:15Z  
+**Branch:** `stlong/phase-i-wave-1-special-wins-ux` (cut from main @ same base as Wave 2)  
+**Contribution:** Merged 4-file Phase I Wave 1 inbox + 1 newly-written coordinator translator-gap memo into canonical `.squad/decisions.md` as a single `## Phase I Wave 1 — Special-context wins + UX polish` section with seven subsections. Wrote 1 new coordinator memo (`coordinator-phase-i-wave-1-translator-gap.md`, commit `85c5328`) documenting the SignalR ↔ bundle WS path divergence and the multi-phase carrier pattern applied to `HandResultEntry`. Merged 17 new tests across Vasquez's two suites (9 acceptance + 8 unit), delivering +17 net passes vs Phase H Wave 2 baseline (357 → 374).
+
+**Four-agent orchestration:**
+
+1. **Bishop** (`bishop-phase-i-wave-1.md`, commits `afd59b9` → `7509685` → `9e0439c` → `419ba7a` + test coordination `0117a30`): Five contextual Big Win patterns (天和/地和/海底捞月/河底捞鱼/杠上开花) as new enum values in `WinPattern`. `WinContext` sealed record (5 bool flags) optional on detector. `LastDrawWasKongReplacement` state-flag lifecycle across game-state mutations. State-machine wiring at two Hu-detection sites (`DeclareSelfDrawWin`, `ResolveHuClaim`). WS wire emission for new patterns (camelCase). Cross-lane test coordination: test `HuValidation258` scenario is now canonical EarthlyHand fixture; Bishop owned the assertion update (`0117a30`) due to his rule change causing the drift.
+
+2. **Vasquez** (`vasquez-phase-i-wave-1.md`, commits `b6a512e` → `cd95b5b`): Two test suites — 9-fact acceptance (`SpecialContextWinsTests` driving state machine end-to-end) + 3 facts + 1 Theory ×5 unit layer (`WinPatternTests` pinning contracts). Reflection-defensive symbol probes decouple test compilation from Bishop's commit order. Methodology note: direct state-machine drive (not Runtime) mirrors Wave 2 precedent (`RobbingKongAcceptanceTests`). Coverage: all 5 contextual patterns fire correctly under gating conditions; mutual exclusivity verified; negative cases prevent regressions.
+
+3. **Hicks** (`hicks-phase-i-wave-1.md`, commit `f91c95e`): Score-multiplier breakdown modal + streaming move-log sidebar. Result-modal reads optional `scoreResult` + `allPatterns[]` from wire; move-log subscribes to existing game-state collections. **Critical discovery:** Phase H Wave 2 chip strip was dead code — `PATTERN_LABELS` keyed by PascalCase but `WinPatternToWire` emits camelCase. Phase I Wave 1 fixes via `normalizePatternKey()` + camelCase-first lookup. **Build-command correction:** Wave 2 doc wrongly said `parcel build src/index.ts src/index.html`; `src/index.html` doesn't exist. Corrected to `parcel build index.html …` (TS entry discovered via `<script>` tag; emits single hashed JS). Bundle hashes: JS `74e239e6.js` → `4ce16ecc.js`, CSS `674133df.css` → `8ade01c3.css`. Wave 2 hashes pruned.
+
+4. **Coordinator (acting)** — New memo `coordinator-phase-i-wave-1-translator-gap.md`, commit `85c5328`: Bishop's Phase H Wave 2 detector emits `winResult.allPatterns` + `isRobbedKong` on SignalR path; Hicks's Phase I Wave 1 UI ready to render both. But `ChangshaToAutotableTranslator.BuildHandResult` (bundle WS path) never copied those nested objects — two paths diverged. **Fix:** Extend `HandResultEntry` to carry `WinResult?` + `ScoreResult?`; `BuildHandResult` populates both. **Pattern captured:** Multi-phase architectures need explicit carriers at every boundary (detector → state → scorer → translator) — don't re-run detectors downstream. This pattern emerged from Phase H Wave 2's `AllPatterns` carrier; now applied to translator-layer bridging.
+
+**Gate result:** Phase H Wave 2 baseline **357/0/1** → Phase I Wave 1 final **374 passed / 0 failed / 1 skipped** (+17 net passes from Vasquez's 12 acceptance + 8 unit tests; 1 test reclassified but still passes).
+
+**Inbox files:** All 5 memos present and read (4 agent + 1 coordinator translator-gap new-write); not deleted (`.squad/decisions/inbox/` is gitignored — local-only primary sources per standing instruction).
+
+**Notable:** 
+- **Regression prevention:** Hicks's discovery that Phase H Wave 2 chip strip was dead code (PascalCase ↔ camelCase mismatch) surfaced a hidden wire-enum risk. Added to decision memo as regression-prevention rule: always test PascalCase ↔ camelCase keys when enums cross language boundaries (C# → TypeScript). Recommend Phase J adds translator contract test.
+- **Build command fix:** Hicks's correction to the parcel build command (removing non-existent `src/index.html`) is a critical invariant for future frontend rebuilds — easy to forget, easy to produce duplicate artifacts. Surfaced prominently in decisions.md build-invariants section.
+- **Translator divergence pattern:** Coordinator memo generalized the "carrier at boundaries" pattern from Phase H Wave 2 (`AllPatterns` through state-machine) to Phase I Wave 1 (detector/scorer outputs through translator to WS wire). Multi-phase detectors should document all carriers upfront to prevent future gaps.
+
+**Branch ready for PR against `main`.** All four agents' Phase I Wave 1 work + coordinator translator fix captured in canonical decisions.md.
+
