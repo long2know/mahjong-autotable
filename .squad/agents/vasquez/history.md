@@ -445,3 +445,30 @@ Phase G locked two acceptance contracts via 11 new facts, 60 assertions (6 facts
 **Key learnings:** Reflection-backed tests are TDD-safe (compile always, fail-red until symbols appear). Privacy filter asymmetry (universal face-strip BUT hand.* rotation-override only) prevents breaking public-visibility invariants on discards/melds. Slot-parsing at `LastIndexOf('@')` vs `.IndexOf('.')` is correctness-critical for multi-@ edge cases.
 
 **Cross-agent coordination:** Bishop's ScheduleBotIfNeededAsync contract verified stable; Hicks confirmed UI now reads bot-tick timing from server. All 330/0/9 tests green.
+
+## Phase H Wave 1 — StateVersion + bot-timeout acceptance tests (2026-05-21)
+
+**Shipped by:** Vasquez (test engineer)
+
+Phase H Wave 1 locked two Bishop-owned contracts via 10 new test methods, ~30+ assertions (4 facts on `BotDecisionTimeoutMs` fallback, 6 facts on `StateVersion` optimistic concurrency). Both placeholder skips (`Bot_TimeoutFallback_DeferredV2`, `StateVersion_OptimisticConcurrency_DeferredToV2`) replaced with green acceptance tests.
+
+**Contracts locked:**
+
+1. **`ChangshaRuntimeOptions.BotDecisionTimeoutMs` (default 2000ms) — bot decision timeout fallback.** When a bot strategy's `DecideAction` exceeds the configured timeout, the runtime substitutes a safe-default action (`Discard(MediumStrategy.SelectDiscardTile(hand))` on own turn, `Pass` during claim) and the slow strategy task is fire-and-forget. Asserts: (a) hung strategy → safe-default discard, (b) safe-default selection matches `MediumStrategy.SelectDiscardTile`, (c) timeout during claim → Pass (no false-positive Hu), (d) fast strategy beats timeout → scripted (non-safe-default) tile lands.
+
+2. **`IChangshaGameRuntime` optimistic concurrency (optional trailing `int? expectedVersion = null` on 8 mutation methods).** When `expectedVersion` is supplied and differs from `state.StateVersion`, runtime throws `ChangshaConcurrencyException` carrying both expected and actual versions. Asserts: (a) `CreateGameAsync` resets to 0, (b) null `expectedVersion` bypasses guard, (c) matching version succeeds and StateVersion increments, (d) stale `expectedVersion` raises `ChangshaConcurrencyException`, (e) exception message includes both versions, (f) stale-version reject does NOT advance StateVersion (so later valid call with originally-fresh version still succeeds).
+
+**Test design:**
+- Inline `RuntimeHarness : IAsyncDisposable` per test file (mirrors `BotPickupSchedulerAcceptanceTests`) — temp SQLite, `WebApplicationFactory<Program>` with per-test option overrides.
+- `SlowBotStrategy : IChangshaBotStrategy` uses `Thread.Sleep` (not `Task.Delay`) inside `DecideAction` to simulate a hung sync call that the runtime's `Task.Run + Task.WhenAny` timeout wrapper must defeat.
+- Reflection-defensive symbol probes: every new Bishop symbol (`BotDecisionTimeoutMs` property, `_strategy`-typed field on runtime, `ChangshaConcurrencyException` type across 3 candidate namespaces, `expectedVersion` parameter resolved by NAME not position) located via reflection so the test assembly compiles independent of Bishop's commit order.
+- `DiscardWithVersionAsync` helper uses parameter-name matching (`"expectedVersion"`) and type matching to assemble positional args — robust to parameter reordering between (args, ct, expectedVersion).
+
+**Race condition discovered:**
+`Bot_Decision_Within_Timeout_ProceedsNormally` required `BotTurnDelayMs >= ~300ms` (started at default ~5ms) to give the test enough window between observing `AwaitingDiscard` and the bot's first decision firing — so hand override + strategy injection both land before `_strategy.DecideAction` is called. Locked at 300ms.
+
+**Critical incident:** Mid-session, Bishop amended commit `18683e9` → `0a2499d`; the amend re-checkout triggered something that briefly appeared to revert my uncommitted edits. False alarm — edits were actually intact. Lesson: when uncertain about working-dir state mid-session, `wc -l` + `grep -n` for known method names BEFORE re-applying anything. **Commit early, commit often** when working alongside another agent on the same branch.
+
+**Stability:** Phase H filter 11/0/0 across 2 consecutive runs. Full suite 340/0/7 (was 330/0/9 pre-work).
+
+**Cross-agent coordination:** Bishop shipped Phase H Wave 1 backend at `0a2499d` (`_strategy` field, `EnsureExpectedVersion` guard, `DecideActionWithTimeoutAsync` wrapper, `state.StateVersion = 0` reset on game create). Test commit lands at `9377ab1` on top of Bishop's work — tests green at commit time against shipped production code.
