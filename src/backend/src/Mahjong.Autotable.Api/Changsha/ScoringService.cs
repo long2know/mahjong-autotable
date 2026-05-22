@@ -23,11 +23,30 @@ namespace Mahjong.Autotable.Api.Changsha;
 ///   Big Win discard:     discarder pays 6 (non-dealer→non-dealer), 7 (dealer involved)
 ///   Big Win self-draw:   each pays 3 (non-dealer→non-dealer), 4 (dealer involved)
 ///
-/// Full Flush doubles the big-win multiplier.
+/// Phase H Wave 2 — Big Win stacking multiplier (per Ripley's design memo §2.3):
+///   Big Win patterns simultaneously satisfied → multiplier on base Big Win payment:
+///     1 pattern  →  ×1 (legacy behaviour, default for backward-compat callers)
+///     2 patterns →  ×2
+///     3+ patterns →  ×3 (cap; spec §5 is silent on stacking, so we cap defensively)
+///   Small Wins never stack (no Big Win flags fire) so the multiplier path doesn't apply.
 /// </summary>
 public interface IScoringService
 {
+    /// <summary>
+    /// Legacy entry point — single big-win pattern (×1 multiplier). Preserved verbatim so
+    /// pre-Phase-H-Wave-2 callers keep their behaviour. New callers that have a
+    /// <see cref="WinDetectionResult"/> in hand should prefer the overload that takes
+    /// <paramref name="bigWinPatternCount"/> directly.
+    /// </summary>
     ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush);
+
+    /// <summary>
+    /// Phase H Wave 2 — Big Win stacking aware overload. <paramref name="bigWinPatternCount"/>
+    /// is the size of <see cref="WinDetectionResult.AllPatterns"/> (number of Big Win flags
+    /// that fired). Values are clamped to [1, 3] before multiplying the base Big Win payment.
+    /// For Small Wins (Standard-only) the multiplier is forced to 1 regardless of input.
+    /// </summary>
+    ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush, int bigWinPatternCount);
 
     /// <summary>
     /// Builds the payment list for a 诈胡 (false-Hu) penalty per Baidu §诈胡处罚 — the
@@ -58,17 +77,28 @@ public sealed class ScoringService : IScoringService
     public const int FalseHuPenaltyPerOpponent = 6;
 
     public ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush)
+        => CalculateScore(win, dealerSeatIndex, isFullFlush, bigWinPatternCount: 1);
+
+    public ScoreResult CalculateScore(WinResult win, int dealerSeatIndex, bool isFullFlush, int bigWinPatternCount)
     {
         var payments = new List<PaymentEntry>();
         var category = ClassifyWin(win);
 
+        // Stacking multiplier (Phase H Wave 2): clamp the raw pattern count to [1, 3] for
+        // Big Wins; Small Wins never stack (no Big Win flag can fire), so force ×1. The
+        // multiplier is applied to per-payment Big Win amounts; Small Win amounts are
+        // unchanged for backward compatibility.
+        var multiplier = category == ScoreCategory.BigWin
+            ? Math.Clamp(bigWinPatternCount, 1, 3)
+            : 1;
+
         if (win.Method == WinMethod.SelfDraw)
         {
-            CalculateSelfDrawPayments(win, dealerSeatIndex, category, payments);
+            CalculateSelfDrawPayments(win, dealerSeatIndex, category, multiplier, payments);
         }
         else
         {
-            CalculateDiscardPayments(win, dealerSeatIndex, category, payments);
+            CalculateDiscardPayments(win, dealerSeatIndex, category, multiplier, payments);
         }
 
         var basePoints = payments.Sum(p => p.Amount);
@@ -120,6 +150,7 @@ public sealed class ScoringService : IScoringService
         WinResult win,
         int dealerSeatIndex,
         ScoreCategory category,
+        int multiplier,
         List<PaymentEntry> payments)
     {
         for (var seat = 0; seat < 4; seat++)
@@ -132,7 +163,7 @@ public sealed class ScoringService : IScoringService
 
             if (category == ScoreCategory.BigWin)
             {
-                amount = dealerInvolved ? BigWinSelfDrawDealer : BigWinSelfDrawBase;
+                amount = (dealerInvolved ? BigWinSelfDrawDealer : BigWinSelfDrawBase) * multiplier;
             }
             else
             {
@@ -144,7 +175,7 @@ public sealed class ScoringService : IScoringService
                 FromSeatIndex = seat,
                 ToSeatIndex = win.WinningSeatIndex,
                 Amount = amount,
-                Reason = $"{category}-selfDraw{(dealerInvolved ? "-dealer" : "")}"
+                Reason = $"{category}-selfDraw{(dealerInvolved ? "-dealer" : "")}{(multiplier > 1 ? $"-x{multiplier}" : "")}"
             });
         }
     }
@@ -153,6 +184,7 @@ public sealed class ScoringService : IScoringService
         WinResult win,
         int dealerSeatIndex,
         ScoreCategory category,
+        int multiplier,
         List<PaymentEntry> payments)
     {
         var dealerInvolved = win.SourceSeatIndex == dealerSeatIndex
@@ -161,7 +193,7 @@ public sealed class ScoringService : IScoringService
 
         if (category == ScoreCategory.BigWin)
         {
-            amount = dealerInvolved ? BigWinDiscardDealer : BigWinDiscardBase;
+            amount = (dealerInvolved ? BigWinDiscardDealer : BigWinDiscardBase) * multiplier;
         }
         else
         {
@@ -173,7 +205,7 @@ public sealed class ScoringService : IScoringService
             FromSeatIndex = win.SourceSeatIndex,
             ToSeatIndex = win.WinningSeatIndex,
             Amount = amount,
-            Reason = $"{category}-discard{(dealerInvolved ? "-dealer" : "")}"
+            Reason = $"{category}-discard{(dealerInvolved ? "-dealer" : "")}{(multiplier > 1 ? $"-x{multiplier}" : "")}"
         });
     }
 }
