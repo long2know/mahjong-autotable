@@ -119,6 +119,11 @@ public sealed class ChangshaGameStateMachine
 
         state.Phase = ChangshaPhase.AwaitingDiscard;
 
+        // Phase I Wave 1 — new hand starts with no kong-replacement context. Dealer's
+        // initial 14-tile hand is eligible for 天和 (HeavenlyHand) as long as they
+        // self-draw before any other action.
+        state.LastDrawWasKongReplacement = false;
+
         var events = new List<ChangshaEvent>
         {
             CreateEvent(state, "tiles-dealt", state.DealerSeatIndex,
@@ -188,6 +193,11 @@ public sealed class ChangshaGameStateMachine
         state.Phase = ChangshaPhase.BreakPointMarked;
         state.PickupSeatIndex = state.DealerSeatIndex;
         state.PickupRoundIndex = 0;
+
+        // Phase I Wave 1 — same reset as the auto-deal path (Deal). Manual-deal dealer's
+        // 14th tile (DealerExtra pickup) is eligible for 天和 because no discards or
+        // kong-replacements have happened yet.
+        state.LastDrawWasKongReplacement = false;
 
         return new List<ChangshaEvent>
         {
@@ -374,6 +384,10 @@ public sealed class ChangshaGameStateMachine
         // on subsequent discards within this hand. Self-draw was never blocked.
         state.MissedWinSeats.Remove(state.ActiveSeatIndex);
 
+        // Phase I Wave 1 — regular front-of-wall draw breaks any kong-replacement chain;
+        // a subsequent self-draw win is 海底捞月 (LastTileFromWall) at best, never 杠上开花.
+        state.LastDrawWasKongReplacement = false;
+
         return [CreateEvent(state, "tile-drawn", state.ActiveSeatIndex, tileId: tileId,
             detail: $"wall-remaining:{state.Wall.Count}")];
     }
@@ -386,6 +400,12 @@ public sealed class ChangshaGameStateMachine
         var hand = GetHand(state, seatIndex);
         if (!hand.ConcealedTiles.Remove(tileId))
             throw new InvalidOperationException($"Tile {tileId} not in seat {seatIndex}'s hand.");
+
+        // Phase I Wave 1 — discarding always breaks the kong-replacement chain; even
+        // a discard immediately following a kong-replacement draw makes a subsequent
+        // self-draw NOT a 杠上开花. Cleared here so the next draw or claim sees a
+        // clean slate.
+        state.LastDrawWasKongReplacement = false;
 
         state.DiscardPile.Add(new ChangshaDiscard
         {
@@ -531,6 +551,10 @@ public sealed class ChangshaGameStateMachine
             {
                 var replacementTile = DrawFromBack(state);
                 hand.ConcealedTiles.Add(replacementTile);
+                // Phase I Wave 1 — exposed-kong (claimed-from-discard) replacement
+                // also arms 杠上开花. The 4-tile claim is mechanically identical to
+                // a concealed kong from the replacement-draw perspective.
+                state.LastDrawWasKongReplacement = true;
                 events.Add(CreateEvent(state, "kong-replacement-drawn", claimingSeatIndex,
                     tileId: replacementTile));
             }
@@ -577,7 +601,37 @@ public sealed class ChangshaGameStateMachine
 
         var hand = GetHand(state, seatIndex);
         var detector = new ChangshaWinDetector();
-        var result = detector.Detect(hand, method: WinMethod.SelfDraw);
+
+        // Phase I Wave 1 — construct contextual bonuses for the detector. State machine
+        // owns the gating logic so the detector only has to consult the flags. Read these
+        // BEFORE any mutation (DeclareSelfDrawWin doesn't mutate the hand, so order is
+        // for documentation parity with ResolveHuClaim).
+        //
+        // HeavenlyHand (天和): dealer's initial 14-tile hand wins without any intervening
+        //   action. The dealer-deal path leaves DiscardPile empty, no melds in hand, and
+        //   LastDrawWasKongReplacement false — those three together prove "first action
+        //   after deal". A dealer who declares a concealed kong before declaring Hu has
+        //   Melds.Count > 0 AND LastDrawWasKongReplacement true → falls through to
+        //   KongReplacementWin instead.
+        //
+        // LastTileFromWall (海底捞月): the most recent draw exhausted the wall. Wall.Count
+        //   is post-draw at this point because DeclareSelfDrawWin is always called AFTER
+        //   the active seat has acquired their 14th tile.
+        //
+        // KongReplacementWin (杠上开花): set whenever the last hand mutation was a
+        //   kong-replacement draw. Mutually compatible with LastTileFromWall when the
+        //   replacement came from the very last tile of the wall.
+        var context = new WinContext
+        {
+            IsHeavenlyHand = state.DiscardPile.Count == 0
+                && seatIndex == state.DealerSeatIndex
+                && hand.Melds.Count == 0
+                && !state.LastDrawWasKongReplacement,
+            IsLastTileFromWall = state.Wall.Count == 0,
+            IsKongReplacementWin = state.LastDrawWasKongReplacement
+        };
+
+        var result = detector.Detect(hand, method: WinMethod.SelfDraw, context: context);
 
         if (!result.IsWin)
             throw new InvalidOperationException("Hand is not a winning hand.");
@@ -632,6 +686,9 @@ public sealed class ChangshaGameStateMachine
         {
             var replacementTile = DrawFromBack(state);
             hand.ConcealedTiles.Add(replacementTile);
+            // Phase I Wave 1 — concealed-kong replacement: arms the 杠上开花 flag.
+            // Cleared on the next Discard / regular DrawTile.
+            state.LastDrawWasKongReplacement = true;
             events.Add(CreateEvent(state, "kong-replacement-drawn", seatIndex,
                 tileId: replacementTile));
         }
@@ -736,6 +793,10 @@ public sealed class ChangshaGameStateMachine
         {
             var replacementTile = DrawFromBack(state);
             hand.ConcealedTiles.Add(replacementTile);
+            // Phase I Wave 1 — added-kong replacement (also reached from the
+            // robbing-the-added-kong pass-through via ResolveAddedKongPassed) — arms
+            // the 杠上开花 flag. Cleared on the next Discard / regular DrawTile.
+            state.LastDrawWasKongReplacement = true;
             events.Add(CreateEvent(state, "kong-replacement-drawn", seatIndex,
                 tileId: replacementTile));
         }
@@ -924,6 +985,32 @@ public sealed class ChangshaGameStateMachine
         // RobbingKong tag is purely a method-side annotation.
         var hand = GetHand(state, claimingSeatIndex);
         var isKongRobbing = claimWindow.IsKongRobbing;
+
+        // Phase I Wave 1 — capture contextual flags BEFORE the discard pile / hand
+        // mutations below, so EarthlyHand can read DiscardPile.Count == 1 and the
+        // hand's pre-claim meld state. State machine owns gating:
+        //
+        // EarthlyHand (地和): non-dealer claims Hu on the dealer's very first discard.
+        //   At this call site the dealer's discard is still in the pile (about to be
+        //   removed via RemoveLastDiscard), so DiscardPile.Count == 1 IS the canonical
+        //   signal. Source seat is checked via DiscardPile[0].SeatIndex == dealer. The
+        //   claimant must have no melds (otherwise they'd already taken some prior
+        //   action). Kong-robbing wins are excluded — the kong target tile isn't a
+        //   discard.
+        //
+        // LastDiscardCatch (河底捞鱼): regular discard Hu when the wall is already
+        //   exhausted (Wall.Count == 0 at claim time). Robbing-kong wins are excluded
+        //   per spec — the kong-target tile was never in the river.
+        var context = new WinContext
+        {
+            IsEarthlyHand = !isKongRobbing
+                && state.DiscardPile.Count == 1
+                && state.DiscardPile[0].SeatIndex == state.DealerSeatIndex
+                && claimingSeatIndex != state.DealerSeatIndex
+                && hand.Melds.Count == 0,
+            IsLastDiscardCatch = !isKongRobbing && state.Wall.Count == 0
+        };
+
         if (!isKongRobbing)
         {
             RemoveLastDiscard(state, claimWindow);
@@ -932,7 +1019,7 @@ public sealed class ChangshaGameStateMachine
 
         var detector = new ChangshaWinDetector();
         var method = isKongRobbing ? WinMethod.RobbingKong : WinMethod.Discard;
-        var result = detector.Detect(hand, claimWindow.DiscardTileId, method);
+        var result = detector.Detect(hand, claimWindow.DiscardTileId, method, context);
 
         if (!result.IsWin)
             throw new InvalidOperationException("Claimed Hu but hand is not winning.");
