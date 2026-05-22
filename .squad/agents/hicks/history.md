@@ -937,3 +937,103 @@ runtime stage.  No `modern/` references anywhere.
   (`mahjong.lobby.defaults`); when the LobbyState shape changes
   meaningfully, bump to `.v2` and ignore old payloads on read.
 
+
+## 2026-05-22 — Phase H Wave 2 — stacked-pattern chips + RobbingKong UI polish
+
+Optional polish for Bishop's V2-rules backend work.  Shipped on branch
+`stlong/phase-h-wave-2-v2-rules` (already cut from `main 8ec6cfa`).
+
+### What rendered
+
+- **Stacked-pattern chips** in the win-result modal — every big-win
+  pattern that fires (`AllPatterns[]`) gets its own colour-coded pill:
+  - 七对 Seven Pairs (purple)
+  - 碰碰胡 All Pungs (brown)
+  - 清一色 Full Flush (blue)
+  - 九幺 Nine Terminals (gold)  ← new for Phase H Wave 2
+  - `Standard` intentionally omitted (baseline non-stacking pattern,
+    per Ripley §2.3).
+- **RobbingKong badge** — prominent red-glow `抢杠胡 Robbing Kong`
+  tag rendered when `result.isRobbedKong === true` or
+  `result.method === 'RobbingKong'`.  Fires only on real Hu.
+- **Backward compat** — when `AllPatterns` is absent (Bishop's
+  protocol-layer commit not yet shipped) the UI falls back to the
+  legacy `result.pattern` single-pattern field, or simply hides the
+  chip strip if no pattern data is on the wire.
+
+### Defensive wire contract
+
+Local `ResultExtras` interface in `game-ui.ts:36` covers four optional
+new fields (`pattern?`, `method?`, `allPatterns?`, `isRobbedKong?`)
+plus PascalCase aliases.  Every field gracefully no-ops when missing.
+`HandResultEntry` itself in `types.ts` is **untouched** — out of Wave 2
+frontend scope.
+
+### Bundle hash transition
+
+| | Before (Phase H W1) | After (Phase H W2) |
+|---|---|---|
+| JS  | `autotable-src.c97ea9e9.js` (1.03 MB) | `autotable-src.74e239e6.js` (1.04 MB) |
+| CSS | `autotable-src.96cb3b60.css` (9.4 kB) | `autotable-src.674133df.css` (10.37 kB) |
+| Bootstrap CSS | `autotable-src.df85b4c4.css` | `autotable-src.df85b4c4.css` (unchanged) |
+
+Pruned: `autotable-src.c97ea9e9.js`, `autotable-src.96cb3b60.css`.
+
+### `--public-url .` invariant — verified
+
+The Wave 1 captured invariant held.  Build command (with corrected
+paths — task description had `src/index.html` typo, the file lives at
+package root):
+
+```bash
+cd src/frontend/autotable-src
+npx parcel build index.html about.html \
+  --dist-dir ../autotable \
+  --public-url . \
+  --no-source-maps \
+  --no-cache
+```
+
+Asset-path audit (`grep '^[a-z]+=/' index.html`) — zero absolute paths.
+All `href=` / `src=` references are bare hashed-asset filenames that
+resolve relative to the page, so the bundle mounts cleanly under
+`/autotable/`.
+
+### TS strict check
+
+`npx tsc --noEmit --strict --target es6 --moduleResolution bundler
+--esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts`
+→ exit 0.
+
+### Bot-watch enhancement — deferred
+
+The "bot turn-history sidebar" mentioned in the directive does not yet
+exist (`lobby.ts` is the pre-game setup sidebar, not a move log; grep
+for `turn-history|move-log|moveHistory` returned zero hits).  Flagged
+as a Phase I scope item: stand up a streaming move-log sidebar that
+renders `Bot 2 won by Robbing Kong (清一色 + 碰碰胡)` lines.
+
+### Manual smoke-test checklist (for reviewer)
+
+1. Run a Changsha hand to completion as a Hu.  Open the result modal.
+   - Single-pattern win → one chip below the winner line.
+   - Multi-pattern (e.g. 清一色 + 碰碰胡) → two chips, side by side.
+   - 九幺 win (once Vasquez's tests land) → gold chip.
+2. Force a RobbingKong scenario via Bishop's runtime path.  Verify the
+   red `抢杠胡 Robbing Kong` badge renders to the left of the chips.
+3. Trigger a Draw / ZhaHu — confirm chip strip stays hidden (no
+   stray pattern data on these result types).
+4. Refresh `/autotable/...` URL with cache disabled.  Confirm
+   `Network` tab loads `autotable-src.74e239e6.js` (NEW) and
+   `autotable-src.674133df.css` (NEW), no 404s for the deleted
+   `c97ea9e9.js` / `96cb3b60.css` hashes.
+
+### Phase I polish ideas
+
+- In-game move-log sidebar (deferred bot-watch enhancement).
+- Score multiplier breakdown in modal (`6 × 2 patterns = 12`).
+- 九幺-specific 3D highlight on terminal tiles.
+- Distinct Robbing-Kong audio cue.
+- Pattern-chip hover tooltips with spec excerpts.
+- Self-draw 自摸 badge (green counterpart to the red Robbing-Kong badge).
+- `handCount` progress pill in header (once Bishop wires the V2 runtime).

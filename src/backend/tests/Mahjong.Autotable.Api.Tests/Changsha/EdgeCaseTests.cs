@@ -97,11 +97,187 @@ public class EdgeCaseTests
             ChangshaGameStateMachine.Discard(state, dealer, foreign));
     }
 
-    [Fact(Skip = "Robbing exposed kong (抢杠胡) deferred to v2"), Trait("Category", "Changsha")]
-    public void ExposedKong_CanBeRobbed_DeferredToV2() { }
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "2")]
+    public void ExposedKong_CanBeRobbed_DeferredToV2()
+    {
+        // Phase H Wave 2 §2.2 (declarer-side, edge-case view): the inverse of
+        // RobbingKong_Win — an added kong (補杠) opens a Hu-only claim window for any
+        // seat that can win on the kong-target tile. Originally the
+        // `ExposedKong_CanBeRobbed_DeferredToV2` placeholder; un-skipped per Ripley's
+        // Phase H design memo §2.2.
+        //
+        // This test pairs with the broader RobbingKongAcceptanceTests suite — it pins
+        // the edge-case shape: WinResult.IsRobbedKong=true, Method=RobbingKong, with
+        // SourceSeatIndex pointing at the kong declarer (not the discarder).
+        var state = BuildAddedKongScenarioWithRobber();
 
-    [Fact(Skip = "Stacked big-win pattern multipliers deferred to v2"), Trait("Category", "Changsha")]
-    public void MultipleBigWinPatterns_ScoresStack_DeferredToV2() { }
+        ChangshaGameStateMachine.DeclareAddedKong(state, seatIndex: 0,
+            tileId: Tid(Suit.Wan, 5, 3));
+        ChangshaGameStateMachine.ResolveClaim(state, claimingSeatIndex: 2,
+            claimType: Tables.TableClaimType.Hu);
+
+        Assert.NotNull(state.CurrentWin);
+        Assert.Equal(WinMethod.RobbingKong, state.CurrentWin!.Method);
+        Assert.Equal(0, state.CurrentWin.SourceSeatIndex);
+
+        var isRobbedKong = ResolveIsRobbedKongProp(state.CurrentWin);
+        Assert.True(isRobbedKong,
+            $"WinResult.IsRobbedKong must be true on a robbing-kong win. " +
+            $"Bishop owes the Phase H Wave 2 contract (WinResult.IsRobbedKong : bool).");
+    }
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "2")]
+    public void MultipleBigWinPatterns_ScoresStack_DeferredToV2()
+    {
+        // Phase H Wave 2 §2.3: a hand that simultaneously satisfies AllPungs and
+        // FullFlush (e.g. all-Wan all-pungs) earns a ×2 stacked multiplier on the
+        // base Big Win payment. Without the multiplier the discard-win payment is
+        // 6 (non-dealer) or 7 (dealer); with ×2 it must be 12 or 14.
+        //
+        // Driven via the full Score() pipeline so the test pins both the detector
+        // contract (AllPatterns populated) AND ScoringService.CalculateScore wiring.
+        var stacked = ScoreStackedHand();
+        var single = ScoreSinglePatternHand();
+
+        Assert.True(stacked.BasePoints >= 2 * single.BasePoints,
+            $"AllPungs+FullFlush should pay ≥ 2× a single Big Win pattern. " +
+            $"Stacked={stacked.BasePoints}, Single={single.BasePoints}. " +
+            $"Bishop owes the Phase H Wave 2 contract (ScoringService applies " +
+            $"multiplier = AllPatterns.Count, clamped to [1, 3]).");
+    }
+
+    // ── Phase H Wave 2 — helpers (reflection-defensive against Bishop's contracts) ──
+
+    private static bool ResolveIsRobbedKongProp(WinResult win)
+    {
+        var prop = typeof(WinResult).GetProperty("IsRobbedKong",
+            BindingFlags.Public | BindingFlags.Instance);
+        if (prop is null)
+        {
+            throw new InvalidOperationException(
+                "WinResult.IsRobbedKong property not found — Bishop owes the Phase H Wave 2 contract.");
+        }
+        return (bool)(prop.GetValue(win) ?? false);
+    }
+
+    /// <summary>Build a kong-robbing scenario: seat 0 has exposed Pung of Wan-5 + 4th
+    /// Wan-5 in concealed; seat 2 has a 13-tile hand that completes on Wan-5; seats 1/3
+    /// empty.</summary>
+    private static ChangshaGameState BuildAddedKongScenarioWithRobber()
+    {
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 42,
+            botSeatIndexes: new[] { 0, 1, 2, 3 });
+        state.DealerSeatIndex = 0;
+        foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
+        ChangshaGameStateMachine.StartGame(state);
+        ChangshaGameStateMachine.RollDice(state, new DiceService(42));
+        ChangshaGameStateMachine.Deal(state);
+        state.ActiveSeatIndex = 0;
+
+        var wan5 = Logical(Suit.Wan, 5);
+        foreach (var h in state.Hands) h.ConcealedTiles.RemoveAll(t => t / 4 == wan5);
+        state.Wall.RemoveAll(t => t / 4 == wan5);
+
+        state.Hands[0].ConcealedTiles.Clear();
+        state.Hands[0].Melds.Clear();
+        state.Hands[0].Melds.Add(new Meld
+        {
+            Kind = MeldKind.Pung,
+            TileIds = new List<int>
+            {
+                Tid(Suit.Wan, 5, 0), Tid(Suit.Wan, 5, 1), Tid(Suit.Wan, 5, 2)
+            },
+            ClaimedFromSeatIndex = 3
+        });
+        state.Hands[0].ConcealedTiles.AddRange(new[]
+        {
+            Tid(Suit.Wan, 5, 3),
+            Tid(Suit.Tong, 2, 0), Tid(Suit.Tong, 2, 1), Tid(Suit.Tong, 2, 2),
+            Tid(Suit.Tong, 3, 0), Tid(Suit.Tong, 3, 1), Tid(Suit.Tong, 3, 2),
+            Tid(Suit.Tong, 4, 0), Tid(Suit.Tong, 4, 1), Tid(Suit.Tong, 4, 2),
+            Tid(Suit.Tong, 5, 0),
+        });
+
+        state.Hands[1].ConcealedTiles.Clear();
+        state.Hands[1].Melds.Clear();
+
+        state.Hands[2].ConcealedTiles.Clear();
+        state.Hands[2].Melds.Clear();
+        state.Hands[2].ConcealedTiles.AddRange(new[]
+        {
+            Tid(Suit.Wan, 1, 0), Tid(Suit.Wan, 2, 0), Tid(Suit.Wan, 3, 0),
+            Tid(Suit.Wan, 4, 0), Tid(Suit.Wan, 6, 0),
+            Tid(Suit.Wan, 7, 0), Tid(Suit.Wan, 8, 0), Tid(Suit.Wan, 9, 0),
+            Tid(Suit.Tiao, 1, 0), Tid(Suit.Tiao, 1, 1), Tid(Suit.Tiao, 1, 2),
+            Tid(Suit.Tiao, 5, 0), Tid(Suit.Tiao, 5, 1),
+        });
+
+        state.Hands[3].ConcealedTiles.Clear();
+        state.Hands[3].Melds.Clear();
+        state.MissedWinSeats.Clear();
+        state.Phase = ChangshaPhase.AwaitingDiscard;
+        return state;
+    }
+
+    /// <summary>Drive Score() on an AllPungs+FullFlush self-draw win and return the resulting
+    /// ScoreResult. Dealer-neutral: winner is seat 1, dealer remains seat 0, so the win is
+    /// "non-dealer self-draw, non-dealer involved" → base × multiplier per opponent (×3 base,
+    /// ×2 stack = 6 per opponent → 12 from non-dealer seats + 8 from dealer = stacked total).</summary>
+    private static ScoreResult ScoreStackedHand()
+    {
+        var state = BuildScoringScenario();
+        // Seat 1 self-draws a Wan-2-2 pair completing an AllPungs+FullFlush hand.
+        state.ActiveSeatIndex = 1;
+        state.Hands[1].ConcealedTiles.Clear();
+        state.Hands[1].Melds.Clear();
+        state.Hands[1].ConcealedTiles.AddRange(new[]
+        {
+            Tid(Suit.Wan, 1, 0), Tid(Suit.Wan, 1, 1), Tid(Suit.Wan, 1, 2),
+            Tid(Suit.Wan, 4, 0), Tid(Suit.Wan, 4, 1), Tid(Suit.Wan, 4, 2),
+            Tid(Suit.Wan, 5, 0), Tid(Suit.Wan, 5, 1), Tid(Suit.Wan, 5, 2),
+            Tid(Suit.Wan, 7, 0), Tid(Suit.Wan, 7, 1), Tid(Suit.Wan, 7, 2),
+            Tid(Suit.Wan, 2, 0), Tid(Suit.Wan, 2, 1),
+        });
+
+        ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
+        ChangshaGameStateMachine.Score(state);
+        return state.CurrentScore!;
+    }
+
+    private static ScoreResult ScoreSinglePatternHand()
+    {
+        var state = BuildScoringScenario();
+        // Seat 1 self-draws an AllPungs (NOT FullFlush) hand — 4 pungs across suits +
+        // pair of 3 (non-258, but AllPungs is 258-exempt). One pattern only.
+        state.ActiveSeatIndex = 1;
+        state.Hands[1].ConcealedTiles.Clear();
+        state.Hands[1].Melds.Clear();
+        state.Hands[1].ConcealedTiles.AddRange(new[]
+        {
+            Tid(Suit.Wan, 1, 0), Tid(Suit.Wan, 1, 1), Tid(Suit.Wan, 1, 2),
+            Tid(Suit.Wan, 9, 0), Tid(Suit.Wan, 9, 1), Tid(Suit.Wan, 9, 2),
+            Tid(Suit.Tong, 4, 0), Tid(Suit.Tong, 4, 1), Tid(Suit.Tong, 4, 2),
+            Tid(Suit.Tiao, 7, 0), Tid(Suit.Tiao, 7, 1), Tid(Suit.Tiao, 7, 2),
+            Tid(Suit.Tiao, 3, 0), Tid(Suit.Tiao, 3, 1),
+        });
+
+        ChangshaGameStateMachine.DeclareSelfDrawWin(state, seatIndex: 1);
+        ChangshaGameStateMachine.Score(state);
+        return state.CurrentScore!;
+    }
+
+    private static ChangshaGameState BuildScoringScenario()
+    {
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 7,
+            botSeatIndexes: new[] { 0, 1, 2, 3 });
+        state.DealerSeatIndex = 0;
+        foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
+        ChangshaGameStateMachine.StartGame(state);
+        ChangshaGameStateMachine.RollDice(state, new DiceService(7));
+        ChangshaGameStateMachine.Deal(state);
+        state.Phase = ChangshaPhase.AwaitingDiscard;
+        return state;
+    }
 
     // ── Phase H Wave 1 — StateVersion optimistic concurrency ─────────────────────
     //

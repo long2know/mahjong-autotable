@@ -472,3 +472,37 @@ Phase H Wave 1 locked two Bishop-owned contracts via 10 new test methods, ~30+ a
 **Stability:** Phase H filter 11/0/0 across 2 consecutive runs. Full suite 340/0/7 (was 330/0/9 pre-work).
 
 **Cross-agent coordination:** Bishop shipped Phase H Wave 1 backend at `0a2499d` (`_strategy` field, `EnsureExpectedVersion` guard, `DecideActionWithTimeoutAsync` wrapper, `state.StateVersion = 0` reset on game create). Test commit lands at `9377ab1` on top of Bishop's work — tests green at commit time against shipped production code.
+
+## Phase H Wave 2 — V2 rules acceptance tests (2026-05-21)
+
+**Shipped by:** Vasquez (test engineer)
+
+Wave 2 unlocked 3 V2-deferred Big Win rules (NineTerminals, RobbingKong, Stacked Big Win patterns) by un-skipping 6 placeholder tests + shipping 2 new acceptance suites — 17 net Wave 2 facts across 5 test files. Three commits: `adf3ca8` (detector + win-result tests), `c9e9b29` (RobbingKong state-machine acceptance), `046fc8e` (StackedBigWin scoring acceptance). All tagged `[Trait("Wave","2")]` for filter-based regression runs.
+
+**Contracts locked:**
+
+1. **`WinPattern.NineTerminals` + `ChangshaWinDetector.CheckNineTerminals`.** Changsha-adapted 九幺 ("Nine Terminals") Big Win — every tile in the 14-tile hand is rank 1 or 9 of any suit, all 6 distinct terminals present. NO structural-decomposition requirement (deviation from Ripley §2.1's strict "4 sets + pair OR 7 pairs" wording, per my binding `NineTerminals_RankBoundsOnly` test — Bishop adopted the relaxation in commit `9784604`).
+
+2. **`WinDetectionResult.AllPatterns` + `ScoringService.CalculateScore(WinResult, int, bool, int)`.** Detector populates AllPatterns in enum-declaration order (SevenPairs < AllPungs < FullFlush < NineTerminals; Standard NEVER included). 4-arg CalculateScore applies `Math.Clamp(bigWinPatternCount, 1, 3)` multiplier to Big Win payments; Small Wins forced to ×1.
+
+3. **抢杠胡 (Robbing the Added Kong).** `WinResult.IsRobbedKong : bool` + `ChangshaClaimWindow.IsKongRobbing : bool` + `KongDeclarerSeatIndex : int?`. State machine: `DeclareAddedKong` scans for Hu opportunities BEFORE upgrading the meld; if any exist, opens a Hu-only `ChangshaClaimWindow`; `ResolveClaim(Hu)` tags `Method=RobbingKong, IsRobbedKong=true`; `PassClaim` → `ResolveAddedKongPassed` completes the kong on the declarer's behalf (replacement from back of wall). Concealed kongs are NEVER robbable per spec §3.4.3.
+
+**Test design:**
+
+- **Reflection-defensive helpers** — `ResolveIsRobbedKong(WinResult)`, `AssertIsKongRobbingWindow(ChangshaClaimWindow)`, `InvokeCalculateScore(...)` reach for Bishop's symbols via `BindingFlags.Public | BindingFlags.Instance`. Missing-symbol probes throw `InvalidOperationException("…Bishop owes the Phase H Wave 2 contract…")` so the test assembly compiles regardless of his commit order.
+- **Deterministic scenarios** — `BuildRobbingKongScenario(seat2CanHu, seat0Mode)` and `BuildAddedKongScenarioWithRobber` strip the kong-target tile (Wan-5) from all hands + the wall before injecting the test setup. Seat 2 either holds a Wan-5-waiting hand (chow 1-2-3 + Wan-4,6 + chow 7-8-9 + pung Tiao-1 + pair Tiao-5) or doesn't.
+- **Wan-only stacked hand** — `ScoreStackedHand` self-draws on an all-Wan all-pungs structure (1×3, 4×3, 5×3, 7×3, 2×2) so the detector flags both AllPungs and FullFlush; `ScoreSinglePatternHand` uses an across-suits AllPungs hand (Wan-1 + Wan-9 + Tong-4 + Tiao-7 + Tiao-3 pair) for the baseline.
+- **`AllPatterns` ordering invariant** — `AllPatterns_Ordering_Is_Deterministic` pins enum-declaration order on TWO different hand shapes (AllPungs+FullFlush AND SevenPairs+FullFlush) + verifies Standard is NEVER included.
+
+**Coordination gap discovered:**
+
+`ChangshaGameStateMachine.Score()` still calls the legacy 3-arg `CalculateScore` overload (multiplier = 1). Bishop's Wave 2 shipped the contract surface (4-arg overload + AllPatterns) but did NOT wire `Score()` through. `MultipleBigWinPatterns_ScoresStack_DeferredToV2` is the binding RED until he closes the gap — suggested fix: persist `AllPatterns.Count` on `WinResult` in the detector path, then read it in `Score()`. Documented in `.squad/decisions/inbox/vasquez-phase-h-wave-2.md`.
+
+**Stability:**
+
+- **Wave 2 filter:** 16 passed / 1 failed / 0 skipped (the 1 RED is the pending Bishop wiring).
+- **Full suite:** 356 passed / 1 failed / 1 skipped. Skip count dropped from 7 (Wave 2 baseline) to 1 (only the pre-existing `AutotableWsRelayTests.Update_IsIsolated_PerGameId`, unrelated to V2 rules).
+
+**Working-tree wipe (Wave 1 lesson reinforced):** Mid-session, what appeared to be Bishop's amended commit briefly rolled my uncommitted edits + new test file into a `vasquez-wip-2` stash. Recovered via `git stash pop stash@{0}`. Reinforcement: **always check `git stash list` before re-applying work that "appears lost"** when sharing a branch with another agent.
+
+**Cross-agent coordination:** Bishop shipped Wave 2 backend across 4 commits (`a6e876d` NineTerminals, `9784604` AllPatterns + scoring overload, `de6f721` robbing-kong state-machine, `16b7b39` runtime wiring) + history (`a227592`). Hicks shipped Wave 2 frontend at `257faa5` (independent of my surface). My 3 test commits land cleanly on top — green/red as planned per Ripley's coordination memo.

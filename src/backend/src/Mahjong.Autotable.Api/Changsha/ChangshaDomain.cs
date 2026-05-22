@@ -48,7 +48,17 @@ public enum WinPattern
     Standard,      // 4 sets + 1 pair (258 pair rule)
     SevenPairs,    // 7 distinct pairs
     AllPungs,      // 碰碰胡 — 4 pungs/kongs + pair
-    FullFlush      // 清一色 — single suit
+    FullFlush,     // 清一色 — single suit
+
+    /// <summary>
+    /// 九幺 (jiǔ-yāo) — Changsha-adapted "Nine Terminals" Big Win. Every tile in the
+    /// 14-tile hand is rank 1 or rank 9 of any suit. The hand must still form a valid
+    /// mahjong structure (4 sets + pair, OR 7 pairs). Introduced in Phase H Wave 2
+    /// (per Ripley's design memo §2.1) as the Changsha analog to the classical
+    /// ThirteenOrphans (十三幺) Big Win, which is structurally impossible in Changsha
+    /// because the 108-tile deck has no honor tiles. Same precedence tier as FullFlush.
+    /// </summary>
+    NineTerminals
 }
 
 public enum WinMethod
@@ -72,6 +82,26 @@ public sealed class WinResult
     public required int WinningTileId { get; init; }
     public required int SourceSeatIndex { get; init; }
     public bool IsFullFlush { get; init; }
+
+    /// <summary>
+    /// Phase H Wave 2 — true when this win was declared by 抢杠胡 (Robbing the Added Kong).
+    /// The winning tile was captured mid-kong-declaration from another seat's added-kong
+    /// (補杠 — 4th tile being added to an already-exposed pung). Tagged in addition to
+    /// <c>Method == WinMethod.RobbingKong</c> so scoring/auditing can branch without
+    /// re-parsing the method enum. Concealed kongs (暗杠) are never robbable per
+    /// spec §3.4.3, so this flag is always paired with Added-kind kongs.
+    /// </summary>
+    public bool IsRobbedKong { get; init; }
+
+    /// <summary>
+    /// Phase H Wave 2 — every Big Win pattern satisfied by the winning hand, mirrored
+    /// from <see cref="WinDetectionResult.AllPatterns"/> at win-declaration time so the
+    /// stacking multiplier survives the detector → state → scoring boundary. Order is
+    /// deterministic (enum-declaration order). Empty list = single-pattern win (×1
+    /// multiplier). <see cref="ScoringService.CalculateScore(WinResult,int,bool,int)"/>
+    /// uses <c>AllPatterns.Count</c> (clamped to [1, 3]) as the multiplier.
+    /// </summary>
+    public IReadOnlyList<WinPattern> AllPatterns { get; init; } = [];
 }
 
 /// <summary>
@@ -275,6 +305,28 @@ public sealed class ChangshaClaimWindow
     public int DiscardSeatIndex { get; set; }
     public int DiscardTileId { get; set; }
     public List<ChangshaClaimOpportunity> Opportunities { get; set; } = [];
+
+    /// <summary>
+    /// Phase H Wave 2 — true when the window was opened by an added-kong (補杠)
+    /// declaration rather than a regular discard. In this mode the window only
+    /// surfaces Hu opportunities (Pung/Kong/Chow are illegal — the tile is being
+    /// added to a kong, not discarded into the river). If any seat claims Hu the
+    /// resolver tags <see cref="WinResult.Method"/> as <see cref="WinMethod.RobbingKong"/>
+    /// with <see cref="WinResult.IsRobbedKong"/> = true; if all seats pass, the
+    /// state machine completes the kong normally (replacement draw + DrawingReplacement).
+    /// See <see cref="ChangshaGameStateMachine.DeclareAddedKong"/> +
+    /// <see cref="ChangshaGameStateMachine.CompleteAddedKongAfterPass"/>.
+    /// </summary>
+    public bool IsKongRobbing { get; set; }
+
+    /// <summary>
+    /// Phase H Wave 2 — when <see cref="IsKongRobbing"/> is true, this is the seat
+    /// declaring the added-kong (i.e. the seat whose pung is being upgraded). It is
+    /// the <see cref="WinResult.SourceSeatIndex"/> for a successful robbing-kong Hu.
+    /// Mirrors <see cref="DiscardSeatIndex"/> semantically — kept as a separate field
+    /// for clarity in serialised state.
+    /// </summary>
+    public int? KongDeclarerSeatIndex { get; set; }
 }
 
 public sealed class ChangshaClaimOpportunity

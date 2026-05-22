@@ -484,6 +484,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             throw new HubException("DeclareKong requires at least one tile id.");
 
         var instance = Require(gameId);
+        bool openKongRobbingWindow = false;
         await instance.Lock.WaitAsync(ct);
         try
         {
@@ -505,13 +506,35 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             else
             {
                 ChangshaGameStateMachine.DeclareAddedKong(instance.State, seatIndex, tileIds[0]);
-                await EmitAddedKongAsync(instance, seatIndex, tileIds[0], ct);
+
+                // Phase H Wave 2 §2.2 — when an added kong opens a robbing-the-added-kong
+                // window (any other seat can Hu on the kong-target tile), the state-machine
+                // leaves the phase in AwaitingClaim with state.ClaimWindow.IsKongRobbing=true.
+                // We must NOT emit AddedKong yet — the kong isn't committed until the window
+                // resolves with no Hu. Instead, broadcast a Hu-only claim window so clients
+                // and bots can decide.
+                if (instance.State.Phase == ChangshaPhase.AwaitingClaim)
+                {
+                    openKongRobbingWindow = true;
+                }
+                else
+                {
+                    await EmitAddedKongAsync(instance, seatIndex, tileIds[0], ct);
+                }
             }
             await PersistSnapshotAsync(instance, ct);
         }
         finally
         {
             instance.Lock.Release();
+        }
+
+        // Phase H Wave 2 §2.2 — broadcast the robbing-the-added-kong claim window
+        // outside the instance lock (OpenClaimWindowAsync re-acquires the lock for
+        // its own bookkeeping). Mirrors the post-Discard claim-window broadcast.
+        if (openKongRobbingWindow)
+        {
+            await OpenClaimWindowAsync(instance, ct);
         }
     }
 
@@ -728,6 +751,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         bool huScored = false;
         bool advance = false;
         bool didTakeClaim = false;
+        bool kongRobbingPassed = false;
+        int kongRobbingDeclarerSeat = -1;
+        int kongRobbingTileId = -1;
         try
         {
             if (instance.State.ClaimWindow is null) return; // already resolved
@@ -735,6 +761,15 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
             // Pick winner across responded seats.
             var window = instance.State.ClaimWindow;
+            // Phase H Wave 2 §2.2 — capture kong-robbing context BEFORE PassClaim/ResolveClaim
+            // (both clear state.ClaimWindow). Used post-resolution to emit the added-kong
+            // completion events when every Hu opportunity passed.
+            var isKongRobbingWindow = window.IsKongRobbing;
+            if (isKongRobbingWindow)
+            {
+                kongRobbingDeclarerSeat = window.KongDeclarerSeatIndex ?? window.DiscardSeatIndex;
+                kongRobbingTileId = window.DiscardTileId;
+            }
             var responded = instance.PendingClaims
                 .Where(kvp => kvp.Value?.ClaimType is not null)
                 .Select(kvp => new { Seat = kvp.Key, kvp.Value!.ClaimType, kvp.Value!.TileIds })
@@ -743,7 +778,18 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             if (responded.Count == 0)
             {
                 ChangshaGameStateMachine.PassClaim(instance.State);
-                advance = true;
+                if (isKongRobbingWindow)
+                {
+                    // PassClaim dispatched to ResolveAddedKongPassed: the kong meld was
+                    // upgraded to AddedKong and the replacement was drawn from the back
+                    // of the wall (or Phase → WallExhausted). The declarer's turn
+                    // resumes — no opponent advance, no DrawTile.
+                    kongRobbingPassed = true;
+                }
+                else
+                {
+                    advance = true;
+                }
             }
             else
             {
@@ -777,7 +823,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 didTakeClaim = true;
                 if (winner.ClaimType == TableClaimType.Hu)
                 {
-                    // Discard win — score
+                    // Discard win OR robbing-the-added-kong win — same scoring path
+                    // (state.CurrentWin.Method is RobbingKong vs Discard internally;
+                    // EmitScoringAndHandFinishedAsync threads Method to clients).
                     ChangshaGameStateMachine.Score(instance.State);
                     await EmitScoringAndHandFinishedAsync(instance, ct);
                     huScored = true;
@@ -803,6 +851,20 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         if (huScored)
         {
             await StartNextHandOrEndAsync(instance, ct);
+            return;
+        }
+        if (kongRobbingPassed)
+        {
+            // §2.2 — kong completed on the declarer's behalf after every opponent passed.
+            // Emit the added-kong meld + replacement events and re-schedule the declarer's
+            // turn (no DrawTile — the back-of-wall replacement is already in their hand).
+            await EmitAddedKongAsync(instance, kongRobbingDeclarerSeat, kongRobbingTileId, ct);
+            if (instance.State.Phase == ChangshaPhase.WallExhausted)
+            {
+                await HandleWallExhaustedAsync(instance, ct);
+                return;
+            }
+            await ScheduleBotIfNeededAsync(instance, ct);
             return;
         }
         if (advance)
@@ -1263,7 +1325,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 winType = WinMethodToWire(win.Method),
                 winPattern = WinPatternToWire(win.Pattern),
                 winningTileId = win.WinningTileId,
-                sourceSeatIndex = win.SourceSeatIndex
+                sourceSeatIndex = win.SourceSeatIndex,
+                allPatterns = win.AllPatterns.Select(WinPatternToWire).ToArray(),
+                isRobbedKong = win.IsRobbedKong
             },
             hand = new
             {
@@ -1293,7 +1357,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 winType = WinMethodToWire(win.Method),
                 winPattern = WinPatternToWire(win.Pattern),
                 winningTileId = win.WinningTileId,
-                sourceSeatIndex = win.SourceSeatIndex
+                sourceSeatIndex = win.SourceSeatIndex,
+                allPatterns = win.AllPatterns.Select(WinPatternToWire).ToArray(),
+                isRobbedKong = win.IsRobbedKong
             },
             scoreResult = new
             {
@@ -1589,6 +1655,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         WinPattern.SevenPairs => "sevenPairs",
         WinPattern.AllPungs => "allPungs",
         WinPattern.FullFlush => "fullFlush",
+        WinPattern.NineTerminals => "nineTerminals",
         _ => "standard"
     };
 }

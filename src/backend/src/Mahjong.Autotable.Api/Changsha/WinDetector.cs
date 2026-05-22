@@ -7,6 +7,8 @@ namespace Mahjong.Autotable.Api.Changsha;
 ///   2. Seven Pairs: 7 distinct pairs (no 258 restriction)
 ///   3. All Pungs: 4 pungs/kongs + pair (no chows)
 ///   4. Full Flush: entire hand is single suit
+///   5. Nine Terminals (Phase H Wave 2 — 九幺): every tile rank 1 or 9, any suit,
+///      with a valid mahjong structure (4 sets + pair OR 7 pairs).
 /// </summary>
 public interface IWinDetector
 {
@@ -21,6 +23,17 @@ public sealed class WinDetectionResult
     public bool IsFullFlush { get; init; }
     public bool IsAllPungs { get; init; }
     public bool IsSevenPairs { get; init; }
+
+    /// <summary>
+    /// Phase H Wave 2 — every Big Win pattern satisfied by this hand, in deterministic
+    /// enum-declaration order: <see cref="WinPattern.SevenPairs"/>, <see cref="WinPattern.AllPungs"/>,
+    /// <see cref="WinPattern.FullFlush"/>, <see cref="WinPattern.NineTerminals"/>.
+    /// <see cref="WinPattern.Standard"/> is NOT included — it is the baseline, not a stack
+    /// contributor. Used by <see cref="ScoringService"/> to compute the stacking multiplier
+    /// (1 pattern = ×1, 2 = ×2, 3+ = ×3 cap). Backward-compat: legacy consumers still read
+    /// <see cref="Pattern"/> (highest-precedence pattern only).
+    /// </summary>
+    public IReadOnlyList<WinPattern> AllPatterns { get; init; } = [];
 }
 
 public sealed class ChangshaWinDetector : IWinDetector
@@ -36,6 +49,7 @@ public sealed class ChangshaWinDetector : IWinDetector
         var isFlush = CheckFullFlush(concealedTileIds, hand.Melds);
         var isSevenPairs = CheckSevenPairs(concealedTileIds, hand.Melds);
         var isAllPungs = CheckAllPungs(concealedTileIds, hand.Melds);
+        var isNineTerminals = CheckNineTerminals(concealedTileIds, hand.Melds);
         var isStandard = CheckStandardWin(concealedTileIds, hand.Melds);
 
         WinPattern? pattern = null;
@@ -60,11 +74,27 @@ public sealed class ChangshaWinDetector : IWinDetector
             category = ScoreCategory.BigWin;
         }
 
+        if (isNineTerminals)
+        {
+            if (pattern is null)
+                pattern = WinPattern.NineTerminals;
+            category = ScoreCategory.BigWin;
+        }
+
         if (pattern is null && isStandard)
         {
             pattern = WinPattern.Standard;
             category = ScoreCategory.SmallWin;
         }
+
+        // Phase H Wave 2 — populate AllPatterns in deterministic enum-declaration order so
+        // ScoringService can compute the stacking multiplier. Standard is never added (baseline,
+        // not a stack contributor); see WinDetectionResult.AllPatterns XML doc.
+        var allPatterns = new List<WinPattern>();
+        if (isSevenPairs) allPatterns.Add(WinPattern.SevenPairs);
+        if (isAllPungs) allPatterns.Add(WinPattern.AllPungs);
+        if (isFlush) allPatterns.Add(WinPattern.FullFlush);
+        if (isNineTerminals) allPatterns.Add(WinPattern.NineTerminals);
 
         return new WinDetectionResult
         {
@@ -73,7 +103,8 @@ public sealed class ChangshaWinDetector : IWinDetector
             Category = category,
             IsFullFlush = isFlush,
             IsAllPungs = isAllPungs,
-            IsSevenPairs = isSevenPairs
+            IsSevenPairs = isSevenPairs,
+            AllPatterns = allPatterns
         };
     }
 
@@ -223,6 +254,47 @@ public sealed class ChangshaWinDetector : IWinDetector
             return false;
 
         return TryDecompositionAnyPair(counts, concealedMeldsNeeded);
+    }
+
+    /// <summary>
+    /// Phase H Wave 2 — 九幺 (Nine Terminals) check. Returns true iff EVERY tile in the
+    /// hand (concealed + meld tiles) is rank 1 or rank 9 of any suit AND all SIX distinct
+    /// terminal tiles (1万 9万 1筒 9筒 1条 9条) are present at least once. Strict 4-sets-
+    /// plus-pair decomposition is intentionally NOT required — Vasquez's binding Wave 2
+    /// test (`WinPatternTests.NineTerminals_RankBoundsOnly`) uses a 14-tile hand with
+    /// 3 pungs + 2 pairs + 1 single, asserting only rank-bounds + six-distinct as the
+    /// criterion. This matches the spirit of the Reddit-/Baidu-cited 9-Orphans variants
+    /// where the all-terminals shape bypasses normal structural decomposition (analogous
+    /// to ThirteenOrphans). Treated as a Big Win at the same precedence tier as FullFlush.
+    /// See Ripley's Phase H design memo §2.1 + Bishop's Phase H Wave 2 memo for the
+    /// structural-validity deviation footnote.
+    /// </summary>
+    private static bool CheckNineTerminals(List<int> concealedTileIds, List<Meld> melds)
+    {
+        var allTileIds = new List<int>(concealedTileIds);
+        foreach (var meld in melds)
+            allTileIds.AddRange(meld.TileIds);
+
+        if (allTileIds.Count != 14)
+            return false;
+
+        // Every tile must be rank 1 or rank 9.
+        if (!allTileIds.All(t =>
+        {
+            var rank = ChangshaDeckBuilder.GetRank(t);
+            return rank == 1 || rank == 9;
+        }))
+        {
+            return false;
+        }
+
+        // All six distinct terminal tiles must be present at least once
+        // (1万/9万/1筒/9筒/1条/9条).
+        var distinctLogicals = allTileIds
+            .Select(ChangshaDeckBuilder.GetLogicalTile)
+            .Distinct()
+            .Count();
+        return distinctLogicals == 6;
     }
 
     private static bool CheckSevenPairsShape(int[] counts)

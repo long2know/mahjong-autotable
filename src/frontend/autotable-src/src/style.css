@@ -210,6 +210,49 @@
 .result-modal-content .result-tile.suit-p { color: #1d4a8a; }
 .result-modal-content .result-tile.suit-s { color: #1d6e3a; }
 
+/* Phase H Wave 2 — stacked-pattern chips + RobbingKong badge.
+ * Inserted dynamically by game-ui.ts after #result-winner.  Each big-win
+ * pattern (SevenPairs / AllPungs / FullFlush / NineTerminals) gets its own
+ * colour-coded chip; a single-pattern hand renders one chip, a stacked hand
+ * (e.g. 清一色 + 碰碰胡) renders the full strip.  The RobbingKong badge sits
+ * to the left of the chips when the win came via 抢杠胡. */
+#result-pattern-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    margin-top: -0.25rem;
+    margin-bottom: 0.75rem;
+}
+.result-pattern-chip {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffd75e;
+    line-height: 1.4;
+}
+.result-pattern-chip.pattern-seven-pairs    { background-color: #4a2d6e; color: #d8b9ff; border-color: #8c6dc8; }
+.result-pattern-chip.pattern-all-pungs      { background-color: #6e3a2d; color: #ffc4a8; border-color: #c87a5a; }
+.result-pattern-chip.pattern-full-flush     { background-color: #1d4a8a; color: #a8d4ff; border-color: #4a82d4; }
+.result-pattern-chip.pattern-nine-terminals { background-color: #5a4a1f; color: #ffe9a8; border-color: #c8a046; }
+.result-method-badge {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    background-color: #a83232;
+    color: #fff;
+    border: 1px solid #ff8888;
+    box-shadow: 0 0 8px rgba(255, 80, 80, 0.5);
+    letter-spacing: 0.5px;
+}
+
 /* Phase D — dice + break-point HUD (top-center). */
 #dice-hud {
     position: absolute;

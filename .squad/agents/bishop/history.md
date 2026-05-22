@@ -520,3 +520,80 @@ returns `BotAction.Wait()`. The else-branch of the test then asserts
 after a discard, so the assertion fails. **Vasquez test bug — flagged in the
 inbox decision drop, not a runtime correctness issue.** Pure-Bishop baseline
 (without Vasquez's stashed tests) remains 330/0/9 — Phase G parity preserved.
+
+---
+
+## 2026-05-22 — Phase H Wave 2 (V2 rules)
+
+Branch `stlong/phase-h-wave-2-v2-rules` (cut from `main` @ `8ec6cfa`). Implemented
+the three rule changes per Ripley's design memo §2:
+
+- **`a6e876d` — `WinPattern.NineTerminals`.** Added enum value (after FullFlush,
+  before Standard, preserving enum-declaration order for `AllPatterns`
+  population). Added `CheckNineTerminals` to `WinDetector` (initially with a
+  4-sets+pair OR 7-pairs structural guard); added `NineTerminals → "bigWin"` to
+  `ScoringService.ClassifyWin`; added `NineTerminals → "nineTerminals"` to
+  `WinPatternToWire` in the runtime. Baseline preserved: 340/0/7.
+
+- **`9784604` — `AllPatterns` + stacked Big Win multiplier.** Added
+  `WinDetectionResult.AllPatterns : IReadOnlyList<WinPattern>` populated in
+  enum order, excluding `Standard`. Added a 4-arg
+  `ScoringService.CalculateScore(win, dealer, isFullFlush, bigWinPatternCount)`
+  overload that scales Big Win payments by `clamp(count, 1, 3)`. The legacy
+  3-arg overload delegates with `count = 1` — byte-for-byte unchanged. Payment
+  `Reason` strings gain a `-x{N}` suffix when multiplier > 1. **Relaxed
+  `CheckNineTerminals`** to drop the structural-decomposition guard after
+  reading Vasquez's `NineTerminals_RankBoundsOnly` binding test, which uses a
+  hand that doesn't decompose into 4-sets+pair OR 7-pairs. Rationale: the
+  test's name + Vasquez's commit message + Reddit/Baidu sources all read "rank
+  bounds only, all six distinct terminals present." Deviation documented in
+  the Wave 2 memo §"Deviations §1". 344/0/3 — three Wave 2 Vasquez tests now
+  pass.
+
+- **`de6f721` — Robbing-the-added-kong claim window.** Added
+  `WinResult.IsRobbedKong : bool`, `ChangshaClaimWindow.IsKongRobbing : bool`,
+  `ChangshaClaimWindow.KongDeclarerSeatIndex : int?`, and
+  `IClaimAdjudicator.GetHuOnlyOpportunitiesForKong(...)`. Refactored
+  `DeclareAddedKong` to scan for Hu opportunities BEFORE mutating the hand;
+  if any seat can Hu on the kong-target tile, open a kong-robbing claim window
+  (NOT upgrade the meld yet) — the kong only commits when the window resolves
+  with no Hu. Extracted private `CompleteAddedKong` + `ResolveAddedKongPassed`
+  helpers. `PassClaim` and `ResolveClaim` now dispatch on `IsKongRobbing`:
+  pass → `ResolveAddedKongPassed` (declarer continues their turn); Hu →
+  `ResolveHuClaim` tags `WinResult.Method = RobbingKong, IsRobbedKong = true,
+  SourceSeatIndex = declarer`. Non-Hu claims on a kong-robbing window are
+  rejected (defensive). 344/0/3 preserved.
+
+- **`16b7b39` — Runtime wiring.** `DeclareKongAsync` now checks
+  `state.Phase == AwaitingClaim` after `DeclareAddedKong` and broadcasts the
+  kong-robbing window via `OpenClaimWindowAsync` instead of `EmitAddedKongAsync`.
+  `ResolveClaimWindowAsync` captures the kong-robbing context BEFORE
+  `PassClaim`/`ResolveClaim` (both clear `state.ClaimWindow`), and on all-pass
+  emits the added-kong + replacement events post-completion + re-schedules the
+  declarer's turn (no `DrawTile` — `CompleteAddedKong` already drew the
+  replacement). Wall-exhausted mid-replacement routes through
+  `HandleWallExhaustedAsync`. Lock discipline: `OpenClaimWindowAsync`
+  re-acquires the instance lock for its own bookkeeping, so it's called
+  outside the `DeclareKongAsync` lock scope. 344/0/3 preserved.
+
+Coordination notes:
+- Hicks pushed `257faa5` (Phase H Wave 2 UI) on top of my `a6e876d` between
+  Commit 1 and Commit 2; no content conflicts, my commits land cleanly on top.
+- Vasquez pushed `adf3ca8` (un-skipped NineTerminals tests + StackedBigWin
+  detector tests) AFTER my Commit 2. Her acceptance tests for RobbingKong
+  (`RobbingKongAcceptanceTests.cs`) and the un-skipped EdgeCaseTests Wave 2
+  tests are in working tree but **uncommitted with a duplicate-method-name
+  bug** — she defines `ExposedKong_CanBeRobbed_DeferredToV2` and
+  `MultipleBigWinPatterns_ScoresStack_DeferredToV2` twice each (the new live
+  versions AND the old empty `(Skip = ...)` placeholders). 39 build errors as
+  a result. Bishop stashed her WIP test files twice during build/test cycles
+  to verify production-code correctness in isolation, then restored. Vasquez
+  to fix: rename new tests to `_V2` suffix (matching the placeholder Skip
+  messages she already authored), or delete the placeholders.
+
+Final test baseline: **344 passed / 0 failed / 3 skipped** (Phase H Wave 2
+production-code baseline; Vasquez's WIP additions blocked by her own
+duplicate-method-name bug, not by Bishop's contracts).
+
+Open questions for Wave 3 documented in
+`.squad/decisions/inbox/bishop-phase-h-wave-2.md`.
