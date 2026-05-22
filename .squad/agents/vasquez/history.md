@@ -548,3 +548,49 @@ One full-suite run mid-wave showed `HuValidation258Tests.Hu_FromDiscard_258Compl
 - **Stability runs:** 3 consecutive full-suite invocations all 374/0/1 — no flakiness.
 
 **Cross-agent coordination:** Bishop shipped Wave 1 backend across 4 source commits (`afd59b9` enum + state flag, `7509685` WinContext + detector, `9e0439c` SM wiring, `419ba7a` WS wire) + 1 cross-lane test alignment (`0117a30` HuValidation258) + history doc (`569f122`). Hicks shipped Wave 1 frontend at `f91c95e` (score-multiplier breakdown + streaming move-log) + history (`ae506fd`) — independent of my surface. My 2 test commits (`b6a512e` + `cd95b5b`) land cleanly on top of Bishop's wiring, all 17 tests green at commit time. Total branch: 7 commits across 3 agents in strict-disjoint lanes, all green at HEAD. Detailed contract table + per-test status table at `.squad/decisions/inbox/vasquez-phase-i-wave-1.md`.
+
+## Phase I Wave 2 — Bot contextual Hu + hydration on startup (test-only lane)
+
+**Branch:** `stlong/phase-i-wave-2-hydration-bot-ctx`
+**Commits:** `0de4c31` (Phase A) + `3d911a0` (Phase B)
+**Gate:** **383 passed / 0 failed / 1 skipped** (+9 from Wave 1 baseline of 374/0/1).
+
+**Scope completed:**
+
+- **Phase A — `BotContextualHuTests.cs` (6 facts, 380/0/1 gate).** End-to-end verification that bots reach the state machine on each of the 5 contextual Big Win triggers (天和 / 地和 / 海底捞月 / 河底捞鱼 / 杠上开花) plus a stacked contextual × structural pattern (HeavenlyHand + FullFlush ⇒ ×2 ⇒ BasePoints=24). Drives `IChangshaGameRuntime` directly (no SignalR), injects a `SeatRouterStrategy` via the `_strategy` reflection seam where a specific dealer discard is required, overrides hands AFTER `StartGameAsync` returns and BEFORE the bot's `BotTurnDelayMs`-delayed turn fires.
+- **Phase B — `HydrationOnStartupTests.cs` (3 facts, 383/0/1 gate).** Verifies Bishop's `ChangshaGameRuntime.HydrateAsync` + `Program.cs` startup wiring re-populate `_games` from `ChangshaGames.StateJson` on process boot. Three scenarios: production-flow round-trip of an active mid-hand game, synthesized round-trip of `LastDrawWasKongReplacement = true` (Phase I W1 carrier flag), and synthesized round-trip of `WinResult.AllPatterns` + `IsRobbedKong` (Phase H W2 §2.2 + Phase I W1 stacking list).
+
+**Key discovery (Phase A) — the bot-pipeline observation race.**
+
+First test run: 5 of 6 tests timed out polling `state.CurrentWin != null`. Adding a diagnostic dump revealed the test was observing the state too late — `DeclareWinAsync` sets `CurrentWin`, calls `Score`, fires `EmitScoringAndHandFinishedAsync`, **persists**, and then `StartNextHandOrEndAsync` immediately rotates the banker and re-deals. The fresh `Deal` resets `state.CurrentWin = null`, so a poll on the state field misses the brief window.
+
+Fix: subscribe to `IChangshaGameRuntime.StateChanged` (which fires inside `PersistSnapshotAsync` with `CurrentWin` still set — verified by reading the runtime at line 1632-1645). The `WinObserver` helper captures the FIRST observed win and ignores all subsequent state changes (the re-dealt next hand). After this rework + raising `BotTurnDelayMs` from 250ms to 1500ms (StartGameAsync's hub broadcasts can eat 100+ms of the window), all 6 facts go green deterministically.
+
+Lesson: **for runtime-driven Hu / Score tests, never poll `state.CurrentWin`.** The runtime owns the lifecycle and clears it before the test gets to assert. Use `StateChanged` to snapshot the win at the moment it appears.
+
+**Key technique (Phase B) — direct SQLite insertion for hydration round-trips.**
+
+For tests 2 and 3 (kong-replacement flag + AllPatterns + IsRobbedKong), the natural production flow doesn't reliably leave the desired state persisted: `DeclareWinAsync` persists with `CurrentWin` set but immediately re-deals and overwrites the row with `CurrentWin = null`. Orchestrating a "snapshot intercept" between those two writes is racy.
+
+Instead, both tests synthesize the desired state via `ChangshaGameStateMachine` test helpers, JSON-serialize via the production-mirror `SnapshotJson` options (CamelCase, WriteIndented=false — matches `ChangshaGameRuntime.SnapshotJson` byte-identically), and insert directly into `ChangshaGames` via `Microsoft.Data.Sqlite`. A throwaway bootstrap factory creates the schema before the insert; the actual hydration test factory boots against the same SQLite path and Bishop's `Program.cs` line 54 runs `HydrateAsync` automatically.
+
+This isolates the contract under test ("Bishop's HydrateAsync reads the row, deserializes the JSON, populates `_games`, and surfaces `GameCount`") from the unrelated complexity of orchestrating a robbed-kong / kong-replacement scenario through the runtime.
+
+**Bishop's hydration contract (confirmed from his commit `bb752c4`):**
+
+- `IChangshaGameRuntime.GameCount { get; }` — counts active in-memory games.
+- `Task HydrateAsync(IServiceProvider services, CancellationToken ct = default)` — idempotent, safe-fail.
+- Reads from `AppDbContext.ChangshaGames` (not `MahjongDbContext` as the original directive said — Bishop's memo §1 documented the real name).
+- Skips rows with `Phase == EndGame` (terminal); `WallExhausted` is transient and hydrated.
+- Per-row deserialize exception is swallowed with a warning so one corrupt row doesn't gate boot.
+- `TryAdd` guards against clobbering a freshly-created game that races startup hydration.
+
+All three Wave 2 facts use `GameCount` as the assertion hook per Bishop's memo recommendation.
+
+**Stability:**
+
+- **Phase I Wave 2 filter (`--filter "Wave=Phase-I-2"`):** 9 passed / 0 failed / 0 skipped (6 bot-contextual + 3 hydration).
+- **Full suite:** 383 passed / 0 failed / 1 skipped. Same long-standing skip as Wave 1 (`AutotableWsRelayTests.Update_IsIsolated_PerGameId` cross-process WS isolation).
+- No production code changed — Vasquez Wave 2 lane is test-only by directive.
+
+**Cross-agent coordination:** Bishop landed hydration production code at `bb752c4` (runtime + Program.cs wiring, +101 LOC), Hicks landed UI tooltips + self-draw badge at `e096582`. My two test commits (`0de4c31` + `3d911a0`) land cleanly on top, all 383 green at HEAD. Branch total: 4 commits across 3 agents in strict-disjoint lanes, gate-clean at each step.
