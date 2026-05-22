@@ -472,6 +472,23 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_AllowsDiscardingExtraCopyOfSoleSmallWinPair_WhenTriplet()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 2), new(TileSuit.Characters, 2), new(TileSuit.Characters, 2),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 9),
+            new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.Changsha258);
+
+        tiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_DiscardsSmallWinSingleton_WhenAllPungsBigWinCandidate()
     {
         var tiles = new List<Tile>

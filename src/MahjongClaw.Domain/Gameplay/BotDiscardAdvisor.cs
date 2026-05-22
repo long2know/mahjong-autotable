@@ -1008,13 +1008,17 @@ public static class BotDiscardAdvisor
 
         if (soleChangshaSmallWinPairTile is not null)
         {
-            var nonPairCandidates = prioritizedCandidates
-                .Where(candidate => !candidate.Tile.Equals(soleChangshaSmallWinPairTile))
-                .ToList();
-
-            if (nonPairCandidates.Count > 0)
+            handCounts.TryGetValue(soleChangshaSmallWinPairTile, out var solePairCount);
+            if (solePairCount <= 2)
             {
-                prioritizedCandidates = nonPairCandidates;
+                var nonPairCandidates = prioritizedCandidates
+                    .Where(candidate => !candidate.Tile.Equals(soleChangshaSmallWinPairTile))
+                    .ToList();
+
+                if (nonPairCandidates.Count > 0)
+                {
+                    prioritizedCandidates = nonPairCandidates;
+                }
             }
         }
 
