@@ -2431,3 +2431,68 @@ Zero regressions in pre-Phase-I tests.
 
 ---
 
+## Phase J Wave 1 — Shanten claim gate + hot-seat swap + spectator camera lock
+
+**Timestamp:** 2026-05-25 (final sweep date)  
+**Branch:** `stlong/phase-j-wave-1-hardening` (all commits pushed)  
+**Final test count:** **409 / 0 / 0** (was 402/0/0 at Phase I Wave 4 → +7 net passes, zero-skip streak 3)  
+**Bundle hashes (Hicks):** JS `c93fbb44.js` → `214d524e.js`; CSS `3f21032c.css` → `884bb475.css`; Bootstrap unchanged.
+
+### Shanten claim acceptance gate (Bishop)
+
+**Surface area:** `HardStrategy.DecideClaimPhase` now consults `MinShantenToHu` for non-Hu opportunities. Accept iff post-claim shanten strictly drops. Hu unconditional (fast-path). Tie-breaker rank: Hu > Kong > Pung > Chow.
+
+**Behavioral contract:** (1) Hu is unconditional — no simulation, immediate accept. (2) Non-Hu claims (Pung / ExposedKong / Chow) require strict shanten drop; claims where post-claim shanten ≥ pre-claim are refused. (3) Among accepted non-Hu claims, rank-order by Hu > Kong > Pung > Chow. (4) Chow simulation mirrors `ChangshaGameStateMachine.RemoveChowTilesByLowestPattern` — first-viable-pattern selection in lowest-rank-first order — so gate matches what runtime will play.
+
+**Helpers added:** ClaimAcceptanceRank / ShantenAfterPungClaim / ShantenAfterExposedKongClaim / ShantenAfterChowClaim / TryRemoveByLogical / ProbeShantenWithExtraMeld (all private static, alongside Phase I Wave 4's ShantenAfterDiscardingLogical).
+
+**Class-level docstring rewritten:** Replaced Phase F "claims Chow only when fewer than 2 melds" heuristic with "Claims Hu unconditionally. Pung/Kong/Chow gated on strict shanten drop". Phase J Wave 1 note explains wiring, unconditional-Hu fast-path, tie-breaker ordering, chow-simulation-mirrors-runtime contract.
+
+**Why it matters:** Phase I Wave 4 Vasquez audit flagged `MinShantenToHu` as dead code (never called by `DecideClaimPhase`). This wave resolves it. Phase F fussy-chow rule had no shanten awareness; new gate refuses claims that destroy existing pair/pung partials, matching runtime's structural stability preference.
+
+**Task 2 deferred (wall-exhaustion fast-path):** Premise doesn't hold — `ChangshaGameStateMachine.AdvanceToNextPlayer:1076-1087` already checks `Wall.Count == 0` and short-circuits to `WallExhausted` before `AwaitingDiscard` is set. Both call sites route directly to `WallExhausted` on empty wall. Adding duplicate check in `DriveAfterAdvanceAsync` would be inert + risk dropping `wall-exhausted` event. Per wave brief, SKIP THIS TASK.
+
+### Hot-seat swap UI + spectator camera lock (Hicks)
+
+**Move button:** New row in sidebar HUD (between Game-ID and Leave-seat) with dark button + inline picker. Visibility: `connected() && match.get(0) === null` (disappears post-Deal). Picker: five buttons (Seat 0..3 + Spectate); current seat disabled; occupied seats disabled. Soft reconnect: `history.replaceState` rewrite `?seat=` (sticky `?gameId=`), clear local seats entry (avoid stale reapply), call `client.disconnect()`. Auto-reconnect picks up new seat via `buildWsUrl()`, body class + spectator pill re-sync automatically.
+
+**Spectator camera lock:** One-line fix. `world.ts` initializes `seat` field from `readSpectatorFromUrl()` instead of hard-coded 0, eliminating the seat-0 first-person flash between page load and first WS `seats` update. `main-view.ts:updateCamera` already had `fromTop` branch for `world.seat === null` (top-down view at table origin); no orbit-controls to disable.
+
+**Files:** `index.html` (move row + picker), `game-ui.ts` (Move button / picker logic / soft reconnect), `style.css` (panel / option styling), `world.ts` (seat initial value), bundles regenerated + old hashes pruned. `client-ui.ts` / `main-view.ts` untouched (existing infrastructure sufficient).
+
+**TS strict + Parcel:** Both gate clean. Test suite +1 over Phase I Wave 4 from Bishop's `361d805` commit on same branch.
+
+### Claim evaluator + hot-seat swap test suites (Vasquez)
+
+**ClaimEvaluatorTests.cs (4 facts):** Pinning Bishop's shanten-aware gate via reflection-defensive symbol probes.
+
+1. **Refuse on shanten-rise:** SevenPairs-candidate 13-tile hand (5 pairs + 3 lones, shanten=1). Discard 3rd copy of pair-rank; Pung breaks SevenPairs (meld disqualifies it per inspection), standard path caps at shanten=2. Pre=1, post=2 → refuse. Pre-shanten=1 sanity-pinned.
+2. **Accept on shanten-drop:** Chow-partial-rich shape (2 Wan, gapped Tong, pair, 2 Tiao partials + 2-pair + river Tiao-7) → Pung Tiao-7. Pre=3, post=2 (locking meld leaves 3-groupsNeeded shape). Strict drop → claim. Pre=3 sanity-pinned.
+3. **Unconditional Hu:** Even post-claim shanten=0 (clamped), Hu fast-path must bypass strict-drop check. Pre=0 assertion fires loud if clamp semantics change.
+4. **Tie-breaker rank (Pung-vs-Chow reframed):** Originally Kong-vs-Pung per directive, but mathematically unreachable — shanten counter treats 3-of-a-kind as complete pung (Kong from 3 existing ≥ Pung from 2 remaining → same or worse shanten). Reframed to Pung-vs-Chow, both drop shanten from 2 to 1; rank decides (Pung=2 > Chow=1). Kong lift remains defensible defence-in-depth but unexercisable via realistic adjudicator output.
+
+**HotSeatSwapTests.cs (3 facts):** Using WS client scaffold (same as SpectatorModeTests).
+
+1. **Player→player binding swap:** ws#1 seats 0, disconnect, ws#2 seats 1. Same runtimeGameId (binding survives). ws#2 in seat 1. ws#1's seat-0 binding orphaned (no seat-release on autotable disconnect — SignalR Hub path only). Documented as backend gap.
+2. **Player→spectator does-not-claim-seat:** ws#1 seats 0, disconnect, ws#2 JOIN as spectator (`?seat=-1`). Binding survives. Spectator's playerId not in any seat. ws#1's binding preserved. Caveat: "does-not-claim" reframes directive's "frees seat" wording — autotable disconnect doesn't call `HandleDisconnectAsync` (only Hub does). Bundle UI disables current seat in picker as workaround. Recommend Phase J Wave 2 brief if needed.
+3. **Spectator→player binds-seat:** ws#1 JOIN spectator, disconnect, ws#2 seats 2. Assertions: ws#2 claimed seat 2, spectator's playerId in no seat. Test neutral re: whether spectator's JOIN eagerly bound a runtime.
+
+**Gate result:** 409 / 0 / 0 — zero-skip streak now **3 waves** (I-W3, I-W4, J-W1).
+
+### Notable findings
+
+**Kong-over-Pung is theoretically dead code today.** Bishop's `ClaimAcceptanceRank` lifts Kong (rank 3) above Pung (rank 2), but shanten counter already counts concealed 3-of-a-kind as complete pung group. Kong from discard moves that group to declared meld (zero net gain); Pung removes 2 (leaves dangler, usually worse shanten). Lift remains defensible defence-in-depth (matches runtime's CCW seat-distance priority) but Phase J Wave 1 acceptance gate cannot exercise it. Vasquez reframed Fact 4 to Pung-vs-Chow instead.
+
+**Autotable WS disconnect doesn't release runtime seats.** Only SignalR Hub path calls `HandleDisconnectAsync`. Bundle workaround: disable current seat in picker. Flagged for Phase J Wave 2 as UX bug candidate if re-opening.
+
+### Phase J Wave 2 backlog
+
+1. **Autotable WS disconnect should release runtime seats** — parity with SignalR Hub (Hicks's picker disables current seat as workaround).
+2. **`HardStrategy.OnTurnStart` Win-context audit** — validate any-win context derives correctly in all paths.
+3. **i18n display ordering for `AllPatterns`** — localization across detector + state + scorer + translator.
+4. **NineTerminals strict-vs-loose semantics** — pending Stephen's call.
+5. **Per-game `_bindingLock` profiling** — multi-game load impact.
+6. **Seed 40595 4000-step pathology** — state-machine edge case trace (from Wave 4 backlog, still open).
+
+---
+
