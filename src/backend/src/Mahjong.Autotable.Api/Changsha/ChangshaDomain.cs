@@ -82,6 +82,16 @@ public sealed class WinResult
     public required int WinningTileId { get; init; }
     public required int SourceSeatIndex { get; init; }
     public bool IsFullFlush { get; init; }
+
+    /// <summary>
+    /// Phase H Wave 2 — true when this win was declared by 抢杠胡 (Robbing the Added Kong).
+    /// The winning tile was captured mid-kong-declaration from another seat's added-kong
+    /// (補杠 — 4th tile being added to an already-exposed pung). Tagged in addition to
+    /// <c>Method == WinMethod.RobbingKong</c> so scoring/auditing can branch without
+    /// re-parsing the method enum. Concealed kongs (暗杠) are never robbable per
+    /// spec §3.4.3, so this flag is always paired with Added-kind kongs.
+    /// </summary>
+    public bool IsRobbedKong { get; init; }
 }
 
 /// <summary>
@@ -285,6 +295,28 @@ public sealed class ChangshaClaimWindow
     public int DiscardSeatIndex { get; set; }
     public int DiscardTileId { get; set; }
     public List<ChangshaClaimOpportunity> Opportunities { get; set; } = [];
+
+    /// <summary>
+    /// Phase H Wave 2 — true when the window was opened by an added-kong (補杠)
+    /// declaration rather than a regular discard. In this mode the window only
+    /// surfaces Hu opportunities (Pung/Kong/Chow are illegal — the tile is being
+    /// added to a kong, not discarded into the river). If any seat claims Hu the
+    /// resolver tags <see cref="WinResult.Method"/> as <see cref="WinMethod.RobbingKong"/>
+    /// with <see cref="WinResult.IsRobbedKong"/> = true; if all seats pass, the
+    /// state machine completes the kong normally (replacement draw + DrawingReplacement).
+    /// See <see cref="ChangshaGameStateMachine.DeclareAddedKong"/> +
+    /// <see cref="ChangshaGameStateMachine.CompleteAddedKongAfterPass"/>.
+    /// </summary>
+    public bool IsKongRobbing { get; set; }
+
+    /// <summary>
+    /// Phase H Wave 2 — when <see cref="IsKongRobbing"/> is true, this is the seat
+    /// declaring the added-kong (i.e. the seat whose pung is being upgraded). It is
+    /// the <see cref="WinResult.SourceSeatIndex"/> for a successful robbing-kong Hu.
+    /// Mirrors <see cref="DiscardSeatIndex"/> semantically — kept as a separate field
+    /// for clarity in serialised state.
+    /// </summary>
+    public int? KongDeclarerSeatIndex { get; set; }
 }
 
 public sealed class ChangshaClaimOpportunity

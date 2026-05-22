@@ -459,6 +459,14 @@ public sealed class ChangshaGameStateMachine
 
         var events = new List<ChangshaEvent>();
 
+        // Phase H Wave 2 — robbing-the-added-kong window: only Hu is legal. Pung/Kong/Chow
+        // on a kong-target tile are mechanically impossible (the tile is already mid-meld).
+        if (claimWindow.IsKongRobbing && claimType != Tables.TableClaimType.Hu)
+        {
+            throw new InvalidOperationException(
+                $"Only Hu claims are valid on a robbing-the-added-kong window; got {claimType}.");
+        }
+
         if (claimType == Tables.TableClaimType.Hu)
         {
             return ResolveHuClaim(state, claimingSeatIndex, claimWindow);
@@ -543,6 +551,13 @@ public sealed class ChangshaGameStateMachine
         RequirePhase(state, ChangshaPhase.AwaitingClaim);
         var claimWindow = state.ClaimWindow
             ?? throw new InvalidOperationException("No claim window open.");
+
+        // Phase H Wave 2 — robbing-the-added-kong path: all opportunities have passed,
+        // so complete the kong on the original declarer's behalf and resume their turn.
+        if (claimWindow.IsKongRobbing)
+        {
+            return ResolveAddedKongPassed(state, claimWindow);
+        }
 
         // §3.6 missed-win: every seat that had a Hu opportunity in this window has now passed
         // on a winning discard. Mark them so their future Hu claims this hand are rejected.
@@ -645,6 +660,59 @@ public sealed class ChangshaGameStateMachine
         if (existingPung is null)
             throw new InvalidOperationException("No existing pung to extend.");
 
+        // Phase H Wave 2 §2.2 — 抢杠胡 (Robbing the Added Kong) opportunity scan.
+        // BEFORE mutating the hand, ask the adjudicator if any other seat can Hu on
+        // the candidate tile. If none can, fall through to the legacy "complete kong
+        // immediately" path so there's zero latency cost for the common case.
+        // §3.6 missed-win: seats flagged as MissedWin cannot win on a robbed kong
+        // (treated the same as a subsequent discard), so strip those opportunities
+        // here just like Discard() does.
+        var adjudicator = new ClaimAdjudicator();
+        var huOpportunities = adjudicator
+            .GetHuOnlyOpportunitiesForKong(seatIndex, tileId, state.Hands)
+            .Where(o => !state.MissedWinSeats.Contains(o.SeatIndex))
+            .ToList();
+
+        if (huOpportunities.Count > 0)
+        {
+            // Open a kong-robbing claim window — DO NOT yet upgrade the meld. The
+            // declarer's hand is mutated only when the window resolves (CompleteAddedKongAfterPass).
+            state.ClaimWindow = new ChangshaClaimWindow
+            {
+                DiscardSeatIndex = seatIndex,
+                DiscardTileId = tileId,
+                Opportunities = huOpportunities,
+                IsKongRobbing = true,
+                KongDeclarerSeatIndex = seatIndex
+            };
+            state.Phase = ChangshaPhase.AwaitingClaim;
+            return [
+                CreateEvent(state, "added-kong-declared", seatIndex, tileId: tileId,
+                    detail: $"logical:{logicalTile}"),
+                CreateEvent(state, "claim-window-open", seatIndex, tileId: tileId,
+                    detail: $"kongRobbing:true,opportunities:{huOpportunities.Count}")
+            ];
+        }
+
+        // No Hu opportunities — fast path. Complete the kong exactly as the pre-Wave-2
+        // implementation did.
+        return CompleteAddedKong(state, hand, existingPung, tileId, seatIndex);
+    }
+
+    /// <summary>
+    /// Phase H Wave 2 — completes an added-kong after the robbing-kong claim window
+    /// closes with no Hu (either all opponents passed, or there were no opportunities
+    /// in the first place — the fast path in <see cref="DeclareAddedKong"/>). Mutates
+    /// the hand: removes the 4th tile from concealed, upgrades the matching Pung meld
+    /// to AddedKong, and draws a replacement from the back of the wall.
+    /// </summary>
+    private static List<ChangshaEvent> CompleteAddedKong(
+        ChangshaGameState state,
+        ChangshaHandState hand,
+        Meld existingPung,
+        int tileId,
+        int seatIndex)
+    {
         hand.ConcealedTiles.Remove(tileId);
         existingPung.TileIds.Add(tileId);
         existingPung.TileIds.Sort();
@@ -676,6 +744,41 @@ public sealed class ChangshaGameStateMachine
             events.Add(CreateEvent(state, "wall-exhausted", seatIndex));
         }
 
+        return events;
+    }
+
+    /// <summary>
+    /// Phase H Wave 2 — robbing-kong window resolution: every Hu-eligible seat passed.
+    /// Completes the added kong on the original declarer's behalf. <see cref="ChangshaClaimWindow.IsKongRobbing"/>
+    /// must be true; called by <see cref="PassAddedKongClaim"/>.
+    /// </summary>
+    private static List<ChangshaEvent> ResolveAddedKongPassed(ChangshaGameState state, ChangshaClaimWindow window)
+    {
+        var declarerSeat = window.KongDeclarerSeatIndex
+            ?? throw new InvalidOperationException("KongDeclarerSeatIndex is required for a kong-robbing window.");
+        var tileId = window.DiscardTileId;
+        var hand = GetHand(state, declarerSeat);
+        var logicalTile = ChangshaDeckBuilder.GetLogicalTile(tileId);
+
+        var existingPung = hand.Melds.FirstOrDefault(m =>
+            m.Kind == MeldKind.Pung &&
+            m.TileIds.All(t => ChangshaDeckBuilder.GetLogicalTile(t) == logicalTile))
+            ?? throw new InvalidOperationException("Added-kong target pung disappeared from declarer's hand mid-window.");
+
+        // §3.6 missed-win: any seat that had Hu on the robbing-kong window but didn't
+        // claim it forfeits future Hu opportunities this hand.
+        FlagMissedWinSeats(state, window, declaringHuSeat: -1);
+
+        state.ClaimWindow = null;
+        state.ActiveSeatIndex = declarerSeat;
+        // After CompleteAddedKong we land back in AwaitingDiscard (replacement drawn) or
+        // WallExhausted — matches the pre-Wave-2 DeclareAddedKong fall-through.
+        var events = new List<ChangshaEvent>
+        {
+            CreateEvent(state, "claim-passed", declarerSeat, tileId: tileId,
+                detail: "kongRobbing:true")
+        };
+        events.AddRange(CompleteAddedKong(state, hand, existingPung, tileId, declarerSeat));
         return events;
     }
 
@@ -808,13 +911,22 @@ public sealed class ChangshaGameStateMachine
         int claimingSeatIndex,
         ChangshaClaimWindow claimWindow)
     {
-        // Add tile to hand (for scoring display)
+        // Phase H Wave 2 — kong-robbing wins (抢杠胡) take the same hand-mutation path
+        // (add the winning tile to concealed for detection / display) but DO NOT touch
+        // the discard pile (the tile is mid-meld, never entered the river). The detector
+        // still validates the hand as a standard 4+pair / 7-pairs / FullFlush / etc. — the
+        // RobbingKong tag is purely a method-side annotation.
         var hand = GetHand(state, claimingSeatIndex);
-        RemoveLastDiscard(state, claimWindow);
+        var isKongRobbing = claimWindow.IsKongRobbing;
+        if (!isKongRobbing)
+        {
+            RemoveLastDiscard(state, claimWindow);
+        }
         hand.ConcealedTiles.Add(claimWindow.DiscardTileId);
 
         var detector = new ChangshaWinDetector();
-        var result = detector.Detect(hand, claimWindow.DiscardTileId, WinMethod.Discard);
+        var method = isKongRobbing ? WinMethod.RobbingKong : WinMethod.Discard;
+        var result = detector.Detect(hand, claimWindow.DiscardTileId, method);
 
         if (!result.IsWin)
             throw new InvalidOperationException("Claimed Hu but hand is not winning.");
@@ -822,11 +934,18 @@ public sealed class ChangshaGameStateMachine
         state.CurrentWin = new WinResult
         {
             WinningSeatIndex = claimingSeatIndex,
-            Method = WinMethod.Discard,
+            Method = method,
             Pattern = result.Pattern!.Value,
             WinningTileId = claimWindow.DiscardTileId,
-            SourceSeatIndex = claimWindow.DiscardSeatIndex,
-            IsFullFlush = result.IsFullFlush
+            // For kong-robbing the source is the kong declarer (KongDeclarerSeatIndex),
+            // which mirrors DiscardSeatIndex by construction — kept as a separate read
+            // path so future changes to ChangshaClaimWindow shape don't silently break
+            // robbing-kong scoring attribution.
+            SourceSeatIndex = isKongRobbing
+                ? (claimWindow.KongDeclarerSeatIndex ?? claimWindow.DiscardSeatIndex)
+                : claimWindow.DiscardSeatIndex,
+            IsFullFlush = result.IsFullFlush,
+            IsRobbedKong = isKongRobbing
         };
 
         // §3.6 missed-win: if multiple seats had Hu in this window and only one declared,
@@ -839,7 +958,7 @@ public sealed class ChangshaGameStateMachine
 
         return [CreateEvent(state, "win-declared", claimingSeatIndex,
             tileId: claimWindow.DiscardTileId,
-            detail: $"method:discard,pattern:{result.Pattern}")];
+            detail: $"method:{(isKongRobbing ? "robbingKong" : "discard")},pattern:{result.Pattern}")];
     }
 
     /// <summary>

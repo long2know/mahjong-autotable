@@ -25,6 +25,24 @@ public interface IClaimAdjudicator
         int discardSeatIndex,
         int discardTileId,
         IReadOnlyList<ChangshaHandState> hands);
+
+    /// <summary>
+    /// Phase H Wave 2 — Hu-only opportunity scan used by the robbing-the-added-kong
+    /// (抢杠胡) graft on <see cref="ChangshaGameStateMachine.DeclareAddedKong"/>.
+    /// Unlike <see cref="GetOpportunities"/>, this overload:
+    ///   1. Excludes the seat declaring the added-kong (<paramref name="kongDeclarerSeatIndex"/>),
+    ///      whose pung is being upgraded.
+    ///   2. Surfaces ONLY <see cref="Tables.TableClaimType.Hu"/> opportunities — Pung/Kong/Chow
+    ///      on an added-kong tile are illegal because the tile is mid-meld, not a discard.
+    ///   3. Returns an empty list (cheap exit) when no seat can Hu on the candidate tile,
+    ///      letting the caller skip opening a claim window with zero latency cost.
+    /// Per spec §3.4.3, concealed kongs are NOT robbable — callers must not invoke this
+    /// helper for ConcealedKong declarations.
+    /// </summary>
+    List<ChangshaClaimOpportunity> GetHuOnlyOpportunitiesForKong(
+        int kongDeclarerSeatIndex,
+        int kongTileId,
+        IReadOnlyList<ChangshaHandState> hands);
 }
 
 public sealed class ClaimAdjudicator : IClaimAdjudicator
@@ -98,6 +116,32 @@ public sealed class ClaimAdjudicator : IClaimAdjudicator
                     SeatIndex = hand.SeatIndex,
                     ClaimType = TableClaimType.Chow,
                     Priority = ChangshaClaimPriority.TierOf(TableClaimType.Chow)
+                });
+            }
+        }
+
+        return opportunities;
+    }
+
+    public List<ChangshaClaimOpportunity> GetHuOnlyOpportunitiesForKong(
+        int kongDeclarerSeatIndex,
+        int kongTileId,
+        IReadOnlyList<ChangshaHandState> hands)
+    {
+        var opportunities = new List<ChangshaClaimOpportunity>();
+
+        foreach (var hand in hands)
+        {
+            if (hand.SeatIndex == kongDeclarerSeatIndex)
+                continue;
+
+            if (ChangshaWinDetector.IsWinningWith(hand, kongTileId))
+            {
+                opportunities.Add(new ChangshaClaimOpportunity
+                {
+                    SeatIndex = hand.SeatIndex,
+                    ClaimType = TableClaimType.Hu,
+                    Priority = ChangshaClaimPriority.TierOf(TableClaimType.Hu)
                 });
             }
         }
