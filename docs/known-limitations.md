@@ -2,6 +2,12 @@
 
 > Captured at Phase G GA (commit `730946c`). Updated as gaps close.
 
+## Changelog
+
+- **Phase I Wave 2** — persistence-on-restart hydration **shipped**.
+  `ChangshaGameRuntime.HydrateAsync` re-populates `_games` from the
+  `ChangshaGames` table on process boot; non-terminal games survive a restart.
+
 This page lists the V1 gaps a player or operator may notice during real play.
 Each item links back to the canonical [Changsha rules spec](rules/changsha-spec.md)
 section it diverges from and to the skipped backend test that pins the
@@ -188,20 +194,6 @@ React/REST surface and the Phase 5a relay tests were scoped accordingly.
 - Pinned by skipped test: `AutotableWsRelayTests.cs:182` ("single-game-per-instance coerces all gameIds to the default. Multi-game isolation will be revisited in Phase E.").
 - Implementation: `Autotable/AutotableConnectionManager` — connection routing.
 - Deferred to: Phase I+ (originally tagged Phase E; rolled forward).
-
----
-
-### Persistence-on-restart hydration not implemented
-
-The runtime writes snapshots to SQLite after every state transition (Phase D),
-but on process restart the in-memory games are **not** rehydrated from the
-database. A restart effectively starts every game over. This is documented
-in [docs/architecture.md §7](architecture.md#7-persistence) and was an
-explicit MVP-narrowing cut during the Phase A pivot synthesis.
-
-- Spec/design: `.squad/decisions.md` — Phase A pivot plan, "Defer
-  persistence-on-restart hydration … to v1.1".
-- Deferred to: v1.1 / Phase I+.
 
 ---
 
