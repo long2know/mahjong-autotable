@@ -1,4 +1,4 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.7934372e.css><body>
+<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.96cb3b60.css><body>
     <img id=dice-img src=dice.auto.391822b5.png style=opacity:0>
     <canvas id=center></canvas>
     
@@ -348,14 +348,50 @@
                 <label><input type=radio name=lobby-bot-difficulty value=Medium checked> Medium</label>
                 <label><input type=radio name=lobby-bot-difficulty value=Hard> Hard</label>
             </fieldset>
+
+            
+            <fieldset class=lobby-fieldset id=lobby-hand-count-fieldset>
+                <legend>Hands per match</legend>
+                <label><input type=radio name=lobby-hand-count value=4> 4 <small class=lobby-hint>(quick)</small></label>
+                <label><input type=radio name=lobby-hand-count value=8 checked> 8 <small class=lobby-hint>(East round)</small></label>
+                <label><input type=radio name=lobby-hand-count value=16> 16 <small class=lobby-hint>(half match)</small></label>
+                <label><input type=radio name=lobby-hand-count value=32> 32 <small class=lobby-hint>(full match)</small></label>
+            </fieldset>
+
+            
+            <details class=lobby-advanced id=lobby-advanced>
+                <summary>Advanced</summary>
+                <div class=lobby-advanced-body>
+                    <label class=lobby-seed-label for=lobby-seed>
+                        Seed <small class=lobby-hint>(optional, 0–2³¹−1)</small>
+                    </label>
+                    <input id=lobby-seed inputmode=numeric pattern=[0-9]* autocomplete=off spellcheck=false placeholder=random maxlength=10>
+                    <div id=lobby-seed-error class=lobby-seed-error style=display:none>
+                        Seed must be an integer between 0 and 2147483647.
+                    </div>
+                    <p class=lobby-advanced-hint>
+                        Leave blank for a random seed.  A fixed seed makes the
+                        whole game reproducible — useful for bug reports.
+                    </p>
+                </div>
+            </details>
         </div>
         <div class=lobby-footer>
+            <label class=lobby-save-defaults title="Persist these choices in this browser for next visit">
+                <input id=lobby-save-defaults type=checkbox>
+                Save as defaults
+            </label>
             <button id=lobby-apply type=button class="btn btn-sm btn-warning">
                 Apply &amp; Start
             </button>
         </div>
+        <div class=lobby-about>
+            <a id=lobby-about-link href=https://github.com/long2know/mahjong-autotable/blob/main/docs/known-limitations.md target=_blank rel="noopener noreferrer">
+                ℹ︎ About / Known Limitations
+            </a>
+        </div>
     </div>
 
-    <script type=module src=autotable-src.33f97fad.js></script>
+    <script type=module src=autotable-src.c97ea9e9.js></script>
 
 
