@@ -9,8 +9,9 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 ///   <item>Discards prefer "safe" tiles — anything already present in the discard pile
 ///   is heavily prioritised for discard since opponents have demonstrated they don't
 ///   need it.</item>
-///   <item>Claims Hu/Kong/Pung greedily like Medium; claims Chow only when the bot has
-///   fewer than 2 melds AND the chow doesn't open a winning tile to the opponents.</item>
+///   <item>Claims Hu unconditionally. Pung/Kong/Chow are gated on a strict shanten
+///   drop (see Phase J Wave 1 note below); naive "fussy Chow" heuristics from
+///   Phase F have been retired in favour of the shanten gate.</item>
 ///   <item>Declares concealed/added kong opportunistically but only when the resulting
 ///   hand state still has enough "loose" tiles to absorb a kong replacement draw.</item>
 /// </list>
@@ -23,6 +24,23 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 /// already statistically stronger than naive shanten-greedy for Changsha's mix
 /// of Big Win patterns, and BotStrengthTests pins this ordering as the no-regression
 /// baseline (see <c>vasquez-phase-i-wave-4.md</c>).
+///
+/// <para><b>Phase J Wave 1</b> promoted the rigorous shanten counter again — from
+/// "discard tie-breaker only" to "claim acceptance gate". <see cref="DecideClaimPhase"/>
+/// now consults <see cref="HandEvaluator.MinShantenToHu"/> on every non-Hu claim
+/// opportunity (Pung / Kong / Chow) and only accepts the claim when the simulated
+/// post-claim hand reports a strictly lower shanten than the current hand. A claim
+/// that leaves shanten unchanged (or pushes it higher) is refused, eliminating the
+/// prior heuristic-only path that occasionally turned strong hands into broken shapes
+/// — most visibly the Phase F Chow heuristic that accepted shape-breaking chows
+/// whenever the bot had &lt; 2 melds. Hu remains the unconditional fast-path (never
+/// refused, irrespective of the shanten check). Among multiple shanten-dropping
+/// claims the tie-breaker prefers Hu &gt; Kong &gt; Pung &gt; Chow, matching
+/// <see cref="ChangshaClaimPriority.TierOf"/> ordering with an explicit Kong-over-Pung
+/// preference since both share tier 2 there. The Chow simulation mirrors
+/// <c>ChangshaGameStateMachine.RemoveChowTilesByLowestPattern</c> (the runtime's
+/// chow-form picker when a bot supplies no explicit tile IDs) so the gate decision
+/// reflects the chow shape that will actually be played.</para>
 /// </summary>
 public sealed class HardStrategy : IChangshaBotStrategy
 {
@@ -105,35 +123,180 @@ public sealed class HardStrategy : IChangshaBotStrategy
     {
         var opportunities = state.ClaimWindow!.Opportunities
             .Where(o => o.SeatIndex == botSeatIndex)
-            .OrderByDescending(o => o.Priority)
             .ToList();
 
         if (opportunities.Count == 0)
             return BotAction.Pass();
 
+        // Hu is unconditional — a winning claim is never refused regardless of the
+        // shanten gate below. (The gate would also accept Hu since post-Hu shanten
+        // is by definition 0, but treating it as a fast-path keeps the gate code
+        // pure and avoids an unnecessary simulation for the most common claim.)
+        if (opportunities.Any(o => o.ClaimType == TableClaimType.Hu))
+            return BotAction.Claim(TableClaimType.Hu);
+
+        // Phase J Wave 1 shanten gate: only accept a Pung/Kong/Chow claim when
+        // accepting strictly drops the bot's shanten (post-claim < pre-claim).
+        // Same-or-worse shanten claims are refused — this eliminates the prior
+        // heuristic-only path that occasionally turned strong hands into broken
+        // shapes (most visibly the Phase F "fussy chow" rule).
+        var preShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
+        var discardTileId = state.ClaimWindow.DiscardTileId;
+        var discardLogical = ChangshaDeckBuilder.GetLogicalTile(discardTileId);
+
+        ChangshaClaimOpportunity? best = null;
+        var bestRank = -1;
+
         foreach (var opp in opportunities)
         {
-            if (opp.ClaimType == TableClaimType.Hu)
-                return BotAction.Claim(TableClaimType.Hu);
-
-            if (opp.ClaimType == TableClaimType.Kong)
-                return BotAction.Claim(TableClaimType.Kong);
-
-            if (opp.ClaimType == TableClaimType.Pung)
-                return BotAction.Claim(TableClaimType.Pung);
-
-            // Hard is fussier about Chow than Medium — only take it when the hand is
-            // clearly behind on melds AND we have very few loose tiles already (so the
-            // chow won't leave us stranded with junk).
-            if (opp.ClaimType == TableClaimType.Chow
-                && hand.Melds.Count < 2
-                && HandEvaluator.CountLooseTiles(hand) <= 3)
+            var postShanten = opp.ClaimType switch
             {
-                return BotAction.Claim(TableClaimType.Chow);
+                TableClaimType.Kong => ShantenAfterExposedKongClaim(hand, discardLogical, discardTileId),
+                TableClaimType.Pung => ShantenAfterPungClaim(hand, discardLogical, discardTileId),
+                TableClaimType.Chow => ShantenAfterChowClaim(hand, discardLogical, discardTileId),
+                _ => int.MaxValue
+            };
+
+            if (postShanten >= preShanten)
+                continue;
+
+            // Tie-breaker: Hu > Kong > Pung > Chow. Hu was handled above; among the
+            // remaining tiers Kong and Pung share TierOf == 2, so we lift Kong above
+            // Pung explicitly via ClaimAcceptanceRank.
+            var rank = ClaimAcceptanceRank(opp.ClaimType);
+            if (rank > bestRank)
+            {
+                best = opp;
+                bestRank = rank;
             }
         }
 
-        return BotAction.Pass();
+        return best is null ? BotAction.Pass() : BotAction.Claim(best.ClaimType);
+    }
+
+    /// <summary>
+    /// Phase J Wave 1 tie-breaker ordering for claim acceptance: Hu &gt; Kong &gt;
+    /// Pung &gt; Chow. Matches <see cref="ChangshaClaimPriority.TierOf"/> except that
+    /// Kong is lifted strictly above Pung (both share tier 2 in the resolver because
+    /// the runtime breaks Kong/Pung ties by CCW seat distance, but the bot's
+    /// acceptance gate has no such constraint — when both shanten-drop, Kong is the
+    /// stronger structural improvement since it commits four tiles instead of three).
+    /// </summary>
+    private static int ClaimAcceptanceRank(TableClaimType claimType) => claimType switch
+    {
+        TableClaimType.Hu => 4,
+        TableClaimType.Kong => 3,
+        TableClaimType.Pung => 2,
+        TableClaimType.Chow => 1,
+        _ => 0
+    };
+
+    /// <summary>
+    /// Probes the shanten of the hand assuming the bot claims a Pung on
+    /// <paramref name="discardTileId"/>: 2 concealed copies of
+    /// <paramref name="discardLogical"/> are moved into a new declared meld alongside
+    /// the discard. Returns <see cref="int.MaxValue"/> if the bot doesn't actually
+    /// hold the matching pair (defensive; the adjudicator already filters).
+    /// </summary>
+    private static int ShantenAfterPungClaim(ChangshaHandState hand, int discardLogical, int discardTileId)
+    {
+        var concealedAfter = new List<int>(hand.ConcealedTiles);
+        if (!TryRemoveByLogical(concealedAfter, discardLogical, 2))
+            return int.MaxValue;
+        return ProbeShantenWithExtraMeld(hand, concealedAfter, MeldKind.Pung, discardTileId);
+    }
+
+    /// <summary>
+    /// Probes the shanten of the hand assuming the bot claims an exposed Kong on
+    /// <paramref name="discardTileId"/>: 3 concealed copies move into a new declared
+    /// meld alongside the discard. Note this models an <see cref="MeldKind.ExposedKong"/>
+    /// (claim-from-discard) — concealed/added kongs come from the bot's own draw and
+    /// don't flow through the claim-window opportunity list.
+    /// </summary>
+    private static int ShantenAfterExposedKongClaim(ChangshaHandState hand, int discardLogical, int discardTileId)
+    {
+        var concealedAfter = new List<int>(hand.ConcealedTiles);
+        if (!TryRemoveByLogical(concealedAfter, discardLogical, 3))
+            return int.MaxValue;
+        return ProbeShantenWithExtraMeld(hand, concealedAfter, MeldKind.ExposedKong, discardTileId);
+    }
+
+    /// <summary>
+    /// Probes the shanten of the hand assuming the bot claims a Chow on
+    /// <paramref name="discardTileId"/>. Mirrors
+    /// <c>ChangshaGameStateMachine.RemoveChowTilesByLowestPattern</c> — the runtime
+    /// resolves bot chow claims (which never supply explicit tile IDs) by walking
+    /// the three possible chow shapes in lowest-rank-first order and taking the
+    /// first viable one. Replicating that selection here means the gate decision
+    /// reflects the chow shape that will actually be played, not an idealised best
+    /// case. Returns <see cref="int.MaxValue"/> if no chow form is mechanically
+    /// possible (defensive; the adjudicator only surfaces Chow when at least one is).
+    /// </summary>
+    private static int ShantenAfterChowClaim(ChangshaHandState hand, int discardLogical, int discardTileId)
+    {
+        var rank = discardLogical % 9;
+        var patterns = new List<(int A, int B)>();
+        if (rank >= 2) patterns.Add((discardLogical - 2, discardLogical - 1));
+        if (rank >= 1 && rank <= 7) patterns.Add((discardLogical - 1, discardLogical + 1));
+        if (rank <= 6) patterns.Add((discardLogical + 1, discardLogical + 2));
+
+        foreach (var (a, b) in patterns)
+        {
+            var concealedAfter = new List<int>(hand.ConcealedTiles);
+            if (TryRemoveByLogical(concealedAfter, a, 1) && TryRemoveByLogical(concealedAfter, b, 1))
+            {
+                return ProbeShantenWithExtraMeld(hand, concealedAfter, MeldKind.Chow, discardTileId);
+            }
+        }
+        return int.MaxValue;
+    }
+
+    /// <summary>
+    /// Removes <paramref name="count"/> tiles whose logical id matches
+    /// <paramref name="logical"/> from <paramref name="tiles"/> in place. Returns
+    /// <c>false</c> when fewer than <paramref name="count"/> matches exist (in which
+    /// case the partial removal is harmless because the list is a throwaway clone).
+    /// </summary>
+    private static bool TryRemoveByLogical(List<int> tiles, int logical, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            var idx = tiles.FindIndex(t => ChangshaDeckBuilder.GetLogicalTile(t) == logical);
+            if (idx < 0) return false;
+            tiles.RemoveAt(idx);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Constructs a probe <see cref="ChangshaHandState"/> with the supplied
+    /// post-claim concealed list and an extra declared meld, then runs the rigorous
+    /// shanten counter. Only <c>Melds.Count</c> influences
+    /// <see cref="HandEvaluator.MinShantenToHu"/>'s standard-shape decomposition (the
+    /// groupsNeeded budget) and its SevenPairs path (which disqualifies any hand
+    /// with declared melds), so the placeholder meld is content-free apart from
+    /// carrying the discard tile for traceability.
+    /// </summary>
+    private static int ProbeShantenWithExtraMeld(
+        ChangshaHandState hand,
+        List<int> concealedAfter,
+        MeldKind kind,
+        int discardTileId)
+    {
+        var simulatedMelds = new List<Meld>(hand.Melds.Count + 1);
+        simulatedMelds.AddRange(hand.Melds);
+        simulatedMelds.Add(new Meld
+        {
+            Kind = kind,
+            TileIds = new List<int> { discardTileId }
+        });
+        var probe = new ChangshaHandState
+        {
+            SeatIndex = hand.SeatIndex,
+            ConcealedTiles = concealedAfter,
+            Melds = simulatedMelds
+        };
+        return HandEvaluator.MinShantenToHu(probe, Array.Empty<int>());
     }
 
     private static int SelectDiscardTile(ChangshaHandState hand, ChangshaGameState state)
