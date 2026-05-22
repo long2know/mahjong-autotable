@@ -54,6 +54,24 @@ public interface IChangshaGameRuntime
     bool TryGetSnapshot(string gameId, out ChangshaGameState? state);
 
     /// <summary>
+    /// Test/diagnostic accessor: number of active in-memory games. Used by the
+    /// Phase I Wave 2 hydration acceptance tests to assert that a process restart
+    /// re-populates the runtime from <c>ChangshaGames.StateJson</c>.
+    /// </summary>
+    int GameCount { get; }
+
+    /// <summary>
+    /// Phase I Wave 2 — replay every non-terminal <c>ChangshaGames</c> row from
+    /// persistence into <c>_games</c>. Idempotent: a key that already exists
+    /// (e.g. a game that was created on the freshly-booted host before hydration
+    /// ran) is left untouched. Safe-fail: a per-row deserialize exception is
+    /// swallowed with a warning so one corrupt row cannot prevent the runtime
+    /// from coming up. Intended to be called once from <c>Program.cs</c>
+    /// immediately after <c>DatabaseBootstrapper.InitializeAsync</c>.
+    /// </summary>
+    Task HydrateAsync(IServiceProvider services, CancellationToken ct = default);
+
+    /// <summary>
     /// Raised after every applied state mutation, with the affected <c>gameId</c>.
     /// Subscribers (e.g. the autotable WS endpoint) read the current snapshot via
     /// <see cref="TryGetSnapshot"/> and broadcast it. Handlers must not throw; the
@@ -104,6 +122,89 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         }
         state = null;
         return false;
+    }
+
+    public int GameCount => _games.Count;
+
+    // ── Hydration (Phase I Wave 2) ────────────────────────────────────
+
+    public async Task HydrateAsync(IServiceProvider services, CancellationToken ct = default)
+    {
+        if (services is null) throw new ArgumentNullException(nameof(services));
+
+        var scopeFactory = services.GetRequiredService<IServiceScopeFactory>();
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        List<ChangshaGame> rows;
+        try
+        {
+            // Pull every persisted snapshot — finished-game filtering is done in
+            // memory after deserialization (the entity has no IsFinished column,
+            // and Phase I Wave 2 explicitly defers a schema migration).
+            rows = await db.ChangshaGames
+                .AsNoTracking()
+                .Where(g => g.StateJson != null && g.StateJson != "")
+                .ToListAsync(ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Hydration query failed; runtime starting with zero in-memory games.");
+            return;
+        }
+
+        var hydrated = 0;
+        foreach (var row in rows)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            ChangshaGameState? state;
+            try
+            {
+                state = JsonSerializer.Deserialize<ChangshaGameState>(row.StateJson, SnapshotJson);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize snapshot for game {GameId}; skipping.", row.Id);
+                continue;
+            }
+
+            if (state is null)
+            {
+                _logger.LogWarning("Snapshot for game {GameId} deserialized to null; skipping.", row.Id);
+                continue;
+            }
+
+            // Terminal phases: nothing to resume. WallExhausted is a transient
+            // pre-rotation state that the scoring loop drains on its own, so
+            // only EndGame is treated as "finished" here.
+            if (state.Phase == ChangshaPhase.EndGame) continue;
+
+            // Authoritative key is the row GUID — guard against a hypothetical
+            // drift between the row PK and the embedded state.GameId.
+            var gameId = row.Id.ToString();
+            if (!string.Equals(state.GameId, gameId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Snapshot GameId {EmbeddedGameId} disagrees with row {RowId}; using row id.",
+                    state.GameId, gameId);
+                state.GameId = gameId;
+            }
+
+            var instance = new ChangshaGameInstance(gameId, state);
+            if (_games.TryAdd(gameId, instance))
+            {
+                hydrated++;
+            }
+            else
+            {
+                _logger.LogDebug("Game {GameId} already present in runtime; hydration skipped this row.", gameId);
+                await instance.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        _logger.LogInformation("Hydrated {Count} Changsha game(s) from persistence.", hydrated);
     }
 
     // ── CreateGame ────────────────────────────────────────────────────

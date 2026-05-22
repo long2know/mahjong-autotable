@@ -226,6 +226,7 @@
     margin-bottom: 0.75rem;
 }
 .result-pattern-chip {
+    position: relative;
     display: inline-block;
     padding: 2px 10px;
     border-radius: 999px;
@@ -247,17 +248,83 @@
 .result-pattern-chip.pattern-last-tile      { background-color: #1d5a5a; color: #a8ffff; border-color: #46c8c8; }
 .result-pattern-chip.pattern-last-discard   { background-color: #5a3a1d; color: #ffd8a8; border-color: #c87a32; }
 .result-pattern-chip.pattern-kong-bloom     { background-color: #6e1f2d; color: #ffa8c4; border-color: #c84a5a; }
-.result-method-badge {
+
+/* Phase I Wave 2 — pattern-chip hover tooltip.  Positioned above the chip
+ * via `position: absolute`; pure-CSS reveal on hover.  `pointer-events: none`
+ * keeps the tooltip from blocking clicks on adjacent chips. */
+.pattern-tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 200px;
+    max-width: 280px;
+    padding: 6px 10px;
+    background-color: rgba(20, 20, 30, 0.96);
+    color: #f0f0f0;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+    font-size: 0.78rem;
+    font-weight: 400;
+    line-height: 1.35;
+    text-align: center;
+    white-space: normal;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
+    z-index: 1060; /* above bootstrap .modal (z=1050) */
+}
+.pattern-tooltip .pattern-tooltip-cn {
+    display: block;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #ffd75e;
+    margin-bottom: 2px;
+}
+.pattern-tooltip .pattern-tooltip-en {
+    display: block;
+    color: #e8e8e8;
+}
+.result-pattern-chip:hover .pattern-tooltip,
+.result-pattern-chip:focus .pattern-tooltip {
+    opacity: 1;
+}
+
+/* Phase I Wave 2 — shared win-type pill (自摸 / 点炮 / 抢杠).  The
+ * self-draw and discard pills render next to the winning seat name in
+ * #result-winner; the robbing-kong pill stays in #result-pattern-chips
+ * (where the Wave 2 badge already lives) so the three pills appear in
+ * two locations but speak the same visual language. */
+.result-win-type-pill {
     display: inline-block;
     padding: 3px 12px;
-    border-radius: 4px;
-    font-size: 0.9rem;
+    margin-left: 8px;
+    border-radius: 999px;
+    font-size: 0.85rem;
     font-weight: 700;
-    background-color: #a83232;
-    color: #fff;
-    border: 1px solid #ff8888;
-    box-shadow: 0 0 8px rgba(255, 80, 80, 0.5);
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
+    border: 1px solid;
+    vertical-align: middle;
+    line-height: 1.4;
+}
+.result-win-type-pill.win-type-self-draw {
+    background-color: #1d5a2d;
+    color: #d6ffbe;
+    border-color: #46c87a;
+    box-shadow: 0 0 6px rgba(70, 200, 122, 0.35);
+}
+.result-win-type-pill.win-type-discard {
+    background-color: #6e5a1f;
+    color: #ffeeb6;
+    border-color: #c8a046;
+    box-shadow: 0 0 6px rgba(200, 160, 70, 0.35);
+}
+.result-win-type-pill.win-type-robbing-kong {
+    background-color: #6e3a1d;
+    color: #ffd8a8;
+    border-color: #ff8c46;
+    box-shadow: 0 0 8px rgba(255, 140, 70, 0.45);
 }
 
 /* Phase D — dice + break-point HUD (top-center). */

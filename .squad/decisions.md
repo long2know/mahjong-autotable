@@ -2175,3 +2175,96 @@ Zero regressions in pre-Phase-I tests.
 
 ---
 
+## Phase I Wave 2 — Persistence hydration + bot contextual coverage + UI polish (2026-05-22)
+
+**Timestamp:** 2026-05-22T22:30Z
+**Branch:** `stlong/phase-i-wave-2-hydration-bot-ctx` (all commits pushed; ready for PR)
+**Commits:**
+- `bb752c4` 🔧 Bishop — runtime hydration on startup (closes #1 production gap)
+- `e096582` ⚩ Hicks — pattern tooltips + self-draw/discard/robbingKong pill badges + move-log win-type emoji distinction
+- `0de4c31` 🧪 Vasquez Phase A — BotContextualHuTests (6 facts)
+- `3d911a0` 🧪 Vasquez Phase B — HydrationOnStartupTests (3 facts)
+- `e7355f4` 📝 Vasquez history entry
+
+**Gate result:** `dotnet test` → **383 passed / 0 failed / 1 skipped** (was 374/0/1 at Phase I Wave 1 → +9 net passes).
+
+### Runtime hydration on startup (Bishop)
+
+**Files touched:**
+- `Changsha/Runtime/ChangshaGameRuntime.cs` — added `public async Task HydrateAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken)` + `public int GameCount { get; }`.
+- `Changsha/Runtime/IChangshaGameRuntime.cs` — added interface surface for both.
+- `Mahjong.Autotable.Api/Program.cs` — wired `HydrateAsync` call right after `DatabaseBootstrapper.InitializeAsync` in the startup scope block.
+- `docs/known-limitations.md` — removed "Persistence-on-restart hydration not implemented" bullet; added Phase I Wave 2 changelog line.
+
+**Design:**
+- Filter: hydrates all rows where `Phase != ChangshaPhase.EndGame` (in-memory deserialization, no schema migration). `WallExhausted` (draw terminal) may also merit exclusion — open question for Wave 3 review.
+- Idempotent + safe-fail: `TryAdd` guards against clobbering freshly created games; per-row deserialization failures skip with warning log (don't crash startup).
+- Round-trip verified: `LastDrawWasKongReplacement`, `AllPatterns`, `IsRobbedKong`, `ChangshaClaimWindow.IsKongRobbing` all serialize cleanly via System.Text.Json (no `JsonIgnore` annotations; auto-properties symmetric for read/write).
+- Public surface `GameCount { get; }` exposed on interface for test assertions (NOT reflection on `_games`).
+
+**Correction note:** DbContext type is `Mahjong.Autotable.Api.Data.AppDbContext` (NOT `MahjongDbContext` as upstream directive mentioned) — future agents should pin this spelling to avoid typo repetition.
+
+**Edge cases handled:**
+- Empty `StateJson` → skip with debug log.
+- Deserialize throws → per-row catch, warning log with game GUID, continue.
+- Race with concurrent `CreateGameAsync` → `TryAdd` returns false, debug log, continue.
+- `state.GameId` mismatches entity GUID → use entity ID as dictionary key (authoritative), warning log if mismatched.
+
+### Bot contextual Hu coverage (Vasquez Phase A)
+
+**File:** `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/BotContextualHuTests.cs`
+
+**6 acceptance tests** exercising bot decision pipeline end-to-end through `IChangshaGameRuntime`, confirming bot correctly declares Hu + populates `CurrentWin.AllPatterns` for all five contextual patterns:
+
+1. **HeavenlyHand** — dealer's initial 14-tile hand.
+2. **EarthlyHand** — first win after dealer's first discard.
+3. **LastTileFromWall** — self-draw when wall exhausted.
+4. **LastDiscardCatch** — discard win when wall exhausted.
+5. **KongReplacementWin** — self-draw after concealed kong replacement tile.
+6. **HeavenlyHand + FullFlush (stacking)** — both patterns populate `AllPatterns`; score multiplier verified (×2).
+
+**The observation-race pattern** (pin for future post-win tests):
+`DeclareWinAsync` sets `CurrentWin` then immediately `StartNextHandOrEndAsync` clears it. Polling `state.CurrentWin` reliably misses the window. Solution: **WinObserver** IDisposable (captured in Phase A tests) subscribes to `IChangshaGameRuntime.StateChanged` (fires inside `PersistSnapshotAsync` *before* next deal starts) and captures first non-null `CurrentWin`. Pattern is reusable for any future tests needing post-win state inspection.
+
+**Bot wiring verified:** `MediumStrategy` route, `SeatRouterStrategy` injection pattern (via reflection on `_strategy` field) for tests needing controlled discards. Bot correctly navigates contextual triggers without explicit `WinContext` passthrough — context is derived inside `DeclareSelfDrawWin` / `ResolveHuClaim` from authoritative state (correct separation of concerns; confirmed no bug surfaced).
+
+### Hydration round-trip suite (Vasquez Phase B)
+
+**File:** `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/HydrationOnStartupTests.cs`
+
+**3 integration tests** using `WebApplicationFactory<Program>` for end-to-end runtime instances:
+
+1. **RoundTripsActiveGame** — runtime #1 creates+drives a game past initial deal, dispose, build runtime #2 on same SQLite file, `HydrateAsync`, assert `GameCount == 1` + HandNumber / DealerSeatIndex / Hands.Count round-trip.
+2. **RoundTripsLastDrawWasKongReplacement** — kong-replacement scenario, persist mid-state (after replacement draw), hydrate, assert flag persisted.
+3. **RoundTripsAllPatternsAndIsRobbedKong** — robbing-the-added-kong win, persist after win, hydrate, assert `AllPatterns.Count > 0` + `IsRobbedKong == true`.
+
+**Hard timing windows handled:** Direct SQLite INSERT (via `Microsoft.Data.Sqlite`) of synthesized state for robbed-kong and kong-replacement scenarios (avoids upstream orchestration complexity). Isolates hydration contract verification from state-machine driving logic.
+
+### UI polish (Hicks)
+
+**Files touched:**
+- `src/frontend/autotable-src/src/game-ui.ts` — `PATTERN_TOOLTIPS` dictionary (10-entry coverage: Standard + 5 V2/V3 patterns + 5 contextual). `renderResultWinTypeBadge` helper. RobbingKong badge restyled.
+- `src/frontend/autotable-src/src/move-log.ts` — Hu action rows prefixed with emoji.
+- `src/frontend/autotable-src/src/style.css` — `.pattern-tooltip` + `.result-win-type-pill` classes + pill-type variants.
+- `src/frontend/autotable/autotable-src.*.{js,css}` — regenerated; old hashes pruned.
+
+**Deliverables:**
+1. **Pattern-chip hover tooltips:** Chinese name + English description. Pure CSS, `position: absolute`, `pointer-events: none`.
+2. **Win-type pill badges:** `自摸 Self-Draw` (green), `点炮 Discard ← Seat N` (yellow), `抢杠 Robbing the Kong` (orange) — consistent styling across all three. Self-draw / discard pills render in winner-line; robbing-kong stays in chip area (per spec).
+3. **Move-log win-type emoji:** 🀄 (self-draw), 🎯 (discard), ⚡ (robbing-kong) prefix.
+
+**CSS traps pinned for future agents:**
+- **Modal z-index:** `.pattern-tooltip` needs `z-index: 1060` to render above Bootstrap modal (1050). Wire `.pattern-tooltip` + Modal base (1050) + adjustment rule into future tooltip designs.
+- **Chip position:** `.result-pattern-chip` needs `position: relative` so tooltip's `position: absolute` anchors correctly relative to chip parent.
+
+**Build invariant:** `npx parcel build index.html --dist-dir ../autotable --public-url . --no-source-maps --no-cache` (same as Phase I Wave 1).
+
+### Open questions for Phase I Wave 3
+
+1. **WallExhausted hydration filter:** Bishop flagged that `Phase == WallExhausted` (draw terminal) might also warrant exclusion from hydration (like `Phase == EndGame`). Currently only `EndGame` is filtered. Recommend review + widen if semantics align.
+2. **Bot WinContext passthrough:** User directive flagged "bots should pass WinContext deliberately." Current implementation derives context inside state machine (bots only decide Hu/Pass) — correct separation of concerns. Phase A tests all pass green; no bug surfaced. Confirm this is the intended behavior.
+3. **i18n:** Pattern tooltips hardcoded English. Deferred to v1.1.
+4. **Persistence ordering for multi-server:** If Phase J introduces load balancing, confirm SQLite snapshot ordering (chronological game-start vs creation-order) meets rehydration needs across multiple backend instances.
+
+---
+

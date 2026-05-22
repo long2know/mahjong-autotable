@@ -653,3 +653,47 @@ Phase/WinningSeat/Method assertions.
 transient flag, robbing-kong + LastDiscardCatch interaction, bot-strategy
 pre-flight context, and AllPatterns display ordering for Hicks's UI lane.
 See `bishop-phase-i-wave-1.md`.
+
+---
+
+## Phase I Wave 2 — Runtime hydration on startup
+
+**Branch:** `stlong/phase-i-wave-2-hydration-bot-ctx`
+**Baseline:** 374/0/1 (Phase I Wave 1) → **374/0/1** after Wave 2 (no
+regressions; Vasquez's hydration acceptance suite lands in his lane).
+
+**Surface area:**
+- `Changsha/Runtime/ChangshaGameRuntime.cs` — added
+  `HydrateAsync(IServiceProvider, CancellationToken)` and `int GameCount`
+  (both on `IChangshaGameRuntime`).
+- `Mahjong.Autotable.Api/Program.cs` — invokes `HydrateAsync` immediately
+  after `DatabaseBootstrapper.InitializeAsync`, inside the existing startup
+  scope; passes `app.Lifetime.ApplicationStopping` for graceful shutdown.
+- `docs/known-limitations.md` — struck the "Persistence-on-restart hydration
+  not implemented" bullet; added a Changelog line noting Wave 2 ship.
+
+**Design highlights:**
+- Filter for "finished" games is done in memory after deserialization
+  (`state.Phase == ChangshaPhase.EndGame`) — no schema migration needed, per
+  the directive's "no migrations unless absolutely required" guard-rail.
+- `_games.TryAdd(gameId, instance)` for idempotency — a game created after
+  app build but before hydration completes is left alone.
+- Per-row deserialize exceptions are caught + logged at Warning level so
+  one corrupt row cannot prevent the runtime from coming up.
+- Authoritative dictionary key is `row.Id.ToString()`; if the embedded
+  `state.GameId` disagrees we log + fix on hydration.
+- Phase I Wave 1 / Phase H Wave 2 new state fields (`LastDrawWasKongReplacement`,
+  `WinResult.AllPatterns`, `WinResult.IsRobbedKong`, `ChangshaClaimWindow.IsKongRobbing`,
+  `KongDeclarerSeatIndex`) all round-trip on default `JsonSerializerOptions`
+  — no `[JsonIgnore]` anywhere in `Changsha/*`; all are auto-properties with
+  public init/set.
+
+**Open questions for Vasquez:**
+- Exposed `int GameCount { get; }` on `IChangshaGameRuntime` as the
+  hydration assertion hook.
+- Filter currently excludes `Phase == EndGame` only; if you'd also like
+  `WallExhausted` excluded (draw-game terminal) flag it on review.
+- DbContext is `AppDbContext`, not `MahjongDbContext` as the directive
+  said. Your test fixture should resolve the same name.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-i-wave-2-hydration.md`.

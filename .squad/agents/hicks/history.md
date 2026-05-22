@@ -1116,3 +1116,80 @@ Open-fallback lookup: `PATTERN_LABELS[normalizePatternKey(p)] ?? p`.
 - Audio cue per pattern (distinct chime for 天和, gong for stacked Big
   Wins).
 - Score-breakdown counter-ramp animation (0 → Total over ~600 ms).
+
+---
+
+## 2026-05-22 — Phase I Wave 2 — UI polish (pattern tooltips + self-draw badge + move-log win-type emoji)
+
+**Branch:** `stlong/phase-i-wave-2-hydration-bot-ctx`
+**Pre-wave bundle:** `autotable-src.4ce16ecc.js` + `autotable-src.8ade01c3.css`
+**Post-wave bundle:** `autotable-src.e6653bd3.js` + `autotable-src.60fe83d8.css`
+
+### Deliverables
+
+1. **Pattern-chip hover tooltips** — every chip in `#result-pattern-chips`
+   now carries a `<div class="pattern-tooltip">` child with the 大字
+   Chinese name + one-line English description.  Pure-CSS reveal
+   (opacity transition on `:hover`); `position: absolute` above the
+   chip; `pointer-events: none` so it never blocks clicks.  Dictionary
+   `PATTERN_TOOLTIPS` keyed by camelCase pattern key, normalised via
+   the existing `normalizePatternKey()`.
+2. **Self-draw / Discard / Robbing-Kong pill trio** — new
+   `.result-win-type-pill` shared base class with three colour
+   modifiers (`.win-type-self-draw` green, `.win-type-discard`
+   yellow, `.win-type-robbing-kong` orange).  Self-draw / Discard
+   render next to the winner name in `#result-winner`; RobbingKong
+   stays in the chip strip (restyled — old red `.result-method-badge`
+   rule removed, now uses the shared pill class).  Discard pill names
+   the source seat via `winResult.sourceSeatIndex`.
+3. **Move-log win-type emoji prefix** — Hu rows in the streaming
+   sidebar now lead with 🀄 (self-draw), 🎯 (discard), or ⚡
+   (robbing-kong).  Single-glyph prefix keeps the row tight.
+
+### Files touched
+
+- `src/frontend/autotable-src/src/game-ui.ts` — `PATTERN_TOOLTIPS`
+  const, `WinResultExtra` extended with `winType?` + `sourceSeatIndex?`,
+  chip rendering emits tooltip children, new
+  `renderResultWinTypeBadge` method, RobbingKong badge restyled.
+- `src/frontend/autotable-src/src/move-log.ts` — `WinResultLoose`
+  extended with `winType?`, Hu action text gets a category-emoji
+  prefix (`🀄 / 🎯 / ⚡`).
+- `src/frontend/autotable-src/src/style.css` — `.pattern-tooltip`,
+  `.result-win-type-pill` (+ three colour modifiers).  Old
+  `.result-method-badge` / `.method-robbing-kong` removed.
+- `src/frontend/autotable/autotable-src.*.{js,css}` — regenerated
+  with new hashes; old `4ce16ecc.js` + `8ade01c3.css` pruned manually.
+
+### Wire-shape assumption
+
+Backend `WinResultEntry.WinType` (camelCase JSON `winType`) is one of
+`"selfDraw"` / `"discard"` / `"robbingKong"` — confirmed in
+`AutotableProtocol.cs:160` and
+`ChangshaToAutotableTranslator.cs:263` (`WinMethodToWire`).
+`sourceSeatIndex` carries the discarder/declarer index.  Every new
+read-site uses `?:` so a pre-W2 wire payload silently falls through.
+
+### Build invariants (CONFIRMED, unchanged from Wave 1)
+
+- `npx tsc --noEmit --strict --target es6 --moduleResolution bundler
+  --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts`
+  → exit 0
+- `npx parcel build index.html --dist-dir ../autotable
+  --public-url . --no-source-maps --no-cache` → success in ~7 s
+- After parcel: manually `rm` the previous hashed bundle files
+  (parcel doesn't prune); bootstrap CSS `df85b4c4.css` is
+  byte-identical and remains.
+
+### Discoveries / notes
+
+- **Modal stacking.**  `.pattern-tooltip` uses `z-index: 1060` to
+  sit above bootstrap's `.modal` (z=1050).  Important: without an
+  explicit z-index the tooltip rendered behind the modal backdrop
+  on Firefox.
+- **Position trap.**  `.result-pattern-chip` needed `position: relative`
+  added before the tooltip's `position: absolute` would anchor to it
+  (the chip was previously `display: inline-block` with no position).
+- **RobbingKong text change.**  Old badge said `抢杠胡 Robbing Kong`;
+  spec called for `抢杠 Robbing the Kong` (matching the no-胡 prefix
+  style of the new self-draw / discard pills).  Quietly updated.

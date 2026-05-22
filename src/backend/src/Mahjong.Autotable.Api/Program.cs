@@ -46,6 +46,13 @@ using (var scope = app.Services.CreateScope())
     await DatabaseBootstrapper.InitializeAsync(db);
 }
 
+// Phase I Wave 2 — re-hydrate any non-terminal Changsha games from persistence so
+// a process restart no longer wipes active hands. Must run after the schema
+// bootstrap (which guarantees the ChangshaGames table exists) and before any
+// hub/WS subscriber is wired so no inbound command can race the load.
+var changshaRuntime = app.Services.GetRequiredService<IChangshaGameRuntime>();
+await changshaRuntime.HydrateAsync(app.Services, app.Lifetime.ApplicationStopping);
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
