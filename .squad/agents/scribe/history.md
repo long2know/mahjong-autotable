@@ -109,4 +109,26 @@
 
 **Branch ready for PR against `main`.** All three agents' Phase I Wave 2 work captured in canonical decisions.md.
 
+## Phase I Wave 3 Scribe Sweep — Multi-game vertical slice + zero skips (2026-05-23)
+
+**Timestamp:** 2026-05-23 (date TBD)  
+**Branch:** `stlong/phase-i-wave-3-multigame-bot-strength` (all commits pushed)  
+**Contribution:** Merged 3-file Phase I Wave 3 inbox into canonical `.squad/decisions.md` as a single `## Phase I Wave 3 — Multi-game vertical slice + zero skips` section covering Bishop's multi-game routing + Hicks's lobby Game ID UI + Vasquez's ten tests (9 new + 1 unskip). Documented **validation rules verbatim** (length 64, control chars, case-sensitive, fallback chain) + **Parcel `<input type="text">` stripping gotcha** + **per-game routing source priority** + **cross-lane assertion-flip protocol** + **whitespace-only quirk** for future waves. Phase I Wave 3 result: **393 / 0 / 0 tests** (was 383/0/1 at Phase I Wave 2 → +10 net passes + **first zero-skip wave this session**). Bundle rolled: JS `e6653bd3.js` → `49eb3789.js`, CSS `60fe83d8.css` → `af973ea2.css`; Bootstrap hash unchanged. All inbox files remain in place per standing instruction (`.squad/decisions/inbox/` is gitignored — local-only primary sources).
+
+**Four-agent coordination notes:**
+
+1. **Bishop** (multi-game routing + hydration filter): Removed `DefaultGameId` coercion at two sites; established validated fallback chain (JOIN.gameId → ?gameId query → DefaultGameId). Closed Wave 2 open Q on `WallExhausted` hydration (now excluded). **Key invariant pinned:** `AutotableConnectionManager` lives at bottom of `AutotableWsEndpoint.cs`, not separate file (prevents phantom-file searches in future waves).
+
+2. **Hicks** (lobby Game ID input): New row above Connect/Disconnect block with 64-char pattern validation + URL persistence via `history.replaceState`. Connected-state hides input, shows `Game: <id>` display. **Build-time gotcha discovered:** Parcel strips `type="text"` defaults from `<input>` — CSS selector anchoring must use ID/scoped class, not attribute selector. This is a critical invariant for future frontend rebuilds (easy to miss, easy to break input styling post-build).
+
+3. **Vasquez** (ten tests, zero skips): Unskipped `Update_IsIsolated_PerGameId`; wrote 9 new tests across MultiGameRoutingTests.cs + HydrationOnStartupTests.cs. **Protocol pinned:** When production rules change, test owner flips assertions in same wave (not future wave) — captures post-fix reality, not pre-fix bug. **Whitespace-only quirk:** `TryNormalizeGameId(null)` returns `true` with `normalized = null`, enabling clean fallback-chain resolution at JOIN time.
+
+**Notable observations:**
+- **Protocol-design subsection:** Validated fallback chain (JOIN.gameId → query → default) + source priority + control-char/length rejection + case-sensitivity (Ordinal) all documented verbatim as contracts for future multi-region routing or rule-tightening waves.
+- **Cross-agent coordination:** Bishop closes Wave 2 open Q (WallExhausted filter); Hicks discovers Parcel build-time behavior (type stripping); Vasquez flips cross-lane test assertion (protocol shift). All three findings surfaced in decisions.md for team reuse.
+- **Zero-skips milestone:** First wave in this session with no skipped tests (357 → 374 → 383 all had 1 skip; now 393 with 0). Milestone achievement worth noting for velocity metrics.
+
+**Open questions for Phase I Wave 4:** `_bindingLock` per-game profiling, bot shanter estimator improvements, Hard-tier bot WinContext audit, Game ID hot-seat swap UI (Disconnect → edit → Connect today, Move button deferred).
+
+**Branch ready for PR against `main`.** All three agents' Phase I Wave 3 work + Scribe sweep captured in canonical decisions.md.
 

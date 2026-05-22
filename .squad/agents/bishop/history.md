@@ -697,3 +697,58 @@ regressions; Vasquez's hydration acceptance suite lands in his lane).
   said. Your test fixture should resolve the same name.
 
 **Memo:** `.squad/decisions/inbox/bishop-phase-i-wave-2-hydration.md`.
+
+---
+
+## Phase I Wave 3 — Multi-game WS routing + WallExhausted hydration filter
+
+**Branch:** `stlong/phase-i-wave-3-multigame-bot-strength`
+**Commit:** `ef6b007` (`feat(autotable): Phase I Wave 3 — multi-game WS routing + WallExhausted hydration filter`)
+**Baseline:** 383/0/1 → **382/1/1** locally (one previously-passing test now
+pins removed behaviour — see "Coordination handoff" below). Expected
+post-Vasquez sync: 384/0/0.
+
+**Surface area:**
+- `Autotable/AutotableWsEndpoint.cs` — query/JOIN gameId validation +
+  routing fix at both coercion sites (`HandleNewAsync`, `HandleJoinAsync`).
+  Added a `TryNormalizeGameId` helper + `MaxGameIdLength = 64` constant.
+  Updated the file's class-level XML doc to reflect multi-game routing.
+- `Changsha/Runtime/ChangshaGameRuntime.cs` — hydration filter widens to
+  `state.Phase == EndGame || state.Phase == WallExhausted`. Phase I Wave 2
+  open question resolved (draw-terminal = finished).
+- `docs/known-limitations.md` — struck the "Single-game-per-instance"
+  bullet; added a Wave 3 changelog entry.
+
+**Design decisions (full detail in memo):**
+- Validation: trim → length-cap 64 → reject `char.IsControl`. Invalid query
+  / JOIN ids close the WS with `WebSocketCloseStatus.PolicyViolation` plus a
+  short reason string ("gameId too long" / "gameId contains control
+  characters").
+- Case-sensitive (matches `StringComparison.Ordinal` already used by
+  `_games`, `_runtimeBinding`, `ConnectionsInGame`, etc.).
+- Interior whitespace preserved; only leading/trailing trimmed. Tighter
+  regex left to the lobby UI if Hicks wants it.
+- Source priority: `JOIN.gameId` → `?gameId=` (validated at handshake) →
+  `DefaultGameId` fallback.
+
+**`DefaultGameId` audit (3 references in `Autotable/*.cs`):**
+| Line | Use | Verdict |
+|------|-----|---------|
+| `:47` | const declaration | KEEP |
+| `:263` | coercion in `HandleNewAsync` | REPLACED with fallback |
+| `:278` | coercion in `HandleJoinAsync` | REPLACED with fallback |
+
+**Coordination handoff to Vasquez (Wave 3 test owner):**
+- The skipped `AutotableWsRelayTests.Update_IsIsolated_PerGameId` should now
+  pass; un-skip it.
+- `AutotableWsEndpointTests.Join_UnknownGameId_ReturnsJoinedAndEmptySnapshot`
+  (line 71) pins the *old* coercion (`Assert.Equal(DefaultGameId, joined.gameId)`
+  on a JOIN of "DOES-NOT-EXIST") — assertion needs flipping to the actual
+  client-supplied gameId. The test's own comment ("Phase E will widen")
+  anticipated this. Left untouched per the file-lock; Vasquez to update on
+  her parallel branch alongside the un-skip. Both changes are in
+  `src/backend/tests/Mahjong.Autotable.Api.Tests/Autotable/AutotableWsEndpointTests.cs`
+  + `AutotableWsRelayTests.cs`.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-i-wave-3-multigame.md`.
+

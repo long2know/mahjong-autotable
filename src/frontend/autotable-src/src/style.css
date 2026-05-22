@@ -924,3 +924,70 @@ body.lobby-active #move-log {
         max-height: 50vh;
     }
 }
+
+/* ---------------------------------------------------------------------- */
+/* Phase I Wave 3 — Game ID input row (above the in-game Connect button)  */
+/* and inline error styling.  Visually echoes the Phase G/H lobby panel   */
+/* inputs (seed field, fieldsets) so the two control surfaces feel       */
+/* like one design system.                                                */
+/* ---------------------------------------------------------------------- */
+#sidebar .lobby-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+#sidebar .lobby-row > label {
+    font-size: 0.78rem;
+    color: #ffd75e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    font-weight: 600;
+}
+#sidebar .lobby-row > input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 8px;
+    background-color: rgba(0, 0, 0, 0.35);
+    color: #f0f0f0;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+}
+#sidebar .lobby-row > input:focus {
+    outline: none;
+    border-color: rgba(255, 215, 94, 0.75);
+    background-color: rgba(0, 0, 0, 0.55);
+}
+#sidebar .lobby-row > input.lobby-error-input {
+    border-color: #ff7a7a;
+    background-color: rgba(80, 20, 20, 0.45);
+}
+.lobby-error {
+    color: #ff9c9c;
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+#sidebar .lobby-row .current-game-display {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.78rem;
+    font-style: italic;
+    line-height: 1.3;
+    word-break: break-all;
+}
+#sidebar .lobby-row .current-game-display #current-game-id {
+    color: #ffd75e;
+    font-family: 'Courier New', monospace;
+    font-style: normal;
+    font-weight: 600;
+}
+
+/* Connected/disconnected visibility for the Game ID row.  Mirrors the
+   #server scoping pattern (style.css:87-88) but anchored on the lobby
+   row itself so we don't need a global body class.  client-ui.ts
+   toggles .connected on #lobby-gameId-row in onConnect/onDisconnect. */
+#lobby-gameId-row:not(.connected) .server-connected { display: none; }
+#lobby-gameId-row.connected .server-disconnected { display: none !important; }

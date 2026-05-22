@@ -594,3 +594,38 @@ All three Wave 2 facts use `GameCount` as the assertion hook per Bishop's memo r
 - No production code changed — Vasquez Wave 2 lane is test-only by directive.
 
 **Cross-agent coordination:** Bishop landed hydration production code at `bb752c4` (runtime + Program.cs wiring, +101 LOC), Hicks landed UI tooltips + self-draw badge at `e096582`. My two test commits (`0de4c31` + `3d911a0`) land cleanly on top, all 383 green at HEAD. Branch total: 4 commits across 3 agents in strict-disjoint lanes, gate-clean at each step.
+
+## Phase I Wave 3 — Multi-game WS routing + WallExhausted hydration coverage (test-only lane)
+
+**Branch:** `stlong/phase-i-wave-3-multigame-bot-strength`
+**Commit:** `97541c9`
+**Gate:** **393 passed / 0 failed / 0 skipped** (+10 from Wave 2 baseline of 383/0/1; the 1 skip is gone — `Update_IsIsolated_PerGameId` unskipped this wave).
+
+**Scope completed:**
+
+- **Unskip `Update_IsIsolated_PerGameId`** in `AutotableWsRelayTests.cs:182` — the test had been pinned with `Skip = "Phase D-backend: single-game-per-instance coerces all gameIds to the default. Multi-game isolation will be revisited in Phase E."` since Phase D. Bishop's `ef6b007` lifts the coercion in both `HandleNewAsync` and `HandleJoinAsync` (and adds `TryNormalizeGameId` validation), so the test now exercises real per-gameId isolation through the `_games` ConcurrentDictionary.
+- **New `MultiGameRoutingTests.cs` (9 tests, +484 LOC)** — kept the new routing-surface coverage in a dedicated file rather than bloating `AutotableWsRelayTests.cs` further. Covers:
+  - `LateJoin_ToExistingGameId_ReceivesAccumulatedSnapshot_ForThatGameOnly` — Alice→MULTI-A pushes `seats[alice]`, Bob→MULTI-B pushes `things[42]`, Charlie late-joins MULTI-A and must see Alice's entry but NOT Bob's. Uses `manager.GetStoredEntryCount(gameId)` (Bishop's Wave 2 test hook) to defeat the WS-send vs server-apply race before Charlie's join.
+  - `Concurrent_New_InDifferentGameIds_DoesNotCollide` — parallel WS opens with `?gameId=NEW-A` and `?gameId=NEW-B`, parallel `NEW` sends, each gets its own JOINED + empty snapshot, and cross-talk probe (A's UPDATE doesn't leak to B).
+  - **Validation contract** (Bishop's memo §"Validation rules (settled)"): `[Theory]` with 3 control-char InlineData rows (`%00`, `%07`, `%0A`) asserting WS close-code `PolicyViolation` + reason `"gameId contains control characters"`; separate `_RejectsOverLengthIds` (65-char id ⇒ `"gameId too long"`) and `_AcceptsMaxLengthBoundary` (exactly 64 chars ⇒ accepted, JOINED echoes the same id).
+  - `GameId_EmptyOrMissing_FallsBackToDefault` — two connections, one with no `?gameId=` query param, one with `?gameId=` (empty value); both land in `AutotableWsEndpoint.DefaultGameId` and see each other's UPDATEs (legacy bundle behaviour preserved).
+- **New `Hydration_ExcludesWallExhaustedRows`** in `HydrationOnStartupTests.cs` — closes the Phase I Wave 2 open question. Inserts two synthesized rows directly via `InsertSnapshotAsync` (one `Phase = WallExhausted`, one `Phase = AwaitingDiscard`); after boot, `runtime.GameCount == 1` and only the active row hydrates. New `BuildSimpleState(gameId, phase)` fixture helper that mid-hand-bootstraps the state and overrides `state.Phase` to the test target.
+- **Updated `Join_UnknownGameId_ReturnsJoinedAndEmptySnapshot`** in `AutotableWsEndpointTests.cs:62` — the test was a Phase D-backend artifact that asserted JOIN.gameId was coerced to DefaultGameId. After Bishop's lift, an unknown id allocates a fresh per-game store keyed by that id, so the assertion flips to `"DOES-NOT-EXIST"`. Per the wave directive ("If Bishop's validation rules don't match what test X asserts, rewrite the test to match production reality"), test was updated rather than production rolled back.
+
+**Methodology — what worked:**
+
+- **Bishop coordinated via inbox memo.** `bishop-phase-i-wave-3-multigame.md` shipped before his commit landed, with the full validation contract (trim → length cap 64 → reject control chars → `PolicyViolation` close + reason string) and the source-priority chain (JOIN.gameId ▶ ?gameId= ▶ DefaultGameId). That let me write test #4 (`GameId_Validation_RejectsControlChars`) against the published contract with zero round-trips.
+- **Polling discipline.** Phase A only had test #6 as candidate work (hydration filter widen) but per directive I held off until Bishop's `ef6b007` landed locally (≈4 min after his memo). Both his routing fix and hydration filter widen shipped in the same commit, so I went directly to Phase B and wrote all 6 tests in one sitting.
+- **Boundary test for the length cap.** Beyond the over-length reject case I added `GameId_Validation_AcceptsMaxLengthBoundary` — 64 chars exactly — because the off-by-one in `Length > MaxGameIdLength` vs `Length >= MaxGameIdLength` is the classic regression. This locks in Bishop's `> 64` semantics.
+- **Theory for control-char triage.** Three InlineData rows cover the practical concerns: null byte (`%00`), bell (`%07`, a non-printable in the < 32 range that isn't `\r\n\t`), and LF (`%0A`, the smuggling vector). All three close with the same `"gameId contains control characters"` reason — the test asserts both the close-code (`PolicyViolation` = 1008) and the reason string.
+- **WS Close-frame inspection technique.** TestServer's `CreateWebSocketClient().ConnectAsync` lets the upgrade succeed even when the server then immediately closes the socket; the close frame surfaces via `result.MessageType == Close`, `result.CloseStatus`, `result.CloseStatusDescription` on the next `ReceiveAsync`. The handshake-time validation contract is observable end-to-end through this path without any TestServer-side hooks.
+
+**Stability:**
+
+- **Phase I Wave 3 filter (`--filter "Wave=Phase-I-3"`):** 10 passed / 0 failed / 0 skipped (1 unskip + 9 new) — 3 consecutive runs all clean.
+- **Full suite:** 393 passed / 0 failed / 0 skipped. Skip count drops from 1 to 0 — the long-standing `Update_IsIsolated_PerGameId` skip is retired.
+- No production code changed (`src/backend/src/**` untouched).
+
+**Cross-agent coordination:** Bishop landed routing + hydration filter at `ef6b007` (+history at `1322319`), Hicks landed lobby Game ID input + URL persistence at `cff4eb8`. My single test commit `97541c9` lands cleanly on top. Branch total at HEAD: 4 commits across 3 agents in strict-disjoint lanes; all 393 green with zero skips. Memo: `.squad/decisions/inbox/vasquez-phase-i-wave-3.md`.
+
+**Heads-up for the next wave:** one existing test (`AutotableWsEndpointTests.Join_UnknownGameId_ReturnsJoinedAndEmptySnapshot`) had to be updated because it asserted the old Phase D-backend coercion. The other DefaultGameId references in the test corpus (`AutotableWsEndpointTests.Join_KnownGameId_...`, `EndToEndPlayableTests`, `VariantSwitchAcceptanceTests`) all explicitly pass `AutotableWsEndpoint.DefaultGameId` as the JOIN target so they keep working under the new contract — no broader test fallout.

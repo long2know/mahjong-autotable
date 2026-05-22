@@ -184,7 +184,32 @@
                 </div>
             </div>
 
-            <div class="mt-4 d-flex" id="server">
+            <!-- Phase I Wave 3 — Game ID input + URL persistence.  Read by
+                 client-ui.ts at connect time and appended to the WebSocket
+                 URL as ?gameId=X so the backend (post Bishop's DefaultGameId
+                 lift in AutotableWsEndpoint.cs:263/278) routes each gameId to
+                 a separate game state pool.  Hidden once connected, replaced
+                 by the small "Game: <id>" display below so the user always
+                 knows which game they're in. -->
+            <div class="lobby-row mt-4" id="lobby-gameId-row">
+                <label for="lobby-gameId" class="server-disconnected">Game ID</label>
+                <input id="lobby-gameId" type="text" maxlength="64"
+                       class="server-disconnected"
+                       placeholder="changsha-default"
+                       pattern="[A-Za-z0-9_\-\.]+"
+                       title="Letters, digits, _, -, . only"
+                       autocomplete="off" spellcheck="false">
+                <div id="lobby-gameId-error" class="lobby-error server-disconnected"
+                     style="display: none;">
+                    Game ID may only contain letters, digits, _, -, and . (max 64 chars).
+                </div>
+                <small class="current-game-display server-connected"
+                       id="current-game-display">
+                    Game: <span id="current-game-id">—</span>
+                </small>
+            </div>
+
+            <div class="mt-2 d-flex" id="server">
                 <button class="btn btn-warning btn-sm w-100 server-disconnected mr-2" id="connect">
                     Connect
                 </button>

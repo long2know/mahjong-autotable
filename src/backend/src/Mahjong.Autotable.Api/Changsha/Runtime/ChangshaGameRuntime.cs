@@ -176,10 +176,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 continue;
             }
 
-            // Terminal phases: nothing to resume. WallExhausted is a transient
-            // pre-rotation state that the scoring loop drains on its own, so
-            // only EndGame is treated as "finished" here.
-            if (state.Phase == ChangshaPhase.EndGame) continue;
+            // Terminal phases: nothing to resume. Phase I Wave 3 widens this to
+            // also skip WallExhausted (draw-terminal) — a hand whose wall ran
+            // out is functionally finished; the runtime's scoring loop only
+            // drains it forward via HandleWallExhaustedAsync when actively
+            // playing, which a freshly-hydrated row will never be.
+            if (state.Phase == ChangshaPhase.EndGame ||
+                state.Phase == ChangshaPhase.WallExhausted) continue;
 
             // Authoritative key is the row GUID — guard against a hypothetical
             // drift between the row PK and the embedded state.GameId.

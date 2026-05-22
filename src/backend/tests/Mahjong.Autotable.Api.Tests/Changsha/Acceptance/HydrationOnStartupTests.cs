@@ -210,8 +210,71 @@ public class HydrationOnStartupTests
     }
 
     // ────────────────────────────────────────────────────────────────────
+    //  4. Phase I Wave 3 — filter excludes WallExhausted (draw-terminal)
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Changsha"), Trait("Wave", "Phase-I-3")]
+    public async Task Hydration_ExcludesWallExhaustedRows()
+    {
+        // Phase I Wave 2 open Q closed: Bishop's HydrateAsync now skips both
+        // `EndGame` and `WallExhausted` (a hand whose wall ran out is
+        // functionally finished — the runtime only drains it forward when
+        // actively playing). This test inserts two synthesized rows and
+        // verifies the filter:
+        //   - Row A → Phase = WallExhausted  ⇒ must NOT hydrate.
+        //   - Row B → Phase = AwaitingDiscard ⇒ must hydrate.
+
+        var sqlitePath = NewSqlitePath();
+        var wallExhaustedId = Guid.NewGuid();
+        var activeId = Guid.NewGuid();
+
+        var wallExhaustedState = BuildSimpleState(wallExhaustedId.ToString(), ChangshaPhase.WallExhausted);
+        var activeState = BuildSimpleState(activeId.ToString(), ChangshaPhase.AwaitingDiscard);
+
+        Assert.Equal(ChangshaPhase.WallExhausted, wallExhaustedState.Phase);
+        Assert.Equal(ChangshaPhase.AwaitingDiscard, activeState.Phase);
+
+        await InsertSnapshotAsync(sqlitePath, wallExhaustedId, wallExhaustedState);
+        await InsertSnapshotAsync(sqlitePath, activeId, activeState);
+
+        await using var factory = BuildFactory(sqlitePath, persist: true);
+        var runtime = factory.Services.GetRequiredService<IChangshaGameRuntime>();
+
+        // Only the active row hydrates.
+        Assert.Equal(1, runtime.GameCount);
+
+        Assert.False(runtime.TryGetSnapshot(wallExhaustedId.ToString(), out var skipped),
+            "WallExhausted rows must be skipped by HydrateAsync (Phase I Wave 3 contract).");
+        Assert.Null(skipped);
+
+        Assert.True(runtime.TryGetSnapshot(activeId.ToString(), out var hydrated),
+            "Active (AwaitingDiscard) rows must still hydrate — only terminal phases are skipped.");
+        Assert.NotNull(hydrated);
+        Assert.Equal(ChangshaPhase.AwaitingDiscard, hydrated!.Phase);
+
+        TryDeleteSqlite(sqlitePath);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
     //  Fixtures
     // ────────────────────────────────────────────────────────────────────
+
+    /// <summary>Builds a minimal mid-hand state whose Phase is overridden to the
+    /// given value. Used by the Phase I Wave 3 WallExhausted filter test —
+    /// the only contract under test there is "rows whose persisted Phase ∈
+    /// {EndGame, WallExhausted} are skipped during hydration", so the rest of
+    /// the state can be whatever the state machine's StartGame + RollDice +
+    /// Deal happen to produce.</summary>
+    private static ChangshaGameState BuildSimpleState(string gameId, ChangshaPhase phase)
+    {
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 0xBEEF, botSeatIndexes: new[] { 0, 1, 2, 3 });
+        state.GameId = gameId;
+        ChangshaGameStateMachine.StartGame(state);
+        ChangshaGameStateMachine.RollDice(state, new DiceService(0xBEEF));
+        ChangshaGameStateMachine.Deal(state);
+        state.Phase = phase;
+        return state;
+    }
 
     /// <summary>Builds a mid-hand state where the dealer has just declared a
     /// concealed kong on Tiao-9 and drawn Tong-5 as the replacement tile.

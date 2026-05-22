@@ -29,22 +29,38 @@ namespace Mahjong.Autotable.Api.Autotable;
 /// as in Phase C, but cannot overwrite runtime-owned entries
 /// (see <see cref="AutotableGameState.ApplyUpdate(System.Collections.Generic.IEnumerable{CollectionEntry}, UpdateSource)"/>).</para>
 ///
-/// <para><b>Single-game-per-instance (Default #8):</b> all NEW/JOIN messages
-/// resolve to the deterministic relay gameId <c>"changsha-default"</c>, which is
-/// lazily bound to one Changsha runtime game. Hicks's Phase D-frontend "Take Seat"
-/// click sends a <c>seats</c> UPDATE that this endpoint routes to
-/// <see cref="IChangshaGameRuntime.TakeSeatAsync"/>, optionally followed by
-/// <see cref="IChangshaGameRuntime.FillEmptySeatsWithBotsAsync"/> for solo play
-/// (query param <c>?bots=true</c>, default ON).</para>
+/// <para><b>Multi-game routing (Phase I Wave 3):</b> connections route to the
+/// gameId supplied via <c>?gameId=X</c> or in the JOIN message. Empty / absent
+/// ids fall back to <see cref="AutotableWsEndpoint.DefaultGameId"/> so the
+/// legacy bundle (which omits the query) keeps working. Ids are validated
+/// (trim, length cap <see cref="AutotableWsEndpoint.MaxGameIdLength"/>,
+/// reject control chars) at handshake and JOIN time; failures close the
+/// socket with <see cref="System.Net.WebSockets.WebSocketCloseStatus.PolicyViolation"/>.
+/// Hicks's Phase D-frontend "Take Seat" click sends a <c>seats</c> UPDATE
+/// that this endpoint routes to <see cref="IChangshaGameRuntime.TakeSeatAsync"/>,
+/// optionally followed by <see cref="IChangshaGameRuntime.FillEmptySeatsWithBotsAsync"/>
+/// for solo play (query param <c>?bots=true</c>, default ON).</para>
 /// </summary>
 public static class AutotableWsEndpoint
 {
     public const string Path = "/autotable/ws";
     /// <summary>
-    /// Deterministic single-game-per-instance relay gameId (Default #8). All inbound
-    /// NEW/JOIN/UPDATE messages resolve to this gameId — Phase E will widen.
+    /// Fallback relay gameId used when a connection does not supply <c>?gameId=</c>
+    /// in the WS handshake and JOIN messages omit the field. Phase I Wave 3 lifted
+    /// the single-game-per-instance coercion: <see cref="AutotableConnectionManager"/>
+    /// honors per-connection ids and falls back here only for legacy clients.
     /// </summary>
     public const string DefaultGameId = "changsha-default";
+
+    /// <summary>
+    /// Phase I Wave 3 — upper bound on accepted gameId length. Connections that
+    /// supply a longer value (after trim) are closed with
+    /// <see cref="System.Net.WebSockets.WebSocketCloseStatus.PolicyViolation"/>.
+    /// 64 chars covers GUIDs (32 hex), the legacy <see cref="DefaultGameId"/>
+    /// (15 chars), and any human-readable lobby code we plausibly ship while
+    /// keeping in-memory dictionaries and log lines tidy.
+    /// </summary>
+    public const int MaxGameIdLength = 64;
 
     /// <summary>Maps the autotable WS handler onto the application pipeline.</summary>
     public static IEndpointConventionBuilder MapAutotableWs(this IEndpointRouteBuilder endpoints) =>
@@ -136,10 +152,24 @@ public sealed class AutotableConnectionManager : IDisposable
 
     public async Task HandleConnectionAsync(WebSocket ws, IQueryCollection query, CancellationToken serverShutdown)
     {
-        // Phase D-backend: single-game-per-instance. Ignore any client-supplied
-        // gameId; everyone joins the same default game. Bots default to ON for
-        // solo MVP play — Stephen can disable via ?bots=false.
-        var queryGameId = query.TryGetValue("gameId", out var g) ? g.ToString() : null;
+        // Phase I Wave 3 — honor ?gameId=X. Empty / absent ids fall back to the
+        // legacy DefaultGameId so the upstream pwmarcz bundle (which omits the
+        // query) keeps working. Bots default to ON for solo MVP play —
+        // Stephen can disable via ?bots=false.
+        var queryGameIdRaw = query.TryGetValue("gameId", out var g) ? g.ToString() : null;
+        if (!TryNormalizeGameId(queryGameIdRaw, out var queryGameId, out var queryGameIdReject))
+        {
+            _logger.LogInformation(
+                "Autotable WS rejecting connection due to invalid ?gameId= ({Reason})",
+                queryGameIdReject);
+            try
+            {
+                await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, queryGameIdReject!, serverShutdown);
+            }
+            catch { /* socket may already be torn down */ }
+            return;
+        }
+
         int? viewerSeat = null;
         if (query.TryGetValue("seat", out var s) && int.TryParse(s.ToString(), out var parsedSeat) && parsedSeat is >= 0 and <= 3)
         {
@@ -257,10 +287,12 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private async Task HandleNewAsync(AutotableConnection connection, CancellationToken ct)
     {
-        // Phase D-backend single-game default: NEW and JOIN both resolve to the
-        // single default gameId. Bundle's NEW path triggers sendOnConnect (the
-        // meta-collection declarations) which is still useful.
-        var gameId = AutotableWsEndpoint.DefaultGameId;
+        // Phase I Wave 3 — honor the connection's gameId (set from ?gameId=) for
+        // multi-game routing; fall back to DefaultGameId for legacy clients that
+        // don't supply one. NEW carries no gameId of its own.
+        var gameId = !string.IsNullOrWhiteSpace(connection.GameId)
+            ? connection.GameId!
+            : AutotableWsEndpoint.DefaultGameId;
         var state = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
         connection.GameId = gameId;
 
@@ -273,9 +305,32 @@ public sealed class AutotableConnectionManager : IDisposable
 
     private async Task HandleJoinAsync(AutotableConnection connection, string? gameId, CancellationToken ct)
     {
-        // Phase D-backend: ignore client-supplied gameId; force the single default
-        // game. Future Phase E will widen to lobby-allocated multi-game ids.
-        var resolved = AutotableWsEndpoint.DefaultGameId;
+        // Phase I Wave 3 — JOIN carries its own gameId; validate + honor it.
+        // Source priority: validated JOIN.gameId → connection's pre-validated
+        // ?gameId= → DefaultGameId. Invalid JOIN ids close the socket with
+        // PolicyViolation so the client is informed of the misuse rather than
+        // silently rerouted.
+        if (!TryNormalizeGameId(gameId, out var messageGameId, out var rejectReason))
+        {
+            _logger.LogInformation(
+                "Autotable WS closing connection {ConnectionId} due to invalid JOIN.gameId ({Reason})",
+                connection.Id, rejectReason);
+            try
+            {
+                await connection.Socket.CloseAsync(
+                    WebSocketCloseStatus.PolicyViolation,
+                    rejectReason!,
+                    ct);
+            }
+            catch { /* socket may already be torn down */ }
+            return;
+        }
+
+        var resolved = !string.IsNullOrWhiteSpace(messageGameId)
+            ? messageGameId!
+            : !string.IsNullOrWhiteSpace(connection.GameId)
+                ? connection.GameId!
+                : AutotableWsEndpoint.DefaultGameId;
 
         var existedBefore = _games.ContainsKey(resolved);
         var state = _games.GetOrAdd(resolved, id => new AutotableGameState(id));
@@ -922,6 +977,48 @@ public sealed class AutotableConnectionManager : IDisposable
             count++;
         }
         return count;
+    }
+
+    /// <summary>
+    /// Phase I Wave 3 — gameId validation for ?gameId= and JOIN.gameId.
+    /// </summary>
+    /// <remarks>
+    /// <para>Accepts null / empty / whitespace-only as "client did not pick" —
+    /// returns <c>true</c> with <paramref name="normalized"/> = <c>null</c>;
+    /// callers fall back to <see cref="AutotableWsEndpoint.DefaultGameId"/>.</para>
+    /// <para>Rejects values that, after <see cref="string.Trim()"/>, exceed
+    /// <see cref="AutotableWsEndpoint.MaxGameIdLength"/> or contain any
+    /// <see cref="char.IsControl(char)"/> character. On reject, returns
+    /// <c>false</c> with a <paramref name="closeReason"/> suitable for the WS
+    /// close-frame reason string and leaves <paramref name="normalized"/> as
+    /// <c>null</c>.</para>
+    /// <para>Case is preserved (ordinal comparison is used everywhere in the
+    /// manager). Interior whitespace is preserved; only leading / trailing
+    /// whitespace is stripped.</para>
+    /// </remarks>
+    internal static bool TryNormalizeGameId(string? raw, out string? normalized, out string? closeReason)
+    {
+        normalized = null;
+        closeReason = null;
+        if (string.IsNullOrWhiteSpace(raw)) return true;
+
+        var trimmed = raw.Trim();
+        if (trimmed.Length == 0) return true;
+        if (trimmed.Length > AutotableWsEndpoint.MaxGameIdLength)
+        {
+            closeReason = "gameId too long";
+            return false;
+        }
+        foreach (var c in trimmed)
+        {
+            if (char.IsControl(c))
+            {
+                closeReason = "gameId contains control characters";
+                return false;
+            }
+        }
+        normalized = trimmed;
+        return true;
     }
 
     /// <summary>

@@ -66,9 +66,10 @@ public class AutotableWsEndpointTests : IAsyncLifetime
 
         var joined = await session.ReadEnvelopeAsync();
         Assert.Equal("JOINED", joined.GetProperty("type").GetString());
-        // Phase D-backend: gameId is coerced to the single-game-per-instance
-        // default. Client-supplied values are ignored — Phase E will widen.
-        Assert.Equal(AutotableWsEndpoint.DefaultGameId, joined.GetProperty("gameId").GetString());
+        // Phase I Wave 3: JOIN.gameId is honored (was coerced to DefaultGameId
+        // under Phase D-backend). A never-before-seen id allocates a fresh
+        // per-game store keyed by that id.
+        Assert.Equal("DOES-NOT-EXIST", joined.GetProperty("gameId").GetString());
 
         var update = await session.ReadEnvelopeAsync();
         Assert.Equal("UPDATE", update.GetProperty("type").GetString());

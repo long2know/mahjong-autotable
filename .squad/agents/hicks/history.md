@@ -1193,3 +1193,73 @@ read-site uses `?:` so a pre-W2 wire payload silently falls through.
 - **RobbingKong text change.**  Old badge said `抢杠胡 Robbing Kong`;
   spec called for `抢杠 Robbing the Kong` (matching the no-胡 prefix
   style of the new self-draw / discard pills).  Quietly updated.
+
+### 2026-05-21: Phase I Wave 3 — Lobby Game ID input + URL persistence
+
+Branch `stlong/phase-i-wave-3-multigame-bot-strength`.  Bishop is lifting
+`DefaultGameId` coercion at `AutotableWsEndpoint.cs:263/278` in parallel.
+The frontend now exposes the `?gameId=` query param that line 142 already
+parses, so users can route to separate game state pools.
+
+Surface area (Hicks-owned):
+- `src/frontend/autotable-src/index.html` — new `.lobby-row#lobby-gameId-row`
+  above the in-game `#server` Connect/Disconnect block with a single
+  Game ID input + `.lobby-error` div + `.current-game-display`.
+- `src/frontend/autotable-src/src/client-ui.ts` — `validateGameId()` gate,
+  `readInitialGameId()` URL → input prefill, `resolveGameIdForConnect()`,
+  `buildWsUrl()` appending `?gameId=<encoded>` to the WS URL, and a
+  `history.replaceState` write-back via `setUrlState()` on connect.  The
+  old `pushState` was downgraded to `replaceState` — refresh re-joins the
+  same game without polluting browser history.
+- `src/frontend/autotable-src/src/lobby.ts` — `buildUrl()` now preserves
+  any `?gameId=` already on the page URL so Apply & Start doesn't drop
+  the user back to the default game when they change variant/handCount.
+- `src/frontend/autotable-src/src/style.css` — `.lobby-row` (sidebar
+  input row), `.lobby-error` (red inline error), `.current-game-display`
+  (italic gold gameId surfacing when connected), plus a `.connected`
+  scope toggle on `#lobby-gameId-row` so `.server-connected` /
+  `.server-disconnected` siblings swap (the existing scope at
+  `style.css:87-88` only reaches `#server` descendants).
+
+Validation rules (must match Bishop's expected backend cap):
+
+- Trim, non-empty after trim
+- `maxlength="64"`, pattern `[A-Za-z0-9_\-\.]+`
+- Inline `.lobby-error` red text + red border + focus jump on failure
+- Connect blocked until valid
+
+Default: `"changsha-default"` (matches `AutotableWsEndpoint.DefaultGameId`).
+A bare URL therefore prefills the default and continues routing the same
+way it did pre-Wave-3.
+
+### Build invariants (CONFIRMED)
+
+- `npx tsc --noEmit --strict --target es6 --moduleResolution bundler
+  --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts`
+  → exit 0
+- `npx parcel build index.html --dist-dir ../autotable --public-url .
+  --no-source-maps --no-cache` → success in ~8 s
+- Wave-2 bundle removed: `autotable-src.e6653bd3.js` +
+  `autotable-src.60fe83d8.css`
+- New hashes: `autotable-src.49eb3789.js` + `autotable-src.af973ea2.css`
+- Bootstrap CSS `autotable-src.df85b4c4.css` byte-identical, retained
+
+### Discoveries / notes
+
+- **Parcel strips default `type="text"`.**  My first CSS pass used
+  `input[type="text"]` selectors that didn't match the minified
+  attribute-less input.  Dropped the `[type="text"]` filter — Parcel
+  also strips the attribute on the lobby-seed input but the existing
+  `#lobby-panel #lobby-seed` ID selector survives.  Lesson: when adding
+  new input controls inside the autotable bundle, anchor selectors on
+  ID or scoped class, never on the type attribute.
+- **`.server-connected` / `.server-disconnected` scope.**  The existing
+  pattern at `style.css:87-88` is `#server.connected DESCENDANT`, so it
+  doesn't reach siblings of `#server`.  Mirrored the toggle onto
+  `#lobby-gameId-row.connected` so the sibling-scoped row's children
+  swap visibility the same way; client-ui.ts adds/removes the class in
+  `onConnect`/`onDisconnect` alongside the existing `#server` toggle.
+- **`pushState` → `replaceState`.**  The original `setUrlState` used
+  `pushState` which would have stacked a history entry per connect.
+  Refresh-re-joins-same-game wants replaceState; back-button no longer
+  bounces between identical game URLs.
