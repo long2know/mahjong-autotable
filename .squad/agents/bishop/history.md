@@ -597,3 +597,59 @@ duplicate-method-name bug, not by Bishop's contracts).
 
 Open questions for Wave 3 documented in
 `.squad/decisions/inbox/bishop-phase-h-wave-2.md`.
+
+---
+
+## 2026-05-21 — Phase I Wave 1: contextual Big Win patterns (天和/地和/海底/河底/杠上开花)
+
+**Branch:** `stlong/phase-i-wave-1-special-wins-ux` (cut from `main` @ `f27cd36`)
+**Memo:** `.squad/decisions/inbox/bishop-phase-i-wave-1.md`
+
+5 new contextual Big Win patterns layered onto the existing AllPatterns
+stacking surface. Strict file-lock per the Phase I directive: enum +
+state-field in `ChangshaDomain.cs`, detector + new `WinContext` record in
+`WinDetector.cs`, state-machine flag lifecycle + WinContext construction in
+`ChangshaStateMachine.cs`, wire mapping in `Runtime/ChangshaGameRuntime.cs`.
+No ScoringService changes — contextual patterns participate in stacking via
+the existing `bigWinPatternCount` clamp.
+
+**Commits (5):**
+
+| SHA | Subject |
+|---|---|
+| `afd59b9` | feat(rules): add 5 contextual Big Win patterns (天和/地和/海底/河底/杠上开花) |
+| `7509685` | feat(rules): wire WinContext into ChangshaWinDetector |
+| `9e0439c` | feat(rules): wire WinContext into ChangshaStateMachine detection sites |
+| `0117a30` | test(rules): align HuValidation258 discard test with new EarthlyHand headline |
+| `419ba7a` | feat(rules): emit new contextual Big Win patterns on the WS wire |
+
+**Test counts:** 357/0/1 (Phase H Wave 2 baseline) → **374/0/1** after all
+Wave 1 commits land. +17 net (9 SpecialContextWinsTests from Vasquez, ~7
+WinPatternTests Phase-I-1 reflection probes from Vasquez, 1 patched 258
+test still passing). Zero regressions in pre-Phase-I production tests.
+
+**Coordination interleave on shared branch:**
+- Vasquez pushed `b6a512e` (SpecialContextWinsTests acceptance suite) between
+  Bishop's detector commit (`7509685`) and Bishop's state-machine commit
+  (`9e0439c`); her reflection-based test fixtures compiled against Bishop's
+  contract and went green when `9e0439c` landed.
+- Hicks pushed `f91c95e` (frontend score-multiplier breakdown + streaming
+  move-log) between Bishop's test patch (`0117a30`) and Bishop's wire commit
+  (`419ba7a`); no content conflict — Hicks consumed the existing AllPatterns
+  wire surface unchanged. The 5 new wire identifiers from `419ba7a`
+  (`heavenlyHand`, `earthlyHand`, `lastTileFromWall`, `lastDiscardCatch`,
+  `kongReplacementWin`) flow into his result-modal mapper automatically
+  via the AllPatterns string array.
+
+**Deviation:** Patched the existing
+`HuValidation258Tests.Hu_FromDiscard_258Compliant_AcceptedViaResolveClaim`
+test (one-line assertion update) because its scenario IS the canonical
+EarthlyHand fixture. Flagged for Vasquez review in the memo — she may
+prefer to restructure the test on rebase. The test's original intent
+(258-pair acceptance via ResolveClaim) is preserved by the unchanged
+Phase/WinningSeat/Method assertions.
+
+**Open questions documented for Wave 2:** persistence hydration of the new
+transient flag, robbing-kong + LastDiscardCatch interaction, bot-strategy
+pre-flight context, and AllPatterns display ordering for Hicks's UI lane.
+See `bishop-phase-i-wave-1.md`.

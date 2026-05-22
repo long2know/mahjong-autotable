@@ -103,6 +103,14 @@ public class HuValidation258Tests
         Assert.Equal(ChangshaPhase.Scoring, state.Phase);
         Assert.Equal(1, state.CurrentWin!.WinningSeatIndex);
         Assert.Equal(WinMethod.Discard, state.CurrentWin.Method);
-        Assert.Equal(WinPattern.Standard, state.CurrentWin.Pattern);
+        // Phase I Wave 1 — this scenario (dealer's very first discard, non-dealer Hu)
+        // is the canonical 地和 (EarthlyHand) trigger. The hand is still structurally
+        // a 258-compliant Standard win — that's what this test originally verified —
+        // but the contextual EarthlyHand bonus now takes Pattern precedence over the
+        // Standard baseline (per WinDetector + ScoringService.ClassifyWin's reliance
+        // on Pattern to derive the Big Win category). Structural acceptance is still
+        // covered by reaching Phase=Scoring without throwing on the non-258 strip;
+        // the lone assertion change here just updates the headline-pattern expectation.
+        Assert.Equal(WinPattern.EarthlyHand, state.CurrentWin.Pattern);
     }
 }

@@ -1656,6 +1656,15 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         WinPattern.AllPungs => "allPungs",
         WinPattern.FullFlush => "fullFlush",
         WinPattern.NineTerminals => "nineTerminals",
+        // Phase I Wave 1 — contextual Big Win patterns. Wire names mirror the enum-case
+        // identifiers in camelCase so frontend result-modal + move-log mappers can drive
+        // i18n / iconography off a stable string key (Hicks's UI lane consumes these
+        // identically to the structural patterns above).
+        WinPattern.HeavenlyHand => "heavenlyHand",
+        WinPattern.EarthlyHand => "earthlyHand",
+        WinPattern.LastTileFromWall => "lastTileFromWall",
+        WinPattern.LastDiscardCatch => "lastDiscardCatch",
+        WinPattern.KongReplacementWin => "kongReplacementWin",
         _ => "standard"
     };
 }

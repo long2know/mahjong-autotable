@@ -1037,3 +1037,82 @@ renders `Bot 2 won by Robbing Kong (清一色 + 碰碰胡)` lines.
 - Pattern-chip hover tooltips with spec excerpts.
 - Self-draw 自摸 badge (green counterpart to the red Robbing-Kong badge).
 - `handCount` progress pill in header (once Bishop wires the V2 runtime).
+
+---
+
+## 2026-05-22 — Phase I Wave 1 — Score-multiplier breakdown + streaming move-log
+
+**Branch:** `stlong/phase-i-wave-1-special-wins-ux`
+**Commit:** `f91c95e`
+**Bundle:** `autotable-src.4ce16ecc.js` + `autotable-src.8ade01c3.css`
+**TS strict check:** exit 0
+**Inbox drop:** `.squad/decisions/inbox/hicks-phase-i-wave-1.md`
+
+Two deliverables in one commit:
+
+1. **Score-multiplier breakdown** in the result modal — names the
+   multiplier source by reading `scoreResult.{category, basePoints,
+   payments[]}` and `result.allPatterns[]` (both optional on the wire;
+   block hides itself when absent so the legacy modal layout still
+   ships green pre-Bishop-translator).
+2. **Streaming move-log sidebar** (`src/frontend/autotable-src/src/
+   move-log.ts`, new) — self-contained module subscribing to the
+   existing client collections (`match` / `dice` / `things` / `sound` /
+   `claim` / `pickup` / `result`).  Tile-aware via slot-name parsing
+   (`@<seat>` suffix on `discard.*` and `meld.*` slots).  Caps at 50
+   rows, auto-scrolls to newest, suppresses noisy `pickup-progress`
+   phases, dedups burst-arriving meld tiles.
+
+### 5 new contextual Big-Win patterns wired up
+
+Added camelCase labels + distinct chip hues for Bishop's branch:
+
+- `heavenlyHand`       — 天和 Heavenly Hand
+- `earthlyHand`        — 地和 Earthly Hand
+- `lastTileFromWall`   — 海底捞月 Last Tile
+- `lastDiscardCatch`   — 河底捞鱼 Last Discard
+- `kongReplacementWin` — 杠上开花 Kong Bloom
+
+Open-fallback lookup: `PATTERN_LABELS[normalizePatternKey(p)] ?? p`.
+
+### Build invariants (CONFIRMED)
+
+- `parcel build … --public-url .` is mandatory.  Asset paths in the
+  built `index.html` are bare relative filenames; no leading `/`.
+- **Build-command tweak:** the Wave-2-documented invocation
+  `parcel build src/index.ts src/index.html` is wrong on two counts —
+  `src/index.html` doesn't exist (file is at `autotable-src/index.html`,
+  not under `src/`), and passing both entries emits a duplicate
+  `src/index.js` artifact.  Use `parcel build index.html …` instead.
+  Documented in the inbox drop for Coordinator to merge into the Wave-2
+  invariant.
+
+### Discoveries
+
+- **PATTERN_LABELS were keyed with the wrong case in Wave 2.**  Backend
+  `WinPatternToWire` emits camelCase (`sevenPairs`); Wave-2 keys were
+  PascalCase (`SevenPairs`).  In production neither chip nor breakdown
+  would have rendered.  Fixed by rebasing on camelCase + adding
+  `normalizePatternKey()` for PascalCase fallback.
+- **`result.current` doesn't carry score/pattern data yet.**
+  `ChangshaToAutotableTranslator.BuildHandResult` (line 215-222) only
+  emits the legacy `{winner, type, score, hand, nextBanker}` shape.
+  Bishop needs to extend the translator (or push the
+  `handSummary.scoreResult/winResult` shape into `result.current`) for
+  the new UI blocks to light up in production.  Bundle gracefully
+  no-ops until then.
+
+### Phase J polish ideas
+
+- Push `scoreResult` + `winResult` onto `result.current` so the modal
+  breakdown actually lights up.
+- First-class `events` collection so the move-log doesn't depend on
+  slot-name parsing for tile resolution.
+- Move-log row → camera-pan / tile-highlight.
+- Move-log filter chips ("Show only wins / claims / discards").
+- Replay export (JSONL).
+- Multi-language toggle (English-only / 中文-only / bilingual).
+- Mobile bottom-sheet layout for the move-log.
+- Audio cue per pattern (distinct chime for 天和, gong for stacked Big
+  Wins).
+- Score-breakdown counter-ramp animation (0 → Total over ~600 ms).

@@ -212,15 +212,76 @@ public static class ChangshaToAutotableTranslator
         // washout retains current dealer. Match the rule here without mutating state.
         var nextBanker = win is not null ? win.WinningSeatIndex : state.DealerSeatIndex;
 
+        // Phase I Wave 1 — surface winResult + scoreResult on the bundle WS path
+        // so the frontend result modal (chip strip + multiplier breakdown +
+        // RobbingKong badge) renders without a second SignalR subscription.
+        // Null on draw/false-Hu — frontend already handles the null case.
+        var winResult = win is null ? null : new WinResultEntry
+        {
+            WinningSeatIndex = win.WinningSeatIndex,
+            WinType = WinMethodToWire(win.Method),
+            WinPattern = WinPatternToWire(win.Pattern),
+            WinningTileId = win.WinningTileId,
+            SourceSeatIndex = win.SourceSeatIndex,
+            AllPatterns = win.AllPatterns.Select(WinPatternToWire).ToList(),
+            IsRobbedKong = win.IsRobbedKong
+        };
+
+        var score = state.CurrentScore;
+        var scoreResult = (win is null || score is null) ? null : new ScoreResultEntry
+        {
+            Category = score.Category switch
+            {
+                ScoreCategory.SmallWin => "smallWin",
+                ScoreCategory.BigWin => "bigWin",
+                _ => score.Category.ToString().ToLowerInvariant()
+            },
+            BasePoints = score.BasePoints,
+            Payments = score.Payments.Select(p => new ScorePaymentEntry
+            {
+                FromSeatIndex = p.FromSeatIndex,
+                ToSeatIndex = p.ToSeatIndex,
+                Amount = p.Amount,
+                Reason = p.Reason
+            }).ToList()
+        };
+
         return new HandResultEntry
         {
             Winner = winnerSeat,
             Type = type,
             Score = new Dictionary<int, int>(state.CumulativeScores),
             Hand = winningHand,
-            NextBanker = nextBanker
+            NextBanker = nextBanker,
+            WinResult = winResult,
+            ScoreResult = scoreResult
         };
     }
+
+    // Phase I Wave 1 — wire mappings mirror Runtime/ChangshaGameRuntime.cs so
+    // the bundle path emits identical strings to the SignalR path.
+    private static string WinMethodToWire(WinMethod m) => m switch
+    {
+        WinMethod.SelfDraw => "selfDraw",
+        WinMethod.Discard => "discard",
+        WinMethod.RobbingKong => "robbingKong",
+        _ => m.ToString().ToLowerInvariant()
+    };
+
+    private static string WinPatternToWire(WinPattern p) => p switch
+    {
+        WinPattern.Standard => "standard",
+        WinPattern.SevenPairs => "sevenPairs",
+        WinPattern.AllPungs => "allPungs",
+        WinPattern.FullFlush => "fullFlush",
+        WinPattern.NineTerminals => "nineTerminals",
+        WinPattern.HeavenlyHand => "heavenlyHand",
+        WinPattern.EarthlyHand => "earthlyHand",
+        WinPattern.LastTileFromWall => "lastTileFromWall",
+        WinPattern.LastDiscardCatch => "lastDiscardCatch",
+        WinPattern.KongReplacementWin => "kongReplacementWin",
+        _ => "standard"
+    };
 
     private static string ClaimTypeToWire(Tables.TableClaimType t) => t switch
     {

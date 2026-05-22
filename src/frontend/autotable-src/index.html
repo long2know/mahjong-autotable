@@ -327,6 +327,12 @@
          confirm what they're playing without opening the sidebar. -->
     <div id="variant-badge">🀄 Changsha</div>
 
+    <!-- Phase I Wave 1 — streaming move-log sidebar.  Anchored top-right
+         beneath the variant badge.  Populated by move-log.ts subscribing to
+         the existing client collections (match/dice/things/sound/claim/
+         pickup/result).  No new wire contract required. -->
+    <aside id="move-log" aria-label="Move log"></aside>
+
     <!-- Phase F — Pickup HUD (center-bottom): announces "your turn — pick N
          tiles" or "Bot 2 is picking…".  The take-shortcut button emits
          pickup.take so impatient players don't have to click N wall tiles. -->

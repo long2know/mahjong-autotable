@@ -9,10 +9,55 @@ namespace Mahjong.Autotable.Api.Changsha;
 ///   4. Full Flush: entire hand is single suit
 ///   5. Nine Terminals (Phase H Wave 2 — 九幺): every tile rank 1 or 9, any suit,
 ///      with a valid mahjong structure (4 sets + pair OR 7 pairs).
+///   6. Phase I Wave 1 — five contextual Big Win bonuses gated by <see cref="WinContext"/>:
+///      HeavenlyHand (天和), EarthlyHand (地和), LastTileFromWall (海底捞月),
+///      LastDiscardCatch (河底捞鱼), KongReplacementWin (杠上开花). These are layered
+///      onto a structurally valid hand; they NEVER promote a non-winning shape to a win.
 /// </summary>
 public interface IWinDetector
 {
-    WinDetectionResult Detect(ChangshaHandState hand, int? winningTileId = null, WinMethod method = WinMethod.SelfDraw);
+    WinDetectionResult Detect(
+        ChangshaHandState hand,
+        int? winningTileId = null,
+        WinMethod method = WinMethod.SelfDraw,
+        WinContext? context = null);
+}
+
+/// <summary>
+/// Phase I Wave 1 — bag of pre-computed contextual flags passed from
+/// <see cref="ChangshaGameStateMachine"/> into <see cref="ChangshaWinDetector.Detect"/>.
+/// Each flag is independent and gates exactly one <see cref="WinPattern"/> bonus —
+/// the state machine is responsible for validating every condition before setting a
+/// flag true (e.g., dealer-only, first-discard-only, wall-count-zero). The detector
+/// trusts the flags and only applies them when the hand is otherwise structurally
+/// valid (Standard / SevenPairs / AllPungs / FullFlush / NineTerminals).
+/// <para>
+/// All flags default to <c>false</c>, so call sites that do not need contextual
+/// detection (e.g., bot strategies, replay reconstruction) can omit the parameter
+/// entirely and receive identical pre-Phase-I behaviour.
+/// </para>
+/// </summary>
+public sealed record WinContext
+{
+    /// <summary>天和 — dealer self-draw on the initial 14-tile hand, with no
+    /// intervening discards, claims, or kong replacements.</summary>
+    public bool IsHeavenlyHand { get; init; }
+
+    /// <summary>地和 — non-dealer Hu on the dealer's first discard, with no
+    /// intervening claims/draws and no melds on the claimant's hand.</summary>
+    public bool IsEarthlyHand { get; init; }
+
+    /// <summary>海底捞月 — self-draw on the very last tile of the wall (wall is
+    /// empty immediately after the draw).</summary>
+    public bool IsLastTileFromWall { get; init; }
+
+    /// <summary>河底捞鱼 — discard Hu on a tile thrown when the wall is already
+    /// exhausted (no future draws are possible).</summary>
+    public bool IsLastDiscardCatch { get; init; }
+
+    /// <summary>杠上开花 — self-draw on a kong-replacement tile (state machine
+    /// tracks via <see cref="ChangshaGameState.LastDrawWasKongReplacement"/>).</summary>
+    public bool IsKongReplacementWin { get; init; }
 }
 
 public sealed class WinDetectionResult
@@ -28,6 +73,10 @@ public sealed class WinDetectionResult
     /// Phase H Wave 2 — every Big Win pattern satisfied by this hand, in deterministic
     /// enum-declaration order: <see cref="WinPattern.SevenPairs"/>, <see cref="WinPattern.AllPungs"/>,
     /// <see cref="WinPattern.FullFlush"/>, <see cref="WinPattern.NineTerminals"/>.
+    /// Phase I Wave 1 extends this list with the 5 contextual Big Win bonuses in the
+    /// same declaration order (<see cref="WinPattern.HeavenlyHand"/>,
+    /// <see cref="WinPattern.EarthlyHand"/>, <see cref="WinPattern.LastTileFromWall"/>,
+    /// <see cref="WinPattern.LastDiscardCatch"/>, <see cref="WinPattern.KongReplacementWin"/>).
     /// <see cref="WinPattern.Standard"/> is NOT included — it is the baseline, not a stack
     /// contributor. Used by <see cref="ScoringService"/> to compute the stacking multiplier
     /// (1 pattern = ×1, 2 = ×2, 3+ = ×3 cap). Backward-compat: legacy consumers still read
@@ -40,7 +89,11 @@ public sealed class ChangshaWinDetector : IWinDetector
 {
     private static readonly HashSet<int> ValidPairRanks = [2, 5, 8];
 
-    public WinDetectionResult Detect(ChangshaHandState hand, int? winningTileId = null, WinMethod method = WinMethod.SelfDraw)
+    public WinDetectionResult Detect(
+        ChangshaHandState hand,
+        int? winningTileId = null,
+        WinMethod method = WinMethod.SelfDraw,
+        WinContext? context = null)
     {
         var concealedTileIds = new List<int>(hand.ConcealedTiles);
         if (winningTileId.HasValue && !concealedTileIds.Contains(winningTileId.Value))
@@ -51,6 +104,18 @@ public sealed class ChangshaWinDetector : IWinDetector
         var isAllPungs = CheckAllPungs(concealedTileIds, hand.Melds);
         var isNineTerminals = CheckNineTerminals(concealedTileIds, hand.Melds);
         var isStandard = CheckStandardWin(concealedTileIds, hand.Melds);
+
+        // Phase I Wave 1 — contextual Big Win bonuses are layered onto a structurally
+        // valid hand. The state machine validates each gating condition before setting
+        // a context flag, so the detector trusts them. They NEVER promote a non-winning
+        // shape to a win (bias documented in the WinContext XML doc + Bishop's memo).
+        var isStructurallyValid =
+            isStandard || isSevenPairs || isAllPungs || isFlush || isNineTerminals;
+        var isHeavenlyHand = isStructurallyValid && (context?.IsHeavenlyHand ?? false);
+        var isEarthlyHand = isStructurallyValid && (context?.IsEarthlyHand ?? false);
+        var isLastTileFromWall = isStructurallyValid && (context?.IsLastTileFromWall ?? false);
+        var isLastDiscardCatch = isStructurallyValid && (context?.IsLastDiscardCatch ?? false);
+        var isKongReplacementWin = isStructurallyValid && (context?.IsKongReplacementWin ?? false);
 
         WinPattern? pattern = null;
         var category = ScoreCategory.SmallWin;
@@ -81,6 +146,37 @@ public sealed class ChangshaWinDetector : IWinDetector
             category = ScoreCategory.BigWin;
         }
 
+        // Phase I Wave 1 — contextual patterns. Each fills Pattern only when no
+        // structural Big Win has claimed it, so structural patterns retain headline
+        // precedence (e.g., FullFlush + HeavenlyHand → Pattern=FullFlush, AllPatterns=[FullFlush, HeavenlyHand]).
+        // Category is promoted to BigWin whenever any contextual flag fires so the
+        // hand is scored correctly even when the structural shape is plain Standard.
+        if (isHeavenlyHand)
+        {
+            if (pattern is null) pattern = WinPattern.HeavenlyHand;
+            category = ScoreCategory.BigWin;
+        }
+        if (isEarthlyHand)
+        {
+            if (pattern is null) pattern = WinPattern.EarthlyHand;
+            category = ScoreCategory.BigWin;
+        }
+        if (isLastTileFromWall)
+        {
+            if (pattern is null) pattern = WinPattern.LastTileFromWall;
+            category = ScoreCategory.BigWin;
+        }
+        if (isLastDiscardCatch)
+        {
+            if (pattern is null) pattern = WinPattern.LastDiscardCatch;
+            category = ScoreCategory.BigWin;
+        }
+        if (isKongReplacementWin)
+        {
+            if (pattern is null) pattern = WinPattern.KongReplacementWin;
+            category = ScoreCategory.BigWin;
+        }
+
         if (pattern is null && isStandard)
         {
             pattern = WinPattern.Standard;
@@ -89,12 +185,18 @@ public sealed class ChangshaWinDetector : IWinDetector
 
         // Phase H Wave 2 — populate AllPatterns in deterministic enum-declaration order so
         // ScoringService can compute the stacking multiplier. Standard is never added (baseline,
-        // not a stack contributor); see WinDetectionResult.AllPatterns XML doc.
+        // not a stack contributor); see WinDetectionResult.AllPatterns XML doc. Phase I Wave 1
+        // appends the 5 contextual Big Win flags in declaration order.
         var allPatterns = new List<WinPattern>();
         if (isSevenPairs) allPatterns.Add(WinPattern.SevenPairs);
         if (isAllPungs) allPatterns.Add(WinPattern.AllPungs);
         if (isFlush) allPatterns.Add(WinPattern.FullFlush);
         if (isNineTerminals) allPatterns.Add(WinPattern.NineTerminals);
+        if (isHeavenlyHand) allPatterns.Add(WinPattern.HeavenlyHand);
+        if (isEarthlyHand) allPatterns.Add(WinPattern.EarthlyHand);
+        if (isLastTileFromWall) allPatterns.Add(WinPattern.LastTileFromWall);
+        if (isLastDiscardCatch) allPatterns.Add(WinPattern.LastDiscardCatch);
+        if (isKongReplacementWin) allPatterns.Add(WinPattern.KongReplacementWin);
 
         return new WinDetectionResult
         {

@@ -2077,3 +2077,101 @@ Unskipped two Phase G marker skips and shipped 10 new acceptance tests (4 bot ti
 
 ---
 
+## Phase I Wave 1 — Special-context wins + UX polish (2026-05-22)
+
+**Branch:** `stlong/phase-i-wave-1-special-wins-ux`  
+**Commits:** `afd59b9` (Bishop enum) → `7509685` (WinContext) → `b6a512e` (Vasquez acceptance) → `9e0439c` (state machine wiring) → `0117a30` (test fix) → `f91c95e` (Hicks UX) → `419ba7a` (WS wire) → `cd95b5b` (Vasquez unit tests) → `ae506fd`/`569f122`/`f8ae31a` (history docs) → `85c5328` (translator gap fix)  
+**Final test count:** 374 passed / 0 failed / 1 skipped (**+17 net** vs Phase H Wave 2 baseline of 357/0/1)
+
+### Contextual Big Win patterns (Bishop)
+
+Five new headline patterns layered onto the existing allPattern surface:
+
+- **HeavenlyHand** (天和) — dealer self-draw on initial 14-tile hand
+- **EarthlyHand** (地和) — non-dealer Hu on dealer's first discard
+- **LastTileFromWall** (海底捞月) — self-draw with wall now empty
+- **LastDiscardCatch** (河底捞鱼) — discard Hu with wall exhausted
+- **KongReplacementWin** (杠上开花) — self-draw on kong-replacement tile
+
+Contracts locked: `WinPattern` enum (5 values), `WinContext` record (5 bool flags), `ChangshaGameState.LastDrawWasKongReplacement` flag (lifecycle: set on kong-replacement back-of-wall draw; cleared by regular draw/discard/deal/manual-deal). Detector augmented with optional `context: null` parameter; all pre-Phase-I callsites compile unchanged.
+
+State-machine wiring: `LastDrawWasKongReplacement` set in `DeclareConcealedKong`, `DeclareAddedKong`, exposed-kong `ResolveClaim` branch; reset by `DrawTile`, `Discard`, `Deal`, `BeginManualDeal`. `WinContext` built at two detection sites:
+- `DeclareSelfDrawWin`: HeavenlyHand if `DiscardPile.Count==0 && SeatIndex==DealerSeatIndex && hand.Melds.Count==0 && !LastDrawWasKongReplacement`; LastTileFromWall if `Wall.Count==0`; KongReplacementWin if `LastDrawWasKongReplacement`.
+- `ResolveHuClaim`: EarthlyHand if `!isKongRobbing && DiscardPile.Count==1 && DiscardPile[0].SeatIndex==DealerSeatIndex && claimingSeatIndex!=DealerSeatIndex && hand.Melds.Count==0`; LastDiscardCatch if `!isKongRobbing && Wall.Count==0`.
+
+Contextual patterns fire mutually exclusively (gating per spec §4.3); mutual exclusivity verified at all detection boundaries.
+
+**Cross-lane coordination:** Test `HuValidation258Tests.Hu_FromDiscard_258Compliant_AcceptedViaResolveClaim` scenario became the canonical EarthlyHand fixture. Bishop aligned assertion to expect `Pattern==EarthlyHand` in commit `0117a30`; Vasquez ack'd. No drift.
+
+### Special-context tests (Vasquez)
+
+17 new tests across two suites:
+
+**`SpecialContextWinsTests.cs` (9 facts, acceptance level):**
+- 5 positive facts (1 per headline): HeavenlyHand, EarthlyHand, LastTileFromWall, LastDiscardCatch, KongReplacementWin — each asserts context flag fires, headline Pattern matches, AllPatterns contains enum value, score category = BigWin.
+- 4 negative facts (regression gates): HeavenlyHand ✗ on dealer's second draw, EarthlyHand ✗ on dealer's second discard, LastDiscardCatch ✗ when kong-robbing, KongReplacementWin ✗ on plain draw.
+
+**`WinPatternTests.cs` (3 facts + 1 Theory ×5):**
+- Fact: 5 contextual enum values defined.
+- Fact: `ChangshaGameState.LastDrawWasKongReplacement` bool property exists.
+- Fact: `IWinDetector.Detect` accepts optional `context: null` parameter.
+- Theory ×5: each contextual flag, when set on a valid standard hand, populates the headline Pattern + AllPatterns.
+
+**Methodology:** Reflection-defensive symbol probes allow test assembly to compile independently of Bishop's commit order. Direct state-machine drive (not via Runtime) mirrors Wave 2 precedent (`RobbingKongAcceptanceTests` pattern).
+
+### UX polish (Hicks)
+
+Two frontend deliverables:
+
+1. **Result-modal score-multiplier breakdown** — names the multiplier source off `scoreResult` payload (`category`, `basePoints`, `payments[]`) and `result.allPatterns[]`. Display math: `multiplier = clamp(allPatterns.length, 1, 3)` (matches backend `ScoringService` exactly); `baseBeforeMult = basePoints / multiplier` (reverse-derived); renders `Base / Multiplier ×N (N patterns) / Total to claim` + per-seat payment rows.
+
+2. **Streaming move-log sidebar** — `<aside id="move-log">` anchored top-right beneath variant badge. Self-contained module subscribing to existing client collections; no new wire contract. Rows: "New hand", "Dice rolled: N → break @ col M", per-seat discards/melds/claims, "Seat N: won by [pattern] — […] ×K", draw results.
+
+**Build invariants:**
+- TypeScript: `npx tsc --noEmit --strict --target es6 --moduleResolution bundler --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts` → exit 0.
+- Parcel: **`npx parcel build index.html --dist-dir ../autotable --public-url . --no-source-maps --no-cache`** (corrected from Wave 2 doc which wrongly said `parcel build src/index.ts src/index.html` — `src/index.html` does not exist; entry is `index.html` at repo root; dropping the TS arg lets Parcel discover it via `<script>` tag and emit single hashed JS).
+- Assets: `grep -E '(href|src)="/' src/frontend/autotable/index.html` → empty (every ref is bare hashed filename or `./relative`).
+
+**Bundle hashes:** JS `74e239e6.js` → `4ce16ecc.js`, CSS `674133df.css` → `8ade01c3.css`. Wave 2 hashes pruned.
+
+### 🚨 REGRESSION: Wave 2 chip strip was dead code in production
+
+**Discovery:** Hicks found that Phase H Wave 2 shipped a chip strip UI for `result.allPatterns` but `PATTERN_LABELS` was keyed by **PascalCase** (`SevenPairs`, `AllPungs`, …) while `WinPatternToWire` emits **camelCase** (`sevenPairs`, `allPungs`, …). Chips never rendered.
+
+**Fix:** Phase I Wave 1 rebases lookup on camelCase + adds `normalizePatternKey()` helper (lowercase first char, fallback to raw string for unmapped patterns).
+
+**Regression prevention rule:** Always test PascalCase ↔ camelCase keys when wire enums cross language boundaries (C# → TypeScript). Add translator contract test (Phase J) to catch future divergence.
+
+### Translator gap fix (Coordinator)
+
+Bishop's Phase H Wave 2 detector emits `winResult.allPatterns` + `winResult.isRobbedKong` on the SignalR path (via `ChangshaGameRuntime` line 1345–1391). Hicks's Phase I Wave 1 frontend was ready to render both. But `ChangshaToAutotableTranslator.BuildHandResult` (the bundle's WS path) never copied those nested payloads — translator diverged from SignalR path after Phase H Wave 2.
+
+**Fix:** Extended `HandResultEntry` to carry `WinResult?` + `ScoreResult?`; `BuildHandResult` now populates both from state-machine boundaries. Both wire paths now emit identical rich payloads.
+
+**Pattern captured:** Multi-phase architectures need explicit carriers at boundaries. When detector enriches a contract (e.g., populates `AllPatterns`), thread the carrier through every phase (detector → state → scorer → translator) — don't re-run the detector downstream.
+
+### Gate result
+
+**Phase H Wave 2 baseline:** 357 passed / 0 failed / 1 skipped  
+**Phase I Wave 1 final:** 374 passed / 0 failed / 1 skipped  
+**Delta:** +17 net passes
+
+Breakdown:
+- 9 new from Vasquez's `SpecialContextWinsTests` (commit `b6a512e`)
+- 8 new from Vasquez's `WinPatternTests` Phase-I-1 appends (commit `cd95b5b`)
+- 1 reclassified (test `HuValidation258` still passes, assertion updated to expect EarthlyHand)
+
+Zero regressions in pre-Phase-I tests.
+
+### Open questions for Phase I Wave 2
+
+(Quoted from Bishop's inbox memo — flagged for next wave)
+
+1. **Persistence hydration:** `LastDrawWasKongReplacement` is transient. Confirm with Ripley that the persistence layer serialises cleanly across rehydration; snapshots taken between kong-replacement draw and discard must preserve the flag.
+2. **Exposed Kong on Chow vs Pung claim:** Spec §3.4 says player can claim Kong on discard only with matching 3 tiles. If Wave 2 introduces chow-into-kong paths, flag wiring extends there too. Currently a non-issue.
+3. **Robbing-kong + LastDiscardCatch interaction:** If robbing-kong Hu declared by last seat to draw AND wall empty, should that get a separate flag? Currently no. Spec §4.3 doesn't describe one; Wave 3 may revisit.
+4. **Bot strategies and contextual wins:** Bots call `detector.Detect(hand, method: WinMethod.SelfDraw)` without `WinContext` — they never proactively declare on contextual-win opportunities. Bots will still declare if shape is winning; bonus just won't tag until state machine routes through authoritative detection. Correct by accident; documented for clarity.
+5. **i18n / display order in AllPatterns:** Wire order is enum-declaration (SevenPairs, AllPungs, FullFlush, NineTerminals, HeavenlyHand, EarthlyHand, LastTileFromWall, LastDiscardCatch, KongReplacementWin). Frontend may want different display order (rarity-first, chronological). Wire contract is stable; frontend-only concern.
+
+---
+

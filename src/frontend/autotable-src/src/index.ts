@@ -2,6 +2,8 @@ import 'bootstrap/dist/js/bootstrap';
 import { AssetLoader } from './asset-loader';
 import { Game } from './game';
 import { initLobby } from './lobby';
+import { MoveLog } from './move-log';
+import { Client } from './client';
 import * as three from 'three';
 
 const assetLoader = new AssetLoader();
@@ -16,4 +18,14 @@ assetLoader.loadAll().then(() => {
   // for debugging
   Object.assign(window, {game, three});
   game.start();
+
+  // Phase I Wave 1 — streaming move-log sidebar.  Mounts into the
+  // <aside id="move-log"> placeholder in index.html and subscribes to the
+  // existing client collections (match/dice/things/sound/claim/pickup/
+  // result).  Client is private on Game, but TypeScript private is purely
+  // a compile-time guard; we widen the type so we can hand the same Client
+  // singleton to MoveLog without copying it.
+  const client = (game as unknown as { client: Client }).client;
+  new MoveLog(client).start();
 });
+
