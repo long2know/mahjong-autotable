@@ -20,10 +20,11 @@ builder.Services.AddSingleton<AutotableConnectionManager>();
 const string ChangshaCorsPolicy = "ChangshaCors";
 builder.Services.AddCors(options =>
 {
+    // Phase H Wave 1 — the `modern/` Vite frontend (localhost:5173) was deleted in
+    // Phase A; the remaining origins are the Kestrel HTTP/HTTPS endpoints used by
+    // the in-tree `frontend/autotable/` bundle and the SignalR ChangshaHub clients.
     options.AddPolicy(ChangshaCorsPolicy, policy => policy
         .WithOrigins(
-            "http://localhost:5173",
-            "https://localhost:5173",
             "http://localhost:5114",
             "https://localhost:7135")
         .AllowAnyHeader()

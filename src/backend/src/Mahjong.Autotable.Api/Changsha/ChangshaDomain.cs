@@ -240,7 +240,11 @@ public sealed class ChangshaGameState
     public long EventSequence { get; set; }
 
     // State versioning
-    public int StateVersion { get; set; } = 1;
+    // Phase H Wave 1 — StateVersion starts at 0 and monotonically increments by 1
+    // on every successful mutation via ChangshaStateMachine.CreateEvent. Used as the
+    // optimistic-concurrency token by IChangshaGameRuntime's `expectedVersion`
+    // parameter — a stale token throws ChangshaConcurrencyException before any mutation.
+    public int StateVersion { get; set; } = 0;
 }
 
 public sealed class ChangshaSeatState

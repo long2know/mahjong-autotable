@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Mahjong.Autotable.Api.Changsha.Bot;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
 using Mahjong.Autotable.Api.Tables;
@@ -21,13 +22,13 @@ public interface IChangshaGameRuntime
     Task JoinTableAsync(string gameId, string connectionId, CancellationToken ct = default);
     Task<int> TakeSeatAsync(string gameId, string connectionId, int? seatIndex, CancellationToken ct = default);
     Task FillEmptySeatsWithBotsAsync(string gameId, CancellationToken ct = default);
-    Task StartGameAsync(string gameId, CancellationToken ct = default);
+    Task StartGameAsync(string gameId, CancellationToken ct = default, int? expectedVersion = null);
     Task AcknowledgeDealAsync(string gameId, int seatIndex, CancellationToken ct = default);
-    Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default);
-    Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default);
-    Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default);
-    Task DeclareKongAsync(string gameId, int seatIndex, int[] tileIds, CancellationToken ct = default);
-    Task DeclareWinAsync(string gameId, int seatIndex, CancellationToken ct = default);
+    Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default, int? expectedVersion = null);
+    Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default, int? expectedVersion = null);
+    Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
+    Task DeclareKongAsync(string gameId, int seatIndex, int[] tileIds, CancellationToken ct = default, int? expectedVersion = null);
+    Task DeclareWinAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
     Task<bool> ReconnectAsync(string gameId, int seatIndex, string connectionId, CancellationToken ct = default);
     Task HandleDisconnectAsync(string connectionId, CancellationToken ct = default);
 
@@ -38,7 +39,7 @@ public interface IChangshaGameRuntime
     /// pickup follows via <see cref="TakeTilesFromWallAsync"/>. Auto deal mode
     /// (Phase D-backend default) does NOT call this method.
     /// </summary>
-    Task RollDiceAsync(string gameId, int seatIndex, CancellationToken ct = default);
+    Task RollDiceAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
 
     /// <summary>
     /// Phase F §3 — runtime-driven pickup advance. The seat at the current
@@ -47,7 +48,7 @@ public interface IChangshaGameRuntime
     /// <paramref name="seatIndex"/> must equal <see cref="ChangshaGameState.PickupSeatIndex"/>,
     /// <paramref name="count"/> must equal <see cref="ChangshaGameStateMachine.ExpectedPickupCount"/>).
     /// </summary>
-    Task TakeTilesFromWallAsync(string gameId, int seatIndex, int count, CancellationToken ct = default);
+    Task TakeTilesFromWallAsync(string gameId, int seatIndex, int count, CancellationToken ct = default, int? expectedVersion = null);
 
     /// <summary>Test/diagnostic accessor: returns true if the game exists in memory.</summary>
     bool TryGetSnapshot(string gameId, out ChangshaGameState? state);
@@ -68,7 +69,11 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     private readonly ChangshaRuntimeOptions _options;
     private readonly ILogger<ChangshaGameRuntime> _logger;
     private readonly ConcurrentDictionary<string, ChangshaGameInstance> _games = new();
-    private readonly ChangshaBotPolicy _botPolicy = new();
+    // Phase H Wave 1 — typed as IChangshaBotStrategy (not the legacy ChangshaBotPolicy
+    // facade) so test harnesses can swap in a slow / scripted strategy to exercise the
+    // BotDecisionTimeoutMs fallback. Default is the Medium strategy (matches the
+    // pre-Phase-H behaviour where ChangshaBotPolicy delegated to ChangshaBotEngine.Resolve("medium")).
+    private IChangshaBotStrategy _strategy = ChangshaBotEngine.Default;
 
     public event Action<string>? StateChanged;
 
@@ -107,6 +112,10 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     {
         var resolvedSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
         var (state, _) = ChangshaGameStateMachine.CreateGame(resolvedSeed, botSeatIndexes);
+        // Phase H Wave 1 — StateVersion starts at 0 on a freshly created game; the
+        // "game-created" event emitted inside CreateGame is treated as setup, not as
+        // a mutation that consumes a version slot. First real mutation advances to 1.
+        state.StateVersion = 0;
         var instance = new ChangshaGameInstance(state.GameId, state);
         _games[state.GameId] = instance;
 
@@ -219,12 +228,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     // ── StartGame ─────────────────────────────────────────────────────
 
-    public async Task StartGameAsync(string gameId, CancellationToken ct = default)
+    public async Task StartGameAsync(string gameId, CancellationToken ct = default, int? expectedVersion = null)
     {
         var instance = Require(gameId);
         await instance.Lock.WaitAsync(ct);
         try
         {
+            EnsureExpectedVersion(instance, expectedVersion);
             ChangshaGameStateMachine.StartGame(instance.State);
             await BroadcastGameStartedAsync(instance, ct);
 
@@ -261,12 +271,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     // ── Phase F §3 — Manual deal: RollDice + TakeTilesFromWall ────────
 
-    public async Task RollDiceAsync(string gameId, int seatIndex, CancellationToken ct = default)
+    public async Task RollDiceAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null)
     {
         var instance = Require(gameId);
         await instance.Lock.WaitAsync(ct);
         try
         {
+            EnsureExpectedVersion(instance, expectedVersion);
             // Validate: only the dealer rolls.
             if (seatIndex != instance.State.DealerSeatIndex)
             {
@@ -292,12 +303,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         await ScheduleBotIfNeededAsync(instance, ct);
     }
 
-    public async Task TakeTilesFromWallAsync(string gameId, int seatIndex, int count, CancellationToken ct = default)
+    public async Task TakeTilesFromWallAsync(string gameId, int seatIndex, int count, CancellationToken ct = default, int? expectedVersion = null)
     {
         var instance = Require(gameId);
         await instance.Lock.WaitAsync(ct);
         try
         {
+            EnsureExpectedVersion(instance, expectedVersion);
             ChangshaGameStateMachine.TakeTilesFromWall(instance.State, seatIndex, count);
             await PersistSnapshotAsync(instance, ct);
         }
@@ -375,7 +387,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     // ── Discard ───────────────────────────────────────────────────────
 
-    public async Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default)
+    public async Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default, int? expectedVersion = null)
     {
         var instance = Require(gameId);
         bool openedClaim;
@@ -383,6 +395,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         try
         {
             EnsureSeatOwner(instance, seatIndex);
+            EnsureExpectedVersion(instance, expectedVersion);
             ChangshaGameStateMachine.Discard(instance.State, seatIndex, tileId);
             await EmitDiscardAsync(instance, seatIndex, tileId, ct);
             openedClaim = instance.State.Phase == ChangshaPhase.AwaitingClaim;
@@ -403,7 +416,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         }
     }
 
-    public async Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default)
+    public async Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default, int? expectedVersion = null)
     {
         var instance = Require(gameId);
         var parsed = ParseClaimType(claimType);
@@ -413,6 +426,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         try
         {
             EnsureSeatOwner(instance, seatIndex);
+            EnsureExpectedVersion(instance, expectedVersion);
             if (instance.State.Phase != ChangshaPhase.AwaitingClaim || instance.State.ClaimWindow is null)
                 throw new HubException("No claim window is open.");
 
@@ -433,7 +447,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         if (resolveNow) await ResolveClaimWindowAsync(instance, ct);
     }
 
-    public async Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default)
+    public async Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null)
     {
         var instance = Require(gameId);
         bool resolveNow;
@@ -441,6 +455,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         try
         {
             EnsureSeatOwner(instance, seatIndex);
+            EnsureExpectedVersion(instance, expectedVersion);
             if (instance.State.Phase != ChangshaPhase.AwaitingClaim || instance.State.ClaimWindow is null)
                 return; // late pass — ignore quietly
             instance.PendingClaims[seatIndex] = new ClaimResponse(null, null);
@@ -463,7 +478,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     // ── DeclareKong / DeclareWin ──────────────────────────────────────
 
-    public async Task DeclareKongAsync(string gameId, int seatIndex, int[] tileIds, CancellationToken ct = default)
+    public async Task DeclareKongAsync(string gameId, int seatIndex, int[] tileIds, CancellationToken ct = default, int? expectedVersion = null)
     {
         if (tileIds is null || tileIds.Length == 0)
             throw new HubException("DeclareKong requires at least one tile id.");
@@ -473,6 +488,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         try
         {
             EnsureSeatOwner(instance, seatIndex);
+            EnsureExpectedVersion(instance, expectedVersion);
             var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
 
             // Decide concealed vs added
@@ -499,7 +515,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         }
     }
 
-    public async Task DeclareWinAsync(string gameId, int seatIndex, CancellationToken ct = default)
+    public async Task DeclareWinAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null)
     {
         var instance = Require(gameId);
         bool scored = false;
@@ -507,6 +523,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         try
         {
             EnsureSeatOwner(instance, seatIndex);
+            EnsureExpectedVersion(instance, expectedVersion);
             ChangshaGameStateMachine.DeclareSelfDrawWin(instance.State, seatIndex);
             await EmitWinDeclaredAsync(instance, ct);
             ChangshaGameStateMachine.Score(instance.State);
@@ -680,7 +697,15 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             if (instance.State.ClaimWindow is null) return;
             if (instance.PendingClaims.ContainsKey(seatIndex)) return;
-            var action = _botPolicy.DecideAction(instance.State, seatIndex);
+            // Phase H Wave 1 — race the strategy against BotDecisionTimeoutMs. A hung
+            // strategy yields BotAction.Pass so the claim window can still resolve.
+            var state = instance.State;
+            var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+                () => _strategy.DecideAction(state, seatIndex),
+                _options.BotDecisionTimeoutMs,
+                BotAction.Pass,
+                _logger,
+                ct).ConfigureAwait(false);
             decided = action.Type == BotActionType.Claim ? action.ClaimType : null;
             instance.PendingClaims[seatIndex] = new ClaimResponse(decided, null);
         }
@@ -869,7 +894,17 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 if (instance.State.Phase != ChangshaPhase.AwaitingDiscard
                     || instance.State.ActiveSeatIndex != seatIndex)
                     return;
-                action = _botPolicy.DecideAction(instance.State, seatIndex);
+                // Phase H Wave 1 — race the strategy against BotDecisionTimeoutMs. A hung
+                // strategy yields the deterministic Medium-tier discard so the turn loop
+                // makes progress instead of blocking the table indefinitely.
+                var state = instance.State;
+                var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+                action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
+                    () => _strategy.DecideAction(state, seatIndex),
+                    _options.BotDecisionTimeoutMs,
+                    () => BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(hand)),
+                    _logger,
+                    ct).ConfigureAwait(false);
             }
             finally { instance.Lock.Release(); }
 
@@ -1494,6 +1529,22 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     {
         if (seatIndex is < 0 or > 3)
             throw new HubException($"Seat {seatIndex} is out of range.");
+    }
+
+    /// <summary>
+    /// Phase H Wave 1 — optimistic concurrency guard. When <paramref name="expectedVersion"/>
+    /// is non-null and does not match <see cref="ChangshaGameState.StateVersion"/>, throws
+    /// <see cref="ChangshaConcurrencyException"/> BEFORE any mutation. Must be invoked
+    /// inside the instance lock so the version cannot move between check and mutation.
+    /// Server-internal callers (bot scheduler, claim-window timeout) pass null and bypass
+    /// the check.
+    /// </summary>
+    private static void EnsureExpectedVersion(ChangshaGameInstance instance, int? expectedVersion)
+    {
+        if (expectedVersion is null) return;
+        var actual = instance.State.StateVersion;
+        if (expectedVersion.Value != actual)
+            throw new ChangshaConcurrencyException(expectedVersion.Value, actual);
     }
 
     private static TableClaimType ParseClaimType(string s) => s.ToLowerInvariant() switch

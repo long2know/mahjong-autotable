@@ -27,4 +27,15 @@ public sealed class ChangshaRuntimeOptions
 
     /// <summary>Whether to persist snapshots to the database after each transition.</summary>
     public bool PersistSnapshots { get; set; } = true;
+
+    /// <summary>
+    /// Phase H Wave 1 — maximum time a bot strategy may spend in
+    /// <see cref="Bot.IChangshaBotStrategy.DecideAction"/> before the runtime
+    /// abandons the result and falls back to a safe-default action (turn:
+    /// cheapest deterministic discard; claim: Pass). Set to <c>0</c> or a
+    /// negative value to disable the timeout (legacy behaviour). The slow
+    /// strategy task is allowed to complete in the background and its result
+    /// is discarded — bot strategies must remain pure / side-effect free.
+    /// </summary>
+    public int BotDecisionTimeoutMs { get; set; } = 2000;
 }
