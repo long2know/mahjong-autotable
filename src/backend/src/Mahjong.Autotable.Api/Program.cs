@@ -272,6 +272,18 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
         JwtSigningKey = builder.Configuration.GetValue<string>("Auth:JwtSigningKey")
             ?? authOptions.JwtSigningKey
             ?? string.Empty,
+        // Phase K Wave 6 — Bishop. Algorithm + RSA-key knobs are bound
+        // from both the legacy `Auth:` and the canonical `Authentication:`
+        // section so operators can flip the active algorithm without
+        // first migrating the section path. `Auth:` wins when both
+        // are populated (matches the JwtSigningKeys precedence).
+        JwtAlgorithm = builder.Configuration.GetValue<string>("Auth:JwtAlgorithm")
+            ?? builder.Configuration.GetValue<string>("Authentication:JwtAlgorithm")
+            ?? (string.IsNullOrWhiteSpace(authOptions.JwtAlgorithm) ? "HS256" : authOptions.JwtAlgorithm),
+        JwtRsaKeys = builder.Configuration.GetSection("Auth:JwtRsaKeys").Get<string[]>()
+            ?? builder.Configuration.GetSection("Authentication:JwtRsaKeys").Get<string[]>()
+            ?? authOptions.JwtRsaKeys
+            ?? Array.Empty<string>(),
     };
     builder.Services.AddSingleton(sp => new Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider(
         jwtAuthOptions,
@@ -279,6 +291,12 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
 }
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>();
+// Phase K Wave 6 — Bishop. Startup logger emits a single warning when
+// the resolved algorithm is HS256 so operators get a nudge toward
+// the RS256 migration. Wired as IStartupFilter so the log fires
+// before the first request lands.
+builder.Services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter,
+    Mahjong.Autotable.Api.Auth.JwtAlgorithmStartupLogger>();
 // Phase K Wave 1 — HMAC-signed OAuth state protector (PKCE+nonce
 // supporting). Singleton so the signing key stays stable across
 // requests; OAuthStateProtector mints + caches its own per-process
@@ -310,6 +328,20 @@ builder.Services.AddHostedService(sp =>
 // the controller resolves through IServiceScopeFactory so the scope
 // lifetime matches the request.
 builder.Services.AddScoped<Mahjong.Autotable.Api.Tournament.TournamentService>();
+
+// Phase K Wave 6 — Bishop. Bracket-generator factory + the four
+// concrete implementations (single-elim, round-robin, Swiss,
+// double-elim). All generators are pure functions over the seed
+// list so a singleton lifetime is correct.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.IBracketGenerator,
+    Mahjong.Autotable.Api.Tournament.SingleEliminationBracket>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.IBracketGenerator,
+    Mahjong.Autotable.Api.Tournament.RoundRobinBracket>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.IBracketGenerator,
+    Mahjong.Autotable.Api.Tournament.SwissBracket>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.IBracketGenerator,
+    Mahjong.Autotable.Api.Tournament.DoubleEliminationBracket>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.TournamentBracketGenerator>();
 
 // Phase K Wave 1 — Elo rating service + quarterly rollover (Bishop).
 // PlayerRatingService is singleton-shaped — it holds an IServiceScopeFactory
@@ -388,6 +420,21 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.VoiceRateLimiter>(sp =
 // Phase K Wave 3 — Bishop. Per-connection relay metrics for the voice
 // hub; the singleton lets /metrics surfaces query a rolling 60s window.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.VoiceHubMetricsService>();
+
+// Phase K Wave 6 — Bishop. HLS livestream recorder seam. The Wave-6
+// surface ships the in-memory stub so the controller resolves end-
+// to-end in tests + dev hosts; Phase L re-binds this interface to a
+// real ffmpeg / libwebrtc pipeline behind the same audit kinds and
+// the same `/api/voice/livestream/{gameId}/...` URL shape.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.ILivestreamRecorder,
+    Mahjong.Autotable.Api.Voice.InMemoryLivestreamRecorder>();
+
+// Phase K Wave 6 — Bishop. AI commentary generator seam. Wave 6 ships
+// the deterministic stub returning the canonical Phase-L placeholder
+// message; Phase L re-binds this interface to a real LLM pipeline
+// behind the same controller URL + audit Kind.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryGenerator,
+    Mahjong.Autotable.Api.Commentary.StubCommentaryGenerator>();
 
 // Phase K Wave 2 — Bishop (Backend). Spectator live-stream stub. Owns
 // the future tile-flip event surface (Phase L) so callers can attach
@@ -707,6 +754,12 @@ app.MapHub<ChangshaHub>("/hubs/changsha");
 app.MapHub<Mahjong.Autotable.Api.Voice.VoiceHub>("/hubs/voice");
 app.MapHub<Mahjong.Autotable.Api.Voice.VoiceHub>("/hubs/webrtc");
 
+// Phase K Wave 6 — Bishop. Spectator-voice SFU signalling hub. Mapped
+// separately from /hubs/voice because the topology (one-way fan-out)
+// is incompatible with the peer-mesh contract. The Wave-6 surface
+// returns stub coordinates; Phase L wires the real SFU.
+app.MapHub<Mahjong.Autotable.Api.Voice.SpectatorVoiceHub>("/hubs/voice/spectator");
+
 // Phase K Wave 2 — Bishop (Backend). ICE-server discovery endpoint.
 // Returns the configured STUN/TURN list as the WebRTC client
 // `RTCIceServer[]` shape; falls back to Google's public STUN server
@@ -877,6 +930,42 @@ app.MapGet("/api/replay/{id}/livestream.m3u8", (string id) =>
         },
         statusCode: StatusCodes.Status404NotFound))
     .RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
+
+// Phase K Wave 6 — Bishop. OIDC discovery document at the RFC 8414
+// "/.well-known/openid-configuration" path (the OIDC standard). The
+// AuthTokenController also serves this surface at the
+// /api/auth/.well-known/openid-configuration prefix; this top-level
+// route exists so RFC-conformant verifiers that probe the root path
+// resolve the same document. Both routes branch on JwtAlgorithm.
+app.MapGet("/.well-known/openid-configuration", (
+    HttpContext ctx,
+    Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider keys) =>
+{
+    if (!string.Equals(keys.Algorithm, "RS256", StringComparison.Ordinal))
+    {
+        ctx.Response.Headers.CacheControl = "public, max-age=60";
+        return Results.Json(
+            new
+            {
+                reason = "oidc-discovery-disabled",
+                algorithm = keys.Algorithm,
+                note = "OIDC discovery activates with the RS256 flip; the URL is reserved.",
+            },
+            statusCode: StatusCodes.Status404NotFound);
+    }
+    var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+    ctx.Response.Headers.CacheControl = "public, max-age=3600";
+    return Results.Ok(new
+    {
+        issuer = origin,
+        jwks_uri = $"{origin}/api/auth/.well-known/jwks.json",
+        token_endpoint = $"{origin}/api/auth/token",
+        grant_types_supported = new[] { "password", "authorization_code" },
+        id_token_signing_alg_values_supported = new[] { "RS256" },
+        response_types_supported = new[] { "token" },
+        subject_types_supported = new[] { "public" },
+    });
+}).RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
 
 // Phase J Wave 5 — map MVC controllers (MatchmakingController owns
 // GET /api/matchmaking/lobby). Phase J Wave 6 — controllers under

@@ -90,6 +90,43 @@ public sealed class AuthOptions
     public string JwtSigningKey { get; set; } = string.Empty;
 
     /// <summary>
+    /// Phase K Wave 6 — Bishop. Active JWT signing algorithm. Two
+    /// values supported during the Phase-L bring-up:
+    /// <list type="bullet">
+    ///   <item><c>HS256</c> (default) — HMAC-SHA256, keys sourced from
+    ///         <see cref="JwtSigningKeys"/>. JWKS endpoint cannot publish
+    ///         the shared secret so the endpoint returns 404 with a
+    ///         briefly-cacheable negative.</item>
+    ///   <item><c>RS256</c> — RSASSA-PKCS1-v1_5 SHA-256, private keys
+    ///         (PEM-encoded) sourced from <see cref="JwtRsaKeys"/>. JWKS
+    ///         endpoint publishes the matching public-key set so
+    ///         downstream verifiers can resolve the kid header without
+    ///         sharing any secret material.</item>
+    /// </list>
+    /// Wave 6 ships the surface; production flip from HS256→RS256 is a
+    /// later operational step. <see cref="JwtAlgorithmStartupLogger"/>
+    /// emits a startup warning whenever the resolved algorithm is HS256
+    /// to encourage the migration.
+    /// </summary>
+    public string JwtAlgorithm { get; set; } = "HS256";
+
+    /// <summary>
+    /// Phase K Wave 6 — Bishop. PEM-encoded RSA private keys used when
+    /// <see cref="JwtAlgorithm"/> is <c>RS256</c>. Position 0 is the
+    /// ACTIVE signer (new tokens are minted with this key); positions
+    /// 1..N are PREVIOUS keys accepted for validation only — the same
+    /// fallback shape as <see cref="JwtSigningKeys"/>.
+    /// <para>Each entry must be a PEM blob in either PKCS#1
+    /// (<c>-----BEGIN RSA PRIVATE KEY-----</c>) or PKCS#8
+    /// (<c>-----BEGIN PRIVATE KEY-----</c>) encoding. A minimum modulus
+    /// length of 2048 bits is recommended. The <c>kid</c> is derived
+    /// deterministically from the SPKI of the matching public key so
+    /// two processes loading the same key bytes derive the same
+    /// identifier — JWKS round-trips without an external key catalog.</para>
+    /// </summary>
+    public string[] JwtRsaKeys { get; set; } = Array.Empty<string>();
+
+    /// <summary>
     /// Phase K Wave 4 — Bishop. Canonical sub-section for per-provider
     /// OAuth config. Replaces the flat <see cref="Microsoft"/> /
     /// <see cref="Google"/> / <see cref="GitHub"/> properties. When
