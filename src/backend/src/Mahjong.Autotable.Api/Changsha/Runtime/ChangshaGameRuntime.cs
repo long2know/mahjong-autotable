@@ -1443,7 +1443,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 winningTileId = win.WinningTileId,
                 sourceSeatIndex = win.SourceSeatIndex,
                 allPatterns = win.AllPatterns.Select(WinPatternToWire).ToArray(),
-                isRobbedKong = win.IsRobbedKong
+                isRobbedKong = win.IsRobbedKong,
+                // Phase J Wave 3 — explicit axes for Hicks's UI (banner copy) so
+                // the frontend doesn't infer self-draw / kong-replacement from
+                // winType + allPatterns. Field names mirror WinResult auto-property
+                // names (camelCased by the default SignalR JSON contract).
+                isSelfDraw = win.IsSelfDraw,
+                isKongReplacement = win.IsKongReplacement
             },
             hand = new
             {
@@ -1475,7 +1481,10 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 winningTileId = win.WinningTileId,
                 sourceSeatIndex = win.SourceSeatIndex,
                 allPatterns = win.AllPatterns.Select(WinPatternToWire).ToArray(),
-                isRobbedKong = win.IsRobbedKong
+                isRobbedKong = win.IsRobbedKong,
+                // Phase J Wave 3 — explicit axes (same as the WinDeclared payload).
+                isSelfDraw = win.IsSelfDraw,
+                isKongReplacement = win.IsKongReplacement
             },
             scoreResult = new
             {
