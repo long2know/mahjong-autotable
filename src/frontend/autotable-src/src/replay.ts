@@ -30,6 +30,12 @@
 
 import { Client } from "./client";
 import { HandResultEntry, ThingInfo, MatchInfo } from "./types";
+import {
+  parseTilesJson,
+  registerReplayLauncher,
+  type ServerReplayEvent,
+  type ServerReplayResponse,
+} from "./replay-launcher";
 
 // ── Move-log types ───────────────────────────────────────────────────
 
@@ -50,6 +56,16 @@ export interface ReplayHand {
   result: HandResultEntry | null;
 }
 
+// ── Playback speed dropdown ──────────────────────────────────────────
+
+export const REPLAY_SPEEDS: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 0.5, label: '0.5x' },
+  { value: 1.0, label: '1x' },
+  { value: 2.0, label: '2x' },
+  { value: 4.0, label: '4x' },
+];
+const REPLAY_BASE_DELAY_MS = 700;
+
 // ── Tile glyphs (shared with move-log.ts conventions) ────────────────
 
 function tileGlyph(tile: number | null | undefined): { text: string; suit: string } {
@@ -63,6 +79,20 @@ function tileGlyph(tile: number | null | undefined): { text: string; suit: strin
   const label = labels[Math.floor(idx / 9)];
   const rank = (idx % 9) + 1;
   return { text: `${rank}${label}`, suit: `suit-${suit}` };
+}
+
+// Phase J Wave 7 — map a server replay event's `action` / `phase` to
+// the existing ReplayMove `kind` enum.  Unknown actions are skipped.
+function mapServerActionToKind(action: string, phase: string): MoveKind | null {
+  const a = (action || '').toLowerCase();
+  const p = (phase || '').toLowerCase();
+  if (a.includes('draw') || a.includes('pick')) return 'draw';
+  if (a.includes('discard')) return 'discard';
+  if (a.includes('meld') || a.includes('chow') || a.includes('pung') || a.includes('kong')) return 'meld';
+  if (p.includes('draw')) return 'draw';
+  if (p.includes('discard')) return 'discard';
+  if (p.includes('meld')) return 'meld';
+  return null;
 }
 
 // ── Replay manager ───────────────────────────────────────────────────
@@ -93,11 +123,23 @@ export class Replay {
   private stepBackBtn: HTMLButtonElement | null = null;
   private stepFwdBtn: HTMLButtonElement | null = null;
   private closeBtn: HTMLButtonElement | null = null;
+  // Phase J Wave 7 — new controls.
+  private prevHandBtn: HTMLButtonElement | null = null;
+  private nextHandBtn: HTMLButtonElement | null = null;
+  private speedSelectEl: HTMLSelectElement | null = null;
+  private eventCounterEl: HTMLElement | null = null;
+  private sourceLabelEl: HTMLElement | null = null;
 
   private selectedHandIdx: number = 0;
   private selectedMoveIdx: number = 0;
   private playInterval: number | null = null;
-  private playDelayMs: number = 700;
+  private playDelayMs: number = REPLAY_BASE_DELAY_MS;
+  // Phase J Wave 7 — speed multiplier (1x by default).  Drives playDelayMs.
+  private speedMultiplier: number = 1.0;
+  // Phase J Wave 7 — server-loaded replay payload (null when we're
+  // showing the in-memory client capture).
+  private serverPayload: ServerReplayResponse | null = null;
+  private domWired: boolean = false;
 
   constructor(client: Client) {
     this.client = client;
@@ -121,6 +163,11 @@ export class Replay {
     // first imported.  We re-resolve in `open()` to handle the case
     // where DOM nodes are added after this constructor runs.
     this.resolveDom();
+
+    // Phase J Wave 7 — expose the server-replay open path through the
+    // launcher module so any surface (leaderboard, profile page,
+    // post-game modal) can request `openReplayForGame(gameId)`.
+    registerReplayLauncher((payload) => this.openServer(payload));
   }
 
   // ── Public API ─────────────────────────────────────────────────────
@@ -145,6 +192,11 @@ export class Replay {
   open(serverHandHistory?: ReadonlyArray<HandResultEntry>): void {
     this.resolveDom();
     if (!this.screenEl) return;
+
+    // Phase J Wave 7 — clear any prior server payload; this is the
+    // in-memory open path.
+    this.serverPayload = null;
+    this.updateSourceLabel('Live capture');
 
     // Merge server-side history with the client-side capture.  If the
     // server ships a full handHistory array we trust it for the result
@@ -174,6 +226,76 @@ export class Replay {
     this.screenEl.setAttribute('aria-hidden', 'false');
   }
 
+  /**
+   * Phase J Wave 7 — open the replay screen with a server-fetched
+   * payload (from `GET /api/games/{gameId}/replay`).  Converts the
+   * flat event list into per-hand `ReplayMove` buckets so the
+   * existing renderer can chew on them unchanged.
+   */
+  openServer(payload: ServerReplayResponse): void {
+    this.resolveDom();
+    if (!this.screenEl) return;
+
+    this.serverPayload = payload;
+    this.hands = this.materializeHandsFromServerPayload(payload);
+    if (this.hands.length === 0) {
+      // Empty payload (Bishop's endpoint not implemented yet, or no
+      // events captured).  Push a single empty hand so the UI shell
+      // renders something instead of going blank.
+      this.hands = [{ handNumber: 1, moves: [], result: null }];
+      this.updateSourceLabel(`Game ${payload.gameId.slice(0, 8)} — no events recorded`);
+    } else {
+      this.updateSourceLabel(`Game ${payload.gameId.slice(0, 8)} — ${payload.events.length} events`);
+    }
+
+    this.populateSelector();
+    this.selectedHandIdx = 0;
+    this.selectedMoveIdx = 0;
+    this.render();
+    this.screenEl.classList.add('replay-open');
+    this.screenEl.setAttribute('aria-hidden', 'false');
+  }
+
+  /** Convert flat ServerReplayEvent[] → per-hand ReplayMove[] buckets. */
+  private materializeHandsFromServerPayload(payload: ServerReplayResponse): ReplayHand[] {
+    const buckets = new Map<number, ReplayMove[]>();
+    for (const ev of payload.events) {
+      const handNum = Math.max(1, ev.turn || 1);
+      let bucket = buckets.get(handNum);
+      if (bucket === undefined) {
+        bucket = [];
+        buckets.set(handNum, bucket);
+      }
+      const kind = mapServerActionToKind(ev.action, ev.phase);
+      if (kind === null) continue;
+      const tiles = parseTilesJson(ev.tilesJson);
+      const tileId = tiles.length > 0 ? tiles[0] : -1;
+      bucket.push({
+        kind,
+        seat: ev.actor,
+        tile: tileId,
+        face: tileId,
+        slotName: ev.phase,
+        timestamp: Date.parse(ev.timestampUtc) || Date.now(),
+      });
+    }
+    const hands: ReplayHand[] = [];
+    const sorted = Array.from(buckets.keys()).sort((a, b) => a - b);
+    for (const handNum of sorted) {
+      const moves = buckets.get(handNum) ?? [];
+      // Pull the matching handHistory entry (if the server attached one).
+      const result = payload.handHistory?.[handNum - 1] ?? null;
+      hands.push({ handNumber: handNum, moves, result });
+    }
+    return hands;
+  }
+
+  private updateSourceLabel(text: string): void {
+    if (this.sourceLabelEl !== null) {
+      this.sourceLabelEl.textContent = text;
+    }
+  }
+
   close(): void {
     if (!this.screenEl) return;
     this.stopPlay();
@@ -184,9 +306,9 @@ export class Replay {
   // ── DOM wiring ─────────────────────────────────────────────────────
 
   private resolveDom(): void {
-    if (this.screenEl) return;
+    if (this.domWired) return;
     this.screenEl = document.getElementById('replay-screen');
-    if (!this.screenEl) return;
+    if (this.screenEl === null) return;
     this.selectorEl = document.getElementById('replay-hand-selector') as HTMLSelectElement;
     this.timelineEl = document.getElementById('replay-timeline') as HTMLInputElement;
     this.timelineLabelEl = document.getElementById('replay-timeline-label');
@@ -196,6 +318,14 @@ export class Replay {
     this.stepBackBtn = document.getElementById('replay-step-back') as HTMLButtonElement;
     this.stepFwdBtn = document.getElementById('replay-step-fwd') as HTMLButtonElement;
     this.closeBtn = document.getElementById('replay-close') as HTMLButtonElement;
+    // Phase J Wave 7 — additional controls.
+    this.prevHandBtn = document.getElementById('replay-prev') as HTMLButtonElement;
+    this.nextHandBtn = document.getElementById('replay-next') as HTMLButtonElement;
+    this.speedSelectEl = document.getElementById('replay-speed-select') as HTMLSelectElement;
+    this.eventCounterEl = document.getElementById('replay-event-counter');
+    this.sourceLabelEl = document.getElementById('replay-source-label');
+
+    this.domWired = true;
 
     if (this.selectorEl) {
       this.selectorEl.addEventListener('change', () => {
@@ -231,9 +361,56 @@ export class Replay {
         this.render();
       });
     }
+    if (this.prevHandBtn) {
+      this.prevHandBtn.addEventListener('click', () => {
+        this.stopPlay();
+        this.selectedHandIdx = Math.max(0, this.selectedHandIdx - 1);
+        this.selectedMoveIdx = 0;
+        this.render();
+      });
+    }
+    if (this.nextHandBtn) {
+      this.nextHandBtn.addEventListener('click', () => {
+        this.stopPlay();
+        this.selectedHandIdx = Math.min(this.hands.length - 1, this.selectedHandIdx + 1);
+        this.selectedMoveIdx = 0;
+        this.render();
+      });
+    }
+    if (this.speedSelectEl) {
+      // Populate options from the canonical REPLAY_SPEEDS list.
+      this.speedSelectEl.replaceChildren();
+      for (const s of REPLAY_SPEEDS) {
+        const opt = document.createElement('option');
+        opt.value = String(s.value);
+        opt.textContent = s.label;
+        if (s.value === 1.0) opt.selected = true;
+        this.speedSelectEl.appendChild(opt);
+      }
+      this.speedSelectEl.addEventListener('change', () => {
+        const v = parseFloat(this.speedSelectEl!.value);
+        if (!isNaN(v) && v > 0) {
+          this.speedMultiplier = v;
+          this.playDelayMs = Math.round(REPLAY_BASE_DELAY_MS / v);
+          // If we're playing, restart the interval with the new delay.
+          if (this.playInterval !== null) {
+            this.stopPlay();
+            this.startPlay();
+          }
+        }
+      });
+    }
     if (this.closeBtn) {
       this.closeBtn.addEventListener('click', () => this.close());
     }
+    // Phase J Wave 7 — Escape closes the replay viewer when open.
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (!this.screenEl?.classList.contains('replay-open')) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.close();
+      }
+    });
   }
 
   // ── Capture loop ───────────────────────────────────────────────────
@@ -356,6 +533,9 @@ export class Replay {
       this.timelineEl.max = String(moves.length);
       this.timelineEl.value = String(this.selectedMoveIdx);
       this.timelineEl.disabled = moves.length === 0;
+      this.timelineEl.setAttribute('aria-valuemin', '0');
+      this.timelineEl.setAttribute('aria-valuemax', String(moves.length));
+      this.timelineEl.setAttribute('aria-valuenow', String(this.selectedMoveIdx));
     }
     if (this.timelineLabelEl) {
       this.timelineLabelEl.textContent =
@@ -363,8 +543,26 @@ export class Replay {
           ? 'No moves recorded for this hand'
           : `Move ${this.selectedMoveIdx} / ${moves.length}`;
     }
+    // Phase J Wave 7 — event counter mirrors the same data as the
+    // timeline label but is exposed via a dedicated testid for E2E.
+    if (this.eventCounterEl) {
+      this.eventCounterEl.textContent =
+        moves.length === 0
+          ? '0 / 0'
+          : `${this.selectedMoveIdx} / ${moves.length}`;
+    }
     if (this.selectorEl) {
       this.selectorEl.value = String(this.selectedHandIdx);
+    }
+    if (this.prevHandBtn) {
+      this.prevHandBtn.disabled = this.selectedHandIdx <= 0;
+    }
+    if (this.nextHandBtn) {
+      this.nextHandBtn.disabled = this.selectedHandIdx >= this.hands.length - 1;
+    }
+    if (this.playBtn) {
+      const playing = this.playInterval !== null;
+      this.playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
     }
 
     this.renderBoard(hand, moves);

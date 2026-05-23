@@ -488,6 +488,7 @@ function renderTable(host: HTMLElement, page: LeaderboardPage): void {
     { label: 'Total',         sort: 'totalScore',    cls: 'lb-col-num' },
     { label: 'Highest',       sort: 'highestScore',  cls: 'lb-col-num' },
     { label: 'Streak',        sort: 'longestStreak', cls: 'lb-col-num' },
+    { label: 'Profile',       sort: null,            cls: 'lb-col-action' },
   ];
   for (const h of headers) {
     const th = el('th', h.cls);
@@ -529,6 +530,34 @@ function renderTable(host: HTMLElement, page: LeaderboardPage): void {
     appendNumCell(tr, fmtSigned(row.totalScore));
     appendNumCell(tr, fmtInt(row.highestScore));
     appendNumCell(tr, fmtInt(row.longestStreak));
+
+    // Phase J Wave 7 — per-row "View" button opens the player's profile
+    // page (read-only when looking at someone else's profile), which in
+    // turn lists their recent games with replay links.  This is the
+    // gateway the spec requires for "leaderboard → replay" navigation
+    // without baking a per-row gameId into the leaderboard payload.
+    const viewCell = el('td', 'lb-col-action lb-cell-action');
+    const viewBtn = document.createElement('button');
+    viewBtn.type = 'button';
+    viewBtn.className = 'lb-view-btn';
+    viewBtn.textContent = 'View';
+    viewBtn.setAttribute('aria-label', `View profile for ${row.displayName}`);
+    viewBtn.setAttribute('data-testid', `leaderboard-view-${idx}`);
+    viewBtn.dataset.playerId = row.playerId;
+    viewBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      window.dispatchEvent(new CustomEvent('mahjong:open-profile-page', {
+        detail: {
+          playerId: row.playerId,
+          displayName: row.displayName,
+          avatarColor: row.avatarColor,
+          readOnly: true,
+        },
+      }));
+    });
+    viewCell.appendChild(viewBtn);
+    tr.appendChild(viewCell);
 
     body.appendChild(tr);
   });

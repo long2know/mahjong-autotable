@@ -72,6 +72,10 @@ export interface Identity {
   avatarColor: string;
   /** True when the cookie wasn't present at boot (this is a brand-new visitor). */
   isFirstVisit: boolean;
+  /** ISO timestamp of first identity creation; surfaced as
+   *  "Member since" on the Wave-7 profile page.  Optional because
+   *  pre-Wave-7 caches won't carry it. */
+  createdAt?: string;
 }
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -131,6 +135,7 @@ function loadCache(): Identity | null {
           ? j.avatarColor
           : AVATAR_COLOR_PRESETS[5],
       isFirstVisit: false,
+      createdAt: typeof j.createdAt === 'string' ? j.createdAt : undefined,
     };
   } catch {
     return null;
@@ -145,6 +150,7 @@ function writeCache(id: Identity): void {
         playerId: id.playerId,
         displayName: id.displayName,
         avatarColor: id.avatarColor,
+        createdAt: id.createdAt,
       }),
     );
   } catch {
@@ -179,11 +185,19 @@ function normalizeIdentity(raw: unknown, fallbackId: string, isFirstVisit: boole
       : AVATAR_COLOR_PRESETS[5];
   // Server hint overrides the cookie sniff when present.
   const serverIsNew = typeof o.isNewProfile === 'boolean' ? o.isNewProfile : null;
+  // Phase J Wave 7 — surface the createdAt timestamp so the profile
+  // page can show "Member since {date}".  The endpoint returns it as
+  // an ISO string; we accept either camelCase or PascalCase.
+  const createdAt =
+    typeof o.createdAt === 'string' && o.createdAt !== ''
+      ? o.createdAt
+      : (typeof o.CreatedAt === 'string' && o.CreatedAt !== '' ? o.CreatedAt : undefined);
   return {
     playerId,
     displayName,
     avatarColor,
     isFirstVisit: serverIsNew !== null ? serverIsNew : isFirstVisit,
+    createdAt,
   };
 }
 

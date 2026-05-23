@@ -67,6 +67,8 @@ import {
   startLeaderboardPolling,
   stopLeaderboardPolling,
 } from './leaderboard';
+import { installSettingsDrawerV2 } from './settings-drawer';
+import { installProfilePage } from './profile-page';
 //
 // The lobby is a small overlay panel anchored top-left of the autotable
 // page.  It lets the user pick the Phase F query params
@@ -688,6 +690,12 @@ export function initLobby(client?: Client): void {
   // anchor elements are missing.
   installProfileDrawer();
   installProfileToggle();
+  // Phase J Wave 7 — mount the app-wide settings drawer (separate from
+  // the Wave-2 per-game settings panel) and the player profile page
+  // overlay.  Both are idempotent and intercept clicks before the
+  // legacy Wave-5 drawer handler.
+  installSettingsDrawerV2();
+  installProfilePage();
   // Phase J Wave 6 — seed profile.ts.current from the localStorage
   // cache so the lobby chip shows the previously-saved displayName
   // *before* the SignalR hub connects (which only happens once the

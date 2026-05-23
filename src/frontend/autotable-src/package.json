@@ -8,6 +8,7 @@
     "e2e:install": "playwright install --with-deps chromium"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@parcel/transformer-image": "2.15.4",
     "@playwright/test": "^1.45.0",
     "@types/events": "^3.0.3",
