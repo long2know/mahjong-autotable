@@ -8,10 +8,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Mahjong.Autotable.Api.Tests.Regression;
 
 /// <summary>
-/// Phase J Waves 1 → 10 — cross-wave regression sanity (Vasquez).
+/// Phase J Waves 1 → 10 + Phase K Wave 1 — cross-wave regression sanity (Vasquez).
 ///
 /// <para>One xUnit class that exercises the canonical happy-path
-/// surfaces shipped across the ten Phase-J waves, in roughly the
+/// surfaces shipped across the eleven waves to date, in roughly the
 /// order a freshly-launched contributor would touch them:</para>
 ///
 /// <list type="number">
@@ -30,15 +30,18 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 ///         soft-passes.</item>
 ///   <item>Wave 10 — `/api/tournaments` listing surface exists OR
 ///         soft-passes.</item>
+///   <item>Phase K Wave 1 — OAuth PKCE-aware sign-in challenge,
+///         tournament forfeit endpoint, ELO leaderboard axis, and
+///         match-history endpoint each soft-probe never 5xx.</item>
 /// </list>
 ///
 /// <para>Each fact is reflection-defensive (multi-candidate URLs,
 /// 404-soft-pass, "never 500") so the suite stays green even as
 /// surfaces evolve. The point is to catch a regression where ONE wave
-/// silently breaks another — e.g. Wave-10's tournament wiring
+/// silently breaks another — e.g. Phase K Wave 1's OAuth PKCE wiring
 /// inadvertently 500s the Wave-1 health endpoint.</para>
 /// </summary>
-public class Wave1Through10RegressionTests : IAsyncLifetime
+public class Wave1ThroughKRegressionTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;
     private string? _tempDb;
@@ -47,7 +50,7 @@ public class Wave1Through10RegressionTests : IAsyncLifetime
     {
         var dataDir = Path.Combine(AppContext.BaseDirectory, "test-data");
         Directory.CreateDirectory(dataDir);
-        _tempDb = Path.Combine(dataDir, $"mahjong-w110-{Guid.NewGuid():N}.db");
+        _tempDb = Path.Combine(dataDir, $"mahjong-w1k-{Guid.NewGuid():N}.db");
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Production");  // Wave 8 CSP only lands in prod.
@@ -260,7 +263,7 @@ public class Wave1Through10RegressionTests : IAsyncLifetime
     //  Wave 10 — tournaments listing
     // ────────────────────────────────────────────────────────────────────
 
-    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-J-10")]
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-1")]
     public async Task Wave10_Tournaments_NeverServerError()
     {
         using var resp = await TryGetAsync(
@@ -271,20 +274,79 @@ public class Wave1Through10RegressionTests : IAsyncLifetime
     }
 
     // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 1 — OAuth PKCE sign-in challenge surface
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-1")]
+    public async Task PhaseK1_OAuthSignIn_NeverServerError()
+    {
+        using var resp = await TryGetAsync(
+            "/api/auth/sign-in/google",
+            "/api/auth/challenge/google",
+            "/auth/google/start");
+        AssertNo5xx(resp, "Phase K Wave 1 OAuth sign-in challenge");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 1 — Tournament match / forfeit endpoint
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-1")]
+    public async Task PhaseK1_TournamentForfeit_NeverServerError()
+    {
+        var fakeTournament = Guid.NewGuid().ToString();
+        var fakeMatch = Guid.NewGuid().ToString();
+        using var resp = await TryGetAsync(
+            $"/api/tournaments/{fakeTournament}/matches/{fakeMatch}",
+            $"/api/tournaments/{fakeTournament}/matches");
+        AssertNo5xx(resp, "Phase K Wave 1 tournament-match surface");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 1 — ELO leaderboard axis
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-1")]
+    public async Task PhaseK1_EloLeaderboard_NeverServerError()
+    {
+        using var resp = await TryGetAsync(
+            "/api/leaderboard?sort=elo",
+            "/api/leaderboard?sort=elo&season=current");
+        AssertNo5xx(resp, "Phase K Wave 1 ELO leaderboard");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 1 — Match history endpoint
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-1")]
+    public async Task PhaseK1_MatchHistory_NeverServerError()
+    {
+        using var resp = await TryGetAsync(
+            "/api/match-history",
+            "/api/games/history",
+            "/api/matches");
+        AssertNo5xx(resp, "Phase K Wave 1 match-history");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
     //  Cross-wave — health survives a probe of every surface
     // ────────────────────────────────────────────────────────────────────
 
-    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-J-10")]
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-1")]
     public async Task CrossWave_HealthSurvives_AllSurfaceProbes()
     {
         await TryGetAsync("/api/identity", "/api/auth/me");
         await TryGetAsync("/api/games", "/api/changsha/games");
         await TryGetAsync("/api/reconnect/audit");
         await TryGetAsync("/api/leaderboard");
+        await TryGetAsync("/api/leaderboard?sort=elo");
         await TryGetAsync($"/api/games/{Guid.NewGuid()}/replay");
         await TryGetAsync($"/api/games/{Guid.NewGuid()}/audit");
         await TryGetAsync("/api/chat/messages?gameId=global");
         await TryGetAsync("/api/tournaments");
+        await TryGetAsync("/api/match-history");
+        await TryGetAsync("/api/auth/sign-in/google");
 
         using var client = NewClient();
         using var health = await client.GetAsync("/health");

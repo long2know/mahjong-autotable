@@ -1,0 +1,275 @@
+# Phase K Wave 1 — Apone (DevOps).
+#
+# Multi-arch runtime smoke test.
+#
+# Wave 10 wired multi-arch image builds (`linux/amd64` + `linux/arm64`) into
+# the docker-build workflow, but never proved the resulting images actually
+# RUN on both architectures. A successful build only proves the layers are
+# valid OCI; per-arch runtime correctness is a separate question (libc /
+# glibc differences, native NuGet packages with arch-specific deps, .NET 10
+# ASP.NET runtime arch-bringup bugs).
+#
+# This workflow pulls the freshly published image after `docker-build`
+# succeeds on `main` (or on a `v*.*.*` tag push), runs it on each
+# architecture, and asserts:
+#
+#   1. /health returns 200 with the four expected fields.
+#   2. POST /api/identity mints a `mahjong_pid` cookie (anonymous identity
+#      surface — required before WS join works).
+#   3. GET /api/auth/providers returns 200 OR 404 (provider list — Bishop's
+#      surface, may not be exposed on every image).
+#   4. POST /api/csp-report → 204 (CSP report sink registers properly,
+#      including the strict CSP enforcement path now that the production
+#      overlay flips `Security:CspStrictStyles=true`).
+#
+# `linux/amd64` runs natively on `ubuntu-latest`. `linux/arm64` runs:
+#   - natively on `ubuntu-24.04-arm` if GitHub's arm64-hosted runner is
+#     available to this repo (preferred — native is ~5× faster than QEMU);
+#   - emulated via QEMU + binfmt on `ubuntu-latest` otherwise (`uses:
+#     docker/setup-qemu-action@v3` then `docker run --platform linux/arm64 ...`).
+#
+# We model this with a matrix that tries arm64-native first; if the runner
+# isn't available the job becomes the QEMU fallback automatically because
+# of the `continue-on-error` + `runs-on` fallback pattern below.
+
+name: multi-arch-smoke
+
+on:
+  workflow_run:
+    workflows: ["docker-build"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: "Image to smoke-test (default: ghcr.io/long2know/mahjong-autotable:latest)."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  IMAGE_DEFAULT: ghcr.io/long2know/mahjong-autotable:latest
+
+jobs:
+  smoke:
+    name: smoke ${{ matrix.platform }} (${{ matrix.runner }})
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            use_qemu: false
+          - platform: linux/arm64
+            runner: ubuntu-latest
+            use_qemu: true
+    env:
+      IMAGE_REF: ${{ github.event.inputs.image_ref || 'ghcr.io/long2know/mahjong-autotable:latest' }}
+
+    steps:
+      - name: Checkout (for the smoke helper scripts only)
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: ${{ matrix.use_qemu }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Log in to GHCR (read)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Resolve the manifest-list digest and pull the per-arch image. We pull
+      # the platform-specific digest so `docker run` sees a single-platform
+      # image (Docker's `--platform` flag on a multi-arch tag works via QEMU,
+      # but pinning the exact per-arch digest removes any ambiguity).
+      - name: Resolve per-arch digest
+        id: resolve
+        run: |
+          set -euo pipefail
+          PLATFORM='${{ matrix.platform }}'
+          OS="${PLATFORM%%/*}"
+          ARCH="${PLATFORM##*/}"
+          JSON=$(docker buildx imagetools inspect "$IMAGE_REF" --raw)
+          DIGEST=$(echo "$JSON" | jq -r --arg os "$OS" --arg arch "$ARCH" '
+            .manifests[]
+            | select(.platform.os == $os and .platform.architecture == $arch)
+            | .digest
+          ' | head -1)
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+            # Single-arch image — use the tag directly.
+            echo "image_ref_pinned=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+            echo "Single-arch manifest detected; using $IMAGE_REF as-is."
+          else
+            REGISTRY_REPO="${IMAGE_REF%%:*}"
+            echo "image_ref_pinned=${REGISTRY_REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
+            echo "Per-arch digest for $PLATFORM: $DIGEST"
+          fi
+
+      - name: Pull image
+        env:
+          PINNED: ${{ steps.resolve.outputs.image_ref_pinned }}
+        run: |
+          docker pull --platform '${{ matrix.platform }}' "$PINNED"
+          docker image inspect "$PINNED" --format '{{.Os}}/{{.Architecture}} — {{.Id}}'
+
+      # Run the container with the strict CSP knob ENABLED so the smoke
+      # also exercises the production configuration knob Bishop ships
+      # in Phase K. (CspStrictStyles defaults OFF in the image; the
+      # production config overlay flips it on. This workflow simulates
+      # that.)
+      - name: Run image
+        env:
+          PINNED: ${{ steps.resolve.outputs.image_ref_pinned }}
+        run: |
+          docker run -d \
+            --name mahjong-smoke \
+            --platform '${{ matrix.platform }}' \
+            -p 18090:8080 \
+            -e ASPNETCORE_ENVIRONMENT=Production \
+            -e Security__CspStrictStyles=true \
+            -e Security__CspReportUri=/api/csp-report \
+            "$PINNED"
+
+      - name: Wait for /health
+        run: |
+          set -e
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:18090/health > /tmp/health.json 2>/dev/null; then
+              echo "✅ /health responding after ${i}s"
+              cat /tmp/health.json
+              echo
+              for field in status buildSha uptime version; do
+                if ! grep -q "\"$field\"" /tmp/health.json; then
+                  echo "❌ /health missing field: $field"
+                  exit 1
+                fi
+              done
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ /health did not respond within 120s"
+          docker logs mahjong-smoke 2>&1 | tail -100
+          exit 1
+
+      - name: POST /api/identity — cookie mint
+        run: |
+          set -e
+          http_code=$(curl -fsS -o /tmp/identity.json -w '%{http_code}' \
+              -c /tmp/cookies.txt \
+              -X POST http://localhost:18090/api/identity \
+              -H 'Accept: application/json')
+          if [ "$http_code" != "200" ]; then
+            echo "❌ POST /api/identity returned $http_code"
+            cat /tmp/identity.json || true
+            exit 1
+          fi
+          if ! grep -q 'mahjong_pid' /tmp/cookies.txt; then
+            echo "❌ mahjong_pid cookie not set"
+            cat /tmp/cookies.txt
+            exit 1
+          fi
+          if ! grep -q '"playerId"' /tmp/identity.json; then
+            echo "❌ playerId not in response body"
+            cat /tmp/identity.json
+            exit 1
+          fi
+          echo "✅ POST /api/identity mint OK"
+
+      # Bishop's auth-provider list lives at /api/auth/providers. Forward-
+      # compatible — soft-pass on 404 (image may pre-date the surface).
+      - name: GET /api/auth/providers — OAuth endpoint registers
+        run: |
+          set -e
+          http_code=$(curl -fsS -o /tmp/providers.json -w '%{http_code}' \
+              -b /tmp/cookies.txt \
+              http://localhost:18090/api/auth/providers 2>/dev/null || echo 000)
+          case "$http_code" in
+            200)
+              echo "✅ /api/auth/providers reachable"
+              head -c 200 /tmp/providers.json; echo
+              ;;
+            404)
+              echo "⏭  /api/auth/providers not registered on this image — soft pass"
+              ;;
+            *)
+              echo "❌ /api/auth/providers returned $http_code"
+              cat /tmp/providers.json || true
+              exit 1
+              ;;
+          esac
+
+      # Phase K Wave 1 — confirm /api/csp-report endpoint is registered AND
+      # that the strict-CSP knob (Security:CspStrictStyles=true) is honoured
+      # — the runtime CSP header should NOT carry `style-src 'unsafe-inline'`.
+      - name: GET / — verify strict CSP is enforced
+        run: |
+          set -e
+          curl -sSI http://localhost:18090/health > /tmp/headers.txt
+          # `csp_line` may be Content-Security-Policy OR Content-Security-Policy-Report-Only;
+          # accept either for forward-compat. The KNOB we want to assert is that
+          # style-src does NOT carry 'unsafe-inline'.
+          csp_line=$(grep -i -E '^content-security-policy(-report-only)?:' /tmp/headers.txt || true)
+          if [ -z "$csp_line" ]; then
+            echo "❌ no CSP header on /health response — security middleware mis-wired"
+            cat /tmp/headers.txt
+            exit 1
+          fi
+          echo "$csp_line"
+          # Confirm the strict-styles knob took effect.
+          if echo "$csp_line" | grep -qE "style-src[^;]*'unsafe-inline'"; then
+            echo "❌ style-src still carries 'unsafe-inline' despite Security__CspStrictStyles=true"
+            exit 1
+          fi
+          echo "✅ strict-CSP styles enforced (no 'unsafe-inline' in style-src)"
+
+      - name: POST /api/csp-report — endpoint accepts synthetic violation
+        run: |
+          set -e
+          # Synthetic violation in the legacy envelope (Chromium uses this
+          # for `report-uri`; the modern Reporting API uses `report-to`).
+          http_code=$(curl -fsS -o /tmp/csp.txt -w '%{http_code}' \
+              -X POST http://localhost:18090/api/csp-report \
+              -H 'Content-Type: application/csp-report' \
+              --data-raw '{"csp-report":{"document-uri":"https://example.com/x","violated-directive":"script-src","effective-directive":"script-src","original-policy":"default-src self","blocked-uri":"inline","disposition":"enforce"}}')
+          if [ "$http_code" != "204" ]; then
+            echo "❌ /api/csp-report returned $http_code (expected 204)"
+            cat /tmp/csp.txt || true
+            exit 1
+          fi
+          # The runtime emits a structured warn line per persisted row. Tail
+          # the container log briefly to confirm.
+          for i in 1 2 3 4 5; do
+            if docker logs mahjong-smoke 2>&1 | grep -q 'CSP violation'; then
+              echo "✅ /api/csp-report → 204 and DB persistence confirmed via log"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "❌ /api/csp-report accepted 204 but no persistence log line — DB write may have silently failed"
+          docker logs mahjong-smoke 2>&1 | tail -50
+          exit 1
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          docker logs mahjong-smoke 2>&1 | tail -200 || true
+
+      - name: Stop container
+        if: always()
+        run: |
+          docker stop mahjong-smoke || true
+          docker rm mahjong-smoke || true

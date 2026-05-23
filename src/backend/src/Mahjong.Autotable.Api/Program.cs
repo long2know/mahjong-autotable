@@ -51,6 +51,45 @@ if (args.Contains("--migrate"))
     return;
 }
 
+// Phase K Wave 1 — Bishop (Backend). Stand-alone OAuth verification mode.
+// Probes every configured OAuth provider's OIDC discovery endpoint and
+// prints a one-line JSON summary per provider. Exit code is 0 when
+// every enabled+configured provider returns healthy; 1 otherwise. Used
+// by operators to verify the OAuth surface during deployment bringup
+// before exposing the API to clients.
+if (args.Contains("verify-oauth"))
+{
+    var verifyBuilder = WebApplication.CreateBuilder(args);
+    verifyBuilder.Services.Configure<Mahjong.Autotable.Api.Auth.AuthOptions>(
+        verifyBuilder.Configuration.GetSection("Authentication"));
+    verifyBuilder.Services.AddHttpClient();
+    verifyBuilder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthProviderHealthCheck>();
+    verifyBuilder.Logging.SetMinimumLevel(LogLevel.Warning);
+    using var verifyApp = verifyBuilder.Build();
+    var check = verifyApp.Services.GetRequiredService<Mahjong.Autotable.Api.Auth.OAuthProviderHealthCheck>();
+    var results = await check.ProbeAllAsync();
+    if (results.Count == 0)
+    {
+        Console.WriteLine("[verify-oauth] no providers configured.");
+        return;
+    }
+    var anyUnhealthy = false;
+    foreach (var kv in results)
+    {
+        var payload = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            provider = kv.Key,
+            healthy = kv.Value.Healthy,
+            statusCode = kv.Value.StatusCode,
+            error = kv.Value.Error,
+        });
+        Console.WriteLine($"[verify-oauth] {payload}");
+        if (!kv.Value.Healthy) anyUnhealthy = true;
+    }
+    Environment.Exit(anyUnhealthy ? 1 : 0);
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));
 
@@ -119,6 +158,11 @@ builder.Services.AddSingleton<MatchmakingService>();
 builder.Services.AddSingleton<PlayerIdentityService>();
 builder.Services.AddSingleton<LeaderboardService>();
 
+// Phase K Wave 1 — per-player match-history denormalization writer
+// (Bishop). Singleton-shaped like PlayerProfileService; the runtime
+// invokes RecordAsync from the EmitGameCompletedAsync hook.
+builder.Services.AddSingleton<PlayerGameHistoryService>();
+
 // Phase J Wave 8 — Bishop: OAuth / magic-link auth + rule-preset CRUD
 // (see .squad/decisions/inbox/bishop-phase-j-wave-8.md). Auth services are
 // scope-shaped wrappers around AppDbContext: they take an
@@ -129,6 +173,10 @@ var authSection = builder.Configuration.GetSection("Authentication");
 var authOptions = authSection.Get<Mahjong.Autotable.Api.Auth.AuthOptions>()
     ?? new Mahjong.Autotable.Api.Auth.AuthOptions();
 builder.Services.AddSingleton(authOptions);
+// Phase K Wave 1 — also bind via IOptions<AuthOptions> so newer
+// services (OAuthProviderHealthCheck, OAuthStateProtector) that take
+// the options-pattern signature resolve cleanly.
+builder.Services.Configure<Mahjong.Autotable.Api.Auth.AuthOptions>(authSection);
 var smtpOptions = builder.Configuration.GetSection("Smtp").Get<Mahjong.Autotable.Api.Auth.SmtpOptions>()
     ?? new Mahjong.Autotable.Api.Auth.SmtpOptions();
 builder.Services.AddSingleton(smtpOptions);
@@ -148,6 +196,11 @@ else
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthCookieService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthIdentityService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
+// Phase K Wave 1 — HMAC-signed OAuth state protector (PKCE+nonce
+// supporting). Singleton so the signing key stays stable across
+// requests; OAuthStateProtector mints + caches its own per-process
+// random key when AuthOptions.StateSigningKey is empty.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthStateProtector>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.MagicLinkService>();
 
 // Phase J Wave 9 — reconnect-token rotation + chat services. Both are
@@ -174,6 +227,35 @@ builder.Services.AddHostedService(sp =>
 // the controller resolves through IServiceScopeFactory so the scope
 // lifetime matches the request.
 builder.Services.AddScoped<Mahjong.Autotable.Api.Tournament.TournamentService>();
+
+// Phase K Wave 1 — Elo rating service + quarterly rollover (Bishop).
+// PlayerRatingService is singleton-shaped — it holds an IServiceScopeFactory
+// and opens a fresh AppDbContext scope per call. Singleton lifetime is
+// safe and means the runtime + hosted services can resolve it directly
+// without wrapping in a scope.
+builder.Services.Configure<Mahjong.Autotable.Api.Tournament.RatingOptions>(
+    builder.Configuration.GetSection("Rating"));
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.PlayerRatingService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.SeasonRolloverService>();
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Mahjong.Autotable.Api.Tournament.SeasonRolloverService>());
+
+// Phase K Wave 1 — tournament-match forfeit BackgroundService (Bishop).
+// Watches active tournament matches for participant disconnects beyond
+// Tournament:ReconnectGracePeriodSeconds (default 120) and auto-
+// advances the match to the opposing seat. Singleton so the runtime
+// can poke it directly when a player drops; the timer is best-effort.
+builder.Services.Configure<Mahjong.Autotable.Api.Tournament.TournamentForfeitOptions>(
+    builder.Configuration.GetSection("Tournament"));
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.TournamentForfeitService>();
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Mahjong.Autotable.Api.Tournament.TournamentForfeitService>());
+
+// Phase K Wave 1 — OAuth provider health check (Bishop). Probes each
+// configured provider's OIDC discovery document on startup + on demand
+// (consumed by /health); failures surface in the response payload but
+// never break the probe.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthProviderHealthCheck>();
 
 const string ChangshaCorsPolicy = "ChangshaCors";
 var configuredOrigins = builder.Configuration
@@ -383,6 +465,42 @@ app.MapGet("/health", async (HttpContext ctx, IServiceProvider services) =>
     var runtime = services.GetService<IChangshaGameRuntime>();
     var activeGames = runtime?.GameCount ?? 0;
 
+    // Phase K Wave 1 — OAuth provider discovery probe. Best-effort: a
+    // disabled or unconfigured provider is omitted entirely (the surface
+    // shows `oauth: { providers: {} }` so operators reading the doc know
+    // "no providers" vs. "all probes failed"). The check is cached
+    // internally so polling /health every few seconds doesn't hammer
+    // Google's well-known endpoint.
+    object oauthBlock;
+    try
+    {
+        var check = services.GetService<Mahjong.Autotable.Api.Auth.OAuthProviderHealthCheck>();
+        if (check is null)
+        {
+            oauthBlock = new { providers = new Dictionary<string, object>() };
+        }
+        else
+        {
+            var probes = await check.ProbeAllAsync();
+            oauthBlock = new
+            {
+                providers = probes.ToDictionary(
+                    kv => kv.Key,
+                    kv => (object)new
+                    {
+                        healthy = kv.Value.Healthy,
+                        statusCode = kv.Value.StatusCode,
+                        error = kv.Value.Error,
+                        discovery = kv.Value.Discovery,
+                    })
+            };
+        }
+    }
+    catch
+    {
+        oauthBlock = new { providers = new Dictionary<string, object>() };
+    }
+
     return Results.Ok(new
     {
         status = dbConnected ? "healthy" : "degraded",
@@ -398,6 +516,7 @@ app.MapGet("/health", async (HttpContext ctx, IServiceProvider services) =>
             migrationsApplied = dbMigrationsApplied,
         },
         activeGames,
+        oauth = oauthBlock,
     });
 }).DisableRateLimiting();
 

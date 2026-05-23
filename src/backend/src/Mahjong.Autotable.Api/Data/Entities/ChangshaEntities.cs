@@ -442,4 +442,100 @@ public class TournamentMatch
     public string Status { get; set; } = "pending"; // pending | in-progress | complete
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 1 — opposing-seat auto-forfeit lifecycle. Set by
+    /// <see cref="Mahjong.Autotable.Api.Tournament.TournamentForfeitService"/>
+    /// when the match was decided by a disconnect timeout rather than a
+    /// game-completion event. Audited via <c>ReconnectAuditEntries</c>
+    /// with the synthetic <c>tournament-forfeit</c> source so the trail
+    /// stays append-only in the existing audit surface.
+    /// </summary>
+    public bool ForfeitedByDisconnect { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 1 — player whose drop triggered the forfeit. Null
+    /// when <see cref="ForfeitedByDisconnect"/> is false.
+    /// </summary>
+    public string? ForfeitedPlayerId { get; set; }
+}
+
+/// <summary>
+/// Phase K Wave 1 — denormalized per-player participation row written
+/// at game completion. Powers the public <c>GET /api/games?playerId=…</c>
+/// match-history surface without forcing a JSON scan of <see cref="ChangshaGame.StateJson"/>.
+/// One row per (player, game). <see cref="OpponentPlayerIdsCsv"/> is a
+/// comma-joined snapshot of the OTHER seats' PlayerIds (in canonical
+/// seat order, bots filtered) so the CSV export shape is self-contained.
+/// </summary>
+public sealed class PlayerGameHistory
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PlayerId { get; set; } = string.Empty;
+    public Guid GameId { get; set; }
+    public int SeatIndex { get; set; }
+    public int FinalScore { get; set; }
+    public bool Won { get; set; }
+    public DateTime StartedAt { get; set; }
+    public DateTime CompletedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Comma-joined opponent PlayerIds (other seats' persistent
+    /// identities, bots filtered, ordered by seat ascending). Empty when
+    /// no human opponents played.</summary>
+    public string OpponentPlayerIdsCsv { get; set; } = string.Empty;
+
+    /// <summary>Optional rule preset pinned at game creation
+    /// (mirrors <see cref="ChangshaGame.RulePresetId"/>). Null when the
+    /// game ran on the runtime default.</summary>
+    public Guid? RulePresetId { get; set; }
+}
+
+/// <summary>
+/// Phase K Wave 1 — Elo-style competitive rating, one row per
+/// (player, season). Updated on tournament-match completion by
+/// <see cref="Mahjong.Autotable.Api.Tournament.PlayerRatingService"/>.
+/// Cross-season rollover snapshots prior-season rows into
+/// <see cref="PlayerRatingHistory"/> and resets the row to
+/// <c>Rating:DefaultElo</c>.
+/// </summary>
+public sealed class PlayerRating
+{
+    /// <summary>Baseline Elo applied to brand-new players (and on every
+    /// seasonal reset). Overridable via <c>Rating:DefaultElo</c>; the
+    /// constant pins the canonical default the service falls back to.</summary>
+    public const int DefaultElo = 1200;
+
+    /// <summary>K-factor for the standard Elo update rule.</summary>
+    public const int KFactor = 32;
+
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PlayerId { get; set; } = string.Empty;
+
+    /// <summary>Canonical season code (e.g. <c>2026-Q1</c>). See
+    /// <see cref="Mahjong.Autotable.Api.Tournament.PlayerRatingService.SeasonFromDate"/>
+    /// for the derivation.</summary>
+    public string Season { get; set; } = string.Empty;
+
+    public int EloRating { get; set; } = DefaultElo;
+    public int GamesPlayed { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime LastUpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Phase K Wave 1 — frozen prior-season snapshot of
+/// <see cref="PlayerRating"/>. Written once per (player, season) by
+/// <see cref="Mahjong.Autotable.Api.Tournament.SeasonRolloverService"/>
+/// at the season boundary so a leaderboard query for a closed season
+/// returns the canonical end-of-season ranking even after the live
+/// table has been reset.
+/// </summary>
+public sealed class PlayerRatingHistory
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PlayerId { get; set; } = string.Empty;
+    public string Season { get; set; } = string.Empty;
+    public int EloRating { get; set; }
+    public int GamesPlayed { get; set; }
+    public DateTime FrozenAt { get; set; } = DateTime.UtcNow;
 }

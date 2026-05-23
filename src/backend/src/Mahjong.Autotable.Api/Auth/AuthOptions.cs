@@ -35,6 +35,17 @@ public sealed class AuthOptions
 
     /// <summary>Magic-link token TTL in minutes. Default 15.</summary>
     public int MagicLinkTtlMinutes { get; set; } = 15;
+
+    /// <summary>
+    /// Phase K Wave 1 — HMAC signing key for OAuth state tokens.
+    /// When empty, the application mints a per-process random key
+    /// (logged once at startup). Production deployments should pin
+    /// a stable secret so a rolling restart doesn't invalidate
+    /// in-flight authorize redirects. Minimum recommended length:
+    /// 32 bytes (256 bits). Hex / base64 / arbitrary string all work
+    /// — the secret is hashed into a 256-bit key on use.
+    /// </summary>
+    public string StateSigningKey { get; set; } = string.Empty;
 }
 
 /// <summary>

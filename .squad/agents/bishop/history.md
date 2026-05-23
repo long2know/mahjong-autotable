@@ -1668,3 +1668,160 @@ hosted-service config.
 `Tournaments`, `Replay/ReplayV2NormaliserTests`,
 `Api/DatabaseHealthDetailTests`,
 `ChangshaServices/BotDecisionReasoningTests` all bind to my surfaces).
+
+## Phase K Wave 1 — Production bring-up & OAuth hardening (2026-05-23T09-23Z)
+
+**Branch:** `stlong/phase-k-wave-1-bringup` (cut from `main` @ `9a52ef1`)
+
+Five backend surfaces shipped as the post-completion polish wave:
+PKCE+HMAC-state+nonce OAuth hardening, tournament WS-reconnect grace
+with auto-forfeit, match-history export (JSON+CSV), per-tournament
+Elo with quarterly seasonal reset, and an `oauth.providers` block on
+`/health` with a `verify-oauth` CLI mode for ops. CSP strict-styles
+in Production was already shipped in the pre-wave batch; no new code
+this wave on that surface.
+
+### Files added (new)
+
+**Production:**
+- `src/backend/src/Mahjong.Autotable.Api/Auth/OAuthStateProtector.cs`
+  — HMAC-signed state (nonce|expiry|hmac, 56-byte token); SHA256-derives
+  the signing key from `AuthOptions.StateSigningKey`; mints per-process
+  random key with a warning log when config is empty. Public records:
+  `StateIssue(Token, Nonce)`, `StateVerifyResult(Ok, Nonce, Reason)`.
+- `src/backend/src/Mahjong.Autotable.Api/Auth/OAuthProviderHealthCheck.cs`
+  — Discovery+JWKS probe per enabled provider with 5s timeout;
+  `Authentication:HealthCheck:SkipDiscovery=true` short-circuits to
+  synthetic Healthy. `ProviderHealth.Discovery ∈ {ok,fail,skipped}`.
+- `src/backend/src/Mahjong.Autotable.Api/Tournament/TournamentForfeitService.cs`
+  — Singleton `BackgroundService`. `NoteDisconnect/NoteReconnect/SweepOnceAsync/
+  BackdateDisconnect` + `PendingDisconnects` read-only view. Test seam:
+  reflection write into `_disconnects` `ConcurrentDictionary` to bypass
+  real-time waits. `ForfeitAuditMarker = "tournament-forfeit"` constant
+  threaded into the audit row.
+- `src/backend/src/Mahjong.Autotable.Api/Tournament/SeasonRolloverService.cs`
+  — `BackgroundService` polling on a 1h timer. `RolloverOnceAsync(prior)`
+  freezes stale `PlayerRating` rows into `PlayerRatingHistory` (skips
+  pre-existing `(PlayerId, Season)` pairs → idempotent), then deletes
+  them so the next match starts at the default 1200 for the new season.
+- `src/backend/src/Mahjong.Autotable.Api/Tournament/PlayerRatingService.cs`
+  — K=32 Elo, 4-player strategy (winner gains vs avg loser, each loser
+  loses vs **winner's pre-match snapshot**). `SeasonFromDate` (YYYY-Qn)
+  + `PriorSeason` (year-wrap aware). Bots (`bot-*`) filtered.
+- `src/backend/src/Mahjong.Autotable.Api/Tournament/RatingsController.cs`
+  — `GET /api/ratings/leaderboard` + `GET /api/ratings/season/{season}`.
+- `src/backend/src/Mahjong.Autotable.Api/Players/PlayerGameHistoryService.cs`
+  + `Players/GamesHistoryController.cs` — `GET /api/players/{playerId}/games?
+  limit=&offset=&format=json|csv`. CSV columns (NO PlayerId — route-scoped):
+  `GameId,StartedAt,CompletedAt,FinalScore,Won,OpponentPlayerIds,RulePresetId`.
+
+**Tests (Bishop-authored):**
+- `Auth/OAuthStateProtectorTests`
+- `Tournaments/{PlayerRatingService,SeasonRolloverIntegration,RatingsLeaderboardEndpoint,TournamentForfeitService}Tests`
+- `Players/GamesHistoryEndpointTests`
+
+**Docs:** `docs/oauth-setup.md` — provider walkthrough, state-key
+rotation, `verify-oauth` CLI, air-gapped envs via `SkipDiscovery`.
+
+### Files modified
+
+- `Auth/AuthController.cs` — Login mints 3 cookies (state-nonce, PKCE
+  verifier, id-token nonce), redirects with `?state=<HMAC token>&
+  code_challenge=&nonce=`. Callback verifies HMAC state, binds the
+  cookie nonce, reads verifier+nonce from cookies, passes to the
+  new exchange overload.
+- `Auth/OAuthService.cs` — added `PkceVerifierCookieName` +
+  `NonceCookieName` constants; new `BuildAuthorizeUrl(state,challenge,nonce)`
+  + `ExchangeAndFetchUserInfoAsync(code,verifier,expectedNonce,ct)` overloads
+  (old signatures preserved); helpers `GeneratePkceVerifier`,
+  `BuildPkceChallenge` (S256), `TryReadIdTokenNonce` (JWT payload-only,
+  no sig validation), `Base64UrlEncode/Decode`.
+- `Auth/AuthOptions.cs` — added `string StateSigningKey { get; set; } = ""`.
+- `Tournament/TournamentService.cs` — added `ForfeitMatchAsync(gameId,
+  forfeitedPlayerId, ct)` + public-static `GameIdsContains(csv, gameId)`.
+- `Changsha/Runtime/ChangshaGameRuntime.cs` — Elo hook in
+  `AdvanceTournamentMatchAsync`; forfeit-tracker hooks in
+  `HandleDisconnectAsync` + `ReconnectAsync`; `PlayerGameHistory` row
+  per non-bot seat in `OnGameCompleted`.
+- `Data/Entities/ChangshaEntities.cs` — added `PlayerGameHistory`,
+  `PlayerRating`, `PlayerRatingHistory`; `TournamentMatch` grew
+  `ForfeitedByDisconnect bool` + `ForfeitedPlayerId string?`.
+- `Data/AppDbContext.cs` — `DbSet`s + index config for the three new
+  entities; existing tournament config touched only to add the two
+  forfeit columns.
+- `Data/DatabaseBootstrapper.cs` — minor touch for new tables on
+  bootstrap path.
+- `Persistence/Migrations/{Sqlite,Postgres,SqlServer}/2026...AddMatchHistoryAndRatings*` (×3) — new migrations + designer files + snapshots regenerated.
+- `Program.cs` — registered `Configure<AuthOptions>` (IOptions path —
+  newer services need it), `OAuthStateProtector`, `OAuthProviderHealthCheck`,
+  `Configure<RatingOptions>`, `PlayerRatingService` (Singleton),
+  `SeasonRolloverService` (Singleton + hosted), `Configure<TournamentForfeitOptions>`,
+  `TournamentForfeitService` (Singleton + hosted),
+  `PlayerGameHistoryService`. `/health` extended with `oauth.providers`
+  block. New `verify-oauth` CLI mode (~lines 53–95).
+- `appsettings.json` — `Rating`, `Tournament`, `Authentication:StateSigningKey`,
+  `Authentication:HealthCheck:SkipDiscovery` sections.
+- `appsettings.Production.json` — `StateSigningKey` placeholder
+  (empty so operators see the warning), `CspStrictStyles=true`.
+
+### Gotchas this wave
+
+- **`IOptions<AuthOptions>` not previously bound.** Pre-Wave-K Bishop
+  registered the bound options object as a bare singleton
+  (`AddSingleton(authOptions)`) but never called
+  `Services.Configure<AuthOptions>(section)`, so anything taking
+  `IOptions<AuthOptions>` could not be resolved. Fix: bind BOTH —
+  the singleton path stays for back-compat with existing callers and
+  the `Configure<>` path unblocks `OAuthStateProtector` +
+  `OAuthProviderHealthCheck`. **Lesson: when adding services that
+  follow the options pattern, audit the existing `AddSingleton(options)`
+  registrations and add a sibling `Configure<TOptions>` call.**
+
+- **EF Sqlite translation gotcha:**
+  `OrderBy(r => r.PlayerId, StringComparer.Ordinal)` is rejected at
+  query-translation time ("could not be translated"). The comparer
+  overload of `OrderBy` is for in-memory enumerables; against EF use
+  plain `OrderBy(r => r.PlayerId)` and accept the DB's collation.
+  Bit me on `LeaderboardAsync` + `SnapshotLeaderboardAsync`.
+
+- **Scope-lifetime vs root-provider resolution.** Initially registered
+  `PlayerRatingService` as `Scoped`. The integration test factory
+  resolves via `Factory.Services.GetService<PlayerRatingService>()`
+  which is the **root** provider — scope-validation throws
+  `Cannot resolve scoped service ... from root provider.` Switched to
+  `Singleton` (the service already follows the
+  `IServiceScopeFactory`-per-call pattern used by
+  `TournamentService`/`MatchmakingService`/`PlayerProfileService`).
+  Lesson: any service that takes `IServiceScopeFactory` should be
+  Singleton, not Scoped — otherwise there's no point owning the
+  factory.
+
+- **OAuth state cookie semantics flipped.** Pre-Wave-K
+  `mahjong_oauth_state` held the opaque state token directly. Wave-K
+  splits responsibility: the **token** travels in `?state=` (HMAC
+  self-validates) and the **cookie** holds only the embedded nonce
+  so we can cookie-bind the redirect. Two extra cookies
+  (`mahjong_oauth_pkce`, `mahjong_oauth_nonce`) round out the flow.
+  If anyone adds a third OAuth flow they MUST mint all three.
+
+- **JWT nonce check is intentionally unauthenticated.** We do not
+  validate the id_token signature here — the signature trust comes
+  from the TLS-protected token endpoint. `TryReadIdTokenNonce`
+  parses the payload base64url, asserts `nonce == cookie_nonce`,
+  and that's the full check. Providers that don't return an id_token
+  (e.g., GitHub raw OAuth2) skip the assertion; the callback
+  succeeds on PKCE + HMAC state alone.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-1.md` —
+endpoint contracts, EF entity table, DI wiring summary,
+appsettings additions, and next-wave hand-offs (operator runbook
+for on-demand rollover, Postgres collation note, PKCE-without-id_token
+caveat).
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+→ **Passed: 977, Failed: 0, Skipped: 0** (+145 over Wave 10 baseline
+of 832; Vasquez's Wave-K forward-staged contract tests under
+`Auth/OAuth{Pkce,StateNonce,ProviderHealthCheck,Callback}Tests`,
+`Players/{PlayerRatingTests,SeasonRolloverServiceTests}`, and
+`Tournaments/{TournamentMatchForfeit,TournamentReconnectGrace}Tests`
+all bind cleanly to my shipped surface).

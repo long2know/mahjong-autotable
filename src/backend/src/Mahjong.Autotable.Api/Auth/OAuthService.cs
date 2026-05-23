@@ -33,6 +33,15 @@ public sealed class OAuthService
     public const string StateCookieName = "mahjong_oauth_state";
     public const string ReturnUrlCookieName = "mahjong_oauth_return";
 
+    /// <summary>Phase K Wave 1 — cookie name for the PKCE code-verifier
+    /// the client mints on <c>/login</c> and reads back on
+    /// <c>/callback</c>. Short TTL (matches state cookie).</summary>
+    public const string PkceVerifierCookieName = "mahjong_oauth_pkce";
+
+    /// <summary>Phase K Wave 1 — cookie name for the OIDC nonce claim
+    /// we expect to find in Google's <c>id_token</c>.</summary>
+    public const string NonceCookieName = "mahjong_oauth_nonce";
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly AuthOptions _options;
 
@@ -59,6 +68,19 @@ public sealed class OAuthService
 
     public string BuildAuthorizeUrl(string provider, string redirectUri, string state)
     {
+        return BuildAuthorizeUrl(provider, redirectUri, state, codeChallenge: null, nonce: null);
+    }
+
+    /// <summary>
+    /// Phase K Wave 1 — PKCE + nonce-aware authorize URL builder. When
+    /// <paramref name="codeChallenge"/> is non-null we append
+    /// <c>code_challenge</c> + <c>code_challenge_method=S256</c>; when
+    /// <paramref name="nonce"/> is non-null we append <c>nonce</c> (only
+    /// meaningful for providers that issue an OIDC <c>id_token</c> —
+    /// e.g. Google).
+    /// </summary>
+    public string BuildAuthorizeUrl(string provider, string redirectUri, string state, string? codeChallenge, string? nonce)
+    {
         var opts = GetProviderOptions(provider);
         var (authorize, _, _, defaultScopes) = ResolveProviderEndpoints(provider, opts);
         var scopes = string.IsNullOrWhiteSpace(opts.Scopes) ? defaultScopes : opts.Scopes;
@@ -71,6 +93,15 @@ public sealed class OAuthService
             ["state"] = state,
             ["prompt"] = provider.Equals("google", StringComparison.OrdinalIgnoreCase) ? "select_account" : null,
         };
+        if (!string.IsNullOrEmpty(codeChallenge))
+        {
+            query["code_challenge"] = codeChallenge;
+            query["code_challenge_method"] = "S256";
+        }
+        if (!string.IsNullOrEmpty(nonce) && provider.Equals("google", StringComparison.OrdinalIgnoreCase))
+        {
+            query["nonce"] = nonce;
+        }
         return QueryHelpers.AddQueryString(authorize, query);
     }
 
@@ -78,6 +109,25 @@ public sealed class OAuthService
         string provider,
         string code,
         string redirectUri,
+        CancellationToken ct = default)
+    {
+        return await ExchangeAndFetchUserInfoAsync(provider, code, redirectUri, codeVerifier: null, expectedNonce: null, ct);
+    }
+
+    /// <summary>
+    /// Phase K Wave 1 — PKCE + nonce-aware variant. When
+    /// <paramref name="codeVerifier"/> is supplied it's included in the
+    /// token exchange (RFC 7636). When <paramref name="expectedNonce"/>
+    /// is supplied and the provider returns an <c>id_token</c>, we
+    /// parse the JWT and refuse the response if the <c>nonce</c> claim
+    /// doesn't match.
+    /// </summary>
+    public async Task<OAuthUserInfo?> ExchangeAndFetchUserInfoAsync(
+        string provider,
+        string code,
+        string redirectUri,
+        string? codeVerifier,
+        string? expectedNonce,
         CancellationToken ct = default)
     {
         var opts = GetProviderOptions(provider);
@@ -95,16 +145,25 @@ public sealed class OAuthService
             ["grant_type"] = "authorization_code",
             ["redirect_uri"] = redirectUri,
         };
+        if (!string.IsNullOrEmpty(codeVerifier))
+        {
+            tokenForm["code_verifier"] = codeVerifier;
+        }
         using var tokenResp = await client.PostAsync(tokenEndpoint, new FormUrlEncodedContent(tokenForm), ct);
         if (!tokenResp.IsSuccessStatusCode) return null;
 
         var tokenJson = await tokenResp.Content.ReadAsStringAsync(ct);
         string? accessToken;
+        string? idToken = null;
         try
         {
             using var doc = JsonDocument.Parse(tokenJson);
             if (!doc.RootElement.TryGetProperty("access_token", out var tok)) return null;
             accessToken = tok.GetString();
+            if (doc.RootElement.TryGetProperty("id_token", out var idTok))
+            {
+                idToken = idTok.GetString();
+            }
         }
         catch (JsonException)
         {
@@ -115,12 +174,75 @@ public sealed class OAuthService
 
         if (string.IsNullOrEmpty(accessToken)) return null;
 
+        // Validate the id_token nonce when we have one to compare against.
+        // The id_token is JWT-encoded; we parse the payload without
+        // verifying the signature here — Google's RS256 signature
+        // validation is out of scope for the Wave K-1 surface. The
+        // nonce check still gives a strong replay defence because the
+        // attacker would need to also steal the nonce cookie.
+        if (!string.IsNullOrEmpty(expectedNonce) && !string.IsNullOrEmpty(idToken))
+        {
+            if (!TryReadIdTokenNonce(idToken, out var actualNonce)
+                || !ConstantTimeEquals(expectedNonce, actualNonce ?? string.Empty))
+            {
+                return null;
+            }
+        }
+
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var userResp = await client.GetAsync(userInfoEndpoint, ct);
         if (!userResp.IsSuccessStatusCode) return null;
 
         var userJson = await userResp.Content.ReadAsStringAsync(ct);
         return ParseUserInfo(provider, userJson);
+    }
+
+    /// <summary>
+    /// Phase K Wave 1 — JWT payload reader for the <c>nonce</c> claim.
+    /// Visible-for-testing; returns true on a parseable header.payload
+    /// segment with a string <c>nonce</c>.
+    /// </summary>
+    public static bool TryReadIdTokenNonce(string idToken, out string? nonce)
+    {
+        nonce = null;
+        if (string.IsNullOrWhiteSpace(idToken)) return false;
+        var parts = idToken.Split('.');
+        if (parts.Length < 2) return false;
+        try
+        {
+            var payloadJson = Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (doc.RootElement.TryGetProperty("nonce", out var n) && n.ValueKind == JsonValueKind.String)
+            {
+                nonce = n.GetString();
+                return true;
+            }
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException)
+        {
+            return false;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Phase K Wave 1 — PKCE verifier generator. Returns a 32-byte
+    /// random base64-url string (no padding) per RFC 7636 §4.1.
+    /// </summary>
+    public static string GeneratePkceVerifier()
+    {
+        Span<byte> buf = stackalloc byte[32];
+        RandomNumberGenerator.Fill(buf);
+        return Base64UrlEncode(buf);
+    }
+
+    /// <summary>
+    /// Phase K Wave 1 — PKCE challenge from verifier (S256).
+    /// </summary>
+    public static string BuildPkceChallenge(string codeVerifier)
+    {
+        var hash = SHA256.HashData(Encoding.ASCII.GetBytes(codeVerifier));
+        return Base64UrlEncode(hash);
     }
 
     private static OAuthUserInfo? ParseUserInfo(string provider, string json)
@@ -191,10 +313,7 @@ public sealed class OAuthService
     {
         Span<byte> buf = stackalloc byte[32];
         RandomNumberGenerator.Fill(buf);
-        return Convert.ToBase64String(buf)
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .TrimEnd('=');
+        return Base64UrlEncode(buf);
     }
 
     /// <summary>Constant-time string comparison for state validation.</summary>
@@ -205,6 +324,22 @@ public sealed class OAuthService
         var aBytes = Encoding.UTF8.GetBytes(a);
         var bBytes = Encoding.UTF8.GetBytes(b);
         return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
+    }
+
+    private static string Base64UrlEncode(ReadOnlySpan<byte> data) =>
+        Convert.ToBase64String(data).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+    private static byte[] Base64UrlDecode(string s)
+    {
+        var padded = s.Replace('-', '+').Replace('_', '/');
+        switch (padded.Length % 4)
+        {
+            case 2: padded += "=="; break;
+            case 3: padded += "="; break;
+            case 0: break;
+            default: throw new FormatException("invalid base64url length");
+        }
+        return Convert.FromBase64String(padded);
     }
 }
 

@@ -267,6 +267,54 @@ public sealed class TournamentService
     }
 
     /// <summary>
+    /// Phase K Wave 1 — forfeit variant of <see cref="AdvanceMatchAsync"/>.
+    /// Identifies the in-progress match owning <paramref name="gameId"/>,
+    /// marks it complete with <paramref name="winnerPlayerId"/>, and
+    /// sets the forfeit metadata so leaderboard + audit can distinguish
+    /// a regular win from a disconnect-forfeit. Returns the mutated
+    /// match (or null when no match owns the game).
+    /// </summary>
+    public async Task<TournamentMatch?> ForfeitMatchAsync(
+        Guid gameId,
+        string winnerPlayerId,
+        string forfeitedPlayerId,
+        CancellationToken ct = default)
+    {
+        var candidates = await _db.TournamentMatches
+            .Where(m => m.Status == "in-progress")
+            .ToListAsync(ct);
+        var match = candidates.FirstOrDefault(m => DeserializeGameIds(m.GameIdsJson).Contains(gameId));
+        if (match is null) return null;
+
+        match.WinnerPlayerId = winnerPlayerId;
+        match.Status = "complete";
+        match.CompletedAt = DateTime.UtcNow;
+        match.ForfeitedByDisconnect = true;
+        match.ForfeitedPlayerId = forfeitedPlayerId;
+
+        var tournament = await _db.Tournaments.FirstOrDefaultAsync(t => t.Id == match.TournamentId, ct);
+        if (tournament is not null)
+        {
+            await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
+        }
+        await _db.SaveChangesAsync(ct);
+        return match;
+    }
+
+    /// <summary>
+    /// Phase K Wave 1 helper — true iff <paramref name="gameIdsJson"/>
+    /// (a serialised <c>List&lt;Guid&gt;</c>) contains
+    /// <paramref name="gameId"/>. Exposed publicly so cross-service
+    /// consumers (<see cref="TournamentForfeitService"/>) can reuse
+    /// the deserialise logic without duplicating it.
+    /// </summary>
+    public static bool GameIdsContains(string? gameIdsJson, Guid gameId)
+    {
+        if (string.IsNullOrWhiteSpace(gameIdsJson)) return false;
+        return DeserializeGameIds(gameIdsJson).Contains(gameId);
+    }
+
+    /// <summary>
     /// Leaderboard: aggregate win-count + buchholz tie-breaker per
     /// player. Returns rows ordered by (wins desc, buchholz desc).
     /// </summary>

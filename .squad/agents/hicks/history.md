@@ -2110,3 +2110,92 @@ Cross-cutting Wave-10 risk notes:
   neutral, which is the safe default.
 
 Memo: `.squad/decisions/inbox/hicks-phase-j-wave-10.md`.
+
+## Phase K Wave 1 — tournament SVG bracket, match history, rated leaderboard, onboarding tour, lazy splits
+
+Branch: `stlong/phase-k-wave-1-bringup`. Five frontend tasks shipped:
+
+1. **Tournament UI polish (`tournaments.ts` rewrite).** SVG bracket
+   for single-elim formats with clickable match cells + inline detail
+   row + "Watch finals" pin → `openReplayForGame(gameId)`.  Sortable
+   `<table>` standings for round-robin / Swiss (Buchholz column only
+   shown in Swiss).  Subscribes to SignalR `TournamentMatchCompleted`
+   via a lazy `await import('./hub')` so SignalR stays out of the
+   lobby bundle.
+2. **Match-history export (`history.ts` new module).** Self-injects
+   "📥 Match history" link into `#profile-recent-games`; modal mounts
+   itself.  Date-range filter (7/30/90/365/custom), JSON/CSV toggle,
+   blob download.  Recent-20 preview with sortable columns.  404
+   feature-detect on `/api/games`.
+3. **Rated leaderboard (`leaderboard.ts` extended).** New mode toggle
+   (`leaderboard-rating-toggle`) + season picker (`leaderboard-season-select`)
+   surface `/api/ratings/leaderboard?season=…` with graceful 404
+   fallback to the existing stats endpoint.  LS persistence under
+   `mahjong.leaderboard.rating.v1` + `…season.v1`.  Per-row Rating +
+   Δ columns with `▲/▼/—` arrows.
+4. **Onboarding tour (`tour.ts` new module).** 8-step walkthrough
+   gated by `mahjong.tour.completed.v1` LS flag.  SVG dim mask with
+   spotlight cutout + floating card that flips above/below the
+   target.  Keyboard: ←/→ navigate, Enter advances, Esc closes
+   without marking complete (resumable).  Step 7 auto-activates the
+   Tournaments tab.
+5. **Lazy splits (`index.ts`).** Converted `installChatPanel`,
+   `installAuditTab`, `installTournamentsPanel`, plus the new
+   `installHistoryModal` + `installOnboardingTour` into dynamic
+   imports gated by their natural trigger points (tab click, URL
+   inspection, MutationObserver on `[aria-hidden]` / `[hidden]`).
+   Parcel emits four new chunks (`tournaments`, `history`, `tour`,
+   `chat`) totalling ~53 kB peeled off the eager graph.
+
+### Bundle deltas
+
+- Main `autotable-src.<hash>.js`: `73dffdb4` (1.275 MB) → `41e99b7a`
+  (1.318 MB).  Net +43 kB after splits — new Phase K code is ~96 kB
+  total, ~53 kB of which is now lazy-chunked.
+- New chunks: `tournaments.1842296f.js` 19.5 kB,
+  `history.3833d0e7.js` 12.34 kB, `tour.7017c005.js` 8.97 kB,
+  `chat.642b399f.js` 12.26 kB.
+- Vendored: `esm.<hash>.js` `eb93de05` → `c30a71b9` (parcel-driven
+  re-hash; no source delta).
+- CSS: appended ~250 lines for tournament/history/tour/rating surfaces;
+  new hashes `555afd3d` (main) + `4da091b3` (about) + `f25de6a2` (lobby).
+
+> Lobby <500 kB target NOT met this wave (1.318 MB main) — would
+> require splitting `Game` / `three.js` / `World` / `Client` out of
+> the lobby eager graph, which is Wave-2 scope.  Documented in the
+> inbox memo.
+
+### Tests
+
+- `tsc --noEmit -p .` clean except pre-existing TS1323 dynamic-import
+  warnings (same shape as `sentry.ts:97`; parcel ignores).
+- Parcel build green in ~11 s.
+- `tests/selectors.md` extended with full Phase K Wave 1 testid
+  catalog and Vasquez soft-pass annotations.
+
+### Author-hygiene this wave
+
+Selective `git add` only — no `git add -A`.  Apone's CSP
+follow-ups + Vasquez's CSP test expansions belong to their own
+commits.  My commits carry `Hicks (Frontend) <hicks@squad.mahjong>`
++ `Co-authored-by: Copilot` trailer.
+
+Cross-cutting Wave-1 risk notes:
+
+- **Tournament bracket SVG cells are fixed-width (180 × 56 px).**
+  Long player names overflow today; middle-truncate + hover tooltip
+  is a low-risk follow-up.
+- **Rating endpoint 404 fallback.** A stats-only deployment is the
+  default until Bishop ships `/api/ratings/leaderboard`; the UI
+  surfaces "Ratings unavailable — showing stats." once and forces
+  `mode='stats'` so subsequent renders don't thrash.
+- **History endpoint 404.** Modal opens fine, preview renders empty,
+  Download button is disabled with the same banner — safe to ship
+  ahead of `/api/games`.
+- **Tour selectors degrade gracefully.** `#lobby-rule-preset-select`
+  is not currently in `index.html`; the tour falls back to the
+  variant fieldset for step 3.  Once the rule-preset `<select>`
+  lands in HTML, the spotlight will pick it up automatically with
+  no JS change.
+
+Memo: `.squad/decisions/inbox/hicks-phase-k-wave-1.md`.

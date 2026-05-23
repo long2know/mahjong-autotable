@@ -1,4 +1,4 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png","z6JwJ":"./esm.eb93de05.js"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><meta name=sentry-dsn content><meta name=sentry-environment content=production><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=about.df85b4c4.css><link rel=stylesheet href=autotable-src.4a92b1f1.css><link rel=stylesheet href=autotable-src.6633d8fb.css><body>
+<!DOCTYPE html><script type=importmap>{"imports":{"4wrhr":"./chat.642b399f.js","8OHBL":"./table.60230825.jpg","Oqdzq":"./tournaments.1842296f.js","PI2wK":"./tour.7017c005.js","blhvB":"./esm.c30a71b9.js","dHwUE":"./history.3833d0e7.js","fgYlY":"./models.auto.72ee60ea.glb","gOn3o":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><meta name=sentry-dsn content><meta name=sentry-environment content=production><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.555afd3d.css><link rel=stylesheet href=autotable-src.f25de6a2.css><link rel=stylesheet href=autotable-src.4da091b3.css><body>
     <img id=dice-img src=dice.auto.391822b5.png alt aria-hidden=true>
     <canvas id=center></canvas>
     
@@ -870,8 +870,17 @@
                             <span>Min games</span>
                             <input id=leaderboard-min-games-input class="form-control form-control-sm" data-testid=leaderboard-min-games-input type=number min=0 step=1 value=5>
                         </label>
+                        <label class="leaderboard-control leaderboard-control-rating">
+                            <span>Rated</span>
+                            <input id=leaderboard-rating-toggle type=checkbox data-testid=leaderboard-rating-toggle>
+                        </label>
+                        <label class="leaderboard-control leaderboard-control-season">
+                            <span>Season</span>
+                            <select id=leaderboard-season-select class="dark-select form-control form-control-sm" data-testid=leaderboard-season-select></select>
+                        </label>
                     </div>
                 </div>
+                <div id=leaderboard-rating-status class="leaderboard-rating-status leaderboard-status" data-testid=leaderboard-rating-status aria-live=polite hidden></div>
                 <div id=leaderboard-error class="leaderboard-error leaderboard-status" aria-live=polite hidden></div>
                 <div id=leaderboard-loading class="leaderboard-loading leaderboard-status" aria-live=polite>Loading leaderboard…</div>
                 <div id=leaderboard-empty class="leaderboard-empty leaderboard-status" hidden>
@@ -1012,6 +1021,6 @@
         </div>
     </div>
 
-    <script type=module src=autotable-src.73dffdb4.js></script>
+    <script type=module src=autotable-src.41e99b7a.js></script>
 
 

@@ -1330,8 +1330,24 @@
                                    data-testid="leaderboard-min-games-input"
                                    type="number" min="0" step="1" value="5">
                         </label>
+                        <label class="leaderboard-control leaderboard-control-rating">
+                            <span>Rated</span>
+                            <input id="leaderboard-rating-toggle"
+                                   type="checkbox"
+                                   data-testid="leaderboard-rating-toggle">
+                        </label>
+                        <label class="leaderboard-control leaderboard-control-season">
+                            <span>Season</span>
+                            <select id="leaderboard-season-select"
+                                    class="dark-select form-control form-control-sm"
+                                    data-testid="leaderboard-season-select"></select>
+                        </label>
                     </div>
                 </div>
+                <div id="leaderboard-rating-status"
+                     class="leaderboard-status leaderboard-rating-status"
+                     data-testid="leaderboard-rating-status"
+                     aria-live="polite" hidden></div>
                 <div id="leaderboard-error"
                      class="leaderboard-status leaderboard-error"
                      aria-live="polite" hidden></div>

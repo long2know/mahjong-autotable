@@ -61,6 +61,14 @@ public static class DatabaseBootstrapper
             // existing SQLite DBs that pre-date Wave 10 without
             // requiring an out-of-band `dotnet ef database update`.
             await EnsureSqliteWave10TablesAsync(db, cancellationToken);
+            // Phase K Wave 1 — match-history denormalization + per-season
+            // Elo rating tables (Bishop). Canonical schema is the
+            // AddMatchHistoryAndRatings EF migration; this guard
+            // bootstraps existing SQLite DBs that pre-date Wave-K-1
+            // without requiring an out-of-band `dotnet ef database
+            // update`. Also stamps the new TournamentMatches
+            // forfeit columns onto pre-Wave-K Wave-10 rows.
+            await EnsureSqlitePhaseK1TablesAsync(db, cancellationToken);
         }
         else
         {
@@ -870,6 +878,162 @@ public static class DatabaseBootstrapper
                     ON "TournamentMatches" ("TournamentId");
                     """;
                 await idxMatchTour.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase K Wave 1 — defensive SQLite-only bootstrap for the
+    /// <c>PlayerGameHistory</c>, <c>PlayerRatings</c>, and
+    /// <c>PlayerRatingHistory</c> tables, plus the forfeit columns added
+    /// to <c>TournamentMatches</c>. Postgres + SqlServer reach the same
+    /// schema through the canonical EF migration set (see
+    /// Persistence/Migrations/{Postgres,SqlServer}/…AddMatchHistoryAndRatings).
+    /// </summary>
+    private static async Task EnsureSqlitePhaseK1TablesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var create = connection.CreateCommand())
+            {
+                create.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "PlayerGameHistory" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_PlayerGameHistory" PRIMARY KEY,
+                        "PlayerId" TEXT NOT NULL,
+                        "GameId" TEXT NOT NULL,
+                        "SeatIndex" INTEGER NOT NULL,
+                        "FinalScore" INTEGER NOT NULL,
+                        "Won" INTEGER NOT NULL,
+                        "StartedAt" TEXT NOT NULL,
+                        "CompletedAt" TEXT NOT NULL,
+                        "OpponentPlayerIdsCsv" TEXT NOT NULL,
+                        "RulePresetId" TEXT NULL
+                    );
+                    """;
+                await create.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await using (var idx1 = connection.CreateCommand())
+            {
+                idx1.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_PlayerGameHistory_PlayerId_CompletedAt"
+                    ON "PlayerGameHistory" ("PlayerId", "CompletedAt");
+                    """;
+                await idx1.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await using (var idx2 = connection.CreateCommand())
+            {
+                idx2.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_PlayerGameHistory_PlayerId_GameId"
+                    ON "PlayerGameHistory" ("PlayerId", "GameId");
+                    """;
+                await idx2.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createRatings = connection.CreateCommand())
+            {
+                createRatings.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "PlayerRatings" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_PlayerRatings" PRIMARY KEY,
+                        "PlayerId" TEXT NOT NULL,
+                        "Season" TEXT NOT NULL,
+                        "EloRating" INTEGER NOT NULL,
+                        "GamesPlayed" INTEGER NOT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "LastUpdatedAt" TEXT NOT NULL
+                    );
+                    """;
+                await createRatings.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await using (var idxR1 = connection.CreateCommand())
+            {
+                idxR1.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_PlayerRatings_PlayerId_Season"
+                    ON "PlayerRatings" ("PlayerId", "Season");
+                    """;
+                await idxR1.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await using (var idxR2 = connection.CreateCommand())
+            {
+                idxR2.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_PlayerRatings_Season"
+                    ON "PlayerRatings" ("Season");
+                    """;
+                await idxR2.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createHist = connection.CreateCommand())
+            {
+                createHist.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "PlayerRatingHistory" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_PlayerRatingHistory" PRIMARY KEY,
+                        "PlayerId" TEXT NOT NULL,
+                        "Season" TEXT NOT NULL,
+                        "EloRating" INTEGER NOT NULL,
+                        "GamesPlayed" INTEGER NOT NULL,
+                        "FrozenAt" TEXT NOT NULL
+                    );
+                    """;
+                await createHist.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await using (var idxH1 = connection.CreateCommand())
+            {
+                idxH1.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_PlayerRatingHistory_PlayerId_Season"
+                    ON "PlayerRatingHistory" ("PlayerId", "Season");
+                    """;
+                await idxH1.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await using (var idxH2 = connection.CreateCommand())
+            {
+                idxH2.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_PlayerRatingHistory_Season"
+                    ON "PlayerRatingHistory" ("Season");
+                    """;
+                await idxH2.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Additive columns on TournamentMatches — guarded by a
+            // PRAGMA table_info probe so a fresh schema (with the
+            // columns already created via the EF model on first boot)
+            // doesn't re-add and trip "duplicate column".
+            var hasForfeitFlag = false;
+            var hasForfeitPlayer = false;
+            await using (var probe = connection.CreateCommand())
+            {
+                probe.CommandText = "PRAGMA table_info(\"TournamentMatches\");";
+                await using var reader = await probe.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var name = reader.GetString(1);
+                    if (string.Equals(name, "ForfeitedByDisconnect", StringComparison.Ordinal)) hasForfeitFlag = true;
+                    if (string.Equals(name, "ForfeitedPlayerId", StringComparison.Ordinal)) hasForfeitPlayer = true;
+                }
+            }
+            if (!hasForfeitFlag)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE \"TournamentMatches\" ADD COLUMN \"ForfeitedByDisconnect\" INTEGER NOT NULL DEFAULT 0;";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+            if (!hasForfeitPlayer)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE \"TournamentMatches\" ADD COLUMN \"ForfeitedPlayerId\" TEXT NULL;";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
             }
         }
         finally

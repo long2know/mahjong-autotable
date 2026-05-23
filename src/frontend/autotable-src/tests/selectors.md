@@ -624,3 +624,110 @@ Canonical soft-pass annotation strings (keep stable for CI summary scraping):
 When you remove or rename a Wave 10 testid, run
 `grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
 merging — the soft-pass annotations will silently hide regressions.
+
+## Phase K Wave 1 testids — tournament SVG bracket / match history / rated leaderboard / onboarding tour (Hicks)
+
+Coverage for the Phase K Wave 1 frontend bring-up.
+
+### Tournaments — SVG bracket + sortable standings + watch-finals pin
+- `tournament-bracket-svg` — the SVG host inside `#tournament-bracket`
+  (replaces the Wave-10 `<pre>` dump).  Renders single-elim brackets;
+  for round-robin / Swiss formats the host is hidden and the
+  standings table takes over.
+- `tournament-bracket-match-{R}-{N}` — clickable `<g>` cell for round
+  R (1-based), match index N (1-based within the round).  Click /
+  Enter / Space toggle the inline detail row below the bracket.
+- `tournament-bracket-match-{R}-{N}-expand` — the chevron / `+` glyph
+  inside the match cell that mirrors the cell's expanded state.
+- `tournament-standings-table` — the standings table host inside
+  `#tournament-standings`.  Headers cycle through asc/desc/off on
+  click; the `<th>` for the active column gets `.sorted-asc` /
+  `.sorted-desc`.
+- `tournament-standings-row-{N}` — one row per player, N is the
+  current sort position (1-based).
+- `tournament-watch-finals-{tournamentId}` — the "Watch finals" pin
+  rendered on a final-round complete match.  Calls
+  `openReplayForGame(gameId)` (lazy-imports `./replay-launcher`).
+
+SignalR contract: `tournaments.ts` subscribes to the
+`TournamentMatchCompleted` hub event (alias
+`TournamentMatchCompletedV1`) and refreshes the active tournament
+detail in-place when it fires.
+
+### Match history export modal (profile → Recent games)
+- `profile-history-link` — auto-injected "📥 Match history" button
+  inside `#profile-recent-games`.
+- `history-modal` — the modal dialog scaffold; mounted lazily by
+  `history.ts:installHistoryModal()`.
+- `history-date-range` — `<select>` with options 7 / 30 / 90 / 365 /
+  custom.  When custom, two `<input type="date">` siblings become
+  visible (`history-date-from`, `history-date-to`).
+- `history-format-toggle` — radio group with values `json` and `csv`.
+- `history-download` — primary action button; triggers blob download
+  via `URL.createObjectURL`.
+- `history-recent-table` — preview table of the most recent 20
+  matches.  Columns sort on header click.
+- `history-recent-row-{N}` — one row per match preview.
+
+Wire contract: `GET /api/games?playerId=&format=json|csv&from=<ISO>&to=<ISO>`.
+The modal feature-detects 404 → shows "Match-history export is not yet
+available" status banner and disables the Download button.
+
+### Leaderboard — ELO rating toggle + season picker + delta arrows
+- `leaderboard-rating-toggle` — checkbox that swaps the leaderboard
+  data source from `/api/leaderboard` → `/api/ratings/leaderboard`.
+  Mode persists in LS `mahjong.leaderboard.rating.v1`.
+- `leaderboard-season-select` — `<select>` listing
+  current / last / all-time.  Persists in LS
+  `mahjong.leaderboard.rating.season.v1`.
+- `leaderboard-rating-status` — `aria-live="polite"` badge that
+  surfaces "Ratings unavailable — showing stats." when the ratings
+  endpoint 404s (falls back to the stats endpoint, persists
+  `mode='stats'`).
+- `leaderboard-rating-delta-{N}` — per-row delta cell rendered only
+  in rating mode.  Carries `▲`/`▼`/`—` plus `.lb-delta-up` /
+  `.lb-delta-down` / `.lb-delta-zero` classes.
+
+### Onboarding tour overlay
+- `tour-overlay` — fixed-inset overlay with SVG dim mask + spotlight
+  cutout.  Gated by LS flag `mahjong.tour.completed.v1`.
+- `tour-spotlight` — the SVG `<rect>` cutout; geometry is computed
+  per-step from `getBoundingClientRect()` of the step's target.
+- `tour-step-{1..8}` — the tour card carries the active step's
+  testid; rotates as the user advances.
+- `tour-prev` / `tour-next` — navigation buttons.  Prev is disabled
+  on step 1; Next becomes "Done ✓" on step 8.
+- `tour-skip` — closes the tour and marks the LS flag complete.
+
+Steps:
+  1. lobby tab strip — `lobby-my-game-tab`
+  2. profile chip — `lobby-open-profile`
+  3. rule preset selector — `lobby-rule-preset-select` (fallback
+     `lobby-variant-fieldset`)
+  4. bot strength tiers — `lobby-bot-difficulty-fieldset`
+  5. chat panel — `chat-panel`
+  6. settings drawer — `settings-button`
+  7. tournaments tab — `lobby-tournaments-tab` (secondary highlight
+     on `leaderboard-rating-toggle`); auto-activates the Tournaments
+     tab so the highlight has a target.
+  8. centred "you're ready to play" card — no spotlight target.
+
+Keyboard support: ←/→ navigate, Enter advances, Esc closes without
+marking complete (resumable on next visit).
+
+### Phase K Wave 1 Playwright coverage — Vasquez
+
+The Wave-10 soft-pass annotation pattern still applies — any selector
+above that has not yet been wired by a downstream module is listed
+here so the e2e suite can stay green during the rollout:
+
+- `tournament-bracket-svg renders only when bracket is single-elim`
+- `tournament-bracket-match-* click expands inline detail`
+- `tournament-watch-finals-* hidden until the final-round match is complete`
+- `history-modal endpoint feature-detect (no /api/games yet on staging)`
+- `leaderboard-rating-toggle falls back to stats on 404`
+- `tour-overlay only fires when LS flag is unset`
+
+When you remove or rename a Phase K Wave 1 testid, run
+`grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
+merging — the soft-pass annotations will silently hide regressions.

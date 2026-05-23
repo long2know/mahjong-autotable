@@ -1144,3 +1144,114 @@ touches **my test files + selectors footer + memo + history +
 disambiguation)**.
 
 Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-10.md`.
+
+---
+
+## Phase K Wave 1 (2026-Q2) — OAuth PKCE + tournaments + ELO + match-history + workflow YAMLs + 6 e2e specs (2026-)
+
+**Branch:** `stlong/phase-k-wave-1-bringup`
+**Base:** Wave 10 merge (origin/main @ 9a52ef1).
+
+**Scope.** Phase K Wave 1 ships:
+- Bishop — OAuth PKCE-aware sign-in challenge (Google + GitHub),
+  `OAuthProviderHealthCheck`, `TournamentForfeitService` +
+  reconnect-grace surface, `PlayerRatingService` (Elo K=32, baseline
+  1200), `SeasonRolloverService` (quarterly hosted service),
+  `GamesHistoryController` (match history), `RatingsController`
+  (ELO leaderboard axis), plus `AddMatchHistoryAndRatings` migrations
+  for all 3 DB providers.
+- Apone — `sign-image.yml` (sigstore/cosign keyless OIDC signing on
+  the manifest-list digest), `load-test-nightly.yml` (02:00 UTC k6
+  cron with regression alert), `multi-arch-smoke.yml` (matrix
+  amd64+arm64 runtime smoke after docker-build), `Security:CspStrictStyles`
+  production overlay flip, CHANGELOG Phase-J backfill (J4 → J10).
+- Hicks — SVG tournament bracket (`tournament-bracket-svg`),
+  sortable standings table + SignalR `TournamentMatchCompleted`
+  refresh, match-history export modal (JSON + CSV download),
+  ELO leaderboard toggle + season picker + delta arrows, 8-step
+  onboarding tour overlay (LS flag `mahjong.tour.completed.v1`),
+  lazy-load chunk-split contract.
+
+**My QA scope (~108 backend facts + 29 e2e tests + memo + history):**
+
+| Area                                  | File                                                                  | Facts |
+|---------------------------------------|-----------------------------------------------------------------------|-------|
+| OAuth PKCE challenge                  | `Auth/OAuthPkceTests.cs`                                              | 8     |
+| OAuth state / nonce HMAC              | `Auth/OAuthStateNonceTests.cs`                                        | 6     |
+| OAuth provider /health probe          | `Auth/OAuthProviderHealthCheckTests.cs`                               | 7     |
+| Tournament reconnect-grace            | `Tournaments/TournamentReconnectGraceTests.cs`                        | 5     |
+| Tournament match forfeit              | `Tournaments/TournamentMatchForfeitTests.cs`                          | 5     |
+| CSP strict-styles production config   | `Security/CspStrictStylesProductionConfigTests.cs`                    | 6     |
+| Match history endpoint shape          | `MatchHistory/MatchHistoryEndpointTests.cs`                           | 8     |
+| Match history CSV (RFC 4180)          | `MatchHistory/MatchHistoryCsvTests.cs`                                | 8     |
+| Player Elo rating maths               | `Players/PlayerRatingTests.cs`                                        | 11    |
+| Season-rollover hosted service        | `Players/SeasonRolloverServiceTests.cs`                               | 6     |
+| ELO leaderboard endpoint              | `Leaderboard/EloLeaderboardEndpointTests.cs`                          | 8     |
+| Cosign keyless image-sign YAML        | `Deploy/CosignWorkflowYamlTests.cs`                                   | 6     |
+| Nightly load-test cron YAML           | `Deploy/LoadTestCronYamlTests.cs`                                     | 6     |
+| Multi-arch runtime smoke YAML         | `Deploy/MultiArchSmokeYamlTests.cs`                                   | 6     |
+| CHANGELOG Phase-J entries             | `Deploy/ChangelogPhaseJEntriesTests.cs`                               | ~11   |
+| Cross-wave regression (renamed)       | `Regression/Wave1ThroughKRegressionTests.cs`                          | 16    |
+
+Renamed `Wave1Through10RegressionTests.cs` → `Wave1ThroughKRegressionTests.cs`
+via `git mv`. New class name; temp-DB prefix flipped
+`mahjong-w110-` → `mahjong-w1k-`. Added 4 new Phase-K-1 facts
+(OAuth sign-in, Tournament forfeit, ELO leaderboard, match-history)
+and 3 new probe lines in `CrossWave_HealthSurvives_AllSurfaceProbes`
+(`/api/leaderboard?sort=elo`, `/api/match-history`,
+`/api/auth/sign-in/google`). The `Wave10_Tournaments_*`, `CrossWave_*`
+facts now carry the Phase-K-1 trait so the wave filter selects them.
+
+**E2E (Playwright):** `tournament-bracket.spec.ts` (5),
+`tournament-standings.spec.ts` (3), `match-history.spec.ts` (5),
+`elo-leaderboard.spec.ts` (5), `onboarding-tour.spec.ts` (6),
+`lazy-load.spec.ts` (5) — 29 cases total across 6 files. All follow
+the Hicks-mocking pattern (`page.route('**/api/...', ...)`) +
+canonical soft-pass annotations sourced from the new
+"Phase K Wave 1 Playwright coverage — Vasquez" subsection in
+`selectors.md` (which Hicks shipped in his own commit).
+
+**Bug caught / fixed in own suite.** First filtered run reported
+`MultiArchSmoke_Workflow_UsesMatrixOrPerArchJobs` FAIL. Root cause:
+overly strict regex `strategy:\s*\r?\n\s*matrix:` didn't allow
+sibling `fail-fast:` between `strategy:` and `matrix:` (Apone's
+YAML declares both). Fixed with a more permissive pattern + widened
+the per-arch `--platform=linux/...` check to accept the space-form
+`--platform linux/...` CLI invocation. Full suite then ran clean.
+
+**Stability:**
+
+- **Phase K Wave 1 filter:** 118 / 0 / 0.
+- **Full suite:** **949 / 0 / 0** (+117 vs Wave 10 baseline of 832).
+- **Zero-skips streak preserved.** Phase K Wave 1 = **15 consecutive
+  green waves**.
+- **No production behavioural code changed.**
+
+**Cross-agent coordination:** Bishop dropped
+`Auth/OAuthProviderHealthCheck.cs`,
+`Players/GamesHistoryController.cs`,
+`Players/PlayerGameHistoryService.cs`,
+`Tournament/PlayerRatingService.cs`,
+`Tournament/RatingsController.cs`,
+`Tournament/SeasonRolloverService.cs`,
+`Tournament/TournamentForfeitService.cs`,
+`AddMatchHistoryAndRatings` migrations (Sqlite + Postgres + SqlServer)
+plus modifications to `Program.cs`, `AppDbContext.cs`,
+`DatabaseBootstrapper.cs`, `Data/Entities/ChangshaEntities.cs`,
+`Changsha/Runtime/ChangshaGameRuntime.cs`,
+`Tournament/TournamentService.cs`, `appsettings.Production.json`,
+and all 3 model snapshots. Apone dropped
+`.github/workflows/sign-image.yml`,
+`.github/workflows/load-test-nightly.yml`,
+`.github/workflows/multi-arch-smoke.yml`, plus the production
+`Security:CspStrictStyles=true` overlay flip in
+`appsettings.Production.json`. Hicks dropped
+`src/frontend/autotable-src/src/history.ts` (new),
+`src/frontend/autotable-src/src/tour.ts` (new), plus modifications
+to `index.html`, `src/index.ts`, `src/leaderboard.ts`,
+`src/style.css`, `src/tournaments.ts`, AND the Phase K Wave 1
+section + Vasquez soft-pass annotation block in
+`tests/selectors.md`. Lane discipline preserved: my commit touches
+only **my test files + the renamed regression file + memo + history**.
+
+Memo: `.squad/decisions/inbox/vasquez-phase-k-wave-1.md`.
