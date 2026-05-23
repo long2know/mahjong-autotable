@@ -1090,21 +1090,20 @@ post-Vasquez sync: 384/0/0.
     `WinDetector.cs` and the doc / spec update there is the canonical
     location (spinning the check out is unscoped refactoring).
 - **Files touched:**
-  - `src/backend/src/Mahjong.Autotable.Api/Changsha/Bot/HardStrategy.cs` —
-    shanten primary, doc + comment updates.
-  - `src/backend/src/Mahjong.Autotable.Api/Changsha/ChangshaDomain.cs` —
-    `EndGame = GameComplete` alias, doc rewrite on `GameComplete` /
-    `EndGame` / `MaxHands` / `IsGameComplete`.
-  - `src/backend/src/Mahjong.Autotable.Api/Changsha/ChangshaStateMachine.cs` —
-    comment-only update on the legacy `RotateBanker` 4-round terminal branch.
-  - `src/backend/src/Mahjong.Autotable.Api/Changsha/Runtime/ChangshaGameRuntime.cs`
-    — defensive `Phase==18` migration in `HydrateAsync`, single-equality
-    terminal check in `StartNextHandOrEndAsync`, doc update on
-    `EmitGameCompletedAsync` recording the always-`"GameComplete"` wire.
-  - `src/backend/src/Mahjong.Autotable.Api/Changsha/WinDetector.cs` —
-    Wave 4 `<para>` on `CheckNineTerminals` documenting the loose default.
-  - `docs/rules/changsha-spec.md` — §4.2 NineTerminals row + §4.2.1
-    strict-vs-loose decision section with source citations.
+  - `e71b4d0` (Task 1) — `src/backend/src/Mahjong.Autotable.Api/Changsha/Bot/HardStrategy.cs`
+    — shanten primary, doc + comment updates.
+  - `5835361` (Task 2) — `src/backend/src/Mahjong.Autotable.Api/Changsha/ChangshaDomain.cs`
+    (`EndGame = GameComplete` alias + doc rewrite),
+    `ChangshaStateMachine.cs` (comment-only update on the legacy
+    `RotateBanker` 4-round terminal branch),
+    `Runtime/ChangshaGameRuntime.cs` (defensive `Phase==18` migration in
+    `HydrateAsync`, single-equality terminal check in
+    `StartNextHandOrEndAsync`, doc update on `EmitGameCompletedAsync`
+    recording the always-`"GameComplete"` wire).
+  - `ce7ebec` (Task 3) — `src/backend/src/Mahjong.Autotable.Api/Changsha/WinDetector.cs`
+    (Wave 4 `<para>` on `CheckNineTerminals`), `docs/rules/changsha-spec.md`
+    (§4.2 NineTerminals row + §4.2.1 strict-vs-loose decision).
+  - `fc479d1` — this history entry.
 - **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-4.md` — covers all
   three tasks with the cross-lane notes Vasquez (canonical name +
   `phase=GameComplete` wire) and Apone (no CI smoke timing shift) need.
