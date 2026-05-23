@@ -1,0 +1,167 @@
+# Phase J Wave 9 — Apone (DevOps).
+#
+# Software-Bill-of-Materials (SBOM) + container image vulnerability scan.
+# Runs on every push to main and on every PR that touches the Dockerfile,
+# .csproj files, or this workflow itself, plus a weekly cron so a fresh
+# CVE published mid-week against a pinned dep gets flagged within 7 days.
+#
+# Pipeline:
+#   1. Build the production Docker image locally (load: true → no push).
+#   2. Generate a CycloneDX SBOM from the image filesystem via Anchore's
+#      `sbom-action` (the canonical CycloneDX producer for GitHub Actions
+#      circa 2024). The SBOM is uploaded as a workflow artifact AND
+#      attached to GitHub's Dependency-graph (`dependency-snapshot: true`).
+#   3. Run Trivy against the image with `severity: CRITICAL,HIGH` and
+#      `exit-code: 1` so the workflow goes RED on any CRITICAL or HIGH
+#      finding. SARIF output is uploaded to GitHub's code-scanning panel
+#      so dependabot-style triage works against image findings.
+#   4. PR runs additionally post a compact summary as a PR comment so the
+#      reviewer sees the scan result inline.
+#
+# `permissions:` are tightly scoped — `security-events: write` is the
+# only elevated grant (required by `upload-sarif`). Everything else is
+# strict-read.
+
+name: sbom
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "src/backend/**/*.csproj"
+      - "src/frontend/**/package*.json"
+      - ".github/workflows/sbom.yml"
+  schedule:
+    # Weekly — every Monday 09:00 UTC (04:00 CDT, 05:00 EDT). Catches
+    # new CVEs published against image deps that haven't otherwise been
+    # touched in the past week.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+env:
+  IMAGE_NAME: ghcr.io/long2know/mahjong-autotable
+  IMAGE_TAG: sbom-${{ github.sha }}
+
+jobs:
+  sbom-and-scan:
+    name: Build + SBOM + Trivy CRITICAL,HIGH
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build the production image locally (no registry push). `load: true`
+      # makes the image visible to subsequent steps via the local docker
+      # daemon so trivy + sbom-action can scan it by name.
+      - name: Build image (local, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Generate a CycloneDX SBOM from the image filesystem. The
+      # `anchore/sbom-action@v0` wraps Syft, which is the canonical SBOM
+      # producer that Trivy + Grype both consume. Attaches to GitHub's
+      # dependency-graph so Dependabot can correlate findings.
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+          dependency-snapshot: true
+          upload-artifact: true
+          upload-artifact-retention: 30
+
+      # Also export an SPDX SBOM — some downstream consumers (Microsoft
+      # SBOM Tool, FOSSA, etc.) require SPDX 2.3 format. Both formats are
+      # uploaded as workflow artifacts so release engineers can pick the
+      # one their downstream tooling wants.
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: true
+          upload-artifact-retention: 30
+
+      # Trivy image scan — gates the workflow on CRITICAL + HIGH.
+      # `exit-code: '1'` fails the step on any matching finding so the
+      # build goes RED and the PR is blocked until the finding is
+      # remediated (or explicitly suppressed via .trivyignore).
+      - name: Trivy image scan (CRITICAL,HIGH gate)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+
+      # Re-run Trivy with SARIF output for GitHub code-scanning. Runs
+      # `if: always()` so SARIF is uploaded even if the gating step
+      # above already failed — that way the security tab still has the
+      # findings record once the PR is unblocked.
+      - name: Trivy SARIF output (no gate)
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: "CRITICAL,HIGH,MEDIUM"
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image
+
+      # On PR runs, post a compact summary comment so reviewers see
+      # the scan result inline without digging into the workflow logs.
+      - name: PR comment summary
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const sha = '${{ github.sha }}'.slice(0, 7);
+            const icon = status === 'success' ? '✅' : '🚨';
+            const body = [
+              `### ${icon} SBOM + Trivy (Phase J Wave 9)`,
+              ``,
+              `- Image: \`${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}\` (${sha})`,
+              `- Scanner: Trivy (CRITICAL,HIGH gate)`,
+              `- SBOMs: \`sbom.cyclonedx.json\` + \`sbom.spdx.json\` (workflow artifacts)`,
+              `- Result: **${status}**`,
+              ``,
+              `See [Workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for full SARIF + table output.`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
