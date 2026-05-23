@@ -90,6 +90,59 @@ public sealed class EasyStrategy : IChangshaBotStrategy
         return BotAction.Wait();
     }
 
+    /// <summary>
+    /// Phase J Wave 10 — explainable variant. Easy populates a tiered
+    /// reasoning list covering: whether a winning hand was detected,
+    /// loose-tile selection vs fallback, and claim acceptance / refusal.
+    /// Mirrors the strategy comments so a future bot tuning pass can
+    /// read the audit log without cross-referencing the source.
+    /// </summary>
+    public BotDecision DecideWithReasoning(ChangshaGameState state, int botSeatIndex)
+    {
+        var reasoning = new List<string>();
+        reasoning.Add("strategy:easy");
+
+        if (state.Phase == ChangshaPhase.AwaitingDiscard && state.ActiveSeatIndex == botSeatIndex)
+        {
+            var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
+            var detector = new ChangshaWinDetector();
+            var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
+            if (winResult.IsWin)
+            {
+                reasoning.Add("winning hand detected on self-draw");
+                return new BotDecision(BotAction.DeclareWin(), null, Score: 0, reasoning);
+            }
+
+            var tileId = SelectDiscardTile(hand);
+            var logicalCounts = hand.ConcealedTiles
+                .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+                .ToDictionary(g => g.Key, g => g.Count());
+            var loose = IsLoose(tileId, logicalCounts);
+            reasoning.Add(loose
+                ? $"discarding loose tile id={tileId} (no neighbour, no pair)"
+                : $"no loose tiles; fallback to highest-rank discard id={tileId}");
+            return new BotDecision(BotAction.Discard(tileId), tileId, Score: loose ? 0 : 1, reasoning);
+        }
+
+        if (state.Phase == ChangshaPhase.AwaitingClaim && state.ClaimWindow is not null)
+        {
+            var action = OnOtherDiscard(state, botSeatIndex, state.ClaimWindow.DiscardSeatIndex, state.ClaimWindow.DiscardTileId);
+            reasoning.Add(action.Type == BotActionType.Claim
+                ? $"easy accepts obvious claim: {action.ClaimType}"
+                : "easy refuses non-obvious claim (no Chow, no speculative Kong)");
+            return new BotDecision(action, action.TileId, Score: 0, reasoning);
+        }
+
+        if (ChangshaGameStateMachine.IsPickupPhase(state.Phase) && state.PickupSeatIndex == botSeatIndex)
+        {
+            reasoning.Add("pickup phase: take expected wall slice");
+            return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
+        }
+
+        reasoning.Add("no decision required this tick (wait)");
+        return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
+    }
+
     private static int SelectDiscardTile(ChangshaHandState hand)
     {
         if (hand.ConcealedTiles.Count == 0)

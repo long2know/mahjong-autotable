@@ -45,6 +45,14 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<ReconnectAuditEntry> ReconnectAuditEntries => Set<ReconnectAuditEntry>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
+    // Phase J Wave 10 — Tournament mode (Bishop). See
+    // Mahjong.Autotable.Api.Tournament.TournamentService + the
+    // /api/tournaments REST surface in TournamentController.
+    // Fully qualified to disambiguate from the sibling Tournament namespace.
+    public DbSet<Mahjong.Autotable.Api.Data.Entities.Tournament> Tournaments => Set<Mahjong.Autotable.Api.Data.Entities.Tournament>();
+    public DbSet<TournamentRegistration> TournamentRegistrations => Set<TournamentRegistration>();
+    public DbSet<TournamentMatch> TournamentMatches => Set<TournamentMatch>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -224,6 +232,61 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.Property(x => x.RawJson).IsRequired();
             entity.HasIndex(x => x.ReceivedAt);
             entity.HasIndex(x => x.EffectiveDirective);
+        });
+
+        // Phase J Wave 10 — Tournament shell. Name has a soft index for
+        // the listing endpoint's name-prefix filter (future); Status +
+        // CreatedAt index supports the canonical `GET /api/tournaments?status=`
+        // query used by the lobby.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Data.Entities.Tournament>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Format).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.CreatedByPlayerId).HasMaxLength(128).IsRequired();
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.CreatedAt);
+        });
+
+        // Phase J Wave 10 — registration row. (TournamentId, PlayerId)
+        // unique index prevents double-registration; the FK cascades on
+        // tournament deletion (operator can drop a tournament wholesale
+        // during draft → registrations evaporate with it).
+        modelBuilder.Entity<TournamentRegistration>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.HasIndex(x => new { x.TournamentId, x.PlayerId }).IsUnique();
+            entity.HasIndex(x => x.TournamentId);
+            entity.HasOne<Mahjong.Autotable.Api.Data.Entities.Tournament>()
+                .WithMany()
+                .HasForeignKey(x => x.TournamentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Phase J Wave 10 — pairing row. (TournamentId, Round) index
+        // supports the leaderboard query's grouping by round. GameIdsJson
+        // stored as a plain string column (no value converter) — the
+        // service serialises/deserialises manually so we avoid the
+        // change-tracker quirk where EF Core can't diff a List<Guid>
+        // against itself reliably under JSON-column semantics.
+        modelBuilder.Entity<TournamentMatch>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Player1Id).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Player2Id).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Player3Id).HasMaxLength(128);
+            entity.Property(x => x.Player4Id).HasMaxLength(128);
+            entity.Property(x => x.WinnerPlayerId).HasMaxLength(128);
+            entity.Property(x => x.GameIdsJson).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            entity.HasIndex(x => new { x.TournamentId, x.Round });
+            entity.HasIndex(x => x.TournamentId);
+            entity.HasOne<Mahjong.Autotable.Api.Data.Entities.Tournament>()
+                .WithMany()
+                .HasForeignKey(x => x.TournamentId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -134,6 +134,87 @@ public sealed class HardStrategy : IChangshaBotStrategy
         return BotAction.Wait();
     }
 
+    /// <summary>
+    /// Phase J Wave 10 — explainable variant. Hard's reasoning surfaces
+    /// the shanten-primary ordering and the defensive bias (discarded-
+    /// logical penalty) that the Wave 1 acceptance gate enabled. Score
+    /// is post-discard shanten when discarding; the audit replay surfaces
+    /// it so an operator can spot "shanten stayed at 2 for three turns".
+    /// </summary>
+    public BotDecision DecideWithReasoning(ChangshaGameState state, int botSeatIndex)
+    {
+        var reasoning = new List<string> { "strategy:hard" };
+
+        if (state.Phase == ChangshaPhase.AwaitingDiscard && state.ActiveSeatIndex == botSeatIndex)
+        {
+            var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
+            var detector = new ChangshaWinDetector();
+            var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
+            if (winResult.IsWin)
+            {
+                reasoning.Add("winning hand detected on self-draw");
+                return new BotDecision(BotAction.DeclareWin(), null, Score: 0, reasoning);
+            }
+
+            if (HandEvaluator.CountLooseTiles(hand) >= 2)
+            {
+                var kongLogical = HandEvaluator.FindConcealedKongCandidate(hand);
+                if (kongLogical >= 0)
+                {
+                    reasoning.Add($"concealed kong (loose-tile guard ≥2): logical={kongLogical}");
+                    return new BotDecision(BotAction.DeclareConcealedKong(kongLogical), null, Score: 0, reasoning);
+                }
+                var addedKongTile = HandEvaluator.FindAddedKongCandidate(hand);
+                if (addedKongTile >= 0)
+                {
+                    reasoning.Add($"added kong (loose-tile guard ≥2): tile={addedKongTile}");
+                    return new BotDecision(BotAction.DeclareAddedKong(addedKongTile), addedKongTile, Score: 0, reasoning);
+                }
+            }
+
+            var tileId = SelectDiscardTile(hand, state);
+            var logicalCounts = hand.ConcealedTiles
+                .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+                .ToDictionary(g => g.Key, g => g.Count());
+            var discardedLogicals = HandEvaluator.CollectDiscardedLogicals(state);
+            var keepScore = ComputeDiscardScore(tileId, logicalCounts, discardedLogicals);
+            var postShanten = ShantenAfterDiscardingLogical(ChangshaDeckBuilder.GetLogicalTile(tileId), hand);
+            reasoning.Add($"shanten-primary: post-discard shanten={postShanten}");
+            reasoning.Add($"keep-score tie-breaker={keepScore} (defensive bias: discarded-logical -4)");
+            if (discardedLogicals.Contains(ChangshaDeckBuilder.GetLogicalTile(tileId)))
+            {
+                reasoning.Add("safety: tile already in discard pile (opponents proved they don't need it)");
+            }
+            return new BotDecision(BotAction.Discard(tileId), tileId, Score: postShanten, reasoning);
+        }
+
+        if (state.Phase == ChangshaPhase.AwaitingClaim && state.ClaimWindow is not null)
+        {
+            var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
+            var preShanten = HandEvaluator.MinShantenToHu(hand, Array.Empty<int>());
+            reasoning.Add($"pre-claim shanten={preShanten}");
+            var action = DecideClaimPhase(state, hand, botSeatIndex);
+            if (action.Type == BotActionType.Claim)
+            {
+                reasoning.Add($"shanten gate: claim accepted (strict shanten drop) type={action.ClaimType}");
+            }
+            else
+            {
+                reasoning.Add("shanten gate: no claim drops shanten — pass");
+            }
+            return new BotDecision(action, action.TileId, Score: preShanten, reasoning);
+        }
+
+        if (ChangshaGameStateMachine.IsPickupPhase(state.Phase) && state.PickupSeatIndex == botSeatIndex)
+        {
+            reasoning.Add("pickup phase: take expected wall slice");
+            return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
+        }
+
+        reasoning.Add("no decision required this tick (wait)");
+        return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
+    }
+
     private static BotAction DecideClaimPhase(ChangshaGameState state, ChangshaHandState hand, int botSeatIndex)
     {
         var opportunities = state.ClaimWindow!.Opportunities

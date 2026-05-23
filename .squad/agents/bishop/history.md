@@ -1573,3 +1573,98 @@ endpoint; per-hand audit log v2 envelope + admin retrieval endpoint.
   654; Vasquez's Wave 9 forward-staged contract tests in `Auth`,
   `Chat`, `I18n`, `Replay`, `Negative`, `Security`, `Changsha` all
   bind to my surfaces).
+
+---
+
+## Phase J — Wave 10 (Polish + Completion)
+
+**Branch:** `stlong/phase-j-wave-10-completion`
+**Scope (5 tasks):**
+
+1. **Replay v1→v2 read-path normaliser.** Synthesise `source:"unknown"`,
+   `durationMs:null`, `debugScore:null` for any legacy v1 event lacking
+   them, via a new `ChangshaReplayController.NormaliseLegacyEvent`
+   helper. Removed two Wave-9 soft-pass branches from
+   `ChangshaGameReplayV2Tests` and replaced with hard assertions; added
+   two new positive tests for the v1→v2 envelope synthesis + the v2
+   preserve-existing-fields case. Replay-category gate: 12/0/0 pass.
+
+2. **AuditPruningService (BackgroundService).** Daily sweeper across
+   `ReconnectAuditEntries` (30-day retention) and `CspViolations`
+   (90-day retention). Hosted-service factory pattern lets tests
+   resolve the singleton via DI for direct `PruneOnceAsync` calls
+   without the timer kicking in. 30s startup settle delay. Opt-in via
+   `Audit:Enabled=true` (off in test/dev, on in Production). 5/0/0
+   pass.
+
+3. **Tournament mode.** Three entities (`Tournament`,
+   `TournamentRegistration`, `TournamentMatch`), three pairing
+   algorithms (`single-elimination`, `round-robin`, `swiss`), full
+   REST surface under `/api/tournaments`, GameCompleted hook on
+   `ChangshaGameRuntime` to advance matches, buchholz-tiebreaker
+   leaderboard. Match-advancement schedules next round for elim/Swiss
+   formats; round-robin emits all rounds at start time and flips the
+   tournament to `complete` when every match completes. EF migrations
+   for all three providers (`AddTournaments`); SQLite bootstrap
+   (`EnsureSqliteWave10TablesAsync`) for existing dev DBs. Vasquez's
+   tournament suites: 26/0/0 pass.
+
+4. **DB-introspection on /health.** Extended the `db` sub-object with
+   `providerName`, `canQuery` (smoke `SELECT 1` readback), and
+   `migrationsApplied` (count of `__EFMigrationsHistory` rows;
+   swallows the no-table exception for SQLite-bootstrap DBs). Updated
+   the Wave 7 strict-shape test to pin the new 5-key contract.
+
+5. **BotDecision + reasoning.** New `readonly record struct
+   BotDecision(Action, Tile, Score, Reasoning)` threaded through every
+   strategy tier via a default-interface-method `DecideWithReasoning`
+   on `IChangshaBotStrategy`. Each tier emits a `strategy:{tier}`
+   first reasoning line; Master mandatorily emits a `"safety
+   analysis: ..."` line (the Master-only opponent-discard
+   tier-breaker over Hard). Runtime swap: both `_strategy.DecideAction`
+   sites now invoke a new `DecideWithReasoningWithTimeoutAsync`
+   helper; the decision is stashed on `ChangshaGameInstance.LastBotDecisions`
+   keyed by seat, and `PersistReplayAsync` enriches per-event
+   `debugScore` from the stashed decision for bot-source events.
+   `ResolveReplayEventSource` now uses `_strategy.Difficulty` so the
+   v2 envelope emits `"bot:hard"` instead of `"bot:unknown"`.
+
+**Gotchas this wave:**
+
+- **Namespace vs type collision:** `Mahjong.Autotable.Api.Tournament`
+  (the new feature namespace) collides with
+  `Mahjong.Autotable.Api.Data.Entities.Tournament` (the entity).
+  Used fully-qualified `Data.Entities.Tournament` in `AppDbContext`'s
+  `modelBuilder.Entity<>()` calls; the entity declaration itself
+  doesn't need qualification because `ChangshaEntities.cs` lives in
+  the `Data.Entities` namespace.
+- **edit-tool truncation:** Twice mid-wave I lost a method signature
+  by including too little context in `old_str`. The pattern that
+  saved me: include the next method's signature line in `old_str`
+  even when the edit doesn't touch it, so the replacement preserves
+  the surrounding scaffold. Logged so future Bishop turns avoid the
+  same trap.
+- **BotDecision record struct naming:** Positional record params are
+  PascalCase (`Score`, not `score`). Named-arg callers must use the
+  canonical case or the compiler rejects with CS1739.
+- **Multi-provider EF migrations:** Need a separate
+  `dotnet ef migrations add AddTournaments --context X --output-dir Y`
+  for each of `SqliteAppDbContext`, `PostgresAppDbContext`,
+  `SqlServerAppDbContext`. The three snapshots
+  (`{Sqlite,Postgres,SqlServer}AppDbContextModelSnapshot.cs`) all
+  re-emit the entity model — they diff cleanly because the model is
+  shared. Wave 10 also wired the existing
+  `ChangshaGameReplay.SchemaVersion` column into the new snapshots
+  (Wave 9 had deferred this for the Postgres + SqlServer providers).
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-10.md` —
+endpoint contracts, EF entity table, wire shapes for the new
+tournament/health/bot-decision surfaces, and the new Audit
+hosted-service config.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+→ **Passed: 820, Failed: 0, Skipped: 0** (+91 over Wave 9 baseline of
+729; Vasquez's Wave 10 forward-staged contract tests in `Audit`,
+`Tournaments`, `Replay/ReplayV2NormaliserTests`,
+`Api/DatabaseHealthDetailTests`,
+`ChangshaServices/BotDecisionReasoningTests` all bind to my surfaces).

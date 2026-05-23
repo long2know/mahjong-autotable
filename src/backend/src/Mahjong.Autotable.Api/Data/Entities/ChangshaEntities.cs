@@ -374,3 +374,72 @@ public class CspViolation
 
     public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Phase J Wave 10 — Tournament shell. A tournament is a multi-game
+/// competitive structure: registrations gate which players can play,
+/// the chosen format (single-elimination / round-robin / swiss) drives
+/// pairing, and each pairing produces one or more games whose
+/// completion advances the tournament. Status is a 4-state machine:
+/// <c>draft</c> (created, not yet open for registration) →
+/// <c>open</c> (accepting registrations) →
+/// <c>in-progress</c> (started; pairings active) →
+/// <c>complete</c> (final ranking known). The creator owns transitions
+/// and is the only player who can call <c>start</c>.
+/// </summary>
+public class Tournament
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = string.Empty;
+    public string Format { get; set; } = "round-robin"; // single-elimination | round-robin | swiss
+    public string Status { get; set; } = "draft";       // draft | open | in-progress | complete
+    public string CreatedByPlayerId { get; set; } = string.Empty;
+    public int MaxPlayers { get; set; } = 16;
+    public int GamesPerMatch { get; set; } = 1;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+}
+
+/// <summary>
+/// Phase J Wave 10 — per-player registration row for a tournament.
+/// <see cref="Seed"/> is the deterministic ordinal used by the pairing
+/// algorithms (single-elimination bracket seeding, round-robin slot
+/// ordering, Swiss tie-breaker). The unique (TournamentId, PlayerId)
+/// index prevents double-registration. Unregistering is permitted
+/// only while the tournament status is <c>draft</c> or <c>open</c>.
+/// </summary>
+public class TournamentRegistration
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TournamentId { get; set; }
+    public string PlayerId { get; set; } = string.Empty;
+    public int Seed { get; set; }
+    public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Phase J Wave 10 — a single pairing within a tournament. For
+/// 4-player formats (round-robin) Player3Id + Player4Id are populated;
+/// 2-player formats (single-elim, Swiss) leave them null. The
+/// <see cref="GameIdsJson"/> column is a serialised <c>List&lt;Guid&gt;</c>
+/// — each entry is a <see cref="ChangshaGame.Id"/> that resolves the
+/// match. Wave 10 (<c>GamesPerMatch=1</c>) only ever populates one game,
+/// but the JSON-column shape is future-proof for the eventual best-of-N
+/// extension without a schema bump.
+/// </summary>
+public class TournamentMatch
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TournamentId { get; set; }
+    public int Round { get; set; } = 1;
+    public string Player1Id { get; set; } = string.Empty;
+    public string Player2Id { get; set; } = string.Empty;
+    public string? Player3Id { get; set; }
+    public string? Player4Id { get; set; }
+    public string? WinnerPlayerId { get; set; }
+    public string GameIdsJson { get; set; } = "[]";
+    public string Status { get; set; } = "pending"; // pending | in-progress | complete
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAt { get; set; }
+}

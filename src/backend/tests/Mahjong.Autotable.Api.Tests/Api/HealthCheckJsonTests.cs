@@ -158,14 +158,16 @@ public class HealthCheckJsonTests : IAsyncLifetime
     //  4. Detailed mode's `db` object carries EXACTLY connected + latencyMs
     // ────────────────────────────────────────────────────────────────────
 
-    [Fact, Trait("Category", "Api"), Trait("Wave", "Phase-J-7")]
-    public async Task HealthDetailed_DbObject_HasExactlyTwoKeys()
+    [Fact, Trait("Category", "Api"), Trait("Wave", "Phase-J-10")]
+    public async Task HealthDetailed_DbObject_ExposesWave10Shape()
     {
-        // Strict envelope on the nested `db` payload: a future addition
-        // (e.g. db.provider or db.host) is fine but should land via a
-        // deliberate test edit, not silently. We pin the current two-key
-        // shape so any addition surfaces as a Wave-7 contract change to
-        // be discussed before shipping.
+        // Phase J Wave 7 pinned a strict 2-key db payload (connected,
+        // latencyMs). Phase J Wave 10 (Bishop) extended the contract to
+        // include provider/migration introspection so operators can tell
+        // SQLite-bootstrap deployments from SqlServer/Postgres deployments
+        // from a single curl. Any future field addition should still
+        // land via a deliberate test edit (not silently) — so we pin
+        // the exact key set for Wave 10.
         Assert.NotNull(_factory);
         using var client = _factory!.CreateClient();
         using var response = await client.GetAsync("/health");
@@ -173,9 +175,12 @@ public class HealthCheckJsonTests : IAsyncLifetime
         using var doc = JsonDocument.Parse(body);
         var db = doc.RootElement.GetProperty("db");
         var keys = db.EnumerateObject().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
-        Assert.Equal(2, keys.Count);
+        Assert.Equal(5, keys.Count);
         Assert.Contains("connected", keys);
         Assert.Contains("latencyMs", keys);
+        Assert.Contains("providerName", keys);
+        Assert.Contains("canQuery", keys);
+        Assert.Contains("migrationsApplied", keys);
     }
 
     // ────────────────────────────────────────────────────────────────────

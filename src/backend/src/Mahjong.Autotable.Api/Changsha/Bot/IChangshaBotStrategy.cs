@@ -67,4 +67,20 @@ public interface IChangshaBotStrategy
     /// appropriate phase hook above based on <paramref name="state"/>.<see cref="ChangshaGameState.Phase"/>.
     /// </summary>
     BotAction DecideAction(ChangshaGameState state, int botSeatIndex);
+
+    /// <summary>
+    /// Phase J Wave 10 — explainable variant of <see cref="DecideAction"/>.
+    /// Returns the same action wrapped in a <see cref="BotDecision"/> that
+    /// also carries a numeric strategy score and an ordered list of
+    /// human-readable reasoning lines. Strategies that want to surface
+    /// tier-specific reasoning (shanten value, safety score, opponent-
+    /// discard inference) override this method directly; legacy callers
+    /// (hub claim driver) keep calling <see cref="DecideAction"/>.
+    ///
+    /// <para>Default implementation wraps <see cref="DecideAction"/> with
+    /// empty reasoning so external strategies (none in-tree today) keep
+    /// working without modification.</para>
+    /// </summary>
+    BotDecision DecideWithReasoning(ChangshaGameState state, int botSeatIndex)
+        => BotDecision.FromAction(DecideAction(state, botSeatIndex));
 }

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Mahjong.Autotable.Api.Changsha.Bot;
 using Mahjong.Autotable.Api.Tables;
 
 namespace Mahjong.Autotable.Api.Changsha.Runtime;
@@ -34,6 +35,20 @@ internal sealed class ChangshaGameInstance : IAsyncDisposable
 
     /// <summary>Set true the first time a chow claim arrives without explicit tileIds.</summary>
     public bool LoggedLegacyChowWarning { get; set; }
+
+    /// <summary>
+    /// Phase J Wave 10 — most recent <see cref="BotDecision"/> per seat. The
+    /// runtime updates this on every bot decision tick (turn-start /
+    /// claim window / pickup). The replay-persistence path serialises
+    /// the seat's last decision into the v2 envelope's per-event
+    /// <c>debugScore</c> field for bot-source events, enabling Hicks's
+    /// audit-replay admin tab to drill down into "why did bot 2
+    /// discard 5-tiao here". Per-event accuracy is approximate (multiple
+    /// state-machine events can flow from one bot decision); operators
+    /// get the seat's most-recent reasoning at event time, which is
+    /// sufficient for debugging strategy regressions.
+    /// </summary>
+    public ConcurrentDictionary<int, BotDecision> LastBotDecisions { get; } = new();
 
     public ChangshaGameInstance(string gameId, ChangshaGameState state)
     {
