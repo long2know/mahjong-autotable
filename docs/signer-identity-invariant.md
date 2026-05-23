@@ -136,7 +136,9 @@ The regex MUST be rotated as a single coordinated commit. Steps:
    reviewers should be able to confirm the six-file coverage
    from the commit diff alone.
 
-## 5. Installing the hook
+## 5. Installing the hook + CI parity
+
+### 5.1 Per-developer install (local gate)
 
 ```bash
 # Once per developer machine:
@@ -148,10 +150,45 @@ pre-commit install --install-hooks
 pre-commit run signer-identity-invariant --all-files
 ```
 
-The hook runs on every `git commit` thereafter. CI parity
-(running `pre-commit run --all-files` in a workflow) is a
-Wave 8 follow-up — for now developer machines + post-merge
-CI image-build cosign verify are the gates.
+The hook runs on every `git commit` thereafter.
+
+### 5.2 CI parity (Wave 8 — gates merge)
+
+Wave 7 left CI parity as a follow-up; Wave 8 closes it. The
+[`.github/workflows/pre-commit-check.yml`](../.github/workflows/pre-commit-check.yml)
+workflow:
+
+* Runs on every PR + push to `main`.
+* Invokes `pre-commit run --all-files` — the SAME command
+  developers run locally.
+* Fails the PR check if any hook fails — including
+  `signer-identity-invariant`, `check-yaml`,
+  `end-of-file-fixer`, `trailing-whitespace`,
+  `check-merge-conflict`, `check-added-large-files`.
+* Dumps `python3 scripts/check_signer_identity.py --show`
+  to the job log unconditionally (diagnostic — the canonical
+  regex + each tracked-file value appear in the workflow log
+  without rummaging through pre-commit's per-hook output).
+* Pins `pre-commit~=3.7` + caches hook venvs under
+  `~/.cache/pre-commit` keyed on `.pre-commit-config.yaml`.
+
+The workflow is REQUIRED-FOR-MERGE on the `main` branch
+protection rule. A developer who skips local install is still
+gated by CI; a developer who installs locally gets the same
+failure 5 seconds earlier on `git commit`. This closes the
+"per-developer opt-in" gap the W7 hook left open.
+
+### 5.3 Failure mode triage
+
+If the PR check fails:
+
+| Failure | What to do |
+|---|---|
+| `signer-identity-invariant` reports DRIFT | Follow §4 rotation procedure — update all six files in one commit. |
+| `signer-identity-invariant` reports FILE MISSING | A tracked file was deleted / renamed — restore the file OR update `TRACKED_FILES` in `scripts/check_signer_identity.py` AND the table in §1. |
+| `check-yaml` fails on a helm/kustomize template | Check the file is in the `exclude:` block of `.pre-commit-config.yaml` (helm + kyverno YAML use template tags that confuse the strict YAML parser). |
+| `check-added-large-files` fails | A binary > 512 KB was committed — add an exclude entry OR Git-LFS the file. |
+| Hook env cache miss | Slow first run is expected; subsequent runs are cached. No action needed. |
 
 ## 6. Cross-references
 

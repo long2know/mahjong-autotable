@@ -93,6 +93,15 @@ the rationale update (W6 lock-step rule).
 > rehearsal exercises the failover path end-to-end so it stays
 > tested before the day we need it for real.
 
+> **Wave 8 — Apone**: the steps in §4.1 – §4.5 below are now
+> automated by [`.github/workflows/dr-rehearsal.yml`](../.github/workflows/dr-rehearsal.yml).
+> The manual runbook stays here as the reference + recovery
+> document — the workflow is the default execution path, the
+> manual run is the fallback when the workflow itself fails or
+> the operator needs an out-of-band rehearsal.
+>
+> See §4.6 for the workflow trigger + the result-file contract.
+
 ### 4.1 Pre-flight
 
 ```bash
@@ -194,6 +203,51 @@ client DNS cache flush. If the rehearsal exceeds the SLO,
 investigate the largest contributor (typically resolver TTL
 caching at upstream resolvers; mitigated by the TTL<60s rule
 the W6 module enforces).
+
+### 4.6 Automation — Phase K Wave 8
+
+The quarterly rehearsal is automated by
+[`.github/workflows/dr-rehearsal.yml`](../.github/workflows/dr-rehearsal.yml).
+The workflow walks §4.1 → §4.4 end-to-end:
+
+1. Reads `primary_health_check_id` + `failover_record_fqdn` from
+   the DR env's Terraform outputs.
+2. Captures BEFORE-state DNS (via a non-cached resolver).
+3. Inverts the health check.
+4. Polls until the secondary region is observed in DNS;
+   records the RTO.
+5. Smoke-tests `/health` against the failover record; captures
+   latency.
+6. Reads `AWS/RDS::ReplicaLag` peak over the last 5 min as the
+   RPO proxy.
+7. After `restore_after_seconds` (default 300), un-inverts.
+8. Polls until the primary record returns; records recovery
+   time.
+9. Generates `docs/dr-rehearsal-results-YYYY-Q#.md` matching the
+   §4.5 schema + uploads it as a workflow artefact.
+
+The workflow is `workflow_dispatch` only — there is **no**
+schedule trigger to prevent an accidental Friday-afternoon
+rehearsal. The operator-driven inputs are:
+
+| Input | Default | Notes |
+|---|---|---|
+| `quarter` | (required) | YYYY-Q# label baked into the result filename. |
+| `dry_run` | `false` | When `true`, skips the actual health-check invert (validates the workflow plumbing without traffic redirection). |
+| `primary_region` | `us-east-1` | Override for an alternate-region rehearsal. |
+| `secondary_region` | `us-west-2` | Source region for the `ReplicaLag` metric. |
+| `dr_env_dir` | `infra/terraform/envs/dr-us-west-2` | Terraform working dir for the DR env. |
+| `restore_after_seconds` | `300` | How long failover stays active before recovery. |
+
+The **destructive rehearsal** (§4.3 — `promote-read-replica`)
+stays manual. It is a once-a-year event with operator review on
+the replacement-replica re-provisioning, so it does not benefit
+from automation.
+
+Result files (`docs/dr-rehearsal-results-YYYY-Q#.md`) are
+committed by the operator after the workflow run — the workflow
+itself uploads the artefact but does NOT push to the repo, to
+keep its OIDC permissions read-only on `contents`.
 
 ## 5. Edge module (Phase K Wave 7 — Apone)
 
@@ -387,12 +441,29 @@ DNS name**, and the operator's failover step is to update the
 `alb_dns_name` input + `terraform apply` against the edge module
 alone. The cluster + ECR resources are unchanged.
 
+### 5.6 Staging env (Phase K Wave 8 — Apone)
+
+The `infra/terraform/envs/staging/` env instantiates the edge
+module against the staging EKS ingress. The cutover runbook
+(green-field → cutover → smoke test → rollback) lives in
+[`docs/staging-cutover.md`](staging-cutover.md).
+
+Staging differs from prod in **one** way: the managed
+rule-groups are configured `count`-only (observation mode) so a
+rule false-positive in the WAF does NOT take staging down before
+the prod tune-down. The variable `waf_managed_rules_action`
+controls the toggle (default `COUNT` in staging, `BLOCK` in
+prod). The W8 → W9 hand-off includes a `count` → `block` flip on
+prod after a quarter of staging soak.
+
 ## 6. Cross-references
 
 * `infra/terraform/README.md` — primary-stack bootstrap runbook.
 * `infra/terraform/modules/dr-replication/README.md` — DR module.
 * `infra/terraform/modules/github-oidc/README.md` — OIDC module.
 * `infra/terraform/modules/edge/README.md` — Wave-7 edge module reference.
+* `docs/staging-cutover.md` — Wave-8 staging edge cutover runbook.
+* `.github/workflows/dr-rehearsal.yml` — Wave-8 DR rehearsal automation.
 * `docs/production-deployment-runbook.md` — operator runbook for
   the helm post-bootstrap sequence.
 * `docs/retro-2026-05.md` — May 2026 monthly retro

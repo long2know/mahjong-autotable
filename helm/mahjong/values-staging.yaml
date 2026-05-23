@@ -8,7 +8,7 @@
 #       -n mahjong-staging --create-namespace \
 #       -f helm/mahjong/values-staging.yaml
 #
-# Parity with the Kustomize overlay (see docs/helm-charts.md §3):
+# Parity with the Kustomize overlay (see docs/helm-charts.md §5):
 #
 #   * single replica (cheap soak)
 #   * staging.mahjong.example.com host

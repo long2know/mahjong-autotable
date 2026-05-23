@@ -1,0 +1,481 @@
+# Phase K Wave 8 — Apone (DevOps).
+#
+# Disaster-recovery rehearsal automation.
+#
+# Wave 6 shipped the DR Terraform module + the manual rehearsal
+# runbook in `docs/terraform.md §4`. Wave 8 ships the workflow
+# automation: a quarterly `workflow_dispatch` that walks the
+# failover steps end-to-end, captures latency / RPO / RTO
+# metrics, and writes the results to an auto-generated
+# `docs/dr-rehearsal-results-YYYY-Q#.md`.
+#
+# What it does:
+#
+#   1. Resolve the Route 53 failover record + the primary health
+#      check ID via terraform output (against the DR env).
+#   2. Capture the BEFORE-failover ALB/region currently serving
+#      the failover record.
+#   3. Invert the primary health check ("force failover" — the
+#      Route 53 policy treats the primary as unhealthy ~90s
+#      after invert).
+#   4. Poll the failover record until the secondary region's ALB
+#      is observed; record latency.
+#   5. Smoke-test `/health` against the failover record from a
+#      non-cached resolver.
+#   6. Capture replica lag (RPO proxy).
+#   7. Un-invert the health check → cluster returns to primary.
+#   8. Poll until the primary is back in service; record return
+#      latency.
+#   9. Emit a Markdown report + commit it to a result file via
+#      a checked-in artefact (the workflow does NOT push to the
+#      repo on its own — the report ships as a workflow artefact
+#      AND a step-summary block; operator commits at their
+#      cadence).
+#
+# Costs / blast radius:
+#
+#   * Inverting the health check redirects user traffic. The W6
+#     non-destructive rehearsal mode is the W8 default — the
+#     destructive promotion (`aws rds promote-read-replica`) is
+#     NOT in this workflow (it's an annual operator-driven
+#     event per `docs/terraform.md §4.3`).
+#   * Run during a low-traffic window (Saturday 09:00 UTC is the
+#     W8 cadence committed).
+#
+# Cadence:
+#   * Quarterly (`workflow_dispatch` only — no schedule trigger
+#     to avoid an accidental Friday-afternoon rehearsal).
+#   * The workflow_dispatch input `quarter` carries the YYYY-Q#
+#     label that the result file uses.
+
+name: dr-rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      quarter:
+        description: "Quarter label for the result file (YYYY-Q#). e.g. 2026-Q3."
+        required: true
+      dry_run:
+        description: "Dry-run mode — perform AWS describe calls but DO NOT invert the health check (validates the workflow plumbing without traffic redirection)."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      primary_region:
+        description: "Primary AWS region. Default us-east-1."
+        required: false
+        default: "us-east-1"
+      secondary_region:
+        description: "Secondary (DR) AWS region. Default us-west-2."
+        required: false
+        default: "us-west-2"
+      dr_env_dir:
+        description: "Terraform working directory for the DR env. Default infra/terraform/envs/dr-us-west-2."
+        required: false
+        default: "infra/terraform/envs/dr-us-west-2"
+      restore_after_seconds:
+        description: "How long to keep the failover active before un-inverting (seconds). Default 300 (5 min)."
+        required: false
+        default: "300"
+
+permissions:
+  contents: read
+  id-token: write   # OIDC → assume the GitHub-OIDC AWS role
+
+# Only one rehearsal at a time — a second concurrent invert
+# would race the recovery step + leave the cluster in an
+# ambiguous DNS state.
+concurrency:
+  group: dr-rehearsal
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  rehearse:
+    name: Force failover → smoke test → restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (primary region)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::000000000000:role/mahjong-autotable-github-deploy
+          aws-region: ${{ inputs.primary_region }}
+          # The repo's GitHub-OIDC role is provisioned by
+          # `infra/terraform/iam-github-oidc.tf`. For this
+          # workflow to assume it, the trust policy MUST include
+          # the env subject `repo:long2know/mahjong-autotable:environment:dr-rehearsal`
+          # OR the workflow ref `refs/heads/main`. Wave 6 already
+          # included the heads/* + tags/v* subjects — this
+          # workflow runs off `workflow_dispatch` from main.
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Read DR env Terraform outputs
+        id: tf
+        env:
+          DR_DIR: ${{ inputs.dr_env_dir }}
+        run: |
+          set -euo pipefail
+          cd "$DR_DIR"
+          # The DR env's backend block requires `-backend-config=backend.hcl`;
+          # in CI we materialise it from the example file with the
+          # production bucket name baked in.
+          if [[ ! -f backend.hcl ]]; then
+            cp backend.example.hcl backend.hcl
+          fi
+          terraform init -input=false -backend-config=backend.hcl
+          HC_ID=$(terraform output -raw primary_health_check_id)
+          FAILOVER_FQDN=$(terraform output -raw failover_record_fqdn)
+          {
+            echo "health_check_id=$HC_ID"
+            echo "failover_fqdn=$FAILOVER_FQDN"
+          } >> "$GITHUB_OUTPUT"
+          echo "DR Terraform outputs resolved:"
+          echo "  health_check_id: $HC_ID"
+          echo "  failover_fqdn:   $FAILOVER_FQDN"
+
+      - name: Capture BEFORE state
+        id: before
+        env:
+          FAILOVER_FQDN: ${{ steps.tf.outputs.failover_fqdn }}
+        run: |
+          set -euo pipefail
+          # Resolve the failover record via a non-cached resolver
+          # (Cloudflare DNS). We use this instead of the local
+          # systemd-resolved cache because the GitHub Actions
+          # runner's resolver may already hold a TTL'd record.
+          BEFORE_DNS=$(dig +short "@1.1.1.1" "$FAILOVER_FQDN" | head -1 || echo "")
+          BEFORE_TS=$(date -u +%s)
+          BEFORE_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          {
+            echo "before_dns=$BEFORE_DNS"
+            echo "before_ts=$BEFORE_TS"
+            echo "before_iso=$BEFORE_ISO"
+          } >> "$GITHUB_OUTPUT"
+          echo "BEFORE state captured: dns=$BEFORE_DNS ts=$BEFORE_TS iso=$BEFORE_ISO"
+
+      - name: Force failover — invert primary health check
+        id: invert
+        if: ${{ inputs.dry_run != 'true' }}
+        env:
+          HC_ID: ${{ steps.tf.outputs.health_check_id }}
+        run: |
+          set -euo pipefail
+          aws route53 update-health-check \
+              --health-check-id "$HC_ID" \
+              --inverted >/dev/null
+          INVERT_TS=$(date -u +%s)
+          echo "invert_ts=$INVERT_TS" >> "$GITHUB_OUTPUT"
+          echo "Inverted health check $HC_ID at $INVERT_TS"
+
+      - name: Dry-run notice
+        if: ${{ inputs.dry_run == 'true' }}
+        run: |
+          echo "DRY-RUN — skipped health-check invert + recovery polling" >> "$GITHUB_STEP_SUMMARY"
+          # Synthesise minimum outputs so the report step still runs.
+          echo "invert_ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Poll until SECONDARY region is observed
+        id: failover_observed
+        if: ${{ inputs.dry_run != 'true' }}
+        env:
+          FAILOVER_FQDN: ${{ steps.tf.outputs.failover_fqdn }}
+          BEFORE_DNS: ${{ steps.before.outputs.before_dns }}
+          INVERT_TS: ${{ steps.invert.outputs.invert_ts }}
+        run: |
+          set -euo pipefail
+          # Poll up to 5 min for the failover record to flip.
+          DEADLINE=$(( INVERT_TS + 300 ))
+          OBSERVED_DNS=""
+          while (( $(date -u +%s) < DEADLINE )); do
+            CURRENT=$(dig +short "@1.1.1.1" "$FAILOVER_FQDN" | head -1 || echo "")
+            if [[ -n "$CURRENT" && "$CURRENT" != "$BEFORE_DNS" ]]; then
+              OBSERVED_DNS="$CURRENT"
+              break
+            fi
+            sleep 10
+          done
+          OBSERVED_TS=$(date -u +%s)
+          if [[ -z "$OBSERVED_DNS" ]]; then
+            echo "::error::FAILOVER NOT OBSERVED within 300s — DNS still resolves to $BEFORE_DNS"
+            echo "failover_observed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "failover_observed=true" >> "$GITHUB_OUTPUT"
+          fi
+          DRIFT_S=$(( OBSERVED_TS - INVERT_TS ))
+          {
+            echo "observed_dns=$OBSERVED_DNS"
+            echo "observed_ts=$OBSERVED_TS"
+            echo "rto_seconds=$DRIFT_S"
+          } >> "$GITHUB_OUTPUT"
+          echo "Failover observed: dns=$OBSERVED_DNS RTO=${DRIFT_S}s"
+
+      - name: Smoke-test /health against the failover record
+        id: smoke
+        if: ${{ inputs.dry_run != 'true' && steps.failover_observed.outputs.failover_observed == 'true' }}
+        env:
+          FAILOVER_FQDN: ${{ steps.tf.outputs.failover_fqdn }}
+        run: |
+          set -euo pipefail
+          START=$(date -u +%s%3N)
+          HTTP_CODE=$(curl -fsS -o /dev/null -w "%{http_code}" \
+              --resolve "$FAILOVER_FQDN:443:$(dig +short @1.1.1.1 $FAILOVER_FQDN | head -1)" \
+              "https://$FAILOVER_FQDN/health" || echo "0")
+          END=$(date -u +%s%3N)
+          LATENCY_MS=$(( END - START ))
+          {
+            echo "smoke_http_code=$HTTP_CODE"
+            echo "smoke_latency_ms=$LATENCY_MS"
+          } >> "$GITHUB_OUTPUT"
+          echo "Smoke test: $HTTP_CODE in ${LATENCY_MS}ms"
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "::warning::smoke test returned $HTTP_CODE (expected 200) — captured for report"
+          fi
+
+      - name: Capture replica lag (RPO proxy)
+        id: rpo
+        if: ${{ inputs.dry_run != 'true' }}
+        env:
+          SECONDARY_REGION: ${{ inputs.secondary_region }}
+        run: |
+          set -euo pipefail
+          # CloudWatch metric: RDS publishes `ReplicaLag` in seconds.
+          # We average over the last 5 minutes — gives a stable RPO
+          # number even if one sample spikes.
+          END=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          START=$(date -u -d '5 minutes ago' +"%Y-%m-%dT%H:%M:%SZ")
+          LAG=$(aws cloudwatch get-metric-statistics \
+              --region "$SECONDARY_REGION" \
+              --namespace AWS/RDS \
+              --metric-name ReplicaLag \
+              --start-time "$START" \
+              --end-time "$END" \
+              --period 60 \
+              --statistics Average \
+              --query 'Datapoints[].Average' \
+              --output text \
+              | tr '\t' '\n' | sort -n | tail -1 || echo "0")
+          # `tail -1` after sort = peak (worst-case RPO seconds).
+          # Empty / unavailable → 0 (e.g. replica not yet provisioned).
+          if [[ -z "$LAG" || "$LAG" == "None" ]]; then LAG="0"; fi
+          echo "rpo_seconds=$LAG" >> "$GITHUB_OUTPUT"
+          echo "Peak replica lag (last 5 min): ${LAG}s"
+
+      - name: Restore — wait then un-invert health check
+        id: restore
+        if: ${{ inputs.dry_run != 'true' }}
+        env:
+          HC_ID: ${{ steps.tf.outputs.health_check_id }}
+          RESTORE_AFTER: ${{ inputs.restore_after_seconds }}
+        run: |
+          set -euo pipefail
+          echo "Holding failover for ${RESTORE_AFTER}s before restoring..."
+          sleep "${RESTORE_AFTER}"
+          aws route53 update-health-check \
+              --health-check-id "$HC_ID" \
+              --no-inverted >/dev/null
+          RESTORE_TS=$(date -u +%s)
+          echo "restore_ts=$RESTORE_TS" >> "$GITHUB_OUTPUT"
+          echo "Un-inverted health check $HC_ID at $RESTORE_TS"
+
+      - name: Poll until PRIMARY region is back
+        id: primary_back
+        if: ${{ inputs.dry_run != 'true' }}
+        env:
+          FAILOVER_FQDN: ${{ steps.tf.outputs.failover_fqdn }}
+          BEFORE_DNS: ${{ steps.before.outputs.before_dns }}
+          RESTORE_TS: ${{ steps.restore.outputs.restore_ts }}
+        run: |
+          set -euo pipefail
+          DEADLINE=$(( RESTORE_TS + 300 ))
+          while (( $(date -u +%s) < DEADLINE )); do
+            CURRENT=$(dig +short "@1.1.1.1" "$FAILOVER_FQDN" | head -1 || echo "")
+            if [[ "$CURRENT" == "$BEFORE_DNS" ]]; then
+              break
+            fi
+            sleep 10
+          done
+          PRIMARY_TS=$(date -u +%s)
+          RECOVERY_S=$(( PRIMARY_TS - RESTORE_TS ))
+          {
+            echo "primary_ts=$PRIMARY_TS"
+            echo "recovery_seconds=$RECOVERY_S"
+          } >> "$GITHUB_OUTPUT"
+          echo "Primary back at $PRIMARY_TS (recovery=${RECOVERY_S}s)"
+
+      - name: Generate result Markdown
+        id: report
+        env:
+          QUARTER: ${{ inputs.quarter }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          BEFORE_ISO: ${{ steps.before.outputs.before_iso }}
+          BEFORE_DNS: ${{ steps.before.outputs.before_dns }}
+          INVERT_TS: ${{ steps.invert.outputs.invert_ts }}
+          OBSERVED_DNS: ${{ steps.failover_observed.outputs.observed_dns }}
+          RTO_S: ${{ steps.failover_observed.outputs.rto_seconds }}
+          SMOKE_CODE: ${{ steps.smoke.outputs.smoke_http_code }}
+          SMOKE_LATENCY_MS: ${{ steps.smoke.outputs.smoke_latency_ms }}
+          RPO_S: ${{ steps.rpo.outputs.rpo_seconds }}
+          RESTORE_TS: ${{ steps.restore.outputs.restore_ts }}
+          RECOVERY_S: ${{ steps.primary_back.outputs.recovery_seconds }}
+          FAILOVER_FQDN: ${{ steps.tf.outputs.failover_fqdn }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          OUT_FILE="docs/dr-rehearsal-results-${QUARTER}.md"
+          mkdir -p docs
+
+          cat > "$OUT_FILE" <<EOF
+          # DR rehearsal — ${QUARTER}
+
+          > Auto-generated by \`.github/workflows/dr-rehearsal.yml\`
+          > (Phase K Wave 8 — Apone). Workflow run:
+          > [#${RUN_ID}](https://github.com/${REPO}/actions/runs/${RUN_ID}).
+
+          ## 1. Run metadata
+
+          | Field | Value |
+          |---|---|
+          | Quarter | \`${QUARTER}\` |
+          | Dry-run mode | \`${DRY_RUN}\` |
+          | Failover record | \`${FAILOVER_FQDN}\` |
+          | Run started (UTC) | \`${BEFORE_ISO}\` |
+          | GitHub workflow run | [#${RUN_ID}](https://github.com/${REPO}/actions/runs/${RUN_ID}) |
+
+          ## 2. Failover metrics
+
+          | Metric | Value | Target (W6 SLO) |
+          |---|---|---|
+          | RTO — health-check invert → secondary observed | \`${RTO_S:-N/A}\`s | < 120s |
+          | RPO — peak replica lag (5 min window) | \`${RPO_S:-N/A}\`s | < 60s |
+          | Smoke test HTTP code | \`${SMOKE_CODE:-N/A}\` | 200 |
+          | Smoke test latency | \`${SMOKE_LATENCY_MS:-N/A}\` ms | < 2000 |
+          | Recovery — health-check un-invert → primary observed | \`${RECOVERY_S:-N/A}\`s | < 120s |
+
+          ## 3. DNS observations
+
+          | Phase | FQDN resolves to |
+          |---|---|
+          | BEFORE invert | \`${BEFORE_DNS:-N/A}\` |
+          | AFTER invert (secondary) | \`${OBSERVED_DNS:-N/A}\` |
+
+          ## 4. Action items
+
+          (Populated post-run by the operator. Anomalies above SLO
+          targets become action items; trends across quarters are
+          summarised in the matching monthly retro.)
+
+          - [ ] Document any latency outliers above the SLO targets.
+          - [ ] If RPO > 60s, investigate replica-lag root cause
+                (typically NETWORK partition or replica instance-class
+                under-sized for write volume).
+          - [ ] Confirm the secondary region's ECR + ESO secrets are
+                in lock-step with the primary (W6 \`mahjong-tfstate-dr-us-west-2\`
+                state).
+
+          ## 5. Cross-references
+
+          * [\`docs/terraform.md\`](terraform.md) §4 — manual DR runbook (the procedure this workflow automates).
+          * [\`docs/terraform.md\`](terraform.md) §4.5 — post-rehearsal report template (this file follows the schema).
+          * [\`infra/terraform/envs/dr-us-west-2/\`](../infra/terraform/envs/dr-us-west-2/) — DR Terraform env.
+          * [\`.github/workflows/dr-rehearsal.yml\`](../.github/workflows/dr-rehearsal.yml) — this workflow.
+
+          EOF
+          echo "result_file=$OUT_FILE" >> "$GITHUB_OUTPUT"
+          echo "Wrote $OUT_FILE"
+
+      - name: Upload result Markdown as artefact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dr-rehearsal-result-${{ inputs.quarter }}
+          path: ${{ steps.report.outputs.result_file }}
+          retention-days: 365
+
+      - name: Step summary
+        if: ${{ always() }}
+        env:
+          OUT_FILE: ${{ steps.report.outputs.result_file }}
+        run: |
+          set -euo pipefail
+          {
+            echo "# DR rehearsal result"
+            echo
+            echo "Result file: \`$OUT_FILE\`"
+            echo
+            if [[ -f "$OUT_FILE" ]]; then
+              cat "$OUT_FILE"
+            else
+              echo "(result file not generated — see job logs)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Slack notification
+        if: ${{ always() }}
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          QUARTER: ${{ inputs.quarter }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RTO_S: ${{ steps.failover_observed.outputs.rto_seconds }}
+          RPO_S: ${{ steps.rpo.outputs.rpo_seconds }}
+          RECOVERY_S: ${{ steps.primary_back.outputs.recovery_seconds }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${WEBHOOK:-}" ]]; then
+            echo "SLACK_WEBHOOK_URL missing — skipping notification" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          PAYLOAD=$(jq -nc \
+            --arg quarter "$QUARTER" \
+            --arg dry "$DRY_RUN" \
+            --arg rto "${RTO_S:-N/A}" \
+            --arg rpo "${RPO_S:-N/A}" \
+            --arg rec "${RECOVERY_S:-N/A}" \
+            --arg url "https://github.com/${REPO}/actions/runs/${RUN_ID}" \
+            '{
+              text: ("🛟 *DR rehearsal complete* — `" + $quarter + "`" + (if $dry == "true" then " (dry-run)" else "" end)),
+              blocks: [
+                {
+                  type: "section",
+                  text: { type: "mrkdwn", text: ("🛟 *DR rehearsal complete* — `" + $quarter + "`" + (if $dry == "true" then " (dry-run)" else "" end)) }
+                },
+                {
+                  type: "section",
+                  fields: [
+                    { type: "mrkdwn", text: ("*RTO*\n`" + $rto + "s`") },
+                    { type: "mrkdwn", text: ("*RPO*\n`" + $rpo + "s`") },
+                    { type: "mrkdwn", text: ("*Recovery*\n`" + $rec + "s`") }
+                  ]
+                },
+                {
+                  type: "actions",
+                  elements: [
+                    {
+                      type: "button",
+                      text: { type: "plain_text", text: "View result file" },
+                      url: $url
+                    }
+                  ]
+                }
+              ]
+            }')
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+              --data "$PAYLOAD" \
+              "$WEBHOOK"
+          echo "Slack notification posted." >> "$GITHUB_STEP_SUMMARY"

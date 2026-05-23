@@ -31,9 +31,10 @@
 #     six-file set independent of which files are staged, because
 #     drift is a cross-file property.
 #
-# CI runs `pre-commit run --all-files` from `.github/workflows/`
-# (Wave 7 follow-up — for now developer machines are the gate;
-# CI parity ride-along will land in Wave 8).
+# CI runs `pre-commit run --all-files` from
+# `.github/workflows/pre-commit-check.yml` (Wave 8 — CI parity
+# closes the "per-developer opt-in" gap). The CI workflow runs
+# the SAME hook set in the SAME order against `--all-files`.
 
 minimum_pre_commit_version: "3.5.0"
 

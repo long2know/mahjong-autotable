@@ -1,0 +1,498 @@
+# Phase K Wave 8 — Apone (DevOps).
+#
+# Mobile PRODUCTION track promotion — tag-driven + env-gated.
+#
+# Promotion ladder (Wave 8 closes the loop):
+#
+#   Wave 6  mobile-internal-testing.yml
+#           tag-driven (`mobile-v*.*.*` push)
+#           → TestFlight   Internal Testing (≤100 dev-team members)
+#           → Play Console Internal Testing (≤100 testers)
+#
+#   Wave 7  mobile-external-testing.yml
+#           workflow_dispatch (operator-driven)
+#           → TestFlight   External Testing groups (≤10 000)
+#           → Play Console Closed Testing tracks
+#
+#   Wave 8  mobile-production-release.yml — THIS workflow
+#           tag-driven (`mobile-prod-v*.*.*` push)
+#           → TestFlight   Production (App Store live)
+#           → Play Console Production track (Open / rolled-out)
+#
+# Distinct tag prefix (`mobile-prod-v` vs `mobile-v`) because:
+#
+#   * Production-release tags MUST NOT auto-trigger an Internal
+#     Testing rebuild. The internal workflow runs on `mobile-v*.*.*`;
+#     this workflow runs on `mobile-prod-v*.*.*` — the two tag
+#     spaces are disjoint by prefix.
+#   * Operator-visible signal: `git log --tags` shows the prod
+#     ladder in distinct labels.
+#   * Production tag implies a SPECIFIC internal tag — typed in
+#     `inputs.internal_tag` is the `mobile-v*.*.*` that originally
+#     pushed the build to Internal Testing. The workflow validates
+#     the internal tag exists before promoting.
+#
+# Env-gate: this workflow runs under the GitHub Environment
+# `release-channel: production` — an env approval rule on the
+# repo gates the run on a reviewer click. The W7 retro committed
+# to this gate for any operation that touches App Store /
+# Play Production tracks. See `docs/mobile-release.md` §7 for the
+# operator runbook.
+#
+# Code-signing identities, Play credentials, and TestFlight API
+# keys are the SAME secrets the Internal + External workflows
+# consume — no new secrets needed.
+#
+# Promotion verbs:
+#
+#   * iOS:     fastlane `deliver --submit_for_review --automatic_release true`
+#              — submits the External-Testing build for App Review
+#              + flips the release to "Released" automatically once
+#              review passes.
+#   * Android: fastlane `supply --track <closed> --track_promote_to production`
+#              — promotes the most-recent Closed-Testing build to
+#              the Production track. `release_status` controls
+#              rollout fraction (operator may pin to e.g. 10%
+#              before flipping to 100%).
+#
+# Rollback:
+#   * iOS: App Store Connect has NO direct revert. The recourse
+#     is to submit a hotfix build with a higher version number.
+#   * Android: `fastlane supply --track production --rollout 0`
+#     halts further rollout if a staged release shows P0 bugs.
+
+name: mobile-production-release
+
+on:
+  push:
+    tags:
+      - "mobile-prod-v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to promote (mobile-prod-vMAJOR.MINOR.PATCH). MUST already exist on the repo."
+        required: true
+      internal_tag:
+        description: "The originating Internal-Testing tag (mobile-vMAJOR.MINOR.PATCH) whose build is being promoted. MUST already exist."
+        required: true
+      release_notes:
+        description: "Release notes for end-users (max ~4000 chars; user-facing copy)."
+        required: true
+      android_rollout_fraction:
+        description: "Initial rollout fraction for Play Production (0.0–1.0). 0.1 = 10% staged; 1.0 = full release."
+        required: false
+        default: "0.1"
+      android_release_status:
+        description: "Play release_status — 'inProgress' (staged via rollout fraction), 'completed' (immediate 100%), or 'draft' (operator gates the click)."
+        required: false
+        default: "inProgress"
+        type: choice
+        options:
+          - draft
+          - inProgress
+          - completed
+      ios_automatic_release:
+        description: "iOS: flip release to 'Released' automatically once App Review passes."
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+  id-token: write
+
+# Production promotion is single-track: never let two prod
+# pushes race. `cancel-in-progress: false` because Apple's App
+# Review submission cannot be cancelled mid-flight — losing the
+# in-flight job mid-review means re-submitting with a new
+# version.
+concurrency:
+  group: mobile-production-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve tags + capture promotion inputs
+    runs-on: ubuntu-latest
+    # The env-gate lives on the FIRST job — once approved, the
+    # downstream jobs run without further approval. Apple's review
+    # latency means breaking the env approval into per-job
+    # approvals would stall the workflow for 24 h+ on the iOS
+    # job alone.
+    environment:
+      name: release-channel-production
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      internal_tag: ${{ steps.tag.outputs.internal_tag }}
+      package_name: ${{ steps.tag.outputs.package_name }}
+      ios_bundle_id: ${{ steps.tag.outputs.ios_bundle_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve + validate tags
+        id: tag
+        env:
+          PUSH_REF: ${{ github.ref }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_INTERNAL_TAG: ${{ inputs.internal_tag }}
+        run: |
+          set -euo pipefail
+          # Prefer workflow_dispatch input; fall back to the push tag.
+          if [[ -n "${INPUT_TAG:-}" ]]; then
+            TAG="$INPUT_TAG"
+          else
+            # PUSH_REF looks like refs/tags/mobile-prod-vX.Y.Z
+            TAG="${PUSH_REF#refs/tags/}"
+          fi
+          if [[ ! "$TAG" =~ ^mobile-prod-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag '$TAG' does not match mobile-prod-vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          VERSION="${TAG#mobile-prod-v}"
+
+          # Internal-tag input is REQUIRED on workflow_dispatch.
+          # On `push` events we derive it from the version (the
+          # convention is mobile-prod-vX.Y.Z is promoted from
+          # mobile-vX.Y.Z — same version, distinct prefix).
+          if [[ -n "${INPUT_INTERNAL_TAG:-}" ]]; then
+            INTERNAL_TAG="$INPUT_INTERNAL_TAG"
+          else
+            INTERNAL_TAG="mobile-v${VERSION}"
+          fi
+          if [[ ! "$INTERNAL_TAG" =~ ^mobile-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::internal_tag '$INTERNAL_TAG' does not match mobile-vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+          if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::tag '$TAG' does not exist in the repository"
+            exit 1
+          fi
+          if ! git rev-parse "refs/tags/$INTERNAL_TAG" >/dev/null 2>&1; then
+            echo "::error::internal_tag '$INTERNAL_TAG' does not exist — has mobile-internal-testing.yml run for it?"
+            exit 1
+          fi
+
+          PACKAGE_NAME="com.long2know.mahjong"
+          IOS_BUNDLE_ID="com.long2know.mahjong"
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "internal_tag=$INTERNAL_TAG"
+            echo "package_name=$PACKAGE_NAME"
+            echo "ios_bundle_id=$IOS_BUNDLE_ID"
+          } >> "$GITHUB_OUTPUT"
+          echo "Promoting to Production: tag=$TAG version=$VERSION internal=$INTERNAL_TAG"
+
+      - name: Write release-notes payload (artefact)
+        env:
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-notes
+          if [[ -z "${NOTES:-}" ]]; then
+            echo "::error::release_notes input is required for production promotion"
+            exit 1
+          fi
+          CHARS=${#NOTES}
+          if (( CHARS > 4000 )); then
+            echo "::error::release_notes is $CHARS chars; max 4000"
+            exit 1
+          fi
+          printf '%s\n' "$NOTES" > release-notes/production.txt
+          echo "Wrote release-notes/production.txt ($CHARS chars)"
+
+      - name: Upload release-notes artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-${{ steps.tag.outputs.version }}-production
+          path: release-notes/
+          retention-days: 30
+
+  android-production:
+    name: Android — promote Closed → Production
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      promoted: ${{ steps.promote.outputs.promoted }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Detect Play credentials
+        id: secrets
+        env:
+          PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PLAY_SA:-}" ]]; then
+            echo "have-secrets=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON missing — skipping Play Production promotion"
+          else
+            echo "have-secrets=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Ruby (fastlane)
+        if: steps.secrets.outputs.have-secrets == 'true'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: false
+
+      - name: Install fastlane
+        if: steps.secrets.outputs.have-secrets == 'true'
+        run: |
+          set -euo pipefail
+          gem install fastlane -NV
+          fastlane --version
+
+      - name: Download release notes
+        if: steps.secrets.outputs.have-secrets == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes-${{ needs.prepare.outputs.version }}-production
+          path: release-notes/
+
+      - name: fastlane supply — promote Closed Testing → Production
+        id: promote
+        if: steps.secrets.outputs.have-secrets == 'true'
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          PACKAGE_NAME: ${{ needs.prepare.outputs.package_name }}
+          ROLLOUT: ${{ inputs.android_rollout_fraction || '0.1' }}
+          RELEASE_STATUS: ${{ inputs.android_release_status || 'inProgress' }}
+        run: |
+          set -euo pipefail
+          mkdir -p fastlane
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" | base64 -d > fastlane/play-sa.json
+          chmod 600 fastlane/play-sa.json
+
+          mkdir -p fastlane/metadata/android/en-US/changelogs
+          cp release-notes/production.txt fastlane/metadata/android/en-US/changelogs/default.txt
+
+          # The W7 External workflow pushed the build to the
+          # `beta` (Closed Testing) track. W8 promotes that same
+          # build to `production` WITHOUT re-uploading the AAB
+          # — `track_promote_to` is the Play API verb for cross-
+          # track promotion.
+          #
+          # `--rollout` is the staged-rollout fraction (0.0–1.0).
+          # W8 baseline = 0.1 (10% staged). Operator increases via
+          # subsequent workflow_dispatch runs with a higher
+          # rollout fraction once metrics confirm no P0 bugs.
+          SUPPLY_ARGS=(
+            --json_key fastlane/play-sa.json
+            --package_name "$PACKAGE_NAME"
+            --track beta
+            --track_promote_to production
+            --release_status "$RELEASE_STATUS"
+            --skip_upload_apk true
+            --skip_upload_aab true
+            --skip_upload_metadata true
+            --skip_upload_images true
+            --skip_upload_screenshots true
+            --metadata_path fastlane/metadata/android/
+          )
+          # `--rollout` only applies when release_status = inProgress.
+          if [[ "$RELEASE_STATUS" == "inProgress" ]]; then
+            SUPPLY_ARGS+=(--rollout "$ROLLOUT")
+          fi
+
+          fastlane supply "${SUPPLY_ARGS[@]}"
+          echo "promoted=true" >> "$GITHUB_OUTPUT"
+
+      - name: Skip notice (no secrets)
+        if: steps.secrets.outputs.have-secrets != 'true'
+        run: |
+          echo "Android Production promotion SKIPPED (missing PLAY_SERVICE_ACCOUNT_JSON)" >> "$GITHUB_STEP_SUMMARY"
+
+  ios-production:
+    name: iOS — promote TestFlight External → App Store Production
+    needs: prepare
+    runs-on: macos-14
+    timeout-minutes: 60
+    outputs:
+      promoted: ${{ steps.promote.outputs.promoted }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Detect App Store Connect API key
+        id: secrets
+        env:
+          APPLE_KEY: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPLE_KEY:-}" || -z "${APPLE_KEY_ID:-}" || -z "${APPLE_ISSUER:-}" ]]; then
+            echo "have-secrets=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::APPLE_API_KEY_BASE64 / APPLE_API_KEY_ID / APPLE_API_ISSUER_ID missing — skipping App Store Production promotion"
+          else
+            echo "have-secrets=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Ruby (fastlane)
+        if: steps.secrets.outputs.have-secrets == 'true'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: false
+
+      - name: Install fastlane
+        if: steps.secrets.outputs.have-secrets == 'true'
+        run: |
+          set -euo pipefail
+          gem install fastlane -NV
+          fastlane --version
+
+      - name: Decode App Store Connect API key
+        if: steps.secrets.outputs.have-secrets == 'true'
+        env:
+          APPLE_KEY: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p .ascapi
+          printf '%s' "$APPLE_KEY" | base64 -d > .ascapi/AuthKey.p8
+          chmod 600 .ascapi/AuthKey.p8
+
+      - name: Download release notes
+        if: steps.secrets.outputs.have-secrets == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes-${{ needs.prepare.outputs.version }}-production
+          path: release-notes/
+
+      - name: fastlane deliver — submit App Store Production
+        id: promote
+        if: steps.secrets.outputs.have-secrets == 'true'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          IOS_BUNDLE_ID: ${{ needs.prepare.outputs.ios_bundle_id }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          AUTOMATIC_RELEASE: ${{ inputs.ios_automatic_release || 'true' }}
+        run: |
+          set -euo pipefail
+          # `fastlane deliver` is the App Store delivery verb
+          # (distinct from `pilot`, the TestFlight verb). It
+          # submits the BUILD (uploaded by the W6 internal
+          # workflow, distributed by the W7 external workflow)
+          # for App Review against the Production track.
+          #
+          # `--submit_for_review` triggers App Review.
+          # `--automatic_release` flips the release to "Released"
+          # the moment review passes (vs. "Pending Developer
+          # Release" where the operator clicks the button manually).
+          #
+          # Apple requires the build referenced by the App Store
+          # version to ALREADY be in App Store Connect. The W7
+          # external workflow ran `pilot distribute` which
+          # implicitly placed the build in the "Ready to Submit"
+          # state — we're picking it up from there.
+
+          NOTES_FILE=release-notes/production.txt
+          # `release_notes` is per-locale; en-US is the default
+          # primary locale. Multi-locale support can ride
+          # alongside but the W8 baseline ships en-US.
+          mkdir -p fastlane/metadata/en-US
+          cp "$NOTES_FILE" fastlane/metadata/en-US/release_notes.txt
+
+          fastlane deliver \
+            --api_key_path .ascapi/AuthKey.p8 \
+            --api_key_id "$APPLE_API_KEY_ID" \
+            --api_key_issuer_id "$APPLE_API_ISSUER_ID" \
+            --app_identifier "$IOS_BUNDLE_ID" \
+            --app_version "$RELEASE_VERSION" \
+            --build_number latest \
+            --submit_for_review true \
+            --automatic_release "$AUTOMATIC_RELEASE" \
+            --skip_binary_upload true \
+            --skip_screenshots true \
+            --skip_metadata false \
+            --metadata_path fastlane/metadata/ \
+            --force true
+          echo "promoted=true" >> "$GITHUB_OUTPUT"
+
+      - name: Skip notice (no secrets)
+        if: steps.secrets.outputs.have-secrets != 'true'
+        run: |
+          echo "App Store Production promotion SKIPPED (missing APPLE_API_KEY_* secrets)" >> "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    name: Slack notification
+    needs: [prepare, android-production, ios-production]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post to Slack
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          INTERNAL_TAG: ${{ needs.prepare.outputs.internal_tag }}
+          ANDROID_PROMOTED: ${{ needs.android-production.outputs.promoted || 'skipped' }}
+          IOS_PROMOTED: ${{ needs.ios-production.outputs.promoted || 'skipped' }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${WEBHOOK:-}" ]]; then
+            echo "SLACK_WEBHOOK_URL missing — skipping notification" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          PAYLOAD=$(jq -nc \
+            --arg tag "$TAG" \
+            --arg version "$VERSION" \
+            --arg internal "$INTERNAL_TAG" \
+            --arg android "$ANDROID_PROMOTED" \
+            --arg ios "$IOS_PROMOTED" \
+            --arg url "https://github.com/${REPO}/actions/runs/${RUN_ID}" \
+            '{
+              text: ("🚀 *Mobile PRODUCTION release submitted* — `" + $tag + "`"),
+              blocks: [
+                {
+                  type: "section",
+                  text: { type: "mrkdwn", text: ("🚀 *Mobile PRODUCTION release submitted* — `" + $tag + "`") }
+                },
+                {
+                  type: "section",
+                  fields: [
+                    { type: "mrkdwn", text: ("*Version*\n`" + $version + "`") },
+                    { type: "mrkdwn", text: ("*Promoted from*\n`" + $internal + "`") },
+                    { type: "mrkdwn", text: ("*Android (Production)*\n" + $android) },
+                    { type: "mrkdwn", text: ("*iOS (App Store)*\n" + $ios) }
+                  ]
+                },
+                {
+                  type: "actions",
+                  elements: [
+                    {
+                      type: "button",
+                      text: { type: "plain_text", text: "View workflow run" },
+                      url: $url
+                    }
+                  ]
+                }
+              ]
+            }')
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+              --data "$PAYLOAD" \
+              "$WEBHOOK"
+          echo "Slack notification posted." >> "$GITHUB_STEP_SUMMARY"

@@ -170,6 +170,35 @@ class TrackedFile:
     description: str
 
 
+# ── Path-confusion guards ─────────────────────────────────────
+#
+# Some tracked files have a historical "wrong path" recorded in
+# spec / memo surfaces. Wave 8 codifies a presence-check that
+# fails LOUD if a tracked file was accidentally created at the
+# wrong path — the previous failure mode is the canonical file
+# silently absent while a sibling at the wrong path passes hand-
+# review.
+#
+# Each entry is `(canonical_path, wrong_path, reason)`. The
+# script asserts:
+#   * canonical_path EXISTS  (regular tracked-file presence)
+#   * wrong_path DOES NOT EXIST  (W8 presence-confusion guard)
+#
+# Adding an entry here is the right move every time a wave spec
+# disagrees with reality on a file path. See
+# `docs/admission-policy.md` §6 (Wave 8) for the kyverno-enforce-
+# patch reconciliation that motivated this guard.
+PATH_CONFUSION_GUARDS: tuple[tuple[str, str, str], ...] = (
+    (
+        "infra/k8s/overlays/prod/kyverno-enforce-patch.yaml",
+        "infra/k8s/policies/kyverno-enforce-patch.yaml",
+        "The W7 spec listed the patch under policies/; the file "
+        "actually lives next to the other prod overlay patches. "
+        "See docs/admission-policy.md §6.",
+    ),
+)
+
+
 TRACKED_FILES: tuple[TrackedFile, ...] = (
     TrackedFile(
         path=".github/workflows/sign-image.yml",
@@ -228,6 +257,25 @@ def _check_file(tracked: TrackedFile) -> tuple[bool, str]:
     return True, normalised
 
 
+def _check_path_confusion_guards() -> list[str]:
+    """Return a list of error messages for any wrong-path file that
+    exists (Wave 8 presence-confusion guard). Empty list when all
+    canonical paths are the ONLY surfaces present."""
+    errors: list[str] = []
+    for canonical, wrong, reason in PATH_CONFUSION_GUARDS:
+        wrong_p = REPO_ROOT / wrong
+        if wrong_p.is_file():
+            errors.append(
+                "PATH CONFUSION — "
+                f"unexpected file at {wrong}\n"
+                f"  canonical path: {canonical}\n"
+                f"  reason: {reason}\n"
+                f"  fix: move the content to the canonical path "
+                "and delete the wrong-path copy."
+            )
+    return errors
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description="Verify the signer-identity regex is in lock-step across six files.",
@@ -255,12 +303,22 @@ def main(argv: list[str]) -> int:
         else:
             print(f"  {symbol} {message}")
             rc = max(rc, 2 if message.startswith("FILE MISSING") else 1)
+
+    # Wave 8 — path-confusion guards. Reported AFTER the regex
+    # checks so the canonical-path drift is visible first; the
+    # wrong-path presence is a separate failure class.
+    confusion_errors = _check_path_confusion_guards()
+    for msg in confusion_errors:
+        print(f"  ✗ {msg}")
+        rc = max(rc, 2)
+
     if rc == 0:
-        print("\nAll six surfaces agree.")
+        print("\nAll six surfaces agree; no path-confusion guards tripped.")
     else:
         print(
             "\nDrift detected. Update ALL six surfaces in a single commit;\n"
-            "see docs/signer-identity-invariant.md for the rotation procedure."
+            "see docs/signer-identity-invariant.md for the rotation procedure.\n"
+            "Path-confusion guards: see docs/admission-policy.md §6."
         )
     return rc
 

@@ -459,20 +459,77 @@ Alert rule (suggested, Prometheus AlertManager):
     description: "verify-mahjong-images denied {{ $value }} admissions in last 5min. Investigate which Deployment + image triggered it."
 ```
 
+### 6.6 Canonical file paths (Wave 8 — path-confusion guard)
+
+The cosign-verify admission stack has **two** Kyverno YAML
+manifests on disk. They have similar names but live in distinct
+directories — keeping them straight matters because a `subjectRegExp`
+update against the wrong path is a silent verification miss:
+
+| # | Canonical path | Role |
+|---|---|---|
+| 1 | [`infra/k8s/policies/kyverno-cosign-verify.yaml`](../infra/k8s/policies/kyverno-cosign-verify.yaml) | Cluster-wide `ClusterPolicy verify-mahjong-images` (audit-mode default, applies to every namespace; Wave 3). |
+| 2 | [`infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`](../infra/k8s/overlays/prod/kyverno-enforce-patch.yaml) | Prod-overlay supplemental `ClusterPolicy enforce-prod-mahjong-images` (enforce-mode, scoped to `mahjong-prod`; Wave 4). |
+
+**The prod enforce patch lives in `overlays/prod/`, NOT in
+`policies/`.** The Wave-7 spec listed it under `policies/`; the
+real file ships under the prod overlay (it's a Kustomize
+overlay patch, not a base policy). Wave 8 codifies the
+disambiguation:
+
+* The patch's `subjectRegExp` is one of the six signer-identity-
+  invariant surfaces tracked by
+  [`scripts/check_signer_identity.py`](../scripts/check_signer_identity.py).
+  The script's `TRACKED_FILES` table references the canonical
+  `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml` path.
+* The same script's `PATH_CONFUSION_GUARDS` table FAILS the
+  pre-commit hook if a file is ever accidentally created at the
+  wrong path `infra/k8s/policies/kyverno-enforce-patch.yaml` —
+  the previous failure mode was the canonical file silently
+  absent while a sibling at the wrong path passed hand review.
+* The CI pre-commit gate (`.github/workflows/pre-commit-check.yml`)
+  enforces the guard on every PR.
+
+If the path-confusion guard ever trips, the fix is:
+
+```bash
+# Move the misplaced file to the canonical path.
+git mv infra/k8s/policies/kyverno-enforce-patch.yaml \
+    infra/k8s/overlays/prod/kyverno-enforce-patch.yaml
+
+# Re-run the guard to confirm.
+python3 scripts/check_signer_identity.py --show
+```
+
+See [`docs/signer-identity-invariant.md`](signer-identity-invariant.md)
+§5 for the rest of the six-file rotation procedure.
+
 ## 7. Maintenance
 
 ### 7.1 Rename the signing workflow
 
 If `sign-image.yml` is ever renamed or relocated, the
-`subjectRegExp` in this policy MUST be updated in lock-step with:
+`subjectRegExp` in this policy MUST be updated in lock-step
+across the SIX tracked surfaces (W7 codified the six-file set;
+W8 added the path-confusion guard documented in §6.6):
 
 * `.github/workflows/sign-image.yml` (the signer itself)
 * `.github/workflows/verify-signature.yml` (default
   `expected-identity-pattern` input)
-* `infra/k8s/policies/kyverno-cosign-verify.yaml` (this file)
+* `.github/workflows/slsa-provenance.yml` (W7 SLSA provenance
+  workflow marker)
+* `infra/k8s/policies/kyverno-cosign-verify.yaml` (this file —
+  cluster-wide policy)
+* `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml` (prod
+  overlay enforce patch — note `overlays/prod/`, NOT `policies/`;
+  see §6.6)
+* `docs/slsa-provenance.md` §4a (documentation surface)
 
-All three live under the canonical-signer-URL invariant — change
-one, change all three; otherwise verification mismatch.
+All six live under the canonical-signer-URL invariant — change
+one, change all six; otherwise verification mismatch. The pre-
+commit hook (`scripts/check_signer_identity.py`) + the CI gate
+(`.github/workflows/pre-commit-check.yml`) enforce the lock-
+step automatically.
 
 ### 7.2 Cosign upgrade
 

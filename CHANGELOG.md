@@ -19,8 +19,223 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-7-bringup`. Phase K Wave 7
+Working branch: `stlong/phase-k-wave-8-bringup`. Phase K Wave 8
 in flight. Other lane deliverables outstanding.
+
+## [0.17.0] — Phase K Wave 8 — 2026-07-09 (PR pending)
+
+**Theme:** Staging edge cutover (W7 module → staging env) + CI
+pre-commit gate (six-file invariant + path-confusion guard now
+enforced in CI) + kyverno-enforce-patch canonical-path
+reconciliation (presence-check guard added to the invariant
+script) + mobile Production track promotion workflow (env-gated
+App Store + Play Production) + Helm canary deployment via Argo
+Rollouts (5%→20%→50%→100% with Prometheus analysis) + DR
+rehearsal automation workflow (quarterly `workflow_dispatch`,
+inverts the W6 health check + writes a results report) + retro
+2026-07.
+
+### Added (Phase K Wave 8 — PR pending)
+- **`infra/terraform/envs/staging/` — staging edge env.** New
+    Terraform env instantiating the W7 `modules/edge/` against
+    the staging EKS ingress. Two-provider wiring (default +
+    `aws.us_east_1` alias) required by the module's
+    `configuration_aliases`. State backend isolated from prod
+    (`mahjong-tfstate-staging` bucket / `mahjong-tflock-staging`
+    DynamoDB lock table) so a staging operator typo cannot
+    corrupt the prod state. Staging diverges from prod on
+    `waf_managed_rules_action`: `COUNT` (observation mode)
+    instead of `BLOCK`, so a managed-rule false-positive in
+    staging records but does NOT take staging down — the W8 → W9
+    hand-off includes the `count` → `block` flip on staging
+    after a quarter of soak. Variables surface mirrors the W7
+    module: `domain_name`, `alb_dns_name`, `waf_rate_limit_per_5min`
+    (staging default 100/5min, prod 1000/5min — staging traffic
+    floor is well below 100 req/5min so the cap is wholly
+    headroom), `logs_retention_days` (staging 7d / prod 90d).
+    Outputs pass through the edge module's outputs unchanged.
+    Cutover runbook in `docs/staging-cutover.md`. (Apone)
+- **`docs/staging-cutover.md` — staging cutover runbook.** New
+    doc covering the green-field bootstrap (terraform init →
+    plan → apply), the smoke test (DNS resolution → ACM cert
+    health → WAF metric publication → ALB health → `/health`
+    200), the rollback (DNS NS delegation revert to the prior
+    apex), and the prod-promotion criteria (one quarter of
+    staging soak + zero unexpected WAF block events at `COUNT`
+    + RTO within edge SLO). Six sections including the
+    `terraform plan` → `terraform apply` ordering caveat (ACM
+    cert validation depends on the Route53 NS delegation taking
+    effect, so the apply must be staged: zone first, then ACM
+    + DNS-01 validation, then WAF + ALB + ALIAS records). (Apone)
+- **`.github/workflows/pre-commit-check.yml` — CI pre-commit
+    gate.** New workflow running `pre-commit run --all-files`
+    on PRs against `main` + on pushes to bringup branches. The
+    W7 hooks (`signer-identity-invariant` + the standard
+    `check-yaml` / `end-of-file-fixer` / `trailing-whitespace`
+    / `check-merge-conflict` / `check-added-large-files` set)
+    now fail CI on drift — a `git commit --no-verify` workaround
+    on a developer machine no longer reaches `main`. Caches
+    `~/.cache/pre-commit` keyed off the config file SHA so a
+    re-run is ~5s instead of ~45s for the cold case. Documented
+    in `docs/signer-identity-invariant.md` §5.2. (Apone)
+- **`scripts/check_signer_identity.py` — path-confusion
+    presence-check guard.** New `PATH_CONFUSION_GUARDS` tuple +
+    `_check_path_confusion_guards()` function added to the W7
+    invariant script. The W7 incident root cause was an early
+    draft locating the prod kyverno enforce patch at
+    `infra/k8s/policies/kyverno-enforce-patch.yaml` instead of
+    the canonical `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`,
+    silently passing the regex check (the file at the wrong path
+    didn't exist, so the regex extractor matched zero strings
+    and "succeeded"). The W8 guard fails loudly if the wrong-
+    path file ever reappears AND emits a remediation pointer.
+    Negative-test confirmed (creating the wrong-path file fails
+    the script with a clear message). Documented in
+    `docs/admission-policy.md` §6.6. (Apone)
+- **`docs/admission-policy.md` §6.6 + §7.1 update — canonical
+    file paths.** New §6.6 codifying the canonical path for the
+    prod enforce-patch and the rationale for the W8 presence-
+    check guard. §7.1 expanded to list all six tracked surfaces
+    (W7 doc listed three; the six-file invariant guard tracks
+    six, and the doc + the guard MUST agree). (Apone)
+- **`.github/workflows/mobile-production-release.yml` — App
+    Store + Play Production promotion.** New env-gated, tag-
+    driven (`mobile-prod-v*.*.*`) workflow promoting the most-
+    recent External Testing build to App Store + Play
+    Production. iOS: `fastlane deliver --submit_for_review
+    --automatic_release` to the App Store Connect production
+    surface (triggers Apple App Review). Android: `fastlane
+    supply --track production --rollout` with staged-rollout
+    fraction input (default 10%, operator-tunable 1-100%).
+    Required GitHub Environment: `release-channel-production`
+    (manual reviewer gate). Tag validation: the workflow rejects
+    a `mobile-prod-v*` tag unless a matching `mobile-v*` (W7
+    Internal Testing) tag exists — ensures the promoted build
+    has been through Internal → External → Production, not
+    direct Production. Soft-fails on missing secrets (fork PRs).
+    Documented in `docs/mobile-release.md` §7. (Apone)
+- **`helm/mahjong/templates/canary-deployment.yaml` — Argo
+    Rollouts canary template.** New umbrella-level template
+    rendering an Argo Rollouts `Rollout` CRD + an
+    `AnalysisTemplate` CRD + stable/canary Services when
+    `canary.enabled = true`. Co-existence guard: if both
+    `api.enabled` and `canary.enabled` are true, the template
+    `{{ fail }}`s with a remediation message (the two would
+    fight over the same pod-template selector and produce
+    flapping replicas) UNLESS the explicit
+    `canary.coexistWithDeployment` escape is set (staging-only,
+    for the cut-over window where the operator wants to soak
+    the Rollout alongside the existing Deployment). Canary
+    progression: 5% → 20% → 50% → 100% with `pause: { duration }`
+    + `analysis` between each step. AnalysisTemplate runs a
+    Prometheus query (`sum(rate(http_requests_total{code!~"5.."}))
+    / sum(rate(http_requests_total))`) with a 95%-success
+    threshold, 30s interval, 5 consecutive successes required,
+    1 failure aborts. Replica-based canary (no service mesh
+    dependency); nginx-canary traffic-split documented as the
+    upgrade path in `docs/helm-charts.md` §3.5. Argo Rollouts
+    chosen over Flagger because the `Rollout` CRD is a drop-in
+    for `Deployment` (no service-mesh dependency) AND same
+    vendor as the future Argo CD adoption. (Apone)
+- **`helm/mahjong/values.yaml` — canary values surface.** New
+    `canary:` section (~85 lines) with `enabled` (default
+    false), `coexistWithDeployment` (default false; staging
+    escape only), `revisionHistoryLimit`, `scaleDownDelaySeconds`,
+    `steps[]` (the 5/20/50/100% progression), `metricEndpoint`
+    (Prometheus URL), `analysis` (interval, threshold,
+    successCount, failureLimit). Defaults are W8-baseline tuned;
+    overrides in `values-staging.yaml` / `values-prod.yaml` (no
+    overrides ship in W8 — canary stays staging-opt-in until
+    the W9 prod canary gate). (Apone)
+- **`docs/helm-charts.md` §3 — Canary deploys.** New 6-subsection
+    section covering the W8 canary architecture (3.1 Why Argo
+    Rollouts; 3.2 Values surface; 3.3 Step semantics; 3.4
+    Co-existence guard; 3.5 Operator runbook including the
+    nginx-canary traffic-split upgrade path; 3.6 cross-
+    references). Existing §3–§7 renumbered to §4–§8. (Apone)
+- **`.github/workflows/dr-rehearsal.yml` — quarterly DR
+    rehearsal automation.** New `workflow_dispatch`-only
+    workflow walking the §4.1–§4.4 manual runbook end-to-end:
+    reads `primary_health_check_id` + `failover_record_fqdn`
+    from the W6 DR env's Terraform outputs, captures BEFORE-
+    state DNS, inverts the health check, polls until the
+    secondary region is observed (records RTO), smoke-tests
+    `/health` (records HTTP code + latency), reads
+    `AWS/RDS::ReplicaLag` peak over the last 5 min (RPO proxy),
+    holds failover for `restore_after_seconds` (default 300),
+    un-inverts, polls until primary returns (records recovery
+    time), generates `docs/dr-rehearsal-results-YYYY-Q#.md`
+    matching the §4.5 schema, uploads as workflow artefact + a
+    step-summary block, posts a Slack notification. `dry_run`
+    input skips the actual invert (validates the workflow
+    plumbing without traffic redirection). Concurrency-locked
+    on `group: dr-rehearsal` to prevent a second rehearsal
+    racing the recovery. The destructive rehearsal (§4.3 —
+    `promote-read-replica`) stays manual — it is a once-a-year
+    event with replacement-replica re-provisioning. Documented
+    in `docs/terraform.md` §4.6. (Apone)
+- **`docs/retro-2026-07.md` — July 2026 monthly retro.** New
+    Phase K Wave 8 retro covering the seven W8 deliverables,
+    the W7 → W8 carry-over items (mobile prod, helm canary),
+    what worked (CI pre-commit catching a tomb-stone path on a
+    follow-up commit), what didn't (the kyverno-path bug should
+    have been caught at W7 — the W8 presence-check guard
+    closes that hole), and W8 → W9 action items. (Apone)
+
+### Changed (Phase K Wave 8 — PR pending)
+- **`.pre-commit-config.yaml` — header note.** Comment updated
+    to reflect W8 CI parity (the local hooks are now also CI-
+    enforced via `.github/workflows/pre-commit-check.yml`). The
+    hook list itself is unchanged. (Apone)
+- **`docs/signer-identity-invariant.md` §5 — split into 5.1 /
+    5.2 / 5.3.** §5.1 covers the local pre-commit install (W7
+    content, unchanged); §5.2 documents the W8 CI parity gate;
+    §5.3 documents the failure-triage flow for either path. The
+    rotation procedure stays at §4. (Apone)
+- **`docs/mobile-release.md` — Production track section.** New
+    §7 "Production track promotion (Phase K Wave 8)" inserted
+    with 8 subsections (tag space, pre-flight, cut+promote,
+    workflow dispatch, staged rollout, env approval, rollback,
+    cross-references). Existing §7–§9 renumbered to §8–§10. (Apone)
+- **`docs/terraform.md` — DR §4.6 + staging §5.6.** New §4.6
+    documents the DR rehearsal automation workflow (trigger,
+    inputs, result-file contract, the destructive-rehearsal
+    carve-out). New §5.6 documents the staging env's edge
+    module instantiation + the `COUNT` → `BLOCK` flip plan.
+    Cross-references appended to §6. (Apone)
+- **`helm/mahjong/values-{staging,prod}.yaml` — §3 → §5
+    cross-reference fixups.** Pre-existing comments cited
+    `docs/helm-charts.md §3` for parity; the W8 §3 insertion
+    pushed parity to §5. Comments updated to the new section
+    numbers. (Apone)
+
+### Fixed (Phase K Wave 8 — PR pending)
+- **kyverno-enforce-patch canonical-path drift.** The W7 doc
+    surface (`docs/admission-policy.md` §6) referenced the prod
+    enforce-patch at `infra/k8s/policies/kyverno-enforce-patch.yaml`
+    in two places; the canonical path is
+    `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`. The
+    canonical path is correct (it's the path the prod overlay's
+    `kustomization.yaml` resolves AND the path the W7 invariant
+    script registered as the fifth surface), but the doc drift
+    risked a follow-up commit landing a duplicate file at the
+    wrong path that would silently match-zero in the invariant
+    script. Fixed by (a) updating the doc to the canonical
+    path, (b) adding the W8 path-confusion presence-check
+    guard to the invariant script so a wrong-path file fails
+    loudly if it ever reappears. (Apone)
+
+### Carry-forward to Wave 9
+- Prod-canary gate (W8 ships staging-only; W9 turns canary on
+    for prod after a quarter of staging soak).
+- Staging WAF `COUNT` → `BLOCK` flip after a quarter of soak.
+- `mobile-production-hotfix` workflow (the W8 prod workflow is
+    happy-path; a hotfix bypass — skip Internal+External, go
+    Internal→Production with a release-channel-hotfix env gate
+    — is a W9 item).
+- Promote some of the `values-{staging,prod}.yaml` cross-
+    references to symbolic anchors (the §3→§5 drift cycle will
+    recur).
 
 ## [0.16.0] — Phase K Wave 7 — 2026-06-11 (PR pending)
 

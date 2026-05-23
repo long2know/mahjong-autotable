@@ -9,7 +9,7 @@
 #       -n mahjong-prod --create-namespace \
 #       -f helm/mahjong/values-prod.yaml
 #
-# Parity with the Kustomize overlay (see docs/helm-charts.md §3).
+# Parity with the Kustomize overlay (see docs/helm-charts.md §5).
 # Any change here MUST track the matching Kustomize patch — the
 # two stay in lock-step until the operator picks a single path.
 
@@ -112,6 +112,6 @@ coturn:
 
 postgresSidecar:
   # PROD NEVER uses the in-cluster sidecar — RDS only. Documented
-  # in docs/helm-charts.md §4 as a chart-level invariant: do NOT
+  # in docs/helm-charts.md §6 as a chart-level invariant: do NOT
   # enable in prod.
   enabled: false

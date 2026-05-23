@@ -1,0 +1,125 @@
+# Phase K Wave 8 — Apone (DevOps).
+#
+# CI-side pre-commit enforcement.
+#
+# Wave 7 shipped `.pre-commit-config.yaml` (six-file signer-identity
+# invariant + the standard pre-commit-hooks set). The W7 README
+# noted CI parity was a W8 follow-up — this is that follow-up.
+#
+# What this workflow does:
+#
+#   * On every PR + push to main, runs `pre-commit run --all-files`
+#     against the full tree.
+#   * Fails the PR check if any hook fails — INCLUDING:
+#       - signer-identity-invariant (the local W7 hook)
+#       - check-yaml / end-of-file-fixer / trailing-whitespace /
+#         check-merge-conflict / check-added-large-files (the
+#         pre-commit-hooks set pinned at v4.6.0)
+#   * Pinned hook versions + Python venv cache so the run is
+#     deterministic across PRs.
+#
+# This workflow is REQUIRED-FOR-MERGE on the main branch protection
+# rule (operator wires the required check after first green run
+# on this branch).
+#
+# See `docs/signer-identity-invariant.md` §5 for the rotation
+# procedure when a hook update is needed.
+
+name: pre-commit-check
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: "Verbose pre-commit output (--verbose flag)."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+
+# Cancel in-flight PR pre-commit runs when the branch is force-
+# pushed — only the latest commit matters. Push-to-main runs are
+# NOT cancelled (history of green pre-commit runs on main is
+# valuable for the retros).
+concurrency:
+  group: pre-commit-check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pre-commit:
+    name: pre-commit run --all-files
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so any hook that needs it (e.g. future
+          # commit-message linters) has the history available.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Pre-commit caches its hook-install venvs under
+      # ~/.cache/pre-commit by default. Keying on the lockfile +
+      # the YAML config means a `rev:` bump in `.pre-commit-config.yaml`
+      # naturally invalidates the cache.
+      - name: Cache pre-commit hook envs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
+      - name: Install pre-commit
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          # Pin to a known-good major matching the minimum the W7
+          # config declares (`minimum_pre_commit_version: 3.5.0`).
+          # Floating within 3.x is intentional — the framework's
+          # 3.x line is API-stable.
+          python -m pip install "pre-commit~=3.7"
+          pre-commit --version
+
+      - name: Run pre-commit on the full tree (GATES MERGE)
+        env:
+          VERBOSE: ${{ github.event.inputs.verbose || 'false' }}
+        run: |
+          set -euo pipefail
+          ARGS=(--all-files --show-diff-on-failure --color always)
+          if [ "$VERBOSE" = "true" ]; then
+            ARGS+=(--verbose)
+          fi
+          # `pre-commit run --all-files` is the SAME invocation
+          # developers run locally — keeping CI + dev in lock-
+          # step is the W8 commitment that closes the W7 "per-
+          # developer opt-in" gap.
+          pre-commit run "${ARGS[@]}"
+
+      # Belt-and-braces: explicitly run the signer-identity script
+      # in `--show` mode and dump its output to the job log. The
+      # hook above ALREADY runs it (always_run: true, pass_filenames:
+      # false) — this step is purely diagnostic so the canonical
+      # regex appears in the workflow log without rummaging through
+      # pre-commit's per-hook output.
+      - name: Diagnostic — signer-identity regex (post-hook dump)
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          python3 scripts/check_signer_identity.py --show || true
