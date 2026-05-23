@@ -69,7 +69,7 @@ import { EventEmitter } from 'events';
 
 // ── Public types ────────────────────────────────────────────────────
 
-export type AuthProviderId = 'google' | 'github' | 'email';
+export type AuthProviderId = 'google' | 'microsoft' | 'github' | 'email';
 
 export interface AuthIdentity {
   provider: AuthProviderId;
@@ -90,7 +90,9 @@ export interface AuthState {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-const KNOWN_PROVIDERS: ReadonlyArray<AuthProviderId> = ['google', 'github', 'email'];
+// Phase K Wave 3 — Microsoft added as the third OAuth provider.
+// Order matches the modal layout: Google → Microsoft → GitHub → Email.
+const KNOWN_PROVIDERS: ReadonlyArray<AuthProviderId> = ['google', 'microsoft', 'github', 'email'];
 
 const LS_KEY_LAST_EMAIL = 'mahjong.auth.last-email.v1';
 const LS_KEY_AUTH_CACHE = 'mahjong.auth.cache.v1';
@@ -190,7 +192,7 @@ function intersectProviders(raw: unknown): AuthProviderId[] {
 function coerceProvider(raw: unknown): AuthProviderId | null {
   if (typeof raw !== 'string') return null;
   const s = raw.toLowerCase();
-  if (s === 'google' || s === 'github' || s === 'email') return s;
+  if (s === 'google' || s === 'microsoft' || s === 'github' || s === 'email') return s;
   return null;
 }
 
@@ -449,8 +451,12 @@ export async function logout(): Promise<void> {
 export function installAuthUi(): void {
   if (installed) return;
   installed = true;
-  // The lobby chip + modal + landing page markup is mounted in
-  // index.html; we just wire the listeners here.
+  // Phase K Wave 3 — Mount the sign-in modal scaffolding if it's not
+  // already present in `index.html`.  Wave 2 referenced these IDs but
+  // shipped without the markup (the e2e spec soft-passes when
+  // `signin-button` is missing).  Wave 3 inlines the scaffold so the
+  // Microsoft provider button has somewhere to render.
+  ensureAuthMarkup();
   wireSignInButton();
   wireSignInModal();
   wireLogoutButton();
@@ -463,6 +469,207 @@ export function installAuthUi(): void {
   });
   // Auto-bootstrap once the DOM is wired.
   void bootstrapAuth();
+}
+
+// Phase K Wave 3 — Sign-in modal markup.
+//
+// Mounts the lobby header chip + signin modal scaffold when they
+// aren't already present in `index.html`.  The provider button
+// order matches the directive: Google → Microsoft → GitHub → Email
+// magic-link.  Microsoft uses a direct GET to
+// `/api/auth/login?provider=microsoft` (Bishop's Wave-3 backend
+// convenience redirect) in addition to the `signin-microsoft`
+// listener wired by `wireSignInModal`, so users always get a path
+// to the provider even if the POST-start flow 404s.
+function ensureAuthMarkup(): void {
+  ensureHeaderChip();
+  ensureSignInModal();
+  ensureMagicLinkLanding();
+}
+
+function ensureHeaderChip(): void {
+  if (document.getElementById('signin-button') !== null) return;
+  const host = document.querySelector('.lobby-header')
+    ?? document.querySelector('#lobby-panel')
+    ?? document.body;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'auth-header';
+  wrap.setAttribute('data-testid', 'auth-header');
+
+  const chip = document.createElement('span');
+  chip.id = 'auth-status-chip';
+  chip.className = 'auth-status-chip';
+  chip.setAttribute('data-testid', 'auth-status-chip');
+  chip.style.display = 'none';
+  const chipEmail = document.createElement('span');
+  chipEmail.className = 'auth-status-chip-email';
+  const chipProvider = document.createElement('span');
+  chipProvider.className = 'auth-status-chip-provider';
+  chip.appendChild(chipEmail);
+  chip.appendChild(chipProvider);
+  wrap.appendChild(chip);
+
+  const signinBtn = document.createElement('button');
+  signinBtn.id = 'signin-button';
+  signinBtn.type = 'button';
+  signinBtn.className = 'btn btn-sm btn-outline-light auth-signin-btn';
+  signinBtn.setAttribute('data-testid', 'signin-button');
+  signinBtn.textContent = 'Sign in';
+  wrap.appendChild(signinBtn);
+
+  const logoutBtn = document.createElement('button');
+  logoutBtn.id = 'logout-button';
+  logoutBtn.type = 'button';
+  logoutBtn.className = 'btn btn-sm btn-outline-secondary auth-logout-btn';
+  logoutBtn.setAttribute('data-testid', 'logout-button');
+  logoutBtn.textContent = 'Sign out';
+  logoutBtn.style.display = 'none';
+  wrap.appendChild(logoutBtn);
+
+  host.appendChild(wrap);
+}
+
+function ensureSignInModal(): void {
+  if (document.getElementById('signin-modal') !== null) return;
+  const modal = document.createElement('div');
+  modal.id = 'signin-modal';
+  modal.className = 'signin-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'signin-modal-title');
+  modal.setAttribute('aria-hidden', 'true');
+  modal.setAttribute('data-testid', 'signin-modal');
+  modal.innerHTML = `
+    <div id="signin-modal-backdrop" class="signin-modal-backdrop"
+         data-testid="signin-modal-backdrop"></div>
+    <div class="signin-modal-card" role="document">
+      <header class="signin-modal-header">
+        <h3 id="signin-modal-title" class="signin-modal-title">Sign in to Mahjong Autotable</h3>
+        <button id="signin-modal-close" type="button" class="signin-modal-close"
+                data-testid="signin-modal-close" aria-label="Close sign-in">×</button>
+      </header>
+      <div id="signin-modal-error" class="signin-modal-error" style="display:none"
+           role="alert" aria-live="assertive"></div>
+
+      <section id="signin-providers-panel"
+               class="signin-providers-panel"
+               data-testid="signin-providers-panel">
+        <p class="signin-modal-blurb">
+          Pick a provider — we'll never post on your behalf.
+        </p>
+
+        <button id="signin-google" type="button"
+                class="btn btn-block signin-provider-btn signin-provider-google"
+                data-testid="signin-provider-google">
+          <span class="signin-provider-icon" aria-hidden="true">${googleIconSvg()}</span>
+          Sign in with Google
+        </button>
+
+        <button id="signin-microsoft" type="button"
+                class="btn btn-block signin-provider-btn signin-provider-microsoft"
+                data-testid="signin-provider-microsoft">
+          <span class="signin-provider-icon" aria-hidden="true">${microsoftIconSvg()}</span>
+          Sign in with Microsoft
+        </button>
+
+        <button id="signin-github" type="button"
+                class="btn btn-block signin-provider-btn signin-provider-github"
+                data-testid="signin-provider-github">
+          <span class="signin-provider-icon" aria-hidden="true">${githubIconSvg()}</span>
+          Sign in with GitHub
+        </button>
+
+        <form id="signin-email-form" class="signin-email-form" onsubmit="return false;">
+          <label class="signin-email-label" for="signin-email-input">
+            Or get a magic link by email
+          </label>
+          <input id="signin-email-input" type="email" autocomplete="email"
+                 class="form-control form-control-sm signin-email-input"
+                 data-testid="signin-email-input"
+                 placeholder="you@example.com">
+          <button id="signin-email-submit" type="submit"
+                  class="btn btn-warning btn-sm signin-email-submit"
+                  data-testid="signin-email-submit">Email me a link</button>
+          <p id="signin-email-error" class="signin-email-error" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section id="signin-email-success" class="signin-email-success"
+               data-testid="signin-email-success" style="display:none">
+        <h4>Check your inbox</h4>
+        <p>We sent a magic link to <strong id="signin-email-success-email"></strong>.
+           Open it on this device to finish signing in.</p>
+        <button id="signin-email-success-back" type="button"
+                class="btn btn-secondary btn-sm">Back</button>
+      </section>
+
+      <section id="signin-placeholder" class="signin-placeholder"
+               data-testid="signin-placeholder" style="display:none">
+        <p>Sign-in is not available on this server yet — the API
+           hasn't been deployed.  All other features still work; you
+           just won't be able to link an account.</p>
+      </section>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function ensureMagicLinkLanding(): void {
+  if (document.getElementById('magic-link-landing') !== null) return;
+  const root = document.createElement('div');
+  root.id = 'magic-link-landing';
+  root.className = 'magic-link-landing';
+  root.setAttribute('aria-hidden', 'true');
+  root.innerHTML = `
+    <div class="magic-link-card" role="document">
+      <div id="magic-link-success" style="display:none">
+        <h3>You're signed in!</h3>
+        <p>Welcome back, <strong id="magic-link-success-email"></strong>.</p>
+        <button id="magic-link-dismiss" type="button"
+                class="btn btn-success btn-sm">Continue</button>
+      </div>
+      <div id="magic-link-failure" style="display:none">
+        <h3>Magic link couldn't sign you in</h3>
+        <p id="magic-link-failure-message" class="magic-link-failure-message"></p>
+        <button id="magic-link-dismiss-failure" type="button"
+                class="btn btn-secondary btn-sm">Back to the lobby</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(root);
+}
+
+// ── Provider icon SVGs ─────────────────────────────────────────────
+//
+// Inlined so we don't pay a network round-trip on the sign-in modal's
+// first paint.  All three SVGs follow the same 24×24 viewBox so the
+// `.signin-provider-icon` CSS slot keeps them aligned.
+
+function googleIconSvg(): string {
+  return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+    + '<path fill="#4285f4" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.9h5.4c-.2 1.3-.9 2.4-2 3.1v2.6h3.3c1.9-1.8 3-4.4 3-7.6z"/>'
+    + '<path fill="#34a853" d="M12 22c2.7 0 5-.9 6.7-2.4l-3.3-2.6c-.9.6-2 1-3.4 1-2.6 0-4.9-1.8-5.7-4.2H3v2.6C4.7 19.6 8 22 12 22z"/>'
+    + '<path fill="#fbbc04" d="M6.3 13.8c-.2-.6-.3-1.2-.3-1.8s.1-1.2.3-1.8V7.6H3C2.4 8.9 2 10.4 2 12s.4 3.1 1 4.4l3.3-2.6z"/>'
+    + '<path fill="#ea4335" d="M12 6.2c1.5 0 2.8.5 3.8 1.5l2.9-2.9C16.9 3 14.7 2 12 2 8 2 4.7 4.4 3 7.6l3.3 2.6C7.1 8 9.4 6.2 12 6.2z"/>'
+    + '</svg>';
+}
+
+function microsoftIconSvg(): string {
+  // Microsoft brand mark — four-tile square per
+  // https://learn.microsoft.com/en-us/style-guide/brand-design/microsoft-logo
+  return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+    + '<rect x="2"  y="2"  width="9" height="9" fill="#f25022"/>'
+    + '<rect x="13" y="2"  width="9" height="9" fill="#7fba00"/>'
+    + '<rect x="2"  y="13" width="9" height="9" fill="#00a4ef"/>'
+    + '<rect x="13" y="13" width="9" height="9" fill="#ffb900"/>'
+    + '</svg>';
+}
+
+function githubIconSvg(): string {
+  return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+    + '<path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.5c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.15-1.11-1.46-1.11-1.46-.91-.62.07-.6.07-.6 1 .07 1.53 1.04 1.53 1.04.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.9-1.3 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.69 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/>'
+    + '</svg>';
 }
 
 function wireSignInButton(): void {
@@ -545,6 +752,10 @@ function refreshModalProvidersVisibility(): void {
       continue;
     }
     if (btn !== null) {
+      // Phase K Wave 3 — Microsoft (and other OAuth providers) are
+      // hidden when the backend doesn't list them in
+      // /api/auth/providers, so we don't surface a button that
+      // 404s on click.
       btn.style.display = available.indexOf(provider) !== -1 ? '' : 'none';
     }
   }
@@ -567,13 +778,23 @@ function wireSignInModal(): void {
     }
   });
 
-  for (const provider of ['google', 'github'] as const) {
+  for (const provider of ['google', 'microsoft', 'github'] as const) {
     const btn = document.getElementById(`signin-${provider}`) as HTMLButtonElement | null;
     if (btn === null) continue;
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       const original = btn.textContent;
       btn.textContent = `Redirecting to ${provider}…`;
+      // Phase K Wave 3 — Microsoft is wired to Bishop's convenience
+      // GET endpoint per the Wave-3 directive.  The endpoint
+      // 302-redirects to the Microsoft authorize URL with the
+      // session cookie + return URL preserved server-side; it
+      // doesn't return JSON so we navigate directly.
+      if (provider === 'microsoft') {
+        const returnUrl = encodeURIComponent(window.location.href);
+        window.location.href = `/api/auth/login?provider=microsoft&returnUrl=${returnUrl}`;
+        return;
+      }
       const result = await startOAuth(provider, 'login');
       btn.disabled = false;
       btn.textContent = original;
@@ -667,6 +888,7 @@ function renderLobbyChip(): void {
 function providerBadgeLabel(provider: AuthProviderId): string {
   switch (provider) {
     case 'google': return '🔵 Google';
+    case 'microsoft': return '🟦 Microsoft';
     case 'github': return '⬛ GitHub';
     case 'email': return '✉ Email';
   }
