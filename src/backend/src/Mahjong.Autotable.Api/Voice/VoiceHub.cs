@@ -1,6 +1,9 @@
+using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Mahjong.Autotable.Api.Voice;
@@ -12,10 +15,19 @@ namespace Mahjong.Autotable.Api.Voice;
 // browser-to-browser through STUN/TURN. Mesh topology only — max 4
 // peers per table per VoiceOptions.MaxPeersPerTable.
 //
-// Auth: not enforced at hub level (mesh signalling). Future Wave 3 may
-// wrap per-table membership against the AuthCookieService — for Wave 2
-// the production code keeps the hub open and tracks who joined via the
-// audit table.
+// Phase K Wave 3 — Bishop. JoinVoice now hard-locks three gates:
+//  1) caller must have a valid `mahjong_pid` cookie (anon
+//     identity); we reject anon-less callers with a HubException so the
+//     SignalR client surfaces a clean "not authenticated" error.
+//  2) the table (ChangshaGame) must have `VoiceEnabled == true`.
+//  3) the caller's player id must occupy one of the seats in the live
+//     ChangshaGameState (looked up via IChangshaGameRuntime). If the
+//     runtime hasn't rehydrated the game we fall back to the persisted
+//     game row's OwnerPlayerId so the table creator can always join.
+// Per-relay throttling continues to flow through VoiceRateLimiter; the
+// new VoiceHubMetricsService records a 60s rolling-window counter for
+// each relay so /metrics can observe signalling pressure without
+// reaching into the rate-limiter's buckets.
 public sealed class VoiceHub : Hub
 {
     public const int MeshPeerCeiling = 4;
@@ -23,17 +35,26 @@ public sealed class VoiceHub : Hub
 
     private readonly VoiceOptions _options;
     private readonly VoiceRateLimiter _rateLimiter;
+    private readonly VoiceHubMetricsService _metrics;
+    private readonly IChangshaGameRuntime _runtime;
+    private readonly PlayerIdentityService _identity;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<VoiceHub> _logger;
 
     public VoiceHub(
         IOptions<VoiceOptions> options,
         VoiceRateLimiter rateLimiter,
+        VoiceHubMetricsService metrics,
+        IChangshaGameRuntime runtime,
+        PlayerIdentityService identity,
         IServiceScopeFactory scopeFactory,
         ILogger<VoiceHub> logger)
     {
         _options = options.Value;
         _rateLimiter = rateLimiter;
+        _metrics = metrics;
+        _runtime = runtime;
+        _identity = identity;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -41,23 +62,80 @@ public sealed class VoiceHub : Hub
     public async Task JoinVoice(string tableId)
     {
         if (string.IsNullOrWhiteSpace(tableId)) return;
+
+        // Phase K Wave 3 — anon identity gate. SignalR connections do
+        // not run through the ASP.NET auth pipeline by default; we
+        // resolve the persistent player cookie off the underlying
+        // HttpContext directly. Missing/invalid cookie ⇒ reject.
+        var http = Context.GetHttpContext();
+        var playerId = http is null ? null : _identity.ResolveFromCookie(http);
+        if (string.IsNullOrEmpty(playerId))
+        {
+            throw new HubException("voice-join-unauthorized");
+        }
+
+        // Phase K Wave 3 — per-table voice-enabled gate. We look up the
+        // ChangshaGame row; if VoiceEnabled is false (or the table does
+        // not exist) the join is rejected. Soft-pass on parse failure
+        // so the legacy "tableId is a non-GUID lobby tag" surface keeps
+        // working in dev.
+        if (Guid.TryParse(tableId, out var gameGuid))
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var row = await db.ChangshaGames
+                .Where(g => g.Id == gameGuid)
+                .Select(g => new { g.VoiceEnabled, g.OwnerPlayerId })
+                .FirstOrDefaultAsync();
+            if (row is null || !row.VoiceEnabled)
+            {
+                throw new HubException("voice-disabled-for-table");
+            }
+
+            // Phase K Wave 3 — seated-player gate. Read the live state;
+            // accept the join when the caller occupies a seat. The
+            // creator is always permitted (covers the pre-seating
+            // lobby window where Seats[] is empty/placeholder).
+            var isOwner = string.Equals(row.OwnerPlayerId, playerId, StringComparison.Ordinal);
+            var isSeated = false;
+            if (_runtime.TryGetSnapshot(tableId, out var state) && state is not null)
+            {
+                foreach (var seat in state.Seats)
+                {
+                    if (!string.IsNullOrEmpty(seat.PlayerId)
+                        && string.Equals(seat.PlayerId, playerId, StringComparison.Ordinal))
+                    {
+                        isSeated = true;
+                        break;
+                    }
+                }
+            }
+            if (!isOwner && !isSeated)
+            {
+                throw new HubException("voice-not-seated");
+            }
+        }
+
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(tableId));
         await Clients.OthersInGroup(GroupName(tableId)).SendAsync("PeerJoined", Context.ConnectionId);
-        await AuditAsync(tableId, ReconnectAuditEntry.KindVoiceJoin);
+        await AuditAsync(tableId, ReconnectAuditEntry.KindVoiceJoin, playerId);
     }
 
     public async Task LeaveVoice(string tableId)
     {
         if (string.IsNullOrWhiteSpace(tableId)) return;
+        var http = Context.GetHttpContext();
+        var playerId = http is null ? null : _identity.ResolveFromCookie(http);
         await Clients.OthersInGroup(GroupName(tableId)).SendAsync("PeerLeft", Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(tableId));
-        await AuditAsync(tableId, ReconnectAuditEntry.KindVoiceLeave);
+        await AuditAsync(tableId, ReconnectAuditEntry.KindVoiceLeave, playerId);
     }
 
     public async Task RelayOffer(string targetConnectionId, string sdp)
     {
         if (!Throttle()) return;
         if (string.IsNullOrWhiteSpace(targetConnectionId)) return;
+        _metrics.RecordRelay(Context.ConnectionId);
         await Clients.Client(targetConnectionId).SendAsync("OfferReceived", Context.ConnectionId, sdp);
     }
 
@@ -65,6 +143,7 @@ public sealed class VoiceHub : Hub
     {
         if (!Throttle()) return;
         if (string.IsNullOrWhiteSpace(targetConnectionId)) return;
+        _metrics.RecordRelay(Context.ConnectionId);
         await Clients.Client(targetConnectionId).SendAsync("AnswerReceived", Context.ConnectionId, sdp);
     }
 
@@ -72,12 +151,14 @@ public sealed class VoiceHub : Hub
     {
         if (!Throttle()) return;
         if (string.IsNullOrWhiteSpace(targetConnectionId)) return;
+        _metrics.RecordRelay(Context.ConnectionId);
         await Clients.Client(targetConnectionId).SendAsync("IceCandidateReceived", Context.ConnectionId, candidate);
     }
 
     public override Task OnDisconnectedAsync(Exception? exception)
     {
         _rateLimiter.Forget(Context.ConnectionId);
+        _metrics.Forget(Context.ConnectionId);
         return base.OnDisconnectedAsync(exception);
     }
 
@@ -85,7 +166,7 @@ public sealed class VoiceHub : Hub
 
     private static string GroupName(string tableId) => $"voice:{tableId}";
 
-    private async Task AuditAsync(string tableId, string kind)
+    private async Task AuditAsync(string tableId, string kind, string? playerId)
     {
         try
         {
@@ -94,7 +175,10 @@ public sealed class VoiceHub : Hub
             db.ReconnectAuditEntries.Add(new ReconnectAuditEntry
             {
                 Id = Guid.NewGuid(),
-                PlayerId = Context.ConnectionId,
+                // Phase K Wave 3 — prefer the persistent player id over
+                // the per-connection id so audit rows survive cross-
+                // session reconciliation.
+                PlayerId = playerId ?? Context.ConnectionId,
                 At = DateTime.UtcNow,
                 Kind = kind,
                 Detail = tableId,
