@@ -34,6 +34,13 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<EmailMagicLinkToken> EmailMagicLinkTokens => Set<EmailMagicLinkToken>();
     public DbSet<PlayerAuthSession> PlayerAuthSessions => Set<PlayerAuthSession>();
 
+    // Phase J Wave 9 — reconnect token rotation + audit, plus persisted
+    // chat backlog. See ReconnectTokenService, ChatService, and the
+    // GET /api/games/{gameId}/chat endpoint.
+    public DbSet<ReconnectToken> ReconnectTokens => Set<ReconnectToken>();
+    public DbSet<ReconnectAuditEntry> ReconnectAuditEntries => Set<ReconnectAuditEntry>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -94,6 +101,11 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.EventsJson).IsRequired();
+            // Phase J Wave 9 — schema version column. Default 1 so legacy
+            // v1 replays (Wave 7/8) keep their implicit version after the
+            // migration runs; new writes stamp
+            // ChangshaGameReplay.CurrentSchemaVersion (=2).
+            entity.Property(x => x.SchemaVersion).HasDefaultValue(1);
             entity.HasIndex(x => x.GameId).IsUnique();
         });
 
@@ -135,8 +147,55 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Token).HasMaxLength(128).IsRequired();
             entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            // Phase J Wave 9 — role stamp for the audit endpoint admin gate.
+            // Nullable; null = ordinary player. See AuthCookieService.
+            entity.Property(x => x.Role).HasMaxLength(32);
             entity.HasIndex(x => x.Token).IsUnique();
             entity.HasIndex(x => x.PlayerId);
+        });
+
+        // Phase J Wave 9 — reconnect token rotation. Token column is the
+        // unique opaque value (64-char URL-safe base64); a unique index
+        // lets the rotation service look the row up in O(log n) on every
+        // ReconnectGame call. The (PlayerId, GameId) composite index
+        // supports admin audit drill-downs ("show me every rotation for
+        // player X in game Y") without a full scan.
+        modelBuilder.Entity<ReconnectToken>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Token).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.GameId).HasMaxLength(64).IsRequired();
+            entity.HasIndex(x => x.Token).IsUnique();
+            entity.HasIndex(x => new { x.PlayerId, x.GameId });
+        });
+
+        // Phase J Wave 9 — append-only audit log for reconnect-token
+        // rotations. PlayerId index for per-player drill-downs;
+        // At index for time-window queries from the audit endpoint.
+        modelBuilder.Entity<ReconnectAuditEntry>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Ipv4Hash).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.UserAgentHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(x => x.PlayerId);
+            entity.HasIndex(x => x.At);
+        });
+
+        // Phase J Wave 9 — persisted chat backlog. (GameId, At) composite
+        // index supports the lazy backfill endpoint
+        // GET /api/games/{gameId}/chat?since=<ts>&limit=50 directly.
+        // Body capped at 512 (vs the 280-char hub validation cap) to
+        // allow future emoji-padded payloads without a schema bump.
+        modelBuilder.Entity<ChatMessage>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.GameId).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Body).HasMaxLength(512).IsRequired();
+            entity.Property(x => x.Channel).HasMaxLength(160).IsRequired();
+            entity.HasIndex(x => new { x.GameId, x.At });
         });
     }
 }

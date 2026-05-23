@@ -150,6 +150,14 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthIdentityService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.MagicLinkService>();
 
+// Phase J Wave 9 — reconnect-token rotation + chat services. Both are
+// singletons because they hold per-process state (chat rate-limit
+// window, ambient request-scoped IServiceScopeFactory) and project
+// into AppDbContext via a scope.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Reconnect.ReconnectTokenService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Chat.ChatContentFilter>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Chat.ChatService>();
+
 const string ChangshaCorsPolicy = "ChangshaCors";
 var configuredOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")

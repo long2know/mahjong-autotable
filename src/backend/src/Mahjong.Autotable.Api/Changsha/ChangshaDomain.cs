@@ -187,6 +187,16 @@ public sealed class WinResult
     /// uses <c>AllPatterns.Count</c> (clamped to [1, 3]) as the multiplier.
     /// </summary>
     public IReadOnlyList<WinPattern> AllPatterns { get; init; } = [];
+
+    /// <summary>
+    /// Phase J Wave 9 — i18n resource keys for every pattern in
+    /// <see cref="AllPatterns"/>. Computed once at win-declaration time
+    /// from <see cref="Patterns.PatternResourceAttribute"/> on each enum
+    /// member. Frontend renderers look up each key in the catalog returned
+    /// by <c>GET /api/i18n/patterns?lang=</c> rather than mapping enum
+    /// names to localised strings client-side.
+    /// </summary>
+    public IReadOnlyList<string> PatternKeys { get; init; } = [];
 }
 
 /// <summary>

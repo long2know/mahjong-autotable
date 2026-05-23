@@ -1851,9 +1851,14 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
             var state = instance.State;
             var events = new List<object>(state.EventLog.Count);
+            // Phase J Wave 9 — durationMs is the gap between consecutive
+            // OccurredUtc timestamps. For the very first event we fall
+            // back to 0 (no predecessor to measure against).
+            DateTime? prevTs = null;
             foreach (var evt in state.EventLog)
             {
                 var tileIds = evt.TileId.HasValue ? new[] { evt.TileId.Value } : Array.Empty<int>();
+                var duration = prevTs is null ? 0 : Math.Max(0, (int)(evt.OccurredUtc - prevTs.Value).TotalMilliseconds);
                 events.Add(new
                 {
                     turn = evt.TurnNumber,
@@ -1862,9 +1867,17 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     action = evt.EventType,
                     tilesJson = JsonSerializer.Serialize(tileIds, SnapshotJson),
                     timestampUtc = evt.OccurredUtc,
+                    // Phase J Wave 9 — per-event metadata for the v2 envelope.
+                    source = ResolveReplayEventSource(state, evt),
+                    durationMs = duration,
                 });
+                prevTs = evt.OccurredUtc;
             }
-            var eventsJson = JsonSerializer.Serialize(events, SnapshotJson);
+            // Phase J Wave 9 — v2 envelope. v1 was a bare events array;
+            // v2 wraps in { schemaVersion, events } so consumers can
+            // branch on shape without inspecting the array.
+            var envelope = new { schemaVersion = ChangshaGameReplay.CurrentSchemaVersion, events };
+            var eventsJson = JsonSerializer.Serialize(envelope, SnapshotJson);
 
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -1878,12 +1891,14 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     GameId = gameGuid,
                     CreatedAt = now,
                     EventsJson = eventsJson,
+                    SchemaVersion = ChangshaGameReplay.CurrentSchemaVersion,
                 });
             }
             else
             {
                 existing.CreatedAt = now;
                 existing.EventsJson = eventsJson;
+                existing.SchemaVersion = ChangshaGameReplay.CurrentSchemaVersion;
             }
             await db.SaveChangesAsync(ct);
         }
@@ -1891,6 +1906,22 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             _logger.LogWarning(ex, "Persisting replay snapshot for {GameId} failed.", instance.GameId);
         }
+    }
+
+    /// <summary>
+    /// Phase J Wave 9 — classify a replay event by source for the v2
+    /// envelope. Returns <c>"system"</c> for engine-emitted events
+    /// (no seat actor), <c>"human"</c> for human seats, and
+    /// <c>"bot:&lt;difficulty&gt;"</c> for bots. Bot difficulty is not
+    /// currently surfaced on <see cref="ChangshaSeatState"/>, so the
+    /// difficulty axis falls back to <c>"unknown"</c>; wiring the
+    /// bot-policy registry into the runtime is a Wave 10 follow-up.
+    /// </summary>
+    private static string ResolveReplayEventSource(ChangshaGameState state, ChangshaEvent evt)
+    {
+        if (evt.SeatIndex < 0 || evt.SeatIndex >= state.Seats.Count) return "system";
+        var seat = state.Seats[evt.SeatIndex];
+        return seat.IsBot ? "bot:unknown" : "human";
     }
 
     /// <summary>

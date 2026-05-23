@@ -73,14 +73,24 @@ public class ChangshaReplayPersistenceTests(ITestOutputHelper output)
                          $"createdAt={replay.CreatedAt:O}, " +
                          $"eventsJson length={replay.EventsJson.Length}.");
 
-        // Sanity check the EventsJson payload — must parse as a non-empty
-        // array of event objects carrying the Wave-7 wire fields.
+        // Sanity check the EventsJson payload — must parse as a v2
+        // envelope object ({ schemaVersion: 2, events: [...] }) with a
+        // non-empty events array carrying the Wave-7 wire fields.
+        // Phase J Wave 9 — writer flipped from bare array (v1) to
+        // envelope (v2); the read controller normalises both shapes,
+        // so this assertion is intentionally version-aware.
         using var doc = JsonDocument.Parse(replay.EventsJson);
-        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-        Assert.True(doc.RootElement.GetArrayLength() > 0,
+        Assert.Equal(JsonValueKind.Object, doc.RootElement.ValueKind);
+        Assert.True(doc.RootElement.TryGetProperty("schemaVersion", out var schemaProp)
+                 && schemaProp.GetInt32() >= 2,
+            "Persisted replay must carry schemaVersion >= 2.");
+        Assert.True(doc.RootElement.TryGetProperty("events", out var eventsArray)
+                 && eventsArray.ValueKind == JsonValueKind.Array,
+            "Persisted replay must carry an 'events' array.");
+        Assert.True(eventsArray.GetArrayLength() > 0,
             "Persisted replay must contain at least one event after a full game.");
 
-        var first = doc.RootElement.EnumerateArray().First();
+        var first = eventsArray.EnumerateArray().First();
         Assert.True(first.TryGetProperty("turn", out _),
             "Persisted replay event missing 'turn'.");
         Assert.True(first.TryGetProperty("phase", out _),
