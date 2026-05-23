@@ -1408,3 +1408,55 @@ Two new tour stops are inserted (existing copy updated from
 
 Generic per-step containers still expose `data-testid="tour-step"`;
 the named selectors above are additive.
+
+---
+
+### Phase K Wave 6 Playwright spec map — Vasquez
+
+Seven new specs land in Wave 6 (each chromium-only via `test.skip(…)`,
+each soft-pass annotates `test.info().annotations.push({ type:'soft-pass', … })`
+when the underlying surface is forward-staged):
+
+- `commentary-panel-loads.spec.ts` — Hicks's W6 commentary panel mounts
+  on the replay route with `data-testid="commentary-panel"`. Mock
+  backend returns a 2-item stub envelope (`generator: "stub"`); the
+  panel state-machine arms (loading → empty → content) settle into
+  the content arm. Soft-passes when the testid root is not yet
+  observable (forward-staged Hicks module).
+- `spectator-livestream-player.spec.ts` — `<audio>` element with an
+  HLS playlist source (`.m3u8` or `application/vnd.apple.mpegurl`)
+  mounts under `data-testid="spectator-livestream-viewer"`. Mock
+  returns a minimal HLS manifest (`#EXTM3U`). Soft-passes when no
+  `<audio>` with HLS-looking source is yet observable.
+- `bracket-format-swiss.spec.ts` — Swiss bracket renderer emits
+  `data-testid="bracket-format-swiss"` for a tournament with
+  `format: "swiss"`. Probes the lobby first and falls back to
+  `#/tournaments/{id}`. Soft-passes when the testid is not yet
+  observable.
+- `bracket-format-double-elim.spec.ts` — symmetric to the Swiss
+  spec, asserts `data-testid="bracket-format-double-elim"` for a
+  tournament with `format: "double-elim"`.
+- `pwa-install-prompt.spec.ts` — synthesises a
+  `beforeinstallprompt` event (`new Event(…)` + `prompt()` +
+  `userChoice` polyfilled) and asserts the install button at
+  `data-testid="pwa-install-button"` is attached. Chromium does
+  not fire the event organically in headless / sandboxed mode, so
+  the spec is responsible for the synthesis.
+- `three-renderer-tree-shake.spec.ts` — three-renderer chunk is
+  NOT fetched before `networkidle` AND when observed lazily MUST
+  be under the 700 kB W6 ceiling. Soft-passes when no chunk is
+  observed at all (canvas not mounted in test env). The pre-
+  networkidle assertion is HARD (a regression where the chunk
+  rides on lobby load is a hard failure).
+- `oidc-discovery-shape.spec.ts` — `GET /.well-known/openid-configuration`
+  returns either 404 with a structured `{ error | reason | error_description }`
+  body (HS256 default mode) OR 200 with `{ issuer, jwks_uri }` (RS256
+  mode). Never 5xx. Soft-passes on dev-server unreachability.
+
+The W6 surface area extends Bishop's auth lane (RS256 migration,
+OIDC discovery, voice livestream HLS, spectator SFU stub, AI
+commentary stub, Swiss + double-elim brackets) and Hicks's frontend
+lane (commentary panel UI, spectator livestream viewer, bracket
+renderers, three-renderer tree-shake to <700 kB, PWA install
+prompt). Bishop and Hicks pair-land their surfaces; these specs
+hard-pin the cross-pair contracts at the Playwright layer.

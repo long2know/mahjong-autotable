@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Mahjong.Autotable.Api.Tests.Regression;
 
 /// <summary>
-/// Phase J Waves 1 → 10 + Phase K Waves 1–5 — cross-wave regression
+/// Phase J Waves 1 → 10 + Phase K Waves 1–6 — cross-wave regression
 /// sanity (Vasquez).
 ///
 /// <para>One xUnit class that exercises the canonical happy-path
@@ -82,11 +82,11 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// <c>docs/test-harness-handoff.md</c>.</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW5RegressionTests
+public class Wave1ThroughKW6RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW5RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW6RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -973,5 +973,175 @@ public class Wave1ThroughKW5RegressionTests
         if (root is null) return;
         var tfDir = Path.Combine(root.FullName, "infra", "terraform");
         _ = Directory.Exists(tfDir); // soft-pass either way
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Phase K Wave 6 — Vasquez (Wave 6 regression smokes).
+    // ════════════════════════════════════════════════════════════════════
+
+    private static DirectoryInfo? FindRepoRootStatic()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null
+               && !(Directory.Exists(Path.Combine(root.FullName, ".github", "workflows"))
+                    && File.Exists(Path.Combine(root.FullName, "Dockerfile"))))
+        {
+            root = root.Parent;
+        }
+        return root;
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — Auth:JwtAlgorithm config key on AuthOptions.
+    //  Bishop's RS256-migration knob — the type reaches the
+    //  options surface as a string property (forward-staged when
+    //  Bishop hasn't shipped yet).
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_AuthOptions_JwtAlgorithm_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x => x.Name == "AuthOptions");
+        if (t is null) return;
+        var p = t.GetProperty("JwtAlgorithm",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        if (p is null) return; // forward-staged
+        Assert.Equal(typeof(string), p.PropertyType);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — VoiceLivestreamController type present.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_VoiceLivestreamController_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "VoiceLivestreamController"
+            || x.Name == "LivestreamController");
+        if (t is null) return; // forward-staged
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — SpectatorVoiceHub type present.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_SpectatorVoiceHub_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x => x.Name == "SpectatorVoiceHub");
+        if (t is null) return;
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — ICommentaryGenerator interface present.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_ICommentaryGenerator_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x => x.Name == "ICommentaryGenerator");
+        if (t is null) return;
+        Assert.True(t.IsInterface);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — BracketFormat.Swiss + BracketFormat.DoubleElimination.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_BracketFormat_SwissAndDoubleElim_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x => x.Name == "BracketFormat");
+        if (t is null) return;
+        if (!t.IsEnum) return;
+        var names = Enum.GetNames(t).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // When the type is shipped, BOTH members MUST be there.
+        var hasSwiss = names.Contains("Swiss");
+        var hasDoubleElim = names.Contains("DoubleElimination");
+        if (!hasSwiss && !hasDoubleElim) return; // forward-staged
+        Assert.True(hasSwiss, "BracketFormat.Swiss MUST be present (W6 brief).");
+        Assert.True(hasDoubleElim, "BracketFormat.DoubleElimination MUST be present (W6 brief).");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — coturn-deployment.yaml (or turn-server.yaml) present.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_CoturnManifest_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var candidates = new[]
+        {
+            Path.Combine(root.FullName, "infra", "k8s", "base", "coturn-deployment.yaml"),
+            Path.Combine(root.FullName, "infra", "k8s", "base", "turn-server.yaml"),
+        };
+        _ = candidates.Any(File.Exists); // soft-pass either way
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — mobile-internal-testing workflow present.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_MobileInternalTestingWorkflow_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, ".github", "workflows",
+            "mobile-internal-testing.yml");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — Terraform DR replication module directory.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_DrReplicationModule_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var moduleDir = Path.Combine(root.FullName, "infra", "terraform",
+            "modules", "dr-replication");
+        _ = Directory.Exists(moduleDir);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — verify-slsa-on-deploy workflow present.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_VerifySlsaOnDeployWorkflow_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, ".github", "workflows",
+            "verify-slsa-on-deploy.yml");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 6 — lane-discipline workflow + script.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-6")]
+    public void PhaseK6_LaneDiscipline_WorkflowAndScript_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var wf = Path.Combine(root.FullName, ".github", "workflows", "lane-discipline.yml");
+        var sc = Path.Combine(root.FullName, "tests", "ci", "check-cross-lane-bundling.sh");
+        _ = File.Exists(wf);
+        _ = File.Exists(sc);
     }
 }

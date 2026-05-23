@@ -111,3 +111,77 @@ When you add a new test-only extension method:
    contract — typically under `Phase_K_W<N>/<Name>SanityTests.cs`.
 5. Update `docs/test-harness-handoff.md` if the shim changes the
    harness boot order.
+
+---
+
+## §2 `CommentaryGeneratorTestShim` (Phase K Wave 6)
+
+**Location:** `src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/CommentaryGeneratorTestShim.cs`
+
+**Purpose:** test-only deterministic commentary generator stub
+parallel to the W5 `TestHttpClientExtensions.WithDirectSession`
+auth shim. Returns predictable per-game content keyed by a
+SHA-256 hash of the `gameId` so the W6 commentary-panel Playwright
+spec + the backend contract gap tests can assert against stable
+output WITHOUT a real LLM in the loop.
+
+### Surface
+
+```csharp
+public static IReadOnlyList<CommentaryItem> Generate(string gameId);
+public static string HashSeed(string gameId);
+public static bool ProductionInterfaceShipped();
+public sealed record CommentaryItem(int Sequence, string Speaker, string Text);
+```
+
+### Determinism contract
+
+- Same `gameId` → identical items across runs (sequence, speaker,
+  text all stable).
+- Different `gameId`s → distinct text (no truncation collision in
+  the hex slice).
+- 4 items per call, rotating across 3 speakers
+  (`ShimAnalyst`, `ShimColourCommentary`, `ShimSidelineReporter`).
+- Empty / null / whitespace `gameId` → `ArgumentException`.
+
+### Why a SEPARATE shim instead of using Bishop's W6 default impl?
+
+Bishop's `ICommentaryGenerator` ships with a no-op default impl that
+always returns `{ items: [] }`. For tests that need non-trivial
+content (panel-renders-content state assertion), an empty array
+makes the panel state machine collapse to its empty arm — the
+content arm is never exercised. The shim returns 4 deterministic
+items so the content arm runs.
+
+### Forward-stage probe
+
+```csharp
+CommentaryGeneratorTestShim.ProductionInterfaceShipped();
+// true once Bishop's W6 ICommentaryGenerator lands in the API
+// assembly; false during the bring-up window. Sanity-test friendly.
+```
+
+### Sanity tests
+
+See `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W6/CommentaryGeneratorTestShimSanityTests.cs`
+for the contracts the shim's behaviour is pinned against:
+
+- `Generate_SameGameId_ReturnsSameItems`
+- `Generate_DifferentGameIds_DistinctOutput`
+- `Generate_SpeakerRotation_CoversAllRosterNames`
+- `Generate_EmptyOrNullGameId_Throws`
+- `Generate_FourItems_SequenceMonotonic`
+- `HashSeed_IsLowercase64HexChars`
+- `ProductionInterfaceShipped_ReturnsBool`
+
+### Production-leakage guarantee
+
+The file is wrapped in `#if TESTING_SHIM … #endif`, defined ONLY in
+the test csproj. The production `Mahjong.Autotable.Api.dll` never
+compiles this code. To verify after a build:
+
+```bash
+strings src/backend/src/Mahjong.Autotable.Api/bin/Debug/net10.0/Mahjong.Autotable.Api.dll \
+  | grep -E "CommentaryGeneratorTestShim|ShimAnalyst|ShimColourCommentary"
+# (no output)
+```
