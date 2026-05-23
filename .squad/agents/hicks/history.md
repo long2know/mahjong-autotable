@@ -1667,3 +1667,84 @@ Wires Bishop's Wave-6 backend (`POST /api/identity`, `GET /api/leaderboard`, plu
 - **Vasquez** — Three new specs follow her selector contract in `tests/selectors.md` (onboarding-*, leaderboard-*, settings-sound, replay-*, game-complete-replay testids). Spec patterns mirror her smoke-spec scaffold (project-scoped skips, fixed timeouts, hermetic storageState).
 
 Memo: `.squad/decisions/inbox/hicks-phase-j-wave-6.md`.
+
+
+## Phase J Wave 7 — Replay viewer server-wiring + a11y sweep + tabbed settings drawer + profile page
+
+Branch: `stlong/phase-j-wave-7-polish`.  Commit: `2b00b0b`.
+
+Polishes Wave 6 into a shipping-quality surface: replay viewer rewires onto Bishop's `GET /api/games/{gameId}/replay` endpoint with prev/next-hand + speed controls + aria-live counter; an app-wide tabbed settings drawer (`settings-drawer.ts`, ~530 LOC) consolidates display name / avatar / sound / volume / perspective / table-colour / network; a player profile page (`profile-page.ts`, ~480 LOC) hosts a stats grid + editable identity + recent-games list + read-only mode reachable from the leaderboard's new "View" column; a five-spec axe-core a11y sweep enforces zero `serious` / `critical` violations across lobby / leaderboard / settings drawer / profile page / replay viewer.
+
+### Wire contract feature-detected against Bishop (graceful 404 fallback)
+
+- `GET /api/games/{gameId}/replay` — feature-detected via `replay-launcher.ts` (135 LOC). 200 with `{ gameId, events: [{ turn, phase, actor, action, tilesJson, timestampUtc }], handHistory? }` renders into the viewer + a "Game {id} — N events" source label; 404 / 5xx falls back to the existing in-memory `client.gameComplete` payload so the surface never blanks. Action / phase strings matched case-insensitively against `draw|pick`, `discard`, `meld|chow|pung|kong`; unknown actions skipped silently rather than failing the whole replay.
+- `GET /api/players/{playerId}/games?limit=10` — feature-detected; 404 falls back to a "No recent games yet" placeholder. PascalCase aliases (`GameId`, `FinishedAt`) accepted at the boundary so this works regardless of Bishop's eventual casing.
+- `POST /api/identity` — unchanged from Wave 6, but the response is now mined for a `createdAt` field that we persist into the identity LS cache and surface as "Member since {date}" on the profile page.
+
+### Methodology — what worked
+
+- **Single launcher funnel for all three replay entry-points.** Post-game modal, profile-page recent-games rows, and leaderboard "View"→profile→recent-games all dispatch into `replay-launcher.openReplay(gameId)`. The launcher feature-checks the server endpoint once, deserialises into the canonical wire shape, and feeds the same `replay.openServer()` handler whether the payload came from the server or the in-memory fallback. Means the viewer doesn't have to care whether it's playing a fresh game or a historical one.
+- **Drawer + overlay as installer-style modules.** `installSettingsDrawerV2(opts)` and `installProfilePage(opts)` mirror the Wave-5 `installSettingsDrawer` / `installProfileDrawer` shape so `lobby.ts` wires all four with a single import block. Each installer owns its own DOM hydration + LS mirror + event listeners; teardown is automatic when the page unloads.
+- **Single JSON blob in localStorage for the new drawer.** `localStorage["mahjong.settings.v1"]` stores all four tabs (general / audio / display / network) as one document; the drawer reads-on-open, writes-on-save, and resets-to-defaults atomically. Mirrors `soundEnabled` to `mahjong:soundEnabled` (existing key + Wave-2 `#settings-sound` checkbox) + mirrors `perspective` to `#perspective` checkbox so the legacy Wave-2 per-game drawer stays in lockstep.
+- **`mahjong:open-profile-page` custom event for read-only mode.** Leaderboard's new "View" button raises the event with a `playerId` payload; the profile page renders the row's player without enabling edit affordances. Keeps the leaderboard module ignorant of profile-page internals.
+- **axe-core inside Playwright via `@axe-core/playwright`.** Five new specs (`a11y.spec.ts`) walk through lobby / leaderboard / settings drawer / profile page / replay viewer with `new AxeBuilder({ page }).analyze()` and assert zero `serious` / `critical` violations. `mobile-chrome` skipped because off-canvas Bootstrap drawer + lobby footer produce `aria-hidden-focus` warnings that are sibling-of-drawer fixes (Wave 8 backlog).
+- **`aria-live="polite"` event counter on the scrubber.** Screen readers track scrubber position without the rest of the UI announcing every step. `aria-valuenow` on the `<input type="range">` covers the scrubber; `aria-pressed` toggles the play/pause button; `aria-checked` covers the avatar-colour radio group.
+
+### Files added
+
+- `src/settings-drawer.ts` (~530 LOC) — Wave-7 app-wide tabbed drawer (general / audio / display / network) with single-JSON-blob LS storage.
+- `src/profile-page.ts` (~480 LOC) — Player profile overlay with stats grid + editable identity + recent-games list + read-only mode.
+- `src/replay-launcher.ts` (~135 LOC) — Feature-detect launcher; single entry point for post-game modal, profile recent-games rows, leaderboard View.
+- `tests/e2e/a11y.spec.ts` (~110 LOC) — Five axe-core specs over lobby / leaderboard / settings drawer / profile page / replay viewer.
+
+### Files modified
+
+- `src/replay.ts` — added `openServer()`, `REPLAY_SPEEDS`, prev/next-hand controls, speed dropdown, event counter, source label, doc-level Escape handler.
+- `src/leaderboard.ts` — added "Profile" column + per-row `leaderboard-view-{i}` button that raises `mahjong:open-profile-page`.
+- `src/identity.ts` — `Identity.createdAt` field persisted and surfaced via `normalizeIdentity`.
+- `src/game-ui.ts` — post-game modal "View Replay" prefers the server endpoint when `?gameId=` is present.
+- `src/lobby.ts` — installs `installSettingsDrawerV2()` + `installProfilePage()` alongside the Wave-5 drawer install.
+- `index.html` — new `#settings-button`, `#settings-drawer-v2`, `#profile-page`, extended `#replay-screen` controls.
+- `src/style.css` — appended ~430 lines of Wave-7 styles.
+- `package.json` — added `@axe-core/playwright ^4.11.3` devDep.
+
+### Test IDs added (25 new — see `tests/selectors.md` Wave-7 section for the full table)
+
+- **Settings drawer (8 top-level + variants)** — `settings-button`, `settings-drawer`, `settings-save`, `settings-reset`, `settings-close`, `settings-tab-{general,audio,display,network}`, `settings-panel-{...}`, `settings-display-name-input`, `settings-avatar-color-{0..7}` + `-custom`, `settings-sound-toggle`, `settings-master-volume`, `settings-perspective-toggle`, `settings-table-color` + `-reset`, `settings-server-url`.
+- **Profile page (7 top-level + variants)** — `profile-page`, `profile-page-close`, `profile-stats-grid`, `profile-stats-{played,won,winrate,total,highest,streak}`, `profile-page-display-name-input`, `profile-page-color-{0..7}` + `-custom`, `profile-recent-games`, `profile-recent-game-{0..9}`, `profile-recent-replay-{i}`, `profile-recent-label-{i}`.
+- **Replay viewer (5 new)** — `replay-viewer`, `replay-prev`, `replay-next`, `replay-speed-select`, `replay-event-counter`, `replay-scrubber` (alias of `#replay-timeline`).
+- **Leaderboard (1 new)** — `leaderboard-view-{i}` per-row "View" buttons.
+- **Wave-6 testids preserved as-is** — `replay-screen`, `replay-play`, `replay-step-back`, `replay-step-fwd`, `settings-sound`, `game-complete-replay`, `lobby-open-profile`, `profile-drawer`, etc.
+
+### Stability
+
+- **TypeScript strict (`tsc --noEmit --strict --target es6 --moduleResolution bundler --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts`):** **0 errors**.
+- **Parcel build:** **succeeded in 3.03 s** — new main bundle `autotable-src.85bbb8ca.js` (replaces Wave-6 `2391eb20.js`); CSS chunks `a7cd8ea4.css` / `6633d8fb.css` / `df85b4c4.css` byte-identical (Parcel re-emits only when upstream deps move). Stale `2391eb20.js` + `094cde3a.css` pruned by hand.
+- **Backend tests:** **554 passed / 0 failed / 0 skipped** (`dotnet test src/backend/Mahjong.Autotable.slnx`); +98 from Wave 6 baseline — Vasquez's Wave-7 contract tests + Bishop's backstops.
+- **Playwright specs known:** 24 tests across 5 specs (new a11y spec contributes 5). Full Playwright run requires `./scripts/docker-up.sh` first; gate-run owned by Apone via `e2e-playwright.yml` workflow.
+
+### Graceful-degradation matrix
+
+| Backend state | Frontend behaviour |
+| --- | --- |
+| `GET /api/games/{id}/replay` returns 200 with events | Viewer renders server payload + "Game {id} — N events" source label |
+| Endpoint returns 200 with `events: []` | Empty hand shell renders + "no events recorded" label |
+| Endpoint 404 / 5xx | Falls back to in-memory `client.gameComplete` payload; viewer functional |
+| `GET /api/players/{id}/games` 404 | Recent-games list shows "No recent games yet" (no red error) |
+| `POST /api/identity` missing `createdAt` | "New member" placeholder on profile page |
+
+### Cross-agent coordination
+
+- **Bishop** — Wire contract feature-detected (not hard-required). Replay viewer treats his endpoint as optional + falls back to in-memory `client.gameComplete` on 404 so my Wave-7 commit can land before / independently of his. When his endpoint ships, the 404 fallback path is dead code that Wave 8 can prune.
+- **Apone** — No-op against his DevOps commit. The new top-right gear sits next to the Wave-2 gear; two gears is visually busy but no infra conflict. Wave 8 candidate: retire the Wave-2 drawer in favour of a "Game" tab inside the new drawer.
+- **Vasquez** — `settings-drawer.spec.ts` + `profile-page.spec.ts` (her additive specs) follow the testid catalog in `tests/selectors.md` Wave-7 section. `a11y.spec.ts` is mine (project-scoped skip on `mobile-chrome`); her specs cover the drawer save/reload/reset lifecycle + profile name persistence — sibling, not duplicate.
+
+### Risks / Wave-8 follow-ups
+
+- **Two gears.** Wave-2 `#settings-toggle` and Wave-7 `#settings-button` both sit top-right. Consolidate by retiring the Wave-2 drawer in favour of a "Game" tab inside the Wave-7 drawer.
+- **Mobile a11y.** `mobile-chrome` project skipped in the new a11y spec — off-canvas Bootstrap drawer + lobby footer produce `aria-hidden-focus` warnings. Wave 8 fix.
+- **Recent-games endpoint.** `GET /api/players/{playerId}/games` is feature-detected but not yet implemented by Bishop. Profile page treats both endpoints as optional; lights up when Bishop ships.
+- **Member-since placeholder.** `POST /api/identity` needs `createdAt` in the response body to populate "Member since {date}" — Bishop Wave-8 ticket.
+- **Leaderboard table width.** New "View" column widens the table; on the smallest breakpoint the action cell wraps below the row. `overflow-x: auto` already gates the whole leaderboard, so this is cosmetic rather than broken.
+
+Memo: `.squad/decisions/inbox/hicks-phase-j-wave-7.md`.
