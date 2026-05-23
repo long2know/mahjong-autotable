@@ -31,6 +31,7 @@
 
 import { openReplayForGame } from './replay-launcher';
 import { setElHidden, showEl, hideEl } from './dom-utils';
+import { pickBracketRenderer, resolveFormatKey } from './bracket-renderer';
 
 // ── Wire types ──────────────────────────────────────────────────────
 
@@ -580,32 +581,40 @@ function rerenderBracket(): void {
   host.replaceChildren();
   const detail = state.detail;
   if (detail === null) return;
-  // Single-elim formats get the SVG bracket; round-robin + Swiss
-  // share the bracket host with a compact textual "Matches" summary
-  // so users still see who played whom.
-  const fmt = (detail.tournament.format || '').toLowerCase();
-  const isElim = fmt.includes('elim') || fmt.includes('bracket');
 
-  // Phase K Wave 2 — admin seeding panel (above the bracket).  Only
-  // shown for single-elim tournaments whose status is still open
-  // (seeding past the start is destructive — the server will reject
-  // anyway), and only when the admin probe has resolved truthy.
-  const seedingPanel = buildSeedingPanel(detail);
-  if (seedingPanel !== null) {
-    host.appendChild(seedingPanel);
+  // Phase K Wave 6 — Strategy dispatch.  The bracket-renderer module
+  // picks the format-appropriate view (single-elim SVG, Swiss W/L/D
+  // table, double-elim winners+losers split).  Backwards-compatible:
+  // the single-elim wrapper still delegates to `buildBracketSvg`
+  // below, so the SVG layout / connector geometry is unchanged.
+  const fmt = (detail.tournament.format || '').toLowerCase();
+  const formatKey = resolveFormatKey(fmt);
+  const isElim = formatKey === 'single-elim' || formatKey === 'double-elim';
+
+  // Admin seeding panel — single-elim only (double-elim seeds are
+  // computed from the winners bracket round 1 like single-elim; the
+  // existing panel works there as well).
+  if (isElim) {
+    const seedingPanel = buildSeedingPanel(detail);
+    if (seedingPanel !== null) {
+      host.appendChild(seedingPanel);
+    }
   }
 
-  if (isElim && detail.matches.length > 0) {
-    host.appendChild(buildBracketSvg(detail));
+  const renderer = pickBracketRenderer(fmt);
+  const rendered = renderer.render({
+    format: fmt,
+    matches: detail.matches,
+    standings: detail.standings,
+    players: detail.players,
+    tournamentId: detail.tournament.id,
+    singleElimSvg: () => buildBracketSvg(detail),
+  });
+  host.appendChild(rendered);
+
+  if (formatKey === 'single-elim' && detail.matches.length > 0) {
     const expanded = buildExpandedRow(detail);
     if (expanded !== null) host.appendChild(expanded);
-  } else if (detail.matches.length > 0) {
-    host.appendChild(buildMatchesList(detail));
-  } else {
-    const empty = document.createElement('div');
-    empty.className = 'tournament-bracket-empty';
-    empty.textContent = 'No matches yet — start the tournament to seed the bracket.';
-    host.appendChild(empty);
   }
 }
 
@@ -1453,36 +1462,12 @@ function buildExpandedRow(detail: TournamentDetail): HTMLDivElement | null {
   return wrap;
 }
 
-function buildMatchesList(detail: TournamentDetail): HTMLDivElement {
-  const wrap = document.createElement('div');
-  wrap.className = 'tournament-matches-list';
-  for (const m of detail.matches) {
-    const row = document.createElement('div');
-    row.className = 'tournament-matches-list-row';
-    row.setAttribute('data-testid', `tournament-bracket-match-${m.round}-${m.matchIndex}`);
-    row.setAttribute('data-match-id', m.id);
-    const p1 = m.player1?.displayName ?? 'TBD';
-    const p2 = m.player2?.displayName ?? 'TBD';
-    row.textContent = `R${m.round} · ${p1} vs ${p2} — ${m.status}`;
-    if (m.gameId !== null && m.gameId !== '') {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn btn-info btn-sm tournament-matches-list-replay';
-      btn.textContent = '▶';
-      btn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        const gid = m.gameId;
-        if (gid === null || gid === '') return;
-        // Phase K Wave 2 — list-row replay → finals-style deep link
-        // so all tournament replay entry points share the same UX.
-        void openReplayForGame(gid, { finals: true });
-      });
-      row.appendChild(btn);
-    }
-    wrap.appendChild(row);
-  }
-  return wrap;
-}
+// Phase K Wave 6 — `buildMatchesList` (the legacy flat list renderer)
+// was retired when `bracket-renderer.ts` took over the round-robin /
+// Swiss view.  The Swiss strategy renders a round-by-round table
+// instead of the flat single-list view; nothing else referenced this
+// function so it's been removed.
+
 
 // ── Standings table ─────────────────────────────────────────────────
 

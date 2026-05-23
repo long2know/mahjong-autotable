@@ -59,6 +59,13 @@ void initSentry();
 // register doesn't block the lobby.
 void registerServiceWorker();
 
+// Phase K Wave 6 — Spectator livestream hash route.  `#/spectate/{id}`
+// opens a full-screen audio listener for Bishop's HLS livestream.
+// The route handler is lightweight (just a hashchange listener) but
+// the actual chunk is dynamic-imported so the lobby cold path never
+// pays for the viewer.
+void scheduleSpectatorRouteLazyMount();
+
 async function scheduleAuditTabLazyMount(): Promise<void> {
   const btn = document.getElementById('replay-audit-tab') as HTMLButtonElement | null;
   if (btn === null) return;
@@ -134,6 +141,34 @@ async function scheduleOnboardingTour(): Promise<void> {
   window.setTimeout(() => {
     void import('./tour').then(mod => mod.installOnboardingTour());
   }, 350);
+}
+
+async function scheduleSpectatorRouteLazyMount(): Promise<void> {
+  // Phase K Wave 6 — Lazy spectator viewer.  We attach a single
+  // hashchange listener here that triggers the dynamic import only
+  // when the route actually matches `#/spectate/{tableId}`; lobby-
+  // only sessions never fetch the spectator chunk.  Fires once at
+  // boot too so a deep-link arrival opens the viewer.
+  const isSpectateHash = (): boolean => /^#\/spectate\//.test(window.location.hash);
+  const load = async (): Promise<void> => {
+    try {
+      const mod = await import('./spectator-livestream');
+      mod.installSpectatorRoute();
+    } catch {
+      /* never resolved — degrade silently */
+    }
+  };
+  if (isSpectateHash()) {
+    void load();
+    return;
+  }
+  const onHash = (): void => {
+    if (isSpectateHash()) {
+      window.removeEventListener('hashchange', onHash);
+      void load();
+    }
+  };
+  window.addEventListener('hashchange', onHash);
 }
 
 // Phase J Wave 4 — Consume any `?rejoin=<token>` already on the URL

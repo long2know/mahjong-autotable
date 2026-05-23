@@ -1327,3 +1327,84 @@ defensive with `soft-pass` annotations; chromium-only via
 Each spec uses `test.info().annotations.push({ type: 'soft-pass', … })`
 to record forward-staged surfaces — these annotations are visible in
 the Playwright HTML report without inflating the failure count.
+
+### Phase K Wave 6 selector map — Hicks (Frontend)
+
+W6 introduces five new frontend surfaces. The test-IDs below are the
+**hard-pin** selectors future Playwright specs (W7+) should consume.
+None of the matching elements are present on first-paint of any
+existing screen, so e2e specs MUST treat absence as "feature gated
+behind route / event / server reply" (use the soft-pass pattern
+introduced in W5) — never assume the panel mounts unconditionally.
+
+#### AI commentary side panel — `src/commentary-panel.ts`
+Mounts into `<aside id="replay-commentary-host" data-testid="replay-commentary-host">`
+on the replay screen when `replay.openServer(payload)` resolves
+with a non-zero `gameId`. The fetch hits
+`/api/games/{gameId}/commentary/replay`; on `404`/`503` the empty-
+state copy renders pointing at the Phase L plan.
+
+- `replay-commentary-host` — the wrapper aside (always present in
+  the DOM, even when the panel module hasn't been loaded yet).
+- `commentary-panel` — the root element of the live module
+  (only appears after dynamic import resolves).
+- `commentary-panel-loading` — visible while fetch is in flight.
+- `commentary-panel-empty` — visible when the API replies with
+  no commentary lines (or 404/503 forward-staged response).
+- `commentary-panel-error` — visible when the fetch throws.
+- `commentary-line-{idx}` — one per rendered commentary turn,
+  `idx` is the zero-based index in the response array.
+
+#### Spectator HLS livestream viewer — `src/spectator-livestream.ts`
+Bound to the `#/spectate/{tableId}` hash route by
+`installSpectatorRoute()` (called from `scheduleSpectatorRouteLazyMount()`
+in `src/index.ts`). HLS.js is loaded from the public CDN on demand
+for non-Safari browsers; Safari falls through to native HLS.
+
+- `spectator-livestream-screen` — root container.
+- `spectator-livestream-player` — the `<video>` element.
+- `spectator-livestream-status` — status text region (announces
+  "connecting", "live", "stalled", or error copy).
+- `spectator-count` — current spectator count badge driven by
+  the SignalR `spectatorCountUpdate` event.
+- `spectator-livestream-leave` — the leave button (returns to
+  the lobby; releases the spectator group).
+
+#### Bracket renderer strategy — `src/bracket-renderer.ts`
+`rerenderBracket()` in `tournaments.ts` now dispatches to a strategy
+based on `tournament.format`. The container always carries
+`data-testid="bracket-format-{format}"` where `{format}` is one of
+`single-elim` / `swiss` / `double-elim` / `round-robin`.
+
+- `bracket-format-{format}` — root container per format.
+- `bracket-round-{n}` — column / region per round, 1-indexed.
+- `bracket-match-{round}-{matchIndex}` — individual match card.
+- `bracket-double-elim-winners` — winners-bracket region (double-elim only).
+- `bracket-double-elim-losers` — losers-bracket region (double-elim only).
+- `tournament-grand-final` — the grand final card (double-elim only;
+  also surfaced in single-elim when only one final remains).
+- `bracket-swiss-standings` — Swiss standings table (Swiss + RR formats).
+
+#### PWA install button polish — `src/pwa.ts`
+The install affordance is now a real `<button data-testid="pwa-install-button">`
+in the top-bar (was an inline prompt). The legacy `pwa-install-prompt`
+testid is preserved as an alias on a hidden `<span>` inside the
+button so existing W3/W4 e2e specs continue to resolve until rewritten.
+
+- `pwa-install-button` — the visible top-bar control.
+- `pwa-install-prompt` — legacy alias (hidden span child).
+- `appinstalled` handler at module bottom hides the button after
+  install completes; Playwright should not poll the visibility
+  state after dispatching the install event.
+
+#### Tour additions — `src/tour.ts`
+Two new tour stops are inserted (existing copy updated from
+"6 stops" to "10 stops, ~45 seconds"):
+
+- Step 6 — voice-setup walkthrough (anchors on `voice-toggle` /
+  `voice-settings`). Selector: `tour-step-voice-setup`.
+- Step 9 — tournament-view stop (anchors on `tournament-tab` /
+  `bracket-format-*`). Selector: `tour-step-tournament-view`.
+
+Generic per-step containers still expose `data-testid="tour-step"`;
+the named selectors above are additive.

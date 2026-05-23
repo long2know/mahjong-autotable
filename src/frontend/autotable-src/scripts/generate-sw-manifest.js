@@ -43,8 +43,9 @@ const UNHASHED_ALLOW = new Set([
   'manifest.webmanifest',
   'about.html',
 ]);
-// PWA icons — three sizes referenced from manifest.webmanifest.
-const ICON_RE = /^icon-(?:16|32|96)\.auto\.[0-9a-f]+\.png$/i;
+// PWA icons — multiple sizes referenced from manifest.webmanifest.
+// Phase K Wave 6 — also pre-cache 192/512 + maskable variants.
+const ICON_RE = /^icon-(?:16|32|96|192|512|maskable-512)\.auto\.[0-9a-f]+\.png$/i;
 // Phase K Wave 3 — Include the shell chunk too so a player who tap-
 // returns to a game URL gets the HUD chrome from cache; the scene
 // chunk is still lazy (its weight defeats the install budget).
@@ -61,6 +62,15 @@ const SHELL_RE = /^game-bootstrap\.[0-9a-f]+\.(js|css)$/i;
 // strategy before the first paint).
 const SCENE_SHELL_RE = /^scene-shell\.[0-9a-f]+\.(js|css)$/i;
 const THREE_RENDERER_RE = /^three-renderer\.[0-9a-f]+\.(js|css)$/i;
+// Phase K Wave 6 — Commentary panel is small (<80 kB target) and a
+// returning replay-viewer user will pay the chunk cost anyway, so we
+// pre-warm it on install.  Spectator livestream is excluded (it pulls
+// hls.js from CDN at runtime + only matters for `#/spectate/*` deep
+// links — pre-caching is wasted bytes for the average lobby visitor).
+const COMMENTARY_RE = /^commentary-panel\.[0-9a-f]+\.(js|css)$/i;
+// Phase K Wave 6 — Bracket renderer is dragged in alongside the
+// tournaments chunk via static import; parcel inlines it into the
+// tournaments hash, so no separate regex is needed.
 
 function listAssets() {
   const files = fs.readdirSync(DIST);
@@ -70,6 +80,7 @@ function listAssets() {
     if (SHELL_RE.test(f)) { assets.add(f); continue; }
     if (SCENE_SHELL_RE.test(f)) { assets.add(f); continue; }
     if (THREE_RENDERER_RE.test(f)) { assets.add(f); continue; }
+    if (COMMENTARY_RE.test(f)) { assets.add(f); continue; }
     if (ICON_RE.test(f))  { assets.add(f); continue; }
     if (UNHASHED_ALLOW.has(f)) { assets.add(f); continue; }
   }

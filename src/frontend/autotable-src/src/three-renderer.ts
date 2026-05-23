@@ -31,7 +31,6 @@
 import { AssetLoader } from './asset-loader';
 import { Game } from './game';
 import type { Client } from './client';
-import * as three from 'three';
 
 interface RendererHandles {
   game: Game;
@@ -50,11 +49,21 @@ export async function mountThreeRenderer(): Promise<RendererHandles> {
     await assetLoader.loadAll();
 
     const game = new Game(assetLoader);
-    // Phase K Wave 4 → Wave 5 — Expose `game` + `three` on `window`
-    // for the debug-only callers that historically lived in the
-    // scene-shell graph; the surface is preserved across the chunk
-    // split so console / E2E helpers keep working.
-    Object.assign(window, { game, three });
+    // Phase K Wave 4 → Wave 5 → Wave 6 — Expose `game` on `window`
+    // for debug callers (E2E specs, manual console poking).  Wave 5
+    // also exposed the full `three` namespace via
+    // `import * as three from 'three'`; that wildcard import
+    // suppressed parcel's three.js tree-shake and added ~50-60 kB to
+    // the renderer chunk for a debug surface no production caller
+    // touches.  Wave 6 drops the wildcard — `window.three` is now
+    // lazy-loaded by appending `?debug=three` to the URL (see
+    // docs/frontend-three-budget.md).
+    Object.assign(window, { game });
+    if (typeof window !== 'undefined' && /[?&]debug=three\b/.test(window.location.search)) {
+      void import('three').then(threeMod => {
+        Object.assign(window, { three: threeMod });
+      });
+    }
     game.start();
 
     const client = game.client;

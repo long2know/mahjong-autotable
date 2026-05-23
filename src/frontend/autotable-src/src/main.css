@@ -850,3 +850,232 @@
         font-size: 0.7rem;
     }
 }
+
+/* ── Phase K Wave 6 — AI commentary panel ───────────────────────── */
+/* Anchored inside `#replay-commentary-host` (rendered by
+   `commentary-panel.<hash>.js`).  Mirrors the existing
+   `.replay-side-pane` width so the replay viewer's flex row keeps
+   its symmetric look (board pane in the middle, two narrow asides
+   flanking it). */
+.replay-commentary-host {
+    flex: 0 0 280px;
+    overflow: hidden;
+}
+.commentary-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.commentary-panel-header {
+    border-bottom: 1px solid #1f3a5f;
+    padding: 10px 14px;
+    background: rgba(255, 209, 102, 0.04);
+}
+.commentary-panel-title {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #ffd166;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.commentary-panel-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+}
+.commentary-panel-loading,
+.commentary-panel-empty,
+.commentary-panel-error {
+    padding: 16px 8px;
+    color: #b8c5d1;
+    font-style: italic;
+    text-align: center;
+}
+.commentary-panel-error {
+    color: #ffd166;
+}
+.commentary-line {
+    display: grid;
+    grid-template-columns: 38px 1fr;
+    gap: 8px;
+    padding: 6px 4px;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+    align-items: start;
+}
+.commentary-line:last-child { border-bottom: none; }
+.commentary-line-actor {
+    display: inline-block;
+    min-width: 32px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-align: center;
+    background: rgba(31, 58, 95, 0.7);
+    color: #e8f0ff;
+}
+.commentary-line-actor-0 { background: rgba(220, 60, 60, 0.45); }
+.commentary-line-actor-1 { background: rgba(60, 180, 100, 0.45); }
+.commentary-line-actor-2 { background: rgba(60, 120, 220, 0.45); }
+.commentary-line-actor-3 { background: rgba(220, 160, 60, 0.45); }
+.commentary-line-actor-narrator {
+    background: rgba(120, 120, 120, 0.45);
+}
+.commentary-line-text {
+    line-height: 1.4;
+    color: #e8f0ff;
+}
+@media (max-width: 1100px) {
+    .replay-commentary-host { display: none; }
+}
+
+/* ── Phase K Wave 6 — PWA install button (top-bar variant) ───────── */
+/* `pwa.ts` mints the deferred-prompt button as
+   `data-testid="pwa-install-button"`; we anchor it in the top-right
+   corner where the user expects an "Install" affordance. */
+.pwa-install-button {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 5500;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+@media (max-width: 600px) {
+    .pwa-install-button { font-size: 0.78rem; padding: 5px 10px; }
+}
+
+/* ── Phase K Wave 6 — Spectator livestream viewer ───────────────── */
+.spectator-livestream-screen {
+    position: fixed;
+    inset: 0;
+    background: #0d161e;
+    color: #e8f0ff;
+    z-index: 4500;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 24px;
+    gap: 16px;
+}
+.spectator-livestream-screen[hidden] { display: none; }
+.spectator-livestream-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.spectator-livestream-title {
+    margin: 0;
+    font-size: 1.4rem;
+    color: #ffd166;
+}
+.spectator-livestream-table {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.95rem;
+    color: #b8c5d1;
+}
+.spectator-livestream-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    text-align: center;
+}
+.spectator-livestream-status {
+    font-style: italic;
+    color: #b8c5d1;
+    min-height: 1.2em;
+}
+.spectator-livestream-status[data-state="error"] {
+    color: #ff8a8a;
+    font-style: normal;
+}
+.spectator-livestream-status[data-state="phase-l"] {
+    color: #ffd166;
+    font-style: normal;
+}
+.spectator-livestream-audio {
+    width: min(560px, 90%);
+}
+.spectator-count {
+    font-size: 0.92rem;
+    color: #e8f0ff;
+    background: rgba(31, 58, 95, 0.6);
+    padding: 6px 12px;
+    border-radius: 999px;
+}
+.spectator-livestream-close {
+    margin-left: auto;
+}
+
+/* ── Phase K Wave 6 — Bracket renderer multi-format ─────────────── */
+.bracket-format-toggle {
+    display: flex;
+    gap: 6px;
+    margin: 0 0 10px;
+    flex-wrap: wrap;
+}
+.bracket-swiss-table,
+.bracket-double-elim-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+.bracket-swiss-table th,
+.bracket-swiss-table td,
+.bracket-double-elim-table th,
+.bracket-double-elim-table td {
+    border: 1px solid #1f3a5f;
+    padding: 6px 8px;
+    text-align: left;
+}
+.bracket-swiss-table th,
+.bracket-double-elim-table th {
+    background: rgba(31, 58, 95, 0.5);
+    color: #ffd166;
+}
+.bracket-swiss-round-header,
+.bracket-double-elim-round-header {
+    background: rgba(255, 209, 102, 0.08);
+    color: #ffd166;
+    font-weight: 600;
+    text-align: center;
+}
+.bracket-double-elim-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+.bracket-double-elim-grand-final {
+    grid-column: 1 / -1;
+    background: rgba(255, 209, 102, 0.12);
+    border: 1px solid #ffd166;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-top: 8px;
+}
+.bracket-double-elim-grand-final h5 {
+    margin: 0 0 8px;
+    color: #ffd166;
+    font-size: 0.95rem;
+}
+.bracket-double-elim-column h5 {
+    margin: 0 0 8px;
+    color: #ffd166;
+    font-size: 0.95rem;
+}
+.bracket-match-pending { color: #b8c5d1; }
+.bracket-match-complete { color: #e8f0ff; }
+.bracket-match-winner { color: #95e6a0; font-weight: 600; }
+@media (max-width: 720px) {
+    .bracket-double-elim-layout { grid-template-columns: 1fr; }
+}
