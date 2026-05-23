@@ -1,17 +1,24 @@
-// Phase K Wave 2 — Game bootstrap.
+// Phase K Wave 3 — Game shell bootstrap (three.js-free).
 //
-// Owns the eager imports of `Game`, `World`, `Client`, `MoveLog`,
-// `AssetLoader`, three.js, the chat panel, the in-game replay capture,
-// and Bishop's pattern-ordering fetch.  This module is loaded LAZILY
-// from `index.ts` only when the user has crossed the lobby boundary —
-// in practice, when the URL carries any query string (the lobby always
-// reloads the page with new search params via `window.location.replace`
-// before transitioning to a table).
+// Wave 2 dynamic-imported `game-bootstrap` off the eager lobby graph
+// (eager lobby ≈ 208 kB); the deferred chunk was still 1.11 MB because
+// Game / World / Client / AssetLoader / three / MoveLog were all
+// imported eagerly *from* `game-bootstrap`.  Wave 3 peels the renderer
+// chain into a sibling `./scene` module that is dynamic-imported only
+// once the WebGL canvas is mounted.  This module — the "shell" —
+// renders the HUD chrome immediately (target: <500 ms after the user
+// lands on a table URL), then kicks off the 3D scene asynchronously.
 //
-// Splitting these out of the eager bundle is the Phase K Wave 2 lobby
-// budget win: the eager `autotable-src.<hash>.js` drops below the
-// 500 kB ceiling because three.js + the renderer chain are deferred
-// until they're actually needed.
+// Boundaries:
+//   • Pre-shell HUD = vanilla DOM only.  bootstrap CSS is already in
+//     the eager bundle; the only JS this file pulls in beyond the
+//     lobby chain is the chat + voice modules (both already lazy
+//     beyond this point).
+//   • The scene chunk owns three.js + AssetLoader + WebGL setup, and
+//     mints `data-testid="game-scene-ready"` once it has composited.
+//   • Voice chat is gated on the per-game `voiceEnabled` flag (Wave 3
+//     wire-up); the `?voice=1` query-string override remains as the
+//     E2E-friendly opt-in until the hub broadcasts a flag.
 //
 // Trigger contract (from `index.ts`):
 //   - Empty `window.location.search` → lobby-only; this module is not
@@ -19,20 +26,9 @@
 //     the next page load (post-`location.replace`) has it cached.
 //   - Non-empty `window.location.search` → user is entering a table;
 //     this module is dynamic-imported and `bootstrapGame()` runs.
-//
-// The voice chat module is also wired in here because it depends on
-// the live `Client` connection.  It's gated by `?voice=1` (or a
-// future per-game `voiceEnabled` flag broadcast by Bishop's hub) so
-// the WebRTC code only loads on tables where voice is opted in.
 
 import 'bootstrap/dist/js/bootstrap';
-import { AssetLoader } from './asset-loader';
-import { Game } from './game';
-import { attachLobbyClient } from './lobby';
-import { MoveLog } from './move-log';
-import { Client } from './client';
-import { loadPatternOrderingFromApi } from './game-ui';
-import * as three from 'three';
+import type { Client } from './client';
 
 let booted = false;
 
@@ -40,35 +36,19 @@ export async function bootstrapGame(): Promise<void> {
   if (booted) return;
   booted = true;
 
-  // Phase J Wave 3 — Bishop's canonical pattern display order.  The
-  // hardcoded fallback in game-ui.ts keeps things rendering if this
-  // fetch fails, so it's safely fire-and-forget.
-  void loadPatternOrderingFromApi();
+  // Phase K Wave 3 — Paint the shell + HUD scaffolding immediately so
+  // the user sees feedback in <500 ms even though the three.js +
+  // asset chunk is still in flight.  The actual game DOM (#main /
+  // #loading) already exists in index.html — this hook just publishes
+  // the `game-shell-ready` marker that Vasquez's specs gate on.
+  markShellReady();
 
-  const assetLoader = new AssetLoader();
-  await assetLoader.loadAll();
-
-  const game = new Game(assetLoader);
-  // for debugging
-  Object.assign(window, { game, three });
-  game.start();
-
-  // Phase I Wave 1 — streaming move-log sidebar.  Mounts into the
-  // <aside id="move-log"> placeholder in index.html and subscribes to
-  // the existing client collections.  Client is private on Game, but
-  // TypeScript private is purely a compile-time guard; we widen the
-  // type so we can hand the same Client singleton to MoveLog without
-  // copying it.
-  const client = (game as unknown as { client: Client }).client;
-  new MoveLog(client).start();
-
-  // Phase J Wave 4 — wire the lobby's live player chip strip + seat
-  // preview to the live Client collections now that Game.start() has
-  // booted the Client.  initLobby() in index.ts ran pre-asset-load so
-  // the Quick Match button + URL-driven pickers were clickable
-  // immediately; attachLobbyClient binds the live listeners on top of
-  // the already-rendered panel.
-  attachLobbyClient(client);
+  // Lazy-import the heavy 3D scene chunk.  This is the Wave-3 split:
+  // three.js (~575 kB), AssetLoader (textures, GLB models), Game,
+  // World, MoveLog, and the post-processing pipeline all land in
+  // `scene.<hash>.js` rather than the shell bundle.
+  const sceneMod = await import('./scene');
+  const client = await sceneMod.mountScene();
 
   // Phase K Wave 1 — Chat panel: only needed when the user is in a
   // game.  Lazy-import it so the lobby-only path doesn't pay the
@@ -79,17 +59,51 @@ export async function bootstrapGame(): Promise<void> {
     void import('./chat').then(mod => mod.installChatPanel(client));
   }
 
-  // Phase K Wave 2 — Voice chat: gated by `?voice=1` until Bishop's
-  // hub broadcasts a per-game `voiceEnabled` flag.  When opt-in is
-  // present, lazy-import the voice module — it self-mounts a mic
-  // toggle + peer status rail and negotiates a WebRTC mesh.
-  if (/[?&]voice=1\b/.test(window.location.search)) {
+  // Phase K Wave 3 — Voice chat: gated by Bishop's per-game
+  // `voiceEnabled` flag (probed lazily inside `./voice`) with the
+  // legacy `?voice=1` query-string opt-in retained as the E2E /
+  // self-hosted override.  When voice is disabled the module still
+  // mounts a disabled mic toggle so the table-creator settings drawer
+  // has somewhere to flip the flag on from.
+  if (shouldEnableVoice(client)) {
     void import('./voice').then(mod => mod.installVoicePanel(client));
   }
 }
 
-// Preload helper — wire to lobby Apply / Quick Match hover so the
-// next page load (after location.replace) gets the chunk from cache.
+// Phase K Wave 3 — Preload helper.  Lobby wires this to mouseenter /
+// pointerdown on Quick Match / Apply so the next page load (after
+// `location.replace`) gets both the shell + the scene chunks from
+// cache.
 export function preloadGameBootstrap(): void {
   void import('./game-bootstrap');
+  void import('./scene');
+}
+
+// ── Shell paint ─────────────────────────────────────────────────────
+
+function markShellReady(): void {
+  if (document.body.getAttribute('data-game-shell-ready') === 'true') return;
+  document.body.setAttribute('data-game-shell-ready', 'true');
+  // Surface a testid-tagged sentinel so Vasquez can wait on the shell
+  // without needing to inspect body attributes (which Playwright's
+  // `getByTestId` cannot match against).
+  const marker = document.createElement('div');
+  marker.setAttribute('data-testid', 'game-shell-ready');
+  marker.setAttribute('aria-hidden', 'true');
+  marker.style.display = 'none';
+  document.body.appendChild(marker);
+  window.dispatchEvent(new CustomEvent('mahjong:game-shell-ready'));
+}
+
+// ── Voice gating ────────────────────────────────────────────────────
+
+function shouldEnableVoice(_client: Client): boolean {
+  if (/[?&]voice=1\b/.test(window.location.search)) return true;
+  // Bishop's Wave-3 backend broadcasts a per-game `voiceEnabled` flag
+  // through the WS `gameSettings` collection.  The voice module
+  // itself probes the flag on install and short-circuits to a
+  // disabled mic toggle when the table has voice off — we always
+  // load it so the toggle is present (the chunk is small once
+  // SignalR is pulled in by the lobby chain).
+  return true;
 }
