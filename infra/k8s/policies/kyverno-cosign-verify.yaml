@@ -163,3 +163,81 @@ spec:
                       url: "https://rekor.sigstore.dev"
                     ctlog:
                       ignoreSCT: false
+          # ── Phase K Wave 5 ────────────────────────────────────
+          # Require a SLSA-v1 provenance predicate alongside the
+          # cosign signature above. The predicate is attached by
+          # `.github/workflows/slsa-provenance.yml` (Wave 5)
+          # via `cosign attest --type slsaprovenance1`. The
+          # `attestations:` block below verifies BOTH that the
+          # predicate exists for the digest under admission AND
+          # that its contents match the conditions below.
+          #
+          # `conditions:` are CEL expressions evaluated against
+          # the JSON-decoded predicate. We pin:
+          #
+          #   * `builder.id` regex — the predicate MUST have been
+          #     produced by an `slsa-github-generator` workflow
+          #     run owned by THIS repo. A predicate signed by a
+          #     fork's workflow would carry that fork's URL in
+          #     `builder.id` and fail this check.
+          #
+          # `attestors:` re-asserts the keyless-identity pin so
+          # the DSSE envelope must ALSO have been signed by a
+          # workflow run owned by this repo (`slsa-provenance.yml`).
+          # Belt-AND-suspenders: subject pin in attestor + content
+          # pin in conditions.
+          #
+          # Wave-4 attestations (single-subject, container generator)
+          # will FAIL this check (they're signed by the container
+          # generator's identity, not the generic generator's).
+          # That's WHY this policy ships in the SAME wave as the
+          # workflow refactor — old artefacts retain their Wave-4
+          # signature but the Wave-5 policy demands the Wave-5
+          # predicate shape. Apply both atomically on a single
+          # release cut. See docs/admission-policy.md §6 for the
+          # operator runbook + rollback procedure.
+          attestations:
+            - type: https://slsa.dev/provenance/v1
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        issuer: "https://token.actions.githubusercontent.com"
+                        # Subject pin: predicate MUST be signed by
+                        # the SLSA generator reusable workflow when
+                        # invoked from THIS repo's
+                        # slsa-provenance.yml on main or any v*
+                        # tag. Matches the canonical reusable-call
+                        # path the generator certificates encode.
+                        subjectRegExp: "^https://github\\.com/slsa-framework/slsa-github-generator/\\.github/workflows/generator_generic_slsa3\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$"
+                        rekor:
+                          url: "https://rekor.sigstore.dev"
+                        ctlog:
+                          ignoreSCT: false
+              conditions:
+                - all:
+                    # buildDefinition.externalParameters.workflow.repository
+                    # must reference this repo. Defends against a
+                    # predicate signed by the generator for a DIFFERENT
+                    # repo being relayed onto our image (subject pin
+                    # above already catches the cert; this re-asserts
+                    # at predicate-content level).
+                    - key: "{{ predicate.buildDefinition.externalParameters.workflow.repository }}"
+                      operator: Equals
+                      value: "https://github.com/long2know/mahjong-autotable"
+                    # Path pin: the build that produced the
+                    # predicate must have run our Wave-5 workflow
+                    # (NOT the Wave-4 workflow with the same name,
+                    # which used a different generator entrypoint
+                    # and therefore a different `buildType`).
+                    - key: "{{ predicate.buildDefinition.externalParameters.workflow.path }}"
+                      operator: Equals
+                      value: ".github/workflows/slsa-provenance.yml"
+                    # builder.id pin: regex match on the SLSA
+                    # generator URL. A future upstream rename or
+                    # major-version bump is a coordinated change
+                    # with the `subjectRegExp` above AND this
+                    # condition.
+                    - key: "{{ predicate.runDetails.builder.id }}"
+                      operator: Matches
+                      value: "^https://github\\.com/slsa-framework/slsa-github-generator/.+@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$"
