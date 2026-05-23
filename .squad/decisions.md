@@ -2564,4 +2564,109 @@ Close the autotable disconnect bug Vasquez flagged in J-W1: `AutotableWsEndpoint
 
 ---
 
+## Phase J — Wave 3 — `9235859..489d86f` (2026-05-22)
+
+**Branch:** `stlong/phase-j-wave-3-completion` (all commits pushed)
+**Final test count:** **424 / 0 / 0** (was 418/0/0 at Phase J Wave 2 → +6 net passes, zero-skip streak **5 waves**: I.3 → I.4 → J.1 → J.2 → J.3)
+**Bundle hashes (Hicks):** JS `90818e21.js` → `330c36fd.js`; CSS `60a1fda4.css` → `f8d8d79e.css`.
+**New agent onboarded:** Apone (DevOps / Platform Engineer) — joined this wave to own Docker packaging; charter + history at `.squad/agents/apone/`.
+
+### Wave goal
+
+Three parallel lanes closing out the Wave-2 backlog: Bishop completes the `WinResult` axis cleanup (`IsSelfDraw`/`IsKongReplacement` bools Vasquez flagged in J-W2) + ships canonical `WinPattern` display ordering + adds a `/health` endpoint for Docker. Apone (new DevOps agent) ships the single-image Docker deployment Stephen originally asked for. Hicks ships sound effects + 2D replay viewer + consumes Bishop's ordering API. Vasquez locks the new surfaces with direct-axis tests + adds a live-container smoke gate.
+
+### Outcomes
+
+**Bishop — `WinResult` bools + canonical pattern ordering + `/health` endpoint**
+
+- **`/health` minimal-API endpoint** (`9235859`) — `GET /health` returns `{status: "healthy", buildSha, uptime, version}`. `processStartTime` captured at module-load BEFORE `WebApplication.CreateBuilder` so uptime reflects host start, not first-request. `BUILD_SHA` env-driven; `?? "dev"` fallback (later widened to `IsNullOrEmpty` in `489d86f` after Vasquez flagged Apone's `BUILD_SHA=""` empty-string default bypassed the null check). Distinct from legacy `/api/health` (frontend short-form probe, untouched).
+- **`WinResult.IsSelfDraw` + `WinResult.IsKongReplacement` bool surfaces** (`75baecc`) — explicit top-level bools resolve the J-W2 blind spot. Populated at both construction sites: `DeclareSelfDrawWin` (both bools track wall draw + `state.LastDrawWasKongReplacement`) and `ResolveHuClaim` (both false on `Discard` and `RobbingKong` branches — robbing-kong is **not** a kong-replacement win). Wire surfaces: SignalR `WinDeclared.winResult` + `ScoringComplete.handSummary.winResult` (anonymous-type literal in `ChangshaGameRuntime`); autotable bundle `WinResultEntry` DTO in `AutotableProtocol.cs` + `ChangshaToAutotableTranslator.cs` with explicit `[JsonPropertyName("isSelfDraw")]` / `[JsonPropertyName("isKongReplacement")]`. `Method` enum + `AllPatterns` unchanged — Wave-2 reflection-defensive helpers + Wave-3 direct-bool assertions both pass.
+- **Canonical `ChangshaPatternOrdering` table + ordering endpoint** (`2e84179`) — new static class with `IReadOnlyDictionary<WinPattern,int> Order` + `GetOrder()` + `Sort()` helpers. Ranks: HeavenlyHand=1, EarthlyHand=2, LastTileFromWall=3, LastDiscardCatch=4, KongReplacementWin=5, NineTerminals=8, AllPungs=9, SevenPairs=11, FullFlush=100, Standard=101 (slots 6/7/10/12/13 reserved for RobbedKong/NineGates/AllConcealed/SelfDraw/SingleWait so future enums slot in without renumbering). New `GET /api/changsha/pattern-ordering` Minimal API endpoint returns flat camelCase-keyed JSON map matching `WinPatternToWire` naming. Frontend fetches once at boot — no per-broadcast payload bloat.
+
+**Apone — single-image Docker deployment (NEW agent, DevOps lane)**
+
+- **Three-stage `Dockerfile` at repo root** (`ea2c991`) — Stage 1 `node:20-alpine` runs `npm ci` + Parcel build with mandatory `--public-url .` (Phase G invariant); Stage 2 `mcr.microsoft.com/dotnet/sdk:10.0` publishes the API with `UseAppHost=false`; Stage 3 `mcr.microsoft.com/dotnet/aspnet:10.0` installs `curl` + `tini`, copies bundle to `/frontend/autotable/` (the exact path Program.cs L65 resolves to with `WORKDIR=/app` — no backend code change required), creates `/data` volume for SQLite, sets `ConnectionStrings__Sqlite="Data Source=/data/mahjong-autotable.db"` + `Persistence__Provider=Sqlite`, exposes 8080, wires `HEALTHCHECK` against `/health` with `/api/health` fallback. Final image 299 MB, cold build 47s, warm 16s.
+- **`docker-compose.yml` + `.dockerignore`** — Compose builds `mahjong-autotable:local`, named volume `mahjong-data` on `/data`, `${BUILD_SHA:-local}` passthrough, `restart: unless-stopped`. `.dockerignore` trims context from ~2.5 GB to a few MB (excludes `node_modules`, `.parcel-cache`, `bin`/`obj`, `src/frontend/autotable/` pre-build, `src/backend/tests/`, `.git`, `.squad`, `*.db`, `data/`).
+- **`docs/deployment.md` + `docs/docker.md`** — full Linux runbook (11 sections: prereqs, build/run, env vars, persistence/backup, healthcheck, day-2 ops, updates, troubleshooting) + 5-minute quickstart; replaced stale `## Docker (single image)` README section that referenced the deleted `modern/` Vite frontend.
+
+**Hicks — sound effects + 2D replay viewer + canonical pattern ordering**
+
+- **Sound effects (`src/sound.ts`, ~310 LOC, NEW)** — Web Audio API synth (zero binary assets, CC0-by-construction). Six events: draw/discard (clack — white-noise + 800 Hz sine, 80 ms), claim (chime — 660/880 Hz partials, 150 ms), win (fanfare — triangle arpeggio C5-E5-G5-C6), washout (sawtooth gliss 440→110 Hz, 600 ms), gameComplete (rolled C-major triangle chord). AudioContext lazy-created on first `click`/`touch`/`keydown` (autoplay unlock); settings drawer `#settings-sound` checkbox + `?sound=on|off` URL override drive `Sound.setMuted()`. Draw SFX throttled 200 ms so initial 13-tile deal collapses to one clack.
+- **2D replay viewer (`src/replay.ts`, ~640 LOC, NEW)** — top-down DOM-based viewer accessed from end-of-game modal via new `#game-complete-replay` button. Per-seat quadrants with unicode tile glyph chips; per-hand timeline with step/play/scrub footer. Captures `client.things` transitions in real time (`hand.*` → draw, `discard.*` → discard, `meld.*` → meld) into per-hand buffer; flushes on every `result.current` update. Server `handHistory` from `gameComplete` payload merged in `Replay.open()` with server precedence. 3D scene reuse deferred — coupling cost broke Wave 3 budget.
+- **Canonical pattern ordering wired both ways** — `PATTERN_DISPLAY_ORDER` in `game-ui.ts` mirrors Bishop's table 1:1 as a hardcoded fallback; `loadPatternOrderingFromApi()` fires fire-and-forget `fetch('api/changsha/pattern-ordering')` at boot from `src/index.ts` and overwrites the in-process map with Bishop's canonical table on success (graceful fallback on 404/offline). `comparePatterns()`/`sortPatterns()` applied to result-modal chip strip and move-log Hu-row patterns. `WinResult.IsSelfDraw`/`IsKongReplacement` consumed in `move-log.ts` (prefix selection falls back to `isSelfDraw` bool when `winType` is missing; `isKongReplacement` destructured but informational — verb selector already covers it via `AllPatterns`).
+
+**Vasquez — 6 new test facts + Docker smoke gate**
+
+- **`WinResultSurfaceTests.cs` (4 facts, +316 LOC)** — direct-axis pinning of Bishop's new bools (no reflection fallback — Wave 2 already covers that case). Complementary to Wave-2's `SelfDrawWinContextTests`: Wave 2 = "canonical contract holds via either surface", Wave 3 = "the new surface IS the canonical contract". Tests: `SelfDrawHu_HasIsSelfDrawTrue` (DeclareSelfDrawWin), `RonHu_HasIsSelfDrawFalse` (ResolveClaim/Hu), `KongReplacementHu_BothBoolsTrue` (杠上开花 — reuses Wave-2 `BuildKongReplacementWinScenario`), `RegularDiscardHu_KongReplacementFalse` (negative pin against stale-flag-bleed; asserts `state.LastDrawWasKongReplacement == false` pre-condition + `AllPatterns` agrees).
+- **`HealthEndpointTests.cs` (2 facts, +158 LOC)** — `WebApplicationFactory<Program>` + per-test temp SQLite + ChangshaRuntimeOptions snapshot (same harness as `SpectatorModeTests`). Tests: `HealthEndpoint_ReturnsOk_WithExpectedShape` (200 + all four fields present + `status` non-empty `JsonValueKind.String`), `HealthEndpoint_BuildSha_DefaultsToDev_WhenUnset` (snapshot/null/restore on `BUILD_SHA` env, pins `?? "dev"` contract). Latter test motivated Bishop's `489d86f` empty-string widening.
+- **`tests/smoke/docker-build-smoke.sh` + `README.md`** — end-to-end smoke verifying Apone's Dockerfile builds, container starts on host port 18080, `/health` returns the four-field shape via real `curl`. Auto-detects Dockerfile (prefers repo-root, falls back to `infra/docker/Dockerfile`). Per-PID isolation + trap-driven cleanup. **Verified locally** — Docker 29.5.2, 17s with cached layers, all four fields present, full teardown confirmed. Live smoke surfaced the `BUILD_SHA=""` empty-string blind spot (response carried `buildSha=""` not `"dev"`), which `489d86f` resolved.
+
+### Wire surface additions
+
+- **REST `GET /health`** — `{status: "healthy", buildSha, uptime: ISO-8601 TimeSpan, version}`. Process-liveness probe (always 200 when responsive; no DB check). `buildSha` reads `BUILD_SHA` env (`"dev"` fallback for both null AND empty after `489d86f`). Distinct from legacy `GET /api/health` (frontend short-form probe, unchanged).
+- **REST `GET /api/changsha/pattern-ordering`** — flat camelCase-keyed JSON map of `WinPattern` wire names → integer rank. Frontend fetches once at boot to override its hardcoded fallback list.
+- **SignalR `WinDeclared.winResult.isSelfDraw` + `.isKongReplacement`** — both bools surfaced on `WinDeclared` and `ScoringComplete.handSummary.winResult` envelopes. Backward-compat: `winType`, `method`, `allPatterns` keys unchanged.
+- **Autotable bundle WS `collection-entry → handResult → winResult.isSelfDraw` + `.isKongReplacement`** — same field names via `WinResultEntry` DTO + explicit `[JsonPropertyName]` attributes in `ChangshaToAutotableTranslator`.
+- **Frontend DOM hooks (for future Playwright selectors):** `#replay-screen` (overlay root), `#settings-sound` (toggle checkbox), `#game-complete-replay` ("View Replay" button in gameComplete modal).
+- **Docker:** `Dockerfile` (repo root), `docker-compose.yml`, `.dockerignore`, named volume `mahjong-data` on `/data`, env vars `BUILD_SHA` + `ConnectionStrings__Sqlite` + `Persistence__Provider` + `ASPNETCORE_URLS`, HEALTHCHECK 30s/5s/20s/3.
+
+### Tech-debt + follow-ups
+
+**Vasquez's blind spots (Wave 4 candidates):**
+
+1. **`ChangshaPatternOrdering` endpoint (Bishop `2e84179`) is not unit-test covered.** It was not in the Wave-3 brief's three tasks. J-4 should add: (a) endpoint returns 200 with expected list, (b) order matches Bishop's documented sequence, (c) every `WinPattern` enum value has an ordering entry (no silent omissions when new patterns ship).
+2. **Apone's HEALTHCHECK timing is generous but slow-path-untested.** `--interval=30s --timeout=5s --start-period=20s --retries=3` gives 20s grace; cold builds with first-time .NET base-image pulls can exceed 2-5 min for the Parcel stage. Smoke script polls 30s, comfortably below `start-period` on cached runs but unverified on truly cold pulls.
+
+**Coordinator follow-ups for Wave 4:**
+
+1. **Delete `infra/docker/Dockerfile`** — Apone called out the deprecated legacy Dockerfile (references non-existent `runtime-modern` target + deleted `modern/` Vite frontend). One-line housekeeping commit.
+2. **`Program.cs` L16 still creates an empty `/app/data` directory** next to the new `/data/mahjong-autotable.db` location. Harmless in dev (the local-mode path uses `ContentRootPath/data`) but odd in container. Bishop's call: delete the line or leave for dev `dotnet run` parity.
+3. **Wire `tests/smoke/docker-build-smoke.sh` into CI** on PRs touching `Dockerfile`, `.dockerignore`, `docker-compose.yml`, or `src/frontend/autotable-src/package*.json` (per Apone's recommendation).
+4. **3D replay scene** — Hicks deferred 3D reuse to validate 2D viewer first. Once player feedback comes in, the 3D upgrade can layer over the same `Replay` data buffer.
+5. **Playwright smoke for sound toggle + replay viewer open/close** — new DOM hooks available (`#settings-sound`, `#game-complete-replay`, `#replay-screen`).
+6. **`loadPatternOrderingFromApi()` unit test** — mock fetch, assert order takes effect over hardcoded fallback.
+7. **i18n display ordering for `AllPatterns`** (carryover from J-W2 backlog — still open).
+8. **Seed 40595 4000-step pathology** (carryover from I-W4 backlog — still open).
+9. **Carryover from earlier waves:** `_bindingLock` per-game profiling, reconcile `GameComplete` vs `EndGame` modals if both ever needed, NineTerminals strict-vs-loose semantics.
+
+**Standing directives still pinned (verified locally on disk):**
+
+- `.squad/decisions/inbox/copilot-directive-20260522-no-pauses.md` — Stephen's "no pauses, fan out and keep iterating until 100% done done." Coordinator launches new waves immediately after merge.
+- `.squad/decisions/inbox/copilot-directive-20260522-opus-default.md` — All agents (including Scribe + mechanical roles) use `claude-opus-4.7-xhigh`. Persisted via `.squad/config.json` `defaultModel`. Overrides any cost-based downgrade defaults in `squad.agent.md`.
+
+Both files are .gitignored so future Scribes can re-fold them if needed; their continued local presence is the source of truth for the directive surviving across sessions.
+
+### Test gate
+
+- **Baseline (Phase J Wave 2):** 418 / 0 / 0
+- **Final (Phase J Wave 3):** **424 / 0 / 0** (+6 net: `HealthEndpointTests` × 2 + `WinResultSurfaceTests` × 4)
+- **Docker smoke:** PASSED on live local container (Docker 29.5.2, 17s cached, per-PID isolation + trap-driven cleanup confirmed — no leaked images/containers/log dirs).
+- **TypeScript strict + Parcel:** 0 src/ errors, build 4.29s.
+- **Zero-skip streak:** **5 waves** (J-W3 makes 5 consecutive waves green counting only the J-series; or 7 consecutive counting back to I-W3, per Vasquez's tally).
+
+### Notable findings
+
+**`BUILD_SHA=""` blind spot — caught in production via live smoke, fixed mid-wave.** Apone's `ENV BUILD_SHA=""` (Dockerfile line 83) sets the variable to an empty string, not unset. Bishop's `?? "dev"` only catches `null`, so live `/health` responses carried `buildSha=""`. Vasquez's in-process test correctly pinned the `?? "dev"` contract because `Environment.SetEnvironmentVariable("BUILD_SHA", null)` actually unsets in-process — the contract was right; production just bypassed it. Bishop's `489d86f` widened to `string.IsNullOrEmpty(...) ? "dev" : value`. Lesson: WebApplicationFactory + live-container smoke are genuinely complementary; either alone would have missed this.
+
+**Bishop's three Wave-3 commits published surfaces in working-tree state BEFORE committing**, letting Vasquez scaffold all 6 unit tests against the unc​ommitted state and reach 6/6 green BEFORE Bishop's commits landed. Apone's Dockerfile published HEALTHCHECK details in his memo before commit, letting Vasquez wire the smoke script against the known wire shape. This "scaffold against published contract, hand off uncommitted" pattern now used in 3 consecutive waves (J-W1, J-W2, J-W3) — clean linear history with strict-disjoint lanes every time.
+
+**Synth-only sound = zero coordination tax.** Hicks's Web Audio API approach shipped six sound events with zero binary assets, zero Dockerfile changes, zero CC0 audit, and zero cross-agent dependencies. Pattern locked for future audio work on this codebase unless/until players ask for richer asset-based sound.
+
+### Phase J Wave 4 backlog
+
+1. CI wiring for `tests/smoke/docker-build-smoke.sh` (Dockerfile-touching PRs).
+2. `ChangshaPatternOrdering` endpoint unit tests (Vasquez blind spot #1).
+3. Delete `infra/docker/Dockerfile` (Apone follow-up).
+4. `Program.cs` L16 `data/` dir creation review (Bishop call).
+5. Playwright smoke for sound toggle + replay viewer (Hicks DOM hooks ready).
+6. 3D replay scene upgrade (Hicks deferred; reuse `Replay` data buffer).
+7. `loadPatternOrderingFromApi()` unit test (Hicks/Vasquez).
+8. i18n display ordering for `AllPatterns` (carryover).
+9. Seed 40595 4000-step pathology (carryover).
+10. `_bindingLock` per-game profiling (carryover).
+11. Reconcile `GameComplete` vs `EndGame` modals if both needed (carryover).
+12. NineTerminals strict-vs-loose semantics — pending Stephen's call (carryover).
+
+---
+
 
