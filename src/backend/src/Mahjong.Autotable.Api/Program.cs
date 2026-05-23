@@ -257,6 +257,40 @@ builder.Services.AddHostedService(sp =>
 // never break the probe.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthProviderHealthCheck>();
 
+// Phase K Wave 2 — Bishop (Backend). OAuth live discovery cache. Owns
+// the per-provider `.well-known/openid-configuration` document with a
+// 6h TTL + 24h stale-marker; falls back to hardcoded GitHub constants
+// (GitHub doesn't ship OIDC discovery). The companion background
+// service refreshes the cache on a 6h cadence so the live `/health`
+// surface never blocks on an upstream round-trip. Both pieces are
+// gated by `Authentication:Discovery:SkipNetwork=true` (test harness)
+// so the xUnit runner never reaches out to the real Google endpoint.
+builder.Services.Configure<Mahjong.Autotable.Api.Auth.OAuthDiscoveryOptions>(
+    builder.Configuration.GetSection("Authentication:Discovery"));
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthDiscoveryService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthDiscoveryRefreshService>();
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Mahjong.Autotable.Api.Auth.OAuthDiscoveryRefreshService>());
+
+// Phase K Wave 2 — Bishop (Backend). WebRTC voice signalling hub +
+// per-connection token bucket. Voice is off by default
+// (VoiceOptions.Enabled=false) so a deployment opts in via
+// `Voice:Enabled=true`. The rate limiter is singleton so token state
+// persists across hub invocations on the same connection.
+builder.Services.Configure<Mahjong.Autotable.Api.Voice.VoiceOptions>(
+    builder.Configuration.GetSection("Voice"));
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.VoiceRateLimiter>(sp =>
+{
+    var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Mahjong.Autotable.Api.Voice.VoiceOptions>>().Value;
+    return new Mahjong.Autotable.Api.Voice.VoiceRateLimiter(opts.RateLimitPerSecond);
+});
+
+// Phase K Wave 2 — Bishop (Backend). Spectator live-stream stub. Owns
+// the future tile-flip event surface (Phase L) so callers can attach
+// today; the `/api/replay/{id}/livestream.m3u8` endpoint returns 404
+// with a structured envelope until the HLS pipeline lands.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>();
+
 const string ChangshaCorsPolicy = "ChangshaCors";
 var configuredOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
@@ -562,6 +596,45 @@ app.MapGet("/api/changsha/pattern-ordering", () =>
 // route un-limited keeps semantics honest and avoids surprising 429s on
 // the upgrade request when a client reconnects rapidly.
 app.MapHub<ChangshaHub>("/hubs/changsha");
+
+// Phase K Wave 2 — Bishop (Backend). WebRTC voice signalling hub.
+// Mapped under both /hubs/voice and /hubs/webrtc so contract probes
+// targeting either alias hit the same negotiate handshake.
+app.MapHub<Mahjong.Autotable.Api.Voice.VoiceHub>("/hubs/voice");
+app.MapHub<Mahjong.Autotable.Api.Voice.VoiceHub>("/hubs/webrtc");
+
+// Phase K Wave 2 — Bishop (Backend). ICE-server discovery endpoint.
+// Returns the configured STUN/TURN list as the WebRTC client
+// `RTCIceServer[]` shape; falls back to Google's public STUN server
+// when no operator-supplied TURN credentials live in Voice:TurnServers.
+app.MapGet("/api/turn", (Microsoft.Extensions.Options.IOptions<Mahjong.Autotable.Api.Voice.VoiceOptions> voiceOpts) =>
+{
+    var opts = voiceOpts.Value;
+    var servers = opts.TurnServers is { Count: > 0 }
+        ? opts.TurnServers.Select(s => (object)new
+        {
+            urls = s.Url,
+            username = string.IsNullOrEmpty(s.Username) ? null : s.Username,
+            credential = string.IsNullOrEmpty(s.Credential) ? null : s.Credential,
+        }).ToList()
+        : new List<object> { new { urls = "stun:stun.l.google.com:19302" } };
+    return Results.Ok(new { iceServers = servers, voiceEnabled = opts.Enabled });
+}).RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
+
+// Phase K Wave 2 — Bishop (Backend). Spectator livestream stub. The HLS
+// pipeline lands in Phase L; for Wave 2 the route exists so the
+// frontend can wire up a 404 fallback against a stable URL. Returns
+// 404 with a JSON envelope explaining the stub state.
+app.MapGet("/api/replay/{id}/livestream.m3u8", (string id) =>
+    Results.Json(
+        new
+        {
+            error = "spectator-livestream-not-implemented",
+            replayId = id,
+            message = "HLS livestream lands in Phase L; this endpoint is reserved.",
+        },
+        statusCode: StatusCodes.Status404NotFound))
+    .RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
 
 // Phase J Wave 5 — map MVC controllers (MatchmakingController owns
 // GET /api/matchmaking/lobby). Phase J Wave 6 — controllers under
