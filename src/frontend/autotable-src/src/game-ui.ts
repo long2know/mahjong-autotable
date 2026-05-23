@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import { Client } from "./client";
+import { Client, GameCompleteEntry } from "./client";
 import { readSpectatorFromUrl } from './client-ui';
 import { World } from "./world";
 import {
@@ -348,7 +348,43 @@ export class GameUi {
     moveSeatBtn: HTMLButtonElement;
     moveSeatPanel: HTMLElement;
     moveSeatOptions: Array<HTMLButtonElement>;
+    // Phase J Wave 2 — End-of-game summary modal.  Rendered when the
+    // runtime pushes `gameComplete["current"]` with the completion flag
+    // set.  All children are populated by renderGameComplete; the modal
+    // hides itself via Bootstrap on the New Game / Back to Lobby clicks
+    // (which then mutate the URL to restart or punt to the lobby).
+    gameCompleteModal: HTMLElement;
+    gameCompleteHeadline: HTMLElement;
+    gameCompleteSubtitle: HTMLElement;
+    gameCompleteTotalsBody: HTMLTableSectionElement;
+    gameCompleteRecap: HTMLElement;
+    gameCompleteNewGameBtn: HTMLButtonElement;
+    gameCompleteLobbyBtn: HTMLButtonElement;
+    // Phase J Wave 2 — Settings drawer (gear icon + slide-out panel).
+    // Persists bot strength, hand count, and auto-deal to localStorage
+    // keyed by gameId; Apply rebuilds the URL with the new params and
+    // navigates so the runtime picks them up on the next JOIN.
+    settingsToggle: HTMLButtonElement;
+    settingsDrawer: HTMLElement;
+    settingsClose: HTMLButtonElement;
+    settingsBotStrength: HTMLSelectElement;
+    settingsHandCount: HTMLSelectElement;
+    settingsAutoDeal: HTMLInputElement;
+    settingsApply: HTMLButtonElement;
+    settingsSavedNote: HTMLElement;
   }
+
+  // Phase J Wave 2 — client-side hand history.  We capture each
+  // `result.current` UPDATE so the end-of-game modal can render a per-
+  // hand recap even when Bishop's runtime doesn't ship a `handHistory`
+  // array.  Cleared on every fresh JOIN (the gameComplete tombstone)
+  // and on New Game from the modal.
+  private handHistory: Array<HandResultEntry> = [];
+
+  // Phase J Wave 2 — guard so re-renders driven by collection updates
+  // don't re-open the modal once the user has dismissed it via the
+  // New Game or Back to Lobby buttons.
+  private gameCompleteShown: boolean = false;
 
   // Phase D — claim window state.
   private activeClaim: ClaimWindowEntry | null = null;
@@ -413,6 +449,21 @@ export class GameUi {
       moveSeatPanel:       document.getElementById('move-seat-panel') as HTMLElement,
       moveSeatOptions:     Array.from(
         document.querySelectorAll<HTMLButtonElement>('#move-seat-panel .move-seat-option')),
+      gameCompleteModal:        document.getElementById('game-complete-modal') as HTMLElement,
+      gameCompleteHeadline:     document.getElementById('game-complete-headline') as HTMLElement,
+      gameCompleteSubtitle:     document.getElementById('game-complete-subtitle') as HTMLElement,
+      gameCompleteTotalsBody:   document.querySelector('#game-complete-totals tbody') as HTMLTableSectionElement,
+      gameCompleteRecap:        document.getElementById('game-complete-recap') as HTMLElement,
+      gameCompleteNewGameBtn:   document.getElementById('game-complete-new-game') as HTMLButtonElement,
+      gameCompleteLobbyBtn:     document.getElementById('game-complete-lobby') as HTMLButtonElement,
+      settingsToggle:           document.getElementById('settings-toggle') as HTMLButtonElement,
+      settingsDrawer:           document.getElementById('settings-drawer') as HTMLElement,
+      settingsClose:            document.getElementById('settings-close') as HTMLButtonElement,
+      settingsBotStrength:      document.getElementById('settings-bot-strength') as HTMLSelectElement,
+      settingsHandCount:        document.getElementById('settings-hand-count') as HTMLSelectElement,
+      settingsAutoDeal:         document.getElementById('settings-auto-deal') as HTMLInputElement,
+      settingsApply:            document.getElementById('settings-apply') as HTMLButtonElement,
+      settingsSavedNote:        document.getElementById('settings-saved-note') as HTMLElement,
     };
     for (let i = 0; i < 4; i++) {
       this.elements.takeSeat[i] = document.querySelector(
@@ -439,6 +490,8 @@ export class GameUi {
     this.setupPhaseFPickers();
     this.setupPickupHud();
     this.setupMoveSeatPicker();
+    this.setupGameCompleteModal();
+    this.setupSettingsDrawer();
   }
 
   private setupEvents(): void {
@@ -811,10 +864,26 @@ export class GameUi {
         $('#result-modal').modal('hide');
         continue;
       }
+      // Phase J Wave 2 — accumulate per-hand history client-side so the
+      // end-of-game modal can render a recap even when the runtime
+      // doesn't push a dedicated `handHistory` array.  Skip duplicates
+      // that arise from full-sync replays (key is "current" so we use
+      // a structural fingerprint instead of array length).
+      this.recordHandResult(value);
       this.renderResult(value);
       // @ts-ignore
       $('#result-modal').modal('show');
     }
+  }
+
+  // Phase J Wave 2 — append the latest hand result to the client-side
+  // history buffer used by the end-of-game modal.  Deduplicated against
+  // the previous entry so connect-time full-syncs (which replay the
+  // current `result` entry) don't double-count.
+  private recordHandResult(result: HandResultEntry): void {
+    const last = this.handHistory[this.handHistory.length - 1];
+    if (last && JSON.stringify(last) === JSON.stringify(result)) return;
+    this.handHistory.push(result);
   }
 
   private renderResult(result: HandResultEntry): void {
@@ -1598,5 +1667,397 @@ export class GameUi {
     }
 
     this.client.disconnect();
+  }
+
+  // ---------------------------------------------------------------------
+  // Phase J Wave 2 — End-of-game summary modal.
+  //
+  // Subscribes to the `gameComplete` collection (singleton key="current")
+  // that Bishop's runtime emits when MaxHands is exhausted.  Renders a
+  // modal showing:
+  //   • Per-seat total point delta across the match.  Sourced from the
+  //     payload's `totalScores` when present, else derived client-side by
+  //     summing the `result.current` updates we observed.
+  //   • Hand-by-hand recap.  Sourced from the payload's `handHistory`
+  //     when present, else the client-side history.
+  //
+  // The two action buttons:
+  //   • New Game  — bake the current settings-drawer state into the URL
+  //                 and reload, so the runtime spins up a fresh game.
+  //   • Lobby     — punt the user to the bare URL, where lobby.ts opens
+  //                 the panel automatically (shouldShowOnLoad).
+  // ---------------------------------------------------------------------
+  private setupGameCompleteModal(): void {
+    this.elements.gameCompleteNewGameBtn.onclick = () => {
+      this.dismissGameCompleteModal();
+      this.startNewGameFromSettings();
+    };
+    this.elements.gameCompleteLobbyBtn.onclick = () => {
+      this.dismissGameCompleteModal();
+      // Reset URL to bare so the lobby auto-opens (lobby.ts:shouldShowOnLoad).
+      window.location.search = '';
+    };
+    this.client.gameComplete.on('update', this.onGameCompleteUpdate.bind(this));
+
+    // Also re-evaluate on every new JOIN: clear any stale history (we may
+    // be reconnecting to a fresh game) and re-arm the modal-shown guard.
+    this.client.on('connect', () => {
+      // Drop client-side history on JOIN — full-sync replay will repopulate.
+      this.handHistory = [];
+      this.gameCompleteShown = false;
+    });
+  }
+
+  private onGameCompleteUpdate(
+    entries: Array<[string, GameCompleteEntry | null]>,
+  ): void {
+    for (const [key, value] of entries) {
+      if (key !== 'current') continue;
+      if (value === null) {
+        // Tombstone — server cleared the flag (new game starting).  Hide
+        // and reset the dismissal guard so the next completion shows.
+        this.dismissGameCompleteModal();
+        this.gameCompleteShown = false;
+        continue;
+      }
+      const isComplete =
+        value.isComplete ?? value.IsComplete ??
+        value.isGameComplete ?? value.IsGameComplete ?? false;
+      if (!isComplete) continue;
+      if (this.gameCompleteShown) continue;
+      this.gameCompleteShown = true;
+      this.renderGameComplete(value);
+      // @ts-ignore
+      $('#game-complete-modal').modal('show');
+    }
+  }
+
+  private dismissGameCompleteModal(): void {
+    // @ts-ignore
+    $('#game-complete-modal').modal('hide');
+  }
+
+  private renderGameComplete(payload: GameCompleteEntry): void {
+    // ── Subtitle: "N hands · East wind" — pulled from the payload's
+    // optional MaxHands or our own history length.
+    const totalHands = (
+      payload.maxHands ?? payload.MaxHands ?? this.handHistory.length
+    );
+    this.elements.gameCompleteSubtitle.textContent =
+      totalHands > 0
+        ? `${totalHands}-hand match complete`
+        : 'Match complete';
+
+    // ── Per-seat totals ──────────────────────────────────────────────
+    const totals = this.computeFinalScores(payload);
+    const totalsBody = this.elements.gameCompleteTotalsBody;
+    totalsBody.innerHTML = '';
+    const winds = ['E 东', 'S 南', 'W 西', 'N 北'];
+    const ranked = [...totals.entries()]
+      .sort((a, b) => b[1] - a[1]);
+    for (const [seat, delta] of ranked) {
+      const tr = document.createElement('tr');
+      const tdSeat = document.createElement('td');
+      tdSeat.textContent = `${seat} (${winds[seat] ?? '?'})`;
+      const tdNick = document.createElement('td');
+      const nick = this.nickForSeat(seat);
+      const isSelf = seat === this.client.seat;
+      tdNick.textContent = (nick ?? `Seat ${seat}`) + (isSelf ? ' (You)' : '');
+      if (isSelf) tdNick.classList.add('game-complete-self');
+      const tdDelta = document.createElement('td');
+      tdDelta.textContent = delta > 0 ? `+${delta}` : String(delta);
+      tdDelta.style.color =
+        delta > 0 ? '#9ee69e' : delta < 0 ? '#ff9494' : '#cccccc';
+      tdDelta.style.fontWeight = 'bold';
+      tr.appendChild(tdSeat);
+      tr.appendChild(tdNick);
+      tr.appendChild(tdDelta);
+      totalsBody.appendChild(tr);
+    }
+
+    // ── Hand-by-hand recap ──────────────────────────────────────────
+    const recap = this.elements.gameCompleteRecap;
+    recap.innerHTML = '';
+    const hands =
+      payload.handHistory ?? payload.HandHistory ?? this.handHistory;
+    if (hands.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'game-complete-recap-empty';
+      empty.textContent = 'No hands recorded.';
+      recap.appendChild(empty);
+    } else {
+      hands.forEach((h, i) => {
+        const row = document.createElement('div');
+        row.className = 'game-complete-recap-row';
+        const label = document.createElement('span');
+        label.className = 'game-complete-recap-label';
+        label.textContent = `Hand ${i + 1}:`;
+        row.appendChild(label);
+        const summary = document.createElement('span');
+        summary.className = 'game-complete-recap-summary';
+        if (h.type === 'Hu') {
+          const nick = this.nickForSeat(h.winner) ?? `Seat ${h.winner}`;
+          const deltas = [...(h.score ?? [])].sort((a, b) => a.seat - b.seat);
+          const deltaText = deltas
+            .map(d => (d.delta > 0 ? `+${d.delta}` : String(d.delta)))
+            .join(' / ');
+          summary.textContent = `${nick} won  (${deltaText})`;
+          summary.classList.add('game-complete-recap-hu');
+        } else if (h.type === 'ZhaHu') {
+          const nick = this.nickForSeat(h.winner) ?? `Seat ${h.winner}`;
+          summary.textContent = `${nick} false-Hu`;
+          summary.classList.add('game-complete-recap-zha');
+        } else {
+          summary.textContent = 'Washout 流局';
+          summary.classList.add('game-complete-recap-draw');
+        }
+        row.appendChild(summary);
+        recap.appendChild(row);
+      });
+    }
+  }
+
+  // Phase J Wave 2 — Build the per-seat point total map.  Priority:
+  // server-pushed `totalScores` → sum of client-side history → zero.
+  // Returns a Map<seat, delta> with all four seats represented (even
+  // when their delta is zero) so the modal's table is always 4 rows.
+  private computeFinalScores(payload: GameCompleteEntry): Map<number, number> {
+    const totals = new Map<number, number>();
+    for (let i = 0; i < 4; i++) totals.set(i, 0);
+
+    const wireTotals = payload.totalScores ?? payload.TotalScores ?? null;
+    if (wireTotals !== null) {
+      for (const [k, v] of Object.entries(wireTotals)) {
+        const seat = parseInt(k, 10);
+        if (!isNaN(seat) && totals.has(seat) && typeof v === 'number') {
+          totals.set(seat, v);
+        }
+      }
+      return totals;
+    }
+
+    // Fallback: derive from observed hand-by-hand deltas.
+    for (const h of this.handHistory) {
+      for (const { seat, delta } of h.score ?? []) {
+        if (totals.has(seat)) totals.set(seat, (totals.get(seat) ?? 0) + delta);
+      }
+    }
+    return totals;
+  }
+
+  // Phase J Wave 2 — Restart the match using the current settings-drawer
+  // values.  Reads the drawer (or falls back to URL/localStorage), bakes
+  // the params into the page URL, and reloads so the runtime spins up a
+  // fresh game with the chosen settings.  Preserves the active gameId so
+  // the user stays in the same WS routing pool unless they manually
+  // changed it.
+  private startNewGameFromSettings(): void {
+    const settings = readSettingsState();
+    const params = new URLSearchParams(window.location.search);
+    // Preserve any existing variant/seat/seed; replace the W2-controlled
+    // params (botDifficulty, handCount, dealMode) with the latest drawer
+    // values.  botCount stays at whatever the lobby last picked (default 3).
+    params.set('botDifficulty', settings.botStrength);
+    params.set('handCount', String(settings.handCount));
+    params.set('dealMode', settings.autoDeal ? 'auto' : 'manual');
+    if (!params.has('variant')) params.set('variant', 'changsha');
+    if (!params.has('botCount')) params.set('botCount', '3');
+    const url = window.location.pathname + '?' + params.toString();
+    window.location.replace(url);
+  }
+
+  // ---------------------------------------------------------------------
+  // Phase J Wave 2 — Settings drawer (gear icon top-right).
+  //
+  // A tiny per-game settings panel exposing the three knobs the directive
+  // calls out:
+  //   • Bot Strength (Easy / Medium / Hard, default Hard)
+  //   • Hand Count   (1 / 4 / 8 / 16, default 4)
+  //   • Auto-Deal    (checkbox, default off — runtime auto-starts hands)
+  //
+  // Settings are persisted via gameId-keyed localStorage so each WS
+  // routing pool keeps its own.  Apply rewrites the URL with the new
+  // params and reloads, which is the same pattern the lobby uses.
+  // ---------------------------------------------------------------------
+  private setupSettingsDrawer(): void {
+    // Re-hydrate from localStorage on boot (gameId-keyed; falls back to
+    // a global default key when gameId isn't on the URL yet).
+    const state = readSettingsState();
+    this.elements.settingsBotStrength.value = state.botStrength;
+    this.elements.settingsHandCount.value = String(state.handCount);
+    this.elements.settingsAutoDeal.checked = state.autoDeal;
+
+    this.elements.settingsToggle.onclick = (e: MouseEvent) => {
+      e.stopPropagation();
+      const open = this.elements.settingsDrawer.classList.contains('settings-open');
+      if (open) {
+        this.closeSettingsDrawer();
+      } else {
+        this.openSettingsDrawer();
+      }
+    };
+
+    this.elements.settingsClose.onclick = () => this.closeSettingsDrawer();
+
+    const onChange = (): void => this.persistSettings();
+    this.elements.settingsBotStrength.addEventListener('change', onChange);
+    this.elements.settingsHandCount.addEventListener('change', onChange);
+    this.elements.settingsAutoDeal.addEventListener('change', onChange);
+
+    this.elements.settingsApply.onclick = () => {
+      this.persistSettings();
+      this.startNewGameFromSettings();
+    };
+
+    // Click outside closes the drawer.  We bind on document mousedown so
+    // any click that isn't inside the drawer or on the toggle button
+    // collapses it.
+    document.addEventListener('mousedown', (e: MouseEvent) => {
+      if (!this.elements.settingsDrawer.classList.contains('settings-open')) return;
+      const target = e.target as Node | null;
+      if (target && (
+        this.elements.settingsDrawer.contains(target)
+        || this.elements.settingsToggle.contains(target)
+      )) return;
+      this.closeSettingsDrawer();
+    });
+  }
+
+  private openSettingsDrawer(): void {
+    this.elements.settingsDrawer.classList.add('settings-open');
+    this.elements.settingsDrawer.setAttribute('aria-hidden', 'false');
+  }
+
+  private closeSettingsDrawer(): void {
+    this.elements.settingsDrawer.classList.remove('settings-open');
+    this.elements.settingsDrawer.setAttribute('aria-hidden', 'true');
+  }
+
+  private persistSettings(): void {
+    const state: SettingsState = {
+      botStrength: this.elements.settingsBotStrength.value as BotStrength,
+      handCount: parseInt(this.elements.settingsHandCount.value, 10) as SettingsHandCount,
+      autoDeal: this.elements.settingsAutoDeal.checked,
+    };
+    writeSettingsState(state);
+    // Flash a "Saved ✓" pill so the user sees the persist landed.
+    const note = this.elements.settingsSavedNote;
+    note.style.display = 'inline';
+    window.setTimeout(() => {
+      note.style.display = 'none';
+    }, 1500);
+  }
+}
+
+// ---------------------------------------------------------------------
+// Phase J Wave 2 — Settings drawer state + localStorage helpers.
+//
+// Settings live in localStorage under a gameId-keyed key so each WS
+// routing pool keeps its own settings.  When the page URL carries no
+// gameId yet (boot-time, before the user clicks Connect), we fall back
+// to a global default key so the drawer still pre-populates.
+// ---------------------------------------------------------------------
+
+type BotStrength = 'Easy' | 'Medium' | 'Hard';
+type SettingsHandCount = 1 | 4 | 8 | 16;
+
+interface SettingsState {
+  botStrength: BotStrength;
+  handCount: SettingsHandCount;
+  autoDeal: boolean;
+}
+
+const SETTINGS_DEFAULT: SettingsState = {
+  botStrength: 'Hard',
+  handCount: 4,
+  autoDeal: false,
+};
+
+const SETTINGS_LS_PREFIX = 'autotable.phaseJ.v1.settings.';
+const SETTINGS_LS_GLOBAL = SETTINGS_LS_PREFIX + 'default';
+
+function settingsLocalStorageKey(): string {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const gameId = q.get('gameId');
+    if (gameId !== null && gameId !== '') {
+      return SETTINGS_LS_PREFIX + gameId;
+    }
+  } catch {
+    /* ignore — fall through to global key */
+  }
+  return SETTINGS_LS_GLOBAL;
+}
+
+function readSettingsState(): SettingsState {
+  // Priority: URL params > gameId-keyed localStorage > global localStorage
+  // > SETTINGS_DEFAULT.  URL wins so a deep-linked match starts with the
+  // chosen settings even before localStorage gets touched.
+  const out: SettingsState = { ...SETTINGS_DEFAULT };
+
+  const tryLoad = (key: string): Partial<SettingsState> => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw === null) return {};
+      const j = JSON.parse(raw) as Record<string, unknown>;
+      const partial: Partial<SettingsState> = {};
+      if (j.botStrength === 'Easy' || j.botStrength === 'Medium' || j.botStrength === 'Hard') {
+        partial.botStrength = j.botStrength;
+      }
+      if (typeof j.handCount === 'number'
+          && (j.handCount === 1 || j.handCount === 4
+              || j.handCount === 8 || j.handCount === 16)) {
+        partial.handCount = j.handCount;
+      }
+      if (typeof j.autoDeal === 'boolean') {
+        partial.autoDeal = j.autoDeal;
+      }
+      return partial;
+    } catch {
+      return {};
+    }
+  };
+
+  // Global defaults first (lowest priority).
+  Object.assign(out, tryLoad(SETTINGS_LS_GLOBAL));
+  // gameId-keyed override.
+  const keyed = settingsLocalStorageKey();
+  if (keyed !== SETTINGS_LS_GLOBAL) {
+    Object.assign(out, tryLoad(keyed));
+  }
+
+  // Finally, let URL params override (highest priority — deep-link wins).
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const bd = q.get('botDifficulty');
+    if (bd === 'Easy' || bd === 'Medium' || bd === 'Hard') out.botStrength = bd;
+    const hcRaw = q.get('handCount');
+    if (hcRaw !== null) {
+      const n = parseInt(hcRaw, 10);
+      if (n === 1 || n === 4 || n === 8 || n === 16) out.handCount = n;
+    }
+    const dm = q.get('dealMode');
+    if (dm === 'auto') out.autoDeal = true;
+    else if (dm === 'manual') out.autoDeal = false;
+  } catch {
+    /* ignore */
+  }
+
+  return out;
+}
+
+function writeSettingsState(state: SettingsState): void {
+  const payload = JSON.stringify(state);
+  try {
+    // Write to BOTH the global key (so a fresh tab without ?gameId= picks
+    // these up) and the gameId-keyed key (so the active game's overrides
+    // are isolated from other games).
+    window.localStorage.setItem(SETTINGS_LS_GLOBAL, payload);
+    const keyed = settingsLocalStorageKey();
+    if (keyed !== SETTINGS_LS_GLOBAL) {
+      window.localStorage.setItem(keyed, payload);
+    }
+  } catch {
+    /* ignore — localStorage may be disabled */
   }
 }

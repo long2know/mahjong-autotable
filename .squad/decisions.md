@@ -2496,3 +2496,72 @@ Zero regressions in pre-Phase-I tests.
 
 ---
 
+## Standing Directives
+
+### 2026-05-22 — Continuous-wave operation
+**By:** Stephen Long  
+**Rule:** Coordinator launches new waves immediately after merge without checking in. Team-size expansion pre-approved when scope demands it.  
+**Rationale:** Zero-skip streak (4+ consecutive waves) requires autonomous wave sequencing. No pauses between merge and next-wave kickoff.
+
+---
+
+## Phase J Wave 2 — Disconnect cleanup + N-hand game completion + UX completeness
+
+**Timestamp:** 2026-05-25 (final sweep date)  
+**Branch:** `stlong/phase-j-wave-2-completion` (all commits pushed)  
+**Final test count:** **418 / 0 / 0** (was 409/0/0 at Phase J Wave 1 → +9 net passes, zero-skip streak 4)  
+**Bundle hashes (Hicks):** JS `214d524e.js` → `90818e21.js`; CSS `884bb475.css` → `60a1fda4.css`; Bootstrap unchanged.
+
+### Wave goal
+
+Close the autotable disconnect bug Vasquez flagged in J-W1: `AutotableWsEndpoint.HandleDisconnectAsync` now calls the runtime's `HandleDisconnectAsync` for parity with SignalR Hub. Ship N-hand game-completion (4-hand east-wind rotation cap via `MaxHands`, new `GameComplete` phase distinct from legacy `EndGame`). Round out UX completeness: end-of-game summary modal + reconnect banner with exponential backoff + settings drawer (bot strength / hand count / auto-deal).
+
+### Decisions (by lane)
+
+**Bishop — Autotable WS disconnect + N-hand game completion**
+
+- **Seat-release wiring:** `AutotableConnectionManager.HandleDisconnectAsync` (in `AutotableWsEndpoint.cs`) now calls new private `ReleaseRuntimeSeatAsync(connection, gameId!)` before tombstone broadcast. Helper is idempotent; spectators and relay-mode skip. Forwards to `_runtime.HandleDisconnectAsync(connection.PlayerId)` matching `ChangshaHub.OnDisconnectedAsync`. Binding stays intact (HotSeatSwap reconnect path needs seat row bound for rebind by `playerId`).
+- **N-hand completion contract:** `ChangshaPhase.GameComplete` (new enum, distinct from `EndGame`); `ChangshaGameState.MaxHands` (public int, default 4 = east-wind rotation); `IsGameComplete` (public bool, default false, flipped by *either* terminal). `RotateBanker` gate post-increment: if `HandNumber > MaxHands` then `Phase=GameComplete`, `IsGameComplete=true`, emit `"game-ended"` event detail `hands:4,reason:maxHandsReached`. Legacy `EndGame` branch also sets `IsGameComplete=true` for phase-agnostic signal.
+- **Runtime event:** `StartNextHandOrEndAsync` treats both terminals (`EndGame` / `GameComplete`) as ended. Existing `GameEnded` event still fires; new `GameCompleted` event fires when `IsGameComplete=true`. Payload: `{ gameId, hand, maxHands, finalScores, winner, phase }`. Hicks's modal subscribes to `GameCompleted`.
+- **Hydration filter widened:** `LoadActiveGamesAsync` now skips both `EndGame` and `GameComplete` (terminal phases, nothing to resume).
+- **Test setup:** 3 legacy tests raised `state.MaxHands=100` workaround (BankerRotationTests × 2, StateMachineServiceTests). Authorization: wave brief explicit.
+- **WinContext audit (no code change):** Audited bot probe sites (HardStrategy SelfDraw/Claim calls). Context-less detection correct — `WinDetector.Detect` layers contextual flags as *bonuses* onto already-winning hands; no flag *promotes* non-winning to winning. Canonical contract: `ChangshaGameStateMachine.DeclareSelfDrawWin` / `ResolveHuClaim` (sole context builders) → all scoring paths. Bot probe bypasses them intentionally (doesn't have full state, context only raises score never blocks declaration).
+
+**Hicks — End-of-game modal + reconnect banner + settings drawer**
+
+- **End-of-game summary modal:** Triggered by `IsGameComplete` (phase-agnostic). Per-seat totals table (Seat / Player / Total Δ, sorted by score descending, local player gets "(You)" + gold styling). Hand-by-hand recap (e.g. "Hand 1: Seat 0 won (+8/-8/-8/-8)", "Hand 4: Washout 流局"). Defensive payload parser accepts camelCase/PascalCase/multiple key variants for completion flag (`isComplete`/`IsComplete`/`isGameComplete`/`IsGameComplete`) + optional `totalScores`, `handHistory`, `maxHands`.
+- **Connection-lost banner:** Replaces silent reconnect. Exponential backoff 1/2/4/8/16s × 5 attempts (previous: constant 2s × 15, silent). Yellow state (reconnecting), red state (failed + Retry/Lobby buttons), green flash (success). User-initiated disconnect (`disconnect()` / hot-seat swap) stays silent; auto-reconnect always shows banner.
+- **Settings drawer:** Gear icon ⚙ top-right opens slide-in drawer. Three knobs: Bot Strength (Easy/Medium/Hard, default Hard) → `?botDifficulty=`, Hand Count (1/4/8/16, default 4) → `?handCount=`, Auto-Deal (checkbox, default off) → `?dealMode=`. Persistence: gameId-keyed localStorage; fallback global key; read priority URL > localStorage > defaults. Apply & Restart rewrites URL + reloads.
+- **Lobby defaults shifted:** Hand count 8 → 4 (east-wind rotation parity); bot difficulty Medium → Hard. localStorage preservation — existing installs keep old defaults; fresh only.
+- **Files:** `index.html`, `client.ts` (new `gameComplete` Collection), `client-ui.ts` (exponential-backoff rewrite), `game-ui.ts` (modal + drawer + hand-history accumulator), `lobby.ts` (defaults), `style.css` (220 lines Phase J Wave 2 styles).
+
+**Vasquez — 9 new test facts + blind-spot flagging**
+
+- **`AutotableDisconnectSeatReleaseTests` (3 facts):** End-to-end WS + `WebApplicationFactory`. Indirect proof of seat release (re-attempt `seats UPDATE` from fresh connectionId post-disconnect). Disconnect_ActiveSeat_Releases, Disconnect_Spectator_NoOp, Disconnect_ThenReconnect_SameSeat_Rebinds.
+- **`GameCompletionTests` (3 facts):** Bot harness + reflection-defensive probes (`ResolveGameCompletePhase`, `GetMaxHands`, `TrySetMaxHands`, `GetIsGameComplete`). GameCompletes_AfterDefaultMaxHands (4 hands → GameComplete phase), GameCompletes_AfterCustomMaxHands (MaxHands=2 → completion by hand 3), AfterGameComplete_NoNewHandsStart (terminal sticky, no hand-number advance).
+- **`SelfDrawWinContextTests` (3 facts):** Scenario-builder fixtures + fallback contract probes (`Method == SelfDraw` else `AllPatterns.Contains(KongReplacementWin)`). SelfDrawHu_Sets, RonHu_SetsFalse, KongReplacementDraw_FlagsBoth.
+- **Blind spots flagged:** (1) `WinResult` still lacks explicit `IsSelfDraw`/`IsKongReplacement` bools — canonical contract `Method`+`AllPatterns`; fallback paths load-bearing today. (2) `GameComplete` vs `EndGame` semantics overlap — both set `IsGameComplete=true`; future features branching on Phase directly should handle both terminals. (3) Second consecutive wave where Bishop's hand-counter contract changes broke legacy tests via `MaxHands=100` workaround — recommend J-W3 sweep audit if more hand-counter changes ship.
+
+### Gate
+
+**418 / 0 / 0.** Zero-skip streak now **4 waves** (I-W3, I-W4, J-W1, J-W2).
+
+### Notable findings
+
+**HotSeatSwap test assertion flip (pre-authorised by test owner):** "if a future wave promotes seat-release to autotable path, flip this assertion" → J-W2 is that wave. `HotSeatSwap_PlayerToPlayer_PreservesGameState` now asserts `alice.PlayerId != finalState.Seats[0].PlayerId` (seat released, no longer bound to alice after disconnect). Class docstring updated; only test mutation under "DO NOT touch" rule, but original author anticipated it explicitly.
+
+**Kong-over-Pung remains defence-in-depth but theoretically dead code.** J-W1 audit: shanten counter treats 3-of-a-kind as complete pung; Kong from discard (zero net gain) ≥ Pung (removes 2, worse shanten). Lift in `ClaimAcceptanceRank` stays defensible but unreachable via realistic adjudicator output. Vasquez reframed J-W1 Fact 4 to Pung-vs-Chow instead.
+
+### Phase J Wave 3 backlog
+
+1. Docker single-image deployment (Stephen's original ask — DevOps team member?)
+2. Replay / game history screen
+3. Sound effects (tile clack, claim chime, win fanfare)
+4. i18n display ordering for AllPatterns (carryover)
+5. Seed 40595 4000-step pathology (carryover)
+6. `_bindingLock` per-game profiling
+7. Reconcile `GameComplete` vs `EndGame` modals if both needed
+
+---
+
+

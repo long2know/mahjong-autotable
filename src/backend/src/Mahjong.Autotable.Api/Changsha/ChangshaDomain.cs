@@ -224,7 +224,22 @@ public enum ChangshaPhase
     EndHand,
     RotatingBanker,
     WallExhausted,
-    EndGame
+    EndGame,
+
+    /// <summary>
+    /// Phase J Wave 2 — terminal phase reached when
+    /// <see cref="ChangshaGameState.HandNumber"/> exceeds
+    /// <see cref="ChangshaGameState.MaxHands"/>. Distinct from
+    /// <see cref="EndGame"/> (which is the legacy 16-hand / 4-round terminal):
+    /// the autotable / lobby surface defaults to a 4-hand rotation, and
+    /// <see cref="ChangshaGameStateMachine.RotateBanker"/> sets this phase
+    /// + <see cref="ChangshaGameState.IsGameComplete"/> when the cap is hit.
+    /// Like <see cref="EndGame"/>, downstream phase-guards
+    /// (<see cref="ChangshaGameStateMachine.RollDice"/>,
+    /// <see cref="ChangshaGameStateMachine.StartGame"/>, etc.) reject any
+    /// further mutation: the only valid exit is creating a new game.
+    /// </summary>
+    GameComplete
 }
 
 /// <summary>
@@ -253,6 +268,33 @@ public sealed class ChangshaGameState
     public int RoundNumber { get; set; } = 1;
     public int HandNumber { get; set; } = 1;
     public int HandInRound { get; set; } = 1;
+
+    /// <summary>
+    /// Phase J Wave 2 — cap on the number of hands played before the game is
+    /// considered complete. <see cref="ChangshaGameStateMachine.RotateBanker"/>
+    /// checks <c>HandNumber &gt; MaxHands</c> after the post-hand increment and
+    /// sets <see cref="Phase"/> to <see cref="ChangshaPhase.GameComplete"/> +
+    /// <see cref="IsGameComplete"/> to <c>true</c>. Default is <c>4</c> — one
+    /// full east-wind rotation, the standard solo / autotable bot-match length.
+    /// Tournament play can override via the runtime <c>CreateGame</c> /
+    /// <c>?maxHands=</c> WS query param. The legacy 16-hand (4 × 4) terminal in
+    /// <see cref="ChangshaPhase.EndGame"/> remains for tests that explicitly
+    /// raise <c>MaxHands</c> above 16.
+    /// </summary>
+    public int MaxHands { get; set; } = 4;
+
+    /// <summary>
+    /// Phase J Wave 2 — terminal flag flipped to <c>true</c> by
+    /// <see cref="ChangshaGameStateMachine.RotateBanker"/> when the game reaches
+    /// <see cref="ChangshaPhase.GameComplete"/> (new N-hand cap) or
+    /// <see cref="ChangshaPhase.EndGame"/> (legacy 16-hand terminal). Provides a
+    /// phase-agnostic predicate for callers that need a single "is the game
+    /// over?" signal — used by the runtime's <see cref="ChangshaGameRuntime"/>
+    /// to gate the <c>GameCompleted</c> SignalR event and by the autotable
+    /// translator to emit the <c>gameComplete</c> collection entry that drives
+    /// Hicks's end-of-game summary modal.
+    /// </summary>
+    public bool IsGameComplete { get; set; } = false;
 
     // Seats
     public int DealerSeatIndex { get; set; }

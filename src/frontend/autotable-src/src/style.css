@@ -1101,3 +1101,267 @@ body.spectating #roll-dice { display: none !important; }
     opacity: 0.45;
     cursor: not-allowed;
 }
+
+/* ---------------------------------------------------------------------- */
+/* Phase J Wave 2 — Connection-lost banner.                               */
+/*                                                                        */
+/* Top-center banner that surfaces the WS reconnect lifecycle: yellow     */
+/* while attempting, red on failure, green flash on success.  Replaces    */
+/* the silent-go-stale behaviour of the pre-Wave-2 reconnect loop.        */
+/* ---------------------------------------------------------------------- */
+.connection-banner {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1100;
+    min-width: 320px;
+    max-width: 90vw;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-family: Verdana, Arial, sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    pointer-events: auto;
+}
+
+.connection-banner-reconnecting {
+    background-color: #5a4a1f;
+    color: #ffe9a8;
+    border: 1px solid #c8a046;
+}
+
+.connection-banner-failed {
+    background-color: #5a1d1d;
+    color: #ffb0b0;
+    border: 1px solid #c84646;
+}
+
+.connection-banner-success {
+    background-color: #1d4a1d;
+    color: #b0ffb0;
+    border: 1px solid #46c846;
+}
+
+.connection-banner-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.connection-banner-actions .btn {
+    font-size: 0.8rem;
+    padding: 2px 10px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Phase J Wave 2 — Settings drawer (gear icon + slide-out panel).        */
+/*                                                                        */
+/* Toggle button sits at the top-right, immediately left of the variant   */
+/* badge.  The drawer slides in from the right when open and exposes the  */
+/* bot-strength / hand-count / auto-deal knobs.                           */
+/* ---------------------------------------------------------------------- */
+#settings-toggle {
+    position: absolute;
+    top: 12px;
+    right: 158px;
+    z-index: 51;
+    background-color: rgba(0, 0, 0, 0.65);
+    color: #ffd75e;
+    border: 1px solid rgba(255, 215, 94, 0.4);
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+#settings-toggle:hover {
+    background-color: rgba(40, 30, 0, 0.85);
+    transform: rotate(45deg);
+}
+#settings-toggle .settings-toggle-icon {
+    display: inline-block;
+}
+
+.settings-drawer {
+    position: fixed;
+    top: 0;
+    right: -340px;
+    width: 320px;
+    height: 100vh;
+    z-index: 1080;
+    background-color: rgba(20, 20, 20, 0.96);
+    border-left: 1px solid #555;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.5);
+    transition: right 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    color: #e0e0e0;
+    font-family: Verdana, Arial, sans-serif;
+}
+.settings-drawer.settings-open {
+    right: 0;
+}
+
+.settings-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #444;
+}
+.settings-drawer-title {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #ffd75e;
+}
+.settings-drawer-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 6px;
+}
+.settings-drawer-close:hover { color: #ffd75e; }
+
+.settings-drawer-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 14px 16px;
+}
+
+.settings-row {
+    margin-bottom: 16px;
+}
+
+.settings-label {
+    display: block;
+    margin-bottom: 4px;
+    color: #ffd75e;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.settings-checkbox-label {
+    display: block;
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+.settings-checkbox-label input[type="checkbox"] {
+    margin-right: 6px;
+    vertical-align: middle;
+}
+.settings-hint {
+    display: block;
+    color: rgba(224, 224, 224, 0.6);
+    font-size: 0.78rem;
+    margin-top: 2px;
+    margin-left: 22px;
+}
+
+.settings-drawer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-top: 1px solid #444;
+    gap: 12px;
+}
+.settings-saved-note {
+    color: #9ee69e;
+    font-weight: 600;
+}
+.settings-drawer-footer .btn { font-weight: bold; }
+
+/* ---------------------------------------------------------------------- */
+/* Phase J Wave 2 — End-of-game summary modal.                            */
+/*                                                                        */
+/* Bootstrap modal painted with the same green/gold palette as the hand-  */
+/* result modal so the two read as a family.  Shows per-seat totals + a   */
+/* hand-by-hand recap with one row per completed hand.                    */
+/* ---------------------------------------------------------------------- */
+.game-complete-modal-content {
+    background-color: #1f3a26;
+    border: 2px solid #c8a046;
+    border-radius: 0.5rem;
+    box-shadow: 0 0 28px rgba(0, 0, 0, 0.7);
+}
+.game-complete-modal-content .table {
+    background-color: rgba(0, 0, 0, 0.25);
+}
+.game-complete-modal-content #game-complete-headline {
+    font-size: 2.4rem;
+    color: #ffd75e;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+.game-complete-modal-content #game-complete-subtitle {
+    font-size: 1rem;
+}
+
+.game-complete-section {
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.game-complete-section-title {
+    font-size: 1rem;
+    color: #ffd75e;
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.5px;
+}
+
+.game-complete-self {
+    color: #ffd75e !important;
+    font-weight: bold;
+}
+
+.game-complete-recap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-radius: 4px;
+    padding: 8px 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    text-align: left;
+}
+.game-complete-recap-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 2px 0;
+}
+.game-complete-recap-label {
+    color: #cccccc;
+    font-weight: 600;
+    flex: 0 0 auto;
+}
+.game-complete-recap-summary {
+    color: #e0e0e0;
+    text-align: right;
+    flex: 1 1 auto;
+}
+.game-complete-recap-hu { color: #9ee69e; }
+.game-complete-recap-zha { color: #ff9494; }
+.game-complete-recap-draw { color: #cccccc; font-style: italic; }
+.game-complete-recap-empty {
+    color: rgba(224, 224, 224, 0.6);
+    text-align: center;
+    font-style: italic;
+}

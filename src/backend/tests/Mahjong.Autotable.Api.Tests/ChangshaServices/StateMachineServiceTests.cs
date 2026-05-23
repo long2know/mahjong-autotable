@@ -190,6 +190,11 @@ public class StateMachineServiceTests
         state.HandInRound = 4;
         state.RoundNumber = 4;
         state.CurrentWin = null;
+        // Phase J Wave 2 — this test predates the N-hand cap and exercises the
+        // legacy 16-hand (4 × 4) EndGame terminal. Raise MaxHands above 16 so
+        // RotateBanker falls through to the round-rollover EndGame branch
+        // instead of the new MaxHands → GameComplete branch.
+        state.MaxHands = 100;
 
         var events = ChangshaGameStateMachine.RotateBanker(state);
         Assert.Equal(ChangshaPhase.EndGame, state.Phase);

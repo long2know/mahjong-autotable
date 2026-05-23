@@ -180,8 +180,10 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             // also skip WallExhausted (draw-terminal) — a hand whose wall ran
             // out is functionally finished; the runtime's scoring loop only
             // drains it forward via HandleWallExhaustedAsync when actively
-            // playing, which a freshly-hydrated row will never be.
+            // playing, which a freshly-hydrated row will never be. Phase J Wave 2
+            // adds <see cref="ChangshaPhase.GameComplete"/> (N-hand cap terminal).
             if (state.Phase == ChangshaPhase.EndGame ||
+                state.Phase == ChangshaPhase.GameComplete ||
                 state.Phase == ChangshaPhase.WallExhausted) continue;
 
             // Authoritative key is the row GUID — guard against a hypothetical
@@ -1137,10 +1139,20 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             ChangshaGameStateMachine.RotateBanker(instance.State);
             await EmitBankerRotatedAsync(instance, ct);
-            ended = instance.State.Phase == ChangshaPhase.EndGame;
+            // Phase J Wave 2 — either terminal phase ends the loop:
+            // <see cref="ChangshaPhase.GameComplete"/> (new N-hand cap, default 4)
+            // OR <see cref="ChangshaPhase.EndGame"/> (legacy 16-hand / 4-round).
+            // Both flip <see cref="ChangshaGameState.IsGameComplete"/> in
+            // <see cref="ChangshaGameStateMachine.RotateBanker"/>.
+            ended = instance.State.Phase == ChangshaPhase.EndGame
+                 || instance.State.Phase == ChangshaPhase.GameComplete;
             if (ended)
             {
                 await EmitGameEndedAsync(instance, ct);
+                if (instance.State.IsGameComplete)
+                {
+                    await EmitGameCompletedAsync(instance, ct);
+                }
             }
             else
             {
@@ -1556,6 +1568,30 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             gameSummary = gs,
             finalScores = instance.State.CumulativeScores,
             winner = new { seatIndex = winnerKvp.Key, score = winnerKvp.Value }
+        }, ct);
+    }
+
+    /// <summary>
+    /// Phase J Wave 2 — emits the <c>GameCompleted</c> SignalR event whenever
+    /// <see cref="ChangshaGameState.IsGameComplete"/> is true. Fired alongside
+    /// the legacy <c>GameEnded</c> event so existing subscribers keep working;
+    /// new clients (Hicks's end-of-game summary modal) subscribe to
+    /// <c>GameCompleted</c> for the dedicated N-hand-cap payload. Payload
+    /// shape: <c>{ gameId, hand: int, maxHands: int, finalScores: Dictionary,
+    /// winner: { seatIndex, score }, phase: "GameComplete"|"EndGame" }</c>.
+    /// </summary>
+    private async Task EmitGameCompletedAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        var state = instance.State;
+        var winnerKvp = state.CumulativeScores.OrderByDescending(kvp => kvp.Value).First();
+        await _hub.Clients.Group(instance.GameId).SendAsync("GameCompleted", new
+        {
+            gameId = instance.GameId,
+            hand = state.HandNumber - 1,
+            maxHands = state.MaxHands,
+            finalScores = state.CumulativeScores,
+            winner = new { seatIndex = winnerKvp.Key, score = winnerKvp.Value },
+            phase = state.Phase.ToString()
         }, ct);
     }
 

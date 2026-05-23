@@ -1,4 +1,4 @@
 {
-  "version": 1,
-  "defaultModel": "claude-opus-4.7-xhigh"
+  "defaultModel": "claude-opus-4.7-xhigh",
+  "notes": "Stephen's standing directive 2026-05-22: ALL spawns (including Scribe + mechanical ops) use claude-opus-4.7-xhigh. No model downgrades."
 }

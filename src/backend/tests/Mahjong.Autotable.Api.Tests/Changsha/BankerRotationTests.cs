@@ -15,6 +15,12 @@ public class BankerRotationTests
         state.DealerSeatIndex = dealerSeat;
         foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == dealerSeat;
         state.Phase = ChangshaPhase.EndHand;
+        // Phase J Wave 2 — these CAT-H tests pre-date the N-hand cap and
+        // exercise long banker-rotation sequences (the 16-hand full-game test
+        // below being the canonical example). Raise MaxHands well past 16 so
+        // the rotation reaches the legacy 4-round EndGame terminal rather than
+        // tripping the new MaxHands → GameComplete terminal.
+        state.MaxHands = 100;
         return state;
     }
 
