@@ -30,10 +30,19 @@ import {
   validateAvatarColor,
   validateDisplayName,
 } from './profile';
+import { renderEditorPanel as renderRulePresetsEditor } from './rule-presets';
+import {
+  getMotionPreference,
+  getThemePreference,
+  setMotionPreference,
+  setThemePreference,
+  type MotionPreference,
+  type ThemePreference,
+} from './theme';
 
 // ── Public types ────────────────────────────────────────────────────
 
-export type SettingsTab = 'general' | 'audio' | 'display' | 'network';
+export type SettingsTab = 'general' | 'audio' | 'display' | 'network' | 'rule-presets';
 
 export interface AppSettings {
   /** Audio master volume — 0..1.  0 effectively mutes. */
@@ -62,10 +71,11 @@ export const SETTINGS_DEFAULT: AppSettings = {
 };
 
 const TABS: ReadonlyArray<{ id: SettingsTab; label: string }> = [
-  { id: 'general',  label: 'General' },
-  { id: 'audio',    label: 'Audio' },
-  { id: 'display',  label: 'Display' },
-  { id: 'network',  label: 'Network' },
+  { id: 'general',       label: 'General' },
+  { id: 'audio',         label: 'Audio' },
+  { id: 'display',       label: 'Display' },
+  { id: 'network',       label: 'Network' },
+  { id: 'rule-presets',  label: 'Rule presets' },
 ];
 
 // ── State ───────────────────────────────────────────────────────────
@@ -215,6 +225,7 @@ export function installSettingsDrawerV2(): void {
   panelHost.appendChild(buildAudioPanel());
   panelHost.appendChild(buildDisplayPanel());
   panelHost.appendChild(buildNetworkPanel());
+  panelHost.appendChild(buildRulePresetsPanel());
   activateTab(activeTab);
 
   // Toggle.
@@ -327,6 +338,7 @@ function rerenderPanels(): void {
   panelHost.appendChild(buildAudioPanel());
   panelHost.appendChild(buildDisplayPanel());
   panelHost.appendChild(buildNetworkPanel());
+  panelHost.appendChild(buildRulePresetsPanel());
   activateTab(activeTab);
 }
 
@@ -521,8 +533,69 @@ function buildDisplayPanel(): HTMLDivElement {
   colorRow.appendChild(colorInput);
   colorRow.appendChild(colorReset);
 
+  // Phase J Wave 8 — Motion preference (Auto/Reduced/Full).  Honours
+  // prefers-reduced-motion when Auto; overrides the OS preference on
+  // Reduced/Full.  Stored in theme.ts so the choice persists across
+  // page reloads.
+  const motionRow = document.createElement('label');
+  motionRow.className = 'settings-v2-field';
+  const motionLabel = document.createElement('span');
+  motionLabel.className = 'settings-v2-label';
+  motionLabel.textContent = 'Motion';
+  const motionSelect = document.createElement('select');
+  motionSelect.className = 'dark-select form-control form-control-sm';
+  motionSelect.setAttribute('data-testid', 'settings-motion-select');
+  motionSelect.setAttribute('aria-label', 'Motion preference');
+  for (const opt of [
+    { v: 'auto',    label: 'Auto (follow OS preference)' },
+    { v: 'reduced', label: 'Reduced (disable animations)' },
+    { v: 'full',    label: 'Full (always animate)' },
+  ] as ReadonlyArray<{ v: MotionPreference; label: string }>) {
+    const o = document.createElement('option');
+    o.value = opt.v;
+    o.textContent = opt.label;
+    motionSelect.appendChild(o);
+  }
+  motionSelect.value = getMotionPreference();
+  motionSelect.addEventListener('change', () => {
+    setMotionPreference(motionSelect.value as MotionPreference);
+  });
+  motionRow.appendChild(motionLabel);
+  motionRow.appendChild(motionSelect);
+
+  // Phase J Wave 8 — Theme preference (Auto/Light/Dark).  Honours
+  // prefers-color-scheme: dark when Auto; the 3D table itself is
+  // textured and is NOT recolored.
+  const themeRow = document.createElement('label');
+  themeRow.className = 'settings-v2-field';
+  const themeLabel = document.createElement('span');
+  themeLabel.className = 'settings-v2-label';
+  themeLabel.textContent = 'Theme';
+  const themeSelect = document.createElement('select');
+  themeSelect.className = 'dark-select form-control form-control-sm';
+  themeSelect.setAttribute('data-testid', 'settings-theme-select');
+  themeSelect.setAttribute('aria-label', 'Theme preference');
+  for (const opt of [
+    { v: 'auto',  label: 'Auto (follow OS preference)' },
+    { v: 'light', label: 'Light' },
+    { v: 'dark',  label: 'Dark' },
+  ] as ReadonlyArray<{ v: ThemePreference; label: string }>) {
+    const o = document.createElement('option');
+    o.value = opt.v;
+    o.textContent = opt.label;
+    themeSelect.appendChild(o);
+  }
+  themeSelect.value = getThemePreference();
+  themeSelect.addEventListener('change', () => {
+    setThemePreference(themeSelect.value as ThemePreference);
+  });
+  themeRow.appendChild(themeLabel);
+  themeRow.appendChild(themeSelect);
+
   panel.appendChild(perspRow);
   panel.appendChild(colorRow);
+  panel.appendChild(motionRow);
+  panel.appendChild(themeRow);
   return panel;
 }
 
@@ -553,5 +626,17 @@ function buildNetworkPanel(): HTMLDivElement {
   urlField.appendChild(urlHint);
 
   panel.appendChild(urlField);
+  return panel;
+}
+
+// Phase J Wave 8 — Rule presets panel.  The body of this tab is
+// rendered by rule-presets.ts:renderEditorPanel() so the editor's
+// state (current draft, picker selection) survives a settings
+// drawer close+reopen without leaking back into this module.
+function buildRulePresetsPanel(): HTMLDivElement {
+  const panel = buildPanelShell('rule-presets', 'Rule presets');
+  // The host element is the panel itself; rule-presets.ts looks up
+  // `#settings-panel-rule-presets` and populates its body in-place.
+  renderRulePresetsEditor();
   return panel;
 }

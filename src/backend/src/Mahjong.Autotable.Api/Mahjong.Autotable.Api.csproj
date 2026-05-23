@@ -15,6 +15,20 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <!-- Phase J Wave 8 — Sentry crash reporting (Apone, DevOps).
+         Gated on Sentry:Dsn configuration: when the DSN is empty the
+         SDK initializes but performs no network I/O. See docs/sentry.md
+         for the operator runbook. -->
+    <PackageReference Include="Sentry.AspNetCore" Version="6.5.0" />
+  </ItemGroup>
+
+  <!-- Phase J Wave 8 — expose `internal` helpers (e.g.,
+       SecurityHeadersMiddleware.HasContentHash) to the test assembly so
+       Apone's contract tests for the Parcel content-hash detector
+       compile without making the API surface artificially public.
+       Vasquez (QA), 2026-05-XX. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mahjong.Autotable.Api.Tests" />
   </ItemGroup>
 
 </Project>

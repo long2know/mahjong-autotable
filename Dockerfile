@@ -16,18 +16,27 @@ FROM node:20-alpine AS frontend-build
 WORKDIR /src/frontend/autotable-src
 
 # Install dependencies first so the layer caches when source changes only.
+# Phase J Wave 8 (Apone): BuildKit cache mount on /root/.npm so re-runs
+# (incl. CI) skip the network download when package-lock.json is stable.
 COPY src/frontend/autotable-src/package.json src/frontend/autotable-src/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN --mount=type=cache,id=mahjong-npm,target=/root/.npm \
+    npm ci --no-audit --no-fund --prefer-offline
 
 # Copy the rest of the bundle source and produce the static assets at /out/autotable.
 # `--public-url .` keeps every emitted asset URL relative so the bundle works
 # when served under /autotable/ (build invariant documented in decisions.md).
+# Phase J Wave 8: enable Parcel's content-addressed cache via a cache mount.
+# `--cache-dir` writes to a stable path; BuildKit reuses it across builds so
+# incremental rebuilds (CI on a small source change) skip the transformer
+# pass entirely. The cache is content-keyed so we don't need to invalidate
+# manually.
 COPY src/frontend/autotable-src/ ./
-RUN npx parcel build index.html \
+RUN --mount=type=cache,id=mahjong-parcel,target=/src/frontend/autotable-src/.parcel-cache \
+    npx parcel build index.html \
     --dist-dir /out/autotable \
     --public-url . \
     --no-source-maps \
-    --no-cache
+    --cache-dir /src/frontend/autotable-src/.parcel-cache
 
 ############################
 # Stage 2 — backend build  #

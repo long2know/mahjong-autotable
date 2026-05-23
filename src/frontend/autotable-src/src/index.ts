@@ -6,7 +6,15 @@ import { MoveLog } from './move-log';
 import { Client } from './client';
 import { loadPatternOrderingFromApi } from './game-ui';
 import { applyTokenToUrl, parseRejoinFromUrl } from './reconnect';
+import { initSentry } from './sentry';
 import * as three from 'three';
+
+// Phase J Wave 8 — Frontend error reporting.  Sentry only initialises
+// when a non-empty DSN is exposed via <meta name="sentry-dsn"> or
+// window.__SENTRY_DSN__; with no DSN this is a no-op and no network
+// requests are issued.  Fire-and-forget so a slow Sentry boot never
+// delays asset load or lobby init.
+void initSentry();
 
 const assetLoader = new AssetLoader();
 

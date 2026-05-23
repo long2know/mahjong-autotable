@@ -45,6 +45,17 @@ jobs:
           set -o pipefail
           tests/smoke/docker-build-smoke.sh 2>&1 | tee smoke-logs/smoke.log
 
+      # Phase J Wave 8 (Apone) — exercise the anonymous identity surface
+      # against the same image. The script can reuse the image built by
+      # the first smoke step; since it cleans up after itself we let it
+      # build a fresh one (its trap handles teardown).
+      - name: Run auth-flow smoke
+        id: auth-smoke
+        run: |
+          mkdir -p smoke-logs
+          set -o pipefail
+          tests/smoke/auth-flow-smoke.sh 2>&1 | tee smoke-logs/auth-smoke.log
+
       # When the smoke fails, surface every log we have for triage: the
       # script's own combined output plus, if the script left a per-PID
       # `tests/smoke/.run-*` directory behind (it usually cleans up on

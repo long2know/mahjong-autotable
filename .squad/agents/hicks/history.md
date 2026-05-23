@@ -1748,3 +1748,107 @@ Polishes Wave 6 into a shipping-quality surface: replay viewer rewires onto Bish
 - **Leaderboard table width.** New "View" column widens the table; on the smallest breakpoint the action cell wraps below the row. `overflow-x: auto` already gates the whole leaderboard, so this is cosmetic rather than broken.
 
 Memo: `.squad/decisions/inbox/hicks-phase-j-wave-7.md`.
+
+## Phase J Wave 8 — frontend completion (self-commit)
+
+Shipped the Wave-8 frontend tracks called out in the standing
+directive. All five tracks ride feature-detected endpoints so the
+commit lands safely whether or not Bishop's matching backend changes
+are merged.
+
+### What landed
+
+1. **Auth UI (`src/auth.ts`)** — sign-in modal (OAuth / email magic-link
+   / "Auth coming soon" placeholder when `/api/auth/providers` 404s);
+   magic-link landing overlay; top-right auth chip + sign-in/logout
+   cluster; linked-accounts section in the Wave-7 profile page. LS keys
+   `mahjong.auth.last-email.v1`, `mahjong.auth.cache.v1` (best-effort
+   chip pre-paint).
+
+2. **Rule presets (`src/rule-presets.ts`)** — lobby `<select>` +
+   "Create custom preset" link; new **Rule presets** tab in the Wave-7
+   settings drawer with editor for the 6 Bishop fields (name,
+   handLimit, maxScorePerHand, allowWashout, allowKongRobbing,
+   allowConcealedKongPromotion). Built-in Classic Changsha always
+   present (read-only) when `/api/rule-presets` 404s. URL gains
+   `&rulePreset=<id>` only when a non-builtin preset is chosen.
+
+3. **Master bot tier** — added to `#bot-difficulty`,
+   `#settings-bot-strength`, `#lobby-bot-difficulty-fieldset` (new
+   testid `lobby-bot-difficulty-master`). `BotDifficulty` /
+   `BotStrength` unions widened. Server fallback to Hard when the new
+   tier isn't deployed.
+
+4. **Spectator follow-seat (`src/spectator-follow.ts`)** — floating
+   bottom-right panel visible only when `body.spectating` is set
+   (`?seat=-1` URL flag, which `client-ui.ts:780` already toggles for
+   me). Seat 1-4 buttons + Top-down button poke `world.seat = 0..3 /
+   null`; 1/2/3/4 hotkeys + 0/Esc for top-down. "Show all hands"
+   checkbox toggles `body.spectator-show-all` (peer-hand opacity
+   removal) — best-effort local hint, canonical reveal still lives
+   on the backend.
+
+5. **Reduced motion + light/dark theme (`src/theme.ts`)** — single
+   LS blob `mahjong.display.v1` persists `motion: auto|reduced|full`
+   and `theme: auto|light|dark`. `installDisplayPreferences()` runs
+   first in `initLobby()` so the chrome paints with the right palette
+   before any other Wave-8 module renders. `change` listeners on
+   `prefers-reduced-motion` + `prefers-color-scheme` repaint body
+   classes live (flip macOS dark mode → page updates without reload).
+   Display tab in the Wave-7 settings drawer exposes `settings-motion-select`
+   + `settings-theme-select`. 3D canvas is intentionally untouched.
+
+### Files
+
+- **Added:** `src/auth.ts`, `src/rule-presets.ts`, `src/spectator-follow.ts`, `src/theme.ts`.
+- **Modified:** `index.html`, `src/lobby.ts`, `src/settings-drawer.ts`,
+  `src/game-ui.ts`, `src/style.css`, `tests/selectors.md`.
+
+### Gates
+
+- `tsc --noEmit --strict` — clean.
+- `parcel build` — ✅ Built in 10.90s.
+- `playwright test --list` (from `tests/e2e/`) — 36 tests in 7 files.
+
+### Bundle hashes
+
+- JS: `autotable-src.5d56642c.js` (1.23 MB)
+- CSS: `autotable-src.df85b4c4.css` + `autotable-src.1a66bab2.css` + `autotable-src.6633d8fb.css`
+
+### Graceful-degradation matrix
+
+| Wave-8 feature                | Backend endpoint                 | When 404                                                |
+| ---                           | ---                              | ---                                                     |
+| Sign-in modal providers       | `GET /api/auth/providers`        | "Auth coming soon" placeholder panel                    |
+| Auth chip / linked accounts   | `GET /api/auth/me`               | chip hidden; profile section shows "Sign in to link"    |
+| Email magic-link              | `POST /api/auth/email/start`     | UI displays error text from response                    |
+| Rule preset picker            | `GET /api/rule-presets`          | dropdown shows single Classic Changsha entry            |
+| Rule preset save/delete       | `POST/PUT/DELETE`                | inline status row shows server-doesn't-support message  |
+| Master tier on backend        | game runtime ignores value       | server falls back to Hard                               |
+| Spectator full reveal         | (no endpoint yet)                | `body.spectator-show-all` peer-hand opacity removal     |
+
+### Cross-agent coordination
+
+- **Bishop** — All five tracks ride 404-tolerant fetches. The
+  `availableProviders` intersection in `auth.ts:165` picks up whatever
+  Bishop returns from `/api/auth/providers` automatically. Rule
+  presets honour `ownerId === null && isBuiltin === true` as "read-only".
+- **Vasquez** — Wave-8 testids documented in `tests/selectors.md`
+  appended section. The 5-rule contract at the bottom of the file
+  still applies. Suggested Wave-8 specs: `auth.spec.ts`,
+  `rule-presets.spec.ts`, `motion-theme.spec.ts`.
+- **Apone** — No infra changes required. Auth dev-login endpoint
+  (`POST /api/auth/dev-login`) is the E2E shortcut path; only exists
+  in Development env. Bundle ships at the new hashes above.
+
+### Risks / Wave-9 follow-ups
+
+- **Linked-accounts unlink confirmation** uses native `window.confirm()`
+  for now. Replace with the project's polished modal when one exists.
+- **Spectator full reveal** is local-only until Bishop ships the
+  spectator-reveal WS message. The body class is forward-compatible.
+- **Theme tokens** — palette uses ad-hoc selectors. When/if we adopt
+  CSS custom properties for the whole chrome, the `body.theme-*`
+  rules collapse to a single `:root` override block.
+
+Memo: `.squad/decisions/inbox/hicks-phase-j-wave-8.md`.

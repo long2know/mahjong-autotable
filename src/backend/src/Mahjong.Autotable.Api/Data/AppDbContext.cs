@@ -27,6 +27,13 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     // (read path).
     public DbSet<ChangshaGameReplay> ChangshaGameReplays => Set<ChangshaGameReplay>();
 
+    // Phase J Wave 8 — server-driven rule presets + OAuth/passwordless auth.
+    // See Mahjong.Autotable.Api.Auth.AuthCookieService + RulePresetService.
+    public DbSet<ChangshaRulePreset> ChangshaRulePresets => Set<ChangshaRulePreset>();
+    public DbSet<PlayerAuthIdentity> PlayerAuthIdentities => Set<PlayerAuthIdentity>();
+    public DbSet<EmailMagicLinkToken> EmailMagicLinkTokens => Set<EmailMagicLinkToken>();
+    public DbSet<PlayerAuthSession> PlayerAuthSessions => Set<PlayerAuthSession>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -88,6 +95,48 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.HasKey(x => x.Id);
             entity.Property(x => x.EventsJson).IsRequired();
             entity.HasIndex(x => x.GameId).IsUnique();
+        });
+
+        modelBuilder.Entity<ChangshaRulePreset>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(512);
+            entity.Property(x => x.CreatorPlayerId).HasMaxLength(128).IsRequired();
+            entity.HasIndex(x => x.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<PlayerAuthIdentity>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Provider).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.ProviderSubject).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(256);
+            entity.HasIndex(x => new { x.Provider, x.ProviderSubject }).IsUnique();
+            entity.HasIndex(x => x.PlayerId);
+            entity.HasOne<PlayerProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.PlayerId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EmailMagicLinkToken>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Token).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.RequestedPlayerId).HasMaxLength(128);
+            entity.HasIndex(x => x.Token).IsUnique();
+        });
+
+        modelBuilder.Entity<PlayerAuthSession>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Token).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.HasIndex(x => x.Token).IsUnique();
+            entity.HasIndex(x => x.PlayerId);
         });
     }
 }

@@ -1,4 +1,4 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.a7cd8ea4.css><link rel=stylesheet href=autotable-src.6633d8fb.css><body>
+<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.1a66bab2.css><link rel=stylesheet href=autotable-src.6633d8fb.css><body>
     <img id=dice-img src=dice.auto.391822b5.png style=opacity:0>
     <canvas id=center></canvas>
     
@@ -91,9 +91,10 @@
                 </select>
                 <select class="dark-select form-control form-control-sm mt-2" id=bot-difficulty>
                     <option disabled value>Difficulty:</option>
-                    <option value=easy>Easy</option>
-                    <option value=medium selected>Medium</option>
-                    <option value=hard>Hard</option>
+                    <option value=easy title="Random plays — beginner-friendly, makes obvious mistakes">Easy</option>
+                    <option value=medium selected title="Heuristic plays — discards safely, calls when ready">Medium</option>
+                    <option value=hard title="Strong play — counts shanten and reads discards">Hard</option>
+                    <option value=master title="Master tier (Phase J Wave 8) — deeper search + cautious bluff defence">Master</option>
                 </select>
                 
                 <select class="dark-select form-control form-control-sm mt-2 riichi-only" id=fives>
@@ -363,6 +364,120 @@
     </button>
 
     
+    <div class=auth-cluster id=auth-cluster aria-label=Account>
+        <button id=signin-button type=button class="auth-signin-btn btn btn-outline-light btn-sm" data-testid=signin-button aria-haspopup=dialog aria-controls=signin-modal>
+            Sign in
+        </button>
+        <span id=auth-status-chip class=auth-status-chip data-testid=auth-status-chip data-authenticated=false style=display:none role=status aria-live=polite>
+            <span class=auth-status-chip-provider data-provider=email>✉ Email</span>
+            <span class=auth-status-chip-email>—</span>
+        </span>
+        <button id=logout-button type=button class="auth-logout-btn btn btn-outline-light btn-sm" data-testid=logout-button style=display:none title="Sign out">
+            Sign out
+        </button>
+    </div>
+
+    
+    <div id=signin-modal class=signin-modal role=dialog aria-modal=true aria-labelledby=signin-modal-title aria-hidden=true data-testid=signin-modal>
+        <div id=signin-modal-backdrop class=signin-modal-backdrop aria-hidden=true></div>
+        <div class=signin-modal-shell role=document>
+            <header class=signin-modal-header>
+                <h2 id=signin-modal-title class=signin-modal-title>Sign in</h2>
+                <button id=signin-modal-close type=button class=signin-modal-close aria-label="Close sign-in dialog">×</button>
+            </header>
+
+            <div id=signin-modal-error class=signin-modal-error role=alert aria-live=assertive style=display:none></div>
+
+            <section id=signin-providers-panel class=signin-modal-panel aria-label="Sign-in providers">
+                <p class=signin-modal-lead>
+                    Sign in to save your stats, sync your profile across
+                    devices, and link multiple providers.
+                </p>
+                <div class=signin-providers>
+                    <button id=signin-google type=button class="btn btn-block signin-provider-btn signin-provider-google" data-testid=signin-google>
+                        <span aria-hidden=true>🔵</span>
+                        Continue with Google
+                    </button>
+                    <button id=signin-github type=button class="btn btn-block signin-provider-btn signin-provider-github" data-testid=signin-github>
+                        <span aria-hidden=true>⬛</span>
+                        Continue with GitHub
+                    </button>
+                </div>
+                <div class=signin-divider role=separator aria-orientation=horizontal>
+                    <span>or</span>
+                </div>
+                <form id=signin-email-form class=signin-email-form onsubmit="return false;">
+                    <label class=signin-email-label for=signin-email-input>
+                        Sign in with email
+                    </label>
+                    <input id=signin-email-input class="form-control signin-email-input" data-testid=signin-email-input type=email autocomplete=email inputmode=email placeholder=you@example.com maxlength=254 required>
+                    <span id=signin-email-error class=signin-email-error aria-live=polite></span>
+                    <button id=signin-email-submit class="btn btn-block btn-warning signin-email-submit" data-testid=signin-email-submit>
+                        Send magic link
+                    </button>
+                </form>
+            </section>
+
+            <section id=signin-email-success class="signin-modal-panel signin-modal-panel-success" data-testid=signin-email-success aria-label="Magic link sent" style=display:none>
+                <div class=signin-success-icon aria-hidden=true>✉</div>
+                <h3 class=signin-success-title>Check your inbox</h3>
+                <p>
+                    We sent a magic link to
+                    <strong id=signin-email-success-email>—</strong>.
+                    Click the link in the email to finish signing in.
+                </p>
+                <p class=signin-success-hint>
+                    The link expires in 15 minutes. If you don't see the
+                    email, check your spam folder.
+                </p>
+                <button id=signin-email-success-back type=button class="btn btn-secondary btn-sm">
+                    ← Use a different sign-in method
+                </button>
+            </section>
+
+            <section id=signin-placeholder class="signin-modal-panel signin-modal-panel-placeholder" aria-label="Auth coming soon" style=display:none>
+                <div class=signin-success-icon aria-hidden=true>🛠</div>
+                <h3 class=signin-success-title>Auth coming soon</h3>
+                <p>
+                    Sign-in isn't deployed to this server yet. You can
+                    still play as a guest — your profile and stats are
+                    saved to this browser.
+                </p>
+            </section>
+        </div>
+    </div>
+
+    
+    <div id=magic-link-landing class=magic-link-landing data-testid=magic-link-landing role=dialog aria-modal=false aria-labelledby=magic-link-landing-title aria-hidden=true>
+        <div class=magic-link-shell>
+            <header class=magic-link-header>
+                <h2 id=magic-link-landing-title class=magic-link-title>
+                    Magic link
+                </h2>
+            </header>
+            <div id=magic-link-success class="magic-link-state magic-link-state-success" data-testid=magic-link-success style=display:none>
+                <div class=magic-link-icon aria-hidden=true>✅</div>
+                <p>
+                    You're signed in as
+                    <strong id=magic-link-success-email>—</strong>.
+                </p>
+                <button id=magic-link-dismiss type=button class="btn btn-primary btn-sm">
+                    Continue to lobby
+                </button>
+            </div>
+            <div id=magic-link-failure class="magic-link-state magic-link-state-failure" data-testid=magic-link-failure style=display:none>
+                <div class=magic-link-icon aria-hidden=true>⚠</div>
+                <p id=magic-link-failure-message>
+                    Magic link verification failed.
+                </p>
+                <button id=magic-link-dismiss-failure type=button class="btn btn-secondary btn-sm">
+                    Dismiss
+                </button>
+            </div>
+        </div>
+    </div>
+
+    
     <div id=connection-banner class=connection-banner role=status aria-live=polite style=display:none>
         <span class=connection-banner-text id=connection-banner-text></span>
         <span class=connection-banner-actions id=connection-banner-actions style=display:none>
@@ -390,9 +505,10 @@
                     Bot Strength
                 </label>
                 <select id=settings-bot-strength class="dark-select form-control form-control-sm">
-                    <option value=Easy>Easy</option>
-                    <option value=Medium>Medium</option>
-                    <option value=Hard selected>Hard</option>
+                    <option value=Easy title="Random plays — beginner-friendly">Easy</option>
+                    <option value=Medium title="Heuristic plays — discards safely, calls when ready">Medium</option>
+                    <option value=Hard selected title="Strong play — counts shanten and reads discards">Hard</option>
+                    <option value=Master title="Master tier — deeper search + cautious bluff defence">Master</option>
                 </select>
             </div>
             <div class=settings-row>
@@ -498,6 +614,12 @@
                 <div id=profile-recent-games-error class=profile-recent-error aria-live=polite style=display:none></div>
                 <div id=profile-recent-games-loading class=profile-recent-loading aria-live=polite style=display:none>Loading recent games…</div>
                 <div id=profile-recent-games class=profile-recent-games data-testid=profile-recent-games role=list></div>
+            </section>
+
+            
+            <section class=profile-page-section aria-labelledby=profile-page-linked-heading>
+                <h3 id=profile-page-linked-heading class=profile-page-section-title>Linked accounts</h3>
+                <div id=profile-linked-accounts class=profile-linked-accounts data-testid=profile-linked-accounts role=region aria-label="Linked sign-in providers"></div>
             </section>
         </div>
     </div>
@@ -679,6 +801,19 @@
                 <label><input type=radio name=lobby-variant value=minefield> Minefield</label>
             </fieldset>
 
+            
+            <fieldset class=lobby-fieldset id=lobby-rule-preset-fieldset>
+                <legend>Rule preset</legend>
+                <label class=lobby-rule-preset-row for=lobby-rule-preset-select>
+                    <span class=lobby-rule-preset-label>Rule set</span>
+                    <select id=lobby-rule-preset-select class="dark-select form-control form-control-sm" data-testid=lobby-rule-preset-select aria-label="Rule preset">
+                    </select>
+                </label>
+                <a id=lobby-create-preset-link href=# class=lobby-rule-preset-create-link data-testid=lobby-create-preset-link>
+                    + Create custom preset
+                </a>
+            </fieldset>
+
             <fieldset class=lobby-fieldset id=lobby-deal-mode-fieldset>
                 <legend>Deal mode <small class=lobby-hint>(Changsha only)</small></legend>
                 <label><input type=radio name=lobby-deal-mode value=manual checked> Manual (click to pick)</label>
@@ -710,20 +845,26 @@
 
             <fieldset class="lobby-card-group lobby-fieldset" id=lobby-bot-difficulty-fieldset>
                 <legend>Bot difficulty</legend>
-                <label class=lobby-card-option>
+                <label class=lobby-card-option title="Random plays — beginner-friendly">
                     <input type=radio name=lobby-bot-difficulty value=Easy>
                     <span class=lobby-card-icon>😌</span>
                     <span class=lobby-card-label>Easy</span>
                 </label>
-                <label class=lobby-card-option>
+                <label class=lobby-card-option title="Heuristic plays — discards safely, calls when ready">
                     <input type=radio name=lobby-bot-difficulty value=Medium checked>
                     <span class=lobby-card-icon>🙂</span>
                     <span class=lobby-card-label>Medium</span>
                 </label>
-                <label class=lobby-card-option>
+                <label class=lobby-card-option title="Strong play — counts shanten and reads discards">
                     <input type=radio name=lobby-bot-difficulty value=Hard>
                     <span class=lobby-card-icon>😈</span>
                     <span class=lobby-card-label>Hard</span>
+                </label>
+                
+                <label class=lobby-card-option title="Master tier (Phase J Wave 8) — deeper search + cautious bluff defence">
+                    <input type=radio name=lobby-bot-difficulty value=Master data-testid=lobby-bot-difficulty-master>
+                    <span class=lobby-card-icon>🥷</span>
+                    <span class=lobby-card-label>Master</span>
                 </label>
             </fieldset>
 
@@ -904,6 +1045,6 @@
         </div>
     </aside>
 
-    <script type=module src=autotable-src.85bbb8ca.js></script>
+    <script type=module src=autotable-src.5d56642c.js></script>
 
 

@@ -9,6 +9,7 @@ using Mahjong.Autotable.Api.Observability;
 using Mahjong.Autotable.Api.Persistence;
 using Mahjong.Autotable.Api.Players;
 using Mahjong.Autotable.Api.RateLimiting;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -56,7 +57,15 @@ else
 
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSignalR();
+// Phase J Wave 8 — SignalR hub-method breadcrumbs into Sentry (Apone, DevOps).
+// The hub filter is a no-op when Sentry isn't initialised (SDK gated on
+// `Sentry:Dsn`), so adding it unconditionally costs nothing in dev / test.
+builder.Services.AddSignalR(o => o.AddFilter<Mahjong.Autotable.Api.Observability.SentryHubFilter>());
+
+// Phase J Wave 8 — Sentry crash reporting (Apone, DevOps). The call is a
+// no-op when `Sentry:Dsn` is unset / empty (which is the default in
+// `appsettings.json`), so test / dev runs never hit the network.
+var sentryEnabled = builder.WebHost.AddMahjongSentry(builder.Configuration);
 
 // Phase J Wave 5 — MVC controllers for the matchmaking REST endpoint
 // (MatchmakingController owns GET /api/matchmaking/lobby).
@@ -79,6 +88,37 @@ builder.Services.AddSingleton<MatchmakingService>();
 // fine.
 builder.Services.AddSingleton<PlayerIdentityService>();
 builder.Services.AddSingleton<LeaderboardService>();
+
+// Phase J Wave 8 — Bishop: OAuth / magic-link auth + rule-preset CRUD
+// (see .squad/decisions/inbox/bishop-phase-j-wave-8.md). Auth services are
+// scope-shaped wrappers around AppDbContext: they take an
+// IServiceScopeFactory and open a fresh scope per call, mirroring the
+// PlayerProfileService / MatchmakingService pattern. Singleton lifetime
+// is therefore safe.
+var authSection = builder.Configuration.GetSection("Authentication");
+var authOptions = authSection.Get<Mahjong.Autotable.Api.Auth.AuthOptions>()
+    ?? new Mahjong.Autotable.Api.Auth.AuthOptions();
+builder.Services.AddSingleton(authOptions);
+var smtpOptions = builder.Configuration.GetSection("Smtp").Get<Mahjong.Autotable.Api.Auth.SmtpOptions>()
+    ?? new Mahjong.Autotable.Api.Auth.SmtpOptions();
+builder.Services.AddSingleton(smtpOptions);
+builder.Services.AddHttpClient("oauth");
+if (!string.IsNullOrWhiteSpace(smtpOptions.Host))
+{
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IEmailSender>(sp =>
+        new Mahjong.Autotable.Api.Auth.SmtpEmailSender(
+            smtpOptions,
+            sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Auth.SmtpEmailSender>>()));
+}
+else
+{
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IEmailSender,
+        Mahjong.Autotable.Api.Auth.LogEmailSender>();
+}
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthCookieService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthIdentityService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.MagicLinkService>();
 
 const string ChangshaCorsPolicy = "ChangshaCors";
 var configuredOrigins = builder.Configuration
@@ -116,6 +156,13 @@ builder.Services.AddCors(options =>
 var rateLimitingEnabled = builder.Services.AddMahjongRateLimiting(builder.Configuration);
 
 var app = builder.Build();
+
+// Phase J Wave 8 — security + CDN cache headers (Apone, DevOps). Installed
+// first so security headers stamp on every response (including errors and
+// short-circuit returns from rate limiting / CORS). The middleware uses
+// `Response.OnStarting` to mutate headers AFTER UseStaticFiles has set
+// its own Cache-Control.
+app.UseMiddleware<Mahjong.Autotable.Api.Observability.SecurityHeadersMiddleware>();
 
 app.UseCors(ChangshaCorsPolicy);
 

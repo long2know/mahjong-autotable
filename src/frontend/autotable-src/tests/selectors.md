@@ -390,3 +390,111 @@ guarantees from Hicks's surface:
 When in doubt, file a memo at
 `.squad/decisions/inbox/hicks-vasquez-<topic>.md` before changing a
 testid in this document.
+
+---
+
+## Phase J Wave 8 — Auth, rule presets, spectator follow, motion + theme
+
+### Auth surfaces (`signin-modal`, `magic-link-landing`, `auth-cluster`, `profile-linked-accounts`)
+
+| testid                              | element     | cardinality | notes                                                      |
+|-------------------------------------|-------------|-------------|------------------------------------------------------------|
+| `signin-button`                     | `<button>`  | 0..1        | top-right header. Hidden when user is signed in.           |
+| `logout-button`                     | `<button>`  | 0..1        | top-right header. Hidden when user is signed out.          |
+| `auth-status-chip`                  | `<span>`    | 0..1        | shows current email + primary provider.                    |
+| `signin-modal`                      | `<div>`     | 0..1        | backdrop + card. Visible only when sign-in flow is active. |
+| `signin-modal-close`                | `<button>`  | 0..1        | dismisses the modal.                                       |
+| `signin-provider-google`            | `<button>`  | 0..1        | starts Google OAuth flow.                                  |
+| `signin-provider-github`            | `<button>`  | 0..1        | starts GitHub OAuth flow.                                  |
+| `signin-email-input`                | `<input>`   | 0..1        | magic-link email field.                                    |
+| `signin-email-submit`               | `<button>`  | 0..1        | requests a magic-link email.                               |
+| `signin-email-error`                | `<span>`    | 0..1        | shows validation / server-side errors.                     |
+| `signin-email-success`              | `<div>`     | 0..1        | "Check your email" panel.                                  |
+| `signin-placeholder`                | `<div>`     | 0..1        | "Auth coming soon" placeholder when /providers 404s.       |
+| `magic-link-landing`                | `<div>`     | 0..1        | full-screen overlay rendered when `?auth=<token>` lands.   |
+| `magic-link-landing-success`        | `<div>`     | 0..1        | success message panel.                                     |
+| `magic-link-landing-failure`        | `<div>`     | 0..1        | failure message panel.                                     |
+| `magic-link-landing-continue`       | `<button>`  | 0..1        | dismisses the landing overlay.                             |
+| `profile-linked-accounts`           | `<section>` | 0..1        | linked-accounts section inside the profile page.           |
+| `profile-linked-account-{provider}` | `<div>`     | 0..3        | one row per linked provider (google / github / email).     |
+| `profile-link-{provider}`           | `<button>`  | 0..3        | "Link" button for an unlinked provider.                    |
+| `profile-unlink-{provider}`         | `<button>`  | 0..3        | "Unlink" button for a linked provider.                     |
+
+### Rule presets
+
+| testid                                       | element    | cardinality | notes                                                  |
+|----------------------------------------------|------------|-------------|--------------------------------------------------------|
+| `lobby-rule-preset-select`                   | `<select>` | 0..1        | dropdown in the lobby "Rule preset" fieldset.          |
+| `lobby-create-preset-link`                   | `<a>`      | 0..1        | opens the settings-drawer rule-presets tab.            |
+| `settings-tab-rule-presets`                  | `<button>` | 0..1        | tab strip entry in the Wave-7 settings drawer.         |
+| `settings-panel-rule-presets`                | `<div>`    | 0..1        | panel host. `renderEditorPanel()` populates the body.  |
+| `rule-preset-picker`                         | `<select>` | 0..1        | preset chooser inside the editor.                      |
+| `rule-preset-new-button`                     | `<button>` | 0..1        | clones the current preset for editing.                 |
+| `rule-preset-edit-name`                      | `<input>`  | 0..1        | display name (custom presets only).                    |
+| `rule-preset-edit-handLimit`                 | `<input>`  | 0..1        | max hand limit.                                        |
+| `rule-preset-edit-maxScorePerHand`           | `<input>`  | 0..1        | per-hand cap.                                          |
+| `rule-preset-edit-allowWashout`              | `<input>`  | 0..1        | washout enabled flag (checkbox).                       |
+| `rule-preset-edit-allowKongRobbing`          | `<input>`  | 0..1        | kong-robbing flag (checkbox).                          |
+| `rule-preset-edit-allowConcealedKongPromotion` | `<input>` | 0..1        | concealed-kong promotion flag (checkbox).              |
+| `rule-preset-save`                           | `<button>` | 0..1        | persists the draft via Bishop's POST/PUT.              |
+| `rule-preset-delete`                         | `<button>` | 0..1        | deletes the current custom preset.                     |
+| `rule-preset-status`                         | `<div>`    | 0..1        | inline save / error status text.                       |
+
+### Spectator follow-seat (`?seat=-1` mode only)
+
+| testid                          | element    | cardinality | notes                                                |
+|---------------------------------|------------|-------------|------------------------------------------------------|
+| `spectator-follow-panel`        | `<div>`    | 0..1        | floating bottom-right panel. Visible only when spectating. |
+| `spectator-follow-seat-{0..3}`  | `<button>` | 0..4        | "Follow Seat N" button per seat.                     |
+| `spectator-follow-topdown`      | `<button>` | 0..1        | reverts to the top-down camera.                      |
+| `spectator-show-all-toggle`     | `<input>`  | 0..1        | local "show all hands" hint toggle.                  |
+
+Keyboard shortcuts: 1/2/3/4 follow seats 0..3; 0 or Esc returns to
+top-down. Shortcuts are inert outside spectator mode and ignored when
+typing in an input or contenteditable element.
+
+### Display preferences (settings drawer Display tab)
+
+| testid                     | element    | cardinality | notes                                                |
+|----------------------------|------------|-------------|------------------------------------------------------|
+| `settings-motion-select`   | `<select>` | 0..1        | Auto / Reduced / Full.                               |
+| `settings-theme-select`    | `<select>` | 0..1        | Auto / Light / Dark.                                 |
+
+The page chrome reflects these picks via `<body>` classes
+`reduced-motion`, `full-motion`, `theme-light`, `theme-dark`. Tests
+that assert chrome appearance should key off these classes (NOT the
+testids, which only locate the controls).
+
+### Master bot tier
+
+| testid                                | element    | cardinality | notes                                            |
+|---------------------------------------|------------|-------------|--------------------------------------------------|
+| `lobby-bot-difficulty-master`         | `<input>`  | 0..1        | Master radio in the lobby Bot difficulty fieldset. |
+
+The non-lobby surfaces (`#bot-difficulty`, `#settings-bot-strength`)
+add a Master option without a separate testid because each select
+exposes its `value` attribute directly.
+
+---
+
+### Phase J Wave 8 Playwright coverage — Vasquez
+
+The following e2e specs key off the Wave 8 testids above and live in
+`src/frontend/autotable-src/tests/e2e/`. Each spec is
+*reflection-defensive*: a missing `data-testid` is logged as a
+`soft-pass` annotation rather than a failure, so contract drift before
+Hicks's surface lands does not break the gate.
+
+| Spec                          | Surface under test                                        |
+|-------------------------------|-----------------------------------------------------------|
+| `signin-modal.spec.ts`        | header sign-in chip + modal (providers, dev-login, close) |
+| `magic-link.spec.ts`          | `?auth=<token>` landing (success / failure / continue)    |
+| `rule-presets.spec.ts`        | lobby dropdown + settings drawer rule-preset editor       |
+| `spectator-follow.spec.ts`    | `?seat=-1` floating follow-panel + keyboard shortcuts     |
+| `reduced-motion.spec.ts`      | `prefers-reduced-motion: reduce` → body class + CSS clamp |
+| `dark-mode.spec.ts`           | `prefers-color-scheme: dark` → body theme-dark + luma     |
+
+When you remove or rename a Wave 8 testid, search
+`src/frontend/autotable-src/tests/e2e/` for the literal string before
+landing the change — the soft-pass annotation will otherwise hide the
+regression from CI.
