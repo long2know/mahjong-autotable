@@ -148,10 +148,29 @@ function copyStaticAssets(): {
       if (existsSync(`${root}/about.html`)) copyFileSync(`${root}/about.html`, `${out}/about.html`);
       // sound/ — preloaded audio assets referenced via `<audio src="./sound/…">`.
       copyRecursive(`${root}/sound`, `${out}/sound`);
-      // img/ — referenced from index.html as `<img src="img/…">`.  Most
-      // imgs are bundled via asset-loader imports, but `dice.auto.png`
-      // is referenced from inline HTML and so needs a static copy.
-      copyRecursive(`${root}/img`, `${out}/img`);
+      // img/ — most images are bundled via asset-loader imports
+      // (hashed, emitted at dist root via Rollup's asset pipeline).
+      // Two assets are referenced from inline HTML markup
+      // (index.html / about.html) and need a static copy at the
+      // canonical path:
+      //   • img/dice.auto.png       (index.html dice button)
+      //   • img/about/*.{png,mp4}   (about.html tutorial assets)
+      // Copy only those subsets — copying the whole img/ tree
+      // duplicates ~2.4 MB of source assets (icons, svgs, the
+      // Blender source file) for no functional reason.
+      const aboutSrc = `${root}/img/about`;
+      const aboutDst = `${out}/img/about`;
+      if (existsSync(aboutSrc)) {
+        copyRecursive(aboutSrc, aboutDst);
+      }
+      const diceSrc = `${root}/img/dice.auto.png`;
+      const diceDst = `${out}/img/dice.auto.png`;
+      if (existsSync(diceSrc)) {
+        if (!existsSync(`${out}/img`)) {
+          require('node:fs').mkdirSync(`${out}/img`, { recursive: true });
+        }
+        copyFileSync(diceSrc, diceDst);
+      }
     },
   };
 }
