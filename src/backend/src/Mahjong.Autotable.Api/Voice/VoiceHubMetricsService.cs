@@ -10,6 +10,13 @@ namespace Mahjong.Autotable.Api.Voice;
 // without flipping on the rate-limiter's internal token-bucket
 // instrumentation.
 //
+// Phase K Wave 4 — Bishop. Adds rate-limit-rejection +
+// join-unauthorized counters to feed the VoiceHubMetrics-named
+// Prometheus surfaces (voice_rate_limit_rejection_total,
+// voice_join_unauthorized_total). Both are simple monotonic counters
+// — the per-connection rolling window only applies to the relay
+// counter where per-connection observability is actually useful.
+//
 // Implementation notes:
 // * Records are kept in-memory only — connection-scoped state is
 //   meaningless across process restarts (SignalR re-issues connection
@@ -23,6 +30,8 @@ public sealed class VoiceHubMetricsService
     private static readonly TimeSpan Window = TimeSpan.FromSeconds(60);
 
     private readonly ConcurrentDictionary<string, ConnectionMetrics> _byConnection = new();
+    private long _rateLimitRejections;
+    private long _joinUnauthorized;
 
     public void RecordRelay(string connectionId)
     {
@@ -30,6 +39,20 @@ public sealed class VoiceHubMetricsService
         var metrics = _byConnection.GetOrAdd(connectionId, _ => new ConnectionMetrics());
         metrics.Record(DateTime.UtcNow);
     }
+
+    /// <summary>Phase K Wave 4 — increments the
+    /// <see cref="VoiceHubMetrics.MetricRateLimitRejection"/> counter
+    /// whenever the rate limiter denies a relay.</summary>
+    public void RecordRateLimitRejection() => System.Threading.Interlocked.Increment(ref _rateLimitRejections);
+
+    /// <summary>Phase K Wave 4 — increments the
+    /// <see cref="VoiceHubMetrics.MetricJoinUnauthorized"/> counter
+    /// whenever JoinVoice is rejected by the per-table auth gate.</summary>
+    public void RecordJoinUnauthorized() => System.Threading.Interlocked.Increment(ref _joinUnauthorized);
+
+    public long GetRateLimitRejectionCount() => System.Threading.Interlocked.Read(ref _rateLimitRejections);
+
+    public long GetJoinUnauthorizedCount() => System.Threading.Interlocked.Read(ref _joinUnauthorized);
 
     public int GetRelayCount(string connectionId)
     {
