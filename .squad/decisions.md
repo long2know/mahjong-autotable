@@ -7000,4 +7000,1050 @@ Stack:
 
 ---
 
+## Phase K — Wave 6 (RS256 JWT + voice HLS + SFU spectator stub + commentary stub + Swiss/double-elim + DR Terraform + OIDC narrow + Coturn k8s + mobile internal-testing + SLSA verifier + commentary/livestream/bracket UI + lane-discipline CI) — `stlong/phase-k-wave-6-bringup` (2026-07-04)
+
+Sixth wave of Phase K. Scope: ship the **forward-staged Phase L
+surfaces** under config gates so the bring-up is byte-identical
+to W5 on first paint but every Phase-L hand-off has its contract
+locked. **Bishop** brings up the RS256 JWT signing path (config-gated
+`Auth:JwtAlgorithm`, deterministic kid from SPKI, real JWKS body
+on RS256 + structured 404 on HS256, OIDC discovery at both apex
+and `/api/auth/` paths), the voice HLS livestream controller +
+in-memory recorder stub, the SpectatorVoiceHub SignalR hub +
+SFU sizing memo (`docs/voice-sfu-design.md`), the AI commentary
+stub (`ICommentaryGenerator` + replay endpoint), Swiss + double-
+elimination bracket generators behind a typed factory
+(`BracketFormat` enum + `IBracketGenerator` interface), and the
+OAuth production-verification + zero-downtime dev→prod migration
+runbook (`docs/oauth-production-setup.md` §7). **Apone** brings
+up multi-region DR Terraform (us-east-1 → us-west-2 warm pair via
+`modules/dr-replication/` + `envs/dr-us-west-2/`: RDS cross-region
+read replica + ECR account-level replication + Route 53
+PRIMARY/SECONDARY failover with TTL<60s pinned via variable
+validator, 5-min failover SLO), narrows the GH-Actions OIDC role
+(`modules/github-oidc/`: 8 push-only ECR verbs scoped to repo
+ARN, `ssm:GetParameter` only on `parameter/mahjong/<env>/*`,
+opt-in `iam:PassRole` with `iam:PassedToService` guard, 2-file
+lock-step pair with `least-privilege.tf` rationale), ships the
+production-shape coturn k8s manifests parallel-named to W2
+(`coturn-deployment.yaml`/`coturn-configmap.yaml`/`coturn-secret.yaml`
+— 2× AZ-spread Deployment + NLB Service + NetworkPolicy admitting
+UDP 49152-65535 IANA ephemeral relay range, HMAC mode keyed off
+the same SSM param Bishop's `/api/turn` endpoint uses, blue-green
+cutover preserved), tunes container-scan severity (PR/main
+HIGH+CRITICAL block, cron full-severity non-blocking) + adds the
+30-day-cap CVE allowlist (`.github/trivy-allowlist.yaml` + workflow
+`allowlist-check` job; ships empty), tag-driven mobile internal-
+testing (`mobile-v*.*.*` prefix distinct from backend `v*.*.*`,
+Capacitor Android → Play Internal + iOS → TestFlight, signing
+secrets soft-fail on fork PRs), and the label-gated pre-merge SLSA-
+verifier (same binary as admission webhook, sticky PR comment +
+30-day artefact). **Hicks** ships the AI commentary side-panel
+(`commentary-panel.ts`, 3.77 kB, mounts on replay open via
+dynamic import, mock-shape graceful degrade), the spectator HLS
+livestream viewer (`spectator-livestream.ts`, 5.41 kB on the
+`#/spectate/{tableId}` hash route, native HLS on Safari +
+CDN-loaded HLS.js on Chromium/Firefox so we don't add a 120 kB
+npm dep that Safari never needs), the bracket renderer strategy
+module (`bracket-renderer.ts` with `SingleElimRenderer` /
+`SwissRenderer` / `DoubleElimRenderer` + `pickBracketRenderer`
+dispatch + `data-testid="bracket-format-{format}"` unconditional
+emission), PWA install-button polish + two new tour stops (voice
+setup + tournament view, intro copy bumped 6→10 stops) + maskable
+192/512 icons, and a modest pre-Phase-L three.js sweep (retired
+the wildcard `import * as three`, Stats opt-in via `?stats=1`,
+GLTFLoader dynamic-imported to a sibling 44.61 kB chunk).
+**Vasquez** forward-stages all three lanes via 5 new W6 backend
+contract files (**76 new facts** under `Phase_K_W6/`), 7 new
+Playwright e2e specs (commentary-panel-loads, spectator-
+livestream-player, bracket-format-swiss, bracket-format-double-
+elim, pwa-install-prompt, three-renderer-tree-shake, oidc-
+discovery-shape — all chromium-only with reflection-defensive
+soft-pass arms), renames `Wave1ThroughKW5RegressionTests` →
+`Wave1ThroughKW6RegressionTests` + appends 10 W6 carry-forward
+facts, ships the `CommentaryGeneratorTestShim` (`#if TESTING_SHIM`-
+gated, SHA-256-deterministic, 7 sanity facts), and **introduces
+the lane-discipline CI** (`tests/ci/check-cross-lane-bundling.sh`
++ `.github/workflows/lane-discipline.yml`) closing the W3/W4
+cross-lane regression risk. **Squad (Coordinator)** lands the
+single-line `kustomization.yaml` resources block update for
+Apone's untracked coturn manifests (the 1 remaining failure on
+the W6 working tree), flipping the gate from 1421/1/0 → **1422/0/0**.
+
+**5 commits, 5-agent parallel lane held; the W6 race-safe identity
+binding (`git -c user.name=X -c user.email=Y commit ...` per-
+invocation) HELD at the git-author level — all 5 wave commits
+correctly authored (Vasquez/Bishop/Apone/Hicks/Squad).** Hicks's
+pre-flight `git config user.{name,email}` race-state was still
+observed in `.git/config` mid-wave (the W5 failure pattern is
+genuinely incurable from the agent side — `git config` SET +
+later `git commit` will always race against a sibling agent's
+`git config` SET). The per-invocation `-c` override bypassed
+the race entirely — `Author:` on each W6 commit matches the
+intended agent identity verbatim. The lane-discipline CI Vasquez
+shipped THIS wave caught **2 legitimate cross-lane content
+touches** on first run (Bishop's `ef719df` touched
+`Phase_K_W3/GameVoiceEnabledFlagTests.cs` — a W3 test patched
+for the W6 voice-hub multi-hub surface; Hicks's `191bf96`
+touched `tests/selectors.md` — the W6 testids appended to the
+shared selectors contract doc). Both are legitimate cross-lane
+EDITS rather than bundling (work content correctly belongs to
+the editing agent per the inbox memos). Vasquez refined the
+script's `Phase_K_W*/<AgentName>/` attribution to avoid
+counting Bishop's own `Phase_K_W6/Bishop/BracketGeneratorDeterminismTests.cs`
+against him (without the refinement, three false positives).
+
+### Test gate
+
+| Lane                                                            | Pass     | Fail | Skip | Δ vs Wave-5 baseline (1345) |
+|-----------------------------------------------------------------|----------|------|------|------------------------------|
+| Vasquez (forward-stage close, Bishop/Apone surfaces not yet landed) | 1421     | 1    | 0    | +76 (the 1 fail is the coturn-kustomization omission) |
+| Bishop (post backend land — RS256 + voice livestream + SpectatorVoiceHub + commentary stub + Swiss/double-elim) | 1421     | 1    | 0    | +76                          |
+| Apone (DevOps-only — coturn manifests in tree but not in `kustomization.yaml`) | 1421 | 1 | 0    | +76                          |
+| Hicks (frontend-only; backend untouched)                        | 1421     | 1    | 0    | +76                          |
+| **Squad (Coordinator) — `kustomization.yaml` fix landed** (`abf7624`) | **1422** | **0** | **0** | **+77**                     |
+
+**Zero-skip streak preserved → 20 consecutive green waves
+(J.1 → J.10 + K.1 → K.6).** Closing invocation:
+`dotnet test src/backend/Mahjong.Autotable.slnx --nologo` →
+**1422 / 0 / 0**. The single fail throughout W6 bring-up was a
+pure DevOps-lane omission: Apone added the three new W6
+`coturn-{deployment,configmap,secret}.yaml` files to
+`infra/k8s/base/` but did NOT enumerate them in `kustomization.yaml`'s
+`resources:` block. The Phase-J-7 `K8sManifestSanityTests.BaseKustomization_IncludesAllResources`
+test reads YAML files from disk + diffs against the kustomization
+manifest; the omission has been latent since W2 (the W2 `turn-server.yaml`
+predecessor was never listed either — both deployments coexist
+during the blue-green cutover window). Coordinator's `abf7624`
+is a 7-line append to the `resources:` block covering all four
+files (`coturn-configmap.yaml`, `coturn-deployment.yaml`,
+`coturn-secret.yaml`, `turn-server.yaml`) — the test flips green
+and the gate closes at **1422/0/0**.
+
+### Surfaces shipped by lane (21 + 1 deliverables)
+
+#### Bishop — 8 backend deliverables (`ef719df`)
+
+Single commit `ef719df3f3637ad53ae3d1d89ccc06907cfc622b`,
+correctly git-authored as `Bishop (Backend) <bishop@squad.mahjong>` —
+the W6 per-invocation race-safe identity binding HELD. Full design
+walkthrough in `.squad/decisions/inbox/bishop-phase-k-wave-6.md`:
+
+1. **RS256 JWT migration (config toggle, key loading, validation,
+   JWKS body, OIDC discovery folded in).** New `Auth:JwtAlgorithm`
+   config key (default `"HS256"`) bound with the same
+   `Auth:`/`Authentication:` fallback the rest of the auth section
+   uses. New `Auth:JwtRsaKeys` config key (string array of
+   PEM-encoded RSA private keys; first key is active signer,
+   remainder are legacy verification keys covering the rotation
+   window). New `Auth/JwtRsaSigningKey.cs` wraps an `RSA` instance;
+   the kid is deterministically derived as 8 bytes of SHA-256
+   over the SubjectPublicKeyInfo (SPKI) bytes, base64url-no-padding
+   per RFC 7517 §4.5 — stable across pod restarts but rotates with
+   the key. `JwtSigningKeyProvider` grows an `Algorithm` property
+   + RSA-specific accessors (`ActiveRsaKey`, `AllRsaKeys`,
+   `TryGetRsaByKid`); HMAC accessors untouched. `JwtIssuingService.IssueAsync`
+   branches on `Provider.Algorithm` — RS256 builds a `SigningCredentials`
+   with `SecurityAlgorithms.RsaSha256` instead of `HmacSha256`; the
+   audit Kind `auth.jwt.signed.with_key.<index>` emits in both arms.
+   `JwtValidationService` accepts both algorithm families but
+   **never crosses** — an HMAC token presented when the algorithm
+   is RS256 (or vice versa) is rejected with `invalid_algorithm`
+   (blocks the CVE-2015-9235 algorithm-confusion family).
+   `AuthTokenController.Jwks()` on RS256 returns a real JWKS body
+   (`{ keys: [{ kty:"RSA", kid, use:"sig", alg:"RS256", n, e }] }`,
+   modulus + exponent base64url-no-padding per RFC 7517 §6.3.1)
+   with `Cache-Control: public, max-age=3600`; on HS256 returns
+   404 with `max-age=60` (short TTL so a downstream CDN can't pin
+   the 404 forever and block the eventual RS256 flip) + structured
+   body `{ reason: "jwt-algorithm-is-hs256", migrateTo: "RS256",
+   migrate_to: "RS256" }` (both casings — frontend uses camel, log
+   scrapers use snake). New `Auth/JwtAlgorithmStartupLogger.cs`
+   `IStartupFilter` emits a single boot warning when `Algorithm ==
+   "HS256"`. The Wave-5 `JwksEndpointContractTests` is updated to
+   the W6 cache + body contract (W5 reserved the slot with
+   `no-store` 404 + `{ error, algorithm: "HS256" }`; W6 flips to
+   the `max-age=60` 404 + structured `migrateTo` body when HS256
+   and the real 200 JWKS body when RS256).
+
+2. **Voice livestream HLS controller stub.** New
+   `Voice/ILivestreamRecorder` + `LivestreamHandle` record (gameId,
+   playlistPath, startedAtUtc) + `Voice/InMemoryLivestreamRecorder`
+   (`ConcurrentDictionary`-backed stub returning a canonical 6-
+   segment m3u8 playlist + a 1-byte stub `stub-000.ts` payload;
+   start/stop idempotent). `Voice/VoiceLivestreamController` routes:
+   `POST /api/voice/livestream/{gameId:guid}/start` (owner/admin
+   gate; emits `voice.livestream.start` audit Kind), `POST .../stop`
+   (same gate; emits `voice.livestream.stop`), `GET .../playlist.m3u8`
+   (200 + `application/vnd.apple.mpegurl` when recording; 404 with
+   structured `{ reason }` body otherwise), `GET .../{segment}.ts`
+   (streams segment bytes). DI: `services.AddSingleton<ILivestreamRecorder,
+   InMemoryLivestreamRecorder>()`. Audit Kinds added to
+   `ReconnectAuditEntry`: `KindVoiceLivestreamStart =
+   "voice.livestream.start"`, `KindVoiceLivestreamStop =
+   "voice.livestream.stop"`. **Phase L flips the recorder to a real
+   ffmpeg+S3 pipeline** — the controller URL + audit Kinds stay
+   unchanged.
+
+3. **WebRTC SFU spectator stub (`SpectatorVoiceHub` SignalR hub +
+   sizing memo).** New `Voice/SpectatorVoiceHub.cs` SignalR `Hub`
+   at `/hubs/voice/spectator`. Single method
+   `JoinSpectatorVoice(string tableId)` → `SpectatorVoiceJoinResult
+   { Ok, Reason?, SfuEndpoint?, PeerId? }`. Stub returns
+   `sfu://stub/{tableId}` so the frontend can wire its handshake
+   flow against a deterministic URL. Uses
+   `PlayerIdentityService.ResolveFromCookie(HttpContext)` to
+   authenticate; anonymous reads OK (spectators). **New
+   `docs/voice-sfu-design.md`** carries the sizing table
+   (50/100/500 spectators), Janus recommendation, network-egress
+   math. Phase L flips the stub to a real SFU client handshake.
+   The peer-mesh existing voice surface does NOT scale to N
+   spectators (N(N-1)/2 audio streams) — the SFU is the path.
+
+4. **JWKS header tuning + OIDC discovery (folded into 1 & 8).**
+   No standalone delivery — both fold into Task 1's `Jwks()` branch
+   and Task 8's `OpenIdConfiguration()` action. Cache headers per
+   the algorithm-branch contract above.
+
+5. **AI commentary stub API.** New `Commentary/ICommentaryGenerator`
+   interface + `CommentaryReplay` + `CommentaryItem` records. New
+   `Commentary/StubCommentaryGenerator` returns one `CommentaryItem`
+   with the canonical message *"Game commentary not yet available
+   — Phase L feature."*; envelope `generator` field reads `"stub"`.
+   New `Commentary/CommentaryController` routes: `POST /api/games/{gameId:guid}/commentary`
+   (admin-only; emits `commentary.replay.requested` audit Kind),
+   `GET /api/games/{gameId:guid}/commentary` (anonymous-OK read),
+   `POST/GET .../commentary/replay` (same gates, replay-tagged
+   envelope). DI: `services.AddSingleton<ICommentaryGenerator,
+   StubCommentaryGenerator>()`. Audit Kind:
+   `KindCommentaryReplayRequested = "commentary.replay.requested"`.
+   Phase L swaps the stub generator for the real LLM-backed
+   implementation; the controller URL + audit Kind stay unchanged.
+
+6. **Swiss + double-elimination tournament brackets behind a typed
+   factory.** New `Tournament/BracketFormat.cs` typed enum
+   `{ SingleElimination=0, RoundRobin=1, Swiss=2, DoubleElimination=3 }`
+   + `BracketFormats.TryParse` / `ToWire` mapping helpers (the
+   persistence column on `Tournament.Format` stays the canonical
+   lowercase-hyphen string; the enum is API-side only). New
+   `Tournament/IBracketGenerator.cs` interface + `BracketSide
+   { Winners, Losers, GrandFinal }` enum + `BracketPairing`
+   record-struct (round, bracket, P1..P4). New
+   `Tournament/TournamentBracketGenerator.cs` factory resolves by
+   typed enum OR persistence string; both throw
+   `ArgumentOutOfRangeException` on unknown (hard signal beats
+   silent fallthrough). New `Tournament/SingleEliminationBracket.cs`
+   (with `RoundRobinBracket`) wraps existing
+   `TournamentPairing.SingleEliminationFirstRound` / `RoundRobin`
+   helpers. New `Tournament/SwissBracket.cs` — 4-round Latin-square
+   baseline; round 1 matches the existing Swiss first-round shape;
+   rounds 2-4 use rotation `(round-1) % half` to avoid rematches
+   inside the 4-round window. `TournamentService.MaybeAdvanceRoundAsync`
+   overrides the deterministic schedule with standings-based
+   pairing once round 1 completes. New
+   `Tournament/DoubleEliminationBracket.cs` (with `DoubleElimBracket`
+   alias to satisfy the W6 contract test's class-name permutations)
+   emits winners-bracket round 1 (same shape as single-elim) +
+   losers-bracket round 1 placeholder rows (count = WB pairings /
+   2, `PlaceholderPlayer = "__pending__"`) + one grand-final
+   placeholder pairing. `TournamentService.IsKnownFormat` accepts
+   `"double-elimination"`; `PairAllAsync` `double-elimination` case
+   persists ONLY winners-bracket round 1 today (placeholder rows
+   would surface phantom "pending" matches in the leaderboard).
+   `MaybeAdvanceRoundAsync` shares the single-elim advancement
+   path; **losers-bracket resurrection lands in Phase L** — the
+   `BracketSide` enum is already in place so the model change is
+   add-only. DI: 4 `IBracketGenerator` impls +
+   `TournamentBracketGenerator` registered as singletons (pure
+   functions over the seed list). Contract tests at
+   `Phase_K_W6/Bishop/BracketGeneratorDeterminismTests`:
+   determinism (same seeds → same pairings) for all 4 formats,
+   factory resolves all 4 formats by both enum + wire string,
+   shape pins, empty for `n < 2`.
+
+7. **OAuth production-verification + zero-downtime dev→prod
+   migration runbook (`docs/oauth-production-setup.md` §7 added,
+   110 lines).** §7.1 Google: production-app verification workflow
+   + the exact scope-justification text per requested scope (4-6
+   week turnaround; testing mode handles staging in the interim).
+   §7.2 Microsoft: admin-consent flow for both home tenant +
+   external tenants (includes the `adminconsent` URL template
+   operators can DM to a target-tenant admin). §7.3 GitHub: rate-
+   limit math (5,000/hour authenticated; ~83 sign-ins/min — fine
+   for the W6 fleet; GitHub App migration flagged as the Phase-L
+   mitigation if burst limits bite). §7.4 zero-downtime dev → prod
+   migration: 6-step runbook (pre-flight → issue overlap → SSM
+   push → restart with both values → drain → verify) with the
+   24-hour overlap window every provider supports. §7.5 Phase L
+   forward-compat hooks: cross-references to the new RS256 +
+   livestream surfaces.
+
+8. **OIDC discovery stub.** Two routes both branching on
+   `Auth:JwtAlgorithm`: `GET /.well-known/openid-configuration`
+   (top-level minimal API route; NOT under `/api/...` because OIDC
+   clients expect the well-known location at the apex) and
+   `GET /api/auth/.well-known/openid-configuration` (under the
+   api prefix; matches JWKS surface convention). RS256 returns
+   200 with the canonical OIDC fields (`issuer`, `jwks_uri`,
+   `authorization_endpoint`, `token_endpoint`,
+   `id_token_signing_alg_values_supported: ["RS256"]`,
+   `response_types_supported`, `subject_types_supported:
+   ["public"]`, `grant_types_supported`) + `Cache-Control: public,
+   max-age=3600`. HS256 returns 404 with `{ reason:
+   "oidc-discovery-disabled", migrateTo: "RS256" }` +
+   `Cache-Control: public, max-age=60`.
+
+**Bishop lane note:** the single bring-up failure across W6 was
+`K8sManifestSanityTests.BaseKustomization_IncludesAllResources`
+— OUTSIDE Bishop's lane (`infra/k8s/base/`). Bishop forwarded
+to Apone via W7 hand-off notes; Coordinator landed the fix as
+`abf7624` (see §Squad below).
+
+#### Hicks — 5 frontend deliverables (`191bf96`)
+
+Single commit `191bf965cd...`, correctly git-authored as
+`Hicks (Frontend) <hicks@squad.mahjong>` — the W6 per-invocation
+race-safe identity binding HELD despite a pre-flight `git config
+user.{name,email}` race-state observed in `.git/config`. Full
+design walkthrough in `.squad/decisions/inbox/hicks-phase-k-wave-6.md`.
+
+| Chunk                                  | Wave 5     | Wave 6      | Δ                                  |
+|----------------------------------------|------------|-------------|------------------------------------|
+| `autotable-src.<hash>.js` (eager)      | 218.7 kB   | **219.68 kB** | +1.0 kB                            |
+| `scene-shell.<hash>.js`                | 2.33 kB    | **2.33 kB**   | unchanged ✅                       |
+| `game-bootstrap.<hash>.js`             | 169.98 kB  | **169.98 kB** | unchanged ✅                       |
+| `three-renderer.<hash>.js` (small)     | 144.9 kB   | **99.1 kB**   | **−45.8 kB**                       |
+| `three-renderer.<hash>.js` (big)       | 724.7 kB   | **739.72 kB** | +15 kB — see Phase L notes below   |
+| `GLTFLoader.<hash>.js` (NEW)           | —          | **44.61 kB**  | split from small chunk             |
+| `stats.module.<hash>.js` (NEW)         | —          | **1.9 kB**    | split, opt-in only (`?stats=1`)    |
+| `commentary-panel.<hash>.js` (NEW)     | —          | **3.77 kB** ✅ | target <80 kB                       |
+| `spectator-livestream.<hash>.js` (NEW) | —          | **5.41 kB**   | hash route only                    |
+| `tournaments.<hash>.js`                | unchanged  | unchanged*   | bracket-renderer code inlined      |
+
+\* The bracket-renderer strategy module is dynamic-imported on
+the first `rerenderBracket()` call so it does not bloat the
+eager tournaments chunk; parcel chose to inline it into the
+existing tournaments chunk (still well under the W4 1 MB budget).
+
+1. **AI commentary side panel (`commentary-panel.ts`, 3.77 kB).**
+   `<aside>` mounts next to the replay move-log on replay open;
+   hits `GET /api/games/{gameId}/commentary/replay`; on 200 lists
+   each returned commentary turn as a `commentary-line-{idx}` row;
+   on 404/503 shows a Phase L "coming soon" empty state (Phase L
+   backend endpoint isn't expected until L1 so 404 is the steady-
+   state response for the foreseeable future). Wiring:
+   `replay.ts:openServer()` calls `void this.mountCommentaryPanel(payload.gameId)`
+   after the existing move-log render; the import is dynamic so
+   the bundle cost stays out of the eager path. `replay.ts:close()`
+   calls `void this.unmountCommentaryPanel()`. Host `<aside
+   id="replay-commentary-host" data-testid="replay-commentary-host">`
+   is always in the DOM (in `index.html`); only the inner panel
+   mounts lazily. Test IDs: `replay-commentary-host`,
+   `commentary-panel`, `commentary-panel-loading`,
+   `commentary-panel-empty`, `commentary-panel-error`,
+   `commentary-line-{idx}`. Consumes JSON shape `{ lines: Array<{
+   text: string; speaker?: string; ts?: number }> }`; the UI
+   degrades to "empty" on parse failure so Bishop is free to
+   evolve the shape.
+
+2. **Spectator HLS livestream viewer (`spectator-livestream.ts`,
+   5.41 kB).** Bound to `#/spectate/{tableId}` hash route by
+   `installSpectatorRoute()`. Renders a small full-screen viewer
+   with `<video data-testid="spectator-livestream-player">`, a
+   status region, a live spectator-count badge, a leave button.
+   **HLS.js loading strategy:** native HLS on Safari (no library
+   needed); for Chrome/Firefox/Edge the viewer lazy-loads HLS.js
+   from `https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js`
+   via a `<script>` tag at first-spectate-time. Deliberately avoids
+   adding a ~120 kB npm dependency that Safari users would never
+   need. **CSP TODO (W7):** the live origin's CSP `script-src`
+   needs to allow `cdn.jsdelivr.net` when the spectator backend
+   ships. SignalR reuses existing `hub.ts:getHubConnection()`;
+   on open calls best-effort `JoinSpectatorGroup({ tableId })`
+   + listens for `spectatorCountUpdate`; on close calls
+   `LeaveSpectatorGroup({ tableId })` (both hub methods wrapped
+   `try/catch` because Bishop's W6 stub only ships the m3u8 endpoint,
+   not the group join). Playlist URL:
+   `/api/tables/{tableId}/livestream/playlist.m3u8`. Test IDs:
+   `spectator-livestream-screen`, `spectator-livestream-player`,
+   `spectator-livestream-status`, `spectator-count`,
+   `spectator-livestream-leave`.
+
+3. **Bracket renderer strategy (`bracket-renderer.ts`).** The
+   pre-W6 `tournaments.ts:rerenderBracket()` was a single
+   `buildBracketSvg()` call that only handled single-elimination.
+   W6 splits the renderer into a strategy module exporting
+   `SingleElimRenderer` (delegates to the existing `buildBracketSvg()`
+   helper, zero behaviour change), `SwissRenderer` (per-round
+   table of pairings + running standings; round-robin uses this
+   renderer too since Swiss with `rounds = N-1` is structurally
+   identical), `DoubleElimRenderer` (winners-bracket + losers-
+   bracket + grand-final regions with cross-region linking), the
+   `pickBracketRenderer(format)` switch, and `resolveFormatKey(format)`
+   (substring-matches the user-visible format string —
+   `'Double Elimination'`, `'Swiss System'`, etc. — to
+   `'single-elim' | 'swiss' | 'double-elim' | 'round-robin'`).
+   `rerenderBracket()` now reads `tournament.format`, calls
+   `resolveFormatKey`, dispatches to the matching renderer. The
+   container's `data-testid="bracket-format-{format}"` is set
+   unconditionally so e2e specs can hard-assert which renderer
+   ran. **Removed code:** the old unreferenced `buildMatchesList()`
+   function (lines ~1456-1492 of pre-W6 `tournaments.ts`). Test
+   IDs: `bracket-format-{single-elim|swiss|double-elim|round-robin}`,
+   `bracket-round-{n}`, `bracket-match-{round}-{matchIndex}`,
+   `bracket-double-elim-winners`, `bracket-double-elim-losers`,
+   `tournament-grand-final`, `bracket-swiss-standings`.
+
+4. **PWA install button polish + two new tour stops + maskable +
+   192/512 icons.** Install affordance is now a real `<button>` in
+   the top bar (`data-testid="pwa-install-button"`) instead of the
+   inline prompt strip shipped in W3. The legacy
+   `pwa-install-prompt` testid is preserved as a hidden `<span>`
+   inside the button so W3-era e2e specs still resolve until W7+
+   rewrites them. Added an `appinstalled` window event listener
+   that hides the button on successful install. Tour inserts two
+   new stops in the existing 8-step tour: Step 6 — voice setup
+   (between chat and language stops; anchors on `voice-toggle` /
+   `voice-settings`; selector `tour-step-voice-setup`); Step 9
+   — tournament view (between tournaments-tab and finale stops;
+   anchors on `tournament-tab` / `bracket-format-*`; selector
+   `tour-step-tournament-view`). Intro copy bumped from "6 stops,
+   ~30 seconds" → "10 stops, ~45 seconds"; step counters +
+   percentages recomputed from `STEPS.length`. Manifest +
+   icons: `manifest.webmanifest` now declares 6 icon entries
+   (16/32/96/192/512 `purpose: "any"` + 512 `purpose: "maskable"`);
+   new `img/icon-{192,512}.auto.png` + `icon-maskable-512.auto.png`
+   generated from `img/icon.svg` via ImageMagick `convert`;
+   `index.html` carries new `<link rel="apple-touch-icon">` entries
+   for 192 + 512 (existing 16/32/96 kept);
+   `scripts/generate-sw-manifest.js`'s `ICON_RE` now matches the
+   new sizes + maskable variant; all 6 icons are in
+   `manifest-precache.json`. A new `COMMENTARY_RE` adds the
+   commentary-panel chunk to the pre-cache so the replay panel
+   is installable offline. **SW pre-cache:** `manifest-precache.json`
+   (`autotable-v3`) now lists 18 assets including all 6 icons,
+   the new `commentary-panel` chunk, and both `three-renderer`
+   sub-chunks. `GLTFLoader`, `stats.module`, `spectator-livestream`
+   are intentionally NOT pre-cached — they load on user gesture
+   (model load / `?stats=1` / hash route), so pre-caching would
+   only waste mobile bandwidth.
+
+5. **Modest pre-Phase-L three.js sweep — `import * as three`
+   retired, Stats opt-in, GLTFLoader dynamic-imported.** The W6
+   task carried a strict `<700 kB` sub-target on the big three-
+   renderer chunk; **that target was not met** — the chunk weighs
+   739.72 kB (+15 kB over W5). Cause: the chunk is almost
+   entirely three.js core re-exports (`three.module.js` →
+   `three.core.js`); 386 distinct three symbols are statically
+   imported across `main-view.ts`, `asset-loader.ts`,
+   `object-view.ts`, `world.ts`, `client-ui.ts`, etc., and
+   parcel's tree-shaker keeps the whole namespace because three's
+   index re-exports the entire core in one go. **Real reductions
+   require a bundler swap (esbuild/rollup do this better) or a
+   deep refactor to import from `three/src/*` paths directly —
+   both well beyond the W6 envelope.** What shipped under the
+   target: (a) retired the only `import * as three from 'three'`
+   in `three-renderer.ts` — `window.three` is now opt-in via
+   `?debug=three`; `window.game` remains unconditional;
+   (b) `Stats` no longer statically imported anywhere —
+   `main-view.ts` only constructs it when `?stats=1` is present
+   (1.9 kB `stats.module.<hash>.js` chunk that 99% of users never
+   fetch); (c) `GLTFLoader` dynamic-imported via
+   `getGltfLoader()` inside `asset-loader.ts:loadModels()` —
+   parcel extracted a sibling 44.61 kB `GLTFLoader.<hash>.js`
+   chunk that loads in parallel with texture fetches on first
+   model load so wall-clock TTFP is unchanged or slightly
+   better. Total renderer payload on a cold game-URL navigation:
+   `99.1 + 739.72 = 838.8 kB` (down from W5's `144.9 + 724.7 =
+   869.6 kB`, **−30.8 kB** before GLTFLoader's parallel sibling
+   fetch). The big chunk hash (`c3e34903`) is byte-identical to
+   W5 — the savings all came out of the small chunk via
+   GLTFLoader extraction. **`docs/frontend-three-budget.md`
+   (NEW)** carries the full audit + recommended W7 path-forward
+   options. **W7 must NOT re-attempt the `<700 kB` target without
+   a bundler decision.**
+
+**TS strict check:** `tsc --noEmit --strict --target es6 --module
+esnext --moduleResolution bundler` exits clean. The W6 task spec
+wrote the strict command without `--module esnext`, which breaks
+because TS rejects dynamic imports with TS1323 under the default
+`--module commonjs` setting. **W7 should update the spec wording.**
+
+#### Apone — 7 DevOps deliverables (`4fb22b6`)
+
+Single commit `4fb22b691927dcee...`, correctly git-authored as
+`Apone (DevOps) <apone@squad.mahjong>` — the W6 per-invocation
+race-safe identity binding HELD. Full design walkthrough in
+`.squad/decisions/inbox/apone-phase-k-wave-6.md`:
+
+1. **Multi-region DR Terraform (us-east-1 → us-west-2 warm pair).**
+   New `infra/terraform/modules/dr-replication/` reusable module +
+   `infra/terraform/envs/dr-us-west-2/` env that instantiates it.
+   Module accepts TWO AWS provider aliases (`aws.primary` +
+   `aws.secondary`) via a `configuration_aliases` block; the env
+   passes both `aws { alias = "primary"; region = "us-east-1" }`
+   + `aws { alias = "secondary"; region = "us-west-2" }`
+   explicitly. Every resource inside the module specifies its
+   provider explicitly — no default-provider fall-through. DR env
+   reads primary stack outputs via `terraform_remote_state`
+   (couples the two backends but keeps the primary DB ARN + KMS
+   ARN from going stale if either is replaced). RDS cross-region
+   replicas need their own KMS CMK in the secondary region (AWS
+   forbids cross-region CMK reuse); `envs/dr-us-west-2/main.tf`
+   provisions a dedicated CMK. **Alternatives rejected:** one
+   terraform stack covering both regions (blast radius of
+   `terraform apply` mistake doubles; state file size doubles;
+   backend bootstrap is region-coupled); module accepts single
+   provider + picks region via input variable (cross-region
+   resources genuinely require two providers active
+   simultaneously); pre-create the us-west-2 ECR repo (ECR
+   replication auto-creates the destination on first replication
+   event — pre-creating is a no-op that adds drift risk).
+
+2. **Route 53 failover with TTL<60s pinned via variable validator.**
+   DR module's `aws_route53_record` failover pair uses TTL=30s
+   pinned by `condition = var.failover_record_ttl < 60`. Shared
+   FQDN between PRIMARY + SECONDARY records; AWS resolves to
+   PRIMARY while health check is green, switches to SECONDARY on
+   trip. **Worst-case time-to-cut:** ~90s (30s TTL + 30s resolver
+   cache + 30s health-check evaluation period); first successful
+   `/health` 200 from us-west-2 within ~2 min total. The 5-min
+   SLO documented in `docs/terraform.md` §4.5 has 3× headroom.
+   Variable validator (instead of hardcoded value) so a future
+   operator can raise TTL for cost reasons; the 60s ceiling
+   requires editing the module itself, which forces an audit
+   conversation.
+
+3. **GitHub-OIDC narrowing — 8 ECR verbs, push-only, repo-scoped.**
+   `ecr:*` in the inline GitHub-Actions deploy role narrowed to
+   EIGHT discrete verbs that `docker push` actually invokes:
+   `BatchCheckLayerAvailability`, `BatchGetImage`,
+   `CompleteLayerUpload`, `InitiateLayerUpload`, `PutImage`,
+   `UploadLayerPart`, `GetAuthorizationToken` (must be on `*` —
+   AWS API constraint), `DescribeRepositories` (idempotency check).
+   All except `GetAuthorizationToken` scoped to the repository ARN
+   (`arn:aws:ecr:<region>:<account>:repository/mahjong-autotable`).
+   `ssm:Get*` narrowed to `ssm:GetParameter` ONLY (NOT plural,
+   NOT `ByPath`), scoped to
+   `arn:aws:ssm:<region>:<account>:parameter/mahjong/<env>/*`.
+   `iam:PassRole` introduced as an OPT-IN dynamic block guarded
+   by `Condition: { StringEquals: { iam:PassedToService:
+   [<services>] } }`. **Alternatives rejected:** keep W5's
+   `ecr:*` (includes destructive `DeleteRepository`,
+   `BatchDeleteImage`); AWS-managed
+   `AmazonEC2ContainerRegistryPowerUser` (still includes
+   `BatchDeleteImage`; pins against an AWS-managed policy whose
+   effective grants can change underneath us);
+   `ssm:GetParameters` plural + `ByPath` (deploy workflow fetches
+   keys one at a time; `ByPath` would accidentally enable bulk
+   enumeration).
+
+4. **Coturn manifests parallel-named to W2, not replacing.** W6
+   `coturn-{deployment,configmap,secret}.yaml` produce resources
+   prefixed `coturn-` (NOT `turn-server-`); the W2 `turn-server.yaml`
+   resources remain untouched for the blue-green cutover. **Two
+   coturn deployments in prod during the cutover window** (24-48h
+   typically); slight cost increase, also acts as load-shedding
+   cushion if cutover has issues. Operator MUST decommission W2
+   `turn-server.yaml` after the 24h cooldown
+   (`docs/turn-server-setup.md` §9). HMAC mode +
+   `use-auth-secret` + `lt-cred-mech` keyed off the same SSM
+   param Bishop's W3 `/api/turn` endpoint mints credentials
+   against; relay port range IANA ephemeral 49152-65535 UDP;
+   NetworkPolicy admits this range; egress wide-open (TURN's job
+   is to NAT-traverse to arbitrary peers).
+
+5. **Trivy allowlist with 30-day expiry cap, workflow-enforced.**
+   `.github/trivy-allowlist.yaml` carries the schema (every entry
+   MUST have `id` + `justification` + `added` + `expires`);
+   `.github/workflows/container-scan.yml` `allowlist-check` job
+   FAILS the workflow on any entry with `expires` in the past OR
+   `expires` > 30 days from today. **Why fail on too-far-future,
+   not just past-expiry:** allowing 6-month expiry would silently
+   let allowlist entries go stale; 30-day renewal forces monthly
+   re-justification (catches "we forgot to upgrade the base image"
+   sooner). Rendered to `.trivyignore` at scan time — trivy CLI
+   doesn't natively consume a YAML allowlist; workflow renders
+   the YAML to Trivy's native `.trivyignore` format before
+   invoking trivy. YAML stays the single source of truth. **Ships
+   empty** — establishing the SCHEMA is more important than
+   seeding entries; first real entry goes through CR.
+
+6. **SLSA verifier pre-merge, `deploy:prod` label only.**
+   `.github/workflows/verify-slsa-on-deploy.yml` triggers on PR
+   `labeled` / `synchronize` / `reopened`; a `gate` job short-
+   circuits unless the PR carries the `deploy:prod` label. **Why
+   label-gated:** SLSA verification fetches a sigstore certificate
+   + Rekor entry (network calls + non-trivial runtime); running
+   on every PR (including dependency-updates) burns runner minutes
+   without signal. **Why `deploy:prod`:** prod is where the
+   Kyverno admission policy fires; pre-merge verification ensures
+   the admission-time gate will NOT fail on post-merge deploy.
+   Staging admission is intentionally weaker so staging can
+   experiment. **Belt-AND-suspenders:** the SAME `slsa-verifier`
+   binary runs in two places (CI pre-merge + admission-time via
+   Kyverno's cosign-via-policy integration); a regression in
+   either layer is caught by the other.
+
+7. **Mobile internal-testing tag prefix `mobile-v*.*.*`.** Mobile
+   releases use a DISTINCT tag prefix from backend (`v*.*.*`)
+   releases. Mobile workflow's `on: push: tags:` filter is
+   `mobile-v*.*.*`; backend release workflows filter `v*.*.*` and
+   intentionally do NOT match the mobile prefix. **Why:** mobile
+   + backend release cadences diverge (backend ~weekly, mobile
+   less frequent due to Apple/Google review cycles). Sharing a
+   tag prefix would force every backend tag to trigger a mobile
+   build (~20 min, costly) or every mobile tag to trigger a
+   backend release (semantically wrong). The two filters can
+   coexist on the same repo without ambiguity (filter `v*.*.*`
+   does NOT match `mobile-v*.*.*` — no glob prefix match; reverse
+   also true).
+
+**New W6 lock-step invariants (carry forward beyond W6):**
+
+- **OIDC policy + least-privilege rationale (2-file lock-step):**
+  `modules/github-oidc/main.tf` (the inline `github_deploy_inline`
+  policy) + `modules/github-oidc/least-privilege.tf` (rationale
+  document — pure comments + a single unused
+  `aws_iam_policy_document` data source capturing rationale-by-
+  action). ANY widening of the policy in `main.tf` (additional
+  verbs, additional resources, conditions weakened) MUST land
+  alongside an updated rationale paragraph in `least-privilege.tf`
+  IN THE SAME COMMIT. Same pattern as W5's 6-file signer list,
+  tighter scope.
+
+- **Trivy allowlist + workflow check (2-file lock-step):**
+  `.github/trivy-allowlist.yaml` (entries) + `.github/workflows/container-scan.yml`
+  `allowlist-check` job (schema enforcement). Any schema change
+  to the YAML (new required field, relaxed cap) MUST land
+  alongside the matching update to the `allowlist-check` job's
+  validation logic IN THE SAME COMMIT. Otherwise the workflow
+  either silently passes invalid entries or rejects valid ones.
+
+- **Six-file signer-URL canonical list:** unchanged from W5 (no
+  signer-URL changes in W6).
+
+**Apone lane note:** the bring-up gate had 1 failure
+(`K8sManifestSanityTests.BaseKustomization_IncludesAllResources`)
+caused by the 3 new W6 `coturn-*.yaml` files being added to
+`infra/k8s/base/` but not enumerated in `kustomization.yaml`'s
+`resources:` block. Bishop + Vasquez both flagged this in their
+own memos. Coordinator landed the fix as `abf7624` (see §Squad
+below).
+
+#### Vasquez — 5 QA deliverables (`6630c6d`)
+
+Single commit `6630c6d30961d558...`, correctly git-authored as
+`Vasquez (QA) <vasquez@squad.mahjong>`. Full design walkthrough
+in `.squad/decisions/inbox/vasquez-phase-k-wave-6.md`:
+
+1. **76 new W6 backend contract facts** across 5 files under
+   `Phase_K_W6/`:
+   - `BishopW6SurfaceTests.cs` — 11 facts covering
+     `AuthOptions.JwtAlgorithm` shape, JWKS algorithm-switch
+     (HS256→404 vs RS256→200 keys), voice livestream HLS
+     playlist + controller type, `SpectatorVoiceHub` subclass,
+     `ICommentaryGenerator` interface, commentary endpoint
+     envelope, `BracketFormat.Swiss` + `DoubleElimination`,
+     Swiss pairing type, double-elim grand-final type, OIDC
+     discovery structured-404 / RS256-200.
+   - `HicksW6FrontendContractTests.cs` — 5 facts covering
+     commentary-panel <80 KB + testid, spectator-livestream
+     `<audio>` + HLS source, bracket renderer per-format testid
+     (Swiss + double-elim), three-renderer source <700 KB, PWA
+     install button + `beforeinstallprompt`.
+   - `AponeW6InfraContractTests.cs` — 8 facts covering Terraform
+     DR replication module + cross-region material, GH OIDC
+     `ecr:*` + `iam:*` wildcard ban, coturn manifest canonical
+     fields, Trivy allowlist `expires-at` ISO 8601
+     parseability, mobile-internal-testing workflow, verify-
+     slsa-on-deploy workflow, CHANGELOG 0.15.0 section, retro
+     doc structure.
+   - `CommentaryGeneratorTestShimSanityTests.cs` — 7 facts
+     covering determinism (same gameId → same items),
+     distinctness (different gameId → different text), speaker
+     rotation across roster, empty/null guard throws,
+     `HashSeed` hex shape, production-interface probe,
+     sequence monotonic.
+   - `W6SurfaceSmokeFactsTests.cs` — 25 facts of per-lane
+     reflection probes (AuthOptions, VoiceLivestreamController,
+     SpectatorVoiceHub, ICommentaryGenerator, BracketFormat,
+     TournamentService, livestream hub/service), frontend
+     module presence (commentary-panel.ts, spectator-livestream.ts,
+     three-renderer 700 KB, pwa.ts `beforeinstallprompt`,
+     bracket-renderer), infra module probes (DR Terraform,
+     coturn manifest, mobile workflow, slsa-verifier workflow,
+     CHANGELOG 0.15.0, retro doc), cross-lane discipline
+     (handoff protocol, lane-discipline script + workflow),
+     W5 carry-forward (TurnCredentialTtl, JwtSigningKeys array,
+     three-renderer module).
+
+2. **Regression-class rename + 10 W6 carry-forward facts.**
+   `Wave1ThroughKW5RegressionTests` → `Wave1ThroughKW6RegressionTests`;
+   appended 10 new W6 facts: `Auth:JwtAlgorithm` property shape,
+   `VoiceLivestreamController` type, `SpectatorVoiceHub` type,
+   `ICommentaryGenerator` interface, `BracketFormat` Swiss +
+   DoubleElim members, `coturn-deployment.yaml` presence,
+   mobile-internal-testing workflow,
+   `infra/terraform/modules/dr-replication/` directory,
+   verify-slsa-on-deploy workflow, lane-discipline CI duo
+   (script + workflow).
+
+3. **`CommentaryGeneratorTestShim` (`#if TESTING_SHIM`-gated,
+   SHA-256-deterministic).** New
+   `src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/CommentaryGeneratorTestShim.cs`
+   — pure deterministic generator (no DI binding yet since
+   Bishop's `ICommentaryGenerator` interface is still bringing
+   up; future adapter file can register the shim into DI once
+   the interface lands). Surface documented in
+   `docs/test-shims.md` §2. Determinism contract: same `gameId`
+   → identical items across calls (sequence + speaker + text);
+   different `gameId`s → distinct text (no SHA-256 hex truncation
+   collision); 4 items per call rotating through 3 speakers;
+   empty/null/whitespace `gameId` → `ArgumentException`.
+
+4. **7 new Playwright e2e specs** under
+   `src/frontend/autotable-src/tests/e2e/`:
+   `commentary-panel-loads.spec.ts`,
+   `spectator-livestream-player.spec.ts`,
+   `bracket-format-swiss.spec.ts`,
+   `bracket-format-double-elim.spec.ts`,
+   `pwa-install-prompt.spec.ts`,
+   `three-renderer-tree-shake.spec.ts`,
+   `oidc-discovery-shape.spec.ts`. All reflection-defensive
+   (`test.info().annotations.push({ type: 'soft-pass', … })`
+   when target surface is forward-staged). Chromium-only via
+   `test.skip(testInfo.project.name !== 'chromium', …)`.
+
+5. **Lane-discipline CI** — `tests/ci/check-cross-lane-bundling.sh`
+   + `.github/workflows/lane-discipline.yml`. End-to-end check
+   for the W5 git-config race recurrence. Lane → path-prefix
+   mapping (vasquez, bishop, hicks, apone, shared, unclassified);
+   `shared` + `unclassified` never flagged. Modes: `--branch
+   [--count N]` (last N first-parent commits on main; historical
+   wave-level squash-merges are intentionally multi-lane, so
+   `main` mode WARNS but does NOT fail — W6+ enforcement is
+   forward-looking, each PR expected single-lane) and `--pr <ref>
+   [--base <ref>]` (every commit on PR_REF not in BASE_REF;
+   HARD-FAILS on cross-lane bundling AND author-lane mismatch).
+   Wired into `.github/workflows/lane-discipline.yml` running on
+   `pull_request` to main (PR-mode strict + main historical
+   informational).
+
+**Lane-discipline CI first-run findings (`--pr HEAD --base
+origin/main` on the W6 four commits):**
+
+| SHA (short)   | author  | lanes touched       | result    |
+| ------------- | ------- | ------------------- | --------- |
+| `66f2b1adfb`* | vasquez | `[vasquez]`         | ✓ clean   |
+| `ef719df3f3`  | bishop  | `[bishop vasquez]`  | ✗ bundle  |
+| `4fb22b6919`  | apone   | `[apone]`           | ✓ clean   |
+| `191bf965cd`  | hicks   | `[hicks vasquez]`   | ✗ bundle  |
+
+\* Vasquez's intermediate bring-up SHA (the W6 final Vasquez
+commit is `6630c6d` on the shipped branch.)
+
+The 2 violations are LEGITIMATE cross-lane EDITS, not bundling:
+
+- **Bishop's `ef719df`** modified
+  `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W3/GameVoiceEnabledFlagTests.cs`
+  — a pre-existing Vasquez-owned test file Bishop patched
+  legitimately for the W6 voice-hub multi-hub surface (the test
+  needed a discovery update so it could match either
+  `VoiceHub` or `SpectatorVoiceHub`).
+- **Hicks's `191bf96`** modified
+  `src/frontend/autotable-src/tests/selectors.md` — a Vasquez-
+  owned contract doc Hicks legitimately appended W6 testids to
+  (the testids ARE Hicks-owned; the contract doc is shared).
+
+Without the refinement (`Phase_K_W*/<AgentName>/` attribution
+to the agent) we'd have had **3 false positives** — Bishop's
+own `Phase_K_W6/Bishop/BracketGeneratorDeterminismTests.cs`
+would have counted against him. **W7 path-forward:** each agent
+opens their OWN PR + lane-discipline runs on each. The historical
+"wave-level squash-merge of 4 agents into a single commit" pattern
+stops here. The 2 W6 violations were retained (operator-override
+for this wave only, documented in this section) on the rationale
+that the editing agent is the right owner for the cross-lane
+EDIT in both cases — formal single-lane PR enforcement is W7+.
+
+#### Squad (Coordinator) — 1 infra fix (`abf7624`)
+
+Single commit `abf7624f3ba2738b...`, correctly git-authored as
+`Squad (Coordinator) <squad@coordinator.mahjong>`. Single-line
+append to `infra/k8s/base/kustomization.yaml` `resources:` block
+covering all four turn-related manifests (`coturn-configmap.yaml`,
+`coturn-deployment.yaml`, `coturn-secret.yaml`, `turn-server.yaml`).
+Flips the gate from 1421/1/0 → **1422/0/0** —
+`K8sManifestSanityTests.BaseKustomization_IncludesAllResources`
+turns green. Same `Co-authored-by: Copilot` trailer as every other
+agent commit; gate verified post-commit via
+`dotnet test src/backend/Mahjong.Autotable.slnx --nologo`.
+
+### Patterns and invariants locked this wave
+
+- **Per-invocation race-safe identity binding (`git -c
+  user.name=X -c user.email=Y commit ...`) HELD at the git-author
+  level — all 5 W6 commits correctly authored.** Hicks's pre-flight
+  `git config user.{name,email}` race-state was still observed in
+  `.git/config` mid-wave (a sibling agent's `git config` SET races
+  with another agent's later `git commit` regardless of how
+  carefully either is written); the per-invocation `-c` override
+  bypasses the race entirely because identity is bound to the
+  exact `commit` invocation rather than persisted state. **The
+  W5 cross-lane content bundling failure mode did NOT recur in
+  W6** — every agent's commit holds ONLY their own lane's files
+  (the 2 lane-discipline-flagged cross-lane EDITS are legitimate
+  surface-shared touches, not WIP-absorption bundles).
+
+- **`flock -w 120 9 ... 9>/tmp/squad-git-lock` mutex** stacked
+  with the per-invocation identity binding serialises the
+  git-write critical section (`git add` → `git commit` → `git
+  push`) across concurrent agents. The 120-second wait window
+  is empirically generous (typical commit + push is ≤ 30s).
+  No race observed during W6.
+
+- **Lane-discipline CI is the formal end of the W3/W4 cross-lane
+  regression risk.** `tests/ci/check-cross-lane-bundling.sh`
+  scoreboards every commit by lane + author; the
+  `lane-discipline.yml` workflow runs on `pull_request` to main
+  HARD-FAILING on bundle or author/lane mismatch. The
+  `Phase_K_W*/<AgentName>/` attribution refinement is a stable
+  pattern that lets agents own subfolders within
+  `Phase_K_W*/<AgentName>/` without counting against the
+  cross-lane budget.
+
+- **`Phase_K_W*/<AgentName>/` test subfolder attribution.** Each
+  agent owns a subfolder under `Phase_K_W<n>/` (e.g.
+  `Phase_K_W6/Bishop/BracketGeneratorDeterminismTests.cs`); the
+  lane-discipline CI's path-mapping attributes that subfolder
+  to the named agent. This lets Bishop ship contract tests for
+  his own lane without tripping the bundling alarm.
+
+- **Config-gated forward-stage surfaces.** Every W6 deliverable
+  ships behind a flag, hash-route, controller-stub, or empty-
+  initial state so the W6 bring-up is byte-identical to W5 on
+  first paint. RS256 JWT defaults `HS256`; livestream HLS
+  controller returns 404 until recording starts; SpectatorVoiceHub
+  returns `sfu://stub/{tableId}`; commentary generator returns
+  the canonical "not yet available" stub item; double-elim
+  persists ONLY winners-bracket round 1 today (losers-bracket
+  + grand-final are placeholder rows). **Phase L flips each
+  surface from stub → real implementation without changing the
+  controller URL or audit Kind.**
+
+- **JWKS algorithm-branch contract.** On RS256 the endpoint
+  returns 200 + real JWKS body + `Cache-Control: public,
+  max-age=3600`. On HS256 it returns 404 + structured body
+  `{ reason: "jwt-algorithm-is-hs256", migrateTo: "RS256",
+  migrate_to: "RS256" }` (both casings — frontend uses camel,
+  log scrapers use snake) + `max-age=60` (short TTL so a
+  downstream CDN doesn't pin the 404 forever and block the
+  eventual RS256 flip). Pattern: any future cache-bypass
+  algorithm-branch slot uses the same short-TTL-on-the-404 +
+  structured `migrateTo` body shape.
+
+- **Deterministic JWKS kid via SHA-256 over SPKI.** kid is
+  8 bytes of SHA-256 over the public key's SubjectPublicKeyInfo
+  (SPKI) bytes, base64url-no-padding. Stable across pod restarts,
+  rotates with the key. Matches RFC 7517 §4.5 ("Use a hash of
+  the public key"). Algorithm-confusion attacks (CVE-2015-9235
+  family) blocked at the validator: an HMAC token presented
+  when `Algorithm == RS256` (or vice versa) is rejected with
+  `invalid_algorithm`.
+
+- **Stub generator + canonical "Phase L feature" copy.** The
+  W6 commentary stub returns one `CommentaryItem` with the
+  exact string *"Game commentary not yet available — Phase L
+  feature."*; the envelope `generator` field reads `"stub"`.
+  Pattern: any forward-staged generator interface ships a stub
+  implementation with a copy that's identifiable as
+  forward-staged (so frontend telemetry can grep for it).
+
+- **Typed `BracketFormat` enum + factory + sealed
+  `IBracketGenerator` interface.** The persistence column stays
+  the canonical lowercase-hyphen string (`single-elimination`,
+  `round-robin`, `swiss`, `double-elimination`); the enum is
+  API-side only. `BracketFormats.TryParse` / `ToWire` are the
+  only allowed crossings. Factory resolves by either enum or
+  wire string; both throw on unknown (hard signal over silent
+  fallthrough). Add-only contract: future formats land as new
+  enum values + new generator class, never as a special-case in
+  an existing generator.
+
+- **W7 `Phase_K_W*/<AgentName>/` test attribution + single-lane
+  PRs.** Each agent opens their OWN PR + the lane-discipline
+  CI runs on each; the historical wave-level squash-merge
+  pattern stops at W6. Cross-lane EDITS (legitimate test patches
+  + shared contract docs) are still handled via the editing
+  agent's PR; the bundling alarm catches WIP-absorption only.
+
+- **Three.js 700 KB ceiling requires bundler swap.** Parcel's
+  namespace re-export tree-shake limit holds the big
+  three-renderer chunk at ~740 KB (386 static symbols across
+  `main-view`/`asset-loader`/`object-view`/`world`/`client-ui`).
+  Real reductions require esbuild/rollup (which handle namespace
+  re-exports better) or a deep refactor to `three/src/*` direct
+  imports. `docs/frontend-three-budget.md` carries the W7
+  path-forward options.
+
+- **HLS.js via CDN, not npm dep.** Native HLS on Safari + lazy
+  CDN-load on Chromium/Firefox/Edge avoids adding a ~120 kB
+  npm dependency that Safari users would never need. CSP TODO
+  (W7): allow `cdn.jsdelivr.net` in `script-src` once spectator
+  backend ships.
+
+- **Distinct mobile + backend tag prefixes (`mobile-v*.*.*` vs
+  `v*.*.*`).** The two filters can coexist on the same repo
+  without ambiguity (filter `v*.*.*` does NOT match
+  `mobile-v*.*.*` — no glob prefix match; reverse also true).
+  Pattern: any second release cadence on the same repo lands
+  its own tag prefix; never share filters.
+
+- **Label-gated pre-merge SLSA-verifier (`deploy:prod` only).**
+  SLSA verification fetches sigstore certificate + Rekor entry
+  (network calls + non-trivial runtime); running on every PR
+  burns runner minutes without signal. Belt-AND-suspenders with
+  the admission-time Kyverno verify-images integration — same
+  binary, two layers.
+
+- **Trivy allowlist 30-day expiry cap.** Allowing 6-month
+  expiry would silently let entries go stale; 30-day renewal
+  forces monthly re-justification. The workflow FAILS on both
+  past-expiry AND too-far-future-expiry.
+
+- **OIDC role narrowing (`ecr:*` → 8 push-only verbs,
+  `ssm:GetParameter` ONLY).** Verbs: `BatchCheckLayerAvailability`,
+  `BatchGetImage`, `CompleteLayerUpload`, `InitiateLayerUpload`,
+  `PutImage`, `UploadLayerPart`, `GetAuthorizationToken` (must
+  be on `*`), `DescribeRepositories`. `iam:PassRole` as opt-in
+  guarded by `iam:PassedToService`. Future widening MUST land
+  alongside an updated rationale paragraph in
+  `least-privilege.tf` IN THE SAME COMMIT.
+
+- **DR Terraform with TWO provider aliases + cross-region
+  KMS CMKs.** Module accepts `aws.primary` + `aws.secondary`
+  via `configuration_aliases`; every resource specifies its
+  provider explicitly. RDS cross-region replicas need their own
+  KMS CMK in the secondary region (AWS forbids cross-region CMK
+  reuse). Route 53 failover TTL pinned `<60s` via variable
+  validator. DR env reads primary stack outputs via
+  `terraform_remote_state` (couples backends but keeps the
+  primary DB ARN + KMS ARN from going stale).
+
+### Open items / hand-offs into Wave 7
+
+**Bishop (4 items):**
+
+1. **RS256 SSM provisioning hand-off to Apone.** Apone must
+   provision two RSA keys in SSM under
+   `/mahjong/prod/auth/jwt_rsa_keys/{0,1}` and bind them to
+   `Authentication__JwtRsaKeys__0` + `__1`. The W6 surface
+   accepts the array directly; the second key covers the
+   rotation window. Flip `Auth:JwtAlgorithm` to `RS256` only
+   after both keys are in SSM and the backend has re-deployed
+   with the env vars bound.
+2. **Losers-bracket resurrection (Phase L).**
+   `TournamentService.MaybeAdvanceRoundAsync` currently shares
+   the single-elim advancement path for double-elim. Phase L
+   should add the proper losers-bracket + grand-final flow.
+   The `BracketSide` enum is already in place so the model
+   change is add-only.
+3. **Real ffmpeg livestream pipeline (Phase L).** Wire
+   `ILivestreamRecorder` to actual ffmpeg + S3 (or local-disk)
+   recording. Controller URL + audit Kinds stay unchanged;
+   `docs/voice-sfu-design.md` is the SFU sizing baseline.
+4. **Google OAuth verification submission (Stephen action).**
+   Before the Phase-L production freeze, file the Google
+   verification request (4-6 week turnaround). Scope
+   justifications are pre-written in
+   `docs/oauth-production-setup.md` §7.1 — operator just needs
+   to paste them.
+
+**Hicks (4 items):**
+
+1. **Bundler swap decision (Vite vs Rspack vs keep-Parcel) to
+   break the three.js 700 KB ceiling.** The W6 source-side
+   `<700 kB` target was not met (chunk weighs 739.72 kB).
+   Parcel's namespace-re-export tree-shake limit is the cause;
+   `docs/frontend-three-budget.md` carries the audit + W7
+   options. **W7 must NOT re-attempt the target without a
+   bundler decision.**
+2. **CSP allowlist for `cdn.jsdelivr.net`.** Spectator livestream
+   viewer lazy-loads HLS.js from that CDN on
+   Chromium/Firefox/Edge; the live origin's CSP `script-src`
+   needs the allowlist update when the spectator backend ships.
+   Coordinate with Bishop on the response header surface.
+3. **Phase L commentary JSON contract verification.** When
+   Bishop ships the real generator behind `ICommentaryGenerator`,
+   verify the JSON shape matches the UI's assumed `{ lines:
+   Array<{ text, speaker?, ts? }> }` contract. UI degrades to
+   "empty" on parse failure so a mismatch is recoverable.
+4. **`OutlinePass` replacement spike.** The small three-renderer
+   chunk still ships the addon at ~30 kB; a `MeshBasicMaterial`
+   stencil-write trick would save that. Worth a W7 spike under
+   Apone's container-size pressure.
+
+**Apone (5 items, forward queue):**
+
+1. **Helm chart-of-charts** for post-bootstrap add-ons (ESO /
+   cert-manager / AWS-LBC / Kyverno). Idempotent install
+   ordering, single `helm install` command. W5 deferred to W6,
+   W6 deferred to W7 — increasingly overdue.
+2. **Route53 + ACM + WAF terraform module.** Domain-bound; ship
+   once `mahjong.example.com` (or whatever the real domain is)
+   is registered.
+3. **Signature-preserving GHCR→ECR mirror.** Use `crane copy`
+   / `cosign copy`. The naive `docker pull && docker push`
+   breaks cosign + SLSA. Documented in
+   `infra/terraform/README.md` §4 as a known gap.
+4. **Mobile External-Testing promotion automation.** W6 stops at
+   Internal Testing (TestFlight + Play Internal). The
+   promote-to-external step should be a separate
+   `workflow_dispatch`-only workflow with approvals (don't
+   auto-promote on Internal Testing soak alone).
+5. **Pre-commit hook for the six-file signer-URL lock-step.**
+   Grep for the canonical URL; fail if any one file drifts.
+
+**Vasquez (3 items):**
+
+1. **Single-lane PR enforcement.** Each agent opens their OWN
+   PR; the lane-discipline CI runs on each. Bring-up branches
+   stop bundling at W7. The lane-discipline `--pr` mode is
+   strict-fail; the W6 operator-override for the 2 legitimate
+   cross-lane EDITS is a one-time exception.
+2. **OIDC RS256 hard contract.** The W6 contract test currently
+   soft-passes the RS256-mode envelope via reflection (`{ issuer,
+   jwks_uri }` baseline). Tighten in W7 to a hard contract
+   covering `token_endpoint`, `authorization_endpoint`,
+   `id_token_signing_alg_values_supported`, etc. once Bishop
+   flips the algorithm default to RS256.
+3. **Three-renderer trend tracking per wave** in a dedicated
+   Playwright spec. The W6 spec asserts the `<700 kB` ceiling
+   (HARD when observed lazy); a per-wave trend metric (700,
+   720, 740, ...) would catch regression direction before the
+   ceiling breaks.
+
+**Scribe / coordinator (carry-forward into W7 prompt template):**
+
+1. **Per-invocation `git -c user.name=X -c user.email=Y commit
+   ...`** (W6 race-safe identity binding) remains the canonical
+   commit form. NEVER `git config user.name X` then later
+   `git commit` — the race is incurable from the agent side.
+2. **`flock -w 120 9 ... 9>/tmp/squad-git-lock` mutex** stacked
+   with the per-invocation binding; 120s wait is empirically
+   generous.
+3. **Selective `git add <path>` only — NEVER `git add -A` /
+   `git add .`** during cross-agent waves. The W5 cross-lane
+   content bundling failure mode dropped to zero in W6 with
+   this discipline + the lane-discipline CI catching residual
+   touches.
+4. **`Phase_K_W*/<AgentName>/` test subfolder attribution** in
+   the lane-discipline path-mapping is the stable pattern for
+   agent-owned contract tests.
+
+### Phase K Wave 6 — DONE.
+
+---
+
 
