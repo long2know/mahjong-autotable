@@ -1,0 +1,93 @@
+# Phase K Wave 2 — Apone (DevOps).
+#
+# PWA service-worker smoke. Builds the production Docker image, boots
+# it on port 18093, and runs a Playwright (chromium-only) probe that
+# verifies `navigator.serviceWorker` registers AND takes control on
+# the second navigation.
+#
+# Forward-compat: the smoke soft-passes on `/sw.js` 404 (Hicks's SW
+# artefact may not yet have shipped through the Parcel pipeline). The
+# moment `/sw.js` ships, the smoke auto-tightens to a hard pass.
+
+name: pwa-smoke
+
+on:
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "src/frontend/autotable-src/src/pwa.ts"
+      - "src/frontend/autotable-src/src/sw.ts"
+      - "src/frontend/autotable-src/src/sw.js"
+      - "tests/smoke/pwa-smoke.sh"
+      - "tests/smoke/pwa-smoke.js"
+      - ".github/workflows/pwa-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+      - "src/frontend/autotable-src/src/pwa.ts"
+      - "src/frontend/autotable-src/src/sw.ts"
+      - "src/frontend/autotable-src/src/sw.js"
+      - "tests/smoke/pwa-smoke.sh"
+      - "tests/smoke/pwa-smoke.js"
+      - ".github/workflows/pwa-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pwa-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: PWA service-worker registration smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      - name: Build production Docker image
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --output type=docker \
+            --tag mahjong-autotable:pwa-smoke \
+            .
+
+      - name: Install Playwright Chromium driver
+        working-directory: src/frontend/autotable-src
+        run: |
+          set -euo pipefail
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run PWA smoke (registers SW + asserts controller)
+        env:
+          IMAGE: mahjong-autotable:pwa-smoke
+        run: |
+          set -euo pipefail
+          chmod +x tests/smoke/pwa-smoke.sh
+          IMAGE="$IMAGE" tests/smoke/pwa-smoke.sh
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          for cid in $(docker ps -aq); do
+            echo "=== logs $cid ==="
+            docker logs "$cid" || true
+          done

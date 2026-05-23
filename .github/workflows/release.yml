@@ -32,6 +32,8 @@ jobs:
     name: Smoke test the tagged image
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      image-digest: ${{ steps.resolve-digest.outputs.image-digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,9 +89,45 @@ jobs:
           IMAGE="$REGISTRY/$IMAGE_NAME:$TAG" \
             tests/smoke/auth-flow-smoke.sh
 
+      - name: Resolve manifest-list digest
+        id: resolve-digest
+        # Phase K Wave 2 — Apone. Surfaces the per-architecture
+        # manifest-list digest so the downstream `verify-signature`
+        # reusable workflow can cosign-verify the exact bits we just
+        # smoke-tested. `imagetools inspect` resolves the digest
+        # without re-pulling the layers.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          digest=$(docker buildx imagetools inspect \
+            --format '{{.Manifest.Digest}}' \
+            "$REGISTRY/$IMAGE_NAME:$TAG")
+          if ! echo "$digest" | grep -qE '^sha256:[0-9a-f]{64}$'; then
+            echo "::error::could not resolve digest for $REGISTRY/$IMAGE_NAME:$TAG (got '$digest')"
+            exit 1
+          fi
+          echo "image-digest=$REGISTRY/$IMAGE_NAME@$digest" >> "$GITHUB_OUTPUT"
+          echo "Resolved digest: $REGISTRY/$IMAGE_NAME@$digest"
+
+  verify-signature:
+    # Phase K Wave 2 — Apone. Reusable cosign verify gate.
+    # The release is NOT published unless the image we smoke-tested
+    # was signed by THIS repo's sign-image.yml workflow on `main`
+    # or a `v*.*.*` tag. Calls the reusable workflow rather than
+    # inlining `cosign verify` so the expected-identity regex +
+    # cosign version stay in lock-step across all consumers.
+    needs: smoke
+    uses: ./.github/workflows/verify-signature.yml
+    with:
+      image-digest: ${{ needs.smoke.outputs.image-digest }}
+    permissions:
+      contents: read
+      packages: read
+
   release:
     name: Create GitHub release
-    needs: smoke
+    needs: [smoke, verify-signature]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

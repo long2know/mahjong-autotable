@@ -1,0 +1,29 @@
+# Phase K Wave 2 — Apone (DevOps).
+# Staging TURN overlay patches. Mirror of prod with lower limits +
+# the `mahjong-staging` SSM key family.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+patches:
+  - target:
+      kind: ExternalSecret
+      name: turn-server-secrets
+    patch: |-
+      - op: replace
+        path: /spec/secretStoreRef/name
+        value: aws-secrets-manager-staging
+      - op: replace
+        path: /spec/data/0/remoteRef/key
+        value: /mahjong/staging/turn/realm
+      - op: replace
+        path: /spec/data/1/remoteRef/key
+        value: /mahjong/staging/turn/username
+      - op: replace
+        path: /spec/data/2/remoteRef/key
+        value: /mahjong/staging/turn/password
+
+configMapGenerator:
+  - name: turn-server-config
+    behavior: replace
+    files:
+      - turnserver.conf=turnserver-staging.conf

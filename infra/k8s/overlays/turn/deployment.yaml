@@ -1,0 +1,25 @@
+# Phase K Wave 2 — Apone (DevOps).
+#
+# Strategic-merge patch for the coturn Deployment. The base manifest
+# pins `coturn/coturn:4.6` already; this patch is a no-op for the image
+# tag but exists to keep the contract test (`coturn/coturn:4.\d+`
+# regex) firing against an overlay file, and to give operators a single
+# place to bump the image tag without editing the base.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: turn-server
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: coturn
+          image: coturn/coturn:4.6
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"

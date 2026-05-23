@@ -76,6 +76,17 @@ public sealed class SeasonRolloverService : BackgroundService
     /// removed (0 when no boundary was crossed). Public so tests +
     /// admin-trigger endpoints can invoke it without waiting for the
     /// timer.
+    ///
+    /// <para>Phase K Wave 2 — players who are currently mid-tournament
+    /// (registered against a tournament whose <see cref="Tournament.Status"/>
+    /// is <c>in-progress</c>) have their freeze DEFERRED: a row is
+    /// written to <see cref="AppDbContext.PlayerSeasonRolloverDeferrals"/>
+    /// pinning the (PlayerId, FromSeason, TournamentId, ToSeason)
+    /// tuple, and the live <see cref="PlayerRating"/> row stays put. The
+    /// deferral is drained by <see cref="DrainDeferralsAsync"/> when the
+    /// tournament completes (called via
+    /// <see cref="Mahjong.Autotable.Api.Tournament.TournamentService"/>
+    /// completion path + periodically by the sweeper).</para>
     /// </summary>
     public async Task<int> RolloverOnceAsync(CancellationToken ct = default)
     {
@@ -88,7 +99,30 @@ public sealed class SeasonRolloverService : BackgroundService
         var stale = await db.PlayerRatings
             .Where(r => r.Season != currentSeason)
             .ToListAsync(ct);
-        if (stale.Count == 0) return 0;
+        if (stale.Count == 0)
+        {
+            // Phase K Wave 2 — even on a no-stale tick we still attempt
+            // to drain any deferred rollovers whose tournaments have
+            // since completed. Keeps the deferral surface self-healing
+            // even if the completion-hook drain misfires.
+            await DrainDeferralsAsync(ct);
+            return 0;
+        }
+
+        // Phase K Wave 2 — identify the player ids that should be
+        // deferred (currently registered against an in-progress
+        // tournament). A single batch query keeps the per-row cost
+        // O(1) regardless of stale.Count.
+        var stalePlayerIds = stale.Select(r => r.PlayerId).Distinct(StringComparer.Ordinal).ToList();
+        var deferralCandidates = await (
+            from reg in db.TournamentRegistrations
+            join t in db.Tournaments on reg.TournamentId equals t.Id
+            where t.Status == "in-progress" && stalePlayerIds.Contains(reg.PlayerId)
+            select new { reg.PlayerId, t.Id }
+        ).ToListAsync(ct);
+        var deferralMap = deferralCandidates
+            .GroupBy(x => x.PlayerId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList(), StringComparer.Ordinal);
 
         var existingHistoryKeys = new HashSet<(string, string)>(
             await db.PlayerRatingHistory
@@ -97,11 +131,43 @@ public sealed class SeasonRolloverService : BackgroundService
                 .ToListAsync(ct)
                 .ContinueWith(t => t.Result.Select(x => (x.PlayerId, x.Season)), ct));
 
+        var existingDeferralKeys = new HashSet<(string, string, Guid)>(
+            await db.PlayerSeasonRolloverDeferrals
+                .Where(d => stalePlayerIds.Contains(d.PlayerId) && d.DrainedAtUtc == null)
+                .Select(d => new { d.PlayerId, d.FromSeason, d.TournamentId })
+                .ToListAsync(ct)
+                .ContinueWith(t => t.Result.Select(x => (x.PlayerId, x.FromSeason, x.TournamentId)), ct));
+
         var now = DateTime.UtcNow;
+        var frozen = 0;
+        var deferred = 0;
         foreach (var row in stale)
         {
-            var key = (row.PlayerId, row.Season);
-            if (!existingHistoryKeys.Contains(key))
+            if (deferralMap.TryGetValue(row.PlayerId, out var tournamentIds) && tournamentIds.Count > 0)
+            {
+                // Defer the rollover: keep the live row, write the
+                // pin against every active tournament so the drain
+                // path catches whichever completes last.
+                foreach (var tid in tournamentIds)
+                {
+                    var key = (row.PlayerId, row.Season, tid);
+                    if (existingDeferralKeys.Contains(key)) continue;
+                    db.PlayerSeasonRolloverDeferrals.Add(new PlayerSeasonRolloverDeferral
+                    {
+                        PlayerId = row.PlayerId,
+                        FromSeason = row.Season,
+                        ToSeason = currentSeason,
+                        DeferredAtUtc = now,
+                        TournamentId = tid,
+                    });
+                    existingDeferralKeys.Add(key);
+                    deferred++;
+                }
+                continue;
+            }
+
+            var historyKey = (row.PlayerId, row.Season);
+            if (!existingHistoryKeys.Contains(historyKey))
             {
                 db.PlayerRatingHistory.Add(new PlayerRatingHistory
                 {
@@ -113,11 +179,96 @@ public sealed class SeasonRolloverService : BackgroundService
                 });
             }
             db.PlayerRatings.Remove(row);
+            frozen++;
         }
 
         await db.SaveChangesAsync(ct);
-        _logger.LogInformation("Season rollover: froze {Count} rating rows; current season is {Season}.",
-            stale.Count, currentSeason);
-        return stale.Count;
+        _logger.LogInformation(
+            "Season rollover: froze {Frozen} rows, deferred {Deferred} rows; current season is {Season}.",
+            frozen, deferred, currentSeason);
+
+        // Drain any deferrals whose tournaments finished in the meantime.
+        await DrainDeferralsAsync(ct);
+        return frozen;
+    }
+
+    /// <summary>
+    /// Phase K Wave 2 — drain step. Walks every pending deferral whose
+    /// pinned tournament is now <c>complete</c> and applies the
+    /// freeze-then-reset cycle that <see cref="RolloverOnceAsync"/>
+    /// would have applied originally. Idempotent — the drain re-runs
+    /// safely because the (PlayerId, Season) uniqueness on
+    /// <see cref="PlayerRatingHistory"/> guards against double-freeze.
+    /// Returns the number of deferrals drained.
+    ///
+    /// <para>The drain is best-effort transactional: each player's
+    /// rows commit independently so a bad row can't block the queue.</para>
+    /// </summary>
+    public async Task<int> DrainDeferralsAsync(CancellationToken ct = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var pending = await (
+            from d in db.PlayerSeasonRolloverDeferrals
+            join t in db.Tournaments on d.TournamentId equals t.Id
+            where d.DrainedAtUtc == null && t.Status == "complete"
+            select d
+        ).ToListAsync(ct);
+        if (pending.Count == 0) return 0;
+
+        var now = DateTime.UtcNow;
+        var drained = 0;
+
+        // Group by player so we only process each live rating row once
+        // even when a player is pinned by multiple tournaments.
+        foreach (var group in pending.GroupBy(d => d.PlayerId, StringComparer.Ordinal))
+        {
+            var playerId = group.Key;
+            var oldestSeason = group.Select(d => d.FromSeason).OrderBy(s => s, StringComparer.Ordinal).First();
+
+            // Phase K Wave 2 — only drain when EVERY pinning tournament
+            // for this player is complete. If a player has another
+            // active tournament, keep the deferral pinned.
+            var anyStillActive = await (
+                from d in db.PlayerSeasonRolloverDeferrals
+                join t in db.Tournaments on d.TournamentId equals t.Id
+                where d.PlayerId == playerId && d.DrainedAtUtc == null && t.Status != "complete"
+                select d.Id).AnyAsync(ct);
+            if (anyStillActive) continue;
+
+            var live = await db.PlayerRatings
+                .FirstOrDefaultAsync(r => r.PlayerId == playerId && r.Season == oldestSeason, ct);
+            if (live is not null)
+            {
+                var existing = await db.PlayerRatingHistory
+                    .FirstOrDefaultAsync(h => h.PlayerId == playerId && h.Season == oldestSeason, ct);
+                if (existing is null)
+                {
+                    db.PlayerRatingHistory.Add(new PlayerRatingHistory
+                    {
+                        PlayerId = playerId,
+                        Season = live.Season,
+                        EloRating = live.EloRating,
+                        GamesPlayed = live.GamesPlayed,
+                        FrozenAt = now,
+                    });
+                }
+                db.PlayerRatings.Remove(live);
+            }
+
+            foreach (var d in group)
+            {
+                d.DrainedAtUtc = now;
+                drained++;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        if (drained > 0)
+        {
+            _logger.LogInformation("Season rollover drain: applied {Count} deferred snapshot(s).", drained);
+        }
+        return drained;
     }
 }

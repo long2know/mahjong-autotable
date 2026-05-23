@@ -2199,3 +2199,118 @@ Cross-cutting Wave-1 risk notes:
   no JS change.
 
 Memo: `.squad/decisions/inbox/hicks-phase-k-wave-1.md`.
+
+## Phase K Wave 2 — lobby bundle split, voice chat, drag-drop seeding, server-auth tour, replay finals deep-link, PWA
+
+Branch: `stlong/phase-k-wave-2-bringup`.  Commits `6bfeb3a` (source)
++ `3f1a009` (dist).  Six frontend tasks shipped:
+
+1. **Lobby bundle split (the headline).**  Wave 1 landed the eager
+   bundle at 1.318 MB; Hudson asked for ≤500 kB.  Wave 2 splits
+   `utils.ts` into `dom-utils.ts` (pure DOM helpers) + `utils.ts`
+   (three.js-bound geometry).  All lobby-chain modules migrate to
+   `./dom-utils` so three is no longer pulled into the eager
+   graph.  `index.ts` is rewritten as a lobby-only entry; the
+   renderer chain (`Game`/`World`/`Client`/`MoveLog`/`AssetLoader`/
+   three.js + chat) is moved into a new `game-bootstrap.ts`
+   dynamically imported only when `window.location.search !== ''`.
+   Result: eager `autotable-src.<hash>.js` shrinks from **1.318 MB**
+   to **208.44 kB** (−84 %), well under the 500 kB budget.
+2. **Voice chat (`voice.ts` new module).**  WebRTC mesh up to 4
+   peers, polite-peer offer/answer pattern.  ICE servers from
+   `GET /api/turn` with public STUN fallback.  Signalling via a new
+   `VoiceHub` (`/hubs/voice`) — `PeerJoined` / `PeerLeft` / `Offer`
+   / `Answer` / `IceCandidate` events + `SendOffer` / `SendAnswer`
+   / `SendIceCandidate` methods.  Panel mounted by
+   `game-bootstrap.ts` when `?voice=1` lands on the URL; testids
+   `voice-panel`, `voice-mic-toggle`, `voice-peer-{connectionId}`,
+   `voice-volume-{connectionId}`.
+3. **Server-authoritative onboarding tour (`tour.ts` update).**
+   Probes `GET /api/players/me/onboarding-status` first; mirrors
+   completion to LS for offline future visits.  POSTs the same
+   endpoint on `endTour(true)` with the completion timestamp.
+   404/network error → falls back to the Wave-1 LS-only path so
+   the change is safe to merge ahead of Bishop's backend.
+4. **Tournament drag-drop seeding (`tournaments.ts` update).**
+   Admin probe pattern reused from `audit.ts`.  When the probe
+   succeeds and the tournament is `open` / `registration-open` +
+   single-elim, a `tournament-seeding-panel` mounts above the
+   bracket.  Draggable `<li>` rows (`tournament-seed-row-{N}`) +
+   Save button → `POST /api/tournaments/{id}/seed` body
+   `{ seeds: [playerId, …] }`.  Status pill
+   (`tournament-seeding-status`) auto-removes after 4 s on error.
+5. **Replay finals deep-link (`replay.ts` + `replay-launcher.ts`).**
+   `openReplayForGame(gameId, { finals: true })` stamps
+   `?finals=true` on the URL via `history.replaceState`.
+   `replay.ts:openServer` honours `wantFinals` (from option or
+   URL) and scrolls to the last hand.  All tournament replay
+   entry points (SVG cell finals pin, detail-strip button,
+   round-robin / Swiss row ▶ buttons) pass `{ finals: true }`.
+6. **PWA — manifest + SW + offline (`pwa.ts` + `sw.js` +
+   `manifest.webmanifest` new files).**  SW caches:
+   - cache-first for parcel content-hash assets + `/img/*`,
+   - network-first with cache fallback for `/api/games/public`,
+   - network-only for the rest of `/api/*` + `/hubs/*`,
+   - network-first with cached `index.html` fallback for the
+     SPA shell so the lobby boots offline.
+   `pwa.ts` mounts `pwa-offline-banner` + `pwa-install-prompt`.
+   Parcel passes manifest.webmanifest through unhashed once the
+   `@parcel/transformer-webmanifest` plugin is added; `sw.js` is
+   force-copied to the dist root after each build.
+
+### Bundle deltas
+
+- Eager `autotable-src.<hash>.js`: `41e99b7a` (1.318 MB) →
+  `e5158797` (**208.44 kB**, −84 %).
+- New chunks:
+  - `game-bootstrap.7cf4a13e.js` 1.11 MB — lazy, loaded only when
+    URL has a search string (Quick Match / Apply / `?gameId=`).
+  - `voice.69120dff.js` 5.58 kB — lazy, `?voice=1` gate.
+  - `audit.ad23ffae.js` 7.36 kB — peeled from the eager graph by
+    the index.ts rewrite (Wave 1 had it eager).
+- Re-hashed: `tournaments.727edb01.js` 23.82 kB,
+  `history.1f49606e.js` 12.29 kB, `tour.d1d89c8e.js` 9.48 kB,
+  `chat.9093eecb.js` 12.22 kB.
+- Sentry vendor (`esm.eb93de05.js`, 395 kB) only loaded when
+  `<meta name="sentry-dsn">` is non-empty.  In dev / no-DSN builds
+  the chunk never fetches.
+- CSS hashes regenerated (`df85b4c4` / `f07081dc` / `6633d8fb`,
+  ~216 kB total).
+
+### Tests
+
+- `tsc --noEmit -p .` clean except the pre-existing TS1323
+  dynamic-import warnings (same shape as `sentry.ts:97`; parcel
+  ignores).
+- Parcel build green in ~11 s.
+- `tests/selectors.md` extended with full Phase K Wave 2 testid
+  catalog + Vasquez soft-pass annotations.
+
+### Author hygiene this wave
+
+Selective `git add` only — never `git add -A`.  Bishop's backend
+work (VoiceHub, onboarding-status endpoint, tournament-seed
+endpoint, Tournament/SeasonRolloverService/PlayerRatingService
+changes) lives on its own commits in Bishop's lane.  Apone's
+CI workflows (`pwa-smoke.yml`, `verify-signature.yml`,
+`multi-arch-runtime.yml`, etc.) are on Apone's lane.  My commits
+carry `Hicks (Frontend) <hicks@squad.mahjong>` +
+`Co-authored-by: Copilot` trailer.
+
+### Wave-3 follow-ups (Hudson to triage)
+
+- `game-bootstrap.<hash>.js` is still 1.11 MB; three.js is the
+  biggest single contributor.  Splitting "shell" (DOM + Client +
+  matchmaking handshake) vs "scene" (three.js + GLB loaders) would
+  speed first-frame on slow networks.
+- Replace the `?voice=1` URL gate with Bishop's authoritative
+  `voiceEnabled` flag once it's broadcast on the game state.
+- TURN-server provisioning is the gating dependency for real-world
+  voice (NAT traversal).  Pair with Hudson on infra.
+- Suggest a SW post-build script that emits a `manifest.json` of
+  hashed-asset URLs so we can pre-cache the lobby bundle + CSS in
+  the SW install (faster second-visit cold boot).
+- Replay timeline `scrollIntoView` is silent for screen readers;
+  follow-up: `aria-live="polite"` "Showing finals" status.
+
+Memo: `.squad/decisions/inbox/hicks-phase-k-wave-2.md`.

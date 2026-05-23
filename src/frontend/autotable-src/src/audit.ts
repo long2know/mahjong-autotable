@@ -23,7 +23,7 @@
 //   • the admin probe + showAuditTabIfAdmin() helper
 
 import { t, onLanguageChange } from './i18n';
-import { showEl, hideEl, setElHidden } from './utils';
+import { showEl, hideEl, setElHidden } from './dom-utils';
 
 // ── Types ──────────────────────────────────────────────────────────
 

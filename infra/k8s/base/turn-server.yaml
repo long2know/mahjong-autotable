@@ -1,0 +1,205 @@
+# Phase K Wave 2 — Apone (DevOps).
+#
+# coturn (TURN + STUN) base resources.
+#
+# The Voice / video lane (Bishop's `WebRtcVoiceHub` + Hicks's
+# `voice.ts` client) negotiates ICE candidates through this TURN
+# server. The base manifest deploys the official `coturn/coturn:4.6`
+# image as a single-replica Deployment behind a LoadBalancer Service;
+# `realm`, `external-ip`, and credentials all come from the staging/prod
+# overlays. The base ships a STUB ExternalSecret pointing at
+# `mahjong/local/turn/*` (which does not exist) so an accidental
+# `kubectl apply -k base/` against a real cluster fails fast.
+#
+# Production secret paths (provisioned by the operator out-of-band):
+#   /mahjong/prod/turn/realm
+#   /mahjong/prod/turn/username
+#   /mahjong/prod/turn/password
+#
+# coturn `--user-file` format is `username:password` per line. The
+# template in the overlay-specific ExternalSecret renders the secret
+# file at /etc/coturn/secrets/users in that shape; coturn mounts the
+# file via `--user-file`.
+#
+# Networking notes:
+#   * `externalTrafficPolicy: Local` preserves the client source IP
+#     (coturn needs the real client IP to mint relay candidates).
+#   * The `external-ip` config knob (overlay-patched) tells coturn the
+#     public IP it should advertise as the relay address; mismatches
+#     manifest as silent ICE failures.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: turn-server-config
+  labels:
+    app.kubernetes.io/name: turn-server
+    app.kubernetes.io/part-of: mahjong-autotable
+data:
+  # Minimal turnserver.conf. Overlays patch `realm` + `external-ip`
+  # by replacing this entire ConfigMap. Credentials come from the
+  # `turn-server-secrets` ExternalSecret (overlay-patched) and are
+  # mounted as files; coturn picks them up via `--user-file`.
+  turnserver.conf: |
+    # Phase K Wave 2 base. Overlays patch this.
+    # `realm` + `external-ip` are overlay-patched. The base file SHIPS
+    # `realm=STUB_REPLACE_IN_OVERLAY` so an accidental `kubectl apply -k
+    # base/` against a real cluster fails coturn startup (better than
+    # one that quietly leaks credentials under the wrong realm).
+    realm=STUB_REPLACE_IN_OVERLAY
+    external-ip=STUB_REPLACE_IN_OVERLAY
+
+    # Hardening — match coturn upstream guidance.
+    no-loopback-peers
+    no-multicast-peers
+    no-cli
+    cli-password=DISABLED_BY_NO_CLI
+
+    listening-port=3478
+    tls-listening-port=5349
+    min-port=49160
+    max-port=49200
+
+    lt-cred-mech
+    user-quota=12
+    total-quota=120
+
+    simple-log
+    log-file=stdout
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: turn-server
+  labels:
+    app.kubernetes.io/name: turn-server
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: turn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: turn-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: turn-server
+        app.kubernetes.io/component: turn
+    spec:
+      securityContext:
+        # coturn drops privileges itself after binding low ports if it
+        # has CAP_NET_BIND_SERVICE; we run as root in the container
+        # because the host gives us privileged ports via hostPort=NO.
+        runAsNonRoot: false
+      containers:
+        - name: coturn
+          image: coturn/coturn:4.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/etc/coturn/turnserver.conf
+            - --user-file=/etc/coturn/secrets/users
+          ports:
+            - name: stun-udp
+              containerPort: 3478
+              protocol: UDP
+            - name: stun-tcp
+              containerPort: 3478
+              protocol: TCP
+            - name: turns-tcp
+              containerPort: 5349
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/coturn
+              readOnly: true
+            - name: secrets
+              mountPath: /etc/coturn/secrets
+              readOnly: true
+          livenessProbe:
+            # coturn has no built-in /health endpoint. Use a TCP probe
+            # on the TURN port — if coturn isn't listening, k8s will
+            # reschedule.
+            tcpSocket:
+              port: stun-tcp
+            initialDelaySeconds: 5
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: turn-server-config
+            items:
+              - key: turnserver.conf
+                path: turnserver.conf
+        - name: secrets
+          secret:
+            secretName: turn-server-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: turn-server
+  labels:
+    app.kubernetes.io/name: turn-server
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: turn
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: turn-server
+  # `Local` preserves the client source IP, which coturn needs to mint
+  # relay candidates against.
+  externalTrafficPolicy: Local
+  ports:
+    - name: stun-udp
+      port: 3478
+      targetPort: stun-udp
+      protocol: UDP
+    - name: stun-tcp
+      port: 3478
+      targetPort: stun-tcp
+      protocol: TCP
+    - name: turns-tcp
+      port: 5349
+      targetPort: turns-tcp
+      protocol: TCP
+---
+# ExternalSecret pulling TURN credentials from AWS SSM. Bound by the
+# overlays — base ships a STUB reference that points at
+# `mahjong/local/turn/*` (which does not exist) so an accidental
+# `kubectl apply -k base/` against a real cluster fails fast.
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: turn-server-secrets
+  labels:
+    app.kubernetes.io/name: turn-server
+    app.kubernetes.io/part-of: mahjong-autotable
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    # STUB — staging/prod overlays patch this to the real store name.
+    name: aws-secrets-manager-local
+  target:
+    name: turn-server-secrets
+    creationPolicy: Owner
+    template:
+      type: Opaque
+      data:
+        users: "STUB_REPLACE_IN_OVERLAY:STUB_REPLACE_IN_OVERLAY"
+  data:
+    - secretKey: realm
+      remoteRef:
+        key: /mahjong/local/turn/realm
+    - secretKey: username
+      remoteRef:
+        key: /mahjong/local/turn/username
+    - secretKey: password
+      remoteRef:
+        key: /mahjong/local/turn/password

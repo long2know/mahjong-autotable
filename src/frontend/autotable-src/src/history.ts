@@ -21,7 +21,7 @@
 //   history-recent-row-{N}.
 
 import { getProfile } from './profile';
-import { setElHidden, showEl, hideEl } from './utils';
+import { setElHidden, showEl, hideEl } from './dom-utils';
 
 // ── Wire shape ──────────────────────────────────────────────────────
 

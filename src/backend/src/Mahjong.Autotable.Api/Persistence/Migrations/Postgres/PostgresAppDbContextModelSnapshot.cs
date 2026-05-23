@@ -562,6 +562,46 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.ToTable("PlayerRatingHistory");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerSeasonRolloverDeferral", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("DeferredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DrainedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FromSeason")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("PlayerId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ToSeason")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TournamentId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TournamentId", "DrainedAtUtc");
+
+                    b.HasIndex("PlayerId", "FromSeason", "TournamentId")
+                        .IsUnique();
+
+                    b.ToTable("PlayerSeasonRolloverDeferrals");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.ReconnectAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -575,6 +615,13 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasDefaultValue("reconnect.token.rotated");
 
                     b.Property<Guid>("NewTokenId")
                         .HasColumnType("uuid");
@@ -597,6 +644,8 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.HasIndex("At");
 
                     b.HasIndex("PlayerId");
+
+                    b.HasIndex("Kind", "At");
 
                     b.ToTable("ReconnectAuditEntries");
                 });

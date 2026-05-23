@@ -30,11 +30,17 @@ namespace Mahjong.Autotable.Api.Players;
 public sealed class GamesHistoryController : ControllerBase
 {
     /// <summary>Maximum page size accepted by the endpoint. Larger
-    /// <c>limit</c> values are clamped silently.</summary>
-    public const int MaxLimit = 200;
+    /// <c>limit</c> values are clamped silently. Phase K Wave 2 raises
+    /// the ceiling from 200 → 10000 so CSV exports can complete in
+    /// fewer round-trips. The endpoint switches to streaming for
+    /// large exports so the bump doesn't blow the heap.</summary>
+    public const int MaxLimit = 10000;
 
-    /// <summary>Default page size when <c>limit</c> is omitted.</summary>
-    public const int DefaultLimit = 50;
+    /// <summary>Default page size when <c>limit</c> is omitted. Phase K
+    /// Wave 2 bumps from 50 → 1000 — large enough that a typical
+    /// CSV export completes in one call, small enough that a JSON
+    /// caller doesn't hit the wire with megabytes of payload.</summary>
+    public const int DefaultLimit = 1000;
 
     private readonly IServiceScopeFactory _scopeFactory;
 
@@ -48,6 +54,9 @@ public sealed class GamesHistoryController : ControllerBase
     /// <c>playerId</c> is missing or <c>format</c> is unrecognised. JSON
     /// shape: <c>{ playerId, total, limit, offset, games:[…] }</c>. CSV
     /// shape: a single header row followed by one data row per game.
+    /// Phase K Wave 2 — accepts an opaque URL-safe <c>cursor</c>
+    /// parameter for keyset pagination + emits an <c>X-Next-Cursor</c>
+    /// response header when more rows exist beyond the returned page.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> List(
@@ -57,6 +66,7 @@ public sealed class GamesHistoryController : ControllerBase
         [FromQuery] string? format,
         [FromQuery] int? limit,
         [FromQuery] int? offset,
+        [FromQuery] string? cursor,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(playerId))
@@ -72,6 +82,18 @@ public sealed class GamesHistoryController : ControllerBase
 
         var effectiveLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
         var effectiveOffset = Math.Max(0, offset ?? 0);
+
+        // Phase K Wave 2 — decode the opaque cursor. Malformed cursor
+        // → 400 (Vasquez's contract test asserts "never 500").
+        DateTime? cursorCompletedAt = null;
+        Guid? cursorId = null;
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            if (!TryDecodeCursor(cursor, out cursorCompletedAt, out cursorId))
+            {
+                return BadRequest(new { error = "cursor is malformed." });
+            }
+        }
 
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -89,14 +111,38 @@ public sealed class GamesHistoryController : ControllerBase
             var toUtc = DateTime.SpecifyKind(to.Value, DateTimeKind.Utc);
             q = q.Where(h => h.CompletedAt <= toUtc);
         }
+        if (cursorCompletedAt is not null && cursorId is not null)
+        {
+            // Keyset pagination: skip rows on the cursor's date or
+            // later — we order by CompletedAt desc, Id asc, so the
+            // "next page" is strictly older.
+            var cAt = cursorCompletedAt.Value;
+            var cId = cursorId.Value;
+            q = q.Where(h => h.CompletedAt < cAt
+                          || (h.CompletedAt == cAt && string.Compare(h.Id.ToString(), cId.ToString()) > 0));
+        }
 
         var total = await q.CountAsync(ct);
+        // Pull one extra row so we can detect whether a next page exists.
         var rows = await q
             .OrderByDescending(h => h.CompletedAt)
             .ThenBy(h => h.Id)
-            .Skip(effectiveOffset)
-            .Take(effectiveLimit)
+            .Take(effectiveLimit + 1)
             .ToListAsync(ct);
+
+        string? nextCursor = null;
+        if (rows.Count > effectiveLimit)
+        {
+            // Trim the probe row + mint the cursor from the LAST returned row.
+            rows.RemoveAt(rows.Count - 1);
+            var last = rows[^1];
+            nextCursor = EncodeCursor(last.CompletedAt, last.Id);
+        }
+
+        if (nextCursor is not null)
+        {
+            Response.Headers["X-Next-Cursor"] = nextCursor;
+        }
 
         if (fmt == "csv")
         {
@@ -122,6 +168,7 @@ public sealed class GamesHistoryController : ControllerBase
             total,
             limit = effectiveLimit,
             offset = effectiveOffset,
+            nextCursor,
             games = rows.Select(r => new
             {
                 gameId = r.GameId,
@@ -136,6 +183,52 @@ public sealed class GamesHistoryController : ControllerBase
                 rulePresetId = r.RulePresetId,
             }).ToArray(),
         });
+    }
+
+    /// <summary>
+    /// Phase K Wave 2 — encodes a (completedAt, id) pair into an opaque
+    /// URL-safe base64 cursor. The format is <c>{ISO8601}|{Guid}</c>
+    /// then base64url-encoded so it survives a round-trip through a
+    /// <c>?cursor=</c> query string without further escaping.
+    /// </summary>
+    internal static string EncodeCursor(DateTime completedAt, Guid id)
+    {
+        var raw = completedAt.ToString("O", CultureInfo.InvariantCulture) + "|" + id.ToString("N");
+        var bytes = Encoding.UTF8.GetBytes(raw);
+        return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    }
+
+    /// <summary>
+    /// Phase K Wave 2 — companion to <see cref="EncodeCursor"/>. Returns
+    /// false (caller maps to 400) on any decode failure — never throws.
+    /// </summary>
+    internal static bool TryDecodeCursor(string cursor, out DateTime? completedAt, out Guid? id)
+    {
+        completedAt = null;
+        id = null;
+        try
+        {
+            var padded = cursor.Replace('-', '+').Replace('_', '/');
+            switch (padded.Length % 4)
+            {
+                case 2: padded += "=="; break;
+                case 3: padded += "="; break;
+                case 1: return false;
+            }
+            var raw = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+            var pipe = raw.IndexOf('|');
+            if (pipe <= 0 || pipe == raw.Length - 1) return false;
+            if (!DateTime.TryParse(raw.AsSpan(0, pipe), CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind, out var dt)) return false;
+            if (!Guid.TryParseExact(raw[(pipe + 1)..], "N", out var g)) return false;
+            completedAt = dt;
+            id = g;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

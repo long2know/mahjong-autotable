@@ -1,0 +1,46 @@
+# Phase K Wave 2 — Apone (DevOps).
+#
+# Dedicated TURN / STUN overlay. Re-uses `infra/k8s/base/turn-server.yaml`
+# (Deployment + ConfigMap + Service + ExternalSecret stub) and overrides
+# the stub credentials reference, the configmap `realm` + `external-ip`
+# placeholders, and the namespace.
+#
+# Apply with:
+#
+#     kubectl apply -k infra/k8s/overlays/turn
+#
+# Pre-reqs (operator action — DevOps does NOT touch production secrets):
+#
+#   * SSM parameters provisioned out-of-band:
+#       /mahjong/prod/turn/realm
+#       /mahjong/prod/turn/username
+#       /mahjong/prod/turn/password
+#   * `aws-secrets-manager-prod` ClusterSecretStore bound to an IAM
+#     role with `ssm:GetParameter` on `/mahjong/prod/turn/*`.
+#   * DNS A-record `turn.mahjong.example.com` → LoadBalancer external IP
+#     (provisioned after the Service comes up the first time).
+#
+# See `docs/turn-server-setup.md` for the full operator runbook.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mahjong-prod
+
+commonLabels:
+  app.kubernetes.io/part-of: mahjong-autotable
+  app.kubernetes.io/component: turn
+
+resources:
+  - ../../base/turn-server.yaml
+  - external-secret.yaml
+
+patches:
+  - path: deployment.yaml
+    target:
+      kind: Deployment
+      name: turn-server
+  - path: configmap-patch.yaml
+    target:
+      kind: ConfigMap
+      name: turn-server-config

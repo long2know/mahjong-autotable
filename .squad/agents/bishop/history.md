@@ -1825,3 +1825,103 @@ of 832; Vasquez's Wave-K forward-staged contract tests under
 `Players/{PlayerRatingTests,SeasonRolloverServiceTests}`, and
 `Tournaments/{TournamentMatchForfeit,TournamentReconnectGrace}Tests`
 all bind cleanly to my shipped surface).
+
+
+## Phase K Wave 2 — production bring-up wave 2 (2026-05-23)
+
+**Branch:** `stlong/phase-k-wave-2-bringup` off main at `0b7600f`.
+
+Seven deliverables on top of the Wave 1 PR (#47):
+
+1. **Tiered Elo K-factor.** `PlayerRatingService.ResolveKFactor(rating,
+   gamesPlayed) → int`. Thresholds: `< 30 games` ⇒ K=40, `> 2400 rating`
+   ⇒ K=16, otherwise K=24. Replaces the flat-32 from Wave 1 on the live
+   match flow; legacy `ComputeDelta(rating, opp, won)` instance method
+   preserved for Wave-1 tests that assert delta=16 at K=32.
+
+2. **Audit Kind column.** `ReconnectAuditEntry.Kind` (string, default
+   `"reconnect.token.rotated"`) + nullable `Detail`. New constants:
+   `KindTournamentForfeit`, `KindTournamentMatchComplete`,
+   `KindVoiceJoin`, `KindVoiceLeave`. Composite `(Kind, At)` index.
+   Writers updated in `TournamentForfeitService`, `TournamentService`
+   (Advance + Forfeit + new `ForfeitMatchByIdAsync`), `VoiceHub`.
+
+3. **Manual forfeit endpoint.**
+   `POST /api/tournaments/{tid}/matches/{mid}/forfeit` (auth-required,
+   idempotent — re-forfeit returns 404 not 500). Returns updated match.
+
+4. **Season-rollover deferral.** `PlayerSeasonRolloverDeferral` entity
+   (Id, PlayerId, FromSeason, ToSeason, DeferredAtUtc, TournamentId,
+   DrainedAtUtc). `SeasonRolloverService.RolloverOnceAsync` defers
+   players registered to in-progress tournaments instead of freezing
+   their ratings. Public `DrainDeferralsAsync()` walks pending
+   deferrals whose tournaments are complete. `TournamentService`
+   calls `MaybeDrainSeasonDeferralsAsync` after every save on the
+   advance/forfeit paths.
+
+5. **WebRTC VoiceHub.** `Voice/VoiceHub.cs` (SignalR `Hub`) with five
+   methods: `JoinVoice`, `LeaveVoice`, `RelayOffer`, `RelayAnswer`,
+   `RelayIceCandidate`. Per-connection token-bucket rate limiter (30
+   relays/sec). `VoiceOptions` defaults to `Enabled = false`. Mapped
+   at `/hubs/voice` + alias `/hubs/webrtc`. New `GET /api/turn`
+   endpoint returns `{ iceServers, voiceEnabled }` from
+   `Voice:TurnServers` config (falls back to Google STUN). Voice
+   join/leave writes audit rows with the new Kind classifier.
+
+6. **OAuth live discovery cache.** `Auth/OAuthDiscoveryService.cs`
+   caches each provider's `.well-known/openid-configuration` document
+   with a 6h TTL + 24h stale-mark. `OAuthDiscoveryRefreshService`
+   (`BackgroundService`) refreshes every 6h. GitHub stub uses
+   hardcoded `public const string Github*` constants
+   (no GitHub OIDC discovery doc). Companion to the Wave-1
+   `OAuthProviderHealthCheck` (1-minute liveness probe) — both can
+   fail independently.
+
+7. **Spectator livestream stub.** `Spectator/SpectatorService.cs` with
+   a 30 Hz `ShouldEmitTileFlip` debouncer + `NotImplementedEnvelope`
+   404 payload shape. Route `GET /api/replay/{id}/livestream.m3u8`
+   returns the structured envelope.
+
+8. **Match-history CSV cursor pagination.** Default `limit=1000`, max
+   `limit=10000`. New optional `?cursor=` query parameter — opaque
+   base64-url-encoded `{ISO8601}|{Guid:N}` payload. `X-Next-Cursor`
+   response header when more rows exist. Malformed cursor → 400,
+   never 500. Keyset filter on `(CompletedAt, Id)`.
+
+**Migrations × 3 providers**: `Phase_K_W2_AuditKind_And_RolloverDeferral`
+landed under each `Persistence/Migrations/{Sqlite,Postgres,SqlServer}/`
+sub-tree. Each adds `Kind` + `Detail` columns to
+`ReconnectAuditEntries`, the composite `(Kind, At)` index, and the new
+`PlayerSeasonRolloverDeferrals` table with unique
+`(PlayerId, FromSeason, TournamentId)` + composite
+`(TournamentId, DrainedAtUtc)` indexes.
+
+**appsettings.json deltas**: `Voice` block, `Authentication:Discovery`
+block.
+
+**Surprises:**
+
+- **`X-Next-Cursor` is opaque-but-not-stable.** Bumping the order
+  key would break in-flight cursors. Client guidance: do NOT persist
+  cursors across reloads.
+
+- **VoiceHub is wide-open in Wave 2.** No per-table membership auth
+  yet — Phase L needs to wrap the hub against `AuthCookieService` so
+  a stranger can't broadcast SDP into a tournament room. Captured as
+  a hand-off in the memo.
+
+- **Two `SkipNetwork`-ish knobs co-exist.** `Authentication:HealthCheck:
+  SkipDiscovery` (Wave 1, health probe) and
+  `Authentication:Discovery:SkipNetwork` (Wave 2, discovery cache).
+  Operators running both in air-gapped environments should set both
+  to `true`.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-2.md` —
+per-deliverable design notes, migration table, DI wiring summary,
+appsettings additions, surprises, and Phase-L hand-offs.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+→ **Passed: 1062, Failed: 0, Skipped: 0** (+85 over Wave-1 closeout
+baseline of 977; Vasquez's six Wave-2 contract-test files under
+`tests/Phase_K_W2/` plus eight cross-wave regression facts in
+`Wave1ThroughKW2RegressionTests.cs` all green).

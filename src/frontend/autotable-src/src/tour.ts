@@ -130,17 +130,94 @@ const state: State = {
   resizeHandler: null,
 };
 
+// Phase K Wave 2 — Server-authoritative first-launch detection.
+//
+// Wave 1 read the LS flag only.  Vasquez flagged that a returning user
+// on a second device would re-see the tour because the flag is per-
+// browser.  Wave 2 prefers `/api/players/me/onboarding-status` —
+// when it returns `{ completed: true }`, we never show the tour even
+// on a fresh browser.  When the user finishes the tour we POST the
+// same endpoint so the server learns about it.  LS remains the
+// offline / 404 fallback so the rollout is safe to merge ahead of the
+// backend.
+//
+// Wire contract (Bishop, Phase K Wave 2):
+//   GET  /api/players/me/onboarding-status
+//     → 200 { completed: boolean, completedAtUtc?: string } | 404
+//   POST /api/players/me/onboarding-status
+//     body: { completed: true, completedAtUtc: "<iso>" }
+//     → 204 No Content | 404
+//
+// Both verbs are tolerant: 404 = endpoint not deployed, fall back to
+// LS; network error = same.
+
+const ONBOARDING_STATUS_URL = '/api/players/me/onboarding-status';
+
+interface OnboardingStatus {
+  completed?: boolean;
+  Completed?: boolean;
+  completedAtUtc?: string;
+}
+
+let serverProbed = false;
+let serverCompleted = false;
+
+async function probeServerOnboardingStatus(): Promise<boolean> {
+  if (serverProbed) return serverCompleted;
+  serverProbed = true;
+  try {
+    const r = await fetch(ONBOARDING_STATUS_URL, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!r.ok) return false;
+    const body = (await r.json()) as OnboardingStatus;
+    serverCompleted = body.completed === true || body.Completed === true;
+    return serverCompleted;
+  } catch {
+    return false;
+  }
+}
+
+async function persistServerCompletion(): Promise<void> {
+  try {
+    await fetch(ONBOARDING_STATUS_URL, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        completed: true,
+        completedAtUtc: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    // Best-effort — LS flag remains the authoritative offline fallback.
+  }
+}
+
 // ── Public API ──────────────────────────────────────────────────────
 
 export function installOnboardingTour(): void {
   if (state.installed) return;
   state.installed = true;
-  if (isComplete()) return;
-  // Defer to next tick so the lobby has finished mounting.
-  window.setTimeout(() => {
-    if (isComplete()) return;
-    startTour();
-  }, 250);
+  if (isLocalComplete()) return;
+  // Wave 2 — probe the server first.  If the server says completed,
+  // sync the LS flag so subsequent visits skip even when offline.
+  void probeServerOnboardingStatus().then((completed) => {
+    if (completed) {
+      persistLocalComplete();
+      return;
+    }
+    // Defer to next tick so the lobby has finished mounting.
+    window.setTimeout(() => {
+      if (isLocalComplete()) return;
+      startTour();
+    }, 250);
+  });
 }
 
 export function startTour(): void {
@@ -155,7 +232,10 @@ export function startTour(): void {
 export function endTour(markComplete: boolean): void {
   if (!state.active) return;
   state.active = false;
-  if (markComplete) persistComplete();
+  if (markComplete) {
+    persistLocalComplete();
+    void persistServerCompletion();
+  }
   teardownRoot();
   window.dispatchEvent(new CustomEvent('mahjong:tour-ended', {
     detail: { markComplete },
@@ -164,14 +244,21 @@ export function endTour(markComplete: boolean): void {
 
 export function resetTour(): void {
   try { window.localStorage.removeItem(TOUR_LS_KEY); } catch { /* ignore */ }
+  serverProbed = false;
+  serverCompleted = false;
 }
 
+/** Returns the cached local-storage flag.  Kept as the offline path. */
 export function isComplete(): boolean {
+  return isLocalComplete() || serverCompleted;
+}
+
+function isLocalComplete(): boolean {
   try { return window.localStorage.getItem(TOUR_LS_KEY) === 'true'; }
   catch { return false; }
 }
 
-function persistComplete(): void {
+function persistLocalComplete(): void {
   try { window.localStorage.setItem(TOUR_LS_KEY, 'true'); } catch { /* ignore */ }
 }
 

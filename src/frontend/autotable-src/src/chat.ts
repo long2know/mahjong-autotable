@@ -47,7 +47,7 @@
 import type { Client } from './client';
 import { Sound } from './sound';
 import { t, onLanguageChange } from './i18n';
-import { showEl, hideEl, setElHidden } from './utils';
+import { showEl, hideEl, setElHidden } from './dom-utils';
 
 // ── Wire types ─────────────────────────────────────────────────────
 

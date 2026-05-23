@@ -216,7 +216,9 @@ public sealed class TournamentForfeitService : BackgroundService
                 // Append-only audit log entry so the trail is
                 // self-contained. The synthetic "forfeit" marker on
                 // PlayerId lets operators pivot on the event class
-                // without a new audit table.
+                // without a new audit table. Phase K Wave 2 — also
+                // stamps the canonical <c>tournament.forfeit</c> Kind
+                // classifier (Vasquez's contract pin).
                 db.ReconnectAuditEntries.Add(new ReconnectAuditEntry
                 {
                     PlayerId = ForfeitAuditMarker,
@@ -225,6 +227,7 @@ public sealed class TournamentForfeitService : BackgroundService
                     Ipv4Hash = string.Empty,
                     UserAgentHash = c.PlayerId, // best-effort: stamp the dropped player id
                     At = DateTime.UtcNow,
+                    Kind = ReconnectAuditEntry.KindTournamentForfeit,
                 });
                 await db.SaveChangesAsync(ct);
 

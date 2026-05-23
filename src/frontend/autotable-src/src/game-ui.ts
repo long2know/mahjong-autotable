@@ -5,7 +5,7 @@ import { Sound } from './sound';
 import { Replay } from './replay';
 import { openReplayForGame } from './replay-launcher';
 import { World } from "./world";
-import { setElHidden, showEl, hideEl } from './utils';
+import { setElHidden, showEl, hideEl } from './dom-utils';
 import {
   DealType,
   Conditions,

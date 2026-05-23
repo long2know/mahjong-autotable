@@ -35,7 +35,7 @@ import {
   type PlayerProfile,
 } from './profile';
 import { openReplayForGame } from './replay-launcher';
-import { setElHidden } from './utils';
+import { setElHidden } from './dom-utils';
 
 // ── Public types ────────────────────────────────────────────────────
 

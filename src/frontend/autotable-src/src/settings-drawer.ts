@@ -46,7 +46,7 @@ import {
   t,
   type LanguagePreference,
 } from './i18n';
-import { hideEl } from './utils';
+import { hideEl } from './dom-utils';
 
 // ── Public types ────────────────────────────────────────────────────
 

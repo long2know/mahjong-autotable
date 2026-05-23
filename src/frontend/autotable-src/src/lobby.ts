@@ -73,7 +73,7 @@ import { installAuthUi } from './auth';
 import { installRulePresetsUi, getSelectedPresetId } from './rule-presets';
 import { installDisplayPreferences } from './theme';
 import { installSpectatorFollow } from './spectator-follow';
-import { setElHidden, showEl, hideEl } from './utils';
+import { setElHidden, showEl, hideEl } from './dom-utils';
 //
 // The lobby is a small overlay panel anchored top-left of the autotable
 // page.  It lets the user pick the Phase F query params

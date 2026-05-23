@@ -45,7 +45,7 @@
 // request via AbortController to avoid stacking calls.
 
 import { EventEmitter } from 'events';
-import { setElHidden } from './utils';
+import { setElHidden } from './dom-utils';
 
 // ── Public types ────────────────────────────────────────────────────
 

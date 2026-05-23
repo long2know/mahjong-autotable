@@ -29,7 +29,7 @@ export interface ServerReplayResponse {
   handHistory?: ReadonlyArray<HandResultEntry>;
 }
 
-export type ReplayLauncher = (payload: ServerReplayResponse) => void;
+export type ReplayLauncher = (payload: ServerReplayResponse, options?: { finals?: boolean }) => void;
 
 let launcher: ReplayLauncher | null = null;
 
@@ -42,9 +42,27 @@ export function registerReplayLauncher(fn: ReplayLauncher): void {
  * Open the replay viewer for `gameId`.  Feature-detects Bishop's
  * Wave-7 server endpoint; on 404 / network error falls back to an
  * empty event list so the viewer at least renders its shell.
+ *
+ * Phase K Wave 2 — `options.finals` carries the "auto-scroll to the
+ * final hand" intent.  Tournament finals links + the `?finals=true`
+ * URL deep-link both route through this entry point so the behaviour
+ * stays consistent.
  */
-export async function openReplayForGame(gameId: string): Promise<void> {
+export async function openReplayForGame(
+  gameId: string,
+  options?: { finals?: boolean },
+): Promise<void> {
   if (gameId === '' || launcher === null) return;
+  const finals = options?.finals === true;
+  // Stamp `?finals=true` on the URL when the caller asked for it so
+  // a shared / bookmarked replay link reopens at the final hand.
+  if (finals) {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('finals', 'true');
+      window.history.replaceState(null, '', url.toString());
+    } catch { /* file:// or sandboxed contexts — best effort */ }
+  }
   try {
     const resp = await fetch(
       `/api/games/${encodeURIComponent(gameId)}/replay`,
@@ -56,18 +74,29 @@ export async function openReplayForGame(gameId: string): Promise<void> {
     if (resp.status === 404) {
       // Endpoint not implemented yet — render an empty viewer with a
       // placeholder so the user sees we tried.
-      launcher({ gameId, events: [], handHistory: [] });
+      launcher({ gameId, events: [], handHistory: [] }, { finals });
       return;
     }
     if (!resp.ok) {
-      launcher({ gameId, events: [], handHistory: [] });
+      launcher({ gameId, events: [], handHistory: [] }, { finals });
       return;
     }
     const body = (await resp.json()) as unknown;
     const normalized = normalizeServerReplay(gameId, body);
-    launcher(normalized);
+    launcher(normalized, { finals });
   } catch {
-    launcher({ gameId, events: [], handHistory: [] });
+    launcher({ gameId, events: [], handHistory: [] }, { finals });
+  }
+}
+
+/** Read the `finals=true` flag from the current URL.  Used by replay.ts
+ *  to auto-scroll to the final hand when a deep link lands. */
+export function readFinalsFlagFromUrl(): boolean {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('finals') === 'true';
+  } catch {
+    return false;
   }
 }
 

@@ -121,32 +121,8 @@ export function compareZYX(a: Vector3, b: Vector3): number {
   return 0;
 }
 
-// ---------------------------------------------------------------------------
-// Phase J Wave 10 — CSP-safe visibility helpers.
-//
-// Bootstrap ships `[hidden] { display: none !important; }`, so toggling
-// visibility via `el.style.display = '...'` cannot override the `hidden`
-// attribute.  The helpers below let callers flip the attribute (which is
-// what HTML5 + assistive tech expect) while also clearing any prior inline
-// `display` value so the element's own CSS class (or the user-agent default)
-// takes over.
-//
-// `setElHidden(el, true)`  — element is hidden via the HTML5 attribute.
-// `setElHidden(el, false)` — attribute removed, inline `display` cleared.
-// `showEl` / `hideEl` are sugar over `setElHidden`.
-// ---------------------------------------------------------------------------
-
-export function setElHidden(el: HTMLElement, hidden: boolean): void {
-  el.hidden = hidden;
-  if (!hidden) {
-    el.style.display = '';
-  }
-}
-
-export function showEl(el: HTMLElement): void {
-  setElHidden(el, false);
-}
-
-export function hideEl(el: HTMLElement): void {
-  setElHidden(el, true);
-}
+// Phase J Wave 10 — CSP-safe visibility helpers were moved to
+// `dom-utils.ts` in Phase K Wave 2 so the lobby chain doesn't pull in
+// three.js just to toggle attributes.  Re-export them here for any
+// callers that still grab them from `utils`.
+export { setElHidden, showEl, hideEl } from './dom-utils';

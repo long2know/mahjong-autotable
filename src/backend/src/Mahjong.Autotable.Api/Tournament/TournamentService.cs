@@ -27,10 +27,12 @@ namespace Mahjong.Autotable.Api.Tournament;
 public sealed class TournamentService
 {
     private readonly AppDbContext _db;
+    private readonly SeasonRolloverService? _rollover;
 
-    public TournamentService(AppDbContext db)
+    public TournamentService(AppDbContext db, SeasonRolloverService? rollover = null)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _rollover = rollover;
     }
 
     public async Task<Data.Entities.Tournament> CreateAsync(
@@ -241,6 +243,13 @@ public sealed class TournamentService
     /// flip the match to <c>complete</c>, persist the winner, and
     /// (for elim/Swiss) schedule the next round if the current round
     /// is now fully complete. Returns null if no match owns the game.
+    ///
+    /// <para>Phase K Wave 2 — also writes a
+    /// <see cref="ReconnectAuditEntry"/> row with
+    /// <see cref="ReconnectAuditEntry.KindTournamentMatchComplete"/> so
+    /// the audit trail can answer "did this match settle cleanly or via
+    /// forfeit?" without a JOIN against the <c>TournamentMatches</c>
+    /// table.</para>
     /// </summary>
     public async Task<TournamentMatch?> AdvanceMatchAsync(Guid gameId, string winnerPlayerId, CancellationToken ct = default)
     {
@@ -257,12 +266,27 @@ public sealed class TournamentService
         match.Status = "complete";
         match.CompletedAt = DateTime.UtcNow;
 
+        // Phase K Wave 2 — append the canonical completion audit row.
+        // PlayerId carries the winner; UserAgentHash overloaded to carry
+        // the match id stringified so operators can pivot on either.
+        _db.ReconnectAuditEntries.Add(new ReconnectAuditEntry
+        {
+            PlayerId = winnerPlayerId,
+            OldTokenId = Guid.Empty,
+            NewTokenId = match.Id,
+            Ipv4Hash = string.Empty,
+            UserAgentHash = match.Id.ToString("N"),
+            At = match.CompletedAt!.Value,
+            Kind = ReconnectAuditEntry.KindTournamentMatchComplete,
+        });
+
         var tournament = await _db.Tournaments.FirstOrDefaultAsync(t => t.Id == match.TournamentId, ct);
         if (tournament is not null)
         {
             await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
         }
         await _db.SaveChangesAsync(ct);
+        await MaybeDrainSeasonDeferralsAsync(tournament, ct);
         return match;
     }
 
@@ -273,6 +297,14 @@ public sealed class TournamentService
     /// sets the forfeit metadata so leaderboard + audit can distinguish
     /// a regular win from a disconnect-forfeit. Returns the mutated
     /// match (or null when no match owns the game).
+    ///
+    /// <para>Phase K Wave 2 — emits a
+    /// <see cref="ReconnectAuditEntry"/> tagged
+    /// <see cref="ReconnectAuditEntry.KindTournamentForfeit"/>. The
+    /// background sweeper (<see cref="TournamentForfeitService"/>) also
+    /// writes its own row at the disconnect-detection moment; manual
+    /// surrender hits this path directly so the two writers are
+    /// independent.</para>
     /// </summary>
     public async Task<TournamentMatch?> ForfeitMatchAsync(
         Guid gameId,
@@ -292,13 +324,116 @@ public sealed class TournamentService
         match.ForfeitedByDisconnect = true;
         match.ForfeitedPlayerId = forfeitedPlayerId;
 
+        _db.ReconnectAuditEntries.Add(new ReconnectAuditEntry
+        {
+            PlayerId = forfeitedPlayerId,
+            OldTokenId = Guid.Empty,
+            NewTokenId = match.Id,
+            Ipv4Hash = string.Empty,
+            UserAgentHash = winnerPlayerId,
+            At = match.CompletedAt!.Value,
+            Kind = ReconnectAuditEntry.KindTournamentForfeit,
+        });
+
         var tournament = await _db.Tournaments.FirstOrDefaultAsync(t => t.Id == match.TournamentId, ct);
         if (tournament is not null)
         {
             await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
         }
         await _db.SaveChangesAsync(ct);
+        await MaybeDrainSeasonDeferralsAsync(tournament, ct);
         return match;
+    }
+
+    /// <summary>
+    /// Phase K Wave 2 — manual-surrender forfeit by match id (the
+    /// disconnect-driven sweeper goes through
+    /// <see cref="ForfeitMatchAsync(Guid,string,string,CancellationToken)"/>
+    /// which keys on the bound game). Resolves the in-progress match
+    /// by primary key, derives the winner as the first non-bot
+    /// participant other than <paramref name="forfeitedPlayerId"/>,
+    /// then advances + writes the audit row exactly as the game-id
+    /// path does. Returns null when the match doesn't exist OR is not
+    /// currently <c>in-progress</c> (idempotent re-forfeit → null
+    /// rather than 500). Throws <see cref="ArgumentException"/> when
+    /// the requested forfeit player isn't a participant.
+    /// </summary>
+    public async Task<TournamentMatch?> ForfeitMatchByIdAsync(
+        Guid tournamentId,
+        Guid matchId,
+        string forfeitedPlayerId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(forfeitedPlayerId))
+            throw new ArgumentException("forfeitedPlayerId is required.", nameof(forfeitedPlayerId));
+
+        var match = await _db.TournamentMatches
+            .FirstOrDefaultAsync(m => m.Id == matchId && m.TournamentId == tournamentId, ct);
+        if (match is null) return null;
+        if (match.Status != "in-progress" && match.Status != "pending") return null;
+
+        var participants = MatchPlayerIds(match).ToList();
+        if (!participants.Contains(forfeitedPlayerId, StringComparer.Ordinal))
+            throw new ArgumentException(
+                "forfeitedPlayerId is not a participant of the match.", nameof(forfeitedPlayerId));
+
+        var winnerId = participants.FirstOrDefault(p =>
+            !string.IsNullOrEmpty(p)
+            && !string.Equals(p, forfeitedPlayerId, StringComparison.Ordinal)
+            && !p.StartsWith("bot-", StringComparison.Ordinal));
+        if (winnerId is null) return null;
+
+        match.WinnerPlayerId = winnerId;
+        match.Status = "complete";
+        match.CompletedAt = DateTime.UtcNow;
+        match.ForfeitedByDisconnect = false;
+        match.ForfeitedPlayerId = forfeitedPlayerId;
+
+        _db.ReconnectAuditEntries.Add(new ReconnectAuditEntry
+        {
+            PlayerId = forfeitedPlayerId,
+            OldTokenId = Guid.Empty,
+            NewTokenId = match.Id,
+            Ipv4Hash = string.Empty,
+            UserAgentHash = winnerId,
+            At = match.CompletedAt!.Value,
+            Kind = ReconnectAuditEntry.KindTournamentForfeit,
+        });
+
+        var tournament = await _db.Tournaments.FirstOrDefaultAsync(t => t.Id == match.TournamentId, ct);
+        if (tournament is not null)
+        {
+            await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
+        }
+        await _db.SaveChangesAsync(ct);
+        await MaybeDrainSeasonDeferralsAsync(tournament, ct);
+        return match;
+    }
+
+    /// <summary>
+    /// Phase K Wave 2 — best-effort hook called after a tournament
+    /// transitions to <c>complete</c>. Triggers the season-rollover
+    /// drain so any rating snapshots that were pinned for this
+    /// tournament's roster get applied immediately rather than waiting
+    /// on the next 30-min sweeper tick. No-op when
+    /// <see cref="SeasonRolloverService"/> wasn't injected (test
+    /// harnesses can omit it) or when the tournament isn't actually
+    /// complete (intermediate-round advance).
+    /// </summary>
+    private async Task MaybeDrainSeasonDeferralsAsync(Data.Entities.Tournament? tournament, CancellationToken ct)
+    {
+        if (_rollover is null || tournament is null) return;
+        if (tournament.Status != "complete") return;
+        try
+        {
+            await _rollover.DrainDeferralsAsync(ct);
+        }
+        catch
+        {
+            // Best-effort. The hosted-service tick is the canonical
+            // safety net; we swallow here so a flaky drain can't
+            // poison the match-advance path.
+        }
     }
 
     /// <summary>

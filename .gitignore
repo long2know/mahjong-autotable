@@ -79,3 +79,14 @@ compose.override.yml
 appsettings.Development.json
 appsettings.Production.json
 appsettings.Staging.json
+
+# Phase K Wave 2 — Apone (DevOps). Capacitor regenerated platform dirs.
+# `npx cap add ios` / `npx cap add android` regenerate these from
+# package.json + capacitor.config.json deterministically — committing
+# them only creates Xcode-project-file / Gradle merge conflicts.
+mobile/ios/
+mobile/android/
+mobile/node_modules/
+mobile/build/
+mobile/.gradle/
+mobile/*.tgz

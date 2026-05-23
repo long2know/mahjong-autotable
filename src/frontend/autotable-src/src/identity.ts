@@ -64,7 +64,7 @@ import {
   validateAvatarColor,
   validateDisplayName,
 } from './profile';
-import { showEl, hideEl } from './utils';
+import { showEl, hideEl } from './dom-utils';
 
 // ── Public types ─────────────────────────────────────────────────────
 

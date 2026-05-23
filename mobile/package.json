@@ -1,0 +1,21 @@
+{
+  "name": "mahjong-autotable-mobile",
+  "version": "0.11.0",
+  "private": true,
+  "description": "Capacitor 6 mobile shell that wraps the mahjong-autotable PWA. See README.md for the operator runbook.",
+  "scripts": {
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android",
+    "build:android": "cap sync android && cd android && ./gradlew assembleRelease",
+    "build:ios": "cap sync ios && cd ios/App && xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/ios": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

@@ -253,9 +253,39 @@ public class ReconnectToken
 /// User-Agent are SHA-256 hashed for storage; the raw values are never
 /// persisted (privacy by default, but operators can still pivot on a
 /// suspected client by re-hashing).
+///
+/// <para>Phase K Wave 2 — generalised into a multi-purpose audit row
+/// via <see cref="Kind"/>. The column carries a stable dotted classifier
+/// so operators can filter the trail by event class without joining
+/// other tables. Vasquez's contract tests pin two values:
+/// <list type="bullet">
+///   <item><see cref="KindReconnectTokenRotated"/> — original Wave-9
+///         use; default value for existing rows + the rotation service.</item>
+///   <item><see cref="KindTournamentForfeit"/> — auto-forfeit emitted by
+///         <see cref="Mahjong.Autotable.Api.Tournament.TournamentForfeitService"/>.</item>
+///   <item><see cref="KindTournamentMatchComplete"/> — regular completion
+///         emitted by <see cref="Mahjong.Autotable.Api.Tournament.TournamentService"/>.</item>
+/// </list>
+/// The column is additive (default-value-stamped on migration) so
+/// historical rows still round-trip without a backfill job.</para>
 /// </summary>
 public class ReconnectAuditEntry
 {
+    /// <summary>Phase K Wave 2 — default Kind for the original Wave-9
+    /// rotation rows. Stamps every row written by the reconnect-token
+    /// rotation path so the trail keeps a stable classifier even pre-K2.</summary>
+    public const string KindReconnectTokenRotated = "reconnect.token.rotated";
+
+    /// <summary>Phase K Wave 2 — auto-forfeit emitted when a player's
+    /// disconnect exceeds the tournament grace window. Vasquez's
+    /// contract pins this exact value.</summary>
+    public const string KindTournamentForfeit = "tournament.forfeit";
+
+    /// <summary>Phase K Wave 2 — regular tournament-match completion
+    /// (non-forfeit). Lets operators filter the trail to "games that
+    /// finished cleanly" without joining the tournament tables.</summary>
+    public const string KindTournamentMatchComplete = "tournament.match.complete";
+
     public Guid Id { get; set; } = Guid.NewGuid();
     public string PlayerId { get; set; } = string.Empty;
     public Guid OldTokenId { get; set; }
@@ -271,6 +301,25 @@ public class ReconnectAuditEntry
     public string UserAgentHash { get; set; } = string.Empty;
 
     public DateTime At { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Phase K Wave 2 — stable dotted event classifier. Defaults to
+    /// <see cref="KindReconnectTokenRotated"/> so existing call sites
+    /// keep their Wave-9 semantic on migration. Tournament-side writers
+    /// pin <see cref="KindTournamentForfeit"/> / <see cref="KindTournamentMatchComplete"/>.
+    /// </summary>
+    public string Kind { get; set; } = KindReconnectTokenRotated;
+
+    /// <summary>Phase K Wave 2 — voice signalling: peer joined a voice room.</summary>
+    public const string KindVoiceJoin = "voice.join";
+
+    /// <summary>Phase K Wave 2 — voice signalling: peer left a voice room.</summary>
+    public const string KindVoiceLeave = "voice.leave";
+
+    /// <summary>Phase K Wave 2 — free-form classifier payload (tournament
+    /// round number, forfeit reason, voice tableId). Nullable so existing
+    /// Wave-9 rows backfill clean.</summary>
+    public string? Detail { get; set; }
 }
 
 /// <summary>
@@ -538,4 +587,42 @@ public sealed class PlayerRatingHistory
     public int EloRating { get; set; }
     public int GamesPlayed { get; set; }
     public DateTime FrozenAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Phase K Wave 2 — deferred season-rollover record. Persisted by
+/// <see cref="Mahjong.Autotable.Api.Tournament.SeasonRolloverService"/>
+/// when the quarter boundary lands while a player is mid-tournament.
+/// One row per (PlayerId, FromSeason, TournamentId); the rollover
+/// service waits for the tournament to flip to <c>complete</c> before
+/// draining the deferral and applying the rating snapshot. Keeps the
+/// player's competitive identity stable for the duration of the
+/// in-flight bracket without freezing the rest of the leaderboard.
+/// </summary>
+public sealed class PlayerSeasonRolloverDeferral
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>Player whose rollover is deferred.</summary>
+    public string PlayerId { get; set; } = string.Empty;
+
+    /// <summary>Season the player was in when the boundary fell.
+    /// Canonical <c>YYYY-Qn</c> code from
+    /// <see cref="Mahjong.Autotable.Api.Tournament.PlayerRatingService.SeasonFromDate"/>.</summary>
+    public string FromSeason { get; set; } = string.Empty;
+
+    /// <summary>Season the boundary advanced TO. Same canonical code.</summary>
+    public string ToSeason { get; set; } = string.Empty;
+
+    /// <summary>UTC instant the deferral was recorded.</summary>
+    public DateTime DeferredAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Tournament that pinned the player to the prior season.
+    /// The rollover service drains the deferral when this tournament's
+    /// <see cref="Tournament.Status"/> flips to <c>complete</c>.</summary>
+    public Guid TournamentId { get; set; }
+
+    /// <summary>UTC instant the deferral was drained + the rating
+    /// snapshot applied. Null while the deferral is still pending.</summary>
+    public DateTime? DrainedAtUtc { get; set; }
 }

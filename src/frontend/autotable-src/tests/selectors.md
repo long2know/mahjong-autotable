@@ -731,3 +731,141 @@ here so the e2e suite can stay green during the rollout:
 When you remove or rename a Phase K Wave 1 testid, run
 `grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
 merging — the soft-pass annotations will silently hide regressions.
+
+## Phase K Wave 2 testids — lobby bundle split + voice chat + drag-drop seeding + PWA + server-authoritative tour (Hicks)
+
+Coverage for the Phase K Wave 2 frontend bring-up.  Lobby initial
+bundle now < 500 kB; renderer + Client + three / signalr-bound voice
+code is deferred behind dynamic imports.
+
+### Lobby bundle budget
+
+The Wave-1 eager bundle (`autotable-src.<hash>.js`) was 1.318 MB.
+Wave 2 split out the renderer chain into `game-bootstrap.<hash>.js`
+(loaded only when `window.location.search` is non-empty — i.e., the
+user has crossed the lobby boundary).  Post-split sizes:
+
+| Asset                                 | Size       | Trigger |
+|---|---|---|
+| `autotable-src.<hash>.js` (eager)     | **208.4 kB** | Always (lobby + matchmaking + identity + i18n + Sentry shim) |
+| `game-bootstrap.<hash>.js` (lazy)     | 1.11 MB    | First non-empty `?…` on URL (Quick Match / Apply / `?gameId=`) |
+| `esm.<hash>.js` (Sentry vendor)       | 395 kB     | Only when `<meta name="sentry-dsn">` is non-empty |
+| `tournaments.<hash>.js` (lazy)        | 23.8 kB    | Tournaments tab hover/focus/click |
+| `history.<hash>.js` (lazy)            | 12.3 kB    | Profile-page open |
+| `tour.<hash>.js` (lazy)               | 9.5 kB     | First visit (skipped when server says done) |
+| `chat.<hash>.js` (lazy)               | 12.2 kB    | `?gameId=` on URL after game bootstrap |
+| `audit.<hash>.js` (lazy)              | 7.4 kB     | Admin probe + replay-tab activation |
+| `voice.<hash>.js` (lazy)              | 5.6 kB     | `?voice=1` on a game URL |
+
+The eager CSS budget (`autotable-src.<hash>.css` × 3) is unchanged at
+~216 kB.  A cold lobby visitor downloads 208 kB JS + 216 kB CSS +
+icons = under 500 kB total transfer before the lobby paints.
+
+`utils.ts` was split into `utils.ts` (three.js-bound) +
+`dom-utils.ts` (pure DOM).  Lobby-chain modules now import
+`setElHidden` / `showEl` / `hideEl` from `dom-utils` so three is no
+longer pulled into the eager graph.
+
+### Voice chat panel
+- `voice-panel` — root `<aside>` mounted by `voice.ts` when a player
+  joins a table with voice opt-in (`?voice=1` on the URL until
+  Bishop's hub broadcasts a per-game `voiceEnabled` flag).
+- `voice-mic-toggle` — primary mic button.  Toggles `aria-pressed`,
+  swaps "🎙️ Mute" ↔ "🔴 Live".  Disabled + `voice-mic-denied` class
+  when `getUserMedia` is rejected.
+- `voice-peer-{connectionId}` — per-peer status pill carrying
+  "Connecting" / "Connected" / "Failed".  Class
+  `voice-peer-status-{state}` mirrors the text.
+- `voice-volume-{connectionId}` — `<input type="range">` (0–1, step
+  0.05) bound to the peer's `<audio>.volume`.
+
+Wire contract:
+  - ICE servers fetched from `GET /api/turn` →
+    `{ iceServers: [{ urls, username?, credential? }, …] }`.
+    On 404 / error we fall back to a public STUN server so the mesh
+    still works on benign NATs.
+  - `VoiceHub` (SignalR, `/hubs/voice`) signals via
+    `Offer` / `Answer` / `IceCandidate` / `PeerJoined` / `PeerLeft`
+    events; client → server methods are `SendOffer`, `SendAnswer`,
+    `SendIceCandidate`.  Up to 4 peers per table (full mesh).
+
+### Tournament drag-drop seeding (admin)
+- `tournament-seeding-panel` — admin-only seeding surface above the
+  bracket SVG.  Renders when (a) the admin probe
+  (`GET /api/auth/me` → `role:'admin'` / `roles:['admin']`) succeeds,
+  (b) the tournament status is `open` / `registration-open`, and (c)
+  the format is single-elim.  Hidden otherwise.
+- `tournament-seed-row-{N}` — one draggable `<li>` per seed.  HTML5
+  drag-drop reorders the list; `aria-grabbed` flips on `dragstart`/
+  `dragend`.  Internal `data-seed-index` + `data-player-id`
+  attributes carry the canonical ordering.
+- `tournament-seeding-save` — POST `/api/tournaments/{id}/seed` with
+  `{ seeds: [playerId, …] }`.  Disabled during the request; on
+  success re-opens the tournament detail so the bracket reflects the
+  server's canonical layout.
+- `tournament-seeding-status` — error/status pill that surfaces
+  beneath the Save button when the POST fails.  Auto-removes after
+  4 s.
+
+### Replay finals deep-link
+- `openReplayForGame(gameId, { finals: true })` — new options arg on
+  the launcher.  Auto-scrolls to the last hand + final move + stamps
+  `?finals=true` on the URL so a shared link reopens at the finals.
+- `?finals=true` URL flag is also honoured when a replay is opened
+  without the option (covers cold-link visits).
+- All tournament replay entry points (the SVG cell finals pin, the
+  detail strip Watch-replay button, and the round-robin/Swiss row
+  ▶ buttons) pass `{ finals: true }`.
+
+### Server-authoritative onboarding status
+- `tour.ts` probes `GET /api/players/me/onboarding-status` on
+  `installOnboardingTour()`.  When the server reports `completed:
+  true`, the LS flag is mirrored locally so future visits skip the
+  tour even when offline.
+- On tour completion `endTour(true)` posts the same endpoint with
+  `{ completed: true, completedAtUtc: "<iso>" }`.  POST failure is
+  silently ignored — LS is the authoritative offline fallback.
+- 404 / network error → falls through to the Wave-1 LS-only path so
+  the rollout is safe to merge ahead of Bishop's backend.
+
+### PWA — manifest + service worker + offline lobby
+- `manifest.webmanifest` (shipped unhashed at the dist root):
+  standalone display, `theme_color #1e2a36`, three icon sizes drawn
+  from `img/icon-{16,32,96}.auto.png`.  Linked from `index.html`
+  alongside an Apple-touch-icon shim.
+- `sw.js` (shipped unhashed at the dist root) caches:
+  - cache-first for parcel content-hash assets (`.<8hex>.{js,css,…}`)
+    and anything under `/img/`.  Old hashed files survive until the
+    next install cycle's `activate` purge.
+  - network-first with cache fallback for `/api/games/public` so a
+    returning user with a dead connection still sees the last-known
+    lobby (and the offline banner appears).
+  - network-only for the rest of `/api/*` + `/hubs/*` so auth +
+    matchmaking + voice never serve stale data.
+  - network-first with a cached index.html fallback so the SPA shell
+    boots offline.
+- `pwa-offline-banner` — `<div role="status">` injected into
+  `<body>` by `pwa.ts`; toggles `hidden` on `online`/`offline`
+  transitions and re-broadcasts as `mahjong:offline` / `mahjong:online`
+  CustomEvents so other modules (history, matchmaking) can attach.
+- `pwa-install-prompt` — `<button>` mounted when Chrome/Edge fires
+  `beforeinstallprompt`.  Clicking it invokes the deferred native
+  prompt; the button removes itself afterward.
+
+### Phase K Wave 2 Playwright coverage — Vasquez
+
+Soft-pass annotations for selectors whose downstream surface hasn't
+yet been wired:
+
+- `voice-mic-toggle hidden until ?voice=1 is on the URL`
+- `voice-peer-* requires VoiceHub (Bishop's /hubs/voice)`
+- `tournament-seeding-panel hidden when admin probe returns false`
+- `tournament-seed-row-* drag-drop reorders + Save POSTs /seed`
+- `pwa-install-prompt only fires on Chrome/Edge after beforeinstallprompt`
+- `pwa-offline-banner toggles with navigator.onLine`
+- `tour completes once when /api/players/me/onboarding-status is 200 { completed:true }`
+- `replay deep-link ?finals=true auto-scrolls to last hand`
+
+When you remove or rename a Phase K Wave 2 testid, run
+`grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
+merging — same drift-detection note as Wave 1.
