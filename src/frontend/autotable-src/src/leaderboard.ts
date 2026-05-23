@@ -67,6 +67,12 @@ export interface LeaderboardRow {
   totalScore: number;
   highestScore: number;
   longestStreak: number;
+  /** Phase K Wave 1 — ELO rating for the active season (null when
+   *  the row came from the legacy stats endpoint). */
+  rating?: number | null;
+  /** Phase K Wave 1 — rating change vs. the prior season (null when
+   *  the player has no prior season on record). */
+  ratingDelta?: number | null;
 }
 
 export interface LeaderboardPage {
@@ -76,7 +82,29 @@ export interface LeaderboardPage {
   totalCount: number;
   sort: LeaderboardSort;
   minGames: number;
+  /** Phase K Wave 1 — when the page was sourced from the ratings
+   *  endpoint, carries the resolved season label. */
+  season?: string | null;
 }
+
+// Phase K Wave 1 — rated leaderboard data sources.
+export type LeaderboardMode = 'stats' | 'rating';
+export type LeaderboardSeason = 'current' | 'last' | 'all';
+
+export interface SeasonOption {
+  value: LeaderboardSeason;
+  label: string;
+}
+
+export const SEASON_OPTIONS: ReadonlyArray<SeasonOption> = [
+  { value: 'current', label: 'Current season' },
+  { value: 'last',    label: 'Last season' },
+  { value: 'all',     label: 'All seasons' },
+];
+
+export const RATINGS_ENDPOINT = '/api/ratings/leaderboard';
+const RATING_MODE_LS_KEY = 'mahjong.leaderboard.rating.v1';
+const RATING_SEASON_LS_KEY = 'mahjong.leaderboard.rating.season.v1';
 
 // ── Constants ───────────────────────────────────────────────────────
 
@@ -107,11 +135,46 @@ const state: {
   sort: LeaderboardSort;
   minGames: number;
   page: number;
+  mode: LeaderboardMode;
+  season: LeaderboardSeason;
+  ratingsAvailable: boolean | null;
 } = {
   sort: DEFAULT_SORT,
   minGames: DEFAULT_MIN_GAMES,
   page: 0,
+  mode: loadInitialMode(),
+  season: loadInitialSeason(),
+  ratingsAvailable: null,
 };
+
+function loadInitialMode(): LeaderboardMode {
+  try {
+    const v = window.localStorage.getItem(RATING_MODE_LS_KEY);
+    return v === 'rating' ? 'rating' : 'stats';
+  } catch {
+    return 'stats';
+  }
+}
+
+function loadInitialSeason(): LeaderboardSeason {
+  try {
+    const v = window.localStorage.getItem(RATING_SEASON_LS_KEY);
+    if (v === 'current' || v === 'last' || v === 'all') return v;
+  } catch { /* ignore */ }
+  return 'current';
+}
+
+function persistMode(): void {
+  try {
+    window.localStorage.setItem(RATING_MODE_LS_KEY, state.mode);
+  } catch { /* ignore */ }
+}
+
+function persistSeason(): void {
+  try {
+    window.localStorage.setItem(RATING_SEASON_LS_KEY, state.season);
+  } catch { /* ignore */ }
+}
 
 // ── Normalisers ─────────────────────────────────────────────────────
 
@@ -153,6 +216,24 @@ function normalizeRow(raw: unknown): LeaderboardRow | null {
     totalScore: num(o.totalScore, 0),
     highestScore,
     longestStreak,
+    // Phase K Wave 1 — tolerate alternative wire names for the rating
+    // surface so Bishop's controller can evolve without a frontend
+    // bump. `eloRating` is the legacy chess-style label, `rating` is
+    // the canonical form, and `ratingDelta`/`ratingChange`/`delta`
+    // all map to the per-season change.
+    rating: (() => {
+      if (typeof o.rating === 'number' && isFinite(o.rating)) return o.rating;
+      if (typeof o.eloRating === 'number' && isFinite(o.eloRating)) return o.eloRating;
+      if (typeof o.elo === 'number' && isFinite(o.elo)) return o.elo;
+      return null;
+    })(),
+    ratingDelta: (() => {
+      const candidates = [o.ratingDelta, o.ratingChange, o.delta, o.eloDelta];
+      for (const c of candidates) {
+        if (typeof c === 'number' && isFinite(c)) return c;
+      }
+      return null;
+    })(),
   };
 }
 
@@ -175,18 +256,27 @@ function normalizePage(raw: unknown): LeaderboardPage | null {
   const pageSize = LEADERBOARD_PAGE_SIZE;
   const sort = state.sort;
   const minGames = state.minGames;
-  return { rows, page, pageSize, totalCount, sort, minGames };
+  const season = typeof o.season === 'string' ? o.season : null;
+  return { rows, page, pageSize, totalCount, sort, minGames, season };
 }
 
 // ── Fetch helpers ───────────────────────────────────────────────────
 
 function buildUrl(): string {
   const params = new URLSearchParams();
-  params.set('sort', state.sort);
   params.set('minGames', String(state.minGames));
   // Bishop's controller takes `limit` + `offset` (not page + pageSize).
   params.set('limit', String(LEADERBOARD_PAGE_SIZE));
   params.set('offset', String(state.page * LEADERBOARD_PAGE_SIZE));
+  if (state.mode === 'rating') {
+    params.set('season', state.season);
+    // The ratings endpoint sorts by rating internally; surface our
+    // own sort key too so clients that fall back can still slice the
+    // legacy stats columns.
+    params.set('sort', state.sort);
+    return `${RATINGS_ENDPOINT}?${params.toString()}`;
+  }
+  params.set('sort', state.sort);
   return `${LEADERBOARD_ENDPOINT}?${params.toString()}`;
 }
 
@@ -204,10 +294,24 @@ async function fetchOnce(): Promise<void> {
       signal: ctrl.signal,
       headers: { 'Accept': 'application/json' },
     });
+    if (resp.status === 404 && state.mode === 'rating') {
+      // Ratings endpoint not deployed yet — fall back to the stats
+      // endpoint silently so the toggle "degrades" rather than
+      // failing.  The toggle UI separately surfaces an "Unavailable"
+      // badge via `getRatingsAvailable()`.
+      state.ratingsAvailable = false;
+      state.mode = 'stats';
+      persistMode();
+      emitState();
+      return await fetchOnce();
+    }
     if (!resp.ok) {
       lastError = `HTTP ${resp.status}`;
       emitState();
       return;
+    }
+    if (state.mode === 'rating') {
+      state.ratingsAvailable = true;
     }
     const body = (await resp.json()) as unknown;
     const page = normalizePage(body);
@@ -328,6 +432,36 @@ export function refreshLeaderboard(): Promise<void> {
   return fetchOnce();
 }
 
+// Phase K Wave 1 — mode + season controls.
+
+export function getMode(): LeaderboardMode {
+  return state.mode;
+}
+
+export function getSeason(): LeaderboardSeason {
+  return state.season;
+}
+
+export function getRatingsAvailable(): boolean | null {
+  return state.ratingsAvailable;
+}
+
+export function setMode(mode: LeaderboardMode): void {
+  if (state.mode === mode) return;
+  state.mode = mode;
+  state.page = 0;
+  persistMode();
+  void fetchOnce();
+}
+
+export function setSeason(season: LeaderboardSeason): void {
+  if (state.season === season) return;
+  state.season = season;
+  state.page = 0;
+  persistSeason();
+  void fetchOnce();
+}
+
 // ── Renderer ────────────────────────────────────────────────────────
 //
 // Renders the cached page into the host element + wires the sort,
@@ -424,6 +558,46 @@ export function installLeaderboardSurface(): void {
   if (prevBtn !== null) prevBtn.addEventListener('click', () => prevPage());
   if (nextBtn !== null) nextBtn.addEventListener('click', () => nextPage());
 
+  // Phase K Wave 1 — rated leaderboard toggle + season picker.  Both
+  // controls live in the leaderboard header (HTML scaffold in
+  // index.html) so the renderer can read them on every refresh.
+  const ratingToggle = document.getElementById(
+    'leaderboard-rating-toggle') as HTMLInputElement | null;
+  const seasonSelect = document.getElementById(
+    'leaderboard-season-select') as HTMLSelectElement | null;
+  const ratingStatus = document.getElementById('leaderboard-rating-status');
+  if (ratingToggle !== null) {
+    ratingToggle.checked = state.mode === 'rating';
+    ratingToggle.addEventListener('change', () => {
+      setMode(ratingToggle.checked ? 'rating' : 'stats');
+      // Surface the season picker only in rating mode.
+      if (seasonSelect !== null) {
+        setElHidden(seasonSelect, state.mode !== 'rating');
+        const lbl = seasonSelect.closest<HTMLElement>('label');
+        if (lbl !== null) setElHidden(lbl, state.mode !== 'rating');
+      }
+    });
+  }
+  if (seasonSelect !== null) {
+    seasonSelect.replaceChildren();
+    for (const opt of SEASON_OPTIONS) {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.label;
+      seasonSelect.appendChild(o);
+    }
+    seasonSelect.value = state.season;
+    seasonSelect.addEventListener('change', () => {
+      const v = seasonSelect.value;
+      if (v === 'current' || v === 'last' || v === 'all') setSeason(v);
+    });
+    const lbl = seasonSelect.closest<HTMLElement>('label');
+    if (state.mode !== 'rating') {
+      setElHidden(seasonSelect, true);
+      if (lbl !== null) setElHidden(lbl, true);
+    }
+  }
+
   const render = (): void => {
     if (errorEl !== null) {
       if (lastError !== null) {
@@ -432,6 +606,15 @@ export function installLeaderboardSurface(): void {
       } else {
         setElHidden(errorEl, true);
         errorEl.textContent = '';
+      }
+    }
+    if (ratingStatus !== null) {
+      if (state.mode === 'rating' && state.ratingsAvailable === false) {
+        setElHidden(ratingStatus, false);
+        ratingStatus.textContent = 'Ratings unavailable — showing stats.';
+      } else {
+        setElHidden(ratingStatus, true);
+        ratingStatus.textContent = '';
       }
     }
     const page = cache;
@@ -476,13 +659,20 @@ function formatSummary(page: LeaderboardPage): string {
 
 function renderTable(host: HTMLElement, page: LeaderboardPage): void {
   host.replaceChildren();
-  const table = el('table', 'leaderboard-grid');
+  const isRating = state.mode === 'rating';
+  const table = el('table', `leaderboard-grid${isRating ? ' leaderboard-grid-rating' : ''}`);
   table.setAttribute('role', 'table');
   const head = el('thead');
   const headRow = el('tr');
   const headers: Array<{ label: string; sort: LeaderboardSort | null; cls?: string }> = [
     { label: 'Rank',          sort: null,            cls: 'lb-col-rank' },
     { label: 'Player',        sort: null,            cls: 'lb-col-player' },
+  ];
+  if (isRating) {
+    headers.push({ label: 'Rating', sort: null, cls: 'lb-col-num' });
+    headers.push({ label: 'Δ',      sort: null, cls: 'lb-col-num' });
+  }
+  headers.push(
     { label: 'Games',         sort: null,            cls: 'lb-col-num' },
     { label: 'Wins',          sort: 'gamesWon',      cls: 'lb-col-num' },
     { label: 'Win %',         sort: 'winRate',       cls: 'lb-col-num' },
@@ -490,7 +680,7 @@ function renderTable(host: HTMLElement, page: LeaderboardPage): void {
     { label: 'Highest',       sort: 'highestScore',  cls: 'lb-col-num' },
     { label: 'Streak',        sort: 'longestStreak', cls: 'lb-col-num' },
     { label: 'Profile',       sort: null,            cls: 'lb-col-action' },
-  ];
+  );
   for (const h of headers) {
     const th = el('th', h.cls);
     th.setAttribute('scope', 'col');
@@ -524,6 +714,31 @@ function renderTable(host: HTMLElement, page: LeaderboardPage): void {
     playerCell.appendChild(avatar);
     playerCell.appendChild(name);
     tr.appendChild(playerCell);
+
+    if (isRating) {
+      const ratingCell = el('td', 'lb-col-num lb-cell-num lb-cell-rating');
+      ratingCell.textContent = row.rating === null || row.rating === undefined
+        ? '—'
+        : fmtInt(row.rating);
+      tr.appendChild(ratingCell);
+
+      const deltaCell = el('td', 'lb-col-num lb-cell-num lb-cell-rating-delta');
+      deltaCell.setAttribute('data-testid', `leaderboard-rating-delta-${idx}`);
+      const delta = row.ratingDelta ?? null;
+      if (delta === null || !isFinite(delta) || Math.round(delta) === 0) {
+        deltaCell.textContent = delta === null ? '—' : '0';
+        deltaCell.classList.add('lb-delta-zero');
+      } else if (delta > 0) {
+        deltaCell.textContent = `▲ ${fmtInt(delta)}`;
+        deltaCell.classList.add('lb-delta-up');
+        deltaCell.setAttribute('aria-label', `Up ${Math.round(delta)} from prior season`);
+      } else {
+        deltaCell.textContent = `▼ ${fmtInt(Math.abs(delta))}`;
+        deltaCell.classList.add('lb-delta-down');
+        deltaCell.setAttribute('aria-label', `Down ${Math.abs(Math.round(delta))} from prior season`);
+      }
+      tr.appendChild(deltaCell);
+    }
 
     appendNumCell(tr, fmtInt(row.gamesPlayed));
     appendNumCell(tr, fmtInt(row.gamesWon));
