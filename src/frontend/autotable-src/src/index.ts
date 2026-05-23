@@ -7,7 +7,20 @@ import { Client } from './client';
 import { loadPatternOrderingFromApi } from './game-ui';
 import { applyTokenToUrl, parseRejoinFromUrl } from './reconnect';
 import { initSentry } from './sentry';
+import { installI18n } from './i18n';
+import { installChatPanel } from './chat';
+import { installAuditTab } from './audit';
 import * as three from 'three';
+
+// Phase J Wave 9 — install i18n before any other UI install hook so
+// chrome paints with the resolved locale (body[lang=…] attribute is
+// set immediately, downstream `t()` calls return localized strings).
+installI18n();
+
+// Phase J Wave 9 — wire the audit tab in the replay viewer.  Probes
+// /api/auth/me to detect admin role; the tab stays hidden for
+// non-admin users.  Idempotent.
+installAuditTab();
 
 // Phase J Wave 8 — Frontend error reporting.  Sentry only initialises
 // when a non-empty DSN is exposed via <meta name="sentry-dsn"> or
@@ -64,5 +77,11 @@ assetLoader.loadAll().then(() => {
   // immediately; attachLobbyClient binds the live listeners on top of
   // the already-rendered panel.
   attachLobbyClient(client);
+
+  // Phase J Wave 9 — install the chat panel after Client.start() so we
+  // have access to the seats + nicks collections + the local playerId
+  // for self-message detection.  Idempotent; hides itself when no
+  // gameId is on the URL (lobby only).
+  installChatPanel(client);
 });
 
