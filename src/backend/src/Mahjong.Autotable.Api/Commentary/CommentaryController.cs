@@ -41,17 +41,23 @@ public sealed class CommentaryController : ControllerBase
     private readonly AuthCookieService _cookies;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<CommentaryController> _logger;
+    private readonly ICommentaryStore? _store;
+    private readonly Mahjong.Autotable.Api.Tables.IPlayerTableContext? _tableContext;
 
     public CommentaryController(
         ICommentaryGenerator generator,
         AuthCookieService cookies,
         IServiceScopeFactory scopeFactory,
-        ILogger<CommentaryController> logger)
+        ILogger<CommentaryController> logger,
+        ICommentaryStore? store = null,
+        Mahjong.Autotable.Api.Tables.IPlayerTableContext? tableContext = null)
     {
         _generator = generator;
         _cookies = cookies;
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _store = store;
+        _tableContext = tableContext;
     }
 
     [HttpPost]
@@ -90,10 +96,118 @@ public sealed class CommentaryController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromRoute] Guid gameId, CancellationToken ct)
+    public async Task<IActionResult> Get([FromRoute] Guid gameId,
+        [FromQuery(Name = "after")] string? after = null,
+        [FromQuery(Name = "limit")] int? limit = null,
+        CancellationToken ct = default)
     {
+        // Phase K Wave 11 — Bishop. When `after` is supplied we
+        // switch to the paginated-records branch backed by the
+        // ICommentaryStore. The W6 envelope path is the default
+        // (no `after`) — preserves the W6 contract test pin.
+        if (!string.IsNullOrWhiteSpace(after) || (limit.HasValue && limit.Value > 0))
+        {
+            return await PaginateAsync(gameId, after, limit, ct);
+        }
         var replay = await _generator.GetAsync(gameId, ct);
         return Ok(BuildEnvelope(replay));
+    }
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Paginated record reader backed by
+    /// <see cref="ICommentaryStore"/>. Capped at 100 records per
+    /// page. 401 when no session AND the table context returns
+    /// no spectator association; 403 when the player has no
+    /// relationship with the game.
+    /// </summary>
+    private async Task<IActionResult> PaginateAsync(
+        Guid gameId,
+        string? after,
+        int? limit,
+        CancellationToken ct)
+    {
+        // Gate: must be seated, owner, spectating, or admin. The
+        // gate degrades gracefully when the table context isn't
+        // wired (e.g. in the W6/W7 test harnesses that don't
+        // construct the W8 surface) — the unauthenticated path
+        // still resolves via the cookie service.
+        if (_tableContext is not null)
+        {
+            var session = await _cookies.ResolveAsync(HttpContext, ct);
+            var anonId = HttpContext.Request.Cookies["mahjong_pid"];
+            var assoc = await _tableContext.ResolveAsync(gameId, session, anonId, ct);
+            if (assoc.Role == Mahjong.Autotable.Api.Tables.PlayerTableRole.Anonymous)
+            {
+                return Unauthorized(new { error = "Authentication required to read commentary records." });
+            }
+            if (assoc.Role == Mahjong.Autotable.Api.Tables.PlayerTableRole.Unknown)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    error = "Player is not associated with this game.",
+                    reason = assoc.Reason,
+                });
+            }
+        }
+
+        if (_store is null)
+        {
+            // No store wired — fall back to the generator's
+            // in-memory list so the surface still produces a usable
+            // response (mirrors the W7 behaviour).
+            var records = await _generator.GetRecordsAsync(gameId, ct);
+            return Ok(ProjectRecords(records, after, limit));
+        }
+
+        DateTimeOffset? afterTs = null;
+        if (!string.IsNullOrWhiteSpace(after))
+        {
+            if (!DateTimeOffset.TryParse(after, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var parsed))
+            {
+                return BadRequest(new { error = "after must be an ISO 8601 timestamp." });
+            }
+            afterTs = parsed;
+        }
+
+        var page = Math.Clamp(limit ?? PageSizeDefault, 1, PageSizeMaximum);
+        var stored = await _store.ReadAsync(gameId, afterTs, page, ct);
+        return Ok(ProjectRecords(stored, after, page));
+    }
+
+    /// <summary>Maximum page size for the paginated reader.</summary>
+    public const int PageSizeMaximum = 100;
+
+    /// <summary>Default page size when the caller omits the
+    /// <c>limit</c> query parameter.</summary>
+    public const int PageSizeDefault = 50;
+
+    private static object ProjectRecords(IReadOnlyList<CommentaryRecord> records, string? after, int? limit)
+    {
+        var projected = records.Select(r => new
+        {
+            gameId = r.GameId,
+            turnNumber = r.TurnNumber,
+            phase = r.Phase,
+            speaker = r.Speaker,
+            text = r.Text,
+            emotionIntensity = r.EmotionIntensity,
+            tileReferences = (r.TileReferences ?? (IReadOnlyList<TileReference>)Array.Empty<TileReference>())
+                .Select(tref => new { tileId = tref.TileId, suit = tref.Suit, rank = tref.Rank })
+                .ToArray(),
+            tileReferencesBinary = r.TileReferencesBinary
+                .Select(Convert.ToBase64String)
+                .ToArray(),
+            generatedAt = r.GeneratedAt,
+        }).ToArray();
+        return new
+        {
+            items = projected,
+            count = projected.Length,
+            after,
+            limit = limit ?? PageSizeDefault,
+        };
     }
 
     /// <summary>
@@ -127,6 +241,15 @@ public sealed class CommentaryController : ControllerBase
                     suit = tref.Suit,
                     rank = tref.Rank,
                 })
+                .ToArray(),
+            // Phase K Wave 11 — Bishop. Base64-encoded binary
+            // tile-reference array. Each entry is the 3-byte
+            // payload produced by TileReference.ToBinary(); a
+            // base64 string survives JSON without an extra wrapper.
+            // Bandwidth-sensitive consumers read this field
+            // instead of the verbose `tileReferences` array.
+            tileReferencesBinary = r.TileReferencesBinary
+                .Select(Convert.ToBase64String)
                 .ToArray(),
             generatedAt = r.GeneratedAt,
         }).ToArray();

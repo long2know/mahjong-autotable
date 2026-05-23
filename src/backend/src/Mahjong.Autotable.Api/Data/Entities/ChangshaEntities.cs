@@ -898,3 +898,73 @@ public sealed class IdempotencyEntry
     /// rowversion (SQLite).</summary>
     public byte[] RowVersion { get; set; } = new byte[] { 1 };
 }
+
+/// <summary>
+/// Phase K Wave 11 — Bishop. Durable per-record commentary store.
+/// W7 introduced <c>CommentaryRecord</c> as an in-memory contract;
+/// W11 ships an optional EF-backed persistence implementation
+/// behind <c>Commentary:StorageImpl</c>. One row per record; the
+/// <see cref="GameId"/> + <see cref="GeneratedAtUtc"/> indexes drive
+/// the paginated <c>GET /api/games/{gameId}/commentary?after=…</c>
+/// endpoint, and the <see cref="ExpiresAtUtc"/> column powers the
+/// retention sweeper that deletes records past the configured
+/// retention window.
+///
+/// <para>The row stores the typed-tile-reference list as the
+/// canonical compact JSON shape (one entry per tile reference) so
+/// the read path can re-hydrate the
+/// <see cref="Mahjong.Autotable.Api.Commentary.TileReference"/>
+/// list without an extra parse step. The binary projection
+/// (<see cref="Mahjong.Autotable.Api.Commentary.CommentaryRecord.TileReferencesBinary"/>)
+/// is re-computed at projection time and not stored — the codec
+/// is cheap and storing both forms would diverge under future
+/// codec revisions.</para>
+/// </summary>
+public sealed class CommentaryRecordRow
+{
+    /// <summary>Surrogate primary key. Guid so multi-replica
+    /// inserts don't collide on a sequence.</summary>
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>Game id this record belongs to. Indexed so the
+    /// paginated read path can range-scan.</summary>
+    public Guid GameId { get; set; }
+
+    /// <summary>1-based turn number inside the game. 0 for pre-deal
+    /// commentary; negative values are rejected at the contract
+    /// gate (<see cref="Mahjong.Autotable.Api.Commentary.CommentaryRecord"/>).</summary>
+    public int TurnNumber { get; set; }
+
+    /// <summary>Canonical phase string —
+    /// <c>"draw" | "discard" | "claim" | "win"</c>. Validated
+    /// against <see cref="Mahjong.Autotable.Api.Commentary.CommentaryPhases.All"/>
+    /// at write time.</summary>
+    public string Phase { get; set; } = string.Empty;
+
+    /// <summary>Canonical speaker persona —
+    /// <c>"play-by-play" | "color" | "analyst"</c>.</summary>
+    public string Speaker { get; set; } = string.Empty;
+
+    /// <summary>The utterance text. Plain UTF-8.</summary>
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>0.0..1.0 inclusive emotion intensity. The contract
+    /// gate clamps values outside the range at write time.</summary>
+    public double EmotionIntensity { get; set; }
+
+    /// <summary>JSON-serialised list of TileReference entries (one
+    /// per mentioned tile). Empty array when the record has no
+    /// tile references — never null. The serialised shape matches
+    /// the controller's wire projection.</summary>
+    public string TileReferencesJson { get; set; } = "[]";
+
+    /// <summary>UTC timestamp the record was generated. Indexed so
+    /// the paginated reader can binary-walk by timestamp.</summary>
+    public DateTime GeneratedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>UTC timestamp past which the retention sweeper
+    /// drops the row. Set at insert-time to
+    /// <c>GeneratedAtUtc + RetentionDays</c>. Indexed so the sweep
+    /// query is a single index seek.</summary>
+    public DateTime ExpiresAtUtc { get; set; }
+}

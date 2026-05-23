@@ -47,15 +47,18 @@ public sealed class AuthTokenController : ControllerBase
     private readonly AuthCookieService _cookies;
     private readonly JwtIssuingService _issuer;
     private readonly JwtValidationService _validator;
+    private readonly AuthOptions _authOptions;
 
     public AuthTokenController(
         AuthCookieService cookies,
         JwtIssuingService issuer,
-        JwtValidationService validator)
+        JwtValidationService validator,
+        AuthOptions authOptions)
     {
         _cookies = cookies;
         _issuer = issuer;
         _validator = validator;
+        _authOptions = authOptions ?? throw new ArgumentNullException(nameof(authOptions));
     }
 
     [HttpPost("token")]
@@ -232,6 +235,8 @@ public sealed class AuthTokenController : ControllerBase
             issuer,
             jwks_uri = $"{origin}/api/auth/.well-known/jwks.json",
             token_endpoint = $"{origin}/api/auth/token",
+            introspection_endpoint = $"{origin}/api/auth/introspect",
+            introspection_endpoint_auth_methods_supported = new[] { "client_secret_basic" },
             grant_types_supported = new[] { "password", "authorization_code" },
             id_token_signing_alg_values_supported = new[] { "RS256" },
             response_types_supported = new[] { "token" },
@@ -250,5 +255,170 @@ public sealed class AuthTokenController : ControllerBase
     public sealed class ValidateBody
     {
         public string? Token { get; set; }
+    }
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. RFC 7662 token-introspection
+    /// endpoint. Designed for programmatic verifiers (Janus
+    /// health-probe, bot frameworks, etc.) that need to confirm
+    /// a token's <c>active</c> status without re-implementing the
+    /// JWT validation flow.
+    ///
+    /// <list type="bullet">
+    ///   <item>Body: <c>application/x-www-form-urlencoded</c> with
+    ///         a <c>token</c> field. Per RFC 7662 §2.1 a missing
+    ///         token returns 400.</item>
+    ///   <item>Auth: HTTP Basic with a client allowlisted in
+    ///         <see cref="AuthOptions.IntrospectionClients"/>.
+    ///         Missing/invalid credentials return 401.</item>
+    ///   <item>Response: JSON envelope with <c>active</c>,
+    ///         <c>scope</c>, <c>client_id</c>, <c>username</c>,
+    ///         <c>exp</c>, <c>iat</c>, <c>sub</c>. When the token
+    ///         is invalid (malformed, bad signature, expired,
+    ///         unsupported alg), <c>active</c> is <c>false</c>
+    ///         and the optional fields are omitted per RFC
+    ///         §2.2.</item>
+    /// </list>
+    /// </summary>
+    [HttpPost("introspect")]
+    [EnableRateLimiting(RateLimitingExtensions.AuthValidatePolicy)]
+    [Consumes("application/x-www-form-urlencoded")]
+    public IActionResult Introspect([FromForm] IntrospectionForm? form)
+    {
+        // RFC 7662 §2.3: WWW-Authenticate: Basic on the 401 path.
+        var client = AuthenticateBasicClient(HttpContext, _authOptions);
+        if (client is null)
+        {
+            Response.Headers.WWWAuthenticate = "Basic realm=\"introspect\"";
+            return Unauthorized(new { error = "invalid_client" });
+        }
+
+        if (form is null || string.IsNullOrWhiteSpace(form.Token))
+        {
+            return BadRequest(new { error = "invalid_request", error_description = "token is required." });
+        }
+
+        var result = _validator.Validate(form.Token);
+        if (!result.Ok)
+        {
+            // RFC 7662 §2.2: per-token errors map to active=false
+            // (NOT to HTTP 4xx). The 4xx response codes are
+            // reserved for transport-layer errors (missing auth,
+            // unsupported media type, etc.).
+            return Ok(new
+            {
+                active = false,
+            });
+        }
+
+        var (iat, exp) = ExtractTimestamps(form.Token);
+        return Ok(new
+        {
+            active = true,
+            scope = client.Scope,
+            client_id = client.ClientId,
+            username = result.Subject,
+            sub = result.Subject,
+            iat,
+            exp,
+            kid = result.Kid,
+            token_type = AuthTokenResponse.BearerTokenType,
+        });
+    }
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Form body for the introspection
+    /// endpoint. <see cref="Token"/> is the only field consumed;
+    /// the optional <see cref="TokenTypeHint"/> is accepted for
+    /// RFC 7662 compliance but ignored (we only mint bearer
+    /// tokens — no need to disambiguate).
+    /// </summary>
+    public sealed class IntrospectionForm
+    {
+        [FromForm(Name = "token")]
+        public string? Token { get; set; }
+
+        [FromForm(Name = "token_type_hint")]
+        public string? TokenTypeHint { get; set; }
+    }
+
+    private static AuthOptions.IntrospectionClient? AuthenticateBasicClient(HttpContext ctx, AuthOptions options)
+    {
+        if (options.IntrospectionClients.Length == 0) return null;
+        if (!ctx.Request.Headers.TryGetValue("Authorization", out var header)) return null;
+        var value = header.ToString();
+        const string prefix = "Basic ";
+        if (!value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
+
+        string decoded;
+        try
+        {
+            decoded = System.Text.Encoding.UTF8.GetString(
+                Convert.FromBase64String(value.Substring(prefix.Length).Trim()));
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+        var colon = decoded.IndexOf(':');
+        if (colon < 0) return null;
+        var clientId = decoded.Substring(0, colon);
+        var clientSecret = decoded.Substring(colon + 1);
+
+        foreach (var candidate in options.IntrospectionClients)
+        {
+            if (!string.Equals(candidate.ClientId, clientId, StringComparison.Ordinal)) continue;
+            var resolved = candidate.ResolveSecret();
+            if (resolved.Length == 0) continue;
+            if (FixedTimeEquals(resolved, clientSecret))
+            {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Constant-time string comparison — defends against
+    /// timing-side-channel client-secret discovery.</summary>
+    private static bool FixedTimeEquals(string a, string b)
+    {
+        var bytesA = System.Text.Encoding.UTF8.GetBytes(a);
+        var bytesB = System.Text.Encoding.UTF8.GetBytes(b);
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(bytesA, bytesB);
+    }
+
+    /// <summary>
+    /// Pulls the <c>iat</c> + <c>exp</c> integer timestamps out of
+    /// the JWT payload. Returns null for either when the claim is
+    /// missing; the introspection response uses the null shape
+    /// directly (the JSON omits null fields).
+    /// </summary>
+    private static (long? Iat, long? Exp) ExtractTimestamps(string token)
+    {
+        try
+        {
+            var parts = token.Split('.');
+            if (parts.Length != 3) return (null, null);
+            var pad = parts[1].Length % 4;
+            var b64 = parts[1].Replace('-', '+').Replace('_', '/')
+                + new string('=', pad == 0 ? 0 : 4 - pad);
+            var payloadBytes = Convert.FromBase64String(b64);
+            using var doc = System.Text.Json.JsonDocument.Parse(payloadBytes);
+            long? iat = doc.RootElement.TryGetProperty("iat", out var iatEl)
+                && iatEl.ValueKind == System.Text.Json.JsonValueKind.Number
+                && iatEl.TryGetInt64(out var iatV)
+                ? iatV
+                : null;
+            long? exp = doc.RootElement.TryGetProperty("exp", out var expEl)
+                && expEl.ValueKind == System.Text.Json.JsonValueKind.Number
+                && expEl.TryGetInt64(out var expV)
+                ? expV
+                : null;
+            return (iat, exp);
+        }
+        catch
+        {
+            return (null, null);
+        }
     }
 }

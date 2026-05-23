@@ -131,7 +131,29 @@ public sealed record CommentaryRecord(
     string Text,
     double EmotionIntensity,
     IReadOnlyList<TileReference> TileReferences,
-    DateTimeOffset GeneratedAt);
+    DateTimeOffset GeneratedAt)
+{
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Bit-packed binary projection of
+    /// <see cref="TileReferences"/>. Each entry is the 3-byte
+    /// encoding produced by <see cref="TileReference.ToBinary"/>;
+    /// on the wire each byte array is base64-encoded so the field
+    /// survives the JSON pipeline. The projection is lazy — the
+    /// list is materialised on first access and re-derived on
+    /// every read (the record is immutable so caching adds no
+    /// value; the codec is cheap).
+    ///
+    /// <para>Bandwidth-sensitive consumers (mobile spectator
+    /// stream, the commentary replay endpoint when paginated) can
+    /// read the binary field instead of the typed
+    /// <see cref="TileReferences"/> list — a 3-byte payload per
+    /// tile vs ~30 bytes per JSON object.</para>
+    /// </summary>
+    public IReadOnlyList<byte[]> TileReferencesBinary =>
+        TileReferences is null
+            ? Array.Empty<byte[]>()
+            : TileReferences.Select(t => t.ToBinary()).ToArray();
+}
 
 /// <summary>
 /// Phase K Wave 10 — Bishop. Typed tile reference attached to a
@@ -207,6 +229,148 @@ public sealed record TileReference(string TileId, string Suit, int Rank)
         }
         return Unknown;
     }
+
+    // ── Phase K Wave 11 — Bishop. Binary codec.
+    //
+    // The wire shape is 3 bytes:
+    //   byte 0 = (suit << 4) | (rank & 0x0F)
+    //   byte 1 = flags (red-five, etc. — reserved, currently 0)
+    //   byte 2 = reserved (future-proof — generator version, etc.;
+    //            currently 0).
+    //
+    // Suit codes (4 bits, 0–3 only used; 4–15 reserved):
+    //   0 = dots / pin
+    //   1 = bamboo / sou
+    //   2 = characters / man
+    //   3 = honors (winds + dragons)
+    //
+    // Rank codes (4 bits): for the three suits, 1–9 maps directly
+    // to the tile rank (zero is invalid). For honors:
+    //   0 = east, 1 = south, 2 = west, 3 = north,
+    //   4 = haku  (white dragon),
+    //   5 = hatsu (green dragon),
+    //   6 = chun  (red   dragon),
+    //   7..15 reserved.
+    //
+    // The Unknown sentinel encodes as {0xFF, 0x00, 0x00} — a value
+    // no legal tile can produce (suit 0xF + rank 0xF) so the
+    // decoder can detect a passthrough without ambiguity.
+
+    /// <summary>Phase K Wave 11 — Bishop. Length of the binary
+    /// encoding in bytes. Pinned as a constant so callers building
+    /// fixed-stride arrays of <see cref="TileReference"/> values
+    /// don't hard-code the literal.</summary>
+    public const int BinaryLength = 3;
+
+    private const byte SuitCodeDots = 0;
+    private const byte SuitCodeBamboo = 1;
+    private const byte SuitCodeCharacters = 2;
+    private const byte SuitCodeHonors = 3;
+    private const byte SuitCodeUnknown = 0xF;
+
+    private const byte HonorEast = 0;
+    private const byte HonorSouth = 1;
+    private const byte HonorWest = 2;
+    private const byte HonorNorth = 3;
+    private const byte HonorHaku = 4;
+    private const byte HonorHatsu = 5;
+    private const byte HonorChun = 6;
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Bit-packed binary representation
+    /// of this tile reference. Three bytes; see the codec comment
+    /// at the top of the binary block for the wire layout.
+    ///
+    /// <para>Used by <see cref="CommentaryRecord.TileReferencesBinary"/>
+    /// (the W11 binary-side of the existing
+    /// <see cref="CommentaryRecord.TileReferences"/> list) so the
+    /// LLM-generated tile lists ride on a compact byte payload
+    /// when commentary records are streamed through bandwidth-
+    /// sensitive channels (e.g., the mobile-spectator path).</para>
+    /// </summary>
+    public byte[] ToBinary()
+    {
+        var bytes = new byte[BinaryLength];
+        var suitCode = Suit switch
+        {
+            "pin" => SuitCodeDots,
+            "sou" => SuitCodeBamboo,
+            "man" => SuitCodeCharacters,
+            "wind" => SuitCodeHonors,
+            "dragon" => SuitCodeHonors,
+            _ => SuitCodeUnknown,
+        };
+
+        byte rankCode;
+        if (suitCode is SuitCodeDots or SuitCodeBamboo or SuitCodeCharacters)
+        {
+            // Rank 1..9 — clamp to keep the codec total: a malformed
+            // out-of-range rank encodes as 0xF (reserved) so the
+            // decoder round-trips to Unknown.
+            rankCode = Rank is >= 1 and <= 9 ? (byte)Rank : (byte)0xF;
+        }
+        else if (suitCode == SuitCodeHonors)
+        {
+            rankCode = TileId switch
+            {
+                "east" => HonorEast,
+                "south" => HonorSouth,
+                "west" => HonorWest,
+                "north" => HonorNorth,
+                "haku" => HonorHaku,
+                "hatsu" => HonorHatsu,
+                "chun" => HonorChun,
+                _ => 0xF,
+            };
+        }
+        else
+        {
+            rankCode = 0xF;
+        }
+
+        bytes[0] = (byte)(((suitCode & 0x0F) << 4) | (rankCode & 0x0F));
+        bytes[1] = 0; // reserved — red-five flag etc.
+        bytes[2] = 0; // reserved — generator-version etc.
+        return bytes;
+    }
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Parse a 3-byte binary tile
+    /// reference. Returns <see cref="Unknown"/> on null input,
+    /// wrong length, or any decoded value that doesn't match a
+    /// canonical tile (the reserved code-points round-trip to
+    /// Unknown so an unknown sender doesn't crash the receiver).
+    /// </summary>
+    public static TileReference FromBinary(byte[]? bytes)
+    {
+        if (bytes is null || bytes.Length != BinaryLength) return Unknown;
+        var suitCode = (byte)((bytes[0] >> 4) & 0x0F);
+        var rankCode = (byte)(bytes[0] & 0x0F);
+
+        return suitCode switch
+        {
+            SuitCodeDots when rankCode is >= 1 and <= 9 =>
+                new TileReference("pin" + rankCode, "pin", rankCode),
+            SuitCodeBamboo when rankCode is >= 1 and <= 9 =>
+                new TileReference("sou" + rankCode, "sou", rankCode),
+            SuitCodeCharacters when rankCode is >= 1 and <= 9 =>
+                new TileReference("man" + rankCode, "man", rankCode),
+            SuitCodeHonors => DecodeHonor(rankCode),
+            _ => Unknown,
+        };
+    }
+
+    private static TileReference DecodeHonor(byte rankCode) => rankCode switch
+    {
+        HonorEast => new TileReference("east", "wind", 0),
+        HonorSouth => new TileReference("south", "wind", 0),
+        HonorWest => new TileReference("west", "wind", 0),
+        HonorNorth => new TileReference("north", "wind", 0),
+        HonorHaku => new TileReference("haku", "dragon", 0),
+        HonorHatsu => new TileReference("hatsu", "dragon", 0),
+        HonorChun => new TileReference("chun", "dragon", 0),
+        _ => Unknown,
+    };
 }
 
 /// <summary>
