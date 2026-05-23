@@ -646,9 +646,17 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.Property<DateTime>("At")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("Detail")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("Ipv4Hash")
                         .IsRequired()
@@ -681,6 +689,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.HasKey("Id");
 
                     b.HasIndex("At");
+
+                    b.HasIndex("CorrelationId");
+
+                    b.HasIndex("IdempotencyKey");
 
                     b.HasIndex("PlayerId");
 

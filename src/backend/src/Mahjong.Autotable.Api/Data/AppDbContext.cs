@@ -230,9 +230,19 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
                 .IsRequired()
                 .HasDefaultValue(ReconnectAuditEntry.KindReconnectTokenRotated);
             entity.Property(x => x.Detail).HasMaxLength(256);
+            // Phase K Wave 8 — Bishop. Idempotency-Key + CorrelationId
+            // enrichment. Both columns are nullable (pre-Wave-8 rows
+            // back-fill clean) and the indexes are non-unique because
+            // a single key may legitimately appear multiple times (the
+            // first hit + the rejection rows under the same key both
+            // share the value).
+            entity.Property(x => x.IdempotencyKey).HasMaxLength(128);
+            entity.Property(x => x.CorrelationId).HasMaxLength(64);
             entity.HasIndex(x => x.PlayerId);
             entity.HasIndex(x => x.At);
             entity.HasIndex(x => new { x.Kind, x.At });
+            entity.HasIndex(x => x.CorrelationId);
+            entity.HasIndex(x => x.IdempotencyKey);
         });
 
         // Phase J Wave 9 — persisted chat backlog. (GameId, At) composite

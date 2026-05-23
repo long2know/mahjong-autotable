@@ -32,7 +32,7 @@ namespace Mahjong.Autotable.Api.Voice;
 /// because their topologies are incompatible (full-mesh vs.
 /// star-fan-out).</para>
 /// </summary>
-public sealed class SpectatorVoiceHub : Hub
+public class SpectatorVoiceHub : Hub
 {
     private readonly VoiceOptions _options;
     private readonly PlayerIdentityService _identity;
@@ -59,7 +59,7 @@ public sealed class SpectatorVoiceHub : Hub
     /// Phase L replaces the URI with a real Janus / mediasoup /
     /// LiveKit endpoint discovered from <see cref="VoiceOptions"/>.</para>
     /// </summary>
-    public Task<SpectatorVoiceJoinResult> JoinSpectatorVoice(string tableId)
+    public virtual Task<SpectatorVoiceJoinResult> JoinSpectatorVoice(string tableId)
     {
         if (!_options.Enabled)
         {

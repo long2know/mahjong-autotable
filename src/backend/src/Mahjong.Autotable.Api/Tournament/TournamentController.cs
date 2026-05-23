@@ -164,6 +164,70 @@ public sealed class TournamentController : ControllerBase
     }
 
     /// <summary>
+    /// Phase K Wave 8 — Bishop. UI-facing bracket snapshot endpoint
+    /// powering Hicks's W8 renderer. Returns the canonical
+    /// <see cref="BracketSnapshot"/> envelope with winnersBracket /
+    /// losersBracket / grandFinal sections; per-slot fields carry
+    /// the seeds + winner + status the bracket-tree component
+    /// consumes.
+    ///
+    /// <para>The optional <c>?format=</c> query parameter is purely
+    /// informational — the response always reports the tournament's
+    /// persisted format. Passing <c>?format=double-elimination</c>
+    /// matches the W8 spec verbatim (frontend round-trip discovery)
+    /// but mismatches do NOT throw; the snapshot honours the
+    /// persisted format and reflects it back in the response body.</para>
+    /// </summary>
+    [HttpGet("{id:guid}/bracket")]
+    public async Task<IActionResult> Bracket(
+        [FromRoute] Guid id,
+        [FromQuery] string? format,
+        CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var bracketService = scope.ServiceProvider
+            .GetRequiredService<TournamentBracketSnapshotService>();
+        var snapshot = await bracketService.BuildAsync(id, ct);
+        if (snapshot is null)
+        {
+            return NotFound(new { error = "Tournament not found.", id });
+        }
+        return Ok(new
+        {
+            format = snapshot.Format,
+            requestedFormat = format,
+            tournamentId = snapshot.TournamentId,
+            winnersBracket = snapshot.WinnersBracket.Select(RoundToDto).ToArray(),
+            losersBracket = snapshot.LosersBracket.Select(RoundToDto).ToArray(),
+            grandFinal = snapshot.GrandFinal is null ? null : new
+            {
+                match = SlotToDto(snapshot.GrandFinal.Match),
+                resetMatch = SlotToDto(snapshot.GrandFinal.ResetMatch),
+            },
+        });
+    }
+
+    private static object RoundToDto(BracketRound round) => new
+    {
+        roundNumber = round.RoundNumber,
+        slots = round.Slots.Select(SlotToDto).ToArray(),
+    };
+
+    private static object? SlotToDto(BracketSlot? slot)
+    {
+        if (slot is null) return null;
+        return new
+        {
+            matchIndex = slot.MatchIndex,
+            seedA = slot.SeedA,
+            seedB = slot.SeedB,
+            winnerSeed = slot.WinnerSeed,
+            status = slot.Status,
+            bracketSide = slot.BracketSide,
+        };
+    }
+
+    /// <summary>
     /// Phase K Wave 3 — Bishop. Admin-only seeding endpoint. Body:
     /// <c>{ "seeds": [{ "playerId": "…", "seedNumber": 1 }, … ] }</c>.
     /// Updates <see cref="Data.Entities.TournamentRegistration.Seed"/>

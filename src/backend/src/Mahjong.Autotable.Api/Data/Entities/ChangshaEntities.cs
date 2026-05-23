@@ -380,6 +380,52 @@ public class ReconnectAuditEntry
     /// round number, forfeit reason, voice tableId). Nullable so existing
     /// Wave-9 rows backfill clean.</summary>
     public string? Detail { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 8 — Bishop. Client-supplied idempotency key (lifted
+    /// from the inbound <c>Idempotency-Key</c> HTTP header) so an
+    /// operator tracing a duplicate-POST replay can correlate the
+    /// rejected retry to the original audit row without joining via
+    /// HTTP logs. Nullable — pre-Wave-8 rows + non-POST audited events
+    /// (voice signalling, tournament forfeits) leave the column null
+    /// and the migration default-stamps it accordingly.
+    /// <para>Max 128 chars matches the
+    /// <see cref="Mahjong.Autotable.Api.Audit.IdempotencyMiddleware.MaxKeyLength"/>
+    /// header validation cap.</para>
+    /// </summary>
+    public string? IdempotencyKey { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 8 — Bishop. Server-generated correlation id that
+    /// ties every audit row for a single request (REST + downstream
+    /// SignalR + HTTP outbound) under one searchable key. Stamped by
+    /// <see cref="Mahjong.Autotable.Api.Audit.CorrelationIdMiddleware"/>
+    /// on the inbound request and propagated downstream via the
+    /// <c>X-Correlation-Id</c> response header so clients can re-emit
+    /// it on retries.
+    /// <para>Format: Guid.ToString("N"). 32 chars. Nullable for
+    /// pre-Wave-8 rows; the W8 middleware always stamps it on new
+    /// rows.</para>
+    /// </summary>
+    public string? CorrelationId { get; set; }
+
+    /// <summary>Phase K Wave 8 — Bishop. Audit Kind for idempotency
+    /// rejections so operators can spot replay floods at a glance.</summary>
+    public const string KindIdempotencyReplayRejected = "audit.idempotency.replay.rejected";
+
+    /// <summary>Phase K Wave 8 — Bishop. Audit Kind stamped by the
+    /// commentary-generator surface when the LLM fail-open path
+    /// engages (provider error → "[commentary unavailable]" record).</summary>
+    public const string KindCommentaryLlmFailOpen = "commentary.llm.fail_open";
+
+    /// <summary>Phase K Wave 8 — Bishop. Audit Kind stamped when the
+    /// HLS playlist gate denies an anonymous caller (401).</summary>
+    public const string KindLivestreamPlaylistUnauthorized = "voice.livestream.playlist.unauthorized";
+
+    /// <summary>Phase K Wave 8 — Bishop. Audit Kind stamped when the
+    /// HLS playlist gate denies a non-associated caller (403 — neither
+    /// seated nor spectator on the table).</summary>
+    public const string KindLivestreamPlaylistForbidden = "voice.livestream.playlist.forbidden";
 }
 
 /// <summary>

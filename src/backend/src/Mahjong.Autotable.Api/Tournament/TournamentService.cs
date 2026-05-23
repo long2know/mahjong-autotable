@@ -28,11 +28,16 @@ public sealed class TournamentService
 {
     private readonly AppDbContext _db;
     private readonly SeasonRolloverService? _rollover;
+    private readonly TournamentBracketBroadcaster? _bracketBroadcaster;
 
-    public TournamentService(AppDbContext db, SeasonRolloverService? rollover = null)
+    public TournamentService(
+        AppDbContext db,
+        SeasonRolloverService? rollover = null,
+        TournamentBracketBroadcaster? bracketBroadcaster = null)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _rollover = rollover;
+        _bracketBroadcaster = bracketBroadcaster;
     }
 
     public async Task<Data.Entities.Tournament> CreateAsync(
@@ -349,6 +354,7 @@ public sealed class TournamentService
         }
         await _db.SaveChangesAsync(ct);
         await MaybeDrainSeasonDeferralsAsync(tournament, ct);
+        await BroadcastBracketUpdateAsync(match.TournamentId, ct);
         return match;
     }
 
@@ -404,6 +410,7 @@ public sealed class TournamentService
         }
         await _db.SaveChangesAsync(ct);
         await MaybeDrainSeasonDeferralsAsync(tournament, ct);
+        await BroadcastBracketUpdateAsync(match.TournamentId, ct);
         return match;
     }
 
@@ -469,6 +476,7 @@ public sealed class TournamentService
         }
         await _db.SaveChangesAsync(ct);
         await MaybeDrainSeasonDeferralsAsync(tournament, ct);
+        await BroadcastBracketUpdateAsync(match.TournamentId, ct);
         return match;
     }
 
@@ -590,6 +598,18 @@ public sealed class TournamentService
         yield return m.Player2Id;
         if (!string.IsNullOrWhiteSpace(m.Player3Id)) yield return m.Player3Id!;
         if (!string.IsNullOrWhiteSpace(m.Player4Id)) yield return m.Player4Id!;
+    }
+
+    /// <summary>
+    /// Phase K Wave 8 — Bishop. Broadcasts a bracket-update over
+    /// SignalR after a match transitions to <c>complete</c>. The
+    /// broadcaster is optional so unit-test constructions that pass
+    /// only the DbContext skip the broadcast cleanly.
+    /// </summary>
+    private Task BroadcastBracketUpdateAsync(Guid tournamentId, CancellationToken ct)
+    {
+        if (_bracketBroadcaster is null) return Task.CompletedTask;
+        return _bracketBroadcaster.BroadcastAsync(tournamentId, ct);
     }
 
     private static List<Guid> DeserializeGameIds(string json)
