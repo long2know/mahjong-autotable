@@ -164,6 +164,51 @@ public sealed class TournamentController : ControllerBase
     }
 
     /// <summary>
+    /// Phase K Wave 3 — Bishop. Admin-only seeding endpoint. Body:
+    /// <c>{ "seeds": [{ "playerId": "…", "seedNumber": 1 }, … ] }</c>.
+    /// Updates <see cref="Data.Entities.TournamentRegistration.Seed"/>
+    /// for each entry whose <c>playerId</c> matches a registered
+    /// player. Unknown players are silently skipped so partial-bracket
+    /// re-seeding works.
+    ///
+    /// <para>401 when the caller has no session; 403 when the
+    /// session's role is not <c>admin</c>; 409 when the tournament has
+    /// already started; 200 on success with
+    /// <c>{ "updated": &lt;int&gt; }</c>.</para>
+    /// </summary>
+    [HttpPost("{id:guid}/seed")]
+    public async Task<IActionResult> Seed(
+        [FromRoute] Guid id,
+        [FromBody] SeedBody? body,
+        CancellationToken ct)
+    {
+        var session = await _cookies.ResolveAsync(HttpContext, ct);
+        if (session is null)
+            return Unauthorized(new { error = "Authentication required to seed." });
+        if (!string.Equals(session.Role, "admin", StringComparison.OrdinalIgnoreCase))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Admin role required." });
+        var entries = body?.Seeds;
+        if (entries is null || entries.Length == 0)
+            return BadRequest(new { error = "Body must include a non-empty `seeds` array." });
+
+        using var scope = _scopeFactory.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<TournamentService>();
+        try
+        {
+            var assignments = entries
+                .Where(e => !string.IsNullOrWhiteSpace(e?.PlayerId) && e!.SeedNumber > 0)
+                .Select(e => new TournamentService.TournamentSeedAssignment(e!.PlayerId!, e.SeedNumber))
+                .ToList();
+            var updated = await svc.SeedAsync(id, assignments, ct);
+            return Ok(new { tournamentId = id, updated });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Phase K Wave 2 — manual-surrender forfeit endpoint. <c>POST
     /// /api/tournaments/{tid}/matches/{mid}/forfeit</c> with body
     /// <c>{ playerId, reason? }</c>. Auth required; the resolved
@@ -255,5 +300,24 @@ public sealed class TournamentController : ControllerBase
     {
         public string? PlayerId { get; set; }
         public string? Reason { get; set; }
+    }
+
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Body shape for the
+    /// <c>POST /api/tournaments/{id}/seed</c> admin endpoint. The
+    /// outer envelope keeps <c>seeds</c> as an array so a single push
+    /// can rebrand the entire bracket atomically. <see cref="SeedEntry"/>
+    /// carries the per-player assignment.
+    /// </summary>
+    public sealed class SeedBody
+    {
+        public SeedEntry[]? Seeds { get; set; }
+    }
+
+    /// <summary>Phase K Wave 3 — single seed assignment.</summary>
+    public sealed class SeedEntry
+    {
+        public string? PlayerId { get; set; }
+        public int SeedNumber { get; set; }
     }
 }
