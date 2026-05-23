@@ -30,7 +30,7 @@
 // ships.
 
 import { openReplayForGame } from './replay-launcher';
-import { setElHidden, showEl, hideEl } from './utils';
+import { setElHidden, showEl, hideEl } from './dom-utils';
 
 // ── Wire types ──────────────────────────────────────────────────────
 
@@ -103,6 +103,10 @@ interface State {
   expandedMatchId: string | null;
   standingsSort: StandingsSort;
   standingsAsc: boolean;
+  // Phase K Wave 2 — admin role probe + drag-drop seeding state.
+  isAdmin: boolean;
+  adminProbed: boolean;
+  dragSeedFromMatchId: string | null;
 }
 
 const state: State = {
@@ -114,6 +118,9 @@ const state: State = {
   expandedMatchId: null,
   standingsSort: 'rank',
   standingsAsc: true,
+  isAdmin: false,
+  adminProbed: false,
+  dragSeedFromMatchId: null,
 };
 
 type StandingsSort = 'rank' | 'player' | 'wins' | 'losses' | 'draws' | 'points';
@@ -188,6 +195,64 @@ async function doPost(path: string, body?: unknown): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ── Phase K Wave 2 — Admin role probe + seeding helpers ────────────
+
+interface MeResponse {
+  authenticated?: boolean;
+  Authenticated?: boolean;
+  claims?: { role?: string; roles?: string[] } | Record<string, unknown>;
+  Claims?: { role?: string; roles?: string[] } | Record<string, unknown>;
+  role?: string;
+  Role?: string;
+  roles?: string[];
+  Roles?: string[];
+}
+
+function isAdminPayload(raw: unknown): boolean {
+  if (raw === null || typeof raw !== 'object') return false;
+  const me = raw as MeResponse;
+  const claims = me.claims ?? me.Claims;
+  if (claims !== undefined && claims !== null && typeof claims === 'object') {
+    const c = claims as Record<string, unknown>;
+    if (typeof c.role === 'string' && c.role.toLowerCase() === 'admin') return true;
+    if (Array.isArray(c.roles) && c.roles.some((r) => String(r).toLowerCase() === 'admin')) return true;
+  }
+  const role = me.role ?? me.Role;
+  if (typeof role === 'string' && role.toLowerCase() === 'admin') return true;
+  const roles = me.roles ?? me.Roles;
+  if (Array.isArray(roles) && roles.some((r) => String(r).toLowerCase() === 'admin')) return true;
+  return false;
+}
+
+async function probeAdmin(): Promise<boolean> {
+  if (state.adminProbed) return state.isAdmin;
+  state.adminProbed = true;
+  try {
+    const r = await fetch('/api/auth/me', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!r.ok) return false;
+    const body = await r.json() as unknown;
+    state.isAdmin = isAdminPayload(body);
+    return state.isAdmin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Phase K Wave 2 — POST the new seed order to Bishop's seeding
+ * endpoint.  `seeds` is an ordered list of `playerId`s — the first
+ * entry is the #1 seed, etc.  Returns true on a 2xx response.
+ *
+ * Wire: `POST /api/tournaments/{id}/seed` body `{ seeds: [...] }`.
+ */
+async function postSeed(tournamentId: string, seeds: string[]): Promise<boolean> {
+  return doPost(`/api/tournaments/${encodeURIComponent(tournamentId)}/seed`, { seeds });
 }
 
 // ── Normalisers ─────────────────────────────────────────────────────
@@ -414,6 +479,16 @@ function renderList(rows: TournamentSummary[]): void {
 async function openDetail(id: string): Promise<void> {
   state.selected = id;
   state.expandedMatchId = null;
+  // Phase K Wave 2 — probe admin once per session so the bracket can
+  // expose drag-drop seeding when the viewer is authorised + the
+  // tournament is still open for seeding.
+  void probeAdmin().then(() => {
+    // Re-render once the probe resolves so the seed handles can
+    // appear without waiting for another user click.
+    if (state.detail !== null && state.detail.tournament.id === id) {
+      rerenderBracket();
+    }
+  });
   const detail = await fetchDetail(id);
   state.detail = detail;
   const detailEl = $('tournament-detail');
@@ -458,6 +533,16 @@ function rerenderBracket(): void {
   // so users still see who played whom.
   const fmt = (detail.tournament.format || '').toLowerCase();
   const isElim = fmt.includes('elim') || fmt.includes('bracket');
+
+  // Phase K Wave 2 — admin seeding panel (above the bracket).  Only
+  // shown for single-elim tournaments whose status is still open
+  // (seeding past the start is destructive — the server will reject
+  // anyway), and only when the admin probe has resolved truthy.
+  const seedingPanel = buildSeedingPanel(detail);
+  if (seedingPanel !== null) {
+    host.appendChild(seedingPanel);
+  }
+
   if (isElim && detail.matches.length > 0) {
     host.appendChild(buildBracketSvg(detail));
     const expanded = buildExpandedRow(detail);
@@ -470,6 +555,152 @@ function rerenderBracket(): void {
     empty.textContent = 'No matches yet — start the tournament to seed the bracket.';
     host.appendChild(empty);
   }
+}
+
+// ── Phase K Wave 2 — Admin drag-drop seeding panel ─────────────────
+
+function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
+  if (!state.isAdmin) return null;
+  const fmt = (detail.tournament.format || '').toLowerCase();
+  const isElim = fmt.includes('elim') || fmt.includes('bracket');
+  if (!isElim) return null;
+  const status = (detail.tournament.status || '').toLowerCase();
+  const isOpen = status === 'open' || status === 'registration-open';
+  if (!isOpen) return null;
+
+  // Extract the seeded round-1 players in match-slot order: m0.p1, m0.p2,
+  // m1.p1, m1.p2, …  Empty slots (TBD) are filtered out — admins drag
+  // around real registrants.
+  const round1 = detail.matches
+    .filter(m => m.round === 1)
+    .sort((a, b) => a.matchIndex - b.matchIndex);
+  if (round1.length === 0) return null;
+
+  const seedSlots: BracketSlot[] = [];
+  for (const m of round1) {
+    if (m.player1 !== null && m.player1.playerId !== null) seedSlots.push(m.player1);
+    if (m.player2 !== null && m.player2.playerId !== null) seedSlots.push(m.player2);
+  }
+  if (seedSlots.length < 2) return null;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'tournament-seeding-panel';
+  wrap.setAttribute('data-testid', 'tournament-seeding-panel');
+  wrap.setAttribute('role', 'region');
+  wrap.setAttribute('aria-label', 'Tournament seeding');
+
+  const header = document.createElement('div');
+  header.className = 'tournament-seeding-header';
+  header.textContent = 'Seeding (drag to reorder)';
+  wrap.appendChild(header);
+
+  const list = document.createElement('ol');
+  list.className = 'tournament-seeding-list';
+  list.setAttribute('role', 'list');
+
+  // Working copy that drives the optimistic re-render; saved when the
+  // user clicks Save.  We don't mutate state.detail directly so a
+  // failed save can roll back cleanly by re-rendering.
+  const seeds = seedSlots.slice();
+
+  const rerender = (): void => {
+    list.replaceChildren();
+    seeds.forEach((slot, i) => {
+      const li = document.createElement('li');
+      li.className = 'tournament-seeding-row';
+      li.draggable = true;
+      li.setAttribute('data-testid', `tournament-seed-row-${i}`);
+      li.setAttribute('data-seed-index', String(i));
+      li.setAttribute('data-player-id', slot.playerId ?? '');
+      li.setAttribute('role', 'listitem');
+      li.setAttribute('aria-grabbed', 'false');
+
+      const rank = document.createElement('span');
+      rank.className = 'tournament-seeding-rank';
+      rank.textContent = `#${i + 1}`;
+      li.appendChild(rank);
+
+      const name = document.createElement('span');
+      name.className = 'tournament-seeding-name';
+      name.textContent = slot.displayName;
+      li.appendChild(name);
+
+      const handle = document.createElement('span');
+      handle.className = 'tournament-seeding-handle';
+      handle.setAttribute('aria-hidden', 'true');
+      handle.textContent = '⋮⋮';
+      li.appendChild(handle);
+
+      li.addEventListener('dragstart', (ev) => {
+        if (ev.dataTransfer === null) return;
+        ev.dataTransfer.setData('text/plain', String(i));
+        ev.dataTransfer.effectAllowed = 'move';
+        li.classList.add('tournament-seeding-row-dragging');
+        li.setAttribute('aria-grabbed', 'true');
+      });
+      li.addEventListener('dragend', () => {
+        li.classList.remove('tournament-seeding-row-dragging');
+        li.setAttribute('aria-grabbed', 'false');
+      });
+      li.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        if (ev.dataTransfer !== null) ev.dataTransfer.dropEffect = 'move';
+        li.classList.add('tournament-seeding-row-over');
+      });
+      li.addEventListener('dragleave', () => {
+        li.classList.remove('tournament-seeding-row-over');
+      });
+      li.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        li.classList.remove('tournament-seeding-row-over');
+        if (ev.dataTransfer === null) return;
+        const fromIdx = parseInt(ev.dataTransfer.getData('text/plain'), 10);
+        const toIdx = i;
+        if (!isFinite(fromIdx) || fromIdx === toIdx) return;
+        const [moved] = seeds.splice(fromIdx, 1);
+        seeds.splice(toIdx, 0, moved);
+        rerender();
+      });
+
+      list.appendChild(li);
+    });
+  };
+
+  rerender();
+  wrap.appendChild(list);
+
+  const actions = document.createElement('div');
+  actions.className = 'tournament-seeding-actions';
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'btn btn-primary btn-sm tournament-seeding-save';
+  save.setAttribute('data-testid', 'tournament-seeding-save');
+  save.textContent = 'Save seeding';
+  save.addEventListener('click', async () => {
+    const playerIds = seeds
+      .map(s => s.playerId)
+      .filter((p): p is string => p !== null && p !== '');
+    save.disabled = true;
+    const ok = await postSeed(detail.tournament.id, playerIds);
+    save.disabled = false;
+    if (ok) {
+      // Refresh the tournament detail so we reflect the server's
+      // canonical bracket layout (server may rearrange seeds → matches).
+      void openDetail(detail.tournament.id);
+    } else {
+      const status = document.createElement('span');
+      status.className = 'tournament-seeding-status tournament-seeding-status-error';
+      status.setAttribute('data-testid', 'tournament-seeding-status');
+      status.textContent = 'Failed to save seeding.';
+      actions.appendChild(status);
+      window.setTimeout(() => status.remove(), 4000);
+    }
+  });
+  actions.appendChild(save);
+
+  wrap.appendChild(actions);
+  return wrap;
 }
 
 // ── Bracket SVG ─────────────────────────────────────────────────────
@@ -663,7 +894,7 @@ function buildMatchCell(
       ev.stopPropagation();
       const gid = m.gameId;
       if (gid === null || gid === '') return;
-      void openReplayForGame(gid);
+      void openReplayForGame(gid, { finals: true });
     };
     fg.addEventListener('click', openFinals);
     fg.addEventListener('keydown', (ev) => {
@@ -744,7 +975,8 @@ function buildExpandedRow(detail: TournamentDetail): HTMLDivElement | null {
     link.addEventListener('click', () => {
       const gid = m.gameId;
       if (gid === null || gid === '') return;
-      void openReplayForGame(gid);
+      // Phase K Wave 2 — completed match replay → finals-style deep link.
+      void openReplayForGame(gid, { finals: true });
     });
     wrap.appendChild(link);
   }
@@ -771,7 +1003,9 @@ function buildMatchesList(detail: TournamentDetail): HTMLDivElement {
         ev.stopPropagation();
         const gid = m.gameId;
         if (gid === null || gid === '') return;
-        void openReplayForGame(gid);
+        // Phase K Wave 2 — list-row replay → finals-style deep link
+        // so all tournament replay entry points share the same UX.
+        void openReplayForGame(gid, { finals: true });
       });
       row.appendChild(btn);
     }

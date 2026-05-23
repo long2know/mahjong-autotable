@@ -32,6 +32,7 @@ import { Client } from "./client";
 import { HandResultEntry, ThingInfo, MatchInfo } from "./types";
 import {
   parseTilesJson,
+  readFinalsFlagFromUrl,
   registerReplayLauncher,
   type ServerReplayEvent,
   type ServerReplayResponse,
@@ -168,7 +169,7 @@ export class Replay {
     // Phase J Wave 7 — expose the server-replay open path through the
     // launcher module so any surface (leaderboard, profile page,
     // post-game modal) can request `openReplayForGame(gameId)`.
-    registerReplayLauncher((payload) => this.openServer(payload));
+    registerReplayLauncher((payload, options) => this.openServer(payload, options));
   }
 
   // ── Public API ─────────────────────────────────────────────────────
@@ -236,7 +237,7 @@ export class Replay {
    * flat event list into per-hand `ReplayMove` buckets so the
    * existing renderer can chew on them unchanged.
    */
-  openServer(payload: ServerReplayResponse): void {
+  openServer(payload: ServerReplayResponse, options?: { finals?: boolean }): void {
     this.resolveDom();
     if (!this.screenEl) return;
 
@@ -256,11 +257,27 @@ export class Replay {
     }
 
     this.populateSelector();
-    this.selectedHandIdx = 0;
-    this.selectedMoveIdx = 0;
+    // Phase K Wave 2 — `?finals=true` deep-link: jump straight to the
+    // last hand, fully scrubbed to the final move.  Honours both the
+    // explicit `options.finals` from the tournament finals button and
+    // the URL flag for shared links.
+    const wantFinals = options?.finals === true || readFinalsFlagFromUrl();
+    if (wantFinals && this.hands.length > 0) {
+      this.selectedHandIdx = this.hands.length - 1;
+      const last = this.hands[this.selectedHandIdx];
+      this.selectedMoveIdx = last.moves.length;
+    } else {
+      this.selectedHandIdx = 0;
+      this.selectedMoveIdx = 0;
+    }
     this.render();
     this.screenEl.classList.add('replay-open');
     this.screenEl.setAttribute('aria-hidden', 'false');
+    if (wantFinals) {
+      // Scroll the screen into view so a deep-link visitor lands on
+      // the replay rather than the original lobby surface.
+      this.screenEl.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
   }
 
   /** Convert flat ServerReplayEvent[] → per-hand ReplayMove[] buckets. */

@@ -590,6 +590,14 @@
     globals "^13.24.0"
     nullthrows "^1.1.1"
 
+"@parcel/packager-raw-url@^2.15.4":
+  version "2.15.4"
+  resolved "https://registry.npmjs.org/@parcel/packager-raw-url/-/packager-raw-url-2.15.4.tgz"
+  integrity sha512-FOYqSUR5pttNQD9Urclc8RW9APLFqOd9gKnpSYCq+3hpIf0HxgcKyLDHvDitSr+qp4kP8IfnEXPPCLS1ImxP9A==
+  dependencies:
+    "@parcel/plugin" "2.15.4"
+    "@parcel/utils" "2.15.4"
+
 "@parcel/packager-raw@2.15.4":
   version "2.15.4"
   resolved "https://registry.npmjs.org/@parcel/packager-raw/-/packager-raw-2.15.4.tgz"
@@ -894,6 +902,16 @@
     "@parcel/diagnostic" "2.15.4"
     "@parcel/plugin" "2.15.4"
     "@parcel/rust" "2.15.4"
+
+"@parcel/transformer-webmanifest@^2.15.4":
+  version "2.15.4"
+  resolved "https://registry.npmjs.org/@parcel/transformer-webmanifest/-/transformer-webmanifest-2.15.4.tgz"
+  integrity sha512-X0QHB4+D8M2ru63K7pmdmuQelD5PThAzDaa24xsVYmVoHmkdjDohPbkFCKvmz3ymn7Mhq9Ut647XxbxalEyeuQ==
+  dependencies:
+    "@mischnic/json-sourcemap" "^0.1.1"
+    "@parcel/diagnostic" "2.15.4"
+    "@parcel/plugin" "2.15.4"
+    "@parcel/utils" "2.15.4"
 
 "@parcel/types-internal@2.15.4":
   version "2.15.4"

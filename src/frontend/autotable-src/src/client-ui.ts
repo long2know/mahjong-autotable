@@ -14,7 +14,7 @@ import {
   type PlayerStats,
 } from './profile';
 import { formatStats, formatStatsDelta } from './stats';
-import { showEl, hideEl, setElHidden } from './utils';
+import { showEl, hideEl, setElHidden } from './dom-utils';
 
 
 const TITLE_DISCONNECTED = 'Autotable';

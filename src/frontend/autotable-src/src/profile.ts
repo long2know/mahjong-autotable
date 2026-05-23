@@ -52,7 +52,7 @@ import {
   invokeHub,
   onHubConnected,
 } from './hub';
-import { showEl, hideEl } from './utils';
+import { showEl, hideEl } from './dom-utils';
 
 // ── Public types ─────────────────────────────────────────────────────
 
