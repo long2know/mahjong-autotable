@@ -2014,3 +2014,113 @@ appsettings hand-offs, surprises.
 baseline of 1062; Vasquez's eight Wave-3 contract-test files under
 `tests/Phase_K_W3/` plus the new cross-wave regression facts in
 `Wave1ThroughKW3RegressionTests.cs` all green).
+
+---
+
+## Phase K Wave 4 — production bring-up wave 4
+
+**Branch:** `stlong/phase-k-wave-4-bringup`
+
+**Eight deliverables:**
+
+1. **JWT signing-key array binding + `kid` header rotation runbook.**
+   Four new files under `Auth/`: `JwtSigningKey.cs` (record with
+   deterministic 8-byte `Kid` from `SHA-256(material)`),
+   `JwtSigningKeyProvider.cs` (singleton; binds
+   `Auth:JwtSigningKeys`, falls back to legacy
+   `AuthOptions.JwtSigningKey` then to a per-process random
+   ephemeral key with a loud warning), `JwtIssuingService.cs`
+   (manual HS256 RFC-7519 — no Microsoft.IdentityModel.Tokens —
+   header carries `alg=HS256, typ=JWT, kid`; audit row with
+   `Kind="auth.jwt.signed.with_key.{index}"`),
+   `JwtValidationService.cs` (kid fast-path + try-all-keys
+   fallback; `CryptographicOperations.FixedTimeEquals`; stable
+   error wire strings).
+
+2. **`POST /api/auth/token` + `POST /api/auth/validate`.**
+   `Auth/AuthTokenController.cs`. The token endpoint is admin-gated;
+   the validate endpoint is anonymous and decorated with
+   `[EnableRateLimiting(AuthValidatePolicy)]` (new
+   `fixed-window-auth-validate` policy in
+   `RateLimitingExtensions.cs`: 100/min/IP).
+
+3. **TURN-credentials envelope hard-pin.**
+   `Program.cs` `/api/turn/credentials` reshaped:
+   `iceServers[i].urls` is always an array (one element per
+   configured TURN URL), `ttlSeconds` added as canonical alias of
+   the Wave-3 `ttl`, audit row written with
+   `Kind="voice.turn.credentials.minted"`.
+
+4. **Microsoft OAuth canonicalisation.**
+   New `OAuthProvidersOptions` sub-section on `AuthOptions` exposes
+   `Providers.Microsoft` (matching `Google` / `GitHub`). `Program.cs`
+   collapses the canonical
+   `Authentication:Providers:Microsoft:*` config path onto the
+   legacy `Authentication:Microsoft:*` shape during startup AND in
+   a `PostConfigure<AuthOptions>` (for `IOptions<AuthOptions>`
+   consumers). A startup warning fires when both paths are
+   populated. `appsettings.json` ships the canonical shape with
+   inline comments pointing at `docs/oauth-production-setup.md`.
+
+5. **`VoiceHubMetrics` constants + `VoiceRateLimiter` contract
+   props.** Static class `Voice/VoiceHubMetrics.cs` (constants
+   `MetricRelayCount`, `MetricRateLimitRejection`,
+   `MetricJoinUnauthorized`). `VoiceRateLimiter` gains public
+   `WindowDurationSeconds = 60` and `MaxRelaysPerWindow = capacity`.
+   Counter methods on `VoiceHubMetricsService` for both new
+   metrics (`RecordRateLimitRejection`, `RecordJoinUnauthorized`).
+
+6. **`PlayerOnboardingController.stepsCompleted` clamp `[0, 8]`.**
+   `MinStepsCompleted = 0`, `MaxStepsCompleted = 8` constants;
+   `Math.Clamp` applied to the inbound payload unconditionally
+   (create and update paths).
+
+7. **`TournamentController.Seed` HTTP precedence
+   `401 → 403 → 404 → 400`.** Controller now loads the tournament
+   via `TournamentService.GetAsync` BEFORE body validation; null →
+   404. Comment block explains the precedence so it can't be
+   silently re-flattened.
+
+8. **`VoiceHubResult` typed-record refactor.**
+   New `Voice/VoiceHubResult.cs` —
+   `readonly record struct VoiceHubResult(bool Ok, string? Reason)`
+   with `Ok()` / `Fail(reason)` factories and `Reason*` constants.
+   Every `VoiceHub` RPC now returns `Task<VoiceHubResult>`; no more
+   `HubException` throws. Rate-limited rejections increment the
+   new `RecordRateLimitRejection` counter; unauthorised joins
+   increment `RecordJoinUnauthorized`.
+
+**No EF migration this wave.** All Wave-4 work is configuration +
+behaviour. The Wave-3 migration set covers all three providers and
+remains current.
+
+**Surprises:**
+
+- The shared workspace re-clobbered git identity to Hicks during
+  Wave 4 (frontend rebuild commits). `git config user.{name,email}`
+  must be reset to `Bishop (Backend) <bishop@squad.mahjong>` before
+  EVERY commit. Captured for the harness lane.
+- Vasquez had already pre-staged the W4 contract suite under
+  `tests/Phase_K_W4/` (5 files, 36 facts) BEFORE I started
+  implementing. Every soft-pass flipped to hard-assert when my
+  changes landed — net +47 new W4 tests + the regression refresh
+  (`Wave1ThroughKW4RegressionTests.cs` replaces the deleted W3
+  variant).
+- `AuthOptions` is bound from the `Authentication` config section,
+  but Apone's W3 JWT rotation runbook (`docs/jwt-rotation.md` §2)
+  commits to `Auth:JwtSigningKeys` (top-level `Auth`, NOT
+  `Authentication:Jwt`). Resolved by adding a small `Program.cs`
+  shim that reads the `Auth:` section directly and synthesises an
+  `AuthOptions` instance for the provider constructor — keeps the
+  `AuthOptions` binding contract untouched.
+- Legacy singular `AuthOptions.JwtSigningKey` is still accepted
+  this wave for one-wave back-compat; Wave 5 removes it per
+  `docs/jwt-rotation.md` §7.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-4.md` —
+per-deliverable design, contract-test coverage, hand-off list.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx
+--nologo --no-build` → **Passed: 1207, Failed: 0, Skipped: 0**
+(1m 43s; +55 over Wave-3 closeout baseline of 1152; 47 facts in
+`tests/Phase_K_W4/` plus the regression refresh, every one green).
