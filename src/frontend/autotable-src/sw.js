@@ -1,4 +1,4 @@
-// Phase K Wave 2 — Service worker.
+// Phase K Wave 2 → Wave 3 — Service worker.
 //
 // Caching strategy:
 //   • cache-first for static immutable assets (anything matching the
@@ -13,19 +13,55 @@
 //     overlays a `pwa-offline-banner` while this happens).
 //   • network-only for everything else under `/api/` and `/hubs/`
 //     (live data must always go to the wire).
+//
+// Phase K Wave 3 — Install-time pre-cache.
+// `scripts/generate-sw-manifest.js` emits `manifest-precache.json`
+// after every parcel build.  The install handler fetches it and
+// pre-warms `STATIC_CACHE` with the eager lobby chain (autotable-src.
+// {js,css}, game-bootstrap.{js}, PWA icons, index.html).  A returning
+// user with a flaky network now sees a cached lobby on page-load
+// rather than a spinner.
 
-const CACHE_VERSION = 'autotable-v2';
+const CACHE_VERSION = 'autotable-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const LOBBY_CACHE = `${CACHE_VERSION}-lobby`;
+const PRECACHE_MANIFEST_URL = 'manifest-precache.json';
 
 const HASHED_ASSET_RE = /\.[0-9a-f]{8}\.(?:js|css|png|jpg|jpeg|svg|woff2?|otf|ttf|wav|mp4|glb)$/i;
 
 self.addEventListener('install', (event) => {
-  // No precache list — the first navigations will hydrate the cache
-  // organically.  Skip waiting so a new SW activates promptly on
-  // refresh; the page-level handler dispatches `mahjong:sw-update-ready`
-  // for callers that want to surface a banner.
-  event.waitUntil(self.skipWaiting());
+  // Phase K Wave 3 — Fetch the precache manifest emitted by
+  // `scripts/generate-sw-manifest.js` and warm the static cache with
+  // the assets it lists.  Missing manifest = degrade gracefully
+  // (first navigations hydrate the cache organically, as in Wave 2).
+  event.waitUntil((async () => {
+    try {
+      const resp = await fetch(PRECACHE_MANIFEST_URL, { cache: 'no-store' });
+      if (resp.ok) {
+        const manifest = await resp.json();
+        if (manifest && Array.isArray(manifest.assets) && manifest.assets.length > 0) {
+          const cache = await caches.open(STATIC_CACHE);
+          // `cache.addAll` is atomic — if any request 404s, none land.
+          // Filter out anything that 404s on a HEAD probe so a single
+          // stale entry doesn't fail the whole install.
+          const reachable = [];
+          for (const url of manifest.assets) {
+            try {
+              const head = await fetch(url, { method: 'HEAD' });
+              if (head.ok) reachable.push(url);
+            } catch (_e) { /* skip */ }
+          }
+          if (reachable.length > 0) {
+            await cache.addAll(reachable);
+          }
+        }
+      }
+    } catch (_e) {
+      // Manifest fetch failed (network / 404).  Wave-2 behaviour
+      // takes over: the cache hydrates organically as users navigate.
+    }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -51,6 +87,9 @@ self.addEventListener('fetch', (event) => {
   // manifest on every install — we never want a stale one).
   if (url.pathname.endsWith('/sw.js')) return;
   if (url.pathname.endsWith('/manifest.webmanifest')) return;
+  // Phase K Wave 3 — the precache manifest is also always fetched
+  // fresh so the next install cycle picks up the latest hashed names.
+  if (url.pathname.endsWith('/manifest-precache.json')) return;
 
   // Lobby browse fallback — network-first, cache-on-success.
   if (url.pathname === '/api/games/public' || url.pathname.startsWith('/api/games/public?')) {
@@ -120,3 +159,4 @@ async function networkFirst(req, cacheName) {
     });
   }
 }
+
