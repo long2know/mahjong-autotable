@@ -2,6 +2,22 @@
 // optional seed override, hand-count selector, save-defaults to
 // localStorage, and an About / Known Limitations footer link.
 //
+// Phase J Wave 4 — extends with:
+//   • Player chip strip (`#lobby-players-strip`) showing who's already
+//     in the active game, with stable colour-keyed chips.
+//   • Live seat-preview grid (`#lobby-seat-preview`) so the user can
+//     plan a seat take before applying.
+//   • Quick Match button (`#lobby-quick-match`) — bypasses the pickers
+//     and starts a 3-Medium-bot game with the current variant in one
+//     click.
+//   • Settings shortcut (`#lobby-open-settings`) — opens the existing
+//     settings drawer without closing the lobby panel.
+//   • `attachLobbyClient(client)` — deferred-bind helper used from
+//     `index.ts` after Game.start() so the chip strip / seat preview
+//     can subscribe to the live `seats` + `nicks` collections.
+
+import type { Client } from './client';
+//
 // The lobby is a small overlay panel anchored top-left of the autotable
 // page.  It lets the user pick the Phase F query params
 // (variant / dealMode / botCount / botDifficulty) plus the new Phase H
@@ -344,7 +360,10 @@ function shouldShowOnLoad(): boolean {
   return window.location.search === '';
 }
 
-export function initLobby(): void {
+export function initLobby(client?: Client): void {
+  if (client !== undefined) {
+    _attachedClient = client;
+  }
   const panel = document.getElementById('lobby-panel');
   const toggle = document.getElementById('lobby-toggle') as HTMLButtonElement | null;
   if (panel === null || toggle === null) return;
@@ -565,5 +584,215 @@ export function initLobby(): void {
     window.location.replace(url);
   });
 
+  // Phase J Wave 4 — Quick Match handler.  Bypasses the per-picker
+  // review and snaps to "3 Medium bots, Auto seat, current variant +
+  // dealMode + handCount".  Same exit path as Apply & Start so the
+  // existing boot flow + backend validation pick the URL up unchanged.
+  const quickMatchBtn = document.getElementById(
+    'lobby-quick-match') as HTMLButtonElement | null;
+  if (quickMatchBtn !== null) {
+    quickMatchBtn.addEventListener('click', () => {
+      const current = readPickers();
+      const quick: LobbyState = {
+        variant: current.variant,
+        dealMode: current.dealMode,
+        botCount: 3,
+        botDifficulty: 'Medium',
+        seed: null,
+        handCount: current.handCount,
+        seat: null,
+      };
+      const url = buildUrl(quick);
+      window.location.replace(url);
+    });
+  }
+
+  // Phase J Wave 4 — Settings shortcut.  Opens the settings drawer
+  // without closing the lobby so a returning player can adjust
+  // per-game overrides before clicking Apply.  We dispatch a synthetic
+  // click on #settings-toggle so the existing setupSettingsDrawer wiring
+  // in game-ui.ts handles the open animation + aria toggling.
+  const openSettingsBtn = document.getElementById(
+    'lobby-open-settings') as HTMLButtonElement | null;
+  if (openSettingsBtn !== null) {
+    openSettingsBtn.addEventListener('click', () => {
+      const settingsToggle = document.getElementById(
+        'settings-toggle') as HTMLButtonElement | null;
+      settingsToggle?.click();
+    });
+  }
+
+  // Phase J Wave 4 — install the renderers, then hand them to
+  // attachLobbyClient (if a client is already attached) so the chip
+  // strip + seat preview render against the live collections.
+  _renderPlayerChips = renderPlayerChips;
+  _renderSeatPreview = renderSeatPreview;
+  if (_attachedClient !== null) {
+    bindLiveListeners(_attachedClient);
+  }
+
   if (shouldShowOnLoad()) showPanel();
+}
+
+// ---------------------------------------------------------------------
+// Phase J Wave 4 — deferred-bind helpers.
+//
+// initLobby() runs before the Client / Game lifecycle has booted (so
+// the Quick Match button is clickable immediately).  attachLobbyClient
+// is called from index.ts after Game.start() so the chip strip + seat
+// preview can subscribe to the live `seats` + `nicks` collections.
+// Module-level state mirrors the renderers + the attached client so a
+// second initLobby() call doesn't double-bind listeners.
+// ---------------------------------------------------------------------
+
+let _attachedClient: Client | null = null;
+let _renderPlayerChips: ((client: Client) => void) | null = null;
+let _renderSeatPreview: ((client: Client) => void) | null = null;
+let _liveBound: boolean = false;
+
+export function attachLobbyClient(client: Client): void {
+  _attachedClient = client;
+  if (_renderPlayerChips !== null && _renderSeatPreview !== null) {
+    bindLiveListeners(client);
+  }
+}
+
+function bindLiveListeners(client: Client): void {
+  if (_liveBound) return;
+  _liveBound = true;
+  const renderAll = (): void => {
+    _renderPlayerChips?.(client);
+    _renderSeatPreview?.(client);
+  };
+  client.seats.on('update', renderAll);
+  client.nicks.on('update', renderAll);
+  renderAll();
+}
+
+// Render the lobby's player chip strip from the live `seats` + `nicks`
+// collections.  Layout: one chip per occupied seat, plus a "Bot Δ"
+// placeholder per missing-but-bot-controlled seat (informational —
+// botCount is set per-game, not per-seat, so we use a heuristic of
+// "nick starts with 'Bot '" to detect bot seats).
+function renderPlayerChips(client: Client): void {
+  const strip = document.getElementById('lobby-players-strip');
+  const list = document.getElementById('lobby-players-list');
+  if (strip === null || list === null) return;
+
+  const occupants: Array<{ playerId: string; nick: string; seat: number | null }> = [];
+  for (const [playerId, seatInfo] of client.seats.entries()) {
+    if (playerId === 'offline') continue;
+    const nick = client.nicks.get(playerId) ?? '(no nick)';
+    occupants.push({ playerId, nick, seat: seatInfo.seat });
+  }
+  occupants.sort((a, b) => {
+    const sa = a.seat === null ? 99 : a.seat;
+    const sb = b.seat === null ? 99 : b.seat;
+    return sa - sb;
+  });
+
+  list.replaceChildren();
+  for (let i = 0; i < occupants.length; i++) {
+    list.appendChild(buildPlayerChip(occupants[i], i));
+  }
+  strip.style.display = occupants.length > 0 ? '' : 'none';
+}
+
+// Render the lobby's seat-preview grid from the live `seats` + `nicks`
+// collections.  One cell per wind (East/South/West/North); empty cells
+// show "Open" and bot-controlled cells show the bot's nick prefixed
+// with a 🤖.
+function renderSeatPreview(client: Client): void {
+  const preview = document.getElementById('lobby-seat-preview');
+  if (preview === null) return;
+
+  const occupantBySeat: Array<{ playerId: string; nick: string } | null> =
+    [null, null, null, null];
+  for (const [playerId, seatInfo] of client.seats.entries()) {
+    if (playerId === 'offline') continue;
+    if (seatInfo.seat === null) continue;
+    if (seatInfo.seat < 0 || seatInfo.seat > 3) continue;
+    const nick = client.nicks.get(playerId) ?? '(no nick)';
+    occupantBySeat[seatInfo.seat] = { playerId, nick };
+  }
+
+  for (let seat = 0; seat < 4; seat++) {
+    const cell = preview.querySelector<HTMLElement>(
+      `.lobby-seat-preview-cell[data-seat="${seat}"]`);
+    if (cell === null) continue;
+    const occupantEl = cell.querySelector<HTMLElement>(
+      '.lobby-seat-preview-occupant');
+    if (occupantEl === null) continue;
+    const occupant = occupantBySeat[seat];
+    cell.classList.toggle('lobby-seat-preview-empty', occupant === null);
+    cell.classList.toggle(
+      'lobby-seat-preview-bot', occupant !== null && isBotNick(occupant.nick));
+    if (occupant === null) {
+      occupantEl.textContent = 'Open';
+    } else {
+      occupantEl.textContent = isBotNick(occupant.nick)
+        ? `🤖 ${occupant.nick}`
+        : occupant.nick;
+    }
+  }
+  preview.style.display = '';
+}
+
+function buildPlayerChip(
+  occupant: { playerId: string; nick: string; seat: number | null },
+  index: number,
+): HTMLElement {
+  const chip = document.createElement('div');
+  chip.className = 'lobby-player-chip';
+  chip.setAttribute('role', 'listitem');
+  chip.setAttribute('data-testid', `lobby-player-chip-${index}`);
+  if (occupant.seat !== null) {
+    chip.setAttribute('data-seat', String(occupant.seat));
+  }
+  chip.style.setProperty('--chip-color', chipColorForPlayer(occupant.playerId));
+
+  const avatar = document.createElement('span');
+  avatar.className = 'lobby-player-chip-avatar';
+  avatar.textContent = initialsFromNick(occupant.nick);
+
+  const nick = document.createElement('span');
+  nick.className = 'lobby-player-chip-nick';
+  nick.textContent = occupant.nick;
+
+  const seatBadge = document.createElement('span');
+  seatBadge.className = 'lobby-player-chip-seat';
+  seatBadge.textContent = occupant.seat === null
+    ? '👁'
+    : String(occupant.seat);
+
+  chip.appendChild(avatar);
+  chip.appendChild(nick);
+  chip.appendChild(seatBadge);
+  return chip;
+}
+
+// djb2 hash of the player id → HSL hue for the chip background.
+// Lightness + saturation are clamped so every chip is legibly dark
+// enough to host white text without per-player tuning.
+function chipColorForPlayer(playerId: string): string {
+  let hash = 5381;
+  for (let i = 0; i < playerId.length; i++) {
+    hash = ((hash << 5) + hash) + playerId.charCodeAt(i);
+    hash &= 0xffffffff;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 55%, 38%)`;
+}
+
+function initialsFromNick(nick: string): string {
+  const trimmed = nick.trim();
+  if (trimmed === '') return '?';
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+function isBotNick(nick: string | null | undefined): boolean {
+  // Mirror game-ui.ts's bot detection so both surfaces agree.
+  return !!nick && /^Bot\b/i.test(nick);
 }

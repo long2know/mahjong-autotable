@@ -629,6 +629,7 @@ export class GameUi {
     this.setupSettingsDrawer();
     this.setupSoundEffects();
     this.setupReplay();
+    this.setupMobileDrawer();
   }
 
   private setupEvents(): void {
@@ -2227,6 +2228,42 @@ export class GameUi {
   // ---------------------------------------------------------------------
   private setupReplay(): void {
     this.replay.start();
+  }
+
+  // Phase J Wave 4 — Mobile move-log drawer.  On tablet/phone widths
+  // (≤ 1024 px in style.css) the move-log slides off the right edge of
+  // the viewport; this hamburger button toggles a `body.move-log-open`
+  // class that brings it back into view.  Clicking outside the open
+  // drawer dismisses it so the user can return focus to the table
+  // without aiming at the small close icon.
+  private setupMobileDrawer(): void {
+    const toggle = document.getElementById('move-log-toggle');
+    const moveLog = document.getElementById('move-log');
+    if (toggle === null || moveLog === null) return;
+
+    const isOpen = (): boolean =>
+      document.body.classList.contains('move-log-open');
+
+    const setOpen = (open: boolean): void => {
+      document.body.classList.toggle('move-log-open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    toggle.addEventListener('click', (event: MouseEvent) => {
+      event.stopPropagation();
+      setOpen(!isOpen());
+    });
+
+    // Outside-click dismissal — wired at the document level so any tap
+    // outside the drawer + toggle button closes it.
+    document.addEventListener('click', (event: MouseEvent) => {
+      if (!isOpen()) return;
+      const target = event.target as Node | null;
+      if (target === null) return;
+      if (moveLog.contains(target)) return;
+      if (toggle.contains(target)) return;
+      setOpen(false);
+    });
   }
 }
 

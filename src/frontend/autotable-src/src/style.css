@@ -1581,3 +1581,487 @@ body.spectating #roll-dice { display: none !important; }
     .replay-side-pane { flex: 0 0 auto; max-height: 200px; }
     .replay-board { grid-template-columns: 1fr; }
 }
+
+/* ====================================================================== */
+/* Phase J Wave 4 — Lobby polish + reconnect UI + mobile responsiveness.  */
+/* ====================================================================== */
+
+/* ---------------------------------------------------------------------- */
+/* Lobby player chip strip                                                */
+/* ---------------------------------------------------------------------- */
+.lobby-players-strip {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+}
+.lobby-section-title {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0 0 8px;
+}
+.lobby-players-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 36px;
+}
+.lobby-player-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px 4px 4px;
+    border-radius: 999px;
+    background: var(--chip-color, #4a4a4a);
+    color: #fff;
+    font-size: 0.82rem;
+    line-height: 1.2;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    max-width: 100%;
+}
+.lobby-player-chip-avatar {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.3);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.lobby-player-chip-nick {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.lobby-player-chip-seat {
+    flex: 0 0 auto;
+    min-width: 16px;
+    text-align: center;
+    padding: 0 4px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.35);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Lobby seat preview grid                                                */
+/* ---------------------------------------------------------------------- */
+.lobby-seat-preview {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+}
+.lobby-seat-preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+.lobby-seat-preview-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.82rem;
+}
+.lobby-seat-preview-cell.lobby-seat-preview-empty {
+    color: rgba(255, 255, 255, 0.5);
+    font-style: italic;
+}
+.lobby-seat-preview-cell.lobby-seat-preview-bot {
+    border-color: rgba(255, 209, 102, 0.4);
+    background: rgba(255, 209, 102, 0.08);
+}
+.lobby-seat-preview-wind {
+    font-weight: 700;
+    color: #ffd166;
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+}
+.lobby-seat-preview-occupant {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Lobby card-group (Bots, Hand count, Bot difficulty)                    */
+/* ---------------------------------------------------------------------- */
+.lobby-card-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
+    border: 0;
+    padding: 0;
+    margin: 0 0 12px;
+}
+.lobby-card-group legend {
+    grid-column: 1 / -1;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0 0 6px;
+}
+.lobby-card-option {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 4px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+    text-align: center;
+}
+.lobby-card-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.lobby-card-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+.lobby-card-label {
+    font-size: 0.78rem;
+    line-height: 1.2;
+}
+.lobby-card-group:has(input:checked) .lobby-card-option {
+    /* dim non-selected options when at least one is selected */
+}
+.lobby-card-option:has(input:checked) {
+    background: rgba(255, 209, 102, 0.15);
+    border-color: rgba(255, 209, 102, 0.6);
+}
+.lobby-card-option:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Lobby Quick Match + Settings shortcut                                  */
+/* ---------------------------------------------------------------------- */
+.lobby-footer #lobby-quick-match {
+    margin-right: 8px;
+}
+.lobby-settings-shortcut {
+    padding: 8px 16px 12px;
+    text-align: right;
+}
+.lobby-settings-link {
+    background: none;
+    border: 0;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+.lobby-settings-link:hover {
+    color: #ffd166;
+    background: rgba(255, 209, 102, 0.08);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Reconnect copy-link button + toast region                              */
+/* ---------------------------------------------------------------------- */
+#connection-banner-copy-link {
+    margin-right: 6px;
+}
+.toast-region {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    max-width: 90vw;
+}
+.toast {
+    padding: 10px 16px;
+    border-radius: 6px;
+    background: rgba(20, 30, 40, 0.95);
+    color: #fff;
+    font-size: 0.88rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 200ms ease, transform 200ms ease;
+    pointer-events: auto;
+    border-left: 3px solid #4a90e2;
+    max-width: 80vw;
+}
+.toast-error {
+    border-left-color: #e74c3c;
+}
+.toast-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Mobile move-log drawer toggle (hamburger)                              */
+/* ---------------------------------------------------------------------- */
+#move-log-toggle {
+    display: none;
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 70;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid rgba(200, 160, 70, 0.5);
+    background: rgba(20, 30, 26, 0.86);
+    color: #e8e0c8;
+    font-size: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+#move-log-toggle:hover {
+    background: rgba(40, 50, 46, 0.92);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Media query 1: ≤ 1024 px — tablet landscape compaction                 */
+/* ---------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+    #sidebar {
+        width: 200px;
+    }
+    #move-log {
+        width: 220px;
+        max-height: 50vh;
+        font-size: 0.74rem;
+    }
+    #lobby-panel {
+        max-width: 92vw;
+    }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Media query 2: ≤ 768 px — tablet portrait / large phone                */
+/* ---------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    /* Show the mobile move-log hamburger; hide the desktop move-log */
+    /* sidebar by default, reveal it via body.move-log-open.         */
+    #move-log-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #move-log {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 280px;
+        max-width: 80vw;
+        max-height: 100vh;
+        transform: translateX(100%);
+        transition: transform 220ms ease;
+        z-index: 65;
+        border-radius: 0;
+        box-shadow: -4px 0 16px rgba(0, 0, 0, 0.5);
+    }
+    body.move-log-open #move-log {
+        transform: translateX(0);
+    }
+
+    /* Sidebar slides out from the left, narrower */
+    #sidebar {
+        width: 180px;
+        font-size: 0.85rem;
+    }
+    #sidebar .d-flex {
+        flex-direction: column;
+    }
+    #sidebar .d-flex > .mr-2,
+    #sidebar .d-flex > .ml-2 {
+        margin-right: 0 !important;
+        margin-left: 0 !important;
+        margin-top: 4px;
+    }
+
+    /* Modals: fill width minus margin */
+    .modal-dialog {
+        max-width: 95vw;
+        margin: 16px auto;
+    }
+    .modal-lg,
+    .modal-xl {
+        max-width: 95vw;
+    }
+    .result-modal-content,
+    .game-complete-modal-content {
+        padding: 8px;
+    }
+
+    /* Tap targets ≥ 44 px per directive */
+    .btn-sm {
+        min-height: 36px;
+    }
+    .seat-button .take-seat,
+    .seat-button .kick {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    #lobby-toggle,
+    #settings-toggle {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    /* HUD elements stack instead of overlap */
+    #pickup-hud {
+        font-size: 0.85rem;
+        padding: 8px 12px;
+        max-width: 92vw;
+    }
+    #dice-hud {
+        font-size: 1rem;
+    }
+
+    /* Variant badge less prominent on phone */
+    #variant-badge {
+        font-size: 0.85rem;
+        padding: 4px 8px;
+    }
+
+    /* Lobby fills more of the viewport */
+    #lobby-panel {
+        max-width: 96vw;
+        max-height: 92vh;
+    }
+    .lobby-card-group {
+        grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    }
+
+    /* Settings drawer: full-width slide-down at this width */
+    #settings-drawer {
+        width: 100vw;
+        max-width: 100vw;
+        right: 0;
+        left: 0;
+    }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Media query 3: ≤ 480 px — phone portrait                               */
+/* ---------------------------------------------------------------------- */
+@media (max-width: 480px) {
+    /* Settings drawer: full-screen overlay */
+    #settings-drawer {
+        width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        top: 0;
+        right: 0;
+        border-radius: 0;
+    }
+
+    /* Lobby fills the screen */
+    #lobby-panel {
+        max-width: 100vw;
+        max-height: 100vh;
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        margin: 0;
+    }
+    .lobby-header {
+        padding: 12px 14px;
+    }
+    .lobby-body {
+        padding: 12px 14px;
+    }
+
+    /* Player chips: stack vertically when too narrow */
+    .lobby-players-list {
+        flex-direction: column;
+    }
+    .lobby-player-chip {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .lobby-player-chip-nick {
+        max-width: none;
+        flex: 1 1 auto;
+    }
+
+    /* Seat preview: single column */
+    .lobby-seat-preview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Card group: 2 columns */
+    .lobby-card-group {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* Modal dialogs use the full screen */
+    .modal-dialog {
+        max-width: 100vw;
+        margin: 0;
+        height: 100vh;
+    }
+    .modal-content {
+        border-radius: 0;
+        min-height: 100vh;
+    }
+
+    /* Banner: stack action buttons under the text on the narrowest widths */
+    .connection-banner {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+        padding: 10px 12px;
+    }
+    .connection-banner-actions {
+        display: flex !important;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 6px;
+    }
+    .connection-banner-actions .btn {
+        width: 100%;
+    }
+
+    /* Variant badge tucks into a single-line minimal pill */
+    #variant-badge {
+        top: 8px;
+        right: 8px;
+        font-size: 0.78rem;
+    }
+
+    /* Move-log drawer: full-width on the narrowest widths */
+    #move-log {
+        width: 100vw;
+        max-width: 100vw;
+    }
+
+    /* Lobby footer wraps onto two lines, both buttons full-width */
+    .lobby-footer {
+        flex-wrap: wrap;
+    }
+    .lobby-footer .btn {
+        width: 100%;
+        margin-top: 6px;
+    }
+}

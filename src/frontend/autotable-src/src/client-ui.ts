@@ -1,5 +1,12 @@
 import { Client } from "./client";
 import { Game } from './base-client';
+import {
+  buildRejoinUrl,
+  clearRejoinFromUrl,
+  parseRejoinFromUrl,
+  readSession,
+  SessionToken,
+} from './reconnect';
 
 
 const TITLE_DISCONNECTED = 'Autotable';
@@ -91,6 +98,11 @@ export class ClientUi {
   private connectionBannerActions: HTMLElement | null;
   private connectionBannerRetry: HTMLButtonElement | null;
   private connectionBannerLobby: HTMLButtonElement | null;
+  // Phase J Wave 4 — copy-rejoin-link button + toast region.  Both are
+  // optional so a stripped-down host page can omit them without breaking
+  // the constructor.
+  private connectionBannerCopyLink: HTMLButtonElement | null;
+  private toastRegion: HTMLElement | null;
   private reconnectTimer: number | null = null;
   private reconnectFlashTimer: number | null = null;
   // True from the first disconnect until the next successful JOIN.  Used
@@ -183,6 +195,23 @@ export class ClientUi {
         window.location.search = '';
       });
     }
+
+    // Phase J Wave 4 — copy-rejoin-link button + toast region.
+    this.connectionBannerCopyLink = document.getElementById(
+      'connection-banner-copy-link') as HTMLButtonElement | null;
+    this.toastRegion = document.getElementById('toast-region');
+    if (this.connectionBannerCopyLink !== null) {
+      this.connectionBannerCopyLink.addEventListener(
+        'click', () => this.copyRejoinLink());
+    }
+
+    // Phase J Wave 4 — Surface a "session ended" toast on boot when the
+    // URL carries a malformed / expired ?rejoin= token, so the user
+    // knows why they landed on the lobby instead of a live game.  index.ts
+    // already calls applyTokenToUrl() for valid tokens; this consumer
+    // handles only the failure case (a valid token would have been
+    // stripped + re-encoded on the URL by then).
+    this.consumeRejoinTokenAtStartup();
   }
 
   // Phase I Wave 3 — Read ?gameId= from the URL.  Falls back to the
@@ -485,7 +514,18 @@ export class ClientUi {
     this.connectionBannerText.textContent =
       `⚠️ Connection lost — reconnecting… (attempt ${attempt}/${max})`;
     if (this.connectionBannerActions !== null) {
-      this.connectionBannerActions.style.display = 'none';
+      // Phase J Wave 4 — reveal the actions row (incl. copy-link) once
+      // the first retry has failed; the directive's acceptance criterion
+      // is "after the first failed retry (1s)", i.e. attempt >= 2.
+      // Until then the banner stays informational-only.
+      if (attempt >= 2) {
+        this.connectionBannerActions.style.display = '';
+        if (this.connectionBannerCopyLink !== null) {
+          this.connectionBannerCopyLink.style.display = '';
+        }
+      } else {
+        this.connectionBannerActions.style.display = 'none';
+      }
     }
     this.connectionBanner.style.display = 'flex';
   }
@@ -502,6 +542,12 @@ export class ClientUi {
     if (this.connectionBannerActions !== null) {
       this.connectionBannerActions.style.display = '';
     }
+    // Phase J Wave 4 — keep copy-link visible on the failure banner so
+    // the user can still hand the URL to themselves (e.g. paste into a
+    // chat) before clicking Back to Lobby.
+    if (this.connectionBannerCopyLink !== null) {
+      this.connectionBannerCopyLink.style.display = '';
+    }
     this.connectionBanner.style.display = 'flex';
   }
 
@@ -512,6 +558,11 @@ export class ClientUi {
     this.connectionBannerText.textContent = '✅ Reconnected.';
     if (this.connectionBannerActions !== null) {
       this.connectionBannerActions.style.display = 'none';
+    }
+    // Phase J Wave 4 — also tuck the copy-link button away on a
+    // successful reconnect so the success state is clean.
+    if (this.connectionBannerCopyLink !== null) {
+      this.connectionBannerCopyLink.style.display = 'none';
     }
     this.connectionBanner.style.display = 'flex';
     if (this.reconnectFlashTimer !== null) {
@@ -529,6 +580,124 @@ export class ClientUi {
     if (this.connectionBannerActions !== null) {
       this.connectionBannerActions.style.display = 'none';
     }
+    // Phase J Wave 4 — reset the copy-link button so subsequent
+    // reconnect cycles start with it hidden (it's revealed at attempt
+    // >= 2 inside showBannerReconnecting).
+    if (this.connectionBannerCopyLink !== null) {
+      this.connectionBannerCopyLink.style.display = 'none';
+    }
+  }
+
+  // Phase J Wave 4 — Copy a rejoin URL for this session to the
+  // clipboard.  Prefers the modern navigator.clipboard API; falls back
+  // to a hidden textarea + document.execCommand('copy') for older
+  // browsers and embedded WebViews; final fallback surfaces the URL
+  // inside a long-lived toast for manual copy.
+  private copyRejoinLink(): void {
+    const gameId = this.client.lastGameId;
+    if (gameId === null) {
+      this.showToast(
+        'No live session yet — nothing to share.', 'info', 4000);
+      return;
+    }
+    const session = readSession(gameId);
+    if (session === null) {
+      this.showToast(
+        'No live session yet — nothing to share.', 'info', 4000);
+      return;
+    }
+    const url = buildRejoinUrl(session);
+    const onSuccess = (): void => {
+      this.showToast('🔗 Rejoin link copied to clipboard.', 'info', 4000);
+    };
+    const onFail = (): void => {
+      this.showToast(
+        `Copy failed — manually share this URL: ${url}`, 'error', 12000);
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(onSuccess, () => {
+          if (!this.execCommandCopy(url)) onFail();
+          else onSuccess();
+        });
+        return;
+      }
+    } catch {
+      /* fall through to execCommand */
+    }
+    if (this.execCommandCopy(url)) onSuccess();
+    else onFail();
+  }
+
+  // Phase J Wave 4 — Legacy clipboard fallback.  Some embedded WebViews
+  // (e.g. older Electron, certain in-app browsers) ship without
+  // navigator.clipboard; document.execCommand('copy') is the only
+  // synchronous path that works there.  Returns true iff the copy
+  // succeeded so the caller can route to the manual-copy toast on
+  // failure.
+  private execCommandCopy(text: string): boolean {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  // Phase J Wave 4 — Inline toast helper.  Pushes a short notice into
+  // the aria-live region with severity + auto-dismiss.  Severity
+  // controls the colour band: info = blue, error = red.
+  private showToast(
+    message: string,
+    severity: 'info' | 'error' = 'info',
+    duration: number = 4000,
+  ): void {
+    if (this.toastRegion === null) return;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${severity}`;
+    toast.setAttribute('role', severity === 'error' ? 'alert' : 'status');
+    toast.setAttribute(
+      'data-testid', severity === 'error' ? 'toast-error' : 'toast-info');
+    toast.textContent = message;
+    this.toastRegion.appendChild(toast);
+    // Force the entry animation by deferring the visible class.
+    window.requestAnimationFrame(() => {
+      toast.classList.add('toast-visible');
+    });
+    window.setTimeout(() => {
+      toast.classList.remove('toast-visible');
+      window.setTimeout(() => {
+        if (toast.parentNode !== null) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 400);
+    }, duration);
+  }
+
+  // Phase J Wave 4 — On page load, if the URL carried `?rejoin=…`
+  // but the token parser couldn't accept it (malformed or expired),
+  // surface a "session ended" toast so the user knows what happened.
+  // The valid-token path is handled in index.ts before this constructor
+  // runs (it strips the rejoin param and re-encodes gameId+seat); by
+  // the time we get here a leftover `?rejoin=` is always invalid.
+  private consumeRejoinTokenAtStartup(): void {
+    if (window.location.search.indexOf('rejoin=') < 0) return;
+    const decoded = parseRejoinFromUrl();
+    if (decoded === null) {
+      this.showToast(
+        'Your previous session has ended.', 'info', 6000);
+      clearRejoinFromUrl();
+    }
+    void (decoded as RejoinHandled | null);
   }
 
   // Phase I Wave 4 — mirror the URL-derived spectator state onto the body
@@ -603,11 +772,26 @@ export class ClientUi {
     // user-initiated disconnect doesn't race against a pending retry.
     this.clearReconnectTimer();
     this.wasDisconnected = false;
+    // Phase J Wave 4 — user-initiated teardown: drop the reconnect
+    // session so a subsequent refresh doesn't auto-rejoin an already-left
+    // game.
+    this.client.clearReconnectSession();
     this.client.disconnect();
     // this.setUrlState(null);
   }
 
   newGame(): void {
+    // Phase J Wave 4 — same rationale as disconnect: the user is
+    // intentionally walking away from the current session.
+    this.client.clearReconnectSession();
     window.location.search = '';
   }
 }
+
+// Phase J Wave 4 — guard type for the rejoin consumer below.  Silences
+// the unused-import warning for the `void` cast in consumeRejoinTokenAtStartup
+// without exporting an extra helper.
+type RejoinHandled = {
+  token: string;
+  decoded: SessionToken;
+};

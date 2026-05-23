@@ -3,7 +3,8 @@
 <head>
     <meta charset="utf-8">
     <title>Autotable</title>
-    <meta name="viewport" content="width=device-width">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <link href="img/icon-96.auto.png" rel="shortcut icon" sizes="96x96">
     <link href="img/icon-32.auto.png" rel="shortcut icon" sizes="32x32">
     <link href="img/icon-16.auto.png" rel="shortcut icon" sizes="16x16">
@@ -425,6 +426,16 @@
         <span class="lobby-toggle-label">Lobby</span>
     </button>
 
+    <!-- Phase J Wave 4 — Mobile move-log drawer toggle.  Hidden ≥ 1025 px
+         via CSS; on tablet/phone widths the move-log slides off the right
+         edge and this hamburger button surfaces / hides it.  game-ui.ts
+         (setupMobileDrawer) wires the open/close + outside-click. -->
+    <button id="move-log-toggle" type="button" title="Move log"
+            aria-controls="move-log" aria-expanded="false"
+            data-testid="mobile-move-log-toggle">
+        <span class="move-log-toggle-icon">📜</span>
+    </button>
+
     <!-- Phase J Wave 2 — Settings drawer toggle (top-right, beside the
          variant badge).  Opens an inline panel exposing per-game session
          overrides: bot strength, hand count, auto-deal.  Persists via
@@ -443,12 +454,31 @@
         <span class="connection-banner-text" id="connection-banner-text"></span>
         <span class="connection-banner-actions" id="connection-banner-actions"
               style="display: none;">
+            <!-- Phase J Wave 4 — Copy-rejoin-link button.  Revealed inline
+                 by client-ui.ts after the first failed retry (attempt
+                 >= 2) so a player whose tab is mid-reconnect can grab a
+                 share-able URL containing a fresh rejoin token. -->
+            <button type="button" class="btn btn-sm btn-info"
+                    id="connection-banner-copy-link"
+                    data-testid="reconnect-copy-link"
+                    style="display: none;"
+                    title="Copy a link you can paste into another tab to keep this seat">
+                🔗 Copy rejoin link
+            </button>
             <button type="button" class="btn btn-sm btn-warning"
                     id="connection-banner-retry">Retry</button>
             <button type="button" class="btn btn-sm btn-secondary"
                     id="connection-banner-lobby">Back to Lobby</button>
         </span>
     </div>
+
+    <!-- Phase J Wave 4 — Toast region.  Aria-live polite region anchored
+         bottom-center; client-ui.ts (showToast) pushes ephemeral notices
+         here for non-blocking feedback (e.g. "Link copied", "Your
+         previous session has ended"). -->
+    <div id="toast-region" class="toast-region"
+         role="status" aria-live="polite"
+         data-testid="toast-region"></div>
 
     <!-- Phase J Wave 2 — Settings drawer (top-right slide-out).  Mirrors
          a subset of the lobby pickers (bot strength, hand count, auto-deal)
@@ -637,6 +667,52 @@
                     aria-label="Close lobby" title="Close">×</button>
         </div>
         <div class="lobby-body">
+            <!-- Phase J Wave 4 — Player chip strip.  Surfaces the live
+                 `seats`+`nicks` collections as a 0..4 chip row so the
+                 lobby user sees who is already in the game (and which
+                 colour seat they hold).  Hidden until the lobby module
+                 attaches a Client via attachLobbyClient(). -->
+            <section class="lobby-players-strip" id="lobby-players-strip"
+                     aria-label="Players in this game"
+                     style="display: none;">
+                <h3 class="lobby-section-title">Players</h3>
+                <div id="lobby-players-list" class="lobby-players-list"
+                     role="list"></div>
+            </section>
+
+            <!-- Phase J Wave 4 — Seat preview.  Renders the four chairs
+                 with the player nick currently holding each seat (or
+                 "Open" / "Bot — Medium" placeholder).  Lets the user
+                 plan a seat take before committing.  Hidden until the
+                 lobby module attaches a Client. -->
+            <section class="lobby-seat-preview" id="lobby-seat-preview"
+                     aria-label="Seat preview"
+                     style="display: none;">
+                <h3 class="lobby-section-title">Seats</h3>
+                <div class="lobby-seat-preview-grid">
+                    <div class="lobby-seat-preview-cell" data-seat="0"
+                         data-testid="lobby-seat-preview-0">
+                        <span class="lobby-seat-preview-wind">East 东</span>
+                        <span class="lobby-seat-preview-occupant">—</span>
+                    </div>
+                    <div class="lobby-seat-preview-cell" data-seat="1"
+                         data-testid="lobby-seat-preview-1">
+                        <span class="lobby-seat-preview-wind">South 南</span>
+                        <span class="lobby-seat-preview-occupant">—</span>
+                    </div>
+                    <div class="lobby-seat-preview-cell" data-seat="2"
+                         data-testid="lobby-seat-preview-2">
+                        <span class="lobby-seat-preview-wind">West 西</span>
+                        <span class="lobby-seat-preview-occupant">—</span>
+                    </div>
+                    <div class="lobby-seat-preview-cell" data-seat="3"
+                         data-testid="lobby-seat-preview-3">
+                        <span class="lobby-seat-preview-wind">North 北</span>
+                        <span class="lobby-seat-preview-occupant">—</span>
+                    </div>
+                </div>
+            </section>
+
             <fieldset class="lobby-fieldset" id="lobby-variant-fieldset">
                 <legend>Variant</legend>
                 <label><input type="radio" name="lobby-variant" value="changsha" checked> Changsha</label>
@@ -680,23 +756,57 @@
                 </p>
             </fieldset>
 
-            <fieldset class="lobby-fieldset" id="lobby-bot-difficulty-fieldset">
+            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-bot-difficulty-fieldset">
                 <legend>Bot difficulty</legend>
-                <label><input type="radio" name="lobby-bot-difficulty" value="Easy"> Easy</label>
-                <label><input type="radio" name="lobby-bot-difficulty" value="Medium" checked> Medium</label>
-                <label><input type="radio" name="lobby-bot-difficulty" value="Hard"> Hard</label>
+                <label class="lobby-card-option">
+                    <input type="radio" name="lobby-bot-difficulty" value="Easy">
+                    <span class="lobby-card-icon">😌</span>
+                    <span class="lobby-card-label">Easy</span>
+                </label>
+                <label class="lobby-card-option">
+                    <input type="radio" name="lobby-bot-difficulty" value="Medium" checked>
+                    <span class="lobby-card-icon">🙂</span>
+                    <span class="lobby-card-label">Medium</span>
+                </label>
+                <label class="lobby-card-option">
+                    <input type="radio" name="lobby-bot-difficulty" value="Hard">
+                    <span class="lobby-card-icon">😈</span>
+                    <span class="lobby-card-label">Hard</span>
+                </label>
             </fieldset>
 
             <!-- Phase H Wave 1 — hand count selector.  Default 4 = Bishop's
                  runtime east-wind rotation default (Phase J Wave 2).  The
-                 backend reads this off the URL and pins it to MaxHands. -->
-            <fieldset class="lobby-fieldset" id="lobby-hand-count-fieldset">
+                 backend reads this off the URL and pins it to MaxHands.
+                 Phase J Wave 4 — promoted to lobby-card-group with icon
+                 hints so the visual weight matches Variant + Bots. -->
+            <fieldset class="lobby-fieldset lobby-card-group" id="lobby-hand-count-fieldset">
                 <legend>Hands per match</legend>
-                <label><input type="radio" name="lobby-hand-count" value="1"> 1 <small class="lobby-hint">(single)</small></label>
-                <label><input type="radio" name="lobby-hand-count" value="4" checked> 4 <small class="lobby-hint">(east-wind)</small></label>
-                <label><input type="radio" name="lobby-hand-count" value="8"> 8 <small class="lobby-hint">(East round)</small></label>
-                <label><input type="radio" name="lobby-hand-count" value="16"> 16 <small class="lobby-hint">(half match)</small></label>
-                <label><input type="radio" name="lobby-hand-count" value="32"> 32 <small class="lobby-hint">(full match)</small></label>
+                <label class="lobby-card-option">
+                    <input type="radio" name="lobby-hand-count" value="1">
+                    <span class="lobby-card-icon">短</span>
+                    <span class="lobby-card-label">1 <small class="lobby-hint">(single)</small></span>
+                </label>
+                <label class="lobby-card-option">
+                    <input type="radio" name="lobby-hand-count" value="4" checked>
+                    <span class="lobby-card-icon">局</span>
+                    <span class="lobby-card-label">4 <small class="lobby-hint">(east-wind)</small></span>
+                </label>
+                <label class="lobby-card-option">
+                    <input type="radio" name="lobby-hand-count" value="8">
+                    <span class="lobby-card-icon">圈</span>
+                    <span class="lobby-card-label">8 <small class="lobby-hint">(East round)</small></span>
+                </label>
+                <label class="lobby-card-option">
+                    <input type="radio" name="lobby-hand-count" value="16">
+                    <span class="lobby-card-icon">半</span>
+                    <span class="lobby-card-label">16 <small class="lobby-hint">(half match)</small></span>
+                </label>
+                <label class="lobby-card-option">
+                    <input type="radio" name="lobby-hand-count" value="32">
+                    <span class="lobby-card-icon">长</span>
+                    <span class="lobby-card-label">32 <small class="lobby-hint">(full match)</small></span>
+                </label>
             </fieldset>
 
             <!-- Phase H Wave 1 — Advanced section: optional seed override.
@@ -727,8 +837,30 @@
                 <input id="lobby-save-defaults" type="checkbox">
                 Save as defaults
             </label>
+            <!-- Phase J Wave 4 — Quick Match.  Bypasses the per-picker
+                 review step: snaps to 3 Medium bots / Auto seat / current
+                 variant + hand count + dealMode, and applies straight to
+                 the URL.  Same exit path as Apply & Start so existing
+                 boot flow handles validation. -->
+            <button id="lobby-quick-match" type="button"
+                    class="btn btn-success btn-sm"
+                    data-testid="lobby-quick-match"
+                    title="Skip the pickers and start a 3-Medium-bot game now">
+                ⚡ Quick Match
+            </button>
             <button id="lobby-apply" type="button" class="btn btn-warning btn-sm">
                 Apply &amp; Start
+            </button>
+        </div>
+        <!-- Phase J Wave 4 — Settings shortcut.  Opens the existing
+             settings drawer without closing the lobby; lets returning
+             players tweak per-game overrides before clicking Apply. -->
+        <div class="lobby-settings-shortcut">
+            <button id="lobby-open-settings" type="button"
+                    class="lobby-settings-link"
+                    data-testid="lobby-open-settings"
+                    title="Open the per-game settings drawer">
+                ⚙ Open game settings…
             </button>
         </div>
         <div class="lobby-about">
