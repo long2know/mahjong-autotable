@@ -1,0 +1,19 @@
+{
+  "appId": "io.mahjong.autotable",
+  "appName": "Mahjong Autotable",
+  "webDir": "../src/frontend/autotable",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always",
+    "scrollEnabled": true
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}

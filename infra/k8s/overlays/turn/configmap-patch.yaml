@@ -1,0 +1,30 @@
+# Phase K Wave 2 — Apone (DevOps).
+#
+# ConfigMap patch that fills in `realm` and `external-ip` placeholders
+# left as `STUB_REPLACE_IN_OVERLAY` in the base manifest.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: turn-server-config
+data:
+  turnserver.conf: |
+    # Phase K Wave 2 — Apone (DevOps). Production realm + external-ip.
+    realm=turn.mahjong.example.com
+    external-ip=REPLACE_WITH_LB_PUBLIC_IP
+
+    listening-port=3478
+    tls-listening-port=5349
+    min-port=49160
+    max-port=49200
+
+    lt-cred-mech
+    user-quota=12
+    total-quota=120
+
+    no-loopback-peers
+    no-multicast-peers
+    no-cli
+    cli-password=DISABLED_BY_NO_CLI
+
+    simple-log
+    log-file=stdout

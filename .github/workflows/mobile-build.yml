@@ -1,0 +1,232 @@
+# Phase K Wave 2 — Apone (DevOps).
+#
+# Capacitor mobile shell — iOS + Android CI build.
+#
+# Architecture:
+#   1. `build-frontend-bundle` (shared) — rebuilds the web bundle the
+#      Capacitor shell wraps. Single source of truth for the JS/CSS
+#      that ends up inside both the .ipa and the .aab.
+#   2. `android` (ubuntu) — `gradlew assembleRelease` + `bundleRelease`.
+#      No signing identity in CI; produces UNSIGNED artefacts.
+#   3. `ios`     (macos)  — `xcodebuild -configuration Release
+#      -sdk iphoneos CODE_SIGNING_ALLOWED=NO`. Produces UNSIGNED .app.
+#   4. `release` (push to main only) — creates a `mobile-<run_number>`
+#      GitHub prerelease with both unsigned artefacts attached.
+#
+# Signing identities (operator-only): iOS distribution cert +
+# provisioning profile in `secrets.IOS_*`; Android keystore +
+# passwords in `secrets.ANDROID_*`. CI soft-fails to unsigned
+# artefacts when secrets are absent. App-store submission (TestFlight,
+# Play Internal) is manual operator action in Phase K — auto-promotion
+# is a Phase L scope.
+
+name: mobile-build
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "src/frontend/autotable-src/**"
+      - ".github/workflows/mobile-build.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "mobile/**"
+      - "src/frontend/autotable-src/**"
+      - ".github/workflows/mobile-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-frontend-bundle:
+    name: Build web bundle (wrapped by Capacitor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      - name: npm ci + build
+        working-directory: src/frontend/autotable-src
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
+      - name: Upload bundle artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle
+          path: src/frontend/autotable/
+          retention-days: 14
+
+  android:
+    name: Android (gradlew assembleRelease)
+    needs: build-frontend-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download web bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-bundle
+          path: src/frontend/autotable/
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Capacitor + add Android platform
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          npm install
+          npx cap add android || echo "android platform may already exist"
+          npx cap sync android
+
+      - name: Gradle assembleRelease + bundleRelease (UNSIGNED)
+        working-directory: mobile/android
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew assembleRelease bundleRelease \
+            -Pandroid.injected.signing.store.file= \
+            -Pandroid.injected.signing.store.password= \
+            -Pandroid.injected.signing.key.alias= \
+            -Pandroid.injected.signing.key.password= \
+            -x lint
+
+      - name: Upload Android artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-artefacts
+          path: |
+            mobile/android/app/build/outputs/apk/release/*.apk
+            mobile/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: warn
+          retention-days: 14
+
+  ios:
+    name: iOS (xcodebuild Release)
+    needs: build-frontend-bundle
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download web bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-bundle
+          path: src/frontend/autotable/
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Capacitor + add iOS platform
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          npm install
+          npx cap add ios || echo "ios platform may already exist"
+          npx cap sync ios
+
+      - name: xcodebuild Release (UNSIGNED)
+        working-directory: mobile/ios/App
+        run: |
+          set -euo pipefail
+          # Install pods (Capacitor 6 still uses CocoaPods for iOS).
+          pod install --repo-update
+
+          # Build for the device — `CODE_SIGNING_ALLOWED=NO` lets us
+          # skip Apple Developer Program enrolment until the operator
+          # provisions a real distribution identity.
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Upload iOS artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-artefacts
+          path: mobile/ios/App/build/Build/Products/Release-iphoneos/App.app
+          if-no-files-found: warn
+          retention-days: 14
+
+  release:
+    name: Mobile prerelease (main only)
+    needs: [android, ios]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Android artefacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-artefacts
+          path: artefacts/android/
+
+      - name: Download iOS artefacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-artefacts
+          path: artefacts/ios/
+
+      - name: Bundle iOS .app for attach
+        run: |
+          set -euo pipefail
+          cd artefacts/ios
+          if [ -d App.app ]; then
+            zip -r App-unsigned.zip App.app
+            rm -rf App.app
+          fi
+
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: mobile-${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --prerelease \
+            --title "Mobile build $TAG (unsigned)" \
+            --notes "Capacitor mobile shell — unsigned iOS + Android artefacts. Operator must re-sign before TestFlight / Play Internal upload." \
+            artefacts/android/*.apk \
+            artefacts/android/*.aab \
+            artefacts/ios/*.zip \
+            || true

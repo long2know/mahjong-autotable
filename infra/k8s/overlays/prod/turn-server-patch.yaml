@@ -1,0 +1,62 @@
+# Phase K Wave 2 — Apone (DevOps).
+#
+# Convenience template — production-tuned TURN overlay patches.
+#
+# These supplement the dedicated `infra/k8s/overlays/turn/` overlay.
+# Wire them into `overlays/prod/kustomization.yaml` when the operator
+# wants to deploy the TURN server INSIDE the existing `mahjong-prod`
+# namespace bundle rather than as a stand-alone overlay.
+#
+# Pre-reqs (operator action — DevOps does NOT touch production secrets):
+#   * Provision SSM parameters out-of-band:
+#       aws ssm put-parameter \
+#           --name /mahjong/prod/turn/realm    --type SecureString --value 'turn.mahjong.example.com'
+#       aws ssm put-parameter \
+#           --name /mahjong/prod/turn/username --type SecureString --value '<rotated quarterly>'
+#       aws ssm put-parameter \
+#           --name /mahjong/prod/turn/password --type SecureString --value '<rotated quarterly>'
+#   * Confirm the `aws-secrets-manager-prod` ClusterSecretStore is bound
+#     to an IAM role with `ssm:GetParameter` on
+#     `arn:aws:ssm:*:*:parameter/mahjong/prod/turn/*`.
+#   * Provision a public DNS A-record `turn.mahjong.example.com` →
+#     LoadBalancer external IP.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+patches:
+  - target:
+      kind: ExternalSecret
+      name: turn-server-secrets
+    patch: |-
+      - op: replace
+        path: /spec/secretStoreRef/name
+        value: aws-secrets-manager-prod
+      - op: replace
+        path: /spec/data/0/remoteRef/key
+        value: /mahjong/prod/turn/realm
+      - op: replace
+        path: /spec/data/1/remoteRef/key
+        value: /mahjong/prod/turn/username
+      - op: replace
+        path: /spec/data/2/remoteRef/key
+        value: /mahjong/prod/turn/password
+  - target:
+      kind: Deployment
+      name: turn-server
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1.5Gi"
+
+configMapGenerator:
+  - name: turn-server-config
+    behavior: replace
+    files:
+      - turnserver.conf=turnserver-prod.conf

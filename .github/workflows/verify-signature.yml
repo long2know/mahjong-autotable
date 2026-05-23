@@ -1,0 +1,155 @@
+# Phase K Wave 2 — Apone (DevOps).
+#
+# Reusable cosign verify workflow.
+#
+# Wave 1 shipped `sign-image.yml` (signing). Wave 2 ships THIS file —
+# the reusable verification surface that downstream workflows
+# (release.yml, Argo CD pre-sync gates, k8s admission policies) can
+# call to PROVE a given image digest was signed by the canonical
+# sign-image workflow on the canonical OIDC issuer.
+#
+# Caller pattern (see `release.yml` for the production wiring):
+#
+#   jobs:
+#     verify-signature:
+#       uses: ./.github/workflows/verify-signature.yml
+#       with:
+#         image-digest: ghcr.io/long2know/mahjong-autotable@sha256:abc123…
+#
+# Defaults pin the canonical signer for this repo. Callers MAY override
+# `expected-issuer` / `expected-identity-pattern` for testing or for
+# verifying images signed by other workflows (e.g. a future fork). The
+# default values are the same regex + issuer that `sign-image.yml` uses
+# in its post-sign verify step — keeping signer + verifier shapes in
+# lock-step is the whole point of having BOTH knobs default to the
+# same values.
+#
+# Why a SEPARATE reusable workflow rather than copy-pasting the verify
+# step into every caller?
+#
+#   1. Single source of truth for the expected-identity regex. If we
+#      rename `sign-image.yml` or relocate the repo, ONE file changes,
+#      not every consumer.
+#   2. Centralised cosign version pinning. When cosign 3.x lands, we
+#      bump it here once and every caller picks up the new version on
+#      the next run.
+
+name: verify-signature
+
+on:
+  workflow_call:
+    inputs:
+      image-digest:
+        description: "Fully qualified image+digest to verify (e.g. ghcr.io/long2know/mahjong-autotable@sha256:...). Mutually exclusive with image-ref (latter resolved to a digest before verify)."
+        required: true
+        type: string
+      expected-issuer:
+        description: "Expected OIDC issuer URL. Defaults to GitHub Actions."
+        required: false
+        default: "https://token.actions.githubusercontent.com"
+        type: string
+      expected-identity-pattern:
+        description: "Regex (POSIX-extended) matching the expected signing identity. Defaults to this repo's sign-image.yml at main or v* tags."
+        required: false
+        default: "^https://github\\.com/long2know/mahjong-autotable/\\.github/workflows/sign-image\\.yml@refs/(heads/main|tags/v.*)$"
+        type: string
+      cosign-version:
+        description: "Cosign release to pin (e.g. v2.4.1). Keep in sync with sign-image.yml."
+        required: false
+        default: "v2.4.1"
+        type: string
+    outputs:
+      verified:
+        description: "true if the signature verified, false otherwise."
+        value: ${{ jobs.verify.outputs.verified }}
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  verify:
+    name: cosign verify (keyless)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: ${{ inputs.cosign-version }}
+
+      - name: Log in to GitHub Container Registry (read)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate input shape
+        env:
+          IMAGE_DIGEST: ${{ inputs.image-digest }}
+        run: |
+          set -euo pipefail
+          if ! echo "$IMAGE_DIGEST" | grep -qE '@sha256:[0-9a-f]{64}$'; then
+            echo "::error::image-digest must be in the form '<registry>/<repo>@sha256:<64-hex>'; got '$IMAGE_DIGEST'"
+            exit 1
+          fi
+
+      - name: cosign verify
+        id: verify
+        env:
+          IMAGE_DIGEST: ${{ inputs.image-digest }}
+          EXPECTED_IDENTITY_REGEXP: ${{ inputs.expected-identity-pattern }}
+          EXPECTED_OIDC_ISSUER: ${{ inputs.expected-issuer }}
+        run: |
+          set -euo pipefail
+          echo "Verifying $IMAGE_DIGEST"
+          echo "  expected issuer:   $EXPECTED_OIDC_ISSUER"
+          echo "  expected identity: $EXPECTED_IDENTITY_REGEXP"
+          # `cosign verify` exits non-zero on ANY of:
+          #   - no signature found in the registry
+          #   - signature found but identity does not match the regex
+          #   - signature found but issuer does not match
+          #   - Rekor entry mismatch
+          if cosign verify \
+              --certificate-identity-regexp "$EXPECTED_IDENTITY_REGEXP" \
+              --certificate-oidc-issuer "$EXPECTED_OIDC_ISSUER" \
+              "$IMAGE_DIGEST" \
+              > cosign-verify.json 2> cosign-verify.err; then
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+            echo "✅ signature verified"
+            jq -r '.[0] | {critical: .critical, optional: .optional}' cosign-verify.json \
+                || cat cosign-verify.json
+          else
+            rc=$?
+            echo "verified=false" >> "$GITHUB_OUTPUT"
+            echo "::error::cosign verify failed (exit $rc)"
+            cat cosign-verify.err >&2 || true
+            cat cosign-verify.json >&2 || true
+            exit "$rc"
+          fi
+
+      - name: Step Summary
+        if: always()
+        env:
+          IMAGE_DIGEST: ${{ inputs.image-digest }}
+          VERIFIED: ${{ steps.verify.outputs.verified }}
+          EXPECTED_IDENTITY_REGEXP: ${{ inputs.expected-identity-pattern }}
+          EXPECTED_OIDC_ISSUER: ${{ inputs.expected-issuer }}
+        run: |
+          {
+            echo "### cosign verify (Phase K Wave 2 reusable gate)"
+            echo
+            echo "- Image: \`$IMAGE_DIGEST\`"
+            echo "- Verified: \`$VERIFIED\`"
+            echo "- Expected issuer: \`$EXPECTED_OIDC_ISSUER\`"
+            echo "- Expected identity: \`$EXPECTED_IDENTITY_REGEXP\`"
+            echo
+            if [ "$VERIFIED" = "true" ]; then
+              echo "🛡️ Image signature is **VALID** — caller may proceed with deploy."
+            else
+              echo "❌ Image signature is **INVALID or MISSING** — caller MUST abort deploy."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

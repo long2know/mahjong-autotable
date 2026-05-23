@@ -19,13 +19,24 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-1-bringup`. Phase K Wave 1 in
-progress — supply-chain signing, nightly load-test cron, multi-arch
-runtime smoke, CSP-strict-styles production rollout coordination,
-secret-rotation runbook, retroactive CHANGELOG backfill, and a 0.10.0
-version bump that catches the project up to the J-wave count.
+Working branch: `stlong/phase-k-wave-3-bringup` (not yet opened). Phase
+K Wave 3 not yet started.
 
-### Added (Phase K Wave 1 — not yet merged)
+## [0.11.0] — Phase K Waves 1 + 2 — 2026-05-25 (PRs #47 + #48)
+
+**Theme:** Production bring-up. Wave 1 (PR #47) shipped supply-chain
+signing, nightly load regression alerting, multi-arch post-merge smoke,
+CSP-strict rollout coordination, secret-rotation runbook. Wave 2
+(PR #48) shipped PR-time multi-arch runtime gate, TURN/STUN k8s
+overlay, Capacitor mobile shell scaffold, PWA service-worker smoke,
+Microsoft OAuth production secret docs, and a reusable cosign verify
+workflow wired into `release.yml` as a pre-publish gate.
+
+K1 was a bring-up wave that did not advance the version cursor (the
+preamble's "Phase K opens at 0.10.0" convention); K2 is the first
+K-wave to bump minor. Both waves ship under the same release tag.
+
+### Added (Phase K Wave 1 — PR #47)
 - **cosign keyless image signing.** `.github/workflows/sign-image.yml`
     fires on `docker-build` workflow success on `main` (and on
     `v*.*.*` tag pushes). Uses GitHub OIDC as the keyless signing
@@ -62,6 +73,94 @@ version bump that catches the project up to the J-wave count.
     signing key + magic-link signing key (never — rotation invalidates
     all live sessions). Cross-references ESO/Vault/AWS-Secrets-Manager
     flows from Wave 5/6 docs. (Apone)
+
+### Added (Phase K Wave 2 — PR #48)
+- **PR-time multi-arch runtime gate.**
+    `.github/workflows/multi-arch-runtime.yml` runs on every PR
+    (paths-filtered to `Dockerfile`, `src/backend/**`,
+    `src/frontend/autotable-src/**`, the workflow itself) plus pushes
+    on `main`. Builds the multi-stage Dockerfile for `linux/amd64`
+    (native) + `linux/arm64` (QEMU) independently, loads each per-arch
+    image into the local Docker daemon
+    (`docker buildx build --output type=docker`),
+    `docker run --platform=<p>`, then curls `/health` and asserts
+    200 + `"status":"healthy"`. Posts a sticky PR comment
+    (header: `multi-arch-runtime`) with the matrix verdict so
+    reviewers see arch-specific breakage BEFORE merge. Complements
+    Wave 1's post-merge `multi-arch-smoke.yml`. (Apone)
+- **TURN / STUN k8s overlay.** `infra/k8s/base/turn-server.yaml`
+    deploys `coturn/coturn:4.6` as a Deployment + LoadBalancer Service
+    + ConfigMap + ExternalSecret stub. The base manifest ships
+    deliberately-broken stub credentials (`mahjong/local/turn/*`
+    SSM family — does not exist) so an accidental
+    `kubectl apply -k base/` against a real cluster fails fast.
+    Dedicated overlay at `infra/k8s/overlays/turn/` (Kustomize)
+    fills in the realm + external-ip placeholders and repoints the
+    ExternalSecret at the real `aws-secrets-manager-prod`
+    ClusterSecretStore + `/mahjong/prod/turn/*` SSM key family. Twin
+    convenience templates at
+    `infra/k8s/overlays/{prod,staging}/turn-server-patch.yaml`
+    + `turnserver-{prod,staging}.conf` for env-specific tuning.
+    Operator runbook at `docs/turn-server-setup.md`. (Apone)
+- **Capacitor mobile shell.** New `mobile/` top-level directory
+    (Capacitor 6.1.x): `package.json` + `capacitor.config.json`
+    (`appId: io.mahjong.autotable`, `webDir: ../src/frontend/autotable`)
+    + operator runbook (`mobile/README.md`). New
+    `.github/workflows/mobile-build.yml` — builds the web bundle once,
+    then independent `android` (ubuntu, gradlew
+    assembleRelease+bundleRelease) + `ios` (macos, xcodebuild Release
+    `CODE_SIGNING_ALLOWED=NO`) jobs produce unsigned artefacts; a
+    `release` job creates a `mobile-<run_number>` GitHub prerelease
+    with both attached on pushes to `main`. App-store submission +
+    signing identities are operator action. `.gitignore` excludes
+    `mobile/{ios,android,node_modules,build,.gradle}` since
+    `npx cap add` regenerates them deterministically. (Apone)
+- **PWA service-worker smoke.** `tests/smoke/pwa-smoke.{sh,js}` —
+    Playwright (chromium-only) Node probe that boots the production
+    image on port 18093, navigates to `/`, checks `/sw.js`
+    (soft-pass on 404 — forward-compat for Hicks's still-in-flight
+    SW artefact), waits for
+    `navigator.serviceWorker.getRegistration()` to yield an activated
+    worker, then reloads and asserts
+    `navigator.serviceWorker.controller != null` (the SW-took-control
+    canonical assertion). Workflow at
+    `.github/workflows/pwa-smoke.yml` (paths-filtered to the PWA
+    surface + smoke files + Dockerfile). (Apone)
+- **OAuth production setup runbook (Google + GitHub + Microsoft).**
+    `docs/oauth-production-setup.md` — operator-facing playbook for
+    provisioning OAuth client IDs/secrets in each of the three
+    providers, mapping them to the canonical SSM key families
+    (`/mahjong/prod/oauth/{google,github,microsoft}/{client_id,client_secret[,tenant_id]}`),
+    quarterly rotation procedure, post-rotation validation
+    checklist, Microsoft-specific quirks (`oid` claim is the
+    stable PK; `tid=9188040d-…` distinguishes personal MSA
+    accounts; `email` scope required for the `mail` claim on
+    consumer accounts). Microsoft section unblocks Bishop's
+    Wave 3 OAuth middleware. (Apone)
+- **Cosign verify reusable workflow + pre-publish gate.**
+    `.github/workflows/verify-signature.yml` — reusable
+    `workflow_call` interface with `image-digest` (required),
+    `expected-issuer` + `expected-identity-pattern` + `cosign-version`
+    (defaults pinned to this repo's `sign-image.yml`). Wired into
+    `release.yml` as a new `verify-signature` job between `smoke`
+    (which now exposes the manifest-list digest as an output) and
+    `release` — the release tag's GitHub Release is NOT cut for an
+    unsigned image. Single source of truth for the expected-identity
+    regex + cosign version pin; callers tomorrow (Argo CD pre-sync
+    gates, Kyverno k8s admission policies) dial in via the same
+    reusable. (Apone)
+
+### Changed (Phase K Wave 2)
+- `release.yml`: `smoke` job exposes new `outputs.image-digest`
+    (resolved via `docker buildx imagetools inspect --format
+    '{{.Manifest.Digest}}'`); new `verify-signature` job calls
+    `./.github/workflows/verify-signature.yml`; `release` job's
+    `needs:` is now `[smoke, verify-signature]`. Existing
+    `permissions: contents: write, packages: read` covers the new
+    job (no changes needed). (Apone)
+- `.gitignore`: excludes Capacitor's regenerated platform
+    directories (`mobile/{ios,android,node_modules,build,.gradle,*.tgz}`).
+    (Apone)
 
 ## [0.10.0] — Phase J Wave 10 — 2026-05-24 (PR #46)
 
@@ -325,7 +424,8 @@ Phases A through I shipped on `main` without semver tags. Highlights:
     `pwmarcz/autotable` engine, scoring & yaku catalogue, swap-call
     discipline, gang/chi/pong/ron implementations.
 
-[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/long2know/mahjong-autotable/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/long2know/mahjong-autotable/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/long2know/mahjong-autotable/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/long2know/mahjong-autotable/compare/v0.7.0...v0.8.0
