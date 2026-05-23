@@ -1,4 +1,4 @@
-# Phase J Wave 7 — Apone (DevOps).
+# Phase J Wave 7 — Apone (DevOps). Wave-5 amendment: jwt-keys-secret wiring.
 #
 # Staging overlay. Single-replica + Sqlite is the cheapest possible footprint
 # for a soak environment; flip to Postgres + replicas=2 in the deployment
@@ -11,6 +11,12 @@ namePrefix: staging-
 
 resources:
   - ../../base
+  # Phase K Wave 5 — Apone. Staging-equivalent of prod's
+  # mahjong-jwt-keys ExternalSecret (Wave 4). Listed as a resource
+  # so `kubectl apply -k overlays/staging/` materialises both the
+  # omnibus secret AND the JWT-keys secret. See per-file header for
+  # rationale (15m refresh, three rotation-state-named SSM params).
+  - jwt-keys-secret.yaml
 
 patches:
   - target:
@@ -30,6 +36,24 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: staging.mahjong.example.com
+  # Phase K Wave 5 — Apone (DevOps). Mount the staging JWT
+  # signing-keys Secret (materialised by `jwt-keys-secret.yaml`
+  # ExternalSecret). Three indexed env vars feed Bishop's
+  # `Auth.JwtSigningKeys` array binding — same shape as the
+  # prod overlay patch, with the staging-specific Secret name.
+  # `optional: true` so a fresh staging cluster without ESO
+  # bootstrapped can still start (fallback to the omnibus
+  # secret's singular `Auth__JwtSigningKey`).
+  - target:
+      kind: Deployment
+      name: mahjong-autotable
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          secretRef:
+            name: mahjong-jwt-keys-staging
+            optional: true
 
 configMapGenerator:
   - name: mahjong-autotable
