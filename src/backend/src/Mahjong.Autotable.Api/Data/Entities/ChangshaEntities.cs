@@ -24,6 +24,29 @@ public class ChangshaGame
     /// into <see cref="Mahjong.Autotable.Api.Changsha.ChangshaGameState"/>.
     /// </summary>
     public Guid? RulePresetId { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Persistent owner-of-the-table id, mirrored
+    /// from <see cref="Mahjong.Autotable.Api.Changsha.ChangshaGameState.CreatorPlayerId"/>
+    /// at game creation. Stored as a column so REST endpoints
+    /// (<c>POST /api/games/{id}/settings/voice</c>) can gate creator-only
+    /// mutations without spinning the runtime's in-memory state up — and
+    /// the value survives a process restart even if the live runtime
+    /// hasn't yet rehydrated the game.
+    /// </summary>
+    public string? OwnerPlayerId { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Per-table voice-chat toggle. Off by
+    /// default (matches <c>VoiceOptions.Enabled</c> global default);
+    /// the table creator flips it via
+    /// <c>POST /api/games/{id}/settings/voice { "enabled": true }</c>.
+    /// The <see cref="Mahjong.Autotable.Api.Voice.VoiceHub"/> rejects
+    /// <c>JoinVoice(tableId)</c> when this flag is false so the
+    /// signalling surface stays opt-in even when the global voice
+    /// feature is enabled at the deployment level.
+    /// </summary>
+    public bool VoiceEnabled { get; set; } = false;
 }
 
 /// <summary>
@@ -593,11 +616,17 @@ public sealed class PlayerRatingHistory
 /// Phase K Wave 2 — deferred season-rollover record. Persisted by
 /// <see cref="Mahjong.Autotable.Api.Tournament.SeasonRolloverService"/>
 /// when the quarter boundary lands while a player is mid-tournament.
-/// One row per (PlayerId, FromSeason, TournamentId); the rollover
+/// One row per (PlayerId, FromSeasonId, TournamentId); the rollover
 /// service waits for the tournament to flip to <c>complete</c> before
 /// draining the deferral and applying the rating snapshot. Keeps the
 /// player's competitive identity stable for the duration of the
 /// in-flight bracket without freezing the rest of the leaderboard.
+///
+/// <para>Phase K Wave 3 — Bishop renamed the season fields to the
+/// canonical <c>FromSeasonId</c> / <c>ToSeasonId</c> / <c>ResolvedAtUtc</c>
+/// shape (Vasquez's Wave-2 contract-gap memo, fix #5). The migration
+/// pins the rename so the schema matches the soft-pass contract probes
+/// that look for "Season" / "Resolved" markers in column names.</para>
 /// </summary>
 public sealed class PlayerSeasonRolloverDeferral
 {
@@ -609,10 +638,10 @@ public sealed class PlayerSeasonRolloverDeferral
     /// <summary>Season the player was in when the boundary fell.
     /// Canonical <c>YYYY-Qn</c> code from
     /// <see cref="Mahjong.Autotable.Api.Tournament.PlayerRatingService.SeasonFromDate"/>.</summary>
-    public string FromSeason { get; set; } = string.Empty;
+    public string FromSeasonId { get; set; } = string.Empty;
 
     /// <summary>Season the boundary advanced TO. Same canonical code.</summary>
-    public string ToSeason { get; set; } = string.Empty;
+    public string ToSeasonId { get; set; } = string.Empty;
 
     /// <summary>UTC instant the deferral was recorded.</summary>
     public DateTime DeferredAtUtc { get; set; } = DateTime.UtcNow;
@@ -624,5 +653,47 @@ public sealed class PlayerSeasonRolloverDeferral
 
     /// <summary>UTC instant the deferral was drained + the rating
     /// snapshot applied. Null while the deferral is still pending.</summary>
-    public DateTime? DrainedAtUtc { get; set; }
+    public DateTime? ResolvedAtUtc { get; set; }
+}
+
+/// <summary>
+/// Phase K Wave 3 — Bishop. Server-authoritative onboarding tour
+/// progress. Hicks's Wave-2 client mounts a multi-step tour the first
+/// time a player lands; this row pins the canonical "how far did they
+/// get" so a returning player on a fresh browser/device picks up where
+/// they left off rather than re-seeing the splash.
+///
+/// <para>One row per <see cref="PlayerId"/>. <see cref="Completed"/>
+/// flips true once the tour is fully consumed; subsequent POSTs are
+/// idempotent (touch <see cref="LastStepCompletedUtc"/> only). The
+/// <c>GET /api/players/me/onboarding-status</c> endpoint returns the
+/// envelope <c>{ completed, stepsCompleted, lastStepCompletedUtc }</c>;
+/// <c>POST</c> persists the supplied delta.</para>
+/// </summary>
+public sealed class PlayerOnboardingStatus
+{
+    /// <summary>Persistent player identifier (mahjong_pid cookie value).</summary>
+    public string PlayerId { get; set; } = string.Empty;
+
+    /// <summary>True once the player has completed every step of the
+    /// onboarding tour. Subsequent POSTs leave this true (the tour is
+    /// one-shot).</summary>
+    public bool Completed { get; set; }
+
+    /// <summary>Number of tour steps the player has confirmed. Climbs
+    /// monotonically; a POST with a lower value than the persisted row
+    /// is ignored.</summary>
+    public int StepsCompleted { get; set; }
+
+    /// <summary>UTC instant of the most recent step-completion POST.
+    /// Null when the player has never POSTed (the GET still returns
+    /// the default envelope with stepsCompleted=0).</summary>
+    public DateTime? LastStepCompletedUtc { get; set; }
+
+    /// <summary>Row creation timestamp; first GET that creates a
+    /// default row stamps this.</summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Row update timestamp; refreshed on every POST.</summary>
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

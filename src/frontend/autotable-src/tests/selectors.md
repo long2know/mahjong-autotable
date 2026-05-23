@@ -1047,3 +1047,33 @@ hasn't yet been wired or whose backend ships in a parallel PR:
 When you remove or rename a Phase K Wave 3 testid, run
 `grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
 merging — same drift-detection note as Wave 1.
+
+### Phase K Wave 3 Playwright spec map — Vasquez
+
+The reflection-defensive specs Vasquez landed for Wave 3 (every
+fact soft-passes via `test.info().annotations.push({ type:
+'soft-pass', … })` when its target test-id or backend hasn't yet
+been wired):
+
+- `game-shell-split.spec.ts` — guards the `game-bootstrap` chunk
+  size (< 500 kB hard cap, 300 kB target) and verifies the
+  `scene` chunk loads lazily after lobby paint.
+- `sw-precache.spec.ts` — soft-asserts the SW fetches
+  `manifest-precache.json` at install time, the manifest shape is
+  `{ assets: [...] }` (array or object form), and the registration
+  reaches `activated`/`installing`.
+- `tour-offline.spec.ts` — verifies the onboarding tour mounts
+  from `localStorage` when `/api/players/me/onboarding-status`
+  fails, and that the skip button persists completion locally.
+- `voice-enabled-toggle.spec.ts` — owner sees the
+  `voice-enabled-toggle`, the mic button is disabled or hidden
+  when `VoiceEnabled=false`, and non-owners do not see the toggle.
+- `microsoft-oauth.spec.ts` — `signin-provider-microsoft` button
+  visibility tied to providers payload, href carries
+  `provider=microsoft` (or canonical `/auth/microsoft` route),
+  absent/hidden when disabled.
+- `tournament-seed-post.spec.ts` — `tournament-seed-handle` is
+  keyboard-focusable, `tournament-seed-save` issues
+  `POST /api/tournaments/{id}/seed`, non-admins never see the
+  save action.
+

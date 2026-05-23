@@ -81,7 +81,7 @@ public sealed class SeasonRolloverService : BackgroundService
     /// (registered against a tournament whose <see cref="Tournament.Status"/>
     /// is <c>in-progress</c>) have their freeze DEFERRED: a row is
     /// written to <see cref="AppDbContext.PlayerSeasonRolloverDeferrals"/>
-    /// pinning the (PlayerId, FromSeason, TournamentId, ToSeason)
+    /// pinning the (PlayerId, FromSeasonId, TournamentId, ToSeasonId)
     /// tuple, and the live <see cref="PlayerRating"/> row stays put. The
     /// deferral is drained by <see cref="DrainDeferralsAsync"/> when the
     /// tournament completes (called via
@@ -133,10 +133,10 @@ public sealed class SeasonRolloverService : BackgroundService
 
         var existingDeferralKeys = new HashSet<(string, string, Guid)>(
             await db.PlayerSeasonRolloverDeferrals
-                .Where(d => stalePlayerIds.Contains(d.PlayerId) && d.DrainedAtUtc == null)
-                .Select(d => new { d.PlayerId, d.FromSeason, d.TournamentId })
+                .Where(d => stalePlayerIds.Contains(d.PlayerId) && d.ResolvedAtUtc == null)
+                .Select(d => new { d.PlayerId, d.FromSeasonId, d.TournamentId })
                 .ToListAsync(ct)
-                .ContinueWith(t => t.Result.Select(x => (x.PlayerId, x.FromSeason, x.TournamentId)), ct));
+                .ContinueWith(t => t.Result.Select(x => (x.PlayerId, x.FromSeasonId, x.TournamentId)), ct));
 
         var now = DateTime.UtcNow;
         var frozen = 0;
@@ -155,8 +155,8 @@ public sealed class SeasonRolloverService : BackgroundService
                     db.PlayerSeasonRolloverDeferrals.Add(new PlayerSeasonRolloverDeferral
                     {
                         PlayerId = row.PlayerId,
-                        FromSeason = row.Season,
-                        ToSeason = currentSeason,
+                        FromSeasonId = row.Season,
+                        ToSeasonId = currentSeason,
                         DeferredAtUtc = now,
                         TournamentId = tid,
                     });
@@ -212,7 +212,7 @@ public sealed class SeasonRolloverService : BackgroundService
         var pending = await (
             from d in db.PlayerSeasonRolloverDeferrals
             join t in db.Tournaments on d.TournamentId equals t.Id
-            where d.DrainedAtUtc == null && t.Status == "complete"
+            where d.ResolvedAtUtc == null && t.Status == "complete"
             select d
         ).ToListAsync(ct);
         if (pending.Count == 0) return 0;
@@ -225,7 +225,7 @@ public sealed class SeasonRolloverService : BackgroundService
         foreach (var group in pending.GroupBy(d => d.PlayerId, StringComparer.Ordinal))
         {
             var playerId = group.Key;
-            var oldestSeason = group.Select(d => d.FromSeason).OrderBy(s => s, StringComparer.Ordinal).First();
+            var oldestSeason = group.Select(d => d.FromSeasonId).OrderBy(s => s, StringComparer.Ordinal).First();
 
             // Phase K Wave 2 — only drain when EVERY pinning tournament
             // for this player is complete. If a player has another
@@ -233,7 +233,7 @@ public sealed class SeasonRolloverService : BackgroundService
             var anyStillActive = await (
                 from d in db.PlayerSeasonRolloverDeferrals
                 join t in db.Tournaments on d.TournamentId equals t.Id
-                where d.PlayerId == playerId && d.DrainedAtUtc == null && t.Status != "complete"
+                where d.PlayerId == playerId && d.ResolvedAtUtc == null && t.Status != "complete"
                 select d.Id).AnyAsync(ct);
             if (anyStillActive) continue;
 
@@ -259,7 +259,7 @@ public sealed class SeasonRolloverService : BackgroundService
 
             foreach (var d in group)
             {
-                d.DrainedAtUtc = now;
+                d.ResolvedAtUtc = now;
                 drained++;
             }
         }

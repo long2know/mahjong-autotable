@@ -2239,7 +2239,14 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     CurrentHandNumber = instance.State.HandNumber,
                     CurrentRoundNumber = instance.State.RoundNumber,
                     CreatedUtc = instance.CreatedUtc,
-                    UpdatedUtc = DateTime.UtcNow
+                    UpdatedUtc = DateTime.UtcNow,
+                    // Phase K Wave 3 — Bishop. Mirror the live state's
+                    // creator id to the persistent column so settings
+                    // endpoints can authorize without spinning the
+                    // runtime up.
+                    OwnerPlayerId = string.IsNullOrEmpty(instance.State.CreatorPlayerId)
+                        ? null
+                        : instance.State.CreatorPlayerId,
                 };
                 db.ChangshaGames.Add(entity);
             }
@@ -2250,6 +2257,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 entity.CurrentHandNumber = instance.State.HandNumber;
                 entity.CurrentRoundNumber = instance.State.RoundNumber;
                 entity.UpdatedUtc = DateTime.UtcNow;
+                // Phase K Wave 3 — Bishop. Keep the persisted owner
+                // column in sync with the live state's host (reassigned
+                // when the original creator disconnects past grace).
+                if (!string.IsNullOrEmpty(instance.State.CreatorPlayerId))
+                {
+                    entity.OwnerPlayerId = instance.State.CreatorPlayerId;
+                }
             }
             await db.SaveChangesAsync(ct);
         }
