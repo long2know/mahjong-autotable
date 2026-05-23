@@ -183,6 +183,15 @@ public sealed class AuthTokenController : ControllerBase
     /// fields a downstream verifier needs to bootstrap against the
     /// Mahjong-Autotable auth surface — issuer, jwks_uri,
     /// token_endpoint, and the supported grant types.
+    ///
+    /// <para>Phase K Wave 7 — Bishop. Hard contract: when RS256 is
+    /// active AND <c>Auth:Issuer</c> is configured, the 200 envelope
+    /// MUST carry the populated <c>issuer</c>, <c>jwks_uri</c>,
+    /// <c>token_endpoint</c>, and <c>grant_types_supported</c> fields
+    /// — the discovery document is now a load-bearing surface for
+    /// federated verifiers. With an unset issuer the endpoint falls
+    /// back to the request's scheme+host (Wave-6 soft behaviour) so
+    /// dev / test hosts resolve without explicit operator config.</para>
     /// </summary>
     [HttpGet(".well-known/openid-configuration")]
     public IActionResult OpenIdConfiguration([FromServices] JwtSigningKeyProvider keys)
@@ -199,10 +208,11 @@ public sealed class AuthTokenController : ControllerBase
         }
 
         var origin = $"{Request.Scheme}://{Request.Host}";
+        var issuer = string.IsNullOrEmpty(keys.ConfiguredIssuer) ? origin : keys.ConfiguredIssuer;
         Response.Headers.CacheControl = "public, max-age=3600";
         return Ok(new
         {
-            issuer = origin,
+            issuer,
             jwks_uri = $"{origin}/api/auth/.well-known/jwks.json",
             token_endpoint = $"{origin}/api/auth/token",
             grant_types_supported = new[] { "password", "authorization_code" },

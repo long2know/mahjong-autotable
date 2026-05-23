@@ -107,6 +107,16 @@ public sealed class JwtIssuingService
             ["iat"] = now.ToUnixTimeSeconds(),
             ["exp"] = exp.ToUnixTimeSeconds(),
         };
+        // Phase K Wave 7 — Bishop. Stamp the configured issuer into
+        // the `iss` claim when the operator has populated
+        // `Auth:Issuer`. Empty issuer means "skip the claim" so the
+        // Wave-4 baseline (no iss) keeps validating; populated issuer
+        // makes the token self-describing for any downstream verifier
+        // that follows RFC 7519 §4.1.1.
+        if (!string.IsNullOrEmpty(_keys.ConfiguredIssuer))
+        {
+            payload["iss"] = _keys.ConfiguredIssuer;
+        }
         if (claims is { Count: > 0 })
         {
             payload["claims"] = claims;

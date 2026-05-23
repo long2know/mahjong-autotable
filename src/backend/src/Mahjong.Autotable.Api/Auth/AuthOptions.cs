@@ -127,6 +127,23 @@ public sealed class AuthOptions
     public string[] JwtRsaKeys { get; set; } = Array.Empty<string>();
 
     /// <summary>
+    /// Phase K Wave 7 — Bishop. Issuer URL stamped into the
+    /// <c>iss</c> claim of RS256-signed tokens AND advertised as the
+    /// <c>issuer</c> field on the OIDC discovery document. When empty
+    /// the discovery endpoint falls back to the request's own
+    /// scheme+host (matches the Wave-6 behaviour); when set the
+    /// configured value wins so a service behind a reverse proxy can
+    /// advertise its public origin without depending on
+    /// <c>X-Forwarded-Host</c>.
+    /// <para>The OIDC <b>hard contract</b> in Wave 7 requires this
+    /// field non-empty when <see cref="JwtAlgorithm"/> is
+    /// <c>RS256</c> for <c>/.well-known/openid-configuration</c> to
+    /// hard-assert 200. With HS256 the field is ignored — the
+    /// discovery endpoint returns 404 regardless.</para>
+    /// </summary>
+    public string Issuer { get; set; } = string.Empty;
+
+    /// <summary>
     /// Phase K Wave 4 — Bishop. Canonical sub-section for per-provider
     /// OAuth config. Replaces the flat <see cref="Microsoft"/> /
     /// <see cref="Google"/> / <see cref="GitHub"/> properties. When
