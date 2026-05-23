@@ -2331,3 +2331,129 @@ over Wave-5 closeout baseline of 1345). The single failure
 (`K8sManifestSanityTests`) is Apone DevOps cross-lane and has
 been red since the coturn files landed in Wave 2 — flagged in
 the memo for Wave 7.
+
+---
+
+## Phase K Wave 7 — bring-up
+
+**Branch:** `stlong/phase-k-wave-7-bringup`
+**Baseline:** HEAD `1c67878` (W6 merge), `dotnet test` 1422/0/0.
+**Closeout:** 1505/1/0 (+83 net), 1m 39s.
+
+**Scope:** seven backend deliverables — RS256 JWT E2E hardening
+(issuer + alg-confusion guard + rotation drill), losers-bracket
+algorithm (full upper/lower/grand-final + reset slot), ffmpeg HLS
+livestream pipeline (`FfmpegHlsRecorder` + boot-time health probe
++ DI toggle), Phase L commentary JSON contract (`CommentaryRecord`
+DTO + records endpoint), OIDC hard contract (`Auth:Issuer` knob),
+`docs/jwt-rotation.md` §8 RS256 key provisioning runbook + new
+`docs/jwt-ssm-runbook.md` operator cheat-sheet, new
+`docs/google-oauth-verification.md` playbook.
+
+**Tasks completed:**
+
+* **RS256 rotation drill.** Added `JwtRotationE2ETests` (3 facts,
+  all hard-asserting): full A→B rotation with legacy-token
+  validation, algorithm-confusion attack rejection
+  (CVE-2015-9235 family), JWKS n/e base64url-no-padding shape per
+  RFC 7517 §6.3.1. The rotation flow operates on
+  `JwtSigningKeyProvider` directly — no HTTP factory tax. Built
+  on top of `Auth:Issuer` support: new option in `AuthOptions`,
+  `ConfiguredIssuer` accessor on the key provider, `iss` claim
+  stamped by `JwtIssuingService.IssueAsync` when set, OIDC
+  discovery endpoints honor it with origin fallback.
+* **Losers-bracket algorithm.** Full upper/lower/grand-final
+  emission with deterministic placeholder naming
+  (`__pending_wb_r{r}_m{m}_p{slot}__`, `__pending_lb_...`,
+  `__pending_wb_champion__`, `__pending_lb_champion__`, dedicated
+  `GrandFinalResetPlaceholder` constant for the GF round-2 reset).
+  Exposed `BracketDepth(N) = ceil(log2(N))` helper. For 8 seeds:
+  15 pairings (7 WB + 6 LB + 2 GF); for 16: 31; per-tier LB count
+  follows `wbMatchesPerRound[tier+1]` in BOTH round 2j-1 + 2j.
+  Updated the W6 `BracketGeneratorDeterminismTests.Double_elimination_emits_winners_losers_and_grand_final_slots`
+  test to expect the W7 expanded shape (7 → 15 pairings, new
+  placeholder naming). Added `LosersBracketGrandFinalResetTests`
+  with 6 facts pinning the GF/reset emission + `BracketDepth`
+  formula.
+* **ffmpeg HLS pipeline.** New `Voice/IFfmpegHealthProbe.cs` with
+  cached `ffmpeg -version` probe (2-second timeout). New
+  `Voice/FfmpegHlsRecorder.cs` (~340 lines) spawning per-game
+  ffmpeg subprocesses (stdin = PCM s16le 48k stereo, AAC 128k mux,
+  HLS with sliding window + `delete_segments+append_list+omit_endlist`).
+  Graceful stop sends `q\n` to stdin with a 3-second grace then
+  `Process.Kill()`. Directory-traversal-guarded `GetSegment`. Four
+  new `VoiceOptions` properties (`LivestreamRecorderImpl`,
+  `LivestreamSegmentSeconds`, `LivestreamPlaylistSegmentCount`,
+  `LivestreamWorkingDirectory`); segment-seconds + playlist-count
+  clamped at construction. `Program.cs` DI toggle: when
+  `Voice:LivestreamRecorderImpl=FfmpegHls`, boot-time health probe
+  throws `InvalidOperationException` if ffmpeg is missing; unknown
+  values fall back to stub with a warning. Default stays
+  `InMemoryStub` so CI doesn't depend on ffmpeg.
+* **Commentary JSON contract.** Added `CommentaryRecord` record
+  + `CommentaryPhases` (Draw/Discard/Claim/Win) +
+  `CommentarySpeakers` (PlayByPlay/Color/Analyst) static
+  vocabularies to `ICommentaryGenerator.cs`. New
+  `GetRecordsAsync(Guid)` interface method;
+  `StubCommentaryGenerator` returns a single placeholder record.
+  Split `CommentaryController`: GET `/commentary` → unchanged W6
+  envelope; GET `/commentary/replay` → new W7 record list. POST
+  endpoints unchanged. Additive `GenerateRecords(string gameId)`
+  on `Shims/CommentaryGeneratorTestShim.cs` (Vasquez's shim, per
+  the W7 brief's explicit delegation note — kept all Vasquez tests
+  green).
+* **OIDC hard contract.** Already covered by Task 1's Issuer
+  support. The Vasquez pre-stage `OidcDiscoveryHardContractTests`
+  now hard-asserts both HS256 → 404 (structured reason) and RS256
+  → 200 (canonical keys).
+* **`docs/jwt-rotation.md` §8 RS256 key provisioning.** Six
+  subsections: keypair generation (OpenSSL PKCS#1 → PKCS#8), SSM
+  Parameter Store topology (active / previous / archive slots),
+  ESO ExternalSecret mount, algorithm flip + rotation procedure,
+  AWS KMS asymmetric-keypair alternative (forward-look for Wave
+  8/9), lost-key recovery. Renumbered the original §8
+  Cross-references → §9. Companion `docs/jwt-ssm-runbook.md`
+  is the operator-facing cheat-sheet (referenced by the Vasquez
+  W7 filesystem contract test).
+* **`docs/google-oauth-verification.md`** new file (9 sections).
+  Prerequisites table, scope inventory (`openid` /
+  `userinfo.email` / `userinfo.profile` — all non-sensitive),
+  authorized-domain verification via Search Console, copy-paste
+  scope justification body (~250 words), 90-second demo video
+  script with per-beat voiceover + timing, submission checklist,
+  common rejection reasons + fixes table, post-approval
+  operations (rotation impact + scope-expansion cost projection),
+  cross-references.
+
+**Sibling collaboration.** Vasquez pre-staged 6 W7 contract test
+files in `Phase_K_W7/Bishop/` before my session started:
+`RS256HappyPathTests`, `LosersBracketDeterminismTests`,
+`OidcDiscoveryHardContractTests`, `CommentaryRecordContractTests`,
+`FfmpegHlsRecorderHealthcheckTests`, `JwtOperationalDocsContractTests`.
+Read each one first and built the implementation to make every
+forward-stage tolerant assertion hard-pass. Added two Bishop-only
+test files alongside (`JwtRotationE2ETests`,
+`LosersBracketGrandFinalResetTests`) for the rotation drill +
+GF/reset golden-set facts that the Vasquez pre-stage didn't
+cover.
+
+**Cross-lane sighting.** The closeout gate flagged
+`Phase_K_W5.HicksW5FrontendContractTests.ThreeRenderer_ModulePresent_HardAssert`
+red. The Hicks-owned
+`src/frontend/autotable-src/src/three-renderer.ts` lost its
+`import … from 'three'` statement somewhere between the W6 close
+and the W7 working state. Logged in the memo's forward-notes for
+Hicks — outside Bishop's lane so I did not touch the file. The
+prior W6 cross-lane Apone-owned `K8sManifestSanityTests` failure
+appears to be fixed (test passed in the W7 gate).
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-7.md` —
+per-deliverable design, contract-test coverage, forward-looking
+notes including the Hicks three-renderer.ts cross-lane fix and
+the Wave-8 AWS KMS asymmetric-signing migration plan.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx
+--nologo` → **Passed: 1505, Failed: 1, Skipped: 0** (1m 39s; +83
+over Wave-6 closeout baseline of 1422). The single failure
+(Hicks W5 frontend three-renderer.ts) is cross-lane and flagged
+in the memo for Wave 8.
