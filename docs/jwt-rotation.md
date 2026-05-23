@@ -572,6 +572,34 @@ Contract pin: `Phase_K_W9/Bishop/RotationCadenceValidatorTests`.
   operator has accepted the ≤1 h 401 window as the cost of
   evicting compromised keys.
 
+## 12. JWKS cache hygiene — SizeLimit + metrics + stampede gate (Phase K Wave 10)
+
+Wave 8 introduced the `JwksCacheService` to pre-marshal the JWKS document and serve it from memory across all replicas. Wave 9 added the TTL ↔ rotation discipline validator (§ 11). Wave 10 closes three remaining operational gaps:
+
+| Concern | Wave 8/9 behaviour | Wave 10 behaviour |
+| --- | --- | --- |
+| Backing store | Shared application `IMemoryCache` (any other caller could evict the JWKS entry). | Dedicated `MemoryCache` with `SizeLimit = 16`, owned by the service and disposed when the service is disposed. |
+| Observability | None — operators had to grep logs to see whether the cache was effective. | Three `IMeterFactory`-backed counters under meter `Mahjong.Autotable.Api.Auth.JwksCache`: `jwks_cache_hit_total`, `jwks_cache_miss_total`, `jwks_cache_rebuild_total`. |
+| Thundering herd | A burst of concurrent misses re-marshalled the document N times. | Single `SemaphoreSlim` gate around the rebuild path. The second concurrent caller blocks on the gate, then reads the just-written cache entry, so the rebuild counter ticks exactly once per cold miss. |
+
+### Configuration
+
+The W10 service is registered in `Program.cs` via the `JwksCacheService.CreateWithDedicatedCache(meterFactory)` factory. The factory:
+
+* Builds a new `MemoryCache` with `SizeLimit = JwksCacheService.SizeLimit (=16)`.
+* Wires the `IMeterFactory` from DI (graceful no-op when the factory is absent — Wave-K test hosts that don't register the metrics pipeline still resolve the service).
+* Marks the service as the owner of the cache so `Dispose()` cascades.
+
+### Operator playbook
+
+* Prometheus scrape of `jwks_cache_hit_total{job="api"}` should dominate `jwks_cache_miss_total`; ratios under 95% suggest TTL is too short for the request rate (default 60s) or the kid list is flapping (check § 11 rotation cadence validator).
+* `jwks_cache_rebuild_total` should equal `jwks_cache_miss_total` in steady state — divergence indicates the stampede gate is mis-wired (file a Bishop bug).
+* The cache is intentionally process-local; a multi-replica deployment has one cache per pod and that is fine — the dedicated `MemoryCache` `SizeLimit = 16` ceiling protects every replica equally.
+
+### Hard-asserted at startup
+
+The `JwksCacheService.SizeLimit` constant is pinned at 16 (contract test in `Phase_K_W10/Bishop/JwksCacheHygieneTests.cs`). The 16-entry ceiling is comfortably larger than the single payload the service stores today but small enough that any future misuse (e.g. a per-tenant key) trips the cap immediately rather than growing without bound.
+
 ## 9. Cross-references
 
 * [`docs/jwt-ssm-runbook.md`](jwt-ssm-runbook.md) — SSM-Parameter-Store-focused operator runbook (RS256 keypair custody, §8 above is the canonical procedure).

@@ -119,3 +119,46 @@ Spectator-join events fold into the existing
 the surface lands once we have a real per-spectator handshake to
 record. Wave 6 deliberately does not emit an audit row for the
 stub join.
+
+## Phase K Wave 10 — readiness gradual degradation
+
+The W9 `JanusReadinessSupervisor` exposed a binary
+`Bound / Unbound` state machine that flipped on six consecutive
+probe failures (30s at the default 5s cadence). Operators asked
+for an intermediate signal so dashboards can warn *before* the
+circuit trips — `JanusReadinessSupervisor` now surfaces an
+additional `CurrentLevel` of type `JanusReadinessLevel` with
+three values:
+
+| Level     | Trigger                                                                |
+| --------- | ---------------------------------------------------------------------- |
+| Healthy   | `ConsecutiveFailures < DegradeAfterConsecutiveFailures` AND not Unbound |
+| Degraded  | `ConsecutiveFailures ≥ DegradeAfterConsecutiveFailures` (3, ~15s)       |
+| Unhealthy | `CurrentState == Unbound` (≥ 6 consecutive failures, ~30s)              |
+
+The unbind / rebind state machine is unchanged — `Degraded`
+sits *above* the W9 circuit-trip threshold so routes keep flowing
+through Janus while admin dashboards see the warning. A single
+recovery probe resets the failure counter, returning the level
+to `Healthy` without requiring a full rebind cycle.
+
+The `JanusReadinessChanged` SignalR envelope now carries the
+extra fields:
+
+```jsonc
+{
+  "previous": "Bound",
+  "current":  "Bound",
+  "previousLevel": "Healthy",
+  "level":         "Degraded",
+  "consecutiveFailures": 3,
+  "lastError": "timeout",
+  "at": "2026-05-23T12:34:56.789Z"
+}
+```
+
+Transitions emit on either a `state` change *or* a `level`
+change — pure-level transitions (no state flip) log at
+`Information`, state flips remain at `Warning`. The contract
+suite lives at
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/JanusReadinessGradualDegradationTests.cs`.

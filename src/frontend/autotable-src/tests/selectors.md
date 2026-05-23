@@ -1963,3 +1963,151 @@ constraint Vasquez ships
 (`tests/e2e/three-renderer-510-hard.spec.ts`, forward-staged)
 will pass on next CI run once the spec file lands and the
 backend serves `dist-size.json` at one of the canonical paths.
+
+---
+
+## Wave 10 additions (Phase K W10 — 2025-Q4)
+
+### Commentary `TileReference` shape — `data-tile-suit` / `data-tile-rank` attrs
+
+W10 lands the canonical `TileReference = { tileId, suit, rank }`
+object shape in `tileReferences[]` on commentary records.
+`src/commentary-panel.ts:renderTileRef()` reads `ref.suit` +
+`ref.rank` and emits them as data attributes on the chip:
+
+```html
+<button
+  class="commentary-tile-chip"
+  data-tile-id="m5"
+  data-tile-suit="man"
+  data-tile-rank="5"
+>5m</button>
+```
+
+Spec hooks (Playwright + unit):
+
+- `[data-tile-suit="man"][data-tile-rank="5"]` — selects a specific
+  tile chip.
+- `[data-tile-id="p3-red"]` — selects a tile chip by identity,
+  variant-suffix aware.
+
+A W9 wire-shape (bare string) is coerced via `parseTileIdShape()`
+to the same DOM; tests can assert the coercion happened by
+checking `console.warn` for the parse-warning. See
+`docs/contracts/commentary-tile-ref.md` for the migration
+discipline (W9 → W10 → W12 cleanup).
+
+### `mahjong:highlight-tile` event — `source: 'commentary-panel'`
+
+The chip's click handler dispatches:
+
+```ts
+new CustomEvent('mahjong:highlight-tile', {
+  detail: { tileId: 'm5', source: 'commentary-panel' },
+});
+```
+
+Spec hooks:
+
+- Listen on `document` for `mahjong:highlight-tile`; assert
+  `event.detail.source === 'commentary-panel'`.
+- `event.detail.tileId` must equal the chip's `data-tile-id`.
+- `scene-effects.ts:wireHighlightHandlers` is the production
+  consumer; the W10 strip removes the fallback ring so unknown
+  sources `console.warn` instead of silently pulsing.
+
+### Three-renderer trend gate (W10 update)
+
+`src/frontend/autotable-src/dist-size.json` carries a K10 row
+with `three-renderer-big = 497,440 B` (−10,034 B vs K9). The
+W7 monotonic-decrease invariant holds for a 5th consecutive
+wave. The W9 forward-staged spec
+(`tests/e2e/three-renderer-510-hard.spec.ts`) and any future
+W10 spec (e.g. `three-renderer-500-hard.spec.ts`) both pass
+against this row.
+
+### PWA Builder workflow — testid surface
+
+The W10 CI workflow (`.github/workflows/pwa-audit.yml`) doesn't
+add DOM selectors, but it produces two CI-only JSON artifacts
+that downstream PR-comment renderers + tests can read:
+
+- `.pwa-score.json` — `{ pwaScore: number, subScores: { ... } }`
+  from `scripts/manifest-lint.js`.
+- `.lighthouse-report.json` — LH13 full output (`audits[]`,
+  `categories[]`).
+
+Both are `.gitignore`d; specs that need them should regenerate
+locally via the recipes in `docs/frontend-pwa-audit.md §2`.
+
+### Build cache — `.vite/` directory
+
+`vite.config.ts:cacheDir` points at
+`src/frontend/autotable-src/.vite/`. Specs that exercise a
+cold-build path should set the `VITE_FORCE_DEP_PRE_BUNDLE`
+env var or remove the directory before invoking the build.
+This is a CI / harness concern only; no DOM surface.
+
+## Phase K Wave 10 — Vasquez Playwright additions (W10 spec inventory)
+
+The W10 wave adds six chromium-only, forward-stage-tolerant
+specs that pin the surfaces Hicks documented in the W10 footer
+above. Each spec follows the W9 selectors-inventory pattern:
+soft-pass when the surface isn't observable, hard-assert when it
+is. Together they raise the E2E count from ~20 (W9) to ~26 (W10).
+
+### Spec inventory (all chromium-only, all forward-stage tolerant)
+
+| Spec | Asserts | Soft-pass condition |
+|------|---------|---------------------|
+| `three-renderer-480-hard.spec.ts` | `dist-size.json` K10 entry ≤ 480 KB (with W9 510 KB regression backstop) | no K10 entry yet OR mid-strip between 480 KB and 510 KB |
+| `commentary-dispatch.spec.ts` | click on `data-testid="commentary-tileref-<row>-<idx>"` dispatches `mahjong:highlight-tile` with `detail.tileId` set | autotable shell or commentary tile-refs not in DOM |
+| `pwa-audit-workflow.spec.ts` | `.github/workflows/pwa-audit.yml` declares `name: PWA*`, `on: pull_request`, and an `audit`/`pwa-audit`/`lighthouse` job | workflow not mirror-served by dev server |
+| `manifest-fields.spec.ts` | `manifest.webmanifest` carries description (≥ 30 chars), categories[], screenshots[] (well-shaped), shortcuts[] | manifest unreachable or individual fields not yet authored |
+| `bracket-canonical-no-fallback.spec.ts` | unknown bracket kind triggers `data-testid="bracket-renderer-error"` containing `unknown bracket`; valid single-elim renders `round-heading` testids | `bracket-demo` route or `window.mahjongBracketRenderer` missing |
+| `redis-idempotency-replay.spec.ts` | POST `/api/games` with same `Idempotency-Key` + same payload returns identical body; with same key + DIFFERENT payload returns 409 (or 422 collapse) | endpoint unreachable, requires auth, or replay-conflict not yet enforced |
+
+### W10 testid additions (Vasquez side, mirrored from W10 footer)
+
+| Testid | Owner | Producer (Hicks) | Consumer (Vasquez spec) |
+|--------|-------|------------------|--------------------------|
+| `commentary-tileref-<row>-<idx>` | Hicks | `commentary-panel.ts` | `commentary-dispatch.spec.ts` |
+| `bracket-renderer-root` | Hicks | `bracket-renderer.ts` | `bracket-canonical-no-fallback.spec.ts` |
+| `bracket-renderer-error` | Hicks | `bracket-renderer.ts` (W10 strict mode) | `bracket-canonical-no-fallback.spec.ts` |
+| `round-heading-<n>` | Hicks | `bracket-renderer.ts` | `bracket-canonical-no-fallback.spec.ts` |
+
+### W10 DOM-event additions
+
+| Event | Direction | Owner | Consumer |
+|-------|-----------|-------|----------|
+| `mahjong:highlight-tile` (with `detail.source === 'commentary-panel'`) | document → scene-shell | Hicks (commentary-panel) | `commentary-dispatch.spec.ts` (round-trip check) |
+
+### Cross-pane references (backend contract test pins)
+
+The W10 Playwright specs each have a backend contract-test
+counterpart under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Vasquez/`
+so the surface is double-pinned: at the API/file/reflection layer
+(backend xunit) and at the rendered-DOM/HTTP layer (Playwright).
+This is the W10 "double-pin" convention — see
+`docs/test-architecture.md §4.2` for the gap-analysis rationale.
+
+| Playwright spec | Backend xunit pin |
+|------------------|--------------------|
+| `commentary-dispatch.spec.ts` | `HicksW10FrontendContractTests.CommentaryTileRef_*` |
+| `three-renderer-480-hard.spec.ts` | `HicksW10FrontendContractTests.ThreeRendererBig_*` |
+| `pwa-audit-workflow.spec.ts` | `HicksW10FrontendContractTests.PwaAuditWorkflow_*` |
+| `manifest-fields.spec.ts` | `HicksW10FrontendContractTests.ManifestFields_*` |
+| `bracket-canonical-no-fallback.spec.ts` | `HicksW10FrontendContractTests.BracketRenderer_CanonicalShape_*` |
+| `redis-idempotency-replay.spec.ts` | `BishopW10RedisIdempotencyClientTests.*` |
+
+Hicks: when you wire any of the producer-side testids above (or
+move them to a new location), append the canonical citation here
+per the W5 maintenance note. Vasquez will roll those edits into
+the next-wave footer.
+
+---
+
+*Phase K Wave 10 — Vasquez (QA). Footer added in W10 as the
+spec inventory + cross-pane mapping mirroring the W7/W8/W9
+pattern.*

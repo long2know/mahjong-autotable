@@ -148,7 +148,7 @@ public static class CommentaryGeneratorTestShim
                 Speaker: speakers[i % speakers.Length],
                 Text: $"[shim] {phases[i]} commentary for game {slice}",
                 EmotionIntensity: intensity,
-                TileReferences: new[] { $"man{(i % 9) + 1}" },
+                TileReferences: new[] { Mahjong.Autotable.Api.Commentary.TileReference.Parse($"man{(i % 9) + 1}") },
                 GeneratedAt: anchor.AddSeconds(i)));
         }
         return records;

@@ -63,9 +63,12 @@ export interface BracketRendererInput {
   /**
    * Phase K Wave 8 — Bishop's finalised double-elim wire shape.
    * When present, the DoubleElimRenderer trusts the server-side
-   * partition and skips the heuristic fallback in
-   * `partitionDoubleElim`.  Optional because mid-deploy responses
-   * may still ship the flat `matches[]` array.
+   * partition.  Phase K Wave 9 made this field the only supported
+   * shape (legacy `matches[]` fallback removed; renderer surfaces
+   * a `bracket-shape-error` testid when `layout` is null).  Phase
+   * K Wave 10 removed the round-number-sign heuristic
+   * (`partitionDoubleElim`) outright — see git history for the
+   * pre-removal implementation.
    */
   layout?: DoubleElimLayout | null;
 }
@@ -425,10 +428,10 @@ interface PartitionResult {
  * Phase K Wave 9 — Bishop's canonical `layout` is the only source
  * of truth.  Caller (`DoubleElimRenderer.render`) is responsible
  * for the hard-fail surface when `input.layout` is null; this
- * helper assumes it's non-null.  The W6 heuristic
- * (`partitionDoubleElim` scanning round numbers) is retained
- * below for unit-test parity but no production code path
- * invokes it.
+ * helper assumes it's non-null.  Phase K Wave 10 removed the W6
+ * round-number-sign heuristic (`partitionDoubleElim`) that used
+ * to live below — the canonical-only path is the production code
+ * path now.
  */
 function partitionForDoubleElim(input: BracketRendererInput): PartitionResult {
   const layout = input.layout ?? null;
@@ -579,68 +582,19 @@ function describeSwissResult(m: BracketMatch): string {
   return 'Pending';
 }
 
-interface PartitionedMatches {
-  winners: BracketMatch[];
-  losers: BracketMatch[];
-  grandFinal: BracketMatch | null;
-}
-
-function partitionDoubleElim(matches: ReadonlyArray<BracketMatch>): PartitionedMatches {
-  // Bishop's double-elim wire shape carries a `bracket` discriminator
-  // on each match (`'winners' | 'losers' | 'grand-final'`); we read it
-  // off `(m as any).bracket` defensively so the renderer keeps
-  // working if the field isn't yet populated.  When it's missing we
-  // fall back to heuristics: positive rounds go to winners, negative
-  // rounds to losers (a common convention in challonge-style data),
-  // and the highest-round single match becomes the grand final.
-  const winners: BracketMatch[] = [];
-  const losers: BracketMatch[] = [];
-  let grandFinal: BracketMatch | null = null;
-  for (const m of matches) {
-    const bracketTag = (m as unknown as { bracket?: string }).bracket;
-    if (typeof bracketTag === 'string') {
-      const tag = bracketTag.toLowerCase();
-      if (tag === 'grand-final' || tag === 'grand_final' || tag === 'final') {
-        grandFinal = m;
-        continue;
-      }
-      if (tag === 'losers' || tag === 'loser' || tag === 'lower') {
-        losers.push(m);
-        continue;
-      }
-      if (tag === 'winners' || tag === 'winner' || tag === 'upper') {
-        winners.push(m);
-        continue;
-      }
-    }
-    if (m.round < 0) {
-      losers.push(m);
-    } else {
-      winners.push(m);
-    }
-  }
-  if (grandFinal === null) {
-    // Heuristic: the final match in the winners bracket (after
-    // ordering by round desc, matchIndex desc) where both players
-    // are filled is treated as grand final if it sits a round above
-    // all other matches.
-    const sorted = winners.slice().sort((a, b) => b.round - a.round || b.matchIndex - a.matchIndex);
-    if (sorted.length > 0) {
-      const top = sorted[0];
-      const others = sorted.slice(1);
-      const isolated = others.every(o => o.round < top.round);
-      if (isolated && top.player1 !== null && top.player2 !== null) {
-        grandFinal = top;
-        winners.splice(winners.indexOf(top), 1);
-      }
-    }
-  }
-  // Normalize losers' rounds to positive ascending for display.
-  const allLosersNegative = losers.length > 0 && losers.every(m => m.round < 0);
-  if (allLosersNegative) {
-    for (const m of losers) {
-      (m as { round: number }).round = Math.abs(m.round);
-    }
-  }
-  return { winners, losers, grandFinal };
-}
+// Phase K Wave 10 — `partitionDoubleElim` removal.
+//
+// W6 shipped this round-number-sign + bracket-tag heuristic as the
+// double-elim partitioner.  W7→W8 layered Bishop's canonical
+// `layout` field on top so the renderer could trust the server-
+// authored partition; W9 made the canonical `layout` the only
+// supported shape (DoubleElimRenderer.render surfaces a
+// `bracket-shape-error` testid when `layout` is null).  After
+// three waves of zero production calls, the heuristic + its
+// dedicated `PartitionedMatches` interface are removed outright
+// in W10.  Documented in `docs/contracts/bracket-api.md
+// §"Canonical wire shape"` + `docs/frontend-build-tooling.md §4`.
+//
+// If a future wave needs to revive the heuristic, it lives in git
+// history at
+// `f518196:src/frontend/autotable-src/src/bracket-renderer.ts:588`.

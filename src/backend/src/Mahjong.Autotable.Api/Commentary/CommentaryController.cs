@@ -120,7 +120,14 @@ public sealed class CommentaryController : ControllerBase
             speaker = r.Speaker,
             text = r.Text,
             emotionIntensity = r.EmotionIntensity,
-            tileReferences = r.TileReferences ?? Array.Empty<string>(),
+            tileReferences = (r.TileReferences ?? (IReadOnlyList<TileReference>)Array.Empty<TileReference>())
+                .Select(tref => new
+                {
+                    tileId = tref.TileId,
+                    suit = tref.Suit,
+                    rank = tref.Rank,
+                })
+                .ToArray(),
             generatedAt = r.GeneratedAt,
         }).ToArray();
         return Ok(wire);

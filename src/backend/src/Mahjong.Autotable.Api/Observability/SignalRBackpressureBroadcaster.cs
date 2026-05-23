@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Mahjong.Autotable.Api.Observability;
@@ -24,6 +25,11 @@ namespace Mahjong.Autotable.Api.Observability;
 ///
 /// <para>Documented end-to-end in
 /// <c>docs/realtime-resilience.md</c>.</para>
+///
+/// <para>Phase K Wave 10 — Bishop. Prometheus metrics surface
+/// added via <see cref="IMeterFactory"/>. Counters are tagged by
+/// <c>hub</c> + drop <c>reason</c> so the dashboards can render
+/// per-hub backpressure pressure.</para>
 /// </summary>
 public sealed class SignalRBackpressureBroadcaster<THub>
     where THub : Hub
@@ -40,11 +46,22 @@ public sealed class SignalRBackpressureBroadcaster<THub>
     /// Tunes the worst-case memory footprint per connection group.</summary>
     public const int DefaultRetainedMessageCount = 256;
 
+    /// <summary>Phase K Wave 10 — Bishop. Meter name for the
+    /// backpressure counters. Surfaced as a constant so the
+    /// Prometheus exporter + contract tests pin the
+    /// vocabulary.</summary>
+    public const string MeterName = "Mahjong.Autotable.Api.Observability.SignalRBackpressure";
+
     private readonly IHubContext<THub> _hub;
     private readonly ILogger _logger;
     private readonly TimeSpan _maxAge;
     private readonly int _maxPerSecond;
     private readonly int _retentionDepth;
+    private readonly string _hubName;
+
+    private readonly Counter<long>? _dropCounter;
+    private readonly Counter<long>? _replayCounter;
+    private readonly Counter<long>? _sentCounter;
 
     // Per-(group) sliding window for rate-cap enforcement. Concurrent
     // dictionary keyed by group name — the window itself is a
@@ -63,13 +80,26 @@ public sealed class SignalRBackpressureBroadcaster<THub>
         ILogger logger,
         TimeSpan? maxAge = null,
         int? maxPerSecond = null,
-        int? retentionDepth = null)
+        int? retentionDepth = null,
+        IMeterFactory? meterFactory = null)
     {
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _maxAge = maxAge ?? TimeSpan.FromSeconds(DefaultMaxMessageAgeSeconds);
         _maxPerSecond = maxPerSecond ?? DefaultMaxMessagesPerSecond;
         _retentionDepth = retentionDepth ?? DefaultRetainedMessageCount;
+        _hubName = typeof(THub).Name;
+
+        if (meterFactory is not null)
+        {
+            var meter = meterFactory.Create(MeterName);
+            _dropCounter = meter.CreateCounter<long>("signalr_messages_dropped_total",
+                unit: null, description: "Messages dropped by the SignalR backpressure broadcaster, tagged by hub + reason.");
+            _replayCounter = meter.CreateCounter<long>("signalr_replay_requests_total",
+                unit: null, description: "Reconnect-replay invocations against the backpressure broadcaster.");
+            _sentCounter = meter.CreateCounter<long>("signalr_messages_sent_total",
+                unit: null, description: "Messages sent through the SignalR backpressure broadcaster, tagged by hub.");
+        }
     }
 
     /// <summary>
@@ -97,6 +127,9 @@ public sealed class SignalRBackpressureBroadcaster<THub>
             _logger.LogDebug(
                 "SignalR backpressure dropped {Method} for group={Group} (rate cap {Rate}/s).",
                 method, group, _maxPerSecond);
+            _dropCounter?.Add(1,
+                new KeyValuePair<string, object?>("hub", _hubName),
+                new KeyValuePair<string, object?>("reason", "rate_cap"));
             return false;
         }
 
@@ -120,6 +153,8 @@ public sealed class SignalRBackpressureBroadcaster<THub>
                 createdAt = now,
                 payload,
             }, ct);
+            _sentCounter?.Add(1,
+                new KeyValuePair<string, object?>("hub", _hubName));
             return true;
         }
         catch (Exception ex)
@@ -127,6 +162,9 @@ public sealed class SignalRBackpressureBroadcaster<THub>
             _logger.LogDebug(ex,
                 "SignalR backpressure broadcast failed for group={Group} method={Method}; envelope retained for replay.",
                 group, method);
+            _dropCounter?.Add(1,
+                new KeyValuePair<string, object?>("hub", _hubName),
+                new KeyValuePair<string, object?>("reason", "send_failure"));
             return false;
         }
     }
@@ -142,13 +180,27 @@ public sealed class SignalRBackpressureBroadcaster<THub>
     /// </summary>
     public IReadOnlyList<BackpressureEnvelope> ResumeFromAck(string group, long lastAckedSequence)
     {
+        _replayCounter?.Add(1,
+            new KeyValuePair<string, object?>("hub", _hubName));
         if (!_replayBuffers.TryGetValue(group, out var buffer))
             return Array.Empty<BackpressureEnvelope>();
 
         var cutoff = DateTimeOffset.UtcNow - _maxAge;
-        return buffer.Snapshot()
+        var replayed = buffer.Snapshot()
             .Where(e => e.Sequence > lastAckedSequence && e.CreatedAt >= cutoff)
             .ToArray();
+        // Phase K Wave 10 — Bishop. Stale envelopes that the client
+        // would receive too late to be useful are counted as drops
+        // so the dashboard reflects the full backpressure picture.
+        var skipped = buffer.Snapshot()
+            .Count(e => e.Sequence > lastAckedSequence && e.CreatedAt < cutoff);
+        if (skipped > 0)
+        {
+            _dropCounter?.Add(skipped,
+                new KeyValuePair<string, object?>("hub", _hubName),
+                new KeyValuePair<string, object?>("reason", "age_window"));
+        }
+        return replayed;
     }
 
     /// <summary>

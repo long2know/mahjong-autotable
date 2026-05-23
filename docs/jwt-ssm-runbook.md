@@ -58,10 +58,119 @@ shred -u rsa-active.pem rsa-active.pk8.pem
 
 ## 3. Rotation cadence
 
-Rotate every **180 days** (matches the existing HS256 cadence
-documented in [`docs/secret-management.md`](secret-management.md)).
+Rotate every **90 days** (quarterly) — tightened from the
+original 180-day cadence in Wave 10 to align with the squad's
+broader quarterly rotation cadence (`docs/secret-management.md`).
 The rotation is **zero-downtime** because the fallback validator
 accepts any of the three loaded keys.
+
+### 3.1 Quarterly calendar
+
+| Quarter      | Last rotation by | Owner             |
+| ------------ | ---------------- | ----------------- |
+| Q1 (Jan-Mar) | last day of Mar  | on-call SRE       |
+| Q2 (Apr-Jun) | last day of Jun  | on-call SRE       |
+| Q3 (Jul-Sep) | last day of Sep  | on-call SRE       |
+| Q4 (Oct-Dec) | last day of Dec  | on-call SRE       |
+
+The on-call SRE for the quarter is the rotation owner; the
+hand-off between SREs at the quarter boundary picks up an
+**already-rotated** active key, not an aging one. (Don't make
+the hand-off pick up rotation as their first task.)
+
+### 3.2 Quarterly rotation — full operator sequence
+
+The full rotation procedure lives in §4. The quarterly cadence
+adds two pre-flight validation steps + one post-rotation
+validation step that the rare-emergency rotation procedure
+(§5) skips:
+
+```bash
+ENV=prod
+KMS_KEY=alias/mahjong-${ENV}-secrets
+
+# ── Pre-flight: confirm all three SSM slots currently exist
+# and that the JWKS endpoint already reflects them. If any
+# slot is missing OR the JWKS shows < 3 kids, FAIL CLOSED —
+# fix the prior rotation's drift before starting a new one.
+for SLOT in active previous archive; do
+  aws ssm get-parameter \
+    --name "/mahjong/${ENV}/auth/jwt/rsa-${SLOT}" \
+    --with-decryption --query Parameter.Value --output text >/dev/null \
+  || { echo "::error::missing SSM slot: rsa-${SLOT}"; exit 1; }
+done
+
+JWKS_KIDS=$(curl -sfL "https://api.${ENV}.mahjong-autotable.com/.well-known/jwks.json" \
+            | jq -r '.keys | length')
+[ "${JWKS_KIDS}" -ge 3 ] \
+  || { echo "::error::JWKS shows only ${JWKS_KIDS} keys; expected ≥ 3 before rotation"; exit 1; }
+
+# ── Rotation proper: execute §4 step 0 through step 7.
+#    (See §4 for the put-parameter sequence.)
+
+# ── Post-rotation validation: confirm three DISTINCT kids on
+# the JWKS (not the seed-copy case at first provisioning).
+JWKS_DISTINCT=$(curl -sfL "https://api.${ENV}.mahjong-autotable.com/.well-known/jwks.json" \
+                | jq -r '.keys[].kid' | sort -u | wc -l)
+[ "${JWKS_DISTINCT}" -ge 3 ] \
+  || { echo "::error::JWKS shows ${JWKS_DISTINCT} distinct kids after rotation; expected ≥ 3"; exit 1; }
+echo "::notice::quarterly rotation complete; ${JWKS_DISTINCT} distinct kids published"
+```
+
+### 3.3 Quarterly rotation — checklist for the on-call hand-off
+
+- [ ] Pre-flight validation in §3.2 passes (all three SSM slots
+      present + JWKS shows ≥ 3 kids).
+- [ ] Mint new keypair offline (air-gapped or in-cluster
+      one-shot pod with `openssl genrsa`).
+- [ ] Execute §4 steps 1-7 in order.
+- [ ] Post-rotation validation in §3.2 passes (≥ 3 distinct
+      `kid` values on the JWKS).
+- [ ] Update `docs/secret-management.md` rotation log with the
+      quarter + rotator + UTC timestamp.
+- [ ] Notify Stephen in `.squad/decisions/inbox/` with the
+      rotation memo (no action required from him; this is the
+      audit-trail entry).
+
+### 3.4 Quarterly rollback (if the new active key is rejected by clients)
+
+If clients start seeing 401s after the rotation completes (very
+rare — the W7 RS256 path validates against all three loaded
+keys), the rollback is to **demote** the new active back to
+previous without dropping the old:
+
+```bash
+ENV=prod
+KMS_KEY=alias/mahjong-${ENV}-secrets
+
+# Step 1 — restore active ← previous (the key clients trust).
+PREV=$(aws ssm get-parameter \
+  --name "/mahjong/${ENV}/auth/jwt/rsa-previous" \
+  --with-decryption --query Parameter.Value --output text)
+aws ssm put-parameter \
+  --name "/mahjong/${ENV}/auth/jwt/rsa-active" \
+  --type SecureString --key-id "${KMS_KEY}" \
+  --value "${PREV}" --overwrite
+
+# Step 2 — restore previous ← archive (so we keep BOTH a fresh
+# active AND a fallback validator).
+ARCH=$(aws ssm get-parameter \
+  --name "/mahjong/${ENV}/auth/jwt/rsa-archive" \
+  --with-decryption --query Parameter.Value --output text)
+aws ssm put-parameter \
+  --name "/mahjong/${ENV}/auth/jwt/rsa-previous" \
+  --type SecureString --key-id "${KMS_KEY}" \
+  --value "${ARCH}" --overwrite
+
+# Step 3 — force-sync ESO + roll pods.
+kubectl annotate externalsecret mahjong-jwt-keys \
+  -n mahjong-autotable force-sync="$(date +%s)" --overwrite
+kubectl rollout restart deployment/mahjong-autotable -n mahjong-autotable
+```
+
+The new key that was just minted is now LOST (we overwrote the
+slot it briefly occupied). That's intentional — a rejected-by-
+client key is a key we never want to revisit.
 
 ## 4. Rotation procedure
 

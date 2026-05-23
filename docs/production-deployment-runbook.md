@@ -21,7 +21,8 @@
 5. [Rollback procedure](#5-rollback-procedure)
 6. [Monitoring + alerting](#6-monitoring--alerting-setup)
 7. [Incident response runbook](#7-incident-response-runbook)
-8. [Companion docs](#8-companion-docs)
+8. [Continuous health probes (W10)](#8-continuous-health-probes-w10)
+9. [Companion docs](#9-companion-docs)
 
 ---
 
@@ -630,7 +631,107 @@ deploy.
 
 ---
 
-## 8. Companion docs
+## 8. Continuous health probes (W10)
+
+> Phase K Wave 10 — Apone (DevOps).
+
+The W6 Sentry + W7 Prometheus stack is **reactive** — it tells
+us that a request failed after the user noticed it. W10 adds a
+**synthetic** probe that runs every 5 minutes from GitHub-hosted
+runners, hits the live edge, and opens an incident issue when
+the probe fails repeatedly.
+
+### 8.1 What it checks
+
+The probe (`.github/workflows/prod-health-check.yml`) calls
+three endpoints in sequence:
+
+| Path                             | Asserted on                              |
+| -------------------------------- | ---------------------------------------- |
+| `GET /healthz`                   | HTTP 200; JSON body has `"status":"ok"`. |
+| `GET /readyz`                    | HTTP 200; latency < 1500 ms.             |
+| `GET /metrics`                   | HTTP 200; body size > 1024 bytes.        |
+| `GET /.well-known/jwks.json`     | HTTP 200; JSON body has ≥ 3 `keys`.      |
+
+`/healthz` is the liveness probe (W8 — checks process is up),
+`/readyz` is readiness (W8 — checks DB + Redis reachability),
+`/metrics` is the Prometheus surface (W7), and `/.well-known/
+jwks.json` is the JWT key publication surface (W7 + W10 §3).
+
+### 8.2 Failure behaviour
+
+The workflow uses a **3-strike cooldown**:
+
+1. A single 5-minute probe failure marks the run as failed,
+   logs the failure to the step summary, and writes a
+   workflow-state file as an artefact.
+2. After three consecutive failed runs (i.e. 15 minutes of
+   sustained failure), the workflow opens a GitHub issue with
+   labels `incident`, `automated`, `production` and posts a
+   Slack webhook notification (if `SLACK_WEBHOOK_URL` secret
+   is configured).
+3. While an incident issue is open, subsequent failures
+   **update** the issue body with a running probe-status log
+   rather than opening duplicates. The cooldown prevents
+   spam: at most one issue per outage window.
+4. When the probe is green again for two consecutive runs,
+   the workflow closes the incident issue with a comment
+   summarising the outage window.
+
+### 8.3 Operator integration
+
+* The probe is **not** a substitute for the on-call pager
+  — it's a backstop. The Sentry alert rules in §6 still fire
+  faster (typically within 30-60 s of the first 500).
+* The probe runs from `ubuntu-latest` runners; if GitHub
+  Actions is itself degraded, the probe will appear to "fail"
+  even when the app is healthy. The incident issue body
+  includes the runner region + a check on `https://www.
+  githubstatus.com/` so triage can distinguish the two cases.
+* Disabling the probe (e.g. during a planned maintenance
+  window): set the `pause_until` workflow input via
+  `workflow_dispatch`. The cron job aborts early when the
+  current UTC time is before the pause expiry.
+
+### 8.4 Configuration
+
+The probe target URL is the `PROD_BASE_URL` repository
+variable (NOT secret — the URL itself is public). Default:
+`https://api.mahjong-autotable.com`. Override per-run via
+`workflow_dispatch.inputs.target_url`.
+
+The Slack notification uses the `SLACK_WEBHOOK_URL`
+repository secret. Absent secret → the workflow still
+opens the GitHub issue (Slack is best-effort).
+
+### 8.5 Disabling / troubleshooting
+
+* **Probe is flaking but app is healthy:** check the
+  GitHub Actions runner region (logged in the step summary).
+  Cross-region latency from `us-east` runner → `eu-west`
+  edge can exceed the 1500 ms `/readyz` budget; relax via
+  `workflow_dispatch.inputs.readyz_latency_budget_ms`.
+* **Probe is silent (no incident issue) but app is down:**
+  check the workflow's last run — if `workflow_run` UI shows
+  no recent execution, GitHub-hosted runners may be backlogged.
+  The probe is best-effort; do not depend on it for
+  hard-SLA paging.
+* **Need to suppress paging without disabling the probe:**
+  remove the `incident` label from the open issue — the next
+  failed run will not reopen it.
+
+### 8.6 Cross-references
+
+* [`docs/observability.md`](./observability.md) — Prometheus +
+  Grafana dashboards (the metrics the probe hits).
+* §6 above — alert rules; the W10 probe complements the
+  Sentry / Prometheus alerts (synthetic vs reactive).
+* §7 above — incident response runbook; the W10 probe's
+  generated issue includes a link to §7's first-response steps.
+
+---
+
+## 9. Companion docs
 
 | Topic                                | Doc                                                                |
 | ------------------------------------ | ------------------------------------------------------------------ |
@@ -651,6 +752,8 @@ deploy.
 | Log rotation                         | [`log-rotation.md`](./log-rotation.md)                             |
 | CI pipeline + gates                  | [`ci.md`](./ci.md)                                                 |
 | Known limitations                    | [`known-limitations.md`](./known-limitations.md)                   |
+| Argo Rollouts cluster install (W10)  | [`argo-rollouts-setup.md`](./argo-rollouts-setup.md)               |
+| Redis ElastiCache provisioning (W10) | [`redis-cluster.md`](./redis-cluster.md)                           |
 
 ---
 

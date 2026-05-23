@@ -1,13 +1,17 @@
 {
-  "name": "Changsha Mahjong Autotable",
+  "id": "/?source=pwa",
+  "name": "Mahjong Autotable",
   "short_name": "Mahjong",
-  "description": "Online Changsha Mahjong table with bots, tournaments, and replay viewer.",
+  "description": "Mahjong Autotable — Changsha + Chinese variants",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "theme_color": "#1e2a36",
   "background_color": "#0d161e",
+  "categories": ["games", "entertainment"],
   "icons": [
     {
       "src": "img/icon-16.auto.png",
@@ -44,5 +48,69 @@
       "purpose": "maskable"
     }
   ],
-  "categories": ["games", "entertainment"]
+  "screenshots": [
+    {
+      "src": "img/screenshot-lobby.auto.png",
+      "sizes": "1024x768",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Multiplayer lobby with active tables and tournaments"
+    },
+    {
+      "src": "img/screenshot-table.auto.png",
+      "sizes": "1024x768",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "3D mahjong table during live play"
+    },
+    {
+      "src": "img/screenshot-mobile.auto.png",
+      "sizes": "768x1024",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Mobile portrait view with reachable controls"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New game",
+      "short_name": "New",
+      "description": "Start a new mahjong table with bots or open seats",
+      "url": "/?action=new-game",
+      "icons": [
+        {
+          "src": "img/icon-96.auto.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Spectate",
+      "short_name": "Spectate",
+      "description": "Join an active game as a spectator",
+      "url": "/?action=spectate",
+      "icons": [
+        {
+          "src": "img/icon-96.auto.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Tournament dashboard",
+      "short_name": "Tournaments",
+      "description": "Browse and join the tournament bracket dashboard",
+      "url": "/?action=tournaments",
+      "icons": [
+        {
+          "src": "img/icon-96.auto.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
 }
+

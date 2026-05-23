@@ -219,22 +219,99 @@ The `--types vite/client` flag pulls Vite's `ImportMeta.env` /
 asset-suffix declarations. `--module esnext` is required for
 dynamic `import(...)` syntax (TS1323 otherwise).
 
-## Fallback path: `npm run build:parcel`
+## Fallback path: `npm run build:parcel` (removed in Wave 10)
 
-Parcel is kept available behind `npm run build:parcel` for one
-wave. The two known divergences if you fall back:
+Parcel was retained behind `npm run build:parcel` for three waves
+(W7–W9) as a safety hatch in case a Vite-induced deploy regression
+surfaced. Three consecutive wave bring-ups (gates 1506 / 1706 /
+1880) shipped on Vite without invoking the fallback, so Phase K
+Wave 10 retires it:
 
-1. `dist-size.json` will NOT be updated (the append plugin is
-   Vite-only). Run `node scripts/append-dist-size.js --wave K7`
-   manually after.
-2. The `?url` asset imports work under Parcel only because Parcel
-   silently honours them too — but if you ever need to revert
-   you must also restore the `url:` prefixes. Don't.
+- `package.json#scripts.build:parcel` — **deleted.**
+- `devDependencies` — Parcel + its 4 transformers / packagers
+  (`parcel`, `@parcel/packager-raw-url`,
+  `@parcel/transformer-image`, `@parcel/transformer-webmanifest`)
+  **deleted.** `npm ci` no longer downloads ~640 packages (most of
+  the saved install time on cold CI runs).
+- `package-lock.json` regenerated. The dependency tree is now Vite
+  + Lighthouse only.
+- `.parcel-cache/` remains in `.gitignore` for one wave (covers a
+  contributor who runs the W9-tagged build locally).
 
-Plan to delete `build:parcel` from `package.json` at end of W9 if
-no regressions surface.
+If a future wave needs a non-Vite production bundler, the recipe
+lives in git history at
+`f518196:src/frontend/autotable-src/package.json` (build:parcel
+script) and `f518196:src/frontend/autotable-src/Makefile`
+(parcel-based release targets, which were already legacy at W7).
 
-## Trend ledger
+`partitionDoubleElim` — the W6 bracket-renderer heuristic that was
+retained alongside Bishop's canonical `layout` shape across W7–W9
+— is removed in W10 as well. The function was unreferenced by
+production code since W9; the dead-code prune ships in
+`src/frontend/autotable-src/src/bracket-renderer.ts` (search
+"Wave 10 — `partitionDoubleElim` removal" for the rationale
+comment).
+
+## §5 — Wave 10: Build cache strategy
+
+`npm run build:vite` was ~28-32 s on a cold cache (full
+node_modules walk, dep pre-bundle, three.js source transforms).
+Wave 10 wires Vite's disk-persisted cache:
+
+```ts
+// vite.config.ts
+export default defineConfig({
+  root: __dirname,
+  cacheDir: resolve(__dirname, '.vite'),
+  // …
+});
+```
+
+- The cache lives at `src/frontend/autotable-src/.vite/`. It
+  holds (a) the dep pre-bundle (`node_modules/.vite` equivalent
+  pinned next to the source tree) and (b) Vite's transform cache.
+- `.gitignore` excludes `.vite/` so nothing leaks into commits.
+- The `pwa-audit` GitHub Actions workflow restores the cache via
+  `actions/cache@v4` with the key
+  `vite-${{ runner.os }}-${{ hashFiles('package-lock.json',
+  'vite.config.ts') }}`. Either file changing busts the cache;
+  source-only PRs hit a warm cache.
+
+### Measured warmth
+
+| Run                     | Cold cache | Warm cache | Notes                               |
+|-------------------------|------------|------------|--------------------------------------|
+| `npm run build:vite`    | ~28-32 s   | ~8-12 s    | Local dev machine (M1 Pro reference) |
+| GitHub Actions CI       | ~50-65 s   | ~18-25 s   | ubuntu-latest, 4-core / 16 GB        |
+
+The warm-cache speedup is ~3× — comfortable for the `pwa-audit`
+workflow's 20-minute budget. If a Lighthouse upgrade or a three.js
+bump produces a stale-transform symptom (most often: a build that
+succeeds but the renderer chunk is 50+ KB larger than the trend
+ledger), wipe with:
+
+```bash
+rm -rf src/frontend/autotable-src/.vite
+```
+
+…and re-run the build. CI handles this automatically when
+`vite.config.ts` or `package-lock.json` change (the hash-of-files
+cache key invalidates).
+
+### Build hygiene checklist (Wave 10)
+
+- [ ] `npm ci --no-audit --no-fund` succeeds with no warnings.
+- [ ] `npm run build:vite` writes `../autotable/` and exits 0.
+- [ ] `../autotable/manifest.webmanifest` exists.
+- [ ] `dist-size.json` has a K10 row.
+- [ ] `three-renderer-big` shrinks vs the previous wave (W9 was
+      507.47 kB; W10 closes at **497.44 kB**).
+- [ ] `npm exec lighthouse http://127.0.0.1:4173/` returns five
+      LH13 categories.
+- [ ] `node scripts/manifest-lint.js --manifest manifest.webmanifest
+      --out .pwa-score.json` reports `pwaScore=1.000`.
+
+## Trend ledger (W10 update)
 
 `dist-size.json` is the source-of-truth for chunk-size trend.
 Vasquez's W7 Playwright spec reads it and asserts
@@ -245,12 +322,18 @@ Vasquez's W7 Playwright spec reads it and asserts
 | K5   | Parcel  | 724.7 kB          | 144.9 kB            | (in big)    | 869.6 kB       |
 | K6   | Parcel  | 739.72 kB         | 99.1 kB             | (in big)    | 838.8 kB       |
 | K7   | Vite    | 578.72 kB ✅      | 69.35 kB ✅         | (in big)    | 648.07 kB ✅   |
-| **K8** | **Vite** | **531.86 kB** ✅ | **71.00 kB**       | **44.22 kB** (new chunk) | **602.86 kB** ✅ |
+| K8   | Vite    | 531.86 kB ✅      | 71.00 kB            | 44.22 kB    | 602.86 kB ✅   |
+| K9   | Vite    | 507.47 kB ✅      | 75.38 kB            | 44.22 kB    | 582.85 kB ✅   |
+| **K10** | **Vite** | **497.44 kB** ✅ | **75.38 kB**       | **44.22 kB** | **572.82 kB** ✅ |
 
 K7 → K6 delta: **-21.8% on the big chunk, -22.7% renderer total.**
-K8 → K7 delta: **-8.1% on the big chunk** via GLTFLoader chunk peel
-(see `docs/frontend-three-budget.md §4` for the full W8 experiment
-including the negative result on deep imports).
+K8 → K7 delta: **-8.1% on the big chunk** via GLTFLoader chunk peel.
+K9 → K8 delta: **-4.6% on the big chunk** via three.js feature strip
+(see `docs/frontend-three-budget.md §5`).
+K10 → K9 delta: **-2.0% on the big chunk** via PMREMGenerator strip
+(see `docs/frontend-three-budget.md §6` for the partial-win autopsy
+and the W11 candidate list for the remaining shader-string
+strippers).
 
 ## §3 — Dev-server SignalR + WebSocket proxy (Wave 8)
 
@@ -302,3 +385,9 @@ after the Parcel→Vite swap).
 Fix: `copyStaticAssets` now also copies the un-hashed PWA icons to
 `out/img/icon-NNN.auto.png`. See `docs/frontend-pwa-audit.md §1`
 for the audit progression (0.75 → 1.00).
+
+Wave 10 extends `copyStaticAssets` further to copy three new
+PWA screenshot placeholders
+(`img/screenshot-{lobby,table,mobile}.auto.png`) referenced by
+the W10 manifest gap-fills. See `docs/frontend-pwa-audit.md §4`
+for the manifest schema delta.

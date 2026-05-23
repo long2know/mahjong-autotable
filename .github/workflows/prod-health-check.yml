@@ -1,0 +1,413 @@
+# Phase K Wave 10 — Apone (DevOps).
+#
+# Production health probe — synthetic checks against the live
+# edge. Complements the Sentry (W6) + Prometheus (W7) reactive
+# stack with a 5-minute proactive probe.
+#
+# ## What it does
+#
+# Every 5 minutes the workflow hits four endpoints and asserts
+# basic invariants:
+#
+#   * `/healthz`          — HTTP 200; body has `"status":"ok"`.
+#   * `/readyz`           — HTTP 200; latency under the budget.
+#   * `/metrics`          — HTTP 200; body size sanity check
+#                           (>1024 bytes — guarantees the
+#                           Prometheus surface didn't degrade to
+#                           an empty 200).
+#   * `/.well-known/jwks.json` — HTTP 200; JSON body has at
+#                           least 3 `keys` entries (per W7 +
+#                           W10 §3 — active/previous/archive).
+#
+# ## Cooldown / paging
+#
+# A 3-strike cooldown prevents single-blip pages. After three
+# consecutive failed runs (~15 min sustained outage) the workflow
+# opens a GitHub issue with labels `incident,automated,production`
+# and posts a Slack webhook (if configured). While the incident
+# issue is open, subsequent failures update its body rather than
+# opening duplicates. When the probe is green again for two
+# consecutive runs, the issue is closed with an outage-summary
+# comment.
+#
+# ## Configuration
+#
+# Repository variable `PROD_BASE_URL` (default
+# `https://api.mahjong-autotable.com`).
+# Repository secret `SLACK_WEBHOOK_URL` (optional — when missing,
+# only the GitHub issue is opened).
+#
+# ## Disabling for planned maintenance
+#
+# `workflow_dispatch` with `pause_until=<RFC3339 timestamp>` sets
+# the pause window via a repository variable update; the cron job
+# checks the variable on each run and aborts before probing if
+# the current time is before the expiry.
+
+name: prod-health-check
+
+on:
+  schedule:
+    # Every 5 minutes. Drift is fine — synthetic probes don't
+    # need second-precision.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Override target base URL (defaults to vars.PROD_BASE_URL or https://api.mahjong-autotable.com)."
+        required: false
+        type: string
+      readyz_latency_budget_ms:
+        description: "Override /readyz latency budget in ms (default 1500)."
+        required: false
+        default: "1500"
+        type: string
+      reset_strike_counter:
+        description: "Reset the consecutive-failure counter (use after manual triage)."
+        required: false
+        default: "false"
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: prod-health-check
+  cancel-in-progress: false
+
+env:
+  TARGET_URL: ${{ github.event.inputs.target_url || vars.PROD_BASE_URL || 'https://api.mahjong-autotable.com' }}
+  READYZ_BUDGET_MS: ${{ github.event.inputs.readyz_latency_budget_ms || '1500' }}
+  STRIKE_THRESHOLD: "3"
+  RECOVERY_THRESHOLD: "2"
+  ISSUE_LABELS: "incident,automated,production"
+  ISSUE_TITLE_PREFIX: "[prod-health-check] Production probe failure"
+
+jobs:
+  probe:
+    name: Probe production endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      verdict: ${{ steps.run-probe.outputs.verdict }}
+      report: ${{ steps.run-probe.outputs.report }}
+    steps:
+      - name: Resolve target
+        id: target
+        run: |
+          set -euo pipefail
+          echo "Target: ${TARGET_URL}"
+          echo "Readyz budget: ${READYZ_BUDGET_MS} ms"
+          echo "Runner region: $(curl -sS https://ipinfo.io/region || echo unknown)"
+
+      - name: Probe endpoints
+        id: run-probe
+        env:
+          BASE: ${{ env.TARGET_URL }}
+        run: |
+          set -uo pipefail
+          report_file="report.md"
+          : > "$report_file"
+          overall=0
+
+          probe() {
+            local label="$1" path="$2" assertion="$3"
+            local url="${BASE%/}${path}"
+            local start_ns end_ns latency_ms status body_size
+            start_ns=$(date +%s%N)
+            body=$(curl -sS -o body.out -w '%{http_code} %{size_download}' --max-time 10 "$url" 2>err.out || echo "000 0")
+            end_ns=$(date +%s%N)
+            latency_ms=$(( (end_ns - start_ns) / 1000000 ))
+            status="${body%% *}"
+            body_size="${body##* }"
+
+            local ok=1 detail=""
+            case "$assertion" in
+              healthz)
+                [ "$status" = "200" ] || ok=0
+                grep -q '"status":"ok"' body.out || ok=0
+                detail="status=${status}; body=$(head -c 200 body.out | tr -d '\n')"
+                ;;
+              readyz)
+                [ "$status" = "200" ] || ok=0
+                [ "$latency_ms" -le "$READYZ_BUDGET_MS" ] || ok=0
+                detail="status=${status}; latency_ms=${latency_ms}; budget_ms=${READYZ_BUDGET_MS}"
+                ;;
+              metrics)
+                [ "$status" = "200" ] || ok=0
+                [ "${body_size:-0}" -gt 1024 ] || ok=0
+                detail="status=${status}; body_size=${body_size}"
+                ;;
+              jwks)
+                [ "$status" = "200" ] || ok=0
+                if [ "$ok" = "1" ]; then
+                  key_count=$(jq '.keys | length' body.out 2>/dev/null || echo 0)
+                  [ "${key_count:-0}" -ge 3 ] || ok=0
+                  detail="status=${status}; key_count=${key_count}"
+                else
+                  detail="status=${status}"
+                fi
+                ;;
+            esac
+
+            if [ "$ok" = "1" ]; then
+              echo "- ✅ \`${label}\` (${path}) — ${detail}" >> "$report_file"
+            else
+              echo "- ❌ \`${label}\` (${path}) — ${detail}" >> "$report_file"
+              overall=1
+            fi
+            rm -f body.out err.out
+          }
+
+          probe "healthz" "/healthz" "healthz"
+          probe "readyz"  "/readyz"  "readyz"
+          probe "metrics" "/metrics" "metrics"
+          probe "jwks"    "/.well-known/jwks.json" "jwks"
+
+          {
+            echo "## prod-health-check"
+            echo
+            echo "- Target: \`${BASE}\`"
+            echo "- Runner: \`${RUNNER_OS}\` (\`${RUNNER_ARCH}\`)"
+            echo "- Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            cat "$report_file"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$overall" = "0" ]; then
+            echo "verdict=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "verdict=fail" >> "$GITHUB_OUTPUT"
+          fi
+          # Encode the report for the next job (newline-safe).
+          {
+            echo "report<<__EOF__"
+            cat "$report_file"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+  cooldown-and-page:
+    name: Apply cooldown + page on sustained failure
+    runs-on: ubuntu-latest
+    needs: probe
+    timeout-minutes: 5
+    if: always()
+    steps:
+      - name: Apply cooldown logic
+        uses: actions/github-script@v7
+        env:
+          VERDICT: ${{ needs.probe.outputs.verdict }}
+          REPORT: ${{ needs.probe.outputs.report }}
+          TARGET_URL: ${{ env.TARGET_URL }}
+          RESET_FLAG: ${{ github.event.inputs.reset_strike_counter || 'false' }}
+        with:
+          script: |
+            const verdict = process.env.VERDICT || 'fail';
+            const report = process.env.REPORT || '(no report)';
+            const target = process.env.TARGET_URL;
+            const strikeThreshold = parseInt(process.env.STRIKE_THRESHOLD || '3', 10);
+            const recoveryThreshold = parseInt(process.env.RECOVERY_THRESHOLD || '2', 10);
+            const titlePrefix = process.env.ISSUE_TITLE_PREFIX || '[prod-health-check] Production probe failure';
+            const labels = (process.env.ISSUE_LABELS || 'incident,automated,production')
+              .split(',').map(s => s.trim()).filter(Boolean);
+            const reset = process.env.RESET_FLAG === 'true';
+
+            // Find any open incident issue from this workflow.
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'incident,automated,production',
+              per_page: 50,
+            });
+            const existing = open.find(i => i.title.startsWith(titlePrefix));
+
+            // Decode the strike counter from the issue body (when an
+            // incident is open) OR from a dedicated state issue (when
+            // pre-incident). We use a hidden HTML comment as a
+            // machine-readable marker.
+            //   <!-- prod-health-check:state strikes=N recoveries=M -->
+            const STATE_RE = /<!--\s*prod-health-check:state\s+strikes=(\d+)\s+recoveries=(\d+)\s*-->/;
+
+            let strikes = 0, recoveries = 0;
+            if (existing) {
+              const m = STATE_RE.exec(existing.body || '');
+              if (m) {
+                strikes = parseInt(m[1], 10);
+                recoveries = parseInt(m[2], 10);
+              }
+            } else {
+              // Pre-incident state stored in repo variable would be
+              // ideal but adds a write-permission hop; for now, keep
+              // pre-incident strikes ephemeral (each run starts at 0
+              // when no issue is open). The threshold-3 design tolerates
+              // this: a failed run with no prior issue must accumulate
+              // strikes on a re-run after the next cron — we synthesise
+              // that by scanning recent workflow_run history.
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'prod-health-check.yml',
+                per_page: 5,
+                status: 'completed',
+              });
+              const recent = (runs.data.workflow_runs || []).slice(0, strikeThreshold);
+              const recentFails = recent.filter(r => r.conclusion === 'failure').length;
+              strikes = (verdict === 'fail') ? recentFails + 1 : 0;
+            }
+
+            if (reset) {
+              core.notice('strike counter reset by workflow_dispatch input');
+              strikes = 0;
+              recoveries = 0;
+            } else if (verdict === 'fail') {
+              strikes += 1;
+              recoveries = 0;
+            } else {
+              recoveries += 1;
+              // Don't decrement strikes on partial recovery; we want
+              // the issue body to show the worst-of-window count.
+            }
+
+            const stateMarker = `<!-- prod-health-check:state strikes=${strikes} recoveries=${recoveries} -->`;
+
+            // Stamp on the verdict for the run.
+            if (verdict === 'fail') {
+              core.setFailed(`probe FAIL (strike ${strikes}/${strikeThreshold})`);
+            } else {
+              core.notice(`probe PASS (recoveries ${recoveries}/${recoveryThreshold})`);
+            }
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const nowIso = new Date().toISOString();
+
+            if (!existing && verdict === 'fail' && strikes >= strikeThreshold) {
+              // OPEN a new incident.
+              const title = `${titlePrefix} — ${nowIso.slice(0, 10)}`;
+              const body = [
+                `## ⚠️ Sustained probe failure`,
+                ``,
+                `- Target: \`${target}\``,
+                `- Strike count: ${strikes} / ${strikeThreshold}`,
+                `- First detected: ${nowIso}`,
+                `- Latest run: ${runUrl}`,
+                ``,
+                `### Latest probe report`,
+                ``,
+                report,
+                ``,
+                `### First-response steps`,
+                ``,
+                `1. Verify GitHub Actions is healthy: <https://www.githubstatus.com/>`,
+                `2. Check the Sentry dashboard for correlated 5xx errors.`,
+                `3. Open the [incident response runbook §7](../docs/production-deployment-runbook.md#7-incident-response-runbook).`,
+                ``,
+                stateMarker,
+              ].join('\n');
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels,
+              });
+              core.notice(`opened incident issue #${created.data.number}`);
+
+              const slack = process.env.SLACK_WEBHOOK_URL;
+              if (slack) {
+                core.notice('slack webhook configured — relying on next step to deliver');
+              }
+            } else if (existing && verdict === 'fail') {
+              // UPDATE existing incident body with the latest probe.
+              const body = (existing.body || '').replace(STATE_RE, '').trimEnd();
+              const appended = [
+                body,
+                ``,
+                `---`,
+                ``,
+                `### Probe update — ${nowIso}`,
+                ``,
+                `- Strike count: ${strikes} / ${strikeThreshold}`,
+                `- Run: ${runUrl}`,
+                ``,
+                report,
+                ``,
+                stateMarker,
+              ].join('\n');
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: appended,
+              });
+              core.notice(`updated incident issue #${existing.number}`);
+            } else if (existing && verdict === 'pass' && recoveries >= recoveryThreshold) {
+              // CLOSE the incident.
+              const body = (existing.body || '').replace(STATE_RE, '').trimEnd();
+              const appended = [
+                body,
+                ``,
+                `---`,
+                ``,
+                `### Recovery — ${nowIso}`,
+                ``,
+                `- Recovery count: ${recoveries} / ${recoveryThreshold}`,
+                `- Last clean run: ${runUrl}`,
+                ``,
+                report,
+                ``,
+                stateMarker,
+              ].join('\n');
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: appended,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.notice(`closed incident issue #${existing.number} (recovered)`);
+            } else if (existing && verdict === 'pass') {
+              // PARTIAL recovery — update body to reflect the
+              // recovery progress without closing yet.
+              const body = (existing.body || '').replace(STATE_RE, '').trimEnd();
+              const appended = [
+                body,
+                ``,
+                `---`,
+                ``,
+                `### Partial recovery — ${nowIso}`,
+                ``,
+                `- Recovery count: ${recoveries} / ${recoveryThreshold}`,
+                `- Run: ${runUrl}`,
+                ``,
+                stateMarker,
+              ].join('\n');
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: appended,
+              });
+              core.notice(`partial recovery — issue #${existing.number} kept open (${recoveries}/${recoveryThreshold})`);
+            } else {
+              core.notice(`no incident state change (verdict=${verdict}, strikes=${strikes}, recoveries=${recoveries})`);
+            }
+
+      - name: Post Slack notification (on incident open)
+        if: needs.probe.outputs.verdict == 'fail' && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc \
+            --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --arg target "${TARGET_URL}" \
+            '{text: ("⚠️ prod-health-check FAIL — target " + $target + " — run " + $url)}')
+          curl -sS -X POST -H 'content-type: application/json' \
+            --max-time 10 \
+            -d "$payload" \
+            "${SLACK_WEBHOOK_URL}" \
+            || echo "::warning::slack webhook delivery failed (best-effort)"

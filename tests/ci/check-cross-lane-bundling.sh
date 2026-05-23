@@ -58,6 +58,20 @@
 #     branch protection (see docs/agent-handoff-protocol.md §3.5
 #     for the procedure to flip a workflow to required status).
 #
+# Wave 10 refinements (Vasquez):
+#   - SHARED-FILE table BROADENED: `docs/agent-handoff-protocol.md`
+#     is now co-authored by Vasquez (concurrent-agent safety §5 +
+#     stash-discipline ownership) and Apone (branch-protection
+#     runbook + lock-file relocation §3.6/§3.7). The bundling
+#     check now strips shared-file paths from the per-commit lane
+#     set BEFORE computing single-lane attribution — so a Vasquez
+#     commit touching ONLY `docs/agent-handoff-protocol.md` + a
+#     test artefact doesn't get rejected as cross-lane.
+#   - Companion `lane-map.json` carries the new
+#     `shared_files.agent_handoff_protocol_md_shared` entry.
+#   - Bundling-check coverage is now broadly tested at the contract
+#     level by `Phase_K_W10/Vasquez/VasquezW10SelfLaneTests.cs`.
+#
 # Owner: Vasquez (QA).
 
 set -euo pipefail
@@ -213,9 +227,15 @@ agent_for_author() {
 
 is_shared_file() {
   # Returns 0 (true) when the path is in the shared-file table.
+  # W10 broadening (Vasquez): `docs/agent-handoff-protocol.md` is now
+  # co-authored by both Vasquez (QA stash-discipline + concurrent-safety
+  # sections) and Apone (infra branch-protection runbook + lock-file
+  # relocation). Mirror entry under `shared_files` in lane-map.json.
   local p="$1"
   case "$p" in
     src/frontend/autotable-src/tests/selectors.md|tests/selectors.md)
+      return 0 ;;
+    docs/agent-handoff-protocol.md)
       return 0 ;;
     *)
       return 1 ;;
@@ -229,6 +249,8 @@ shared_file_authors() {
   case "$p" in
     src/frontend/autotable-src/tests/selectors.md|tests/selectors.md)
       echo "hicks vasquez" ;;
+    docs/agent-handoff-protocol.md)
+      echo "apone vasquez" ;;
     *)
       echo "" ;;
   esac

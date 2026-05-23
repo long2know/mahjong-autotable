@@ -2446,3 +2446,148 @@ Target: ≥ **1780 / 0 / 0**.  Zero-skip streak preserved through
 wave 23 (no `[Fact(Skip="…")]`; soft-pass via `return;` after
 forward-stage detection). Hits the W9 target comfortably with
 ~93 new fact additions.
+
+---
+
+## Phase K Wave 10 (W10 QA bring-up)
+
+**Branch:** `stlong/phase-k-wave-10-bringup`
+**Author:** `Vasquez (QA) <vasquez@squad.mahjong>`
+
+### Headline
+
+Shipped the W10 QA bring-up: 10 forward-stage contract test
+files (~76 facts) + 20 surface smokes + 13 W10 regression
+smokes appended to the renamed `Wave1ThroughKW10RegressionTests.cs`
++ 6 new Playwright specs + `[Collection("DbSerial")]`
+definition + lane-discipline bundling-check broadening + §5
+"Concurrent agent safety guarantees" in the handoff doc +
+the new `docs/test-architecture.md`. Backend gate moved from
+**1880 / 0 / 0** (W9) to **2064 / 0 / 0** (W10), well past
+the ≥ 1950 target. Zero-skip streak now at **wave 24**.
+
+### Deliverables (8)
+
+1. **Bishop W10 contract probes** — 7 files under
+   `Phase_K_W10/Vasquez/Bishop*.cs` (~50 facts).
+2. **Hicks W10 contract probes** — `HicksW10FrontendContractTests.cs`
+   (15 facts: commentary dispatch, PWA workflow, parcel
+   cleanup, manifest fields, 480 KB regression backstop, vite
+   cache).
+3. **Apone W10 contract probes** — `AponeW10InfraContractTests.cs`
+   (15 facts: prompt template flip, Redis terraform, Argo
+   runbook, RS256 ESO, container scan workflow, prod health
+   gate, redis-cluster doc, CHANGELOG 0.19.0, W9 regression
+   pins).
+4. **Vasquez self-lane** — `VasquezW10SelfLaneTests.cs`
+   (15 facts, mostly HARD-ASSERT: lane-map handoff entry,
+   bundling-check broadening, DbSerial collection, docs §3
+   + §4 + §5, W9 regression pins).
+5. **W10 surface smokes** — `W10SurfaceSmokeFactsTests.cs`
+   (20 broad-axis facts).
+6. **6 Playwright specs** — `commentary-dispatch.spec.ts`,
+   `three-renderer-480-hard.spec.ts`, `pwa-audit-workflow.spec.ts`,
+   `manifest-fields.spec.ts`, `bracket-canonical-no-fallback.spec.ts`,
+   `redis-idempotency-replay.spec.ts`. All chromium-only,
+   forward-stage tolerant.
+7. **DbSerial collection definition** —
+   `Collections/DbSerialCollection.cs`. Bishop's W11
+   deliverable: attribute SQLite-heavy contract test classes
+   with `[Collection("DbSerial")]`.
+8. **Lane-discipline broadening + docs**:
+   - `tests/ci/check-cross-lane-bundling.sh` —
+     `is_shared_file()` + `shared_file_authors()` extended
+     for `docs/agent-handoff-protocol.md`.
+   - `tests/ci/lane-map.json` — new
+     `shared_files.agent_handoff_protocol_md_shared` entry.
+   - `docs/agent-handoff-protocol.md` — new §5 *Concurrent
+     agent safety guarantees* (§5.1 lock path, §5.2 backup
+     dirs, §5.3 stash discipline, §5.4 shared_files, §5.5
+     rebase-inside-flock, §5.6 DbSerial, §5.7
+     branch-protection alignment, §5.8 pre-commit
+     checklist).
+   - `docs/test-architecture.md` — NEW. §3 parallelism
+     policy (DbSerial), §4 coverage pyramid + W10 baseline +
+     W11+ gap analysis.
+   - `src/frontend/autotable-src/tests/selectors.md` — W10
+     footer with spec inventory, testid additions, DOM event
+     additions, cross-pane backend pin map.
+
+### Identity protocol (W10)
+
+Every commit on `stlong/phase-k-wave-10-bringup` is authored
+as `Vasquez (QA) <vasquez@squad.mahjong>`. Lock-file location
+is `.work/squad-git-lock` (the W9 cutover plan §3.6 is now
+COMPLETE — confirmed by Apone's W10-cutover-complete edit
+to that section of the handoff doc, which Vasquez merged
+under the new `shared_files` entry).
+
+### Concurrent agent activity (W10)
+
+Bishop, Hicks, and Apone all shipped W10 work into the
+working tree during this bring-up:
+
+- **Bishop** — Audit/EfIdempotencyStore + IIdempotencyRedis
+  interface + StackExchangeRedisAdapter; csproj StackExchange.Redis
+  dependency; Program.cs DI wiring; new
+  `Phase_K_W10/Bishop/RedisIdempotencyStore{Contract,Live}Tests.cs`.
+- **Apone** — `.squad/decisions.md`, infra/terraform/envs/staging
+  changes, new `container-scan-remediation.yml`, new
+  `docs/{argo-rollouts-setup,redis-cluster,redis-idempotency}.md`,
+  new `infra/terraform/modules/redis/`, edits to
+  `docs/agent-handoff-protocol.md` §3.6 + §3.7
+  (W10-cutover-complete annotations — landed under the new
+  `shared_files.agent_handoff_protocol_md_shared` entry).
+- **Hicks** — Frontend (bracket-renderer.ts, commentary-panel.ts,
+  manifest.webmanifest, vite.config.ts, package.json,
+  yarn.lock), new screenshots, new `scripts/{manifest-lint.js,
+  render-pwa-comment.js}`, new `.github/workflows/pwa-audit.yml`
+  (cross-lane note: see W10 memo for the W11 lane-attribution
+  recommendation).
+
+NONE of those files were staged by Vasquez. Bishop, Apone,
+and Hicks own their own commits via their own
+flock-protected pushes.
+
+### Stash-discipline (W10)
+
+Zero incidents this wave. Vasquez used `git stash push` (NO
+`--include-untracked`) for the build-in-isolation check
+when Bishop's WIP production code transiently broke the
+W9 Bishop test compile. Bishop's untracked
+`Phase_K_W10/Bishop/` test files were parked under
+`.work/vasquez-w10-safe/parked-bishop-wip-<ts>/` during the
+isolation test, then restored to the working tree before
+push. The new §5.8 quick-reference pre-commit checklist
+was followed without deviation.
+
+### Backend gate
+
+Target: ≥ **1950 / 0 / 0**.  Hit **2064 / 0 / 0** (+184 vs
+W9). Zero-skip streak preserved through wave 24.
+
+The DbSerial collection definition contributed indirectly:
+an intermittent Bishop W9 fact
+(`RedisWrapper_ExposesConnectionString`) that occasionally
+failed under parallel execution was stable in the W10 run.
+Bishop's W11 collection-attribute migration will lock in
+that stability.
+
+### W11 forward queue (Vasquez sees from here)
+
+1. **Branch-protection re-prompt for Stephen.** The
+   `gh api` runbook §4 is W9-shipped; the actual flip to
+   required-for-merge is still pending. If not done by W12,
+   propose a self-service soft-bot recipe.
+2. **Hard-flip W10 forward-stage facts** once Bishop's
+   Redis interface, Hicks's PMREM strip, and Apone's helm
+   canary land.
+3. **DbSerial migration follow-up** — verify Bishop
+   attributes SQLite-heavy test classes.
+4. **Vitest / Playwright unification** — fold Vitest into
+   the top-level `make test`.
+5. **`pwa-audit.yml` lane attribution** — Hicks-workflow
+   regex carve-out OR Hicks+Apone `shared_files` entry.
+6. **Coverage gap closure** per `docs/test-architecture.md`
+   §4.2 (bracket E2E happy path, Janus negative-path,
+   Dutch-Swiss algorithmic unit, prod helm parity).

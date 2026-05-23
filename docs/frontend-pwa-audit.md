@@ -227,26 +227,121 @@ rm -f .lighthouse-report.json
 (`src/frontend/autotable-src/.gitignore`) — re-generate locally
 whenever the manifest, service worker, or icon set changes.
 
-## §4 — Hand-off notes for future waves
+## §4 — Wave 10: PWA Builder CI workflow
 
-- **W10 CI integration:** wire PWA Builder's CLI behind a public
-  preview URL (Cloudflare Pages preview env) and gate releases on
-  Manifest ≥ 95% + Service Worker = 100%.
-- **LH13 category targets (proposed W10):**
-  `performance ≥ 85%`, `accessibility ≥ 95%`,
-  `best-practices ≥ 95%`, `seo ≥ 95%`. `agentic-browsing` is a
-  new LH13 category targeting LLM crawlers; current score 50%
-  is acceptable for an authenticated game client (not a content
-  site) but worth a review with Squad's marketing thread before
-  W10.
-- **Manifest field gaps:** the current manifest is missing
-  `screenshots[]` (used by Edge's Store-style install flow),
-  `id` (explicit PWA identity — recommended W3C 2024), `lang`,
-  `dir`, and `iarc_rating_id`. PWA Builder will flag these
-  when we wire the report card.
-- **W8 historical PWA score (1.00 / 100%, LH11 PWA category):**
-  preserved for reference. To reproduce, install
-  `lighthouse@11.7.1` into a throw-away project and run the
-  recipe from `git show stlong/phase-k-wave-8-bringup --
-  docs/frontend-pwa-audit.md` (the W8 recipe is still in the
-  repo's git history).
+Wave 9 closed with the local recipe (manifest-lint script +
+LH13 perf/a11y/best-practices/seo guidance) and a hand-off TODO
+to wire PR-time enforcement. Wave 10 cashes that in:
+`.github/workflows/pwa-audit.yml` runs on every push to
+`stlong/**` + `main`, every `pull_request` against `main`, and a
+nightly cron at 03:30 UTC.
+
+### Workflow shape
+
+```
+.github/workflows/pwa-audit.yml
+├─ build                  → npm ci + WAVE_NAME=$wave_tag vite build
+│                          (Vite cache restored via actions/cache)
+├─ manifest-lint          → node scripts/manifest-lint.js
+│                          (Lighthouse 11 PWA category replay,
+│                           gates on pwaScore ≥ 0.90)
+├─ lighthouse             → vite preview --strictPort
+│                          + npx lighthouse@13.3.0
+│                          (perf ≥ 0.85 / a11y ≥ 0.95 / bp ≥ 0.95
+│                            / seo ≥ 0.95 / agentic-browsing ≥ 0.50)
+└─ pr-comment             → node scripts/render-pwa-comment.js
+                            (sticky marker: <!-- pwa-audit-comment -->)
+```
+
+### The `manifest-lint` gate
+
+LH13 dropped the PWA category. To preserve a single-number
+installability signal we ship `scripts/manifest-lint.js` which
+replays the four LH11 PWA preconditions and computes a
+geometric-mean score:
+
+| Sub-score             | Weight | Source                                         |
+|-----------------------|--------|------------------------------------------------|
+| manifest              | 0.25   | Required fields present (name / short_name / start_url / display / theme_color / background_color / icons[]) |
+| icons                 | 0.25   | `purpose:any` covers 192×192 + 512×512; `purpose:maskable` ≥ 1 |
+| screenshots           | 0.25   | ≥ 1 wide (`form_factor:wide`) + ≥ 1 narrow (`form_factor:narrow`) |
+| shortcuts             | 0.25   | ≥ 1 entry with name + url                       |
+
+W10 local baseline: **pwaScore = 1.000** (all four sub-scores 1.0).
+The CI gate is 0.90 — gives one sub-score's worth of headroom for
+a future schema tightening before the workflow goes red.
+
+### Lighthouse 13 category thresholds
+
+```yaml
+# .github/workflows/pwa-audit.yml — pinned thresholds
+performance:         0.85
+accessibility:       0.95
+best-practices:      0.95
+seo:                 0.95
+agentic-browsing:    0.50   # acceptable for an authenticated game client
+```
+
+The W9 LH13 baseline numbers were the source. If a new wave
+tightens the thresholds, update both the workflow's gate values
+**and** this table.
+
+### Preview server choice
+
+`vite preview --strictPort --port 4173` serves the W10-built dist
+directly. The workflow waits up to 30 s for `curl --fail
+http://127.0.0.1:4173/` to succeed before invoking Lighthouse.
+Reasons we didn't pick a custom server:
+
+- `vite preview` honours the same `base` + asset path config as
+  the production build (no risk of an audit-only path mismatch).
+- It serves the real `manifest.webmanifest` + service worker
+  through `index.html`, so the manifest-lint and the LH13
+  audits see the same artifacts a deployed user would.
+
+### PR comment renderer
+
+`scripts/render-pwa-comment.js` reads `.pwa-score.json` (written
+by manifest-lint) + `.lighthouse-report.json` (written by
+`npx lighthouse --output=json`) and emits a Markdown comment with
+a sticky HTML marker. The workflow uses `peter-evans/create-or-
+update-comment@v4` so re-runs update in place instead of spamming
+the PR.
+
+### Vite cache integration
+
+The `build` job restores `src/frontend/autotable-src/.vite/`
+under the key
+`vite-${{ runner.os }}-${{ hashFiles('package-lock.json',
+'vite.config.ts') }}`. Either lockfile or config change busts the
+cache; source-only PRs hit warm (~18-25 s vs ~50-65 s cold —
+see `docs/frontend-build-tooling.md §5`).
+
+## §5 — Hand-off notes for future waves (refreshed at W10)
+
+- **PWA Builder CLI integration:** once a preview URL is public
+  (Cloudflare Pages preview env or GH Pages), drop in
+  `npx @pwabuilder/cli@latest report --url <preview-url>
+  --output pwabuilder.json` after the LH13 step. Gate on
+  Manifest ≥ 95% + Service Worker = 100%. The job hook is
+  already in `pwa-audit.yml` — search "TODO(W11)".
+- **LH13 baseline measurement:** the W10 thresholds in
+  `pwa-audit.yml` are conservative carry-overs from W9 manual
+  runs. After the first three nightly cron runs land, walk the
+  thresholds to the observed-minus-2-points level so the gate
+  catches real regressions.
+- **Cache hit-rate measurement (W11 task):** add a step that
+  prints `actions/cache@v4`'s "cache hit"/"cache miss" output
+  and write a 7-day rolling hit-rate to `.work/` for the squad
+  ledger.
+- **Screenshot quality:** W10 ships PNG placeholders
+  (1024×768 lobby + table + 768×1024 mobile, ~16-21 KB each).
+  Replace with real captures once the W11 cinematic-camera work
+  lands.
+- **`shortcuts[]` deep-linking:** the three W10 shortcuts point
+  at `/?action=new`, `/?action=spectate`, `/tournament/` — only
+  the third is a real route today. Wire query-param dispatch in
+  `lobby-app.ts` to honour `?action=*` before the Edge / Chromium
+  Store listings go live.
+
+## §6 — Historical recipes (preserved for reference)

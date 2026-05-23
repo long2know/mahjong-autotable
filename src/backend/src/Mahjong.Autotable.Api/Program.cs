@@ -321,8 +321,16 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>()
 // Phase K Wave 8 — Bishop. JWKS pre-marshal cache. Owns the
 // IMemoryCache the JwksCacheService projects through. Singleton so
 // the 60s TTL is shared across requests.
+// Phase K Wave 10 — Bishop hygiene: own a dedicated MemoryCache
+// with SizeLimit=16 instead of sharing the application cache, plus
+// IMeterFactory-backed hit/miss/rebuild counters and a stampede
+// gate so a thundering herd against the JWKS endpoint only pays
+// the serialisation cost once.
 builder.Services.AddMemoryCache();
-builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwksCacheService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwksCacheService>(sp =>
+    Mahjong.Autotable.Api.Auth.JwksCacheService.CreateWithDedicatedCache(
+        ttl: null,
+        meterFactory: sp.GetService<System.Diagnostics.Metrics.IMeterFactory>()));
 // Phase K Wave 6 — Bishop. Startup logger emits a single warning when
 // the resolved algorithm is HS256 so operators get a nudge toward
 // the RS256 migration. Wired as IStartupFilter so the log fires
@@ -379,6 +387,14 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.TournamentBracket
 // pipeline. Pure service (no DI deps); singleton so the tournament
 // runtime can pull a stable instance.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.SwissStandingsService>();
+
+// Phase K Wave 10 — Bishop. Dutch-system Swiss pairing service.
+// Replaces the W-J first-round-only routine in TournamentPairing
+// with a full per-round Dutch-system pairing (top-half-vs-bottom-
+// half per score group, no rematches, float-down). Registered as
+// singleton because the implementation is stateless / thread-safe.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.ISwissPairingService,
+    Mahjong.Autotable.Api.Tournament.DutchSwissPairingService>();
 
 // Phase K Wave 8 — Bishop. Bracket snapshot service. Composes the
 // generator's slot layout with the live TournamentMatch rows so the
@@ -547,6 +563,15 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IFfmpegHealthProbe,
             sp.GetRequiredService<Mahjong.Autotable.Api.Voice.JanusReadinessSupervisor>());
         builder.Services.AddHostedService(sp =>
             sp.GetRequiredService<Mahjong.Autotable.Api.Voice.JanusReadinessSupervisor>());
+
+        // Phase K Wave 10 — Bishop. Mountpoint lifecycle registry +
+        // GC sweeper. Registry is the in-memory book of every active
+        // table → mountpoint mapping; the hosted service runs a slow
+        // (60s) sweep that evicts entries idle past the 5-minute TTL.
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.JanusMountpointRegistry>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.JanusMountpointLifecycleService>();
+        builder.Services.AddHostedService(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Voice.JanusMountpointLifecycleService>());
     }
 }
 
@@ -607,8 +632,17 @@ builder.Services.Configure<Mahjong.Autotable.Api.Commentary.CommentaryOptions>(
 // Phase K Wave 9 — Bishop. Toggle via Idempotency:StoreImpl:
 //   * "InMemory" (default for tests + single-replica dev)
 //   * "Ef"       (durable; persists to the IdempotencyEntries table)
-//   * "Redis"    (optional; falls back to Ef until the Redis client
-//                 wire lands in a follow-up wave)
+//   * "Redis"    (multi-replica; W10 wires the StackExchange.Redis
+//                 IConnectionMultiplexer client. Falls back to the
+//                 EF store on connection-string-absent / connect
+//                 failure so the toggle is degradation-safe.)
+//
+// Phase K Wave 10 — Bishop. The Redis impl now uses the real
+// StackExchange.Redis client. The IConnectionMultiplexer is
+// registered as a singleton (host-managed lifetime) and only
+// constructed when the connection string is non-empty AND the
+// store impl is "Redis"; otherwise the registration is skipped so
+// in-memory/EF default deployments have zero Redis runtime cost.
 {
     var storeImpl = builder.Configuration.GetValue<string>("Idempotency:StoreImpl") ?? "InMemory";
     if (string.Equals(storeImpl, "Ef", StringComparison.OrdinalIgnoreCase))
@@ -619,14 +653,37 @@ builder.Services.Configure<Mahjong.Autotable.Api.Commentary.CommentaryOptions>(
     }
     else if (string.Equals(storeImpl, "Redis", StringComparison.OrdinalIgnoreCase))
     {
+        // EF fallback is always registered so a Redis outage falls
+        // back to the durable RDBMS store rather than dropping
+        // idempotency entirely.
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.EfIdempotencyStore>();
-        builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.IIdempotencyStore>(sp =>
-            new Mahjong.Autotable.Api.Audit.RedisIdempotencyStore(
-                sp.GetRequiredService<Mahjong.Autotable.Api.Audit.EfIdempotencyStore>(),
-                sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Audit.RedisIdempotencyStore>>(),
-                builder.Configuration.GetConnectionString("Redis")
-                    ?? builder.Configuration.GetValue<string>("Idempotency:RedisConnection")
-                    ?? string.Empty));
+        var redisConn = builder.Configuration.GetValue<string>("Idempotency:Redis:ConnectionString")
+            ?? builder.Configuration.GetConnectionString("Redis")
+            ?? builder.Configuration.GetValue<string>("Idempotency:RedisConnection")
+            ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(redisConn))
+        {
+            // The multiplexer is expensive to build (TCP + handshake) so
+            // share a single singleton across the host. Lazy<T> ensures
+            // the connect attempt happens at first resolve so a
+            // misconfigured connection string surfaces as a logged
+            // warning + EF fallback rather than a startup abort.
+            builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(_ =>
+                StackExchange.Redis.ConnectionMultiplexer.Connect(redisConn));
+            builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.IIdempotencyStore>(sp =>
+                new Mahjong.Autotable.Api.Audit.RedisIdempotencyStore(
+                    sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>(),
+                    sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Audit.RedisIdempotencyStore>>(),
+                    sp.GetRequiredService<Mahjong.Autotable.Api.Audit.EfIdempotencyStore>()));
+        }
+        else
+        {
+            // Toggle says Redis but no connection — log + fall back to
+            // EF so the deployment doesn't silently lose the durability
+            // contract.
+            builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.IIdempotencyStore>(sp =>
+                sp.GetRequiredService<Mahjong.Autotable.Api.Audit.EfIdempotencyStore>());
+        }
     }
     else
     {

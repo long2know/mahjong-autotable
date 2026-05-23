@@ -107,10 +107,17 @@ public sealed record CommentaryItem(
 ///   <item><b>EmotionIntensity</b> — 0.0..1.0 inclusive. Downstream
 ///         renderers map this to font weight, voice tempo, or color
 ///         saturation. Values outside [0,1] fail the contract.</item>
-///   <item><b>TileReferences</b> — wire-name tile ids referenced by
-///         <see cref="Text"/> (e.g. <c>"man5"</c>, <c>"pin3"</c>,
-///         <c>"sou9"</c>). Empty array when the utterance carries no
-///         tile reference; never null.</item>
+///   <item><b>TileReferences</b> — typed tile references for the
+///         tiles the <see cref="Text"/> mentions (e.g.
+///         <c>{ TileId="man5", Suit="man", Rank=5 }</c>). Empty
+///         list when the utterance carries no tile reference;
+///         never null. Phase K Wave 10 promoted the field from
+///         a bare <c>string[]</c> to the typed
+///         <see cref="TileReference"/> shape so the wire carries
+///         the parsed suit / rank alongside the wire id — this
+///         removes a parser round-trip in the renderer and
+///         catches malformed ids at generation time rather than
+///         at render time.</item>
 ///   <item><b>GeneratedAt</b> — UTC timestamp the record was minted.
 ///         <see cref="DateTimeOffset"/> so the offset is wire-visible
 ///         and replay tooling can sort across generator runs.</item>
@@ -123,8 +130,84 @@ public sealed record CommentaryRecord(
     string Speaker,
     string Text,
     double EmotionIntensity,
-    string[] TileReferences,
+    IReadOnlyList<TileReference> TileReferences,
     DateTimeOffset GeneratedAt);
+
+/// <summary>
+/// Phase K Wave 10 — Bishop. Typed tile reference attached to a
+/// <see cref="CommentaryRecord"/>. The wire id matches the
+/// canonical mahjong tile vocabulary (<c>man1..man9</c>,
+/// <c>pin1..pin9</c>, <c>sou1..sou9</c>, plus the honor tiles
+/// <c>east|south|west|north|haku|hatsu|chun</c>).
+///
+/// <list type="bullet">
+///   <item><b>TileId</b> — the canonical wire id (<c>"man5"</c>,
+///         <c>"chun"</c>). Empty string when the parser couldn't
+///         identify a tile.</item>
+///   <item><b>Suit</b> — one of <c>"man"</c>, <c>"pin"</c>,
+///         <c>"sou"</c>, <c>"wind"</c>, <c>"dragon"</c>, or
+///         <c>"unknown"</c>.</item>
+///   <item><b>Rank</b> — 1..9 for suit tiles; 0 for honor tiles
+///         (callers key on <see cref="TileId"/> for honors).</item>
+/// </list>
+/// </summary>
+public sealed record TileReference(string TileId, string Suit, int Rank)
+{
+    /// <summary>The "unknown" sentinel returned by
+    /// <see cref="Parse"/> when the wire id cannot be classified.
+    /// The sentinel is never null so callers can safely render the
+    /// tileId without a separate null check.</summary>
+    public static readonly TileReference Unknown =
+        new(TileId: string.Empty, Suit: "unknown", Rank: 0);
+
+    private static readonly HashSet<string> Winds =
+        new(StringComparer.OrdinalIgnoreCase) { "east", "south", "west", "north" };
+    private static readonly HashSet<string> Dragons =
+        new(StringComparer.OrdinalIgnoreCase) { "haku", "hatsu", "chun" };
+
+    /// <summary>
+    /// Phase K Wave 10 — Bishop. Parse a wire-name tile id (e.g.
+    /// <c>"man5"</c>, <c>"chun"</c>) into its typed
+    /// <see cref="TileReference"/> shape. Unknown / malformed
+    /// ids return <see cref="Unknown"/> instead of throwing —
+    /// the generator must never crash on a stray reference.
+    /// </summary>
+    public static TileReference Parse(string? wireName)
+    {
+        if (string.IsNullOrWhiteSpace(wireName)) return Unknown;
+        var trimmed = wireName.Trim();
+        // Suit tiles: "man5", "pin3", "sou9".
+        if (trimmed.Length >= 4)
+        {
+            var suitPrefix = trimmed.Substring(0, 3).ToLowerInvariant();
+            if (suitPrefix is "man" or "pin" or "sou")
+            {
+                if (int.TryParse(trimmed.AsSpan(3), out var rank) && rank is >= 1 and <= 9)
+                {
+                    return new TileReference(
+                        TileId: suitPrefix + rank,
+                        Suit: suitPrefix,
+                        Rank: rank);
+                }
+            }
+        }
+        if (Winds.Contains(trimmed))
+        {
+            return new TileReference(
+                TileId: trimmed.ToLowerInvariant(),
+                Suit: "wind",
+                Rank: 0);
+        }
+        if (Dragons.Contains(trimmed))
+        {
+            return new TileReference(
+                TileId: trimmed.ToLowerInvariant(),
+                Suit: "dragon",
+                Rank: 0);
+        }
+        return Unknown;
+    }
+}
 
 /// <summary>
 /// Phase K Wave 7 — Bishop. Canonical wire-string vocabulary for

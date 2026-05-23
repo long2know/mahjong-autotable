@@ -205,6 +205,22 @@ function copyStaticAssets(): {
         const iconDst = `${out}/img/${name}`;
         if (existsSync(iconSrc)) copyFileSync(iconSrc, iconDst);
       }
+      // Phase K Wave 10 — Manifest gap-fills.  Lighthouse 13 +
+      // PWA Builder flag the manifest's `screenshots[]` entries
+      // as 404s without these copies.  The placeholder assets
+      // live next to the icons (committed under `img/`).  See
+      // `docs/frontend-pwa-audit.md §4` for the Wave 10 manifest
+      // checklist + the screenshot generation recipe.
+      const screenshotNames = [
+        'screenshot-lobby.auto.png',
+        'screenshot-table.auto.png',
+        'screenshot-mobile.auto.png',
+      ];
+      for (const name of screenshotNames) {
+        const src = `${root}/img/${name}`;
+        const dst = `${out}/img/${name}`;
+        if (existsSync(src)) copyFileSync(src, dst);
+      }
     },
   };
 }
@@ -440,6 +456,108 @@ const MODULE_STUBS: Record<string, { kind: 'function' | 'class'; parent?: string
 \trender() {}
 `,
   },
+  // Phase K Wave 10 — PMREMGenerator strip.
+  //
+  // PMREMGenerator (Prefiltered, Mipmapped Radiance Environment Map
+  // Generator) is the texture pipeline three.js uses to pre-process
+  // cube + equirectangular environment maps into a cubeUV layout the
+  // PBR materials sample from.  It's referenced by
+  // `WebGLCubeUVMaps#get()` (three.module.js:~3631) inside an
+  // `if (isEquirectMap || isCubeMap)` branch — the autotable scene
+  // uses ONLY plain 2D textures (`tiles.auto.png`, `sticks.auto.png`,
+  // `center.auto.png`, `winds.auto.png`) so the branch is dead at
+  // runtime.  Rollup cannot drop the class because the call
+  // `new PMREMGenerator(renderer)` is statically reachable from
+  // `WebGLCubeUVMaps`.
+  //
+  // The stub keeps the class declaration (so `new PMREMGenerator(...)`
+  // doesn't throw if the runtime branch ever evaluates true) but
+  // empties the body — every public method returns null / no-ops.
+  // The seven private helper functions (`_createPlanes`,
+  // `_createRenderTarget`, `_setViewport`, `_getBlurShader`,
+  // `_getEquirectMaterial`, `_getCubemapMaterial`,
+  // `_getCommonVertexShader`) become unreferenced once the class
+  // body is gutted; Rollup's tree-shake (with our
+  // `moduleSideEffects: id => !id.includes('three/')` config) drops
+  // them naturally, along with the ~250-line glsl shader strings
+  // they embed.
+  //
+  // Risk: if the autotable scene ever introduces an env map
+  // (`scene.environment = new CubeTexture(...)`) or a material with
+  // `envMap` set, the stub's no-op `fromCubemap` / `fromEquirectangular`
+  // will silently return null and the renderer will skip the env
+  // sample.  A scene-graph audit (W10) confirms no envMap usage; the
+  // W10 retro should re-check before adding any PBR materials.
+  //
+  // See `docs/frontend-three-budget.md §6` for the autopsy.
+  PMREMGenerator: {
+    kind: 'class',
+    body: `\tconstructor() {
+\t\tthis._renderer = null;
+\t\tthis._pingPongRenderTarget = null;
+\t\tthis._lodMax = 0;
+\t\tthis._cubeSize = 0;
+\t\tthis._lodPlanes = [];
+\t\tthis._sizeLods = [];
+\t\tthis._sigmas = [];
+\t\tthis._blurMaterial = null;
+\t\tthis._cubemapMaterial = null;
+\t\tthis._equirectMaterial = null;
+\t}
+\tfromScene() { return null; }
+\tfromEquirectangular() { return null; }
+\tfromCubemap() { return null; }
+\tcompileCubemapShader() {}
+\tcompileEquirectangularShader() {}
+\tdispose() {}
+`,
+  },
+  // Phase K Wave 10 — PMREMGenerator helper functions.
+  //
+  // After the PMREMGenerator class body is stubbed above, the seven
+  // private helpers below are unreferenced.  Rollup's tree-shake
+  // *would* drop them in theory, but the `_getBlurShader` /
+  // `_getEquirectMaterial` / `_getCubemapMaterial` bodies each
+  // embed ~3-4 kB of GLSL shader strings as template literals,
+  // and Rollup's tree-shake keeps them because the helpers sit
+  // alongside the cube_uv shader chunk's exported barrel
+  // (`ShaderChunk.cube_uv_reflection_fragment` at line 603 of
+  // three.module.js) which the bundler conservatively retains.
+  //
+  // Stubbing them explicitly is what actually drops the shader
+  // strings from the renderer chunk.  Each helper returned a
+  // ShaderMaterial or BufferGeometry; the stubs return null/empty
+  // placeholders.  These helpers are only ever called from inside
+  // the now-stubbed PMREMGenerator class, so the no-op returns
+  // are unreachable at runtime.
+  _getBlurShader: {
+    kind: 'function',
+    body: '\treturn null;\n',
+  },
+  _getEquirectMaterial: {
+    kind: 'function',
+    body: '\treturn null;\n',
+  },
+  _getCubemapMaterial: {
+    kind: 'function',
+    body: '\treturn null;\n',
+  },
+  _getCommonVertexShader: {
+    kind: 'function',
+    body: '\treturn "";\n',
+  },
+  _createPlanes: {
+    kind: 'function',
+    body: '\treturn { lodPlanes: [], sizeLods: [], sigmas: [] };\n',
+  },
+  _createRenderTarget: {
+    kind: 'function',
+    body: '\treturn null;\n',
+  },
+  _setViewport: {
+    kind: 'function',
+    body: '\n',
+  },
 };
 
 function stripModuleFeatures(): { name: string; enforce: 'pre'; transform(code: string, id: string): { code: string; map: null } | null } {
@@ -562,6 +680,20 @@ export default defineConfig({
   root: __dirname,
   publicDir: false,
   base: './',
+  // ── Phase K Wave 10 — Disk-persisted Vite cache ────────────────
+  //
+  // Vite's dep-pre-bundle + transform cache lands in `cacheDir` by
+  // default; pinning it inside the autotable-src tree (rather than
+  // `node_modules/.vite`) means CI can mount `.vite/` as a cached
+  // build artifact keyed on `package-lock.json` + `vite.config.ts`
+  // hash.  Cold `npm run build:vite` shrinks ~28-32s → ~9-12s on
+  // warm cache (~3× speed-up); see
+  // `docs/frontend-build-tooling.md §5 "Build cache"`.
+  //
+  // `.vite/` is in `.gitignore` (added W10) so it never lands in
+  // commits.  Wipe with `rm -rf .vite` if a corrupted cache causes
+  // a stale transform (e.g. after upgrading three or rollup).
+  cacheDir: resolve(__dirname, '.vite'),
   // ── Phase K Wave 8 — Dev-server SignalR + WebSocket proxy ─────
   //
   // The autotable frontend talks to Bishop's ASP.NET Core backend

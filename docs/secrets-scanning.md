@@ -165,7 +165,112 @@ gh workflow run secrets-history-sweep.yml --ref main
 The summary: rewriting history reduces the attack surface; it
 does NOT eliminate it. ROTATION IS THE PRIMARY DEFENSE.
 
-## 4. Operational cadence
+## 4. CVE remediation flow
+
+> Phase K Wave 10 — Apone (DevOps).
+
+This section describes how the squad turns **container-scan
+findings** into remediation work. Secret leaks (§3) and CVEs are
+two different threats with two different feedback loops; the
+sections are kept side-by-side because the triage on-call uses
+both.
+
+### 4.1 The two scanners
+
+| Workflow | Triggers | Gates | What it produces |
+| --- | --- | --- | --- |
+| [`container-scan.yml`](../.github/workflows/container-scan.yml) (W3 / W6) | every PR, push to main, nightly 04:00 UTC | block-merge on HIGH+CRITICAL CVE (PR) | SARIF → Security tab; sticky PR comment; `container-scan-findings-<run>` artefact |
+| [`container-scan-remediation.yml`](../.github/workflows/container-scan-remediation.yml) (W10) | nightly 05:00 UTC (1 h after `container-scan`), `workflow_run` on failure, manual | no merge gate; opens / updates a GitHub issue | de-duped open issue with title `[container-scan] CVE remediation — <YYYY-MM-DD>`, labels `security` + `automated` |
+
+The first one is the **gate**; the second is the **paper trail**.
+
+### 4.2 Triage tree
+
+Given an open `[container-scan] CVE remediation` issue:
+
+1. **Is there an upstream fix available?** (Check the `Fixed`
+   column in the issue body.)
+   * **Yes →** §4.3 (base-image bump OR project-file pin).
+   * **No  →** §4.4 (W6 allowlist).
+2. **Is the CVE in transitive-dep territory (npm / NuGet)?**
+   Bump the direct pin in the project file; let the lockfile
+   pull the patched transitive.
+3. **Is the CVE in the OS DB (alpine / debian) of the image?**
+   Bump the `FROM` directive in `Dockerfile` to the latest patch
+   tag — alpine usually publishes a same-day patch.
+4. **Re-run** `container-scan.yml` (push the fix to a PR; the
+   gate runs automatically). When the gate goes green, the
+   remediation issue can be closed.
+
+### 4.3 Base-image bump (most common path)
+
+```bash
+# Inspect the current FROM lines.
+git grep '^FROM ' Dockerfile
+
+# Look up the latest patch tag for the same minor.
+docker pull mcr.microsoft.com/dotnet/aspnet:8.0
+docker inspect mcr.microsoft.com/dotnet/aspnet:8.0 \
+  --format '{{ index .RepoDigests 0 }}'
+
+# Edit Dockerfile, open PR, push.
+# The PR will trigger container-scan; gate verdict will tell
+# you whether the bump cleared the CVE.
+```
+
+If the CVE persists after the bump:
+
+* The CVE may be in a `RUN apt-get install`-installed package
+  rather than the base image itself — `apt-get update` in the
+  Dockerfile, or pin the package explicitly.
+* Open a `triage` issue with the persistent CVE id and link
+  to the upstream issue tracker; the W6 allowlist is the
+  fallback (§4.4).
+
+### 4.4 W6 allowlist (last resort)
+
+Adding a CVE to `.github/trivy-allowlist.yaml` silences the
+W6 gate for that CVE — only do this when:
+
+* Upstream has confirmed no fix is coming within the entry's
+  `expires` window (W6 caps at 30 days; the workflow refuses
+  longer windows).
+* The CVE class is genuinely not exploitable in our threat
+  model (e.g. a path-traversal CVE in a CLI tool the app does
+  not invoke).
+
+Example entry shape (the W6 workflow validates this schema —
+see `container-scan.yml` allowlist-check job):
+
+```yaml
+allowed:
+  - id: CVE-2026-12345
+    justification: |
+      curl 8.6.0 SSRF — not exploitable; the app never calls
+      curl with a user-controlled URL. Upstream tracking:
+      https://github.com/curl/curl/issues/12345
+    added: 2026-08-09
+    expires: 2026-09-08
+```
+
+When the allowlist entry expires, the W6 `allowlist-check`
+job FAILS the workflow, forcing the on-call to either re-
+evaluate or rotate the entry.
+
+### 4.5 Closing the remediation loop
+
+| Trigger | Action |
+| --- | --- |
+| Base-image bump or pin upgrade lands | The next `container-scan-remediation` cron updates the open issue with a smaller (or empty) CVE list; close manually once the list is empty. |
+| Allowlist entry lands | The CVE no longer appears in the gate output; the remediation issue body shrinks accordingly. |
+| Allowlist entry expires | W6 `allowlist-check` fails the next `container-scan` run; remediation issue re-opens (or is re-surfaced via the workflow's update path). |
+
+The remediation issue is **the single source of truth** for "is
+there a CVE we owe an answer on?" Avoid opening parallel issues
+for the same CVE class — the workflow's de-dup key is the title
+prefix `[container-scan] CVE remediation`.
+
+## 5. Operational cadence
 
 | Cadence | Action | Owner |
 |---------|--------|-------|
@@ -177,7 +282,7 @@ does NOT eliminate it. ROTATION IS THE PRIMARY DEFENSE.
 | Within 24h of any GitGuardian / gitleaks rule-pack release | W5 sweep run with `severity-floor: MEDIUM` to surface new-rule findings | on-call |
 | After ANY secret is rotated for ANY reason | W5 sweep run to verify no other surface leaked the same value | rotator |
 
-## 5. Triage SLA
+## 6. Triage SLA
 
 | Severity | Triage time |
 |----------|-------------|
@@ -185,10 +290,12 @@ does NOT eliminate it. ROTATION IS THE PRIMARY DEFENSE.
 | MEDIUM (Sentry DSN; analytics keys; non-prod test credentials) | rotate within 24 hours; purge within 7 days |
 | LOW (placeholder strings, encoded sample keys) | add allowlist entry within 7 days |
 
-## 6. Cross-references
+## 7. Cross-references
 
 * [`.github/workflows/secrets-scan.yml`](../.github/workflows/secrets-scan.yml) — Wave-4 PR / push gate.
 * [`.github/workflows/secrets-history-sweep.yml`](../.github/workflows/secrets-history-sweep.yml) — Wave-5 history sweep (THIS workflow).
+* [`.github/workflows/container-scan.yml`](../.github/workflows/container-scan.yml) — Wave-3 / Wave-6 CVE gate.
+* [`.github/workflows/container-scan-remediation.yml`](../.github/workflows/container-scan-remediation.yml) — Wave-10 remediation issue automation.
 * [`docs/secrets.md`](secrets.md) — secret-management philosophy.
 * [`docs/secret-management.md`](secret-management.md) — secret-management operator runbook.
 * [`docs/secret-rotation.md`](secret-rotation.md) — rotation procedures per secret type.

@@ -43,7 +43,7 @@ public sealed class StubCommentaryGenerator : ICommentaryGenerator
                 Speaker: CommentarySpeakers.PlayByPlay,
                 Text: PhaseLPlaceholderMessage,
                 EmotionIntensity: 0.0,
-                TileReferences: Array.Empty<string>(),
+                TileReferences: Array.Empty<TileReference>(),
                 GeneratedAt: DateTimeOffset.UtcNow),
         };
         return Task.FromResult(records);
