@@ -24,6 +24,12 @@ resources:
   # job-migrate.yaml so the migration completes BEFORE the Deployment
   # rolls a new image. See docs/kubernetes.md.
   - job-migrate.yaml
+  # Phase K Wave 2 — Apone (DevOps). coturn TURN server scaffold for the
+  # WebRTC voice signalling hub. See docs/turn-server-setup.md for the
+  # operator runbook. Listed last so a cluster without TURN credentials
+  # can `kubectl apply -k . --prune` to peel it back without disturbing
+  # the rest of the base.
+  - turn-server.yaml
 
 images:
   - name: ghcr.io/long2know/mahjong-autotable
