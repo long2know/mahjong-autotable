@@ -1,0 +1,31 @@
+# Standalone defaults for the mahjong-postgres-sidecar subchart.
+
+image:
+  repository: postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+database: "mahjong"
+username: "mahjong"
+port: 5432
+
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "1Gi"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 999
+  runAsGroup: 999
+  fsGroup: 999
+  seccompProfile:
+    type: RuntimeDefault

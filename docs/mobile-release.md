@@ -141,6 +141,102 @@ to push a NEW build to the same tag, bump the `versionCode` /
 follow-up tag (`mobile-v0.15.0+1` is reserved syntax — use
 `mobile-v0.15.1` instead).
 
+## 4a. External testing flow (Phase K Wave 7 — Apone)
+
+[`mobile-external-testing.yml`](../.github/workflows/mobile-external-testing.yml)
+is the operator-driven promotion of an existing Internal build
+to External Testing on **both** Apple + Google distribution
+surfaces. It is NEVER triggered by a tag push — only by manual
+`workflow_dispatch`.
+
+### 4a.1 When to run
+
+After Internal Testing soak has surfaced no P0/P1 bugs (typically
+24–72 h of in-team use against a tagged build), promote to
+External Testing for the broader beta cohort. Auto-promotion on
+every tag is intentionally NOT shipped because:
+
+* The first External-Testing distribution of a new iOS version
+  triggers a 24-h Apple Beta App Review, and re-triggering
+  CANNOT cancel a review in flight.
+* External testers receive an email on promotion; pushing
+  half-baked builds erodes their willingness to upgrade.
+* Release notes for External testers are user-facing copy that
+  warrants careful authoring — the workflow takes them as a
+  required input.
+
+### 4a.2 Inputs
+
+| Input | Required | Default | Notes |
+|---|---|---|---|
+| `tag` | yes | — | `mobile-vMAJOR.MINOR.PATCH` — MUST be a tag that mobile-internal-testing.yml has already processed. |
+| `release_notes` | yes | — | ≤4000 chars; pushed to both TestFlight and Play. |
+| `ios_external_groups` | no | `External-Beta` | Comma-separated TestFlight External Group names (must already exist in App Store Connect). |
+| `android_track` | no | `beta` | Play Console Closed Testing track ID. |
+| `release_status` | no | `draft` | `draft` / `completed` / `inProgress` — gates Play roll-out. |
+
+### 4a.3 Trigger
+
+```bash
+gh workflow run mobile-external-testing.yml \
+    -f tag=mobile-v0.16.0 \
+    -f release_notes="$(cat release-notes.md)" \
+    -f ios_external_groups="External-Beta,Power-Users" \
+    -f android_track="beta" \
+    -f release_status="draft"
+```
+
+### 4a.4 What it does
+
+| Platform | Promotion mechanism | Notes |
+|---|---|---|
+| iOS — TestFlight | `fastlane pilot distribute --build_number latest --distribute_external true --notify_external_testers true --groups <list>` | Builds previously uploaded by mobile-internal-testing.yml. First External distribution of a new build triggers Beta App Review (~24 h, Apple-managed). |
+| Android — Play | `fastlane supply --track internal --track_promote_to <DEST>` | Promotes the most recent build on the Internal track to a Closed Testing track WITHOUT re-uploading the AAB (`(packageName, versionCode)` uniqueness prevents re-upload). Changelog written to `fastlane/metadata/android/en-US/changelogs/default.txt`. |
+
+Both jobs **soft-fail** on missing secrets — if `PLAY_SERVICE_ACCOUNT_JSON`
+or any of `APPLE_API_KEY_*` are absent (e.g. fork PR), the
+matching job logs a warning and exits 0. Operator-driven
+dispatches from `main` always have the secrets.
+
+### 4a.5 Apple Beta App Review
+
+The FIRST External-Testing distribution of a new iOS version
+triggers Apple's Beta App Review. Typical turnaround:
+
+* **First version of a calendar quarter:** 24–72 h.
+* **Subsequent builds of the same version:** auto-approved within
+  ~30 min (Apple skips re-review until the marketing version
+  changes).
+* **Rejected build:** Apple posts feedback in App Store Connect.
+  Operator fixes the issue + pushes a new `mobile-vX.Y.Z+1` tag
+  (NOT a workflow re-run) → mobile-internal-testing.yml uploads
+  the new build → re-trigger this workflow to re-promote.
+
+### 4a.6 Rolling back an External promotion
+
+There is no API to retract an External-Testing build once
+testers have been notified. Mitigation:
+
+* **TestFlight:** App Store Connect → TestFlight → expire the
+  specific build (testers see the "this build has expired"
+  banner; install link becomes inactive).
+* **Play Closed Testing:** Play Console → Testing → Closed
+  testing → halt rollout (manual step; the workflow's
+  `release_status: draft` default lets you do this BEFORE
+  testers see anything).
+
+### 4a.7 Tester management
+
+External testers are added in the platform consoles (NOT in this
+repo):
+
+* **TestFlight External Groups** — App Store Connect → TestFlight
+  → External Groups → create group → add testers by email →
+  enable "automatic notifications for new builds". The
+  group name passed in `ios_external_groups` must match exactly.
+* **Play Closed Testing tracks** — Play Console → Testing → 
+  Closed testing → manage testers (Google Group or email list).
+
 ## 5. TestFlight beta-tester management
 
 TestFlight has two tester scopes:
@@ -160,23 +256,37 @@ App Store Connect → Users and Access → Users → invite via email →
 assign the `Developer` role → opt them into TestFlight. They
 receive a TestFlight invitation within 1 h of an upload.
 
-### 5.2 Promote to external (Phase L)
+### 5.2 Promote to external (Wave 7 — automated)
 
-Once internal testing surfaces no P0/P1 bugs:
+Once internal testing surfaces no P0/P1 bugs, trigger the W7
+external promotion workflow (see §4a for the full operator
+flow):
 
-1. App Store Connect → TestFlight → external groups → add the
-   release build.
-2. Submit for Beta App Review (Apple, ~24 h).
-3. Public link auto-generated → distribute to ~10 000 testers.
+```bash
+gh workflow run mobile-external-testing.yml \
+    -f tag=mobile-v0.16.0 \
+    -f release_notes="$(cat release-notes.md)"
+```
 
-Phase L scope; not automated in W6.
+The workflow handles:
+
+1. Distributing the build to the named TestFlight External Group(s).
+2. Submitting for Beta App Review (Apple, ~24 h on first
+   External distribution of a new version).
+3. Promoting the corresponding Play build to a Closed Testing
+   track.
+
+External testers receive a TestFlight email once Beta App Review
+passes; Play Closed Testing testers receive an email
+immediately (or when the operator flips `release_status` from
+`draft` to `completed`).
 
 ## 6. Play Internal Testing tester management
 
 | Scope | Audience | Setup |
 |-------|----------|-------|
 | **Internal Testing** | Up to 100 testers (members of testing groups linked to the track) | `fastlane supply --track internal` |
-| **Closed Testing** | Tester groups of arbitrary size | Operator click in Play Console |
+| **Closed Testing** | Tester groups of arbitrary size | Operator dispatches `mobile-external-testing.yml` — Wave 7 (see §4a) |
 | **Open Testing** | Public + auto-rolled out | Phase L+ |
 
 ### 6.1 Add an internal tester
@@ -217,6 +327,7 @@ gcloud --project "$GCP_PROJECT" \
 ## 9. Cross-references
 
 * `.github/workflows/mobile-build.yml` — W2 unsigned-build CI (every PR).
-* `.github/workflows/mobile-internal-testing.yml` — this workflow.
+* `.github/workflows/mobile-internal-testing.yml` — Internal Testing tag-driven workflow.
+* `.github/workflows/mobile-external-testing.yml` — **Wave 7** External Testing promotion (operator-driven; §4a).
 * `mobile/capacitor.config.json` — Capacitor app metadata (bundle ID, version).
 * `docs/secret-rotation.md` — rotation cadence for signing identities.

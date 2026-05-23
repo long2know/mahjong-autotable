@@ -2,11 +2,13 @@
     "compilerOptions": {
         "strict": true,
         "target": "es6",
+        "module": "esnext",
         "lib": ["DOM", "DOM.Iterable", "es6", "es2017"],
         "esModuleInterop": true,
         "moduleResolution": "bundler",
         "resolveJsonModule": true,
-        "noImplicitOverride": true
+        "noImplicitOverride": true,
+        "types": ["vite/client"]
     },
     "references": [
         { "path": "server" }

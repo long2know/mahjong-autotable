@@ -1,0 +1,15 @@
+# Phase K Wave 7 — Apone (DevOps). Coturn subchart.
+apiVersion: v2
+name: mahjong-coturn
+description: "coturn 4.6 TURN server (HMAC mode) for WebRTC voice signalling."
+type: application
+version: 0.16.0
+appVersion: "4.6"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - coturn
+  - turn
+  - webrtc
+maintainers:
+  - name: Apone (DevOps)
+    email: apone@squad.mahjong

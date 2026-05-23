@@ -1,0 +1,77 @@
+{{/*
+Phase K Wave 7 — Apone (DevOps). Postgres StatefulSet (staging soak).
+
+PASSWORD is sourced from the existing `mahjong-autotable` omnibus
+Secret's `POSTGRES_PASSWORD` key — operators MUST ensure that key
+is set in the env's ExternalSecret. Marked `optional: true` so a
+fresh cluster boot doesn't crash-loop the StatefulSet pre-seed.
+*/}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "mahjong-postgres.fullname" . }}
+  labels:
+    {{- include "mahjong-postgres.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "mahjong-postgres.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mahjong-postgres.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mahjong-postgres.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mahjong-autotable
+                  key: POSTGRES_PASSWORD
+                  optional: true
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.username }}", "-d", "{{ .Values.database }}"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.username }}", "-d", "{{ .Values.database }}"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+        {{- if .Values.persistence.storageClassName }}
+        storageClassName: {{ .Values.persistence.storageClassName | quote }}
+        {{- end }}
+  {{- end }}

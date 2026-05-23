@@ -1,59 +1,107 @@
-// Phase K Wave 6 — AI commentary panel.
+// Phase K Wave 7 — AI commentary panel (Bishop's finalized contract).
 //
-// Renders LLM-generated play-by-play as a scrollable side-panel
-// during replay.  The data source is Bishop's W6 stub endpoint
-// `GET /api/games/{gameId}/commentary/replay`; until Phase L lands
-// the actual LLM bridge, that endpoint returns 404 (or 503) and the
-// panel surfaces a "Phase L feature — not yet available" copy so the
-// replay viewer keeps working without the panel.
+// W6 shipped this panel against a stub contract
+// (`{ lines: [{ turn, actor, text }] }`) on a backend that returned
+// 404 / 503 in steady-state.  W7 swaps in Bishop's finalized JSON
+// contract from `IReadOnlyList<CommentaryRecord>`:
 //
-// The chunk is lazy-loaded by `replay.ts` only when the replay
-// surface opens — the panel never paints on the lobby cold path.
-//
-// Wire contract:
 //   GET /api/games/{gameId}/commentary/replay
-//     → 200 { lines: [{ turn, actor, text, timestampUtc }, ...] }
-//     → 404 / 503 → render "Phase L feature — not yet available"
+//     → 200 [
+//         {
+//           "gameId": "GUID",
+//           "turnNumber": 4,
+//           "phase": "draw" | "discard" | "claim" | "score" | "deal" | "narration",
+//           "speaker": "pbp" | "color" | "analyst" | "narrator",
+//           "text": "South draws a yellow dragon — that's the
+//                    second dragon they need for a Big Dragons hand.",
+//           "emotionIntensity": 0.65,         // 0..1
+//           "tileReferences": ["S2-Z7"],      // optional, may be empty
+//           "generatedAt": "2026-09-12T11:23:41Z"
+//         },
+//         ...
+//       ]
+//     → 404 / 503 → "Phase L feature — not yet available"
 //
-// Testids exported for Vasquez:
-//   • commentary-panel             — panel container
-//   • commentary-panel-loading     — loading state
-//   • commentary-panel-empty       — empty state
-//   • commentary-panel-error       — error state ("Phase L feature…")
-//   • commentary-line-{idx}        — each rendered line (idx 0..N-1)
+// Renderer
+// --------
+// Records are grouped by `turnNumber` into collapsible sections.
+// Inside each turn, records render top-to-bottom in array order —
+// the backend ships them sorted by `generatedAt`.  Each record
+// surfaces:
+//   • Speaker badge — PBP / Color / Analyst / Narrator.
+//   • Emotion-intensity bar — 0..1 → 0..100 % CSS width.
+//   • Inline text — interpolated tile-reference chips
+//     (clickable; emit a `commentary:tile-ref` event so the
+//     replay surface can pulse the relevant tile on the board).
+//
+// W6 back-compat
+// --------------
+// The legacy `{ lines: [...] }` envelope is still parsed (fields
+// re-shaped onto `CommentaryRecord`) so a deploy where Bishop's
+// service falls back to the stub doesn't break the panel.
 
+const PHASE_L_COPY = 'Phase L feature — not yet available.';
+const EMPTY_COPY = 'No commentary available for this replay yet.';
+const LOADING_COPY = 'Loading commentary…';
+
+// ── Bishop's W7 contract types ──────────────────────────────────────
+
+export type CommentarySpeaker = 'pbp' | 'color' | 'analyst' | 'narrator';
+
+export type CommentaryPhase =
+  | 'draw'
+  | 'discard'
+  | 'claim'
+  | 'score'
+  | 'deal'
+  | 'narration';
+
+export interface CommentaryRecord {
+  gameId: string;
+  turnNumber: number;
+  phase: CommentaryPhase;
+  speaker: CommentarySpeaker;
+  text: string;
+  /** 0..1.  Drives the per-record intensity bar. */
+  emotionIntensity: number;
+  /**
+   * Stable tile IDs the record references (e.g. ["S2-Z7"]).  May be
+   * empty.  Clicking a chip emits `commentary:tile-ref` so the
+   * replay surface can highlight the matching tile.
+   */
+  tileReferences: ReadonlyArray<string>;
+  /** ISO-8601 timestamp.  Used as the per-record meta + sort key. */
+  generatedAt: string;
+}
+
+/** Legacy W6 envelope (kept for parser back-compat). */
 export interface CommentaryLine {
-  /** Turn number this line annotates; -1 for narrator / pre-game. */
   turn: number;
-  /** Seat 0..3 of the actor, or -1 for narrator / system. */
   actor: number;
   text: string;
   timestampUtc?: string;
-}
-
-export interface CommentaryReplayResponse {
-  lines: ReadonlyArray<CommentaryLine>;
 }
 
 interface PanelState {
   installed: boolean;
   panel: HTMLDivElement | null;
   gameId: string | null;
+  /** Collapsed-turn set; key is `turn-{n}`. */
+  collapsed: Set<string>;
 }
 
 const state: PanelState = {
   installed: false,
   panel: null,
   gameId: null,
+  collapsed: new Set(),
 };
 
-const PHASE_L_COPY = 'Phase L feature — not yet available.';
-const EMPTY_COPY = 'No commentary available for this replay yet.';
-const LOADING_COPY = 'Loading commentary…';
+// ── Public surface ──────────────────────────────────────────────────
 
 /**
- * Mount (or re-use) the panel inside `host` and fetch commentary for
- * `gameId`.  Re-entrant — calling twice replaces the lines.
+ * Mount (or re-use) the panel inside `host` and fetch commentary
+ * for `gameId`.  Re-entrant — calling twice replaces the records.
  */
 export async function openCommentaryPanel(host: HTMLElement, gameId: string): Promise<void> {
   ensurePanel(host);
@@ -75,22 +123,20 @@ export async function openCommentaryPanel(host: HTMLElement, gameId: string): Pr
       return;
     }
     const raw = (await resp.json()) as unknown;
-    const parsed = normalizeResponse(raw);
-    if (parsed.lines.length === 0) {
+    const records = normalizeRecords(raw, gameId);
+    if (records.length === 0) {
       renderEmpty(state.panel);
       return;
     }
-    renderLines(state.panel, parsed.lines);
+    renderRecords(state.panel, records);
   } catch {
-    // Network failure or backend offline — surface the phase-L copy
+    // Network failure / backend offline — surface the phase-L copy
     // rather than a hard error; the replay still plays.
     renderError(state.panel);
   }
 }
 
-/**
- * Close + tear down the panel.  Idempotent.
- */
+/** Close + tear down the panel.  Idempotent. */
 export function closeCommentaryPanel(): void {
   if (state.panel !== null && state.panel.parentNode !== null) {
     state.panel.parentNode.removeChild(state.panel);
@@ -98,13 +144,13 @@ export function closeCommentaryPanel(): void {
   state.panel = null;
   state.installed = false;
   state.gameId = null;
+  state.collapsed.clear();
 }
 
-// ── Internals ───────────────────────────────────────────────────────
+// ── Internals ──────────────────────────────────────────────────────
 
 function ensurePanel(host: HTMLElement): void {
   if (state.installed && state.panel !== null && state.panel.parentNode === host) return;
-  // Re-anchor if host changed (re-entry after close + reopen).
   if (state.panel !== null && state.panel.parentNode !== null) {
     state.panel.parentNode.removeChild(state.panel);
   }
@@ -176,51 +222,276 @@ function renderEmpty(panel: HTMLDivElement): void {
   body.appendChild(el);
 }
 
-function renderLines(panel: HTMLDivElement, lines: ReadonlyArray<CommentaryLine>): void {
+function renderRecords(panel: HTMLDivElement, records: ReadonlyArray<CommentaryRecord>): void {
   const body = getBody(panel);
   body.replaceChildren();
-  lines.forEach((line, idx) => {
-    const row = document.createElement('div');
-    row.className = 'commentary-line';
-    row.setAttribute('data-testid', `commentary-line-${idx}`);
-    row.setAttribute('data-turn', String(line.turn));
-    row.setAttribute('data-actor', String(line.actor));
 
-    if (line.actor >= 0) {
-      const badge = document.createElement('span');
-      badge.className = `commentary-line-actor commentary-line-actor-${line.actor}`;
-      badge.textContent = `P${line.actor + 1}`;
-      row.appendChild(badge);
-    } else {
-      const badge = document.createElement('span');
-      badge.className = 'commentary-line-actor commentary-line-actor-narrator';
-      badge.textContent = '🎙';
-      row.appendChild(badge);
+  const byTurn = groupByTurn(records);
+  let recordIdx = 0;
+  for (const [turn, group] of byTurn) {
+    const section = document.createElement('section');
+    section.className = 'commentary-turn';
+    section.setAttribute('data-testid', `commentary-turn-${turn}`);
+    section.setAttribute('data-turn', String(turn));
+
+    const collapsed = state.collapsed.has(turnKey(turn));
+    section.dataset.collapsed = collapsed ? 'true' : 'false';
+
+    // ── turn header: collapsible toggle ─────────────────────────
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'commentary-turn-header';
+    head.setAttribute('data-testid', `commentary-turn-toggle-${turn}`);
+    head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    head.setAttribute('aria-controls', `commentary-turn-body-${turn}`);
+    const headLabel = turn < 0 ? 'Pre-game' : `Turn ${turn}`;
+    head.textContent = `${collapsed ? '▸' : '▾'} ${headLabel} (${group.length})`;
+    head.addEventListener('click', () => {
+      const key = turnKey(turn);
+      if (state.collapsed.has(key)) state.collapsed.delete(key);
+      else state.collapsed.add(key);
+      // Re-render this section in place.
+      const nextCollapsed = state.collapsed.has(key);
+      section.dataset.collapsed = nextCollapsed ? 'true' : 'false';
+      head.setAttribute('aria-expanded', nextCollapsed ? 'false' : 'true');
+      head.textContent = `${nextCollapsed ? '▸' : '▾'} ${headLabel} (${group.length})`;
+      sectionBody.hidden = nextCollapsed;
+    });
+    section.appendChild(head);
+
+    // ── records body ────────────────────────────────────────────
+    const sectionBody = document.createElement('div');
+    sectionBody.className = 'commentary-turn-body';
+    sectionBody.id = `commentary-turn-body-${turn}`;
+    sectionBody.hidden = collapsed;
+    for (const record of group) {
+      sectionBody.appendChild(renderRecord(record, recordIdx));
+      recordIdx += 1;
     }
-
-    const text = document.createElement('span');
-    text.className = 'commentary-line-text';
-    text.textContent = line.text;
-    row.appendChild(text);
-    body.appendChild(row);
-  });
+    section.appendChild(sectionBody);
+    body.appendChild(section);
+  }
 }
 
-function normalizeResponse(raw: unknown): CommentaryReplayResponse {
-  if (typeof raw !== 'object' || raw === null) return { lines: [] };
-  const rec = raw as Record<string, unknown>;
-  const linesRaw = rec.lines;
-  if (!Array.isArray(linesRaw)) return { lines: [] };
-  const lines: CommentaryLine[] = [];
-  for (const lr of linesRaw) {
-    if (typeof lr !== 'object' || lr === null) continue;
-    const r = lr as Record<string, unknown>;
-    const text = typeof r.text === 'string' ? r.text : '';
-    if (text === '') continue;
-    const turn = typeof r.turn === 'number' && Number.isFinite(r.turn) ? r.turn : -1;
-    const actor = typeof r.actor === 'number' && Number.isFinite(r.actor) ? r.actor : -1;
-    const timestampUtc = typeof r.timestampUtc === 'string' ? r.timestampUtc : undefined;
-    lines.push({ turn, actor, text, timestampUtc });
+function renderRecord(record: CommentaryRecord, idx: number): HTMLDivElement {
+  const row = document.createElement('div');
+  row.className = `commentary-record commentary-record-${record.phase}`;
+  row.setAttribute('data-testid', `commentary-record-${idx}`);
+  row.setAttribute('data-record-index', String(idx));
+  row.setAttribute('data-turn', String(record.turnNumber));
+  row.setAttribute('data-phase', record.phase);
+  row.setAttribute('data-speaker', record.speaker);
+
+  // ── speaker badge ────────────────────────────────────────────
+  const speakerBadge = document.createElement('span');
+  speakerBadge.className = `commentary-speaker commentary-speaker-${record.speaker}`;
+  speakerBadge.setAttribute('data-testid', `commentary-speaker-${record.speaker}`);
+  speakerBadge.textContent = speakerLabel(record.speaker);
+  row.appendChild(speakerBadge);
+
+  // ── text with inline tile-ref chips ──────────────────────────
+  const textWrap = document.createElement('span');
+  textWrap.className = 'commentary-text';
+  textWrap.appendChild(document.createTextNode(record.text));
+  row.appendChild(textWrap);
+
+  // ── tile-ref chips ───────────────────────────────────────────
+  if (record.tileReferences.length > 0) {
+    const refsWrap = document.createElement('div');
+    refsWrap.className = 'commentary-tile-refs';
+    for (const tileId of record.tileReferences) {
+      refsWrap.appendChild(renderTileRef(tileId));
+    }
+    row.appendChild(refsWrap);
   }
-  return { lines };
+
+  // ── emotion-intensity bar ────────────────────────────────────
+  const intensityBarWrap = document.createElement('div');
+  intensityBarWrap.className = 'commentary-intensity';
+  intensityBarWrap.setAttribute('data-testid', `commentary-intensity-${idx}`);
+  intensityBarWrap.setAttribute(
+    'aria-label',
+    `Emotion intensity ${Math.round(record.emotionIntensity * 100)}%`,
+  );
+  const intensityBar = document.createElement('div');
+  intensityBar.className = 'commentary-intensity-fill';
+  const pct = Math.max(0, Math.min(1, record.emotionIntensity));
+  intensityBar.style.width = `${(pct * 100).toFixed(0)}%`;
+  intensityBarWrap.appendChild(intensityBar);
+  row.appendChild(intensityBarWrap);
+
+  // ── meta footer: timestamp ───────────────────────────────────
+  const meta = document.createElement('div');
+  meta.className = 'commentary-record-meta';
+  meta.textContent = formatTimestamp(record.generatedAt);
+  row.appendChild(meta);
+
+  return row;
+}
+
+function renderTileRef(tileId: string): HTMLButtonElement {
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'commentary-tile-ref';
+  chip.setAttribute('data-testid', `commentary-tile-ref-${tileId}`);
+  chip.setAttribute('data-tile-id', tileId);
+  chip.textContent = tileId;
+  chip.addEventListener('click', () => {
+    window.dispatchEvent(
+      new CustomEvent<{ tileId: string }>('commentary:tile-ref', { detail: { tileId } }),
+    );
+  });
+  return chip;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+function speakerLabel(speaker: CommentarySpeaker): string {
+  switch (speaker) {
+    case 'pbp': return 'PBP';
+    case 'color': return 'Color';
+    case 'analyst': return 'Analyst';
+    case 'narrator': return '🎙';
+    default: return 'Commentary';
+  }
+}
+
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch {
+    return iso;
+  }
+}
+
+function groupByTurn(records: ReadonlyArray<CommentaryRecord>): Array<[number, CommentaryRecord[]]> {
+  const map = new Map<number, CommentaryRecord[]>();
+  for (const r of records) {
+    let bucket = map.get(r.turnNumber);
+    if (bucket === undefined) {
+      bucket = [];
+      map.set(r.turnNumber, bucket);
+    }
+    bucket.push(r);
+  }
+  return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
+}
+
+function turnKey(turn: number): string {
+  return `turn-${turn}`;
+}
+
+// ── Response normalization ─────────────────────────────────────────
+
+/**
+ * Coerce Bishop's W7 array contract OR the legacy W6 `{ lines: [...] }`
+ * envelope into a `CommentaryRecord[]`.  Parse failures collapse to
+ * an empty list rather than an error so the panel stays graceful.
+ */
+function normalizeRecords(raw: unknown, gameId: string): CommentaryRecord[] {
+  // W7 shape: top-level array.
+  if (Array.isArray(raw)) {
+    const out: CommentaryRecord[] = [];
+    raw.forEach((entry, idx) => {
+      const r = coerceRecord(entry, gameId, idx);
+      if (r !== null) out.push(r);
+    });
+    return out;
+  }
+  // W6 fallback: { lines: [{ turn, actor, text, timestampUtc }] }.
+  if (typeof raw === 'object' && raw !== null) {
+    const rec = raw as Record<string, unknown>;
+    // W7 may also wrap the array under `{ records: [...] }` — pick
+    // either field if present.
+    const records = Array.isArray(rec.records)
+      ? rec.records
+      : Array.isArray(rec.lines)
+        ? rec.lines
+        : null;
+    if (records !== null) {
+      const out: CommentaryRecord[] = [];
+      records.forEach((entry, idx) => {
+        const r = coerceRecord(entry, gameId, idx);
+        if (r !== null) out.push(r);
+      });
+      return out;
+    }
+  }
+  return [];
+}
+
+function coerceRecord(raw: unknown, gameId: string, idx: number): CommentaryRecord | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const text = typeof r.text === 'string' ? r.text : '';
+  if (text === '') return null;
+
+  // W7 canonical fields.
+  const turnNumber = pickNumber(r.turnNumber ?? r.turn, -1);
+  const phase = pickPhase(r.phase);
+  const speaker = pickSpeaker(r.speaker, pickNumber(r.actor, -1));
+  const emotionIntensity = clamp01(pickNumber(r.emotionIntensity ?? r.intensity, 0));
+  const tileReferences = pickStringArray(r.tileReferences ?? r.tiles);
+  const generatedAt = typeof r.generatedAt === 'string'
+    ? r.generatedAt
+    : typeof r.timestampUtc === 'string'
+      ? r.timestampUtc
+      : new Date(0).toISOString();
+  const gameIdOut = typeof r.gameId === 'string' && r.gameId !== '' ? r.gameId : gameId;
+
+  return {
+    gameId: gameIdOut,
+    turnNumber,
+    phase,
+    speaker,
+    text,
+    emotionIntensity,
+    tileReferences,
+    generatedAt,
+  };
+}
+
+function pickNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp01(n: number): number {
+  if (Number.isNaN(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 1) return 1;
+  return n;
+}
+
+function pickPhase(value: unknown): CommentaryPhase {
+  if (
+    value === 'draw' ||
+    value === 'discard' ||
+    value === 'claim' ||
+    value === 'score' ||
+    value === 'deal' ||
+    value === 'narration'
+  ) {
+    return value;
+  }
+  return 'narration';
+}
+
+function pickSpeaker(value: unknown, actorFallback: number): CommentarySpeaker {
+  if (value === 'pbp' || value === 'color' || value === 'analyst' || value === 'narrator') {
+    return value;
+  }
+  // W6 fallback — actor seat 0..3 means a real player, no commentator
+  // bot was attributed; default to PBP for in-play, narrator for -1.
+  return actorFallback >= 0 ? 'pbp' : 'narrator';
+}
+
+function pickStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const v of value) {
+    if (typeof v === 'string' && v !== '') out.push(v);
+  }
+  return out;
 }

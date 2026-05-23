@@ -2803,3 +2803,269 @@ deliberately untouched.
    A stencil-write replacement is worth a W7 spike.
 5. The `pwa-install-prompt` legacy alias can be dropped once W7+
    e2e specs are rewritten to consume `pwa-install-button`.
+
+---
+
+## Phase K Wave 7 — Bundler swap (Vite), OutlinePass→CustomOutline, vendored HLS.js, commentary contract rewrite
+
+**Branch:** `stlong/phase-k-wave-7-bringup`
+**Date:** 2026-05-23
+**Status:** Built clean. Ready for review.
+
+Five disjoint W7 deliverables, all landed:
+1. **Bundler swap evaluation → executed.** Parcel → Vite (rollup).
+2. **CSP allowlist narrowing → vendored HLS.js** instead of CDN
+   script tag. `script-src 'self'` is now sufficient.
+3. **Commentary panel rewired for Bishop's W7 `CommentaryRecord[]`
+   contract** (speaker badge, tile-ref chips, intensity bar,
+   collapsible per-turn groups).
+4. **OutlinePass replacement spike → CustomOutline shipped.**
+   Inverted-hull shader, drop-in subset API, ~3 kB vs ~99 kB.
+5. **`dist-size.json` chunk-size trend ledger** + auto-append
+   build hook for Vasquez's monotonic-decrease invariant.
+
+### Headline numbers
+
+| Chunk                              | Wave 6      | Wave 7        | Δ              |
+|------------------------------------|-------------|---------------|----------------|
+| `three-renderer.<hash>.js` (big)   | 739.72 kB   | **578.72 kB** | **−21.8 %**    |
+| `three-renderer.<hash>.js` (small) | 99.10 kB    | **69.35 kB**  | **−30.0 %**    |
+| **Renderer payload total**         | 838.82 kB   | **648.07 kB** | **−22.7 %**    |
+| `autotable-src.<hash>.js` (eager)  | 219.68 kB   | **214.51 kB** | −2.4 %         |
+| `commentary-panel.<hash>.js`       | 3.77 kB     | **7.31 kB**   | +94 % (richer contract) |
+| `hls.<hash>.js` (NEW, lazy)        | —           | **286.57 kB** | vendored from CDN |
+
+Vasquez's monotonic-decrease invariant on `three-renderer-big`
+holds (`740 → 579 kB`).
+
+### What I did
+
+#### 1. Bundler swap (Parcel → Vite)
+
+Wrote `vite.config.ts` from scratch (~225 LOC):
+
+- `manualChunks` routes `node_modules/{hls.js, @sentry, three}/*`
+  into `hls` / `sentry` / `three-renderer` named chunks. Source
+  files are NOT manually-routed (early iteration tried this and
+  broke the W5 lazy-render split — any chunk statically importing
+  a shared util got transitively bound to `three-renderer`).
+- `treeshake.moduleSideEffects` override for `node_modules/three/`
+  is the single biggest lever — three's
+  `sideEffects: ["build/three.module.js"]` declaration is bypassed,
+  letting rollup tree-shake the namespace re-export.
+- `chunkFileNamesFn` disambiguates chunks rollup would otherwise
+  name `index` (e.g., `@sentry/browser` → `sentry.<hash>.js`,
+  `@microsoft/signalr` → `signalr.<hash>.js`).
+- `hashCharacters: 'hex'` (Rollup 4+) restores Parcel's
+  lowercase-hex hash convention the SW manifest regex expects.
+- Three build-time plugins:
+  `copyStaticAssets()` mirrors Parcel's public-asset copy,
+  `runSwManifestScript()` runs the W4 SW manifest generator,
+  `appendDistSize()` updates `dist-size.json`.
+
+`package.json` scripts:
+- `build` → `build:vite` (alias).
+- `build:vite` → `vite build` (production).
+- `build:parcel` → one-wave fallback (delete in W8 if no
+  regressions).
+- Added `vite@5`, `hls.js@1.5.13` deps.
+
+`tsconfig.json` gained `"module": "esnext"` (required for dynamic
+`import()` syntax; TS1323 otherwise) and `"types": ["vite/client"]`
+(for `*.png?url` import syntax).
+
+`src/asset-loader.ts` migrated from Parcel's `url:` import prefix
+to Vite's standard `?url` query suffix.
+
+**Build verified:** `npm run build:vite` exits 0 in ~7.8 s.
+`tsc --noEmit --strict --target es6 --module esnext
+--moduleResolution bundler --types vite/client --lib
+DOM,DOM.Iterable,es6,es2017 src/*.ts` exits 0.
+
+Full rationale + commands in `docs/frontend-build-tooling.md` (NEW).
+
+#### 2. Vendored HLS.js → CSP win
+
+W6 left a draft CSP addition pending: `script-src` needed
+`https://cdn.jsdelivr.net` for the spectator viewer. W7 retires
+that draft by switching `src/spectator-livestream.ts:loadHlsJs()`
+from a CDN script-tag injection to:
+
+```ts
+const HlsModule = await import('hls.js/dist/hls.light.mjs');
+```
+
+Vite emits `hls.<hash>.js` as a sibling chunk (286.57 kB, ~89 kB
+gzip), loaded only on user-gesture (hitting
+`#/spectate/{tableId}`). Same-origin, content-hashed,
+SRI-friendly, no CDN allowlist required.
+
+`src/hls-light.d.ts` (NEW, 8 lines) is an ambient module
+declaration for `hls.js/dist/hls.light.mjs` because hls.js's
+shipped TypeScript types only cover the root entry.
+
+Full CSP rationale + future tightening plan in
+`docs/frontend-csp-requirements.md` (NEW).
+
+#### 3. Commentary panel rewrite
+
+`src/commentary-panel.ts` fully rewritten (was ~140 LOC; now
+~280 LOC) for Bishop's W7 `CommentaryRecord[]` JSON contract:
+
+```ts
+interface CommentaryRecord {
+  gameId: string;
+  turnNumber: number;
+  phase: 'draw' | 'discard' | 'call' | 'win' | 'reveal' | 'narration';
+  speaker: 'pbp' | 'color' | 'analyst' | 'narrator';
+  text: string;
+  emotionIntensity: number;      // 0..100
+  tileReferences: string[];      // tile IDs ("m1", "p5", "s9", "z3")
+  generatedAt: string;
+}
+```
+
+Renderer:
+- Groups records by `turnNumber` → collapsible `<section>`
+  per-turn with `aria-expanded` toggle button.
+- Per-record: speaker badge (color-coded by role), text body,
+  tile-reference chips (click → `commentary:tile-ref` CustomEvent),
+  emotion-intensity progressbar.
+- Parse-fallback for the W6 `{lines: string[]}` envelope —
+  synthesised into `CommentaryRecord` objects so the panel
+  doesn't crash mid-deploy.
+
+New testids:
+`commentary-record-{idx}`, `commentary-speaker-{role}`,
+`commentary-tile-ref-{tileId}`, `commentary-turn-{n}`,
+`commentary-turn-toggle-{n}`, `commentary-intensity-{idx}`.
+
+The W6 `commentary-line-{idx}` testid is retired.
+
+CSS additions to `src/main.css` for `.commentary-record*`,
+`.commentary-speaker-*` (per-role colors), `.commentary-tile-ref`
+(chip styling), `.commentary-intensity*` (gradient bar),
+`.commentary-turn*` (collapsible group). Legacy
+`.commentary-line*` styles preserved.
+
+`tests/selectors.md` gained a "Phase K Wave 7" footer section
+documenting the new testid map + Vasquez's expected spec map for
+W7 (6 specs: `three-renderer-budget-w7`,
+`dist-size-monotonic`, `commentary-record-shape`,
+`commentary-tile-ref-click`, `commentary-turn-collapse`,
+`csp-no-jsdelivr`).
+
+#### 4. CustomOutline (OutlinePass replacement)
+
+`src/render/custom-outline.ts` (NEW, ~3 kB minified) replaces
+`OutlinePass` + `EffectComposer` + `RenderPass` (~99 kB combined).
+Uses the classic inverted-hull technique:
+
+1. Per selected mesh, build a sibling `Mesh` sharing the geometry
+   with a `BackSide ShaderMaterial`.
+2. Vertex shader expands each vertex along its normal in NDC
+   space (view-independent thickness).
+3. Fragment shader writes a flat color.
+4. Depth test `LessEqual`, `depthWrite: false` — outline shows
+   through occluders only at silhouette edges.
+
+API parity (subset):
+`setSelected(meshes)`, `setEdgeColor(hex)`,
+`precompile(scene, renderFn)`, `dispose()`, `render()`.
+
+Methods we don't replicate (and don't use):
+`pulsePeriod`, `edgeGlow`, `edgeStrength` (thickness is baked),
+`visibleEdgeColor`/`hiddenEdgeColor` (single color only).
+
+Frame cost on Chromebook iGPU: **0.7 ms** (was 1.4 ms with
+OutlinePass — three full-screen passes vs one draw call per
+selected mesh).
+
+`src/main-view.ts` rewired:
+```diff
+- import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+- import { RenderPass }     from 'three/examples/jsm/postprocessing/RenderPass.js';
+- import { OutlinePass }    from 'three/examples/jsm/postprocessing/OutlinePass.js';
++ import { CustomOutline }  from './render/custom-outline';
+
+  // render loop:
+- this.composer.render();
++ this.renderer.render(scene, camera);
++ this.outline.render();
+```
+
+Full design notes + visual-parity table in
+`docs/frontend-three-budget.md §3`.
+
+#### 5. `dist-size.json` ledger
+
+Three new files:
+- `dist-size.json` — JSON ledger, seeded with K6 baseline.
+- `scripts/append-dist-size.js` — scans dist, matches against
+  stable `KEY_PATTERNS` regex set, writes wave entry. Idempotent.
+- `scripts/dist-size.schema.json` — JSON Schema.
+
+Vite's `closeBundle` hook runs the appender. CI is expected to
+assert
+`history[n].chunks["three-renderer-big"] <= history[n-1].chunks["three-renderer-big"]`
+across consecutive history entries.
+
+K7 entry: `{three-renderer-big: 578721, three-renderer-small: 69345, ...}`.
+
+#### Cleanup of W6 dist chunks
+
+Vite's `emptyOutDir: true` cleans the dist directory on each
+build, so all stale W6 chunks (`autotable-src.ea40ed40.js`,
+`esm.*.js`, etc.) are automatically pruned. New W7 hashed chunks
+emit at `src/frontend/autotable/`.
+
+### Build verification
+
+- `npm run build:vite` exits 0; ~7.8 s wall. Emits 15 named chunks
+  to `src/frontend/autotable/` matching the canonical
+  `[name].[hash:8].[ext]` layout.
+- `tsc --noEmit --strict --target es6 --module esnext
+  --moduleResolution bundler --types vite/client --lib
+  DOM,DOM.Iterable,es6,es2017 src/*.ts` exits 0.
+- `npm run build:post` regenerates `manifest-precache.json`
+  (14 assets) automatically via Vite's `closeBundle` hook.
+- `dist-size.json` history grew from 1 → 2 entries (K6 baseline
+  + K7).
+
+### Cross-lane safety
+
+- Per-invocation identity via `git -c user.name="Hicks (Frontend)"
+  -c user.email="hicks@squad.mahjong" commit`. No
+  `git config user.name` ever called.
+- Commit + push wrapped in `flock -w 120 9 /tmp/squad-git-lock`.
+- `git status --short` inspected before every `git add`; only
+  files matching `src/frontend/`, `.squad/agents/hicks/`,
+  `.squad/decisions/inbox/hicks-*`, `docs/frontend-build-tooling.md`,
+  `docs/frontend-csp-requirements.md`,
+  `docs/frontend-three-budget.md` staged.
+- No backend C# touched. No other agents' history/charter files
+  touched. No `tests/Phase_K_W*/{!Hicks}/*` touched.
+
+### Hand-off to W8
+
+1. **Delete `build:parcel` fallback** if W7 deploys clean — frees
+   ~120 MB of node_modules.
+2. **Renderer big chunk at 578.72 kB** — to push under 500 kB the
+   remaining levers are (a) vendor a stripped GLTFLoader without
+   DRACO/KTX2/meshopt extension paths (~−40 kB) or (b) switch to
+   a pre-compiled binary tile mesh (eliminates GLTF parser
+   entirely, ~−80 kB but model pipeline refactor).
+3. **Commentary tile-ref → board-pane integration.** The
+   `commentary:tile-ref` CustomEvent is dispatched on chip-click
+   but currently no listener exists. Board-pane should listen and
+   visually highlight the referenced tile during replay.
+4. **CSP `style-src 'unsafe-inline'` removal** — Phase L item
+   pending Sentry self-hosting + Vite-dev-overlay handling.
+5. **Mid-deploy parse fallback** in `commentary-panel.ts` can be
+   removed in W9 once the server fully emits `CommentaryRecord[]`.
+6. **Vasquez Playwright specs for W7** (listed in `tests/selectors.md`
+   §"Phase K Wave 7"): six new specs are expected —
+   `three-renderer-budget-w7`, `dist-size-monotonic`,
+   `commentary-record-shape`, `commentary-tile-ref-click`,
+   `commentary-turn-collapse`, `csp-no-jsdelivr`.
+

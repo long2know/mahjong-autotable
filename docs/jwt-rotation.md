@@ -288,12 +288,212 @@ the secret (current behaviour), and AS SOON AS Bishop binds
 `Auth.JwtSigningKeys`, the ESO-materialised values feed the array
 with zero further DevOps work.
 
-## 8. Cross-references
+## 8. RS256 key provisioning (Phase K Wave 7)
 
+> Phase K Wave 7 — Bishop (Backend).
+
+The HS256 fallback-list pattern documented above carries the
+identity-issuance surface through every wave up to and including
+Wave 6. **Wave 7 introduces the RS256 path** so the API can publish
+a public JWKS (`/.well-known/jwks.json`) + OIDC discovery document
+(`/.well-known/openid-configuration`) and downstream verifiers
+(Auth0, Cognito, jose-jwt, pyJWT, `verify_oauth2_token`) can validate
+tokens without sharing a symmetric secret.
+
+The Wave 7 rotation flow is **strictly additive** — operators who
+have not flipped `Auth:JwtAlgorithm` from `HS256` to `RS256` continue
+on the §4 procedure. Once flipped, the same three-slot fallback
+shape applies, but the secret material is a **PEM-encoded RSA
+private key** rather than a base64 HMAC secret.
+
+### 8.1 Keypair generation
+
+Generate a 2048-bit RSA keypair with OpenSSL on an air-gapped
+workstation (or via AWS KMS asymmetric keypair — see §8.5 for the
+KMS variant):
+
+```bash
+# Private key (PKCS#1, PEM) — used by the API for signing.
+openssl genrsa -out jwt-rs256-active.pem 2048
+
+# Convert to PKCS#8 (preferred — RFC 5208; .NET's
+# RSA.ImportFromPem() handles both shapes transparently but PKCS#8
+# is the canonical SSM Parameter Store value).
+openssl pkcs8 -topk8 -nocrypt \
+  -in jwt-rs256-active.pem \
+  -out jwt-rs256-active.pk8.pem
+
+# Public key (X.509 SubjectPublicKeyInfo) — for downstream verifiers
+# that prefer a static PEM over the dynamic JWKS endpoint.
+openssl rsa -in jwt-rs256-active.pem -pubout -out jwt-rs256-active.pub.pem
+```
+
+The `kid` is derived deterministically from the public-key bytes
+(SHA-256 truncated, base64url) — see
+[`JwtRsaSigningKey.ComputeKid`](../src/backend/src/Mahjong.Autotable.Api/Auth/JwtSigningKeyProvider.cs).
+The same private key always produces the same `kid`, so an operator
+can verify the rotation landed cleanly by curling
+`/.well-known/jwks.json` after the pod restart and matching the
+`kid` against the expected value computed locally.
+
+### 8.2 SSM Parameter Store topology
+
+Wave 7 reuses the three-slot active/previous/archive convention from
+§4 but under a separate path prefix so HS256 and RS256 secrets are
+managed independently (an operator can run both algorithms in
+parallel during a long migration window):
+
+| Slot | Parameter path | Purpose |
+| ---- | -------------- | ------- |
+| **active** | `/mahjong/{env}/auth/jwt/rsa-active` | Mints new tokens. Mounted as `Auth__JwtRsaKeys__0`. |
+| **previous** | `/mahjong/{env}/auth/jwt/rsa-previous` | Validation-only fallback for the previous active key (still in-flight tokens). Mounted as `Auth__JwtRsaKeys__1`. |
+| **archive** | `/mahjong/{env}/auth/jwt/rsa-archive` | Long-tail validation for tokens minted before the LAST rotation. Mounted as `Auth__JwtRsaKeys__2`. |
+
+The values MUST be **SecureString** parameters with KMS encryption
+under the `mahjong-{env}-secrets` CMK (matches the HS256 convention
+from §4). The PEM body is stored verbatim with embedded newlines —
+SSM accepts up to 4 KB for SecureString which comfortably fits a
+2048-bit PKCS#8 PEM (~1.7 KB).
+
+### 8.3 ESO ExternalSecret mount
+
+The W7 ESO mount lives in **dedicated** ExternalSecret manifests
+(separate from the W4 `mahjong-jwt-keys` Secret) so HS256 and
+RS256 rotation surfaces stay independent — operators can rotate
+one without ESO-resyncing the other, and the cryptographic
+shapes (opaque HMAC bytes vs PEM-encoded RSA key) never alias
+inside a single Secret object:
+
+* [`infra/k8s/overlays/prod/jwt-rsa-keys-secret.yaml`](../infra/k8s/overlays/prod/jwt-rsa-keys-secret.yaml)
+  → materialises `Secret/mahjong-jwt-rsa-keys` in `mahjong-prod`
+  (out-of-band — apply manually, mirroring the W4 prod convention).
+* [`infra/k8s/overlays/staging/jwt-rsa-keys-secret.yaml`](../infra/k8s/overlays/staging/jwt-rsa-keys-secret.yaml)
+  → materialises `Secret/mahjong-jwt-rsa-keys-staging` in
+  `mahjong-staging` (listed in staging `kustomization.yaml`
+  resources so `kubectl apply -k overlays/staging/` picks it up).
+
+```yaml
+data:
+  - secretKey: auth__jwtrsakeys__0
+    remoteRef:
+      key: /mahjong/prod/auth/jwt/rsa-active
+  - secretKey: auth__jwtrsakeys__1
+    remoteRef:
+      key: /mahjong/prod/auth/jwt/rsa-previous
+  - secretKey: auth__jwtrsakeys__2
+    remoteRef:
+      key: /mahjong/prod/auth/jwt/rsa-archive
+```
+
+The deployment patch adds a **new** `envFrom` entry for the RSA
+Secret (alongside the existing HS256 `mahjong-jwt-keys` mount —
+both bindings co-exist during the cutover window):
+
+```yaml
+- op: add
+  path: /spec/template/spec/containers/0/envFrom/-
+  value:
+    secretRef:
+      name: mahjong-jwt-rsa-keys           # staging suffix in the staging overlay
+      optional: true
+```
+
+`optional: true` lets the deployment start before the operator
+has bootstrapped the RSA SSM parameters — the existing HS256
+path stays canonical until `Auth:DefaultAlgorithm=RS256` is
+flipped (see §8.4). Both overlay kustomization files carry the
+matching patch.
+
+### 8.4 Algorithm flip + rotation procedure
+
+The **algorithm flip** (HS256 → RS256) is a one-time event:
+
+1. **Pre-flight**: confirm `/mahjong/{env}/auth/jwt/rsa-active` is
+   populated. Curl `/.well-known/jwks.json` before the flip — MUST
+   return 404 (HS256 hosts publish no JWKS).
+2. **Flip**: set `Auth__JwtAlgorithm=RS256` in the deployment
+   `ConfigMap` (NOT a Secret — this is non-sensitive policy).
+   Optionally set `Auth__Issuer=https://api.{env}.mahjong-autotable.com`
+   so the `iss` claim + OIDC `issuer` field is self-describing.
+3. **Roll the pods**: `kubectl rollout restart deployment/mahjong-autotable`.
+   New tokens mint under RS256; the HMAC fallback list stays loaded
+   so any in-flight HS256 tokens validate until expiry (1h TTL).
+4. **Verify**: curl `/.well-known/jwks.json` — MUST return 200 with
+   `{"keys": [{"kty":"RSA","kid":"…","n":"…","e":"AQAB",…}]}`.
+   Curl `/.well-known/openid-configuration` — MUST return 200 with
+   `issuer`, `jwks_uri`, `token_endpoint`, `grant_types_supported`.
+
+Once the host is on RS256, **subsequent rotations** follow the same
+three-slot shuffle as the HS256 procedure (§4):
+
+```bash
+ENV=prod  # or staging
+NEW=jwt-rs256-active.pk8.pem  # freshly minted PKCS#8 PEM
+
+# Step 1: archive ← previous (long-tail tokens age out).
+aws ssm get-parameter --name "/mahjong/${ENV}/auth/jwt/rsa-previous" \
+  --with-decryption --query Parameter.Value --output text \
+  | aws ssm put-parameter --name "/mahjong/${ENV}/auth/jwt/rsa-archive" \
+      --type SecureString --overwrite --value file:///dev/stdin
+
+# Step 2: previous ← active.
+aws ssm get-parameter --name "/mahjong/${ENV}/auth/jwt/rsa-active" \
+  --with-decryption --query Parameter.Value --output text \
+  | aws ssm put-parameter --name "/mahjong/${ENV}/auth/jwt/rsa-previous" \
+      --type SecureString --overwrite --value file:///dev/stdin
+
+# Step 3: active ← new.
+aws ssm put-parameter --name "/mahjong/${ENV}/auth/jwt/rsa-active" \
+  --type SecureString --overwrite --value "$(cat ${NEW})"
+
+# Step 4: kick ESO to re-sync (or wait for the 1h refresh).
+kubectl annotate externalsecret mahjong-jwt-keys \
+  force-sync=$(date +%s) --overwrite -n mahjong-autotable
+
+# Step 5: roll the pods — new tokens mint under the new kid.
+kubectl rollout restart deployment/mahjong-autotable
+```
+
+The `JwtRotationE2ETests` fact pins the cryptographic surface end
+to end — a token minted under the pre-rotation key MUST still
+validate against the post-rotation host (the fallback list catches
+the legacy `kid`). See
+[`tests/Mahjong.Autotable.Api.Tests/Phase_K_W7/Bishop/JwtRotationE2ETests.cs`](../src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W7/Bishop/JwtRotationE2ETests.cs).
+
+### 8.5 AWS KMS asymmetric keypair (alternative)
+
+For deployments with stricter HSM-backed key-custody requirements,
+the active key MAY live in AWS KMS as an asymmetric `RSA_2048`
+signing key with usage `SIGN_VERIFY`. The API uses the KMS public
+half (downloaded once at boot via `kms:GetPublicKey`) and signs via
+`kms:Sign` per-request. This path is **NOT shipped in Wave 7** —
+documented here for the Wave 8 / Wave 9 migration plan. Until then,
+all RSA private keys live in SSM as SecureString PEMs.
+
+### 8.6 Recovery: lost RSA private key
+
+If the active RSA key material is lost (operator error / KMS
+permission revocation / SSM parameter deletion), follow the §5
+emergency rotation pattern but on the RSA path:
+
+1. Mint a fresh keypair (§8.1).
+2. SSM-put the new private key into `/mahjong/{env}/auth/jwt/rsa-active`
+   (skip the archive/previous shuffle — every in-flight RS256 token
+   is unrecoverable anyway).
+3. Force-sync ESO + roll the pods.
+4. Notify clients to re-authenticate. Public clients fetching the
+   JWKS will see the new `kid` immediately + transparently retry
+   any 401-on-stale-kid responses.
+
+## 9. Cross-references
+
+* [`docs/jwt-ssm-runbook.md`](jwt-ssm-runbook.md) — SSM-Parameter-Store-focused operator runbook (RS256 keypair custody, §8 above is the canonical procedure).
 * [`docs/secret-management.md`](secret-management.md) — broader secret-management policy.
 * [`docs/secret-rotation.md`](secret-rotation.md) — day-of-rotation cadence + runbooks.
 * [`tests/smoke/jwt-rotation-smoke.sh`](../tests/smoke/jwt-rotation-smoke.sh) — end-to-end rotation smoke.
 * [`src/backend/src/Mahjong.Autotable.Api/appsettings.json`](../src/backend/src/Mahjong.Autotable.Api/appsettings.json) — `Auth.JwtSigningKeys` schema (forward-compat shipped in Wave 3).
-* [`infra/k8s/overlays/prod/jwt-keys-secret.yaml`](../infra/k8s/overlays/prod/jwt-keys-secret.yaml) — Wave-4 ESO `mahjong-jwt-keys` ExternalSecret (active/previous/archive SSM mounts).
-* [`infra/k8s/overlays/prod/kustomization.yaml`](../infra/k8s/overlays/prod/kustomization.yaml) — `envFrom: { secretRef: { name: mahjong-jwt-keys, optional: true } }` mount.
+* [`infra/k8s/overlays/prod/jwt-keys-secret.yaml`](../infra/k8s/overlays/prod/jwt-keys-secret.yaml) — Wave-4 ESO `mahjong-jwt-keys` ExternalSecret (HS256 active/previous/archive SSM mounts).
+* [`infra/k8s/overlays/prod/jwt-rsa-keys-secret.yaml`](../infra/k8s/overlays/prod/jwt-rsa-keys-secret.yaml) — **Wave-7** ESO `mahjong-jwt-rsa-keys` ExternalSecret (RS256 active/previous/archive PEM mounts).
+* [`infra/k8s/overlays/staging/jwt-rsa-keys-secret.yaml`](../infra/k8s/overlays/staging/jwt-rsa-keys-secret.yaml) — Wave-7 staging equivalent (`mahjong-jwt-rsa-keys-staging`).
+* [`infra/k8s/overlays/prod/kustomization.yaml`](../infra/k8s/overlays/prod/kustomization.yaml) — both `envFrom` mounts (HS256 + RS256), each `optional: true`.
 * [`infra/k8s/overlays/prod/secret-template.yaml`](../infra/k8s/overlays/prod/secret-template.yaml) — omnibus ESO (kept distinct from the JWT keys ESO so rotation surfaces don't entangle).

@@ -1,0 +1,31 @@
+{{/* Phase K Wave 7 — Apone (DevOps). Coturn Service (NLB). */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mahjong-coturn.fullname" . }}
+  labels:
+    {{- include "mahjong-coturn.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if eq .Values.service.type "LoadBalancer" }}
+  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
+  {{- end }}
+  selector:
+    {{- include "mahjong-coturn.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: turn-udp
+      port: {{ .Values.ports.listening }}
+      targetPort: turn-udp
+      protocol: UDP
+    - name: turn-tcp
+      port: {{ .Values.ports.listening }}
+      targetPort: turn-tcp
+      protocol: TCP
+    - name: turns-tcp
+      port: {{ .Values.ports.tls }}
+      targetPort: turns-tcp
+      protocol: TCP

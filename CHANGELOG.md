@@ -19,15 +19,247 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-6-bringup`. Phase K Wave 6
-in flight (DevOps lane shipping multi-region DR replication
-module + GitHub-OIDC least-privilege narrowing + production
-coturn k8s manifests with NetworkPolicy + Trivy severity-tuned
-gate with allowlist + tag-driven mobile internal-testing
-promotion + SLSA-verifier pre-merge gate on `deploy:prod` PRs).
-Other lane deliverables outstanding.
+Working branch: `stlong/phase-k-wave-7-bringup`. Phase K Wave 7
+in flight. Other lane deliverables outstanding.
 
-## [0.15.0] — Phase K Wave 6 — 2026-06-04 (PR pending)
+## [0.16.0] — Phase K Wave 7 — 2026-06-11 (PR pending)
+
+**Theme:** Helm chart-of-charts (umbrella + three subcharts; parity
+with the Kustomize tree) + edge Terraform module (Route53 / ACM /
+WAFv2 / opt-in CloudFront) + GHCR→ECR signature-preserving mirror
+workflow + mobile External-Testing promotion workflow (TestFlight
+External + Play Closed Testing) + six-file signer-identity
+invariant pre-commit hook + RS256 JWT SSM provisioning (separate
+ExternalSecret on prod + staging overlays, `Auth__JwtRsaKeys__N`
+env-var binding).
+
+### Added (Phase K Wave 7 — PR pending)
+- **Helm chart-of-charts `helm/mahjong/`.** New umbrella chart
+    wrapping three subcharts (`mahjong-api`, `mahjong-coturn`,
+    `mahjong-postgres-sidecar`) with `alias:` wired on each
+    dependency so umbrella `values.yaml` short keys (`api`,
+    `coturn`, `postgresSidecar`) route to the subcharts (the
+    quirk: without aliases, helm routes umbrella values to
+    subcharts by chart NAME, so the W7 initial render had
+    PVCs in prod despite `api.persistence.enabled: false`).
+    Three values files: `values.yaml` (umbrella defaults),
+    `values-staging.yaml`, `values-prod.yaml`. Renders byte-
+    equivalent (modulo name prefixes) to the existing Kustomize
+    overlays; parity matrix in `docs/helm-charts.md` §4 + W7
+    acceptance gate (`helm lint` + `helm template` → yaml
+    safe_load_all). Pre-rollout migration `Job` uses helm's
+    `helm.sh/hook: pre-upgrade,pre-install` (the Kustomize path
+    runs migrations out-of-band via the operator runbook).
+    Coturn subchart ships the W6 prod shape (HMAC mode,
+    NetworkPolicy admitting the IANA ephemeral relay range,
+    AZ-spread podAntiAffinity, ExternalSecret for `mahjong-coturn-secret`).
+    (Apone)
+- **Terraform `modules/edge/` — Route53 + ACM + WAFv2 + opt-in
+    CloudFront.** New reusable edge module provisioning the
+    public-facing surface: Route53 hosted zone, regional ACM
+    + us-east-1 ACM (CloudFront constraint), WAFv2 REGIONAL +
+    CLOUDFRONT ACLs with managed rule groups + per-IP rate
+    limit (W7 baseline 1000/5min), S3 logs bucket with the
+    AWS-required `aws-waf-logs-*` prefix, Athena workgroup
+    over those logs, opt-in CloudFront distribution
+    (`cloudfront = null` to skip — staging runs Route53+ACM+
+    WAFv2 against the ALB only; prod adds CloudFront), apex
+    Route53 ALIAS records. Provider alias `aws.us_east_1`
+    required by callers via `configuration_aliases` (same
+    pattern as `dr-replication/`'s us-west-2 alias). Validators
+    on `domain_name` (lowercase FQDN), `waf_rate_limit_per_5min`
+    (100–20 000 000), `logs_retention_days` (7–3653),
+    `cloudfront.price_class`. Standalone `terraform validate`
+    requires a test rig (modules with `configuration_aliases`
+    cannot validate without a caller); validation pattern
+    documented in `docs/terraform.md` §5.4. (Apone)
+- **`.github/workflows/mirror-ghcr-to-ecr.yml` — signature-preserving
+    GHCR→ECR mirror.** New tag-driven workflow mirroring the
+    canonical GHCR image to ECR for in-region EKS pull. Uses
+    `crane copy` for the manifest (registry-to-registry HTTP-only;
+    no gzip re-encoding, so destination digest = source digest)
+    and `cosign copy` for the `.sig` + `.att` sidecars (cosign
+    signature + SLSA attestations). The workflow verifies
+    destination digest equality against source, then re-verifies
+    the cosign signature with the canonical signer-identity
+    regex at the destination registry. Required secrets:
+    `AWS_ECR_MIRROR_ROLE_ARN` (the W6 OIDC role), `AWS_ECR_REGION`,
+    `AWS_ECR_REPOSITORY`. Interplay with the W6 DR replication:
+    primary ECR mirror lands in us-east-1; W6 account-level
+    replication carries it to us-west-2 asynchronously. Documented
+    in `docs/ghcr-to-ecr-mirror.md`. (Apone)
+- **`.github/workflows/mobile-external-testing.yml` — External
+    Testing promotion.** New operator-driven `workflow_dispatch`-only
+    workflow promoting the most-recent Internal Testing build to
+    External Testing on both Apple + Google distribution
+    surfaces. `fastlane pilot distribute --build_number latest
+    --distribute_external true --notify_external_testers true`
+    for TestFlight External Groups (triggers Apple Beta App
+    Review on the first External build of a new version,
+    ~24 h turnaround). `fastlane supply --track internal
+    --track_promote_to <DEST>` promotes the Play Internal
+    Testing build to the operator-selected Closed Testing
+    track without re-uploading the AAB (`(packageName,
+    versionCode)` uniqueness prevents re-upload). Required
+    inputs: `tag` (`mobile-vX.Y.Z`), `release_notes` (≤4000
+    chars). Optional: `ios_external_groups`, `android_track`,
+    `release_status` (`draft` / `completed` / `inProgress`).
+    Soft-fails on missing secrets (fork PRs cannot access them).
+    Slack notification at job tail. Documented in
+    `docs/mobile-release.md` §4a. (Apone)
+- **`scripts/check_signer_identity.py` — six-file signer-identity
+    invariant guard.** New Python pre-commit hook + standalone
+    CLI script that extracts the cosign signer-identity regex
+    from six tracked files, normalises the escaping convention
+    (unquoted YAML / double-quoted YAML / fenced doc block),
+    and compares each to a canonical value declared in the
+    script. Six tracked files: `.github/workflows/sign-image.yml`,
+    `.github/workflows/verify-signature.yml`,
+    `.github/workflows/slsa-provenance.yml` (W7 marker added),
+    `infra/k8s/policies/kyverno-cosign-verify.yaml`,
+    `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`,
+    `docs/slsa-provenance.md` (W7 §4a section added). Path
+    divergence from the W7 spec: the fifth surface lives in
+    `infra/k8s/overlays/prod/`, not `infra/k8s/policies/`.
+    Wired via `.pre-commit-config.yaml` (`always_run: true,
+    pass_filenames: false` — drift is a cross-file property,
+    so the hook ignores staged-file scoping). Drift-detection
+    smoke test passes. Rotation procedure in
+    `docs/signer-identity-invariant.md`. (Apone)
+- **`infra/k8s/overlays/{prod,staging}/jwt-rsa-keys-secret.yaml`
+    — RS256 JWT SSM provisioning.** New ExternalSecret manifests
+    mounting RS256 PEM-encoded private keys from SSM
+    (`/mahjong/{env}/auth/jwt/rsa-{active,previous,archive}`)
+    into a dedicated Secret (`mahjong-jwt-rsa-keys` /
+    `mahjong-jwt-rsa-keys-staging`) with the env-var keys
+    `auth__jwtrsakeys__{0,1,2}` (binding to Bishop's W7
+    `Auth.JwtRsaKeys` array). Deliberately separate from the
+    W4 `mahjong-jwt-keys` HS256 Secret — HS256 + RS256 differ
+    in cryptographic shape (opaque bytes vs PEM) and rotation
+    cadence (HS256 30-day vs RS256 90-day), so independent
+    Secrets keep rotation surfaces from entangling. Both
+    overlays' `kustomization.yaml` patched to add a new
+    `envFrom` mount (`optional: true` — deployment starts
+    before RSA bootstrap). Staging adds the manifest to
+    `resources:`; prod stays out-of-band (mirroring the W4
+    operational asymmetry). Documented in `docs/jwt-rotation.md`
+    §8.3 (updated to match the actual W7 wiring — the prior
+    text described a different shape). (Apone)
+- **`.pre-commit-config.yaml` — pre-commit local hooks.** New
+    local hook config wiring `signer-identity-invariant` plus
+    the standard `pre-commit-hooks` set (`check-yaml`,
+    `end-of-file-fixer`, `trailing-whitespace`, `check-merge-conflict`,
+    `check-added-large-files`). `check-yaml` excludes helm
+    templates + kyverno manifests (they use templating tags
+    PyYAML can't safe-load). CI parity (`pre-commit run
+    --all-files` in a workflow) is a W8 follow-up. (Apone)
+- **`docs/helm-charts.md` — Wave 7 helm reference.** New doc
+    covering chart layout, the alias quirk, install order,
+    helm-vs-Kustomize decision matrix, parity matrix, subchart
+    toggles, and the pre-merge verification gate. (Apone)
+- **`docs/signer-identity-invariant.md` — invariant + rotation
+    procedure.** New doc explaining why the regex MUST stay in
+    lock-step across six files, the W5 incident that motivated
+    the guard (~25 min outage of the scheduled image-rescan
+    alerting), and the coordinated-rotation procedure. (Apone)
+- **`docs/ghcr-to-ecr-mirror.md` — Wave 7 mirror reference.**
+    New doc covering why naive `docker pull` + `docker push`
+    breaks signatures (gzip re-encoding produces different
+    layer digests), the `crane copy` + `cosign copy`
+    primitives, when not to mirror, the ECR-unreachable
+    fallback flow, and DR replication interplay. (Apone)
+- **`.github/workflows/slsa-provenance.yml` — env-block W7
+    marker.** New `EXPECTED_IDENTITY_REGEXP` env entry
+    documenting the canonical signer-identity regex so this
+    workflow participates in the six-file invariant guard.
+    Marker is non-functional (the workflow's cosign attest
+    invocations already use OIDC keyless signing under the
+    same identity); the env entry is the hook-friendly anchor.
+    (Apone)
+- **`docs/slsa-provenance.md` §4a — Signer-identity invariant
+    section.** New documentation surface added BETWEEN existing
+    §4 (slsa-verifier procedure) and §5 (verify-failure
+    semantics) — explains that slsa-verifier pins source URI
+    but NOT signer identity, references the W7 six-file
+    invariant, and reproduces the canonical regex in a fenced
+    code block so the pre-commit hook can verify the doc
+    surface too. (Apone)
+
+### Changed (Phase K Wave 7 — PR pending)
+- **`.github/workflows/slsa-provenance.yml` — env-block extended.**
+    Added the W7 `EXPECTED_IDENTITY_REGEXP` marker entry
+    (non-functional; six-file invariant participation only).
+- **`docs/slsa-provenance.md` — §4a inserted.** Existing §5
+    onward retain their numbering; §4a is a NEW subsection
+    after §4. Six-file invariant cross-reference added.
+- **`docs/jwt-rotation.md` §8.3 + §9 — RS256 ESO mount + cross-refs.**
+    §8.3 rewritten to describe the actual W7 wiring (separate
+    `mahjong-jwt-rsa-keys` ExternalSecret + new `envFrom`
+    patch on both overlays, NOT extension of the W4
+    `mahjong-jwt-keys` Secret as the prior text claimed).
+    §9 cross-refs extended to point at the new ExternalSecret
+    manifests.
+- **`docs/terraform.md` — §5 Edge module inserted.** New §5
+    (renumbering existing "Cross-references" to §6) covering
+    the W7 edge module: what it builds, validators, usage,
+    standalone-validation caveat (`configuration_aliases`
+    incompatibility with `terraform validate`), interplay
+    with `dr-replication`.
+- **`docs/mobile-release.md` — §4a + §5.2 + §6 + §9 updated.**
+    New §4a "External testing flow" inserted between §4 and
+    §5 (existing numbering preserved). §5.2 "Promote to
+    external (Phase L)" rewritten to point at the W7
+    workflow ("Wave 7 — automated"). §6's "Closed Testing"
+    row updated to reference the W7 workflow. §9
+    cross-references extended.
+- **`infra/k8s/overlays/{prod,staging}/kustomization.yaml` —
+    RSA envFrom mounts.** Both overlays gain an additional
+    `envFrom` patch for the W7 RSA Secret. Order: HS256
+    mount first, RSA mount second (so the W7 RS256 binding
+    can co-exist with the W4 HS256 binding during cutover).
+- **Wave 6 [0.15.0] state: now PR #52 (merged at 1c67878).**
+    Updated the §0.15.0 heading from "PR pending" to
+    "PR #52". W6 prod-deploy snapshot is now archived.
+
+### Notes (Phase K Wave 7)
+- **Six-file signer-identity invariant — path divergence from the
+    spec.** The user's W7 task spec listed
+    `infra/k8s/policies/kyverno-enforce-patch.yaml` as the fifth
+    surface; the actual path is
+    `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml` (the
+    enforce patch lives in the prod overlay, not under
+    `policies/`). The check script uses the real path.
+- **`slsa-provenance.yml` + `docs/slsa-provenance.md` invariant
+    participation.** Neither file previously carried the regex
+    literal; W7 added a non-functional env marker
+    (`EXPECTED_IDENTITY_REGEXP`) to the workflow + a §4a
+    documentation section to the doc, so all six surfaces
+    participate in the guard. The non-functional marker MAY be
+    promoted to a live cosign-verify call in W8 if the SLSA
+    flow ever needs an independent signature gate.
+- **Helm chart-of-charts is parallel to Kustomize, not a
+    replacement.** Both paths ship in this repo, both render the
+    same Deployment / Service / etc. CI deploy path stays on
+    Kustomize (`docs/production-deployment-runbook.md`); helm is
+    for operator-driven point-installs + partner deploys.
+- **`mobile-external-testing.yml` first-run gotcha.** The FIRST
+    External Testing distribution of a new iOS version triggers
+    Apple's Beta App Review (~24 h); re-triggering the workflow
+    cannot cancel a review in flight. Operator-driven dispatch
+    is required to gate this — auto-promotion on every tag is
+    intentionally NOT shipped.
+- **GHCR→ECR mirror = best-effort, not release-blocker.** A
+    mirror failure is treated as an ECR-side outage signal;
+    the canonical image is still on GHCR and EKS can pull from
+    there (longer latency, but pods start). Re-run the mirror
+    via `workflow_dispatch` once ECR recovers.
+- **Edge module — standalone `terraform validate` caveat.** The
+    module declares `configuration_aliases = [aws.us_east_1]`,
+    which prevents standalone validation (same as
+    `dr-replication/`). Use the test-rig pattern in
+    `docs/terraform.md` §5.4 to validate in isolation.
+
+## [0.15.0] — Phase K Wave 6 — 2026-06-04 (PR #52)
 
 **Theme:** Multi-region DR (us-east-1 → us-west-2 warm pair) +
 IAM least-privilege hardening + production coturn k8s data plane
@@ -1129,7 +1361,8 @@ Phases A through I shipped on `main` without semver tags. Highlights:
     `pwmarcz/autotable` engine, scoring & yaku catalogue, swap-call
     discipline, gang/chi/pong/ron implementations.
 
-[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/long2know/mahjong-autotable/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/long2know/mahjong-autotable/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/long2know/mahjong-autotable/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/long2know/mahjong-autotable/compare/v0.12.0...v0.13.0

@@ -97,6 +97,64 @@ public static class CommentaryGeneratorTestShim
     }
 
     /// <summary>
+    /// Phase K Wave 7 — Bishop. Emits a deterministic list of
+    /// <see cref="Mahjong.Autotable.Api.Commentary.CommentaryRecord"/>
+    /// values matching the finalised Phase-L JSON contract. The shim
+    /// rotates phase/speaker/tile-reference values by the hash digest
+    /// of <paramref name="gameId"/> so the same id maps to the same
+    /// record sequence every time the test harness runs.
+    ///
+    /// <para>Returns 4 records per call (parity with the Wave-6
+    /// <see cref="Generate"/> shape). Used by the
+    /// <c>Phase_K_W7/Bishop/CommentaryRecordContractTests</c>
+    /// to exercise the wire surface without standing up an LLM.</para>
+    /// </summary>
+    public static IReadOnlyList<Mahjong.Autotable.Api.Commentary.CommentaryRecord> GenerateRecords(string gameId)
+    {
+        if (string.IsNullOrWhiteSpace(gameId))
+        {
+            throw new ArgumentException("gameId must be non-empty.", nameof(gameId));
+        }
+
+        var seed = HashSeed(gameId);
+        var phases = new[]
+        {
+            Mahjong.Autotable.Api.Commentary.CommentaryPhases.Draw,
+            Mahjong.Autotable.Api.Commentary.CommentaryPhases.Discard,
+            Mahjong.Autotable.Api.Commentary.CommentaryPhases.Claim,
+            Mahjong.Autotable.Api.Commentary.CommentaryPhases.Win,
+        };
+        var speakers = new[]
+        {
+            Mahjong.Autotable.Api.Commentary.CommentarySpeakers.PlayByPlay,
+            Mahjong.Autotable.Api.Commentary.CommentarySpeakers.Color,
+            Mahjong.Autotable.Api.Commentary.CommentarySpeakers.Analyst,
+        };
+        // Deterministic UTC timestamp per game so the record list
+        // sorts identically across runs without grabbing wall-clock.
+        var anchor = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        var records = new List<Mahjong.Autotable.Api.Commentary.CommentaryRecord>(capacity: 4);
+        for (var i = 0; i < 4; i++)
+        {
+            var slice = seed.Substring(i * 8, 8);
+            // Map the slice nibble pair to an intensity in [0, 1].
+            var hex = Convert.ToInt32(slice.Substring(0, 2), 16);
+            var intensity = Math.Round(hex / 255.0, 3);
+            records.Add(new Mahjong.Autotable.Api.Commentary.CommentaryRecord(
+                GameId: gameId,
+                TurnNumber: i + 1,
+                Phase: phases[i],
+                Speaker: speakers[i % speakers.Length],
+                Text: $"[shim] {phases[i]} commentary for game {slice}",
+                EmotionIntensity: intensity,
+                TileReferences: new[] { $"man{(i % 9) + 1}" },
+                GeneratedAt: anchor.AddSeconds(i)));
+        }
+        return records;
+    }
+
+    /// <summary>
     /// Reflection probe — returns true if <c>ICommentaryGenerator</c>
     /// is present on the production assembly. Used by the sanity
     /// test to forward-stage when Bishop hasn't shipped the

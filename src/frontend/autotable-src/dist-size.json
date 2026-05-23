@@ -1,0 +1,52 @@
+{
+  "$schema": "./scripts/dist-size.schema.json",
+  "$description": "Source-of-truth chunk-size ledger for the autotable bundle, wave-over-wave. Vasquez's W7 Playwright spec asserts that `three-renderer-big` is monotonically decreasing across waves (regression = hard fail). The build pipeline (vite.config.ts → scripts/append-dist-size.js) appends a new wave entry on every `npm run build:vite`. Wave names use `K{N}` (Phase K Wave N).",
+  "current": "K7",
+  "history": [
+    {
+      "wave": "K6",
+      "bundler": "parcel",
+      "recordedAt": "2026-07-04T00:00:00Z",
+      "chunks": {
+        "autotable-src-eager": 219680,
+        "game-bootstrap": 169980,
+        "scene-shell": 2330,
+        "scene-effects": 60069,
+        "three-renderer-small": 99095,
+        "three-renderer-big": 739720,
+        "GLTFLoader": 44612,
+        "stats-module": 1902,
+        "commentary-panel": 3767,
+        "spectator-livestream": 5413,
+        "tournaments": 36589,
+        "chat": 15961,
+        "voice": 8181,
+        "audit": 7361,
+        "history": 12290,
+        "tour": 10255
+      }
+    },
+    {
+      "wave": "K7",
+      "bundler": "vite",
+      "recordedAt": "2026-05-23T15:43:55.341Z",
+      "chunks": {
+        "autotable-src-eager": 214514,
+        "game-bootstrap": 174778,
+        "scene-shell": 2341,
+        "scene-effects": 59041,
+        "three-renderer-big": 578721,
+        "three-renderer-small": 69345,
+        "commentary-panel": 7307,
+        "spectator-livestream": 5288,
+        "hls": 286571,
+        "tournaments": 38190,
+        "chat": 12306,
+        "voice": 9382,
+        "audit": 7523,
+        "history": 12408,
+        "tour": 10454
+      }
+    }
+  ]
+}

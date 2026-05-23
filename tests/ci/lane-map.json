@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mahjong-Autotable squad lane map",
+  "description": "Phase K Wave 7 — Vasquez (QA). Per-agent lane regex map consumed by tests/ci/check-cross-lane-bundling.sh. Each entry maps an agent identity to a single anchored ECMA-style regex; a path matches the lane when the regex matches the path. The script applies these in declaration order, then falls back to its legacy case-statement classifier for back-compat (so a missing lane-map.json never breaks CI). Maintain in sync with charters in .squad/agents/<agent>/charter.md.",
+  "lanes": {
+    "bishop":  "^(src/backend/src/|src/backend/Migrations/|Phase_K_W\\d+/Bishop/|appsettings.*\\.json|\\.squad/agents/bishop/|\\.squad/decisions/inbox/bishop-)",
+    "hicks":   "^(src/frontend/|Phase_K_W\\d+/Hicks/|\\.squad/agents/hicks/|\\.squad/decisions/inbox/hicks-)",
+    "apone":   "^(\\.github/workflows/|infra/|docs/(slsa|hsts|turn|admission|oauth|jwt-rotation|kubernetes|terraform|secrets|mobile|retro|helm|signer|ghcr|production)\\.md|Dockerfile|helm/|CHANGELOG\\.md|\\.squad/agents/apone/|\\.squad/decisions/inbox/apone-)",
+    "vasquez": "^(src/backend/tests/|src/frontend/autotable-src/tests/|tests/ci/|docs/test-|docs/contracts/|\\.github/workflows/lane-discipline\\.yml|\\.squad/agents/vasquez/|\\.squad/decisions/inbox/vasquez-)"
+  },
+  "wave_subdir_overrides": {
+    "description": "Files under src/backend/tests/*/Phase_K_W*/<AgentName>/ and Phase_K_W*/<AgentName>/ (anywhere) are attributed to <AgentName>, not Vasquez. This lets each agent author contract-style tests under their own subdirectory inside Vasquez's broader test lane. AgentName must match one of the lanes above (case-sensitive PascalCase: Bishop / Hicks / Apone / Vasquez).",
+    "patterns": [
+      "^src/backend/tests/[^/]+/Phase_K_W\\d+/(Bishop|Hicks|Apone|Vasquez)/",
+      "^Phase_K_W\\d+/(Bishop|Hicks|Apone|Vasquez)/"
+    ],
+    "examples": [
+      "src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W7/Bishop/RS256HappyPathTests.cs -> bishop",
+      "src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W7/Hicks/BundlerSwapContractTests.cs -> hicks",
+      "src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W7/Apone/HelmLintContractTests.cs -> apone"
+    ]
+  },
+  "shared": {
+    "description": "Paths classified as `shared` are NEVER cross-lane violations (used for repo-wide concerns).",
+    "patterns": [
+      "^\\.squad/agents/",
+      "^\\.squad/decisions/inbox/",
+      "^\\.squad/charter\\.md$",
+      "^CHANGELOG\\.md$",
+      "^README\\.md$",
+      "^LICENSE$",
+      "^docs/"
+    ]
+  },
+  "authors": {
+    "bishop":  "bishop@squad.mahjong",
+    "hicks":   "hicks@squad.mahjong",
+    "apone":   "apone@squad.mahjong",
+    "vasquez": "vasquez@squad.mahjong"
+  }
+}

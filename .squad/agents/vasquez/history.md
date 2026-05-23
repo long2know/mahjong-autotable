@@ -1887,3 +1887,170 @@ single-lane via the stage allowlist (`src/backend/tests/`,
 `.squad/decisions/inbox/vasquez-*`, `.github/workflows/lane-discipline.yml`).
 
 Full details in `.squad/decisions/inbox/vasquez-phase-k-wave-6.md`.
+
+## Phase K Wave 7 — forward-stage W7 contracts + lane-discipline STRICT mode + three-renderer trend gate + OIDC RS256 hard contract + 6 e2e specs
+
+**Gate:** **1506/0/0**. First green W7 gate; no flake across 3
+consecutive default-parallelism runs.
+
+**Delta:** **+84 facts** (vs Wave 6 baseline 1422/0/0), all
+forward-staged W7 facts carrying `Trait("Wave", "Phase-K-7")`.
+Zero-skips streak preserved = **21st consecutive green wave** on
+the Vasquez-owned facts. Target was ≥1490 → exceeded by 16.
+
+### Scope completed
+
+- **Backend tests** (8 new files in
+  `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W7/`,
+  split into per-agent subdirs per the W6 attribution convention
+  now generalised to any depth):
+
+  - **Bishop** (`Phase_K_W7/Bishop/` — 17 facts across 6 files):
+    - `RS256HappyPathTests.cs` — 5 facts (production-config
+      HS256-absent, AuthOptions validators, JWKS endpoint
+      shape, RS256 token round-trip, RS256 header on issued
+      JWT).
+    - `LosersBracketDeterminismTests.cs` — 3 facts (count
+      formula, pairings stable across seed, grand-final reset
+      semantics).
+    - `FfmpegHlsRecorderHealthcheckTests.cs` — 2 facts (PATH
+      probe at startup, type publicly exposed).
+    - `CommentaryRecordContractTests.cs` — 3 facts (record
+      shape with multi-axis ordering tolerance — Sequence /
+      TurnNumber / Index / Order, JSON envelope, generator
+      interface stable).
+    - `OidcDiscoveryHardContractTests.cs` — 2 facts (RS256-only
+      surface, NO HS256 leakage even under `Development`).
+    - `JwtOperationalDocsContractTests.cs` — 2 facts
+      (`docs/auth-rs256-operations.md` hard-link +
+      `infra/k8s/overlays/{dev,prod}/jwt-rsa-keys-secret.yaml`
+      reference).
+
+  - **Hicks** (`Phase_K_W7/Hicks/` — 9 facts in 1 file):
+    - `BundlerSwapContractTests.cs` — bundler decision marker,
+      three-renderer ≤550KB / game-shell ≤200KB / lobby ≤500KB
+      chunk ceilings, CSP no `unsafe-eval`, commentary-panel
+      CommentaryRecord subscription, tile-ref handler,
+      outline-shader module, `dist-size.json` schema.
+
+  - **Apone** (`Phase_K_W7/Apone/` — 10 facts in 1 file):
+    - `AponeW7InfraContractTests.cs` — `helm/mahjong/Chart.yaml`,
+      `infra/terraform/modules/edge/`, ghcr-to-ecr workflow,
+      mobile-external-testing workflow,
+      `.pre-commit-config.yaml` + 6 signers,
+      `jwt-rsa-keys-secret.yaml` dev + prod overlays,
+      `.squad/retros/2026-06-retro.md`, CHANGELOG 0.16.0.
+
+  - **Vasquez umbrella** (`Phase_K_W7/W7SurfaceSmokeFactsTests.cs`):
+    ~22 cross-lane W7 smokes hitting Bishop's `JwtAlgorithm`
+    flip surface, commentary endpoint reachability,
+    `CommentaryRecord` serializer round-trip, double-elim
+    bracket type visibility, losers-bracket discoverability,
+    helm + edge + pre-commit + jwt-rsa-keys overlay presence,
+    bundler config marker, dist-size envelope, three-renderer /
+    game-shell / lobby chunk sizes, outline-shader presence,
+    commentary-panel tile-ref handler, PWA maskable manifest
+    icon, OIDC RS256-only, SpectatorVoiceHub still Hub
+    subclass, Swiss + DoubleElimination still enrollable,
+    CommentaryGenerator default impl, CommentaryRecord nullable
+    `TileReferences` tolerance, FfmpegHlsRecorder healthcheck
+    type.
+
+- **Regression rename**:
+  `Wave1ThroughKW6RegressionTests.cs` → `Wave1ThroughKW7RegressionTests.cs`
+  (filename + class + ctor). Appended 7 new W7 smokes:
+  `PhaseK7_FfmpegHlsRecorder_TypePublic`,
+  `PhaseK7_CommentaryRecord_TypePublic`,
+  `PhaseK7_DoubleElim_LosersBracket_MethodDiscoverable`,
+  `PhaseK7_HelmChart_FileExists`,
+  `PhaseK7_EdgeTerraformModule_DirectoryExists`,
+  `PhaseK7_PreCommitConfig_FileExists`,
+  `PhaseK7_JwtRsaKeysSecret_DevOverlay_Exists` +
+  `_ProdOverlay_Exists`.
+
+- **W5 ThreeRenderer test fix (in-lane maintenance)**:
+  `HicksW5FrontendContractTests.ThreeRenderer_ModulePresent_HardAssert`
+  was probing only
+  `src/frontend/autotable-src/src/three-renderer.ts` for the
+  static `from 'three'` import. Hicks's W7 bundler swap moved
+  the static import out to `src/render/custom-outline.ts`
+  (outline shader extraction), so the W5 test started failing.
+  Because the test lives in `src/backend/tests/` (Vasquez lane)
+  and the failure was tightly coupled to W7's bundler-swap
+  refactor, this was a legitimate Vasquez in-lane maintenance
+  fix: extended the file scan to ALSO probe
+  `src/frontend/autotable-src/src/render/` and
+  `src/frontend/autotable-src/src/renderer/`. Hard-assert still
+  fires if NO file in any of the three candidate dirs contains
+  the static import.
+
+- **Playwright specs** (6 new in
+  `src/frontend/autotable-src/tests/e2e/`):
+  - `bundler-swap-no-regression.spec.ts` — lobby load emits no
+    `pageerror`/`console.error` after Hicks's bundler swap.
+  - `commentary-record-rendering.spec.ts` — panel mounts speaker
+    + emotion + tile-ref testids from mocked `CommentaryRecord`.
+  - `outline-shader-visual.spec.ts` — `enableOutline()` hook
+    invokes without throwing.
+  - `three-renderer-trend.spec.ts` — **wave-over-wave regression
+    gate**. Hard-asserts current ≤ previous (when comparable) OR
+    the absolute W7 550kB ceiling.
+  - `commentary-tile-ref-cross-pane.spec.ts` — tile-ref click
+    populates `window.__lastHighlightedTile` within 500ms.
+  - `pwa-icon-maskable.spec.ts` — manifest carries ≥1 icon with
+    `purpose` token `maskable`.
+  All chromium-only via `test.skip(testInfo.project.name !== 'chromium', …)`.
+  Soft-pass annotations on forward-staged surfaces.
+
+- **Lane-discipline W7** (NEW + MODIFIED):
+  - `tests/ci/lane-map.json` (NEW) — machine-readable
+    declared-truth lane map.
+  - `tests/ci/check-cross-lane-bundling.sh` — `--strict` mode +
+    `Phase_K_W*/<AgentName>/` attribution generalised to any
+    depth.
+  - `.github/workflows/lane-discipline.yml` — STRICT=1 +
+    lane-map.json sanity check. **Now PR-blocking from W7.**
+  - `docs/test-lane-discipline.md` (NEW) — operator runbook
+    covering lane map, strict mode, adding a new agent,
+    debugging a cross-lane / author-lane failure.
+
+- **OIDC RS256 hard contract migration**:
+  Soft-pass under `Development` (W6) → hard-fail (W7) via
+  `OidcDiscoveryHardContractTests.cs`. Most facts already hit
+  Bishop's merged production implementation.
+
+- **Documentation**:
+  - `src/frontend/autotable-src/tests/selectors.md` — appended
+    Phase K Wave 7 footer with the 6 new spec descriptions.
+  - `docs/test-harness-handoff.md` — appended W7 follow-up
+    section noting the regression class size + W7 gate count.
+  - `docs/test-lane-discipline.md` (NEW, per above).
+
+### Per-invocation identity protocol — third consecutive wave
+
+Vasquez continues the W5/W6 protocol unchanged:
+`git -c user.name="Vasquez (QA)" -c user.email="vasquez@squad.mahjong" commit -m …`,
+wrapped in `flock -w 120 9 || exit 1; …; 9>/tmp/squad-git-lock`
+so concurrent agents serialise on commit + push. Every W7 commit
+in this PR is verified single-lane via the stage allowlist
+(`src/backend/tests/`, `src/frontend/autotable-src/tests/`,
+`tests/ci/`, `docs/test-*.md`, `docs/contracts/`,
+`.squad/agents/vasquez/`, `.squad/decisions/inbox/vasquez-*`,
+`.github/workflows/lane-discipline.yml`).
+
+### Concurrent-agent activity observed during bring-up
+
+Working tree carried extensive uncommitted work from all three
+concurrent agents. None of it was staged by Vasquez. Observed
+surfaces (for handoff awareness, not for staging): Bishop's
+`src/backend/src/Auth/Rs256TokenIssuer.cs`, FfmpegHlsRecorder,
+DoubleEliminationBracket, OIDC discovery controller,
+`CommentaryRecord` DTO, JwtAlgorithm production switch; Hicks's
+bundler config, `src/render/custom-outline.ts`, commentary-panel
+rewrite, manifest maskable icon, `dist-size.json`; Apone's
+`helm/mahjong/`, `infra/terraform/modules/edge/`,
+ghcr-to-ecr + mobile-external-testing workflows,
+`.pre-commit-config.yaml`, `jwt-rsa-keys-secret.yaml` dev + prod
+overlays, retro 2026-06, CHANGELOG 0.16.0.
+
+Full details in `.squad/decisions/inbox/vasquez-phase-k-wave-7.md`.

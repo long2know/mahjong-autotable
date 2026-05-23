@@ -119,24 +119,40 @@ public sealed class BracketGeneratorDeterminismTests
         var gen = new DoubleEliminationBracket();
         var pairings = gen.Generate(Seeds8);
 
-        // 8 seeds → 4 WB round-1 pairings + 2 LB round-1 placeholder
-        // pairings + 1 grand-final placeholder pairing = 7 total.
-        Assert.Equal(7, pairings.Count);
+        // Phase K Wave 7 — Bishop. The W7 algorithm emits the FULL
+        // bracket shape (every WB / LB round + grand-final reset).
+        // For 8 seeds: 7 WB matches (4+2+1) + 6 LB matches
+        // (2+2+1+1) + 2 GF (Final + Reset) = 15 total.
+        Assert.Equal(15, pairings.Count);
 
         var winners = pairings.Where(p => p.Bracket == BracketSide.Winners).ToList();
         var losers = pairings.Where(p => p.Bracket == BracketSide.Losers).ToList();
         var grand = pairings.Where(p => p.Bracket == BracketSide.GrandFinal).ToList();
 
-        Assert.Equal(4, winners.Count);
-        Assert.Equal(2, losers.Count);
-        Assert.Single(grand);
+        Assert.Equal(7, winners.Count);
+        Assert.Equal(6, losers.Count);
+        Assert.Equal(2, grand.Count);
 
-        // Real seed names land in the winners bracket; the losers +
-        // grand-final slots are placeholders pending downstream
-        // match resolutions.
-        Assert.All(winners, p => Assert.DoesNotContain(p.P1, new[] { DoubleEliminationBracket.PlaceholderPlayer }));
-        Assert.All(losers, p => Assert.Equal(DoubleEliminationBracket.PlaceholderPlayer, p.P1));
-        Assert.All(grand, p => Assert.Equal(DoubleEliminationBracket.PlaceholderPlayer, p.P1));
+        // Real seed names land in WB round 1 only — every other slot
+        // is a deterministic placeholder pending downstream match
+        // resolution.
+        var wbR1 = winners.Where(p => p.Round == 1).ToList();
+        Assert.Equal(4, wbR1.Count);
+        Assert.All(wbR1, p => Assert.DoesNotContain("__pending", p.P1));
+
+        var laterWb = winners.Where(p => p.Round > 1).ToList();
+        Assert.All(laterWb, p => Assert.StartsWith("__pending_wb_", p.P1));
+
+        Assert.All(losers, p => Assert.StartsWith("__pending_lb_", p.P1));
+
+        // Grand final round 1 references the WB/LB champions; the
+        // round-2 reset uses the dedicated reset placeholder.
+        var gfFinal = grand.Single(g => g.Round == 1);
+        var gfReset = grand.Single(g => g.Round == 2);
+        Assert.Equal("__pending_wb_champion__", gfFinal.P1);
+        Assert.Equal("__pending_lb_champion__", gfFinal.P2);
+        Assert.Equal(DoubleEliminationBracket.GrandFinalResetPlaceholder, gfReset.P1);
+        Assert.Equal(DoubleEliminationBracket.GrandFinalResetPlaceholder, gfReset.P2);
     }
 
     [Fact]

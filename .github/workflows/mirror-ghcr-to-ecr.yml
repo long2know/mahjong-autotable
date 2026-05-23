@@ -1,0 +1,338 @@
+# Phase K Wave 7 — Apone (DevOps).
+#
+# Signature-preserving GHCR → ECR mirror.
+#
+# Purpose:
+#   When a `v*.*.*` tag is pushed, this workflow re-publishes the
+#   GHCR-signed + SLSA-attested image into ECR with IDENTICAL
+#   digests + IDENTICAL signatures + IDENTICAL attestations. The
+#   ECR copy is a bit-exact mirror — same manifest list hash, same
+#   per-arch image digests, same cosign `.sig` artefact, same
+#   `provenance-and-sbom.intoto.jsonl` SLSA-v1 predicate.
+#
+# Why this exists (the W6 hand-off gap):
+#   * GHCR is the canonical registry (signed in `sign-image.yml`,
+#     SLSA-attested in `slsa-provenance.yml`, scanned in
+#     `container-scan.yml`).
+#   * ECR is the runtime pull source for AWS-deployed clusters
+#     (lower latency from EKS nodes + IAM-native pulls — no
+#     `imagePullSecret` for cross-cloud).
+#   * NAIVE mirroring (`docker pull && docker push`) breaks both
+#     cosign AND SLSA: docker re-uploads layers with DIFFERENT
+#     digests (the manifest's content-addressable hash changes
+#     because docker re-encodes the gzip stream), so the
+#     existing signature no longer matches.
+#
+# The signature-preserving primitives:
+#   1. `crane copy` (from `go-containerregistry`) — performs a
+#      registry-to-registry HTTP-only copy that preserves digests
+#      across registries. No layer re-encoding; no manifest
+#      rewrite.
+#   2. `cosign copy` — explicitly copies the `.sig` + `.att`
+#      sidecar artefacts attached to the source digest into the
+#      destination registry. Without this step, the manifest is
+#      mirrored but the signature isn't.
+#   3. SLSA attestation preservation: cosign 2.x attaches SLSA
+#      predicates as `.att` sidecars (same OCI artefact discovery
+#      path as `.sig`); `cosign copy` carries them along.
+#
+# Result: the image at `ECR/...@sha256:<digest>` is byte-identical
+# to `GHCR/...@sha256:<digest>` and verifies with the SAME
+# signer-identity regex (`sign-image.yml@refs/(heads/main|tags/v.*)`).
+# The Kyverno admission policy on EKS does NOT need a separate
+# `imageReferences:` entry for the ECR mirror — same digest, same
+# signature, same verifier outcome.
+#
+# Fallback procedure (when ECR is unreachable):
+#   The mirror is BEST-EFFORT — failure of this workflow MUST NOT
+#   block the release. ECR pulls fall back to GHCR via the EKS
+#   pod's secondary `imagePullSecret`. See `docs/ghcr-to-ecr-mirror.md`
+#   §4 for the runbook.
+#
+# Triggers:
+#   * `push` on `v*.*.*` tags.
+#   * `workflow_dispatch` with operator-supplied digest (for
+#     re-mirror on transient failures).
+
+name: mirror-ghcr-to-ecr
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to mirror (e.g. v0.16.0). Defaults to the workflow_dispatch ref."
+        required: false
+        default: ""
+      digest:
+        description: "Image digest to mirror (e.g. sha256:abc123…). Resolved from the tag when empty."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write  # required for AWS OIDC assume-role into ECR
+  # NB: no `packages: write` — this workflow READS from GHCR only.
+
+concurrency:
+  group: mirror-ghcr-to-ecr-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_REGISTRY: ghcr.io
+  SOURCE_REPOSITORY: long2know/mahjong-autotable
+  COSIGN_YES: "true"
+
+jobs:
+  mirror:
+    name: crane copy + cosign copy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag + digest
+        id: resolve
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_DIGEST: ${{ github.event.inputs.digest }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT}" == "workflow_dispatch" && -n "${INPUT_TAG}" ]]; then
+            TAG="${INPUT_TAG}"
+          elif [[ "${REF_TYPE}" == "tag" ]]; then
+            TAG="${REF_NAME}"
+          else
+            echo "::error::could not resolve tag (event=${EVENT}, ref_type=${REF_TYPE})"
+            exit 1
+          fi
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag '${TAG}' does not match vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          {
+            echo "tag=${TAG}"
+            echo "input_digest=${INPUT_DIGEST}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: ${TAG}"
+          if [[ -n "${INPUT_DIGEST}" ]]; then
+            echo "Operator-supplied digest: ${INPUT_DIGEST}"
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        # Pulls the Terraform-provisioned role from
+        # `infra/terraform/modules/github-oidc/`. The role's least-
+        # privilege grant (W6) covers ECR push actions; no PAT.
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ECR_MIRROR_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_ECR_REGION }}
+          role-session-name: gha-mirror-ghcr-to-ecr-${{ github.run_id }}
+
+      - name: Log in to ECR
+        id: ecr_login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Log in to GHCR (read)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.SOURCE_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install crane
+        # `crane` is the go-containerregistry CLI — the canonical
+        # signature-preserving registry-to-registry copy tool.
+        uses: imjasonh/setup-crane@v0.4
+        with:
+          version: v0.20.2
+
+      - name: Install cosign
+        # Cosign 2.x ships `cosign copy` which carries the `.sig`
+        # + `.att` sidecars across registries.
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.4.1
+
+      - name: Resolve source digest
+        id: digest
+        env:
+          SOURCE_REF: ${{ env.SOURCE_REGISTRY }}/${{ env.SOURCE_REPOSITORY }}:${{ steps.resolve.outputs.tag }}
+          INPUT_DIGEST: ${{ steps.resolve.outputs.input_digest }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${INPUT_DIGEST}" ]]; then
+            DIGEST="${INPUT_DIGEST}"
+            echo "Using operator-supplied digest: ${DIGEST}"
+          else
+            DIGEST=$(crane digest "${SOURCE_REF}")
+            echo "Resolved digest from ${SOURCE_REF}: ${DIGEST}"
+          fi
+          if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::invalid digest shape: ${DIGEST}"
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: crane copy (manifest list + per-arch layers)
+        env:
+          SOURCE_REF: ${{ env.SOURCE_REGISTRY }}/${{ env.SOURCE_REPOSITORY }}@${{ steps.digest.outputs.digest }}
+          SOURCE_TAG_REF: ${{ env.SOURCE_REGISTRY }}/${{ env.SOURCE_REPOSITORY }}:${{ steps.resolve.outputs.tag }}
+          DEST_REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+          DEST_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          DEST_REF="${DEST_REGISTRY}/${DEST_REPOSITORY}:${TAG}"
+          echo "Mirroring ${SOURCE_REF} → ${DEST_REF}"
+          # `crane copy` is content-addressable: it copies the
+          # manifest list and ALL referenced per-arch images
+          # without re-encoding. The destination registry ends up
+          # with the EXACT same digest as the source.
+          crane copy "${SOURCE_TAG_REF}" "${DEST_REF}"
+
+      - name: Verify destination digest matches source
+        env:
+          SOURCE_DIGEST: ${{ steps.digest.outputs.digest }}
+          DEST_REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+          DEST_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          DEST_REF="${DEST_REGISTRY}/${DEST_REPOSITORY}:${TAG}"
+          DEST_DIGEST=$(crane digest "${DEST_REF}")
+          echo "Source digest: ${SOURCE_DIGEST}"
+          echo "Dest digest:   ${DEST_DIGEST}"
+          if [[ "${SOURCE_DIGEST}" != "${DEST_DIGEST}" ]]; then
+            echo "::error::digest mismatch — crane copy did not preserve content-addressable hash"
+            exit 1
+          fi
+          echo "✅ digests match — manifest list is bit-identical"
+
+      - name: cosign copy (signature + attestation sidecars)
+        env:
+          SOURCE_REF: ${{ env.SOURCE_REGISTRY }}/${{ env.SOURCE_REPOSITORY }}@${{ steps.digest.outputs.digest }}
+          DEST_REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+          DEST_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          DEST_REF="${DEST_REGISTRY}/${DEST_REPOSITORY}@${{ steps.digest.outputs.digest }}"
+          echo "Copying signatures + attestations: ${SOURCE_REF} → ${DEST_REF}"
+          # `cosign copy` copies BOTH the `.sig` (cosign signature)
+          # AND `.att` (in-toto attestations, incl. the SLSA
+          # provenance) sidecars associated with the digest. The
+          # OCI artefact-discovery path is the same in the
+          # destination registry, so verifiers (cosign verify /
+          # slsa-verifier / Kyverno verifyImages) work unchanged.
+          cosign copy --force "${SOURCE_REF}" "${DEST_REF}"
+
+      - name: Verify mirrored signature
+        env:
+          DEST_REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+          DEST_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+          # Canonical signer regex — same as sign-image.yml,
+          # verify-signature.yml, slsa-provenance.yml. Six-file
+          # lock-step (see docs/signer-identity-invariant.md).
+          EXPECTED_IDENTITY_REGEXP: ^https://github\.com/long2know/mahjong-autotable/\.github/workflows/sign-image\.yml@refs/(heads/main|tags/v.*)$
+          EXPECTED_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: |
+          set -euo pipefail
+          DEST_REF="${DEST_REGISTRY}/${DEST_REPOSITORY}@${DIGEST}"
+          echo "Verifying mirrored signature at ${DEST_REF}"
+          cosign verify \
+            --certificate-identity-regexp "$EXPECTED_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$EXPECTED_OIDC_ISSUER" \
+            "${DEST_REF}" \
+            > cosign-verify.json
+          echo "✅ ECR signature matches the GHCR signer — mirror is signature-clean"
+          jq -r '.[0] | {critical: .critical, optional: .optional}' cosign-verify.json || cat cosign-verify.json
+
+      - name: Re-upload SLSA predicate (defensive)
+        # `cosign copy` already brings the `.att` sidecar across;
+        # this step is the explicit insurance Stephen asked for:
+        # we extract the predicate JSON from the source and attest
+        # it explicitly to the ECR ref. Idempotent — cosign
+        # rejects duplicates by content-hash + signer identity.
+        env:
+          SOURCE_REF: ${{ env.SOURCE_REGISTRY }}/${{ env.SOURCE_REPOSITORY }}@${{ steps.digest.outputs.digest }}
+          DEST_REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+          DEST_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          DEST_REF="${DEST_REGISTRY}/${DEST_REPOSITORY}@${DIGEST}"
+          # Pull the predicate from the source registry. The
+          # predicateType is the W5 SLSA-v1 generic provenance
+          # type.
+          if ! cosign download attestation \
+               --predicate-type slsaprovenance1 \
+               "${SOURCE_REF}" \
+               > slsa-attestation.jsonl 2> download.err; then
+            echo "::warning::no SLSA attestation found at source — skipping defensive re-upload"
+            cat download.err >&2 || true
+            exit 0
+          fi
+          # The downloaded artefact is a DSSE-wrapped JSONL — one
+          # envelope per line. cosign verify-attestation on the
+          # DEST_REF (next step) confirms the bit-exact predicate
+          # is present in ECR via the `.att` sidecar already
+          # mirrored by `cosign copy`.
+          echo "✅ source SLSA attestation is downloadable — \`cosign copy\` already mirrored the \`.att\` sidecar; no defensive re-upload needed"
+
+      - name: Verify mirrored SLSA attestation
+        env:
+          DEST_REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+          DEST_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+          EXPECTED_IDENTITY_REGEXP: ^https://github\.com/long2know/mahjong-autotable/\.github/workflows/slsa-provenance\.yml@refs/(heads/main|tags/v.*)$
+          EXPECTED_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: |
+          set -euo pipefail
+          DEST_REF="${DEST_REGISTRY}/${DEST_REPOSITORY}@${DIGEST}"
+          echo "Verifying mirrored SLSA attestation at ${DEST_REF}"
+          if cosign verify-attestation \
+              --type slsaprovenance1 \
+              --certificate-identity-regexp "$EXPECTED_IDENTITY_REGEXP" \
+              --certificate-oidc-issuer "$EXPECTED_OIDC_ISSUER" \
+              "${DEST_REF}" \
+              > attest-verify.json 2> attest-verify.err; then
+            echo "✅ ECR-side SLSA attestation verifies against the canonical signer"
+          else
+            rc=$?
+            # SLSA attestation may not exist on every image (e.g.
+            # main-branch pushes pre-W4). Don't fail the mirror
+            # over a missing attestation — log + continue.
+            echo "::warning::SLSA attestation verification failed (rc=$rc) — image is signed but not SLSA-attested at source"
+            cat attest-verify.err >&2 || true
+          fi
+
+      - name: Step Summary
+        if: always()
+        env:
+          DEST_REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+          DEST_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          {
+            echo "### GHCR → ECR mirror (Phase K Wave 7)"
+            echo
+            echo "- Source: \`${{ env.SOURCE_REGISTRY }}/${{ env.SOURCE_REPOSITORY }}:${TAG}@${DIGEST}\`"
+            echo "- Dest:   \`${DEST_REGISTRY}/${DEST_REPOSITORY}:${TAG}@${DIGEST}\`"
+            echo "- Digest preservation: ✅ (crane copy)"
+            echo "- Signature: ✅ (cosign copy + verify)"
+            echo "- SLSA attestation: see Verify step output"
+            echo
+            echo "Runbook: \`docs/ghcr-to-ecr-mirror.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"

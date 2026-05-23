@@ -1,0 +1,33 @@
+{{- if .Values.ingress.enabled -}}
+{{/* Phase K Wave 7 — Apone (DevOps). API Ingress. */}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mahjong-api.fullname" . }}
+  labels:
+    {{- include "mahjong-api.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+    {{- if .Values.hsts.enabled }}
+    {{- /* HSTS preload header via nginx configuration-snippet. */}}
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Strict-Transport-Security: max-age={{ .Values.hsts.maxAgeSeconds }}{{ if .Values.hsts.includeSubDomains }}; includeSubDomains{{ end }}{{ if .Values.hsts.preload }}; preload{{ end }}";
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tlsSecretName | quote }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mahjong-api.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

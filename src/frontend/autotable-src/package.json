@@ -6,7 +6,9 @@
   "scripts": {
     "e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "e2e:install": "playwright install --with-deps chromium",
-    "build": "parcel build index.html --dist-dir ../autotable --public-url . --no-source-maps --no-cache && npm run build:post",
+    "build": "npm run build:vite",
+    "build:vite": "vite build",
+    "build:parcel": "parcel build index.html --dist-dir ../autotable --public-url . --no-source-maps --no-cache && npm run build:post",
     "build:post": "node scripts/generate-sw-manifest.js"
   },
   "devDependencies": {
@@ -21,9 +23,11 @@
     "@typescript-eslint/eslint-plugin": "^8.40.0",
     "@typescript-eslint/parser": "^8.40.0",
     "eslint": "^9.34.0",
+    "hls.js": "^1.5.13",
     "parcel": "^2.15.4",
     "process": "^0.11.10",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vite": "^5.4.21"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",

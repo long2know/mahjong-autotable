@@ -1,9 +1,11 @@
-// @ts-ignore
-import tableJpg from 'url:../img/table.jpg';
-// @ts-ignore
-import tilesLabelsPng from 'url:../img/tiles-labels.auto.png';
-// @ts-ignore
-import glbModels from 'url:../img/models.auto.glb';
+// Phase K Wave 7 — Asset URL imports.  Parcel used a `url:` prefix
+// to ask its `@parcel/packager-raw-url` transformer to copy the file
+// + emit a URL string.  Vite's native equivalent is the `?url` query
+// suffix which the rollup plugin handles built-in.  Wave 7 is the
+// Parcel→Vite swap so the imports now use the Vite form.
+import tableJpg from '../img/table.jpg?url';
+import tilesLabelsPng from '../img/tiles-labels.auto.png?url';
+import glbModels from '../img/models.auto.glb?url';
 
 import { Texture, Mesh, TextureLoader, Material,
    MeshStandardMaterial, MeshLambertMaterial, PlaneGeometry, RepeatWrapping, LinearSRGBColorSpace } from 'three';

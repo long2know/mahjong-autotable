@@ -195,3 +195,18 @@ into `Wave1ThroughKW5RegressionTests` and a sibling
 `Wave1ThroughKW5RegressionEnvelopeTests` — both sharing the same
 `regression-host` collection. The shared fixture pattern composes
 trivially across multiple classes.
+
+### Phase K Wave 7 follow-up (Vasquez)
+
+Wave 7 renamed the regression class to `Wave1ThroughKW7RegressionTests`
+and added 7 new W7 smokes for `FfmpegHlsRecorder`, `CommentaryRecord`,
+`DoubleEliminationBracket` losers-bracket count, `helm/mahjong/Chart.yaml`,
+`infra/terraform/modules/edge/`, `.pre-commit-config.yaml`, and
+`jwt-rsa-keys-secret.yaml` overlays. The class is approaching the
+~80-fact threshold (135 facts at W7); when W8 lands the
+recommended-split above SHOULD be revisited.
+
+The W7 gate runs at **1506 / 0 / 0** under the default xunit
+parallelism with the W5 fixture refactor still in place. No
+flake observed over the W7 bring-up.
+

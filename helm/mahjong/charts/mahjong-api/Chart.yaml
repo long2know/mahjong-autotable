@@ -1,0 +1,25 @@
+# Phase K Wave 7 — Apone (DevOps).
+#
+# Subchart: mahjong-api. Renders the API Deployment + Service +
+# Ingress + ConfigMap + (optional) HPA + (optional) PVC +
+# (optional) pre-rollout migration Job.
+#
+# Values shape lives in the umbrella `values.yaml` under `api.*`
+# — this subchart reads `.Values.api.*` directly because the
+# umbrella's `dependencies[].alias` is unset (Helm injects the
+# umbrella's `api.*` subtree as the subchart's `Values`).
+apiVersion: v2
+name: mahjong-api
+description: "Mahjong-Autotable API (.NET 10) Deployment + Service + Ingress + HPA."
+type: application
+version: 0.16.0
+appVersion: "0.16.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - mahjong
+  - api
+  - signalr
+home: https://github.com/long2know/mahjong-autotable
+maintainers:
+  - name: Apone (DevOps)
+    email: apone@squad.mahjong

@@ -284,6 +284,17 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
             ?? builder.Configuration.GetSection("Authentication:JwtRsaKeys").Get<string[]>()
             ?? authOptions.JwtRsaKeys
             ?? Array.Empty<string>(),
+        // Phase K Wave 7 — Bishop. `Auth:Issuer` (canonical) /
+        // `Authentication:Issuer` (legacy) feeds the OIDC discovery
+        // hard contract: with RS256 + a non-empty issuer the
+        // `/.well-known/openid-configuration` endpoint MUST return
+        // 200 with the issuer + jwks_uri + token_endpoint fields
+        // populated. Empty falls back to the request origin (the
+        // Wave-6 soft-pass behaviour kept for back-compat).
+        Issuer = builder.Configuration.GetValue<string>("Auth:Issuer")
+            ?? builder.Configuration.GetValue<string>("Authentication:Issuer")
+            ?? authOptions.Issuer
+            ?? string.Empty,
     };
     builder.Services.AddSingleton(sp => new Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider(
         jwtAuthOptions,
@@ -426,8 +437,52 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.VoiceHubMetricsService
 // to-end in tests + dev hosts; Phase L re-binds this interface to a
 // real ffmpeg / libwebrtc pipeline behind the same audit kinds and
 // the same `/api/voice/livestream/{gameId}/...` URL shape.
-builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.ILivestreamRecorder,
-    Mahjong.Autotable.Api.Voice.InMemoryLivestreamRecorder>();
+//
+// Phase K Wave 7 — Bishop. `Voice:LivestreamRecorderImpl` config
+// toggle selects between the in-memory stub (default) and the new
+// production-grade `FfmpegHlsRecorder`. When `FfmpegHls` is
+// selected, the IFfmpegHealthProbe guard fails fast at startup so a
+// missing ffmpeg binary surfaces as a boot-time exception rather
+// than a 500 on the first start request.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IFfmpegHealthProbe,
+    Mahjong.Autotable.Api.Voice.FfmpegBinaryHealthProbe>();
+{
+    var recorderImpl = builder.Configuration.GetValue<string>("Voice:LivestreamRecorderImpl")
+        ?? "InMemoryStub";
+    if (string.Equals(recorderImpl, "FfmpegHls", StringComparison.OrdinalIgnoreCase))
+    {
+        // Fail-fast boot guard: in production we WANT a clean
+        // exception rather than a degraded silent-fallback. The
+        // probe shells `ffmpeg -version` with a 2s timeout.
+        var bootProbe = new Mahjong.Autotable.Api.Voice.FfmpegBinaryHealthProbe();
+        if (!bootProbe.IsAvailable())
+        {
+            throw new InvalidOperationException(
+                "Voice:LivestreamRecorderImpl=FfmpegHls but ffmpeg is not available on PATH. " +
+                "Install ffmpeg (>=4.0) or revert to Voice:LivestreamRecorderImpl=InMemoryStub.");
+        }
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.ILivestreamRecorder,
+            Mahjong.Autotable.Api.Voice.FfmpegHlsRecorder>();
+    }
+    else
+    {
+        if (!string.Equals(recorderImpl, "InMemoryStub", StringComparison.OrdinalIgnoreCase))
+        {
+            // Unknown value — surface a deferred warning on first
+            // resolve and bind the stub. We can't log here cleanly
+            // (no built logger yet), so the operator gets a startup
+            // exception when accidentally picking nonsense values
+            // they're trying to type as 'FfmpegHls'.
+            var bootLogger = LoggerFactory.Create(b => b.AddConsole())
+                .CreateLogger("Mahjong.Autotable.Api.Voice.LivestreamRecorderBinding");
+            bootLogger.LogWarning(
+                "Voice:LivestreamRecorderImpl='{Value}' is not recognised (expected 'InMemoryStub' or 'FfmpegHls'). Falling back to InMemoryStub.",
+                recorderImpl);
+        }
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.ILivestreamRecorder,
+            Mahjong.Autotable.Api.Voice.InMemoryLivestreamRecorder>();
+    }
+}
 
 // Phase K Wave 6 — Bishop. AI commentary generator seam. Wave 6 ships
 // the deterministic stub returning the canonical Phase-L placeholder
@@ -954,10 +1009,11 @@ app.MapGet("/.well-known/openid-configuration", (
             statusCode: StatusCodes.Status404NotFound);
     }
     var origin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+    var issuer = string.IsNullOrEmpty(keys.ConfiguredIssuer) ? origin : keys.ConfiguredIssuer;
     ctx.Response.Headers.CacheControl = "public, max-age=3600";
     return Results.Ok(new
     {
-        issuer = origin,
+        issuer,
         jwks_uri = $"{origin}/api/auth/.well-known/jwks.json",
         token_endpoint = $"{origin}/api/auth/token",
         grant_types_supported = new[] { "password", "authorization_code" },

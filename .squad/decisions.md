@@ -8046,4 +8046,517 @@ agent commit; gate verified post-commit via
 
 ---
 
+## Phase K — Wave 7 (RS256 issuer + OIDC e2e + full losers-bracket + ffmpeg HLS recorder + CommentaryRecord DTO + Vite bundler swap + CustomOutline inverted-hull shader + vendored HLS.js + Helm chart-of-charts + Edge Terraform module + GHCR→ECR mirror + Mobile External Testing + six-file signer-identity invariant + RS256 ESO secret + lane-discipline strict mode + KW7 regression rename + three-renderer trend gate + 6 Playwright specs) — `stlong/phase-k-wave-7-bringup` (2026-07-18)
+
+Seventh wave of Phase K. Scope: ship the **operational drill +
+real backing implementations** for the W6 forward-staged surfaces
+(RS256 JWT moves from config-toggle stub to e2e issuer-claim +
+rotation drill + algorithm-confusion guard; voice livestream HLS
+flips from in-memory stub to real ffmpeg subprocess + boot probe;
+Phase L commentary moves from envelope stub to canonical
+`CommentaryRecord[]` records contract), execute the **bundler
+decision** the W6 retro deferred (Parcel → Vite with rollup
+tree-shake override breaking the three.js namespace-re-export
+ceiling), narrow CSP to `script-src 'self'` by **vendoring HLS.js**
+into the bundle, and ship the **operator-driven release-distribution
+surfaces** (Helm chart-of-charts at parity with Kustomize, Edge
+Terraform module behind the `aws.us_east_1` provider-alias
+convention, GHCR→ECR signature-preserving mirror via `crane copy`
++ `cosign copy`, operator-dispatched Mobile External Testing
+promotion). **Bishop** brings up RS256 issuer-claim + OIDC discovery
+hard contract (`Auth:Issuer` config knob; `JwtIssuingService`
+stamps `iss` when configured; OIDC `issuer` field resolved as
+`ConfiguredIssuer ?? ${scheme}://${host}`), the **full**
+losers-bracket algorithm (winners 1..k=ceil(log2(N)) + losers
+2*(k-1) rounds in strict drop-tier pattern + grand-final round 2
+"reset" game with the dedicated `GrandFinalResetPlaceholder`
+constant + `BracketDepth(N)` helper; 8 seeds → 15 pairings,
+16 seeds → 31 pairings), the **real** `FfmpegHlsRecorder` (per-game
+ffmpeg subprocess reading PCM s16le 48kHz stereo from stdin,
+muxing AAC 128k into HLS segments with sliding-window +
+`delete_segments` + `omit_endlist`, graceful stop via `q\n` to
+stdin + 3-second grace + SIGKILL, directory-traversal-guarded
+segment lookup, opt-in via `Voice:LivestreamRecorderImpl=FfmpegHls`
+with boot-time `FfmpegBinaryHealthProbe` throwing on missing
+binary; `InMemoryStub` stays the CI default), the `CommentaryRecord`
+DTO + `CommentaryPhases` / `CommentarySpeakers` vocabularies +
+`/api/replay/{id}/commentary/replay` records endpoint, the
+**JWT rotation §8 RS256 key provisioning runbook** (OpenSSL
+PKCS#1 → PKCS#8, SSM Parameter Store topology with active /
+previous / archive slots, ESO ExternalSecret mount, algorithm
+flip + rotation + AWS KMS asymmetric-keypair alternative for
+Phase L), the **Google OAuth verification playbook**
+(`docs/google-oauth-verification.md` — prerequisites table, scope
+inventory, copy-paste justification, 90-second demo video script,
+common rejection reasons), and the additive `GenerateRecords()`
+method on Vasquez's `CommentaryGeneratorTestShim` (legitimate
+cross-lane edit per the W7 brief's explicit delegation note).
+**Hicks** ships the **bundler swap to Vite** (rollup under the
+hood with `treeshake.moduleSideEffects: id => !id.includes('node_modules/three/')`
+override beating Parcel's `"sideEffects": ["build/three.module.js"]`
+honour; `manualChunks` constrained to `node_modules` only —
+manual chunk via source files broke the lazy-render split in an
+early iteration; `chunkFileNamesFn` disambiguates `index`-named
+chunks; Vite's `closeBundle` hook runs the `append-dist-size.js`
+ledger script), the **CustomOutline inverted-hull replacement**
+for `OutlinePass` + `EffectComposer` + `RenderPass` (~3 kB
+ShaderMaterial sibling-mesh with BackSide normal expansion in NDC,
+visually equivalent to `OutlinePass` for solid-color tile UX at
+roughly half the frame cost on an iGPU; retires ~99 kB of
+three.js examples/jsm), the **vendored HLS.js** via
+`import('hls.js/dist/hls.light.mjs')` (286.57 kB sibling chunk,
+spectator-only on `#/spectate/{tableId}` hash route, narrowing
+CSP `script-src` from `'self' https://cdn.jsdelivr.net` to
+`'self'` — supply-chain trust boundary retired), the
+**`CommentaryRecord[]` panel rewrite** (group-by-turn collapsible
+sections, speaker badges, tile-reference chips dispatching
+`commentary:tile-ref` `CustomEvent`, emotion-intensity progressbar,
+W6 `{lines: string[]}` envelope fallback parse for the mid-deploy
+window, retires `commentary-line-{idx}` testid in favour of
+`commentary-record-{idx}`), the `dist-size.json` chunk-size trend
+ledger (`scripts/append-dist-size.js` + `scripts/dist-size.schema.json`,
+seeded with K6 baseline, K7 entry auto-appended), and the
+**slim `copyStaticAssets()` img/ copy** follow-up. **Vasquez**
+ships the **lane-discipline strict mode** (`tests/ci/lane-map.json`
+declared-truth machine-readable lane map with anchored regex per
+agent + `wave_subdir_overrides` + `shared` paths + `authors`
+email-to-agent map; `tests/ci/check-cross-lane-bundling.sh
+--strict` forces `MODE=pr` + requires `lane-map.json` parses +
+hard-fails on any violation with no historical-warning escape;
+`.github/workflows/lane-discipline.yml` invokes with `STRICT=1`;
+`Phase_K_W*/<AgentName>/` attribution generalised to ANY depth —
+was originally pinned to `src/backend/tests/*/Phase_K_W*/<AgentName>/`),
+the **KW7 regression rename** (`Wave1ThroughKW6RegressionTests` →
+`Wave1ThroughKW7RegressionTests` + 7 new W7 carry-forward smokes:
+`PhaseK7_FfmpegHlsRecorder_TypePublic`,
+`PhaseK7_CommentaryRecord_TypePublic`,
+`PhaseK7_DoubleElim_LosersBracket_MethodDiscoverable`,
+`PhaseK7_HelmChart_FileExists`,
+`PhaseK7_EdgeTerraformModule_DirectoryExists`,
+`PhaseK7_PreCommitConfig_FileExists`,
+`PhaseK7_JwtRsaKeysSecret_{Dev,Prod}Overlay_Exists`), the **W7
+surface contracts** (~57 forward-staged backend facts across 9 new
+files under `Phase_K_W7/{Bishop,Hicks,Apone}/` + a Vasquez-owned
+`W7SurfaceSmokeFactsTests.cs` umbrella + the **OIDC RS256 hard
+contract migration** — W6 soft-passed `RS256` envelope shape via
+reflection, W7 hard-asserts `id_token_signing_alg_values_supported`
+contains ONLY `RS256` even under `Development`), the **W5
+ThreeRenderer fix** (the W5 `HicksW5FrontendContractTests.ThreeRenderer_ModulePresent_HardAssert`
+broke under the bundler swap because the static `import … from 'three'`
+moved into `src/render/custom-outline.ts`; Vasquez extended the
+test's file scan to ALSO probe `src/frontend/autotable-src/src/render/`
+and `src/renderer/` for the static import — legitimate Vasquez
+in-lane maintenance fix since the test lives in Vasquez's lane
+even though triggered by Hicks's refactor), the **6 Playwright
+specs** (`bundler-swap-no-regression`, `commentary-record-rendering`,
+`outline-shader-visual`, `three-renderer-trend`,
+`commentary-tile-ref-cross-pane`, `pwa-icon-maskable` — chromium-only
+with soft-pass arms; `three-renderer-trend.spec.ts` is the
+**wave-over-wave regression gate** that hard-fails if the renderer
+chunk regresses past the prior wave's `dist-size.json` entry), and
+the `docs/test-lane-discipline.md` operator runbook. **Apone** ships
+the **Helm chart-of-charts** (`helm/mahjong/` umbrella + three
+subcharts `mahjong-api` / `mahjong-coturn` / `mahjong-postgres-sidecar`
+running PARALLEL to the existing Kustomize tree — NOT a migration;
+W7 acceptance gate is parity, both paths render equivalent objects;
+CI deploy path stays on Kustomize, helm is the operator-driven
+point-install + partner-deploy surface; **`alias:` on every dependency**
+in `Chart.yaml` because Helm routes umbrella values by chart NAME
+without it and overrides like `api.persistence.enabled: false` are
+silently ignored — the W7 bringup hit this trap once), the **Edge
+Terraform module** (`infra/terraform/modules/edge/` with
+`configuration_aliases = [aws.us_east_1]` provider-alias convention
+matching W6 `dr-replication/` `aws.us_west_2`; Route53 + ACM +
+WAFv2 + opt-in CloudFront via `cloudfront = null` suppressing the
+distribution + apex Route53 ALIAS retargeting; CloudFront ACM certs
+MUST live in us-east-1 regardless of primary region — AWS hard
+constraint; staging-OK without CloudFront), the **GHCR→ECR mirror
+workflow** (`crane copy` for manifest + `cosign copy` for `.sig`/`.att`
+sidecars; `crane v0.20.2` + `cosign v2.4.1` pinned; verify step
+asserts `crane digest <dest>` == `crane digest <src>` BEFORE sigs
+are copied so any future "docker pull && docker push" fix fails
+the assertion — dockerd re-encodes the gzip stream producing
+different layer digests, which cascades to manifest digest, which
+leaves the cosign sidecar at the destination registry resolving
+the wrong digest), the **Mobile External Testing workflow**
+(`workflow_dispatch`-only NO `push`/`tag` triggers — operator MUST
+invoke explicitly with `tag` + `release_notes` inputs; Apple Beta
+App Review's ~24h on first External build cannot be cancelled by
+re-triggering; soft-fails on missing secrets for fork PRs), the
+**six-file signer-identity invariant pre-commit hook**
+(`scripts/check_signer_identity.py` runs on EVERY commit via
+`always_run: true, pass_filenames: false` — drift is a CROSS-FILE
+property; staged-file scoping would miss drift across the six
+tracked surfaces: 3 cluster-wide Kyverno policies + 1 prod-overlay
+enforce patch at the **actual path** `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`
+NOT the W7-spec-mentioned `infra/k8s/policies/kyverno-enforce-patch.yaml`
++ the slsa-provenance workflow + the slsa-provenance doc — path
+divergence documented for W8 implementer awareness), the **RS256
+ESO ExternalSecret** for prod + staging overlays (`Auth__JwtRsaKeys__N`
+binding mounted via NEW `envFrom` patch — SEPARATE Secret
+`mahjong-jwt-rsa-keys` / `-staging` NOT extending the W4
+`mahjong-jwt-keys`; different rotation cadences — HS256 30-day vs
+RS256 90-day — would inflate ESO logs if co-located; AWS KMS
+asymmetric keypair alternative deferred to W8/W9 per Bishop's
+operational profile), and the **`docs/retro-2026-06.md`** Q2 quarterly
+retro WITH §3a DR rehearsal report (committed in the W6 retro;
+next quarterly September 2026) + **`CHANGELOG.md` 0.16.0 entry**.
+**Squad (Coordinator)** did NOT need to intervene this wave — all
+19 commits land cleanly and the gate closes at **1506/0/0** without
+a coordinator fix-up commit (contrast W6 which needed `abf7624` for
+the kustomization-resources omission).
+
+**19 commits across 4 agent lanes; all 19 commits correctly authored
+at the `%an <%ae>` level. The W6 per-invocation race-safe identity
+binding HELD for the second consecutive wave** —
+`git -c user.name=X -c user.email=Y commit ...` +
+`flock -w 120 9 ... 9>/tmp/squad-git-lock` mutex bypasses the
+`git config` race entirely and the W3/W4/W5 cross-lane content
+bundling failure mode remains broken (25+ concurrent agent runs
+since W6 introduction without recurrence). Lane-discipline strict
+mode caught **2 legitimate cross-lane edits** on first run: `1032243`
+(Bishop) added `GenerateRecords()` to Vasquez's
+`tests/Shims/CommentaryGeneratorTestShim.cs` (legitimate — explicit
+delegation note in Bishop's W7 brief) and `2a7f8a7` (Hicks) appended
+W7 testids to `src/frontend/autotable-src/tests/selectors.md`
+(Vasquez-lane path per current map; legitimate — `selectors.md` is
+the test contract doc Hicks owns updating when he adds testids,
+the W6 pattern that already exists). **W8 hand-off: refine
+`tests/ci/lane-map.json` to recognise `selectors.md` as a
+Hicks/Vasquez shared file.**
+
+### Test gate
+
+| Lane                  | Pass     | Fail | Skip | Δ vs Wave 6 baseline (1422) |
+|-----------------------|----------|------|------|------------------------------|
+| Bishop                | 1505     | 1    | 0    | +83 (the 1 fail is the W5 ThreeRenderer brittleness OUTSIDE Bishop's lane — Hicks-frontend file) |
+| Hicks                 | 1505     | 1    | 0    | +83 (same — file owned by Hicks; W5 test owned by Vasquez)        |
+| Apone                 | 1505     | 1    | 0    | +83                          |
+| **Vasquez (in-lane fix flips the W5 ThreeRenderer test to probe `src/render/` + `src/renderer/`)** | **1506** | **0** | **0** | **+84** |
+
+**Zero-skip streak preserved → 21 consecutive green waves
+(J.1 → J.10 + K.1 → K.7).** Closing invocation:
+`dotnet test src/backend/Mahjong.Autotable.slnx --nologo` →
+**1506 / 0 / 0**. The single fail during bring-up was the W5
+`HicksW5FrontendContractTests.ThreeRenderer_ModulePresent_HardAssert`
+pinning that `src/frontend/autotable-src/src/three-renderer.ts`
+MUST carry a static `import … from 'three'` statement — the file
+became comment-only after Hicks's W7 bundler swap moved the import
+into `src/render/custom-outline.ts`. The test lives in Vasquez's
+backend test lane (`src/backend/tests/Phase_K_W5/`) so the in-lane
+maintenance fix is legitimately Vasquez's: the file-scan was
+extended to ALSO probe `src/render/` + `src/renderer/` candidate
+dirs; the hard-assert still fires if NO file in any of the three
+dirs contains the static import. Gate flips green at 1506/0/0.
+
+### Bundle metrics — Vite swap WIN (renderer total −22.7 %)
+
+| Chunk                              | Wave 6      | Wave 7        | Δ              |
+|------------------------------------|-------------|---------------|----------------|
+| `autotable-src.<hash>.js` (eager)  | 219.68 kB   | **214.51 kB** | −5.17 kB ✅    |
+| `scene-shell.<hash>.js`            | 2.33 kB     | **2.34 kB**   | unchanged ✅   |
+| `game-bootstrap.<hash>.js`         | 169.98 kB   | **174.78 kB** | +4.80 kB *    |
+| `three-renderer.<hash>.js` (small) | 99.10 kB    | **69.35 kB**  | **−29.75 kB (−30.0 %)** |
+| `three-renderer.<hash>.js` (big)   | 739.72 kB   | **578.72 kB** | **−160.99 kB (−21.8 %)** |
+| `GLTFLoader.<hash>.js`             | 44.61 kB    | (merged)      | absorbed into renderer ¹ |
+| `stats.module.<hash>.js`           | 1.90 kB     | (lazy)        | gated `?stats=1` ² |
+| `commentary-panel.<hash>.js`       | 3.77 kB     | **7.31 kB**   | +3.54 kB ³    |
+| `spectator-livestream.<hash>.js`   | 5.41 kB     | **5.29 kB**   | unchanged ✅   |
+| `hls.<hash>.js` (NEW)              | —           | **286.57 kB** | vendored from CDN ⁴ |
+| `tournaments.<hash>.js`            | unchanged   | 38.19 kB      | unchanged ✅   |
+| **Renderer payload total (big + small)** | **838.82 kB** | **648.07 kB** | **−190.75 kB (−22.7 %)** ✅ |
+
+\* Vite's chunk boundary absorbs shared utilities Parcel routed
+to eager; combined eager boot cost (lobby + game-bootstrap) is
+still down 0.37 kB net neutral.
+¹ Vite's chunker collapses `GLTFLoader.js` into the renderer
+chunk via the natural dynamic-import boundary; W6 "GLTFLoader
+as own chunk" was a Parcel artefact, not a design goal.
+² `Stats` stays opt-in via `?stats=1`; the chunk isn't emitted
+on production builds because rollup dead-code-eliminates the
+URL-query branch.
+³ The commentary panel grew to support Bishop's richer
+`CommentaryRecord[]` shape (per-record speaker badges, tile-ref
+chips, emotion-intensity bars, collapsible turn groupings) —
+target was <80 kB; ships at 7.31 kB.
+⁴ Vendoring HLS.js (W6 was CDN-fetched) bought a real CSP win:
+`script-src 'self'` is now sufficient. No `cdn.jsdelivr.net`
+allowance required.
+
+**Renderer big-chunk monotonic-decrease invariant**
+(Vasquez's W7 wave-over-wave gate): **`740 → 579 kB` — holds
+(strict decrease).** The wave-over-wave regression gate
+(`three-renderer-trend.spec.ts`) will hard-fail any future
+wave that regresses past the W7 entry.
+
+**Soft pass against the strict <550 KB target.** 578.72 kB is
+slightly above the original W6-retro <550 KB target — close
+but did **NOT** meet the strict bar. W7 is documented as a
+soft-pass on the strict ceiling and **W8 hand-off** for further
+reduction via `three/src/*` deep imports (or three.js patch fork)
++ optional GLTFLoader strip (DRACO/KTX2/meshopt removal,
+~−40 kB) or pre-compiled binary tile mesh (~−80 kB, model
+pipeline refactor).
+
+### Vite swap milestone — Parcel → Vite
+
+The headline Hicks deliverable. Decision matrix (rejected
+options: esbuild swap, Parcel + plugin, `three/src/*` direct
+imports — `three/src/*` deferred to Phase L):
+
+| Option | Expected ∆ | Risk | Decision |
+|--------|-----------|------|----------|
+| **A. Vite swap** | −150 to −200 kB | Medium | **Chosen** |
+| B. esbuild swap | −100 to −150 kB | Medium-high | Rejected |
+| C. Parcel + plugin | <−50 kB | High (plugin API unstable) | Rejected |
+| D. `three/src/*` direct imports | −200 to −300 kB | Very high (touch every renderer file) | Rejected (Phase L) |
+
+**Why Vite worked where Parcel didn't.** Three's `package.json`
+declares `"sideEffects": ["build/three.module.js"]`. Parcel
+honours that annotation and disables tree-shake on the namespace
+re-export. Rollup lets us override via
+`treeshake: { moduleSideEffects: id => !id.includes('node_modules/three/') }`.
+That single override — combined with **not** trying to force
+source files into a `manualChunks` entry (which broke the
+lazy-render split in an early iteration; the W7-final
+`manualChunks` is constrained to `node_modules`-only: three,
+hls, sentry) — drops the big chunk by 161 kB. The remaining
+~96 kB of W7 savings comes from the **CustomOutline replacement**:
+inverted-hull `BackSide ShaderMaterial` sibling-mesh with
+NDC-space normal expansion + `LessEqual` depth test +
+`depthWrite: false`. Retires ~99 kB of three.js examples/jsm
+(`OutlinePass` + `EffectComposer` + `RenderPass`) for ~3 kB of
+`src/render/custom-outline.ts`. API-parity for the subset we
+use (`setSelected`, `setEdgeColor`, `precompile`, `render`).
+Frame cost halved on iGPU (Chromebook 1.4 ms → 0.7 ms; RTX 3060
+0.32 ms → 0.18 ms).
+
+**`build:parcel` kept as ONE-WAVE fallback** (delete in W8 if
+no regressions surface). Service worker compatibility preserved
+(dist layout byte-identical to Parcel's; `manifest-precache.json`
+lists 14 stable assets exactly as in W6).
+
+**Decision matrix + rationale + future tightening plan in
+`docs/frontend-build-tooling.md` + `docs/frontend-csp-requirements.md`.**
+
+### Lane-discipline strict mode — shipped + first findings
+
+Vasquez promoted the W6 warn-only lane-discipline script to
+**strict / PR-blocking** via:
+
+1. `tests/ci/lane-map.json` (NEW) — declared-truth machine-
+   readable lane map. Keys: `lanes.{bishop,hicks,apone,vasquez}`
+   (anchored regex per agent), `wave_subdir_overrides`
+   (`Phase_K_W*/<AgentName>/` attribution at ANY depth, generalised
+   from the W6 backend-tests-only scope), `shared`
+   (`docs/contracts/`, `.squad/decisions/inbox/_drafts/`),
+   `authors` (email-to-agent map for the author-vs-lane cross-check).
+2. `tests/ci/check-cross-lane-bundling.sh --strict` (MODIFIED) —
+   forces `MODE=pr`, requires `tests/ci/lane-map.json` exists +
+   parses + contains the `"lanes"` key, hard-fails on ANY
+   violation (no historical-warning escape).
+3. `.github/workflows/lane-discipline.yml` (MODIFIED) — invokes
+   with `STRICT=1 --strict`; PR-blocking from W7 onward.
+4. `docs/test-lane-discipline.md` (NEW) — operator runbook
+   covering lane map, strict mode, how to add a new agent,
+   how to debug a cross-lane / author-lane failure.
+
+**Two legitimate cross-lane edits flagged on first run** — BOTH
+retained as the editing agent owns the surface, BOTH documented
+for W8 hand-off:
+
+1. **`1032243` (Bishop) touched
+   `tests/Shims/CommentaryGeneratorTestShim.cs`** (Vasquez file).
+   **Additive `GenerateRecords()` method** needed for Bishop's
+   W7 `CommentaryRecord` contract tests. Legitimate per Bishop's
+   W7 brief explicit-delegation note (Bishop owns the additive
+   producer method since the consumer is his contract test;
+   Vasquez owns the rest of the shim).
+2. **`2a7f8a7` (Hicks) touched
+   `src/frontend/autotable-src/tests/selectors.md`**
+   (Vasquez-lane path per current map). **`selectors.md` is the
+   test contract doc Hicks owns updating when he adds testids** —
+   this is the W6 pattern that already exists for Hicks's PRs
+   (the W6 lane-discipline CI flagged the same edit type then,
+   retained via operator override). **W8 hand-off: refine
+   `tests/ci/lane-map.json` to recognise `selectors.md` as a
+   Hicks/Vasquez shared file** (add to the `shared` paths list
+   OR add an explicit `selectors.md → hicks` override).
+
+### Wave 7 invariants / patterns locked
+
+1. **W6 identity hardening proven over 2 waves.** Per-invocation
+   `git -c user.name=X -c user.email=Y commit ...` +
+   `flock -w 120 9 ... 9>/tmp/squad-git-lock` mutex holds across
+   25+ concurrent agent runs since W6 introduction. Bypasses the
+   `git config` race entirely (sibling agent's `git config` SET
+   between this agent's SET + later `commit` is incurable from
+   the agent side but the `-c` per-invocation override binds
+   identity to the EXACT `commit` invocation rather than to
+   persisted `.git/config` state). **W3/W4/W5 cross-lane content
+   bundling trend remains broken at W7.**
+2. **Vite is the bundler going forward** (Parcel kept as
+   one-wave fallback per Hicks's `docs/frontend-build-tooling.md`).
+   `build:parcel` script slated for W8 deletion if no regressions
+   surface. Bundler decision deferred from W5 → W6 → W7 finally
+   closes.
+3. **Six-file signer-identity invariant is machine-enforced** via
+   `scripts/check_signer_identity.py` + `.pre-commit-config.yaml`
+   hook configured with `always_run: true, pass_filenames: false` —
+   drift is a CROSS-FILE property; staged-file scoping would miss
+   drift across the six tracked surfaces. The W7 spec-path
+   `infra/k8s/policies/kyverno-enforce-patch.yaml` was reconciled
+   to the actual `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`
+   location; W8 audits the path-reconciliation choice.
+4. **Helm + Kustomize parallel** (NOT migration) — both paths
+   supported indefinitely. W7 acceptance gate is **parity**
+   (`helm template` on both overlays renders objects equivalent
+   to `kustomize build` on both overlays). CI deploy stays on
+   Kustomize; Helm is the operator-driven point-install +
+   partner-deploy surface. W9 re-evaluates migration. **`alias:`
+   on every Helm dependency** is non-optional (Helm routes
+   umbrella values by chart NAME without it, silently dropping
+   overrides).
+5. **Lane-discipline strict mode** is the new CI canonical
+   (`STRICT=1 --strict` in the workflow). `tests/ci/lane-map.json`
+   is declared-truth. **W8 makes it non-overridable** (operator
+   override available in W7 was used 0 times — both flagged
+   edits are W8 lane-map refinement items, not overrides).
+6. **CSP `script-src 'self'`** is the new baseline. Third-party
+   CDN allowance for HLS.js retired via vendored
+   `hls.js/dist/hls.light.mjs` dynamic import. The W6 draft CSP
+   addition for `https://cdn.jsdelivr.net` is permanently retired.
+7. **`dist-size.json` wave-over-wave trend ledger** is the new
+   bundle-budget surface. `scripts/append-dist-size.js` runs in
+   Vite's `closeBundle` hook. CI hard-asserts via
+   `three-renderer-trend.spec.ts` that
+   `history[n].chunks["three-renderer-big"] <= history[n-1].chunks["three-renderer-big"]`.
+8. **OIDC discovery `issuer` field resolution** — both controller
+   action and minimal-API route resolve `issuer` as
+   `ConfiguredIssuer ?? ${scheme}://${host}`. Empty
+   `AuthOptions.Issuer` means "fall back to request origin"; the
+   `iss` claim is only stamped when non-empty so HS256 baseline
+   tokens stay shape-compatible with the W4 verifier. Operators
+   can ship RS256 to staging without `Auth:Issuer` (and get a
+   self-describing discovery doc), AND override cleanly for
+   production behind a load balancer where the `Host` header
+   doesn't reflect the public hostname.
+9. **`GrandFinalResetPlaceholder` is a distinct constant from
+   `__pending__`** — service layer can distinguish reset slots
+   from ordinary placeholders without re-running the round
+   counter. `BracketDepth(N) = ceil(log2(N))` is the public
+   helper that derives the expected round count.
+10. **`InMemoryStub` stays the CI default for `ILivestreamRecorder`**
+    — CI does NOT install ffmpeg by default. `Voice:LivestreamRecorderImpl=FfmpegHls`
+    opts into the real ffmpeg subprocess + triggers the boot-time
+    `FfmpegBinaryHealthProbe` (throws `InvalidOperationException`
+    if ffmpeg missing; 2-second timeout cached per process
+    lifetime). Apone's W8 hand-off bakes ffmpeg into the production
+    container image.
+
+### Open items / hand-offs into Wave 8 (18 items)
+
+**Bishop (4 items):**
+
+1. **Real LLM commentary generator (Phase L)** — swap
+   `StubCommentaryGenerator` for a Bedrock/Anthropic-backed
+   implementation emitting `CommentaryRecord[]` into the existing
+   JSON contract. Vocabularies (`CommentaryPhases`,
+   `CommentarySpeakers`) already locked in W7.
+2. **WebRTC SFU Janus integration (Phase L)** — flip
+   `SpectatorVoiceHub.JoinSpectatorVoice` stub URL
+   (`sfu://stub/{tableId}`) to a real Janus handshake against the
+   sized SFU per `docs/voice-sfu-design.md`.
+3. **Losers-bracket UI hooks (Hicks dep)** — `BracketSide` +
+   placeholder-naming surface is in place; Bishop wires
+   `TournamentService.MaybeAdvanceRoundAsync` losers-bracket
+   resolution so Hicks's `DoubleElimRenderer` can consume real
+   games (not just placeholders).
+4. **JWKS RSA key marshalling perf (lazy-load)** — current path
+   materialises `RSAParameters` on every `Jwks()` call; cache the
+   wire-shape bytes per kid for hot-path optimisation.
+
+**Hicks (4 items):**
+
+1. **Bracket renderer wired to Bishop's losers-bracket data** —
+   `DoubleElimRenderer` consumes placeholder slots today; Bishop's
+   W8 losers-bracket resolution lets Hicks render real games.
+2. **Three-renderer further reduction to <550 KB** — `three/src/*`
+   deep imports (or three.js patch fork). Current 578.72 kB is
+   close but not under the strict bar; W8 closes the gap.
+3. **Commentary panel tile-ref board-highlight cross-pane wiring** —
+   the `commentary:tile-ref` `CustomEvent` is dispatched but not
+   consumed; board-pane should listen and highlight the referenced
+   tile during W8.
+4. **PWA Lighthouse audit** — maskable icons + manifest landed in
+   W6; W8 should baseline Lighthouse PWA scores and document the
+   audit ceiling in `docs/frontend-pwa.md`.
+
+**Apone (5 items, forward queue):**
+
+1. **Edge module wired into staging cutover** — W7 ships the
+   module + standalone-validation rig at `.work/tf-edge-validate/`;
+   W8 instantiates against staging (Route53 + ACM + WAFv2;
+   CloudFront off-by-default via `cloudfront = null`).
+2. **CI-side pre-commit enforcement (not just opt-in)** — the
+   six-file signer-identity hook ships as pre-commit (opt-in); W8
+   adds the same `scripts/check_signer_identity.py` invocation as
+   a CI job that hard-fails the PR.
+3. **`infra/k8s/overlays/prod/kyverno-enforce-patch.yaml` path
+   reconciliation** — the W7 spec referenced
+   `infra/k8s/policies/kyverno-enforce-patch.yaml`; the actual
+   path is under the prod overlay. The six-file invariant tracks
+   the real path; W8 audits whether the spec/docs should re-anchor
+   or whether the prod-overlay location is canonical.
+4. **Mobile Production track promotion** — W7 ships
+   `workflow_dispatch`-driven Internal → External promotion; W8
+   adds External → Production (TestFlight production app +
+   Play Production track) with explicit approval gates.
+5. **Helm chart canary deployment strategy** — W7 ships the
+   chart-of-charts at parity with Kustomize; W8 evaluates whether
+   the helm path is the primary canary surface (Argo Rollouts /
+   Flagger) or whether the parallel Kustomize CI path stays
+   canonical indefinitely.
+
+**Vasquez (5 items):**
+
+1. **Refine lane-map to recognise `selectors.md` as Hicks/Vasquez
+   shared.** The W7 strict-mode finding on `2a7f8a7` is a true
+   positive flag against a legitimate cross-lane edit; the
+   lane-map should encode this pattern explicitly under `shared`.
+2. **CI-blocking lane-discipline strict-mode flip.** W7 ships
+   `--strict` mode in the workflow but with operator override
+   available; W8 makes the strict-mode failure non-overridable
+   (PR cannot merge with unresolved violations).
+3. **Three-renderer <550 KB hard-assert.** Currently soft passes
+   at 579 KB via the wave-over-wave trend gate; W8 (once Hicks's
+   reduction lands) flips to a hard-assert.
+4. **ffmpeg integration test (real subprocess).** W7 contract
+   test asserts the `FfmpegHlsRecorder` type exists; W8 adds a
+   real subprocess test gated on `which ffmpeg` (skip-when-absent,
+   pass-when-present-and-produces-segments).
+5. **Pre-commit hook adoption tracking.** Apone ships the hook;
+   Vasquez tracks adoption (developer enables locally vs. CI
+   parity catches drift) via a `docs/test-lane-discipline.md`
+   appendix listing observed drift events per wave.
+
+**Scribe / coordinator (4 carry-forward into W8 prompt template):**
+
+1. **Per-invocation `git -c user.name=X -c user.email=Y commit ...`**
+   remains the canonical commit form — NEVER `git config user.name`
+   then later `git commit`. Held over W6 + W7 (25+ commits).
+2. **`flock -w 120 9 ... 9>/tmp/squad-git-lock` mutex** stacked
+   with the per-invocation binding. 120s wait is empirically
+   generous (typical commit + push ≤ 30s).
+3. **Selective `git add <path>` only** — NEVER `git add -A` /
+   `git add .` during cross-agent waves. The W5 cross-lane content
+   bundling failure mode has not recurred in W6 or W7.
+4. **`Phase_K_W*/<AgentName>/` test subfolder attribution** in
+   the lane-discipline path-mapping is the stable pattern for
+   agent-owned contract tests. W7 generalised to ANY depth.
+
+### Phase K Wave 7 — DONE.
+
+---
+
 

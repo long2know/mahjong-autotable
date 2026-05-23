@@ -39,6 +39,7 @@ public sealed class JwtSigningKeyProvider
     private readonly Dictionary<string, JwtRsaSigningKey> _rsaByKid;
     private readonly bool _fallbackKeyInUse;
     private readonly string _algorithm;
+    private readonly string _issuer;
 
     public JwtSigningKeyProvider(AuthOptions options, ILogger<JwtSigningKeyProvider> logger)
     {
@@ -47,6 +48,7 @@ public sealed class JwtSigningKeyProvider
         // emits a warning so an operator typo doesn't silently fall
         // into a "neither algorithm works" state.
         _algorithm = NormaliseAlgorithm(options.JwtAlgorithm, logger);
+        _issuer = (options.Issuer ?? string.Empty).Trim();
 
         var resolved = new List<JwtSigningKey>();
         if (options.JwtSigningKeys is { Length: > 0 })
@@ -130,6 +132,15 @@ public sealed class JwtSigningKeyProvider
     /// or <c>RS256</c>. Determines which key set the issuer signs
     /// with and which JWKS shape the discovery endpoint publishes.</summary>
     public string Algorithm => _algorithm;
+
+    /// <summary>Phase K Wave 7 — Bishop. Configured issuer URL stamped
+    /// into RS256 tokens (<c>iss</c> claim) and advertised by the OIDC
+    /// discovery document (<c>issuer</c> field). Empty when the
+    /// operator left <c>Auth:Issuer</c> unset; the discovery endpoint
+    /// falls back to the request's own scheme+host in that case
+    /// (HS256 hosts intentionally publish no discovery document, so
+    /// the empty fallback is unreachable there).</summary>
+    public string ConfiguredIssuer => _issuer;
 
     /// <summary>Active HMAC signer used for new HS256 token issuance.</summary>
     public JwtSigningKey ActiveKey => _keys[0];
