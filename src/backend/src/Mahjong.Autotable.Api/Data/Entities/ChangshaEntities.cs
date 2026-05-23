@@ -190,3 +190,71 @@ public class PlayerAuthSession
     public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddDays(30);
     public DateTime LastUsedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Phase J Wave 9 — Content-Security-Policy violation report (Apone, DevOps).
+///
+/// <para>Persisted by <c>POST /api/csp-report</c> for every browser-reported
+/// CSP violation. Schema mirrors the canonical <c>application/csp-report</c>
+/// (legacy) and <c>application/reports+json</c> (Reporting API) envelopes;
+/// fields are unbounded text because user agents disagree on which keys are
+/// present (Chromium ships every directive; Firefox sometimes elides
+/// <c>script-sample</c>). All columns are nullable so the endpoint never
+/// drops a malformed-but-parseable report.</para>
+///
+/// <para>No FK to <c>PlayerProfiles</c>: reports may arrive from anonymous
+/// callers (the public landing page) before any cookie is set. The
+/// <see cref="PlayerId"/> column is a best-effort capture of the
+/// <c>mahjong_pid</c> cookie at report time.</para>
+/// </summary>
+public class CspViolation
+{
+    public long Id { get; set; }
+
+    /// <summary>Best-effort capture of the <c>mahjong_pid</c> cookie at
+    /// report time. Null when the caller is fully anonymous.</summary>
+    public string? PlayerId { get; set; }
+
+    /// <summary>URL of the document the violation occurred on.</summary>
+    public string? DocumentUri { get; set; }
+
+    /// <summary>Origin or page that referred the violating resource.</summary>
+    public string? Referrer { get; set; }
+
+    /// <summary>The full effective directive name (e.g. <c>script-src-elem</c>).</summary>
+    public string? ViolatedDirective { get; set; }
+
+    /// <summary>Effective parent directive (e.g. <c>script-src</c>).</summary>
+    public string? EffectiveDirective { get; set; }
+
+    /// <summary>The original policy header that produced this violation.</summary>
+    public string? OriginalPolicy { get; set; }
+
+    /// <summary>Disposition: <c>enforce</c> or <c>report</c>.</summary>
+    public string? Disposition { get; set; }
+
+    /// <summary>The URI that was blocked (resource URL or <c>inline</c>/<c>eval</c>).</summary>
+    public string? BlockedUri { get; set; }
+
+    /// <summary>Optional source-file URL for inline / eval violations.</summary>
+    public string? SourceFile { get; set; }
+
+    /// <summary>Optional line + column position when reported by the UA.</summary>
+    public int? LineNumber { get; set; }
+    public int? ColumnNumber { get; set; }
+
+    /// <summary>Optional 40-char sample of the offending script. Truncated server-side.</summary>
+    public string? ScriptSample { get; set; }
+
+    /// <summary>HTTP status code the user agent saw when serving the document.</summary>
+    public int? StatusCode { get; set; }
+
+    /// <summary>Caller's User-Agent header.</summary>
+    public string? UserAgent { get; set; }
+
+    /// <summary>Raw JSON envelope, retained for forensics even when parsing
+    /// extracts the canonical fields above.</summary>
+    public string RawJson { get; set; } = string.Empty;
+
+    public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
+}

@@ -43,6 +43,17 @@ public static class DatabaseBootstrapper
             // bootstraps existing-prod SQLite databases that pre-date Wave 8
             // without requiring an out-of-band `dotnet ef database update`.
             await EnsureSqliteWave8TablesAsync(db, cancellationToken);
+            // Phase J Wave 9 — CSP violation report sink (Apone, DevOps).
+            // Canonical schema is the AddCspViolations EF migration; this
+            // guard ensures existing SQLite DBs gain the table on boot so
+            // POST /api/csp-report never trips a runtime "no such table".
+            await EnsureSqliteCspViolationsAsync(db, cancellationToken);
+            // Phase J Wave 9 — Bishop's reconnect-token rotation + chat
+            // + role + replay schema-version surface. Mirrors what an EF
+            // migration would do; written defensively so SQLite test
+            // tenants don't require an out-of-band `dotnet ef database
+            // update` to come up.
+            await EnsureSqliteWave9TablesAsync(db, cancellationToken);
         }
         else
         {
@@ -476,5 +487,75 @@ public static class DatabaseBootstrapper
             UpdatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Phase J Wave 9 — defensive SQLite-only bootstrap for the
+    /// <c>CspViolations</c> append-only table. Mirrors the
+    /// AddCspViolations EF migration so existing prod SQLite installs
+    /// pick up the new table on boot without an out-of-band migration sweep.
+    /// </summary>
+    private static async Task EnsureSqliteCspViolationsAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var createTable = connection.CreateCommand())
+            {
+                createTable.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "CspViolations" (
+                        "Id" INTEGER NOT NULL CONSTRAINT "PK_CspViolations" PRIMARY KEY AUTOINCREMENT,
+                        "PlayerId" TEXT NULL,
+                        "DocumentUri" TEXT NULL,
+                        "Referrer" TEXT NULL,
+                        "ViolatedDirective" TEXT NULL,
+                        "EffectiveDirective" TEXT NULL,
+                        "OriginalPolicy" TEXT NULL,
+                        "Disposition" TEXT NULL,
+                        "BlockedUri" TEXT NULL,
+                        "SourceFile" TEXT NULL,
+                        "LineNumber" INTEGER NULL,
+                        "ColumnNumber" INTEGER NULL,
+                        "ScriptSample" TEXT NULL,
+                        "StatusCode" INTEGER NULL,
+                        "UserAgent" TEXT NULL,
+                        "RawJson" TEXT NOT NULL,
+                        "ReceivedAt" TEXT NOT NULL
+                    );
+                    """;
+                await createTable.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxReceived = connection.CreateCommand())
+            {
+                idxReceived.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_CspViolations_ReceivedAt"
+                    ON "CspViolations" ("ReceivedAt");
+                    """;
+                await idxReceived.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxDirective = connection.CreateCommand())
+            {
+                idxDirective.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_CspViolations_EffectiveDirective"
+                    ON "CspViolations" ("EffectiveDirective");
+                    """;
+                await idxDirective.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
     }
 }

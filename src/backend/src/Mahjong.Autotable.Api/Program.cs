@@ -21,6 +21,36 @@ using System.Text.Json;
 // first /health request.
 var processStartTime = DateTimeOffset.UtcNow;
 
+// Phase J Wave 9 — Apone (DevOps). Stand-alone migrate mode for the k8s
+// pre-rollout Job (infra/k8s/base/job-migrate.yaml). When invoked with
+// `--migrate`, the process boots the DI container far enough to resolve
+// AppDbContext, runs Database.MigrateAsync (or EnsureCreatedAsync for
+// SQLite, which still uses the EnsureCreated bootstrap pattern), and
+// exits 0 — the listener port is never bound, so the Job completes
+// cleanly without fighting the Deployment's readiness probe.
+if (args.Contains("--migrate"))
+{
+    var migrateBuilder = WebApplication.CreateBuilder(args);
+    migrateBuilder.Services.AddPersistence(migrateBuilder.Configuration);
+    using var migrateApp = migrateBuilder.Build();
+    using var scope = migrateApp.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    Console.WriteLine($"[migrate] provider={(db.Database.IsSqlite() ? "Sqlite" : db.Database.IsNpgsql() ? "Postgres" : db.Database.IsSqlServer() ? "SqlServer" : "Unknown")} starting…");
+    if (db.Database.IsSqlite())
+    {
+        // SQLite uses EnsureCreated + defensive bootstraps; reuse the
+        // canonical InitializeAsync path so the Job is equivalent to
+        // the in-process boot.
+        await DatabaseBootstrapper.InitializeAsync(db);
+    }
+    else
+    {
+        await db.Database.MigrateAsync();
+    }
+    Console.WriteLine($"[migrate] complete.");
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));
 
@@ -320,6 +350,13 @@ app.MapGet("/api/system/persistence", (IConfiguration configuration) =>
 // limiting so the scrape loop doesn't trip on high-cardinality polls.
 app.MapGet("/metrics", (IServiceProvider services) => MetricsEndpoint.Render(services))
     .DisableRateLimiting();
+
+// Phase J Wave 9 — CSP violation report sink (Apone, DevOps). Off the
+// rate-limiter path because browsers and Cloudflare fan-out a burst of
+// reports when a policy first lands. See Observability/CspReportEndpoint.cs
+// for the endpoint contract and docs/cloudflare.md § "CSP reporting" for
+// the operator runbook.
+app.MapCspReport().DisableRateLimiting();
 
 // Phase J Wave 3 — canonical display ordering for WinPattern values (Hicks's UI).
 // Returns a flat JSON object keyed by the camelCase pattern wire-name (same strings
