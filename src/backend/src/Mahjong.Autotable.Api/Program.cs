@@ -88,16 +88,22 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "mahjo
 
 // Phase J Wave 3 — Docker HEALTHCHECK + Linux deploy probe (Apone). Returns a
 // stable JSON shape: status="healthy", buildSha from BUILD_SHA env var (or
-// "dev" when unset), uptime since process start, and the assembly version
-// string. Distinct from /api/health (legacy short-form probe used by the
-// frontend) so deployment infrastructure has its own stable wire contract.
-app.MapGet("/health", () => Results.Ok(new
+// "dev" when unset OR empty — Apone's Dockerfile defaults BUILD_SHA="" which
+// would bypass `?? "dev"` since `??` only catches null), uptime since process
+// start, and the assembly version string. Distinct from /api/health (legacy
+// short-form probe used by the frontend) so deployment infrastructure has its
+// own stable wire contract.
+app.MapGet("/health", () =>
 {
-    status = "healthy",
-    buildSha = Environment.GetEnvironmentVariable("BUILD_SHA") ?? "dev",
-    uptime = DateTimeOffset.UtcNow - processStartTime,
-    version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"
-}));
+    var sha = Environment.GetEnvironmentVariable("BUILD_SHA");
+    return Results.Ok(new
+    {
+        status = "healthy",
+        buildSha = string.IsNullOrEmpty(sha) ? "dev" : sha,
+        uptime = DateTimeOffset.UtcNow - processStartTime,
+        version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"
+    });
+});
 
 app.MapGet("/api/system/persistence", (IConfiguration configuration) =>
 {
