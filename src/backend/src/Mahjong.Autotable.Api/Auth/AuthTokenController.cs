@@ -48,17 +48,20 @@ public sealed class AuthTokenController : ControllerBase
     private readonly JwtIssuingService _issuer;
     private readonly JwtValidationService _validator;
     private readonly AuthOptions _authOptions;
+    private readonly IOAuthIntrospectRateLimiter? _introspectLimiter;
 
     public AuthTokenController(
         AuthCookieService cookies,
         JwtIssuingService issuer,
         JwtValidationService validator,
-        AuthOptions authOptions)
+        AuthOptions authOptions,
+        IOAuthIntrospectRateLimiter? introspectLimiter = null)
     {
         _cookies = cookies;
         _issuer = issuer;
         _validator = validator;
         _authOptions = authOptions ?? throw new ArgumentNullException(nameof(authOptions));
+        _introspectLimiter = introspectLimiter;
     }
 
     [HttpPost("token")]
@@ -291,6 +294,32 @@ public sealed class AuthTokenController : ControllerBase
         {
             Response.Headers.WWWAuthenticate = "Basic realm=\"introspect\"";
             return Unauthorized(new { error = "invalid_client" });
+        }
+
+        // Phase K Wave 12 — Bishop. Per-client_id sliding-window
+        // rate limit. The W11 surface relied only on the
+        // global AuthValidatePolicy bucket; W12 adds a
+        // client-scoped cap so one chatty verifier can't
+        // exhaust the global budget for everyone else.
+        if (_introspectLimiter is not null)
+        {
+            var decision = _introspectLimiter.TryAcquire(client.ClientId, DateTimeOffset.UtcNow);
+            // Standard RFC 6585 headers — `X-RateLimit-*`
+            // surfaces the live budget; `Retry-After` is the
+            // canonical 429 hint.
+            Response.Headers["X-RateLimit-Limit"] = _introspectLimiter.RequestsPerWindow.ToString();
+            Response.Headers["X-RateLimit-Remaining"] = decision.Remaining.ToString();
+            Response.Headers["X-RateLimit-Window"] = _introspectLimiter.WindowSeconds.ToString();
+            if (!decision.Allowed)
+            {
+                Response.Headers["Retry-After"] = decision.RetryAfterSeconds.ToString();
+                return StatusCode(StatusCodes.Status429TooManyRequests, new
+                {
+                    error = "rate_limit_exceeded",
+                    error_description = "introspect cap per client_id reached.",
+                    retry_after_seconds = decision.RetryAfterSeconds,
+                });
+            }
         }
 
         if (form is null || string.IsNullOrWhiteSpace(form.Token))

@@ -162,6 +162,25 @@ public sealed class AuthOptions
     public int RotationGracePeriodSeconds { get; set; } = 600;
 
     /// <summary>
+    /// Phase K Wave 12 — Bishop. Staged-rotation overlap window
+    /// in days. During this window the issuer continues to mint
+    /// new tokens with the active key (index 0) but the
+    /// validator accepts any of the configured keys in
+    /// <see cref="JwtSigningKeys"/> / <see cref="JwtRsaKeys"/>.
+    /// Defaults to 30 days per <c>docs/jwt-rotation.md §13</c>.
+    /// </summary>
+    public int RotationOverlapDays { get; set; } = 30;
+
+    /// <summary>
+    /// Phase K Wave 12 — Bishop. Optional UTC timestamp when the
+    /// current staged rotation window opened. When set, the
+    /// <see cref="JwtStagedRotationPolicy"/> reports the
+    /// remaining days in the window. Null = no rotation in
+    /// progress.
+    /// </summary>
+    public DateTime? RotationStartUtc { get; set; }
+
+    /// <summary>
     /// Phase K Wave 4 — Bishop. Canonical sub-section for per-provider
     /// OAuth config. Replaces the flat <see cref="Microsoft"/> /
     /// <see cref="Google"/> / <see cref="GitHub"/> properties. When

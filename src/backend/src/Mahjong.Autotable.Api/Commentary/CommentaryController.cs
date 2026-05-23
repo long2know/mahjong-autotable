@@ -43,6 +43,8 @@ public sealed class CommentaryController : ControllerBase
     private readonly ILogger<CommentaryController> _logger;
     private readonly ICommentaryStore? _store;
     private readonly Mahjong.Autotable.Api.Tables.IPlayerTableContext? _tableContext;
+    private readonly CommentaryCostBudget? _budget;
+    private readonly StubCommentaryGenerator? _stubGenerator;
 
     public CommentaryController(
         ICommentaryGenerator generator,
@@ -50,7 +52,9 @@ public sealed class CommentaryController : ControllerBase
         IServiceScopeFactory scopeFactory,
         ILogger<CommentaryController> logger,
         ICommentaryStore? store = null,
-        Mahjong.Autotable.Api.Tables.IPlayerTableContext? tableContext = null)
+        Mahjong.Autotable.Api.Tables.IPlayerTableContext? tableContext = null,
+        CommentaryCostBudget? budget = null,
+        StubCommentaryGenerator? stubGenerator = null)
     {
         _generator = generator;
         _cookies = cookies;
@@ -58,6 +62,8 @@ public sealed class CommentaryController : ControllerBase
         _logger = logger;
         _store = store;
         _tableContext = tableContext;
+        _budget = budget;
+        _stubGenerator = stubGenerator;
     }
 
     [HttpPost]
@@ -75,7 +81,8 @@ public sealed class CommentaryController : ControllerBase
 
         try
         {
-            var replay = await _generator.GenerateAsync(gameId, ct);
+            var generator = SelectGenerator();
+            var replay = await generator.GenerateAsync(gameId, ct);
             await WriteAuditAsync(session.PlayerId, gameId, replay.Generator, ct);
             return Ok(BuildEnvelope(replay));
         }
@@ -290,5 +297,25 @@ public sealed class CommentaryController : ControllerBase
         {
             _logger.LogDebug(ex, "Commentary audit write failed for gameId={GameId}", gameId);
         }
+    }
+
+    /// <summary>
+    /// Phase K Wave 12 — Bishop. Cost-budget aware generator
+    /// selection. When the budget evaluates to
+    /// <see cref="BudgetState.Exhausted"/> AND a stub generator is
+    /// registered, route to the deterministic stub for the rest of
+    /// the month. Logged once per month inside
+    /// <see cref="CommentaryCostBudget.Evaluate"/>.
+    /// </summary>
+    private ICommentaryGenerator SelectGenerator()
+    {
+        if (_budget is null || _stubGenerator is null) return _generator;
+        var evaluation = _budget.Evaluate(DateTime.UtcNow);
+        if (evaluation.State == BudgetState.Exhausted
+            && !ReferenceEquals(_generator, _stubGenerator))
+        {
+            return _stubGenerator;
+        }
+        return _generator;
     }
 }

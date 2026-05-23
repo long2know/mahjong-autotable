@@ -92,6 +92,28 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     // EfCommentaryStore; see Mahjong.Autotable.Api.Commentary.EfCommentaryStore.
     public DbSet<CommentaryRecordRow> CommentaryRecords => Set<CommentaryRecordRow>();
 
+    // Phase K Wave 12 — Bishop. Durable replay-by-id surface
+    // backing GET/POST /api/replays/{replayId}. Toggled via
+    // Replays:StorageImpl ("InMemory" default tests / "Ef" prod).
+    // See Mahjong.Autotable.Api.Replays.EfReplayStore.
+    public DbSet<Mahjong.Autotable.Api.Replays.ReplayRecord> Replays =>
+        Set<Mahjong.Autotable.Api.Replays.ReplayRecord>();
+
+    // Phase K Wave 12 — Bishop. Durable per-(TournamentId, Round, Slot)
+    // bracket persistence. Backs EfBracketStore; toggled via
+    // Tournament:BracketStoreImpl ("InMemory" default tests / "Ef" prod).
+    // See Mahjong.Autotable.Api.Tournament.EfBracketStore.
+    public DbSet<Mahjong.Autotable.Api.Tournament.BracketRecord> BracketRecords =>
+        Set<Mahjong.Autotable.Api.Tournament.BracketRecord>();
+
+    // Phase K Wave 12 — Bishop. Durable per-(hub, connectionId)
+    // SignalR sequence-store for long-lived replay-from-ack
+    // sessions. Backs EfSignalRSequenceStore; toggled via
+    // SignalR:SequenceStoreImpl ("InMemory" default tests / "Ef" prod).
+    // See Mahjong.Autotable.Api.Observability.EfSignalRSequenceStore.
+    public DbSet<Mahjong.Autotable.Api.Observability.SignalRSequenceEntry> SignalRSequenceEntries =>
+        Set<Mahjong.Autotable.Api.Observability.SignalRSequenceEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -488,6 +510,58 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.HasIndex(x => new { x.GameId, x.GeneratedAtUtc });
             entity.HasIndex(x => x.GeneratedAtUtc);
             entity.HasIndex(x => x.ExpiresAtUtc);
+        });
+
+        // Phase K Wave 12 — Bishop. Durable replay-by-id surface.
+        // PK is ReplayId (short URL-safe synthetic id minted at
+        // ingest); (GameId, CompletedAt) supports the future
+        // listing endpoint. The ExpiresAt index backs the
+        // retention sweeper.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Replays.ReplayRecord>(entity =>
+        {
+            entity.HasKey(x => x.ReplayId);
+            entity.Property(x => x.ReplayId).HasMaxLength(64);
+            entity.Property(x => x.Variant).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.CompressedPayload).IsRequired();
+            entity.HasIndex(x => new { x.GameId, x.CompletedAt });
+            entity.HasIndex(x => x.ExpiresAt);
+        });
+
+        // Phase K Wave 12 — Bishop. Durable tournament-bracket
+        // persistence. The (TournamentId, RoundNumber, MatchSlot)
+        // unique constraint guarantees one row per pairing and
+        // makes the replay-game-complete event handler
+        // idempotent — re-applying a completion event updates the
+        // existing row rather than inserting a duplicate.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Tournament.BracketRecord>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SeedA).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.SeedB).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.WinnerSeed).HasMaxLength(128);
+            entity.Property(x => x.Status).HasMaxLength(16).IsRequired();
+            entity.HasIndex(x => new { x.TournamentId, x.RoundNumber, x.MatchSlot }).IsUnique();
+            entity.HasIndex(x => x.TournamentId);
+        });
+
+        // Phase K Wave 12 — Bishop. Durable SignalR per-hub
+        // per-connection sequence-store for replay-from-ack on
+        // long-lived sessions. Unique (HubName, ConnectionId,
+        // Sequence) keeps the insert path idempotent; the
+        // (HubName, ConnectionId) lookup is the dominant read path
+        // (every reconnect query). The ExpiresAt index backs the
+        // retention sweeper.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Observability.SignalRSequenceEntry>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.HubName).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.ConnectionId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.GroupName).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Method).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.PayloadJson).IsRequired();
+            entity.HasIndex(x => new { x.HubName, x.ConnectionId, x.Sequence }).IsUnique();
+            entity.HasIndex(x => new { x.HubName, x.ConnectionId });
+            entity.HasIndex(x => x.ExpiresAt);
         });
     }
 }

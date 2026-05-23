@@ -1014,6 +1014,57 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.ToTable("TournamentRegistrations");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Observability.SignalRSequenceEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GroupName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HubName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("HubName", "ConnectionId");
+
+                    b.HasIndex("HubName", "ConnectionId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("SignalRSequenceEntries");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Players.PlayerProfile", b =>
                 {
                     b.Property<string>("PlayerId")
@@ -1071,6 +1122,92 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.HasKey("PlayerId");
 
                     b.ToTable("PlayerStats");
+                });
+
+            modelBuilder.Entity("Mahjong.Autotable.Api.Replays.ReplayRecord", b =>
+                {
+                    b.Property<string>("ReplayId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("CompressedPayload")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("GameId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("IngestedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TurnCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Variant")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ReplayId");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("GameId", "CompletedAt");
+
+                    b.ToTable("Replays");
+                });
+
+            modelBuilder.Entity("Mahjong.Autotable.Api.Tournament.BracketRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MatchSlot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RoundNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SeedA")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SeedB")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TournamentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WinnerSeed")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TournamentId");
+
+                    b.HasIndex("TournamentId", "RoundNumber", "MatchSlot")
+                        .IsUnique();
+
+                    b.ToTable("BracketRecords");
                 });
 
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.ChangshaGameEvent", b =>

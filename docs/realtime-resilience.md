@@ -296,3 +296,37 @@ Hard-asserted in
 — histogram name + unit + bucket vocabulary + per-Publish
 recording + hub tag all asserted via `MeterListener`.
 
+
+## Phase K Wave 12 — Replay-from-ack persistence
+
+### Why
+
+The W9 `SignalRBackpressureBroadcaster<THub>` keeps the most-recent ~256 entries per group in memory so a reconnecting client can replay messages from its last-acknowledged sequence. Long-lived sessions (> 30 min at the canonical publish rate) can outlive the in-memory tail; the W12 store overlays the broadcaster with a durable per-(hub, connection) ledger so an arbitrarily-stale ack pointer can still be reconciled.
+
+### Surface
+
+* Interface: `Observability/EfSignalRSequenceStore.cs::ISignalRSequenceStore`.
+* Implementations: `InMemorySignalRSequenceStore` (tests/dev) and `EfSignalRSequenceStore` (production).
+* Options: `SignalR:SequenceStoreImpl` ("InMemory" default / "Ef" for prod), `SignalR:RetentionMinutes` (default 60), `SignalR:SweepIntervalMinutes` (default 5), `SignalR:MaxReplayPageSize` (default 1024).
+* Payload encoding: `SignalRSequencePayloadSerializer.Serialize`/`Deserialize` — JSON via the canonical web-defaults options.
+* Sweeper: `SignalRSequenceSweepService` (BackgroundService) runs at the configured cadence and drops rows where `ExpiresAt < utcNow`.
+
+### Migration
+
+The `SignalRSequenceEntries` table ships in the W12 migration `Phase_K_W12_Replays_Brackets_SignalRSeq` across all three providers (Sqlite, Postgres, SqlServer). Natural key: `(HubName, ConnectionId, Sequence)` unique.
+
+### W12 vs W13
+
+Wave 12 ships the **seam** — the store, the entity, the migration, the contract tests. The broadcaster does NOT yet write through to the durable store on every publish; that hook lands in Wave 13 once the toggle has soaked in staging. To opt in early, operators can register a wrapper around `SignalRBackpressureBroadcaster.PublishAsync` that calls `ISignalRSequenceStore.AppendAsync` in parallel; the in-memory + Ef stores are both safe under contention.
+
+### Contract pins
+
+Hard-asserted in `tests/Mahjong.Autotable.Api.Tests/Phase_K_W12/Bishop/SignalRSequenceStorePersistenceFacts.cs`:
+
+* Both implementations satisfy `ISignalRSequenceStore`.
+* Append → ReadFromAck round-trips (in-memory + EF).
+* `ReadFromAckAsync` excludes entries with `Sequence ≤ lastAckedSequence`.
+* `ReadFromAckAsync` honours the limit cap.
+* `AppendAsync` pins `ExpiresAt = CreatedAt + RetentionMinutes`.
+* `SweepExpiredAsync` drops expired rows (in-memory + EF).
+* `SignalRSequencePayloadSerializer` round-trips a dictionary payload.

@@ -2783,3 +2783,88 @@ notes for Wave 11 (FIDE C.04 backtracking + Buchholz/Berger
 tiebreaks for Swiss; binary `TileReference.ToBinary()` codec;
 mountpoint-eviction signal into the backpressure metric
 surface; age-at-publish histogram).
+
+## Phase K — Wave 12 (bring-up)
+
+**Branch:** `stlong/phase-k-wave-12-bringup` (off main `ee9dba0`).
+**Baseline test gate:** 2403/0/0. **W12 final:** **2610/0/0**
+(+207 net passing).
+
+Seven scoped deliverables — all landed:
+
+1. **Replay-by-id endpoint** — `Replays` table + gzip codec +
+   `r-{8 url-safe base64}` synthetic id + `GET / POST
+   /api/replays` controller + 90-day retention sweeper.
+   Toggle: `Replays:StorageImpl` ("InMemory" | "Ef").
+2. **OAuth introspect rate limiting** — sliding-window
+   `IOAuthIntrospectRateLimiter` (default 100/60 s per
+   client). Headers stamped: `X-RateLimit-Limit`,
+   `X-RateLimit-Remaining`, `X-RateLimit-Window`,
+   `Retry-After`. Wired into the W11 introspect endpoint.
+3. **JWKS staged rotation** — `JwtStagedRotationPolicy` seam
+   surfacing the 30-day overlap window
+   (`Authentication:RotationOverlapDays` /
+   `RotationStartUtc`). Signing path unchanged — the policy is
+   informational on top of the existing multi-key validation.
+   `docs/jwt-rotation.md §13`.
+4. **Tournament bracket EF persistence** — `BracketRecords`
+   table + `IBracketStore` (in-memory + Ef) keyed on
+   `(TournamentId, RoundNumber, MatchSlot)`. Idempotent
+   upsert + `RecordResultAsync`. Seam shipped;
+   `TournamentService` integration deferred to W13 (needs a
+   stable `MatchSlot` derivation on the existing
+   `TournamentMatches` table).
+5. **Spectator handoff via signed token** — `POST
+   /api/spectator/handoff` mints a 5-min scope-pinned JWT
+   (`scope = "spectator:{gameId}"`). Validator companion
+   accepted by `/api/replay/{id}/livestream.m3u8` via
+   `?token=…`. Returns canonical reason codes
+   (`token-missing`, `scope-mismatch`, JWT-validation errors).
+6. **Commentary LLM cost budgeting** —
+   `Commentary:CostBudget:{MonthlyCapUsd,TokensPerDollar,WarnThreshold}`
+   + `CommentaryCostBudget` evaluator. At
+   `BudgetState.Exhausted`, `CommentaryController.SelectGenerator`
+   routes new requests to the deterministic stub.
+   One-shot per-month warning + exhausted log so the audit
+   trail records the transition. `docs/commentary-llm.md §4`.
+7. **SignalR replay-from-ack persistence** —
+   `SignalRSequenceEntries` table + `ISignalRSequenceStore`
+   (in-memory + Ef) with 60-min retention sweep. Seam
+   shipped; broadcaster integration deferred to W13.
+   `docs/realtime-resilience.md §6`.
+
+**EF migration shape:** all three new entities ship in one
+migration — `Phase_K_W12_Replays_Brackets_SignalRSeq` —
+across Sqlite, Postgres, and SqlServer.
+
+**EF gotcha that cost ~30 min:** first `dotnet ef migrations
+add` after adding new DbSets produced an empty migration body
+because EF used a cached compilation snapshot. Resolution:
+`migrations remove` the empty migration, `dotnet build` first,
+THEN re-add. The Postgres / SqlServer `remove` commands try
+to connect to a real database (fails when no server is up);
+workaround is `rm` the migration files manually + `git
+checkout` the snapshot. Documented in the W12 memo so the
+next bring-up dodges this.
+
+**Lessons / forward notes:**
+
+- Wire the bracket store through `TournamentService` next
+  wave — needs `MatchSlot` derivation. Without it the W12
+  store sits unused at runtime even though the contract
+  tests exercise it.
+- The W12 SignalR seq store is similarly idle until W13's
+  broadcaster wrapper lands. The Ef impl + sweep service +
+  options + migration are all production-ready.
+- `Commentary:CostBudget:MonthlyCapUsd = 0` (default) means
+  "unlimited" — operators flipping the cap to a real value
+  should also bump `Commentary:UsageMeterImpl` to `"Ef"` so
+  the count survives a pod restart.
+- OAuth introspect rate-limiter is per-process; multi-replica
+  enforcement awaits the W13 Redis swap.
+- The W11 spectator handoff stub now honours `?token=…`; the
+  full HLS pipeline lands in Phase L by rebinding
+  `ILivestreamRecorder`.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-12.md`
+— per-deliverable design + Wave 13 forward notes.

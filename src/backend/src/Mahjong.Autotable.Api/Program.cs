@@ -318,6 +318,37 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
 }
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>();
+// Phase K Wave 12 — Bishop. Spectator handoff validator pairs with
+// the controller in Spectator/SpectatorHandoffController.cs. Scoped
+// `spectator:{gameId}` JWTs are minted by the controller and verified
+// by this validator when the livestream endpoint receives `?token=…`.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorHandoffTokenValidator>();
+// Phase K Wave 12 — Bishop. Staged rotation policy. Surfaces the
+// configured 30-day overlap window so the cadence validator + ops
+// dashboard can audit it without re-deriving the math. See
+// docs/jwt-rotation.md §13.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy>(
+    _ => new Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy(authOptions));
+
+// Phase K Wave 12 — Bishop. Per-client_id sliding-window rate limit
+// for the RFC 7662 token-introspection endpoint. The W11 surface
+// relied on the global AuthValidatePolicy bucket; W12 adds this
+// per-client cap so one chatty verifier can't exhaust the global
+// budget. Cap + window are configurable; bound via the
+// `OAuth:Introspect` section. See docs/oauth-introspect-rate-limit.md.
+{
+    var introOpts = new Mahjong.Autotable.Api.Auth.OAuthIntrospectRateLimitOptions();
+    builder.Configuration.GetSection("OAuth:Introspect").Bind(introOpts);
+    builder.Services.AddSingleton(introOpts);
+    var capacity = introOpts.RateLimitPerClient > 0
+        ? introOpts.RateLimitPerClient
+        : Mahjong.Autotable.Api.Auth.OAuthIntrospectRateLimitOptions.DefaultRateLimitPerClient;
+    var windowSeconds = introOpts.WindowSeconds > 0
+        ? introOpts.WindowSeconds
+        : Mahjong.Autotable.Api.Auth.OAuthIntrospectRateLimitOptions.DefaultWindowSeconds;
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IOAuthIntrospectRateLimiter>(
+        _ => new Mahjong.Autotable.Api.Auth.OAuthIntrospectRateLimiter(capacity, windowSeconds));
+}
 // Phase K Wave 8 — Bishop. JWKS pre-marshal cache. Owns the
 // IMemoryCache the JwksCacheService projects through. Singleton so
 // the 60s TTL is shared across requests.
@@ -636,6 +667,16 @@ builder.Services.Configure<Mahjong.Autotable.Api.Commentary.CommentaryOptions>(
     }
 }
 
+// Phase K Wave 12 — Bishop. Cost-budget seam. Multiplies the usage
+// meter's monthly token total by Commentary:CostBudget:TokensPerDollar
+// to expose a USD ledger; at the cap the controller routes to the
+// deterministic stub for the rest of the month. The
+// StubCommentaryGenerator is always available as a concrete singleton
+// so the controller can fall back regardless of the active
+// ICommentaryGenerator binding. See docs/commentary-llm.md §4.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.StubCommentaryGenerator>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.CommentaryCostBudget>();
+
 // Phase K Wave 11 — Bishop. Per-record CommentaryRecord storage
 // seam. The W7-W9 surface kept records in memory inside the
 // generator; W11 makes the store pluggable and ships an
@@ -737,6 +778,87 @@ builder.Services.Configure<Mahjong.Autotable.Api.Commentary.CommentaryOptions>(
 // today; the `/api/replay/{id}/livestream.m3u8` endpoint returns 404
 // with a structured envelope until the HLS pipeline lands.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>();
+
+// Phase K Wave 12 — Bishop. Replay-by-id store. The W11 surface kept
+// completed-game replays in `ChangshaGameReplays` keyed by game id;
+// W12 adds the durable `Replays` table keyed by a short URL-safe
+// `ReplayId` so external clients (Hicks's `?action=replay` URL) can
+// link to a single payload via a stable opaque token.
+// Toggle: `Replays:StorageImpl` = "InMemory" | "Ef". Default
+// in-memory keeps tests fast; production flips to "Ef".
+{
+    var replayOptions = new Mahjong.Autotable.Api.Replays.ReplayOptions();
+    builder.Configuration.GetSection("Replays").Bind(replayOptions);
+    builder.Services.AddSingleton(replayOptions);
+    var impl = replayOptions.StorageImpl ?? "InMemory";
+    if (string.Equals(impl, "Ef", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.IReplayStore,
+            Mahjong.Autotable.Api.Replays.EfReplayStore>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.ReplayRetentionSweepService>();
+        builder.Services.AddHostedService(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Replays.ReplayRetentionSweepService>());
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.IReplayStore,
+            Mahjong.Autotable.Api.Replays.InMemoryReplayStore>();
+    }
+}
+
+// Phase K Wave 12 — Bishop. Tournament bracket persistence. The W6-W10
+// brackets are in-memory generator output; W12 lands the durable row
+// so brackets survive process restarts + replay-game-complete events
+// flow through an idempotent store. Toggle:
+// `Tournament:BracketStoreImpl` = "InMemory" | "Ef". See
+// docs/bracket-shape.md §3.
+{
+    var bracketOptions = new Mahjong.Autotable.Api.Tournament.BracketStorageOptions();
+    builder.Configuration.GetSection("Tournament").Bind(bracketOptions);
+    builder.Services.AddSingleton(bracketOptions);
+    var impl = bracketOptions.BracketStoreImpl ?? "InMemory";
+    if (string.Equals(impl, "Ef", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.IBracketStore,
+            Mahjong.Autotable.Api.Tournament.EfBracketStore>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.IBracketStore,
+            Mahjong.Autotable.Api.Tournament.InMemoryBracketStore>();
+    }
+}
+
+// Phase K Wave 12 — Bishop. Durable SignalR sequence store backing
+// the replay-from-ack surface for long-lived sessions that exceed the
+// in-memory 256-entry retention window on
+// SignalRBackpressureBroadcaster. Toggle:
+// `SignalR:SequenceStoreImpl` = "InMemory" | "Ef". Configurable
+// retention via `SignalR:Sequences:RetentionMinutes`. See
+// docs/realtime-resilience.md §6.
+{
+    var seqOptions = new Mahjong.Autotable.Api.Observability.SignalRSequenceStoreOptions();
+    builder.Configuration.GetSection("SignalR:Sequences").Bind(seqOptions);
+    // Top-level SequenceStoreImpl override under `SignalR:` for
+    // operator ergonomics.
+    var topLevelImpl = builder.Configuration.GetValue<string>("SignalR:SequenceStoreImpl");
+    if (!string.IsNullOrWhiteSpace(topLevelImpl)) seqOptions.SequenceStoreImpl = topLevelImpl;
+    builder.Services.AddSingleton(seqOptions);
+    var impl = seqOptions.SequenceStoreImpl ?? "InMemory";
+    if (string.Equals(impl, "Ef", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.ISignalRSequenceStore,
+            Mahjong.Autotable.Api.Observability.EfSignalRSequenceStore>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRSequenceSweepService>();
+        builder.Services.AddHostedService(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Observability.SignalRSequenceSweepService>());
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.ISignalRSequenceStore,
+            Mahjong.Autotable.Api.Observability.InMemorySignalRSequenceStore>();
+    }
+}
 
 // Phase K Wave 8 — Bishop. Centralised "is player on this table?"
 // gate. Backs the livestream playlist auth check + future surfaces.
@@ -1262,15 +1384,45 @@ app.MapPost("/api/games/{id:guid}/settings/voice", async (
 // pipeline lands in Phase L; for Wave 2 the route exists so the
 // frontend can wire up a 404 fallback against a stable URL. Returns
 // 404 with a JSON envelope explaining the stub state.
-app.MapGet("/api/replay/{id}/livestream.m3u8", (string id) =>
-    Results.Json(
+//
+// Phase K Wave 12 — Bishop. The stub now honours the spectator-
+// handoff token contract from
+// `Spectator/SpectatorHandoffController.cs`. A caller may pass
+// `?token=…` and the validator checks the signature + the
+// `scope = "spectator:{gameId}"` claim. The body is still the 404
+// stub envelope; the upstream Phase-L surface (HLS pipeline) will
+// upgrade this to a real m3u8 once available, but the gate logic
+// will already be in place.
+app.MapGet("/api/replay/{id}/livestream.m3u8", (
+    string id,
+    HttpContext ctx,
+    Mahjong.Autotable.Api.Spectator.SpectatorHandoffTokenValidator handoff) =>
+{
+    var token = (string?)ctx.Request.Query["token"];
+    if (!string.IsNullOrWhiteSpace(token) && Guid.TryParse(id, out var gameId))
+    {
+        var verdict = handoff.Validate(token, gameId);
+        if (!verdict.Allowed)
+        {
+            return Results.Json(
+                new
+                {
+                    error = "spectator-token-rejected",
+                    reason = verdict.Reason,
+                    replayId = id,
+                },
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+    }
+    return Results.Json(
         new
         {
             error = "spectator-livestream-not-implemented",
             replayId = id,
             message = "HLS livestream lands in Phase L; this endpoint is reserved.",
         },
-        statusCode: StatusCodes.Status404NotFound))
+        statusCode: StatusCodes.Status404NotFound);
+})
     .RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
 
 // Phase K Wave 6 — Bishop. OIDC discovery document at the RFC 8414
