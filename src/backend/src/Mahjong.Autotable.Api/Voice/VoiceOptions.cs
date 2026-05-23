@@ -36,6 +36,55 @@ public sealed class VoiceOptions
     /// 3600 (1h) matches the coturn convention.
     /// </summary>
     public int TurnCredentialTtlSeconds { get; set; } = 3600;
+
+    /// <summary>
+    /// Phase K Wave 7 — Bishop. Selects the
+    /// <see cref="ILivestreamRecorder"/> implementation bound at
+    /// startup. Two values supported:
+    /// <list type="bullet">
+    ///   <item><c>"InMemoryStub"</c> (default) — in-process
+    ///         <see cref="InMemoryLivestreamRecorder"/>; matches the
+    ///         Wave-6 default and keeps test harnesses /
+    ///         dev hosts resolvable without ffmpeg installed.</item>
+    ///   <item><c>"FfmpegHls"</c> — production
+    ///         <see cref="FfmpegHlsRecorder"/> that spawns one
+    ///         ffmpeg subprocess per livestream, writing HLS
+    ///         segments + playlist to a per-game directory. The
+    ///         host process fails fast at startup if the
+    ///         <c>ffmpeg</c> binary is missing from PATH (see
+    ///         <see cref="IFfmpegHealthProbe"/>).</item>
+    /// </list>
+    /// Value comparison is case-insensitive. Unknown values fall
+    /// back to <c>InMemoryStub</c> with a startup warning.
+    /// </summary>
+    public string LivestreamRecorderImpl { get; set; } = "InMemoryStub";
+
+    /// <summary>
+    /// Phase K Wave 7 — Bishop. Per-segment duration (seconds)
+    /// emitted by the ffmpeg HLS pipeline. Default <c>6</c> matches
+    /// the HLS-spec recommended sweet-spot — long enough to absorb
+    /// muxer overhead, short enough that a client waits at most
+    /// ~6s for the first playable segment. Range: 2..30s; values
+    /// outside the range are clamped at boot with a warning.
+    /// </summary>
+    public int LivestreamSegmentSeconds { get; set; } = 6;
+
+    /// <summary>
+    /// Phase K Wave 7 — Bishop. HLS playlist window (sliding
+    /// segment count). Default <c>5</c> segments * 6s/segment =
+    /// 30s playlist window, matching the Wave-7 brief.
+    /// </summary>
+    public int LivestreamPlaylistSegmentCount { get; set; } = 5;
+
+    /// <summary>
+    /// Phase K Wave 7 — Bishop. Filesystem directory where the
+    /// ffmpeg HLS pipeline writes per-game playlists + segments.
+    /// Each game id gets its own sub-directory so the streams
+    /// stay process-isolated. Default
+    /// <c>"./voice-livestream"</c> resolves under the host's
+    /// content root; in k8s this is bound to an emptyDir volume.
+    /// </summary>
+    public string LivestreamWorkingDirectory { get; set; } = "voice-livestream";
 }
 
 public sealed class TurnServerOption
