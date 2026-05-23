@@ -317,6 +317,7 @@ A future wave that wants more savings should consider either:
 | W7   | 578.72 kB | 648.07 kB                    | (in big)    | **−161 kB**   |
 | W8   | 531.86 kB | 602.86 kB                    | 44.22 kB    | **−46.86 kB** |
 | W9   | 507.47 kB | 582.85 kB                    | 44.22 kB    | **−24.39 kB** |
+| W10  | 497.44 kB | 572.82 kB                    | 44.22 kB    | **−10.03 kB** |
 
 ## §5 — Wave 9: three.js feature strip via Vite transform plugin
 
@@ -434,3 +435,126 @@ the stubs preserve is sufficient.
   - `Lighting probe` family (small but unused).
 - **DO NOT** retry deep-imports (W8 §4). The autopsy showed
   they grew the bundle by ~150 kB on the same scene.
+
+## §6 — Wave 10: PMREMGenerator strip (partial win) + the cubeUV blocker
+
+### Motivation
+
+W9 closed at 507.47 kB on the big chunk. The W10 directive set
+**<480 kB** as the stretch ceiling (≈ 28 kB more savings via the
+PMREMGenerator candidate flagged in §5 "Future strip candidates").
+
+### What landed
+
+PMREMGenerator is the texture pipeline three.js uses to pre-process
+cube + equirectangular environment maps into a cubeUV layout that PBR
+materials sample from. It's instantiated lazily inside
+`WebGLCubeUVMaps#get()` behind an
+`if (isEquirectMap || isCubeMap)` branch — the autotable scene
+uses ONLY plain 2D textures (`tiles.auto.png`, `sticks.auto.png`,
+`center.auto.png`, `winds.auto.png`, the GLTF-bundled table), so
+the branch never evaluates true at runtime. Rollup nonetheless
+keeps the class body because the statically-reachable `new
+PMREMGenerator(renderer)` call lives inside `WebGLCubeUVMaps`.
+
+W10 extends the `stripModuleFeatures` Vite plugin
+(`vite.config.ts`) to stub:
+
+1. **`PMREMGenerator` class body** — constructor pre-initialises
+   the ten private slots three's renderer reads off the instance
+   (`_renderer`, `_pingPongRenderTarget`, `_lodMax`, `_cubeSize`,
+   `_lodPlanes`, `_sizeLods`, `_sigmas`, `_blurMaterial`,
+   `_cubemapMaterial`, `_equirectMaterial`). Public methods
+   (`fromScene`, `fromEquirectangular`, `fromCubemap`,
+   `compileCubemapShader`, `compileEquirectangularShader`,
+   `dispose`) become no-ops returning null / void.
+
+2. **Seven private helpers** — `_getBlurShader`,
+   `_getEquirectMaterial`, `_getCubemapMaterial`,
+   `_getCommonVertexShader`, `_createPlanes`, `_createRenderTarget`,
+   `_setViewport` — replaced with stub returns. Each helper embeds
+   ~3-4 kB of GLSL shader code; the strip kicks them out of the
+   transform stream before Rollup sees them, so the shader strings
+   never reach the renderer chunk.
+
+### Recovery measurement
+
+| Step                              | three-renderer-big | Delta |
+|-----------------------------------|--------------------|-------|
+| W9 baseline (no W10 strips)       | 507.47 kB          | —     |
+| + PMREMGenerator class strip      | 497.44 kB          | −10.03 kB |
+| + PMREM helper-function strip     | 497.44 kB          | 0 kB  |
+
+The helper-function strip yielded **zero additional bytes on the
+emitted chunk** — Rollup's tree-shaker was already dropping the
+unreferenced helpers (their declarations weren't even reaching the
+chunk after the class body was gutted). The explicit strip is
+retained for defence-in-depth (a future three.js upgrade might
+reintroduce a path that pulls them).
+
+### The <480 kB blocker — cubeUV shader chunk
+
+The remaining ~17 kB gap to the W10 target is held by the
+`cube_uv_reflection_fragment` shader chunk (three.module.js:344)
++ the background fragment shader (`fragment$g` at line 516) +
+the PBR fragment shader (`fragment$5` at line 560). These are
+exported as named entries on `ShaderChunk` /
+`ShaderLib` — Rollup cannot strip individual properties of a
+named-export object literal without breaking the broader barrel.
+
+Three live references in the renderer prevent a clean strip:
+
+| Reference                               | Source                              | Why it can't be stripped                                              |
+|-----------------------------------------|-------------------------------------|------------------------------------------------------------------------|
+| `ShaderChunk.cube_uv_reflection_fragment` | `meshlambert_frag.glsl`           | Lambert's `#include <cube_uv_reflection_fragment>` makes the chunk live even though our scene never sets `material.envMap`. |
+| `fragment$g` (background)                | `WebGLBackground#render`            | The renderer's `background.render(scene, ...)` call runs every frame; the shader compilation is gated on `scene.background !== null` but the constant is statically reachable. |
+| `fragment$5` (Mesh{Standard,Physical}Material) | `WebGLPrograms.acquireProgram` | Although W9 stripped the material *classes*, the program registry still string-keys against `'MeshStandardMaterial'`. |
+
+Closing the gap to <480 kB would require either:
+
+- **Patching `meshlambert_frag.glsl`** to drop the
+  `#include <cube_uv_reflection_fragment>` directive (a custom
+  Vite plugin similar to the W9 material-class strip, but
+  operating on shader strings). Risk: medium — if a future scene
+  introduces an `envMap` it would silently render black.
+- **Stripping `WebGLBackground`** — the renderer's
+  `background.render(scene, ...)` is unconditional, but the
+  inner shader path is gated; we could stub the inner branches.
+  Risk: low if our scene never sets `scene.background`.
+- **Patching `WebGLPrograms.acquireProgram`** to short-circuit
+  the unused material dispatches. Risk: high — touches the hot
+  per-frame render path; smoke-test surface is non-trivial.
+
+W10 ships the conservative PMREMGenerator strip only. The three
+candidates above are queued for W11 +consideration; expected
+combined yield ~20-25 kB if all three land cleanly.
+
+### Risk + back-out
+
+The PMREMGenerator stub keeps the class declaration so any
+runtime branch that does evaluate `isEquirectMap || isCubeMap`
+gets a no-op `pmremGenerator.fromCubemap(...)` that returns null
+— `WebGLCubeUVMaps#get` then falls into its "renderTarget !==
+undefined" branch and returns the original texture, which is
+exactly the path a non-env scene takes.
+
+If a future change introduces:
+- `scene.environment = new CubeTexture(...)` — silently no-ops,
+  scene renders without env reflection (acceptable degradation).
+- `material.envMap = cubeTex` — the env sample returns black; a
+  future PBR-bringup wave should remove the strip first.
+
+A scene-graph audit at W10 close confirms zero envMap / cube
+texture usage in `src/frontend/autotable-src/src/`.
+
+### Trend ledger update
+
+| Wave | Big chunk | Target  | Result |
+|------|-----------|---------|--------|
+| W7   | 578.72 kB | <550 kB | ✅      |
+| W8   | 531.86 kB | <540 kB | ✅      |
+| W9   | 507.47 kB | <510 kB | ✅      |
+| W10  | 497.44 kB | <480 kB | ⚠️ partial — see blockers above |
+
+Monotonic-decrease invariant holds for a 5th consecutive wave
+(Vasquez's W7 trend gate).

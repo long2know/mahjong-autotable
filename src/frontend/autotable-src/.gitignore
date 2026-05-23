@@ -8,6 +8,13 @@ build/
 test-results/
 playwright-report/
 
+# Phase K Wave 10 — Vite's disk-persisted build cache (transform +
+# dep-pre-bundle cache; pinned inside the autotable-src tree by
+# `vite.config.ts` so CI can mount it as a cached artifact keyed
+# on package-lock + vite.config hash).  Never commit; wipe with
+# `rm -rf .vite` if you suspect a stale transform.
+.vite/
+
 # Phase K Wave 8 — Lighthouse PWA audit output (regenerated on
 # demand via `npm exec lighthouse …` — see docs/frontend-pwa-audit.md
 # for the audit recipe + interpretation of the JSON).

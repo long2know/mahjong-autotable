@@ -56,6 +56,25 @@ export type CommentaryPhase =
   | 'deal'
   | 'narration';
 
+/**
+ * Phase K Wave 10 — Bishop's pinned `TileReference` shape on the
+ * commentary wire.  Wave 9 shipped tile refs as bare strings
+ * (`tileReferences: ["man5", "pin3"]`); W10 promotes them to
+ * objects with explicit `suit` + `rank` so the renderer can avoid
+ * re-parsing the wire id at click time (the parsing happens in
+ * `world.findThingByFace` which still accepts the bare id for
+ * back-compat).  See `docs/contracts/commentary-tile-ref.md` for
+ * the canonical schema + the W9→W10 migration discipline.
+ *
+ * `suit` accepts: `'man' | 'pin' | 'sou' | 'honor'`.
+ * `rank` is 1..9 for numbered suits, 1..7 for `honor`.
+ */
+export interface TileReference {
+  tileId: string;
+  suit: string;
+  rank: number;
+}
+
 export interface CommentaryRecord {
   gameId: string;
   turnNumber: number;
@@ -65,11 +84,15 @@ export interface CommentaryRecord {
   /** 0..1.  Drives the per-record intensity bar. */
   emotionIntensity: number;
   /**
-   * Stable tile IDs the record references (e.g. ["S2-Z7"]).  May be
-   * empty.  Clicking a chip emits `commentary:tile-ref` so the
-   * replay surface can highlight the matching tile.
+   * Stable tile IDs the record references.  Phase K Wave 10 — the
+   * wire now ships canonical `TileReference` objects per Bishop's
+   * `CommentaryTileReference` shape pinning.  W9 ship-shape (bare
+   * strings) is still accepted by `coerceRecord` for one-wave
+   * compatibility while Bishop's flag flips.  Clicking a chip emits
+   * `mahjong:highlight-tile` with `{ tileId, source: 'commentary-
+   * panel' }` so the 3D outline pulse can route the highlight.
    */
-  tileReferences: ReadonlyArray<string>;
+  tileReferences: ReadonlyArray<TileReference>;
   /** ISO-8601 timestamp.  Used as the per-record meta + sort key. */
   generatedAt: string;
 }
@@ -299,8 +322,8 @@ function renderRecord(record: CommentaryRecord, idx: number): HTMLDivElement {
   if (record.tileReferences.length > 0) {
     const refsWrap = document.createElement('div');
     refsWrap.className = 'commentary-tile-refs';
-    for (const tileId of record.tileReferences) {
-      refsWrap.appendChild(renderTileRef(tileId));
+    for (const ref of record.tileReferences) {
+      refsWrap.appendChild(renderTileRef(ref));
     }
     row.appendChild(refsWrap);
   }
@@ -329,13 +352,18 @@ function renderRecord(record: CommentaryRecord, idx: number): HTMLDivElement {
   return row;
 }
 
-function renderTileRef(tileId: string): HTMLButtonElement {
+function renderTileRef(ref: TileReference): HTMLButtonElement {
   const chip = document.createElement('button');
   chip.type = 'button';
   chip.className = 'commentary-tile-ref';
-  chip.setAttribute('data-testid', `commentary-tile-ref-${tileId}`);
-  chip.setAttribute('data-tile-id', tileId);
-  chip.textContent = tileId;
+  chip.setAttribute('data-testid', `commentary-tile-ref-${ref.tileId}`);
+  chip.setAttribute('data-tile-id', ref.tileId);
+  // Phase K Wave 10 — surface Bishop's pinned suit + rank fields
+  // as data attributes so consumer scripts (analyst overlay,
+  // Vasquez specs) can filter by suit without re-parsing the id.
+  chip.setAttribute('data-tile-suit', ref.suit);
+  chip.setAttribute('data-tile-rank', String(ref.rank));
+  chip.textContent = ref.tileId;
   chip.addEventListener('click', () => {
     // Phase K Wave 8 — Two events on click.  The legacy
     // `commentary:tile-ref` event stays for back-compat with
@@ -343,11 +371,22 @@ function renderTileRef(tileId: string): HTMLButtonElement {
     // new `mahjong:highlight-tile` event is consumed by
     // `main-view.ts` to flash a `CustomOutline` pulse on the
     // 3D tile within 500ms.  Both events ship the same payload.
+    //
+    // Phase K Wave 10 — `mahjong:highlight-tile` payload now
+    // carries an explicit `source` field so listeners can
+    // distinguish chip-driven highlights from in-game gestures
+    // (drag-hover, opponent-action callouts).  Existing main-
+    // view + game.ts listeners read `detail.tileId` and ignore
+    // unknown keys, so this is back-compat-safe.  Documented in
+    // `docs/contracts/commentary-tile-ref.md §4`.
     window.dispatchEvent(
-      new CustomEvent<{ tileId: string }>('commentary:tile-ref', { detail: { tileId } }),
+      new CustomEvent<{ tileId: string }>('commentary:tile-ref', { detail: { tileId: ref.tileId } }),
     );
     window.dispatchEvent(
-      new CustomEvent<{ tileId: string }>('mahjong:highlight-tile', { detail: { tileId } }),
+      new CustomEvent<{ tileId: string; source: 'commentary-panel' }>(
+        'mahjong:highlight-tile',
+        { detail: { tileId: ref.tileId, source: 'commentary-panel' } },
+      ),
     );
   });
   return chip;
@@ -442,7 +481,7 @@ function coerceRecord(raw: unknown, gameId: string, idx: number): CommentaryReco
   const phase = pickPhase(r.phase);
   const speaker = pickSpeaker(r.speaker, pickNumber(r.actor, -1));
   const emotionIntensity = clamp01(pickNumber(r.emotionIntensity ?? r.intensity, 0));
-  const tileReferences = pickStringArray(r.tileReferences ?? r.tiles);
+  const tileReferences = pickTileReferences(r.tileReferences ?? r.tiles);
   const generatedAt = typeof r.generatedAt === 'string'
     ? r.generatedAt
     : typeof r.timestampUtc === 'string'
@@ -496,11 +535,63 @@ function pickSpeaker(value: unknown, actorFallback: number): CommentarySpeaker {
   return actorFallback >= 0 ? 'pbp' : 'narrator';
 }
 
-function pickStringArray(value: unknown): string[] {
+/**
+ * Phase K Wave 10 — Coerce a raw `tileReferences` field into the
+ * canonical `TileReference[]` shape Bishop ships on the W10 wire.
+ *
+ * Accepts:
+ *   • W10 canonical: `[{ tileId: 'man5', suit: 'man', rank: 5 }, ...]`
+ *   • W9 strings:    `['man5', 'pin3', ...]`  (parsed via
+ *                    `parseTileIdShape` for suit + rank inference)
+ *   • Anything else: dropped silently (empty array).
+ *
+ * Documented in `docs/contracts/commentary-tile-ref.md §3`.
+ */
+function pickTileReferences(value: unknown): TileReference[] {
   if (!Array.isArray(value)) return [];
-  const out: string[] = [];
+  const out: TileReference[] = [];
   for (const v of value) {
-    if (typeof v === 'string' && v !== '') out.push(v);
+    if (typeof v === 'string' && v !== '') {
+      out.push(parseTileIdShape(v));
+      continue;
+    }
+    if (typeof v === 'object' && v !== null) {
+      const obj = v as Record<string, unknown>;
+      const tileId = typeof obj.tileId === 'string' && obj.tileId !== ''
+        ? obj.tileId
+        : '';
+      if (tileId === '') continue;
+      const suit = typeof obj.suit === 'string' ? obj.suit : parseTileIdShape(tileId).suit;
+      const rank = typeof obj.rank === 'number' && Number.isFinite(obj.rank)
+        ? Math.trunc(obj.rank)
+        : parseTileIdShape(tileId).rank;
+      out.push({ tileId, suit, rank });
+    }
   }
   return out;
+}
+
+/**
+ * Parse a wire-format tile id (`man5`, `pin3`, `sou9`, `east`,
+ * `white`, etc.) into `{ tileId, suit, rank }`.  Mirrors the
+ * accepted spellings in `world.findThingByFace` so the highlight
+ * pulse remains in sync.  Unknown ids fall back to
+ * `{ suit: 'unknown', rank: 0 }` — the 3D pulse will simply no-op.
+ */
+function parseTileIdShape(tileId: string): TileReference {
+  const id = tileId.toLowerCase();
+  const m = /^(man|pin|sou)([1-9])$/.exec(id);
+  if (m !== null) return { tileId, suit: m[1], rank: Number(m[2]) };
+  const r = /^([1-9])([mps])$/.exec(id);
+  if (r !== null) {
+    const suit = r[2] === 'm' ? 'man' : r[2] === 'p' ? 'pin' : 'sou';
+    return { tileId, suit, rank: Number(r[1]) };
+  }
+  const honors: Record<string, number> = {
+    east: 1, south: 2, west: 3, north: 4,
+    white: 5, green: 6, red: 7,
+    haku: 5, hatsu: 6, chun: 7,
+  };
+  if (id in honors) return { tileId, suit: 'honor', rank: honors[id] };
+  return { tileId, suit: 'unknown', rank: 0 };
 }

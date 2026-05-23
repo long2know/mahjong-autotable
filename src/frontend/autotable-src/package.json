@@ -8,14 +8,10 @@
     "e2e:install": "playwright install --with-deps chromium",
     "build": "npm run build:vite",
     "build:vite": "vite build",
-    "build:parcel": "parcel build index.html --dist-dir ../autotable --public-url . --no-source-maps --no-cache && npm run build:post",
     "build:post": "node scripts/generate-sw-manifest.js"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.3",
-    "@parcel/packager-raw-url": "^2.15.4",
-    "@parcel/transformer-image": "2.15.4",
-    "@parcel/transformer-webmanifest": "^2.15.4",
     "@playwright/test": "^1.45.0",
     "@types/events": "^3.0.3",
     "@types/jquery": "^3.5.33",
@@ -25,7 +21,6 @@
     "eslint": "^9.34.0",
     "hls.js": "^1.5.13",
     "lighthouse": "^13.3.0",
-    "parcel": "^2.15.4",
     "process": "^0.11.10",
     "typescript": "^5.9.2",
     "vite": "^5.4.21"
@@ -40,3 +35,4 @@
     "three": "^0.179.0"
   }
 }
+

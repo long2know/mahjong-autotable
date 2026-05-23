@@ -1963,3 +1963,87 @@ constraint Vasquez ships
 (`tests/e2e/three-renderer-510-hard.spec.ts`, forward-staged)
 will pass on next CI run once the spec file lands and the
 backend serves `dist-size.json` at one of the canonical paths.
+
+---
+
+## Wave 10 additions (Phase K W10 — 2025-Q4)
+
+### Commentary `TileReference` shape — `data-tile-suit` / `data-tile-rank` attrs
+
+W10 lands the canonical `TileReference = { tileId, suit, rank }`
+object shape in `tileReferences[]` on commentary records.
+`src/commentary-panel.ts:renderTileRef()` reads `ref.suit` +
+`ref.rank` and emits them as data attributes on the chip:
+
+```html
+<button
+  class="commentary-tile-chip"
+  data-tile-id="m5"
+  data-tile-suit="man"
+  data-tile-rank="5"
+>5m</button>
+```
+
+Spec hooks (Playwright + unit):
+
+- `[data-tile-suit="man"][data-tile-rank="5"]` — selects a specific
+  tile chip.
+- `[data-tile-id="p3-red"]` — selects a tile chip by identity,
+  variant-suffix aware.
+
+A W9 wire-shape (bare string) is coerced via `parseTileIdShape()`
+to the same DOM; tests can assert the coercion happened by
+checking `console.warn` for the parse-warning. See
+`docs/contracts/commentary-tile-ref.md` for the migration
+discipline (W9 → W10 → W12 cleanup).
+
+### `mahjong:highlight-tile` event — `source: 'commentary-panel'`
+
+The chip's click handler dispatches:
+
+```ts
+new CustomEvent('mahjong:highlight-tile', {
+  detail: { tileId: 'm5', source: 'commentary-panel' },
+});
+```
+
+Spec hooks:
+
+- Listen on `document` for `mahjong:highlight-tile`; assert
+  `event.detail.source === 'commentary-panel'`.
+- `event.detail.tileId` must equal the chip's `data-tile-id`.
+- `scene-effects.ts:wireHighlightHandlers` is the production
+  consumer; the W10 strip removes the fallback ring so unknown
+  sources `console.warn` instead of silently pulsing.
+
+### Three-renderer trend gate (W10 update)
+
+`src/frontend/autotable-src/dist-size.json` carries a K10 row
+with `three-renderer-big = 497,440 B` (−10,034 B vs K9). The
+W7 monotonic-decrease invariant holds for a 5th consecutive
+wave. The W9 forward-staged spec
+(`tests/e2e/three-renderer-510-hard.spec.ts`) and any future
+W10 spec (e.g. `three-renderer-500-hard.spec.ts`) both pass
+against this row.
+
+### PWA Builder workflow — testid surface
+
+The W10 CI workflow (`.github/workflows/pwa-audit.yml`) doesn't
+add DOM selectors, but it produces two CI-only JSON artifacts
+that downstream PR-comment renderers + tests can read:
+
+- `.pwa-score.json` — `{ pwaScore: number, subScores: { ... } }`
+  from `scripts/manifest-lint.js`.
+- `.lighthouse-report.json` — LH13 full output (`audits[]`,
+  `categories[]`).
+
+Both are `.gitignore`d; specs that need them should regenerate
+locally via the recipes in `docs/frontend-pwa-audit.md §2`.
+
+### Build cache — `.vite/` directory
+
+`vite.config.ts:cacheDir` points at
+`src/frontend/autotable-src/.vite/`. Specs that exercise a
+cold-build path should set the `VITE_FORCE_DEP_PRE_BUNDLE`
+env var or remove the directory before invoking the build.
+This is a CI / harness concern only; no DOM surface.

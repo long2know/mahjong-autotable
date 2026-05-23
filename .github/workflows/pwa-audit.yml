@@ -1,0 +1,244 @@
+# Phase K Wave 10 — Hicks (Frontend).
+#
+# Lighthouse 13 + PWA audit driven by the production Vite build.
+# W9 documented the local recipe in `docs/frontend-pwa-audit.md`;
+# W10 wires it into CI so PRs that touch the frontend get a PWA
+# score sanity-check, and nightly runs catch upstream regressions.
+#
+# Flow
+# ----
+#   1. Build the frontend with `npm run build:vite` (produces
+#      `src/frontend/autotable/`).
+#   2. Start `vite preview --host 127.0.0.1 --port 4173 --strictPort
+#      --outDir ../autotable` in the background.
+#   3. Wait for the preview server to answer 200 on `/autotable/`.
+#   4. Run Lighthouse 13 (the pinned devDep) against the preview URL
+#      with the JSON output captured under `.lighthouse-report.json`.
+#   5. Parse the report and post a PR comment with the LH13 category
+#      scores (`performance`, `accessibility`, `best-practices`,
+#      `seo`, `agentic-browsing`) — plus a `manifest-lint` summary
+#      that mirrors the W9 manifest-precondition script (since LH13
+#      no longer ships the dedicated PWA category).
+#   6. Fail the job if the computed PWA score (geometric mean of the
+#      installability preconditions in `manifest-lint`) is < 0.90.
+#
+# Forward-compat: the workflow is a soft-pass during the first nightly
+# run on `main` (Vasquez's W10 lane-map review window) — the PR-comment
+# step is gated on `github.event_name == 'pull_request'`.
+#
+# Owner: Hicks.  Lane review: Vasquez (sees the YAML during nightly
+# lane-discipline scan; see `.squad/decisions/inbox/hicks-phase-k-wave-10.md`).
+
+name: pwa-audit
+
+on:
+  pull_request:
+    paths:
+      - "src/frontend/autotable-src/**"
+      - "docs/frontend-pwa-audit.md"
+      - "docs/frontend-build-tooling.md"
+      - ".github/workflows/pwa-audit.yml"
+  schedule:
+    # Nightly at 02:30 UTC — far from the squad-heartbeat window so
+    # the runner pool isn't contended.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pwa-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Lighthouse 13 + PWA gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: src/frontend/autotable-src
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      # Phase K Wave 10 — Vite disk cache.
+      #
+      # `cacheDir` in vite.config.ts points at `.vite/` next to the
+      # source tree.  Keying on package-lock + vite.config hash means
+      # CI hits a warm cache (~9s build) when neither changed.
+      - name: Restore Vite build cache
+        id: vite-cache
+        uses: actions/cache@v4
+        with:
+          path: src/frontend/autotable-src/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('src/frontend/autotable-src/package-lock.json', 'src/frontend/autotable-src/vite.config.ts') }}
+          restore-keys: |
+            vite-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build production bundle
+        run: |
+          set -euo pipefail
+          npm run build:vite
+          test -d ../autotable
+          test -f ../autotable/index.html
+          test -f ../autotable/manifest.webmanifest
+
+      # Headless Chrome dependencies — Lighthouse needs them on the
+      # plain ubuntu-latest image (the `puppeteer` brought in by
+      # `lighthouse` only downloads the binary; system libs are not
+      # bundled).
+      - name: Install Chrome runtime libs
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+            libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
+            libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+            libpango-1.0-0 libcairo2 libasound2t64 || \
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+            libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
+            libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+            libpango-1.0-0 libcairo2 libasound2
+
+      - name: Start Vite preview server
+        run: |
+          set -euo pipefail
+          # `vite preview` serves the build output; we point --outDir
+          # at the autotable/ tree the build wrote into.
+          nohup npx vite preview \
+            --host 127.0.0.1 \
+            --port 4173 \
+            --strictPort \
+            --outDir ../autotable \
+            > vite-preview.log 2>&1 &
+          echo $! > vite-preview.pid
+          # Wait up to 30s for the server to answer.
+          for i in $(seq 1 30); do
+            if curl --silent --fail --output /dev/null http://127.0.0.1:4173/; then
+              echo "preview server is up"
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --fail --output /dev/null http://127.0.0.1:4173/
+
+      - name: Run Lighthouse 13
+        run: |
+          set -euo pipefail
+          # Lighthouse 13 dropped the `pwa` category; we collect the
+          # five remaining categories and post-process for a PWA-like
+          # score in the next step.  --quiet keeps the log tractable.
+          npx lighthouse http://127.0.0.1:4173/ \
+            --quiet \
+            --chrome-flags="--headless=new --no-sandbox --disable-gpu" \
+            --output=json \
+            --output=html \
+            --output-path=./.lighthouse-report \
+            --only-categories=performance,accessibility,best-practices,seo \
+            --form-factor=desktop \
+            --throttling-method=provided \
+            --max-wait-for-load=45000 || {
+              echo "lighthouse failed — dumping preview log"
+              cat vite-preview.log || true
+              exit 1
+            }
+
+      - name: Manifest + PWA installability lint
+        id: manifest-lint
+        run: |
+          set -euo pipefail
+          node scripts/manifest-lint.js \
+            --manifest ../autotable/manifest.webmanifest \
+            --report ./.lighthouse-report.report.json \
+            --out ./.pwa-score.json
+          cat ./.pwa-score.json
+
+      - name: Compose PR comment body
+        id: comment-body
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          node scripts/render-pwa-comment.js \
+            --report ./.lighthouse-report.report.json \
+            --pwa-score ./.pwa-score.json \
+            > ./.pr-comment.md
+          {
+            echo "body<<EOF"
+            cat ./.pr-comment.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          BODY: ${{ steps.comment-body.outputs.body }}
+        with:
+          script: |
+            const body = process.env.BODY;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const marker = '<!-- pwa-audit-report -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            const composed = `${marker}\n${body}`;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body: composed,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body: composed,
+              });
+            }
+
+      - name: Enforce PWA score gate
+        run: |
+          set -euo pipefail
+          score=$(node -e "const r=require('./.pwa-score.json'); process.stdout.write(String(r.pwaScore));")
+          echo "pwaScore=${score}"
+          # Fail the PR if PWA score drops below 0.90.  Nightly runs
+          # surface the same exit code but don't block a merge — the
+          # `workflow_dispatch` + `schedule` triggers don't gate PRs.
+          awk -v s="${score}" 'BEGIN { exit (s+0 < 0.90) ? 1 : 0 }' || {
+            echo "::error::PWA score ${score} below 0.90 floor"
+            exit 1
+          }
+
+      - name: Upload Lighthouse + PWA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-pwa-${{ github.run_id }}
+          path: |
+            src/frontend/autotable-src/.lighthouse-report.report.json
+            src/frontend/autotable-src/.lighthouse-report.report.html
+            src/frontend/autotable-src/.pwa-score.json
+            src/frontend/autotable-src/.pr-comment.md
+            src/frontend/autotable-src/vite-preview.log
+          retention-days: 14
+
+      - name: Stop preview server
+        if: always()
+        run: |
+          if [ -f vite-preview.pid ]; then
+            pid=$(cat vite-preview.pid)
+            kill "$pid" 2>/dev/null || true
+          fi
