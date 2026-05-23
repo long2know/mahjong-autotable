@@ -232,11 +232,35 @@ class DoubleElimRenderer implements BracketRenderer {
       return wrap;
     }
 
-    // Phase K Wave 8 — Prefer Bishop's server-authored partition.
-    // Fall back to the W6 heuristic when the wire still ships a
-    // flat `matches[]` (lets us deploy the renderer before the
-    // controller change lands).
-    const partition = partitionForDoubleElim(input);
+    // Phase K Wave 9 — Bishop's canonical wire shape is the ONLY
+    // accepted source of truth.  The W6→W8 heuristic that scanned
+    // round numbers (negative = losers) was kept as a transitional
+    // fallback while Bishop's controller migrated; it tolerated
+    // wire-shape drift in a way that hid real bugs.  W9 hard-
+    // requires `input.layout` (a successfully normalised
+    // `DoubleElimLayout` per `docs/contracts/bracket-api.md`).
+    // When absent we surface a visible error tagged with
+    // `data-testid="bracket-shape-error"` and log to the console
+    // so QA / CI can flag the regression rather than silently
+    // mis-rendering.
+    const layoutInput = input.layout ?? null;
+    if (layoutInput === null) {
+      console.error(
+        '[bracket] Unknown double-elim wire shape — expected '
+        + '{ layout: { winnersBracket, losersBracket, grandFinal: '
+        + '{ match, resetMatch } } } per docs/contracts/bracket-api.md',
+      );
+      const err = document.createElement('div');
+      err.className = 'bracket-shape-error';
+      err.setAttribute('data-testid', 'bracket-shape-error');
+      err.setAttribute('role', 'alert');
+      err.textContent = 'Bracket data is in an unrecognised format. '
+        + 'Please refresh; if the problem persists, contact support.';
+      wrap.appendChild(err);
+      return wrap;
+    }
+
+    const partition = partitionForDoubleElim({ ...input, layout: layoutInput });
     if (partition.winners.length === 0
         && partition.losers.length === 0
         && partition.grandFinal === null
@@ -398,29 +422,24 @@ interface PartitionResult {
 }
 
 /**
- * Phase K Wave 8 — Pick the partition source.  When the input
- * carries Bishop's W8 `layout` field, trust it directly (server
- * is authoritative for the winners/losers/grandFinal split);
- * otherwise fall back to the W6 heuristic so a deploy where the
- * controller still emits the flat shape doesn't break the
- * panel.
+ * Phase K Wave 9 — Bishop's canonical `layout` is the only source
+ * of truth.  Caller (`DoubleElimRenderer.render`) is responsible
+ * for the hard-fail surface when `input.layout` is null; this
+ * helper assumes it's non-null.  The W6 heuristic
+ * (`partitionDoubleElim` scanning round numbers) is retained
+ * below for unit-test parity but no production code path
+ * invokes it.
  */
 function partitionForDoubleElim(input: BracketRendererInput): PartitionResult {
   const layout = input.layout ?? null;
-  if (layout !== null) {
-    return {
-      winners: layout.winnersBracket.slice(),
-      losers: layout.losersBracket.slice(),
-      grandFinal: layout.grandFinal.match,
-      resetMatch: layout.grandFinal.resetMatch,
-    };
+  if (layout === null) {
+    return { winners: [], losers: [], grandFinal: null, resetMatch: null };
   }
-  const heuristic = partitionDoubleElim(input.matches);
   return {
-    winners: heuristic.winners,
-    losers: heuristic.losers,
-    grandFinal: heuristic.grandFinal,
-    resetMatch: null,
+    winners: layout.winnersBracket.slice(),
+    losers: layout.losersBracket.slice(),
+    grandFinal: layout.grandFinal.match,
+    resetMatch: layout.grandFinal.resetMatch,
   };
 }
 

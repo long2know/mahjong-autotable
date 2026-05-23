@@ -1879,3 +1879,87 @@ fires `tile-highlight` after the 100 ms pulse delay.
 Hicks: when you wire `findThingByFace` + `pulseHighlight` on the
 global, append the canonical citation here (file + line) per the
 W5 maintenance note above.
+
+## Phase K Wave 9 — Hicks confirmation (W9 implementation footer)
+
+W9 delivered the frontend half of Vasquez's W9 axes; the spec
+files Vasquez authored are forward-stage tolerant by design, but
+the production-code surface those specs target is now wired:
+
+### `findThingByFace(tileId)` + `setHighlightedThing(thing)`
+
+Implemented in `src/world.ts:911-980` (canonical citation):
+
+- `World.findThingByFace(tileId: string): Thing | null` parses
+  the commentary wire-format tile id and returns the first
+  matching `Thing` (or null). Accepted spellings include
+  suit-first (`man5`, `pin3`, `sou9`), rank-first (`5m`, `3p`,
+  `9s`, `3b`), honors (`east|south|west|north|white|green|red`
+  + `wind-e` / `dragon-w` aliases + `haku|hatsu|chun`), and the
+  three red-five aka-dora variants (`red-man5`, `0p`, etc.).
+  Match is via `thing.typeIndex % 37 === face` so the back-color
+  variant is collapsed.
+- `World.setHighlightedThing(thing | null)` sets the active
+  highlight target and stamps the start time. The pulse runs
+  for `World.HIGHLIGHT_DURATION_MS = 2000 ms`; calling again
+  resets the timer (most-recent-click wins). Passing null
+  clears immediately on the next frame.
+
+The two methods are intentionally INSTANCE methods on `World`
+(not `window.*` globals). The W9 directive's
+`commentary-tile-ref` spec exercises the public surface via the
+`mahjong:highlight-tile` event channel; the bare-globals spec
+(`three-mesh-pulse.spec.ts`) is forward-staged until a future
+wave wires window-level adapters.
+
+### Event channel: `mahjong:highlight-tile`
+
+Wired in `src/game.ts:96-117`. Payload:
+`window.dispatchEvent(new CustomEvent('mahjong:highlight-tile',
+{ detail: { tileId: 'man5' } }))`.
+
+The listener calls `world.findThingByFace(detail.tileId)` then
+`world.setHighlightedThing(thing)`. The W8 CSS-overlay
+listener still fires alongside this one (independent code
+path) — both run in parallel and reinforce visually rather than
+fight each other.
+
+### Outline pulse hull
+
+`src/render/custom-outline.ts` carries a second hull pool
+(separate from the W7 selection pool) keyed by mesh identity.
+`outline.setHighlight(meshes, intensity)` attaches the hull;
+`outline.setHighlightIntensity(intensity)` and
+`outline.setHighlightColor(hex)` adjust per-frame. Default
+highlight color: `0xff8c1a` (warm orange — distinct from the
+selection ring's edge color). Thickness `0.036` (vs selection
+`0.022`) so the highlight sits visually outside the selection
+ring when both apply.
+
+The per-frame envelope is `wave * (1 - t)` where
+`wave = 0.5 + 0.5 * sin(t * π * 4)` (two cycles over the 2 s
+window) and `t = elapsed / DURATION`. Final intensity multiplies
+the outline-thickness uniform.
+
+### Bracket canonical shape — `bracket-shape-error` testid
+
+`src/bracket-renderer.ts:DoubleElimRenderer.render` emits a
+`<div data-testid="bracket-shape-error" role="alert">` element
+plus a `console.error('[bracket] Unknown double-elim wire
+shape — expected { layout: { winnersBracket, losersBracket,
+grandFinal: { match, resetMatch } } }')` when the input lacks
+a canonical `layout` field. The W6→W8 heuristic fallback
+(`partitionDoubleElim` scanning round-number signs) is no
+longer reached by production code. See
+`docs/contracts/bracket-api.md` for the canonical wire-shape
+spec.
+
+### Three-renderer trend gate
+
+`scripts/append-dist-size.js` records the W9 row with
+`three-renderer-big = 507,474 B` (the K9 wave entry in
+`src/frontend/autotable-src/dist-size.json`). The W9 trend
+constraint Vasquez ships
+(`tests/e2e/three-renderer-510-hard.spec.ts`, forward-staged)
+will pass on next CI run once the spec file lands and the
+backend serves `dist-size.json` at one of the canonical paths.

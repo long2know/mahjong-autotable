@@ -11,8 +11,12 @@ playwright-report/
 # Phase K Wave 8 — Lighthouse PWA audit output (regenerated on
 # demand via `npm exec lighthouse …` — see docs/frontend-pwa-audit.md
 # for the audit recipe + interpretation of the JSON).
+# Phase K Wave 9 — Migrated to Lighthouse 13 + PWA Builder; the
+# `.lighthouse-report.json` filename matches the W9 recipe.
 .lighthouse-pwa.json
 .lighthouse-pwa.report.html
+.lighthouse-report.json
+.lighthouse-report.report.html
 
 # NOTE: upstream's .gitignore ignored *.auto.* because Inkscape/Blender
 # regenerated them at `make files` time. We commit the prebuilt assets

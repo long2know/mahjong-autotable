@@ -209,7 +209,308 @@ function copyStaticAssets(): {
   };
 }
 
-// ── Post-build SW manifest hook ───────────────────────────────────
+// ── Phase K Wave 9 — three.core.js unused-material strip ────────
+//
+// `three.module.js` re-exports a dozen material classes the
+// autotable doesn't use (`MeshPhongMaterial`,
+// `MeshStandardMaterial`, `MeshPhysicalMaterial`,
+// `MeshToonMaterial`, `MeshNormalMaterial`, `MeshDepthMaterial`,
+// `MeshDistanceMaterial`, `MeshMatcapMaterial`, `PointsMaterial`,
+// `SpriteMaterial`, `ShadowMaterial`, `LineDashedMaterial`,
+// `RawShaderMaterial`).  We use only `MeshBasicMaterial`,
+// `MeshLambertMaterial`, `LineBasicMaterial`, and `ShaderMaterial`.
+//
+// Rollup's tree-shaker normally would drop unused exports, but
+// the W7→W8 measurements show it can't follow these — they're
+// pulled in transitively by WebGLRenderer's shadow-map code path
+// (`new MeshDepthMaterial(...)` / `new MeshDistanceMaterial(...)`
+// at `three.module.js:8413-8414`) even when the autotable scene
+// never enables shadow casting on any mesh.  So the *modules*
+// stay live, even though the *instances* are never queried.
+//
+// W8 tried per-class deep-imports (`from 'three/src/materials/X'`)
+// — they made the bundle GROW by 150 kB because each deep import
+// re-pulled core init code.  See `docs/frontend-three-budget.md`
+// for the autopsy.
+//
+// W9's approach: gut the unused class bodies in place.  Replace
+// each `class X extends Material { /* ~100..500 lines of property
+// defaults + copy() */ }` with a minimal 6-line stub that:
+//
+//   1. Sets the `isX = true` flag (shadow-map code path checks
+//      this — see three.module.js:14018,14022,8720).
+//   2. Sets `this.type = 'X'`.
+//   3. Pre-initialises the small set of properties three's
+//      internals read off the depth/distance material (see the
+//      per-class `essential` map below).
+//   4. Calls `super.setValues(parameters)` so `new MeshDepthMaterial(
+//      {depthPacking: RGBADepthPacking})` (three.module.js:8413)
+//      still works.
+//   5. Implements `copy(source)` as a thin `super.copy(source)`
+//      call (the shadow code never clones these, but tree-shaken
+//      type definitions break if the method is absent).
+//
+// The transform runs only on the three.core.js file (matched by
+// path), and is idempotent — re-running on a stubbed file is a
+// no-op because the regex anchors require the original class
+// header + brace block.
+const STUB_MATERIALS: Record<string, string[]> = {
+  // Properties touched by three.module.js's WebGLShadowMap code
+  // and the gl-renderer material-of-program path.  Anything not
+  // listed gets defaulted by the parent Material constructor.
+  MeshDepthMaterial: [
+    "this.depthPacking = 0",
+    "this.map = null",
+    "this.alphaMap = null",
+    "this.displacementMap = null",
+    "this.displacementScale = 1",
+    "this.displacementBias = 0",
+    "this.wireframe = false",
+    "this.wireframeLinewidth = 1",
+  ],
+  MeshDistanceMaterial: [
+    "this.map = null",
+    "this.alphaMap = null",
+    "this.displacementMap = null",
+    "this.displacementScale = 1",
+    "this.displacementBias = 0",
+  ],
+  // The remaining materials are NEVER instantiated by three's
+  // internals — they exist only as user-facing exports.  We
+  // could omit them and let Rollup drop them, but Rollup is
+  // proven unable to (see preamble), so we stub them.
+  MeshPhongMaterial: [],
+  MeshStandardMaterial: [],
+  MeshPhysicalMaterial: [],
+  MeshToonMaterial: [],
+  MeshNormalMaterial: [],
+  MeshMatcapMaterial: [],
+  PointsMaterial: [],
+  SpriteMaterial: [],
+  ShadowMaterial: [],
+  LineDashedMaterial: [],
+  RawShaderMaterial: [],
+};
+
+function buildStubBody(className: string, parentClass: string, props: string[]): string {
+  const init = props.length === 0 ? '' : props.map(p => `\t\t${p};`).join('\n') + '\n';
+  return `class ${className} extends ${parentClass} {
+\tconstructor(parameters) {
+\t\tsuper(${parentClass === 'ShaderMaterial' ? '' : ''});
+\t\tthis.is${className} = true;
+\t\tthis.type = '${className}';
+${init}\t\tif (parameters !== undefined) this.setValues(parameters);
+\t}
+\tcopy(source) {
+\t\tsuper.copy(source);
+\t\treturn this;
+\t}
+}`;
+}
+
+function stripUnusedThreeMaterials(): { name: string; enforce: 'pre'; transform(code: string, id: string): { code: string; map: null } | null } {
+  return {
+    name: 'autotable-three-material-strip',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.includes('/three/build/three.core.js')) return null;
+
+      // Map of className -> parent class (read from the actual
+      // file).  We can't hard-code this because three's class
+      // hierarchy occasionally changes (e.g. MeshPhysicalMaterial
+      // extends MeshStandardMaterial, not Material).
+      let out = code;
+      let replaced = 0;
+      const before = out.length;
+
+      for (const className of Object.keys(STUB_MATERIALS)) {
+        // Anchor: `class X extends Y { ... <until closing> }`
+        // matched non-greedily.  Three's source has these as
+        // top-level class declarations, one per file before
+        // bundle, so the brace count is well-formed and we can
+        // use a balanced-brace walker rather than relying on
+        // regex alone.
+        const headerRe = new RegExp(`^class\\s+${className}\\s+extends\\s+(\\w+)\\s*\\{`, 'm');
+        const m = headerRe.exec(out);
+        if (m === null) continue;
+
+        const parent = m[1];
+        const startIdx = m.index;
+        const headerEnd = m.index + m[0].length;
+
+        // Walk forward tracking depth from the opening brace.
+        let depth = 1;
+        let i = headerEnd;
+        while (i < out.length && depth > 0) {
+          const ch = out[i];
+          if (ch === '{') depth++;
+          else if (ch === '}') depth--;
+          else if (ch === '/' && out[i + 1] === '/') {
+            // Skip line comment
+            const eol = out.indexOf('\n', i);
+            i = eol === -1 ? out.length : eol;
+            continue;
+          } else if (ch === '/' && out[i + 1] === '*') {
+            // Skip block comment
+            const close = out.indexOf('*/', i + 2);
+            i = close === -1 ? out.length : close + 2;
+            continue;
+          } else if (ch === '"' || ch === "'" || ch === '`') {
+            // Skip string literal (handles escapes).
+            const quote = ch;
+            i++;
+            while (i < out.length && out[i] !== quote) {
+              if (out[i] === '\\') i++;
+              i++;
+            }
+          }
+          i++;
+        }
+        if (depth !== 0) {
+          console.warn(`[material-strip] could not find matching brace for ${className}; skipping`);
+          continue;
+        }
+        const endIdx = i;
+        const stub = buildStubBody(className, parent, STUB_MATERIALS[className]);
+        out = out.slice(0, startIdx) + stub + out.slice(endIdx);
+        replaced++;
+      }
+
+      if (replaced === 0) return null;
+      const after = out.length;
+      console.log(`[material-strip] ${id.includes('node_modules') ? id.split('node_modules/').pop() : id} — stubbed ${replaced} classes, saved ${(before - after).toLocaleString()} chars (${before.toLocaleString()} → ${after.toLocaleString()})`);
+      return { code: out, map: null };
+    },
+  };
+}
+
+// ── Phase K Wave 9 — three.module.js feature strip ────────────────
+//
+// Beyond the unused-material strip on three.core.js, three.module.js
+// itself carries large feature modules the autotable never exercises:
+//
+//   • WebGLShadowMap (~11 KB unminified) — shadow casting is never
+//     enabled (no `renderer.shadowMap.enabled = true`, no
+//     `mesh.castShadow = true` in the scene).
+//   • WebXRManager (~27 KB unminified) — no VR/AR mode.
+//   • WebXRDepthSensing (~2 KB unminified) — only used during AR.
+//
+// We replace each function/class body with a no-op stub that
+// satisfies the surface the WebGLRenderer touches.  Stub
+// requirements are documented per case in the table below.
+const MODULE_STUBS: Record<string, { kind: 'function' | 'class'; parent?: string; body: string }> = {
+  WebGLShadowMap: {
+    kind: 'function',
+    body: `\tconst scope = this;
+\tthis.enabled = false;
+\tthis.autoUpdate = true;
+\tthis.needsUpdate = false;
+\tthis.type = 1;
+\tthis.render = function () {};
+`,
+  },
+  WebXRManager: {
+    kind: 'class',
+    parent: 'EventDispatcher',
+    body: `\tconstructor() {
+\t\tsuper();
+\t\tthis.enabled = false;
+\t\tthis.isPresenting = false;
+\t\tthis.cameraAutoUpdate = true;
+\t}
+\tsetAnimationLoop() {}
+\thasDepthSensing() { return false; }
+\tgetEnvironmentBlendMode() { return 'opaque'; }
+\tgetDepthSensingMesh() { return null; }
+\tdispose() {}
+`,
+  },
+  WebXRDepthSensing: {
+    kind: 'class',
+    body: `\tconstructor() {
+\t\tthis.texture = null;
+\t\tthis.mesh = null;
+\t\tthis.depthNear = 0;
+\t\tthis.depthFar = 0;
+\t}
+\tgetMesh() { return null; }
+\treset() {}
+\tonBeforeRender() {}
+\tinit() {}
+\trender() {}
+`,
+  },
+};
+
+function stripModuleFeatures(): { name: string; enforce: 'pre'; transform(code: string, id: string): { code: string; map: null } | null } {
+  return {
+    name: 'autotable-three-module-strip',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.includes('/three/build/three.module.js')) return null;
+      const before = code.length;
+      let out = code;
+      let replaced = 0;
+      for (const [name, spec] of Object.entries(MODULE_STUBS)) {
+        const header = spec.kind === 'function'
+          ? new RegExp(`^function\\s+${name}\\s*\\(([^)]*)\\)\\s*\\{`, 'm')
+          : new RegExp(`^class\\s+${name}\\s*(?:extends\\s+\\w+\\s*)?\\{`, 'm');
+        const m = header.exec(out);
+        if (m === null) continue;
+        // Find the closing brace using depth walking from the opening '{'.
+        const headerStart = m.index;
+        const openBrace = m.index + m[0].length - 1;
+        let depth = 1;
+        let i = openBrace + 1;
+        while (i < out.length && depth > 0) {
+          const ch = out[i];
+          if (ch === '{') depth++;
+          else if (ch === '}') depth--;
+          else if (ch === '/' && out[i + 1] === '/') {
+            const eol = out.indexOf('\n', i);
+            i = eol === -1 ? out.length : eol;
+            continue;
+          } else if (ch === '/' && out[i + 1] === '*') {
+            const close = out.indexOf('*/', i + 2);
+            i = close === -1 ? out.length : close + 2;
+            continue;
+          } else if (ch === '"' || ch === "'" || ch === '`') {
+            const quote = ch;
+            i++;
+            while (i < out.length && out[i] !== quote) {
+              if (out[i] === '\\') i++;
+              i++;
+            }
+          }
+          i++;
+        }
+        if (depth !== 0) {
+          console.warn(`[module-strip] could not find matching brace for ${name}; skipping`);
+          continue;
+        }
+        const endIdx = i;
+        const args = spec.kind === 'function' ? (m[1] || '') : '';
+        const stub = spec.kind === 'function'
+          ? `function ${name}(${args}) {\n${spec.body}}`
+          : `class ${name}${spec.parent ? ` extends ${spec.parent}` : ''} {\n${spec.body}}`;
+        out = out.slice(0, headerStart) + stub + out.slice(endIdx);
+        replaced++;
+      }
+      if (replaced === 0) return null;
+      console.log(`[module-strip] ${id.split('node_modules/').pop()} — stubbed ${replaced} feature(s), saved ${(before - out.length).toLocaleString()} chars (${before.toLocaleString()} → ${out.length.toLocaleString()})`);
+      return { code: out, map: null };
+    },
+  };
+}
+
+function stripWebGLShadowMap(): { name: string; enforce: 'pre'; transform(code: string, id: string): { code: string; map: null } | null } {
+  // Phase K Wave 9 — Retained as a thin alias for the unified
+  // `stripModuleFeatures` plugin (which stubs WebGLShadowMap +
+  // WebXRManager + WebXRDepthSensing in one transform pass).
+  return stripModuleFeatures();
+}
+
+
 //
 // Wave 3 ships `scripts/generate-sw-manifest.js` which:
 //   • copies sw.js (we also do that above as a belt-and-braces),
@@ -376,5 +677,5 @@ export default defineConfig({
   esbuild: {
     legalComments: 'none',
   },
-  plugins: [copyStaticAssets(), runSwManifestScript(), appendDistSize()],
+  plugins: [stripUnusedThreeMaterials(), stripWebGLShadowMap(), copyStaticAssets(), runSwManifestScript(), appendDistSize()],
 });

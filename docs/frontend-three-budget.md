@@ -316,3 +316,121 @@ A future wave that wants more savings should consider either:
 | W6   | 739.7 kB  | 838.8 kB                     | (in big)    | +15 kB        |
 | W7   | 578.72 kB | 648.07 kB                    | (in big)    | **−161 kB**   |
 | W8   | 531.86 kB | 602.86 kB                    | 44.22 kB    | **−46.86 kB** |
+| W9   | 507.47 kB | 582.85 kB                    | 44.22 kB    | **−24.39 kB** |
+
+## §5 — Wave 9: three.js feature strip via Vite transform plugin
+
+### Motivation
+
+W8 closed at 531.86 kB on the big chunk. W9 ceiling: **<510 kB**.
+Deep imports (W8 §4) were the rabbit hole that made the bundle
+GROW; W9 takes a different angle — instead of trying to make
+Rollup tree-shake harder, we surgically *delete* unused source
+in three.js's bundled files before they reach Rollup.
+
+### Approach: source transforms at the Vite `transform()` hook
+
+Two Vite plugins in `vite.config.ts` run with `enforce: 'pre'`
+ahead of Rollup's tree-shake pass:
+
+1. **`stripUnusedThreeMaterials`** — targets
+   `node_modules/three/build/three.core.js`. Replaces each
+   unused material class body with a 6-line stub:
+
+   ```ts
+   class MeshPhongMaterial extends Material {
+     constructor(parameters) {
+       super();
+       this.isMeshPhongMaterial = true;
+       this.type = 'MeshPhongMaterial';
+       if (parameters !== undefined) this.setValues(parameters);
+     }
+     copy(source) { super.copy(source); return this; }
+   }
+   ```
+
+   Materials stubbed: `MeshPhongMaterial`, `MeshStandardMaterial`,
+   `MeshPhysicalMaterial`, `MeshToonMaterial`, `MeshNormalMaterial`,
+   `MeshDepthMaterial`, `MeshDistanceMaterial`, `MeshMatcapMaterial`,
+   `PointsMaterial`, `SpriteMaterial`, `ShadowMaterial`,
+   `LineDashedMaterial`, `RawShaderMaterial` (13 classes).
+
+   Constraints honoured:
+   - `MeshDepthMaterial` / `MeshDistanceMaterial` are
+     instantiated unconditionally by three's `WebGLShadowMap`
+     constructor (`three.module.js:8413-8414`). The stub
+     preserves the `depthPacking` slot so
+     `new MeshDepthMaterial({depthPacking: RGBADepthPacking})`
+     survives — `setValues` reads `currentValue = this[key]` and
+     warns/skips when the property doesn't pre-exist on the
+     instance, so the slot MUST be initialised in the stub
+     constructor before `setValues(parameters)` runs.
+   - Each stub preserves the `isXxxMaterial` flag — the
+     WebGLRenderer's program cache reads these flags off the
+     material instance to pick the shader; absent flags would
+     break legitimate uses of `MeshBasicMaterial` /
+     `MeshLambertMaterial` whose code paths gate on `else if`
+     siblings.
+
+2. **`stripModuleFeatures`** — targets
+   `node_modules/three/build/three.module.js`. Replaces three
+   feature-module function/class bodies with no-op stubs:
+
+   | Feature                | Original | Stub | Why it's safe                            |
+   |------------------------|----------|------|------------------------------------------|
+   | `WebGLShadowMap`       | ~11 kB   | ~150 B | Autotable scene never sets `renderer.shadowMap.enabled = true` and no mesh has `castShadow = true`. The stub exposes `{enabled:false, autoUpdate:true, needsUpdate:false, type:1, render(){}}` — the surface the renderer reads. |
+   | `WebXRManager`         | ~27 kB   | ~250 B | No VR/AR mode. Stub `extends EventDispatcher` so `xr.addEventListener('sessionstart', …)` (called inside the renderer constructor) succeeds. Exposes `enabled=false`, `isPresenting=false`, `cameraAutoUpdate=true`, `setAnimationLoop()`, `hasDepthSensing()`, `getEnvironmentBlendMode()`, `getDepthSensingMesh()`, `dispose()`. |
+   | `WebXRDepthSensing`    | ~2 kB    | ~100 B | Sub-component of WebXR, never reached without an active AR session. |
+
+### Implementation notes
+
+Both transforms walk the source with a brace-depth counter that
+respects single-line, block, and string-literal contexts so a
+brace inside a JSDoc example or a regex literal doesn't break
+the matcher.
+
+The transforms are idempotent — re-running on already-stubbed
+code is a no-op because the matchers anchor on the original
+class header signature (`class Name extends Parent {`). When
+three.js upgrades, the matchers fail loudly via a
+`console.warn` and the original code passes through unchanged
+— a missed strip is a build-size regression, not a correctness
+regression.
+
+### Recovery measurement
+
+| Step                              | three-renderer-big | Delta |
+|-----------------------------------|--------------------|-------|
+| W8 baseline (no W9 strips)        | 531.86 kB          | —     |
+| + material strip                  | 526.60 kB          | −5.26 kB |
+| + module-feature strip            | **507.47 kB**      | **−19.13 kB** |
+
+Total W9 saving on the big chunk: **−24.39 kB** (4.6 %). The
+material strip alone underperformed because Rollup was already
+eliminating most of the class internals — most of the W9 saving
+comes from removing the three feature-modules' top-level
+function bodies, which Rollup keeps as long as they're imported
+unconditionally by `WebGLRenderer`.
+
+### Runtime smoke test
+
+A headless Playwright smoke run (`chromium.launch()` →
+`page.goto(/autotable/)` → wait for canvas) reports zero JS
+errors after the strip. Combined with the 7 Vasquez W8 specs
+passing (all 7/7, including the trend gate
+`three-renderer-540-hard`), this confirms the runtime surface
+the stubs preserve is sufficient.
+
+### Risk + future work
+
+- **Three.js upgrades:** when bumping the `three` dep, run a
+  smoke test before committing. The matchers will warn-and-pass
+  on unknown class headers, so the build will succeed but with
+  a regressed bundle size — keep an eye on `dist-size.json`.
+- **Future strip candidates (W10+):**
+  - `PMREMGenerator` (~14 kB) — only instantiated lazily; if we
+    can prove no code path triggers it we could stub.
+  - `WebXRController` (lives in three.core.js, ~3 kB).
+  - `Lighting probe` family (small but unused).
+- **DO NOT** retry deep-imports (W8 §4). The autopsy showed
+  they grew the bundle by ~150 kB on the same scene.

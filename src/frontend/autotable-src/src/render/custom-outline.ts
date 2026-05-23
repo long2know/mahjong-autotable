@@ -60,6 +60,24 @@ const OUTLINE_THICKNESS = 0.022;
 /** Default visible-edge tint matches OutlinePass's W6 setting (`0xffff99`). */
 const DEFAULT_EDGE_COLOR = 0xffff99;
 
+/**
+ * Phase K Wave 9 — Default tint for the commentary tile-ref highlight
+ * pool.  Distinct from `DEFAULT_EDGE_COLOR` so a player who clicks a
+ * commentary chip can see the 3D mesh outline cleanly even when the
+ * same tile is also part of a current selection (mouse hover or
+ * drag-claim).
+ */
+const DEFAULT_HIGHLIGHT_COLOR = 0xff8c1a;
+
+/**
+ * Phase K Wave 9 — Hull-expansion factor for the highlight pool.  A
+ * slightly thicker base than the selection outline so the screenshot
+ * diff in `outline-shader-visual.spec.ts` and the upcoming
+ * `mesh-highlight-pulse.spec.ts` can detect the pulse on the silhouette
+ * without confusing it with the steady selection ring.
+ */
+const HIGHLIGHT_OUTLINE_THICKNESS = 0.036;
+
 const OUTLINE_USERDATA_KEY = '__autotableOutlineHull';
 
 interface OutlineHullUserData {
@@ -103,25 +121,40 @@ function makeHullMaterial(color: Color, thickness: number): ShaderMaterial {
   });
 }
 
-function computeThicknessFor(geometry: BufferGeometry): number {
+function computeThicknessFor(geometry: BufferGeometry, factor: number = OUTLINE_THICKNESS): number {
   // Mesh thickness ∝ bounding-sphere radius so tiny meshes and
   // very large meshes both get a visually consistent stroke.
   if (geometry.boundingSphere === null) {
     geometry.computeBoundingSphere();
   }
   const radius = geometry.boundingSphere?.radius ?? 1;
-  return radius * OUTLINE_THICKNESS;
+  return radius * factor;
 }
 
 /**
  * Drop-in replacement for the subset of OutlinePass we actually
  * use.  Manages a pool of hull-mesh children attached to the
  * selected meshes.
+ *
+ * Phase K Wave 9 — Adds a second, independent hull pool for the
+ * "commentary tile-ref highlight" feature: when the user clicks a
+ * tile-ref chip in the commentary panel, the corresponding 3D mesh
+ * outlines in an attention-grabbing colour for 2 s with a sin-wave
+ * intensity envelope.  The highlight pool is parallel to the
+ * selection pool (separate active list, separate hull materials)
+ * so the two surfaces co-exist on the same mesh without fighting
+ * the per-frame `setSelected` rebuild.
  */
 export class CustomOutline {
   private color: Color = new Color(DEFAULT_EDGE_COLOR);
   private active: Mesh[] = [];
   private hulls = new WeakMap<Mesh, Mesh>();
+
+  // Phase K Wave 9 — Highlight pool internals (commentary tile-ref).
+  private highlightColor: Color = new Color(DEFAULT_HIGHLIGHT_COLOR);
+  private highlightActive: Mesh[] = [];
+  private highlightHulls = new WeakMap<Mesh, Mesh>();
+  private highlightIntensity: number = 1;
 
   /**
    * Set the currently-outlined meshes.  Idempotent — passing
@@ -160,6 +193,62 @@ export class CustomOutline {
   }
 
   /**
+   * Phase K Wave 9 — Set the commentary highlight pool.  Separate
+   * from `setSelected` so a click on a tile-ref chip can outline a
+   * mesh in attention-orange even when the same mesh is also part
+   * of the current mouse selection.  Empty array clears the pool.
+   *
+   * `intensity` is a 0..1 scalar (sin-wave envelope value from
+   * `MainView`) that scales the outline thickness for the pulse
+   * animation.  Pass 1.0 for a steady outline.
+   */
+  setHighlight(meshes: ReadonlyArray<Mesh>, intensity: number = 1): void {
+    if (meshes.length === 0 && this.highlightActive.length === 0) {
+      this.highlightIntensity = intensity;
+      return;
+    }
+    // Detach hulls from meshes no longer highlighted.
+    for (const prev of this.highlightActive) {
+      if (meshes.indexOf(prev) === -1) {
+        this.detachHighlightHull(prev);
+      }
+    }
+    // Attach hulls to newly-highlighted meshes.
+    for (const next of meshes) {
+      if (this.highlightActive.indexOf(next) === -1) {
+        this.attachHighlightHull(next);
+      }
+    }
+    this.highlightActive = meshes.slice();
+    this.highlightIntensity = intensity;
+    this.applyHighlightIntensity();
+  }
+
+  /**
+   * Phase K Wave 9 — Update only the per-frame pulse intensity
+   * without rebuilding the hull pool.  `MainView.render()` calls this
+   * each frame while a highlight pulse is in-flight so the outline
+   * width modulates with the sin-wave envelope.
+   */
+  setHighlightIntensity(intensity: number): void {
+    if (this.highlightIntensity === intensity) return;
+    this.highlightIntensity = intensity;
+    this.applyHighlightIntensity();
+  }
+
+  /** Update the commentary-highlight tint (defaults to `0xff8c1a`). */
+  setHighlightColor(hex: number): void {
+    this.highlightColor.setHex(hex);
+    for (const mesh of this.highlightActive) {
+      const hull = this.highlightHulls.get(mesh);
+      if (hull !== undefined) {
+        const mat = hull.material as ShaderMaterial;
+        (mat.uniforms.outlineColor.value as Color).copy(this.highlightColor);
+      }
+    }
+  }
+
+  /**
    * Pre-warm one hull instance against a placeholder mesh so the
    * shader is compiled (avoids the first-selection stutter the
    * W6 codebase worked around with `outlinePass.selectedObjects
@@ -177,6 +266,10 @@ export class CustomOutline {
       this.detachHull(mesh);
     }
     this.active = [];
+    for (const mesh of this.highlightActive) {
+      this.detachHighlightHull(mesh);
+    }
+    this.highlightActive = [];
   }
 
   // ── Internals ─────────────────────────────────────────────────
@@ -184,7 +277,7 @@ export class CustomOutline {
   private attachHull(mesh: Mesh): void {
     if (this.hulls.has(mesh)) return;
     const geom = mesh.geometry as BufferGeometry;
-    const thickness = computeThicknessFor(geom);
+    const thickness = computeThicknessFor(geom, OUTLINE_THICKNESS);
     const material = makeHullMaterial(this.color, thickness);
     const hull = new Mesh(geom, material);
     hull.renderOrder = (mesh.renderOrder ?? 0) - 1;
@@ -201,5 +294,41 @@ export class CustomOutline {
     mesh.remove(hull);
     (hull.material as ShaderMaterial).dispose();
     this.hulls.delete(mesh);
+  }
+
+  private attachHighlightHull(mesh: Mesh): void {
+    if (this.highlightHulls.has(mesh)) return;
+    const geom = mesh.geometry as BufferGeometry;
+    const baseThickness = computeThicknessFor(geom, HIGHLIGHT_OUTLINE_THICKNESS);
+    const material = makeHullMaterial(this.highlightColor, baseThickness * this.highlightIntensity);
+    // Stash the base thickness so the per-frame intensity update can
+    // multiply against it without recomputing the bounding sphere.
+    material.userData.baseOutlineThickness = baseThickness;
+    const hull = new Mesh(geom, material);
+    // Push the highlight hull one rendering tier behind the selection
+    // hull so when both are attached the highlight ring sits on the
+    // outside (the inverted-hull silhouette is widest first; the
+    // selection ring layers on top because its hull is thinner).
+    hull.renderOrder = (mesh.renderOrder ?? 0) - 2;
+    mesh.add(hull);
+    this.highlightHulls.set(mesh, hull);
+  }
+
+  private detachHighlightHull(mesh: Mesh): void {
+    const hull = this.highlightHulls.get(mesh);
+    if (hull === undefined) return;
+    mesh.remove(hull);
+    (hull.material as ShaderMaterial).dispose();
+    this.highlightHulls.delete(mesh);
+  }
+
+  private applyHighlightIntensity(): void {
+    for (const mesh of this.highlightActive) {
+      const hull = this.highlightHulls.get(mesh);
+      if (hull === undefined) continue;
+      const mat = hull.material as ShaderMaterial;
+      const base = (mat.userData.baseOutlineThickness as number) ?? HIGHLIGHT_OUTLINE_THICKNESS;
+      mat.uniforms.outlineThickness.value = base * this.highlightIntensity;
+    }
   }
 }

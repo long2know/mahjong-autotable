@@ -312,6 +312,18 @@ export class MainView {
     this.outline.setSelected(selectedObjects);
   }
 
+  /**
+   * Phase K Wave 9 — Drive the commentary-tile-ref outline pulse.
+   * `MainView` doesn't own the World's elapsed-pulse clock — the
+   * World pre-computes a 0..1 sin-wave envelope in
+   * `objectView.highlightIntensity` and the meshes to outline land
+   * in `highlightedObjects`.  Calling with an empty array clears
+   * the highlight hull pool on the next frame.
+   */
+  updateHighlight(highlightedObjects: Array<Mesh>, intensity: number): void {
+    this.outline.setHighlight(highlightedObjects, intensity);
+  }
+
   setPerspective(perspective: boolean): void {
     this.perspective = perspective;
     this.setupRendering();

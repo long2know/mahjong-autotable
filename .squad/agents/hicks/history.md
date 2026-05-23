@@ -3213,3 +3213,197 @@ Trend ledger (`three-renderer-big`):
   `src/frontend/autotable-src/tests/selectors.md`.
 - `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
   trailer included.
+
+---
+
+## Phase K Wave 9 — Bringup
+
+Branch: `stlong/phase-k-wave-9-bringup`
+
+### Deliverables
+
+1. **3D mesh pulse for commentary tile-ref highlight.** W8 wired
+   the 2D CSS overlay; W9 adds the actual 3D outline-hull pulse
+   that lights up the referenced tile on the WebGL canvas. Both
+   listeners run in parallel — overlay sits on top of the canvas
+   and reinforces the 3D pulse rather than fighting it.
+   - `World.findThingByFace(tileId)` — parses commentary wire
+     ids (`man5`, `pin3`, `sou9`, honors, red-fives, both
+     suit-first + rank-first spellings) and returns the
+     matching `Thing`. Uses `typeIndex % 37` so the back-color
+     variant is collapsed.
+   - `World.setHighlightedThing(thing)` — sets the active
+     target + start time. Pulse runs `HIGHLIGHT_DURATION_MS =
+     2000 ms`. Re-entry resets the timer.
+   - `ObjectView.highlightedObjects` + `.highlightIntensity` —
+     the World writes intensity per frame, ObjectView promotes
+     the highlighted Thing to a per-tile Mesh (so the outline
+     hull has something to attach to), and pushes it onto
+     `highlightedObjects`.
+   - `MainView.updateHighlight(meshes, intensity)` — calls
+     `outline.setHighlight(meshes, intensity)`.
+   - `CustomOutline.setHighlight` / `.setHighlightIntensity` /
+     `.setHighlightColor` — independent hull pool (separate from
+     the W7 selection ring) keyed by mesh identity. Default
+     color `0xff8c1a` warm orange, thickness `0.036`.
+   - `game.ts` wires `window.addEventListener('mahjong:highlight
+     -tile', …)` → `world.findThingByFace(...)` →
+     `world.setHighlightedThing(...)`, and threads
+     `mainView.updateHighlight(objectView.highlightedObjects,
+     objectView.highlightIntensity)` into the per-frame update
+     loop after `updateOutline`.
+
+2. **three-renderer feature strip (Vite plugin).** Cut the big
+   chunk from 531.86 kB → **507.47 kB** (under the W9 510 kB
+   ceiling). Two `enforce: 'pre'` Vite plugins:
+   - `stripUnusedThreeMaterials` — gutted 13 unused material
+     classes in `three.core.js` (MeshPhong/MeshStandard/
+     MeshPhysical/MeshToon/MeshNormal/MeshDepth/MeshDistance/
+     MeshMatcap/Points/Sprite/Shadow/LineDashed/RawShader).
+     Stubs preserve `isXxxMaterial` flags + the depthPacking
+     slot on MeshDepthMaterial that three's WebGLShadowMap
+     constructor sets.
+   - `stripModuleFeatures` — gutted three function/class bodies
+     in `three.module.js`: `WebGLShadowMap` (shadows never
+     enabled), `WebXRManager` (no VR/AR), `WebXRDepthSensing`
+     (sub-component, never reached). The WebXRManager stub
+     `extends EventDispatcher` to satisfy the
+     `xr.addEventListener('sessionstart', …)` call inside the
+     renderer constructor.
+   - Both transforms walk source with a brace-depth counter
+     respecting comments + string literals.
+   - Idempotent — re-running on stubbed code is a no-op; an
+     upgrade-induced match miss logs a `console.warn` and
+     passes through unchanged.
+   - Smoke test: headless Playwright `chromium.launch()` →
+     `page.goto('/autotable/')` → 0 JS errors, canvas renders.
+   - Full autopsy + recovery table in
+     `docs/frontend-three-budget.md §5`.
+
+3. **Lighthouse 13 + PWA-Builder migration.** Bumped
+   `lighthouse` devDep from 11.7.1 to **13.3.0** (permanent
+   devDep now; previously installed `--no-save`). LH13 confirmed
+   `--only-categories=pwa` is dropped and every PWA audit
+   (`installable-manifest`, `maskable-icon`, `splash-screen`,
+   `themed-omnibox`, `content-width`, `apple-touch-icon`,
+   `service-worker`) is GONE — only `viewport` survives, moved
+   under `best-practices`.
+   - Available categories: `performance`, `accessibility`,
+     `best-practices`, `seo`, `agentic-browsing`.
+   - W9 recorded baseline scores: P 79% / A 83% / BP 92% /
+     SEO 90% / Agentic 50%. None gate W9 — targets proposed for
+     W10 in `docs/frontend-pwa-audit.md §4`.
+   - PWA installability validation migrates to PWA Builder
+     (https://www.pwabuilder.com/) per Lighthouse RFC. W9
+     documents the manual recipe; CLI/CI wiring deferred to W10
+     (PWA Builder rejects localhost; needs a public preview URL).
+   - Added a local manifest-lint substitute (one-shot node
+     script in §3.4) that validates the manifest preconditions
+     LH11's `installable-manifest` audit used to check.
+
+4. **Bishop bracket wire-shape canonicalization.** W6→W8 the
+   client tolerated three wrapper-key spellings (`layout` /
+   `doubleElimLayout` / `bracketLayout`) + per-field synonyms
+   (`winners` / `grand_final` / etc.). W9 retires the tolerance:
+   `normalizeDoubleElimLayout` accepts ONLY the canonical names
+   (`layout.winnersBracket / .losersBracket / .grandFinal.{match,
+   resetMatch}`). When `input.layout` is null in
+   `DoubleElimRenderer.render`, the renderer emits a visible
+   `<div data-testid="bracket-shape-error" role="alert">` plus
+   a `console.error('[bracket] Unknown double-elim wire shape …
+   per docs/contracts/bracket-api.md')`. The W6 round-number-
+   sign heuristic (`partitionDoubleElim`) survives in the file
+   for its unit tests but production code no longer reaches it.
+   - New file: `docs/contracts/bracket-api.md` pins the
+     canonical wire shape, the migration discipline (Bishop
+     ships flag-gated dual fields → Hicks normalises → Vasquez
+     updates mocks → Bishop drops flag) and the schema for
+     both `GET /api/tournaments/{id}` and
+     `GET /api/tournaments/{id}/bracket`.
+
+5. **Vasquez W8 spec gate — 7/7 PASS.** All 7 W8 specs run green
+   against the W9 build:
+   `bracket-live-update` ✅,
+   `commentary-streaming` ✅,
+   `commentary-tile-ref-latency` ✅,
+   `losers-bracket-render` ✅,
+   `pwa-lighthouse-score` ✅,
+   `three-renderer-540-hard` ✅,
+   `vite-signalr-proxy` ✅ (4.1 s wall-clock, 7 workers).
+
+### dist-size.json — K9 row
+
+`three-renderer-big = 507,474 B` (down −24,388 from W8's
+531,862 B; under the W9 510 KB ceiling).
+
+| Chunk | W9 size (B) |
+|---|---|
+| three-renderer-big | 507,474 |
+| hls | 286,514 |
+| autotable-src-eager | 214,455 |
+| game-bootstrap | 174,561 |
+| three-renderer-small | 75,384 |
+| scene-effects | 59,041 |
+| gltf-loader | 44,223 |
+| tournaments | 41,100 |
+
+Trend ledger (`three-renderer-big`):
+`740 → 579 → 531.86 → **507.47** KB` — Vasquez's monotonic-
+decrease invariant holds for a 4th consecutive wave.
+
+### Files modified
+
+- `src/frontend/autotable-src/src/render/custom-outline.ts`
+- `src/frontend/autotable-src/src/world.ts`
+- `src/frontend/autotable-src/src/object-view.ts`
+- `src/frontend/autotable-src/src/main-view.ts`
+- `src/frontend/autotable-src/src/game.ts`
+- `src/frontend/autotable-src/src/tournaments.ts`
+- `src/frontend/autotable-src/src/bracket-renderer.ts`
+- `src/frontend/autotable-src/vite.config.ts`
+- `src/frontend/autotable-src/.gitignore`
+- `src/frontend/autotable-src/package.json` (+ package-lock.json,
+  lighthouse@^13 dev dep)
+- `src/frontend/autotable-src/tests/selectors.md` (W9 footer)
+- `src/frontend/autotable-src/dist-size.json` (K9 row appended by
+  the build hook)
+- `src/frontend/autotable/*` (Vite rebuild output —
+  three-renderer.<hash>.js, autotable-src.<hash>.js,
+  manifest-precache.json, index.html, etc.)
+- `docs/frontend-three-budget.md` (§5 + W9 trend row)
+- `docs/frontend-pwa-audit.md` (§2 LH13 migration + §3 new
+  recipe + §4 hand-off)
+- `docs/contracts/bracket-api.md` (NEW)
+
+### Hand-off to W10
+
+1. **`mahjong:highlight-tile` event source.** Bishop's
+   commentary record streams `tileReferences[]` (per
+   `ICommentaryGenerator.cs:110-113`). The commentary panel
+   already renders the chips; the click handler currently
+   dispatches the CSS-overlay event but doesn't yet dispatch
+   `mahjong:highlight-tile`. Wire the dispatch in
+   `commentary-panel.ts`.
+2. **PWA Builder CLI in CI.** Stand up a Cloudflare Pages
+   preview env (or `cloudflared tunnel`) so PWA Builder can
+   reach the build, then call `npx @pwabuilder/cli analyze`
+   inside `.github/workflows/lighthouse.yml`. Add the report
+   schema to `tests/e2e/pwa-lighthouse-score.spec.ts` as a
+   parsing case.
+3. **PMREMGenerator strip.** It's lazily instantiated (~14 kB
+   unminified) — confirm no code path triggers it, then add to
+   `stripModuleFeatures`.
+4. **Bracket fetcher.** `GET /api/tournaments/{id}/bracket`
+   ships the canonical layout grouped by round
+   (`BracketRound[]`). The frontend currently only reads the
+   detail endpoint's flat `layout`. Wire a parallel fetch +
+   merge in `tournaments.ts`.
+5. **partitionDoubleElim removal.** Now unused by production
+   code; only its unit tests reference it. Either delete the
+   function + its tests or document that the tests are W6
+   compatibility smoke (not enforcing live behaviour).
+6. **Parcel removal.** `build:parcel` script still in
+   package.json but unused for 3 waves now. Drop in W10.
+7. **Manifest gap-fills.** Add `screenshots[]`, `id`, `lang`,
+   `dir`, `iarc_rating_id` to manifest.json (PWA Builder will
+   flag these once the CLI lands).
