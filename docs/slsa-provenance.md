@@ -174,13 +174,13 @@ on GitHub, and the workflow run logs on Actions are
 cryptographically tied together. That's the floor SLSA L3 is
 designed to give you.
 
-## 6. Bumping the SLSA generator version
+## 6. Bumping the SLSA generator version + migration history
 
 The pin in `slsa-provenance.yml` is a fully-qualified `vX.Y.Z`
 ref:
 
 ```yaml
-uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
 ```
 
 The generator project [requires](https://github.com/slsa-framework/slsa-github-generator#referencing-the-generators)
@@ -202,6 +202,71 @@ Bump procedure:
    `slsa-verifier` still passes end-to-end.
 4. If §4 fails, revert immediately — the previous pin is the
    trust anchor for every artefact ever published.
+
+### 6.1 Wave-4 → Wave-5 generator migration (single-subject → multi-subject)
+
+Wave-4 used `generator_container_slsa3.yml@v2.0.0` — a
+container-specific generator that emits a SINGLE-SUBJECT predicate
+(the image manifest digest only) and auto-attaches it to the OCI
+registry as a sidecar artefact.
+
+Wave-5 switched to `generator_generic_slsa3.yml@v2.0.0` — the
+GENERIC SLSA generator that accepts a base64-encoded
+`sha256sum`-format subjects list. We pass TWO subjects:
+
+1. The image manifest list digest, named
+   `ghcr.io/long2know/mahjong-autotable@sha256:<digest>`.
+2. The CycloneDX SBOM file (`sbom.cyclonedx.json`), named after
+   the filename so an auditor with the file in hand can verify
+   the hash with `sha256sum`.
+
+The output is a single `provenance-and-sbom.intoto.jsonl` whose
+in-toto statement carries both subjects under one DSSE envelope,
+one Sigstore signature, one Rekor entry. The Wave-5
+`attest-oci` job additionally publishes the predicate to the
+image as an OCI sidecar via `cosign attest --type slsaprovenance1`
+so the Wave-5 Kyverno `attestations:` block (see
+[`docs/admission-policy.md` §6](admission-policy.md)) discovers
+it through the standard `cosign download attestation` path.
+
+**Backward compatibility.** Wave-4 attestations remain in Rekor
+forever (the public transparency log is append-only) and remain
+verifiable with the Wave-4 invocation:
+
+```bash
+# Wave-4 (single-subject, container generator):
+slsa-verifier verify-image \
+    "ghcr.io/long2know/mahjong-autotable@${DIGEST}" \
+    --source-uri github.com/long2know/mahjong-autotable \
+    --source-tag v0.13.0
+```
+
+Wave-5 (and later) attestations verify with:
+
+```bash
+# Wave-5+ (multi-subject, generic generator):
+slsa-verifier verify-artifact \
+    --provenance-path provenance-and-sbom.intoto.jsonl \
+    --source-uri github.com/long2know/mahjong-autotable \
+    --source-tag v0.14.0 \
+    sbom.cyclonedx.json
+```
+
+`verify-artifact` accepts the artefact path as its trailing
+positional and checks it against ALL subjects in the predicate.
+Run it against `sbom.cyclonedx.json` to verify the SBOM
+attestation, and against the image (`verify-image`) to verify
+the image attestation — both pass against the same single
+predicate.
+
+**Why the migration?** Wave-4 emitted two parallel attestation
+flows (`slsa-provenance.yml` for the image; `sbom.yml` for the
+SBOM, unsigned). An auditor reading the SLSA predicate could not
+cryptographically confirm the SBOM in their hand came from the
+same build run. Wave-5 closes that audit gap: ONE statement,
+TWO subjects, ONE verifiable claim — "this build produced
+EXACTLY these artefacts, here are the materials + builder that
+produced them both".
 
 ## 7. Why a fresh workflow vs extending `sign-image.yml`
 

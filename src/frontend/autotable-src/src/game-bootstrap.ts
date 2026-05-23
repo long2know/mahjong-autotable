@@ -14,8 +14,9 @@
 //     the eager bundle; the only JS this file pulls in beyond the
 //     lobby chain is the chat + voice modules (both already lazy
 //     beyond this point).
-//   • The scene chunk owns three.js + AssetLoader + WebGL setup, and
-//     mints `data-testid="game-scene-ready"` once it has composited.
+//   • The renderer chunk (`three-renderer`) owns three.js + AssetLoader
+//     + WebGL setup; the `scene-shell` thin coordinator mints
+//     `data-testid="scene-shell-ready"` once it has composited.
 //   • Voice chat is gated on the per-game `voiceEnabled` flag (Wave 3
 //     wire-up); the `?voice=1` query-string override remains as the
 //     E2E-friendly opt-in until the hub broadcasts a flag.
@@ -43,11 +44,13 @@ export async function bootstrapGame(): Promise<void> {
   // the `game-shell-ready` marker that Vasquez's specs gate on.
   markShellReady();
 
-  // Lazy-import the renderer-critical 3D scene chunk.  Wave 4 split
-  // this further: `scene-shell` contains three.js (~575 kB) +
-  // AssetLoader + Game + World + ClientUi; the heavy GameUi modal
-  // graph + MoveLog now live in `scene-effects` which the shell
-  // dynamic-imports itself after first-frame.
+  // Lazy-import the renderer-critical 3D scene chunk.  Wave 5 split
+  // this further: `scene-shell` is now a thin three.js-free
+  // coordinator that dynamic-imports `three-renderer` (which holds
+  // three.js + AssetLoader + Game + World + ClientUi + MainView,
+  // ~600 kB).  The heavy GameUi modal graph + MoveLog still live in
+  // `scene-effects` which the shell dynamic-imports itself after
+  // first-frame.
   const sceneMod = await import('./scene-shell');
   const client = await sceneMod.mountScene();
 
@@ -73,13 +76,15 @@ export async function bootstrapGame(): Promise<void> {
 
 // Phase K Wave 4 — Preload helper.  Lobby wires this to mouseenter /
 // pointerdown on Quick Match / Apply so the next page load (after
-// `location.replace`) gets the shell + scene chunks from cache.  We
-// preload `scene-shell` (renderer-critical) but deliberately skip
-// `scene-effects` — that chunk starts loading after first-frame and
-// shouldn't block warm navigations.
+// `location.replace`) gets the shell + renderer chunks from cache.
+// Wave 5 also preloads `three-renderer` here so the heavy three.js
+// chunk warms in parallel with `scene-shell` rather than serially
+// after it; `scene-effects` stays out — it starts loading after
+// first-frame and shouldn't block warm navigations.
 export function preloadGameBootstrap(): void {
   void import('./game-bootstrap');
   void import('./scene-shell');
+  void import('./three-renderer');
 }
 
 // ── Shell paint ─────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-# Phase J Wave 9 — Apone (DevOps).
+# Phase J Wave 9 — Apone (DevOps). Wave-5 amendment: see below.
 #
 # Software-Bill-of-Materials (SBOM) + container image vulnerability scan.
 # Runs on every push to main and on every PR that touches the Dockerfile,
@@ -21,6 +21,27 @@
 # `permissions:` are tightly scoped — `security-events: write` is the
 # only elevated grant (required by `upload-sarif`). Everything else is
 # strict-read.
+#
+# ## Phase K Wave 5 amendment — relationship to the unified SLSA predicate
+#
+# This workflow continues to OWN the PR-time CVE gate (Trivy
+# CRITICAL,HIGH; SARIF → Code Scanning) and the per-PR SBOM that
+# feeds GitHub's dependency-graph. It is the PR-blocking layer.
+#
+# The PUBLISHED, AUDITOR-VERIFIABLE SBOM for every release artefact
+# now lives in `.github/workflows/slsa-provenance.yml` (Wave 5) as
+# a multi-subject in-toto predicate (image digest + CycloneDX SBOM
+# file digest, both Sigstore-signed under ONE DSSE envelope, attached
+# to the OCI image as a sidecar attestation AND uploaded to the
+# GitHub Release).
+#
+# The SBOM produced HERE (sbom.cyclonedx.json from the locally-built
+# PR image) IS NOT signed and IS NOT a long-term audit artefact —
+# it's the fastest possible CVE feedback for the reviewer. The
+# Wave-5 unified predicate is the source of truth for "what was in
+# the build that shipped". Do NOT cite this workflow's SBOM in
+# `docs/sbom.md` for audit-chain purposes; cite the Release-attached
+# `sbom.cyclonedx.json` next to `provenance-and-sbom.intoto.jsonl`.
 
 name: sbom
 

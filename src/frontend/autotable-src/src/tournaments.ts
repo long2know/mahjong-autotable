@@ -666,8 +666,36 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
 
   const header = document.createElement('div');
   header.className = 'tournament-seeding-header';
-  header.textContent = 'Seeding (drag to reorder; drop into Unseeded to release)';
+  header.textContent = 'Seeding (drag or use arrow keys on a handle to reorder; press Enter on a handle to edit a seed number directly)';
   wrap.appendChild(header);
+
+  // Phase K Wave 5 — Visually-hidden aria-live region used by the
+  // keyboard reorder + edit flow.  Drag-drop is unannounced (mouse
+  // users get visual feedback); keyboard moves and edits are
+  // announced via `aria-live="polite"` so screen-reader users hear
+  // the new position before the row repaints.
+  const liveRegion = document.createElement('div');
+  liveRegion.className = 'tournament-seeding-live';
+  liveRegion.setAttribute('data-testid', 'seed-live-region');
+  liveRegion.setAttribute('role', 'status');
+  liveRegion.setAttribute('aria-live', 'polite');
+  liveRegion.setAttribute('aria-atomic', 'true');
+  // Inline visually-hidden styling so we don't need to ship a
+  // dedicated stylesheet change for a single panel.
+  liveRegion.style.position = 'absolute';
+  liveRegion.style.width = '1px';
+  liveRegion.style.height = '1px';
+  liveRegion.style.padding = '0';
+  liveRegion.style.margin = '-1px';
+  liveRegion.style.overflow = 'hidden';
+  liveRegion.style.clip = 'rect(0,0,0,0)';
+  liveRegion.style.whiteSpace = 'nowrap';
+  liveRegion.style.border = '0';
+  wrap.appendChild(liveRegion);
+
+  const announce = (msg: string): void => {
+    liveRegion.textContent = msg;
+  };
 
   const list = document.createElement('ol');
   list.className = 'tournament-seeding-list';
@@ -677,6 +705,29 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
 
   const actions = document.createElement('div');
   actions.className = 'tournament-seeding-actions';
+
+  // Phase K Wave 5 — When the user reorders via keyboard we need to
+  // restore focus to the new handle position after rerender(), since
+  // `list.replaceChildren()` blows away the original element.  The
+  // identifier we use is the playerId (stable across rerenders).
+  let pendingFocusPlayerId: string | null = null;
+
+  const focusHandleByPlayerId = (playerId: string): void => {
+    // Iterate rather than use `querySelector` with a CSS attribute
+    // selector — playerIds are server-generated and may legitimately
+    // contain characters (e.g. `=`, `+`, `:`) that require CSS
+    // escaping.  A linear scan over the live row set is O(N) on the
+    // tournament size (≤ 64 in practice) and side-steps the escape
+    // pitfall entirely.
+    const rowEls = list.querySelectorAll<HTMLElement>('.tournament-seeding-row');
+    for (const rowEl of Array.from(rowEls)) {
+      if (rowEl.getAttribute('data-player-id') === playerId) {
+        const handle = rowEl.querySelector<HTMLElement>('.tournament-seeding-handle');
+        if (handle !== null) handle.focus();
+        return;
+      }
+    }
+  };
 
   const rerender = (): void => {
     list.replaceChildren();
@@ -734,8 +785,79 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
 
       const handle = document.createElement('span');
       handle.className = 'tournament-seeding-handle';
-      handle.setAttribute('aria-hidden', 'true');
       handle.textContent = '⋮⋮';
+      // Phase K Wave 5 — Keyboard-accessible reorder.  The handle was
+      // `aria-hidden` in Wave 4 because drag-drop was the only
+      // interaction model; Wave 5 promotes it to a focusable button
+      // so keyboard users can reorder rows without a pointing device.
+      // Vasquez's Wave-5 spec gates on a stable per-player testid so
+      // post-reorder lookups don't race against the index-based name
+      // (`tournament-seed-row-{i}` shifts whenever the row moves).
+      handle.removeAttribute('aria-hidden');
+      handle.setAttribute('tabindex', '0');
+      handle.setAttribute('role', 'button');
+      if (row.slot.playerId !== null && row.slot.playerId !== '') {
+        handle.setAttribute('data-testid', `seed-row-${row.slot.playerId}`);
+      }
+      handle.setAttribute(
+        'aria-label',
+        row.seeded
+          ? `Seed handle for ${row.slot.displayName}, currently #${seedRank}. ` +
+            'Use Arrow Up or Arrow Down to reorder; press Enter to edit seed number.'
+          : `Seed handle for ${row.slot.displayName}, currently unseeded. ` +
+            'Use Arrow Up or Arrow Down to reorder; press Enter to assign a seed number.',
+      );
+      handle.addEventListener('keydown', (ev) => {
+        // Ignore key events with modifiers — keep room for the
+        // browser's own keyboard shortcuts (e.g. ⌘↑/⌃↑ to scroll).
+        if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+        switch (ev.key) {
+          case 'ArrowUp': {
+            ev.preventDefault();
+            if (i === 0) {
+              announce(`${row.slot.displayName} is already at the top.`);
+              return;
+            }
+            moveRow(rows, i, i - 1);
+            recomputeSeededFlags(rows);
+            const targetSeeded = rows[i - 1].seeded;
+            pendingFocusPlayerId = row.slot.playerId;
+            announce(
+              targetSeeded
+                ? `Moved ${row.slot.displayName} up to seed ${i}.`
+                : `Moved ${row.slot.displayName} up to position ${i + 1} (unseeded).`,
+            );
+            rerender();
+            void persistSeeds();
+            return;
+          }
+          case 'ArrowDown': {
+            ev.preventDefault();
+            if (i === rows.length - 1) {
+              announce(`${row.slot.displayName} is already at the bottom.`);
+              return;
+            }
+            moveRow(rows, i, i + 1);
+            recomputeSeededFlags(rows);
+            pendingFocusPlayerId = row.slot.playerId;
+            const targetSeeded = rows[i + 1].seeded;
+            announce(
+              targetSeeded
+                ? `Moved ${row.slot.displayName} down to seed ${i + 2}.`
+                : `Moved ${row.slot.displayName} down to position ${i + 2} (unseeded).`,
+            );
+            rerender();
+            void persistSeeds();
+            return;
+          }
+          case 'Enter':
+          case ' ': {
+            ev.preventDefault();
+            openSeedKeyboardPrompt(row, i);
+            return;
+          }
+        }
+      });
       li.appendChild(handle);
 
       li.addEventListener('dragstart', (ev) => {
@@ -774,6 +896,169 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
       });
 
       list.appendChild(li);
+    });
+
+    if (pendingFocusPlayerId !== null) {
+      const target = pendingFocusPlayerId;
+      pendingFocusPlayerId = null;
+      // Use rAF so focus lands after the browser commits the new
+      // layout — important when the row moved across the unseeded
+      // divider (the divider's render shifts everything by 1px).
+      window.requestAnimationFrame(() => focusHandleByPlayerId(target));
+    }
+  };
+
+  // Phase K Wave 5 — Inline modal for "Edit seed number" prompt.  We
+  // intentionally avoid the browser `prompt()` builtin: it blocks
+  // the main thread, is unstyleable, and Playwright treats it as a
+  // dialog the spec must `accept()` — all hostile to the toolchain.
+  // The inline dialog carries `role="dialog"` + `aria-modal="true"`
+  // and traps focus until the user submits or cancels.
+  const openSeedKeyboardPrompt = (row: SeedRow, fromIdx: number): void => {
+    // Close any existing prompt before opening a new one.
+    const existing = wrap.querySelector('[data-testid="seed-keyboard-prompt"]');
+    if (existing !== null) existing.remove();
+
+    const seededCount = rows.filter(r => r.seeded).length;
+    const maxSeed = Math.max(seededCount, 1);
+
+    const dialog = document.createElement('div');
+    dialog.className = 'tournament-seeding-prompt';
+    dialog.setAttribute('data-testid', 'seed-keyboard-prompt');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-label', `Edit seed number for ${row.slot.displayName}`);
+
+    const labelText = `Enter new seed for ${row.slot.displayName} ` +
+      `(1..${maxSeed} to seed; 0 to leave unseeded):`;
+    const label = document.createElement('label');
+    label.className = 'tournament-seeding-prompt-label';
+    label.textContent = labelText;
+    const inputId = `seed-prompt-input-${row.slot.playerId ?? fromIdx}`;
+    label.htmlFor = inputId;
+    dialog.appendChild(label);
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.id = inputId;
+    input.className = 'tournament-seeding-prompt-input';
+    input.setAttribute('data-testid', 'seed-keyboard-prompt-input');
+    input.min = '0';
+    input.max = String(rows.length);
+    input.step = '1';
+    input.value = row.seeded
+      ? String(rows.slice(0, fromIdx + 1).filter(r => r.seeded).length)
+      : '0';
+    dialog.appendChild(input);
+
+    const error = document.createElement('div');
+    error.className = 'tournament-seeding-prompt-error';
+    error.setAttribute('data-testid', 'seed-keyboard-prompt-error');
+    error.setAttribute('role', 'alert');
+    error.style.display = 'none';
+    dialog.appendChild(error);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'tournament-seeding-prompt-actions';
+
+    const ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = 'btn btn-primary btn-sm';
+    ok.setAttribute('data-testid', 'seed-keyboard-prompt-ok');
+    ok.textContent = 'Apply';
+
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn btn-secondary btn-sm';
+    cancel.setAttribute('data-testid', 'seed-keyboard-prompt-cancel');
+    cancel.textContent = 'Cancel';
+
+    btnRow.appendChild(ok);
+    btnRow.appendChild(cancel);
+    dialog.appendChild(btnRow);
+
+    wrap.appendChild(dialog);
+    input.focus();
+    input.select();
+
+    const close = (restoreFocus: boolean): void => {
+      dialog.remove();
+      if (restoreFocus) {
+        pendingFocusPlayerId = row.slot.playerId;
+        // No rerender pending — focus directly.
+        if (row.slot.playerId !== null && row.slot.playerId !== '') {
+          focusHandleByPlayerId(row.slot.playerId);
+        }
+        pendingFocusPlayerId = null;
+      }
+    };
+
+    const submit = (): void => {
+      const raw = input.value.trim();
+      const n = parseInt(raw, 10);
+      if (!Number.isFinite(n) || n < 0 || n > rows.length) {
+        error.textContent = `Seed must be 0..${rows.length}.`;
+        error.style.display = '';
+        return;
+      }
+      // Reorder rows so the picked row lands at the requested seed
+      // slot.  n === 0 demotes to unseeded (push past the divider);
+      // n in 1..seededCount inserts at position n-1 with seeded=true.
+      const movingPlayerId = row.slot.playerId;
+      const targetSeeded = n > 0;
+      // Determine the actual destination index in `rows`.
+      let destIdx: number;
+      if (n === 0) {
+        // Drop past the last seeded row (or wherever the divider sits).
+        // After removing the moved row, append it at the first
+        // unseeded position (or end).
+        rows.splice(fromIdx, 1);
+        const firstUnseeded = rows.findIndex(r => !r.seeded);
+        destIdx = firstUnseeded === -1 ? rows.length : firstUnseeded;
+        rows.splice(destIdx, 0, { slot: row.slot, seeded: false });
+      } else {
+        rows.splice(fromIdx, 1);
+        // After removal, the n-th seed slot is the (n-1)-th *seeded*
+        // row.  Find the index in `rows` of the (n-1)-th currently-
+        // seeded entry; if there aren't enough, append at the
+        // boundary.
+        const seededIndices: number[] = [];
+        rows.forEach((r, idx) => { if (r.seeded) seededIndices.push(idx); });
+        if (seededIndices.length < n - 1) {
+          // Insert at the boundary so it becomes the new last seed.
+          destIdx = seededIndices.length === 0 ? 0 : seededIndices[seededIndices.length - 1] + 1;
+        } else if (n === seededIndices.length + 1) {
+          destIdx = seededIndices.length === 0 ? 0 : seededIndices[seededIndices.length - 1] + 1;
+        } else {
+          destIdx = seededIndices[n - 1];
+        }
+        rows.splice(destIdx, 0, { slot: row.slot, seeded: true });
+      }
+      recomputeSeededFlags(rows);
+
+      if (movingPlayerId !== null && movingPlayerId !== '') {
+        pendingFocusPlayerId = movingPlayerId;
+      }
+      dialog.remove();
+      announce(
+        targetSeeded
+          ? `${row.slot.displayName} is now seed #${n}.`
+          : `${row.slot.displayName} is now unseeded.`,
+      );
+      rerender();
+      void persistSeeds();
+    };
+
+    ok.addEventListener('click', submit);
+    cancel.addEventListener('click', () => close(true));
+    dialog.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        submit();
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        close(true);
+      }
     });
   };
 
