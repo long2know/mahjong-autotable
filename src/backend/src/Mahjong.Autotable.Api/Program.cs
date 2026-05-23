@@ -6,6 +6,12 @@ using Mahjong.Autotable.Api.Persistence;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 
+// Phase J Wave 3 — Apone's Docker HEALTHCHECK / Linux deploy needs a stable
+// process-uptime anchor. Captured at module load (before WebApplication build)
+// so the value reflects the actual host process start, not the time of the
+// first /health request.
+var processStartTime = DateTimeOffset.UtcNow;
+
 var builder = WebApplication.CreateBuilder(args);
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));
 
@@ -78,6 +84,19 @@ if (Directory.Exists(autotablePath))
 }
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "mahjong-autotable-api" }));
+
+// Phase J Wave 3 — Docker HEALTHCHECK + Linux deploy probe (Apone). Returns a
+// stable JSON shape: status="healthy", buildSha from BUILD_SHA env var (or
+// "dev" when unset), uptime since process start, and the assembly version
+// string. Distinct from /api/health (legacy short-form probe used by the
+// frontend) so deployment infrastructure has its own stable wire contract.
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    buildSha = Environment.GetEnvironmentVariable("BUILD_SHA") ?? "dev",
+    uptime = DateTimeOffset.UtcNow - processStartTime,
+    version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"
+}));
 
 app.MapGet("/api/system/persistence", (IConfiguration configuration) =>
 {
