@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase K Wave 6 — Vasquez (QA).
+# Phase K Wave 6 — Vasquez (QA), extended Wave 7.
 #
 # Lane-discipline CI check. Detects cross-lane bundling regressions
 # (the W3/W4/W5 git-config race recurrence). For each agent in the
@@ -23,6 +23,19 @@
 #   tests/ci/check-cross-lane-bundling.sh --branch main    # main only
 #   tests/ci/check-cross-lane-bundling.sh --count 10       # last 10
 #   tests/ci/check-cross-lane-bundling.sh --pr <ref>       # PR branch
+#   tests/ci/check-cross-lane-bundling.sh --strict         # PR mode +
+#                                                         # exit non-zero
+#                                                         # on ANY warn
+#
+# Wave 7 refinements (Vasquez):
+#   - Phase_K_W*/<AgentName>/ attribution rule generalised: anywhere
+#     in the tree, a path under Phase_K_W<N>/<Bishop|Hicks|Apone|Vasquez>/
+#     is attributed to <AgentName>. This lets cross-pane test code
+#     (e.g. Phase_K_W7/Hicks/three-renderer-trend.cs) land in Hicks's
+#     lane without forcing it under src/backend/tests/.
+#   - Companion `tests/ci/lane-map.json` documents the per-agent
+#     regex map (consumed by humans + future tooling; the bash logic
+#     remains the case-statement classifier below for portability).
 #
 # Owner: Vasquez (QA).
 
@@ -33,6 +46,7 @@ COUNT="${COUNT:-4}"
 PR_REF="${PR_REF:-HEAD}"
 BASE_REF="${BASE_REF:-origin/main}"
 VERBOSE="${VERBOSE:-0}"
+STRICT="${STRICT:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,6 +55,7 @@ while [[ $# -gt 0 ]]; do
     --count) COUNT="$2"; shift 2 ;;
     --base) BASE_REF="$2"; shift 2 ;;
     --verbose|-v) VERBOSE=1; shift ;;
+    --strict) STRICT=1; MODE="pr"; shift ;;
     -h|--help)
       sed -n '2,30p' "$0"
       exit 0
@@ -67,12 +82,20 @@ agent_for_path() {
     # may add their own contract tests under
     # src/backend/tests/<asm>/Phase_K_W*/<AgentName>/. Those files
     # are attributed to that agent, NOT Vasquez.
-    src/backend/tests/*/Phase_K_W*/Bishop/*)
+    #
+    # Wave 7 refinement: the same attribution applies to ANY
+    # Phase_K_W*/<AgentName>/ path in the tree, not just under
+    # src/backend/tests/. Lets cross-pane test code (e.g.
+    # Phase_K_W7/Hicks/whatever.cs) land in Hicks's lane without
+    # forcing it under src/backend/tests/.
+    src/backend/tests/*/Phase_K_W*/Bishop/*|Phase_K_W*/Bishop/*)
       echo "bishop" ;;
-    src/backend/tests/*/Phase_K_W*/Hicks/*)
+    src/backend/tests/*/Phase_K_W*/Hicks/*|Phase_K_W*/Hicks/*)
       echo "hicks" ;;
-    src/backend/tests/*/Phase_K_W*/Apone/*)
+    src/backend/tests/*/Phase_K_W*/Apone/*|Phase_K_W*/Apone/*)
       echo "apone" ;;
+    src/backend/tests/*/Phase_K_W*/Vasquez/*|Phase_K_W*/Vasquez/*)
+      echo "vasquez" ;;
     # Vasquez — tests + QA-owned docs + cross-lane infra
     src/backend/tests/*|\
     src/frontend/autotable-src/tests/*|\
@@ -86,6 +109,22 @@ agent_for_path() {
     .squad/decisions/inbox/vasquez-*|\
     .github/workflows/lane-discipline.yml)
       echo "vasquez" ;;
+    # Bishop — backend migrations + appsettings (auth lane spillover)
+    src/backend/Migrations/*|\
+    src/backend/src/*/appsettings*.json|\
+    .squad/agents/bishop/*|\
+    .squad/decisions/inbox/bishop-*)
+      echo "bishop" ;;
+    # Hicks — agent-state-only artefacts
+    .squad/agents/hicks/*|\
+    .squad/decisions/inbox/hicks-*)
+      echo "hicks" ;;
+    # Apone — agent state + helm + signer + edge module hardpoints
+    helm/*|\
+    .pre-commit-config.yaml|\
+    .squad/agents/apone/*|\
+    .squad/decisions/inbox/apone-*)
+      echo "apone" ;;
     # Bishop — backend source
     src/backend/src/*)
       echo "bishop" ;;
@@ -263,6 +302,23 @@ fi
 if (( violations > 0 )); then
   echo "[lane-discipline] FAIL — see violations above."
   exit 1
+fi
+
+# Wave 7 strict mode: also verify the lane-map.json companion is
+# parseable + reachable. Treat unreachable map as a STRICT-mode fail
+# (the JSON is documentation truth for the regex map; if the map
+# disappears the CI gate is no longer self-describing).
+if [[ "$STRICT" == "1" ]]; then
+  map="$(git rev-parse --show-toplevel)/tests/ci/lane-map.json"
+  if [[ ! -f "$map" ]]; then
+    echo "[lane-discipline] STRICT FAIL — tests/ci/lane-map.json missing."
+    exit 1
+  fi
+  # Cheap JSON parse — confirm closing brace + lanes key.
+  if ! grep -q '"lanes"' "$map"; then
+    echo "[lane-discipline] STRICT FAIL — lane-map.json missing 'lanes' key."
+    exit 1
+  fi
 fi
 
 echo "[lane-discipline] OK"

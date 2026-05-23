@@ -1,4 +1,4 @@
-# Phase K Wave 6 — Vasquez (QA).
+# Phase K Wave 6 — Vasquez (QA). Extended Wave 7 to PR-blocking.
 #
 # Lane-discipline check. Runs the cross-lane bundling detector on
 # every PR so the W3/W4 git-config-race / Wave-5 stash-discipline
@@ -6,6 +6,14 @@
 #
 # Hard-fails when a single commit touches MORE than one agent's lane
 # OR when an author identity does NOT match the lane it touched.
+#
+# Wave 7 (Vasquez):
+#   - --strict invocation also verifies tests/ci/lane-map.json is
+#     present + parseable (the regex map is now the documented truth
+#     for per-agent path ownership).
+#   - This workflow is REQUIRED-FOR-MERGE on the main branch
+#     protection rule. Setting `required-checks: lane-discipline / check`
+#     enforces the gate at merge time (configured in repo settings).
 #
 # Owner: Vasquez (QA). See `docs/agent-handoff-protocol.md`.
 
@@ -47,14 +55,25 @@ jobs:
             echo "base_ref=origin/main" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run lane-discipline check (PR mode)
+      - name: Verify lane-map.json is present and parseable
+        run: |
+          test -f tests/ci/lane-map.json \
+            || (echo "lane-map.json missing — Vasquez QA gate"; exit 1)
+          grep -q '"lanes"' tests/ci/lane-map.json \
+            || (echo "lane-map.json missing 'lanes' key"; exit 1)
+          echo "lane-map.json OK"
+
+      - name: Run lane-discipline check (PR mode, STRICT — gates merge)
         env:
           PR_REF: ${{ steps.refs.outputs.pr_ref }}
           BASE_REF: ${{ steps.refs.outputs.base_ref }}
           VERBOSE: ${{ github.event.inputs.verbose == 'true' && '1' || '0' }}
         run: |
           chmod +x tests/ci/check-cross-lane-bundling.sh
-          tests/ci/check-cross-lane-bundling.sh --pr "$PR_REF" --base "$BASE_REF"
+          # --strict implies --pr; explicit --pr/--base preserved for
+          # the diff range. The strict flag adds the lane-map.json
+          # presence check as a hard gate.
+          STRICT=1 tests/ci/check-cross-lane-bundling.sh --pr "$PR_REF" --base "$BASE_REF" --strict
 
       - name: Run main historical report (non-failing)
         if: ${{ always() }}
