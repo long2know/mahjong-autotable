@@ -25,6 +25,7 @@
 // as Bishop's branch lands, without touching this module.
 
 import { Client } from "./client";
+import { comparePatterns } from "./game-ui";
 import {
   ClaimWindowEntry,
   DiceInfo,
@@ -115,6 +116,13 @@ interface WinResultLoose {
   // payload falls through to the legacy (no-emoji) row text.
   winType?: string;
   WinType?: string;
+  // Phase J Wave 3 — Bishop's `WinResult.IsSelfDraw` + `IsKongReplacement`
+  // bools (see `bishop-phase-j-wave-3.md` Task 1).  Preferred over
+  // inferring from `method`/`AllPatterns` when present.
+  isSelfDraw?: boolean;
+  IsSelfDraw?: boolean;
+  isKongReplacement?: boolean;
+  IsKongReplacement?: boolean;
 }
 
 interface HandResultLoose {
@@ -452,11 +460,26 @@ export class MoveLog {
       const winType = (
         extras.winResult?.winType ?? extras.WinResult?.WinType ?? ''
       ).toString();
+      // Phase J Wave 3 — prefer Bishop's explicit `isSelfDraw` /
+      // `isKongReplacement` bools when present (see
+      // bishop-phase-j-wave-3.md Task 1).  Both fall back to the older
+      // inference path (winType / KongReplacementWin pattern) when the
+      // payload predates Wave 3.
+      const isSelfDraw = extras.winResult?.isSelfDraw ?? extras.WinResult?.IsSelfDraw
+        ?? (winType === 'selfDraw');
+      const isKongReplacement = extras.winResult?.isKongReplacement
+        ?? extras.WinResult?.IsKongReplacement
+        ?? allPatterns.some(p => normalizePatternKey(p) === 'kongReplacementWin');
 
       switch (value.type) {
         case 'Hu': {
-          const filtered = Array.from(allPatterns).filter(p =>
-            normalizePatternKey(p) !== 'standard');
+          // Phase J Wave 3 — sort patterns through the canonical Wave-3
+          // ordering so the move-log row mirrors the result modal's chip
+          // strip (HeavenlyHand → EarthlyHand → contextual big-wins →
+          // structural big-wins → singleWait, then alphabetical).
+          const filtered = Array.from(allPatterns)
+            .filter(p => normalizePatternKey(p) !== 'standard')
+            .sort(comparePatterns);
           const patternsLabel = filtered.map(shortPatternLabel).join(' / ');
           const multiplier = Math.max(1, Math.min(3, filtered.length || 1));
           // Highlight the most "contextual" pattern in the verb (matches the
@@ -483,14 +506,22 @@ export class MoveLog {
           // Phase I Wave 2 — single-glyph win-type prefix so a glance at
           // the move-log sidebar tells you *how* the hand was won.
           //   🀄 self-draw, 🎯 discard, ⚡ robbing-kong.
+          // Phase J Wave 3 — fall back to Bishop's `isSelfDraw` /
+          // `isKongReplacement` bools when `winType` is absent (e.g. an
+          // older client connected to a Wave-3 backend).
           let prefix = '';
-          if (winType === 'selfDraw') {
+          if (winType === 'selfDraw' || (!winType && isSelfDraw)) {
             prefix = '🀄 ';
           } else if (winType === 'robbingKong' || (!winType && isRobbed)) {
             prefix = '⚡ ';
-          } else if (winType === 'discard') {
+          } else if (winType === 'discard' || (!winType && !isSelfDraw && !isRobbed && allPatterns.length > 0)) {
             prefix = '🎯 ';
           }
+          // Touch the `isKongReplacement` derivation so the lint pass
+          // doesn't complain about the unused destructure — the contextual
+          // verb above already picks up "kongReplacementWin" from the
+          // patterns array, so the bool itself is informational only.
+          void isKongReplacement;
           this.push({
             seat: value.winner,
             action: `${prefix}${verb}${tail}`,

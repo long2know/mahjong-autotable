@@ -1,4 +1,4 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.60a1fda4.css><body>
+<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.f8d8d79e.css><body>
     <img id=dice-img src=dice.auto.391822b5.png style=opacity:0>
     <canvas id=center></canvas>
     
@@ -397,6 +397,16 @@
                     </small>
                 </label>
             </div>
+            
+            <div class=settings-row>
+                <label class=settings-checkbox-label>
+                    <input type=checkbox id=settings-sound checked>
+                    Sound
+                    <small class=settings-hint>
+                        Plays SFX on draws, discards, claims and wins.
+                    </small>
+                </label>
+            </div>
         </div>
         <div class=settings-drawer-footer>
             <small class=settings-saved-note id=settings-saved-note style=display:none>Saved ✓</small>
@@ -437,10 +447,47 @@
                     <button type=button class="btn btn-warning" id=game-complete-new-game>
                         🆕 New Game
                     </button>
+                    
+                    <button type=button class="btn btn-info" id=game-complete-replay>
+                        🎞 View Replay
+                    </button>
                     <button type=button class="btn btn-secondary" id=game-complete-lobby>
                         ☰ Back to Lobby
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <div id=replay-screen class=replay-screen role=dialog aria-label="Hand replay" aria-hidden=true>
+        <div class=replay-shell>
+            <div class=replay-header>
+                <h3 class=replay-title>🎞 Hand Replay</h3>
+                <div class=replay-header-actions>
+                    <label for=replay-hand-selector class=replay-selector-label>
+                        Hand
+                    </label>
+                    <select id=replay-hand-selector class="dark-select form-control form-control-sm">
+                    </select>
+                    <button id=replay-close type=button class=replay-close-btn aria-label="Close replay" title=Close>×</button>
+                </div>
+            </div>
+            <div class=replay-body>
+                <div class=replay-board-pane>
+                    <div id=replay-board class=replay-board></div>
+                </div>
+                <aside class=replay-side-pane>
+                    <h4 class=replay-side-title>Move log</h4>
+                    <div id=replay-move-log class=replay-move-log></div>
+                </aside>
+            </div>
+            <div class=replay-footer>
+                <button id=replay-step-back type=button class="btn btn-secondary btn-sm" aria-label="Step back">⏮</button>
+                <button id=replay-play type=button class="btn btn-sm btn-warning" aria-label="Play / pause">▶ Play</button>
+                <button id=replay-step-fwd type=button class="btn btn-secondary btn-sm" aria-label="Step forward">⏭</button>
+                <input id=replay-timeline type=range class=replay-timeline min=0 max=0 step=1 value=0 aria-label="Scrub timeline">
+                <span id=replay-timeline-label class=replay-timeline-label>Move 0 / 0</span>
             </div>
         </div>
     </div>
@@ -541,6 +588,6 @@
         </div>
     </div>
 
-    <script type=module src=autotable-src.90818e21.js></script>
+    <script type=module src=autotable-src.330c36fd.js></script>
 
 

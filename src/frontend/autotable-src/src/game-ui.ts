@@ -1,6 +1,8 @@
 import $ from 'jquery';
 import { Client, GameCompleteEntry } from "./client";
 import { readSpectatorFromUrl } from './client-ui';
+import { Sound } from './sound';
+import { Replay } from './replay';
 import { World } from "./world";
 import {
   DealType,
@@ -14,6 +16,9 @@ import {
   Points,
   DealMode,
   PickupEntry,
+  SoundInfo,
+  SoundType,
+  ThingInfo,
 } from './types';
 
 // Phase D — claim window expiry uses the deadline (epoch ms) that the server
@@ -170,6 +175,112 @@ const PATTERN_TOOLTIPS: Readonly<Record<string, { cn: string; en: string }>> = {
 function normalizePatternKey(p: string): string {
   if (!p) return p;
   return p.charAt(0).toLowerCase() + p.slice(1);
+}
+
+// Phase J Wave 3 — Canonical display order for AllPatterns.  The list
+// is sourced directly from the Wave 3 directive and matches Bishop's
+// backend `ChangshaPatternOrdering` table (slot numbers as documented in
+// `src/backend/.../Patterns/ChangshaPatternOrdering.cs`).  Patterns NOT
+// in this list sort alphabetically by their normalised key after the
+// listed ones.
+//
+// The frontend optionally fetches Bishop's `GET /api/changsha/pattern-
+// ordering` JSON map at boot via `loadPatternOrderingFromApi()` and
+// merges it on top of this hardcoded list.  When the endpoint is
+// unavailable (offline / static-asset deployment) the hardcoded order
+// keeps the chip strip rendering correctly.
+//
+// Used by:
+//   • result modal chip strip (game-ui.ts:renderResultPatternChips)
+//   • end-of-game recap (game-ui.ts:renderGameComplete)
+//   • move-log win row (move-log.ts:onResult)
+const PATTERN_DISPLAY_ORDER: ReadonlyArray<string> = [
+  'heavenlyHand',
+  'earthlyHand',
+  'lastTileFromWall',      // alias: LastTileDraw
+  'lastDiscardCatch',      // alias: LastTileDiscard
+  'kongReplacementWin',    // alias: KongReplacementWin
+  'robbedKong',            // alias: RobbedKong (kept distinct from RobbingKong)
+  'robbingKong',
+  'nineGates',
+  'nineTerminals',
+  'allPungs',
+  'allConcealed',
+  'sevenPairs',
+  'selfDraw',
+  'singleWait',
+];
+
+// Build an O(1) index lookup for the ordering above.  Mutable so the
+// async API loader can replace it with the backend-supplied map.
+const patternDisplayOrderIndex: Record<string, number> = (() => {
+  const out: Record<string, number> = {};
+  PATTERN_DISPLAY_ORDER.forEach((key, i) => { out[key] = i; });
+  return out;
+})();
+
+// Phase J Wave 3 — Replace the in-process pattern-order index with the
+// backend-pushed map.  Each value is a small integer (lower = render
+// first) so the same compare-by-index logic works.  Unknown patterns
+// keep their alphabetical-fallback behaviour.
+export function setPatternDisplayOrder(map: Record<string, number>): void {
+  // Reset and copy — preserve module-singleton identity so existing
+  // closures keep pointing at the same map.
+  for (const k of Object.keys(patternDisplayOrderIndex)) {
+    delete patternDisplayOrderIndex[k];
+  }
+  for (const [k, v] of Object.entries(map)) {
+    if (typeof v === 'number' && isFinite(v)) {
+      patternDisplayOrderIndex[normalizePatternKey(k)] = v;
+    }
+  }
+}
+
+// Returns a comparator that sorts pattern wire-keys per the active
+// PATTERN_DISPLAY_ORDER map (boot-time hardcoded ← optionally upgraded
+// by `setPatternDisplayOrder`).  Unrecognised patterns sort
+// alphabetically after the listed ones.  Exported via the `sortPatterns`
+// helper below for use in move-log.ts; in-module callers can use
+// `.sort(comparePatterns)` directly.
+export function comparePatterns(a: string, b: string): number {
+  const ka = normalizePatternKey(a);
+  const kb = normalizePatternKey(b);
+  const ia = patternDisplayOrderIndex[ka];
+  const ib = patternDisplayOrderIndex[kb];
+  if (ia !== undefined && ib !== undefined) return ia - ib;
+  if (ia !== undefined) return -1;
+  if (ib !== undefined) return 1;
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+}
+
+// Convenience helper — returns a NEW sorted array so callers don't have
+// to clone-then-sort.  Used by the result modal + game-complete recap.
+export function sortPatterns(patterns: ReadonlyArray<string>): string[] {
+  return [...patterns].sort(comparePatterns);
+}
+
+// Phase J Wave 3 — fire-and-forget loader for Bishop's canonical
+// ordering endpoint.  The response is a flat `{patternWireKey: order}`
+// JSON object; on success we install it via `setPatternDisplayOrder`.
+// Any failure (404 / network / parse) is swallowed silently because
+// the hardcoded fallback list keeps the UI rendering correctly.
+export async function loadPatternOrderingFromApi(): Promise<void> {
+  try {
+    const res = await fetch('api/changsha/pattern-ordering', {
+      credentials: 'same-origin',
+    });
+    if (!res.ok) return;
+    const json = (await res.json()) as Record<string, unknown>;
+    const map: Record<string, number> = {};
+    for (const [k, v] of Object.entries(json)) {
+      if (typeof v === 'number' && isFinite(v)) map[k] = v;
+    }
+    if (Object.keys(map).length > 0) {
+      setPatternDisplayOrder(map);
+    }
+  } catch {
+    /* hardcoded fallback stays — nothing to do */
+  }
 }
 
 // Phase D — convert a Changsha tile id (0..26 over 3 suits × 9 ranks) to a
@@ -372,6 +483,14 @@ export class GameUi {
     settingsAutoDeal: HTMLInputElement;
     settingsApply: HTMLButtonElement;
     settingsSavedNote: HTMLElement;
+    // Phase J Wave 3 — Sound toggle inside the settings drawer.  Persists
+    // alongside botStrength / handCount / autoDeal in the same gameId-keyed
+    // localStorage payload (see SettingsState below).
+    settingsSound: HTMLInputElement;
+    // Phase J Wave 3 — End-of-game "View Replay" affordance.  Opens the
+    // replay screen (Replay.open) seeded with the gameComplete payload's
+    // handHistory (when present).
+    gameCompleteReplayBtn: HTMLButtonElement;
   }
 
   // Phase J Wave 2 — client-side hand history.  We capture each
@@ -386,6 +505,19 @@ export class GameUi {
   // New Game or Back to Lobby buttons.
   private gameCompleteShown: boolean = false;
 
+  // Phase J Wave 3 — Replay viewer.  Captures tile movements + per-hand
+  // results in real time; opened from the end-of-game modal.
+  private replay: Replay;
+
+  // Phase J Wave 3 — sound-event throttle state.  We deduplicate
+  // tile-draw signals across an event batch (a 13-tile initial deal
+  // would otherwise queue 13 'draw' SFX) and gate every play behind
+  // the settings-drawer "Sound" toggle.
+  private lastDrawSoundMs: number = 0;
+  // Last gameComplete payload (used to seed the replay when the user
+  // clicks "View Replay" from the end-of-game modal).
+  private lastGameCompletePayload: GameCompleteEntry | null = null;
+
   // Phase D — claim window state.
   private activeClaim: ClaimWindowEntry | null = null;
   private claimTickHandle: number | null = null;
@@ -398,6 +530,7 @@ export class GameUi {
   constructor(client: Client, world: World) {
     this.client = client;
     this.world = world;
+    this.replay = new Replay(client);
 
     this.elements = {
       deal: document.getElementById('deal') as HTMLButtonElement,
@@ -464,6 +597,8 @@ export class GameUi {
       settingsAutoDeal:         document.getElementById('settings-auto-deal') as HTMLInputElement,
       settingsApply:            document.getElementById('settings-apply') as HTMLButtonElement,
       settingsSavedNote:        document.getElementById('settings-saved-note') as HTMLElement,
+      settingsSound:            document.getElementById('settings-sound') as HTMLInputElement,
+      gameCompleteReplayBtn:    document.getElementById('game-complete-replay') as HTMLButtonElement,
     };
     for (let i = 0; i < 4; i++) {
       this.elements.takeSeat[i] = document.querySelector(
@@ -492,6 +627,8 @@ export class GameUi {
     this.setupMoveSeatPicker();
     this.setupGameCompleteModal();
     this.setupSettingsDrawer();
+    this.setupSoundEffects();
+    this.setupReplay();
   }
 
   private setupEvents(): void {
@@ -871,6 +1008,14 @@ export class GameUi {
       // a structural fingerprint instead of array length).
       this.recordHandResult(value);
       this.renderResult(value);
+      // Phase J Wave 3 — Fire the per-hand SFX off the same UPDATE that
+      // raised the result modal.  Hu → fanfare, Draw → washout, ZhaHu
+      // is left silent (no SFX defined; the modal already conveys it).
+      if (value.type === 'Hu') {
+        Sound.play('win');
+      } else if (value.type === 'Draw') {
+        Sound.play('washout');
+      }
       // @ts-ignore
       $('#result-modal').modal('show');
     }
@@ -1071,8 +1216,14 @@ export class GameUi {
     // skipped: it's the baseline 4-sets-and-a-pair hand, not a stack-worthy
     // big-win pattern (Ripley §2.3).  Match both PascalCase and camelCase
     // spellings of "standard" so either wire vocabulary skips the chip.
-    const filteredAllPatterns = Array.from(allPatterns)
-      .filter(p => normalizePatternKey(p) !== 'standard');
+    //
+    // Phase J Wave 3 — sort the surviving patterns through the canonical
+    // PATTERN_DISPLAY_ORDER so HeavenlyHand → EarthlyHand → contextual
+    // big-wins → structural big-wins → singleWait, then alphabetical.
+    const filteredAllPatterns = sortPatterns(
+      Array.from(allPatterns)
+        .filter(p => normalizePatternKey(p) !== 'standard')
+    );
     const patterns: string[] = filteredAllPatterns.length > 0
       ? filteredAllPatterns
       : (pattern && normalizePatternKey(pattern) !== 'standard' ? [pattern] : []);
@@ -1697,6 +1848,18 @@ export class GameUi {
       // Reset URL to bare so the lobby auto-opens (lobby.ts:shouldShowOnLoad).
       window.location.search = '';
     };
+    // Phase J Wave 3 — "View Replay" hands the captured tile-move log
+    // (+ the runtime's handHistory when present) to the Replay viewer
+    // and slides the replay screen open.
+    if (this.elements.gameCompleteReplayBtn) {
+      this.elements.gameCompleteReplayBtn.onclick = () => {
+        this.dismissGameCompleteModal();
+        const serverHistory =
+          this.lastGameCompletePayload?.handHistory
+          ?? this.lastGameCompletePayload?.HandHistory;
+        this.replay.open(serverHistory);
+      };
+    }
     this.client.gameComplete.on('update', this.onGameCompleteUpdate.bind(this));
 
     // Also re-evaluate on every new JOIN: clear any stale history (we may
@@ -1718,6 +1881,7 @@ export class GameUi {
         // and reset the dismissal guard so the next completion shows.
         this.dismissGameCompleteModal();
         this.gameCompleteShown = false;
+        this.lastGameCompletePayload = null;
         continue;
       }
       const isComplete =
@@ -1726,7 +1890,10 @@ export class GameUi {
       if (!isComplete) continue;
       if (this.gameCompleteShown) continue;
       this.gameCompleteShown = true;
+      this.lastGameCompletePayload = value;
       this.renderGameComplete(value);
+      // Phase J Wave 3 — celebration sting when the match ends.
+      Sound.play('gameComplete');
       // @ts-ignore
       $('#game-complete-modal').modal('show');
     }
@@ -1886,6 +2053,8 @@ export class GameUi {
     this.elements.settingsBotStrength.value = state.botStrength;
     this.elements.settingsHandCount.value = String(state.handCount);
     this.elements.settingsAutoDeal.checked = state.autoDeal;
+    this.elements.settingsSound.checked = state.sound;
+    Sound.setMuted(!state.sound);
 
     this.elements.settingsToggle.onclick = (e: MouseEvent) => {
       e.stopPropagation();
@@ -1903,6 +2072,10 @@ export class GameUi {
     this.elements.settingsBotStrength.addEventListener('change', onChange);
     this.elements.settingsHandCount.addEventListener('change', onChange);
     this.elements.settingsAutoDeal.addEventListener('change', onChange);
+    this.elements.settingsSound.addEventListener('change', () => {
+      Sound.setMuted(!this.elements.settingsSound.checked);
+      this.persistSettings();
+    });
 
     this.elements.settingsApply.onclick = () => {
       this.persistSettings();
@@ -1938,6 +2111,7 @@ export class GameUi {
       botStrength: this.elements.settingsBotStrength.value as BotStrength,
       handCount: parseInt(this.elements.settingsHandCount.value, 10) as SettingsHandCount,
       autoDeal: this.elements.settingsAutoDeal.checked,
+      sound: this.elements.settingsSound.checked,
     };
     writeSettingsState(state);
     // Flash a "Saved ✓" pill so the user sees the persist landed.
@@ -1946,6 +2120,113 @@ export class GameUi {
     window.setTimeout(() => {
       note.style.display = 'none';
     }, 1500);
+  }
+
+  // ---------------------------------------------------------------------
+  // Phase J Wave 3 — Sound-effect wiring.
+  //
+  // Hooks the synth sound manager (`sound.ts`) into the game-state
+  // collections so each gameplay event fires the appropriate SFX:
+  //
+  //   • discard  — `sound[ * ].type === DISCARD` push (Bishop's ephemeral
+  //                 sound collection; emitted on every discard).
+  //   • claim    — `claim[ seat ].action === 'claim'` (local or echoed
+  //                 remote claim acceptance from the claim collection).
+  //   • draw     — `things[ tile ].slot` enters `hand.*` (throttled to
+  //                 one SFX per event batch — initial deals shouldn't
+  //                 fire 13 clacks).
+  //   • win      — fired inline from onResultUpdate (Hu).
+  //   • washout  — fired inline from onResultUpdate (Draw).
+  //   • gameComplete — fired inline from onGameCompleteUpdate.
+  //
+  // Browser-autoplay unlock: AudioContext is created on the first user
+  // gesture.  We bind a one-shot click listener to the document so the
+  // first interaction anywhere unlocks audio; subsequent calls are no-op.
+  // ---------------------------------------------------------------------
+  private setupSoundEffects(): void {
+    // One-shot unlock on the first user gesture.  Use `{ once: true }`
+    // semantics manually so we still fire on touch (non-click) starts.
+    const unlock = (): void => {
+      Sound.unlock();
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+    document.addEventListener('click', unlock, { passive: true });
+    document.addEventListener('touchstart', unlock, { passive: true });
+    document.addEventListener('keydown', unlock);
+
+    // Discard SFX — Bishop's `sound` collection ships SoundType.DISCARD
+    // on every discard.  We piggy-back on the existing fanout instead of
+    // adding a parallel `things`-watcher (which would also need
+    // discard-side filtering).
+    this.client.sound.on('update', this.onSoundForSfx.bind(this));
+
+    // Claim SFX — fires when our local `sendClaim` action round-trips
+    // through the claim collection OR another seat's claim acceptance
+    // is broadcast.  We detect `{action: 'claim', type: '...'}` shape
+    // (vs the open-window `{available: [...]}` shape).
+    this.client.claim.on('update', this.onClaimForSfx.bind(this));
+
+    // Draw SFX — detect tile transitions into `hand.*` slots.  Throttled
+    // across batches so an initial deal fires one clack, not 13.
+    this.client.things.on('update', this.onThingsForSfx.bind(this));
+  }
+
+  private onSoundForSfx(entries: Array<[number, SoundInfo | null]>): void {
+    for (const [, info] of entries) {
+      if (!info) continue;
+      if (info.type === SoundType.DISCARD) {
+        Sound.play('discard');
+        return; // One play per batch — avoids overlapping clacks.
+      }
+    }
+  }
+
+  private onClaimForSfx(entries: Array<[string, ClaimWindowEntry | null]>): void {
+    for (const [, value] of entries) {
+      if (!value) continue;
+      const v = value as unknown as { action?: string; type?: string; available?: unknown };
+      if (v.action === 'claim' && v.type) {
+        Sound.play('claim');
+        return; // Single chime per accepted claim batch.
+      }
+    }
+  }
+
+  private onThingsForSfx(entries: Array<[number, ThingInfo | null]>): void {
+    // Find at least one tile transition into hand.* — one SFX per batch.
+    // The 200 ms throttle prevents back-to-back draw rounds from
+    // sounding like a machine gun (1 clack per round is plenty).
+    const now = Date.now();
+    if (now - this.lastDrawSoundMs < 200) return;
+    let didDraw = false;
+    for (const [, info] of entries) {
+      if (!info) continue;
+      const slot = info.slotName ?? '';
+      if (slot.startsWith('hand.')) {
+        didDraw = true;
+        break;
+      }
+    }
+    if (didDraw) {
+      this.lastDrawSoundMs = now;
+      Sound.play('draw');
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Phase J Wave 3 — Replay viewer wiring.
+  //
+  // The Replay class owns its own state capture (subscribes to things /
+  // result / match) so we only need to start() it on boot.  The viewer
+  // is opened from the end-of-game modal's "View Replay" button (see
+  // setupGameCompleteModal above) — at which point we hand it the
+  // gameComplete payload's `handHistory` (when present) so the dropdown
+  // labels match the runtime's view of "Hand 1 / 2 / ...".
+  // ---------------------------------------------------------------------
+  private setupReplay(): void {
+    this.replay.start();
   }
 }
 
@@ -1965,12 +2246,16 @@ interface SettingsState {
   botStrength: BotStrength;
   handCount: SettingsHandCount;
   autoDeal: boolean;
+  // Phase J Wave 3 — SFX toggle.  Default: ON.  Persisted in the same
+  // gameId-keyed payload as the other settings drawer knobs.
+  sound: boolean;
 }
 
 const SETTINGS_DEFAULT: SettingsState = {
   botStrength: 'Hard',
   handCount: 4,
   autoDeal: false,
+  sound: true,
 };
 
 const SETTINGS_LS_PREFIX = 'autotable.phaseJ.v1.settings.';
@@ -2012,6 +2297,9 @@ function readSettingsState(): SettingsState {
       if (typeof j.autoDeal === 'boolean') {
         partial.autoDeal = j.autoDeal;
       }
+      if (typeof j.sound === 'boolean') {
+        partial.sound = j.sound;
+      }
       return partial;
     } catch {
       return {};
@@ -2039,6 +2327,12 @@ function readSettingsState(): SettingsState {
     const dm = q.get('dealMode');
     if (dm === 'auto') out.autoDeal = true;
     else if (dm === 'manual') out.autoDeal = false;
+    // Phase J Wave 3 — `?sound=on|off` URL override for SFX.  Deep links
+    // can force sound off (e.g. for screencasts) without nuking the
+    // user's localStorage preference.
+    const sn = q.get('sound');
+    if (sn === 'on' || sn === 'true' || sn === '1') out.sound = true;
+    else if (sn === 'off' || sn === 'false' || sn === '0') out.sound = false;
   } catch {
     /* ignore */
   }

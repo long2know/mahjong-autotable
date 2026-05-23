@@ -4,6 +4,7 @@ import { Game } from './game';
 import { initLobby } from './lobby';
 import { MoveLog } from './move-log';
 import { Client } from './client';
+import { loadPatternOrderingFromApi } from './game-ui';
 import * as three from 'three';
 
 const assetLoader = new AssetLoader();
@@ -12,6 +13,13 @@ const assetLoader = new AssetLoader();
 // independent of the Game lifecycle (it only reads URL params and reloads)
 // so the user can adjust settings while assets stream in.
 initLobby();
+
+// Phase J Wave 3 — fire-and-forget fetch of Bishop's canonical pattern
+// display order (GET /api/changsha/pattern-ordering).  Resolves before
+// the first win in practice (the request hits during asset load + first
+// connect); on failure the hardcoded fallback in game-ui.ts keeps
+// rendering correctly.
+void loadPatternOrderingFromApi();
 
 assetLoader.loadAll().then(() => {
   const game = new Game(assetLoader);

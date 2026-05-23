@@ -494,6 +494,18 @@
                     </small>
                 </label>
             </div>
+            <!-- Phase J Wave 3 — Sound toggle.  Mirrors the auto-deal row;
+                 persists via the same localStorage key pattern.  When off,
+                 every SoundEvent in sound.ts is a no-op. -->
+            <div class="settings-row">
+                <label class="settings-checkbox-label">
+                    <input type="checkbox" id="settings-sound" checked>
+                    Sound
+                    <small class="settings-hint">
+                        Plays SFX on draws, discards, claims and wins.
+                    </small>
+                </label>
+            </div>
         </div>
         <div class="settings-drawer-footer">
             <small class="settings-saved-note" id="settings-saved-note"
@@ -546,11 +558,70 @@
                             id="game-complete-new-game">
                         🆕 New Game
                     </button>
+                    <!-- Phase J Wave 3 — Open the replay viewer for this
+                         match.  The viewer reads the client-side capture
+                         + the server's handHistory payload (when present)
+                         and renders a tile-by-tile 2D top-down replay. -->
+                    <button type="button" class="btn btn-info"
+                            id="game-complete-replay">
+                        🎞 View Replay
+                    </button>
                     <button type="button" class="btn btn-secondary"
                             id="game-complete-lobby">
                         ☰ Back to Lobby
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase J Wave 3 — Replay viewer.  Opens from the game-complete
+         modal's "View Replay" button.  2D top-down layout: hand selector
+         on the left, per-seat tile zones on the right, timeline scrubber
+         + play/step controls along the bottom.  All children are
+         populated by Replay.open() in src/replay.ts. -->
+    <div id="replay-screen" class="replay-screen" role="dialog"
+         aria-label="Hand replay" aria-hidden="true">
+        <div class="replay-shell">
+            <div class="replay-header">
+                <h3 class="replay-title">🎞 Hand Replay</h3>
+                <div class="replay-header-actions">
+                    <label for="replay-hand-selector" class="replay-selector-label">
+                        Hand
+                    </label>
+                    <select id="replay-hand-selector"
+                            class="dark-select form-control form-control-sm">
+                    </select>
+                    <button id="replay-close" type="button"
+                            class="replay-close-btn" aria-label="Close replay"
+                            title="Close">×</button>
+                </div>
+            </div>
+            <div class="replay-body">
+                <div class="replay-board-pane">
+                    <div id="replay-board" class="replay-board"></div>
+                </div>
+                <aside class="replay-side-pane">
+                    <h4 class="replay-side-title">Move log</h4>
+                    <div id="replay-move-log" class="replay-move-log"></div>
+                </aside>
+            </div>
+            <div class="replay-footer">
+                <button id="replay-step-back" type="button"
+                        class="btn btn-sm btn-secondary"
+                        aria-label="Step back">⏮</button>
+                <button id="replay-play" type="button"
+                        class="btn btn-sm btn-warning"
+                        aria-label="Play / pause">▶ Play</button>
+                <button id="replay-step-fwd" type="button"
+                        class="btn btn-sm btn-secondary"
+                        aria-label="Step forward">⏭</button>
+                <input id="replay-timeline" type="range"
+                       class="replay-timeline"
+                       min="0" max="0" step="1" value="0"
+                       aria-label="Scrub timeline">
+                <span id="replay-timeline-label"
+                      class="replay-timeline-label">Move 0 / 0</span>
             </div>
         </div>
     </div>
