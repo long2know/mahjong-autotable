@@ -972,6 +972,14 @@ public sealed class ChangshaGameStateMachine
 
             if (state.RoundNumber > 4)
             {
+                // Phase J Wave 4 — EndGame and GameComplete are now aliases of
+                // the same enum value; either symbol fires the canonical
+                // terminal phase. We reference EndGame here to preserve the
+                // historical signal for tournament configurations that raise
+                // MaxHands > 16 (the only way to reach this branch). At the
+                // value level this is identical to GameComplete; on the wire
+                // state.Phase.ToString() always emits "GameComplete" since it
+                // is declared first in ChangshaPhase.
                 state.Phase = ChangshaPhase.EndGame;
                 state.IsGameComplete = true;
                 events.Add(CreateEvent(state, "game-ended", -1,
