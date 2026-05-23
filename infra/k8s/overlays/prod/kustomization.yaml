@@ -86,6 +86,25 @@ patches:
             name: mahjong-jwt-keys
             optional: true
 
+  # Phase K Wave 7 — Apone (DevOps). Mount the RS256 JWT
+  # signing-keys Secret (materialised by `jwt-rsa-keys-secret.yaml`
+  # ExternalSecret — OUT-OF-BAND, NOT in resources, same operational
+  # convention as the W4 HS256 secret). Three indexed env vars feed
+  # Bishop's W7 `Auth.JwtRsaKeys` array binding. `optional: true`
+  # so the deployment can start before the operator has bootstrapped
+  # RS256 — the existing HS256 path stays canonical until
+  # `Auth:DefaultAlgorithm=RS256` is flipped.
+  - target:
+      kind: Deployment
+      name: mahjong-autotable
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          secretRef:
+            name: mahjong-jwt-rsa-keys
+            optional: true
+
 configMapGenerator:
   - name: mahjong-autotable
     behavior: merge

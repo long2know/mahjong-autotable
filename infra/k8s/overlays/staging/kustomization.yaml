@@ -17,6 +17,11 @@ resources:
   # omnibus secret AND the JWT-keys secret. See per-file header for
   # rationale (15m refresh, three rotation-state-named SSM params).
   - jwt-keys-secret.yaml
+  # Phase K Wave 7 — Apone. Staging-equivalent of W7's prod
+  # mahjong-jwt-rsa-keys ExternalSecret. Listed as a resource (the
+  # prod equivalent is OUT-OF-BAND for risk-reduction). RS256
+  # rotation-rehearsal happens in staging first.
+  - jwt-rsa-keys-secret.yaml
 
 patches:
   - target:
@@ -53,6 +58,21 @@ patches:
         value:
           secretRef:
             name: mahjong-jwt-keys-staging
+            optional: true
+  # Phase K Wave 7 — Apone (DevOps). Mount the staging RS256 JWT
+  # signing-keys Secret (materialised by `jwt-rsa-keys-secret.yaml`
+  # ExternalSecret). Three indexed env vars feed Bishop's W7
+  # `Auth.JwtRsaKeys` array binding. `optional: true` so the
+  # deployment starts before RS256 bootstrap.
+  - target:
+      kind: Deployment
+      name: mahjong-autotable
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          secretRef:
+            name: mahjong-jwt-rsa-keys-staging
             optional: true
 
 configMapGenerator:
