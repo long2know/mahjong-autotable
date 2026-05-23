@@ -112,15 +112,22 @@ public class SecurityHeadersMiddlewareTests : IAsyncLifetime
         Assert.True(SecurityHeadersMiddleware.HasContentHash("/autotable/dice.auto.391822b5.png"));
     }
 
-    [Fact, Trait("Category", "Security"), Trait("Wave", "Phase-J-8")]
-    public void DefaultCsp_AllowsUnsafeEvalForThreeJs()
+    [Fact, Trait("Category", "Security"), Trait("Wave", "Phase-J-9")]
+    public void DefaultCsp_DropsUnsafeEvalAfterWave9Audit()
     {
-        // Three.js's WebGL shader compiler calls `new Function(...)`.
-        // Without 'unsafe-eval' the 3D scene fails to render at runtime
-        // — a regression that would only surface in an integration test
-        // against the actual bundle. Pin the policy literal here so
-        // anyone tightening it has to acknowledge the consequence.
-        Assert.Contains("'unsafe-eval'", SecurityHeadersMiddleware.DefaultCsp);
+        // Phase J Wave 9 — Hicks audited the shipped Parcel bundle and
+        // confirmed zero `new Function(...)` / `eval(...)` callsites,
+        // so the default CSP no longer needs `'unsafe-eval'`. We keep
+        // `'wasm-unsafe-eval'` so any future Three.js loader that
+        // compiles a WebAssembly draco/ktx decoder keeps working; per
+        // CSP Level 3 that token allows `WebAssembly.compile()` only
+        // and does NOT re-enable `eval()`.
+        //
+        // Search for the exact-quoted `'unsafe-eval'` token (with
+        // leading apostrophe), which is NOT a substring of
+        // `'wasm-unsafe-eval'`.
+        Assert.DoesNotContain("'unsafe-eval'", SecurityHeadersMiddleware.DefaultCsp);
+        Assert.Contains("'wasm-unsafe-eval'", SecurityHeadersMiddleware.DefaultCsp);
         Assert.Contains("frame-ancestors 'none'", SecurityHeadersMiddleware.DefaultCsp);
         Assert.Contains("object-src 'none'", SecurityHeadersMiddleware.DefaultCsp);
     }
