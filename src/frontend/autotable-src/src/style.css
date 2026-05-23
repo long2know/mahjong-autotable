@@ -2976,3 +2976,308 @@ body.theme-light .lobby-rule-preset-create-link,
 body.theme-light #auth-status-chip {
     color: #8a6300;
 }
+
+/* ---------------------------------------------------------------
+ * Phase J Wave 9 — Chat panel.
+ *
+ * Bottom-right docked.  Collapsed = header pill only (just a toggle
+ * button).  Open = composer + scrollable messages list above the
+ * header.  The panel grows upward from the header so it doesn't
+ * overlap the autotable canvas.
+ * --------------------------------------------------------------- */
+.chat-panel {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    width: 340px;
+    max-height: 60vh;
+    z-index: 1450;
+    display: flex;
+    flex-direction: column;
+    background: rgba(28, 32, 38, 0.96);
+    color: #f0f0f0;
+    border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    font-size: 13px;
+}
+.chat-panel.chat-panel-collapsed {
+    max-height: 44px;
+}
+.chat-panel.chat-panel-collapsed .chat-panel-body {
+    display: none;
+}
+.chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.18);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 6px;
+}
+.chat-toggle {
+    background: transparent;
+    color: inherit;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+.chat-toggle:hover { background: rgba(255, 255, 255, 0.06); }
+.chat-toggle-label { display: inline-block; }
+.chat-header-selectors {
+    display: flex;
+    gap: 6px;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+}
+.chat-channel-select,
+.chat-recipient-select {
+    max-width: 130px;
+    min-width: 90px;
+}
+.chat-panel-body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.chat-unavailable {
+    padding: 10px;
+    background: rgba(180, 60, 60, 0.18);
+    color: #ffd0d0;
+    font-style: italic;
+    text-align: center;
+}
+.chat-messages {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 120px;
+    max-height: 360px;
+}
+.chat-empty {
+    color: rgba(255, 255, 255, 0.5);
+    font-style: italic;
+    text-align: center;
+    padding: 12px 4px;
+}
+.chat-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+.chat-message-self {
+    flex-direction: row;
+    justify-content: flex-end;
+}
+.chat-message-self .chat-message-bubble {
+    background: rgba(64, 120, 200, 0.30);
+    text-align: right;
+}
+.chat-message-other .chat-message-bubble {
+    background: rgba(255, 255, 255, 0.08);
+}
+.chat-message-system .chat-message-bubble {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.55);
+    font-style: italic;
+}
+.chat-message-system .chat-message-avatar {
+    display: none;
+}
+.chat-message-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #555;
+    color: white;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+.chat-message-bubble {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 8px;
+    border-radius: 6px;
+    max-width: calc(100% - 38px);
+    word-break: break-word;
+}
+.chat-message-author {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.65);
+    margin-bottom: 2px;
+}
+.chat-message-body {
+    white-space: pre-wrap;
+}
+.chat-status {
+    padding: 0 8px;
+    color: #ffb3b3;
+    font-size: 12px;
+    min-height: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 120ms;
+}
+.chat-status.chat-status-visible {
+    max-height: 32px;
+    min-height: 16px;
+    padding: 4px 8px;
+}
+.chat-composer {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.chat-input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.25);
+    color: #f0f0f0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    padding: 4px 6px;
+    resize: vertical;
+    min-height: 40px;
+    max-height: 120px;
+    font-family: inherit;
+    font-size: 13px;
+}
+.chat-input:focus {
+    outline: 2px solid rgba(64, 120, 200, 0.6);
+    outline-offset: 0;
+    border-color: transparent;
+}
+.chat-composer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.chat-char-count {
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+.chat-char-count.chat-char-count-over {
+    color: #ff8080;
+    font-weight: 600;
+}
+.chat-send {
+    min-width: 64px;
+}
+
+/* Theme-light overrides for chat */
+body.theme-light .chat-panel {
+    background: rgba(252, 252, 252, 0.98);
+    color: #1a1a1a;
+    border-color: rgba(0, 0, 0, 0.1);
+}
+body.theme-light .chat-header {
+    background: rgba(0, 0, 0, 0.04);
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+body.theme-light .chat-message-self .chat-message-bubble {
+    background: rgba(64, 120, 200, 0.18);
+}
+body.theme-light .chat-message-other .chat-message-bubble {
+    background: rgba(0, 0, 0, 0.05);
+}
+body.theme-light .chat-input {
+    background: white;
+    color: #1a1a1a;
+    border-color: rgba(0, 0, 0, 0.2);
+}
+body.theme-light .chat-composer {
+    border-top-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ---------------------------------------------------------------
+ * Phase J Wave 9 — Replay viewer tabs (Replay / Audit).
+ * --------------------------------------------------------------- */
+.replay-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 0 12px;
+}
+.replay-tab {
+    background: transparent;
+    color: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-bottom: none;
+    padding: 4px 12px;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-size: 13px;
+}
+.replay-tab:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+.replay-tab.replay-tab-active {
+    background: rgba(255, 255, 255, 0.08);
+    font-weight: 600;
+}
+.replay-pane {
+    flex: 1 1 auto;
+    display: none;
+    overflow: auto;
+}
+.replay-pane.replay-pane-active {
+    display: flex;
+    flex-direction: column;
+}
+.replay-audit-empty {
+    padding: 16px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.55);
+    font-style: italic;
+}
+.replay-audit-table {
+    display: grid;
+    grid-template-columns: 80px 1fr 110px 140px 80px 1fr;
+    gap: 4px 12px;
+    padding: 12px;
+    font-size: 12px;
+    overflow-x: auto;
+}
+.replay-audit-row {
+    display: contents;
+}
+.replay-audit-row > span {
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    word-break: break-word;
+}
+.replay-audit-header > span {
+    background: rgba(255, 255, 255, 0.06);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.6);
+    border-bottom-color: rgba(255, 255, 255, 0.15);
+}
+.replay-audit-source-bot {
+    color: #ffce6b;
+}
+.replay-audit-source-human {
+    color: #a3e3a3;
+}
+.replay-audit-source-system {
+    color: rgba(255, 255, 255, 0.55);
+    font-style: italic;
+}

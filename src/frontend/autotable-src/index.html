@@ -773,7 +773,10 @@
          populated by Replay.open() in src/replay.ts.
          Phase J Wave 7 — added prev-hand / next-hand buttons, a speed
          dropdown (0.5x / 1x / 2x / 4x), and a discrete event counter
-         exposed via data-testid="replay-event-counter". -->
+         exposed via data-testid="replay-event-counter".
+         Phase J Wave 9 — added an "Audit" tab visible only to admins
+         (claims.role=admin from /api/auth/me).  Renders per-action rows
+         fetched from GET /api/games/{id}/audit. -->
     <div id="replay-screen" class="replay-screen" role="dialog"
          aria-label="Hand replay" aria-modal="true" aria-hidden="true"
          data-testid="replay-screen"
@@ -781,6 +784,22 @@
         <div class="replay-shell" data-testid="replay-viewer">
             <div class="replay-header">
                 <h3 class="replay-title">🎞 Hand Replay</h3>
+                <div class="replay-tabs" role="tablist"
+                     aria-label="Replay view tabs">
+                    <button id="replay-tab-replay" type="button"
+                            class="replay-tab replay-tab-active"
+                            role="tab"
+                            aria-controls="replay-pane-replay"
+                            aria-selected="true"
+                            data-testid="replay-replay-tab">Replay</button>
+                    <button id="replay-tab-audit" type="button"
+                            class="replay-tab"
+                            role="tab"
+                            aria-controls="replay-pane-audit"
+                            aria-selected="false"
+                            data-testid="replay-audit-tab"
+                            style="display: none">Audit</button>
+                </div>
                 <div class="replay-header-actions">
                     <span id="replay-source-label"
                           class="replay-source-label"
@@ -799,6 +818,8 @@
                             title="Close">×</button>
                 </div>
             </div>
+            <div id="replay-pane-replay" class="replay-pane replay-pane-active"
+                 role="tabpanel" aria-labelledby="replay-tab-replay">
             <div class="replay-body">
                 <div class="replay-board-pane">
                     <div id="replay-board" class="replay-board"
@@ -858,6 +879,95 @@
                       class="replay-event-counter"
                       data-testid="replay-event-counter"
                       aria-live="polite">0 / 0</span>
+            </div>
+            </div>
+            <div id="replay-pane-audit" class="replay-pane"
+                 role="tabpanel" aria-labelledby="replay-tab-audit"
+                 hidden>
+                <div id="replay-audit-empty" class="replay-audit-empty"
+                     aria-live="polite"></div>
+                <div id="replay-audit-table" class="replay-audit-table"
+                     role="table" aria-label="Per-action audit rows"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase J Wave 9 — Table chat panel.  Bottom-right docked,
+         collapsible.  Hidden when no gameId is on the URL (lobby only).
+         All channels share a single message buffer; the channel /
+         recipient selectors filter at render time.  280-char composer
+         with /commands intercepted client-side. -->
+    <div id="chat-panel"
+         class="chat-panel chat-panel-collapsed"
+         data-testid="chat-panel"
+         style="display: none"
+         aria-label="Table chat">
+        <div class="chat-header">
+            <button id="chat-toggle"
+                    type="button"
+                    class="chat-toggle"
+                    data-testid="chat-toggle"
+                    aria-controls="chat-panel-body"
+                    aria-expanded="false">
+                <span class="chat-toggle-label">💬 Chat</span>
+            </button>
+            <div class="chat-header-selectors">
+                <label class="chat-channel-label sr-only" for="chat-channel-select">
+                    Channel
+                </label>
+                <select id="chat-channel-select"
+                        class="dark-select form-control form-control-sm chat-channel-select"
+                        data-testid="chat-channel-select"
+                        aria-label="Chat channel">
+                </select>
+                <span id="chat-recipient-wrap"
+                      class="chat-recipient-wrap"
+                      style="display: none">
+                    <label class="chat-recipient-label sr-only" for="chat-recipient-select">
+                        Recipient
+                    </label>
+                    <select id="chat-recipient-select"
+                            class="dark-select form-control form-control-sm chat-recipient-select"
+                            data-testid="chat-recipient-select"
+                            aria-label="Private recipient">
+                    </select>
+                </span>
+            </div>
+        </div>
+        <div id="chat-panel-body" class="chat-panel-body">
+            <div id="chat-unavailable"
+                 class="chat-unavailable"
+                 role="status"
+                 aria-live="polite"
+                 data-testid="chat-unavailable"
+                 style="display: none"></div>
+            <div id="chat-messages"
+                 class="chat-messages"
+                 role="log"
+                 aria-live="polite"
+                 aria-relevant="additions"
+                 data-testid="chat-messages"></div>
+            <div id="chat-status"
+                 class="chat-status"
+                 role="status"
+                 aria-live="polite"></div>
+            <div class="chat-composer">
+                <textarea id="chat-input"
+                          class="chat-input"
+                          data-testid="chat-input"
+                          rows="2"
+                          maxlength="280"
+                          aria-label="Type a chat message"></textarea>
+                <div class="chat-composer-row">
+                    <span id="chat-char-count"
+                          class="chat-char-count"
+                          data-testid="chat-char-count"
+                          aria-live="polite">0/280</span>
+                    <button id="chat-send"
+                            type="button"
+                            class="btn btn-sm btn-primary chat-send"
+                            data-testid="chat-send">Send</button>
+                </div>
             </div>
         </div>
     </div>
