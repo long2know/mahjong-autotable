@@ -2529,3 +2529,136 @@ into a third chunk).
   returning-user game URL loads (depends on Wave-5 size reduction).
 
 Memo: `.squad/decisions/inbox/hicks-phase-k-wave-4.md`.
+
+---
+
+## 2026-06-21 — Phase K Wave 5 (`stlong/phase-k-wave-5-bringup`)
+
+**Scope:** lazy-import three.js into a third chunk (scene-shell <500 KB),
+retire `game-scene-ready` back-compat marker, keyboard-accessible
+sparse-seed reorder + edit prompt, exhaustive `VoiceReason`
+discriminated union with `never` exhaustiveness check.
+
+### Headline — three.js peeled into its own chunk
+
+Wave 4 left `scene-shell.<hash>.js` at 886 kB because three.js +
+AssetLoader + Game + World + MainView + ClientUi were all statically
+imported.  Wave 5 introduces `three-renderer.ts` (new module) which
+owns the entire three.js subgraph and is dynamic-imported by the
+new thin `scene-shell.ts` coordinator.
+
+| Chunk                                | Wave 4   | Wave 5      | Δ                     |
+|--------------------------------------|----------|-------------|-----------------------|
+| `scene-shell.<hash>.js`              | 886.4 kB | **2.33 kB** | **−884 kB (−99.7 %)** |
+| `three-renderer.<hash>.js` (NEW)     | —        | 144.9 + 724.7 kB ≈ 870 kB | parcel split naturally at the asset/world boundary |
+| `scene-effects.<hash>.js`            | 59.7 kB  | 59.7 kB     | unchanged             |
+| `game-bootstrap.<hash>.js`           | 169.9 kB | 170.0 kB    | +0.1 kB (preload helper warms three-renderer) |
+| `autotable-src.<hash>.js` (eager)    | 218.7 kB | 218.7 kB    | unchanged             |
+
+**scene-shell <500 KB target met** — 2.33 kB, three orders of
+magnitude under target.  Total renderer transfer on cold game-URL
+load: ~872 kB (roughly the same as the Wave-4 monolithic shell —
+the small reduction comes from parcel deduplicating runtime shims
+across the dynamic boundary).
+
+Both `scene-shell` and `three-renderer` sub-chunks added to
+`manifest-precache.json` so warm returning users get the renderer
+from cache.
+
+### Wave 4 → Wave 5 retirements
+
+- `data-testid="game-scene-ready"` body marker + the
+  `mahjong:game-scene-ready` CustomEvent: **removed** from
+  `scene-shell.ts:markShellReady`.  Vasquez's Wave-4 specs already
+  gate on `scene-shell-ready`.  selectors.md Wave-5 footer
+  documents the retirement via strikethrough.
+
+### Keyboard-accessible sparse-seed reorder
+
+`tournaments.ts:buildSeedingPanel`:
+
+- Each handle is now `tabindex="0"` + `role="button"` with a
+  verbose `aria-label`; Wave-4 `aria-hidden="true"` removed.
+- Arrow Up / Arrow Down on a focused handle reorders ±1 and
+  persists; boundary cases announce a no-op rather than wrapping.
+- Enter / Space opens an inline modal dialog
+  (`data-testid="seed-keyboard-prompt"`) with numeric input,
+  Apply / Cancel buttons, and validation pill.
+- All operations announce via a visually-hidden
+  `aria-live="polite"` region (`data-testid="seed-live-region"`).
+- Stable `data-testid="seed-row-{playerId}"` on the handle so
+  Vasquez's specs can re-locate the focused row after a reorder.
+- Drag-drop unchanged — both interaction models coexist.
+
+### Exhaustive `VoiceReason` discriminated union
+
+`voice.ts`:
+
+- `export type VoiceReason = 'voice-not-enabled' | 'not-seated' |
+  'spectator' | 'rate-limited' | 'target-not-found' | 'unauthorized'`.
+- `voiceReasonToText(reason: VoiceReason): string` exhaustive
+  switch with `const _exhaustive: never = reason` guard — adding
+  a new reason without updating the switch is a compile-time error.
+- `voiceReasonStringToText(reason: string)` wrapper normalises
+  legacy aliases (`not_seated`, `notseated`, `spectators`,
+  `unauthenticated`, …) and falls back to a generic "Voice chat
+  error: …" copy for unknown tokens.
+- `ALL_VOICE_REASONS` exported for Vasquez's Wave-5 contract test.
+- Bishop's Wave-5 spectator disambiguation lands without a
+  frontend copy change (the mapper already had a distinct
+  `spectator` branch since Wave 4).
+
+### Files modified
+
+- `src/frontend/autotable-src/src/three-renderer.ts` (NEW)
+- `src/frontend/autotable-src/src/scene-shell.ts` (rewritten as
+  thin coordinator; no static three.js import)
+- `src/frontend/autotable-src/src/game-bootstrap.ts` (comments +
+  `preloadGameBootstrap` warms three-renderer)
+- `src/frontend/autotable-src/src/voice.ts` (typed VoiceReason +
+  exhaustive mapper + string wrapper)
+- `src/frontend/autotable-src/src/tournaments.ts`
+  (`buildSeedingPanel` keyboard reorder + `openSeedKeyboardPrompt`
+  inline modal + aria-live announcer + stable per-player handle
+  testid)
+- `src/frontend/autotable-src/scripts/generate-sw-manifest.js`
+  (`SCENE_SHELL_RE` + `THREE_RENDERER_RE` added to pre-cache
+  allow-list)
+- `src/frontend/autotable-src/tests/selectors.md` (Wave 5 footer:
+  renderer split + keyboard seeding + typed voice reasons + Wave-5
+  Vasquez spec map)
+- `src/frontend/autotable/*` — built artefacts (new
+  `scene-shell.6e7f6886.js`, two `three-renderer.<hash>.js`
+  sub-chunks, re-hashed `game-bootstrap`/`tournaments`/`voice`,
+  regenerated `manifest-precache.json`; pruned 4 stale Wave-4
+  chunks).
+
+### Build gate
+
+- `tsc --noEmit --strict --module esnext --moduleResolution bundler`
+  exits 0.
+- `parcel build index.html --dist-dir ../autotable --public-url .
+  --no-source-maps --no-cache` exits 0 (~8 s wall).
+- `npm run build:post` regenerates `manifest-precache.json` (14
+  assets) and prunes 4 stale chunks.
+
+### Bundle delta (eager + shell + scene on game URL)
+
+| Metric                       | Wave 4 | Wave 5     | Δ |
+|---|---|---|---|
+| Eager JS                     | 219 kB | 219 kB     | 0 |
+| Game shell JS                | 170 kB | 170 kB     | 0 |
+| Renderer shell (`scene-shell`) | 886 kB | **2.3 kB** | **−884 kB** |
+| Renderer (`three-renderer`, 2 sub-chunks, NEW) | — | 870 kB | three.js + asset/world graph |
+| Renderer effects (`scene-effects`) | 60 kB  | 60 kB     | 0 |
+
+### Open Wave 6 questions
+
+- `<link rel="modulepreload">` for both `three-renderer` sub-chunks
+  to parallelise the cold-load resolver chain.
+- Tree-shake unused three.js add-ons — estimated ~250 kB
+  reachable-but-unused.
+- Split `scene-effects` modals (result / settings / replay /
+  claim) into sub-chunks if any one becomes a hot spot.
+
+Memo: `.squad/decisions/inbox/hicks-phase-k-wave-5.md`.
