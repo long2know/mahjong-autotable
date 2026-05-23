@@ -304,9 +304,122 @@ every Wave-N change that touches either policy file. It's the
 only smoke that proves the cluster-layer + namespace-layer
 enforcement composes correctly under realistic edit-pressure.
 
-## 6. Observability
+## 6. Observability + Wave-5 SLSA attestation requirement
 
-### 6.1 Policy Reports (staging)
+### 6.1 Wave-5 — SLSA-v1 provenance attestation now required
+
+Phase K Wave 5 added a second verification clause to the
+`verify-mahjong-images` `ClusterPolicy`: the `attestations:`
+block. The cluster now requires BOTH:
+
+| # | Layer                       | What it proves                                                                  |
+|---|-----------------------------|---------------------------------------------------------------------------------|
+| 1 | `attestors:` (Wave 3)       | Image is signed by `sign-image.yml` (cosign keyless).                            |
+| 2 | `attestations:` (Wave 5)    | Image carries a SLSA-v1 provenance predicate produced by THIS repo's Wave-5 `slsa-provenance.yml` and signed by the `slsa-github-generator` reusable workflow. |
+
+Together they make admission a TWO-PROOF test: the image must be
+signed AND the SLSA predicate must exist + verify + name this
+repo in its build-definition fields. A signed image without a
+matching SLSA predicate is REJECTED; a SLSA predicate without a
+matching signature is REJECTED.
+
+The Wave-5 `attestations:` block evaluates THREE conditions
+against the JSON-decoded predicate (CEL syntax):
+
+```yaml
+conditions:
+  - all:
+      - key: "{{ predicate.buildDefinition.externalParameters.workflow.repository }}"
+        operator: Equals
+        value: "https://github.com/long2know/mahjong-autotable"
+      - key: "{{ predicate.buildDefinition.externalParameters.workflow.path }}"
+        operator: Equals
+        value: ".github/workflows/slsa-provenance.yml"
+      - key: "{{ predicate.runDetails.builder.id }}"
+        operator: Matches
+        value: "^https://github\\.com/slsa-framework/slsa-github-generator/.+@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$"
+```
+
+Predicate-content pinning + signer-identity pinning (the
+`attestors:` block inside `attestations:`) are belt-AND-suspenders.
+
+### 6.2 Negative test — image without SLSA predicate rejects
+
+Build + push an image without running the SLSA workflow against
+it (e.g. a dev tag pushed manually):
+
+```bash
+docker build -t ghcr.io/long2know/mahjong-autotable:dev-no-slsa-test .
+docker push  ghcr.io/long2know/mahjong-autotable:dev-no-slsa-test
+# Sign the image (so the cosign attestor passes) BUT do NOT
+# run slsa-provenance.yml — leaves the SLSA predicate missing.
+cosign sign --yes ghcr.io/long2know/mahjong-autotable:dev-no-slsa-test
+```
+
+Deploy to prod:
+
+```bash
+cat <<'EOF' | kubectl -n mahjong-prod apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slsa-negative-test
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: slsa-negative-test } }
+  template:
+    metadata: { labels: { app: slsa-negative-test } }
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/long2know/mahjong-autotable:dev-no-slsa-test
+EOF
+```
+
+Expected:
+
+```
+Error from server: error when creating "STDIN":
+admission webhook "validate.kyverno.svc-fail" denied the request:
+
+resource Deployment/mahjong-prod/slsa-negative-test was blocked due to the following policies
+
+verify-mahjong-images:
+  verify-cosign-keyless-mahjong: |
+    failed to verify image ghcr.io/long2know/mahjong-autotable:dev-no-slsa-test:
+    .attestations[0]: missing SLSA attestation
+    (no in-toto predicate of type https://slsa.dev/provenance/v1 found
+    matching the configured attestor identity)
+```
+
+Clean up:
+
+```bash
+# Image is rejected at admission so no Deployment is created.
+# Optional: purge the unsigned-SLSA image from GHCR via the UI / API.
+```
+
+### 6.3 Rollback procedure
+
+If the Wave-5 `attestations:` requirement blocks a legitimate
+deploy (e.g. the SLSA workflow is flaking and the operator needs
+to ship an emergency hotfix):
+
+1. **Confirm the image is otherwise trustworthy.** It must be
+   signed by `sign-image.yml`; verify with
+   `cosign verify ghcr.io/long2know/mahjong-autotable@${DIGEST}`.
+2. **Temporarily comment out the `attestations:` block** in
+   `infra/k8s/policies/kyverno-cosign-verify.yaml` and reapply.
+   The cosign signature gate (`attestors:`) still fires;
+   admission falls back to the Wave-3 floor.
+3. **Re-run `slsa-provenance.yml`** via `workflow_dispatch` with
+   the operator-supplied `digest:` input. Once the predicate is
+   in Rekor + OCI, restore the `attestations:` block.
+4. **Open a follow-up issue** so the next wave audits WHY the
+   SLSA workflow failed; the comment-out is a one-off, not a
+   persistent state.
+
+### 6.4 Policy Reports (staging)
 
 Audit-mode failures land in PolicyReports. Surface them in your
 monitoring stack:
@@ -325,7 +438,7 @@ metrics endpoint, scraped automatically by the Helm-shipped
 `policy_results_total{policy="verify-mahjong-images",result="fail"}`
 should remain at 0 in staging.
 
-### 6.2 Webhook failure events (prod)
+### 6.5 Webhook failure events (prod)
 
 Enforce-mode rejections produce k8s admission `Event`s on the
 parent ReplicaSet:

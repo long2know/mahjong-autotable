@@ -6190,4 +6190,814 @@ extension):**
 
 ---
 
+## Phase K — Wave 5 (production deepening + scene-shell <500 KB win + auth envelope + JWKS reservation + labeled voice metrics + SLSA/SBOM unified predicate + Terraform bootstrap + CollectionFixture) — `stlong/phase-k-wave-5-bringup` (2026-06-21)
+
+Fifth wave of Phase K. Scope: unify SLSA provenance + CycloneDX SBOM
+under one multi-subject in-toto predicate + Kyverno `attestations:`
+content-pin (Apone); mirror prod `mahjong-jwt-keys` ExternalSecret
+into staging (Apone); ship `workflow_dispatch`-only retroactive
+`secrets-history-sweep` workflow (Apone); HSTS preload-readiness
+cron probe with sticky-issue alerting (Apone); land Terraform
+bootstrap module — VPC + EKS + RDS + ECR + GH OIDC, 13 files — to
+unblock the "<30 min clean prod env" target (Apone); pin the
+`AuthTokenResponse` JWT-mint envelope as a sealed record + reserve
+`/api/auth/.well-known/jwks.json` as a 404 + `Cache-Control: no-store`
+slot for the Phase L RS256 flip (Bishop); ship labeled Prometheus
+counters keyed by `(table, reason)` for VoiceHub signalling pressure
++ `/metrics` exposition with HELP/TYPE preambles (Bishop); split
+`VoiceHub.JoinVoice` spectator-vs-not-seated reasons via snapshot
+presence check (Bishop); ship the `Voice:TurnTtlSeconds` legacy-alias
+migration `IStartupFilter` with at-most-once `Interlocked` latch
+(Bishop); **peel three.js into a third chunk — `scene-shell.<hash>.js`
+886 kB → 2.33 kB (−99.7%)** (Hicks); retire the Wave-3
+`game-scene-ready` back-compat marker (Hicks); land keyboard-accessible
+sparse-seed reorder (Arrow/Enter on focusable handle + inline modal
+dialog + aria-live announcer) (Hicks); promote `VoiceReason` to a
+typed discriminated union with `never`-narrowing exhaustiveness
+(Hicks); flip 9 W4 soft-passes to hard-asserts via
+`ContractGapHardAssertW5Tests` + 5 new W5 contract files (80+ facts)
++ `RegressionHostFixture` `[CollectionDefinition]` + `TESTING_SHIM`-gated
+`WithDirectSession` helper + 5 Playwright specs +
+`docs/agent-handoff-protocol.md` stash-checkpoint formalisation
+(Vasquez). **11 commits, 4-agent parallel lane held; author hygiene
+preamble (Wave 4) STILL working at git-author level — 11/11 commits
+with correct authors** — but cross-lane work-content bundling
+recurred in Apone's `b346157` (sweep direction: DevOps → Frontend
+this wave). See "Procedural Notes" at end of section.
+
+### Test gate
+
+| Lane                                                   | Pass | Fail | Skip | Δ vs Wave-4 baseline (1232) |
+|--------------------------------------------------------|------|------|------|------------------------------|
+| Vasquez (bring-up close, Bishop's W5 surfaces not yet landed) | 1329 | 0    | 0    | +97                          |
+| Bishop (post backend land — auth envelope + JWKS + labeled metrics + spectator split + TURN-TTL alias) | **1345** | **0** | **0** | **+113**                     |
+| Apone (DevOps-only, no `src/backend/**` change)        | 1232 | 0    | 0    | baseline preserved           |
+| Hicks (frontend-only; backend untouched)               | 1232 | 0    | 0    | baseline preserved           |
+
+**Zero-skip streak preserved → 19 consecutive green waves
+(J.1 → J.10 + K.1 → K.5).** Closing invocation:
+`dotnet test src/backend/Mahjong.Autotable.slnx --nologo` →
+**1345 / 0 / 0** (1m 39s). The Wave-4 `MaxParallelThreads=2`
+workaround is RETIRED this wave — Vasquez's `RegressionHostFixture`
+(`[CollectionDefinition("regression-host")]` exposing a shared
+`WebApplicationFactory<Program>`) eliminates the cross-class
+disposal race that drove the workaround. Default xUnit parallelism
+runs green over multiple consecutive gate invocations.
+
+### Surfaces shipped by lane
+
+#### Bishop — `AuthTokenResponse` envelope + JWKS reservation + labeled voice metrics + spectator/not-seated split + TURN-TTL migration logger + 2 docs
+
+Two commits (`eb339d7`, `4b1c48f`), both correctly git-authored as
+`Bishop (Backend) <bishop@squad.mahjong>` — author hygiene preamble
+worked again this wave. Full design walkthrough in
+`.squad/decisions/inbox/bishop-phase-k-wave-5.md`:
+
+1. **`AuthTokenResponse` envelope hard-pin.** New
+   `src/backend/src/Mahjong.Autotable.Api/Auth/AuthTokenResponse.cs`
+   ships `sealed record AuthTokenResponse(string Token, DateTime
+   ExpiresAtUtc, string Kid, string TokenType, int ExpiresInSeconds)`
+   with `[JsonPropertyName]` on every property and a
+   `BearerTokenType = "Bearer"` compile-time constant pinning the
+   RFC 6750 literal. `AuthTokenController.Issue()` clamps
+   `expiresInSeconds` at zero so a token minted at the expiry
+   boundary never returns a negative TTL (some SDK schedulers treat
+   negative TTL as "retry forever immediately"). Three new facts in
+   `AuthTokenResponseEnvelopeTests.cs` pin the 5-field shape +
+   camelCase JSON round-trip + the `Bearer` constant. Wave-4
+   `JwtKidRolloverContractTests` continue to pass — the new envelope
+   is a superset of the W4 anonymous object read by-name.
+
+2. **JWKS endpoint reservation (404 + `Cache-Control: no-store`).**
+   `AuthTokenController.Jwks()` returns 404 with `no-store` and a
+   structured body `{ error, algorithm: "HS256", note }` explaining
+   the Phase L RS256 flip. The route MUST exist so a CDN doesn't
+   synthesize a parent-level 404 with its own caching policy; the
+   `no-store` ensures any intermediate that pinned a long-TTL 404
+   would not block the Phase L flip. Two facts in
+   `JwksEndpointContractTests.cs` pin the 404 + header + body shape.
+
+3. **VoiceHub labeled metrics + Prometheus exposition.**
+   `VoiceHubMetricsService` keeps the W3/W4 surface verbatim and
+   adds three `ConcurrentDictionary<LabelKey, long>` accumulators:
+   `_relayByTable`, `_rejectionByTableReason`,
+   `_joinUnauthorizedByTableReason`. New `Snapshot()` returns
+   `IReadOnlyList<LabeledMetricSample>` in stable order (metric →
+   table → reason). Null/empty/whitespace labels collapse to
+   `"unknown"`/`ReasonUnknown` so a missing label can't spray
+   cardinality. `VoiceHubMetrics.ReasonRateLimited = "rate-limited"`
+   matches `VoiceHubResult.ReasonRateLimited` wire-name so a single
+   dashboard query covers both surfaces. `VoiceHub.JoinVoice` +
+   `VoiceHub.Throttle()` stamp the table id via a static
+   `ConnectionTableMap : ConcurrentDictionary<string, string>` set
+   on `JoinVoice` + cleared on `LeaveVoice`/`OnDisconnectedAsync`
+   (relay methods don't carry a table-id parameter — W4 hub
+   signature is locked). `MetricsEndpoint.Render()` emits the three
+   voice counters with HELP+TYPE preambles (always present, even
+   with zero events) followed by every labeled sample via the
+   existing `EscapeLabelValue()` helper. Six facts across
+   `VoiceMetricsPrometheusSurfaceTests.cs` +
+   `MetricsEndpointVoiceExpositionTests.cs`.
+
+4. **VoiceHub spectator-vs-not-seated split.** `JoinVoice` hoists
+   the `TryGetSnapshot` call into a `snapshotAvailable` flag and
+   picks `ReasonSpectator` (snapshot present, caller has no seat)
+   vs `ReasonNotSeated` (snapshot missing — caller may legitimately
+   belong to a future seat). Both reasons were already W4-reserved
+   constants on `VoiceHubResult`; W5 just starts emitting the
+   distinction. Owners (`isOwner == true`) bypass both reasons.
+   Pairs with Hicks's typed `VoiceReason` discriminated-union
+   `spectator` branch (already in W4 copy — Bishop's W5 backend
+   just starts populating the value Hicks already mapped).
+
+5. **`Voice:TurnTtlSeconds` legacy-alias migration logger.** New
+   `src/backend/src/Mahjong.Autotable.Api/Voice/VoiceTurnTtlMigrationLogger.cs`
+   ships as an `IStartupFilter` singleton with two stable
+   constants (`LegacyKey`, `CanonicalKey`). `MaybeLog()` uses
+   `Volatile.Read` + `Interlocked.Exchange` to log at most once
+   per process. `Program.cs` `PostConfigure<VoiceOptions>` maps
+   the legacy alias onto `TurnCredentialTtlSeconds` when canonical
+   is unset. No production deployment ever set the legacy alias
+   (grep of `infra/`) — the logger ships pre-emptively so Wave 6
+   or 7 can retire the alias cleanly. Three facts in
+   `TurnTtlMigrationLoggerTests.cs`.
+
+6. **`docs/api-precedence.md` (NEW)** — pins HTTP status-code
+   precedence for endpoints where framework-level rejections
+   interact with application-level gates. Three endpoints covered:
+   `POST /api/tournaments/{id}/seed` (W4 canonical `401→403→404→400`
+   ladder + W5 duplicate-seed-number + duplicate-player-id
+   detection), `POST /api/turn/credentials` (TURN TTL convergence),
+   JWT signing-key fallback contract. Human-readable reference —
+   not a contract test target; every cited endpoint already has a
+   test pin in `Phase_K_W4/` or `Phase_K_W5/`.
+
+7. **`docs/jwt-rotation.md` §7 refresh.** The W3 migration table
+   claimed Wave 5 would "remove `JwtSigningKey` (singular)
+   fallback". Reality: the W4
+   `JwtSigningKeyContractTests.JwtSigningKeyProvider_FallsBackToLegacySingular`
+   still asserts the legacy path, so dropping the property would
+   break the test. Decision: **keep the legacy singular for one
+   more wave**. Wave 6 drops it once Apone's SSM rotation drill
+   exercises the array path in production. §7 now reflects lived
+   reality + cites the W5 contract files.
+
+15 files; +1002 / −22. Commit `eb339d7` carries the code + tests;
+`4b1c48f` adds the memo + history-log only.
+
+#### Hicks — `scene-shell` 886 kB → 2.33 kB (−99.7%) via lazy `three-renderer` + retire `game-scene-ready` + keyboard-accessible sparse-seed reorder + typed `VoiceReason` discriminated union
+
+Frontend deliverables shipped in **Apone's `b346157`** (see
+"Procedural Notes" — Apone's commit-tree recovery from a
+concurrent `.git/config` race absorbed all of Hicks's WIP). Hicks's
+own commit (`8b3051f`) carries only the memo + history log.
+Functional content is byte-correct; squash-merge collapses authors.
+Full design walkthrough in `.squad/decisions/inbox/hicks-phase-k-wave-5.md`:
+
+1. **`scene-shell` peels three.js into a new lazy `three-renderer.ts`
+   chunk.** W4 left a single 886 kB `scene-shell.<hash>.js` chunk
+   that statically imported three.js (~575 kB) + AssetLoader + Game
+   + World + MainView + ClientUi. W5 hoists every static
+   `from 'three'` import into a sibling `three-renderer.ts` module
+   dynamic-imported by `scene-shell` once `mountScene()` is called.
+   New shell is a microscopic ~80-line coordinator: dynamic-imports
+   `three-renderer`, awaits `mountThreeRenderer()`, wires
+   `attachLobbyClient`, mints `data-testid="scene-shell-ready"`,
+   fires the parallel `scene-effects` import.
+
+2. **Bundle-size delta (renderer chain on cold game-URL load):**
+
+   | Chunk                          | Wave 4   | Wave 5      | Δ                     |
+   |--------------------------------|----------|-------------|-----------------------|
+   | `scene-shell.<hash>.js`        | 886.4 kB | **2.33 kB** | **−884 kB (−99.7 %)** |
+   | `three-renderer.<hash>.js` (NEW, x2 sub-chunks) | —        | 144.9 kB + 724.7 kB ≈ **870 kB** | parcel split at the asset-loader/game boundary |
+   | `scene-effects.<hash>.js`      | 59.7 kB  | 59.7 kB     | unchanged             |
+   | `game-bootstrap.<hash>.js`     | 169.9 kB | **170.0 kB** | +0.1 kB (preload helper now warms `three-renderer` too) |
+   | `autotable-src.<hash>.js` (eager) | 218.7 kB | 218.7 kB | unchanged             |
+
+   **`scene-shell` <500 kB target met (+ 99.5% headroom).** Net
+   renderer transfer on cold game-URL load: 2.33 kB + 870 kB ≈
+   872 kB — roughly the same as the W4 monolithic shell (small
+   reduction from parcel deduplicating import-helper shims across
+   the dynamic boundary). The two `three-renderer` sub-chunks load
+   in parallel from SW cache on warm navigations (parcel's
+   asset-loader / game boundary split, NOT a forced cohort).
+
+3. **SW pre-cache flipped.** W4 deliberately excluded the renderer
+   from `manifest-precache.json` because pre-caching ~900 kB on
+   install was hostile. With W5's 2.3 kB shell the calculus flips:
+   the user will fetch the renderer on first game-URL navigation
+   anyway, and pre-caching it on install means warm returning users
+   see WebGL in ~50 ms instead of ~3 s on a flaky connection.
+   `scripts/generate-sw-manifest.js` adds `SCENE_SHELL_RE` +
+   `THREE_RENDERER_RE` to the allow-list (14 assets total).
+
+4. **`data-testid="game-scene-ready"` retired.** W3 introduced it
+   as the post-renderer ready marker; W4 renamed to
+   `scene-shell-ready` but kept the alias for one wave. W5 deletes
+   the alias from `scene-shell.ts:markShellReady` (no
+   `data-game-scene-ready` body attribute, no second marker div, no
+   `mahjong:game-scene-ready` CustomEvent). `selectors.md`
+   strikethrough'd in the W5 footer table.
+
+5. **Keyboard-accessible sparse-seed reorder.** W4 shipped
+   drag-drop bracket seeding (mouse-only). W5 adds the keyboard
+   alternative without disturbing the drag-drop path:
+
+   - Each row handle (`seed-row-{playerId}`) is `tabindex="0"` +
+     `role="button"` with a verbose `aria-label`; the W4
+     `aria-hidden="true"` is removed.
+   - **ArrowUp/ArrowDown** reorder by ±1 + persist via the existing
+     `POST /api/tournaments/{id}/seed`. Boundary cases announce a
+     no-op rather than wrap/fail-silent. Focus restored to the
+     handle's new position on next rAF via stable `data-player-id`
+     lookup (not the index-based testid which churns on reorders).
+   - **Enter/Space** opens an inline modal dialog (`role="dialog"` +
+     `aria-modal="true"`, `data-testid="seed-keyboard-prompt"`)
+     with a numeric input (1..N to seed, 0 to demote), Apply +
+     Cancel buttons, `role="alert"` validation pill, Enter/Escape
+     handling.
+   - Every reorder/edit announces via a visually-hidden
+     `aria-live="polite"` region (`data-testid="seed-live-region"`).
+     Drag-drop deliberately does NOT announce (mouse users get
+     visual feedback; SR shouldn't hear noise from another user's
+     drag).
+   - Browser `prompt()` builtin rejected: blocks main thread,
+     unstyleable, untraversable by SR, Playwright treats it as a
+     dialog requiring `accept()`. Inline dialog is 8 lines longer
+     but radically friendlier for both keyboard users + spec
+     author.
+
+6. **Exhaustive `VoiceReason` discriminated union with `never`-narrowing.**
+   W4's `voiceReasonToText(reason: string)` had an implicit union +
+   defensive default case. W5 promotes to:
+
+   ```ts
+   export type VoiceReason =
+     | 'voice-not-enabled'
+     | 'not-seated'
+     | 'spectator'
+     | 'rate-limited'
+     | 'target-not-found'
+     | 'unauthorized';
+   ```
+
+   `voiceReasonToText(reason: VoiceReason): string` is an
+   exhaustive switch with a `const _exhaustive: never = reason`
+   guard — adding a new `VoiceReason` member without updating the
+   switch becomes a compile-time `Type 'X' is not assignable to
+   type 'never'` error. A second wrapper
+   `voiceReasonStringToText(reason: string)` normalises
+   kebab/snake/camel/legacy aliases and falls back to a generic
+   "Voice chat error: …" copy for unknown tokens — preserving the
+   W4 default-case behaviour at the boundary without sacrificing
+   exhaustiveness on the typed entry point. `ALL_VOICE_REASONS`
+   exported as `ReadonlyArray<VoiceReason>` for Vasquez's W5
+   exhaustive-mapping contract.
+
+#### Apone — SLSA+SBOM unified predicate + Kyverno attestations content-pin + staging JWT-keys ExternalSecret + retroactive secrets-history-sweep + HSTS preload-readiness cron + sticky-issue alerting + Terraform bootstrap (13 files) + CHANGELOG 0.14.0
+
+Six DevOps commits (`b346157`, `d9209bc`, `133bb7d`, `797bb1a`,
+`8adbb05`, `ec2f042`, `3625a8c`), all correctly git-authored as
+`Apone (DevOps) <apone@squad.mahjong>` (author hygiene preamble
+held). Full design walkthrough in
+`.squad/decisions/inbox/apone-phase-k-wave-5.md`:
+
+1. **SLSA + SBOM unified under one multi-subject in-toto predicate.**
+   Replaces `generator_container_slsa3.yml@v2.0.0` with
+   `generator_generic_slsa3.yml@v2.0.0`. Passes a base64-encoded
+   `sha256sum`-format subjects list containing BOTH the image
+   manifest digest AND the CycloneDX SBOM file digest. Closes the
+   W4 audit gap where SBOM + provenance were two parallel
+   independently-signed artefacts an auditor had to correlate by
+   hand. Trade-off: the generic generator doesn't auto-publish as
+   an OCI sidecar attestation — mitigated by a follow-up
+   `cosign attest --type slsaprovenance1` job (`attest-oci`) so
+   the Kyverno `attestations:` block can discover the predicate
+   via standard OCI sidecar lookup. Rejected alternatives: keeping
+   the container generator + emitting a SECOND `attest-blob`
+   attestation (exactly the audit gap we're closing); homegrown
+   `intoto-attest` wrapper (defeats SLSA L3 isolated-builder
+   guarantee). W4 attestations (single-subject, container
+   generator) remain in Rekor forever and remain verifiable with
+   the W4 `slsa-verifier verify-image` invocation. Forward
+   artefacts use the W5 `verify-artifact` shape per
+   `docs/slsa-provenance.md` §6.
+
+2. **Kyverno `attestations:` block — content-pin AND signer-pin.**
+   `infra/k8s/policies/kyverno-cosign-verify.yaml` adds an
+   `attestations:` block requiring `predicateType
+   https://slsa.dev/provenance/v1` with three CEL `conditions:`
+   evaluating
+   `buildDefinition.externalParameters.workflow.{repository,path}`
+   AND `runDetails.builder.id` (regex). The `attestations:` block
+   ALSO pins the attestor identity to the
+   `slsa-github-generator/.../generator_generic_slsa3.yml@refs/tags/v*`
+   subject. Belt-and-suspenders: a predicate signed by the correct
+   generator for a DIFFERENT repo (someone else's fork) would pass
+   the signer-identity check but fail the `workflow.repository`
+   content check. A predicate with this repo's fields but signed
+   by a non-generator identity would fail the subject pin.
+   Rollback: comment out `attestations:` block during an emergency
+   hotfix; the cosign-signature gate (`attestors:`) still fires so
+   admission falls back to the W3 floor, not "no verification".
+
+3. **Staging mirrors prod for JWT-keys data plane.** New
+   `infra/k8s/overlays/staging/jwt-keys-secret.yaml` ships
+   `mahjong-jwt-keys-staging` ExternalSecret. Same 15-min refresh,
+   same rotation-state-named SSM parameters under
+   `/mahjong/staging/auth/jwt/`. Bishop's `jwt-rotation-smoke.sh`
+   targets staging by default; without the array-binding
+   ExternalSecret the smoke would only exercise the singular-key
+   fallback. **Wave-N+1 mirroring rule formalised:** any prod-only
+   data plane shipped in wave N must mirror into staging in
+   wave N+1.
+
+4. **`secrets-history-sweep.yml` — `workflow_dispatch`-only.**
+   Walks the full commit graph (`fetch-depth: 0`) → 5-30 min
+   runtime on a mature repo. Running on every PR would burn runner
+   minutes re-scanning history that hasn't changed. Historical
+   findings require a rotate-then-purge response (non-trivial
+   operator action) — should always be intentional. The W4
+   `secrets-scan.yml` already covers forward motion + nightly
+   drift. The sweep is a quarterly / post-incident gate, not a
+   per-PR gate.
+
+5. **HSTS preload-readiness cron probe + sticky-issue alerting.**
+   `hsts-readiness-check.yml` cron-probes the live header for
+   `max-age=63072000; includeSubDomains; preload` and uses a
+   sticky-issue mechanism: on failure, search for an issue by
+   EXACT title match, open if absent / update if present /
+   re-open if closed; on recovery, close with a comment. Avoids
+   the naïve "create issue on failure" pattern's per-run spam.
+   Reusable template for future cron-driven probes (W6 JWT-rotation
+   soak, multi-region health check).
+
+6. **Terraform bootstrap — VPC + EKS + RDS + ECR + GH OIDC, 13
+   files.** `infra/terraform/` provisions the bare-minimum AWS
+   footprint. Cluster add-ons (ALB controller, cert-manager, ESO,
+   Kyverno) deliberately NOT in the terraform module — they ship
+   via `helm install` in the post-bootstrap runbook
+   (`README.md` §3). Rationale: terraform manages infra, helm
+   manages workloads; mixing in one tfstate makes add-on upgrades
+   require `terraform apply` cycles (slow + drift-prone). The
+   "<30 min env" target separates infra provision (~25 min,
+   EKS-bottlenecked) from add-on install (~5 min, parallelisable
+   helm calls) — together inside the budget. State-backend
+   chicken-and-egg: operator-driven one-time
+   `aws s3api create-bucket` + `aws dynamodb create-table` per
+   environment, then `terraform init -backend-config=backend-${env}.hcl`.
+   `terraform fmt -recursive` applied; `terraform validate` clean.
+
+7. **CHANGELOG `[0.14.0]`** captures all of the above + the
+   cross-lane W5 surfaces (Bishop's envelope/JWKS/metrics, Hicks's
+   renderer split, Vasquez's contract gate flip).
+
+8. **Lock-step invariant grew to SIX files.** Renaming
+   `sign-image.yml` OR `slsa-provenance.yml` now requires
+   coordinated edits in: (1) `sign-image.yml` itself; (2)
+   `verify-signature.yml` default `expected-identity-pattern`;
+   (3) `infra/k8s/policies/kyverno-cosign-verify.yaml`
+   `attestors:`; (4) same file `attestations:` block (NEW W5);
+   (5) `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`
+   `attestors:`; (6) `--source-uri` arg in `docs/slsa-provenance.md`
+   §4. Documented in `docs/admission-policy.md` §7.1.
+
+#### Vasquez — 21 files / 80+ facts / 9 hard-asserts + `RegressionHostFixture` + `TESTING_SHIM`-gated `WithDirectSession` + 5 Playwright specs + `docs/agent-handoff-protocol.md`
+
+One commit (`8756667`), correctly git-authored as
+`Vasquez (QA) <vasquez@squad.mahjong>`. Stash-checkpoint
+discipline (formalised in `docs/agent-handoff-protocol.md`) used
+throughout the bring-up — Vasquez's commit DOES NOT include any
+other agent's files. Full walkthrough in
+`.squad/decisions/inbox/vasquez-phase-k-wave-5.md`:
+
+1. **9 W4 contract-gap soft-passes flipped to hard-asserts** via
+   `Phase_K_W5/ContractGapHardAssertW5Tests.cs` — JWT `kid`
+   rotation, `AuthToken` envelope, Kyverno enforce, SLSA
+   generator pin, HSTS preload directive, tournament-seed
+   precedence, voice metrics suffix, onboarding
+   `MaxStepsCompleted=8`, `voiceReasonToText` typed mapper.
+
+2. **5 new W5 contract files (80+ facts)** under
+   `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W5/`,
+   all tagged `[Trait("Wave", "Phase-K-5")]`:
+   - `BishopW5SurfaceTests.cs` (6 facts) — `AuthOptions` canonical
+     shape, TURN TTL convergence, JWT kid rollover E2E, JWKS
+     endpoint shape, onboarding clamp runtime, `ReasonSpectator`
+     distinct from `ReasonNotSeated`.
+   - `AponeW5InfraContractTests.cs` (7 facts) — SLSA unified
+     predicate (no `.wave4-bak`), Kyverno attestations block,
+     staging `jwt-keys-secret`, `secrets-history-sweep` workflow,
+     HSTS preload-verification workflow, Terraform bootstrap,
+     SBOM + SLSA shared subject.
+   - `HicksW5FrontendContractTests.cs` (6 facts) — scene-shell no
+     static `three` import, `three-renderer.ts` present,
+     `game-scene-ready` retired, `three-renderer-ready` testid,
+     keyboard-accessible sparse-seed, `voiceReasonToText`
+     discriminated union.
+   - `TestShimSanityTests.cs` (3 facts) — `WithDirectSession`
+     cookie wiring, DB-overload session insertion, idempotent
+     identity-row reuse.
+   - `W5SurfaceSmokeFactsTests.cs` (**50+ facts**) — bulk
+     broad-stripe sanity across auth / voice / tournament /
+     infra / frontend / docs / persistence / observability.
+
+3. **Regression rename + 7 W5 smokes.**
+   `git mv Wave1ThroughKW4RegressionTests.cs →
+   Wave1ThroughKW5RegressionTests.cs` + refactored to consume the
+   new `RegressionHostFixture` via `[Collection("regression-host")]`
+   + constructor injection + 7 W5 facts appended (onboarding
+   `MaxStepsCompleted`, TURN TTL alias absence,
+   `voice_relay_count_total`, Kyverno attestations, SLSA
+   non-backup path, `three-renderer.ts`, `infra/terraform/`).
+
+4. **Hudson hand-off actioned (CollectionFixture).** Hudson did
+   NOT action this in W5 (other priorities — captured in
+   `docs/test-harness-handoff.md` § "Phase K Wave 5 — addendum");
+   Vasquez implemented the fixture as part of the bring-up.
+   `src/backend/tests/Mahjong.Autotable.Api.Tests/Regression/RegressionHostFixture.cs`
+   exposes a shared `WebApplicationFactory<Program>` via
+   `[CollectionDefinition("regression-host")]`. The W4 disposal
+   race (`ObjectDisposedException` on shared sqlite connection
+   when two collections raced teardown) is eliminated — factory
+   lifetime scoped to the collection, so xUnit's parallel
+   scheduler can't tear it down while another fact still holds
+   an `HttpClient`. **`xunit.runner.json` not needed; default
+   parallelism restored** (W4 `MaxParallelThreads=2` workaround
+   retired).
+
+5. **`TESTING_SHIM`-gated `TestHttpClientExtensions.WithDirectSession`.**
+   New `src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/TestHttpClientExtensions.cs`
+   + csproj `<DefineConstants>$(DefineConstants);TESTING_SHIM</DefineConstants>`
+   on the test project only. Three overloads: cookie-only,
+   DB-aware (inserts profile + identity + session rows),
+   role-stamped (admin / spectator / observer). FK-aware: inserts
+   `PlayerProfile` row first so `PlayerAuthIdentity.PlayerId`
+   cascade FK is satisfied. Production-leakage guarantee
+   documented in new `docs/test-shims.md`.
+
+6. **5 new Playwright specs** under
+   `src/frontend/autotable-src/tests/e2e/`:
+   `scene-shell-budget-strict.spec.ts` (strict `<500 kB` combined
+   scene-shell payload, excludes lazy `three-renderer`),
+   `keyboard-seed-reorder.spec.ts` (`seed-row-handle` focusable +
+   ArrowDown swap), `voice-reason-spectator-distinct.spec.ts`
+   (`voice-failure-toast` text for `spectator` non-empty AND ≠
+   `not-seated` text), `three-renderer-lazy.spec.ts`
+   (`three-renderer` NOT fetched on lobby load),
+   `jwks-endpoint-shape.spec.ts` (404 + `Cache-Control:
+   no-store`). Each spec chromium-only via
+   `test.skip(testInfo.project.name !== 'chromium', …)`, mocks
+   `**/api/auth/me**`, uses `test.info().annotations.push({ type:
+   'soft-pass', … })` for forward-staged surfaces.
+
+7. **`docs/agent-handoff-protocol.md` (NEW)** — formalises
+   stash-checkpoint discipline + lane ownership + author identity
+   table + Vasquez's W5 worked example. **Recommended adoption in
+   Wave 6 prompts.** Pairs with W4 author-hygiene preamble to
+   close both the identity AND own-work-preservation failure modes.
+
+### Bundle-size delta (eager + shell + scene + renderer on game URL)
+
+| Chunk                          | Wave 4   | Wave 5      | Δ                     |
+|--------------------------------|----------|-------------|-----------------------|
+| `autotable-src.<hash>.js` (eager) | 218.7 kB | 218.7 kB | unchanged             |
+| `game-bootstrap.<hash>.js`     | 169.9 kB | 170.0 kB    | +0.1 kB (`preloadGameBootstrap` warms `three-renderer`) |
+| `scene-shell.<hash>.js`        | 886.4 kB | **2.33 kB** | **−884 kB (−99.7 %)** |
+| `three-renderer.<hash>.js` (NEW, x2 sub-chunks) | —        | 144.9 kB + 724.7 kB | net renderer transfer ≈ 870 kB (lazy on first game URL) |
+| `scene-effects.<hash>.js`      | 59.7 kB  | 59.7 kB     | unchanged             |
+| `game-state.<hash>.js`         | 1.9 kB   | 1.9 kB      | unchanged             |
+
+Total bytes on cold game URL roughly unchanged
+(~872 kB renderer + 60 kB effects + 170 kB bootstrap + 219 kB
+eager). **`scene-shell` Wave-2 <500 kB target met with 99.5%
+headroom** (deferred from W2 → W3 → W4 — closed in W5).
+Renderer is lazy: lobby load NEVER touches `three-renderer` (pinned
+by Vasquez's `three-renderer-lazy.spec.ts`). SW pre-cache now
+warms both `three-renderer` sub-chunks on install so warm returning
+users get WebGL in ~50 ms instead of ~3 s.
+
+### Procedural Notes
+
+#### Wave 5 cross-lane bundling — `b346157` (DevOps → Frontend)
+
+**What happened.** Apone's `b346157` ("ci(slsa): unify SLSA
+provenance + SBOM under multi-subject in-toto predicate") landed
+git-authored as `Apone (DevOps) <apone@squad.mahjong>` but its
+file list contains all of Hicks's frontend implementation work:
+`src/three-renderer.ts` (NEW, 78 lines), `src/scene-shell.ts`
+(rewritten, 106 changed), `src/voice.ts` (126 changed),
+`src/tournaments.ts` (289 changed), `src/game-bootstrap.ts` (27
+changed), `scripts/generate-sw-manifest.js`, `tests/selectors.md`
+(W5 footer, 131 added), and 11 built artefacts under
+`src/frontend/autotable/` (new hashes for `scene-shell`,
+`three-renderer` x2, `tournaments`, `voice`, `game-bootstrap`,
+`toast`; pruned the stale W4 hashes; updated
+`manifest-precache.json` + `index.html`).
+
+**Root cause.** During Apone's commit-tree recovery from a
+concurrent agent's `.git/config` race (the `user.{name,email}`
+between `git config` SET and `git commit` was rewritten by a
+neighbouring agent run between the two steps), Apone's recovery
+used `git commit-tree` against a working tree that already had
+Hicks's untracked frontend files staged via an earlier `git add`.
+The recovery commit absorbed them. Hicks then re-bundled
+differently (committing only the memo + history) once the working
+tree was unwedged.
+
+**Mirror direction of W3 / W4 / W5 trend.** Cross-lane bundling
+has now occurred in EVERY Phase K wave:
+- **W2:** Bishop's commits absorbed Vasquez + Apone WIP.
+- **W3:** Bishop's six backend commits git-authored as Vasquez
+  (identity clobber).
+- **W4:** Bishop's `2265de8` swept Vasquez's seven backend test
+  files + regression rename (content bundling).
+- **W5:** Apone's `b346157` swept all of Hicks's frontend
+  implementation (content bundling, opposite lane direction).
+
+The W4 author-hygiene preamble fixed IDENTITY at commit-time but
+NOT cross-lane CONTENT bundling. Vasquez's W5 stash-checkpoint
+discipline fixes own-work PRESERVATION but does not stop a
+concurrent agent's `git add` from absorbing your untracked files.
+
+**Production impact.** Zero. Squash-merge collapses per-commit
+authors; the PR-level `Co-authored-by: Copilot` trailer is the
+canonical attribution surface. The work content is correctly each
+agent's per the inbox memos + histories. Functionally complete.
+
+**Wave-6 mitigation — TWO new disciplines required:**
+
+1. **Per-invocation `git -c user.name=X -c user.email=Y commit ...`
+   instead of `git config user.name X` + later `git commit`.** The
+   `-c` form is race-safe because the identity is bound to the
+   exact `commit` invocation and cannot drift between SET and
+   COMMIT. This RETIRES the W4 start-of-prompt `git config
+   user.name` step (which works at the per-invocation level but
+   is vulnerable to interleaved agent runs rewriting `.git/config`
+   between commits).
+
+2. **Coordinator-side `lockfile`-based mutex for `git add` +
+   `commit` sequences.** Agents acquire `/tmp/squad-git-lock` via
+   `flock` (or repo-local equivalent) before any `git add` / `git
+   commit` sequence so a concurrent agent's `git add` cannot
+   absorb your untracked files between your `git add` and your
+   `git commit`. The mutex is held only for the
+   `add → status verify → commit` critical section (≤30s typical),
+   so it doesn't serialise the agents' overall work — just the
+   git-write critical section.
+
+**Both disciplines MUST be added to Wave-6 prompts** alongside
+the W4 author-hygiene preamble + W5 stash-checkpoint discipline.
+Stack:
+- **Identity:** per-invocation `git -c user.name=… -c user.email=… commit` (W6).
+- **Own-work preservation:** `git stash --include-untracked` per logical chunk (W5, `docs/agent-handoff-protocol.md`).
+- **Cross-agent isolation:** `flock /tmp/squad-git-lock git add … && git commit …` mutex (W6).
+
+### Patterns locked this wave (forward-applicable)
+
+- **`scene-shell` <500 kB Wave-2 target finally closed in Wave 5
+  via the lazy `three-renderer` chunk pattern.** The renderer
+  graph (three.js + AssetLoader + Game + World + MainView +
+  ClientUi) is dynamic-imported by a microscopic ~80-line
+  coordinator that mints `scene-shell-ready`. Parcel naturally
+  splits the heavy graph at the `asset-loader`/`game` import
+  boundary into two sub-chunks (144.9 kB + 724.7 kB) that load in
+  parallel from SW cache. **Pattern: any monolithic chunk that's
+  blocking first-paint can usually be peeled into a thin
+  coordinator + a lazy renderer if the static-import boundary is
+  clean.** Hicks's bundle-size memo §"Headline" + the W5 footer
+  in `tests/selectors.md` capture the migration narrative.
+
+- **`AuthTokenResponse` envelope is a `sealed record` with
+  per-property `[JsonPropertyName]` + a `BearerTokenType`
+  compile-time constant.** This is the canonical shape for any
+  externally-consumed JSON envelope shipped from
+  `Mahjong.Autotable.Api`: typed record (not anonymous object),
+  explicit JSON property names (not relying on naming policies),
+  compile-time constants for RFC literals (so a refactor or rename
+  is a build break, not a wire-incompatibility shipped to prod).
+
+- **JWKS endpoint reserved as 404 + `Cache-Control: no-store`
+  ahead of the Phase L RS256 flip.** Any future cache-bypass slot
+  (e.g. a `/.well-known/...` resource that doesn't exist yet but
+  will) should ship the route NOW with `no-store` so no CDN can
+  pin a long-TTL parent-level 404 against it. Pattern: reserve
+  cache-sensitive URL slots one wave before you need them.
+
+- **Prometheus labeled counters keyed by `(table, reason)` with
+  null/empty/whitespace normalisation.** Null/empty labels MUST
+  collapse to canonical fallbacks (`"unknown"` / `ReasonUnknown`)
+  or a single noisy missing label sprays cardinality through the
+  TSDB. `HELP` + `TYPE` preambles MUST be emitted even with zero
+  events so a parser treats the metric as "observed-zero" not
+  "metric-missing". Stable label-set ordering (metric → table →
+  reason) keeps the exposition byte-stable across scrapes.
+
+- **VoiceHub spectator-vs-not-seated split via snapshot presence.**
+  `snapshotAvailable ? ReasonSpectator : ReasonNotSeated` —
+  snapshot-present + no seat means an observer of a live table
+  (UI: "you're a spectator"); snapshot-missing means the table
+  isn't hydrated yet (UI: "please retry"). Owners bypass both
+  reasons. Pattern: when two failure modes share a wire constant,
+  prefer the cheapest discriminator (snapshot presence here) over
+  a new server-side enum.
+
+- **Legacy-alias `IStartupFilter` migration logger with
+  `Interlocked` at-most-once latch.** When deprecating a config
+  key, ship the migration logger one wave BEFORE removing the
+  alias. `PostConfigure<TOptions>` maps legacy onto canonical at
+  startup; the `IStartupFilter` logs once per process when the
+  legacy key is present. Pre-emptive — no production deployment
+  needs to be using the alias today; the logger ensures any
+  future user sees the warning the first time their app boots.
+
+- **Generic SLSA generator over container generator for
+  multi-subject predicates.** The generic generator
+  (`generator_generic_slsa3.yml@v2.0.0`) accepts a base64
+  `sha256sum`-format subjects list of arbitrary length, so one
+  DSSE envelope can cover image-manifest + SBOM under one
+  Sigstore signature + one Rekor entry. Container generator is
+  single-subject only; a parallel SBOM attestation is exactly the
+  audit gap an auditor can't cross-correlate. Trade-off: no
+  auto-OCI-sidecar — covered by a follow-up `cosign attest
+  --type slsaprovenance1` job.
+
+- **Kyverno `attestations:` block = content-pin + signer-pin
+  belt-and-suspenders.** Signer-pin alone admits a predicate
+  signed by the correct workflow for someone else's fork.
+  Content-pin alone admits a predicate signed by a non-generator
+  identity. Together they exclude both attack surfaces. Rollback
+  is graceful: comment out the `attestations:` block during an
+  emergency hotfix, the `attestors:` cosign-signature gate still
+  fires.
+
+- **`workflow_dispatch`-only for full-history scans.** A
+  full-graph `fetch-depth: 0` walk is a 5-30 min runner-minute
+  hit + a non-trivial rotate-then-purge operator response on
+  findings. The W4 `secrets-scan.yml` (PR diff + nightly cron)
+  covers forward motion; a sweep is a quarterly /
+  post-incident gate, never a per-PR gate.
+
+- **Sticky-issue alerting for cron probes.** Naïve "create issue
+  on failure" workflows spam one issue per failed run during an
+  ongoing outage. Sticky pattern: search by EXACT title match,
+  open if absent / update if present / re-open if closed; close
+  with a comment on recovery. Reusable template for any
+  cron-driven probe.
+
+- **Wave-N+1 mirroring rule for prod-only data planes.** Any
+  prod-only data plane shipped in wave N (e.g. the W4
+  `mahjong-jwt-keys` ExternalSecret) MUST mirror into staging in
+  wave N+1 (W5 `mahjong-jwt-keys-staging`). Otherwise the smoke
+  test exercises the singular-key fallback path instead of the
+  array-binding path it's supposed to gate.
+
+- **Terraform manages infra, helm manages workloads — never
+  both in one tfstate.** The Apone W5 bootstrap module
+  provisions VPC + EKS + RDS + ECR + GH OIDC; cluster add-ons
+  (ALB controller, cert-manager, ESO, Kyverno) ship via `helm
+  install` in the post-bootstrap runbook. Mixing makes add-on
+  upgrades require `terraform apply` cycles (slow + drift-prone)
+  and each add-on's IAM/CRD coupling is clearer to audit
+  per-helm-chart than buried in a 600-line terraform file.
+
+- **`RegressionHostFixture` via `[CollectionDefinition]` is the
+  canonical xUnit pattern for shared `WebApplicationFactory`.**
+  The W4 disposal race (`ObjectDisposedException` on shared
+  sqlite connection when two collections raced through teardown)
+  is eliminated by scoping factory lifetime to the COLLECTION
+  rather than the class. xUnit's parallel scheduler can't tear
+  it down while another fact still holds an `HttpClient`. The
+  shared fixture pattern composes trivially across multiple
+  classes (W6+ regression class split if it grows past ~80 facts).
+  **`MaxParallelThreads=2` workaround RETIRED.**
+
+- **`TESTING_SHIM`-gated test helpers via
+  `<DefineConstants>$(DefineConstants);TESTING_SHIM</DefineConstants>`
+  on the test project ONLY.** Production-leakage guarantee
+  documented in `docs/test-shims.md`. Three-overload pattern
+  (cookie-only / DB-aware / role-stamped) covers the common
+  session-mint shapes; FK-aware ordering (insert `PlayerProfile`
+  first so `PlayerAuthIdentity.PlayerId` cascade FK is satisfied)
+  is the gotcha.
+
+- **Stash-checkpoint discipline formalised in
+  `docs/agent-handoff-protocol.md`.** Each agent runs `git stash
+  --include-untracked -m "<name>-w<N>-uncommitted"` after each
+  logical chunk so the work survives a neighbouring agent's
+  `git reset --hard HEAD~1`. Pop immediately before the agent's
+  own commit. PAIRS with (does NOT replace) the W4 author-hygiene
+  preamble and the (incoming) W6 `git -c user.* commit` race-safe
+  identity binding + `flock` mutex.
+
+- **Typed `VoiceReason` discriminated union with `never`-narrowing
+  exhaustiveness guard.** `const _exhaustive: never = reason` at
+  the bottom of the switch makes adding a new union member without
+  updating the mapper a compile-time error
+  (`Type 'X' is not assignable to type 'never'`). Two-layer entry
+  points: typed `voiceReasonToText(VoiceReason)` for internal
+  callers + `voiceReasonStringToText(string)` boundary wrapper
+  that normalises kebab/snake/camel/legacy aliases and falls back
+  to a generic toast for unknown tokens — preserves the W4
+  default-case behaviour at the wire boundary without sacrificing
+  exhaustiveness on the typed entry point.
+
+### Open items / hand-offs into Wave 6
+
+**Bishop (carryover — to be done as Wave-6 surfaces land):**
+
+1. **Drop legacy singular `AuthOptions.JwtSigningKey`** per
+   `docs/jwt-rotation.md` §7 (one more wave deferred from W5 —
+   the W4 `JwtSigningKeyProvider_FallsBackToLegacySingular` test
+   still asserts the legacy path). Either delete or flip to a
+   hard-assertion that the property is gone. Apone confirms SSM
+   rotation works against the array first.
+2. **Add `kid` to the JWT validation metric** + drop the
+   `Auth__JwtSigningKey` singular SSM parameter once code-side
+   binding is removed.
+3. **`VoiceHubResult.ReasonSpectatorNotAllowed`** — Bishop may
+   add a second spectator reason for spectator-explicitly-disabled
+   rooms (currently `BishopW5SurfaceTests.SpectatorReason_DistinctFromNotSeated`
+   only pins that `ReasonSpectator !== ReasonNotSeated`).
+4. **Wire frontend `seedNumber=0` precedence** end-to-end (W4
+   seed `0` demotion path already supported by the inline modal
+   dialog).
+
+**Hicks (carryover):**
+
+1. **`<link rel="modulepreload">` in `index.html` for both
+   `three-renderer` sub-chunks** to parallelise the cold-path
+   dynamic-import resolver. Hicks deferred so they can measure
+   first.
+2. **Tree-shake three.js** — we use ~30% of the 575 kB ; unused
+   add-ons (post-processing passes, examples loaders the asset
+   pipeline doesn't touch) are dead weight. Plausibly halves
+   renderer transfer.
+3. **Split `scene-effects.<hash>.js` (60 kB GameUi + MoveLog)**
+   into per-modal sub-chunks (result modal, settings drawer,
+   replay viewer, claim window) if any becomes a hot spot.
+4. **Replace `ConnectionTableMap` static** in `VoiceHub` with a
+   scoped service (cleaner DI shape; loses the zero-allocation
+   fast path on relay — not urgent, bounded by active connections).
+
+**Apone (carryover):**
+
+1. **Tighten GH-Actions OIDC role** — `mahjong-${env}-github-deploy`
+   has broad `ecr:*` / `eks:Describe*` / `ssm:Get*` for the
+   bootstrap. W6 audit hardening narrows to the exact actions the
+   deploy workflow needs.
+2. **Multi-region terraform module** — copy `prod.tfvars` →
+   `dr-us-west-2.tfvars` with a non-overlapping `/16` once we want
+   DR.
+3. **Cluster add-ons in a meta-chart-of-charts.** Manual sequence
+   in `README.md` §3 today; meta-chart enforces idempotent install
+   ordering (ESO → cert-manager → AWS-LBC → Kyverno) — W6+ DX
+   improvement.
+4. **Route53 + ACM + WAF** in a separate terraform module once
+   `mahjong.example.com` is registered.
+5. **Pre-prod canary** (Hudson W6 ask) leans on the now-symmetric
+   staging surface for array-binding regression detection.
+6. **HSTS preload submission gate** — `docs/hsts-preload.md`'s
+   2-week dry-run gate (now cron-probed by `hsts-readiness-check.yml`)
+   MUST pass before clicking submit at hstspreload.org. Operator
+   action item for Stephen.
+
+**Vasquez (carryover):**
+
+1. **Flip W5 soft-passes to hard-asserts** as the surfaces land
+   in W6: JWKS endpoint Playwright soft-pass (dev preview routes
+   `/api/auth/.well-known/jwks.json`), `AuthTokenResponse`
+   envelope `tokenType` + `expiresInSeconds` (Bishop's W5 record
+   landed in `eb339d7` — flip the contract-gap probe),
+   `VoiceHubResult.ReasonSpectatorNotAllowed` once Bishop adds it,
+   `three-renderer` chunk emission strict assert once W6 confirms
+   the chunk hashes are stable.
+2. **Adopt `docs/agent-handoff-protocol.md` stash discipline in
+   Wave 6 prompts** (Scribe recommendation).
+3. **Promote `WithDirectSession` overloads** as the canonical
+   session-mint helper across the W6 contract suites; deprecate
+   any remaining `/api/auth/dev-login` round-tripping in tests.
+4. **Regression-class split** if `Wave1ThroughKW5RegressionTests`
+   grows past ~80 facts — sibling
+   `Wave1ThroughKW5RegressionEnvelopeTests` sharing the same
+   `regression-host` collection.
+
+**Scribe / coordinator (NEW for W6 prompt template):**
+
+1. **Per-invocation `git -c user.name=X -c user.email=Y commit ...`**
+   replaces the W4 start-of-prompt `git config user.name X` step
+   (race-safe identity binding).
+2. **`flock /tmp/squad-git-lock git add … && git commit …` mutex**
+   serialises the git-write critical section so a concurrent
+   agent's `git add` cannot absorb your untracked files between
+   your `git add` and your `git commit`.
+3. **Carry stash-checkpoint discipline forward** (W5
+   `docs/agent-handoff-protocol.md`) — it stays in W6 alongside
+   the new disciplines.
+
+### Phase K Wave 5 — DONE.
+
+---
+
 

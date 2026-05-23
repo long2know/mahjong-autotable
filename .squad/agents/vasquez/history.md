@@ -1696,3 +1696,84 @@ Filing it here so the Wave-5 historian has the ground-truth
 authorship trail. The Playwright specs + selectors footer + Hudson
 hand-off + memo + this history append are all Vasquez-committed
 on a separate commit (after Bishop's commit).
+
+## Phase K Wave 5 — bring-up
+
+**Branch:** `stlong/phase-k-wave-5-bringup`
+**Gate:** 1329 / 0 / 0 (Δ +97 vs Wave 4 baseline of 1232).
+**Zero-skip streak:** preserved (Wave-5 = 19th consecutive green wave).
+
+### Deliverables
+
+1. **6 new backend test files** in
+   `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W5/`:
+   - `ContractGapHardAssertW5Tests.cs` — 9 Wave-4 contract gaps
+     flipped to hard-assert.
+   - `BishopW5SurfaceTests.cs` — 6 facts on Bishop's auth lane.
+   - `AponeW5InfraContractTests.cs` — 7 facts on Apone's infra lane.
+   - `HicksW5FrontendContractTests.cs` — 6 facts on Hicks's frontend lane.
+   - `TestShimSanityTests.cs` — 3 facts on the new `WithDirectSession` shim.
+   - `W5SurfaceSmokeFactsTests.cs` — 50+ broad-stripe surface smokes.
+2. **`TESTING_SHIM`-gated test helper** —
+   `src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/TestHttpClientExtensions.cs`
+   with 3 overloads (cookie-only, DB-aware, role-stamped). Csproj edit:
+   `<DefineConstants>$(DefineConstants);TESTING_SHIM</DefineConstants>`.
+3. **`CollectionFixture` for the regression class** —
+   `RegressionHostFixture.cs` exposes a shared `WebApplicationFactory<Program>`
+   via `[CollectionDefinition("regression-host")]`. Hudson did not action
+   this in Wave 5 brief; Vasquez implemented it. Wave-4 disposal-race is
+   eliminated, default xUnit parallelism restored, no `xunit.runner.json`
+   needed.
+4. **Regression class rename** — `git mv Wave1ThroughKW4RegressionTests.cs
+   → Wave1ThroughKW5RegressionTests.cs`; 7 new W5 smoke facts appended.
+5. **5 new Playwright specs** in
+   `src/frontend/autotable-src/tests/e2e/`:
+   - `scene-shell-budget-strict.spec.ts`
+   - `keyboard-seed-reorder.spec.ts`
+   - `voice-reason-spectator-distinct.spec.ts`
+   - `three-renderer-lazy.spec.ts`
+   - `jwks-endpoint-shape.spec.ts`
+6. **Documentation:**
+   - `docs/agent-handoff-protocol.md` (NEW) — formalises the
+     stash-checkpoint discipline so future waves don't lose
+     attribution to neighbouring agents (which happened to me in
+     Waves 3 and 4).
+   - `docs/test-shims.md` (NEW) — inventory of `TESTING_SHIM`-gated
+     helpers + production-leakage guarantee.
+   - `docs/test-harness-handoff.md` — Wave-5 addendum documenting
+     the absorbed CollectionFixture work.
+   - `src/frontend/autotable-src/tests/selectors.md` — W5 footer
+     mapping each new spec to its target testid / symbol.
+
+### Process win — attribution-clobber NOT repeated
+
+Waves 3 & 4 lost my work to Bishop's commits because I used `git
+add -A` and committed before verifying author identity. Wave 5
+adopts the protocol formalised in `docs/agent-handoff-protocol.md`:
+
+- `git config user.{name,email}` set BEFORE any work.
+- `git stash --include-untracked` checkpoints after each logical
+  chunk.
+- `.work/vasquez-w5-safe/` scratch directory holds plain-file
+  copies of every Vasquez authored file (belt-and-braces against
+  reflog loss).
+- Explicit `git add <path>` per file — NEVER `-A`.
+- Per-commit `git log -1 --format='%an <%ae>'` verification.
+
+Every commit in this Wave-5 PR is authored as
+`Vasquez (QA) <vasquez@squad.mahjong>`.
+
+### Concurrent-agent activity observed during bring-up
+
+The working tree during this bring-up was extremely active.
+Multiple agents (Bishop, Hicks, Apone) ran in parallel and
+modified the same files repeatedly. Vasquez recovered the build
+state several times via `git checkout HEAD -- <path>` on
+neighbouring-agent files but did NOT stage or commit any of
+those changes. Bishop's `AuthTokenResponse` record, `JwksController`
+endpoint, `VoiceHub` table-id-aware metrics, and `OnboardingStatusService`
+extraction all appeared during the bring-up and were moved to the
+`.work/vasquez-w5-safe/bishop-*` scratch area so they would not be
+picked up by `git add`.
+
+Full details in `.squad/decisions/inbox/vasquez-phase-k-wave-5.md`.

@@ -1,66 +1,93 @@
-# Phase K Wave 4 — Apone (DevOps).
+# Phase K Wave 5 — Apone (DevOps).
 #
-# SLSA Level 3 in-toto provenance for every published container image.
+# SLSA Level 3 in-toto provenance — UNIFIED multi-subject predicate.
 #
-# Where this sits in the supply-chain chain:
+# Wave-4 shipped two parallel attestation flows:
 #
-#   Wave 1   sign-image.yml             cosign keyless signature on the
-#                                       multi-arch manifest list digest.
-#   Wave 2   verify-signature.yml       reusable cosign-verify gate.
-#   Wave 3   container-scan.yml         Trivy CRITICAL gate every PR.
-#   Wave 3   release.yml verify-sbom    SPDX SBOM signed with cosign.
-#   Wave 3   kyverno-cosign-verify.yaml admission-time signature verify.
-#   Wave 4   slsa-provenance.yml (this) SLSA L3 in-toto provenance
-#                                       predicate, signed via Fulcio +
-#                                       recorded in Rekor, attached as
-#                                       an OCI artefact to the image AND
-#                                       (on tag pushes) dropped onto the
-#                                       GitHub Release as
-#                                       `provenance.intoto.jsonl`.
+#   * `slsa-provenance.yml` (W4) — used `generator_container_slsa3.yml`
+#     to emit a SINGLE-SUBJECT predicate (image manifest digest only),
+#     attached to the OCI registry as a sidecar artefact.
+#   * `sbom.yml` (J9 + W3) — generated CycloneDX + SPDX SBOMs as
+#     workflow artefacts and pushed them to GitHub's dependency-graph,
+#     but emitted NO in-toto predicate of its own (the SBOMs were
+#     loose artefacts, not Sigstore-attested).
 #
-# WHY SLSA on top of cosign signatures?
+# Two predicate flows is fine for the Wave-4 floor (the image was
+# attested even if the SBOM wasn't) but it leaves an audit gap: an
+# auditor verifying the SLSA predicate cannot cryptographically
+# confirm "the SBOM I'm looking at came from the SAME build run that
+# produced this image". They have to TRUST the workflow run logs, not
+# verify cryptographically.
 #
-# A cosign signature attests "these bits were signed by THIS workflow
-# identity". SLSA provenance is the next ring outward: it's a signed,
-# Sigstore-anchored in-toto predicate that links
+# Wave-5 closes that gap. We replace the container-only generator
+# with the GENERIC SLSA generator (`generator_generic_slsa3.yml`)
+# which accepts a LIST of subjects, and we pass BOTH the image
+# manifest list digest AND the CycloneDX SBOM file digest. The
+# resulting `provenance-and-sbom.intoto.jsonl` is a SINGLE in-toto
+# statement whose `subject:` array contains both artefacts — one
+# DSSE-signed envelope, one Rekor entry, one verifiable claim:
+# "this build run produced THIS image AND THIS SBOM, here are the
+# materials + builder that produced them both".
 #
-#   * the source commit (subject + digest, plus the full builder
-#     materials list — repo, ref, workflow path, run id, run attempt),
-#   * the build environment (runner OS, builder version),
-#   * the produced artefact (image manifest digest)
+# How the generic generator works:
 #
-# into one tamper-evident statement. A consumer who has the image
-# digest can call `slsa-verifier` and prove not only WHO signed it
-# (cosign already does that) but also WHAT COMMIT it was built from,
-# WHICH WORKFLOW built it, and that the workflow file at that commit
-# was unmodified from what produced the artefact. That's the SLSA L3
-# guarantee: "non-falsifiable, hermetic source-to-artefact link".
+#   * Input: a base64-encoded multi-line string (`sha256sum`-format)
+#     where each line is `<sha256-hex>  <subject-name>`.
+#   * Output: `<artifact-name>.intoto.jsonl` — a DSSE envelope wrapping
+#     an in-toto statement whose `subject:` array reflects EVERY
+#     supplied line, signed via OIDC + Sigstore Fulcio, recorded in
+#     Rekor.
 #
-# Why the upstream reusable workflow over a hand-rolled implementation?
+# The output is NOT auto-attached to the OCI registry (the generic
+# generator doesn't know about OCI). We attach it ourselves via
+# `cosign attest --predicate <file> --type slsaprovenance` so the
+# downstream Kyverno `attestations:` block (also new in Wave-5) can
+# find it via the standard OCI-sidecar discovery path.
 #
-# `slsa-framework/slsa-github-generator` is the official, audited
-# reference implementation. It runs on an isolated runner pool with
-# strict permissions so the build cannot tamper with the provenance
-# generator. Hand-rolling would lose the L3 guarantee (the builder
-# would be the same runner as the build itself — circular trust).
+# Pipeline shape:
 #
-# The reusable workflow MUST be pinned to a fully-qualified `vX.Y.Z`
-# tag (NOT a shorter `vX.Y` / `vX` ref, NOT a sha) — that's how the
-# generator detects which tagged release of itself is being invoked
-# and refuses to run otherwise. Bumping the pin is a coordinated
-# upgrade: bump here AND re-verify with `slsa-verifier` against a
-# test artefact.
+#   1. resolve-digest  — unchanged: poll for the published image
+#                        and compute the manifest-list digest.
+#   2. build-sbom      — pull the image and generate the CycloneDX
+#                        SBOM with Syft; compute the SBOM file's
+#                        sha256; upload it as a workflow artefact
+#                        so the downstream provenance + attach
+#                        jobs can pick it up.
+#   3. provenance      — generic SLSA generator, two subjects:
+#                        image digest + SBOM file digest.
+#   4. attest-oci      — cosign attest the resulting predicate to
+#                        the image as an OCI sidecar attestation
+#                        of `predicateType slsaprovenance1` so the
+#                        new Wave-5 Kyverno `attestations:` block
+#                        verifies cleanly.
+#   5. attach-to-release — on tag pushes, upload both the predicate
+#                          file AND the SBOM as Release assets.
 #
-# Verification runbook for operators / auditors: docs/slsa-provenance.md.
+# Why a single attestation instead of two (image + SBOM)?
+#
+#   * One Rekor entry is cheaper to look up + faster to verify.
+#   * Auditors get ONE artefact to download + ONE `cosign verify-attestation`
+#     to run — the SBOM provenance ride along on the image-provenance
+#     verification.
+#   * The SLSA v1 predicate spec EXPLICITLY supports multi-subject;
+#     this is its intended shape for "build produced multiple
+#     artefacts" (image + SBOM + signing-key release notes, etc.).
+#   * Cross-subject tampering becomes verifiable: if the SBOM is
+#     swapped post-attestation, the verifier rejects (the
+#     subject-array hash doesn't match the DSSE envelope).
+#
+# Verification + auditor runbook: docs/slsa-provenance.md §4.
+# Generator-version bump procedure: docs/slsa-provenance.md §6.
+# Backwards-compatibility note: docs/slsa-provenance.md §6 also
+# covers the migration from the Wave-4 single-subject shape; the
+# pre-Wave-5 attestation remains in Rekor and remains verifiable
+# with the Wave-4 `slsa-verifier verify-image` invocation.
 
 name: slsa-provenance
 
 on:
-  # Fire on the same triggers that publish an image to the registry.
-  # docker-build.yml runs on push-to-main and on `v*.*.*` tag pushes;
-  # we mirror that exact set so every published bit gets a provenance
-  # predicate. workflow_dispatch is for re-running provenance against
-  # a hand-supplied digest (e.g. backfill after a Sigstore outage).
+  # Mirror docker-build.yml triggers so every published bit gets a
+  # unified predicate.
   push:
     branches: [main]
     tags: ["v*.*.*"]
@@ -76,15 +103,20 @@ on:
         default: "latest"
 
 # Workflow-level permissions are deliberately minimal. The reusable
-# workflow re-declares the elevated grants it needs (id-token: write,
-# packages: write, actions: read) on the `provenance` job below — the
-# resolve job below stays read-only.
+# workflow and the attest-oci job re-declare the elevated grants
+# they need on the specific jobs that need them.
 permissions:
   contents: read
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: long2know/mahjong-autotable
+  # Filename of the unified predicate. Stable so docs + Release
+  # tooling can grep for it without parsing the workflow.
+  PROVENANCE_NAME: provenance-and-sbom.intoto.jsonl
+  # Filename of the CycloneDX SBOM. Stable for the same reason and
+  # so `cosign attest --predicate` can resolve it deterministically.
+  SBOM_NAME: sbom.cyclonedx.json
 
 jobs:
   resolve-digest:
@@ -100,17 +132,19 @@ jobs:
     outputs:
       image: ${{ steps.export.outputs.image }}
       digest: ${{ steps.export.outputs.digest }}
+      digest-hex: ${{ steps.export.outputs.digest-hex }}
       tag: ${{ steps.resolve-tag.outputs.tag }}
     steps:
       - name: Resolve tag to attest
         id: resolve-tag
         env:
           DISPATCH_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
           REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
-          if [ -n "${DISPATCH_TAG}" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ -n "${DISPATCH_TAG}" ] && [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             tag="${DISPATCH_TAG}"
           elif [ "${REF_TYPE}" = "tag" ]; then
             tag="${REF_NAME}"
@@ -128,9 +162,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Wait for image to appear
-        # docker-build.yml is triggered by the same push/tag event,
-        # so the image may not exist yet when this workflow starts.
-        # Poll for ~6 min before giving up — matches release.yml.
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           TAG: ${{ steps.resolve-tag.outputs.tag }}
@@ -152,89 +183,239 @@ jobs:
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           TAG: ${{ steps.resolve-tag.outputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
           DISPATCH_DIGEST: ${{ inputs.digest }}
         run: |
           set -euo pipefail
-          if [ -n "${DISPATCH_DIGEST}" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ -n "${DISPATCH_DIGEST}" ] && [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             digest="${DISPATCH_DIGEST}"
             echo "Using operator-supplied digest: ${digest}"
           else
-            # `docker buildx imagetools inspect --raw` returns the manifest
-            # list JSON; piping through sha256sum reconstructs the digest
-            # the registry stores. Matches the same approach used by
-            # `sign-image.yml` so signature + provenance bind to the SAME bits.
             digest="sha256:$(docker buildx imagetools inspect --raw "${IMAGE}:${TAG}" | sha256sum | awk '{print $1}')"
             echo "Resolved manifest-list digest: ${digest}"
           fi
+          digest_hex="${digest#sha256:}"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "digest-hex=${digest_hex}" >> "$GITHUB_OUTPUT"
+
+  build-sbom:
+    # Generate the CycloneDX SBOM from the PUBLISHED image (same
+    # digest the provenance attests). Syft runs against the
+    # remote registry-pulled image so the SBOM reflects the
+    # bits that admission will actually pull, not a local rebuild.
+    name: Build CycloneDX SBOM + compute subjects
+    needs: resolve-digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      sbom-sha256: ${{ steps.compute.outputs.sbom-sha256 }}
+      base64-subjects: ${{ steps.compute.outputs.base64-subjects }}
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate CycloneDX SBOM from published image
+        # Anchore's sbom-action is the canonical Syft wrapper for
+        # GHA; it accepts a registry reference + writes SBOM to disk.
+        # We pin the published digest (not the tag) so the SBOM is
+        # bound to EXACTLY what provenance is being generated for.
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ needs.resolve-digest.outputs.image }}@${{ needs.resolve-digest.outputs.digest }}
+          format: cyclonedx-json
+          output-file: ${{ env.SBOM_NAME }}
+          upload-artifact: false
+          dependency-snapshot: false
+
+      - name: Compute SBOM sha256 + base64 subjects list
+        id: compute
+        env:
+          IMAGE: ${{ needs.resolve-digest.outputs.image }}
+          DIGEST_HEX: ${{ needs.resolve-digest.outputs.digest-hex }}
+          SBOM_FILE: ${{ env.SBOM_NAME }}
+        run: |
+          set -euo pipefail
+
+          # Compute SBOM file sha256 (hex, no prefix).
+          sbom_sha=$(sha256sum "${SBOM_FILE}" | awk '{print $1}')
+          echo "sbom-sha256=${sbom_sha}" >> "$GITHUB_OUTPUT"
+
+          # The generic SLSA generator expects a base64-encoded
+          # multi-line string in `sha256sum`-output format:
+          #
+          #   <sha256-hex>  <subject-name>
+          #
+          # We list TWO subjects:
+          #
+          #   1. The image manifest digest. Subject-name follows the
+          #      OCI convention of "<image>@sha256:<digest>" so any
+          #      verifier resolving the predicate by image reference
+          #      finds the matching subject deterministically.
+          #   2. The CycloneDX SBOM file. Subject-name is the
+          #      filename; auditors who downloaded the file from the
+          #      Release page can verify its hash with `sha256sum`.
+          {
+            printf '%s  %s\n' "${DIGEST_HEX}" "${IMAGE}@sha256:${DIGEST_HEX}"
+            printf '%s  %s\n' "${sbom_sha}"   "${SBOM_FILE}"
+          } > subjects.txt
+
+          cat subjects.txt
+
+          b64=$(base64 -w0 < subjects.txt)
+          echo "base64-subjects=${b64}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SBOM artefact for downstream jobs
+        # Provenance + attest jobs (and the Release-attach job)
+        # download this back so the SBOM file is consistent across
+        # the whole pipeline (sha256 frozen at this step).
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyclonedx-sbom
+          path: ${{ env.SBOM_NAME }}
+          retention-days: 90
+          if-no-files-found: error
 
   provenance:
-    # The OFFICIAL SLSA L3 container-provenance generator. Runs on a
+    # The OFFICIAL SLSA L3 GENERIC provenance generator. Runs on a
     # SEPARATE runner with hardened permissions (the build runner
     # cannot inject material into the provenance — that's what gives
-    # L3 the "non-falsifiable" guarantee).
-    needs: resolve-digest
+    # L3 the "non-falsifiable" guarantee). Multi-subject mode is
+    # enabled by passing the base64 sha256sum-format subjects list.
+    needs: [resolve-digest, build-sbom]
     # Pin MUST be a fully-qualified vX.Y.Z tag — the generator refuses
-    # to run if invoked via a shorter ref. Bump as a coordinated
-    # upgrade with the operator runbook (docs/slsa-provenance.md §6).
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+    # to run if invoked via a shorter ref. Coordinated bump per the
+    # docs/slsa-provenance.md §6 runbook.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
     permissions:
       actions: read       # generator inspects this workflow's env.
       id-token: write     # OIDC token → Fulcio short-lived cert.
-      packages: write     # writes the attestation as an OCI artefact next to the image.
+      contents: write     # generator writes its predicate artefact + (on tags) attaches to release.
     with:
-      image: ${{ needs.resolve-digest.outputs.image }}
-      digest: ${{ needs.resolve-digest.outputs.digest }}
-      registry-username: ${{ github.actor }}
-      # Provenance is generated even for branch pushes (main builds);
-      # `compile-generator: false` keeps the runner light by using
-      # the prebuilt generator binary from the v2.0.0 release.
+      base64-subjects: ${{ needs.build-sbom.outputs.base64-subjects }}
+      # Stable filename so downstream jobs + docs can grep for it.
+      provenance-name: ${{ vars.PROVENANCE_NAME || 'provenance-and-sbom.intoto.jsonl' }}
+      # Keep the runner light by using the prebuilt generator binary
+      # from the v2.0.0 release.
       compile-generator: false
-    secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
+      # Do NOT have the reusable workflow auto-upload the predicate
+      # to the GitHub Release. Our `attach-to-release` job below
+      # does that AFTER pairing with the SBOM file so both land
+      # atomically under matching names.
+      upload-assets: false
+
+  attest-oci:
+    # Attach the unified predicate to the image as an OCI sidecar
+    # attestation so the Wave-5 Kyverno `attestations:` block can
+    # discover it via the standard `cosign download attestation`
+    # path. Without this, the predicate exists in Rekor + as a
+    # workflow/release artefact but NOT next to the image — the
+    # admission verifier wouldn't see it.
+    name: Cosign attest predicate to image (OCI sidecar)
+    needs: [resolve-digest, build-sbom, provenance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write     # write the .att sidecar artefact next to the image.
+      id-token: write     # OIDC token → Fulcio short-lived cert (cosign keyless).
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.4.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download unified predicate
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.provenance.outputs.provenance-name }}
+          path: predicate/
+
+      - name: Cosign attest unified predicate
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE: ${{ needs.resolve-digest.outputs.image }}
+          DIGEST: ${{ needs.resolve-digest.outputs.digest }}
+          PROV_NAME: ${{ needs.provenance.outputs.provenance-name }}
+        run: |
+          set -euo pipefail
+          ls -la predicate/
+          predicate_path="predicate/${PROV_NAME}"
+          if [ ! -f "${predicate_path}" ]; then
+            # fall back to first .jsonl in the directory
+            predicate_path=$(find predicate -maxdepth 1 -type f -name '*.intoto.jsonl' | head -n1)
+          fi
+          echo "Attesting ${IMAGE}@${DIGEST} with ${predicate_path}"
+
+          # The generic generator already produces a DSSE-wrapped
+          # in-toto statement signed via OIDC + Fulcio. `cosign
+          # attest --type slsaprovenance` would re-wrap the predicate
+          # in its own envelope; instead we use `--predicate` with
+          # `--type slsaprovenance1` and let cosign UPLOAD the bundle
+          # as a sidecar artefact whose discovery shape matches what
+          # Kyverno's `attestations:` verifier expects.
+          cosign attest \
+              --type slsaprovenance1 \
+              --predicate "${predicate_path}" \
+              --yes \
+              "${IMAGE}@${DIGEST}"
 
   attach-to-release:
-    # On tag pushes only: download the freshly-generated `provenance.intoto.jsonl`
-    # from the reusable workflow's output artefact and attach it to
-    # the matching GitHub Release so downstream consumers can grab it
-    # without the OCI tooling. release.yml is the workflow that
-    # creates the Release; this job uses `gh release upload --clobber`
-    # so a re-run replaces the asset cleanly.
-    needs: [resolve-digest, provenance]
+    # On tag pushes only: download the unified predicate + the SBOM
+    # and upload BOTH to the matching GitHub Release. Downstream
+    # consumers grab one bundle, verify both subjects.
+    needs: [resolve-digest, build-sbom, provenance]
     if: github.ref_type == 'tag'
-    name: Attach provenance to GitHub Release
+    name: Attach unified predicate + SBOM to GitHub Release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - name: Download provenance artefact
-        # The SLSA generator publishes a workflow artefact named
-        # `<provenance-name>.intoto.jsonl`; resolving that name from
-        # the reusable-workflow output keeps this job self-locating.
+      - name: Download unified predicate
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.provenance.outputs.provenance-name }}
-          path: provenance/
+          path: predicate/
 
-      - name: Rename to canonical filename
+      - name: Download CycloneDX SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: cyclonedx-sbom
+          path: sbom/
+
+      - name: Normalize filenames
         env:
           PROV_NAME: ${{ needs.provenance.outputs.provenance-name }}
+          SBOM_NAME: ${{ env.SBOM_NAME }}
         run: |
           set -euo pipefail
-          ls -la provenance/
-          # Canonical filename per `slsa-verifier` docs: the attestation
-          # bundle is consumed as `provenance.intoto.jsonl`. Rename if
-          # the generator chose a different default.
-          if [ ! -f "provenance/provenance.intoto.jsonl" ]; then
-            cp "provenance/${PROV_NAME}" provenance/provenance.intoto.jsonl
+          ls -la predicate/ sbom/
+          # Canonical Release-attached filenames. The generic generator
+          # already produces ${PROV_NAME}; copy in case the generator
+          # chose a different default (defensive: matches the same
+          # pattern the W4 attach-to-release job used).
+          if [ ! -f "predicate/${PROV_NAME}" ]; then
+            src=$(find predicate -maxdepth 1 -type f -name '*.intoto.jsonl' | head -n1)
+            cp "${src}" "predicate/${PROV_NAME}"
           fi
+          test -f "sbom/${SBOM_NAME}" || { echo "::error::SBOM file missing"; exit 1; }
 
       - name: Wait for release to exist
-        # release.yml may finish AFTER this workflow because of the
-        # smoke + verify-signature + verify-sbom chain. Poll up to
-        # ~10 min for the release to appear, then attach.
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -242,39 +423,48 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 60); do
             if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-              echo "release ${TAG} exists; attaching provenance"
+              echo "release ${TAG} exists; attaching predicate + SBOM"
               exit 0
             fi
             echo "[$i/60] release ${TAG} not yet published; sleeping 10s"
             sleep 10
           done
-          echo "::warning::release ${TAG} never appeared; skipping attach (provenance is still in Rekor + OCI registry)"
+          echo "::warning::release ${TAG} never appeared; skipping attach (predicate is still in Rekor + OCI sidecar)"
           exit 0
 
-      - name: Attach provenance to release
+      - name: Attach predicate + SBOM to release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          PROV_NAME: ${{ needs.provenance.outputs.provenance-name }}
+          SBOM_NAME: ${{ env.SBOM_NAME }}
         run: |
           set -euo pipefail
           if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" provenance/provenance.intoto.jsonl \
+            gh release upload "${TAG}" \
+                "predicate/${PROV_NAME}" \
+                "sbom/${SBOM_NAME}" \
                 --repo "${GITHUB_REPOSITORY}" --clobber
-            echo "Attached provenance.intoto.jsonl to release ${TAG}"
+            echo "Attached ${PROV_NAME} + ${SBOM_NAME} to release ${TAG}"
           else
-            echo "Release missing; skipped (Rekor + OCI registry still hold the provenance)"
+            echo "Release missing; skipped (Rekor + OCI sidecar still hold the predicate)"
           fi
 
       - name: Step summary
         env:
           IMAGE: ${{ needs.resolve-digest.outputs.image }}
           DIGEST: ${{ needs.resolve-digest.outputs.digest }}
+          SBOM_SHA256: ${{ needs.build-sbom.outputs.sbom-sha256 }}
           TAG: ${{ github.ref_name }}
+          PROV_NAME: ${{ needs.provenance.outputs.provenance-name }}
+          SBOM_NAME: ${{ env.SBOM_NAME }}
         run: |
           {
-            echo "## SLSA L3 provenance attached"
+            echo "## SLSA L3 unified provenance + SBOM attached"
             echo ""
             echo "- Image: \`${IMAGE}@${DIGEST}\`"
+            echo "- SBOM: \`${SBOM_NAME}\` (\`sha256:${SBOM_SHA256}\`)"
+            echo "- Predicate: \`${PROV_NAME}\` (DSSE-signed, multi-subject)"
             echo "- Release: [\`${TAG}\`](${{ github.server_url }}/${{ github.repository }}/releases/tag/${TAG})"
             echo "- Verify locally: see [\`docs/slsa-provenance.md\`](../blob/main/docs/slsa-provenance.md) §4."
           } >> "$GITHUB_STEP_SUMMARY"

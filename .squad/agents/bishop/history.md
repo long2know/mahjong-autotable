@@ -2124,3 +2124,103 @@ per-deliverable design, contract-test coverage, hand-off list.
 --nologo --no-build` → **Passed: 1207, Failed: 0, Skipped: 0**
 (1m 43s; +55 over Wave-3 closeout baseline of 1152; 47 facts in
 `tests/Phase_K_W4/` plus the regression refresh, every one green).
+
+---
+
+## Phase K Wave 5 — production deepening
+**Branch:** `stlong/phase-k-wave-5-bringup` (Bishop commit `eb339d7`)
+
+**Goal:** seven backend deliverables on top of Wave-4: pin the JWT
+mint envelope, reserve the JWKS endpoint slot, ship labeled
+Prometheus exposition for VoiceHub, split the spectator/not-seated
+join-reject reasons, ship the `Voice:TurnTtlSeconds` migration
+logger, refresh `docs/api-precedence.md` + `docs/jwt-rotation.md`,
+and lock-in the W4 tournament-seed precedence + onboarding clamp
+(both already shipped — W5 just hard-pins them).
+
+**Notable:**
+
+- New `AuthTokenResponse` record at
+  `src/backend/src/Mahjong.Autotable.Api/Auth/AuthTokenResponse.cs`
+  with five `[JsonPropertyName]` fields — `token`, `expiresAtUtc`,
+  `kid`, `tokenType` (always `"Bearer"`), `expiresInSeconds` (RFC
+  6750 + OAuth 2.0 idiom). `AuthTokenController.Issue()` returns
+  the typed record; `expiresInSeconds` is clamped at zero so a
+  token minted at the expiry boundary never returns a negative TTL.
+- New `AuthTokenController.Jwks()` route at
+  `/api/auth/.well-known/jwks.json` returns 404 +
+  `Cache-Control: no-store` + structured `{ error, algorithm,
+  note }` body. The route reservation prevents CDN/proxy caches
+  from pinning the negative ahead of the Phase L RS256 flip.
+- `VoiceHubMetricsService` gains labeled monotonic counters
+  (`_relayByTable`, `_rejectionByTableReason`,
+  `_joinUnauthorizedByTableReason`) with overloads layered on top
+  of the W4 zero-arg signatures (full back-compat). `Snapshot()`
+  returns a stable-ordered `IReadOnlyList<LabeledMetricSample>`
+  for byte-stable Prometheus exposition. Null/empty labels collapse
+  to canonical `"unknown"` / `ReasonUnknown` so missing labels
+  don't spray cardinality. `VoiceHubMetrics` gains
+  `ReasonUnknown = "unknown"` + `ReasonRateLimited = "rate-limited"`
+  string constants.
+- `VoiceHub` stamps a static `ConnectionTableMap` on `JoinVoice`
+  and reads it via `ResolveTableId()` on every relay so per-table
+  counters can be labeled without re-reading the database. The W5
+  spectator/not-seated split hoists the `TryGetSnapshot` call into
+  a `snapshotAvailable` flag and picks the rejection reason:
+  snapshot present → `ReasonSpectator`; snapshot missing →
+  `ReasonNotSeated`.
+- `MetricsEndpoint.Render` emits the three voice counters
+  (`voice_relay_count_total`, `voice_rate_limit_rejection_total`,
+  `voice_join_unauthorized_total`) with HELP + TYPE preambles
+  unconditionally + labeled samples when non-empty.
+- `VoiceTurnTtlMigrationLogger` IStartupFilter logs one-shot
+  warning when legacy `Voice:TurnTtlSeconds` is set. `Program.cs`
+  PostConfigure maps the legacy alias onto the canonical
+  `TurnCredentialTtlSeconds` when canonical is unset.
+- 5 new contract test files under `Phase_K_W5/Bishop/` (22 facts
+  total). All `Phase_K_W5/` surface tests
+  (`BishopW5SurfaceTests` × 6, `ContractGapHardAssertW5Tests`,
+  `AponeW5InfraContractTests`, `HicksW5FrontendContractTests`)
+  also green.
+
+**Surprises:**
+
+- Shared-workspace author drift escalated this wave: my first
+  commit `8b34be9` came out as `Vasquez (QA)` (the shared
+  `--local` config was overwritten by another agent's `git
+  config` between sessions) AND was later removed by a `git reset
+  --hard HEAD~1` from another agent. Both events recoverable via
+  `git reflog`. Mitigations: explicit `git commit --author="Bishop
+  (Backend) <bishop@squad.mahjong>" …` on every commit; the
+  surviving Bishop commit is `eb339d7`. Captured for the harness
+  lane.
+- `docs/jwt-rotation.md` §7 (Wave-3 vintage) claimed Wave-5 would
+  remove the legacy `AuthOptions.JwtSigningKey` singular fallback.
+  Wave-5 reality: the W4 `JwtSigningKeyProvider_FallsBackToLegacySingular`
+  test still asserts the legacy path, so a removal would break the
+  test. Decision: keep the property one more wave; Wave 6 drops it
+  once Apone's SSM rotation drill exercises the array path in
+  production. §7 refreshed.
+- Vasquez pre-staged the entire `Phase_K_W5/` surface contract
+  (5 files + a Bishop-targeting `BishopW5SurfaceTests`) BEFORE
+  I started implementing — every soft-pass already passes against
+  the W4 surface. My implementation work focused on the surfaces
+  that REALLY needed code: the typed envelope, the JWKS slot, the
+  labeled metrics, the spectator split. The W5 surface tests
+  passed against W4 code; my implementation just elevates them
+  from "tolerant" to "actively-exercising".
+- `TestShimSanityTests` (Vasquez's lane) were briefly failing
+  with `FOREIGN KEY constraint failed` mid-session — the
+  regression-host fixture in `Regression/RegressionHostFixture.cs`
+  resolved the test-DB ordering race. Both tests green by the
+  closeout gate.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-5.md` —
+per-deliverable design, contract-test coverage, forward-looking
+notes.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx
+--nologo --no-build` → **Passed: 1345, Failed: 0, Skipped: 0**
+(1m 39s; +113 over Wave-4 closeout baseline of 1232; 22 new
+Bishop facts plus Vasquez's broader `Phase_K_W5/` surface plus
+Hicks's frontend pin updates, every one green).

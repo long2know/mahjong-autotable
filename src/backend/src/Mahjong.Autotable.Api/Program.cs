@@ -362,6 +362,24 @@ builder.Services.AddHostedService(sp =>
 // persists across hub invocations on the same connection.
 builder.Services.Configure<Mahjong.Autotable.Api.Voice.VoiceOptions>(
     builder.Configuration.GetSection("Voice"));
+// Phase K Wave 5 — Bishop. Legacy `Voice:TurnTtlSeconds` alias maps
+// onto the canonical `Voice:TurnCredentialTtlSeconds` property when
+// the canonical knob hasn't been set explicitly. The
+// VoiceTurnTtlMigrationLogger IStartupFilter (registered below) emits
+// a one-shot deprecation warning so operators see the migration path.
+builder.Services.PostConfigure<Mahjong.Autotable.Api.Voice.VoiceOptions>(o =>
+{
+    var legacy = builder.Configuration[Mahjong.Autotable.Api.Voice.VoiceTurnTtlMigrationLogger.LegacyKey];
+    var canonical = builder.Configuration[Mahjong.Autotable.Api.Voice.VoiceTurnTtlMigrationLogger.CanonicalKey];
+    if (string.IsNullOrWhiteSpace(canonical)
+        && !string.IsNullOrWhiteSpace(legacy)
+        && int.TryParse(legacy, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+        && seconds > 0)
+    {
+        o.TurnCredentialTtlSeconds = seconds;
+    }
+});
+builder.Services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, Mahjong.Autotable.Api.Voice.VoiceTurnTtlMigrationLogger>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.VoiceRateLimiter>(sp =>
 {
     var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Mahjong.Autotable.Api.Voice.VoiceOptions>>().Value;

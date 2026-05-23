@@ -84,7 +84,9 @@ Dry-run procedure:
 
 ## 3. Submission
 
-Once §2 passes for 14+ consecutive days:
+Once §2 passes for 14+ consecutive days **AND** the daily
+verification workflow (§3a) has been green for 14+ consecutive
+days:
 
 1. **Open** <https://hstspreload.org/?domain=mahjong.example.com>
 2. **Tick** the two confirmation boxes:
@@ -94,6 +96,55 @@ Once §2 passes for 14+ consecutive days:
      prevent users from accessing it via HTTP."
 3. **Click** "Submit to the HSTS preload list."
 4. **Record the submission date** in this file's CHANGELOG below.
+
+## 3a. Verification workflow (Wave 5)
+
+[`.github/workflows/hsts-readiness-check.yml`](../.github/workflows/hsts-readiness-check.yml)
+ships a continuous probe that fires daily at 13:00 UTC and on
+demand via `workflow_dispatch`. It:
+
+1. `curl -I`s the production origin (`https://mahjong.example.com/`
+   by default, overridable via the repo variable `HSTS_PROBE_URL`
+   or the dispatch `url:` input).
+2. Asserts the response includes EXACTLY:
+
+   ```
+   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+   ```
+
+3. On failure: opens (or updates) a sticky GitHub issue titled
+   `HSTS readiness: production header missing the preload directive`
+   with the observed value, expected value, and triage steps. The
+   workflow run also goes RED so the daily cron failure is visible
+   in the Actions tab.
+4. On recovery (next pass after a fail): closes the sticky issue
+   automatically with a recovery comment.
+
+### 3a.1 Operating the probe
+
+| Need | Action |
+|------|--------|
+| Run the probe on demand | Actions → `hsts-readiness-check` → Run workflow. Optionally supply a `url:` to probe a non-default origin. |
+| Suppress issue creation (e.g. during planned outage) | Run workflow with `open-issue-on-failure: false`. |
+| Change the probe URL permanently | Set the repo variable `HSTS_PROBE_URL` (Settings → Secrets and variables → Actions → Variables). The workflow picks it up on the next run. |
+| Mute the failure alert | Close the sticky issue manually; the workflow will RE-open it on the next failure run. |
+
+### 3a.2 Pre-submission gate
+
+The submission to <https://hstspreload.org/> is a one-way door
+(removal takes ~6 weeks to propagate). Treat 14 consecutive
+green daily runs of `hsts-readiness-check` as a HARD gate
+before clicking "Submit": if the probe has ever gone red in the
+past 14 days, restart the 14-day clock.
+
+### 3a.3 Post-submission monitoring
+
+After submission, the daily probe becomes the early-warning
+system for in-process header drift. Any failure during
+post-submission is a P0 incident: the in-process header is the
+backstop while the preload-list removal request goes through
+(which takes ~6 weeks). The sticky-issue alert is the on-call
+prompt to escalate.
 
 ## 4. Post-submission monitoring
 
@@ -125,6 +176,7 @@ The hstspreload.org form **requires** `max-age` ≥ 31536000
 | Date | Action | By |
 |------|--------|----|
 | 2026-05-27 | Wave-4 HSTS-preload header patch shipped (`infra/k8s/overlays/prod/hsts-patch.yaml`). Pre-submission dry-run window starts. | Apone (DevOps) |
+| 2026-05-28 | Wave-5 daily readiness probe shipped (`.github/workflows/hsts-readiness-check.yml`). 14-day gate restarts on first probe run. | Apone (DevOps) |
 | _pending_ | Operator dry-run + submission at https://hstspreload.org/ | Stephen |
 | _pending_ | Chrome / Firefox / Safari preload-list confirmation | Stephen |
 

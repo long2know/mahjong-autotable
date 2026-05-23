@@ -19,10 +19,215 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-4-bringup`. Phase K Wave 4 in
-flight (DevOps lane shipping SLSA L3 provenance + ESO JWT-keys
-secret + Kyverno prod hard-pin + HSTS preload + gitleaks
-secrets-scan). Other lane deliverables outstanding.
+Working branch: `stlong/phase-k-wave-5-bringup`. Phase K Wave 5
+in flight (DevOps lane shipping unified SLSA+SBOM multi-subject
+predicate + Kyverno `attestations:` block + staging JWT-keys
+secret + secrets-history sweep workflow + HSTS readiness check +
+Terraform bootstrap module). Other lane deliverables outstanding.
+
+## [0.14.0] — Phase K Wave 5 — 2026-05-28 (PR pending)
+
+**Theme:** Supply-chain ring-5 (unified provenance+SBOM
+multi-subject predicate; Kyverno requires the SLSA attestation
+alongside the cosign signature) + staging brought to parity with
+prod on JWT-keys ESO data plane + retroactive secrets-history
+sweep workflow (closing the historical-commit blind spot of the
+W4 PR-diff scanner) + automated HSTS preload-readiness probe
+with sticky-issue alerting + Terraform bootstrap module for
+"fresh prod env in <30 min" (VPC + EKS + RDS + ECR + GitHub
+OIDC), unblocking the Wave-6 DR rehearsal target.
+
+### Added (Phase K Wave 5 — PR pending)
+- **Unified SLSA L3 in-toto provenance + SBOM under a single
+    multi-subject predicate.** Rewrote
+    `.github/workflows/slsa-provenance.yml` to invoke the
+    GENERIC SLSA generator
+    (`slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0`)
+    in place of the container-specific Wave-4 generator. New
+    pipeline shape: `resolve-digest` (unchanged) → `build-sbom`
+    (Syft against the published image; computes the
+    base64-encoded sha256sum-format subjects list with TWO
+    subjects: image manifest digest + CycloneDX SBOM file
+    digest) → `provenance` (multi-subject generic generator
+    producing a single `provenance-and-sbom.intoto.jsonl`) →
+    `attest-oci` (`cosign attest --type slsaprovenance1` so the
+    Wave-5 Kyverno `attestations:` block discovers the
+    predicate via standard OCI-sidecar lookup) →
+    `attach-to-release` (uploads both the predicate AND the
+    SBOM as Release assets atomically on tag pushes). Auditors
+    now have ONE Sigstore-signed statement that
+    cryptographically binds the image and the SBOM to the SAME
+    build run, not two parallel attestation flows requiring
+    cross-trust. Wave-4 attestations remain in Rekor and
+    remain verifiable with the Wave-4 invocation. Verification
+    + migration runbook updated at `docs/slsa-provenance.md` §6
+    (`slsa-verifier verify-artifact` against the SBOM subject,
+    `verify-image` against the image subject — both pass
+    against the same predicate). (Apone)
+- **Kyverno `attestations:` block requiring the SLSA-v1 predicate.**
+    Extended `infra/k8s/policies/kyverno-cosign-verify.yaml` to
+    add an `attestations:` block alongside the existing
+    `attestors:` clause. Admission now requires BOTH a cosign
+    keyless signature from this repo's `sign-image.yml`
+    workflow AND a SLSA-v1 provenance predicate produced by
+    this repo's Wave-5 `slsa-provenance.yml`. The
+    `conditions:` block pins three CEL-evaluated values
+    against the decoded predicate:
+    `buildDefinition.externalParameters.workflow.repository`,
+    `buildDefinition.externalParameters.workflow.path`, and
+    `runDetails.builder.id` (regex). Attestors-in-attestations
+    re-asserts the subject pin to the `slsa-github-generator`
+    reusable workflow's URL — belt-AND-suspenders. Operator
+    runbook + negative test + rollback procedure documented at
+    `docs/admission-policy.md` §6 (NEW Wave-5 section).
+    (Apone)
+- **Staging overlay `mahjong-jwt-keys-staging` ExternalSecret.**
+    New `infra/k8s/overlays/staging/jwt-keys-secret.yaml` —
+    staging-equivalent of the Wave-4 prod
+    `mahjong-jwt-keys` ESO surface. Same shape (three
+    rotation-state-named SSM SecureString parameters,
+    `auth__jwtsigningkeys__{0,1,2}` env-var KEYS feeding
+    Bishop's `Auth.JwtSigningKeys` array binding,
+    15-min refresh interval) targeting
+    `/mahjong/staging/auth/jwt/key-{active,previous,archive}`
+    via `aws-secrets-manager-staging` ClusterSecretStore. Wired
+    into `infra/k8s/overlays/staging/kustomization.yaml` as
+    both a `resources:` entry AND an `envFrom` deployment
+    patch (mirrors prod). Closes the Wave-4 handoff item that
+    left staging falling back to the omnibus's singular
+    `Auth__JwtSigningKey` — staging now exercises the
+    array-binding code path so Bishop's
+    `jwt-rotation-smoke.sh` can hard-assert the multi-key
+    fallback against staging too. (Apone)
+- **`secrets-history-sweep.yml` workflow + runbook.** New
+    `.github/workflows/secrets-history-sweep.yml` —
+    `workflow_dispatch`-only retroactive `gitleaks detect`
+    sweep over the full commit graph from any ref (default
+    `main`). SARIF uploaded to Code Scanning under a
+    DISTINCT category (`secrets-history-sweep`) so findings
+    don't overlay the W4 `gitleaks` category. SARIF + log
+    also uploaded as workflow artefact for offline triage
+    (90-day retention). Closes the W4 PR-diff scanner's
+    historical-commit blind spot. Operator runbook +
+    rotate-then-purge procedure + per-secret-class rotation
+    table + force-push history-rewrite (`git filter-repo`)
+    procedure at NEW `docs/secrets-scanning.md`. (Apone)
+- **`hsts-readiness-check.yml` workflow + sticky-issue alerting.**
+    New `.github/workflows/hsts-readiness-check.yml` —
+    daily 13:00 UTC cron + `workflow_dispatch`. `curl -I`s
+    the production origin and asserts the response includes
+    EXACTLY `Strict-Transport-Security: max-age=63072000;
+    includeSubDomains; preload`. On failure: opens (or updates)
+    a sticky GitHub issue with the observed value, expected
+    value, triage steps, and workflow-run link; on recovery,
+    auto-closes the issue with a recovery comment. The probe
+    is the early-warning system both BEFORE the manual
+    submission to <https://hstspreload.org/> (Stephen action;
+     14-day all-green-runs gate) and AFTER (a post-submission
+    regression is a P0 with a 6-week-removal cost). Probe URL
+    overridable via repo variable `HSTS_PROBE_URL` or
+    dispatch input. `docs/hsts-preload.md` §3a (NEW) covers
+    the operator runbook. (Apone)
+- **`infra/terraform/` bootstrap module (NEW directory).**
+    Bare-minimum Terraform module to provision a Mahjong stack
+    in a fresh AWS account: 1 × VPC (10.0.0.0/16, 3 public +
+    3 private subnets across 3 AZs; per-AZ NAT in prod, single
+    NAT in staging; S3 gateway endpoint), 1 × EKS cluster
+    (1.30; managed node group with mixed-instance Spot
+    fallback; CoreDNS + kube-proxy + VPC-CNI + EBS-CSI addons;
+    IRSA OIDC enabled; secret-encryption KMS key), 1 × RDS
+    Postgres (db.t4g.small staging / db.t4g.medium prod;
+    gp3 auto-scaling 20→100 GB; encrypted; multi-AZ in prod;
+    deletion protection in prod; auto-generated 32-char
+    master password surfaced as sensitive terraform output for
+    operator-driven SSM seeding), 1 × ECR repository
+    (image-scan-on-push; lifecycle policy keeping last 30
+    tagged images + expiring untagged after 14 days), and 1
+    GitHub-Actions OIDC IAM role (`mahjong-${env}-github-deploy`)
+    with the trust policy scoped to this repo + main / `v*` /
+    `environment:${env}` subjects. Per-environment tfvars
+    (`staging.tfvars`, `prod.tfvars`). State backend stanza
+    intentionally empty so `terraform init` consumes
+    `backend-${env}.hcl` per-env. Quick-start, total-time
+    budget (~27-32 min apply), post-bootstrap helm install
+    sequence (ESO, AWS-LBC, cert-manager, Kyverno), ECR mirror
+    procedure, and teardown steps at NEW
+    `infra/terraform/README.md`. Validates clean against
+    `terraform validate` v1.9.8. Unblocks the Wave-6
+    DR-rehearsal acceptance criterion "<30 min to spin up a
+    clean prod env". (Apone)
+
+### Changed (Phase K Wave 5 — PR pending)
+- **`.github/workflows/sbom.yml` header annotation.** Clarified
+    the workflow's relationship to the new unified SLSA
+    predicate: this workflow continues to OWN the PR-time CVE
+    gate (Trivy CRITICAL,HIGH + SARIF → Code Scanning) and the
+    per-PR dependency-graph SBOM; the SIGNED, AUDITOR-VERIFIABLE
+    SBOM for every release artefact now lives in
+    `slsa-provenance.yml` as part of the multi-subject
+    predicate. The Wave-5 unified predicate is the canonical
+    source of truth for "what shipped"; this workflow remains
+    the PR-blocking CVE layer. (Apone)
+- **`docs/slsa-provenance.md` §6.** Rewrote the "Bumping the
+    SLSA generator version" section to cover both the v2.0.0
+    pin maintenance AND the Wave-4 → Wave-5 generator
+    migration (container-specific → generic generator;
+    single-subject → multi-subject predicate; backward
+    compatibility for Wave-4 artefacts in Rekor). (Apone)
+- **`docs/admission-policy.md` §6.** Renumbered + expanded
+    to cover the Wave-5 SLSA-attestation requirement.
+    NEW §6.1 (Wave-5 SLSA attestation), §6.2 (negative test
+    for image-without-predicate), §6.3 (rollback procedure
+    if the SLSA workflow flakes during an emergency hotfix);
+    §6.4 / §6.5 preserve the Wave-3/4 observability
+    content. (Apone)
+- **`docs/hsts-preload.md` §3.** Tightened the submission
+    pre-condition: 14 consecutive green runs of
+    `hsts-readiness-check.yml` are now the gate before
+    clicking submit (in addition to the existing 14-day
+    pre-submission dry-run). Added §3a covering the new
+    daily probe + sticky-issue alerting. (Apone)
+- **`infra/k8s/overlays/staging/kustomization.yaml`.** Added
+    `jwt-keys-secret.yaml` to `resources:` and an `envFrom`
+    deployment patch mounting `mahjong-jwt-keys-staging`
+    (`optional: true` so a fresh staging cluster without ESO
+    bootstrapped still starts via the omnibus fallback). Same
+    JSON-patch shape as the Wave-4 prod overlay. (Apone)
+
+### Notes (Phase K Wave 5)
+- **Backend gate:** `dotnet test src/backend/Mahjong.Autotable.slnx
+    --nologo` baseline preserved at 1232 / 0 / 0 (Wave-5
+    scope is pure DevOps + docs + infra; `src/backend/**`
+    source code untouched).
+- **Five-layer supply-chain enforcement** (workflow → release-gate
+    → admission-signature → admission-attestation → SLSA
+    provenance). The canonical signer-identity regex stays as
+    the cross-layer invariant — any rename of `sign-image.yml`
+    OR `slsa-provenance.yml` is now a SIX-file coordinated
+    change (`sign-image.yml`, `verify-signature.yml`,
+    `kyverno-cosign-verify.yaml` `attestors:` + `attestations:`
+    blocks, `kyverno-enforce-patch.yaml`, and the
+    `--source-uri` arg in `docs/slsa-provenance.md` §4).
+- **Pattern lock — multi-subject in-toto predicates.** Future
+    artefact classes (release-notes blob, runtime config blob,
+    helm chart `tgz`) can be added as additional subjects to
+    the same Wave-5 predicate without changing the generator
+    invocation — just append a line to the
+    `sha256sum`-formatted subjects list in `build-sbom`. ONE
+    predicate per build, MANY subjects.
+- **Pattern lock — Wave-N+1 staging-mirror policy.** Any new
+    prod-only data-plane that ships in wave N (e.g. Wave-4's
+    prod `jwt-keys-secret.yaml`) MUST be mirrored to staging
+    in wave N+1 (Wave-5's staging counterpart) so the
+    rotation-rehearsal surface stays one wave behind the prod
+    surface, not 5 waves behind.
+- **Pattern lock — sticky-issue alerting on probe workflows.**
+    The HSTS readiness probe's sticky-issue mechanism is the
+    template for future cron-driven health checks (e.g. the
+    proposed JWT-rotation soak in Wave-6+); search by exact
+    issue-title string for idempotent open/update/close
+    semantics. Avoids the duplicate-issue spam common with
+    naïve `gh issue create`-on-failure patterns.
 
 ## [0.13.0] — Phase K Wave 4 — 2026-05-27 (PR pending)
 
@@ -671,7 +876,8 @@ Phases A through I shipped on `main` without semver tags. Highlights:
     `pwmarcz/autotable` engine, scoring & yaku catalogue, swap-call
     discipline, gang/chi/pong/ron implementations.
 
-[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/long2know/mahjong-autotable/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/long2know/mahjong-autotable/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/long2know/mahjong-autotable/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/long2know/mahjong-autotable/compare/v0.10.0...v0.11.0

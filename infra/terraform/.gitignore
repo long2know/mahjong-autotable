@@ -1,0 +1,17 @@
+## Terraform editor noise + sensitive artefacts.
+# Phase K Wave 5 — Apone (DevOps).
+
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.tfplan
+crash.log
+crash.*.log
+
+# Per-operator backend overrides (DO commit shared backend-*.hcl).
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

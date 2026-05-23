@@ -34,10 +34,29 @@ namespace Mahjong.Autotable.Api.Voice;
 // reason strings preserve the Wave-3 wire-names verbatim so existing
 // SignalR clients keep their switch tables. JoinVoice / RelayOffer /
 // RelayAnswer / RelayIceCandidate all share the typed-result contract.
+//
+// Phase K Wave 5 — Bishop. JoinVoice now distinguishes "spectator"
+// (snapshot exists, caller has no seat AND isn't owner — they're
+// observing) from "not-seated" (snapshot missing, the table isn't
+// hydrated yet so the caller might genuinely be a future seat). The
+// wire-name `spectator` was already reserved in Wave 4 (see
+// VoiceHubResult.ReasonSpectator); Wave 5 starts emitting it. Relay
+// + rejection metrics also gained per-table labeled counters via the
+// VoiceHubMetricsService overloads — connection→table mappings are
+// stamped at JoinVoice time and surfaced on every subsequent relay
+// without re-reading the database.
 public sealed class VoiceHub : Hub
 {
     public const int MeshPeerCeiling = 4;
     public const int SignallingRatePerSecond = 30;
+
+    // Phase K Wave 5 — connection→tableId map. Stamped on a successful
+    // JoinVoice so subsequent RelayOffer / RelayAnswer / RelayIceCandidate
+    // calls don't need to re-read the table id from a parameter (the
+    // Wave-4 contract doesn't carry it on relay methods). Lifetime is
+    // bounded by SignalR's OnDisconnectedAsync, which Forget()'s the
+    // mapping below.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> ConnectionTableMap = new();
 
     private readonly VoiceOptions _options;
     private readonly VoiceRateLimiter _rateLimiter;
@@ -77,7 +96,7 @@ public sealed class VoiceHub : Hub
         var playerId = http is null ? null : _identity.ResolveFromCookie(http);
         if (string.IsNullOrEmpty(playerId))
         {
-            _metrics.RecordJoinUnauthorized();
+            _metrics.RecordJoinUnauthorized(tableId, VoiceHubResult.ReasonUnauthorized);
             return VoiceHubResult.Fail(VoiceHubResult.ReasonUnauthorized);
         }
 
@@ -96,7 +115,7 @@ public sealed class VoiceHub : Hub
                 .FirstOrDefaultAsync();
             if (row is null || !row.VoiceEnabled)
             {
-                _metrics.RecordJoinUnauthorized();
+                _metrics.RecordJoinUnauthorized(tableId, VoiceHubResult.ReasonVoiceNotEnabled);
                 return VoiceHubResult.Fail(VoiceHubResult.ReasonVoiceNotEnabled);
             }
 
@@ -104,11 +123,20 @@ public sealed class VoiceHub : Hub
             // accept the join when the caller occupies a seat. The
             // creator is always permitted (covers the pre-seating
             // lobby window where Seats[] is empty/placeholder).
+            //
+            // Phase K Wave 5 — split spectator vs not-seated:
+            //   * snapshot present + caller not in any seat + not owner
+            //     ⇒ ReasonSpectator (caller is an observer, the table
+            //     is fully hydrated and they're just not at a seat).
+            //   * snapshot missing + not owner ⇒ ReasonNotSeated (the
+            //     table isn't hydrated yet; the caller may legitimately
+            //     belong but the gate has nothing to compare against).
             var isOwner = string.Equals(row.OwnerPlayerId, playerId, StringComparison.Ordinal);
+            var snapshotAvailable = _runtime.TryGetSnapshot(tableId, out var state) && state is not null;
             var isSeated = false;
-            if (_runtime.TryGetSnapshot(tableId, out var state) && state is not null)
+            if (snapshotAvailable)
             {
-                foreach (var seat in state.Seats)
+                foreach (var seat in state!.Seats)
                 {
                     if (!string.IsNullOrEmpty(seat.PlayerId)
                         && string.Equals(seat.PlayerId, playerId, StringComparison.Ordinal))
@@ -120,10 +148,19 @@ public sealed class VoiceHub : Hub
             }
             if (!isOwner && !isSeated)
             {
-                _metrics.RecordJoinUnauthorized();
-                return VoiceHubResult.Fail(VoiceHubResult.ReasonNotSeated);
+                var reason = snapshotAvailable
+                    ? VoiceHubResult.ReasonSpectator
+                    : VoiceHubResult.ReasonNotSeated;
+                _metrics.RecordJoinUnauthorized(tableId, reason);
+                return VoiceHubResult.Fail(reason);
             }
         }
+
+        // Phase K Wave 5 — stamp the connection→table mapping so
+        // relay metrics on this connection can label their counters
+        // without re-reading the parameter from the relay call. Wins
+        // (last-write-wins) on a re-join.
+        ConnectionTableMap[Context.ConnectionId] = tableId;
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(tableId));
         await Clients.OthersInGroup(GroupName(tableId)).SendAsync("PeerJoined", Context.ConnectionId);
@@ -138,6 +175,7 @@ public sealed class VoiceHub : Hub
         var playerId = http is null ? null : _identity.ResolveFromCookie(http);
         await Clients.OthersInGroup(GroupName(tableId)).SendAsync("PeerLeft", Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(tableId));
+        ConnectionTableMap.TryRemove(Context.ConnectionId, out _);
         await AuditAsync(tableId, ReconnectAuditEntry.KindVoiceLeave, playerId);
         return VoiceHubResult.Success;
     }
@@ -146,7 +184,7 @@ public sealed class VoiceHub : Hub
     {
         if (string.IsNullOrWhiteSpace(targetConnectionId)) return VoiceHubResult.Fail(VoiceHubResult.ReasonTargetNotFound);
         if (!Throttle()) return VoiceHubResult.Fail(VoiceHubResult.ReasonRateLimited);
-        _metrics.RecordRelay(Context.ConnectionId);
+        _metrics.RecordRelay(Context.ConnectionId, ResolveTableId());
         await Clients.Client(targetConnectionId).SendAsync("OfferReceived", Context.ConnectionId, sdp);
         return VoiceHubResult.Success;
     }
@@ -155,7 +193,7 @@ public sealed class VoiceHub : Hub
     {
         if (string.IsNullOrWhiteSpace(targetConnectionId)) return VoiceHubResult.Fail(VoiceHubResult.ReasonTargetNotFound);
         if (!Throttle()) return VoiceHubResult.Fail(VoiceHubResult.ReasonRateLimited);
-        _metrics.RecordRelay(Context.ConnectionId);
+        _metrics.RecordRelay(Context.ConnectionId, ResolveTableId());
         await Clients.Client(targetConnectionId).SendAsync("AnswerReceived", Context.ConnectionId, sdp);
         return VoiceHubResult.Success;
     }
@@ -164,7 +202,7 @@ public sealed class VoiceHub : Hub
     {
         if (string.IsNullOrWhiteSpace(targetConnectionId)) return VoiceHubResult.Fail(VoiceHubResult.ReasonTargetNotFound);
         if (!Throttle()) return VoiceHubResult.Fail(VoiceHubResult.ReasonRateLimited);
-        _metrics.RecordRelay(Context.ConnectionId);
+        _metrics.RecordRelay(Context.ConnectionId, ResolveTableId());
         await Clients.Client(targetConnectionId).SendAsync("IceCandidateReceived", Context.ConnectionId, candidate);
         return VoiceHubResult.Success;
     }
@@ -173,15 +211,19 @@ public sealed class VoiceHub : Hub
     {
         _rateLimiter.Forget(Context.ConnectionId);
         _metrics.Forget(Context.ConnectionId);
+        ConnectionTableMap.TryRemove(Context.ConnectionId, out _);
         return base.OnDisconnectedAsync(exception);
     }
 
     private bool Throttle()
     {
         if (_rateLimiter.TryConsume(Context.ConnectionId)) return true;
-        _metrics.RecordRateLimitRejection();
+        _metrics.RecordRateLimitRejection(ResolveTableId(), VoiceHubMetrics.ReasonRateLimited);
         return false;
     }
+
+    private string? ResolveTableId() =>
+        ConnectionTableMap.TryGetValue(Context.ConnectionId, out var tableId) ? tableId : null;
 
     private static string GroupName(string tableId) => $"voice:{tableId}";
 

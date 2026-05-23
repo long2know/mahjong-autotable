@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-23T12:14:27.517Z",
+  "generatedAt": "2026-05-23T12:52:10.774Z",
   "version": "autotable-v3",
   "assets": [
     "./about.html",
@@ -7,11 +7,14 @@
     "./autotable-src.df85b4c4.css",
     "./autotable-src.effc7cfa.js",
     "./autotable-src.f07081dc.css",
-    "./game-bootstrap.82b641aa.js",
+    "./game-bootstrap.68251e93.js",
     "./icon-16.auto.5ed6a291.png",
     "./icon-32.auto.f841a7ef.png",
     "./icon-96.auto.958c14fe.png",
     "./index.html",
-    "./manifest.webmanifest"
+    "./manifest.webmanifest",
+    "./scene-shell.6e7f6886.js",
+    "./three-renderer.9b0cd931.js",
+    "./three-renderer.c3e34903.js"
   ]
 }

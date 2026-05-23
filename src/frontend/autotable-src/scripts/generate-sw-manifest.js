@@ -49,6 +49,18 @@ const ICON_RE = /^icon-(?:16|32|96)\.auto\.[0-9a-f]+\.png$/i;
 // returns to a game URL gets the HUD chrome from cache; the scene
 // chunk is still lazy (its weight defeats the install budget).
 const SHELL_RE = /^game-bootstrap\.[0-9a-f]+\.(js|css)$/i;
+// Phase K Wave 5 — Pre-cache the renderer-critical scene-shell
+// coordinator (~5 kB after the Wave-5 split) and the heavy
+// three-renderer chunk (~600 kB) so a returning user with the SW
+// installed gets the full WebGL boot path from cache on warm
+// game-URL loads.  Wave 4 deliberately excluded the renderer chunk
+// because pre-caching ~900 kB on install was hostile; Wave 5 splits
+// that into a tiny shell + a heavy renderer, both of which we now
+// pre-warm (the user is going to fetch them on first game-URL hit
+// anyway — install-time gets the SW to commit the cache eviction
+// strategy before the first paint).
+const SCENE_SHELL_RE = /^scene-shell\.[0-9a-f]+\.(js|css)$/i;
+const THREE_RENDERER_RE = /^three-renderer\.[0-9a-f]+\.(js|css)$/i;
 
 function listAssets() {
   const files = fs.readdirSync(DIST);
@@ -56,6 +68,8 @@ function listAssets() {
   for (const f of files) {
     if (EAGER_RE.test(f)) { assets.add(f); continue; }
     if (SHELL_RE.test(f)) { assets.add(f); continue; }
+    if (SCENE_SHELL_RE.test(f)) { assets.add(f); continue; }
+    if (THREE_RENDERER_RE.test(f)) { assets.add(f); continue; }
     if (ICON_RE.test(f))  { assets.add(f); continue; }
     if (UNHASHED_ALLOW.has(f)) { assets.add(f); continue; }
   }

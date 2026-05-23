@@ -82,49 +82,113 @@ async function probeVoiceEnabled(): Promise<boolean> {
 }
 
 /**
- * Phase K Wave 4 — Map Bishop's `VoiceHubResult.reason` enum to a
- * user-friendly toast string.  Bishop's Wave-4 VoiceHub returns
- * `{ ok: false, reason: "voice-not-enabled" | "not-seated"
- * | "spectator" | "rate-limited" | "target-not-found"
- * | "unauthorized" }` on rejection; we localise here so the wire
- * vocabulary doesn't leak into the toast region.
+ * Phase K Wave 4 → Wave 5 — Typed Voice reason codes.
  *
- * Unknown codes fall through to a defensive "Voice chat error:
- * <reason>" string so a new server-side code still renders something
- * actionable rather than silently swallowing the failure.
+ * Bishop's VoiceHub returns `{ ok: false, reason: VoiceReason }` on
+ * rejection.  Wave 4 accepted a free `string` here and fell through
+ * to a defensive default-case toast; Wave 5 promotes the wire
+ * vocabulary to a TypeScript discriminated union so the mapper is
+ * **compile-time exhaustive** — adding a new reason without updating
+ * the switch becomes a `never`-narrowing error.
+ *
+ * Bishop's Wave-5 backend disambiguates `spectator` from `not-seated`
+ * (Wave 4 returned `not-seated` for both spectators and observers
+ * who had never claimed a seat).  The mapper carried a distinct
+ * `spectator` branch since Wave 4, so no copy change is required —
+ * the Wave-5 backend just starts populating the value Bishop already
+ * had in the contract.
  */
-export function voiceReasonToText(reason: string): string {
-  const key = reason.trim().toLowerCase();
-  switch (key) {
+export type VoiceReason =
+  | 'voice-not-enabled'
+  | 'not-seated'
+  | 'spectator'
+  | 'rate-limited'
+  | 'target-not-found'
+  | 'unauthorized';
+
+/** Compile-time-guaranteed set of every `VoiceReason` value. */
+const VOICE_REASONS: ReadonlyArray<VoiceReason> = [
+  'voice-not-enabled',
+  'not-seated',
+  'spectator',
+  'rate-limited',
+  'target-not-found',
+  'unauthorized',
+];
+
+const VOICE_REASON_SET: ReadonlySet<string> = new Set(VOICE_REASONS);
+
+export function isVoiceReason(value: string): value is VoiceReason {
+  return VOICE_REASON_SET.has(value);
+}
+
+// Wire aliases tolerated by `voiceReasonStringToText` — Bishop's
+// VoiceHub canonicalised to kebab-case in Wave 4, but older clients
+// still in the field may send snake_case or all-lowercase variants.
+const VOICE_REASON_ALIASES: Record<string, VoiceReason> = {
+  'voice_not_enabled': 'voice-not-enabled',
+  'voicenotenabled': 'voice-not-enabled',
+  'not_seated': 'not-seated',
+  'notseated': 'not-seated',
+  'spectators': 'spectator',
+  'rate_limited': 'rate-limited',
+  'ratelimited': 'rate-limited',
+  'target_not_found': 'target-not-found',
+  'targetnotfound': 'target-not-found',
+  'unauthenticated': 'unauthorized',
+};
+
+/**
+ * Phase K Wave 4 → Wave 5 — Map a typed `VoiceReason` to a toast
+ * string.  Exhaustive switch with a `never` guard — adding a new
+ * reason without a case here is a compile-time error.  Vasquez's
+ * Wave-5 contract test asserts every reason in `VOICE_REASONS`
+ * resolves to a non-empty, non-enum-shaped string.
+ */
+export function voiceReasonToText(reason: VoiceReason): string {
+  switch (reason) {
     case 'voice-not-enabled':
-    case 'voice_not_enabled':
-    case 'voicenotenabled':
       return 'Voice chat is not enabled on this table';
     case 'not-seated':
-    case 'not_seated':
-    case 'notseated':
       return 'Take a seat to join voice';
     case 'spectator':
-    case 'spectators':
       return 'Spectators cannot join voice';
     case 'rate-limited':
-    case 'rate_limited':
-    case 'ratelimited':
       return 'Too many voice messages; slow down';
     case 'target-not-found':
-    case 'target_not_found':
-    case 'targetnotfound':
       return 'Peer disconnected';
     case 'unauthorized':
-    case 'unauthenticated':
       return 'Please sign in to use voice';
-    default:
-      // Tolerate legacy free-text Wave-3 reasons by re-routing to the
-      // existing `showVoiceToast` heuristic mapper (which falls back
-      // to a generic toast string for unknown content).
-      return `Voice chat error: ${reason}`;
+    default: {
+      // Phase K Wave 5 — exhaustiveness guard.  If a future
+      // `VoiceReason` member is added without a case above, this
+      // assignment fails to typecheck (compile-time check).  At
+      // runtime we render a defensive copy so a forced-cast caller
+      // still surfaces something actionable rather than throwing.
+      const _exhaustive: never = reason;
+      return `Voice chat error: ${String(_exhaustive)}`;
+    }
   }
 }
+
+/**
+ * Wave-5 wrapper for caller-sites that receive a raw `string` from
+ * the wire (SignalR `invoke` result, HTTP error body, etc.).
+ * Normalises kebab/snake/camel/legacy aliases and falls back to a
+ * generic "Voice chat error: …" copy for unknown tokens — preserves
+ * the Wave-4 default-case behaviour without sacrificing the
+ * compile-time exhaustiveness on the typed entry point.
+ */
+export function voiceReasonStringToText(reason: string): string {
+  const normalized = reason.trim().toLowerCase();
+  if (isVoiceReason(normalized)) return voiceReasonToText(normalized);
+  const aliased = VOICE_REASON_ALIASES[normalized];
+  if (aliased !== undefined) return voiceReasonToText(aliased);
+  return `Voice chat error: ${reason}`;
+}
+
+/** Vasquez exhaustive-mapping contract: every reason has copy. */
+export const ALL_VOICE_REASONS: ReadonlyArray<VoiceReason> = VOICE_REASONS;
 
 interface VoiceHubResult {
   ok?: boolean;
@@ -330,19 +394,23 @@ async function toggleMic(): Promise<void> {
     // want to join.  Bishop's Wave-4 hub returns a typed
     // `VoiceHubResult { ok, reason }`; we still tolerate the Wave-3
     // free-text string for backward-compat (see `readVoiceResult`).
+    // Wave 5 routes the raw `reason` through `voiceReasonStringToText`
+    // — that wrapper normalises legacy aliases and falls back to a
+    // generic toast for unknown tokens, leaving the typed
+    // `voiceReasonToText` exhaustive at compile-time.
     if (signaller !== null) {
       try {
         const raw = await signaller.invoke('JoinVoice');
         const parsed = readVoiceResult(raw);
         if (!parsed.ok) {
           const reason = parsed.reason ?? 'unknown';
-          showVoiceToast(voiceReasonToText(reason));
+          showVoiceToast(voiceReasonStringToText(reason));
           micBtn.disabled = true;
           return;
         }
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
-        showVoiceToast(voiceReasonToText(reason));
+        showVoiceToast(voiceReasonStringToText(reason));
       }
     }
   }

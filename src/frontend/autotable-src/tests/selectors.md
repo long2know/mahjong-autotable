@@ -1164,3 +1164,166 @@ wired):
   CDN host (`microsoft.com` / `microsoftonline.com` /
   `static2.sharepointonline.com`); document body likewise carries
   no CDN-hosted Microsoft brand `<img>`.
+
+---
+
+## Phase K Wave 5 — Renderer split + keyboard seeding + typed voice reasons
+
+### Renderer chunk split (Wave 5)
+
+Wave 4 left `scene-shell.<hash>.js` at 886 kB because three.js +
+AssetLoader + Game + World + MainView + ClientUi were all statically
+imported.  Wave 5 peels every module that imports `from 'three'` out
+of the shell graph and into a sibling `three-renderer.<hash>.js`
+chunk, dynamic-imported by `scene-shell.ts` when `mountScene()` is
+called.  Result:
+
+- `scene-shell.<hash>.js` — **2.3 kB** thin coordinator (no static
+  three.js import).  Mints `scene-shell-ready` after the first rAF
+  following the renderer boot.
+- `three-renderer.<hash>.js` — ~870 kB total (parcel emits two
+  sub-chunks of ~145 kB + ~725 kB; both carry three.js + the
+  AssetLoader / Game / World / MainView graph).  Dynamic-imported
+  by `scene-shell` after `mountScene()` is invoked.  Mints
+  `three-renderer-ready` once `Game.start()` returns.
+- `scene-effects.<hash>.js` — unchanged from Wave 4 (~60 kB,
+  GameUi + MoveLog).
+- Both `scene-shell` and `three-renderer` are now in
+  `manifest-precache.json` so a returning user with the SW
+  installed gets the full WebGL boot path from cache on warm
+  game-URL loads (Wave 4 deliberately excluded the renderer chunk
+  because pre-caching ~900 kB on install was hostile; with Wave 5's
+  thin shell that calculus flips).
+
+The Wave-3 `game-scene-ready` back-compat marker is **retired** in
+Wave 5 — Vasquez's Wave-4 specs already gate on `scene-shell-ready`
+and the alias just kept dead branches in the renderer chunk.
+
+| testid                  | origin                                     | notes                                              |
+|-------------------------|--------------------------------------------|----------------------------------------------------|
+| `scene-shell-ready`     | `scene-shell.ts:markShellReady`            | Set after first rAF following renderer boot       |
+| `three-renderer-ready`  | `three-renderer.ts:markRendererReady`      | NEW — fires once `Game.start()` returns           |
+| `scene-effects-ready`   | `scene-effects.ts:markEffectsReady`        | Unchanged from Wave 4                              |
+| ~~`game-scene-ready`~~  | ~~`scene-shell.ts:markShellReady`~~        | **RETIRED in Wave 5** — Wave-3 back-compat dropped |
+
+### Keyboard-accessible sparse seeding (Wave 5)
+
+Wave 4 shipped drag-drop bracket seeding (mouse-only).  Wave 5 adds
+a keyboard alternative on each row's seed handle:
+
+- Each handle is now `tabindex="0"` + `role="button"` with a verbose
+  `aria-label` describing the current seed state and the available
+  keystrokes.  The `aria-hidden="true"` that Wave 4 set on the
+  handle is removed.
+- **Arrow Up** / **Arrow Down** on a focused handle reorder the row
+  by ±1 and persist via the existing `POST /api/tournaments/{id}/seed`
+  endpoint.  Focus is restored to the handle's new position on the
+  next rAF (lookup by stable `data-player-id`, not the
+  index-based testid).
+- **Enter** / **Space** on a focused handle opens an inline modal
+  dialog (`role="dialog"` + `aria-modal="true"`) carrying
+  `data-testid="seed-keyboard-prompt"`.  The dialog has a numeric
+  input (1..N to seed at that position, 0 to demote to unseeded),
+  Apply + Cancel buttons, and a `role="alert"` validation pill.
+- Every reorder / edit announces via a visually-hidden
+  `aria-live="polite"` region (`data-testid="seed-live-region"`).
+- Drag-drop is unchanged — both interaction models coexist.
+
+| testid                              | origin                                | notes                                              |
+|-------------------------------------|---------------------------------------|----------------------------------------------------|
+| `seed-row-{playerId}`               | `tournaments.ts:buildSeedingPanel`    | Stamped on the handle; stable across reorders     |
+| `seed-keyboard-prompt`              | `tournaments.ts:openSeedKeyboardPrompt` | The inline edit-seed-number dialog              |
+| `seed-keyboard-prompt-input`        | `tournaments.ts:openSeedKeyboardPrompt` | Numeric seed-position input                     |
+| `seed-keyboard-prompt-ok`           | `tournaments.ts:openSeedKeyboardPrompt` | Apply button                                    |
+| `seed-keyboard-prompt-cancel`       | `tournaments.ts:openSeedKeyboardPrompt` | Cancel button                                   |
+| `seed-keyboard-prompt-error`        | `tournaments.ts:openSeedKeyboardPrompt` | Inline validation message (`role="alert"`)      |
+| `seed-live-region`                  | `tournaments.ts:buildSeedingPanel`    | `aria-live="polite"` announcement region        |
+| `tournament-seed-row-{i}`           | `tournaments.ts:buildSeedingPanel`    | Wave-4 index-based row testid (preserved)       |
+
+### Voice reason discriminated union (Wave 5)
+
+Wave 4's `voiceReasonToText` accepted `reason: string` and fell
+through to a defensive default-case toast.  Wave 5 promotes the
+wire vocabulary to a TypeScript discriminated union so the mapper
+is **compile-time exhaustive**:
+
+```ts
+export type VoiceReason =
+  | 'voice-not-enabled'
+  | 'not-seated'
+  | 'spectator'
+  | 'rate-limited'
+  | 'target-not-found'
+  | 'unauthorized';
+```
+
+The typed entry point `voiceReasonToText(reason: VoiceReason): string`
+is an exhaustive switch with a `const _exhaustive: never = reason`
+guard — adding a new `VoiceReason` member without updating the
+switch becomes a compile-time error.  A second wrapper
+`voiceReasonStringToText(reason: string)` normalises legacy
+kebab/snake/camel aliases (`not_seated`, `notseated`, `spectators`,
+`unauthenticated`, …) and falls back to a generic "Voice chat error:
+…" copy for unknown tokens — preserving the Wave-4 default-case
+behaviour without compromising exhaustiveness on the typed API.
+
+`ALL_VOICE_REASONS` is exported as a read-only array for Vasquez's
+Wave-5 contract test that asserts all 6 reason codes resolve to
+non-empty text mappings.
+
+Bishop's Wave-5 backend disambiguates `spectator` from `not-seated`
+on the wire; the mapper carried a distinct `spectator` branch since
+Wave 4, so no copy change was required.
+
+No new testids — `voice-failure-toast` continues to wrap the
+mapper output.
+
+### Phase K Wave 5 Playwright spec map — Vasquez
+
+Wave-5 specs Vasquez has on deck (each one reflection-defensive
+with a soft-pass annotation):
+
+- `scene-shell-budget-w5.spec.ts` — `scene-shell.<hash>.js`
+  individually under 500 kB (Wave-5 explicit shrink target); total
+  scene/shell/bootstrap JS fetched before `networkidle` still
+  bounded.
+- `tournament-seed-keyboard.spec.ts` — focus a `seed-row-{playerId}`
+  handle, press `ArrowDown`, assert the corresponding row's new
+  position; press `Enter`, assert `seed-keyboard-prompt` is visible
+  and focus moved into its input; submit and assert `seed-live-region`
+  carries a non-empty announcement.
+- `voice-reason-exhaustive.spec.ts` — for every entry in
+  `ALL_VOICE_REASONS`, the mapper returns a non-empty string that
+  is neither the raw enum value nor an empty default.
+
+### Phase K Wave 5 Playwright spec map — Vasquez (final)
+
+The five Vasquez-owned W5 specs are now landed (all reflection-
+defensive with `soft-pass` annotations; chromium-only via
+`test.skip(testInfo.project.name !== 'chromium', ...)`):
+
+- `scene-shell-budget-strict.spec.ts` — STRICT < 500 kB combined
+  scene-shell payload (Wave 4 was soft). Excludes the new
+  `three-renderer` chunk from the budget (intentional per the
+  W5 split). Soft-passes only when no shell chunks emit
+  (dev-server / pre-build).
+- `keyboard-seed-reorder.spec.ts` — focus a
+  `[data-testid="seed-row-handle"]` element and press `ArrowDown`;
+  hard-asserts the first two rows' `data-seed-id` attribute swap.
+  Soft-passes when the panel hasn't yet mounted.
+- `voice-reason-spectator-distinct.spec.ts` — dispatches
+  `voice:failure` with `reason: 'spectator'` then with
+  `reason: 'not-seated'`, reads the `voice-failure-toast` text
+  for each, and hard-asserts the spectator copy is non-empty
+  AND differs from the not-seated copy.
+- `three-renderer-lazy.spec.ts` — observes JS requests on lobby
+  load; hard-asserts no chunk matching `three-renderer|three\..*\.js`
+  is fetched before `networkidle`. Soft-passes when no three chunk
+  has yet been observed (pre-split / dev-server).
+- `jwks-endpoint-shape.spec.ts` — `GET /api/auth/.well-known/jwks.json`
+  MUST return HTTP 404 with `Cache-Control: no-store`. Soft-passes
+  only on network unreachability (dev-server preview).
+
+Each spec uses `test.info().annotations.push({ type: 'soft-pass', … })`
+to record forward-staged surfaces — these annotations are visible in
+the Playwright HTML report without inflating the failure count.
