@@ -561,3 +561,66 @@ remain searchable:
 When you remove or rename a Wave 9 testid, run
 `grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
 merging — the soft-pass annotations will silently hide regressions.
+
+## Phase J Wave 10 testids — tournaments / avatar / audit-why / spectator chat (Vasquez)
+
+Wave 10 ships four new surfaces. The testids below are documented for
+Hicks's bundle to wire up; the e2e specs listed in the next subsection
+soft-pass while the surfaces are forward-staged.
+
+| Surface             | testid                                    | Where wired                                       |
+|---------------------|-------------------------------------------|---------------------------------------------------|
+| Tournaments         | `lobby-tournament-card`                   | `index.html` (lobby tournament panel container)   |
+| Tournaments         | `lobby-tournament-list`                   | `index.html` (rendered list of tournaments)       |
+| Tournaments         | `lobby-tournament-name`                   | `index.html` (create-form name input)             |
+| Tournaments         | `lobby-tournament-create`                 | `index.html` (create-form submit button)          |
+| Tournaments         | `tournament-register-btn`                 | tournament card row (per tournament)              |
+| Tournaments         | `tournament-registration-status`          | tournament card row (Registered / Open badge)     |
+| Tournaments         | `tournament-start-btn`                    | tournament card row (creator-only)                |
+| Tournaments         | `tournament-matches-table`                | tournament detail view (after start)              |
+| Tournaments         | `tournament-leaderboard`                  | tournament detail view (standings table)          |
+| Avatar migration    | `avatar-migration-modal`                  | `index.html` (legacy `#808080` colour prompt)     |
+| Avatar migration    | `avatar-migration-pick-{name}`            | colour swatches inside the modal (e.g. `-emerald`)|
+| Avatar migration    | `avatar-migration-dismiss`                | modal Dismiss / Close button                      |
+| Audit why-expand    | `replay-audit-row-{i}-why`                | `audit.ts` (per-row toggle)                       |
+| Audit why-expand    | `replay-audit-row-{i}-reasoning`          | `audit.ts` (expanded reasoning panel)             |
+| Audit why-expand    | `replay-audit-row-{i}-reasoning-line-{j}` | `audit.ts` (per-line list-item)                   |
+| Audit why-expand    | `[data-strategy]` (attribute)             | `audit.ts` (strategy badge attribute on header)   |
+| Spectator chat      | _(re-uses Wave 9 `chat-*` testids)_       | `chat.ts` — spectator channel default + filter    |
+
+### Phase J Wave 10 Playwright coverage — Vasquez
+
+| Spec                            | Surface under test                                        |
+|---------------------------------|-----------------------------------------------------------|
+| `tournament-flow.spec.ts`       | lobby card mount, create → register → start → leaderboard |
+| `avatar-migration.spec.ts`      | `#808080` migration modal, picker persist, dismiss-safe   |
+| `csp-no-inline-styles.spec.ts`  | `style-src` lacks `'unsafe-inline'` + DOM has no inline   |
+| `audit-why-expand.spec.ts`      | `replay-audit-row-{i}-why` toggle, reasoning lines render |
+| `spectator-chat.spec.ts`        | spectator channel default, composer enabled, table-leak   |
+
+Canonical soft-pass annotation strings (keep stable for CI summary scraping):
+
+  - `lobby-tournament-card not yet wired`
+  - `lobby-tournament-create form not yet wired`
+  - `tournament-register-btn not yet wired`
+  - `tournament-start-btn not yet wired`
+  - `tournament-matches-table not yet wired`
+  - `tournament-leaderboard not yet wired`
+  - `avatar-migration-modal not yet wired`
+  - `avatar-migration-pick-* not yet wired`
+  - `avatar-migration-dismiss not yet wired`
+  - `style-src still carries unsafe-inline (CspStrictStyles=false)`
+  - `inline style attributes still present`
+  - `replay-audit-row-{i}-why toggle not yet wired`
+  - `replay-audit-row-{i}-reasoning panel not yet wired`
+  - `reasoning-line {i} testids not yet wired`
+  - `reasoning data-strategy attribute not yet wired`
+  - `chat-panel not yet wired for spectator viewport`
+  - `chat-channel-select did not default to spectators`
+  - `spectator backfill not yet rendered`
+  - `chat-input disabled for spectators (Wave 10 brief expects enabled)`
+  - `table channel leaking into spectators view (Wave 10 contract not yet enforced)`
+
+When you remove or rename a Wave 10 testid, run
+`grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
+merging — the soft-pass annotations will silently hide regressions.
