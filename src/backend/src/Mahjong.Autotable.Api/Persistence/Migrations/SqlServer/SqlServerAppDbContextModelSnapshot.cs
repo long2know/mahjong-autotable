@@ -37,6 +37,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.Property<int>("CurrentRoundNumber")
                         .HasColumnType("int");
 
+                    b.Property<string>("OwnerPlayerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
                     b.Property<Guid?>("RulePresetId")
                         .HasColumnType("uniqueidentifier");
 
@@ -59,6 +63,11 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
 
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("VoiceEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.HasKey("Id");
 
@@ -489,6 +498,32 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.ToTable("PlayerGameHistory");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerOnboardingStatus", b =>
+                {
+                    b.Property<string>("PlayerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool>("Completed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastStepCompletedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("StepsCompleted")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("PlayerId");
+
+                    b.ToTable("PlayerOnboardingStatuses");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerRating", b =>
                 {
                     b.Property<Guid>("Id")
@@ -571,10 +606,7 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.Property<DateTime>("DeferredAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime?>("DrainedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("FromSeason")
+                    b.Property<string>("FromSeasonId")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
@@ -584,7 +616,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
-                    b.Property<string>("ToSeason")
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ToSeasonId")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
@@ -594,9 +629,9 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TournamentId", "DrainedAtUtc");
+                    b.HasIndex("TournamentId", "ResolvedAtUtc");
 
-                    b.HasIndex("PlayerId", "FromSeason", "TournamentId")
+                    b.HasIndex("PlayerId", "FromSeasonId", "TournamentId")
                         .IsUnique();
 
                     b.ToTable("PlayerSeasonRolloverDeferrals");
@@ -610,6 +645,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
 
                     b.Property<DateTime>("At")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.Property<string>("Ipv4Hash")
                         .IsRequired()

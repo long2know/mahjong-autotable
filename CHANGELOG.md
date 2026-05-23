@@ -19,8 +19,133 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-3-bringup` (not yet opened). Phase
-K Wave 3 not yet started.
+Working branch: `stlong/phase-k-wave-4-bringup` (not yet opened). Phase
+K Wave 4 not yet started.
+
+## [0.12.0] — Phase K Wave 3 — 2026-05-26 (PR #49)
+
+**Theme:** Supply-chain hardening + zero-downtime auth rotation +
+TURN-over-TLS. Wave 3 closes the three Wave-2 "future Phase K wave"
+handoff items in one go: Kyverno admission policy for cosign
+enforcement, `Auth:JwtSigningKeys` fallback list, and the deferred
+`turns:` TLS listener. Also adds container-scan PR gate +
+pre-publish SBOM signature verification + nightly JWT-rotation
+smoke + PWA-asset presence gate.
+
+### Added (Phase K Wave 3 — PR #49)
+- **Kyverno cosign admission policy.**
+    `infra/k8s/policies/kyverno-cosign-verify.yaml` —
+    `ClusterPolicy` named `verify-mahjong-images` REFUSES to admit
+    any Pod / Deployment / StatefulSet / DaemonSet / Job / CronJob
+    whose `image:` field matches
+    `ghcr.io/long2know/mahjong-autotable:*` unless the image
+    carries a valid cosign keyless signature whose Fulcio cert was
+    issued to this repo's `sign-image.yml` workflow on `main` or
+    `v*.*.*`, with Rekor entry verifying. Action mode is per-
+    namespace: **Enforce** in `mahjong-prod`, **Audit** in
+    `mahjong-staging` (and globally for any new namespace —
+    fail-safe default). `mutateDigest: true` rewrites tags to
+    digests post-verify so a pod is pinned to the exact attested
+    bits. `failurePolicy: Fail` blocks new rollouts on Sigstore
+    outage (existing pods keep running). Closes the Wave-1/-2
+    "verify enforced ONLY in CI" gap — admission-layer
+    enforcement now refuses unsigned images at the cluster
+    boundary. Operator runbook + Kyverno Helm install +
+    positive/negative test instructions in
+    `docs/admission-policy.md`. (Apone)
+- **`Auth:JwtSigningKeys` fallback-list schema.**
+    `appsettings.json` ships a new `Auth.JwtSigningKeys: []`
+    forward-compat array (with `//` documentation key explaining
+    `[0]` = active signer, `[1..N]` = previous keys accepted for
+    validation). Closes the Wave-1/-2 "Wave-9 fallback-key list
+    (planned)" carry-over. `docs/jwt-rotation.md` (NEW) covers the
+    full lifecycle: schema, code-side contract (Bishop's W4/W5
+    deliverable), rotation cadence (annual, 30-day grace; emergency
+    immediate), SSM-shift rotation procedure, smoke validation
+    via `tests/smoke/jwt-rotation-smoke.sh` (NEW — boots image
+    with key0 → mints token → restarts with keys[0]=key1 +
+    keys[1]=key0 → asserts old token still validates AND new
+    tokens signed under key1), and the wave-by-wave migration
+    path. Smoke is FORWARD-COMPATIBLE — soft-passes when
+    `/api/auth/token` / `/api/auth/validate` return 404 (until
+    Bishop's binding lands), matching the established `pwa-smoke`
+    / `csp-report-smoke` / `chat-flow-smoke` shape. (Apone)
+- **TLS for `turns:` on port 5349.**
+    `infra/k8s/base/turn-server.yaml` now passes
+    `--cert /etc/tls/tls.crt --pkey /etc/tls/tls.key` to coturn
+    and mounts a new `tls` volume from a `tls-cert-turn` Secret.
+    New `infra/k8s/overlays/prod/turn-tls-secret.yaml` ships an
+    `ExternalSecret` bound to `aws-secrets-manager-prod` that
+    materialises the Secret (`type: kubernetes.io/tls`) from SSM
+    parameters `/mahjong/prod/turn/tls/{crt,key}`. Closes the
+    Wave-2 "Phase L follow-up" deferral (corporate firewalls
+    blocking plain `:3478` UDP/TCP can now negotiate via
+    `turns:` on 5349). Operator runbook updated in
+    `docs/turn-server-setup.md` §1.4 (cert provisioning via
+    cert-manager+LE or ACM, SSM upload, rotation cadence). (Apone)
+- **Container-scan PR gate + nightly cron.**
+    `.github/workflows/container-scan.yml` — Trivy image scan on
+    EVERY PR (no path filter — CRITICAL CVEs published against
+    indirect deps MUST surface even on a touch-nothing PR) + push
+    on `main` + nightly cron (04:00 UTC, offset from
+    `sbom.yml`'s Monday-09:00 cadence). Hard-gates on CRITICAL by
+    default; configurable to HIGH / MEDIUM via
+    `workflow_dispatch` input for triage reruns. SARIF uploaded
+    to GitHub Code Scanning (`category: trivy-container-scan` —
+    distinct from `sbom.yml`'s `trivy-image` so findings don't
+    overlay). Sticky PR comment via
+    `marocchino/sticky-pull-request-comment@v2` (header
+    `container-scan`) with CRITICAL+HIGH+MEDIUM counts and gate
+    verdict — reviewers see the latest scan result inline without
+    conversation noise on rerun. Coexists with `sbom.yml` (SBOM-
+    focused, CRITICAL+HIGH gate, weekly cron) — two workflows,
+    distinct purposes. (Apone)
+- **SBOM signed by cosign + verified in pre-publish gate.**
+    `release.yml` adds a new `verify-sbom` job between
+    `verify-signature` and `release`. Generates an SPDX SBOM from
+    the EXACT digest-qualified image just smoke-tested + signature-
+    verified, signs the SBOM with cosign keyless OIDC
+    (`sign-blob --output-signature sbom.spdx.json.sig
+    --output-certificate sbom.spdx.json.pem`), then verifies the
+    signature with `cosign verify-blob --certificate-identity-regexp
+    "…/release.yml@refs/tags/v*"`. Block-release on missing /
+    invalid signature. The signed SBOM bundle (json + sig + cert)
+    is attached as artefacts to the workflow AND as assets on the
+    GitHub Release page so downstream auditors can pull all three
+    without re-running CI. Closes the Wave-1/-2 "SBOM generated
+    but not signed" gap. (Apone)
+- **PWA-asset presence gate in `docker-smoke.yml`.** New step
+    builds the production image and runs
+    `docker run --rm <image> sh -c 'ls /frontend/autotable/{sw.js,manifest.webmanifest,manifest-precache.json}'`
+    — HARD-FAILS if any of the three Wave-3 PWA artefacts Hicks
+    is shipping aren't in the runtime tree. Coexists with the
+    Wave-2 `pwa-smoke.yml` (exercises the SW lifecycle in
+    chromium); this gate is the per-file-presence floor that
+    catches the case where the SW JS shipped but the precache
+    manifest didn't. (Apone)
+- **JWT-rotation smoke wired into `docker-smoke.yml`.** Same
+    nightly cadence as the other smoke scripts; soft-passes
+    today, auto-tightens to a hard assertion when Bishop's
+    `/api/auth/{token,validate}` surface ships in W4/W5. (Apone)
+- **`docs/admission-policy.md` + `docs/jwt-rotation.md` (NEW).**
+    Operator runbooks for the two big new policy surfaces. (Apone)
+
+### Changed (Phase K Wave 3)
+- `release.yml`: new `verify-sbom` job between `verify-signature`
+    and `release`; `release` job's `needs:` is now `[smoke,
+    verify-signature, verify-sbom]`; `release` step attaches the
+    signed SBOM bundle as Release assets; permissions unchanged
+    on the existing jobs (the new job adds `id-token: write` for
+    keyless OIDC). (Apone)
+- `infra/k8s/base/turn-server.yaml`: coturn args extended with
+    `--cert/--pkey`; new `tls` volume mounting the `tls-cert-turn`
+    Secret at `/etc/tls/`. (Apone)
+- `src/backend/src/Mahjong.Autotable.Api/appsettings.json`: new
+    top-level `Auth.JwtSigningKeys: []` array (forward-compat
+    schema; Bishop binds in W4/W5). (Apone)
+- `docs/turn-server-setup.md` §1.4: rewritten from "Phase L
+    follow-up" placeholder to operator-actionable cert-
+    provisioning + rotation runbook. (Apone)
 
 ## [0.11.0] — Phase K Waves 1 + 2 — 2026-05-25 (PRs #47 + #48)
 
@@ -424,7 +549,8 @@ Phases A through I shipped on `main` without semver tags. Highlights:
     `pwmarcz/autotable` engine, scoring & yaku catalogue, swap-call
     discipline, gang/chi/pong/ron implementations.
 
-[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/long2know/mahjong-autotable/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/long2know/mahjong-autotable/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/long2know/mahjong-autotable/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/long2know/mahjong-autotable/compare/v0.8.0...v0.9.0

@@ -69,6 +69,14 @@ public static class DatabaseBootstrapper
             // update`. Also stamps the new TournamentMatches
             // forfeit columns onto pre-Wave-K Wave-10 rows.
             await EnsureSqlitePhaseK1TablesAsync(db, cancellationToken);
+            // Phase K Wave 3 — Bishop. Adds the ChangshaGame voice +
+            // owner columns, the PlayerOnboardingStatuses table, and
+            // renames the Wave-2 deferral columns to the canonical
+            // FromSeasonId / ToSeasonId / ResolvedAtUtc shape.
+            // Canonical schema is the Phase_K_W3_VoiceAndOnboardingSchema
+            // migration; this guard bootstraps existing-prod SQLite
+            // DBs without an out-of-band `dotnet ef database update`.
+            await EnsureSqlitePhaseK3TablesAsync(db, cancellationToken);
         }
         else
         {
@@ -1034,6 +1042,149 @@ public static class DatabaseBootstrapper
                 await using var alter = connection.CreateCommand();
                 alter.CommandText = "ALTER TABLE \"TournamentMatches\" ADD COLUMN \"ForfeitedPlayerId\" TEXT NULL;";
                 await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Defensive SQLite bootstrap for the
+    /// Wave-3 schema deltas:
+    /// <list type="bullet">
+    ///   <item>Adds <c>ChangshaGames.OwnerPlayerId</c> +
+    ///         <c>ChangshaGames.VoiceEnabled</c> columns when missing.</item>
+    ///   <item>Adds the <c>ReconnectAuditEntries.Detail</c> column
+    ///         when missing (the Wave-2 EF migration shipped without
+    ///         it).</item>
+    ///   <item>Creates the <c>PlayerOnboardingStatuses</c> table when
+    ///         missing.</item>
+    ///   <item>Renames the Wave-2 <c>PlayerSeasonRolloverDeferrals</c>
+    ///         columns from <c>FromSeason / ToSeason / DrainedAtUtc</c>
+    ///         to <c>FromSeasonId / ToSeasonId / ResolvedAtUtc</c> when
+    ///         the old shape is detected.</item>
+    /// </list>
+    /// Postgres + SqlServer reach the same schema through the canonical
+    /// Phase_K_W3_VoiceAndOnboardingSchema EF migration; this guard
+    /// stays SQLite-only because SQLite never invokes the migration
+    /// runner.
+    /// </summary>
+    private static async Task EnsureSqlitePhaseK3TablesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            // ── ChangshaGames: add OwnerPlayerId + VoiceEnabled ────────
+            var hasOwner = false;
+            var hasVoiceEnabled = false;
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA table_info(\"ChangshaGames\");";
+                await using var reader = await pragma.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var name = reader.GetString(1);
+                    if (string.Equals(name, "OwnerPlayerId", StringComparison.Ordinal)) hasOwner = true;
+                    else if (string.Equals(name, "VoiceEnabled", StringComparison.Ordinal)) hasVoiceEnabled = true;
+                }
+            }
+            if (!hasOwner)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE \"ChangshaGames\" ADD COLUMN \"OwnerPlayerId\" TEXT NULL;";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+            if (!hasVoiceEnabled)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE \"ChangshaGames\" ADD COLUMN \"VoiceEnabled\" INTEGER NOT NULL DEFAULT 0;";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // ── ReconnectAuditEntries: add Detail (Wave 2 model drift) ─
+            var hasDetail = false;
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA table_info(\"ReconnectAuditEntries\");";
+                await using var reader = await pragma.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var name = reader.GetString(1);
+                    if (string.Equals(name, "Detail", StringComparison.Ordinal)) { hasDetail = true; break; }
+                }
+            }
+            if (!hasDetail)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE \"ReconnectAuditEntries\" ADD COLUMN \"Detail\" TEXT NULL;";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // ── PlayerOnboardingStatuses: create when missing ───────────
+            await using (var create = connection.CreateCommand())
+            {
+                create.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "PlayerOnboardingStatuses" (
+                        "PlayerId" TEXT NOT NULL CONSTRAINT "PK_PlayerOnboardingStatuses" PRIMARY KEY,
+                        "Completed" INTEGER NOT NULL,
+                        "StepsCompleted" INTEGER NOT NULL,
+                        "LastStepCompletedUtc" TEXT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "UpdatedAt" TEXT NOT NULL
+                    );
+                    """;
+                await create.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // ── PlayerSeasonRolloverDeferrals: rename Wave-2 columns ───
+            // SQLite supports column renames since v3.25 (2018-09); the
+            // schema's been pinned to >= 3.35 by the EF Core 9 toolchain
+            // so the rename is safe. We only rename when the old column
+            // shape is still present so a fresh-create DB (which already
+            // lands on the new shape via EnsureCreatedAsync) is a no-op.
+            var hasOldFromSeason = false;
+            var hasOldToSeason = false;
+            var hasOldDrainedAt = false;
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA table_info(\"PlayerSeasonRolloverDeferrals\");";
+                await using var reader = await pragma.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var name = reader.GetString(1);
+                    if (string.Equals(name, "FromSeason", StringComparison.Ordinal)) hasOldFromSeason = true;
+                    else if (string.Equals(name, "ToSeason", StringComparison.Ordinal)) hasOldToSeason = true;
+                    else if (string.Equals(name, "DrainedAtUtc", StringComparison.Ordinal)) hasOldDrainedAt = true;
+                }
+            }
+            if (hasOldFromSeason)
+            {
+                await using var rename = connection.CreateCommand();
+                rename.CommandText = "ALTER TABLE \"PlayerSeasonRolloverDeferrals\" RENAME COLUMN \"FromSeason\" TO \"FromSeasonId\";";
+                await rename.ExecuteNonQueryAsync(cancellationToken);
+            }
+            if (hasOldToSeason)
+            {
+                await using var rename = connection.CreateCommand();
+                rename.CommandText = "ALTER TABLE \"PlayerSeasonRolloverDeferrals\" RENAME COLUMN \"ToSeason\" TO \"ToSeasonId\";";
+                await rename.ExecuteNonQueryAsync(cancellationToken);
+            }
+            if (hasOldDrainedAt)
+            {
+                await using var rename = connection.CreateCommand();
+                rename.CommandText = "ALTER TABLE \"PlayerSeasonRolloverDeferrals\" RENAME COLUMN \"DrainedAtUtc\" TO \"ResolvedAtUtc\";";
+                await rename.ExecuteNonQueryAsync(cancellationToken);
             }
         }
         finally

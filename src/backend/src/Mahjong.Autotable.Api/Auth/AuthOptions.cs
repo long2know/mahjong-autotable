@@ -27,6 +27,16 @@ public sealed class AuthOptions
     /// <summary>GitHub OAuth provider config.</summary>
     public OAuthProviderOptions GitHub { get; set; } = new();
 
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Microsoft (Azure AD / Entra ID) OAuth
+    /// provider config. The Microsoft endpoints accept the same
+    /// authorization-code + PKCE flow used by Google; the
+    /// <see cref="OAuthProviderOptions.TenantId"/> knob inlines the
+    /// tenant segment of the authorize/token URLs (default
+    /// <c>common</c> ⇒ multi-tenant + personal accounts).
+    /// </summary>
+    public OAuthProviderOptions Microsoft { get; set; } = new();
+
     /// <summary>Email magic-link config.</summary>
     public EmailMagicLinkOptions EmailMagicLink { get; set; } = new();
 
@@ -74,6 +84,15 @@ public sealed class OAuthProviderOptions
 
     /// <summary>Optional override for the requested OAuth scopes (space-delimited).</summary>
     public string Scopes { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Tenant segment for Microsoft (Azure AD
+    /// / Entra ID). Only consumed by the <c>microsoft</c> provider.
+    /// Defaults to <c>common</c> (multi-tenant + personal Microsoft
+    /// accounts). Set to a specific tenant GUID or domain to restrict
+    /// to a single tenant. Ignored by every other provider.
+    /// </summary>
+    public string TenantId { get; set; } = "common";
 }
 
 /// <summary>

@@ -143,6 +143,54 @@ public sealed class TournamentService
     }
 
     /// <summary>
+    /// Phase K Wave 3 — Bishop. Admin-only seed-assignment surface
+    /// backing <c>POST /api/tournaments/{id}/seed</c>. Each entry in
+    /// <paramref name="seeds"/> upserts the
+    /// <see cref="TournamentRegistration.Seed"/> column for that
+    /// player; unknown players in the body are skipped (not an error)
+    /// so a single push can target a subset of the bracket. Returns
+    /// the updated registration count.
+    ///
+    /// <para>Permitted only while the tournament is <c>draft</c> or
+    /// <c>open</c> — once <c>StartAsync</c> has emitted bracket
+    /// matches the seeding is locked. Idempotent: re-issuing the
+    /// same seeds is a no-op.</para>
+    /// </summary>
+    public async Task<int> SeedAsync(
+        Guid tournamentId,
+        IReadOnlyList<TournamentSeedAssignment> seeds,
+        CancellationToken ct = default)
+    {
+        if (seeds is null) throw new ArgumentNullException(nameof(seeds));
+        var t = await _db.Tournaments.FirstOrDefaultAsync(x => x.Id == tournamentId, ct)
+            ?? throw new InvalidOperationException("Tournament not found.");
+        if (t.Status != "draft" && t.Status != "open")
+            throw new InvalidOperationException($"Cannot reseed: tournament is '{t.Status}'.");
+
+        var regs = await _db.TournamentRegistrations
+            .Where(r => r.TournamentId == tournamentId)
+            .ToListAsync(ct);
+        var lookup = regs.ToDictionary(r => r.PlayerId, StringComparer.Ordinal);
+
+        var updated = 0;
+        foreach (var assign in seeds)
+        {
+            if (string.IsNullOrWhiteSpace(assign.PlayerId)) continue;
+            if (assign.SeedNumber < 1) continue;
+            if (!lookup.TryGetValue(assign.PlayerId, out var reg)) continue;
+            if (reg.Seed == assign.SeedNumber) continue;
+            reg.Seed = assign.SeedNumber;
+            updated++;
+        }
+        if (updated > 0) await _db.SaveChangesAsync(ct);
+        return updated;
+    }
+
+    /// <summary>Phase K Wave 3 — single seed assignment record passed
+    /// to <see cref="SeedAsync"/>.</summary>
+    public sealed record TournamentSeedAssignment(string PlayerId, int SeedNumber);
+
+    /// <summary>
     /// Transition the tournament from <c>open</c> → <c>in-progress</c>
     /// and emit the first round's <see cref="TournamentMatch"/> rows.
     /// Only the creator can call this; the controller enforces auth

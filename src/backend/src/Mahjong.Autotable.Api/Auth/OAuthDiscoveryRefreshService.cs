@@ -33,7 +33,13 @@ public sealed class OAuthDiscoveryRefreshService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var interval = TimeSpan.FromHours(Math.Max(1, _options.RefreshIntervalHours));
+        // Phase K Wave 3 — Bishop. Prefer the seconds-grained
+        // RefreshIntervalSeconds knob when set (>0). Falls back to the
+        // hours knob otherwise. Min 1s to defend against an operator
+        // typo that pins the cadence to zero.
+        var interval = _options.RefreshIntervalSeconds > 0
+            ? TimeSpan.FromSeconds(Math.Max(1, _options.RefreshIntervalSeconds))
+            : TimeSpan.FromHours(Math.Max(1, _options.RefreshIntervalHours));
         // Seed the cache once on boot so the first /health probe never
         // returns Unknown.
         try { await _discovery.RefreshAllAsync(stoppingToken); }

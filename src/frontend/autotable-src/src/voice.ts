@@ -34,6 +34,7 @@
 
 import type { Client } from './client';
 import { setElHidden } from './dom-utils';
+import { showVoiceToast } from './toast';
 
 const FALLBACK_ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -41,6 +42,53 @@ const FALLBACK_ICE: RTCIceServer[] = [
 
 interface IceConfig {
   iceServers: RTCIceServer[];
+}
+
+// Phase K Wave 3 — Per-game voice-enabled flag.
+//
+// Bishop's Wave-3 backend exposes `Game.VoiceEnabled` (default `false`)
+// through `GET /api/games/{id}/settings` and a settings-write endpoint
+// at `POST /api/games/{id}/settings/voice`.  The voice module probes
+// the GET on install — when the flag is `false` we still mount the mic
+// button (so the table-creator's settings drawer has somewhere to
+// flip the flag from) but render it disabled with the
+// "Voice not enabled for this table" tooltip.
+//
+// `?voice=1` on the URL remains as the E2E / self-hosted override —
+// when present we skip the probe and treat voice as enabled.
+
+interface GameVoiceSettings {
+  voiceEnabled?: boolean;
+  VoiceEnabled?: boolean;
+}
+
+const VOICE_ENABLED_URL_OVERRIDE_RE = /[?&]voice=1\b/;
+
+function gameIdFromUrl(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('gameId');
+    return id !== null && id !== '' ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+async function probeVoiceEnabled(): Promise<boolean> {
+  if (VOICE_ENABLED_URL_OVERRIDE_RE.test(window.location.search)) return true;
+  const gameId = gameIdFromUrl();
+  if (gameId === null) return false;
+  try {
+    const r = await fetch(
+      `/api/games/${encodeURIComponent(gameId)}/settings`,
+      { credentials: 'same-origin', headers: { Accept: 'application/json' } },
+    );
+    if (!r.ok) return false;
+    const body = (await r.json()) as GameVoiceSettings;
+    return body.voiceEnabled === true || body.VoiceEnabled === true;
+  } catch {
+    return false;
+  }
 }
 
 interface SignallingMessage {
@@ -70,12 +118,38 @@ let micBtn: HTMLButtonElement | null = null;
 let peersList: HTMLElement | null = null;
 let signaller: VoiceSignaller | null = null;
 let iceServers: RTCIceServer[] = FALLBACK_ICE;
+// Phase K Wave 3 — Per-game flag.  When `false` we render a disabled
+// mic button so the table-creator's settings drawer has a visible
+// affordance to flip it on from, but skip the WebRTC mesh.
+let voiceEnabledForGame = false;
 
 export async function installVoicePanel(_client: Client): Promise<void> {
   if (installed) return;
   installed = true;
 
   buildPanel();
+  // Phase K Wave 3 — Probe Bishop's per-game voiceEnabled flag.  When
+  // it returns false we still leave the panel mounted in disabled
+  // state so the table-creator can find the "Enable voice" toggle in
+  // the settings drawer; voice signalling + WebRTC are skipped until
+  // a future `mahjong:voice-enabled` event flips the gate.
+  voiceEnabledForGame = await probeVoiceEnabled();
+  setVoiceEnabled(voiceEnabledForGame);
+  if (!voiceEnabledForGame) {
+    // Listen for settings updates that flip the flag while the user
+    // sits at the table.  Owners flipping the toggle in the settings
+    // drawer fire this event so the mic button enables in-place.
+    window.addEventListener('mahjong:voice-enabled', () => {
+      voiceEnabledForGame = true;
+      setVoiceEnabled(true);
+      void startSignalling();
+    }, { once: true });
+    return;
+  }
+  await startSignalling();
+}
+
+async function startSignalling(): Promise<void> {
   // Fire-and-forget — failures fall through to disabled-mic state.
   iceServers = await fetchIceServers();
   signaller = await connectVoiceHub();
@@ -84,6 +158,26 @@ export async function installVoicePanel(_client: Client): Promise<void> {
     return;
   }
   wireSignaller(signaller);
+}
+
+// Phase K Wave 3 — Disable / re-enable the mic button to mirror the
+// per-game `voiceEnabled` flag.  When disabled the click handler
+// surfaces a toast instead of starting `getUserMedia`.
+function setVoiceEnabled(enabled: boolean): void {
+  if (micBtn === null) return;
+  if (enabled) {
+    micBtn.disabled = false;
+    micBtn.classList.remove('voice-mic-disabled');
+    if (micBtn.dataset.deniedReason !== 'permission') {
+      micBtn.title = muted
+        ? 'Mic is muted — click to unmute'
+        : 'Mic is live — click to mute';
+    }
+  } else {
+    micBtn.disabled = true;
+    micBtn.classList.add('voice-mic-disabled');
+    micBtn.title = 'Voice not enabled for this table';
+  }
 }
 
 // ── Panel scaffolding ─────────────────────────────────────────────
@@ -130,6 +224,14 @@ function renderStatus(text: string): void {
 
 async function toggleMic(): Promise<void> {
   if (micBtn === null) return;
+  // Phase K Wave 3 — Honor the per-game voiceEnabled flag.  Clicking
+  // a disabled button surfaces a toast so the user sees why nothing
+  // happened; the actual `disabled` attribute also stops most clicks
+  // from reaching here but we guard defensively.
+  if (!voiceEnabledForGame) {
+    showVoiceToast('voice not enabled');
+    return;
+  }
   if (localStream === null) {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -138,12 +240,30 @@ async function toggleMic(): Promise<void> {
       micBtn.classList.add('voice-mic-denied');
       micBtn.textContent = '🎙️ Mic blocked';
       micBtn.title = 'Microphone permission denied';
+      micBtn.dataset.deniedReason = 'permission';
       return;
     }
     // Attach new tracks to existing peer connections.
     for (const peer of peers.values()) {
       for (const track of localStream.getAudioTracks()) {
         peer.pc.addTrack(track, localStream);
+      }
+    }
+    // Phase K Wave 3 — Notify the VoiceHub that we want to join.
+    // Bishop's `JoinVoice` returns the error reason as a string when
+    // the server refuses (`"voice not enabled"` or
+    // `"spectators cannot join voice"`); surface it as a toast.
+    if (signaller !== null) {
+      try {
+        const result = await signaller.invoke('JoinVoice');
+        if (typeof result === 'string' && result !== '' && result.toLowerCase() !== 'ok') {
+          showVoiceToast(result);
+          micBtn.disabled = true;
+          return;
+        }
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        showVoiceToast(reason);
       }
     }
   }

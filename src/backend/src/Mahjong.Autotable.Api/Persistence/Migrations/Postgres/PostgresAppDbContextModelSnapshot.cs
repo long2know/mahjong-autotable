@@ -37,6 +37,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.Property<int>("CurrentRoundNumber")
                         .HasColumnType("integer");
 
+                    b.Property<string>("OwnerPlayerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<Guid?>("RulePresetId")
                         .HasColumnType("uuid");
 
@@ -59,6 +63,11 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
 
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("VoiceEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.HasKey("Id");
 
@@ -489,6 +498,32 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.ToTable("PlayerGameHistory");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerOnboardingStatus", b =>
+                {
+                    b.Property<string>("PlayerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<bool>("Completed")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastStepCompletedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("StepsCompleted")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PlayerId");
+
+                    b.ToTable("PlayerOnboardingStatuses");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerRating", b =>
                 {
                     b.Property<Guid>("Id")
@@ -571,10 +606,7 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.Property<DateTime>("DeferredAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("DrainedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FromSeason")
+                    b.Property<string>("FromSeasonId")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
@@ -584,7 +616,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<string>("ToSeason")
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ToSeasonId")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
@@ -594,9 +629,9 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TournamentId", "DrainedAtUtc");
+                    b.HasIndex("TournamentId", "ResolvedAtUtc");
 
-                    b.HasIndex("PlayerId", "FromSeason", "TournamentId")
+                    b.HasIndex("PlayerId", "FromSeasonId", "TournamentId")
                         .IsUnique();
 
                     b.ToTable("PlayerSeasonRolloverDeferrals");
@@ -610,6 +645,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
 
                     b.Property<DateTime>("At")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("Ipv4Hash")
                         .IsRequired()

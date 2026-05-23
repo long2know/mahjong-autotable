@@ -79,6 +79,56 @@ jobs:
           set -o pipefail
           tests/smoke/token-rotation-smoke.sh 2>&1 | tee smoke-logs/token-smoke.log
 
+      # Phase K Wave 3 (Apone) — JWT signing-key rotation smoke.
+      # Asserts the fallback-key list behaviour documented in
+      # docs/jwt-rotation.md (key0 active → rotate to key1 active +
+      # key0 fallback → old token still validates, new tokens signed
+      # by key1). Forward-compatible (soft-passes when Bishop's
+      # /api/auth/{token,validate} surface returns 404 — Wave 4/5
+      # lands the code-side binding). See
+      # tests/smoke/jwt-rotation-smoke.sh.
+      - name: Run jwt-rotation smoke
+        id: jwt-rotation-smoke
+        run: |
+          mkdir -p smoke-logs
+          set -o pipefail
+          tests/smoke/jwt-rotation-smoke.sh 2>&1 | tee smoke-logs/jwt-rotation-smoke.log
+
+      # Phase K Wave 3 (Apone) — PWA-asset presence gate. Builds the
+      # production image once, then runs `ls` inside the image to
+      # assert the three Wave-3 PWA artefacts (sw.js,
+      # manifest.webmanifest, manifest-precache.json) all landed in
+      # the runtime tree at /frontend/autotable/. This is a HARD
+      # gate — if Hicks's Parcel post-build doesn't emit
+      # manifest-precache.json, the smoke fails RED so the gap is
+      # surfaced before publication rather than after a user reports
+      # a broken offline experience. Coexists with pwa-smoke.yml
+      # (which exercises the SW lifecycle in chromium); this gate
+      # exists to catch the case where the SW JS shipped but the
+      # precache manifest didn't (browser would silently install an
+      # empty SW that controls no routes).
+      - name: Build image for PWA-asset gate
+        id: pwa-build
+        run: |
+          set -euo pipefail
+          IMAGE_TAG="mahjong-pwa-asset-gate-${GITHUB_RUN_ID:-local}"
+          docker build -t "$IMAGE_TAG" -q . >/dev/null
+          echo "image=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: PWA-asset presence gate
+        env:
+          IMAGE: ${{ steps.pwa-build.outputs.image }}
+        run: |
+          set -euo pipefail
+          mkdir -p smoke-logs
+          docker run --rm --entrypoint sh "$IMAGE" -c \
+              'ls -la /frontend/autotable/sw.js /frontend/autotable/manifest.webmanifest /frontend/autotable/manifest-precache.json' \
+              2>&1 | tee smoke-logs/pwa-asset-gate.log || {
+                  echo "❌ PWA assets missing in runtime image — Hicks's Parcel post-build is not emitting one of sw.js / manifest.webmanifest / manifest-precache.json into src/frontend/autotable/"
+                  exit 1
+              }
+          echo "✅ PWA assets present in runtime image"
+
       # When the smoke fails, surface every log we have for triage: the
       # script's own combined output plus, if the script left a per-PID
       # `tests/smoke/.run-*` directory behind (it usually cleans up on

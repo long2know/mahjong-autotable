@@ -70,6 +70,9 @@ public sealed class AuthController : ControllerBase
             list.Add(new { id = "google", displayName = "Google", enabled = true, kind = "oauth" });
         if (_oauth.IsConfigured("github"))
             list.Add(new { id = "github", displayName = "GitHub", enabled = true, kind = "oauth" });
+        // Phase K Wave 3 — Bishop. Microsoft (Azure AD / Entra ID).
+        if (_oauth.IsConfigured("microsoft"))
+            list.Add(new { id = "microsoft", displayName = "Microsoft", enabled = true, kind = "oauth" });
         if (_options.EmailMagicLink.Enabled)
             list.Add(new { id = "email", displayName = "Email magic link", enabled = true, kind = "email" });
         if (_env.IsDevelopment())
@@ -384,6 +387,8 @@ public sealed class AuthController : ControllerBase
     {
         "google" => "Google",
         "github" => "GitHub",
+        // Phase K Wave 3 — Bishop. Microsoft display label.
+        "microsoft" => "Microsoft",
         _ => provider,
     };
 

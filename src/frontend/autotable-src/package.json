@@ -5,7 +5,9 @@
   "license": "MIT",
   "scripts": {
     "e2e": "playwright test --config tests/e2e/playwright.config.ts",
-    "e2e:install": "playwright install --with-deps chromium"
+    "e2e:install": "playwright install --with-deps chromium",
+    "build": "parcel build index.html --dist-dir ../autotable --public-url . --no-source-maps --no-cache && npm run build:post",
+    "build:post": "node scripts/generate-sw-manifest.js"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.3",

@@ -1,0 +1,165 @@
+# Phase K Wave 3 — Apone (DevOps).
+#
+# Kyverno ClusterPolicy that ENFORCES cosign-keyless signature
+# verification for every container image pulled from
+# `ghcr.io/long2know/mahjong-autotable:*`. Cluster-layer companion
+# to:
+#
+#   * `.github/workflows/sign-image.yml` (Wave 1) — keyless cosign
+#     signing of the multi-arch manifest list on every `main` /
+#     `v*.*.*` build.
+#   * `.github/workflows/verify-signature.yml` (Wave 2) — reusable
+#     verify gate wired into `release.yml`.
+#
+# Wave 1 + Wave 2 enforce the signature contract IN CI; Wave 3
+# extends the same contract DOWN to the cluster admission layer so
+# a hand-rolled `kubectl apply` or an Argo CD sync that bypasses
+# CI cannot land an unsigned image either. The three layers form
+# a defense-in-depth shape: workflow → release-gate → admission.
+#
+# Apply via:
+#
+#   helm repo add kyverno https://kyverno.github.io/kyverno/
+#   helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace
+#   kubectl apply -f infra/k8s/policies/kyverno-cosign-verify.yaml
+#
+# Verification + operator runbook: docs/admission-policy.md.
+#
+# ## Action mode by namespace
+#
+# Kyverno 1.10+ supports `validationFailureActionOverrides` so a
+# single ClusterPolicy can be AUDIT-only in `mahjong-staging` (logs
+# Policy Reports + allows the pod through) and ENFORCE-only in
+# `mahjong-prod` (rejects the admission). Stephen's request:
+# audit-mode in staging, enforce-mode in production. We default to
+# Audit globally so any new namespace fails SAFE — operator must
+# add it to the Enforce list once the SSM-prod cluster has been
+# verified to consume signed images.
+#
+# ## Identity contract
+#
+# The expected-identity-regex MUST stay in lock-step with the
+# canonical signer URL produced by `sign-image.yml`. If that
+# workflow is ever renamed or relocated, update this file AND
+# `.github/workflows/verify-signature.yml` (the default
+# `expected-identity-pattern` input) together.
+#
+# Canonical signer (Wave 1 + Wave 2):
+#   https://github.com/long2know/mahjong-autotable/.github/workflows/sign-image.yml@refs/heads/main
+#   https://github.com/long2know/mahjong-autotable/.github/workflows/sign-image.yml@refs/tags/v*
+#
+# OIDC issuer: https://token.actions.githubusercontent.com
+# Rekor URL:   https://rekor.sigstore.dev
+# Fulcio CA:   https://fulcio.sigstore.dev
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-mahjong-images
+  annotations:
+    policies.kyverno.io/title: "Verify mahjong-autotable image signatures (cosign keyless)"
+    policies.kyverno.io/category: "Supply-Chain Security"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod, Deployment, StatefulSet"
+    policies.kyverno.io/description: >-
+      Every container image pulled from
+      `ghcr.io/long2know/mahjong-autotable:*` MUST carry a valid
+      cosign keyless signature whose Fulcio cert was issued to
+      this repo's `sign-image.yml` workflow on `main` or a
+      `v*.*.*` tag, and whose Rekor entry verifies. Unsigned or
+      foreign-signed images are rejected in `mahjong-prod` and
+      flagged in `mahjong-staging`. See
+      `docs/admission-policy.md` for the operator runbook.
+spec:
+  # Default action: Audit (PolicyReport, do NOT block). The
+  # per-namespace overrides below flip prod to Enforce. Defaulting
+  # to Audit means a brand-new namespace fails SAFE — operator
+  # must explicitly opt into Enforce after verifying the namespace
+  # consumes signed images cleanly.
+  validationFailureAction: Audit
+  validationFailureActionOverrides:
+    - action: Enforce
+      namespaces:
+        - mahjong-prod
+    - action: Audit
+      namespaces:
+        - mahjong-staging
+  # `background: false` — verifyImages cannot run as a background
+  # scan (Kyverno docs §verifyImages); it MUST run synchronously
+  # on admission so the signing-cert presentation is part of the
+  # admit/deny decision rather than a delayed PolicyReport.
+  background: false
+  webhookTimeoutSeconds: 30
+  # `failurePolicy: Fail` — if Kyverno cannot reach Fulcio / Rekor,
+  # treat as DENY in Enforce namespaces. This is the cosign-policy
+  # canonical setting; an outage of the Sigstore stack blocks
+  # NEW rollouts in prod (existing pods keep running). The
+  # alternative (Ignore) would let unsigned images through during
+  # a Sigstore outage — unacceptable for a supply-chain policy.
+  failurePolicy: Fail
+  rules:
+    - name: verify-cosign-keyless-mahjong
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+      # Skip namespaces Kyverno itself runs in plus the kube-system
+      # ring to avoid bootstrap chicken-and-egg (admission webhook
+      # cannot self-admit while it's still coming up).
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/long2know/mahjong-autotable:*"
+            - "ghcr.io/long2know/mahjong-autotable@sha256:*"
+          # `MutateDigest: true` rewrites `:tag` to `@sha256:...`
+          # after a successful verify so the pod is pinned to the
+          # exact bits we just attested. Without this, a tag could
+          # be re-pushed between admit and pull — defeating the
+          # signature check.
+          mutateDigest: true
+          # `VerifyDigest: false` — let Kyverno resolve the tag
+          # to a digest at admission time. If callers already
+          # supplied a digest-qualified reference, the verify
+          # below still binds the signature to that digest.
+          verifyDigest: false
+          required: true
+          # `imageRegistryCredentials` left unset — Kyverno uses
+          # the in-cluster ImagePullSecrets (kyverno-controller's
+          # SA) to fetch the registry manifest. For GHCR private
+          # repos, bind a PullSecret to the kyverno SA via:
+          #   kubectl -n kyverno create secret docker-registry ghcr-pull --docker-server=ghcr.io ...
+          # For our public image (`mahjong-autotable` is public)
+          # this is not required.
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    # Issuer pinning — only signatures whose OIDC
+                    # issuer claim matches GitHub Actions. Any
+                    # other issuer (manual cosign-sign from a
+                    # workstation, a fork's workflow, etc.) fails.
+                    issuer: "https://token.actions.githubusercontent.com"
+                    # Canonical signer subject pinning. Matches:
+                    #   .../sign-image.yml@refs/heads/main
+                    #   .../sign-image.yml@refs/tags/v*
+                    # Renaming the workflow or moving the repo is
+                    # a coordinated change with
+                    # .github/workflows/verify-signature.yml.
+                    subjectRegExp: "^https://github\\.com/long2know/mahjong-autotable/\\.github/workflows/sign-image\\.yml@refs/(heads/main|tags/v.*)$"
+                    rekor:
+                      url: "https://rekor.sigstore.dev"
+                    ctlog:
+                      ignoreSCT: false

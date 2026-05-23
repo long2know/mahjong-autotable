@@ -125,9 +125,129 @@ jobs:
       contents: read
       packages: read
 
+  verify-sbom:
+    # Phase K Wave 3 — Apone (DevOps).
+    #
+    # SBOM signed-by-cosign pre-publish gate. Wave 1 shipped
+    # `sbom.yml` (CycloneDX + SPDX SBOM generation against the local
+    # build) and Wave 3 closes the chain: the release is NOT cut
+    # unless an SPDX SBOM for the EXACT image digest exists AND its
+    # cosign keyless signature verifies against the same canonical
+    # signer identity (`sign-image.yml`@main|v*) that signed the
+    # image manifest itself.
+    #
+    # Why generate-sign-verify here vs reading sbom.yml's artefact?
+    # Cross-workflow artefact passing is brittle in GitHub Actions
+    # (artefacts are per-run; resolving the right run id at tag-push
+    # time requires extra plumbing). Generating from the tagged
+    # image, signing keyless, and verifying in the same job binds
+    # the SBOM cryptographically to the release tag — exactly what
+    # supply-chain auditors want to see in the Rekor entry.
+    needs: [smoke, verify-signature]
+    name: SBOM signed + verified (cosign blob)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+      # Required for cosign keyless: lets sign-blob mint an OIDC
+      # token that Fulcio swaps for a short-lived signing cert.
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          # Keep in lock-step with sign-image.yml + verify-signature.yml.
+          cosign-release: v2.4.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SPDX SBOM from the published image
+        uses: anchore/sbom-action@v0
+        with:
+          # Pin to the digest-qualified reference so the SBOM
+          # describes the bits we just smoke-tested + signature-
+          # verified (NOT a tag that could be re-pushed).
+          image: ${{ needs.smoke.outputs.image-digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: true
+          upload-artifact-retention: 90
+
+      - name: Cosign sign SBOM (keyless OIDC)
+        env:
+          COSIGN_YES: "true"
+        run: |
+          set -euo pipefail
+          if [[ ! -s sbom.spdx.json ]]; then
+            echo "::error::sbom.spdx.json missing or empty — cannot sign"
+            exit 1
+          fi
+          # `cosign sign-blob` writes the detached signature to
+          # `--output-signature`; certificate to `--output-certificate`.
+          # Both are needed for the verify-blob step + audit attachment.
+          cosign sign-blob \
+            --yes \
+            --output-signature sbom.spdx.json.sig \
+            --output-certificate sbom.spdx.json.pem \
+            sbom.spdx.json
+          test -s sbom.spdx.json.sig
+          test -s sbom.spdx.json.pem
+          echo "✅ SBOM signed; signature → sbom.spdx.json.sig"
+
+      - name: Cosign verify-blob (gate)
+        env:
+          EXPECTED_IDENTITY_REGEXP: ^https://github\.com/long2know/mahjong-autotable/\.github/workflows/release\.yml@refs/tags/v.*$
+          EXPECTED_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: |
+          set -euo pipefail
+          # Verify-blob exits non-zero on any of: missing/empty sig,
+          # cert-identity mismatch, issuer mismatch, Rekor entry
+          # mismatch, blob hash mismatch. Block release on ANY of
+          # those — the whole point of this gate.
+          cosign verify-blob \
+            --signature sbom.spdx.json.sig \
+            --certificate sbom.spdx.json.pem \
+            --certificate-identity-regexp "$EXPECTED_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$EXPECTED_OIDC_ISSUER" \
+            sbom.spdx.json
+          echo "✅ SBOM signature verified — release may proceed"
+
+      - name: Upload signed SBOM artefact bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-signed-${{ github.ref_name }}
+          path: |
+            sbom.spdx.json
+            sbom.spdx.json.sig
+            sbom.spdx.json.pem
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Step Summary
+        if: always()
+        run: |
+          {
+            echo "### SBOM signed + verified (Phase K Wave 3)"
+            echo
+            echo "- Image: \`${{ needs.smoke.outputs.image-digest }}\`"
+            echo "- SBOM:      \`sbom.spdx.json\`"
+            echo "- Signature: \`sbom.spdx.json.sig\`"
+            echo "- Cert:      \`sbom.spdx.json.pem\`"
+            echo "- Verifier:  \`cosign verify-blob --certificate-identity-regexp \"…/release.yml@refs/tags/v*\"\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   release:
     name: Create GitHub release
-    needs: [smoke, verify-signature]
+    needs: [smoke, verify-signature, verify-sbom]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -135,6 +255,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download signed SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-signed-${{ github.ref_name }}
+          path: sbom
 
       - name: Extract CHANGELOG section
         id: changelog
@@ -182,7 +308,14 @@ jobs:
           else
             flags+=(--generate-notes)
           fi
-          gh release create "$TAG" "${flags[@]}"
+          # Phase K Wave 3 — Apone. Attach the signed SBOM bundle
+          # (sbom.spdx.json + .sig + .pem) to the GitHub Release so
+          # downstream auditors can pull the artefacts directly from
+          # the release page without re-running the workflow.
+          gh release create "$TAG" "${flags[@]}" \
+            sbom/sbom.spdx.json \
+            sbom/sbom.spdx.json.sig \
+            sbom/sbom.spdx.json.pem
 
       - name: Summary
         env:
@@ -193,5 +326,7 @@ jobs:
             echo
             echo "- Image: \`$REGISTRY/$IMAGE_NAME:$TAG\`"
             echo "- Smoke test: passed"
+            echo "- Cosign image signature: verified"
+            echo "- Cosign SBOM signature: verified"
             echo "- Release page: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
           } >> "$GITHUB_STEP_SUMMARY"

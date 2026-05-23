@@ -677,7 +677,174 @@ function buildNetworkPanel(): HTMLDivElement {
   urlField.appendChild(urlHint);
 
   panel.appendChild(urlField);
+
+  // Phase K Wave 3 — Per-game "Enable voice" toggle.  Only rendered
+  // when the viewer is in a live game (URL has `?gameId=…`) and the
+  // GET /api/games/{id}/settings call reports `viewerIsOwner: true`.
+  // The toggle posts to /api/games/{id}/settings/voice and fires a
+  // `mahjong:voice-enabled` event so voice.ts can flip its mic
+  // button live without a page reload.
+  const voiceSection = buildVoiceEnableToggle();
+  if (voiceSection !== null) {
+    panel.appendChild(voiceSection);
+  }
+
   return panel;
+}
+
+// Phase K Wave 3 — Per-game voice settings (owner-only).
+//
+// Bishop's Wave-3 backend exposes:
+//   GET  /api/games/{id}/settings
+//     → 200 { voiceEnabled: bool, viewerIsOwner: bool, … } | 404
+//   POST /api/games/{id}/settings/voice
+//     body: { enabled: bool }  → 204 | 403 (not owner) | 404
+//
+// The toggle is hidden when:
+//   • There is no `gameId` in the URL (lobby-only context).
+//   • GET returns 404 (endpoint not deployed).
+//   • `viewerIsOwner` is false (the user is a guest at someone else's
+//     table — the server enforces this anyway via 403).
+
+interface GameSettingsResponse {
+  voiceEnabled?: boolean;
+  VoiceEnabled?: boolean;
+  viewerIsOwner?: boolean;
+  ViewerIsOwner?: boolean;
+}
+
+function currentGameIdFromUrl(): string | null {
+  try {
+    const id = new URLSearchParams(window.location.search).get('gameId');
+    return id !== null && id !== '' ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildVoiceEnableToggle(): HTMLElement | null {
+  const gameId = currentGameIdFromUrl();
+  if (gameId === null) return null;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'settings-v2-field settings-v2-voice-enable';
+  // Start hidden — the async GET decides whether to surface it.
+  wrap.hidden = true;
+
+  const heading = document.createElement('span');
+  heading.className = 'settings-v2-section-heading';
+  heading.textContent = t('settings.voice.section') || 'Voice chat (this table)';
+  wrap.appendChild(heading);
+
+  const row = document.createElement('label');
+  row.className = 'settings-v2-toggle-row';
+
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.id = 'settings-voice-enable';
+  input.setAttribute('data-testid', 'voice-enable-toggle');
+  input.disabled = true;
+  row.appendChild(input);
+
+  const labelText = document.createElement('span');
+  labelText.className = 'settings-v2-toggle-label';
+  labelText.textContent = t('settings.voice.toggle') || 'Enable voice chat for this table';
+  row.appendChild(labelText);
+
+  const hint = document.createElement('span');
+  hint.className = 'settings-v2-hint';
+  hint.setAttribute('data-testid', 'voice-enable-hint');
+  hint.textContent =
+    'Hosts only — when on, players at this table can talk via WebRTC voice.';
+
+  wrap.appendChild(row);
+  wrap.appendChild(hint);
+
+  input.addEventListener('change', () => {
+    void postVoiceEnable(gameId, input);
+  });
+
+  void primeVoiceToggle(gameId, wrap, input);
+
+  return wrap;
+}
+
+async function primeVoiceToggle(
+  gameId: string,
+  wrap: HTMLElement,
+  input: HTMLInputElement,
+): Promise<void> {
+  try {
+    const r = await fetch(
+      `/api/games/${encodeURIComponent(gameId)}/settings`,
+      { credentials: 'same-origin', headers: { Accept: 'application/json' } },
+    );
+    if (!r.ok) {
+      // 404 → endpoint not deployed; leave the toggle hidden.
+      return;
+    }
+    const body = (await r.json()) as GameSettingsResponse;
+    const isOwner = body.viewerIsOwner === true || body.ViewerIsOwner === true;
+    if (!isOwner) return;
+    const enabled = body.voiceEnabled === true || body.VoiceEnabled === true;
+    input.checked = enabled;
+    input.disabled = false;
+    wrap.hidden = false;
+  } catch {
+    // Network error — leave the toggle hidden.
+  }
+}
+
+async function postVoiceEnable(
+  gameId: string,
+  input: HTMLInputElement,
+): Promise<void> {
+  // Optimistic update — keep the current checked state, roll back on failure.
+  const desired = input.checked;
+  input.disabled = true;
+  try {
+    const r = await fetch(
+      `/api/games/${encodeURIComponent(gameId)}/settings/voice`,
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled: desired }),
+      },
+    );
+    if (!r.ok) {
+      input.checked = !desired;
+      const { showToast } = await import('./toast');
+      showToast(
+        desired
+          ? 'Could not enable voice — server rejected the request.'
+          : 'Could not disable voice — server rejected the request.',
+        'error',
+      );
+      return;
+    }
+    const { showToast } = await import('./toast');
+    showToast(
+      desired ? 'Voice enabled for this table.' : 'Voice disabled for this table.',
+      'success',
+    );
+    // Notify voice.ts so the mic toggle enables in place — voice.ts
+    // listens for this event when it mounted in the disabled state.
+    if (desired) {
+      window.dispatchEvent(new CustomEvent('mahjong:voice-enabled'));
+    } else {
+      window.dispatchEvent(new CustomEvent('mahjong:voice-disabled'));
+    }
+  } catch {
+    input.checked = !desired;
+    const { showToast } = await import('./toast');
+    showToast('Voice settings request failed.', 'error');
+  } finally {
+    input.disabled = false;
+  }
 }
 
 // Phase J Wave 8 — Rule presets panel.  The body of this tab is

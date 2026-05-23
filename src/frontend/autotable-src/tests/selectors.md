@@ -869,3 +869,211 @@ yet been wired:
 When you remove or rename a Phase K Wave 2 testid, run
 `grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
 merging — same drift-detection note as Wave 1.
+
+## Phase K Wave 3 testids — scene split + voice-enabled flag + Microsoft OAuth + seed auto-save + SW pre-cache (Hicks)
+
+Coverage for the Phase K Wave 3 frontend bring-up.  The Wave-2
+game-bootstrap chunk (which still carried three.js) is now itself
+split: `game-bootstrap.<hash>.js` is a three-free HUD shell, and the
+heavy renderer lives in a fresh `scene.<hash>.js` chunk loaded by
+dynamic-import after the shell paints.
+
+### Lobby + game bundle budget (post-Wave-3)
+
+The Wave-2 game chunk was 1.11 MB (three.js + AssetLoader + Game +
+MoveLog + lobby client attach all eager inside `game-bootstrap.ts`).
+Wave 3 splits those out into a dedicated scene module:
+
+| Asset                                 | Size       | Trigger |
+|---|---|---|
+| `autotable-src.<hash>.js` (eager)     | **214 kB** | Always (lobby + matchmaking + identity + i18n + Sentry shim + auth modal + toast helper) |
+| `game-bootstrap.<hash>.js` (lazy)     | **166 kB** | First non-empty `?…` on URL (HUD/chat/voice wiring, no three.js) |
+| `scene.<hash>.js` (lazy)              | **922 kB** | Dynamic-imported by `game-bootstrap.ts` after the shell `data-testid="game-shell-ready"` lands — owns three.js, AssetLoader, Game, MoveLog, lobby-client attach |
+| `toast.<hash>.js` (lazy)              | ~1.2 kB    | Imported on demand by voice/tournaments error paths |
+| `esm.<hash>.js` (Sentry vendor)       | 395 kB     | Only when `<meta name="sentry-dsn">` is non-empty |
+| `tournaments.<hash>.js` (lazy)        | ~25 kB     | Tournaments tab hover/focus/click |
+| `chat.<hash>.js` (lazy)               | ~16 kB     | `?gameId=` on URL after game bootstrap |
+
+Cold lobby visitor still downloads <500 kB of JS+CSS before the
+lobby paints.  A player who follows a `?gameId=` link pays an
+additional 166 kB to mount the HUD shell (which paints the
+`game-shell-ready` testid) and then the 922 kB scene chunk streams
+in concurrently with the lobby tiles loading.
+
+### Scene split — `game-shell-ready` + `game-scene-ready`
+
+- `game-shell-ready` — set as `data-testid` on `<body>` (and
+  dispatched as a `mahjong:game-shell-ready` event) by
+  `markShellReady()` in `game-bootstrap.ts` once the three-free shell
+  has mounted.  Playwright should `await page.waitForSelector('[data-testid="game-shell-ready"]')`
+  for HUD-only assertions.
+- `game-scene-ready` — set as `data-testid` on `<body>` (and
+  dispatched as a `mahjong:game-scene-ready` event) by `scene.ts`
+  after the first `requestAnimationFrame` post-mount.  Use this
+  rather than `game-shell-ready` for assertions that depend on
+  tiles being painted on the canvas.
+
+The two testids are additive — both stay attached for the life of
+the page so re-entry into the lobby and back doesn't clear them.
+
+### Voice — per-game `voiceEnabled` flag
+
+Wave 2 gated voice on `?voice=1`; Wave 3 wires it to a per-game
+server flag fetched via `GET /api/games/{id}/settings`
+(`{ voiceEnabled: bool, viewerIsOwner: bool, ... }`).
+
+- `voice-mic-toggle` — when `voiceEnabled === false` the button
+  carries `disabled` + `aria-disabled="true"` + a tooltip
+  ("Voice not enabled for this table").  Hover/focus surfaces the
+  tooltip; click is a no-op.
+- `voice-enable-toggle` — owner-only toggle in the settings drawer's
+  Network panel (only renders when `viewerIsOwner === true`).
+  Optimistic: flips immediately, POSTs
+  `/api/games/{id}/settings/voice` `{ enabled: bool }`, rolls back
+  + toasts on non-2xx.  Dispatches `mahjong:voice-enabled`
+  CustomEvent (with `{ detail: { enabled } }`) on success so the
+  in-flight voice module live-flips the mic without page reload.
+- `voice-enable-hint` — sibling `<span class="settings-hint">`
+  carrying "When enabled, players join WebRTC voice automatically."
+- Toast surfaces on hub-side rejection:
+  - `"voice not enabled"` (sent by `VoiceHub.JoinVoice` when the
+    server-side flag is off) → "Voice is not enabled for this
+    table."
+  - `"spectators cannot join voice"` → "Spectators can listen but
+    not speak."
+
+### Sign-in modal + Microsoft OAuth
+
+`auth.ts` now mounts a sign-in modal scaffold lazily on first
+import (the Wave-2 build had no modal markup in `index.html`; Wave
+3's `ensureAuthMarkup()` injects the modal, header chip, and
+magic-link landing during module initialisation).
+
+- `signin-button` — header CTA that opens the modal.
+- `signin-modal` — root `<div role="dialog" aria-modal="true">`.
+- `signin-provider-google` — Google sign-in row (POST flow,
+  unchanged from Wave 2's design).
+- `signin-provider-microsoft` — **new in Wave 3.** Microsoft brand
+  4-tile inline SVG icon (Microsoft brand colours
+  `#f25022 / #7fba00 / #00a4ef / #ffb900`).  Clicking it does a
+  direct `window.location.href = '/api/auth/login?provider=microsoft&returnUrl=…'`
+  (the redirect-via-cookie flow Bishop wired in Wave 3 backend) —
+  intentionally different from the POST-then-redirect Google flow
+  because Microsoft's Entra token endpoint expects a GET handshake
+  with the `returnUrl` round-tripped as a state cookie.
+- `signin-provider-github` — GitHub OAuth row (unchanged).
+- `signin-provider-email` — magic-link row (unchanged).
+- `signin-error` — error pill beneath the provider list (used by
+  both OAuth + magic-link failures).
+- `auth-header-chip` — top-right pill showing the authenticated
+  user's name + provider badge.  Provider badge for Microsoft is
+  `🟦 Microsoft`.
+
+### Tournament seeding — auto-POST on each drop
+
+Wave-2 had a manual "Save" button.  Wave 3 auto-POSTs the new
+ordering on every successful drop with rollback on failure.
+
+- `tournament-seeding-panel` — unchanged (admin-only).
+- `tournament-seed-row-{N}` — drop handler now calls `persistSeeds()`
+  which POSTs `/api/tournaments/{id}/seed` with the **Wave-3 wire
+  shape** `{ seeds: [{ playerId, seedNumber }, …] }`.  `seedNumber`
+  is 1-based.  On HTTP failure the previous ordering is restored,
+  the list re-renders, and a toast surfaces "Seed order could not
+  be saved — restored previous order."
+- `tournament-seeding-save` — still present but functionally a
+  belt-and-braces no-op for the current state (manual save remains
+  for keyboard reorder users in Wave 4).
+- `tournament-seeding-status` — error pill (unchanged).
+
+### Offline-friendly onboarding tour
+
+`tour.ts` Wave 2 probed `GET /api/players/me/onboarding-status`
+synchronously before deciding whether to show the tour.  Wave 3
+races the probe against a 300 ms timer so an offline visitor isn't
+held at a blank page:
+
+- Probe failure or timeout → tour starts immediately, completion
+  POST is silently dropped (`offlineFallback = true`).  LS flag
+  remains the authoritative offline source of truth.
+- Probe success → Wave-2 server-authoritative behaviour preserved.
+- No new testids; `onboarding-tour-overlay` continues to drive the
+  Playwright assertions.
+
+### Service worker pre-cache manifest
+
+`scripts/generate-sw-manifest.js` (chained from `npm run build:post`
+after `parcel build`) emits `manifest-precache.json` at the dist
+root and copies the latest `sw.js` into the dist.  The script also
+prunes superseded hashed chunks left behind by previous parcel runs
+(so the dist doesn't accumulate stale `game-bootstrap.<oldhash>.js`
+across waves).
+
+- `manifest-precache.json` shape:
+  ```json
+  {
+    "generatedAt": "<iso>",
+    "version": "autotable-v3",
+    "assets": ["./index.html", "./autotable-src.<hash>.js", …]
+  }
+  ```
+- `sw.js` `install` handler fetches the manifest with
+  `cache: 'no-store'` and calls `cache.addAll(reachable)` after a
+  HEAD-probe pass (so one missing entry doesn't fail the whole
+  install transaction).  Cache version bumped to `autotable-v3`;
+  `activate` purges any cache prefixed `autotable-` that isn't the
+  current version — so the Wave-2 → Wave-3 upgrade evicts stale
+  precache entries on the first navigation.
+- Wave-2 runtime caching strategies (cache-first for hashed assets,
+  network-first for `/api/games/public`, network-only for the rest
+  of `/api/*` + `/hubs/*`) are unchanged.
+
+### Phase K Wave 3 Playwright coverage — Vasquez
+
+Soft-pass annotations for selectors whose downstream surface
+hasn't yet been wired or whose backend ships in a parallel PR:
+
+- `game-shell-ready precedes game-scene-ready (shell within 1 s, scene within 5 s)`
+- `voice-mic-toggle disabled + tooltip when voiceEnabled=false`
+- `voice-enable-toggle visible only when viewerIsOwner=true`
+- `voice-enable-toggle optimistic flip + rollback + toast on POST failure`
+- `signin-provider-microsoft renders Microsoft 4-tile SVG icon`
+- `signin-provider-microsoft click → window.location.href = /api/auth/login?provider=microsoft`
+- `tournament-seed-row drag → auto-POST { seeds: [{ playerId, seedNumber }, …] }`
+- `tournament-seed-row POST failure → ordering reverts + toast`
+- `tour starts within 300 ms even when /api/players/me/onboarding-status is offline`
+- `sw install pre-caches eager + shell + icons via manifest-precache.json`
+
+When you remove or rename a Phase K Wave 3 testid, run
+`grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
+merging — same drift-detection note as Wave 1.
+
+### Phase K Wave 3 Playwright spec map — Vasquez
+
+The reflection-defensive specs Vasquez landed for Wave 3 (every
+fact soft-passes via `test.info().annotations.push({ type:
+'soft-pass', … })` when its target test-id or backend hasn't yet
+been wired):
+
+- `game-shell-split.spec.ts` — guards the `game-bootstrap` chunk
+  size (< 500 kB hard cap, 300 kB target) and verifies the
+  `scene` chunk loads lazily after lobby paint.
+- `sw-precache.spec.ts` — soft-asserts the SW fetches
+  `manifest-precache.json` at install time, the manifest shape is
+  `{ assets: [...] }` (array or object form), and the registration
+  reaches `activated`/`installing`.
+- `tour-offline.spec.ts` — verifies the onboarding tour mounts
+  from `localStorage` when `/api/players/me/onboarding-status`
+  fails, and that the skip button persists completion locally.
+- `voice-enabled-toggle.spec.ts` — owner sees the
+  `voice-enabled-toggle`, the mic button is disabled or hidden
+  when `VoiceEnabled=false`, and non-owners do not see the toggle.
+- `microsoft-oauth.spec.ts` — `signin-provider-microsoft` button
+  visibility tied to providers payload, href carries
+  `provider=microsoft` (or canonical `/auth/microsoft` route),
+  absent/hidden when disabled.
+- `tournament-seed-post.spec.ts` — `tournament-seed-handle` is
+  keyboard-focusable, `tournament-seed-save` issues
+  `POST /api/tournaments/{id}/seed`, non-admins never see the
+  save action.
+

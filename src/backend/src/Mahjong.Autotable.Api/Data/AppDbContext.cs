@@ -69,6 +69,12 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     // Mahjong.Autotable.Api.Tournament.SeasonRolloverService.
     public DbSet<PlayerSeasonRolloverDeferral> PlayerSeasonRolloverDeferrals => Set<PlayerSeasonRolloverDeferral>();
 
+    // Phase K Wave 3 — Bishop. Server-authoritative onboarding tour
+    // progress. Persisted via the
+    // GET/POST /api/players/me/onboarding-status endpoints. See
+    // Mahjong.Autotable.Api.Players.PlayerOnboardingService.
+    public DbSet<PlayerOnboardingStatus> PlayerOnboardingStatuses => Set<PlayerOnboardingStatus>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -81,6 +87,13 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             // SqlServer's legacy `TEXT` is deprecated, so this override
             // was removed to keep the multi-provider migration set clean.
             entity.Property(x => x.StateVersion).HasDefaultValue(1);
+            // Phase K Wave 3 — Bishop. Owner-of-the-table column (Wave 3
+            // brief task 3): table creator's persistent PlayerId, gates
+            // /api/games/{id}/settings/voice.
+            entity.Property(x => x.OwnerPlayerId).HasMaxLength(128);
+            // Phase K Wave 3 — Bishop. Per-table voice toggle. Default
+            // false so existing/legacy rows backfill correctly.
+            entity.Property(x => x.VoiceEnabled).HasDefaultValue(false);
         });
 
         modelBuilder.Entity<ChangshaGameEvent>(entity =>
@@ -364,18 +377,35 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
 
         // Phase K Wave 2 — quarter-boundary rollover deferral. Written
         // when a quarter flips while the player is mid-tournament; the
-        // (TournamentId, DrainedAtUtc) composite index supports the
+        // (TournamentId, ResolvedAtUtc) composite index supports the
         // "what's still pending for this tournament" lookup performed
-        // when the tournament completes. (PlayerId, FromSeason,
+        // when the tournament completes. (PlayerId, FromSeasonId,
         // TournamentId) unique keeps the recorder idempotent on re-runs.
+        //
+        // Phase K Wave 3 — Bishop renamed the season fields to
+        // FromSeasonId/ToSeasonId and DrainedAtUtc → ResolvedAtUtc per
+        // Vasquez's Wave-2 contract-gap memo (fix #5). Indices were
+        // re-named in lockstep with the migration.
         modelBuilder.Entity<PlayerSeasonRolloverDeferral>(entity =>
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
-            entity.Property(x => x.FromSeason).HasMaxLength(16).IsRequired();
-            entity.Property(x => x.ToSeason).HasMaxLength(16).IsRequired();
-            entity.HasIndex(x => new { x.PlayerId, x.FromSeason, x.TournamentId }).IsUnique();
-            entity.HasIndex(x => new { x.TournamentId, x.DrainedAtUtc });
+            entity.Property(x => x.FromSeasonId).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.ToSeasonId).HasMaxLength(16).IsRequired();
+            entity.HasIndex(x => new { x.PlayerId, x.FromSeasonId, x.TournamentId }).IsUnique();
+            entity.HasIndex(x => new { x.TournamentId, x.ResolvedAtUtc });
+        });
+
+        // Phase K Wave 3 — Bishop. Onboarding tour progress. Single row
+        // per player; PlayerId is the PK so the GET/POST contract is a
+        // direct upsert. No FK to PlayerProfiles because the row may
+        // exist briefly before the profile is fully resolved on the
+        // first /api/identity round-trip; the soft pairing keeps the
+        // surface tolerant.
+        modelBuilder.Entity<PlayerOnboardingStatus>(entity =>
+        {
+            entity.HasKey(x => x.PlayerId);
+            entity.Property(x => x.PlayerId).HasMaxLength(128);
         });
     }
 }
