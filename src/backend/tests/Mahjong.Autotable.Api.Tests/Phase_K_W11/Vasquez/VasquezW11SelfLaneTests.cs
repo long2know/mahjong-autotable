@@ -376,14 +376,17 @@ public sealed class VasquezW11SelfLaneTests
         Assert.Contains("selectors_md_shared", text);
     }
 
-    // ─── 9. KW10 → KW11 regression rename ────────────────────────────────
+    // ─── 9. KW10 → KW11 → KW12 regression rename (forward-staged) ──
 
     [Fact, Trait("Category", "LaneDiscipline"), Trait("Wave", "Phase-K-11")]
     public void RegressionClassRenamed_Wave1ThroughKW11_Present()
     {
         var asm = typeof(VasquezW11SelfLaneTests).Assembly;
+        // W12 renames Wave1ThroughKW11RegressionTests → Wave1ThroughKW12RegressionTests.
+        // Accept either name so the W11 self-lane test stays green across the rename.
         var t = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW11RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW11RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 }

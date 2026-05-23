@@ -334,7 +334,37 @@ administrator (Stephen) runs the following `gh api` commands. The
 runbook is split into three steps so the W9 preview workflow stays
 visible during the transition.
 
-### 4.1. Screenshot-walkthrough + troubleshooting (W11 — Vasquez)
+### 4.1. Screenshot-walkthrough + troubleshooting (W11 — Vasquez, re-prompted W12)
+
+> **Re-prompt status (W12 — Vasquez).** The branch-protection
+> task has been **standing since Phase K Wave 4** (first asked
+> ~2026-09-04). At time of W12 sign-off (2026-10-23), it has been
+> open for **~7 weeks across 8 waves** (W4 → W11 wave-end memos
+> all carry a "still pending" note). This makes it Vasquez's
+> longest-standing operator hand-off.
+>
+> The W12 re-prompt is the **fifth wave running** that the gate
+> hasn't been flipped (W7, W8, W9, W10, W11 all asked; W12 asks
+> a 6th time). The W12 escalation proposal:
+>
+> 1. **W13 follow-up:** Stephen receives this hand-off one more
+>    time. If still not flipped after W13, escalate to W14.
+> 2. **W14 fallback (proposed):** if W14 sign-off lands without
+>    branch-protection being enabled, Vasquez writes the
+>    canonical `gh api -X PATCH` one-liner (already drafted
+>    below) into a Vasquez-direct admin action (Stephen runs
+>    it himself in seconds; if Stephen is blocked by org policy,
+>    coordinator escalates to the org-level admin via Apone).
+> 3. **Risk profile:** the gate doesn't change the substance of
+>    what `lane-discipline / check` enforces — it just makes the
+>    enforcement *required* instead of *advisory*. The W11 PR
+>    landed with 0 lane-discipline violations, so flipping the
+>    gate today would not block any in-flight work.
+>
+> Vasquez's W12 hand-off note: do NOT delay W12 sign-off on this;
+> the work is operator-side and Vasquez's W12 deliverables are
+> complete. The §4.1 walkthrough + the one-liner PATCH below are
+> the canonical artefacts.
 
 The following walkthrough mirrors the `gh api` runbook below but
 provides UI cues for operators who prefer the GitHub web interface.

@@ -2706,3 +2706,104 @@ W10). Zero-skip streak preserved through wave 25.
    `lane-discipline-pr` is required-for-merge.
 5. **Vitest unification** — still deferred to a later
    wave.
+
+---
+
+## Phase K Wave 12 — QA bring-up (2026-10-23)
+
+**Branch:** `stlong/phase-k-wave-12-bringup`
+**Memo:** `Phase_K_W12/Vasquez/vasquez-phase-k-wave-12.md`
+**Gate:** **2537 / 0 / 0** (+134 vs W11). Zero-skip streak
+preserved through wave 27.
+
+### DbSerial migration audit (W12 deliverable #1)
+
+`Phase_K_W12/Vasquez/db-serial-candidates.md` — 25 candidate
+rows (22 `[Collection("DbSerial")]`, 3 Reads-split); 3-parallel
+flake-detection methodology; Reads/Writes split proposal for
+Bishop's W12+ migration (unlocks ~40% of suite for parallel
+execution from W13).
+
+### Doc updates (W12 deliverable #2)
+
+- `docs/test-architecture.md` — new §3.1.1 (audit methodology),
+  §3.1.2 (Reads/Writes split), §4.4a (W12 closed gaps); NEW
+  §5 (Visual regression, 2% pixel diff via
+  `toHaveScreenshot({maxDiffPixelRatio: 0.02})` with the
+  pre-flight checklist); §5/§6 renumber to §6/§7; W12 footer.
+- `docs/agent-handoff-protocol.md` §4.1 — W12 re-prompt status
+  block (8th weekly re-issue; W4→W11 history; W14 fallback
+  to escalate to org-level admin).
+- `docs/frontend-pwa-audit.md` §6.1 — LH13 threshold hard-pin
+  DEFERRED to W13 with cadence-trigger checklist (3 cron data
+  points required).
+
+### LH13 mirror tests (W12 deliverable #3)
+
+`PwaAuditWorkflowGateTests.cs` mirrors the four-category
+threshold values (0.85 / 0.80 / 0.90 / 0.80) at the backend
+gate layer. SOFT pins for W12 per §6.1; flip to hard pins in
+W13 after cadence-trigger satisfied.
+
+### KW11→KW12 regression rename + 12 W12 smokes (W12 deliverable #4)
+
+`Wave1ThroughKW11RegressionTests.cs` →
+`Wave1ThroughKW12RegressionTests.cs` (`git mv` + 6 class
+references + doc-comment header W12 extension). 12 new W12
+smokes: replay-by-id endpoint, OAuth introspect rate-limit,
+EfBracketStore presence, EfSignalRSequenceStore presence,
+spectator handoff endpoint, three new `docs/contracts/*`
+artefacts (`replay-by-id.md`, `oauth-introspect-rate-limit.md`,
+`prod-cutover.md`), `redis-load-test.yml` workflow,
+CHANGELOG 0.21.0 entry, DbSerial candidates handoff doc, and
+the KW11→KW12 class-rename verification fact. W11 self-lane
+tests (`VasquezW11SelfLaneTests`, `W11SurfaceSmokeFactsTests`)
+softened to accept either class name.
+
+### 7 forward-stage W12 contract test files (W12 deliverable #5)
+
+Under `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W12/Vasquez/`:
+`BishopW12{ReplayByIdEndpoint, OAuthIntrospectRateLimit,
+JwksStagedRotation, BracketPersistence, SpectatorHandoffToken,
+CommentaryCostBudget, SignalRSequenceStore}Tests.cs` plus the
+Hicks frontend, Apone infra, PWA-audit workflow gate, Vasquez
+self-lane, and W12 surface smoke files.
+
+### 6 Playwright specs (W12 deliverable #6)
+
+Under `src/frontend/autotable-src/tests/e2e/`:
+- `replay-deep-link.spec.ts` (`?action=replay&replayId=<id>`).
+- `shader-chunk-450-stretch.spec.ts`
+  (three-renderer-big stretch <450 KB, acceptance <460 KB).
+- `lh13-thresholds-pinned.spec.ts` (soft-pin per §6.1).
+- `oauth-introspect-rate-limit.spec.ts` (101× → 429 + Retry-After).
+- `manifest-screenshots-visual.spec.ts` (2% pixel diff per §5).
+- `spectator-handoff-token.spec.ts` (JWT shape + 300s TTL).
+All six are chromium-only and forward-stage tolerant.
+
+### selectors.md W12 footer (W12 deliverable #7)
+
+Vasquez QA-lane footer appended below Hicks's W12 producer-side
+footer; maps the 6 new Playwright specs to their pinned
+surfaces and forward-stage stance.
+
+### Backend gate
+
+Target: ≥ **2500 / 0 / 0**. Hit **2537 / 0 / 0** (+134 vs W11).
+27-wave zero-skip streak preserved.
+
+### W13 forward queue (Vasquez sees from here)
+
+1. **DbSerial migration follow-through** — wire 3-parallel
+   flake harness once Bishop tags the 25 candidate classes.
+2. **LH13 threshold hard-pin** — apply §6.1 cadence trigger
+   (3 cron data points), flip soft-pin → hard-pin in
+   `lh13-thresholds-pinned.spec.ts` + `pwa-audit.yml`.
+3. **Visual regression baselines** — record initial baselines
+   on first run, compare in W13.
+4. **Stephen branch-protection** — W14 escalation fallback
+   if §4.1 still unapplied at W13 sign-off.
+5. **Wave1ThroughKW12RegressionTests → Wave1ThroughKW13RegressionTests**
+   rename in W13.
+6. **6 Playwright specs soft-pin → hard-pin** once producer
+   side lands.

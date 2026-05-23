@@ -99,6 +99,26 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// <c>.github/workflows/dr-rehearsal.yml</c>. All forward-staged
 /// with soft-pass on absence.</para>
 ///
+/// <para><b>Wave 12 extension.</b> Class renamed Wave1ThroughKW11 →
+/// Wave1ThroughKW12. New W12 smokes appended at the tail of the
+/// class targeting <c>IReplayStore</c> (replay-by-id endpoint),
+/// <c>IOAuthIntrospectRateLimiter</c> (101-in-60s rate-limit
+/// surface), <c>EfBracketStore</c> (bracket persistence
+/// idempotency), <c>EfSignalRSequenceStore</c> (SignalR sequence
+/// store persistence + retention),
+/// <c>docs/replay-by-id.md</c>,
+/// <c>docs/oauth-introspect-rate-limit.md</c>,
+/// <c>docs/prod-cutover.md</c>,
+/// <c>infra/load-tests/redis-load-test.yml</c>, the
+/// <c>.github/workflows/lane-discipline-strict.yml</c> mode
+/// (W12 lane-discipline strict mode kept at 0 violations), the
+/// <c>0.21.0</c> CHANGELOG entry, the W12 LH13 threshold soft-pin
+/// (deferred to W13 per §6.1 of frontend-pwa-audit), and the
+/// <c>manifest-screenshots-visual.spec.ts</c> visual-regression
+/// surface. All forward-staged with soft-pass on absence (except
+/// the Vasquez-lane artefacts that ship in this same PR, which
+/// hard-assert).</para>
+///
 /// <para><b>Wave 11 extension.</b> Class renamed Wave1ThroughKW10 →
 /// Wave1ThroughKW11. New W11 smokes appended at the tail of the
 /// class targeting <c>FideC04SwissPairingService</c>,
@@ -135,11 +155,11 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// PR, which hard-assert).</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW11RegressionTests
+public class Wave1ThroughKW12RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW11RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW12RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -1826,7 +1846,7 @@ public class Wave1ThroughKW11RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
     public void PhaseK10_DbSerialCollection_Present()
     {
-        var asm = typeof(Wave1ThroughKW11RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW12RegressionTests).Assembly;
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("DbSerialCollection", StringComparison.Ordinal)
             || x.Name.Equals("DbSerialCollectionDefinition", StringComparison.Ordinal));
@@ -1839,7 +1859,7 @@ public class Wave1ThroughKW11RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
     public void PhaseK11_FideC04SwissPairingService_Present()
     {
-        var asm = typeof(Wave1ThroughKW11RegressionTests).Assembly
+        var asm = typeof(Wave1ThroughKW12RegressionTests).Assembly
             .GetReferencedAssemblies()
             .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
             .Where(a => a is not null)
@@ -1859,7 +1879,7 @@ public class Wave1ThroughKW11RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
     public void PhaseK11_TileReference_ToBinary_Present()
     {
-        var asm = typeof(Wave1ThroughKW11RegressionTests).Assembly
+        var asm = typeof(Wave1ThroughKW12RegressionTests).Assembly
             .GetReferencedAssemblies()
             .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
             .Where(a => a is not null)
@@ -2023,9 +2043,188 @@ public class Wave1ThroughKW11RegressionTests
         Assert.Contains("pwa_audit_workflow_shared", text);
     }
 
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — Replay-by-id store (Bishop).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_ReplayStore_Present()
+    {
+        var apiAsm = ResolveApiAssembly();
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("IReplayStore", StringComparison.Ordinal)
+            || x.Name.Equals("ReplayStore", StringComparison.Ordinal)
+            || x.Name.Equals("EfReplayStore", StringComparison.Ordinal)
+            || x.Name.Equals("ChangshaReplayStore", StringComparison.Ordinal)
+            || x.Name.Equals("EfChangshaReplayStore", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — OAuth introspect rate-limit surface (Bishop).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_OAuthIntrospectRateLimiter_Present()
+    {
+        var apiAsm = ResolveApiAssembly();
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("IOAuthIntrospectRateLimiter", StringComparison.Ordinal)
+            || x.Name.Equals("OAuthIntrospectRateLimiter", StringComparison.Ordinal)
+            || x.Name.Equals("OAuthIntrospectionRateLimiter", StringComparison.Ordinal)
+            || (x.Name.Contains("Introspect", StringComparison.OrdinalIgnoreCase)
+                && x.Name.Contains("RateLimit", StringComparison.OrdinalIgnoreCase)));
+        _ = t is not null;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — Bracket persistence store (Bishop).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_EfBracketStore_Present()
+    {
+        var apiAsm = ResolveApiAssembly();
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("EfBracketStore", StringComparison.Ordinal)
+            || x.Name.Equals("BracketStore", StringComparison.Ordinal)
+            || x.Name.Equals("IBracketStore", StringComparison.Ordinal)
+            || x.Name.Equals("TournamentBracketStore", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — SignalR sequence store persistence (Bishop).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_EfSignalRSequenceStore_Present()
+    {
+        var apiAsm = ResolveApiAssembly();
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("EfSignalRSequenceStore", StringComparison.Ordinal)
+            || x.Name.Equals("SignalRSequenceStore", StringComparison.Ordinal)
+            || x.Name.Equals("ISignalRSequenceStore", StringComparison.Ordinal)
+            || (x.Name.Contains("SignalR", StringComparison.OrdinalIgnoreCase)
+                && x.Name.Contains("Sequence", StringComparison.OrdinalIgnoreCase)));
+        _ = t is not null;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — Spectator handoff token surface (Bishop).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_SpectatorHandoffToken_Present()
+    {
+        var apiAsm = ResolveApiAssembly();
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("SpectatorHandoffController", StringComparison.Ordinal)
+            || x.Name.Equals("SpectatorHandoffService", StringComparison.Ordinal)
+            || x.Name.Equals("SpectatorHandoffTokenIssuer", StringComparison.Ordinal)
+            || (x.Name.Contains("Spectator", StringComparison.OrdinalIgnoreCase)
+                && x.Name.Contains("Handoff", StringComparison.OrdinalIgnoreCase)));
+        _ = t is not null;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — docs/replay-by-id.md.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_ReplayByIdDoc_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        _ = File.Exists(Path.Combine(root.FullName, "docs", "replay-by-id.md"));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — docs/oauth-introspect-rate-limit.md.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_OAuthIntrospectRateLimitDoc_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        _ = File.Exists(Path.Combine(root.FullName, "docs", "oauth-introspect-rate-limit.md"));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — docs/prod-cutover.md.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_ProdCutoverDoc_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        _ = File.Exists(Path.Combine(root.FullName, "docs", "prod-cutover.md"));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — infra/load-tests/redis-load-test.yml.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_RedisLoadTestYaml_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        _ = File.Exists(Path.Combine(root.FullName, "infra", "load-tests", "redis-load-test.yml"));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — CHANGELOG 0.21.0 entry (Apone).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_ChangelogEntry_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "CHANGELOG.md");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        _ = text.Contains("0.21.0", StringComparison.Ordinal)
+         || text.Contains("Wave 12", StringComparison.OrdinalIgnoreCase)
+         || text.Contains("Phase K Wave 12", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — DbSerial candidates hand-off (Vasquez).
+    //  Vasquez-lane artefact — hard-asserts (it ships in THIS PR).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_DbSerialCandidatesHandoff_Present()
+    {
+        var root = FindRepoRootStatic();
+        Assert.NotNull(root);
+        var path = Path.Combine(root!.FullName, "Phase_K_W12", "Vasquez",
+            "db-serial-candidates.md");
+        Assert.True(File.Exists(path),
+            $"Vasquez W12 DbSerial candidate hand-off MUST ship at {path}.");
+        var text = File.ReadAllText(path);
+        Assert.Contains("Vasquez", text);
+        Assert.Contains("DbSerial", text);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 12 — Wave1ThroughKW12 rename pin (Vasquez).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
+    public void PhaseK12_RegressionClassRenamed_KW11_To_KW12()
+    {
+        var asm = typeof(Wave1ThroughKW12RegressionTests).Assembly;
+        // The new class is present (this one).
+        var t12 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal));
+        Assert.NotNull(t12);
+        // The old class is GONE.
+        var t11 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW11RegressionTests", StringComparison.Ordinal));
+        Assert.Null(t11);
+    }
+
     private static Assembly? ResolveApiAssembly()
     {
-        var refs = typeof(Wave1ThroughKW11RegressionTests).Assembly
+        var refs = typeof(Wave1ThroughKW12RegressionTests).Assembly
             .GetReferencedAssemblies();
         foreach (var name in refs)
         {

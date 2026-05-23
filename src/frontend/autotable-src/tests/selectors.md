@@ -2360,3 +2360,45 @@ only the resulting `three-renderer-big` size does. The
 with the `?action=replay` co-parameter contract, K12
 dist-size pin, W10 placeholder retirement note, and W12
 strip extension producer-side expectations.*
+
+---
+
+## W12 QA spec map (Vasquez)
+
+Six new Playwright specs landed under
+`src/frontend/autotable-src/tests/e2e/` in the Vasquez W12
+lane. Each name → pinned surface → forward-stage stance:
+
+| Spec file | Pinned surface | Forward-stage stance |
+|---|---|---|
+| `replay-deep-link.spec.ts` | `?action=replay&replayId=<id>` router branch (lobby fallback + 404 toast) | tolerant — annotates when the action branch isn't wired |
+| `shader-chunk-450-stretch.spec.ts` | `dist-size.json` `history[wave=K12].chunks.three-renderer-big`; stretch <450 KB, acceptance <460 KB | tolerant — falls back to K11 entry + W11 backstop (<475 KB) |
+| `lh13-thresholds-pinned.spec.ts` | LH13 threshold values (0.85 / 0.80 / 0.90 / 0.80) per W11 §7 — SOFT-pinned in W12 per `docs/frontend-pwa-audit.md §6.1`, hard-pin deferred to W13 | tolerant — annotates on per-category mismatch; absolute sanity bound only |
+| `oauth-introspect-rate-limit.spec.ts` | `POST /api/oauth/introspect` 60s/100 bucket; 101st = 429 + `Retry-After` | tolerant — annotates when endpoint 404 or middleware not wired |
+| `manifest-screenshots-visual.spec.ts` | Per-screenshot visual diff using `toHaveScreenshot({ maxDiffPixelRatio: 0.02 })` per `docs/test-architecture.md §5` | tolerant — first run records baseline; subsequent runs hard-compare |
+| `spectator-handoff-token.spec.ts` | `POST /api/spectator/handoff` returns JWT with `role=spectator`, `exp ≈ now + 300s`, echoed `tableId` | tolerant — annotates on 404/401/missing claim |
+
+All six specs are chromium-only (per the W11 lane convention)
+and call `test.skip(testInfo.project.name !== 'chromium', …)`.
+
+The `replay-deep-link.spec.ts` row pairs with Hicks's W12
+producer-side `?action=replay` co-parameter contract noted
+above and with Bishop's `BishopW12ReplayByIdEndpointTests`
+backend mirror under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W12/Vasquez/`.
+
+The `manifest-screenshots-visual.spec.ts` row is the first
+Playwright spec in the repo to use the §5 visual-regression
+pre-flight (animations frozen, fonts loaded, viewport pinned)
+and is documented as the W12 reference template for future
+visual diffs.
+
+---
+
+*Phase K Wave 12 — Vasquez (QA). W12 footer appended with the
+QA-lane spec map for the six new Playwright specs (replay
+deep-link, shader-chunk-450 stretch, LH13 soft-pin, OAuth
+introspect rate-limit, manifest screenshots visual, spectator
+handoff token). Pairs with Hicks's W12 producer-side footer
+above and with the backend mirror tests under
+`Phase_K_W12/Vasquez/`.*
