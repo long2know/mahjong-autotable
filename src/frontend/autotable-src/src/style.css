@@ -2592,3 +2592,387 @@ body.spectating #roll-dice { display: none !important; }
     outline: 2px solid #ffd75e;
     outline-offset: 2px;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+ * Phase J Wave 8 — Auth, rule presets, spectator follow,
+ * reduced-motion + theme palette.
+ * ─────────────────────────────────────────────────────────────── */
+
+/* Auth cluster (top-right header next to gears) ──────────────────── */
+.auth-cluster {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+#signin-button,
+#logout-button {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #f5f5f5;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 120ms ease;
+}
+#signin-button:hover,
+#logout-button:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+#signin-button:focus-visible,
+#logout-button:focus-visible {
+    outline: 2px solid #ffd75e;
+    outline-offset: 2px;
+}
+#auth-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 215, 94, 0.15);
+    border: 1px solid rgba(255, 215, 94, 0.4);
+    color: #ffd75e;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+#auth-status-chip[hidden] {
+    display: none;
+}
+.auth-status-chip-avatar {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* Sign-in modal ────────────────────────────────────────────────── */
+.signin-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1900;
+}
+.signin-modal-backdrop[hidden] {
+    display: none;
+}
+.signin-modal {
+    background: #1f1f24;
+    color: #f5f5f5;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    padding: 24px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+}
+.signin-modal h2 {
+    margin: 0 0 12px 0;
+    font-size: 20px;
+    font-weight: 600;
+}
+.signin-modal p {
+    margin: 0 0 16px 0;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+}
+.signin-providers {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.signin-provider-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #f5f5f5;
+    padding: 10px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 120ms ease;
+}
+.signin-provider-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+.signin-email-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.signin-email-row input[type="email"] {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #f5f5f5;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+.signin-error {
+    color: #ff6b6b;
+    font-size: 12px;
+    margin-top: 4px;
+}
+.signin-error[hidden] {
+    display: none;
+}
+.signin-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+.signin-modal-panel[hidden] {
+    display: none;
+}
+
+/* Magic-link landing overlay ────────────────────────────────────── */
+#magic-link-landing {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+#magic-link-landing[hidden] {
+    display: none;
+}
+.magic-link-landing-card {
+    background: #1f1f24;
+    color: #f5f5f5;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    padding: 32px;
+    max-width: 480px;
+    width: 90%;
+    text-align: center;
+}
+.magic-link-landing-card h2 {
+    margin: 0 0 12px 0;
+    font-size: 22px;
+}
+.magic-link-landing-card p {
+    margin: 0 0 16px 0;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Profile linked accounts ──────────────────────────────────────── */
+.profile-linked-accounts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+.profile-linked-account-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    font-size: 13px;
+}
+.profile-linked-account-provider {
+    font-weight: 600;
+    text-transform: capitalize;
+}
+.profile-linked-account-email {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    margin-left: 8px;
+}
+
+/* Rule preset picker (lobby) + editor (settings drawer) ─────────── */
+.lobby-rule-preset-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.lobby-rule-preset-label {
+    min-width: 80px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 13px;
+}
+.lobby-rule-preset-create-link {
+    display: inline-block;
+    color: #ffd75e;
+    font-size: 12px;
+    text-decoration: none;
+    margin-top: 4px;
+}
+.lobby-rule-preset-create-link:hover {
+    text-decoration: underline;
+}
+.rule-preset-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.rule-preset-editor-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.rule-preset-editor-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.rule-preset-editor-row label {
+    flex: 1;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 13px;
+}
+.rule-preset-editor-row input[type="text"],
+.rule-preset-editor-row input[type="number"] {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #f5f5f5;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    width: 140px;
+}
+.rule-preset-editor-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+.rule-preset-editor-status {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    min-height: 1.2em;
+}
+.rule-preset-editor-readonly {
+    color: rgba(255, 215, 94, 0.7);
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* Spectator follow panel ───────────────────────────────────────── */
+.spectator-follow-panel {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: rgba(20, 20, 24, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: #f5f5f5;
+    font-size: 12px;
+    z-index: 1500;
+    display: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+body.spectating .spectator-follow-panel {
+    display: block;
+}
+.spectator-follow-heading {
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: rgba(255, 255, 255, 0.85);
+}
+.spectator-follow-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+.spectator-follow-button {
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+}
+.spectator-follow-button.active {
+    background: rgba(255, 215, 94, 0.25);
+    border-color: rgba(255, 215, 94, 0.6);
+    color: #ffd75e;
+}
+.spectator-follow-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+.spectator-follow-hint {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+    margin-left: 4px;
+}
+
+/* Show-all hand reveal hint (best-effort; backend owns canonical
+ * tile reveal so this is local CSS only — when on, semitransparency
+ * is removed on peer hand groups so the markup the renderer paints
+ * doesn't get further masked). */
+body.spectator-show-all .player-hand-other {
+    opacity: 1 !important;
+}
+
+/* Reduced motion ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    body:not(.full-motion) *,
+    body:not(.full-motion) *::before,
+    body:not(.full-motion) *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+    }
+}
+body.reduced-motion *,
+body.reduced-motion *::before,
+body.reduced-motion *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+}
+
+/* Dark / light theme palette — applied only to chrome (menus,
+ * overlays, drawers).  The 3D canvas is unaffected. */
+body.theme-light .lobby,
+body.theme-light .settings-drawer,
+body.theme-light .settings-drawer-v2,
+body.theme-light .profile-page,
+body.theme-light .signin-modal,
+body.theme-light .magic-link-landing-card {
+    background: #fafafa;
+    color: #1a1a1a;
+    border-color: rgba(0, 0, 0, 0.15);
+}
+body.theme-light .lobby input[type="text"],
+body.theme-light .lobby input[type="email"],
+body.theme-light .lobby input[type="number"],
+body.theme-light .lobby select,
+body.theme-light .settings-drawer-v2 input,
+body.theme-light .settings-drawer-v2 select,
+body.theme-light .profile-page input,
+body.theme-light .profile-page select,
+body.theme-light .signin-modal input,
+body.theme-light .signin-modal select {
+    background: #ffffff;
+    color: #1a1a1a;
+    border-color: rgba(0, 0, 0, 0.2);
+}
+body.theme-light .lobby-card-option,
+body.theme-light .lobby-fieldset {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+body.theme-light .lobby-rule-preset-create-link,
+body.theme-light #auth-status-chip {
+    color: #8a6300;
+}

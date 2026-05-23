@@ -2301,7 +2301,7 @@ export class GameUi {
 // to a global default key so the drawer still pre-populates.
 // ---------------------------------------------------------------------
 
-type BotStrength = 'Easy' | 'Medium' | 'Hard';
+type BotStrength = 'Easy' | 'Medium' | 'Hard' | 'Master';
 type SettingsHandCount = 1 | 4 | 8 | 16;
 
 interface SettingsState {
@@ -2348,7 +2348,7 @@ function readSettingsState(): SettingsState {
       if (raw === null) return {};
       const j = JSON.parse(raw) as Record<string, unknown>;
       const partial: Partial<SettingsState> = {};
-      if (j.botStrength === 'Easy' || j.botStrength === 'Medium' || j.botStrength === 'Hard') {
+      if (j.botStrength === 'Easy' || j.botStrength === 'Medium' || j.botStrength === 'Hard' || j.botStrength === 'Master') {
         partial.botStrength = j.botStrength;
       }
       if (typeof j.handCount === 'number'
@@ -2380,7 +2380,7 @@ function readSettingsState(): SettingsState {
   try {
     const q = new URLSearchParams(window.location.search);
     const bd = q.get('botDifficulty');
-    if (bd === 'Easy' || bd === 'Medium' || bd === 'Hard') out.botStrength = bd;
+    if (bd === 'Easy' || bd === 'Medium' || bd === 'Hard' || bd === 'Master') out.botStrength = bd;
     const hcRaw = q.get('handCount');
     if (hcRaw !== null) {
       const n = parseInt(hcRaw, 10);

@@ -69,6 +69,10 @@ import {
 } from './leaderboard';
 import { installSettingsDrawerV2 } from './settings-drawer';
 import { installProfilePage } from './profile-page';
+import { installAuthUi } from './auth';
+import { installRulePresetsUi, getSelectedPresetId } from './rule-presets';
+import { installDisplayPreferences } from './theme';
+import { installSpectatorFollow } from './spectator-follow';
 //
 // The lobby is a small overlay panel anchored top-left of the autotable
 // page.  It lets the user pick the Phase F query params
@@ -96,7 +100,10 @@ type Variant =
 
 type DealMode = 'manual' | 'auto';
 type BotCount = 0 | 3 | 4;
-type BotDifficulty = 'Easy' | 'Medium' | 'Hard';
+// Phase J Wave 8 — Master tier joins the trio.  Bishop's Wave 8 bot
+// difficulty model accepts the new tier; older builds will treat
+// Master as Hard server-side (graceful degradation).
+type BotDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Master';
 // Phase J Wave 2 — Hand counts now include 1 (single-hand sandbox) and the
 // default shifts from 8 to 4 to mirror Bishop's runtime default east-wind
 // rotation (see Phase J Wave 2 directive §Task 3).
@@ -248,6 +255,7 @@ function parseUrlState(): Partial<LobbyState> {
   if (bd === 'easy') out.botDifficulty = 'Easy';
   else if (bd === 'medium') out.botDifficulty = 'Medium';
   else if (bd === 'hard') out.botDifficulty = 'Hard';
+  else if (bd === 'master') out.botDifficulty = 'Master';
 
   // Phase H Wave 1 — optional seed override and hand count.  Both are
   // ignored silently if malformed so a hand-typed URL doesn't crash the
@@ -297,7 +305,7 @@ function parseLocalStorageState(): Partial<LobbyState> {
     if (typeof j.botCount === 'number' && isBotCount(j.botCount)) {
       out.botCount = j.botCount;
     }
-    if (j.botDifficulty === 'Easy' || j.botDifficulty === 'Medium' || j.botDifficulty === 'Hard') {
+    if (j.botDifficulty === 'Easy' || j.botDifficulty === 'Medium' || j.botDifficulty === 'Hard' || j.botDifficulty === 'Master') {
       out.botDifficulty = j.botDifficulty;
     }
     // Seed: stored as number-or-null.  coerceSeed handles both, mapping
@@ -401,6 +409,15 @@ function buildUrl(state: LobbyState): string {
   if (state.seat !== null) {
     p.set('seat', String(state.seat));
   }
+  // Phase J Wave 8 — emit rulePreset=<id> when the user picked a
+  // non-default preset.  The backend ignores the param if Bishop's
+  // rule-preset endpoints aren't deployed yet (graceful degradation).
+  try {
+    const presetId = getSelectedPresetId();
+    if (presetId !== '' && presetId !== 'classic-changsha') {
+      p.set('rulePreset', presetId);
+    }
+  } catch { /* rule-presets module not initialised — skip */ }
   return window.location.pathname + '?' + p.toString();
 }
 
@@ -510,7 +527,7 @@ export function initLobby(client?: Client): void {
       variant: isVariant(v) ? v : DEFAULTS.variant,
       dealMode: (dm === 'auto' ? 'auto' : 'manual'),
       botCount: clampBotCountForSeat(botCount, seat),
-      botDifficulty: (bd === 'Easy' || bd === 'Medium') ? bd : 'Hard',
+      botDifficulty: (bd === 'Easy' || bd === 'Medium' || bd === 'Master') ? bd : 'Hard',
       handCount: isHandCount(hcNum) ? hcNum : DEFAULTS.handCount,
       seed,
       seat,
@@ -696,6 +713,16 @@ export function initLobby(client?: Client): void {
   // legacy Wave-5 drawer handler.
   installSettingsDrawerV2();
   installProfilePage();
+  // Phase J Wave 8 — install display-pref body classes (reduced-motion,
+  // theme-dark / theme-light) before the auth UI / rule-presets pickers
+  // render so the chrome paints with the correct palette immediately.
+  installDisplayPreferences();
+  // Phase J Wave 8 — sign-in modal + linked-accounts section in the
+  // profile drawer; rule preset picker in the lobby + editor tab in
+  // the settings drawer; spectator follow-seat helper.
+  installAuthUi();
+  installRulePresetsUi();
+  installSpectatorFollow();
   // Phase J Wave 6 — seed profile.ts.current from the localStorage
   // cache so the lobby chip shows the previously-saved displayName
   // *before* the SignalR hub connects (which only happens once the
