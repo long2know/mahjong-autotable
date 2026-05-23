@@ -1136,3 +1136,31 @@ carries `aria-hidden="true"`.
 user-facing strings.  `toast.ts#showVoiceToast` keeps the Wave-3
 substring heuristic for back-compat with legacy free-text reasons.
 No new testids — the toast continues to fire `voice-toast`.
+
+### Phase K Wave 4 Playwright spec map — Vasquez
+
+Wave-4 reflection-defensive specs Vasquez landed (each test
+soft-passes via `test.info().annotations.push({ type: 'soft-pass',
+… })` when its target test-id, mapper, or chunk shape isn't yet
+wired):
+
+- `scene-shell-budget.spec.ts` — total scene/shell/bootstrap JS
+  fetched before `networkidle` stays under 500 kB combined, with
+  no more than 6 distinct shell-style chunks (waterfall guard).
+- `voice-reason-toast.spec.ts` — `voice-failure-toast` text reads
+  as human-readable copy (not the raw enum like `rate-limited` or
+  the HTTP `429`); unknown reasons fall back to a generic message
+  rather than echoing the raw token.  Fires synthetic
+  `voice:failure` / `mahjong:voice-failure` `CustomEvent`s so the
+  unit under test is `voiceReasonToText`, not the live SignalR hub.
+- `tournament-seed-sparse.spec.ts` — admin sparse-seed view of a
+  4-slot tournament with only 2 seeded players: `tournament-seed-slot`
+  rows render an em-dash (`—`, U+2014) placeholder for unseeded
+  rows, never literal `null` or empty string; the 4-row bracket
+  does not collapse.
+- `microsoft-brand-svg.spec.ts` — the
+  `signin-provider-microsoft` button uses an INLINE `<svg>` brand
+  glyph and carries no `<img>` whose `src` references a Microsoft
+  CDN host (`microsoft.com` / `microsoftonline.com` /
+  `static2.sharepointonline.com`); document body likewise carries
+  no CDN-hosted Microsoft brand `<img>`.
