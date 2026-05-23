@@ -5,6 +5,7 @@ import { Sound } from './sound';
 import { Replay } from './replay';
 import { openReplayForGame } from './replay-launcher';
 import { World } from "./world";
+import { setElHidden, showEl, hideEl } from './utils';
 import {
   DealType,
   Conditions,
@@ -745,14 +746,14 @@ export class GameUi {
         const playerId = this.client.seatPlayers[i];
         if (playerId !== null) {
           this.elements.takeSeat[i].style.display = 'none';
-          this.elements.kick[i].style.display = '';
+          showEl(this.elements.kick[i]);
 
           const nick = this.client.nicks.get(playerId) || 'Player';
           const textElement = this.elements.kick[i].querySelector('.btn-progress-text')!;
           textElement.textContent = nick;
         } else {
           this.elements.takeSeat[i].style.display = '';
-          this.elements.kick[i].style.display = 'none';
+          hideEl(this.elements.kick[i]);
         }
       }
       for (const button of toDisable) {
@@ -931,7 +932,7 @@ export class GameUi {
       }
       this.elements.claim.Pass.disabled = true;
       this.stopClaimTimer();
-      this.elements.claimCountdown.style.display = 'none';
+      hideEl(this.elements.claimCountdown);
       return;
     }
 
@@ -939,7 +940,7 @@ export class GameUi {
       this.elements.claim[t].disabled = !claim.available.includes(t);
     }
     this.elements.claim.Pass.disabled = false;
-    this.elements.claimCountdown.style.display = '';
+    showEl(this.elements.claimCountdown);
     this.tickClaimCountdown();
     this.startClaimTimer();
   }
@@ -1433,12 +1434,12 @@ export class GameUi {
     } else {
       (this.elements.diceHudBreak.parentElement as HTMLElement).style.display = 'none';
     }
-    this.elements.diceHud.style.display = 'block';
+    showEl(this.elements.diceHud);
     if (this.diceHudHandle !== null) {
       window.clearTimeout(this.diceHudHandle);
     }
     this.diceHudHandle = window.setTimeout(() => {
-      this.elements.diceHud.style.display = 'none';
+      hideEl(this.elements.diceHud);
       this.diceHudHandle = null;
     }, DICE_HUD_LIFETIME_MS);
   }
@@ -1467,7 +1468,7 @@ export class GameUi {
     // the local player is seated).
     const spectating = readSpectatorFromUrl();
     if (!spectating && this.client.seat === null) {
-      banner.style.display = 'none';
+      hideEl(banner);
       return;
     }
     const bots: Array<{ seat: number; nick: string }> = [];
@@ -1481,7 +1482,7 @@ export class GameUi {
       }
     }
     if (bots.length === 0) {
-      banner.style.display = 'none';
+      hideEl(banner);
       return;
     }
     banner.innerHTML = '';
@@ -1503,7 +1504,7 @@ export class GameUi {
       row.textContent = `${nick} (${winds[seat] ?? '?'})`;
       banner.appendChild(row);
     }
-    banner.style.display = 'block';
+    showEl(banner);
   }
 
   // ---------------------------------------------------------------------
@@ -1653,13 +1654,13 @@ export class GameUi {
         `${seatLabel} is picking ${pickup.count} tile${pickup.count === 1 ? '' : 's'}…`;
       this.elements.pickupTakeBtn.style.display = 'none';
     }
-    hud.style.display = 'block';
+    showEl(hud);
   }
 
   private renderRollDiceButton(pickup: PickupEntry | null): void {
     const btn = this.elements.rollDice;
     if (!pickup) {
-      btn.style.display = 'none';
+      hideEl(btn);
       return;
     }
     // The runtime can spell the phase as either 'RollingDice' or 'rollDice'
@@ -1668,13 +1669,13 @@ export class GameUi {
     const isRollPhase = phaseStr === 'rollingdice' || phaseStr === 'rolldice';
     const selfSeat = this.client.seat;
     const isMine = selfSeat !== null && pickup.seatIndex === selfSeat;
-    btn.style.display = (isRollPhase && isMine) ? 'flex' : 'none';
+    setElHidden(btn, !(isRollPhase && isMine));
   }
 
   private renderBreakMarker(pickup: PickupEntry | null): void {
     const marker = this.elements.breakMarker;
     if (!pickup || pickup.breakPoint === undefined || pickup.breakPoint === null) {
-      marker.style.display = 'none';
+      hideEl(marker);
       return;
     }
     // Position the marker at one of 4 seat positions × ~18 wall columns.
@@ -1685,7 +1686,7 @@ export class GameUi {
     const col = Math.max(0, Math.min(17, pickup.breakPoint));
     marker.dataset.seat = String(seat);
     marker.dataset.col = String(col);
-    marker.style.display = 'block';
+    showEl(marker);
   }
 
   // ---------------------------------------------------------------------
@@ -1721,8 +1722,9 @@ export class GameUi {
 
     btn.onclick = (e: MouseEvent) => {
       e.stopPropagation();
-      const open = panel.style.display !== 'none';
-      panel.style.display = open ? 'none' : 'flex';
+      const open = !panel.hidden;
+      setElHidden(panel, open ? true : false);
+      if (!open) panel.style.display = 'flex';
       btn.setAttribute('aria-expanded', open ? 'false' : 'true');
       if (!open) this.refreshMoveSeatPicker();
     };
@@ -1743,10 +1745,10 @@ export class GameUi {
     // (not click) so the panel doesn't briefly flash before re-closing
     // when the user clicks the toggle button again.
     document.addEventListener('mousedown', (e: MouseEvent) => {
-      if (panel.style.display === 'none') return;
+      if (panel.hidden) return;
       const target = e.target as Node | null;
       if (target && (panel.contains(target) || btn.contains(target))) return;
-      panel.style.display = 'none';
+      hideEl(panel);
       btn.setAttribute('aria-expanded', 'false');
     });
 
@@ -1770,9 +1772,9 @@ export class GameUi {
     const connected = this.client.connected();
     const inSeating = this.client.match.get(0) === null;
     const visible = connected && inSeating;
-    row.style.display = visible ? 'block' : 'none';
+    setElHidden(row, !visible);
     if (!visible) {
-      panel.style.display = 'none';
+      hideEl(panel);
       this.elements.moveSeatBtn.setAttribute('aria-expanded', 'false');
     } else {
       this.refreshMoveSeatPicker();
@@ -1820,7 +1822,7 @@ export class GameUi {
     history.replaceState(undefined, '', url.pathname + url.search);
 
     // Close the picker so the next connect lands on a clean HUD.
-    this.elements.moveSeatPanel.style.display = 'none';
+    hideEl(this.elements.moveSeatPanel);
     this.elements.moveSeatBtn.setAttribute('aria-expanded', 'false');
 
     // Drop our local seat ahead of the disconnect so the reconnect doesn't
@@ -2142,9 +2144,10 @@ export class GameUi {
     writeSettingsState(state);
     // Flash a "Saved ✓" pill so the user sees the persist landed.
     const note = this.elements.settingsSavedNote;
+    note.hidden = false;
     note.style.display = 'inline';
     window.setTimeout(() => {
-      note.style.display = 'none';
+      hideEl(note);
     }, 1500);
   }
 

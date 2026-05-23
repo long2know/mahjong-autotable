@@ -47,10 +47,17 @@
 import type { Client } from './client';
 import { Sound } from './sound';
 import { t, onLanguageChange } from './i18n';
+import { showEl, hideEl, setElHidden } from './utils';
 
 // ── Wire types ─────────────────────────────────────────────────────
 
-export type ChatChannel = 'table' | 'spectators' | 'private';
+// Phase J Wave 10 — `spectator-private` is a frontend-only sub-channel
+// that scopes private chat to the cohort of spectators currently in the
+// game.  It is sent over the wire as channel='private' (so the backend
+// /chat endpoint requires no change), but the picker UI and visibility
+// filter recognize it as a distinct channel so spectator-to-spectator
+// DMs don't bleed into seated players' private view.
+export type ChatChannel = 'table' | 'spectators' | 'private' | 'spectator-private';
 
 export interface ChatMessage {
   id: string;
@@ -189,8 +196,24 @@ function senderInitial(message: ChatMessage): string {
 }
 
 function normalizeChannel(raw: unknown): ChatChannel {
-  if (raw === 'spectators' || raw === 'private') return raw;
+  if (raw === 'spectators' || raw === 'private' || raw === 'spectator-private') return raw;
   return 'table';
+}
+
+// Phase J Wave 10 — channels that require a recipient picker.  Today the
+// picker is shown for `private` (any seat → any seat) and the new
+// spectator-only `spectator-private` (spectator → spectator).
+function needsRecipient(channel: ChatChannel): boolean {
+  return channel === 'private' || channel === 'spectator-private';
+}
+
+// Phase J Wave 10 — the wire channel sent to the server for a given UI
+// channel.  `spectator-private` is a frontend-only sub-channel that maps
+// to wire-channel='private'; the per-spectator filter is enforced in
+// `visibleMessages()` below.
+function wireChannel(channel: ChatChannel): 'table' | 'spectators' | 'private' {
+  if (channel === 'spectator-private') return 'private';
+  return channel;
 }
 
 function normalizeMessage(raw: unknown): ChatMessage | null {
@@ -279,7 +302,7 @@ async function sendMessage(channel: ChatChannel, body: string, recipientPlayerId
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        channel,
+        channel: wireChannel(channel),
         recipientPlayerId,
         body,
       }),
@@ -371,17 +394,20 @@ function renderRecipientOptions(select: HTMLSelectElement): void {
 
 function renderChannelOptions(select: HTMLSelectElement): void {
   select.replaceChildren();
+  const spectating = isSpectator();
   const channels: Array<{ id: ChatChannel; label: string }> = [
     { id: 'table',      label: t('chat.channel.table') },
   ];
-  if (isSpectator()) {
-    channels.push({ id: 'spectators', label: t('chat.channel.spectators') });
+  if (spectating) {
+    channels.push({ id: 'spectators',         label: t('chat.channel.spectators') });
+    channels.push({ id: 'spectator-private',  label: t('chat.channel.spectator_private') });
   }
   channels.push({ id: 'private', label: t('chat.channel.private') });
   for (const c of channels) {
     const opt = document.createElement('option');
     opt.value = c.id;
     opt.textContent = c.label;
+    opt.setAttribute('data-testid', `chat-channel-${c.id}`);
     if (c.id === state.channel) opt.selected = true;
     select.appendChild(opt);
   }
@@ -389,10 +415,15 @@ function renderChannelOptions(select: HTMLSelectElement): void {
 
 function visibleMessages(): ChatMessage[] {
   const local = state.localPlayerId;
+  // Phase J Wave 10 — `spectator-private` is on the wire as `private`, so
+  // when the user has the spectator-private channel selected we still
+  // match messages whose wire-channel is `private`.
+  const selectedWire = wireChannel(state.channel);
   return state.messages.filter((m) => {
     if (m.isSystem) return true;
-    if (m.channel !== state.channel) return false;
-    if (m.channel === 'private') {
+    const msgWire = wireChannel(m.channel);
+    if (msgWire !== selectedWire) return false;
+    if (selectedWire === 'private') {
       const peer = state.privateRecipientId;
       if (peer === null || peer === '') {
         return m.isSelf || (m.senderPlayerId === local) || (m.recipientPlayerId === local);
@@ -409,11 +440,18 @@ function renderMessages(): void {
   const list = document.getElementById('chat-messages');
   if (list === null) return;
   list.replaceChildren();
+  // Phase J Wave 10 — surface the active channel on the panel root so the
+  // CSS can apply a distinct accent (cyan for spectator, magenta for
+  // private, etc.) and an 👁/🔒 prefix in the header.
+  const panel = document.getElementById('chat-panel');
+  if (panel !== null) {
+    panel.setAttribute('data-channel', state.channel);
+  }
   const msgs = visibleMessages();
   if (msgs.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'chat-empty';
-    empty.textContent = state.channel === 'private' && (state.privateRecipientId === null || state.privateRecipientId === '')
+    empty.textContent = needsRecipient(state.channel) && (state.privateRecipientId === null || state.privateRecipientId === '')
       ? t('chat.empty_private')
       : t('chat.no_messages');
     list.appendChild(empty);
@@ -421,9 +459,10 @@ function renderMessages(): void {
   }
   msgs.forEach((m, i) => {
     const row = document.createElement('div');
-    row.className = `chat-message chat-message-${m.isSelf ? 'self' : 'other'}`;
+    row.className = `chat-message chat-message-${m.isSelf ? 'self' : 'other'} chat-message-channel-${m.channel}`;
     if (m.isSystem) row.classList.add('chat-message-system');
     row.setAttribute('data-testid', `chat-message-${i}`);
+    row.setAttribute('data-channel', m.channel);
 
     const avatar = document.createElement('span');
     avatar.className = 'chat-message-avatar';
@@ -470,7 +509,7 @@ function renderUnavailable(): void {
   root.classList.add('chat-panel-unavailable');
   const placeholder = document.getElementById('chat-unavailable');
   if (placeholder !== null) {
-    (placeholder as HTMLElement).style.display = 'block';
+    showEl(placeholder as HTMLElement);
     placeholder.textContent = t('chat.unavailable') + ' — ' + t('chat.unavailable_hint');
   }
   // Disable composer.
@@ -591,8 +630,8 @@ async function doSend(): Promise<void> {
     return;
   }
   const channel = state.channel;
-  const recipient = channel === 'private' ? state.privateRecipientId : null;
-  if (channel === 'private' && (recipient === null || recipient === '')) {
+  const recipient = needsRecipient(channel) ? state.privateRecipientId : null;
+  if (needsRecipient(channel) && (recipient === null || recipient === '')) {
     flashError(t('chat.empty_private'));
     return;
   }
@@ -632,7 +671,7 @@ export function installChatPanel(client: Client | null): void {
   // If we're not in a game (lobby only), don't render the panel.
   if (state.gameId === null) {
     const root = document.getElementById('chat-panel');
-    if (root !== null) (root as HTMLElement).style.display = 'none';
+    if (root !== null) hideEl(root as HTMLElement);
     return;
   }
 
@@ -646,8 +685,17 @@ export function installChatPanel(client: Client | null): void {
 
   const root = document.getElementById('chat-panel');
   if (root === null) return;
-  (root as HTMLElement).style.display = '';
+  showEl(root as HTMLElement);
   root.classList.toggle('chat-panel-collapsed', state.collapsed);
+
+  // Phase J Wave 10 (Vasquez `spectator-chat.spec.ts`) — spectators
+  // default to the `spectators` channel so they aren't dropped into
+  // a table chat they can't legitimately participate in.  Seated
+  // players keep the default `table` channel.  The user can still
+  // switch channels manually; this only seeds the initial selection.
+  if (isSpectator()) {
+    state.channel = 'spectators';
+  }
 
   // Header toggle.
   const toggle = document.getElementById('chat-toggle') as HTMLButtonElement | null;
@@ -665,7 +713,7 @@ export function installChatPanel(client: Client | null): void {
       state.channel = normalizeChannel(channelSelect.value);
       const recipientWrap = document.getElementById('chat-recipient-wrap');
       if (recipientWrap !== null) {
-        recipientWrap.style.display = state.channel === 'private' ? '' : 'none';
+        setElHidden(recipientWrap as HTMLElement, !needsRecipient(state.channel));
       }
       renderMessages();
     });
@@ -682,7 +730,7 @@ export function installChatPanel(client: Client | null): void {
   }
   const recipientWrap = document.getElementById('chat-recipient-wrap');
   if (recipientWrap !== null) {
-    recipientWrap.style.display = state.channel === 'private' ? '' : 'none';
+    setElHidden(recipientWrap as HTMLElement, !needsRecipient(state.channel));
   }
 
   // Composer.

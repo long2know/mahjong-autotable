@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="./src/main.css">
     </head>
 <body>
-    <img id="dice-img" src="img/dice.auto.png" style="opacity: 0">
+    <img id="dice-img" src="img/dice.auto.png" alt="" aria-hidden="true">
     <canvas id="center"></canvas>
     <!-- https://opengameart.org/content/thwack-sounds -->
     <audio preload id="sound-discard" src="./sound/discard.wav"></audio>
@@ -38,7 +38,7 @@
         <div class="seat-buttons">
             <div class="seat-button seat-button-0">
                 <button class="take-seat btn btn-primary">Take seat</button>
-                <button class="kick btn btn-dark btn-progress-main" style="display: none"
+                <button class="kick btn btn-dark btn-progress-main" hidden
                         data-toggle="tooltip" data-placement="top"
                         title="Click and hold to unseat">
                     <div class="btn-progress"></div>
@@ -47,7 +47,7 @@
             </div>
             <div class="seat-button seat-button-1">
                 <button class="take-seat btn btn-primary">Take seat</button>
-                <button class="kick btn btn-dark btn-progress-main" style="display: none"
+                <button class="kick btn btn-dark btn-progress-main" hidden
                         data-toggle="tooltip" data-placement="top"
                         title="Click and hold to unseat">
                     <div class="btn-progress"></div>
@@ -56,7 +56,7 @@
             </div>
             <div class="seat-button seat-button-2">
                 <button class="take-seat btn btn-primary">Take seat</button>
-                <button class="kick btn btn-dark btn-progress-main" style="display: none"
+                <button class="kick btn btn-dark btn-progress-main" hidden
                         data-toggle="tooltip" data-placement="top"
                         title="Click and hold to unseat">
                     <div class="btn-progress"></div>
@@ -65,7 +65,7 @@
             </div>
             <div class="seat-button seat-button-3">
                 <button class="take-seat btn btn-primary">Take seat</button>
-                <button class="kick btn btn-dark btn-progress-main" style="display: none"
+                <button class="kick btn btn-dark btn-progress-main" hidden
                         data-toggle="tooltip" data-placement="top"
                         title="Click and hold to unseat">
                     <div class="btn-progress"></div>
@@ -187,8 +187,7 @@
                         跳过 <small>Pass</small>
                     </button>
                 </div>
-                <div class="mt-1 text-warning" id="claim-countdown"
-                     style="display: none; font-size: 0.8rem;">
+                <div class="mt-1 text-warning claim-countdown" id="claim-countdown" hidden>
                     Decide in <span id="claim-countdown-value">5.0</span>s
                 </div>
             </div>
@@ -208,8 +207,7 @@
                        pattern="[A-Za-z0-9_\-\.]+"
                        title="Letters, digits, _, -, . only"
                        autocomplete="off" spellcheck="false">
-                <div id="lobby-gameId-error" class="lobby-error server-disconnected"
-                     style="display: none;">
+                <div id="lobby-gameId-error" class="lobby-error server-disconnected" hidden>
                     Game ID may only contain letters, digits, _, -, and . (max 64 chars).
                 </div>
                 <small class="current-game-display server-connected"
@@ -249,7 +247,7 @@
                  new ?seat= query param (see game-ui.ts:setupMoveSeatPicker).
                  Initially hidden inline; game-ui.ts flips display based on
                  connect/disconnect + match-update events. -->
-            <div class="lobby-row mt-2" id="move-seat-row" style="display: none;">
+            <div class="lobby-row mt-2" id="move-seat-row" hidden>
                 <button class="btn btn-dark btn-sm w-100" id="move-seat-btn"
                         type="button"
                         aria-haspopup="true" aria-expanded="false"
@@ -258,7 +256,7 @@
                 </button>
                 <div id="move-seat-panel" class="move-seat-panel"
                      role="menu" aria-labelledby="move-seat-btn"
-                     style="display: none;">
+                     hidden>
                     <button class="btn btn-primary btn-sm move-seat-option"
                             type="button" data-seat="0" role="menuitem">Seat 0</button>
                     <button class="btn btn-primary btn-sm move-seat-option"
@@ -278,7 +276,7 @@
                     <button class="btn btn-dark btn-sm btn-block dropdown-toggle" data-toggle="dropdown">
                         More
                     </button>
-                    <div class="dropdown-menu dropdown-menu-right p-3 text-light" style="width: 300px;">
+                    <div class="dropdown-menu dropdown-menu-right dropdown-menu-help p-3 text-light">
                         <h4>Instructions</h4>
                         <p>
                         <b>Drag mouse</b> to move or select<br>
@@ -330,7 +328,7 @@
                 </small>
             </div>
 
-            <div class="text-warning mt-2" id="status" style="display: none">
+            <div class="text-warning mt-2" id="status" hidden>
                 <small class="mt-2" id="status-text">
                     Status text
                 </small>
@@ -342,7 +340,7 @@
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-body"></div>
-                <div style="padding: 1rem; padding-top: 0; margin-top: -0.5rem;">
+                <div class="modal-source-cite">
                     (source: <a target="_blank" href="https://www.reddit.com/r/Mahjong/comments/l5b221/riichi_mahjong_cheat_sheet_1_page_pdf_or_images/">Aranlyde</a>)
                 </div>
             </div>
@@ -384,7 +382,7 @@
     </div>
 
     <!-- Phase D — Dice + break-point HUD (briefly shown on first deal). -->
-    <div id="dice-hud" style="display: none;">
+    <div id="dice-hud" hidden>
         <span class="dice-face" id="dice-hud-d1">⚀</span>
         <span class="dice-face" id="dice-hud-d2">⚀</span>
         <span class="dice-sum">= <span id="dice-hud-sum">2</span></span>
@@ -392,7 +390,7 @@
     </div>
 
     <!-- Phase D — Bot banner (bottom-left): announces auto-fill. -->
-    <div id="bot-banner" style="display: none;"></div>
+    <div id="bot-banner" hidden></div>
 
     <!-- Phase F — Variant badge (top-right): always-visible label so players
          confirm what they're playing without opening the sidebar. -->
@@ -407,7 +405,7 @@
     <!-- Phase F — Pickup HUD (center-bottom): announces "your turn — pick N
          tiles" or "Bot 2 is picking…".  The take-shortcut button emits
          pickup.take so impatient players don't have to click N wall tiles. -->
-    <div id="pickup-hud" style="display: none;">
+    <div id="pickup-hud" hidden>
         <span id="pickup-hud-text">Your turn — pick 4 tiles</span>
         <button class="btn btn-warning btn-sm ml-2" id="pickup-take-btn">
             Take <span id="pickup-take-count">4</span>
@@ -416,14 +414,14 @@
 
     <!-- Phase F — Roll-dice button (center, above the table).  Only shown
          when pickup.phase === 'RollingDice' and this seat is the dealer. -->
-    <button id="roll-dice" style="display: none;" title="Click to roll the dice and start picking tiles">
+    <button id="roll-dice" hidden title="Click to roll the dice and start picking tiles">
         <img src="img/dice.auto.png" alt="Roll dice">
         <span class="roll-dice-label">Roll dice</span>
     </button>
 
     <!-- Phase F — Break marker overlay.  Painted at the per-seat wall position
          indicated by pickup.breakPoint after the dice roll resolves. -->
-    <div id="break-marker" style="display: none;">▼</div>
+    <div id="break-marker" hidden>▼</div>
 
     <!-- Phase G — Lobby toggle (top-left).  Opens the lobby panel so users
          can pick variant / dealMode / botCount / botDifficulty without
@@ -472,10 +470,9 @@
          attempts fail, green flash on success.  Visibility + state-class
          owned by client-ui.ts. -->
     <div id="connection-banner" class="connection-banner" role="status"
-         aria-live="polite" style="display: none;">
+         aria-live="polite" hidden>
         <span class="connection-banner-text" id="connection-banner-text"></span>
-        <span class="connection-banner-actions" id="connection-banner-actions"
-              style="display: none;">
+        <span class="connection-banner-actions" id="connection-banner-actions" hidden>
             <!-- Phase J Wave 4 — Copy-rejoin-link button.  Revealed inline
                  by client-ui.ts after the first failed retry (attempt
                  >= 2) so a player whose tab is mid-reconnect can grab a
@@ -483,7 +480,7 @@
             <button type="button" class="btn btn-sm btn-info"
                     id="connection-banner-copy-link"
                     data-testid="reconnect-copy-link"
-                    style="display: none;"
+                    hidden
                     title="Copy a link you can paste into another tab to keep this seat">
                 🔗 Copy rejoin link
             </button>
@@ -561,8 +558,7 @@
             </div>
         </div>
         <div class="settings-drawer-footer">
-            <small class="settings-saved-note" id="settings-saved-note"
-                   style="display: none;">Saved ✓</small>
+            <small class="settings-saved-note" id="settings-saved-note" hidden>Saved ✓</small>
             <button id="settings-apply" type="button"
                     class="btn btn-warning btn-sm">
                 Apply &amp; Restart
@@ -594,8 +590,7 @@
         <div class="settings-drawer-v2-footer">
             <small class="settings-saved-note-v2"
                    id="settings-saved-note-v2"
-                   role="status" aria-live="polite"
-                   style="display: none;">Saved ✓</small>
+                   role="status" aria-live="polite" hidden>Saved ✓</small>
             <button id="settings-reset" type="button"
                     class="btn btn-secondary btn-sm"
                     data-testid="settings-reset">
@@ -684,12 +679,10 @@
                     class="profile-page-section-title">Recent games</h3>
                 <div id="profile-recent-games-error"
                      class="profile-recent-error"
-                     aria-live="polite"
-                     style="display: none;"></div>
+                     aria-live="polite" hidden></div>
                 <div id="profile-recent-games-loading"
                      class="profile-recent-loading"
-                     aria-live="polite"
-                     style="display: none;">Loading recent games…</div>
+                     aria-live="polite" hidden>Loading recent games…</div>
                 <div id="profile-recent-games"
                      class="profile-recent-games"
                      data-testid="profile-recent-games"
@@ -740,8 +733,7 @@
                          Shows the local player's career stats with a
                          per-row delta vs. the pre-game snapshot. -->
                     <div id="game-complete-stats-delta"
-                         class="game-complete-section"
-                         style="display: none;"></div>
+                         class="game-complete-section" hidden></div>
                 </div>
                 <div class="modal-footer justify-content-center">
                     <button type="button" class="btn btn-warning"
@@ -798,7 +790,7 @@
                             aria-controls="replay-pane-audit"
                             aria-selected="false"
                             data-testid="replay-audit-tab"
-                            style="display: none">Audit</button>
+                            hidden>Audit</button>
                 </div>
                 <div class="replay-header-actions">
                     <span id="replay-source-label"
@@ -900,7 +892,7 @@
     <div id="chat-panel"
          class="chat-panel chat-panel-collapsed"
          data-testid="chat-panel"
-         style="display: none"
+         hidden
          aria-label="Table chat">
         <div class="chat-header">
             <button id="chat-toggle"
@@ -922,7 +914,7 @@
                 </select>
                 <span id="chat-recipient-wrap"
                       class="chat-recipient-wrap"
-                      style="display: none">
+                      hidden>
                     <label class="chat-recipient-label sr-only" for="chat-recipient-select">
                         Recipient
                     </label>
@@ -940,7 +932,7 @@
                  role="status"
                  aria-live="polite"
                  data-testid="chat-unavailable"
-                 style="display: none"></div>
+                 hidden></div>
             <div id="chat-messages"
                  class="chat-messages"
                  role="log"
@@ -1009,6 +1001,14 @@
                         role="tab" aria-selected="false"
                         aria-controls="lobby-tab-leaderboard"
                         data-testid="lobby-leaderboard-tab">Leaderboard</button>
+                <!-- Phase J Wave 10 — Tournaments tab.  Click flips to
+                     #lobby-tab-tournaments; tournaments.ts feature-detects
+                     the /api/tournaments endpoint (404 → "Coming soon"). -->
+                <button id="lobby-tournaments-tab" type="button"
+                        class="lobby-tab"
+                        role="tab" aria-selected="false"
+                        aria-controls="lobby-tab-tournaments"
+                        data-testid="lobby-tournaments-tab">Tournaments</button>
             </div>
 
             <!-- Phase J Wave 6 — Onboarding card (first visit only).
@@ -1017,8 +1017,7 @@
                  missing mahjong_pid cookie. -->
             <section id="onboarding-card" class="onboarding-card"
                      role="region" aria-label="Welcome — set up your profile"
-                     aria-hidden="true" data-testid="onboarding-card"
-                     style="display: none;">
+                     aria-hidden="true" data-testid="onboarding-card" hidden>
                 <div class="onboarding-card-header">
                     <h3 class="onboarding-card-title">👋 Welcome!</h3>
                     <p class="onboarding-card-subtitle">
@@ -1082,8 +1081,7 @@
                  colour seat they hold).  Hidden until the lobby module
                  attaches a Client via attachLobbyClient(). -->
             <section class="lobby-players-strip" id="lobby-players-strip"
-                     aria-label="Players in this game"
-                     style="display: none;">
+                     aria-label="Players in this game" hidden>
                 <h3 class="lobby-section-title">Players</h3>
                 <div id="lobby-players-list" class="lobby-players-list"
                      role="list"></div>
@@ -1095,8 +1093,7 @@
                  plan a seat take before committing.  Hidden until the
                  lobby module attaches a Client. -->
             <section class="lobby-seat-preview" id="lobby-seat-preview"
-                     aria-label="Seat preview"
-                     style="display: none;">
+                     aria-label="Seat preview" hidden>
                 <h3 class="lobby-section-title">Seats</h3>
                 <div class="lobby-seat-preview-grid">
                     <div class="lobby-seat-preview-cell" data-seat="0"
@@ -1158,7 +1155,7 @@
                 <label><input type="radio" name="lobby-seat" value="2"> Seat 2 <small class="lobby-hint">(West 西)</small></label>
                 <label><input type="radio" name="lobby-seat" value="3"> Seat 3 <small class="lobby-hint">(North 北)</small></label>
                 <label><input type="radio" name="lobby-seat" value="-1"> 👁 Spectate <small class="lobby-hint">(no seat — watch bots play)</small></label>
-                <p id="lobby-spectator-hint" class="lobby-spectator-hint" style="display: none;">
+                <p id="lobby-spectator-hint" class="lobby-spectator-hint" hidden>
                     All four seats can be filled with bots — sit back and
                     watch.  The runtime auto-deals once all four seats are
                     bots.
@@ -1231,7 +1228,7 @@
                     <input id="lobby-seed" type="text" inputmode="numeric"
                            pattern="[0-9]*" autocomplete="off" spellcheck="false"
                            placeholder="random" maxlength="10">
-                    <div id="lobby-seed-error" class="lobby-seed-error" style="display: none;">
+                    <div id="lobby-seed-error" class="lobby-seed-error" hidden>
                         Seed must be an integer between 0 and 2147483647.
                     </div>
                     <p class="lobby-advanced-hint">
@@ -1284,8 +1281,7 @@
                      class="lobby-tab-pane public-games-pane"
                      role="tabpanel"
                      aria-labelledby="lobby-public-games-tab"
-                     data-testid="lobby-public-section"
-                     style="display: none;">
+                     data-testid="lobby-public-section" hidden>
                 <div class="public-games-header">
                     <h3 class="lobby-section-title">Public Games</h3>
                     <button id="lobby-join-random" type="button"
@@ -1297,7 +1293,7 @@
                 </div>
                 <div id="lobby-public-games-error"
                      class="public-games-status public-games-error"
-                     aria-live="polite" style="display: none;"></div>
+                     aria-live="polite" hidden></div>
                 <div id="lobby-public-games-empty"
                      class="public-games-empty">
                     No public games right now. Try Quick Match in the
@@ -1317,8 +1313,7 @@
                      class="lobby-tab-pane leaderboard-pane"
                      role="tabpanel"
                      aria-labelledby="lobby-leaderboard-tab"
-                     data-testid="lobby-leaderboard-section"
-                     style="display: none;">
+                     data-testid="lobby-leaderboard-section" hidden>
                 <div class="leaderboard-header">
                     <h3 class="lobby-section-title">Leaderboard</h3>
                     <div class="leaderboard-controls">
@@ -1339,13 +1334,12 @@
                 </div>
                 <div id="leaderboard-error"
                      class="leaderboard-status leaderboard-error"
-                     aria-live="polite" style="display: none;"></div>
+                     aria-live="polite" hidden></div>
                 <div id="leaderboard-loading"
                      class="leaderboard-status leaderboard-loading"
                      aria-live="polite">Loading leaderboard…</div>
                 <div id="leaderboard-empty"
-                     class="leaderboard-status leaderboard-empty"
-                     style="display: none;">
+                     class="leaderboard-status leaderboard-empty" hidden>
                     No players match this filter yet — try lowering the
                     "Min games" threshold or play a few hands.
                 </div>
@@ -1367,6 +1361,95 @@
                             data-testid="leaderboard-next-page"
                             disabled>Next page →</button>
                 </div>
+            </section>
+            <!-- Phase J Wave 10 — Tournaments tab pane.  tournaments.ts
+                 feature-detects /api/tournaments.  When the endpoint
+                 returns 404 we show a "Coming soon" placeholder so the
+                 tab can ship ahead of Bishop's backend.  When the
+                 endpoint is live the placeholder is swapped for the
+                 list / detail / create surfaces. -->
+            <section id="lobby-tab-tournaments"
+                     class="lobby-tab-pane"
+                     role="tabpanel"
+                     aria-labelledby="lobby-tournaments-tab"
+                     data-testid="lobby-tournament-card"
+                     hidden>
+                <div id="tournaments-placeholder"
+                     class="lobby-tab-tournaments-empty"
+                     data-testid="tournaments-placeholder">
+                    Tournaments are coming soon. Check back once the next
+                    backend update lands.
+                </div>
+                <div id="tournament-list"
+                     class="tournament-list"
+                     data-testid="lobby-tournament-list"
+                     role="list" hidden></div>
+                <div id="tournament-detail"
+                     class="tournament-detail"
+                     data-testid="tournament-detail"
+                     hidden>
+                    <h4 id="tournament-detail-name"
+                        class="tournament-detail-name"></h4>
+                    <div id="tournament-detail-meta"
+                         class="tournament-detail-meta"></div>
+                    <pre id="tournament-bracket"
+                         class="tournament-bracket"
+                         data-testid="tournament-matches-table"></pre>
+                    <pre id="tournament-standings"
+                         class="tournament-standings"
+                         data-testid="tournament-leaderboard"></pre>
+                    <div class="tournament-detail-actions">
+                        <button id="tournament-register" type="button"
+                                class="btn btn-success btn-sm"
+                                data-testid="tournament-register-btn"
+                                hidden>Register</button>
+                        <button id="tournament-unregister" type="button"
+                                class="btn btn-secondary btn-sm"
+                                data-testid="tournament-unregister-btn"
+                                hidden>Unregister</button>
+                        <button id="tournament-start" type="button"
+                                class="btn btn-warning btn-sm"
+                                data-testid="tournament-start-btn"
+                                hidden>Start</button>
+                        <button id="tournament-detail-back" type="button"
+                                class="btn btn-secondary btn-sm">Back</button>
+                    </div>
+                </div>
+                <form id="tournament-create-form"
+                      class="tournament-create-form"
+                      data-testid="tournament-create-form"
+                      hidden>
+                    <h4>Create tournament</h4>
+                    <label>
+                        Name
+                        <input id="tournament-create-name" type="text"
+                               class="form-control form-control-sm"
+                               data-testid="lobby-tournament-name"
+                               minlength="1" maxlength="64" required>
+                    </label>
+                    <label>
+                        Format
+                        <select id="tournament-create-format"
+                                class="form-control form-control-sm"
+                                data-testid="tournament-create-format">
+                            <option value="round-robin">Round-robin</option>
+                            <option value="single-elim">Single elimination</option>
+                            <option value="swiss">Swiss</option>
+                        </select>
+                    </label>
+                    <label>
+                        Max players
+                        <input id="tournament-create-max-players" type="number"
+                               class="form-control form-control-sm"
+                               data-testid="tournament-create-max-players"
+                               min="4" max="64" value="8" step="1">
+                    </label>
+                    <button type="submit"
+                            class="btn btn-success btn-sm"
+                            data-testid="lobby-tournament-create">
+                        Create
+                    </button>
+                </form>
             </section>
         </div>
         <div class="lobby-footer">
@@ -1477,10 +1560,47 @@
                         data-testid="profile-reset">Reset to default</button>
                 <span id="profile-saved-note"
                       class="profile-saved-note"
-                      aria-live="polite" style="display: none;"></span>
+                      aria-live="polite" hidden></span>
             </div>
         </div>
     </aside>
+
+    <!-- Phase J Wave 10 — Avatar migration modal.
+         Forced (non-dismissible) modal shown to users whose persisted
+         avatarColor is still the legacy `#808080` placeholder.  Picks
+         one of 8 palette colours and persists via setAvatarColor().
+         Wired by identity.ts:installAvatarMigrationModalIfNeeded(). -->
+    <div id="migrate-avatar-modal"
+         class="migrate-avatar-modal"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="migrate-avatar-title"
+         data-testid="avatar-migration-modal"
+         hidden>
+        <div class="migrate-avatar-card">
+            <h3 id="migrate-avatar-title" class="migrate-avatar-title">
+                Pick your avatar colour
+            </h3>
+            <p class="migrate-avatar-body">
+                We're retiring the default grey avatar so players can tell
+                each other apart at a glance. Pick a colour to keep using
+                this profile.
+            </p>
+            <div id="migrate-avatar-grid"
+                 class="migrate-avatar-grid"
+                 role="radiogroup"
+                 aria-label="Avatar colour presets"></div>
+            <div class="migrate-avatar-actions">
+                <button id="migrate-avatar-dismiss" type="button"
+                        class="btn btn-secondary btn-sm"
+                        data-testid="avatar-migration-dismiss">Not now</button>
+                <button id="migrate-avatar-confirm" type="button"
+                        class="btn btn-success btn-sm"
+                        data-testid="avatar-migration-confirm"
+                        disabled>Confirm</button>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="./src/index.ts"></script>
 </body>

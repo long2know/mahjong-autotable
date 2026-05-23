@@ -14,6 +14,7 @@ import {
   type PlayerStats,
 } from './profile';
 import { formatStats, formatStatsDelta } from './stats';
+import { showEl, hideEl, setElHidden } from './utils';
 
 
 const TITLE_DISCONNECTED = 'Autotable';
@@ -248,18 +249,18 @@ export class ClientUi {
         && readCompleteFlagFromUi(cur);
       if (!complete) {
         host.replaceChildren();
-        host.style.display = 'none';
+        hideEl(host);
         return;
       }
       const profile = getProfile();
       if (profile === null) {
         host.replaceChildren();
-        host.style.display = 'none';
+        hideEl(host);
         return;
       }
       const prev: PlayerStats | null = getPreGameSnapshot();
       host.replaceChildren();
-      host.style.display = '';
+      showEl(host);
       const delta = formatStatsDelta(profile.stats, prev);
       if (delta !== null) {
         host.appendChild(delta);
@@ -307,7 +308,7 @@ export class ClientUi {
       this.gameIdInput.classList.remove('lobby-error-input');
     }
     if (this.gameIdError !== null) {
-      this.gameIdError.style.display = 'none';
+      hideEl(this.gameIdError);
     }
   }
 
@@ -317,7 +318,7 @@ export class ClientUi {
     }
     if (this.gameIdError !== null) {
       this.gameIdError.textContent = message;
-      this.gameIdError.style.display = 'block';
+      showEl(this.gameIdError);
     }
   }
 
@@ -595,14 +596,15 @@ export class ClientUi {
       // is "after the first failed retry (1s)", i.e. attempt >= 2.
       // Until then the banner stays informational-only.
       if (attempt >= 2) {
-        this.connectionBannerActions.style.display = '';
+        showEl(this.connectionBannerActions);
         if (this.connectionBannerCopyLink !== null) {
-          this.connectionBannerCopyLink.style.display = '';
+          showEl(this.connectionBannerCopyLink);
         }
       } else {
-        this.connectionBannerActions.style.display = 'none';
+        hideEl(this.connectionBannerActions);
       }
     }
+    showEl(this.connectionBanner);
     this.connectionBanner.style.display = 'flex';
   }
 
@@ -616,14 +618,15 @@ export class ClientUi {
       'connection-banner connection-banner-failed';
     this.connectionBannerText.textContent = '❌ Could not reconnect.';
     if (this.connectionBannerActions !== null) {
-      this.connectionBannerActions.style.display = '';
+      showEl(this.connectionBannerActions);
     }
     // Phase J Wave 4 — keep copy-link visible on the failure banner so
     // the user can still hand the URL to themselves (e.g. paste into a
     // chat) before clicking Back to Lobby.
     if (this.connectionBannerCopyLink !== null) {
-      this.connectionBannerCopyLink.style.display = '';
+      showEl(this.connectionBannerCopyLink);
     }
+    showEl(this.connectionBanner);
     this.connectionBanner.style.display = 'flex';
   }
 
@@ -633,13 +636,14 @@ export class ClientUi {
       'connection-banner connection-banner-success';
     this.connectionBannerText.textContent = '✅ Reconnected.';
     if (this.connectionBannerActions !== null) {
-      this.connectionBannerActions.style.display = 'none';
+      hideEl(this.connectionBannerActions);
     }
     // Phase J Wave 4 — also tuck the copy-link button away on a
     // successful reconnect so the success state is clean.
     if (this.connectionBannerCopyLink !== null) {
-      this.connectionBannerCopyLink.style.display = 'none';
+      hideEl(this.connectionBannerCopyLink);
     }
+    showEl(this.connectionBanner);
     this.connectionBanner.style.display = 'flex';
     if (this.reconnectFlashTimer !== null) {
       window.clearTimeout(this.reconnectFlashTimer);
@@ -652,15 +656,15 @@ export class ClientUi {
 
   private hideBanner(): void {
     if (this.connectionBanner === null) return;
-    this.connectionBanner.style.display = 'none';
+    hideEl(this.connectionBanner);
     if (this.connectionBannerActions !== null) {
-      this.connectionBannerActions.style.display = 'none';
+      hideEl(this.connectionBannerActions);
     }
     // Phase J Wave 4 — reset the copy-link button so subsequent
     // reconnect cycles start with it hidden (it's revealed at attempt
     // >= 2 inside showBannerReconnecting).
     if (this.connectionBannerCopyLink !== null) {
-      this.connectionBannerCopyLink.style.display = 'none';
+      hideEl(this.connectionBannerCopyLink);
     }
   }
 
@@ -789,10 +793,10 @@ export class ClientUi {
 
   setStatus(status: string | null): void {
     if (status !== null) {
-      this.statusElement.style.display = 'block';
+      showEl(this.statusElement);
       this.statusTextElement.innerText = status;
     } else {
-      this.statusElement.style.display = 'none';
+      hideEl(this.statusElement);
     }
   }
 

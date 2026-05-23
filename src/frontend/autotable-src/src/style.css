@@ -3281,3 +3281,220 @@ body.theme-light .chat-composer {
     color: rgba(255, 255, 255, 0.55);
     font-style: italic;
 }
+
+/* ─── Phase J Wave 10 ─────────────────────────────────────────────────
+ *
+ * Wave 10 ships a CSP-tightening pass that drops `'unsafe-inline'` from
+ * the `style-src` directive.  Every `style="..."` HTML attribute that
+ * previously inlined trivial display/width/padding values has been
+ * migrated to a real CSS class below.  Anything that needs to be
+ * initially hidden via the HTML5 `hidden` attribute relies on
+ * Bootstrap's UA-like `[hidden] { display: none !important; }` rule
+ * (see node_modules/bootstrap/dist/css/bootstrap.css:352).
+ * ----------------------------------------------------------------- */
+
+/* CSP-style claim countdown (formerly `style="display:none; font-size:0.8rem"`). */
+.claim-countdown {
+    font-size: 0.8rem;
+}
+
+/* CSP-style help dropdown menu width (formerly `style="width:300px"`). */
+.dropdown-menu.dropdown-menu-help {
+    width: 300px;
+}
+
+/* CSP-style modal source-citation block (formerly inline padding/margin). */
+.modal-source-cite {
+    padding: 1rem;
+    padding-top: 0;
+    margin-top: -0.5rem;
+}
+
+/* ─── Phase J Wave 10 — Spectator chat polish ─────────────────────── */
+
+#chat-panel[data-channel="spectators"] .chat-message-channel-spectators,
+#chat-panel[data-channel="spectator-private"] .chat-message-channel-spectator-private,
+.chat-message-channel-spectators,
+.chat-message-channel-spectator-private {
+    border-left: 2px solid #4dd0e1;
+    padding-left: 6px;
+}
+.chat-message-channel-spectators .chat-message-author::before,
+.chat-message-channel-spectator-private .chat-message-author::before {
+    content: '👁 ';
+    color: #4dd0e1;
+    margin-right: 2px;
+}
+.chat-message-channel-spectator-private .chat-message-author::after {
+    content: ' 🔒';
+    color: #4dd0e1;
+    margin-left: 2px;
+    font-size: 0.85em;
+}
+/* Surface the active channel via a thin accent strip on the panel header. */
+#chat-panel[data-channel="spectators"] .chat-header,
+#chat-panel[data-channel="spectator-private"] .chat-header {
+    box-shadow: inset 0 -2px 0 #4dd0e1;
+}
+#chat-panel[data-channel="private"] .chat-header {
+    box-shadow: inset 0 -2px 0 #c061cb;
+}
+
+/* ─── Phase J Wave 10 — Avatar migration modal ────────────────────── */
+
+.migrate-avatar-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.migrate-avatar-card {
+    background: var(--panel-bg, #2b2b2b);
+    color: var(--panel-fg, #fff);
+    border-radius: 8px;
+    padding: 1.5rem;
+    max-width: 420px;
+    width: 92%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+}
+.migrate-avatar-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+.migrate-avatar-body {
+    margin: 0 0 1rem 0;
+    font-size: 0.92rem;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.85);
+}
+.migrate-avatar-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.55rem;
+    margin-bottom: 1rem;
+}
+.migrate-avatar-swatch {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 80ms ease, border-color 80ms ease;
+}
+.migrate-avatar-swatch:hover {
+    transform: scale(1.06);
+}
+.migrate-avatar-swatch.migrate-avatar-swatch-selected {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+.migrate-avatar-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* ─── Phase J Wave 10 — Tournaments tab ──────────────────────────── */
+
+.lobby-tab-tournaments-empty {
+    padding: 1rem;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.65);
+}
+.tournament-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem;
+}
+.tournament-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.75rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+}
+.tournament-row:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.tournament-row-name {
+    font-weight: 600;
+}
+.tournament-row-meta {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.85rem;
+}
+.tournament-detail {
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+}
+.tournament-bracket,
+.tournament-standings {
+    margin-top: 0.75rem;
+    font-family: monospace;
+    font-size: 0.85rem;
+    white-space: pre;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 0.5rem;
+    border-radius: 4px;
+    overflow-x: auto;
+}
+.tournament-create-form {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+    margin-top: 0.75rem;
+}
+
+/* ─── Phase J Wave 10 — Audit "Why?" reasoning expand ─────────────── */
+
+.audit-why-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.85);
+    padding: 1px 6px;
+    font-size: 0.78rem;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.audit-why-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.audit-reasoning-row {
+    background: rgba(255, 255, 255, 0.03);
+}
+.audit-reasoning-list {
+    margin: 0;
+    padding: 0.5rem 1rem 0.5rem 1.5rem;
+    list-style: disc;
+    font-size: 0.82rem;
+}
+.audit-reasoning-item {
+    margin: 0.1rem 0;
+    color: rgba(255, 255, 255, 0.85);
+}
+.audit-reasoning-win {
+    color: #a3e3a3;
+}
+.audit-reasoning-caution {
+    color: #ffd75e;
+}
+.audit-reasoning-suboptimal {
+    color: #ff6b6b;
+}
+.audit-reasoning-unavailable {
+    padding: 0.5rem 1rem;
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.55);
+}

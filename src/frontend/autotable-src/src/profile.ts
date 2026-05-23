@@ -52,6 +52,7 @@ import {
   invokeHub,
   onHubConnected,
 } from './hub';
+import { showEl, hideEl } from './utils';
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -582,12 +583,12 @@ export function installProfileDrawer(): void {
 
 function flashSaved(node: HTMLElement | null): void {
   if (node === null) return;
-  node.style.display = '';
+  showEl(node);
   node.textContent = 'Saved ✓';
   if (savedNoteTimer !== null) window.clearTimeout(savedNoteTimer);
   savedNoteTimer = window.setTimeout(() => {
     savedNoteTimer = null;
-    node.style.display = 'none';
+    hideEl(node);
   }, 1400);
 }
 

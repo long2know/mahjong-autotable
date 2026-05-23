@@ -45,6 +45,7 @@
 // request via AbortController to avoid stacking calls.
 
 import { EventEmitter } from 'events';
+import { setElHidden } from './utils';
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -426,22 +427,22 @@ export function installLeaderboardSurface(): void {
   const render = (): void => {
     if (errorEl !== null) {
       if (lastError !== null) {
-        errorEl.style.display = '';
+        setElHidden(errorEl, false);
         errorEl.textContent = `Failed to load leaderboard: ${lastError}`;
       } else {
-        errorEl.style.display = 'none';
+        setElHidden(errorEl, true);
         errorEl.textContent = '';
       }
     }
     const page = cache;
     if (loadingEl !== null) {
-      loadingEl.style.display = page === null && lastError === null ? '' : 'none';
+      setElHidden(loadingEl, !(page === null && lastError === null));
     }
     if (page === null) {
       // Clear out any stale rows so a transient error doesn't keep
       // showing old data.
       tableHost.replaceChildren();
-      if (emptyEl !== null) emptyEl.style.display = 'none';
+      if (emptyEl !== null) setElHidden(emptyEl, true);
       if (summaryEl !== null) summaryEl.textContent = '';
       if (prevBtn !== null) prevBtn.disabled = true;
       if (nextBtn !== null) nextBtn.disabled = true;
@@ -449,7 +450,7 @@ export function installLeaderboardSurface(): void {
     }
     renderTable(tableHost, page);
     if (emptyEl !== null) {
-      emptyEl.style.display = page.rows.length === 0 ? '' : 'none';
+      setElHidden(emptyEl, page.rows.length !== 0);
     }
     if (summaryEl !== null) {
       summaryEl.textContent = formatSummary(page);
