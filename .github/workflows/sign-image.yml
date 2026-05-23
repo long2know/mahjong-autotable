@@ -1,0 +1,170 @@
+# Phase K Wave 1 — Apone (DevOps).
+#
+# Cosign keyless image signing.
+#
+# This workflow runs after the `docker-build` workflow succeeds on `main` (or
+# on a `v*.*.*` tag push), discovers the freshly published image digest from
+# the registry, and signs it with cosign using GitHub's OIDC token as the
+# keyless signing identity (no long-lived key material in the repo or in
+# GHCR — the OIDC issuer https://token.actions.githubusercontent.com is
+# the cryptographic anchor that Sigstore's Fulcio CA pins the signing
+# certificate to).
+#
+# The same workflow then immediately verifies the signature with
+# `cosign verify`, asserting:
+#   - the OIDC issuer is GitHub Actions, AND
+#   - the signing-identity subject matches THIS workflow path on this repo
+#     (the canonical signer URL — see `docs/image-signing.md`).
+#
+# A green run means: the multi-arch manifest list published by docker-build
+# is cryptographically attested to have come from a workflow defined in
+# this repository at this commit, and that attestation is recorded in the
+# public Rekor transparency log (so anyone — security auditors, downstream
+# consumers, regulators — can verify the provenance independently).
+#
+# Why a separate workflow (rather than appending `cosign sign` to
+# docker-build.yml)? Two reasons:
+#   1. Failure isolation. A transient Fulcio outage shouldn't fail the
+#      docker-build (which already produced a usable image); it should
+#      just delay signing. The image is still pullable; the signature
+#      arrives on the next workflow re-run.
+#   2. OIDC scope. Signing needs `id-token: write` which we do NOT want to
+#      grant to the build workflow (its blast radius is larger). Keeping
+#      signing in its own file confines the elevated permission to the
+#      one step that needs it.
+#
+# Tooling: sigstore/cosign-installer@v3 pins cosign 2.x — the modern
+# (no `COSIGN_EXPERIMENTAL`) keyless-by-default version.
+#
+# Verification procedure documented in `docs/image-signing.md`.
+
+name: sign-image
+
+on:
+  workflow_run:
+    workflows: ["docker-build"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: "Image digest to sign (e.g. sha256:abc123...). Defaults to the manifest currently tagged `latest`."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+  # Required for cosign keyless: lets the workflow mint an OIDC token that
+  # Fulcio swaps for a short-lived signing certificate.
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: long2know/mahjong-autotable
+  COSIGN_YES: "true"
+
+jobs:
+  cosign-sign-and-verify:
+    name: cosign sign + verify (keyless OIDC)
+    runs-on: ubuntu-latest
+    # On workflow_run, only proceed when the upstream build succeeded.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    timeout-minutes: 15
+
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.4.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Resolve the multi-arch manifest-list digest. `docker buildx imagetools
+      # inspect` is the canonical way to read a registry manifest without
+      # pulling layers (cosign signs the manifest digest, not a per-arch
+      # image — that's the whole point of signing the manifest list once
+      # and having both amd64 + arm64 inherit the attestation).
+      - name: Resolve image digest
+        id: digest
+        run: |
+          set -euo pipefail
+          INPUT_DIGEST="${{ github.event.inputs.digest }}"
+          if [ -n "$INPUT_DIGEST" ]; then
+            DIGEST="$INPUT_DIGEST"
+            echo "Using operator-supplied digest: $DIGEST"
+          else
+            # `imagetools inspect --raw` prints the manifest list JSON; the
+            # `Digest:` field in the human-readable form gives the canonical
+            # digest. We use the regular (non-raw) form + awk because it's
+            # the documented stable output.
+            DIGEST=$(docker buildx imagetools inspect \
+              "${REGISTRY}/${IMAGE_NAME}:latest" \
+              --format '{{.Manifest.Digest}}')
+            echo "Resolved digest from :latest → $DIGEST"
+          fi
+          if [ -z "$DIGEST" ] || ! echo "$DIGEST" | grep -qE '^sha256:[0-9a-f]{64}$'; then
+            echo "::error::could not resolve a valid sha256 digest"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      # Keyless sign. No `--key` argument → cosign mints an OIDC token
+      # from `id-token: write`, presents it to Fulcio, gets back a short-
+      # lived signing cert, signs, and writes the signature to the
+      # registry as an OCI artefact (`<digest>.sig`). The signature is
+      # also recorded in the Rekor transparency log.
+      - name: cosign sign (keyless OIDC)
+        env:
+          IMAGE_REF: ${{ steps.digest.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          echo "Signing $IMAGE_REF"
+          cosign sign --yes "$IMAGE_REF"
+
+      # Verify the signature we just produced. This pins the expected
+      # identity to the GitHub Actions OIDC issuer + the canonical
+      # signing-workflow URL for this repo. Mismatch = workflow fails =
+      # alert fires.
+      - name: cosign verify
+        env:
+          IMAGE_REF: ${{ steps.digest.outputs.image_ref }}
+          # Canonical signer subject for this repo. If the workflow is
+          # ever renamed or moved, update this regex.
+          EXPECTED_IDENTITY_REGEXP: ^https://github\.com/long2know/mahjong-autotable/\.github/workflows/sign-image\.yml@refs/(heads/main|tags/v.*)$
+          EXPECTED_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: |
+          set -euo pipefail
+          echo "Verifying $IMAGE_REF"
+          cosign verify \
+            --certificate-identity-regexp "$EXPECTED_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$EXPECTED_OIDC_ISSUER" \
+            "$IMAGE_REF" \
+            > cosign-verify.json
+          echo "✅ signature verified"
+          jq -r '.[0] | {critical: .critical, optional: .optional}' cosign-verify.json || cat cosign-verify.json
+
+      - name: Step Summary
+        if: always()
+        env:
+          IMAGE_REF: ${{ steps.digest.outputs.image_ref }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          {
+            echo "### cosign keyless signature (Phase K Wave 1)"
+            echo ""
+            echo "- Image: \`$IMAGE_REF\`"
+            echo "- Digest: \`$DIGEST\`"
+            echo "- Signer: GitHub Actions OIDC (this workflow)"
+            echo "- Transparency log: [search.sigstore.dev](https://search.sigstore.dev/?hash=$DIGEST)"
+            echo ""
+            echo "Verification procedure: see \`docs/image-signing.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
