@@ -456,7 +456,81 @@ controls the toggle (default `COUNT` in staging, `BLOCK` in
 prod). The W8 → W9 hand-off includes a `count` → `block` flip on
 prod after a quarter of staging soak.
 
-## 6. Cross-references
+## 6. Version policy (Phase K Wave 11)
+
+### 6.1 Floor vs CI pin
+
+Two pinning surfaces, one policy:
+
+| Surface                                  | Pin shape                | Current value          | Bump cadence |
+|------------------------------------------|--------------------------|------------------------|--------------|
+| `required_version` in every TF module    | `>= <floor>` (range)     | `>= 1.5.0`             | Bumped only when a `tf 1.x` feature is consumed; otherwise sticky. |
+| `terraform_version:` in CI workflows     | exact (`"1.10.5"`)       | **`1.10.5` (W11)**     | One minor per quarter (Q1/Q2/Q3/Q4) or immediately on CVE. |
+
+Rationale: the range-based floor makes the modules forward-
+compatible (an operator running TF 1.11 / 1.12 locally is not
+blocked by an exact pin); the CI exact pin gives **deterministic
+plan/apply** in workflows so a CI rerun of last quarter's stack
+produces the same provider lock + the same plan, byte-for-byte.
+
+### 6.2 Bump cadence — quarterly
+
+The CI pin (`terraform_version: "1.10.5"`) is bumped once per
+quarter, anchored on Wave bring-up:
+
+| Wave / Quarter | Released CLI baseline (≈ -1 minor) | Pin value | Status |
+|----------------|------------------------------------|-----------|--------|
+| W8 (Q2 2026)   | TF 1.9.x line                      | `1.9.8`   | retired |
+| W11 (Q3 2026)  | TF 1.10.x line                     | `1.10.5`  | **current** |
+| W14 (Q4 2026)  | TF 1.11.x line                     | TBD       | planned |
+
+Picking `1.10.5` (not `1.10.6` or `1.10.0`) follows the squad's
+"baseline = current minor's most recent patch" rule: any
+breaking patches in the minor are already shaken out; any
+later patches are too recent for the lock-file ecosystem to
+have caught up.
+
+### 6.3 Out-of-band bumps (CVE)
+
+If HashiCorp publishes a CLI CVE patch (e.g. `1.10.5 → 1.10.6`
+with a security fix), bump immediately — outside the quarterly
+cadence. Owner: DevOps lane (Apone). Procedure:
+
+1. Update the `terraform_version:` pin in EVERY workflow that
+   uses `hashicorp/setup-terraform@v3`. The current set (W11):
+   * `.github/workflows/dr-rehearsal.yml`
+2. Open a wave-scoped PR (`stlong/phase-k-wave-NN-tf-cve-bump`)
+   so the bump lands with full CI proof of green plan/apply.
+3. Note in the next monthly retro under "Out-of-band cadence
+   breaks" so the W14 quarterly bump catches up.
+
+### 6.4 Lock-file discipline
+
+`.terraform.lock.hcl` is committed PER ENV STACK (not per
+module — modules don't pin providers; envs do). The CLI version
+bump does NOT require a lock-file re-init — that is a separate
+provider-version bump. A typical CLI-only bump is plan-clean:
+
+```bash
+# In each env stack — after CI version bump, before next apply.
+terraform init -backend=false       # validates lock against new CLI
+terraform plan                       # MUST be a no-op
+```
+
+If `terraform plan` is not a no-op after a CLI-only bump, the
+bump regressed a feature; revert and open an issue against
+upstream.
+
+### 6.5 Action pin (`setup-terraform@v3`)
+
+The `hashicorp/setup-terraform@v3` action is itself version-
+pinned to `@v3` (major-version tag). Major-pin (not SHA-pin)
+because this is a HashiCorp-published action with stable
+semantics across `v3.x.y`. Bump to `@v4` when HashiCorp ships a
+breaking-major release; track via Dependabot's grouped
+github-actions update.
+
+## 7. Cross-references
 
 * `infra/terraform/README.md` — primary-stack bootstrap runbook.
 * `infra/terraform/modules/dr-replication/README.md` — DR module.

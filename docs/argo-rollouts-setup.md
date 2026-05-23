@@ -105,14 +105,17 @@ Wraps §4.1 with a port-forward.
 ### 4.3 Ingress (cluster-fronted — opt-in)
 
 Only flip to ingress-fronted dashboard when the squad has an
-auth-aware proxy in front (Cloudflare Access, OIDC sidecar,
-etc.). The dashboard has **no built-in auth**; exposing it
-behind the cluster's nginx-ingress directly is equivalent to a
-public unauthenticated endpoint.
+auth-aware proxy in front. **W11 (Phase K) ships the canonical
+auth-aware proxy** — see §5 below.
+
+The pre-W11 placeholder example (Cloudflare Access / generic
+OIDC sidecar) is retained for completeness:
 
 ```yaml
-# infra/k8s/argo-rollouts/dashboard-ingress.yaml — DO NOT ship
-# this without the auth-aware proxy upstream.
+# Pre-W11 placeholder — DO NOT ship this without the auth-aware
+# proxy upstream. W11 supersedes this with §5 + the
+# infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml
+# manifest.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -138,9 +141,147 @@ spec:
 
 Squad recommendation: skip §4.3 entirely — port-forward
 (§4.1/§4.2) is the production-grade pattern for an SRE tool
-that doesn't need always-on access.
+that doesn't need always-on access. **W11 ships an opt-in
+auth-aware ingress** (§5) for the squad members who want a
+stable URL gated by the existing OIDC chain.
 
-## 5. Validation
+## 5. Auth-aware ingress (Phase K Wave 11)
+
+W10 shipped the cluster install + port-forward access patterns
+above. W11 ships a **production-grade auth-aware ingress** so
+the squad can reach the dashboard via a stable URL gated by the
+existing `oauth2-proxy` + dex OIDC chain (the same chain that
+fronts the production app — see `docs/oauth-production-setup.md`
+§4). No new identity provider; the chain already covers
+@squad.mahjong + the allow-listed external observers.
+
+### 5.1 Manifest
+
+The canonical W11 ingress lives at:
+
+* [`infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml`](../infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml)
+
+It is **out-of-band** (NOT in any `kustomization.yaml`
+`resources:` list at W11) — the operator applies it manually
+once the cluster bootstrap completes:
+
+```bash
+kubectl -n argo-rollouts apply -f \
+    infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml
+```
+
+### 5.2 Annotations — the auth-request subrequest
+
+The two nginx-ingress annotations that gate the dashboard:
+
+```yaml
+nginx.ingress.kubernetes.io/auth-url:    "https://auth.mahjong.example.com/oauth2/auth"
+nginx.ingress.kubernetes.io/auth-signin: "https://auth.mahjong.example.com/oauth2/start?rd=$escaped_request_uri"
+```
+
+Flow:
+
+1. Client `GET /argo-rollouts/` → nginx-ingress.
+2. nginx-ingress hits `auth.mahjong.example.com/oauth2/auth`
+   with the inbound cookies (auth-url subrequest).
+3. 2xx → original request proxies to the dashboard Service
+   (rewrite-target strips `/argo-rollouts` so the SPA serves
+   from `/` upstream).
+4. 401 → 302-redirect to
+   `auth.mahjong.example.com/oauth2/start?rd=<original URL>`
+   (auth-signin). The user lands on dex, signs in, comes back
+   with the cookie set, retries the original request.
+
+The dashboard itself has NO built-in auth (per the §4.3
+warning); this Ingress IS the auth boundary. Bypassing the
+nginx-ingress (e.g. via a direct Service hit from inside the
+cluster) is still possible — that's a `NetworkPolicy` concern,
+not an ingress concern. The W11 deliverable does NOT ship a
+companion NetworkPolicy; the deferred follow-up is a W12
+candidate.
+
+### 5.3 Path rewrite — `/argo-rollouts/*` → `/*`
+
+The dashboard image expects to serve from `/` (it emits
+absolute paths in its SPA bundle). To expose it under
+`/argo-rollouts/` without forking the image:
+
+```yaml
+annotations:
+  nginx.ingress.kubernetes.io/rewrite-target: "/$2"
+  nginx.ingress.kubernetes.io/use-regex: "true"
+
+spec:
+  rules:
+    - host: mahjong.example.com
+      http:
+        paths:
+          - path: /argo-rollouts(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: argo-rollouts-dashboard
+                port:
+                  number: 3100
+```
+
+The capture group `$2` is the dashboard-internal path; the
+leading `/argo-rollouts` is stripped. The `(/|$)` ensures bare
+`/argo-rollouts` (no trailing slash) also matches.
+
+### 5.4 TLS / HSTS hygiene
+
+```yaml
+nginx.ingress.kubernetes.io/ssl-redirect:       "true"
+nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+```
+
+HSTS itself is set at the parent ingress (the prod app's
+`hsts-patch.yaml`); the auth-aware ingress inherits the
+ingress-class-wide HSTS header. The wildcard ACM cert
+(provisioned by the W11 prod edge stack —
+`infra/terraform/envs/prod/main.tf`) covers
+`mahjong.example.com` and is mounted via the `mahjong-tls-cert`
+Secret on the parent `mahjong-prod` ingress.
+
+### 5.5 Validation
+
+```bash
+# 1. Unauthenticated request → 302 to auth-signin URL.
+curl -sI https://mahjong.example.com/argo-rollouts/ \
+    | head -1
+# Expected: HTTP/2 302
+curl -sI https://mahjong.example.com/argo-rollouts/ \
+    | grep -i 'location:'
+# Expected: location: https://auth.mahjong.example.com/oauth2/start?rd=...
+
+# 2. Authenticated request (with the oauth2-proxy cookie set)
+#    → 200 from the dashboard SPA.
+curl -sI -b "_oauth2_proxy=<cookie>" \
+    https://mahjong.example.com/argo-rollouts/ \
+    | head -1
+# Expected: HTTP/2 200
+
+# 3. The SPA assets load — the rewrite-target strips correctly.
+curl -sI -b "_oauth2_proxy=<cookie>" \
+    https://mahjong.example.com/argo-rollouts/static/index.js \
+    | head -1
+# Expected: HTTP/2 200
+```
+
+### 5.6 Rollback
+
+Reverting to port-forward-only:
+
+```bash
+kubectl -n argo-rollouts delete ingress argo-rollouts-dashboard
+```
+
+The dashboard service is unaffected; port-forward (§4.1) keeps
+working. No data loss — the dashboard reads cluster state
+directly and is stateless.
+
+## 6. Validation
 
 After install, validate the controller + CRDs are healthy:
 
@@ -172,7 +313,7 @@ curl -sf http://localhost:3100/api/v1/rollouts/argo-rollouts | jq '.|keys'
 kill $PF_PID
 ```
 
-## 6. Wiring to the Mahjong chart
+## 7. Wiring to the Mahjong chart
 
 Once the controller is healthy:
 
@@ -197,9 +338,9 @@ happens at `Rollout` reconcile time, so the templates MUST
 exist in the same namespace as the Rollout (the chart renders
 them alongside).
 
-## 7. Rollback procedure
+## 8. Rollback procedure
 
-### 7.1 Rolling back an in-flight canary
+### 8.1 Rolling back an in-flight canary
 
 ```bash
 # Halt the in-flight rollout (does NOT undo what's already
@@ -218,7 +359,7 @@ is the on-call's tool to investigate WITHOUT immediately
 discarding the canary pods (logs / metrics are still on the
 canary pods until abort).
 
-### 7.2 Uninstalling the controller entirely
+### 8.2 Uninstalling the controller entirely
 
 ```bash
 helm uninstall argo-rollouts -n argo-rollouts
@@ -243,7 +384,7 @@ Helm chart falls back to a plain `Deployment` when
 `canary.enabled = false`; the operator can flip that knob
 before uninstall to convert the workload cleanly.
 
-## 8. Cross-references
+## 9. Cross-references
 
 - [`docs/helm-charts.md` §3.5](./helm-charts.md) — the
   `AnalysisTemplate` gates this controller evaluates.
@@ -251,5 +392,7 @@ before uninstall to convert the workload cleanly.
   references this install as a prerequisite (§8 "Continuous
   health probes" cross-link added in W10).
 - [`helm/mahjong/templates/canary-deployment.yaml`](../helm/mahjong/templates/canary-deployment.yaml) — the chart-side resource that needs this controller.
+- [`infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml`](../infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml) — Phase K Wave 11 auth-aware ingress manifest (§5).
+- [`docs/oauth-production-setup.md`](./oauth-production-setup.md) §4 — the oauth2-proxy + dex OIDC chain that fronts §5.
 - Upstream docs: <https://argoproj.github.io/argo-rollouts/>
 - Upstream chart: <https://github.com/argoproj/argo-helm/tree/main/charts/argo-rollouts>

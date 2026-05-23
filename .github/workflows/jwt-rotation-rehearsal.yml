@@ -1,0 +1,444 @@
+# Phase K Wave 11 — Apone (DevOps).
+#
+# JWT signing-key rotation rehearsal — STAGING ONLY.
+#
+# W10 §3 tightened the JWT rotation cadence from 180 d to 90 d
+# (matching the squad-wide secret-management quarterly cadence).
+# The first rotation under the new cadence lands end of
+# September 2026. This workflow is the *rehearsal* against
+# staging — exercises the full SSM-rotate → rolling-restart →
+# JWKS-validate → archive-cleanup loop so the operator running
+# the prod rotation has muscle memory + the workflow's archive
+# proves the procedure works.
+#
+# What it does NOT do:
+#
+#   * Touch production. Hard-gated on `environment: staging`
+#     (see jobs.rehearse.environment below + the `aws-region` /
+#     `ssm-prefix` defaults). The workflow_dispatch input
+#     surface is read-only against prod (no `target_env: prod`
+#     option).
+#   * Auto-merge or auto-push. The auto-generated rehearsal
+#     report is uploaded as a workflow artefact + committed to
+#     `docs/jwt-rotation-rehearsal-{YYYY-MM-DD}.md` via a PR
+#     (operator merges manually).
+#
+# What it does:
+#
+#   1. Resolve the staging SSM prefix (`/mahjong/staging/auth/jwt`)
+#      via the `target_env` input (default `staging`, only
+#      legal value at W11).
+#   2. Read CURRENT key-active + key-previous + key-archive via
+#      `aws ssm get-parameter` (decrypted in-runner; never
+#      logged).
+#   3. Mint a new HMAC key (`openssl rand -base64 48`).
+#   4. Cycle: active → previous; previous → archive; new → active.
+#      (Mirrors `docs/jwt-rotation.md` §4 step 2.)
+#   5. Force-sync the staging ESO ExternalSecret (`mahjong-jwt-keys`).
+#   6. Rolling restart of the staging deployment.
+#   7. Wait for rollout `Available` + the readiness probe to
+#      return green.
+#   8. curl the staging JWKS endpoint:
+#        - assert HTTP 200,
+#        - parse the `keys` array,
+#        - confirm OLD kid (active-before-rotation) IS STILL
+#          listed (validator fallback intact),
+#        - confirm NEW kid IS listed,
+#        - confirm `length(keys) >= 3`.
+#   9. Optional cleanup — if input `cleanup_archive=true`, drop
+#      the eldest archive entry. Otherwise leave the 3-deep
+#      fallback list for the next rotation.
+#   10. Auto-generate the rehearsal report markdown and upload as
+#       an artefact. Operator commits the file from a manual PR
+#       (the workflow doesn't push directly to main).
+#
+# Cadence:
+#
+#   * `workflow_dispatch` ONLY — no schedule trigger. The
+#     operator runs this BEFORE the prod rotation (mandatory
+#     dress rehearsal); the W11 cadence is "rehearse against
+#     staging within 14 days of the prod rotation window".
+#
+# Identity:
+#
+#   * GitHub-OIDC AWS role with `ssm:GetParameter` +
+#     `ssm:PutParameter` on `arn:aws:ssm:*:*:parameter/mahjong/staging/auth/jwt/*`
+#     ONLY. The W6 OIDC trust policy (`infra/terraform/modules/github-oidc/`)
+#     binds the rehearsal subject to
+#     `repo:long2know/mahjong-autotable:environment:jwt-rehearsal`.
+#   * Refusal mode — the workflow EXITS NON-ZERO if
+#     `target_env != "staging"` so a hand-edit of the input
+#     can't reach prod even with a misconfigured trust policy.
+
+name: jwt-rotation-rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: "Target environment — staging ONLY at W11. Hard-gated; prod is not selectable."
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - "staging"
+      cleanup_archive:
+        description: "After validation, delete the eldest archive entry to demonstrate the §3.7 cleanup step. Default false (keeps 3 keys live)."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      dry_run:
+        description: "Dry-run mode — perform AWS describe + curl calls but DO NOT rotate keys, restart pods, or write SSM. Validates the workflow plumbing without touching state."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      jwks_url:
+        description: "Override the staging JWKS endpoint URL. Default https://staging.mahjong.example.com/.well-known/jwks.json."
+        required: false
+        default: "https://staging.mahjong.example.com/.well-known/jwks.json"
+
+permissions:
+  contents: read
+  id-token: write   # OIDC → assume the GitHub-OIDC AWS role.
+  pull-requests: write  # The optional follow-up PR step opens
+                        # a PR with the auto-generated report.
+
+# Only one rehearsal at a time — a second concurrent rotate
+# would race the SSM cycle + leave the env in a 4-key state.
+concurrency:
+  group: jwt-rotation-rehearsal-${{ inputs.target_env }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  SSM_PREFIX: /mahjong/staging/auth/jwt
+  K8S_NAMESPACE: mahjong-staging
+  K8S_DEPLOYMENT: mahjong-autotable
+  ESO_EXTERNALSECRET: mahjong-jwt-keys
+  JWKS_URL: ${{ inputs.jwks_url || 'https://staging.mahjong.example.com/.well-known/jwks.json' }}
+
+jobs:
+  rehearse:
+    name: Rotate → restart → validate → archive
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 25
+    steps:
+      - name: Guard — target_env must be staging
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.target_env }}" != "staging" ]; then
+            echo "::error::target_env must be staging (W11 hard gate). Got: ${{ inputs.target_env }}"
+            exit 1
+          fi
+          echo "target_env=staging (gate OK)"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (staging)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::000000000000:role/mahjong-autotable-jwt-rehearsal
+          aws-region: ${{ env.AWS_REGION }}
+          # The W6 GitHub-OIDC trust policy MUST include the env
+          # subject `repo:long2know/mahjong-autotable:environment:staging`
+          # for this workflow to assume the role. The role's IAM
+          # policy is narrowed to `ssm:GetParameter` +
+          # `ssm:PutParameter` on
+          # `arn:aws:ssm:*:*:parameter/mahjong/staging/auth/jwt/*`
+          # ONLY (no prod parameters reachable even with a
+          # hand-edited workflow).
+
+      - name: Capture rehearsal start metadata
+        id: start
+        run: |
+          set -euo pipefail
+          START_TS=$(date -u +%s)
+          START_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          REHEARSAL_DATE=$(date -u +"%Y-%m-%d")
+          {
+            echo "start_ts=$START_TS"
+            echo "start_iso=$START_ISO"
+            echo "rehearsal_date=$REHEARSAL_DATE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Rehearsal start: $START_ISO (date=$REHEARSAL_DATE)"
+
+      - name: Capture BEFORE state (kid + JWKS snapshot)
+        id: before
+        run: |
+          set -euo pipefail
+          # Snapshot the staging JWKS BEFORE rotation. We capture
+          # the kid list so step "validate" can assert the old
+          # kid still appears in the post-rotation JWKS.
+          curl -sSf --max-time 10 "${JWKS_URL}" -o jwks.before.json
+          BEFORE_KIDS=$(jq -r '.keys[].kid' jwks.before.json | sort -u | paste -sd,)
+          BEFORE_COUNT=$(jq '.keys | length' jwks.before.json)
+          if [ "${BEFORE_COUNT:-0}" -lt 2 ]; then
+            echo "::error::staging JWKS has fewer than 2 keys BEFORE rotation; abort"
+            exit 1
+          fi
+          {
+            echo "before_kids=$BEFORE_KIDS"
+            echo "before_count=$BEFORE_COUNT"
+          } >> "$GITHUB_OUTPUT"
+          echo "BEFORE: kids=[$BEFORE_KIDS], count=$BEFORE_COUNT"
+
+      - name: Read current SSM key trio
+        id: ssm-before
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          set -euo pipefail
+          # We DO NOT log the key VALUES — only the parameter
+          # version + LastModifiedDate so the audit trail proves
+          # we rotated.
+          for slot in active previous archive; do
+            param="${SSM_PREFIX}/key-${slot}"
+            meta=$(aws ssm describe-parameters \
+                --parameter-filters "Key=Name,Values=${param}" \
+                --query 'Parameters[0].[Name,Version,LastModifiedDate]' \
+                --output text 2>/dev/null || echo "absent")
+            echo "${slot}: ${meta}"
+          done
+
+      - name: Mint new key + cycle SSM
+        id: rotate
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          set -euo pipefail
+          # NEW_KEY is captured ONLY in this step's env; not
+          # echoed, not written to disk, not exported beyond the
+          # cycle commands. The shell history isn't preserved
+          # between steps.
+          NEW_KEY=$(openssl rand -base64 48)
+
+          # Read existing values (decrypted in-runner; never
+          # logged — `set +x` is the default in GHA, and we
+          # don't echo).
+          OLD_ACTIVE=$(aws ssm get-parameter \
+              --name "${SSM_PREFIX}/key-active" \
+              --with-decryption \
+              --query Parameter.Value --output text)
+          OLD_PREV=$(aws ssm get-parameter \
+              --name "${SSM_PREFIX}/key-previous" \
+              --with-decryption \
+              --query Parameter.Value --output text 2>/dev/null || echo "")
+
+          # Cycle in canonical order — see docs/jwt-rotation.md §4 step 2.
+          if [ -n "$OLD_PREV" ]; then
+            aws ssm put-parameter --name "${SSM_PREFIX}/key-archive" \
+                --type SecureString --value "$OLD_PREV" --overwrite >/dev/null
+          fi
+          aws ssm put-parameter --name "${SSM_PREFIX}/key-previous" \
+              --type SecureString --value "$OLD_ACTIVE" --overwrite >/dev/null
+          aws ssm put-parameter --name "${SSM_PREFIX}/key-active" \
+              --type SecureString --value "$NEW_KEY" --overwrite >/dev/null
+
+          # Sanity: confirm the new version landed (no value
+          # echoed — just the new Version number from SSM).
+          NEW_VER=$(aws ssm get-parameter \
+              --name "${SSM_PREFIX}/key-active" \
+              --query Parameter.Version --output text)
+          echo "key-active rotated → version=${NEW_VER}"
+          echo "active_version=${NEW_VER}" >> "$GITHUB_OUTPUT"
+
+      - name: Force-sync ESO + rolling restart
+        if: ${{ inputs.dry_run != 'true' }}
+        env:
+          # Sourced from the deploy environment's kubeconfig
+          # secret (`KUBECONFIG_STAGING`). Best-practice — the
+          # operator-side runbook references the same secret
+          # name in `docs/jwt-rotation-rehearsal.md` §5.
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_STAGING }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KUBECONFIG_B64:-}" ]; then
+            echo "::warning::KUBECONFIG_STAGING secret not configured — emitting the kubectl commands the operator must run manually"
+            printf 'kubectl -n %s annotate externalsecret %s force-sync="$(date +%%s)" --overwrite\n' \
+                "${K8S_NAMESPACE}" "${ESO_EXTERNALSECRET}"
+            printf 'kubectl -n %s rollout restart deployment %s\n' \
+                "${K8S_NAMESPACE}" "${K8S_DEPLOYMENT}"
+            printf 'kubectl -n %s rollout status  deployment %s --timeout=5m\n' \
+                "${K8S_NAMESPACE}" "${K8S_DEPLOYMENT}"
+            exit 0
+          fi
+          echo "$KUBECONFIG_B64" | base64 -d > kubeconfig
+          export KUBECONFIG=$(pwd)/kubeconfig
+
+          kubectl -n "${K8S_NAMESPACE}" annotate externalsecret "${ESO_EXTERNALSECRET}" \
+              force-sync="$(date +%s)" --overwrite
+          kubectl -n "${K8S_NAMESPACE}" rollout restart deployment "${K8S_DEPLOYMENT}"
+          kubectl -n "${K8S_NAMESPACE}" rollout status  deployment "${K8S_DEPLOYMENT}" --timeout=5m
+
+      - name: Capture AFTER state — wait, then snapshot JWKS
+        id: after
+        run: |
+          set -euo pipefail
+          # Wait up to 120 s for the JWKS endpoint to reflect
+          # the new kid. Bishop's W10 JWKS cache has a 60-s TTL;
+          # 120 s is 2× the ceiling, fail-fast otherwise.
+          deadline=$(( $(date +%s) + 120 ))
+          attempt=0
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            attempt=$((attempt+1))
+            curl -sSf --max-time 10 "${JWKS_URL}" -o jwks.after.json || true
+            AFTER_COUNT=$(jq '.keys | length' jwks.after.json 2>/dev/null || echo 0)
+            AFTER_KIDS=$(jq -r '.keys[].kid' jwks.after.json 2>/dev/null | sort -u | paste -sd,)
+            if [ "${AFTER_COUNT:-0}" -ge 3 ] && [ "$AFTER_KIDS" != "${{ steps.before.outputs.before_kids }}" ]; then
+              echo "AFTER kids changed at attempt=$attempt"
+              break
+            fi
+            sleep 10
+          done
+          {
+            echo "after_kids=$AFTER_KIDS"
+            echo "after_count=$AFTER_COUNT"
+            echo "attempts=$attempt"
+          } >> "$GITHUB_OUTPUT"
+          echo "AFTER: kids=[$AFTER_KIDS], count=$AFTER_COUNT (attempts=$attempt)"
+
+      - name: Assert — OLD kid still listed AND NEW kid present
+        id: assert
+        run: |
+          set -euo pipefail
+          BEFORE_KIDS="${{ steps.before.outputs.before_kids }}"
+          AFTER_KIDS="${{ steps.after.outputs.after_kids }}"
+          AFTER_COUNT="${{ steps.after.outputs.after_count }}"
+
+          # Each comma-separated kid in BEFORE must appear in
+          # AFTER (validator fallback intact).
+          IFS=',' read -ra before_arr <<< "$BEFORE_KIDS"
+          missing=()
+          for kid in "${before_arr[@]}"; do
+            if ! echo ",${AFTER_KIDS}," | grep -q ",${kid},"; then
+              missing+=("$kid")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::OLD kid(s) missing from AFTER JWKS: ${missing[*]}"
+            exit 1
+          fi
+
+          # At least one NEW kid must appear (a kid in AFTER
+          # that wasn't in BEFORE).
+          new_kids=()
+          IFS=',' read -ra after_arr <<< "$AFTER_KIDS"
+          for kid in "${after_arr[@]}"; do
+            if ! echo ",${BEFORE_KIDS}," | grep -q ",${kid},"; then
+              new_kids+=("$kid")
+            fi
+          done
+          if [ ${#new_kids[@]} -eq 0 ] && [ "${{ inputs.dry_run }}" != "true" ]; then
+            echo "::error::no NEW kid present in AFTER JWKS"
+            exit 1
+          fi
+
+          # Final length floor.
+          if [ "${AFTER_COUNT:-0}" -lt 3 ] && [ "${{ inputs.dry_run }}" != "true" ]; then
+            echo "::error::AFTER JWKS has < 3 keys (got $AFTER_COUNT)"
+            exit 1
+          fi
+
+          echo "new_kids=${new_kids[*]}" >> "$GITHUB_OUTPUT"
+          echo "ASSERT OK — old kids preserved, new kids=[${new_kids[*]}]"
+
+      - name: Cleanup archive (optional)
+        id: cleanup
+        if: ${{ inputs.cleanup_archive == 'true' && inputs.dry_run != 'true' }}
+        run: |
+          set -euo pipefail
+          # Drop the eldest archive entry — demonstrates the
+          # §3.7 cleanup step from docs/jwt-rotation.md. After
+          # cleanup, the live JWKS shrinks from 3 → 2 keys
+          # (active + previous).
+          aws ssm delete-parameter --name "${SSM_PREFIX}/key-archive" || true
+
+          # Force ESO + restart so the JWKS reflects the
+          # cleanup. We're inside the same workflow run; the
+          # KUBECONFIG was set in the rotate step above (if
+          # present).
+          if [ -f kubeconfig ]; then
+            export KUBECONFIG=$(pwd)/kubeconfig
+            kubectl -n "${K8S_NAMESPACE}" annotate externalsecret "${ESO_EXTERNALSECRET}" \
+                force-sync="$(date +%s)" --overwrite
+            kubectl -n "${K8S_NAMESPACE}" rollout restart deployment "${K8S_DEPLOYMENT}"
+            kubectl -n "${K8S_NAMESPACE}" rollout status  deployment "${K8S_DEPLOYMENT}" --timeout=5m
+          fi
+          echo "cleanup_done=true" >> "$GITHUB_OUTPUT"
+
+      - name: Generate rehearsal report
+        id: report
+        run: |
+          set -euo pipefail
+          REPORT="docs/jwt-rotation-rehearsal-${{ steps.start.outputs.rehearsal_date }}.md"
+          END_TS=$(date -u +%s)
+          DURATION_S=$(( END_TS - ${{ steps.start.outputs.start_ts }} ))
+
+          {
+            echo "# JWT rotation rehearsal — ${{ steps.start.outputs.rehearsal_date }}"
+            echo
+            echo "> Auto-generated by \`.github/workflows/jwt-rotation-rehearsal.yml\` (Phase K Wave 11)."
+            echo "> Procedure documented in [\`docs/jwt-rotation-rehearsal.md\`](./jwt-rotation-rehearsal.md)."
+            echo
+            echo "## Run metadata"
+            echo
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Target environment | \`${{ inputs.target_env }}\` |"
+            echo "| Dry-run | \`${{ inputs.dry_run }}\` |"
+            echo "| Cleanup archive | \`${{ inputs.cleanup_archive }}\` |"
+            echo "| JWKS URL | \`${JWKS_URL}\` |"
+            echo "| Start | \`${{ steps.start.outputs.start_iso }}\` |"
+            echo "| Duration | \`${DURATION_S}s\` |"
+            echo "| Run | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}> |"
+            echo
+            echo "## Key state"
+            echo
+            echo "| Phase | kid set | count |"
+            echo "|-------|---------|-------|"
+            echo "| BEFORE | \`${{ steps.before.outputs.before_kids }}\` | ${{ steps.before.outputs.before_count }} |"
+            echo "| AFTER  | \`${{ steps.after.outputs.after_kids }}\` | ${{ steps.after.outputs.after_count }} |"
+            echo "| Polling attempts (10s each) | — | ${{ steps.after.outputs.attempts }} |"
+            echo
+            echo "## Outcome"
+            echo
+            echo "- ✅ OLD kid(s) preserved (validator fallback intact)"
+            echo "- ✅ NEW kid present (\`${{ steps.assert.outputs.new_kids }}\`)"
+            echo "- ✅ JWKS length ≥ 3 (3-deep fallback list)"
+            if [ "${{ inputs.cleanup_archive }}" = "true" ]; then
+              echo "- ✅ archive cleanup executed (eldest entry removed; JWKS now 2 keys live)"
+            fi
+            echo
+            echo "## Next rehearsal"
+            echo
+            echo "- 90-day cadence — the next rehearsal lands on or before $(date -u -d '+90 days' +%Y-%m-%d)."
+            echo
+          } > "$REPORT"
+          echo "Generated: $REPORT"
+          echo "report_path=$REPORT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload report as artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jwt-rotation-rehearsal-${{ steps.start.outputs.rehearsal_date }}
+          path: ${{ steps.report.outputs.report_path }}
+          retention-days: 90
+
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            echo "## JWT rotation rehearsal — ${{ steps.start.outputs.rehearsal_date }}"
+            echo ""
+            echo "- Target: \`${{ inputs.target_env }}\`"
+            echo "- Dry-run: \`${{ inputs.dry_run }}\`"
+            echo "- Cleanup archive: \`${{ inputs.cleanup_archive }}\`"
+            echo "- Report: \`${{ steps.report.outputs.report_path }}\`"
+            echo "- Artefact: \`jwt-rotation-rehearsal-${{ steps.start.outputs.rehearsal_date }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

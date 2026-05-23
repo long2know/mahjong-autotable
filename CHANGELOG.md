@@ -19,8 +19,165 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-10-bringup`. Phase K Wave 10
+Working branch: `stlong/phase-k-wave-11-bringup`. Phase K Wave 11
 in flight. Other lane deliverables outstanding.
+
+## [0.20.0] — Phase K Wave 11 — 2026-09-XX (PR pending)
+
+**Theme:** Prod infrastructure cutover (Redis ElastiCache prod
+env stack — multi-AZ `cache.r6g.large` + 7-day snapshots + CMK
+KMS + AUTH+TLS; prod edge module instantiation with BLOCK-mode
+WAF; prod overlay ESO for the connection string) + operator
+hardening (Argo Rollouts auth-aware ingress finally lands behind
+the existing oauth2-proxy + dex OIDC chain, superseding the W10
+§4.3 placeholder; Terraform CLI pin bumped 1.9.8 → 1.10.5 with a
+documented quarterly cadence + range-floor / exact-pin policy) +
+multi-region prod-health-check matrix (W10 single-region probe
+generalised to 4 regions — us-east-1 / us-west-2 / eu-west-1 /
+ap-southeast-1 — with per-region issue state markers and a
+multi-region failure-mode playbook) + JWT rotation rehearsal
+harness (staging-only `workflow_dispatch` workflow exercising
+the W10 §3 rotation sequence end-to-end with JWKS-validation
+asserts; the first quarterly prod rotation lands end-Sep 2026)
++ retro 2026-09 W11 entries.
+
+### Added (Phase K Wave 11 — PR pending)
+
+- **`infra/terraform/envs/prod/` — prod env Terraform stack.**
+  Edge module with BLOCK-mode WAF (vs staging's COUNT), 90-day
+  CloudFront log retention, ACM cert in us-east-1, prod
+  CloudFront `PriceClass_All`. Redis module at the prod tier:
+  `cache.r6g.large` (graviton2 + memory-optimised),
+  `replica_count = 1` for multi-AZ failover, 7-day snapshot
+  retention (3 AM UTC window), CMK KMS encryption at rest
+  (`alias/mahjong-prod-elasticache`), AUTH token + TLS in
+  transit, Sunday off-peak maintenance window. Operator-fill
+  `terraform.tfvars.example` + `backend.example.hcl`
+  (S3 bucket `mahjong-tfstate-prod`, DynamoDB lock table
+  `mahjong-tflock-prod`). Sensitive outputs: omnibus
+  `redis_connection_string` + split-form `redis_auth_token`.
+  `terraform validate` clean.
+- **`infra/k8s/overlays/prod/redis-connection-string-secret.yaml`
+  — prod Redis ExternalSecret.** 15-min refresh interval. Mounts
+  `Idempotency__Redis__ConnectionString` from SSM SecureString
+  `/mahjong/prod/redis/connection-string`. Out-of-band — applied
+  manually via `kubectl apply -f` once the prod EKS cluster
+  bootstraps (NOT in `kustomization.yaml` resources list, same
+  pattern as W4's `jwt-keys-secret.yaml`).
+- **`infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml` —
+  auth-aware Ingress for the Argo Rollouts dashboard.** Uses
+  nginx-ingress `auth-url` / `auth-signin` subrequest pattern to
+  gate access via the prod oauth2-proxy + dex OIDC chain (same
+  chain that fronts the production app). Path rewrite
+  `/argo-rollouts(/|$)(.*)` → `/$2`, TLS+HSTS inheritance via
+  the prod ingress class, host `mahjong.example.com`. Supersedes
+  the pre-W11 placeholder warning in
+  `docs/argo-rollouts-setup.md §4.3`.
+- **`.github/workflows/jwt-rotation-rehearsal.yml` — staging-only
+  JWT rotation rehearsal harness.** `workflow_dispatch` with a
+  hard `target_env=staging` gate (refuses to run against prod).
+  End-to-end rehearsal: generate fresh RSA-4096 key,
+  promote in SSM (active → previous → archive), force ESO
+  refresh, rolling restart, validate `/.well-known/jwks.json`
+  (old kid still present, new kid live, total keys ≥ 3 — the W10
+  §3 invariant), optional archive cleanup, emit
+  `docs/jwt-rotation-rehearsal-YYYY-MM-DD.md` artefact. The on-
+  call SRE runs this once against staging the week before each
+  quarterly prod rotation. Actionlint clean.
+- **`docs/jwt-rotation-rehearsal.md` — rehearsal operator
+  runbook (NEW).** 8 sections: purpose (90d cadence; first
+  rotation end-Sep 2026), prereqs (OIDC role +
+  `KUBECONFIG_STAGING` secret), workflow trigger, what the
+  workflow does (mirrors `docs/jwt-ssm-runbook.md §4`), dry-run
+  guidance, failure-mode table (one row per step — symptom /
+  cause / recovery), post-rehearsal review checklist, cross-
+  refs.
+- **`docs/edge-region-probes.md` — multi-region probe operator
+  runbook (NEW).** 8 sections: purpose (W10 single-region →
+  W11 4-region rationale), topology, per-region target
+  resolution via `vars.PROD_BASE_URL_<REGION>` (same root URL
+  default at W11; per-region R53 records deferred to W12+),
+  state-marker decoding
+  (`<!-- prod-health-check:state region=X strikes=N recoveries=M -->`),
+  failure-mode playbook (1-region / 2-region / 4-region
+  patterns), CloudFront edge mapping, manual reproduction,
+  cross-refs.
+- **`docs/redis-cluster.md` §11 — prod sizing + ESO wiring
+  (Phase K Wave 11).** New section (Cross-references renumbered
+  §10 → §10 + alias-stub §12). Documents the prod-tier sizing
+  table + rationale, the apply walkthrough, the prod SSM push
+  (omnibus connection-string for the runtime mount + split-form
+  for the rotation path), the out-of-band ESO manifest
+  application flow, the prod smoke-test sequence, and the IAM
+  patch for the ESO ClusterSecretStore prefix.
+- **`docs/argo-rollouts-setup.md` §5 — auth-aware ingress (Phase
+  K Wave 11).** New section between §4 Dashboard access and the
+  prior §5 Validation. Subsequent sections renumbered
+  (Validation §5 → §6, Wiring §6 → §7, Rollback §7 → §8,
+  Cross-refs §8 → §9). Documents the manifest location, the
+  auth-request subrequest flow, the path rewrite, TLS/HSTS
+  hygiene, validation curls, and the rollback path. §4.3
+  retained as a pre-W11 placeholder with an explicit pointer to
+  §5.
+- **`docs/terraform.md` §6 — Version policy (Phase K Wave 11).**
+  New section. Documents the range-floor (`required_version =
+  ">= 1.5.0"` in modules) vs exact-pin (workflow
+  `terraform_version: "1.10.5"`) discipline, the quarterly bump
+  cadence anchored on Wave bring-up (W8 = 1.9.8, W11 = 1.10.5,
+  W14 = TBD), the out-of-band CVE process, the lock-file
+  discipline (per env stack, not per module), and the
+  `setup-terraform@v3` action-pin policy. Cross-references
+  renumbered §6 → §7.
+- **`docs/retro-2026-09.md` — September 2026 monthly retro.**
+  Template consistent with retro-2026-08. Sections: what
+  shipped (Wave 11), WIP / open hand-offs, lessons learned
+  (§3.1 range-floor + CI-pin TF version policy, §3.2 rehearse
+  before the first quarterly rotation, §3.3 out-of-band ESO
+  manifests are a feature, §3.4 multi-region probes need a
+  failure-mode playbook), action items (carry into October
+  2026), metric movement, cadence notes, cross-refs.
+- **`Phase_K_W11/Apone/charter.md` + `Phase_K_W11/Apone/history.md`
+  — wave-scoped DevOps charter + history excerpt.**
+- **`.squad/decisions/inbox/apone-phase-k-wave-11.md` — Apone
+  W11 decision memo.** 6 decisions: D1 prod Redis stack at
+  `cache.r6g.large`, D2 Argo auth-aware ingress via existing
+  OIDC chain, D3 TF CLI pin bump + quarterly policy, D4 JWT
+  rehearsal harness (staging-only, hard gate), D5 multi-region
+  prod-health-check (4 regions), D6 CHANGELOG 0.20.0 +
+  retro-2026-09.
+
+### Changed (Phase K Wave 11 — PR pending)
+
+- **`.github/workflows/prod-health-check.yml` — REWRITTEN as a
+  4-region matrix.** W10 single-region pattern (5-min cron,
+  3-strike-open, 2-recovery-close, GitHub issue lifecycle)
+  generalised to a `strategy.matrix.region` fan-out across
+  `us-east-1`, `us-west-2`, `eu-west-1`, `ap-southeast-1`.
+  Per-region target via `vars.PROD_BASE_URL_<REGION>` (falls
+  back to global default with a yellow-flag step-summary if
+  unset). Each matrix leg emits `verdict-<region>.json` via
+  `actions/upload-artifact@v4`. Aggregator job downloads with
+  `pattern: verdict-*` + `merge-multiple: true`, parses each
+  verdict, maintains per-region HTML state markers
+  (`<!-- prod-health-check:state region=X strikes=N recoveries=M -->`).
+  Opens the prod-health-check issue when ANY region trips the
+  strike threshold (3 consecutive failures); closes only when
+  ALL four regions have recovered (2 consecutive successes).
+  Actionlint clean.
+- **`.github/workflows/dr-rehearsal.yml` — Terraform CLI pin
+  bump.** `hashicorp/setup-terraform@v3` `terraform_version:`
+  bumped `1.9.8` → `1.10.5` (the W11 quarterly bump per the new
+  `docs/terraform.md §6` cadence). Sole TF version surface in
+  the repo at W11; module floors remain `>= 1.5.0` (range-
+  based, forward-compatible).
+
+### Fixed (Phase K Wave 11 — PR pending)
+
+- **W10 §4.3 Argo dashboard ingress placeholder superseded.**
+  The W10 install runbook intentionally warned against ingress-
+  fronted dashboard access pending an auth-aware proxy. W11
+  ships the auth-aware proxy via the existing oauth2-proxy +
+  dex OIDC chain — the W10 deferred hand-off is closed.
 
 ## [0.19.0] — Phase K Wave 10 — 2026-08-09 (PR pending)
 

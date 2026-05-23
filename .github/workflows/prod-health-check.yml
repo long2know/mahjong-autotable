@@ -1,48 +1,85 @@
-# Phase K Wave 10 — Apone (DevOps).
+# Phase K Wave 10 — Apone (DevOps). Original synthetic probe.
+# Phase K Wave 11 — Apone (DevOps). Multi-region matrix (us-east-1,
+#                                   us-west-2, eu-west-1, ap-southeast-1)
+#                                   + per-region cooldown state machine.
 #
 # Production health probe — synthetic checks against the live
-# edge. Complements the Sentry (W6) + Prometheus (W7) reactive
-# stack with a 5-minute proactive probe.
+# edge from FOUR regional probe targets. Complements the Sentry
+# (W6) + Prometheus (W7) reactive stack with a 5-minute
+# multi-region proactive probe.
 #
-# ## What it does
+# ## What it does (W11)
 #
-# Every 5 minutes the workflow hits four endpoints and asserts
-# basic invariants:
+# Every 5 minutes the workflow fans out a 4-job matrix — one per
+# region — and each region hits four endpoints + asserts basic
+# invariants against its closest CloudFront edge:
 #
-#   * `/healthz`          — HTTP 200; body has `"status":"ok"`.
-#   * `/readyz`           — HTTP 200; latency under the budget.
-#   * `/metrics`          — HTTP 200; body size sanity check
-#                           (>1024 bytes — guarantees the
-#                           Prometheus surface didn't degrade to
-#                           an empty 200).
-#   * `/.well-known/jwks.json` — HTTP 200; JSON body has at
-#                           least 3 `keys` entries (per W7 +
-#                           W10 §3 — active/previous/archive).
+#   * `/healthz`              — HTTP 200; body has `"status":"ok"`.
+#   * `/readyz`               — HTTP 200; latency under the budget.
+#   * `/metrics`              — HTTP 200; body size sanity check
+#                               (>1024 bytes — guarantees the
+#                               Prometheus surface didn't degrade
+#                               to an empty 200).
+#   * `/.well-known/jwks.json`— HTTP 200; JSON body has at least 3
+#                               `keys` entries (per W7 + W10 §3 —
+#                               active/previous/archive).
 #
-# ## Cooldown / paging
+# ## Per-region target resolution
 #
-# A 3-strike cooldown prevents single-blip pages. After three
-# consecutive failed runs (~15 min sustained outage) the workflow
-# opens a GitHub issue with labels `incident,automated,production`
-# and posts a Slack webhook (if configured). While the incident
-# issue is open, subsequent failures update its body rather than
-# opening duplicates. When the probe is green again for two
-# consecutive runs, the issue is closed with an outage-summary
-# comment.
+# Each matrix job resolves its base URL via a repository variable
+# named `PROD_BASE_URL_<REGION>` (e.g. `PROD_BASE_URL_US_EAST_1`).
+# Falls back to `PROD_BASE_URL` for any region without a regional
+# override, then to the hard-coded
+# `https://api.mahjong-autotable.com` default. This lets the
+# operator point each region at a region-specific CloudFront
+# edge / Route 53 latency-routed alias without changing the
+# workflow.
+#
+# ## Cooldown / paging — PER REGION
+#
+# Strikes + recoveries are tracked PER REGION via a per-region
+# HTML state marker in the issue body:
+#
+#   <!-- prod-health-check:state region=us-east-1 strikes=N recoveries=M -->
+#
+# A region's marker is independent — a single-region outage opens
+# the issue without waiting on the other three. The issue body
+# carries one marker per region (4 total). The aggregation rule:
+#
+#   * Issue OPENS when ANY region reaches `strikes >= 3` and no
+#     incident is already open.
+#   * Issue UPDATES when ANY failing region's strikes change.
+#   * Issue CLOSES when ALL regions hit `recoveries >= 2`
+#     consecutively (the strict-AND closure rule — partial
+#     recovery in one region while another is still failing
+#     keeps the incident open).
+#
+# Pre-W11 (single-region): one strike counter, one paging
+# threshold. The matrix extension is strictly additive — the
+# W10 behaviour against a single region is a degenerate case of
+# the W11 matrix (operator can pin the matrix to one region via
+# `workflow_dispatch.inputs.regions` if needed for a planned
+# focused probe).
 #
 # ## Configuration
 #
-# Repository variable `PROD_BASE_URL` (default
-# `https://api.mahjong-autotable.com`).
+# Repository variables:
+#   * `PROD_BASE_URL`              — global fallback (default
+#                                    `https://api.mahjong-autotable.com`).
+#   * `PROD_BASE_URL_US_EAST_1`    — per-region override
+#                                    (closest us-east-1 edge).
+#   * `PROD_BASE_URL_US_WEST_2`    — per-region override.
+#   * `PROD_BASE_URL_EU_WEST_1`    — per-region override.
+#   * `PROD_BASE_URL_AP_SOUTHEAST_1`— per-region override.
+#
 # Repository secret `SLACK_WEBHOOK_URL` (optional — when missing,
 # only the GitHub issue is opened).
 #
 # ## Disabling for planned maintenance
 #
 # `workflow_dispatch` with `pause_until=<RFC3339 timestamp>` sets
-# the pause window via a repository variable update; the cron job
-# checks the variable on each run and aborts before probing if
-# the current time is before the expiry.
+# a pause window via the dispatch input; the cron job aborts
+# before probing if the current time is before the expiry.
 
 name: prod-health-check
 
@@ -53,9 +90,10 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
-      target_url:
-        description: "Override target base URL (defaults to vars.PROD_BASE_URL or https://api.mahjong-autotable.com)."
+      regions:
+        description: "Comma-separated regions to probe (subset of us-east-1,us-west-2,eu-west-1,ap-southeast-1). Default all 4."
         required: false
+        default: "us-east-1,us-west-2,eu-west-1,ap-southeast-1"
         type: string
       readyz_latency_budget_ms:
         description: "Override /readyz latency budget in ms (default 1500)."
@@ -63,9 +101,9 @@ on:
         default: "1500"
         type: string
       reset_strike_counter:
-        description: "Reset the consecutive-failure counter (use after manual triage)."
+        description: "Reset the consecutive-failure counter (use after manual triage). Resets ALL regions."
         required: false
-        default: "false"
+        default: false
         type: boolean
 
 permissions:
@@ -78,37 +116,75 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TARGET_URL: ${{ github.event.inputs.target_url || vars.PROD_BASE_URL || 'https://api.mahjong-autotable.com' }}
   READYZ_BUDGET_MS: ${{ github.event.inputs.readyz_latency_budget_ms || '1500' }}
   STRIKE_THRESHOLD: "3"
   RECOVERY_THRESHOLD: "2"
   ISSUE_LABELS: "incident,automated,production"
   ISSUE_TITLE_PREFIX: "[prod-health-check] Production probe failure"
+  # Global fallback target URL — per-region overrides resolve in
+  # the matrix's `Resolve target` step.
+  GLOBAL_BASE_URL: ${{ vars.PROD_BASE_URL || 'https://api.mahjong-autotable.com' }}
 
 jobs:
   probe:
-    name: Probe production endpoints
+    name: Probe ${{ matrix.region }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    outputs:
-      verdict: ${{ steps.run-probe.outputs.verdict }}
-      report: ${{ steps.run-probe.outputs.report }}
+    strategy:
+      fail-fast: false
+      matrix:
+        region:
+          - us-east-1
+          - us-west-2
+          - eu-west-1
+          - ap-southeast-1
     steps:
-      - name: Resolve target
+      - name: Resolve target for ${{ matrix.region }}
         id: target
+        env:
+          REGION: ${{ matrix.region }}
+          PROD_US_EAST_1: ${{ vars.PROD_BASE_URL_US_EAST_1 }}
+          PROD_US_WEST_2: ${{ vars.PROD_BASE_URL_US_WEST_2 }}
+          PROD_EU_WEST_1: ${{ vars.PROD_BASE_URL_EU_WEST_1 }}
+          PROD_AP_SOUTHEAST_1: ${{ vars.PROD_BASE_URL_AP_SOUTHEAST_1 }}
         run: |
           set -euo pipefail
-          echo "Target: ${TARGET_URL}"
-          echo "Readyz budget: ${READYZ_BUDGET_MS} ms"
-          echo "Runner region: $(curl -sS https://ipinfo.io/region || echo unknown)"
+          case "$REGION" in
+            us-east-1)      regional="${PROD_US_EAST_1:-}" ;;
+            us-west-2)      regional="${PROD_US_WEST_2:-}" ;;
+            eu-west-1)      regional="${PROD_EU_WEST_1:-}" ;;
+            ap-southeast-1) regional="${PROD_AP_SOUTHEAST_1:-}" ;;
+            *)              regional="" ;;
+          esac
+          target="${regional:-$GLOBAL_BASE_URL}"
+          echo "region=$REGION"
+          echo "target=$target"
+          echo "Runner geo: $(curl -sS https://ipinfo.io/region || echo unknown)"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
 
-      - name: Probe endpoints
+      - name: Filter — skip when region not in dispatch set
+        id: filter
+        env:
+          REGIONS_INPUT: ${{ github.event.inputs.regions || 'us-east-1,us-west-2,eu-west-1,ap-southeast-1' }}
+          REGION: ${{ matrix.region }}
+        run: |
+          set -euo pipefail
+          if echo ",${REGIONS_INPUT}," | grep -q ",${REGION},"; then
+            echo "include=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::skipping region ${REGION} (not in dispatch set)"
+            echo "include=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Probe endpoints for ${{ matrix.region }}
+        if: steps.filter.outputs.include == 'true'
         id: run-probe
         env:
-          BASE: ${{ env.TARGET_URL }}
+          BASE: ${{ steps.target.outputs.target }}
+          REGION: ${{ matrix.region }}
         run: |
           set -uo pipefail
-          report_file="report.md"
+          report_file="report-${REGION}.md"
           : > "$report_file"
           overall=0
 
@@ -167,52 +243,102 @@ jobs:
           probe "jwks"    "/.well-known/jwks.json" "jwks"
 
           {
-            echo "## prod-health-check"
+            echo "### ${REGION}"
             echo
             echo "- Target: \`${BASE}\`"
-            echo "- Runner: \`${RUNNER_OS}\` (\`${RUNNER_ARCH}\`)"
             echo "- Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo
             cat "$report_file"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$overall" = "0" ]; then
-            echo "verdict=pass" >> "$GITHUB_OUTPUT"
+            verdict=pass
           else
-            echo "verdict=fail" >> "$GITHUB_OUTPUT"
+            verdict=fail
           fi
-          # Encode the report for the next job (newline-safe).
-          {
-            echo "report<<__EOF__"
-            cat "$report_file"
-            echo "__EOF__"
-          } >> "$GITHUB_OUTPUT"
+
+          # Persist verdict + report as JSON for the aggregator
+          # job. Single-file artefact per region.
+          jq -nc \
+              --arg region "$REGION" \
+              --arg verdict "$verdict" \
+              --arg target "$BASE" \
+              --rawfile report "$report_file" \
+              '{region: $region, verdict: $verdict, target: $target, report: $report}' \
+              > "verdict-${REGION}.json"
+
+      - name: Upload per-region verdict artefact
+        if: steps.filter.outputs.include == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: verdict-${{ matrix.region }}
+          path: verdict-${{ matrix.region }}.json
+          retention-days: 7
+          if-no-files-found: error
 
   cooldown-and-page:
-    name: Apply cooldown + page on sustained failure
+    name: Aggregate verdicts + per-region cooldown
     runs-on: ubuntu-latest
     needs: probe
     timeout-minutes: 5
     if: always()
     steps:
-      - name: Apply cooldown logic
+      - name: Download all per-region verdict artefacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: verdict-*
+          path: verdicts
+          merge-multiple: true
+
+      - name: List verdict files
+        id: list
+        run: |
+          set -euo pipefail
+          files=$(ls -1 verdicts/ 2>/dev/null | wc -l)
+          echo "Found ${files} verdict files:"
+          ls -la verdicts/ || true
+          echo "files=${files}" >> "$GITHUB_OUTPUT"
+
+      - name: Apply per-region cooldown logic
         uses: actions/github-script@v7
         env:
-          VERDICT: ${{ needs.probe.outputs.verdict }}
-          REPORT: ${{ needs.probe.outputs.report }}
-          TARGET_URL: ${{ env.TARGET_URL }}
-          RESET_FLAG: ${{ github.event.inputs.reset_strike_counter || 'false' }}
+          RESET_FLAG: ${{ github.event.inputs.reset_strike_counter && 'true' || 'false' }}
+          STRIKE_THRESHOLD: ${{ env.STRIKE_THRESHOLD }}
+          RECOVERY_THRESHOLD: ${{ env.RECOVERY_THRESHOLD }}
+          ISSUE_LABELS: ${{ env.ISSUE_LABELS }}
+          ISSUE_TITLE_PREFIX: ${{ env.ISSUE_TITLE_PREFIX }}
         with:
           script: |
-            const verdict = process.env.VERDICT || 'fail';
-            const report = process.env.REPORT || '(no report)';
-            const target = process.env.TARGET_URL;
+            const fs = require('fs');
+            const path = require('path');
+
             const strikeThreshold = parseInt(process.env.STRIKE_THRESHOLD || '3', 10);
             const recoveryThreshold = parseInt(process.env.RECOVERY_THRESHOLD || '2', 10);
-            const titlePrefix = process.env.ISSUE_TITLE_PREFIX || '[prod-health-check] Production probe failure';
-            const labels = (process.env.ISSUE_LABELS || 'incident,automated,production')
+            const titlePrefix = process.env.ISSUE_TITLE_PREFIX;
+            const labels = (process.env.ISSUE_LABELS || '')
               .split(',').map(s => s.trim()).filter(Boolean);
             const reset = process.env.RESET_FLAG === 'true';
+
+            // Load every per-region verdict JSON.
+            const dir = 'verdicts';
+            const regions = [];
+            if (fs.existsSync(dir)) {
+              for (const f of fs.readdirSync(dir)) {
+                if (!f.endsWith('.json')) continue;
+                try {
+                  const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+                  regions.push(j);
+                } catch (e) {
+                  core.warning(`failed to parse ${f}: ${e.message}`);
+                }
+              }
+            }
+            regions.sort((a, b) => a.region.localeCompare(b.region));
+
+            if (regions.length === 0) {
+              core.notice('no verdict files — probe matrix produced no artefacts (likely all skipped)');
+              return;
+            }
 
             // Find any open incident issue from this workflow.
             const open = await github.paginate(github.rest.issues.listForRepo, {
@@ -224,87 +350,122 @@ jobs:
             });
             const existing = open.find(i => i.title.startsWith(titlePrefix));
 
-            // Decode the strike counter from the issue body (when an
-            // incident is open) OR from a dedicated state issue (when
-            // pre-incident). We use a hidden HTML comment as a
-            // machine-readable marker.
-            //   <!-- prod-health-check:state strikes=N recoveries=M -->
-            const STATE_RE = /<!--\s*prod-health-check:state\s+strikes=(\d+)\s+recoveries=(\d+)\s*-->/;
+            // Per-region state-marker regex —
+            //   <!-- prod-health-check:state region=us-east-1 strikes=N recoveries=M -->
+            const stateRe = /<!--\s*prod-health-check:state\s+region=([a-z0-9-]+)\s+strikes=(\d+)\s+recoveries=(\d+)\s*-->/g;
 
-            let strikes = 0, recoveries = 0;
+            const previousState = {};
             if (existing) {
-              const m = STATE_RE.exec(existing.body || '');
-              if (m) {
-                strikes = parseInt(m[1], 10);
-                recoveries = parseInt(m[2], 10);
+              const body = existing.body || '';
+              let m;
+              while ((m = stateRe.exec(body)) !== null) {
+                previousState[m[1]] = {
+                  strikes: parseInt(m[2], 10),
+                  recoveries: parseInt(m[3], 10),
+                };
               }
-            } else {
-              // Pre-incident state stored in repo variable would be
-              // ideal but adds a write-permission hop; for now, keep
-              // pre-incident strikes ephemeral (each run starts at 0
-              // when no issue is open). The threshold-3 design tolerates
-              // this: a failed run with no prior issue must accumulate
-              // strikes on a re-run after the next cron — we synthesise
-              // that by scanning recent workflow_run history.
-              const runs = await github.rest.actions.listWorkflowRuns({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: 'prod-health-check.yml',
-                per_page: 5,
-                status: 'completed',
-              });
-              const recent = (runs.data.workflow_runs || []).slice(0, strikeThreshold);
-              const recentFails = recent.filter(r => r.conclusion === 'failure').length;
-              strikes = (verdict === 'fail') ? recentFails + 1 : 0;
             }
 
-            if (reset) {
-              core.notice('strike counter reset by workflow_dispatch input');
-              strikes = 0;
-              recoveries = 0;
-            } else if (verdict === 'fail') {
-              strikes += 1;
-              recoveries = 0;
-            } else {
-              recoveries += 1;
-              // Don't decrement strikes on partial recovery; we want
-              // the issue body to show the worst-of-window count.
+            // Apply this run's deltas to each region's state.
+            const newState = {};
+            for (const r of regions) {
+              const prev = previousState[r.region] || { strikes: 0, recoveries: 0 };
+              let strikes = prev.strikes;
+              let recoveries = prev.recoveries;
+              if (reset) {
+                strikes = 0; recoveries = 0;
+              } else if (r.verdict === 'fail') {
+                strikes += 1;
+                recoveries = 0;
+              } else {
+                recoveries += 1;
+                // strikes intentionally NOT decremented on partial
+                // recovery — keeps the worst-of-window count.
+              }
+              newState[r.region] = { strikes, recoveries, verdict: r.verdict };
             }
 
-            const stateMarker = `<!-- prod-health-check:state strikes=${strikes} recoveries=${recoveries} -->`;
+            // Aggregate verdict.
+            const anyAtThreshold = Object.entries(newState)
+              .some(([, s]) => s.strikes >= strikeThreshold);
+            const anyStillFailing = Object.entries(newState)
+              .some(([, s]) => s.verdict === 'fail');
+            const allRecovered = Object.entries(newState)
+              .every(([, s]) => s.verdict === 'pass' && s.recoveries >= recoveryThreshold);
 
-            // Stamp on the verdict for the run.
-            if (verdict === 'fail') {
-              core.setFailed(`probe FAIL (strike ${strikes}/${strikeThreshold})`);
-            } else {
-              core.notice(`probe PASS (recoveries ${recoveries}/${recoveryThreshold})`);
+            // Emit verdicts.
+            for (const r of regions) {
+              const s = newState[r.region];
+              if (r.verdict === 'fail') {
+                core.warning(`[${r.region}] FAIL (strike ${s.strikes}/${strikeThreshold})`);
+              } else {
+                core.notice(`[${r.region}] PASS (recoveries ${s.recoveries}/${recoveryThreshold})`);
+              }
             }
 
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const nowIso = new Date().toISOString();
 
-            if (!existing && verdict === 'fail' && strikes >= strikeThreshold) {
-              // OPEN a new incident.
+            function renderStateMarkers() {
+              return regions.map(r => {
+                const s = newState[r.region];
+                return `<!-- prod-health-check:state region=${r.region} strikes=${s.strikes} recoveries=${s.recoveries} -->`;
+              }).join('\n');
+            }
+
+            function renderRegionTable() {
+              const lines = [
+                '| Region | Verdict | Strikes | Recoveries |',
+                '|--------|---------|---------|------------|',
+              ];
+              for (const r of regions) {
+                const s = newState[r.region];
+                const v = r.verdict === 'pass' ? '✅' : '❌';
+                lines.push(`| \`${r.region}\` | ${v} | ${s.strikes}/${strikeThreshold} | ${s.recoveries}/${recoveryThreshold} |`);
+              }
+              return lines.join('\n');
+            }
+
+            function renderRegionReports() {
+              return regions.map(r => {
+                const s = newState[r.region];
+                const v = r.verdict === 'pass' ? '✅ PASS' : '❌ FAIL';
+                return [
+                  `#### ${r.region} — ${v} (strike ${s.strikes}/${strikeThreshold}, recoveries ${s.recoveries}/${recoveryThreshold})`,
+                  ``,
+                  `- Target: \`${r.target}\``,
+                  ``,
+                  r.report.trim(),
+                  ``,
+                ].join('\n');
+              }).join('\n');
+            }
+
+            // CASE 1 — no incident open + a region tripped the threshold.
+            if (!existing && anyAtThreshold) {
               const title = `${titlePrefix} — ${nowIso.slice(0, 10)}`;
               const body = [
-                `## ⚠️ Sustained probe failure`,
+                `## ⚠️ Sustained probe failure (multi-region)`,
                 ``,
-                `- Target: \`${target}\``,
-                `- Strike count: ${strikes} / ${strikeThreshold}`,
                 `- First detected: ${nowIso}`,
                 `- Latest run: ${runUrl}`,
                 ``,
+                `### Region status`,
+                ``,
+                renderRegionTable(),
+                ``,
                 `### Latest probe report`,
                 ``,
-                report,
+                renderRegionReports(),
                 ``,
                 `### First-response steps`,
                 ``,
                 `1. Verify GitHub Actions is healthy: <https://www.githubstatus.com/>`,
                 `2. Check the Sentry dashboard for correlated 5xx errors.`,
                 `3. Open the [incident response runbook §7](../docs/production-deployment-runbook.md#7-incident-response-runbook).`,
+                `4. Multi-region triage — see [\`docs/edge-region-probes.md\`](../docs/edge-region-probes.md) for the W11 per-region failure-mode playbook.`,
                 ``,
-                stateMarker,
+                renderStateMarkers(),
               ].join('\n');
               const created = await github.rest.issues.create({
                 owner: context.repo.owner,
@@ -313,15 +474,13 @@ jobs:
                 body,
                 labels,
               });
-              core.notice(`opened incident issue #${created.data.number}`);
+              core.setFailed(`opened incident issue #${created.data.number} — at least one region at strike threshold`);
+              return;
+            }
 
-              const slack = process.env.SLACK_WEBHOOK_URL;
-              if (slack) {
-                core.notice('slack webhook configured — relying on next step to deliver');
-              }
-            } else if (existing && verdict === 'fail') {
-              // UPDATE existing incident body with the latest probe.
-              const body = (existing.body || '').replace(STATE_RE, '').trimEnd();
+            // CASE 2 — incident already open + at least one region still failing.
+            if (existing && anyStillFailing) {
+              const body = (existing.body || '').replace(stateRe, '').trimEnd();
               const appended = [
                 body,
                 ``,
@@ -329,12 +488,13 @@ jobs:
                 ``,
                 `### Probe update — ${nowIso}`,
                 ``,
-                `- Strike count: ${strikes} / ${strikeThreshold}`,
+                renderRegionTable(),
+                ``,
+                renderRegionReports(),
+                ``,
                 `- Run: ${runUrl}`,
                 ``,
-                report,
-                ``,
-                stateMarker,
+                renderStateMarkers(),
               ].join('\n');
               await github.rest.issues.update({
                 owner: context.repo.owner,
@@ -342,10 +502,13 @@ jobs:
                 issue_number: existing.number,
                 body: appended,
               });
-              core.notice(`updated incident issue #${existing.number}`);
-            } else if (existing && verdict === 'pass' && recoveries >= recoveryThreshold) {
-              // CLOSE the incident.
-              const body = (existing.body || '').replace(STATE_RE, '').trimEnd();
+              core.setFailed(`updated incident issue #${existing.number} — at least one region still failing`);
+              return;
+            }
+
+            // CASE 3 — incident open AND every region recovered.
+            if (existing && allRecovered) {
+              const body = (existing.body || '').replace(stateRe, '').trimEnd();
               const appended = [
                 body,
                 ``,
@@ -353,12 +516,12 @@ jobs:
                 ``,
                 `### Recovery — ${nowIso}`,
                 ``,
-                `- Recovery count: ${recoveries} / ${recoveryThreshold}`,
+                renderRegionTable(),
+                ``,
+                `- All regions clean for ≥ ${recoveryThreshold} consecutive runs.`,
                 `- Last clean run: ${runUrl}`,
                 ``,
-                report,
-                ``,
-                stateMarker,
+                renderStateMarkers(),
               ].join('\n');
               await github.rest.issues.update({
                 owner: context.repo.owner,
@@ -368,11 +531,13 @@ jobs:
                 state: 'closed',
                 state_reason: 'completed',
               });
-              core.notice(`closed incident issue #${existing.number} (recovered)`);
-            } else if (existing && verdict === 'pass') {
-              // PARTIAL recovery — update body to reflect the
-              // recovery progress without closing yet.
-              const body = (existing.body || '').replace(STATE_RE, '').trimEnd();
+              core.notice(`closed incident issue #${existing.number} (all regions recovered)`);
+              return;
+            }
+
+            // CASE 4 — incident open + some regions recovered, some still pending recovery threshold.
+            if (existing) {
+              const body = (existing.body || '').replace(stateRe, '').trimEnd();
               const appended = [
                 body,
                 ``,
@@ -380,10 +545,12 @@ jobs:
                 ``,
                 `### Partial recovery — ${nowIso}`,
                 ``,
-                `- Recovery count: ${recoveries} / ${recoveryThreshold}`,
+                renderRegionTable(),
+                ``,
+                `- Recovery in progress — closure requires every region at ≥ ${recoveryThreshold} recoveries.`,
                 `- Run: ${runUrl}`,
                 ``,
-                stateMarker,
+                renderStateMarkers(),
               ].join('\n');
               await github.rest.issues.update({
                 owner: context.repo.owner,
@@ -391,21 +558,22 @@ jobs:
                 issue_number: existing.number,
                 body: appended,
               });
-              core.notice(`partial recovery — issue #${existing.number} kept open (${recoveries}/${recoveryThreshold})`);
-            } else {
-              core.notice(`no incident state change (verdict=${verdict}, strikes=${strikes}, recoveries=${recoveries})`);
+              core.notice(`partial recovery — issue #${existing.number} kept open`);
+              return;
             }
 
+            // CASE 5 — no incident open, no region at threshold, nothing to do.
+            core.notice('no incident state change (no region at strike threshold, no open incident)');
+
       - name: Post Slack notification (on incident open)
-        if: needs.probe.outputs.verdict == 'fail' && env.SLACK_WEBHOOK_URL != ''
+        if: needs.probe.result == 'failure' && env.SLACK_WEBHOOK_URL != ''
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           set -euo pipefail
           payload=$(jq -nc \
             --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --arg target "${TARGET_URL}" \
-            '{text: ("⚠️ prod-health-check FAIL — target " + $target + " — run " + $url)}')
+            '{text: ("⚠️ prod-health-check FAIL — multi-region — run " + $url)}')
           curl -sS -X POST -H 'content-type: application/json' \
             --max-time 10 \
             -d "$payload" \
