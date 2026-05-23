@@ -94,9 +94,22 @@ spec:
         - name: coturn
           image: coturn/coturn:4.6
           imagePullPolicy: IfNotPresent
+          # Phase K Wave 3 — Apone (DevOps). TLS (`turns:`) listener
+          # on 5349. Cert + key come from the `tls-cert-turn` Secret
+          # (operator pre-provisions in prod via the ExternalSecret at
+          # `infra/k8s/overlays/prod/turn-tls-secret.yaml`; the base
+          # ships a STUB ExternalSecret pointing at non-existent SSM
+          # keys so an accidental `kubectl apply -k base/` against a
+          # real cluster fails fast — same pattern as the user-file
+          # secret). The `turns:` listener is the canonical bypass
+          # for corporate firewalls that block plain UDP/TCP :3478;
+          # closes the Wave-2 Phase L follow-up gap (see
+          # `docs/turn-server-setup.md` §1.4).
           args:
             - --config=/etc/coturn/turnserver.conf
             - --user-file=/etc/coturn/secrets/users
+            - --cert=/etc/tls/tls.crt
+            - --pkey=/etc/tls/tls.key
           ports:
             - name: stun-udp
               containerPort: 3478
@@ -121,6 +134,9 @@ spec:
             - name: secrets
               mountPath: /etc/coturn/secrets
               readOnly: true
+            - name: tls
+              mountPath: /etc/tls
+              readOnly: true
           livenessProbe:
             # coturn has no built-in /health endpoint. Use a TCP probe
             # on the TURN port — if coturn isn't listening, k8s will
@@ -139,6 +155,18 @@ spec:
         - name: secrets
           secret:
             secretName: turn-server-secrets
+        # Phase K Wave 3 — Apone. TLS material for the `turns:`
+        # listener. `tls-cert-turn` is operator-pre-provisioned via
+        # `infra/k8s/overlays/prod/turn-tls-secret.yaml` (ESO →
+        # SSM `/mahjong/prod/turn/tls/*`). In a dev cluster the
+        # Secret will be absent and the pod will fail to start —
+        # this is the same fail-fast pattern as the `users` secret
+        # above. `optional: true` would silently hide the missing
+        # cert and let coturn boot with --cert pointing at /dev/null;
+        # we WANT loud failure here so the operator notices.
+        - name: tls
+          secret:
+            secretName: tls-cert-turn
 ---
 apiVersion: v1
 kind: Service

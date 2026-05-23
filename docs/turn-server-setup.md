@@ -71,21 +71,95 @@ WebRTC clients dial `stun:turn.mahjong.example.com:3478` and
 `turn:turn.mahjong.example.com:3478?transport=udp` against this
 record.
 
-### 1.4 TLS (Phase L follow-up)
+### 1.4 TLS for `turns:` (Phase K Wave 3 — shipped)
 
-Phase K Wave 2 ships TURN over UDP/TCP only. The `turns:` port (5349)
-is exposed but the base manifest does NOT mount a TLS certificate.
-Phase L will add:
+Phase K Wave 2 deferred TLS to Phase L. **Phase K Wave 3 (Apone)
+brought it forward** so corporate firewalls that block plain UDP/TCP
+`:3478` can still negotiate ICE candidates via the `turns:` listener
+on port `5349`.
 
-* cert-manager Certificate resource issuing a Let's Encrypt cert for
-  `turn.mahjong.example.com`.
-* coturn `cert=/etc/coturn/tls/tls.crt` + `pkey=/etc/coturn/tls/tls.key`
-  config knobs.
-* mTLS optional knob for the API ↔ TURN signalling lane.
+Wave 3 additions:
 
-Today, clients that require `turns:` (corporate firewalls blocking
-:3478) will fail until Phase L. The plain `turn:` lane covers the
-public-internet case.
+* **Base manifest** ([`infra/k8s/base/turn-server.yaml`](../infra/k8s/base/turn-server.yaml))
+  passes `--cert /etc/tls/tls.crt --pkey /etc/tls/tls.key` to coturn
+  and mounts the `tls-cert-turn` Secret at `/etc/tls/`.
+* **Production overlay** ([`infra/k8s/overlays/prod/turn-tls-secret.yaml`](../infra/k8s/overlays/prod/turn-tls-secret.yaml))
+  ships an `ExternalSecret` bound to the `aws-secrets-manager-prod`
+  ClusterSecretStore. It materialises the `tls-cert-turn` k8s Secret
+  (`type: kubernetes.io/tls`) from SSM parameters
+  `/mahjong/prod/turn/tls/{crt,key}`.
+
+#### Operator action (pre-deploy)
+
+1. Provision a public TLS cert for `turn.mahjong.example.com`. Two
+   common paths:
+
+   * **cert-manager + Let's Encrypt HTTP-01.** Issue against the
+     LoadBalancer's IP-bound DNS A-record (see §1.3 below). Export
+     the renewed `fullchain.pem` + `privkey.pem` from the
+     cert-manager-managed Secret into SSM via a
+     [renewal-hook script](https://cert-manager.io/docs/usage/certificate/)
+     so the SSM-backed ExternalSecret stays current.
+   * **ACM Public CA with cert export.** AWS ACM can issue public
+     certs to non-AWS endpoints (operator-issued export enabled).
+     Drop the exported `.crt` + `.key` into SSM directly.
+
+2. Populate the SSM keys:
+
+    ```bash
+    aws ssm put-parameter --type SecureString \
+        --name /mahjong/prod/turn/tls/crt --value "$(cat fullchain.pem)"
+    aws ssm put-parameter --type SecureString \
+        --name /mahjong/prod/turn/tls/key --value "$(cat privkey.pem)"
+    ```
+
+3. Verify the `aws-secrets-manager-prod` ClusterSecretStore's IAM
+   role grants `ssm:GetParameter` on
+   `arn:aws:ssm:*:*:parameter/mahjong/prod/turn/tls/*` (extra rule
+   alongside the existing `/mahjong/prod/turn/*` Wave-2 grant).
+
+4. Apply the ExternalSecret:
+
+    ```bash
+    kubectl -n mahjong-prod apply -f infra/k8s/overlays/prod/turn-tls-secret.yaml
+    ```
+
+   ESO materialises `tls-cert-turn` within 1 h (refreshInterval).
+   Force-refresh immediately if you'd rather not wait:
+
+    ```bash
+    kubectl -n mahjong-prod annotate externalsecret turn-tls-cert \
+        force-sync="$(date +%s)" --overwrite
+    ```
+
+5. Restart coturn so it binds the new mount:
+
+    ```bash
+    kubectl -n mahjong-prod rollout restart deployment turn-server
+    ```
+
+   Verify:
+
+    ```bash
+    kubectl -n mahjong-prod logs -l app.kubernetes.io/name=turn-server --tail=20
+    # Expect: "TLS Listener opened on : 5349" + no "could not load
+    # cert/key" errors.
+    ```
+
+#### Cert rotation
+
+Let's Encrypt issues 90-day certs. Operator cadence: re-export +
+re-put 60 days before expiry, ESO picks up within 1 h, `rollout
+restart` binds the new file. cert-manager renewal-hook scripts
+automate steps 1–2 → operator workflow becomes "monitor the
+`tls-cert-turn` Secret's `tls.crt` for changes; restart on flip".
+
+#### Phase L additions (deferred)
+
+* mTLS for the API ↔ TURN signalling lane (optional knob).
+* DTLS over UDP (`tls-listening-port` already configured; coturn
+  exposes DTLS by default once `--cert/--pkey` is set, but client
+  testing across browsers is a separate Phase L deliverable).
 
 ## 2. Apply the overlay
 

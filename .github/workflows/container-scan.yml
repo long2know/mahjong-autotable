@@ -1,0 +1,238 @@
+# Phase K Wave 3 — Apone (DevOps).
+#
+# Container vulnerability scan — runs Trivy against the production
+# Docker image on every PR and nightly on `main`. Hard-gates on
+# CRITICAL findings (configurable via the `threshold` workflow_dispatch
+# input); uploads SARIF to the GitHub Security tab; posts a STICKY
+# PR comment so reviewers see the verdict inline without clicking
+# into the Actions tab.
+#
+# ## How this differs from `sbom.yml` (Wave-9)
+#
+# `sbom.yml` is the SBOM-FOCUSED workflow: its primary deliverable is
+# the CycloneDX + SPDX SBOM artefacts (and a CRITICAL+HIGH Trivy gate
+# attached for free since the image is already in the local daemon).
+# That workflow runs ONLY on paths that affect the image surface
+# (`Dockerfile`, `*.csproj`, `package*.json`, the workflow itself).
+#
+# `container-scan.yml` (this file) is the SCAN-FOCUSED workflow:
+#
+#   * Triggers on EVERY PR (no path filter) — a CRITICAL CVE published
+#     against an indirect dep MUST surface on any PR, not only the ones
+#     that touch the image surface.
+#   * Hard-gates on CRITICAL only (sbom.yml's CRITICAL+HIGH is stricter
+#     but more flake-prone; this gate is the "block-merge" floor).
+#   * Threshold is a workflow_dispatch input so a triage call can
+#     temporarily relax to HIGH for a one-off rerun.
+#   * STICKY PR comment via marocchino/sticky-pull-request-comment@v2
+#     (sbom.yml uses one-time create — sticky lets the comment update
+#     on subsequent runs without spamming the conversation).
+#   * Nightly cron on main catches CVEs published mid-week (sbom.yml's
+#     weekly cron is the SBOM-refresh cadence; this nightly is the
+#     vulnerability-watch cadence).
+
+name: container-scan
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 04:00 UTC (23:00 CDT / 22:00 CST). Slightly offset
+    # from sbom.yml's Monday-09:00 cadence so the two workflows
+    # don't pile on the same runner pool at the same hour.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Severity threshold (CRITICAL, HIGH, MEDIUM). PR/main runs default to CRITICAL; triage may override."
+        required: false
+        default: "CRITICAL"
+        type: choice
+        options:
+          - CRITICAL
+          - HIGH
+          - MEDIUM
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+concurrency:
+  # PR pushes preempt prior runs; nightly main runs serialize.
+  group: container-scan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/long2know/mahjong-autotable
+  IMAGE_TAG: scan-${{ github.sha }}
+
+jobs:
+  scan:
+    name: Trivy image scan (gate=${{ inputs.threshold || 'CRITICAL' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      gate-threshold: ${{ steps.compute-threshold.outputs.threshold }}
+      verdict: ${{ steps.gate.outcome }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute gate threshold
+        id: compute-threshold
+        run: |
+          set -euo pipefail
+          # Honour workflow_dispatch override; default CRITICAL otherwise.
+          THRESHOLD="${{ inputs.threshold }}"
+          THRESHOLD="${THRESHOLD:-CRITICAL}"
+          case "$THRESHOLD" in
+            CRITICAL|HIGH|MEDIUM) ;;
+            *) echo "::error::invalid threshold $THRESHOLD"; exit 1 ;;
+          esac
+          echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
+          echo "Gate threshold: $THRESHOLD"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Local image build — `load: true` puts the image in the runner's
+      # docker daemon so Trivy can scan it by tag. Cache via GHA is
+      # shared with sbom.yml when the layer set is identical.
+      - name: Build image (local, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Gating scan — fails the step (exit-code: 1) on any finding
+      # at OR above the configured threshold. `ignore-unfixed: true`
+      # keeps the gate from flapping on CVEs that have no fix
+      # available — those still show up in the SARIF for triage.
+      - name: Trivy gating scan
+        id: gate
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
+          severity: ${{ steps.compute-threshold.outputs.threshold }}
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+
+      # JSON pass — captures the FULL finding set (CRITICAL+HIGH+MEDIUM)
+      # so the PR-comment summary has counts at every severity level.
+      # Always runs so the comment is informative even when the gate
+      # above already failed.
+      - name: Trivy JSON output (full severity sweep)
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: json
+          output: trivy-findings.json
+          severity: "CRITICAL,HIGH,MEDIUM"
+          ignore-unfixed: true
+          exit-code: "0"
+
+      # SARIF pass — uploaded to the GitHub Security tab so findings
+      # are queryable alongside CodeQL + Dependabot results.
+      - name: Trivy SARIF output (for Code Scanning)
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: "CRITICAL,HIGH,MEDIUM"
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container-scan
+
+      - name: Summarise findings
+        if: always()
+        id: summary
+        run: |
+          set -euo pipefail
+          if [[ ! -s trivy-findings.json ]]; then
+            echo "no trivy-findings.json — scan likely did not produce JSON output"
+            {
+              echo "critical=0"
+              echo "high=0"
+              echo "medium=0"
+              echo "total=0"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # jq is preinstalled on ubuntu-latest runners.
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-findings.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-findings.json)
+          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-findings.json)
+          TOTAL=$((CRITICAL + HIGH + MEDIUM))
+          {
+            echo "critical=$CRITICAL"
+            echo "high=$HIGH"
+            echo "medium=$MEDIUM"
+            echo "total=$TOTAL"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## Trivy container-scan summary"
+            echo
+            echo "| Severity | Count |"
+            echo "|----------|------:|"
+            echo "| CRITICAL | $CRITICAL |"
+            echo "| HIGH     | $HIGH |"
+            echo "| MEDIUM   | $MEDIUM |"
+            echo "| **Total** | **$TOTAL** |"
+            echo
+            echo "Gate threshold: \`${{ steps.compute-threshold.outputs.threshold }}\`"
+            echo "Gate verdict: \`${{ steps.gate.outcome }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Sticky PR comment — updates in place across subsequent runs
+      # so reviewers see the latest scan verdict without conversation
+      # noise. Header pins the comment identity (`container-scan`).
+      - name: Sticky PR comment
+        if: github.event_name == 'pull_request' && always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: container-scan
+          message: |
+            ### 🔍 Container scan (Phase K Wave 3 — Apone)
+
+            - Image: `${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}`
+            - Gate threshold: `${{ steps.compute-threshold.outputs.threshold }}`
+            - Gate verdict: **${{ steps.gate.outcome }}**
+            - Findings (after `ignore-unfixed: true`):
+              - CRITICAL: `${{ steps.summary.outputs.critical }}`
+              - HIGH:     `${{ steps.summary.outputs.high }}`
+              - MEDIUM:   `${{ steps.summary.outputs.medium }}`
+
+            See the [Security tab](${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=is%3Aopen+category%3Atrivy-container-scan)
+            for the full SARIF + per-CVE remediation guidance, and the
+            [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            for the gating-step table.
+
+      - name: Upload findings artefact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-scan-findings-${{ github.run_id }}
+          path: |
+            trivy-findings.json
+            trivy-results.sarif
+          if-no-files-found: warn
+          retention-days: 30
