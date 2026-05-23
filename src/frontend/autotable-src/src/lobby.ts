@@ -15,8 +15,46 @@
 //   • `attachLobbyClient(client)` — deferred-bind helper used from
 //     `index.ts` after Game.start() so the chip strip / seat preview
 //     can subscribe to the live `seats` + `nicks` collections.
+//
+// Phase J Wave 5 — Public matchmaking lobby + profile drawer + stats
+// surface.  Adds:
+//   • Lobby tab strip (`#lobby-my-game-tab`, `#lobby-public-games-tab`)
+//     toggling between the existing Quick-Match/seat picker and the
+//     new public-games browser.
+//   • Public-games pane — list of games from the matchmaking REST
+//     endpoint, with per-card Join + an inline "Join Random" button.
+//   • Make-public toggle for the host of the current game, with an
+//     optional friendly name.
+//   • Stats panel rendering the local player's career stats from the
+//     profile cache.
+//   • Profile drawer hooks — `installProfileDrawer/Toggle` are called
+//     here so the lobby is the single place that owns the profile UI's
+//     mount lifecycle.
+//   • Player chips now prefer the local player's profile displayName
+//     + avatarColor over the WS-broadcast nick / djb2 hue fallback.
 
 import type { Client } from './client';
+import {
+  startPolling as startMatchmakingPolling,
+  stopPolling as stopMatchmakingPolling,
+  isPolling as isMatchmakingPolling,
+  getCachedGames,
+  getLastError as getMatchmakingError,
+  onUpdate as onMatchmakingUpdate,
+  refresh as refreshMatchmaking,
+  joinRandom,
+  setGamePublic,
+  navigateToGame,
+  type PublicGame,
+} from './matchmaking';
+import {
+  installProfileDrawer,
+  installProfileToggle,
+  onProfile,
+  getProfile,
+  type PlayerProfile,
+} from './profile';
+import { formatStats } from './stats';
 //
 // The lobby is a small overlay panel anchored top-left of the autotable
 // page.  It lets the user pick the Phase F query params
@@ -631,6 +669,18 @@ export function initLobby(client?: Client): void {
     bindLiveListeners(_attachedClient);
   }
 
+  // Phase J Wave 5 — install the profile drawer + open-profile shortcut
+  // button, then mount the lobby's new tab strip / public-games pane /
+  // make-public toggle / stats panel.  These helpers are defined at the
+  // bottom of this file; they are idempotent and bail out if their
+  // anchor elements are missing.
+  installProfileDrawer();
+  installProfileToggle();
+  installLobbyTabs();
+  installPublicGamesPane();
+  installMakePublicToggle();
+  installLobbyStatsPanel();
+
   if (shouldShowOnLoad()) showPanel();
 }
 
@@ -666,6 +716,13 @@ function bindLiveListeners(client: Client): void {
   };
   client.seats.on('update', renderAll);
   client.nicks.on('update', renderAll);
+  // Phase J Wave 5 — re-render chips + stats panel when the local
+  // profile changes so the displayName + avatarColor override the
+  // WS-broadcast nick / djb2 hue immediately.
+  onProfile(() => {
+    renderAll();
+    renderLobbyStatsPanel();
+  });
   renderAll();
 }
 
@@ -682,7 +739,9 @@ function renderPlayerChips(client: Client): void {
   const occupants: Array<{ playerId: string; nick: string; seat: number | null }> = [];
   for (const [playerId, seatInfo] of client.seats.entries()) {
     if (playerId === 'offline') continue;
-    const nick = client.nicks.get(playerId) ?? '(no nick)';
+    const rawNick = client.nicks.get(playerId);
+    const nick = resolveDisplayName(
+      playerId, rawNick !== null && rawNick !== undefined ? rawNick : '(no nick)');
     occupants.push({ playerId, nick, seat: seatInfo.seat });
   }
   occupants.sort((a, b) => {
@@ -712,7 +771,9 @@ function renderSeatPreview(client: Client): void {
     if (playerId === 'offline') continue;
     if (seatInfo.seat === null) continue;
     if (seatInfo.seat < 0 || seatInfo.seat > 3) continue;
-    const nick = client.nicks.get(playerId) ?? '(no nick)';
+    const rawNick = client.nicks.get(playerId);
+    const nick = resolveDisplayName(
+      playerId, rawNick !== null && rawNick !== undefined ? rawNick : '(no nick)');
     occupantBySeat[seatInfo.seat] = { playerId, nick };
   }
 
@@ -749,15 +810,21 @@ function buildPlayerChip(
   if (occupant.seat !== null) {
     chip.setAttribute('data-seat', String(occupant.seat));
   }
-  chip.style.setProperty('--chip-color', chipColorForPlayer(occupant.playerId));
+  // Phase J Wave 5 — prefer the profile's displayName + avatarColor
+  // over the WS-broadcast nick / djb2 hue.  Only the *local* player's
+  // profile is available; remote chips fall back to nick + djb2 hash.
+  const displayName = resolveDisplayName(occupant.playerId, occupant.nick);
+  chip.style.setProperty(
+    '--chip-color',
+    resolveAvatarColor(occupant.playerId, occupant.nick));
 
   const avatar = document.createElement('span');
   avatar.className = 'lobby-player-chip-avatar';
-  avatar.textContent = initialsFromNick(occupant.nick);
+  avatar.textContent = initialsFromNick(displayName);
 
   const nick = document.createElement('span');
   nick.className = 'lobby-player-chip-nick';
-  nick.textContent = occupant.nick;
+  nick.textContent = displayName;
 
   const seatBadge = document.createElement('span');
   seatBadge.className = 'lobby-player-chip-seat';
@@ -769,6 +836,34 @@ function buildPlayerChip(
   chip.appendChild(nick);
   chip.appendChild(seatBadge);
   return chip;
+}
+
+// Phase J Wave 5 — profile-aware display-name resolver.  Returns the
+// local player's profile.displayName when their connection-attached
+// profile is loaded; otherwise falls back to the WS-broadcast nick
+// (which itself is also populated from profile.displayName for the
+// local user via client.ts).  Remote players' display names arrive
+// only through the WS nicks broadcast — their profile is not exposed
+// to the local client (parallel identity).
+function resolveDisplayName(playerId: string, nick: string): string {
+  const profile = getProfile();
+  if (profile !== null && profile.playerId === playerId) {
+    return profile.displayName;
+  }
+  if (nick !== '(no nick)' && nick !== '') return nick;
+  return nick;
+}
+
+// Phase J Wave 5 — profile-aware avatar-colour resolver.  Same
+// precedence as resolveDisplayName: local profile wins, then the
+// djb2 hue fallback for remote players (and for the local player
+// before the profile arrives from SignalR).
+function resolveAvatarColor(playerId: string, _nick: string): string {
+  const profile = getProfile();
+  if (profile !== null && profile.playerId === playerId) {
+    return profile.avatarColor;
+  }
+  return chipColorForPlayer(playerId);
 }
 
 // djb2 hash of the player id → HSL hue for the chip background.
@@ -795,4 +890,313 @@ function initialsFromNick(nick: string): string {
 function isBotNick(nick: string | null | undefined): boolean {
   // Mirror game-ui.ts's bot detection so both surfaces agree.
   return !!nick && /^Bot\b/i.test(nick);
+}
+
+// ---------------------------------------------------------------------
+// Phase J Wave 5 — lobby tab strip.
+//
+// The lobby panel now has two top-level tabs: "My Game" (the existing
+// quick-match / seat-take / settings surface) and "Public Games" (the
+// new matchmaking browser).  The strip is rendered in index.html; this
+// helper just wires the click handlers and toggles `style.display` of
+// the two panes (#lobby-tab-my-game / #lobby-tab-public-games).
+//
+// Tab activation also starts/stops matchmaking polling so the REST
+// endpoint isn't hammered while the user is on the My-Game tab.
+// ---------------------------------------------------------------------
+
+function installLobbyTabs(): void {
+  const myTab = document.getElementById(
+    'lobby-my-game-tab') as HTMLButtonElement | null;
+  const pubTab = document.getElementById(
+    'lobby-public-games-tab') as HTMLButtonElement | null;
+  const myPane = document.getElementById('lobby-tab-my-game');
+  const pubPane = document.getElementById('lobby-tab-public-games');
+  if (myTab === null || pubTab === null
+      || myPane === null || pubPane === null) {
+    return;
+  }
+
+  const activate = (which: 'my' | 'public'): void => {
+    const isMy = which === 'my';
+    myTab.classList.toggle('lobby-tab-active', isMy);
+    pubTab.classList.toggle('lobby-tab-active', !isMy);
+    myTab.setAttribute('aria-selected', isMy ? 'true' : 'false');
+    pubTab.setAttribute('aria-selected', !isMy ? 'true' : 'false');
+    myPane.style.display = isMy ? '' : 'none';
+    pubPane.style.display = !isMy ? '' : 'none';
+    if (!isMy) {
+      if (!isMatchmakingPolling()) startMatchmakingPolling();
+    } else {
+      stopMatchmakingPolling();
+    }
+  };
+
+  myTab.addEventListener('click', () => activate('my'));
+  pubTab.addEventListener('click', () => activate('public'));
+  // Default: My Game pane visible.
+  activate('my');
+}
+
+// ---------------------------------------------------------------------
+// Phase J Wave 5 — public-games pane.
+//
+// Renders the cached PublicGame list from matchmaking.ts and wires
+// the Join Random button.  Re-renders on every onUpdate tick (≤5 s).
+// ---------------------------------------------------------------------
+
+function installPublicGamesPane(): void {
+  const listEl = document.getElementById('lobby-public-games-list');
+  const emptyEl = document.getElementById('lobby-public-games-empty');
+  const errorEl = document.getElementById('lobby-public-games-error');
+  const joinRandomBtn = document.getElementById(
+    'lobby-join-random') as HTMLButtonElement | null;
+  if (listEl === null || emptyEl === null
+      || errorEl === null || joinRandomBtn === null) {
+    return;
+  }
+
+  const render = (): void => {
+    const games = getCachedGames();
+    const err = getMatchmakingError();
+    if (err !== null) {
+      errorEl.style.display = '';
+      errorEl.textContent = `Failed to load public games: ${err}`;
+    } else {
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+    }
+    listEl.replaceChildren();
+    if (games.length === 0) {
+      emptyEl.style.display = '';
+      return;
+    }
+    emptyEl.style.display = 'none';
+    const cap = Math.min(games.length, 50);
+    for (let i = 0; i < cap; i++) {
+      listEl.appendChild(buildPublicGameCard(games[i], i));
+    }
+  };
+
+  onMatchmakingUpdate(render);
+  // Initial render in case polling fired before the listener landed.
+  render();
+
+  joinRandomBtn.addEventListener('click', async () => {
+    joinRandomBtn.disabled = true;
+    const prevLabel = joinRandomBtn.textContent;
+    joinRandomBtn.textContent = 'Joining…';
+    try {
+      const variant = readUrlVariant();
+      const result = await joinRandom(variant);
+      if (result !== null) {
+        navigateToGame(result.gameId, result.seatIndex);
+      } else {
+        errorEl.style.display = '';
+        errorEl.textContent = 'No public games with free seats right now.';
+      }
+    } catch (e) {
+      errorEl.style.display = '';
+      const msg = e instanceof Error ? e.message : String(e);
+      errorEl.textContent = `Join Random failed: ${msg}`;
+    } finally {
+      joinRandomBtn.disabled = false;
+      joinRandomBtn.textContent = prevLabel ?? '🎲 Join Random';
+    }
+    // Force a refresh after the join attempt so the list reflects the
+    // new occupancy (or the absence of any games to join).
+    void refreshMatchmaking();
+  });
+}
+
+function buildPublicGameCard(game: PublicGame, index: number): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'public-game-card';
+  card.setAttribute('role', 'listitem');
+  card.setAttribute('data-testid', `lobby-public-game-${index}`);
+  card.setAttribute('data-game-id', game.gameId);
+  const full = game.seatedCount >= game.maxSeats;
+  if (full) card.classList.add('public-game-card-full');
+
+  const name = document.createElement('div');
+  name.className = 'public-game-card-name';
+  name.setAttribute('data-testid', `lobby-public-game-name-${index}`);
+  name.textContent = game.publicName !== null && game.publicName !== ''
+    ? game.publicName
+    : `${game.creatorDisplayName}'s game`;
+
+  const meta = document.createElement('div');
+  meta.className = 'public-game-card-meta';
+  const creator = document.createElement('span');
+  creator.className = 'public-game-card-meta-creator';
+  creator.setAttribute('data-testid', `lobby-public-game-host-${index}`);
+  creator.textContent = `Host: ${game.creatorDisplayName}`;
+  const seats = document.createElement('span');
+  seats.className = 'public-game-card-meta-seats';
+  seats.setAttribute('data-testid', `lobby-public-game-seats-${index}`);
+  if (full) seats.classList.add('seats-full');
+  seats.textContent = `${game.seatedCount} / ${game.maxSeats}`;
+  meta.appendChild(creator);
+  meta.appendChild(seats);
+  if (game.variant !== null && game.variant !== '') {
+    const variant = document.createElement('span');
+    variant.className = 'public-game-card-meta-variant';
+    variant.textContent = `Variant: ${game.variant}`;
+    meta.appendChild(variant);
+  }
+
+  const join = document.createElement('button');
+  join.type = 'button';
+  join.className = 'btn btn-primary btn-sm public-game-card-join';
+  join.setAttribute('data-testid', `lobby-public-game-join-${index}`);
+  join.textContent = full ? 'Full' : 'Join';
+  join.disabled = full;
+  join.addEventListener('click', () => {
+    if (full) return;
+    navigateToGame(game.gameId);
+  });
+
+  card.appendChild(name);
+  card.appendChild(meta);
+  card.appendChild(join);
+  return card;
+}
+
+// Read the lobby's currently-selected variant so Join Random can pass
+// it through to the server.  Falls back to undefined (server accepts
+// any variant) when the picker can't be read.
+function readUrlVariant(): string | undefined {
+  const params = new URLSearchParams(window.location.search);
+  const v = params.get('variant');
+  return v !== null && v !== '' ? v : undefined;
+}
+
+// ---------------------------------------------------------------------
+// Phase J Wave 5 — Make-my-game-public toggle.
+//
+// Visible whenever the user is in a live game (gameId is read from
+// the URL).  Flipping the toggle invokes Bishop's SignalR
+// `SetGamePublic` RPC; the optional friendly name input is sent on
+// every toggle-on (omitted when blank).
+// ---------------------------------------------------------------------
+
+function installMakePublicToggle(): void {
+  const toggle = document.getElementById(
+    'lobby-make-public-toggle') as HTMLInputElement | null;
+  const nameInput = document.getElementById(
+    'lobby-make-public-name') as HTMLInputElement | null;
+  const statusEl = document.getElementById('lobby-make-public-status');
+  if (toggle === null || nameInput === null || statusEl === null) return;
+
+  const setStatus = (msg: string, isError: boolean): void => {
+    statusEl.textContent = msg;
+    statusEl.classList.toggle('lobby-make-public-status-error', isError);
+  };
+
+  const sync = async (): Promise<void> => {
+    const gameId = currentGameId();
+    if (gameId === null) {
+      setStatus('Not in a live game.', true);
+      toggle.checked = false;
+      toggle.disabled = true;
+      nameInput.disabled = true;
+      return;
+    }
+    toggle.disabled = true;
+    nameInput.disabled = !toggle.checked;
+    const publicName = toggle.checked && nameInput.value.trim() !== ''
+      ? nameInput.value.trim()
+      : undefined;
+    setStatus(toggle.checked ? 'Publishing…' : 'Unlisting…', false);
+    try {
+      const result = await setGamePublic(
+        { gameId, isPublic: toggle.checked, publicName });
+      if (result.success) {
+        setStatus(
+          result.isPublic
+            ? (result.publicName !== null && result.publicName !== ''
+                ? `Listed as "${result.publicName}".`
+                : 'Listed in the public lobby.')
+            : 'Unlisted from the public lobby.',
+          false);
+      } else {
+        setStatus('Server rejected the change.', true);
+        toggle.checked = !toggle.checked;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setStatus(`Failed: ${msg}`, true);
+      toggle.checked = !toggle.checked;
+    } finally {
+      toggle.disabled = false;
+      nameInput.disabled = !toggle.checked;
+    }
+  };
+
+  toggle.addEventListener('change', () => { void sync(); });
+  // Name changes only matter while the toggle is on; debounce-on-blur
+  // re-publishes so the new name lands without a UI ping-pong.
+  nameInput.addEventListener('blur', () => {
+    if (toggle.checked) void sync();
+  });
+
+  // Initial state — only enable if the URL has a game id; otherwise
+  // leave the controls disabled and the status descriptive.
+  if (currentGameId() === null) {
+    toggle.disabled = true;
+    nameInput.disabled = true;
+    setStatus('Start or join a game to publish it.', false);
+  } else {
+    nameInput.disabled = !toggle.checked;
+    setStatus('', false);
+  }
+}
+
+// Pull the active game id from the URL.  Mirrors the logic in
+// index.ts that bootstraps the Client/Game lifecycle.
+function currentGameId(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const g = params.get('game');
+  if (g === null || g === '') return null;
+  return g;
+}
+
+// ---------------------------------------------------------------------
+// Phase J Wave 5 — lobby stats panel.
+//
+// Renders the local player's career stats from the profile cache.
+// Empty until the SignalR ProfileLoaded event fires; re-renders on
+// every onProfile tick (the bindLiveListeners wiring above already
+// calls renderLobbyStatsPanel() through renderAll).
+// ---------------------------------------------------------------------
+
+function installLobbyStatsPanel(): void {
+  // Initial paint — onProfile listener (set up in bindLiveListeners)
+  // will refresh as updates arrive.
+  renderLobbyStatsPanel();
+  // Also subscribe directly in case the client isn't attached yet
+  // (initLobby runs before Game.start()).
+  onProfile(() => renderLobbyStatsPanel());
+}
+
+function renderLobbyStatsPanel(): void {
+  const host = document.getElementById('lobby-stats-panel');
+  if (host === null) return;
+  const profile: PlayerProfile | null = getProfile();
+  host.replaceChildren();
+  if (profile === null) {
+    const empty = document.createElement('div');
+    empty.className = 'lobby-stats-empty';
+    empty.textContent = 'Loading your stats…';
+    host.appendChild(empty);
+    return;
+  }
+  const panel = formatStats(profile.stats);
+  // Wrap with a heading so the lobby stats section makes it clear who
+  // these numbers belong to (matches Bishop's profile.displayName).
+  const heading = document.createElement('div');
+  heading.className = 'lobby-stats-panel-subject';
+  heading.textContent = profile.displayName;
+  host.appendChild(heading);
+  host.appendChild(panel);
 }

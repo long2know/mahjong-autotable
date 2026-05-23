@@ -1,4 +1,4 @@
-import { Client } from "./client";
+import { Client, GameCompleteEntry } from "./client";
 import { Game } from './base-client';
 import {
   buildRejoinUrl,
@@ -7,6 +7,13 @@ import {
   readSession,
   SessionToken,
 } from './reconnect';
+import {
+  getPreGameSnapshot,
+  getProfile,
+  onProfile,
+  type PlayerStats,
+} from './profile';
+import { formatStats, formatStatsDelta } from './stats';
 
 
 const TITLE_DISCONNECTED = 'Autotable';
@@ -212,6 +219,75 @@ export class ClientUi {
     // handles only the failure case (a valid token would have been
     // stripped + re-encoded on the URL by then).
     this.consumeRejoinTokenAtStartup();
+
+    // Phase J Wave 5 — wire the post-game stats delta panel.  Fires
+    // whenever the gameComplete singleton flips to complete, reading
+    // the pre-game snapshot from profile.ts to build the delta.
+    this.setupPostGameStatsPanel();
+  }
+
+  // Phase J Wave 5 — Post-game stats delta panel.
+  //
+  // The post-game modal already exists (game-ui.ts owns the seat-by-seat
+  // scoreboard); we slot a sibling section into
+  // #game-complete-stats-delta that shows the local player's career
+  // stats with deltas vs. the pre-game snapshot stashed in profile.ts.
+  //
+  // Implementation: listen on the gameComplete collection (re-rendered
+  // by Bishop's runtime when MaxHands is exhausted) and on profile
+  // updates.  When both `complete=true` and a fresh profile are
+  // available we render the delta; otherwise we render a no-delta
+  // readout so the modal isn't empty between hands.
+  private setupPostGameStatsPanel(): void {
+    const host = document.getElementById('game-complete-stats-delta');
+    if (host === null) return;
+
+    const render = (): void => {
+      const cur = this.client.gameComplete.get('current');
+      const complete = cur !== null && cur !== undefined
+        && readCompleteFlagFromUi(cur);
+      if (!complete) {
+        host.replaceChildren();
+        host.style.display = 'none';
+        return;
+      }
+      const profile = getProfile();
+      if (profile === null) {
+        host.replaceChildren();
+        host.style.display = 'none';
+        return;
+      }
+      const prev: PlayerStats | null = getPreGameSnapshot();
+      host.replaceChildren();
+      host.style.display = '';
+      const delta = formatStatsDelta(profile.stats, prev);
+      if (delta !== null) {
+        host.appendChild(delta);
+      } else {
+        host.appendChild(this.buildStatsWithoutDelta(profile.stats));
+      }
+    };
+
+    this.client.gameComplete.on('update', render);
+    onProfile(render);
+    // Initial paint in case both signals arrived before we wired up.
+    render();
+  }
+
+  // Fallback render for the post-game modal when no pre-game snapshot
+  // exists (first game in a fresh tab) — shows stats with no delta
+  // badges so the panel isn't empty.
+  private buildStatsWithoutDelta(stats: PlayerStats): DocumentFragment {
+    const frag = document.createDocumentFragment();
+    const section = document.createElement('div');
+    section.className = 'game-complete-section stats-delta-section';
+    const title = document.createElement('h4');
+    title.className = 'game-complete-section-title';
+    title.textContent = 'Your stats';
+    section.appendChild(title);
+    section.appendChild(formatStats(stats));
+    frag.appendChild(section);
+    return frag;
   }
 
   // Phase I Wave 3 — Read ?gameId= from the URL.  Falls back to the
@@ -795,3 +871,15 @@ type RejoinHandled = {
   token: string;
   decoded: SessionToken;
 };
+
+// Phase J Wave 5 — read the complete flag from a gameComplete payload.
+// Mirrors client.ts:readCompleteFlag (kept local here so client-ui.ts
+// doesn't need a runtime import from client.ts beyond the type).
+function readCompleteFlagFromUi(v: GameCompleteEntry): boolean {
+  return Boolean(
+    v.isComplete
+    || v.IsComplete
+    || v.isGameComplete
+    || v.IsGameComplete,
+  );
+}

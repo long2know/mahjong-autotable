@@ -1,0 +1,522 @@
+/* ─────────────────────────────────────────────────────────────────────
+ * Phase J Wave 5 — new styles for the public-games tab, profile drawer,
+ * stats panel, and the post-game "Your stats" delta section.
+ *
+ * Loaded alongside style.css from index.html so the existing Wave-4
+ * cascade is untouched.  All selectors are namespaced (`.lobby-tabs`,
+ * `.profile-drawer`, `.stats-grid`, `.public-game-card`) so they don't
+ * collide with the upstream pwmarcz / autotable rules in style.css.
+ * ───────────────────────────────────────────────────────────────────── */
+
+/* ── Lobby tab strip (My Game / Public Games) ─────────────────────── */
+
+.lobby-tabs {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid #444;
+    margin-bottom: 10px;
+}
+.lobby-tab {
+    flex: 1 1 auto;
+    padding: 8px 10px;
+    background: transparent;
+    color: #ccc;
+    border: none;
+    border-bottom: 3px solid transparent;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    text-align: center;
+}
+.lobby-tab:hover,
+.lobby-tab:focus-visible {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.04);
+    outline: none;
+}
+.lobby-tab.lobby-tab-active {
+    color: #ffce5d;
+    border-bottom-color: #ffce5d;
+    background: rgba(255, 206, 93, 0.05);
+}
+
+.lobby-tab-panel {
+    display: none;
+}
+.lobby-tab-panel.lobby-tab-panel-active {
+    display: block;
+}
+
+/* ── Public games list ────────────────────────────────────────────── */
+
+.public-games-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.public-games-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.public-games-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #ddd;
+}
+.public-games-status {
+    font-size: 0.8rem;
+    color: #888;
+    min-height: 1.2em;
+}
+.public-games-status.public-games-error {
+    color: #ff9494;
+}
+.public-games-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.public-games-empty {
+    color: #888;
+    font-size: 0.9rem;
+    padding: 16px 8px;
+    text-align: center;
+    font-style: italic;
+    border: 1px dashed #555;
+    border-radius: 4px;
+}
+
+.public-game-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 4px 10px;
+    align-items: center;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid #444;
+    border-radius: 6px;
+    transition: background 0.12s, border-color 0.12s;
+}
+.public-game-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #666;
+}
+.public-game-card.public-game-card-full {
+    opacity: 0.65;
+}
+.public-game-card-name {
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.95rem;
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.public-game-card-meta {
+    color: #aaa;
+    font-size: 0.8rem;
+    grid-column: 1 / 2;
+    grid-row: 2 / 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.public-game-card-meta-creator {
+    color: #ccc;
+}
+.public-game-card-meta-seats {
+    font-variant-numeric: tabular-nums;
+}
+.public-game-card-meta-seats.seats-full {
+    color: #ff9494;
+}
+.public-game-card-join {
+    grid-column: 2 / 3;
+    grid-row: 1 / 3;
+}
+
+/* Join-random button sits inline with the list header. */
+.public-games-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ── Make-my-game-public toggle ───────────────────────────────────── */
+
+.lobby-make-public {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid #444;
+    border-radius: 6px;
+}
+.lobby-make-public-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    width: 100%;
+}
+.lobby-make-public-row label {
+    margin: 0;
+    color: #ddd;
+    font-size: 0.92rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+}
+.lobby-make-public-name {
+    flex: 2 1 160px;
+    background: #1f1f1f;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.9rem;
+    min-width: 120px;
+}
+.lobby-make-public-name:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.lobby-make-public-status {
+    width: 100%;
+    font-size: 0.8rem;
+    color: #aaa;
+    min-height: 1em;
+}
+.lobby-make-public-status.lobby-make-public-status-error {
+    color: #ff9494;
+}
+
+/* ── Profile drawer ──────────────────────────────────────────────── */
+
+.profile-drawer {
+    position: fixed;
+    top: 0;
+    right: -360px;
+    width: 340px;
+    max-width: 92vw;
+    height: 100vh;
+    background: #2a2a2a;
+    color: #eee;
+    box-shadow: -2px 0 14px rgba(0, 0, 0, 0.4);
+    transition: right 0.25s ease;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+}
+.profile-drawer.profile-drawer-open {
+    right: 0;
+}
+.profile-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid #444;
+}
+.profile-drawer-title {
+    margin: 0;
+    font-size: 1.05rem;
+    color: #fff;
+}
+.profile-drawer-close {
+    background: transparent;
+    border: none;
+    color: #ddd;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+.profile-drawer-close:hover,
+.profile-drawer-close:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    outline: none;
+}
+.profile-drawer-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.profile-section-title {
+    margin: 0 0 6px 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #aaa;
+    letter-spacing: 0.04em;
+}
+.profile-display-name-input {
+    width: 100%;
+    background: #1f1f1f;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 6px 9px;
+    font-size: 1rem;
+}
+.profile-display-name-input.profile-input-invalid {
+    border-color: #cc4040;
+}
+.profile-display-name-error {
+    color: #ff9494;
+    font-size: 0.8rem;
+    margin-top: 4px;
+    min-height: 1.1em;
+}
+.profile-avatar-presets {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+}
+.profile-avatar-preset {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.12s, border-color 0.12s;
+}
+.profile-avatar-preset:hover,
+.profile-avatar-preset:focus-visible {
+    transform: scale(1.08);
+    outline: none;
+}
+.profile-avatar-preset.profile-avatar-preset-selected {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+.profile-avatar-custom-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+.profile-avatar-custom-row label {
+    margin: 0;
+    color: #ccc;
+    font-size: 0.88rem;
+}
+.profile-avatar-custom {
+    width: 48px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+.profile-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+}
+.profile-preview-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.05rem;
+    flex: 0 0 auto;
+}
+.profile-preview-name {
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.profile-drawer-footer {
+    display: flex;
+    gap: 8px;
+    padding: 12px 14px;
+    border-top: 1px solid #444;
+}
+.profile-drawer-footer .btn {
+    flex: 1 1 auto;
+}
+.profile-saved-note {
+    font-size: 0.8rem;
+    color: #9ee69e;
+    align-self: center;
+}
+
+/* Profile drawer toggle (lives in the lobby; also a sibling of the
+   existing settings toggle so it floats top-right when the lobby is
+   closed). */
+.profile-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.88rem;
+    cursor: pointer;
+}
+.profile-toggle:hover,
+.profile-toggle:focus-visible {
+    background: rgba(255, 255, 255, 0.12);
+    outline: none;
+}
+.profile-toggle-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.78rem;
+}
+
+/* ── Stats panel + grid ──────────────────────────────────────────── */
+
+.lobby-stats-panel {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid #444;
+    border-radius: 6px;
+}
+.lobby-stats-panel-title {
+    margin: 0 0 8px 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #aaa;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.lobby-stats-panel-subject {
+    color: #ddd;
+    text-transform: none;
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0;
+}
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px 8px;
+}
+.stats-grid-delta {
+    grid-template-columns: repeat(2, 1fr);
+}
+.stats-cell {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    position: relative;
+}
+.stats-cell-label {
+    color: #aaa;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.stats-cell-value {
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.stats-cell-delta {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 2px;
+}
+.stats-cell-delta-pos {
+    color: #9ee69e;
+}
+.stats-cell-delta-neg {
+    color: #ff9494;
+}
+.stats-cell-delta-neutral {
+    color: #cccccc;
+}
+
+/* Post-game modal "Your stats" delta section reuses the grid styles. */
+.stats-delta-section {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #444;
+}
+
+/* ── Mobile responsive overrides ──────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .profile-drawer {
+        right: -100vw;
+        width: 100vw;
+        max-width: 100vw;
+    }
+    .public-games-list {
+        max-height: 50vh;
+    }
+    .public-game-card {
+        grid-template-columns: 1fr;
+    }
+    .public-game-card-name,
+    .public-game-card-meta {
+        grid-column: 1 / 2;
+    }
+    .public-game-card-join {
+        grid-column: 1 / 2;
+        grid-row: auto;
+        width: 100%;
+    }
+    .lobby-make-public-row label {
+        flex: 1 1 100%;
+    }
+    .lobby-make-public-name {
+        flex: 1 1 100%;
+    }
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    .profile-avatar-presets {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
