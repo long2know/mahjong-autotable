@@ -520,3 +520,333 @@
         grid-template-columns: repeat(4, 1fr);
     }
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * Phase J Wave 6 — Onboarding card + Leaderboard table styles.
+ *
+ * The onboarding card is a one-shot welcome surface that shows above
+ * the lobby tabs when the user has no `mahjong_pid` cookie.  The
+ * leaderboard surface is a paged table inside the new "Leaderboard"
+ * tab.  Both reuse the dark-theme tokens already established by
+ * style.css + the Wave-5 main.css block above.
+ * ───────────────────────────────────────────────────────────────────── */
+
+/* ── Onboarding card ─────────────────────────────────────────────── */
+
+.onboarding-card {
+    background: linear-gradient(140deg, #2c3e50 0%, #34495e 100%);
+    border: 1px solid #ffce5d;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 0 0 14px 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    color: #f0f0f0;
+}
+.onboarding-card-header {
+    margin: 0 0 8px 0;
+}
+.onboarding-card-title {
+    margin: 0;
+    font-size: 1.15rem;
+    color: #ffce5d;
+    font-weight: 700;
+}
+.onboarding-card-subtitle {
+    margin: 4px 0 0 0;
+    font-size: 0.95rem;
+    color: #ddd;
+}
+.onboarding-card-preview {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0;
+}
+.onboarding-preview-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.5rem;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    background-color: #2980b9;
+    transition: background-color 0.18s ease;
+}
+.onboarding-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 8px 0;
+}
+.onboarding-field-label {
+    font-size: 0.85rem;
+    color: #bbb;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.onboarding-input {
+    background: #1c1f24;
+    color: #f0f0f0;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 0.95rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+.onboarding-input:focus {
+    outline: none;
+    border-color: #ffce5d;
+    box-shadow: 0 0 0 2px rgba(255, 206, 93, 0.25);
+}
+.onboarding-input-invalid {
+    border-color: #e74c3c;
+}
+.onboarding-error {
+    font-size: 0.8rem;
+    color: #e57373;
+    min-height: 1em;
+}
+.onboarding-avatar-presets {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+    margin-top: 4px;
+}
+.onboarding-avatar-preset {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.12s, border-color 0.12s;
+}
+.onboarding-avatar-preset:hover,
+.onboarding-avatar-preset:focus-visible {
+    transform: scale(1.08);
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.4);
+}
+.onboarding-avatar-preset-selected {
+    border-color: #ffce5d;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4) inset;
+}
+.onboarding-custom-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #ccc;
+}
+.onboarding-custom-color {
+    width: 36px;
+    height: 28px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+}
+.onboarding-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+/* ── Leaderboard pane ────────────────────────────────────────────── */
+
+.leaderboard-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.leaderboard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.leaderboard-controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.leaderboard-control {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.8rem;
+    color: #bbb;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.leaderboard-control > select,
+.leaderboard-control > input {
+    background: #1c1f24;
+    color: #f0f0f0;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 0.9rem;
+    min-width: 110px;
+}
+.leaderboard-control > input[type="number"] {
+    min-width: 80px;
+    width: 90px;
+}
+.leaderboard-control > select:focus,
+.leaderboard-control > input:focus {
+    outline: none;
+    border-color: #ffce5d;
+    box-shadow: 0 0 0 2px rgba(255, 206, 93, 0.25);
+}
+.leaderboard-status {
+    font-size: 0.9rem;
+    padding: 8px 10px;
+    border-radius: 4px;
+    color: #ccc;
+}
+.leaderboard-error {
+    background: rgba(231, 76, 60, 0.12);
+    color: #e57373;
+    border: 1px solid rgba(231, 76, 60, 0.3);
+}
+.leaderboard-loading {
+    color: #888;
+    font-style: italic;
+}
+.leaderboard-empty {
+    background: rgba(255, 255, 255, 0.03);
+    color: #aaa;
+}
+.leaderboard-table-host {
+    width: 100%;
+    overflow-x: auto;
+}
+.leaderboard-grid {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #1c1f24;
+    border: 1px solid #2a2e34;
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 0.9rem;
+    color: #e8e8e8;
+}
+.leaderboard-grid thead {
+    background: #262a31;
+}
+.leaderboard-grid th {
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 700;
+    color: #ccc;
+    border-bottom: 1px solid #333;
+    text-transform: uppercase;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+.leaderboard-grid th.lb-sort-active {
+    color: #ffce5d;
+}
+.leaderboard-grid td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #23262c;
+    vertical-align: middle;
+}
+.leaderboard-grid tbody tr:nth-child(odd) {
+    background: rgba(255, 255, 255, 0.015);
+}
+.leaderboard-grid tbody tr:hover {
+    background: rgba(255, 206, 93, 0.08);
+}
+.leaderboard-grid tbody tr:last-child td {
+    border-bottom: none;
+}
+.lb-col-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.lb-col-rank {
+    width: 56px;
+    text-align: center;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.lb-col-player {
+    text-align: left;
+    min-width: 160px;
+}
+.lb-cell-player {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.lb-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.78rem;
+    flex-shrink: 0;
+}
+.lb-name {
+    font-weight: 600;
+    color: #f0f0f0;
+}
+.leaderboard-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 0;
+}
+.leaderboard-paging-summary {
+    color: #aaa;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Mobile breakpoint — collapse the leaderboard table into a denser
+   layout so it fits the 480px viewport without horizontal scroll. */
+@media (max-width: 768px) {
+    .leaderboard-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .leaderboard-controls {
+        justify-content: space-between;
+    }
+    .leaderboard-grid {
+        font-size: 0.82rem;
+    }
+    .leaderboard-grid th,
+    .leaderboard-grid td {
+        padding: 6px 6px;
+    }
+    .lb-col-rank {
+        width: 40px;
+    }
+    .lb-avatar {
+        width: 22px;
+        height: 22px;
+        font-size: 0.7rem;
+    }
+}

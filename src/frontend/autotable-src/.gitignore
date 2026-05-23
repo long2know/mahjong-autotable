@@ -5,6 +5,8 @@ build/
 *.blend1
 .vscode/
 .parcel-cache/
+test-results/
+playwright-report/
 
 # NOTE: upstream's .gitignore ignored *.auto.* because Inkscape/Blender
 # regenerated them at `make files` time. We commit the prebuilt assets

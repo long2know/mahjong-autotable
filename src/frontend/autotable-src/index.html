@@ -532,7 +532,8 @@
                  every SoundEvent in sound.ts is a no-op. -->
             <div class="settings-row">
                 <label class="settings-checkbox-label">
-                    <input type="checkbox" id="settings-sound" checked>
+                    <input type="checkbox" id="settings-sound"
+                           data-testid="settings-sound" checked>
                     Sound
                     <small class="settings-hint">
                         Plays SFX on draws, discards, claims and wins.
@@ -605,7 +606,8 @@
                          + the server's handHistory payload (when present)
                          and renders a tile-by-tile 2D top-down replay. -->
                     <button type="button" class="btn btn-info"
-                            id="game-complete-replay">
+                            id="game-complete-replay"
+                            data-testid="game-complete-replay">
                         🎞 View Replay
                     </button>
                     <button type="button" class="btn btn-secondary"
@@ -623,7 +625,8 @@
          + play/step controls along the bottom.  All children are
          populated by Replay.open() in src/replay.ts. -->
     <div id="replay-screen" class="replay-screen" role="dialog"
-         aria-label="Hand replay" aria-hidden="true">
+         aria-label="Hand replay" aria-hidden="true"
+         data-testid="replay-screen">
         <div class="replay-shell">
             <div class="replay-header">
                 <h3 class="replay-title">🎞 Hand Replay</h3>
@@ -635,7 +638,9 @@
                             class="dark-select form-control form-control-sm">
                     </select>
                     <button id="replay-close" type="button"
-                            class="replay-close-btn" aria-label="Close replay"
+                            class="replay-close-btn"
+                            data-testid="replay-close"
+                            aria-label="Close replay"
                             title="Close">×</button>
                 </div>
             </div>
@@ -651,12 +656,15 @@
             <div class="replay-footer">
                 <button id="replay-step-back" type="button"
                         class="btn btn-sm btn-secondary"
+                        data-testid="replay-step-back"
                         aria-label="Step back">⏮</button>
                 <button id="replay-play" type="button"
                         class="btn btn-sm btn-warning"
+                        data-testid="replay-play"
                         aria-label="Play / pause">▶ Play</button>
                 <button id="replay-step-fwd" type="button"
                         class="btn btn-sm btn-secondary"
+                        data-testid="replay-step-fwd"
                         aria-label="Step forward">⏭</button>
                 <input id="replay-timeline" type="range"
                        class="replay-timeline"
@@ -697,7 +705,73 @@
                         role="tab" aria-selected="false"
                         aria-controls="lobby-tab-public-games"
                         data-testid="lobby-public-games-tab">Public Games</button>
+                <!-- Phase J Wave 6 — Leaderboard tab.  Click flips to
+                     #lobby-tab-leaderboard and starts the 30-second
+                     auto-refresh in leaderboard.ts. -->
+                <button id="lobby-leaderboard-tab" type="button"
+                        class="lobby-tab"
+                        role="tab" aria-selected="false"
+                        aria-controls="lobby-tab-leaderboard"
+                        data-testid="lobby-leaderboard-tab">Leaderboard</button>
             </div>
+
+            <!-- Phase J Wave 6 — Onboarding card (first visit only).
+                 Wired by identity.ts:installOnboardingCard().  Hidden
+                 via inline display:none until the bootstrap detects a
+                 missing mahjong_pid cookie. -->
+            <section id="onboarding-card" class="onboarding-card"
+                     role="region" aria-label="Welcome — set up your profile"
+                     aria-hidden="true" data-testid="onboarding-card"
+                     style="display: none;">
+                <div class="onboarding-card-header">
+                    <h3 class="onboarding-card-title">👋 Welcome!</h3>
+                    <p class="onboarding-card-subtitle">
+                        What name should we use?
+                    </p>
+                </div>
+                <div class="onboarding-card-preview">
+                    <div id="onboarding-preview-avatar"
+                         class="onboarding-preview-avatar"
+                         aria-hidden="true">?</div>
+                </div>
+                <label class="onboarding-field">
+                    <span class="onboarding-field-label">Display name</span>
+                    <input id="onboarding-display-name-input" type="text"
+                           class="onboarding-input"
+                           data-testid="onboarding-display-name-input"
+                           minlength="1" maxlength="32"
+                           autocomplete="off" spellcheck="false"
+                           placeholder="Your display name…">
+                    <span id="onboarding-display-name-error"
+                          class="onboarding-error"
+                          aria-live="polite"></span>
+                </label>
+                <div class="onboarding-field">
+                    <span class="onboarding-field-label">Avatar colour</span>
+                    <div id="onboarding-avatar-presets"
+                         class="onboarding-avatar-presets" role="radiogroup"
+                         aria-label="Avatar colour presets"></div>
+                    <label class="onboarding-custom-row">
+                        <span>Or pick any colour:</span>
+                        <input id="onboarding-avatar-color-custom" type="color"
+                               class="onboarding-custom-color"
+                               data-testid="onboarding-avatar-color-custom"
+                               value="#2980b9">
+                    </label>
+                </div>
+                <div class="onboarding-actions">
+                    <button id="onboarding-continue" type="button"
+                            class="btn btn-success btn-sm"
+                            data-testid="onboarding-continue">
+                        Continue
+                    </button>
+                    <button id="onboarding-skip" type="button"
+                            class="btn btn-secondary btn-sm"
+                            data-testid="onboarding-skip">
+                        Skip
+                    </button>
+                </div>
+            </section>
 
             <!-- Phase J Wave 5 — "My Game" tab pane wraps every existing
                  lobby control (player chips, seat preview, pickers,
@@ -936,6 +1010,67 @@
                 <div id="lobby-public-games-list"
                      class="public-games-list" role="list"
                      data-testid="lobby-public-list"></div>
+            </section>
+
+            <!-- Phase J Wave 6 — Leaderboard pane.  Mounted by
+                 leaderboard.ts:installLeaderboardSurface() and refreshed
+                 every 30 s while this tab is active.  Renders a paged
+                 table of player stats from Bishop's
+                 GET /api/leaderboard endpoint. -->
+            <section id="lobby-tab-leaderboard"
+                     class="lobby-tab-pane leaderboard-pane"
+                     role="tabpanel"
+                     aria-labelledby="lobby-leaderboard-tab"
+                     data-testid="lobby-leaderboard-section"
+                     style="display: none;">
+                <div class="leaderboard-header">
+                    <h3 class="lobby-section-title">Leaderboard</h3>
+                    <div class="leaderboard-controls">
+                        <label class="leaderboard-control">
+                            <span>Sort</span>
+                            <select id="leaderboard-sort-select"
+                                    class="dark-select form-control form-control-sm"
+                                    data-testid="leaderboard-sort-select"></select>
+                        </label>
+                        <label class="leaderboard-control">
+                            <span>Min games</span>
+                            <input id="leaderboard-min-games-input"
+                                   class="form-control form-control-sm"
+                                   data-testid="leaderboard-min-games-input"
+                                   type="number" min="0" step="1" value="5">
+                        </label>
+                    </div>
+                </div>
+                <div id="leaderboard-error"
+                     class="leaderboard-status leaderboard-error"
+                     aria-live="polite" style="display: none;"></div>
+                <div id="leaderboard-loading"
+                     class="leaderboard-status leaderboard-loading"
+                     aria-live="polite">Loading leaderboard…</div>
+                <div id="leaderboard-empty"
+                     class="leaderboard-status leaderboard-empty"
+                     style="display: none;">
+                    No players match this filter yet — try lowering the
+                    "Min games" threshold or play a few hands.
+                </div>
+                <div id="leaderboard-table"
+                     class="leaderboard-table-host"
+                     data-testid="leaderboard-table"
+                     role="region" aria-label="Leaderboard rows"></div>
+                <div class="leaderboard-footer">
+                    <button id="leaderboard-prev-page" type="button"
+                            class="btn btn-secondary btn-sm"
+                            data-testid="leaderboard-prev-page"
+                            disabled>← Prev page</button>
+                    <span id="leaderboard-paging-summary"
+                          class="leaderboard-paging-summary"
+                          data-testid="leaderboard-paging-summary"
+                          aria-live="polite"></span>
+                    <button id="leaderboard-next-page" type="button"
+                            class="btn btn-secondary btn-sm"
+                            data-testid="leaderboard-next-page"
+                            disabled>Next page →</button>
+                </div>
             </section>
         </div>
         <div class="lobby-footer">
