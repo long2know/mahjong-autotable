@@ -945,6 +945,22 @@ public sealed class ChangshaGameStateMachine
         state.HandNumber++;
         state.HandInRound++;
 
+        // Phase J Wave 2 — N-hand rotation cap. After incrementing HandNumber,
+        // if it now exceeds the configured MaxHands the game terminates: set
+        // Phase=GameComplete + IsGameComplete=true and emit a single
+        // "game-ended" event with detail "hands:{MaxHands}" so downstream
+        // listeners (runtime → SignalR / autotable surface) can fire the
+        // GameCompleted notification. The pre-Wave-2 16-hand path below remains
+        // for tournament configurations that raise MaxHands beyond 16.
+        if (state.HandNumber > state.MaxHands)
+        {
+            state.Phase = ChangshaPhase.GameComplete;
+            state.IsGameComplete = true;
+            events.Add(CreateEvent(state, "game-ended", -1,
+                detail: $"hands:{state.MaxHands},reason:maxHandsReached"));
+            return events;
+        }
+
         if (state.HandInRound > HandsPerRound)
         {
             state.HandInRound = 1;
@@ -953,6 +969,7 @@ public sealed class ChangshaGameStateMachine
             if (state.RoundNumber > 4)
             {
                 state.Phase = ChangshaPhase.EndGame;
+                state.IsGameComplete = true;
                 events.Add(CreateEvent(state, "game-ended", -1,
                     detail: $"hands:{state.HandNumber - 1}"));
                 return events;

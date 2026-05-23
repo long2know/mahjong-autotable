@@ -698,6 +698,19 @@ public sealed class AutotableConnectionManager : IDisposable
         var gameId = connection.GameId;
         if (!string.IsNullOrEmpty(gameId))
         {
+            // Phase J Wave 2 — release the runtime seat binding so an
+            // autotable client that drops mid-game frees its seat (so peers
+            // can claim it, or auto-fill can drop a bot in). Mirrors the
+            // SignalR-side cleanup in <see cref="ChangshaHub.OnDisconnectedAsync"/>
+            // which calls the same runtime hook. Only Changsha-mode, non-spectator
+            // connections may have taken a runtime seat; relay-mode and spectator
+            // connections short-circuit. Idempotent at the runtime layer — a
+            // connectionId with no matching SeatConnections entry is a no-op. The
+            // runtime clears <c>SeatConnections[seat]</c> but preserves
+            // <c>seat.PlayerId</c> so the Phase J Wave 1 hot-seat swap (reconnect
+            // by seat index) keeps working.
+            await ReleaseRuntimeSeatAsync(connection, gameId!);
+
             // Upstream parity (server/game.ts:leave) — null out per-player
             // collection entries owned by this player and broadcast the
             // tombstones to remaining peers, so their seat/nick disappears.
@@ -728,6 +741,34 @@ public sealed class AutotableConnectionManager : IDisposable
         }
 
         _logger.LogInformation("Autotable WS disconnected (connectionId={ConnectionId})", connection.Id);
+    }
+
+    /// <summary>
+    /// Phase J Wave 2 — releases the runtime seat binding held by
+    /// <paramref name="connection"/> on its game's runtime instance. Idempotent
+    /// (no-op if no binding exists) and safe for spectators (which never take a
+    /// runtime seat). Used by <see cref="HandleDisconnectAsync(AutotableConnection)"/>
+    /// to close the parity gap with <see cref="ChangshaHub.OnDisconnectedAsync"/>:
+    /// before this wave only the SignalR path released seats on disconnect,
+    /// leaving WS-disconnected players' seats orphaned in
+    /// <c>ChangshaGameInstance.SeatConnections</c>.
+    /// </summary>
+    private async Task ReleaseRuntimeSeatAsync(AutotableConnection connection, string gameId)
+    {
+        if (connection.IsSpectator) return;
+        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return;
+        if (!_runtimeBinding.ContainsKey(gameId)) return;
+
+        try
+        {
+            await _runtime.HandleDisconnectAsync(connection.PlayerId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Failed to release runtime seat for connection {ConnectionId} on game {GameId}",
+                connection.Id, gameId);
+        }
     }
 
     private async Task SendJoinedAsync(AutotableConnection connection, string gameId, bool isFirst, CancellationToken ct)

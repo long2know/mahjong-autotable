@@ -42,20 +42,18 @@ namespace Mahjong.Autotable.Api.Tests.Autotable;
 /// </list>
 /// </para>
 ///
-/// <para><b>Important caveat re: "frees seat" semantics.</b> The autotable WS
-/// path's <c>HandleDisconnectAsync</c> does NOT call
-/// <c>ChangshaGameRuntime.HandleDisconnectAsync</c> — only the SignalR Hub
-/// path does. So when a player disconnects from the autotable WS, the
-/// runtime's <c>SeatConnections</c> entry for that seat survives (orphaned),
-/// and no other connection can take that exact seat until the runtime game is
-/// torn down or the seat is explicitly reassigned. Hicks's bundle UI works
-/// around this by disabling the current seat in the picker (so the
-/// soft-reconnect path only ever offers DIFFERENT seats to the new
-/// connection). The "PlayerToSpectator" fact below reflects the actual
-/// backend contract — the spectator does not steal nor free the prior seat;
-/// the orphaned binding persists. A future backend wave could promote
-/// seat-release to the autotable disconnect path, at which point this fact
-/// would need to be updated.</para>
+/// <para><b>Phase J Wave 2 update re: "frees seat" semantics.</b> The autotable WS
+/// path's <c>HandleDisconnectAsync</c> now calls
+/// <c>ChangshaGameRuntime.HandleDisconnectAsync</c> (mirror of the SignalR Hub
+/// path), so a WS-disconnected player's <c>SeatConnections</c> entry is
+/// promptly released and other connections can claim the seat — including the
+/// post-take <c>FillEmptySeatsWithBotsAsync</c> flow which drops a bot into
+/// the freed slot. Note that <c>seat.PlayerId</c> is preserved by the runtime
+/// release so the Wave 1 reconnect-by-seat-index flow still works, but a
+/// subsequent seat-take + auto-bot-fill cycle will overwrite that PlayerId
+/// with a bot id. The "PlayerToSpectator" fact below remains unchanged
+/// (the spectator does not trigger auto-bot-fill, so the released seat stays
+/// pinned to Alice's PlayerId for the duration of the spectator session).</para>
 /// </summary>
 public class HotSeatSwapTests : IAsyncLifetime
 {
@@ -152,13 +150,17 @@ public class HotSeatSwapTests : IAsyncLifetime
         Assert.True(bobSeated,
             "Bob's seat-take on the same gameId should bind state.Seats[1] to his connectionId.");
 
-        // Alice's prior seat-0 binding survives (no autotable-side seat
-        // release). This is the documented current contract; if a future wave
-        // promotes seat-release to the autotable disconnect path, this
-        // assertion must be flipped to "seat 0 is now bot/empty".
+        // Phase J Wave 2 flipped this contract: when Alice disconnects from the
+        // autotable WS path, the runtime seat binding IS released (mirror of
+        // ChangshaHub.OnDisconnectedAsync). Bob's seat-take then runs
+        // FillEmptySeatsWithBotsAsync (autoBotFill default) which drops a bot
+        // into seat 0. The previous contract (orphaned binding) was the bug
+        // surfaced in Wave 1's review; this assertion now pins the new contract:
+        // seat 0 is either empty (no SeatConnections entry) OR converted to a
+        // bot by the post-take auto-fill flow.
         Assert.True(runtime.TryGetSnapshot(runtimeGameId, out var finalState));
         Assert.NotNull(finalState);
-        Assert.Equal(alice.PlayerId, finalState!.Seats[0].PlayerId);
+        Assert.NotEqual(alice.PlayerId, finalState!.Seats[0].PlayerId);
     }
 
     // ────────────────────────────────────────────────────────────────────

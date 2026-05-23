@@ -23,6 +23,11 @@ public class BankerRotationTests
         state.DealerSeatIndex = dealerSeat;
         foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == dealerSeat;
         state.Phase = ChangshaPhase.EndHand;
+        // Phase J Wave 2 — pre-existing acceptance scenarios exercise banker
+        // rotation independent of the new N-hand cap. Raise MaxHands so the
+        // rotation never trips GameComplete; these tests target winner-becomes-
+        // dealer mechanics, not game length.
+        state.MaxHands = 100;
         return state;
     }
 
