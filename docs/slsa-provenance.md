@@ -151,6 +151,36 @@ slsa-verifier verify-image \
 
 The verifier pulls the attestation from the registry automatically.
 
+## 4a. Signer-identity invariant (Phase K Wave 7 — Apone)
+
+`slsa-verifier verify-image` pins the **source URI** of the build
+(`github.com/long2know/mahjong-autotable`), but it does NOT pin the
+**signer-identity regex**. The signer-identity check happens via
+the cosign sidecar that this workflow also produces — and the
+canonical regex is locked across SIX repo surfaces by
+[`scripts/check_signer_identity.py`](../scripts/check_signer_identity.py).
+The hook fails the commit if ANY of the six files drifts.
+
+The canonical regex (single-escaped form) is:
+
+```
+^https://github\.com/long2know/mahjong-autotable/\.github/workflows/sign-image\.yml@refs/(heads/main|tags/v.*)$
+```
+
+The six surfaces in lock-step:
+
+| # | File | Where the regex lives |
+|---|---|---|
+| 1 | `.github/workflows/sign-image.yml` | `EXPECTED_IDENTITY_REGEXP` env var |
+| 2 | `.github/workflows/verify-signature.yml` | `expected-identity-pattern` default input |
+| 3 | `.github/workflows/slsa-provenance.yml` | `EXPECTED_IDENTITY_REGEXP` env var (W7 marker) |
+| 4 | `infra/k8s/policies/kyverno-cosign-verify.yaml` | `subjectRegExp` (keyless attestor) |
+| 5 | `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml` | `subjectRegExp` (prod enforce patch) |
+| 6 | `docs/slsa-provenance.md` (this section) | §4a literal |
+
+Rotation procedure: see
+[`docs/signer-identity-invariant.md`](signer-identity-invariant.md).
+
 ## 5. What a verify failure means
 
 A non-zero exit from `slsa-verifier` means ONE of:

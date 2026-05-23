@@ -1,0 +1,89 @@
+# Phase K Wave 7 — Apone (DevOps).
+#
+# Local pre-commit hooks for `mahjong-autotable`.
+#
+# Wave 7 ships ONE invariant guard:
+#
+#   * signer-identity-invariant — verifies that the cosign keyless
+#     signer-identity regex is in lock-step across six repo
+#     surfaces (two GitHub workflows, two Kyverno YAML manifests,
+#     and two documentation surfaces). See
+#     `docs/signer-identity-invariant.md` for background +
+#     `scripts/check_signer_identity.py` for the implementation.
+#
+# To install (once, per developer machine):
+#
+#     pipx install pre-commit       # or: pip install --user pre-commit
+#     pre-commit install --install-hooks
+#
+# Then every `git commit` runs the hooks against staged files.
+# Run the full set on demand with:
+#
+#     pre-commit run --all-files
+#
+# Pinning notes:
+#
+#   * `rev:` for `pre-commit-hooks` is pinned (NOT `HEAD`) — the
+#     hook bodies and exit codes have backwards-compat issues
+#     across minor versions.
+#   * The local `signer-identity-invariant` hook runs against
+#     EVERY commit (`always_run: true`) — it inspects the full
+#     six-file set independent of which files are staged, because
+#     drift is a cross-file property.
+#
+# CI runs `pre-commit run --all-files` from `.github/workflows/`
+# (Wave 7 follow-up — for now developer machines are the gate;
+# CI parity ride-along will land in Wave 8).
+
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+        exclude: |
+          (?x)^(
+            helm/.*/templates/.*\.yaml|
+            infra/k8s/.*kyverno.*\.yaml
+          )$
+      - id: end-of-file-fixer
+        exclude: |
+          (?x)^(
+            \.tool-.*|
+            \.work/.*|
+            mobile/.*/android/.*|
+            mobile/.*/ios/.*
+          )$
+      - id: trailing-whitespace
+        exclude: |
+          (?x)^(
+            \.tool-.*|
+            \.work/.*|
+            mobile/.*/android/.*|
+            mobile/.*/ios/.*
+          )$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+        exclude: |
+          (?x)^(
+            mobile/.*\.aab|
+            mobile/.*\.ipa
+          )$
+
+  - repo: local
+    hooks:
+      - id: signer-identity-invariant
+        name: signer-identity invariant (W7 — Apone)
+        description: >-
+          Ensures the cosign keyless signer-identity regex is in
+          lock-step across the six tracked files. See
+          docs/signer-identity-invariant.md.
+        entry: python3 scripts/check_signer_identity.py
+        language: system
+        # The hook checks the full six-file set on EVERY commit;
+        # `files:` would scope to staged changes only and miss
+        # drift introduced via partial commits.
+        always_run: true
+        pass_filenames: false

@@ -117,6 +117,16 @@ env:
   # Filename of the CycloneDX SBOM. Stable for the same reason and
   # so `cosign attest --predicate` can resolve it deterministically.
   SBOM_NAME: sbom.cyclonedx.json
+  # ── Phase K Wave 7 — Apone (DevOps) ──────────────────────────
+  # SIGNER-IDENTITY-INVARIANT — this workflow's cosign-attest call
+  # produces predicates signed by the SAME OIDC identity covered by
+  # the six-file invariant enforced by
+  # `scripts/check_signer_identity.py`. The canonical regex below is
+  # the source of truth that every cosign verify, Kyverno policy, and
+  # admission gate in the repo MUST match. Edit only as part of the
+  # documented rotation procedure in
+  # `docs/signer-identity-invariant.md`.
+  EXPECTED_IDENTITY_REGEXP: ^https://github\.com/long2know/mahjong-autotable/\.github/workflows/sign-image\.yml@refs/(heads/main|tags/v.*)$
 
 jobs:
   resolve-digest:
