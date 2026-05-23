@@ -2243,3 +2243,120 @@ the producer-side mirror of the W7/W8/W9/W10 pattern.*
 *Phase K Wave 11 — Vasquez (QA). Vasquez W11 QA inventory
 appended above with the 6 canonical Playwright spec names that
 pin the W11 frontend surfaces.*
+
+---
+
+## W12 producer-side updates (Hicks)
+
+### `?action=replay` co-parameter contract (new)
+
+W12 cashed in the `?action=replay` reservation from
+`docs/frontend-routing.md §7`. The router now accepts the
+`replay` keyword as a fourth SUPPORTED_ACTION alongside
+`new-game` / `tournaments` / `history` / `admin`.
+
+**URL shape pinned:**
+
+```
+?action=replay&replayId=<guid>
+```
+
+`replayId` is a co-parameter on the same URLSearchParams.
+Both `action` and `replayId` are stripped from the URL before
+the dispatch + fetch (refresh-safe — re-loading the rewritten
+URL does NOT re-trigger the deep link).
+
+**Endpoint pinned:**
+
+`GET /api/replays/{replayId}` (Bishop W12 — id-addressable,
+NOT the legacy `/api/games/{gameId}/replay` shape). No
+fallback to the game-id endpoint — would mask config drift.
+
+**Success path:**
+
+1. URL rewritten to `/replay/{replayId}` via
+   `history.replaceState()`.
+2. Lazy-import of `./replay-launcher` resolves
+   `openReplayPayload(replayId, body, options?)` — a NEW
+   exported function added in W12.
+3. Toast `replay.opening` is fired (via the existing
+   `./toast` helper).
+
+**Failure path:**
+
+ANY failure (HTTP 404 / 5xx / network / JSON-parse / missing
+replayId co-param) → "Replay not found" toast via
+`showToast(msg, 'error')` from `./toast`. URL is still
+cleared, but no `/replay/*` rewrite happens.
+
+**Pinned exports (do NOT rename without spec edits):**
+
+| Module | Export | Signature |
+|--------|--------|-----------|
+| `src/action-router.ts` | `SUPPORTED_ACTIONS` (incl. `'replay'`) | `readonly Set<string>` |
+| `src/action-router.ts` | `dispatchReplay(replayId)` | private (transitively called from `handlePwaActionFromUrl`) |
+| `src/replay-launcher.ts` | `openReplayPayload(id, body, opts?)` | `(string, ServerReplayPayload, { announce?: boolean }) => Promise<void>` |
+
+Vasquez W12 producer-side expectation: a Playwright spec
+under `tests/e2e/` named `deep-link-action-replay.spec.ts`
+that pins:
+
+- The URL shape (`?action=replay&replayId=<guid>`)
+- The `/api/replays/{id}` endpoint contract (intercept +
+  mock response with the canonical ServerReplayPayload shape
+  from `src/types/replay.ts`)
+- The URL-rewrite to `/replay/<id>` post-dispatch
+- The error-toast firing on a 404 mock
+
+### Three-renderer K12 dist-size pin (new)
+
+`dist-size.json:history[wave=K12]` records the W12 build
+sizes. The pinned budget for Vasquez's W12 QA gates:
+
+| Bundle | W11 (K11) | W12 (K12) | W12 budget |
+|--------|-----------|-----------|------------|
+| `three-renderer-big` | 466,395 B | **448,648 B** | **< 450 KB stretch** ✅ / < 460 KB acceptable |
+
+Vasquez W12 producer-side expectation: a Playwright spec
+`three-renderer-450-stretch.spec.ts` (parallel to W11's
+`three-renderer-475-soft.spec.ts`) that fetches
+`dist-size.json` and asserts the K12 row meets the new
+budget. The W11 hard-cap spec
+(`shader-chunk-475-hard.spec.ts`) should keep passing
+trivially (448 < 475).
+
+### Placeholder screenshot retirement (W10 → retired in W12)
+
+The W10 placeholder screenshot copy-loop in
+`vite.config.ts` has been removed. The legacy paths
+
+- `src/frontend/autotable-src/img/screenshot-lobby.auto.png`
+- `src/frontend/autotable-src/img/screenshot-table.auto.png`
+- `src/frontend/autotable-src/img/screenshot-mobile.auto.png`
+
+have been `git rm`'d. The PWA manifest already pointed only
+at the W11 real captures at `screenshots/*.png` — those URLs
+are unchanged. Vasquez: drop any old `expect`s in
+`manifest-screenshots-real.spec.ts` (or any spec) that
+asserted the existence of the `.auto.png` paths.
+
+### ShaderChunk + UniformsLib strips (W12 extends W11)
+
+W12 extends the W11 `stripUnusedShaderChunks` plugin with 10
+more chunks (`shadowmap_*`, `shadowmask_pars_fragment`,
+`envmap_*` x6) and adds a NEW `stripUnusedUniformsLib`
+plugin that empties 5 unused registry entries
+(`roughnessmap`, `metalnessmap`, `gradientmap`, `points`,
+`sprite`). Implementation lives in `vite.config.ts` (the
+`SHADER_CHUNKS_TO_EMPTY` and `UNIFORMS_LIB_KEYS_TO_EMPTY`
+arrays + the new plugin function). Per the W11 pattern:
+producer-side strip changes do NOT have a spec-level pin —
+only the resulting `three-renderer-big` size does. The
+`three-renderer-450-stretch.spec.ts` covers it.
+
+---
+
+*Phase K Wave 12 — Hicks (Frontend). W12 footer appended
+with the `?action=replay` co-parameter contract, K12
+dist-size pin, W10 placeholder retirement note, and W12
+strip extension producer-side expectations.*

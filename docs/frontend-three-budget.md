@@ -750,3 +750,149 @@ A more aggressive Phase L candidate: hand-roll `three/src/*`
 imports + a custom `WebGLRenderer` wrapper. The W6 estimate
 (–200 to –300 kB total) still stands but the engineering cost
 remains very high — defer until the Phase K series closes.
+
+## §8 — Wave 12: PMREMGenerator-adjacent + shadow + envmap strip + UniformsLib
+
+### Motivation
+
+W11 closed at 466.40 kB on the big chunk, satisfying the <475
+kB W11 ceiling with ~9 kB margin. The §7 hand-off identified
+three remaining surgical candidates:
+
+1. **`shadowmap_*` ShaderChunks** (parts + vertex + mask
+   fragment) — body wrapped in `#ifdef USE_SHADOWMAP`.
+2. **PMREMGenerator-adjacent ShaderChunks** — the cubeUV chunk
+   was stripped in W11, but the wider envmap chunk family
+   (`envmap_*`) was still riding along into the renderer
+   even though the autotable scene uses only 2D textures
+   (no `scene.environment`, no `material.envMap`).
+3. **`UniformsLib` entries for stubbed materials** —
+   `roughnessmap`, `metalnessmap`, `gradientmap`, `points`,
+   `sprite` are only ever referenced by ShaderLib material
+   definitions that W9 stubbed at the class level.
+
+W12 ships all three in one Vite-plugin pass.
+
+### Approach: same `stripUnusedShaderChunks` + new `stripUnusedUniformsLib`
+
+The W11 ShaderChunk strip plugin already operates on
+`three.module.js` via the `enforce: 'pre'` transform hook. W12
+extends its `SHADER_CHUNKS_TO_EMPTY` list with ten new entries:
+
+```
+shadowmap_pars_fragment
+shadowmap_pars_vertex
+shadowmap_vertex
+shadowmask_pars_fragment
+envmap_fragment
+envmap_common_pars_fragment
+envmap_pars_fragment
+envmap_pars_vertex
+envmap_physical_pars_fragment
+envmap_vertex
+```
+
+Each chunk's GLSL body is wrapped in either `#ifdef
+USE_SHADOWMAP` or `#ifdef USE_ENVMAP`. Neither macro is ever
+defined by the autotable's renderer (no `renderer.shadowMap.
+enabled`, no `material.envMap`), so the bodies are stripped
+at the GLSL preprocessor stage anyway. Emptying the JS-side
+strings drops the runtime cost of carrying ~10 kB of glsl
+verbatim. `shadowmask_pars_fragment` is the one chunk that
+defines a function (`getShadowMask()`) referenced outside an
+`#ifdef`; the only call site is the W9-stripped `shadow_frag`
+shader, so the empty chunk's runtime use is zero.
+
+The new `stripUnusedUniformsLib()` plugin walks the
+`UniformsLib = { ... }` registry at the same `enforce: 'pre'`
+phase and rewrites the five W9-stubbed-material entries to
+empty object literals. ShaderLib's `mergeUniforms([
+UniformsLib.roughnessmap, ... ])` calls still resolve (they
+read `{}` instead of the original ~6-line descriptors), and
+the materials that would have consumed those uniforms are
+stubbed anyway.
+
+### Measured savings (K12 build)
+
+| Source pass | Before → After | Δ |
+|-------------|----------------|----|
+| `[module-strip]` (W9 + W10 carried fwd) | 603,380 → 544,127 | −59,253 |
+| `[shaderchunk-strip]` (W11 + W12) | 544,127 → 491,690 | **−52,437 (W12 +50,176 vs. W11)** |
+| `[uniformslib-strip]` (W12 NEW) | 491,690 → 490,745 | **−945** |
+| `[material-strip]` (W9 carried fwd) | 1,401,287 → 1,342,346 | −58,941 |
+| Renderer chunk emitted | — | **448,648 B (≈ 438.13 kiB / 448.65 kB)** |
+
+`dist-size.json:history[wave=K12]` records the new chunk
+sizes. Vasquez's `three-renderer-475-soft.spec.ts` (W11) +
+`three-renderer-480-hard.spec.ts` (W10) both pass with
+healthy margins.
+
+### Risk + back-out
+
+Identical structure to W11: each chunk's empty body is safe
+**only** because the autotable scene never sets the
+corresponding `USE_*` macro. If a future scene introduces
+shadow casting or an envMap-bearing material:
+
+| Trigger | Symptom | Roll-back |
+|---------|---------|-----------|
+| `renderer.shadowMap.enabled = true` | Console error: `'getShadow': undefined function` at WebGL compile time. Black canvas. | Remove `shadowmap_*` + `shadowmask_*` from `SHADER_CHUNKS_TO_EMPTY` in `vite.config.ts`. |
+| `material.envMap = new CubeTexture(...)` or `scene.environment = ...` | Reflections render as flat black. UI keeps rendering — no console error. | Remove `envmap_*` from `SHADER_CHUNKS_TO_EMPTY`. |
+| `new MeshStandardMaterial({ roughnessMap, metalnessMap })` un-stubbed | Console warns from three's uniform-validation pass. Material renders without the affected texture's input. | Remove the offending key from `UNIFORMS_LIB_KEYS_TO_EMPTY` AND un-stub the material class in W9's `STUB_MATERIALS` map. |
+
+The unstripped baseline lives at W11's 466.40 kB; disable the
+W12 entries first (cheap) and only un-stub the W9 material
+classes if the W12 strip alone doesn't fix the regression.
+
+### Trend ledger update
+
+| Wave | Big chunk | Target | Result |
+|------|-----------|--------|--------|
+| W7   | 578.72 kB | <550 kB | ✅      |
+| W8   | 531.86 kB | <540 kB | ✅      |
+| W9   | 507.47 kB | <510 kB | ✅      |
+| W10  | 497.44 kB | <500 kB ✅ / <480 kB ⚠️ | partial |
+| W11  | 466.40 kB | <475 kB | ✅ (stretch met with ~9 kB margin) |
+| W12  | **448.65 kB** | **<450 kB stretch / <460 kB acceptable** | ✅ (stretch met with ~1.4 kB margin) |
+
+Monotonic-decrease invariant holds for a 7th consecutive wave
+(Vasquez's W7 trend gate). Cumulative drop from W6 baseline:
+**739.72 kB → 448.65 kB (−39.4 %)** over six waves.
+
+### Hand-off to W13
+
+The big chunk now sits at 448.65 kB. Remaining strip
+candidates (low single-digit kB each):
+
+- **`opaque_fragment` + `colorspace_fragment` + `tonemapping_*`
+  ShaderChunks** (carried fwd from W11 hand-off) — referenced
+  via `#include` from `meshlambert_frag` / `meshbasic_frag`.
+  The autotable scene uses `LinearSRGBColorSpace` and no
+  tone-mapping (default `NoToneMapping`), so the include
+  bodies resolve to pass-through code at GLSL compile time.
+  Stripping the JS-side string drops ~3-5 kB but requires
+  keeping enough of the chunk to satisfy the `#include`
+  resolver — needs care. The W12 envmap + shadow strip is
+  the precedent for this surgery.
+- **Remaining `UniformsLib` features** — `clearcoat`,
+  `iridescence`, `sheen`, `transmission`, `anisotropy`,
+  `dispersion`, `reflectivity-extras` (all PBR-feature
+  specific, all routed through `ShaderLib.physical` which
+  itself is stubbed via the W11 `meshphysical_*` strip).
+  Aggregate ~1-2 kB if all five additional features stripped.
+- **`lights_*` chunks** — the autotable uses `AmbientLight` +
+  `DirectionalLight` only. `lights_phong_*` / `lights_toon_*`
+  / `lights_physical_*` chunks are deadweight (the
+  corresponding materials were W9-stubbed). Each chunk is
+  ~0.5-2 kB.
+
+Combined the W13 candidates above could shave another 4-7 kB.
+The next round-number ceiling is **<445 kB** — feasible with
+one more wave of careful surgery, **<440 kB** would need a
+Phase L step.
+
+A more aggressive Phase L candidate (deferred): hand-roll
+`three/src/*` imports + a custom `WebGLRenderer` wrapper. The
+W6 estimate (–200 to –300 kB total) still stands but the
+engineering cost remains very high — defer until the Phase K
+series closes.

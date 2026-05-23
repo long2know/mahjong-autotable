@@ -100,6 +100,67 @@ export function readFinalsFlagFromUrl(): boolean {
   }
 }
 
+/**
+ * Phase K Wave 12 — Open the replay viewer with a pre-fetched
+ * payload, bypassing the `/api/games/{gameId}/replay` legacy hop.
+ *
+ * Hicks's `?action=replay&replayId=<id>` dispatch (W12) talks to
+ * Bishop's id-addressable `GET /api/replays/{replayId}` endpoint and
+ * already holds the response body when this helper runs — feeding
+ * that JSON through `normalizeServerReplay()` reuses the existing
+ * W7 wire-shape contract without duplicating the normalisation
+ * logic in `action-router.ts`.
+ *
+ * Hand-off contract:
+ *   • `replayId` is the canonical id passed to the launcher (which
+ *     stamps it as `gameId` on the normalised payload, since the
+ *     viewer surface still keys on the legacy `gameId` field).
+ *   • `body` is the raw JSON from Bishop's W12 endpoint.  The Bishop
+ *     wire shape wraps the actual play-by-play in a `payload`
+ *     sub-object alongside metadata fields
+ *     (`replayId`/`gameId`/`completedAt`/`variant`/`turnCount`/
+ *     `ingestedAt`/`expiresAt`).  We unwrap `body.payload` before
+ *     normalisation when present so the `events` + `handHistory`
+ *     arrays land in the same shape `normalizeServerReplay()` already
+ *     consumes for the W7 legacy `/api/games/{gameId}/replay`
+ *     endpoint.  If `body.payload` is absent (caller passed the
+ *     already-unwrapped play-by-play), we fall through to the legacy
+ *     top-level shape — tolerant in both directions.
+ *   • If no launcher has been registered (game-ui.ts hasn't booted
+ *     yet), the call no-ops.  The W12 action-router lazy-imports
+ *     this module on the `?action=replay` boot path, so under
+ *     normal flow the launcher has been wired by the time we land
+ *     here.
+ */
+export function openReplayPayload(
+  replayId: string,
+  body: unknown,
+  options?: { finals?: boolean },
+): void {
+  if (launcher === null || replayId === '') return;
+  const finals = options?.finals === true;
+  const playByPlay = unwrapBishopEnvelope(body);
+  const normalized = normalizeServerReplay(replayId, playByPlay);
+  launcher(normalized, { finals });
+}
+
+/**
+ * Phase K Wave 12 — If `body` is Bishop's `/api/replays/{id}`
+ * envelope (object with a nested `payload` object), return
+ * `body.payload`; otherwise return `body` unchanged.  Lets us
+ * accept both Bishop's W12 shape and the legacy W7 top-level
+ * shape without duplicating the normaliser.
+ */
+function unwrapBishopEnvelope(body: unknown): unknown {
+  if (body === null || typeof body !== 'object') return body;
+  const o = body as Record<string, unknown>;
+  const payload = o.payload;
+  if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
+    return payload;
+  }
+  return body;
+}
+
 function normalizeServerReplay(gameId: string, raw: unknown): ServerReplayResponse {
   const o = (raw !== null && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const events: ServerReplayEvent[] = [];

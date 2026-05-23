@@ -3721,3 +3721,126 @@ Bringup-on commit (W10 close): `0c95748`.
 
 Stephen's standing directive `claude-opus-4.7-xhigh` honoured
 throughout the wave.
+
+## Phase K Wave 12 — Frontend bring-up
+
+Branch: `stlong/phase-k-wave-12-bringup` (off `ee9dba0`, W11 PR
+#57 merged).
+
+### Deliverables (six)
+
+1. **PMREMGenerator-adjacent ShaderChunk strip** (`envmap_*`
+   chunk family x6) — extends W11 `SHADER_CHUNKS_TO_EMPTY`.
+   Bodies wrapped in `#ifdef USE_ENVMAP`; autotable's
+   material set never sets that macro, so the include resolves
+   to dead code at GLSL preprocessor stage. JS-side strings
+   emptied at build time.
+2. **`UniformsLib` unused-entry strip** — new
+   `stripUnusedUniformsLib()` Vite plugin (mirrors the W9
+   `stripModuleFeatures` brace-walker) that empties five
+   W9-stubbed-material keys (`roughnessmap`, `metalnessmap`,
+   `gradientmap`, `points`, `sprite`) to `{}`. ShaderLib
+   references stay valid (UniformsUtils.merge tolerates empty
+   inputs); keys remain enumerable so module load stays sane.
+3. **`shadowmap_*` + `shadowmask_*` ShaderChunk strip** — four
+   more entries added to `SHADER_CHUNKS_TO_EMPTY`. Same
+   pattern: `#ifdef USE_SHADOWMAP` guard never defined.
+   `shadowmask_pars_fragment.getShadowMask()` only called
+   from W9-stripped `shadow_frag` — safe to empty entirely.
+4. **LH13 workflow threshold edit — DEFERRED TO W13.**
+   `gh run list --workflow=pwa-audit.yml` returned 0 nightly
+   cron runs since W11 calibration landed. Deferral reasoning
+   + W13 procedure documented in new
+   `docs/frontend-pwa-audit.md §9`.
+5. **W10 placeholder screenshot copy block removed.** The
+   legacy copy loop in `vite.config.ts:copyStaticAssets` is
+   gone (replaced with a W12 retirement comment). The three
+   `img/screenshot-*.auto.png` source PNGs are `git rm`'d.
+   The W11 manifest never pointed at those paths in any live
+   build.
+6. **`?action=replay&replayId=<guid>` deep-link routing.**
+   `src/action-router.ts` extended with the fourth
+   SUPPORTED_ACTION. Reads the `replayId` co-parameter from
+   `URLSearchParams`, strips BOTH `action` and `replayId`
+   from the URL (refresh-safe), fetches Bishop's W12
+   `GET /api/replays/{replayId}` endpoint, JSON-parses the
+   body, and on success lazy-imports `./replay-launcher` to
+   call the new `openReplayPayload(replayId, body, options?)`
+   export while rewriting the URL to `/replay/{replayId}`.
+   ANY failure (404 / 5xx / network / JSON parse / missing
+   co-param) → `showToast('Replay not found', 'error')`. No
+   fallback to the legacy `/api/games/{gameId}/replay`
+   endpoint.
+
+### Result vs gates
+
+- `three-renderer-big = 448,648 B` (W11: 466,395 → W12 −17,747
+  B / −3.8 %). **Under <450 kB stretch with ~1.4 kB margin.**
+- 7th consecutive monotonic decrease (Vasquez W7 trend gate).
+- TypeScript strict mode passes for `src/`; 3 pre-existing e2e
+  spec errors unchanged.
+
+### Files touched
+
+- `src/frontend/autotable-src/vite.config.ts` (W11 plugin
+  extended + W12 UniformsLib plugin added + W10 placeholder
+  copy block removed)
+- `src/frontend/autotable-src/src/action-router.ts` (W12
+  `'replay'` SUPPORTED_ACTION + dispatchReplay /
+  fetchAndOpenReplay / showReplayNotFoundToast)
+- `src/frontend/autotable-src/src/replay-launcher.ts` (new
+  `openReplayPayload()` export)
+- `src/frontend/autotable-src/dist-size.json` (K12 row
+  appended; `current` field set to `"K12"`)
+- `src/frontend/autotable-src/img/screenshot-{lobby,table,
+  mobile}.auto.png` (deleted)
+- `src/frontend/autotable/*` (rebuilt)
+- `docs/frontend-routing.md` (§2 W12 subsection + §3 table
+  row + §7 reservation list update + §9 hand-off refresh)
+- `docs/frontend-three-budget.md` (§8 W12 subsection)
+- `docs/frontend-pwa-audit.md` (§9 LH13 deferral)
+- `src/frontend/autotable-src/tests/selectors.md` (W12
+  footer)
+- `Phase_K_W12/Hicks/{charter,history}.md` (NEW)
+
+### Trend ledger
+
+| Wave | three-renderer-big | Δ vs prev | Vasquez gate |
+|------|--------------------|-----------|--------------|
+| W11  | 466.40 kB          | −31.04 kB | <475 kB ✅   |
+| W12  | 448.65 kB          | −17.75 kB | <450 kB ✅ (stretch) |
+
+### Open hand-offs to W13
+
+1. `opaque_fragment` + `colorspace_fragment` +
+   `tonemapping_*` ShaderChunk strip (~3-5 kB).
+2. Remaining `UniformsLib` features (clearcoat / iridescence
+   / sheen / transmission / anisotropy / dispersion /
+   reflectivity-extras). Aggregate ~1-2 kB.
+3. `lights_phong_*` / `lights_toon_*` / `lights_physical_*`
+   ShaderChunks (~0.5-2 kB each).
+4. LH13 threshold edit (carried fwd from W12 deferral).
+5. Visual-regression spec for W11 captures (Vasquez).
+6. Bishop W12 `/api/replays/{replayId}` endpoint integration
+   test (Vasquez — Playwright spec
+   `deep-link-action-replay.spec.ts`).
+7. Action-router co-parameter schema layer
+   (`parseCoParams<T>()`) once a fifth keyword lands.
+
+### Identity discipline (as practised)
+
+- Per-command git env:
+  `git -c user.name="Hicks (Frontend)" -c user.email="hicks@squad.mahjong"`.
+- NEVER `git config user.name`.
+- Flock-wrapped at `.work/squad-git-lock` (-w 120).
+- No stash needed for Hicks's lane — Apone's WIP terraform
+  changes left stashed at `stash@{0}` (NOT POPPED).
+- Only lane-allowed paths staged.
+- `Co-authored-by: Copilot
+  <223556219+Copilot@users.noreply.github.com>` trailer
+  included.
+
+### Model
+
+Stephen's standing directive `claude-opus-4.7-xhigh` honoured
+throughout the wave.
