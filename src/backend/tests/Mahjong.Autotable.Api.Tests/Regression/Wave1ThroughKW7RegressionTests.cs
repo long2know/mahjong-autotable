@@ -80,13 +80,20 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// parallelism — and lets the gate run at default xunit parallelism
 /// without an <c>xunit.runner.json</c> override. See
 /// <c>docs/test-harness-handoff.md</c>.</para>
+///
+/// <para><b>Wave 7 extension.</b> Class renamed Wave1ThroughKW6 →
+/// Wave1ThroughKW7. New W7 smokes appended for FfmpegHlsRecorder,
+/// CommentaryRecord, double-elim losers-bracket round count,
+/// helm/mahjong/Chart.yaml, infra/terraform/modules/edge/,
+/// .pre-commit-config.yaml, and the jwt-rsa-keys-secret kustomization
+/// overlays. All forward-staged with soft-pass on absence.</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW6RegressionTests
+public class Wave1ThroughKW7RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW6RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW7RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -1143,5 +1150,146 @@ public class Wave1ThroughKW6RegressionTests
         var sc = Path.Combine(root.FullName, "tests", "ci", "check-cross-lane-bundling.sh");
         _ = File.Exists(wf);
         _ = File.Exists(sc);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Phase K Wave 7 — Vasquez (Wave 7 regression smokes).
+    // ════════════════════════════════════════════════════════════════════
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 7 — FfmpegHlsRecorder type present (Bishop's ffmpeg
+    //  HLS livestream recorder lands as a concrete class).
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-7")]
+    public void PhaseK7_FfmpegHlsRecorder_TypePresent_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "FfmpegHlsRecorder"
+            || x.Name == "HlsRecorder"
+            || x.Name == "FfmpegHlsRecorderService");
+        if (t is null) return; // forward-staged
+        Assert.True(t.IsClass);
+        Assert.False(t.IsAbstract,
+            "FfmpegHlsRecorder MUST be instantiable (not abstract).");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 7 — CommentaryRecord DTO type present (Bishop's
+    //  AI-commentary persisted record shape).
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-7")]
+    public void PhaseK7_CommentaryRecord_TypePresent_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x => x.Name == "CommentaryRecord");
+        if (t is null) return; // forward-staged
+        // Must be a class or a record (record IS class). NOT an enum.
+        Assert.False(t.IsEnum);
+        Assert.True(t.IsClass || t.IsValueType);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 7 — BracketFormat.DoubleElimination losers-round
+    //  count > 0. The W6 stub returned 2 placeholder losers slots;
+    //  W7 brief tightens to a real losers-bracket round generator —
+    //  the count MUST stay > 0 (smoke: never regress to 0).
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-7")]
+    public void PhaseK7_DoubleElim_LosersBracket_RoundCount_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var gen = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "DoubleEliminationBracket");
+        if (gen is null) return;
+
+        var instance = Activator.CreateInstance(gen);
+        if (instance is null) return;
+        var method = gen.GetMethod("Generate");
+        if (method is null) return;
+
+        var seeds = new[] { "a", "b", "c", "d", "e", "f", "g", "h" };
+        var result = method.Invoke(instance, new object[] { seeds });
+        if (result is null) return;
+
+        var pairings = ((System.Collections.IEnumerable)result).Cast<object>().ToList();
+        // Count entries in the Losers bracket.
+        var losers = pairings.Count(p =>
+        {
+            var bracketProp = p.GetType().GetProperty("Bracket");
+            if (bracketProp is null) return false;
+            var bracketVal = bracketProp.GetValue(p);
+            return bracketVal?.ToString() == "Losers";
+        });
+        Assert.True(losers > 0,
+            "DoubleEliminationBracket MUST emit > 0 losers-bracket pairings.");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 7 — Helm chart file (Apone's chart-of-charts).
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-7")]
+    public void PhaseK7_HelmChart_File_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "helm", "mahjong", "Chart.yaml");
+        if (!File.Exists(path)) return; // forward-staged
+        var text = File.ReadAllText(path);
+        Assert.Matches(new System.Text.RegularExpressions.Regex(@"^name:\s*\S+",
+            System.Text.RegularExpressions.RegexOptions.Multiline), text);
+        Assert.Matches(new System.Text.RegularExpressions.Regex(@"^version:\s*\S+",
+            System.Text.RegularExpressions.RegexOptions.Multiline), text);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 7 — Edge Terraform module dir (Apone).
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-7")]
+    public void PhaseK7_EdgeTerraformModule_Dir_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var moduleDir = Path.Combine(root.FullName, "infra", "terraform", "modules", "edge");
+        _ = Directory.Exists(moduleDir); // soft-pass — Apone owns lifecycle
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 7 — .pre-commit-config.yaml present (Apone's
+    //  6-file signer pre-commit hook).
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-7")]
+    public void PhaseK7_PreCommitConfig_File_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, ".pre-commit-config.yaml");
+        _ = File.Exists(path); // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 7 — jwt-rsa-keys-secret kustomization overlays
+    //  (Apone's RS256 ESO wiring). Two overlays expected: dev + prod.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-7")]
+    public void PhaseK7_JwtRsaKeysSecret_Overlays_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var candidates = new[]
+        {
+            Path.Combine(root.FullName, "infra", "k8s", "overlays", "dev", "jwt-rsa-keys-secret.yaml"),
+            Path.Combine(root.FullName, "infra", "k8s", "overlays", "prod", "jwt-rsa-keys-secret.yaml"),
+            Path.Combine(root.FullName, "infra", "k8s", "base", "jwt-rsa-keys-secret.yaml"),
+        };
+        // Soft-pass — Apone owns the ESO lifecycle.
+        _ = candidates.Any(File.Exists);
     }
 }

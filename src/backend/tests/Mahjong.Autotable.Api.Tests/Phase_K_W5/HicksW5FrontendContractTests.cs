@@ -99,8 +99,42 @@ public class HicksW5FrontendContractTests
 
         // Hard-pin: exported mount function name.
         Assert.Matches(@"export\s+(?:async\s+)?function\s+mountThreeRenderer\b", text);
-        // Hard-pin: three.js IS statically imported here (this is the lazy chunk).
-        Assert.Matches(@"import\s+[^;]*\s+from\s+['""]three['""]", text);
+
+        // Hard-pin: three.js IS statically imported somewhere on the
+        // three-renderer chunk (W5 contract).
+        //
+        // Wave 7 (Vasquez): the bundler swap allows Hicks to peel
+        // the static three import OUT of the top-level
+        // three-renderer.ts and INTO a sibling module under
+        // src/render/. The chunk graph is still three-anchored — the
+        // import just lives one hop deeper. Tolerate either layout:
+        // direct import in three-renderer.ts OR a static
+        // `from 'three'` in any sibling module under src/render/ or
+        // src/renderer/.
+        var directImport = Regex.IsMatch(text,
+            @"^\s*import\s+[^;]*\s+from\s+['""]three['""]",
+            RegexOptions.Multiline);
+        if (directImport) return;
+
+        var renderDirs = new[]
+        {
+            Path.Combine(FrontendSrc(root), "render"),
+            Path.Combine(FrontendSrc(root), "renderer"),
+        };
+        var hasSiblingImport = renderDirs
+            .Where(Directory.Exists)
+            .SelectMany(d => Directory.EnumerateFiles(d, "*.ts", SearchOption.AllDirectories))
+            .Any(f =>
+            {
+                var t = File.ReadAllText(f);
+                return Regex.IsMatch(t,
+                    @"^\s*import\s+[^;]*\s+from\s+['""]three['""]",
+                    RegexOptions.Multiline);
+            });
+
+        Assert.True(hasSiblingImport,
+            "three-renderer chunk MUST statically import 'three' "
+            + "(directly OR via a sibling under src/render or src/renderer).");
     }
 
     // ────────────────────────────────────────────────────────────────────
