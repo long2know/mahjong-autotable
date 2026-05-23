@@ -88,3 +88,20 @@ repos:
         # drift introduced via partial commits.
         always_run: true
         pass_filenames: false
+      - id: cross-file-invariants
+        name: cross-file invariants — JwtRsaKeys binding (W9 — Apone)
+        description: >-
+          Verifies cross-file lock-step bindings beyond the signer-
+          identity regex. W9 covers the JwtRsaKeys ↔ ESO Secret
+          name + SSM path + env-var prefix lock-step across helm
+          values, kustomize ESO manifests, the subchart default,
+          and the rotation docs. See
+          docs/signer-identity-invariant.md §6 "Other invariants
+          audited" for the full audit + extensibility notes.
+        # `--skip-signer-identity` because the previous hook
+        # already ran the signer-identity check; running it twice
+        # in the same hook batch is wasted work.
+        entry: python3 scripts/check_invariants.py --skip-signer-identity
+        language: system
+        always_run: true
+        pass_filenames: false

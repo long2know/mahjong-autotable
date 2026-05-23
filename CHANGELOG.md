@@ -19,8 +19,226 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-8-bringup`. Phase K Wave 8
+Working branch: `stlong/phase-k-wave-9-bringup`. Phase K Wave 9
 in flight. Other lane deliverables outstanding.
+
+## [0.18.0] — Phase K Wave 9 — 2026-07-23 (PR pending)
+
+**Theme:** Production canary retarget (single W8 AnalysisTemplate
+→ three independent gates: success-rate + p99-latency + error-
+budget burn rate) + mobile production-hotfix workflow (separate
+two-reviewer env-gate, bypasses External-Testing with audit-trail
+guarantees) + cross-file invariant audit (`scripts/check_invariants.py`
+gates the JwtRsaKeys ↔ ESO Secret name + SSM path + env-var
+prefix lock-step across 7 surfaces) + YAML symbolic anchors in
+the values overlays (centralise per-env scalars under
+`x-anchors:` so a hostname change touches one line) +
+rebase-inside-flock pattern (W10 squad-git-lock cutover plan +
+canonical commit pattern) + retro 2026-07 W9 entries.
+
+### Added (Phase K Wave 9 — PR pending)
+- **`.github/workflows/mobile-production-hotfix.yml` — mobile
+    production-hotfix workflow.** New workflow triggered by
+    `mobile-hotfix-v*.*.*` tag-push or `workflow_dispatch` on
+    `main` with mandatory `hotfix_reason` input. Bypasses the W8
+    External-Testing soak window (operator action: this is the
+    "skip 7-day soak" escape hatch for security / revenue-impacting
+    bugs). Gated by **`release-channel-production-hotfix` GitHub
+    Environment with 2 required reviewers** (vs the routine
+    workflow's 1) — the second pair of eyes is on the
+    decision-to-skip-soak, not just on the output. Validates the
+    supplied `internal_tag` exists and matches the workflow's
+    checkout SHA, so a hotfix cannot originate from a build that
+    never landed in Internal Testing. Emits three durable
+    audit-trail markers per run: a `::warning::` log line, a
+    `step-summary` banner with the hotfix reason, and a Slack
+    notification on `#mobile-releases` with the reason verbatim.
+    Defaults to **full Android rollout (1.0 / `status: completed`)**
+    rather than staged — a hotfix worth skipping soak is worth
+    fully replacing the broken build immediately; operator can
+    override via `android_rollout_fraction` input. iOS submits
+    with `automatic_release=true`; operator requests Expedited
+    Review out-of-band via App Store Connect (no public API).
+    Doc: `docs/mobile-release.md` §7.2 "Hotfix path" with full
+    when-to-use guidance table. (Apone)
+- **`helm/mahjong/templates/canary-deployment.yaml` — three-gate
+    production canary retarget.** Refactored the W8 single
+    AnalysisTemplate (`success-rate`) into **three independent
+    AnalysisTemplates** rendered conditionally based on
+    `canary.analyses.<name>.enabled` flags. The Rollout's
+    analysis step references all enabled templates; ANY single
+    failure aborts the rollout. New templates: (1)
+    `…-canary-success-rate` (default threshold ≥ 99% non-5xx),
+    (2) `…-canary-p99-latency` (default ≤ 500 ms via
+    `histogram_quantile(0.99, ...) * 1000`), (3)
+    `…-canary-error-budget` (default < 14.4 burn-rate — Google
+    SRE 2%/1h fast-burn alert threshold against
+    `sloErrorRate: 0.01`). Default window is 5m (count=10 × 30s
+    interval), `failureLimit: 1`. Wave annotation bumped to
+    `phase-k-wave-9`. Helm-templating fix: `$.Values.canary.analyses.*`
+    inside the `range $i, $step := .Values.canary.steps` block
+    (dot context is the step inside the range; `$` reaches
+    chart root). (Apone)
+- **`helm/mahjong/values.yaml` — `canary.analyses.*` config
+    surface.** New `canary.analyses.{successRate,p99Latency,
+    errorBudget}` blocks with per-template `enabled` /
+    `interval` / `count` / `threshold` / `failureLimit` /
+    `metric` / `window` keys. Legacy `canary.analysis` block
+    kept (marked superseded; safe to remove in W10+ once the
+    surface has soaked). `metricEndpoint` example updated to
+    `prometheus.monitoring.svc.cluster.local:9090` (the canonical
+    in-cluster Prometheus Service:port; W8 referenced
+    `prometheus-server.monitoring.svc.cluster.local:80` from a
+    different kube-prometheus-stack release). (Apone)
+- **`helm/mahjong/values-prod.yaml` — prod canary overlay.**
+    New top-level `canary:` block: `enabled: false` (operator
+    flips per release; staying `false` in the overlay means a
+    routine `helm upgrade` does NOT silently enable canary mode),
+    `metricEndpoint: *prod-prometheus` (the anchor — see
+    YAML-anchor refactor below), `analyses.successRate.threshold:
+    0.99`, `analyses.p99Latency.threshold: 500`,
+    `analyses.errorBudget.threshold: 14.4`,
+    `analyses.errorBudget.sloErrorRate: 0.01` (99% availability
+    SLO). All three templates use count=10 × 30s = 5m windows.
+    (Apone)
+- **`helm/mahjong/values-{staging,prod}.yaml` — YAML symbolic
+    anchors.** Added top-level `x-anchors:` block to each overlay
+    declaring `&{env}-host`, `&{env}-tls-secret`,
+    `&{env}-env-name`, `&{env}-cors-origin`; prod additionally
+    declares `&prod-prometheus`. Every consumer (ingress hosts,
+    ingress TLS, ASPNETCORE_ENVIRONMENT, CORS allowed origins,
+    canary metric endpoint) now references the anchor via
+    `*name`. Helm ignores the `x-anchors:` top-level key (`x-*`
+    is the de-facto "ignored extension" convention from OpenAPI
+    / docker-compose / GitHub Actions); the chart-of-charts
+    merge accepts it without rendering. Doc cross-references in
+    the values-file docstring switched from numeric (`§3.5`) to
+    symbolic (`§canary-analysis`, `§parity-matrix`,
+    `§yaml-anchor-pattern`, `§subchart-toggles`); the doc adds
+    matching `<a name="...">` anchors so renumbering doesn't
+    break the references. Pattern + when-not-to-use + verification
+    documented in `docs/helm-charts.md §6 "YAML anchor pattern
+    in values files"`. (Apone)
+- **`scripts/check_invariants.py` — cross-file invariant audit.**
+    Generalises the W7 `check_signer_identity.py` pattern to
+    OTHER cross-file lock-step bindings. W9 ships one new
+    binding: **JwtRsaKeys ↔ ESO Secret name + SSM path + env-var
+    prefix**. Audits 7 surfaces (`infra/k8s/overlays/{prod,staging}/jwt-rsa-keys-secret.yaml`,
+    `helm/mahjong/values.yaml`, `helm/mahjong/values-prod.yaml`,
+    `helm/mahjong/values-staging.yaml`,
+    `helm/mahjong/charts/mahjong-api/values.yaml`,
+    `docs/jwt-rotation.md`) and asserts: `target.name:
+    mahjong-jwt-rsa-keys` (prod) / `…-staging` (staging), 3
+    `auth__jwtrsakeys__{0,1,2}` env-var slot definitions per
+    overlay, 3 SSM `/mahjong/{env}/auth/jwt/rsa-{active,previous,
+    archive}` references per overlay, ≥ 1 helm
+    `externalSecrets[]` entry per values file, doc references
+    cover all three SSM slots and all three env-var slots.
+    Re-runs `scripts/check_signer_identity.py` as a subprocess
+    so a single pre-commit hook covers BOTH invariant scripts
+    (developer doesn't manage two hook entries). New `Invariant`
+    constants extend the audit without touching the runner —
+    onboarding doc: `docs/signer-identity-invariant.md §6
+    "Other invariants audited"`. (Apone)
+- **`.pre-commit-config.yaml` — `cross-file-invariants` hook
+    entry.** Adds the new `check_invariants.py` script with
+    `--skip-signer-identity` flag (the previous hook already
+    runs that check). `always_run: true` + `pass_filenames:
+    false` per the W7 convention — the hook checks the full
+    surface set on EVERY commit because `files:`-scoped checks
+    miss drift introduced via partial commits. (Apone)
+- **`.gitignore` — `.work/*` + `!.work/.gitkeep`.** The `.work/`
+    directory becomes the squad's canonical session-scratch
+    area in W10+ (squad-git-lock location, helm-render outputs,
+    per-agent backup copies). Everything under `.work/` is
+    ignored EXCEPT `.work/.gitkeep`, which guarantees the
+    directory exists on a fresh clone so `flock 9>.work/squad-git-lock`
+    and `helm template ... > .work/...` don't fail on a missing
+    parent. (Apone)
+- **`.work/.gitkeep` — directory placeholder.** Empty file
+    tracked by git solely to materialise the `.work/` directory
+    on clone. Paired with the `.gitignore` `!.work/.gitkeep`
+    negation. (Apone)
+- **`docs/agent-handoff-protocol.md` §3.6, §3.7 — lock-file
+    relocation + rebase-inside-flock.** New §3.6 documents the
+    `/tmp/squad-git-lock` → `.work/squad-git-lock` cutover plan:
+    W9 keeps `/tmp/` (mid-wave migration would defeat the mutex);
+    W10+ canonical is `.work/`. Lists the three problems with
+    `/tmp/`: ephemeral wipe, world-writable shared with non-squad
+    processes, runtime hard-prohibition on writes under `/tmp/`.
+    New §3.7 documents the canonical commit pattern with `git
+    fetch origin <branch>` + `git rebase origin/<branch>` INSIDE
+    the flock critical section, so a non-squad push or a
+    pre-flock push that landed between our last fetch and our
+    commit doesn't cause a non-fast-forward rejection. Conflict
+    semantics: `git rebase --abort` + bail-out without pushing
+    — operator escalation is the correct path (cross-lane
+    shared-file edits are rare and a process-violation signal).
+    (Apone)
+- **`docs/helm-charts.md` §3.5 "AnalysisTemplate gates" (new),
+    §6 "YAML anchor pattern" (new).** §3.5 details the W9 three-
+    gate retarget: PromQL for each template, default thresholds
+    + interpretation, tuning playbook for operators (when to
+    increase window vs failureLimit, how to disable a single
+    template). Adds `<a name="canary-analysis">` HTML anchor.
+    §6 documents the `x-anchors:` YAML-anchor convention
+    introduced in `values-{staging,prod}.yaml`, with anchor
+    pattern, when-NOT-to-use list, and PyYAML + helm-template
+    verification commands. Adds `<a name="yaml-anchor-pattern">`,
+    `<a name="parity-matrix">`, `<a name="subchart-toggles">`
+    HTML anchors for the symbolic doc cross-references. Renumbers
+    §3.5–§3.6 → §3.6–§3.7 and §6–§8 → §7–§9 (W8 convention:
+    insert + renumber, never co-locate). (Apone)
+- **`docs/mobile-release.md` §7.2 "Hotfix path" (new).** Full
+    runbook for the W9 production-hotfix workflow: triggers
+    (tag namespace `mobile-hotfix-v*.*.*`), the 2-reviewer env
+    setup, audit-trail guarantees (warning log + step-summary
+    banner + Slack), Internal-tag validation, default
+    rollout posture (100% Android, automatic_release iOS), and
+    a when-to-use decision table (RCE / >1% crash / revenue-
+    blocking = yes; UX paper-cut / <1% crash = no; subscription
+    pricing = judgement call). Renumbers §7.2 → §7.3 through
+    §7.8 → §7.9. (Apone)
+- **`docs/signer-identity-invariant.md` §6 "Other invariants
+    audited" (new).** Documents the W9 audit pattern + the new
+    JwtRsaKeys binding: rationale (RS256 fallback analogue of
+    the W5 HS256 drift incident), the 7 surfaces, the two
+    assertion modes (exact-value vs min-count), the wiring (the
+    `--skip-signer-identity` wrapper), and the extension recipe
+    for adding future invariants. Renumbers §6 → §7. (Apone)
+
+### Changed (Phase K Wave 9 — PR pending)
+- **Default canary `metricEndpoint`** (`helm/mahjong/values.yaml`)
+    updated from `prometheus-server.monitoring.svc.cluster.local:80`
+    to `prometheus.monitoring.svc.cluster.local:9090` to match
+    the canonical kube-prometheus-stack `Service` name +
+    Prometheus's default upstream port. The W8 default was correct
+    for `helm install … prometheus-community/prometheus` but
+    not for `kube-prometheus-stack`; the W9 default is the union
+    of "what production actually runs" + Prometheus's canonical
+    9090 port. Override via `--set canary.metricEndpoint=...` if
+    a deployment uses a different chart. (Apone)
+- **`canary-deployment.yaml` wave annotation** bumped from
+    `phase-k-wave-8` → `phase-k-wave-9`. (Apone)
+
+### Fixed (Phase K Wave 9 — PR pending)
+- **Lock-file race window between flock-protected pushes**
+    (`docs/agent-handoff-protocol.md §3.7`). The W6/W7/W8 flock
+    pattern serialised the local critical section but did NOT
+    guard against non-fast-forward rejection on push when a
+    sibling agent's push landed during our edit window. The W9
+    pattern adds `git fetch origin + git rebase origin/<branch>`
+    INSIDE the flock so the local tip catches up to the remote
+    before the push. (Apone)
+
+### Squad / process (Phase K Wave 9 — PR pending)
+- **Apone (DevOps).** Production canary retarget (3
+    AnalysisTemplates) + mobile production-hotfix workflow +
+    cross-file invariant audit (JwtRsaKeys binding) + YAML
+    symbolic anchors in values overlays + rebase-inside-flock
+    pattern + retro 2026-07 W9 entries. Lane-discipline:
+    DevOps-only paths (`helm/`, `.github/workflows/`, `scripts/`,
+    `docs/`, `.pre-commit-config.yaml`, `.gitignore`).
 
 ## [0.17.0] — Phase K Wave 8 — 2026-07-09 (PR pending)
 

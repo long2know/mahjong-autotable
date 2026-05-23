@@ -1,4 +1,5 @@
 # Phase K Wave 7 — Apone (DevOps).
+# Phase K Wave 9 — Apone (DevOps). YAML-anchor refactor.
 #
 # Staging overrides for the mahjong umbrella chart. Mirrors
 # `infra/k8s/overlays/staging/kustomization.yaml`.
@@ -8,7 +9,7 @@
 #       -n mahjong-staging --create-namespace \
 #       -f helm/mahjong/values-staging.yaml
 #
-# Parity with the Kustomize overlay (see docs/helm-charts.md §5):
+# Parity with the Kustomize overlay (see docs/helm-charts.md §parity-matrix):
 #
 #   * single replica (cheap soak)
 #   * staging.mahjong.example.com host
@@ -16,13 +17,30 @@
 #   * ASPNETCORE_ENVIRONMENT=Staging
 #   * optional in-cluster Postgres (disabled by default; flip on
 #     when the cost of an RDS staging instance is unjustified)
+#
+# Wave 9 convention: cross-reference to other docs/chart sections
+# uses symbolic anchor names (§parity-matrix, §canary-analysis,
+# §yaml-anchor-pattern) NOT numeric section IDs — see
+# `docs/helm-charts.md §yaml-anchor-pattern`.
+
+# ── Anchor library (Phase K Wave 9 — Apone) ──────────────────────
+#
+# Lock-step values shared between sub-blocks live as YAML anchors
+# at the top of the file. Helm ignores `x-*` top-level keys; the
+# anchors propagate via `*name` references below. When a value
+# changes, the anchor changes and every consumer updates atomically.
+x-anchors:
+  staging-host: &staging-host "staging.mahjong.example.com"
+  staging-tls-secret: &staging-tls-secret "mahjong-autotable-staging-tls"
+  staging-env-name: &staging-env-name "Staging"
+  staging-cors-origin: &staging-cors-origin "https://staging.mahjong.example.com"
 
 api:
   replicaCount: 1
 
   ingress:
-    host: staging.mahjong.example.com
-    tlsSecretName: mahjong-autotable-staging-tls
+    host: *staging-host
+    tlsSecretName: *staging-tls-secret
 
   hsts:
     enabled: false  # staging does NOT preload (test surface)
@@ -32,8 +50,8 @@ api:
 
   configMap:
     extra:
-      ASPNETCORE_ENVIRONMENT: "Staging"
-      Cors__AllowedOrigins__0: "https://staging.mahjong.example.com"
+      ASPNETCORE_ENVIRONMENT: *staging-env-name
+      Cors__AllowedOrigins__0: *staging-cors-origin
 
   externalSecrets:
     - name: mahjong-autotable
@@ -56,7 +74,7 @@ coturn:
   # the operator wants WebRTC voice in soak. Default OFF in
   # staging — flip on when needed.
   enabled: false
-  realm: "staging.mahjong.example.com"
+  realm: *staging-host
 
 postgresSidecar:
   enabled: false  # operator-driven flip when in-cluster PG is preferred
