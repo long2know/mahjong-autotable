@@ -53,7 +53,7 @@
 ## Phase J Wave 4 — Docker CI publish + nightly smoke (2026-05-22)
 
 **Commits authored:**
-- `<filled-in-after-commit>` — `ci: Phase J Wave 4 — Docker build + ghcr.io publish + nightly smoke`
+- `232d7db` — `ci: Phase J Wave 4 — Docker build + ghcr.io publish + nightly smoke`
 
 **What shipped:**
 - `.github/workflows/docker-build.yml` (NEW) — push-to-`main` + tag + `workflow_dispatch` build that pushes `ghcr.io/long2know/mahjong-autotable:{latest,sha-<sha>,<tag-when-tag-push>}` via `docker/build-push-action@v6`. Uses `docker/setup-buildx-action@v3` + `docker/login-action@v3` (auto `GITHUB_TOKEN`, no PAT) + `docker/metadata-action@v5` for dynamic tag set + GHA cache (`type=gha,mode=max`) for layer reuse. Permissions `contents: read, packages: write`. The `latest` tag is gated to `main` so a dispatch from a feature branch can't clobber prod.
