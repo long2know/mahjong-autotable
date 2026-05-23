@@ -444,8 +444,22 @@
          overrides: bot strength, hand count, auto-deal.  Persists via
          localStorage keyed by gameId so each game keeps its own settings.
          The values flow into the new-game URL on Apply / New Game. -->
-    <button id="settings-toggle" type="button" title="Settings">
-        <span class="settings-toggle-icon">⚙</span>
+    <button id="settings-toggle" type="button" title="Per-game settings"
+            aria-label="Open per-game settings">
+        <span class="settings-toggle-icon" aria-hidden="true">⚙</span>
+    </button>
+
+    <!-- Phase J Wave 7 — App-wide settings button.  Sits next to the
+         per-game settings gear and opens the tabbed app settings drawer
+         below.  Keeps the existing Wave-2 gear untouched. -->
+    <button id="settings-button" type="button" title="Settings"
+            data-testid="settings-button"
+            aria-label="Open settings drawer"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls="settings-drawer-v2">
+        <span class="settings-button-icon" aria-hidden="true">⚙</span>
+        <span class="sr-only">Settings</span>
     </button>
 
     <!-- Phase J Wave 2 — Connection banner (top-center).  Surfaces the
@@ -551,6 +565,134 @@
         </div>
     </aside>
 
+    <!-- Phase J Wave 7 — App-wide settings drawer (V2).  Tabbed surface
+         exposing General / Audio / Display / Network preferences.
+         Persists to localStorage under `mahjong.settings.v1` (single
+         JSON blob). -->
+    <aside id="settings-drawer-v2" class="settings-drawer-v2"
+           role="dialog" aria-label="Application settings"
+           aria-modal="false" aria-hidden="true"
+           data-testid="settings-drawer">
+        <div class="settings-drawer-v2-header">
+            <h3 class="settings-drawer-v2-title">⚙ Settings</h3>
+            <button id="settings-close-v2" type="button"
+                    class="settings-drawer-v2-close"
+                    data-testid="settings-close"
+                    aria-label="Close settings">×</button>
+        </div>
+        <div class="settings-drawer-v2-tabs"
+             id="settings-drawer-v2-tabs"
+             role="tablist"
+             aria-label="Settings sections"></div>
+        <div class="settings-drawer-v2-panels"
+             id="settings-drawer-v2-panels"></div>
+        <div class="settings-drawer-v2-footer">
+            <small class="settings-saved-note-v2"
+                   id="settings-saved-note-v2"
+                   role="status" aria-live="polite"
+                   style="display: none;">Saved ✓</small>
+            <button id="settings-reset" type="button"
+                    class="btn btn-secondary btn-sm"
+                    data-testid="settings-reset">
+                Reset
+            </button>
+            <button id="settings-save" type="button"
+                    class="btn btn-warning btn-sm"
+                    data-testid="settings-save">
+                Save
+            </button>
+        </div>
+    </aside>
+
+    <!-- Phase J Wave 7 — Player profile page.  Full overlay surfaced
+         from the lobby chip; shows stats grid + recent games + editable
+         display name / avatar colour. -->
+    <div id="profile-page" class="profile-page"
+         role="dialog" aria-label="Player profile"
+         aria-modal="true" aria-hidden="true"
+         data-testid="profile-page">
+        <div class="profile-page-shell">
+            <header class="profile-page-header">
+                <div class="profile-page-identity">
+                    <div id="profile-page-avatar"
+                         class="profile-page-avatar"
+                         aria-hidden="true">?</div>
+                    <div class="profile-page-identity-text">
+                        <h2 id="profile-page-name" class="profile-page-name">
+                            Guest
+                        </h2>
+                        <small id="profile-page-member-since"
+                               class="profile-page-member-since">
+                            New member
+                        </small>
+                    </div>
+                </div>
+                <button id="profile-page-close" type="button"
+                        class="profile-page-close"
+                        data-testid="profile-page-close"
+                        aria-label="Close profile">×</button>
+            </header>
+
+            <section class="profile-page-section"
+                     aria-labelledby="profile-page-stats-heading">
+                <h3 id="profile-page-stats-heading"
+                    class="profile-page-section-title">Career stats</h3>
+                <div id="profile-stats-grid"
+                     class="profile-stats-grid"
+                     data-testid="profile-stats-grid"></div>
+            </section>
+
+            <section class="profile-page-section"
+                     aria-labelledby="profile-page-edit-heading">
+                <h3 id="profile-page-edit-heading"
+                    class="profile-page-section-title">Profile</h3>
+                <label class="profile-page-field">
+                    <span class="profile-page-field-label">Display name</span>
+                    <input id="profile-page-display-name-input"
+                           class="profile-page-input"
+                           data-testid="profile-page-display-name-input"
+                           type="text" maxlength="32"
+                           autocomplete="off" spellcheck="false">
+                    <span id="profile-page-display-name-error"
+                          class="profile-page-error"
+                          aria-live="polite"></span>
+                </label>
+                <div class="profile-page-field">
+                    <span class="profile-page-field-label">Avatar colour</span>
+                    <div id="profile-page-color-presets"
+                         class="profile-page-color-presets"
+                         role="radiogroup"
+                         aria-label="Avatar colour presets"></div>
+                    <label class="profile-page-color-custom-row">
+                        <span>Custom colour</span>
+                        <input id="profile-page-color-custom"
+                               class="profile-page-color-custom"
+                               data-testid="profile-page-color-custom"
+                               type="color" value="#2980b9">
+                    </label>
+                </div>
+            </section>
+
+            <section class="profile-page-section"
+                     aria-labelledby="profile-page-recent-heading">
+                <h3 id="profile-page-recent-heading"
+                    class="profile-page-section-title">Recent games</h3>
+                <div id="profile-recent-games-error"
+                     class="profile-recent-error"
+                     aria-live="polite"
+                     style="display: none;"></div>
+                <div id="profile-recent-games-loading"
+                     class="profile-recent-loading"
+                     aria-live="polite"
+                     style="display: none;">Loading recent games…</div>
+                <div id="profile-recent-games"
+                     class="profile-recent-games"
+                     data-testid="profile-recent-games"
+                     role="list"></div>
+            </section>
+        </div>
+    </div>
+
     <!-- Phase J Wave 2 — End-of-game summary modal.  Rendered when the
          runtime pushes `gameComplete["current"].isComplete = true` after
          the final hand of the match.  Shows per-seat totals plus a hand-
@@ -623,19 +765,27 @@
          modal's "View Replay" button.  2D top-down layout: hand selector
          on the left, per-seat tile zones on the right, timeline scrubber
          + play/step controls along the bottom.  All children are
-         populated by Replay.open() in src/replay.ts. -->
+         populated by Replay.open() in src/replay.ts.
+         Phase J Wave 7 — added prev-hand / next-hand buttons, a speed
+         dropdown (0.5x / 1x / 2x / 4x), and a discrete event counter
+         exposed via data-testid="replay-event-counter". -->
     <div id="replay-screen" class="replay-screen" role="dialog"
-         aria-label="Hand replay" aria-hidden="true"
-         data-testid="replay-screen">
-        <div class="replay-shell">
+         aria-label="Hand replay" aria-modal="true" aria-hidden="true"
+         data-testid="replay-screen"
+         tabindex="-1">
+        <div class="replay-shell" data-testid="replay-viewer">
             <div class="replay-header">
                 <h3 class="replay-title">🎞 Hand Replay</h3>
                 <div class="replay-header-actions">
+                    <span id="replay-source-label"
+                          class="replay-source-label"
+                          aria-live="polite"></span>
                     <label for="replay-hand-selector" class="replay-selector-label">
                         Hand
                     </label>
                     <select id="replay-hand-selector"
-                            class="dark-select form-control form-control-sm">
+                            class="dark-select form-control form-control-sm"
+                            aria-label="Select hand to replay">
                     </select>
                     <button id="replay-close" type="button"
                             class="replay-close-btn"
@@ -646,32 +796,63 @@
             </div>
             <div class="replay-body">
                 <div class="replay-board-pane">
-                    <div id="replay-board" class="replay-board"></div>
+                    <div id="replay-board" class="replay-board"
+                         role="region" aria-label="Replay table state"
+                         aria-live="polite"></div>
                 </div>
-                <aside class="replay-side-pane">
+                <aside class="replay-side-pane"
+                       aria-label="Replay move log">
                     <h4 class="replay-side-title">Move log</h4>
                     <div id="replay-move-log" class="replay-move-log"></div>
                 </aside>
             </div>
-            <div class="replay-footer">
+            <div class="replay-footer" role="group"
+                 aria-label="Replay playback controls">
+                <button id="replay-prev" type="button"
+                        class="btn btn-sm btn-secondary"
+                        data-testid="replay-prev"
+                        aria-label="Previous hand"
+                        title="Previous hand">⏮</button>
                 <button id="replay-step-back" type="button"
                         class="btn btn-sm btn-secondary"
                         data-testid="replay-step-back"
-                        aria-label="Step back">⏮</button>
+                        aria-label="Step back one move"
+                        title="Step back">⏪</button>
                 <button id="replay-play" type="button"
                         class="btn btn-sm btn-warning"
                         data-testid="replay-play"
-                        aria-label="Play / pause">▶ Play</button>
+                        aria-label="Play or pause"
+                        aria-pressed="false"
+                        title="Play / pause">▶ Play</button>
                 <button id="replay-step-fwd" type="button"
                         class="btn btn-sm btn-secondary"
                         data-testid="replay-step-fwd"
-                        aria-label="Step forward">⏭</button>
+                        aria-label="Step forward one move"
+                        title="Step forward">⏩</button>
+                <button id="replay-next" type="button"
+                        class="btn btn-sm btn-secondary"
+                        data-testid="replay-next"
+                        aria-label="Next hand"
+                        title="Next hand">⏭</button>
+                <label class="replay-speed-label">
+                    <span class="sr-only">Playback speed</span>
+                    <select id="replay-speed-select"
+                            class="dark-select form-control form-control-sm replay-speed-select"
+                            data-testid="replay-speed-select"
+                            aria-label="Playback speed">
+                    </select>
+                </label>
                 <input id="replay-timeline" type="range"
                        class="replay-timeline"
+                       data-testid="replay-scrubber"
                        min="0" max="0" step="1" value="0"
                        aria-label="Scrub timeline">
                 <span id="replay-timeline-label"
                       class="replay-timeline-label">Move 0 / 0</span>
+                <span id="replay-event-counter"
+                      class="replay-event-counter"
+                      data-testid="replay-event-counter"
+                      aria-live="polite">0 / 0</span>
             </div>
         </div>
     </div>

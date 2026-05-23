@@ -1,0 +1,48 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# Horizontal Pod Autoscaler. CPU + memory dual-metric — CPU dominates under
+# Changsha-game churn (Hudson's load profile), memory grows with active
+# session count. Min 2 replicas matches the Deployment's baseline so a
+# single pod failure during rolling update can't drop us to 1 mid-deploy.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mahjong-autotable
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mahjong-autotable
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+    scaleDown:
+      # Slow scale-down — open WS connections shouldn't be evicted
+      # eagerly; sticky sessions mean an evicted pod terminates active
+      # games. 5-minute stabilization gives operators a chance to react.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60

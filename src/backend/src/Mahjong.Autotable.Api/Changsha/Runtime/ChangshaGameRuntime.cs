@@ -1818,7 +1818,106 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 _logger.LogWarning(ex, "Recording completed-game stats for {GameId} failed.", instance.GameId);
             }
         }
+
+        // Phase J Wave 7 — persist canonical play-by-play snapshot for the
+        // completed game. Single best-effort write into ChangshaGameReplays;
+        // failures are logged + swallowed so a replay-persist hiccup can
+        // never break the game-completion hot path. The upsert keyed on
+        // GameId keeps re-completion idempotent (e.g. a hydrated game that
+        // re-emits GameCompleted simply refreshes its replay row).
+        await PersistReplayAsync(instance, ct);
     }
+
+    /// <summary>
+    /// Phase J Wave 7 — projects <see cref="ChangshaGameState.EventLog"/> to
+    /// the canonical Wave-7 replay wire shape
+    /// <c>{ turn, phase, actor, action, tilesJson, timestampUtc }[]</c>
+    /// and upserts it into <see cref="ChangshaGameReplay"/>. <c>phase</c> is
+    /// the deal/discard/claim/hu bucket derived from the runtime event type;
+    /// <c>actor</c> is the seat index (<c>-1</c> = system); <c>tilesJson</c>
+    /// is a JSON-encoded <c>int[]</c> of the runtime tile ids touched by the
+    /// event (single-element for tile-scoped events, empty array otherwise).
+    /// Bucket mapping is deliberately exhaustive so a new EventType added
+    /// upstream defaults to <c>"Other"</c> rather than dropping out of the
+    /// replay. Best-effort: DB exceptions are logged + swallowed; the
+    /// completion hot path never fails because the replay snapshot couldn't
+    /// be persisted.
+    /// </summary>
+    private async Task PersistReplayAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        try
+        {
+            if (!Guid.TryParse(instance.GameId, out var gameGuid)) return;
+
+            var state = instance.State;
+            var events = new List<object>(state.EventLog.Count);
+            foreach (var evt in state.EventLog)
+            {
+                var tileIds = evt.TileId.HasValue ? new[] { evt.TileId.Value } : Array.Empty<int>();
+                events.Add(new
+                {
+                    turn = evt.TurnNumber,
+                    phase = ReplayPhaseBucket(evt.EventType),
+                    actor = evt.SeatIndex,
+                    action = evt.EventType,
+                    tilesJson = JsonSerializer.Serialize(tileIds, SnapshotJson),
+                    timestampUtc = evt.OccurredUtc,
+                });
+            }
+            var eventsJson = JsonSerializer.Serialize(events, SnapshotJson);
+
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var existing = await db.ChangshaGameReplays.FirstOrDefaultAsync(r => r.GameId == gameGuid, ct);
+            var now = DateTime.UtcNow;
+            if (existing is null)
+            {
+                db.ChangshaGameReplays.Add(new ChangshaGameReplay
+                {
+                    Id = Guid.NewGuid(),
+                    GameId = gameGuid,
+                    CreatedAt = now,
+                    EventsJson = eventsJson,
+                });
+            }
+            else
+            {
+                existing.CreatedAt = now;
+                existing.EventsJson = eventsJson;
+            }
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Persisting replay snapshot for {GameId} failed.", instance.GameId);
+        }
+    }
+
+    /// <summary>
+    /// Phase J Wave 7 — bucketises a runtime <c>EventType</c> string into
+    /// the Wave-7 replay <c>phase</c> wire vocabulary. Buckets follow the
+    /// Hicks-facing taxonomy in the inbox memo: <c>Setup</c> (game lifecycle),
+    /// <c>Deal</c> (wall/draw/dealing), <c>Discard</c>, <c>Claim</c> (pung /
+    /// kong / chow / pass / added-kong), <c>Hu</c> (win / draw-hand / scoring
+    /// / false-hu). Unknown types fall back to <c>"Other"</c> rather than
+    /// disappearing — keeps the replay surface forward-compatible with
+    /// future state-machine event additions.
+    ///
+    /// <para>Public so Vasquez's contract suite can pin every documented
+    /// runtime event type against the bucket taxonomy without having to
+    /// thread <c>InternalsVisibleTo</c>.</para>
+    /// </summary>
+    public static string ReplayPhaseBucket(string eventType) => eventType switch
+    {
+        "game-created" or "game-started" or "banker-rotated" => "Setup",
+        "dice-rolled" or "manual-deal-begun" or "tiles-dealt" or "tiles-picked-up"
+            or "tile-drawn" or "kong-replacement-drawn" or "wall-exhausted" => "Deal",
+        "tile-discarded" => "Discard",
+        "claim-window-open" or "claim-resolved" or "claim-passed"
+            or "concealed-kong" or "added-kong-declared" or "added-kong" => "Claim",
+        "win-declared" or "scoring-complete" or "draw-hand" or "false-hu-penalty" => "Hu",
+        _ => "Other",
+    };
 
     private static object BuildGameSummary(ChangshaGameInstance instance) => new
     {

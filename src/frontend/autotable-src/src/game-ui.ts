@@ -3,6 +3,7 @@ import { Client, GameCompleteEntry } from "./client";
 import { readSpectatorFromUrl } from './client-ui';
 import { Sound } from './sound';
 import { Replay } from './replay';
+import { openReplayForGame } from './replay-launcher';
 import { World } from "./world";
 import {
   DealType,
@@ -370,6 +371,20 @@ function parseUrlParams(): PhaseFParams {
   }
 
   return out;
+}
+
+// Phase J Wave 7 — Extract `?gameId=...` from the current location so
+// the post-game modal's "View Replay" button can fetch the server-side
+// replay endpoint when available.  Returns null when absent.
+function readGameIdFromLocation(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const gid = params.get('gameId');
+    if (gid !== null && gid.trim().length > 0) return gid.trim();
+  } catch {
+    // ignore — non-browser test contexts
+  }
+  return null;
 }
 
 function readLocalStorage(): PhaseFParams {
@@ -1852,9 +1867,19 @@ export class GameUi {
     // Phase J Wave 3 — "View Replay" hands the captured tile-move log
     // (+ the runtime's handHistory when present) to the Replay viewer
     // and slides the replay screen open.
+    // Phase J Wave 7 — prefer the server replay endpoint when a gameId
+    // is available in the URL.  The launcher falls back to an empty
+    // payload on 404 so the shell still renders.
     if (this.elements.gameCompleteReplayBtn) {
       this.elements.gameCompleteReplayBtn.onclick = () => {
         this.dismissGameCompleteModal();
+        const gameId = readGameIdFromLocation();
+        if (gameId !== null) {
+          // Fire-and-forget; the launcher dispatches into Replay.openServer
+          // (or Replay.open with an empty payload on failure).
+          void openReplayForGame(gameId);
+          return;
+        }
         const serverHistory =
           this.lastGameCompletePayload?.handHistory
           ?? this.lastGameCompletePayload?.HandHistory;

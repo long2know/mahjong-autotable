@@ -3060,4 +3060,49 @@ Both files remain `.gitignored` so future Scribes can re-fold them if needed; th
 
 ---
 
+## Phase J — Wave 7 — 2b00b0b..ca4ae14 (2026-05-22)
+
+### Outcomes
+- Bishop: GET /api/games/{id}/replay endpoint + ChangshaGameReplay EF entity + extended /health JSON (+ ?simple=1 back-compat) + AvatarColor default → palette member (#c0392b)
+- Hicks: Replay viewer wired to server endpoint + accessibility sweep + tabbed settings drawer + player profile page (~1300 LOC new TS)
+- Apone: Multi-provider EF Core (Sqlite/Postgres/SqlServer) + k8s Kustomize tree (base+staging+prod) + backup/restore scripts (sqlite+postgres) + non-root container + db-providers.yml CI workflow
+- Vasquez: 98 new facts — replay endpoint, /health JSON, palette, persistence/providers, container/k8s sanity, 3 negative paths, 4 Playwright specs (a11y, replay-viewer, settings-drawer, profile-page) + selectors.md update
+
+### Wire surface additions
+- REST: GET /api/games/{id}/replay (rate-limited), GET /health JSON shape (+ ?simple=1 legacy fallback)
+- EF: ChangshaGameReplay entity with Sqlite/Postgres/SqlServer migrations
+- Config: Persistence:Provider="Sqlite"|"Postgres"|"SqlServer" (env: Persistence__Provider)
+- K8s: infra/k8s/{base,overlays/staging,overlays/prod} Kustomize tree
+- Container: USER 1000 + HEALTHCHECK
+- DOM testids: 25 new (11 replay viewer + 8 settings drawer + 7 profile page) — selectors.md updated
+- Playwright specs: a11y, replay-viewer, settings-drawer, profile-page
+- LS: mahjong.settings.v1 (single JSON blob for all settings tabs)
+
+### Tech-debt + follow-ups
+- Pre-existing Wave-1 HotSeatSwap race flake (Apone observed; still pre-existing, passes in isolation)
+- Postgres+SqlServer migrations exist but tests use SQLite only in-process (matrix CI in db-providers.yml covers Postgres in service container)
+- Spec doc bumped v1.2 → v1.3 (6 Big Wins moved out of "deferred to V2")
+
+### Standing directives still pinned (4th wave consecutive)
+- No-pauses (`.squad/decisions/inbox/copilot-directive-20260522-no-pauses.md`)
+- Opus-default (`.squad/decisions/inbox/copilot-directive-20260522-opus-default.md`)
+
+### Test gate
+- Final: 456 → 554/0/0 (+98)
+- Zero-skip streak: **11 waves**
+
+### Notable findings
+- Bishop bumped Changsha spec v1.2 → v1.3, moving 6 Big Win special-context patterns out of "deferred to V2"
+- Apone's multi-provider design uses provider-specific DbContext subclasses with isolated migrations (cleanest cross-provider strategy)
+- Hicks's replay viewer feature-detects the server endpoint and gracefully degrades to in-memory client.gameComplete on 404 (smooth Bishop-not-yet-merged path)
+- Vasquez wrote tests BEFORE Apone+Bishop committed — forward-staged contract tests landed seamlessly when production code arrived
+
+### Phase J Wave 8 backlog candidates
+- Sentry integration (Apone Wave 7 deferral)
+- Cloudflare integration (Apone Wave 7 deferral)
+- Real auth (OAuth / passwordless) layering on cookie-based PlayerId — Phase K candidate
+- AvatarColor default in current rows → migrate existing #808080 rows to palette member?
+
+---
+
 

@@ -1,4 +1,4 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.094cde3a.css><link rel=stylesheet href=autotable-src.6633d8fb.css><body>
+<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.a7cd8ea4.css><link rel=stylesheet href=autotable-src.6633d8fb.css><body>
     <img id=dice-img src=dice.auto.391822b5.png style=opacity:0>
     <canvas id=center></canvas>
     
@@ -352,8 +352,14 @@
     </button>
 
     
-    <button id=settings-toggle type=button title=Settings>
-        <span class=settings-toggle-icon>⚙</span>
+    <button id=settings-toggle type=button title="Per-game settings" aria-label="Open per-game settings">
+        <span class=settings-toggle-icon aria-hidden=true>⚙</span>
+    </button>
+
+    
+    <button id=settings-button type=button title=Settings data-testid=settings-button aria-label="Open settings drawer" aria-haspopup=dialog aria-expanded=false aria-controls=settings-drawer-v2>
+        <span class=settings-button-icon aria-hidden=true>⚙</span>
+        <span class=sr-only>Settings</span>
     </button>
 
     
@@ -429,6 +435,74 @@
     </aside>
 
     
+    <aside id=settings-drawer-v2 class=settings-drawer-v2 role=dialog aria-label="Application settings" aria-modal=false aria-hidden=true data-testid=settings-drawer>
+        <div class=settings-drawer-v2-header>
+            <h3 class=settings-drawer-v2-title>⚙ Settings</h3>
+            <button id=settings-close-v2 type=button class=settings-drawer-v2-close data-testid=settings-close aria-label="Close settings">×</button>
+        </div>
+        <div class=settings-drawer-v2-tabs id=settings-drawer-v2-tabs role=tablist aria-label="Settings sections"></div>
+        <div class=settings-drawer-v2-panels id=settings-drawer-v2-panels></div>
+        <div class=settings-drawer-v2-footer>
+            <small class=settings-saved-note-v2 id=settings-saved-note-v2 role=status aria-live=polite style=display:none>Saved ✓</small>
+            <button id=settings-reset type=button class="btn btn-secondary btn-sm" data-testid=settings-reset>
+                Reset
+            </button>
+            <button id=settings-save type=button class="btn btn-sm btn-warning" data-testid=settings-save>
+                Save
+            </button>
+        </div>
+    </aside>
+
+    
+    <div id=profile-page class=profile-page role=dialog aria-label="Player profile" aria-modal=true aria-hidden=true data-testid=profile-page>
+        <div class=profile-page-shell>
+            <header class=profile-page-header>
+                <div class=profile-page-identity>
+                    <div id=profile-page-avatar class=profile-page-avatar aria-hidden=true>?</div>
+                    <div class=profile-page-identity-text>
+                        <h2 id=profile-page-name class=profile-page-name>
+                            Guest
+                        </h2>
+                        <small id=profile-page-member-since class=profile-page-member-since>
+                            New member
+                        </small>
+                    </div>
+                </div>
+                <button id=profile-page-close type=button class=profile-page-close data-testid=profile-page-close aria-label="Close profile">×</button>
+            </header>
+
+            <section class=profile-page-section aria-labelledby=profile-page-stats-heading>
+                <h3 id=profile-page-stats-heading class=profile-page-section-title>Career stats</h3>
+                <div id=profile-stats-grid class=profile-stats-grid data-testid=profile-stats-grid></div>
+            </section>
+
+            <section class=profile-page-section aria-labelledby=profile-page-edit-heading>
+                <h3 id=profile-page-edit-heading class=profile-page-section-title>Profile</h3>
+                <label class=profile-page-field>
+                    <span class=profile-page-field-label>Display name</span>
+                    <input id=profile-page-display-name-input class=profile-page-input data-testid=profile-page-display-name-input maxlength=32 autocomplete=off spellcheck=false>
+                    <span id=profile-page-display-name-error class=profile-page-error aria-live=polite></span>
+                </label>
+                <div class=profile-page-field>
+                    <span class=profile-page-field-label>Avatar colour</span>
+                    <div id=profile-page-color-presets class=profile-page-color-presets role=radiogroup aria-label="Avatar colour presets"></div>
+                    <label class=profile-page-color-custom-row>
+                        <span>Custom colour</span>
+                        <input id=profile-page-color-custom class=profile-page-color-custom data-testid=profile-page-color-custom type=color value=#2980b9>
+                    </label>
+                </div>
+            </section>
+
+            <section class=profile-page-section aria-labelledby=profile-page-recent-heading>
+                <h3 id=profile-page-recent-heading class=profile-page-section-title>Recent games</h3>
+                <div id=profile-recent-games-error class=profile-recent-error aria-live=polite style=display:none></div>
+                <div id=profile-recent-games-loading class=profile-recent-loading aria-live=polite style=display:none>Loading recent games…</div>
+                <div id=profile-recent-games class=profile-recent-games data-testid=profile-recent-games role=list></div>
+            </section>
+        </div>
+    </div>
+
+    
     <div class=modal id=game-complete-modal tabindex=-1 aria-hidden=true data-backdrop=static data-keyboard=false>
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="game-complete-modal-content modal-content">
@@ -475,34 +549,43 @@
     </div>
 
     
-    <div id=replay-screen class=replay-screen role=dialog aria-label="Hand replay" aria-hidden=true data-testid=replay-screen>
-        <div class=replay-shell>
+    <div id=replay-screen class=replay-screen role=dialog aria-label="Hand replay" aria-modal=true aria-hidden=true data-testid=replay-screen tabindex=-1>
+        <div class=replay-shell data-testid=replay-viewer>
             <div class=replay-header>
                 <h3 class=replay-title>🎞 Hand Replay</h3>
                 <div class=replay-header-actions>
+                    <span id=replay-source-label class=replay-source-label aria-live=polite></span>
                     <label for=replay-hand-selector class=replay-selector-label>
                         Hand
                     </label>
-                    <select id=replay-hand-selector class="dark-select form-control form-control-sm">
+                    <select id=replay-hand-selector class="dark-select form-control form-control-sm" aria-label="Select hand to replay">
                     </select>
                     <button id=replay-close type=button class=replay-close-btn data-testid=replay-close aria-label="Close replay" title=Close>×</button>
                 </div>
             </div>
             <div class=replay-body>
                 <div class=replay-board-pane>
-                    <div id=replay-board class=replay-board></div>
+                    <div id=replay-board class=replay-board role=region aria-label="Replay table state" aria-live=polite></div>
                 </div>
-                <aside class=replay-side-pane>
+                <aside class=replay-side-pane aria-label="Replay move log">
                     <h4 class=replay-side-title>Move log</h4>
                     <div id=replay-move-log class=replay-move-log></div>
                 </aside>
             </div>
-            <div class=replay-footer>
-                <button id=replay-step-back type=button class="btn btn-secondary btn-sm" data-testid=replay-step-back aria-label="Step back">⏮</button>
-                <button id=replay-play type=button class="btn btn-sm btn-warning" data-testid=replay-play aria-label="Play / pause">▶ Play</button>
-                <button id=replay-step-fwd type=button class="btn btn-secondary btn-sm" data-testid=replay-step-fwd aria-label="Step forward">⏭</button>
-                <input id=replay-timeline type=range class=replay-timeline min=0 max=0 step=1 value=0 aria-label="Scrub timeline">
+            <div class=replay-footer role=group aria-label="Replay playback controls">
+                <button id=replay-prev type=button class="btn btn-secondary btn-sm" data-testid=replay-prev aria-label="Previous hand" title="Previous hand">⏮</button>
+                <button id=replay-step-back type=button class="btn btn-secondary btn-sm" data-testid=replay-step-back aria-label="Step back one move" title="Step back">⏪</button>
+                <button id=replay-play type=button class="btn btn-sm btn-warning" data-testid=replay-play aria-label="Play or pause" aria-pressed=false title="Play / pause">▶ Play</button>
+                <button id=replay-step-fwd type=button class="btn btn-secondary btn-sm" data-testid=replay-step-fwd aria-label="Step forward one move" title="Step forward">⏩</button>
+                <button id=replay-next type=button class="btn btn-secondary btn-sm" data-testid=replay-next aria-label="Next hand" title="Next hand">⏭</button>
+                <label class=replay-speed-label>
+                    <span class=sr-only>Playback speed</span>
+                    <select id=replay-speed-select class="dark-select form-control form-control-sm replay-speed-select" data-testid=replay-speed-select aria-label="Playback speed">
+                    </select>
+                </label>
+                <input id=replay-timeline type=range class=replay-timeline data-testid=replay-scrubber min=0 max=0 step=1 value=0 aria-label="Scrub timeline">
                 <span id=replay-timeline-label class=replay-timeline-label>Move 0 / 0</span>
+                <span id=replay-event-counter class=replay-event-counter data-testid=replay-event-counter aria-live=polite>0 / 0</span>
             </div>
         </div>
     </div>
@@ -821,6 +904,6 @@
         </div>
     </aside>
 
-    <script type=module src=autotable-src.2391eb20.js></script>
+    <script type=module src=autotable-src.85bbb8ca.js></script>
 
 

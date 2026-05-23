@@ -1287,3 +1287,102 @@ post-Vasquez sync: 384/0/0.
   cookie-bearing clients, Vasquez blind-spot #4 reconciliation.
 - **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
   → Passed: 445, Failed: 0, Skipped: 0.
+
+## Phase J Wave 7 — backend polish: replay endpoint + /health detail + avatar-colour palette + spec drift
+- **Branch:** `stlong/phase-j-wave-7-polish`.
+- **Brief:** four polish items: (1) `PlayerProfile.AvatarColor` default
+  was literal `#808080` and `DefaultAvatarColor` returned from a 16-entry
+  HSL palette — neither matched Hicks's 8-entry frontend swatch grid;
+  (2) no persisted replay artifact + no REST surface for the frontend's
+  replay scrubber; (3) `/health` returned only 4 fields — k8s readiness
+  needed DB connectivity + game count; (4) `docs/rules/changsha-spec.md`
+  still listed 天和/地和/海底/河底/杠上开花/抢杠胡 as "deferred to v2"
+  even though Phase H Wave 2 + Phase I Wave 1 shipped them all.
+- **Decisions:**
+  1. Avatar palette = the 8-entry flat-UI set already pinned by
+     `AVATAR_COLOR_PRESETS` in `src/.../frontend/.../profile.ts`. Order
+     preserved so `palette[i]` ↔ `AVATAR_COLOR_PRESETS[i]` on both
+     sides. Class-init default = `palette[0]` (`#c0392b`). Constant
+     exposed as `PlayerProfile.DefaultPaletteAvatarColor` so future
+     callers don't drift again. FNV hash retained → deterministic pick.
+  2. New EF entity `ChangshaGameReplay` (Id Guid, GameId Guid no-FK,
+     CreatedAt UTC, EventsJson string). **No FK on GameId** — replays
+     are historical artifacts that outlive parent rows; FK + cascade
+     would erase them, and the test harness runs with
+     `PersistSnapshots=false` so the parent ChangshaGames row doesn't
+     exist during 200+ unit tests. Manual migration
+     (`20260524000000_AddChangshaGameReplay{,.Designer}.cs`) because
+     the project now has 4 DbContexts (Apone's uncommitted multi-
+     provider work) and `dotnet ef migrations add` would scaffold under
+     three provider-specific folders. `Data/DatabaseBootstrapper.cs`
+     extended with `EnsureSqliteReplayTablesAsync` for in-memory test
+     harnesses that bypass migrations.
+  3. `ChangshaGameRuntime.PersistReplayAsync(ChangshaGameInstance)`
+     hooked at the **end of `EmitGameCompletedAsync`** (after the legacy
+     `EmitGameEndedAsync`, before `PersistSnapshotAsync` returns).
+     Serializes `state.EventLog` to the documented
+     `{turn,phase,actor,action,tilesJson,timestampUtc}[]` shape;
+     `tilesJson` is itself a JSON-encoded `int[]` string per Stephen's
+     wire-shape brief. `ReplayPhaseBucket(string)` is **public static**
+     (not internal) so Vasquez's contract test can call it without
+     `InternalsVisibleTo` — buckets are Setup/Deal/Discard/Claim/Hu/Other.
+  4. `ChangshaReplayController` at
+     `Changsha/Runtime/ChangshaReplayController.cs`, route
+     `GET /api/games/{gameId}/replay`. Rate-limited via
+     `[EnableRateLimiting("token-bucket-api")]`. 400 on malformed
+     GUID, 404 when no row, 200 with `{gameId, createdAt, events[]}`.
+     **Events are sorted by `turn` ascending in the controller** (stable
+     on serialisation-order tiebreak) so the frontend scrubber sees
+     a monotonic sequence regardless of how the writer stored them —
+     pins Vasquez's `GameReplayEndpointTests.GameReplay_Events_AreOrderedByTurnAscending`.
+  5. `GET /health` now defaults to a richer JSON: 4-field Wave-3 base
+     plus `db:{connected,latencyMs}` (SELECT-1 round-trip on the
+     resolved AppDbContext connection) and `activeGames` (from
+     `IChangshaGameRuntime.GameCount`). `status` flips to `"degraded"`
+     when the DB probe fails — endpoint still returns HTTP 200 so the
+     container stays alive (liveness probe should use `?simple=1`).
+     `?simple=1` returns the exact Wave-3 4-field shape for back-compat.
+  6. `docs/rules/changsha-spec.md` bumped v1.2 → v1.3. New §4.2.2
+     "Special-Context Big Wins" lists the six contextual flags with
+     engine hooks (`WinResult.IsHeavenlyHand`, etc.) and source-file
+     references. §4 intro updated 5 → 6 supported pattern categories.
+     §4.3 deferred-list header trimmed — only 杠上炮 (Kong on Cannon)
+     remains as a deferred draw-based Big Win because the discarder-
+     pays-both-sides plumbing is genuine new state-machine work, not
+     just a context flag.
+- **Touch-points:**
+    `src/.../Players/PlayerProfile.cs` (default →
+    `DefaultPaletteAvatarColor` const = `#c0392b`),
+    `src/.../Players/PlayerProfileService.cs` (8-entry palette),
+    `src/.../Data/Entities/ChangshaEntities.cs` (new
+    `ChangshaGameReplay`),
+    `src/.../Data/AppDbContext.cs` (DbSet + entity config),
+    `src/.../Data/DatabaseBootstrapper.cs`
+    (`EnsureSqliteReplayTablesAsync`),
+    `src/.../Persistence/Migrations/20260524000000_AddChangshaGameReplay.cs` (new),
+    `src/.../Persistence/Migrations/20260524000000_AddChangshaGameReplay.Designer.cs` (new),
+    `src/.../Persistence/Migrations/AppDbContextModelSnapshot.cs` (entity in snapshot),
+    `src/.../Changsha/Runtime/ChangshaGameRuntime.cs`
+    (`PersistReplayAsync` + `ReplayPhaseBucket` public static),
+    `src/.../Changsha/Runtime/ChangshaReplayController.cs` (new),
+    `src/.../Program.cs` (/health expansion + EF Core using),
+    `docs/rules/changsha-spec.md` (v1.2 → v1.3, §4 reshuffle).
+- **Test backstops added:**
+    `tests/.../Players/PlayerProfileServiceTests.cs` (default-palette
+    member backstop + regex case-insensitive),
+    `tests/.../Api/HealthEndpointTests.cs` (detailed shape +
+    `?simple=1` legacy),
+    `tests/.../Changsha/ChangshaReplayEndpointTests.cs` (new — 4 tests
+    + theory cases on controller: 400/404/200/sort),
+    `tests/.../Changsha/ChangshaReplayPersistenceTests.cs` (new —
+    end-to-end runtime → DB → controller probe).
+- **Forward-staged contract tests now passing:**
+  Vasquez's `AvatarColorPaletteTests` (6 tests),
+  `Replay/GameReplayEndpointTests` (sort + persistence contracts),
+  `HealthCheckJsonTests`, `Persistence/DbProviderSwitchingTests`
+  (Apone's surface, untouched).
+- **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-7.md` —
+  endpoint contracts, EF entity + migration name, FK-omitted decision,
+  ReplayPhaseBucket table, Apone-untracked-work note.
+- **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+  → Passed: 554, Failed: 0, Skipped: 0.

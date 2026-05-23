@@ -292,6 +292,81 @@ want to scope-query by content rather than index.
 > `RateLimiting:Enabled=true` — rejection shape is pinned by
 > `RateLimitingTests`.
 
+## Phase J Wave 7 — Replay viewer, settings drawer (tabbed v2), profile page
+
+Selectors added by Hicks's Wave 7 work surface three coordinated UX
+features: a refreshed replay viewer (with prev/next-hand navigation
+and a speed selector); a tabbed settings drawer (the v2 layout
+replacing the Wave-3 monolithic form); and a full-overlay player
+profile page that surfaces stats, recent games, display-name +
+avatar-colour editing.
+
+### Replay viewer
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="replay-screen"` | `<div id="replay-screen">` | Outer overlay root — visibility is gated by `replay.ts:open()/close()`. Tests assert it `.toBeVisible()` after the post-game modal's `[data-testid="game-complete-replay"]` button is clicked. | `src/frontend/autotable-src/index.html:774` |
+| `data-testid="replay-viewer"` | `<div class="replay-shell">` | Inner shell — host for every viewer-scope control below. | `src/frontend/autotable-src/index.html:776` |
+| `data-testid="replay-close"` | `<button>` | Close button; flips the `replay-screen` overlay back to hidden. | `src/frontend/autotable-src/index.html:792` |
+| `data-testid="replay-prev"` | `<button>` | Previous-hand navigation (NEW in Wave 7). Jumps the timeline to the first move of the prior hand. | `src/frontend/autotable-src/index.html:813` |
+| `data-testid="replay-step-back"` | `<button>` | Single-move step backwards. Disabled at move 0. | `src/frontend/autotable-src/index.html:818` |
+| `data-testid="replay-play"` | `<button>` | Play / pause toggle. The button surface flips ▶ ↔ ⏸ via the class state. | `src/frontend/autotable-src/index.html:823` |
+| `data-testid="replay-step-fwd"` | `<button>` | Single-move step forwards. Disabled at the last move. | `src/frontend/autotable-src/index.html:829` |
+| `data-testid="replay-next"` | `<button>` | Next-hand navigation (NEW in Wave 7). Jumps the timeline to the first move of the following hand. | `src/frontend/autotable-src/index.html:834` |
+| `data-testid="replay-speed-select"` | `<select>` | Playback speed multiplier (1×/2×/4×). Persisted in localStorage at `autotable.phaseJ.v1.replay.speed`. | `src/frontend/autotable-src/index.html:841` |
+| `data-testid="replay-scrubber"` | `<input type="range">` | Timeline scrubber — value maps 0..(N-1) of the move index. Bidirectionally bound to the play head; dragging updates the table at the next animation frame. | `src/frontend/autotable-src/index.html:847` |
+| `data-testid="replay-event-counter"` | `<span>` | "Move N / M" status text. Stays in sync with the scrubber regardless of which control moved the play head. | `src/frontend/autotable-src/index.html:854` |
+
+> **Reference E2E spec.** `tests/e2e/replay.spec.ts` (Hicks Wave 6 +
+> extended Wave 7) covers open → step-fwd → play → close. The
+> prev/next-hand affordances are new in Wave 7; the spec gains a
+> follow-up assertion when the move counter and scrubber re-base after
+> a `[data-testid="replay-prev"]` / `[data-testid="replay-next"]` click.
+
+### Settings drawer (v2 tabbed)
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="lobby-open-settings"` | `<button id="lobby-open-settings">` | Lobby shortcut that opens the drawer. Wave-3 entry point; unchanged by the v2 refactor. | `src/frontend/autotable-src/index.html:1293` |
+| `data-testid="settings-button"` | `<button id="settings-button">` | Top-bar ⚙ shortcut (visible inside the game shell). Mirrors `lobby-open-settings` behaviour. | `src/frontend/autotable-src/index.html:456` |
+| `data-testid="settings-drawer"` | `<aside id="app-settings-drawer-v2">` | Drawer root — `.settings-open` class toggles the off-canvas visual. The `tablist` + `panels` hosts inside are populated by `settings.ts`. | `src/frontend/autotable-src/index.html:575` |
+| `data-testid="settings-close"` | `<button>` | Drawer close button (the × glyph in the header). Removes the `.settings-open` class. | `src/frontend/autotable-src/index.html:580` |
+| `data-testid="settings-sound"` | `<input type="checkbox">` | Sound toggle (lives inside the General/Audio tab panel). Mirrored to `localStorage.mahjong:soundEnabled` by `lobby.ts:installSoundEnabledMirror`. | `src/frontend/autotable-src/index.html:550` |
+| `data-testid="settings-reset"` | `<button id="settings-reset">` | Reset-to-defaults action. Reverts every field in every panel without persisting. | `src/frontend/autotable-src/index.html:596` |
+| `data-testid="settings-save"` | `<button id="settings-save">` | Save action — writes the canonical JSON payload at `autotable.phaseJ.v1.settings.*` and flashes the saved-note element. | `src/frontend/autotable-src/index.html:601` |
+
+> **Reference E2E specs.** `tests/e2e/sound-toggle.spec.ts` (Wave 6,
+> single-toggle round-trip) + `tests/e2e/settings-drawer.spec.ts`
+> (Wave 7, full open / save / reload / reset / close lifecycle).
+
+### Profile page (full overlay)
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="lobby-open-profile"` | `<button id="lobby-open-profile">` | Avatar chip in the lobby header. Click opens the full-overlay profile page (NOT the legacy `data-testid="profile-drawer"` slide-in, which is the Wave-5 surface kept around until Wave 8 migration). | `src/frontend/autotable-src/index.html:1284` |
+| `data-testid="profile-page"` | `<div id="profile-page">` | Overlay root; `aria-hidden` toggles `true` ↔ `false` on close / open. Tests assert visibility via the aria attribute rather than a CSS class to stay decoupled from the visual implementation. | `src/frontend/autotable-src/index.html:613` |
+| `data-testid="profile-page-close"` | `<button id="profile-page-close">` | Close button — flips `aria-hidden` back to `true`. | `src/frontend/autotable-src/index.html:632` |
+| `data-testid="profile-stats-grid"` | `<div id="profile-stats-grid">` | Career-stats grid. Populated by `profile-page.ts:renderStatsGrid()` from the `/api/me/stats` payload. Cardinality 0..N children. | `src/frontend/autotable-src/index.html:642` |
+| `data-testid="profile-page-display-name-input"` | `<input type="text" maxlength="32">` | Editable display name. Commits on blur; the canonical write target is `/api/me/profile` (PlayerProfileService). Vasquez's `NegativePathTests` pins the > 32 char rejection at the API boundary. | `src/frontend/autotable-src/index.html:653` |
+| `data-testid="profile-page-color-custom"` | `<input type="color">` | Custom avatar-colour picker. Wave 7 also surfaces an 8-preset radio group (the `<div id="profile-page-color-presets">` sibling, no testid — DOM children are dynamic). The custom input's value flows into `PlayerProfile.AvatarColor` on save. | `src/frontend/autotable-src/index.html:670` |
+| `data-testid="profile-recent-games"` | `<div id="profile-recent-games">` | Recent-games list — populated from `/api/me/games?limit=10` (Bishop Wave 7). Cardinality 0..10 children. Empty state surfaces via `#profile-recent-games-error`. | `src/frontend/autotable-src/index.html:690` |
+
+> **Reference E2E spec.** `tests/e2e/profile-page.spec.ts` (Wave 7,
+> Vasquez) covers open → edit name → reload → state persists → close.
+> The `[data-testid="profile-stats-grid"]` and
+> `[data-testid="profile-recent-games"]` contents are not asserted
+> directly because a fresh test browser has no completed-game
+> history; only the containers' presence is checked.
+
+> **Backend contract — replay endpoint.** The viewer's `Watch Replay`
+> click loads from Bishop's `GET /api/games/{gameId}/replay`. Envelope:
+> `{ gameId, createdAt, events: [{ turn, phase, actor, action,
+> tilesJson, timestampUtc }] }`. Wire shape pinned by Vasquez's
+> `GameReplayEndpointTests`; phase bucket vocabulary (Setup / Deal /
+> Discard / Claim / Hu / Other) is the canonical replay-event
+> taxonomy — adding a new bucket REQUIRES coordinating with the
+> frontend's icon mapping at `replay.ts:phaseGlyph()`.
+
 ## Stability contract
 
 A test relying on a selector from this document gets the following

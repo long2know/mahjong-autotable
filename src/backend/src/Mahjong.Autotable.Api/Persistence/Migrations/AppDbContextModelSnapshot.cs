@@ -108,6 +108,30 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations
                     b.ToTable("ChangshaGameEvents");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.ChangshaGameReplay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("GameId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GameId")
+                        .IsUnique();
+
+                    b.ToTable("ChangshaGameReplays");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Players.PlayerProfile", b =>
                 {
                     b.Property<string>("PlayerId")

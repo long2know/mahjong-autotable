@@ -1,0 +1,66 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# Production overlay. Postgres-backed by default — flip the configmap to
+# Sqlite only for emergency single-pod rollback. HPA target stays at
+# replicas=3 baseline (Hudson's recommended min for sticky-session
+# resilience to a single pod evict).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mahjong-prod
+namePrefix: prod-
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: mahjong-autotable
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "250m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "384Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: mahjong-autotable
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 12
+  - target:
+      kind: Ingress
+      name: mahjong-autotable
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: mahjong.example.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: mahjong.example.com
+
+configMapGenerator:
+  - name: mahjong-autotable
+    behavior: merge
+    literals:
+      - Persistence__Provider=Postgres
+      - Cors__AllowedOrigins__0=https://mahjong.example.com
+
+images:
+  - name: ghcr.io/long2know/mahjong-autotable
+    newTag: latest

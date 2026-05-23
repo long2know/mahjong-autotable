@@ -1,0 +1,46 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# nginx-ingress flavour by default. cert-manager Issuer annotation requests
+# a TLS cert from Let's Encrypt; the secret name is templated by the
+# overlay (each environment gets its own cert). The sticky-session
+# (cookie-based) annotations are CRITICAL for the autotable WS endpoint
+# and SignalR `/hubs/changsha` — once a client upgrades, all subsequent
+# frames must hit the same pod or the WS connection will reset on every
+# packet. WS upgrade headers + 1h idle timeout match the Wave-6 systemd /
+# nginx reverse-proxy configuration.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mahjong-autotable
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    # Sticky sessions — cookie-based. WS upgrade requests must land on the
+    # same pod as the original handshake; without affinity the SignalR
+    # negotiate → connect → reconnect flow will throw protocol errors.
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "mahjong_aff"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - mahjong.example.com
+      secretName: mahjong-autotable-tls
+  rules:
+    - host: mahjong.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mahjong-autotable
+                port:
+                  name: http

@@ -1,0 +1,21 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# ClusterIP service fronting the API pods. Named ports keep the
+# Deployment + Ingress + ServiceMonitor (if Prometheus operator) coupled
+# loosely. SignalR + raw WS share the http port (HTTP/1.1 Upgrade) — no
+# separate ws port is needed at the L4 layer.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mahjong-autotable
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mahjong-autotable
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
