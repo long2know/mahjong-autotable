@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Voice;
 
 namespace Mahjong.Autotable.Api.Observability;
 
@@ -83,7 +84,55 @@ public static class MetricsEndpoint
         sb.Append(EscapeLabelValue(sha));
         sb.AppendLine("\"} 1");
 
+        // Phase K Wave 5 — Bishop. VoiceHub signalling counters. The
+        // service is registered as a singleton in Program.cs; we
+        // resolve it through TryGetService so this endpoint stays
+        // resolvable even on shapes that haven't wired the voice
+        // surface yet (e.g. cut-down test factories).
+        var voice = services.GetService<VoiceHubMetricsService>();
+        AppendVoiceMetrics(sb, voice);
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
+    }
+
+    /// <summary>
+    /// Phase K Wave 5 — Bishop. Emit the three VoiceHub signalling
+    /// counters (relay-count / rate-limit-rejection / join-unauthorized)
+    /// with HELP + TYPE preambles, followed by every active labeled
+    /// sample from <see cref="VoiceHubMetricsService.Snapshot"/>. The
+    /// preambles are emitted unconditionally so a Prometheus parser
+    /// sees a stable schema even when no events have happened yet
+    /// (an empty counter series is "zero, never observed", not
+    /// "metric missing").
+    /// </summary>
+    internal static void AppendVoiceMetrics(StringBuilder sb, VoiceHubMetricsService? metrics)
+    {
+        sb.Append("# HELP ").Append(VoiceHubMetrics.MetricRelayCount)
+          .AppendLine(" Total successful WebRTC signalling relays through VoiceHub (RelayOffer + RelayAnswer + RelayIceCandidate).");
+        sb.Append("# TYPE ").Append(VoiceHubMetrics.MetricRelayCount).AppendLine(" counter");
+
+        sb.Append("# HELP ").Append(VoiceHubMetrics.MetricRateLimitRejection)
+          .AppendLine(" Total VoiceHub relays rejected by the per-connection token-bucket rate limiter.");
+        sb.Append("# TYPE ").Append(VoiceHubMetrics.MetricRateLimitRejection).AppendLine(" counter");
+
+        sb.Append("# HELP ").Append(VoiceHubMetrics.MetricJoinUnauthorized)
+          .AppendLine(" Total VoiceHub.JoinVoice attempts rejected by the per-table auth gate (missing cookie, voice disabled, spectator, not-seated).");
+        sb.Append("# TYPE ").Append(VoiceHubMetrics.MetricJoinUnauthorized).AppendLine(" counter");
+
+        if (metrics is null) return;
+
+        foreach (var sample in metrics.Snapshot())
+        {
+            sb.Append(sample.Metric);
+            sb.Append('{');
+            sb.Append("table=\"").Append(EscapeLabelValue(sample.Table)).Append('"');
+            if (sample.Reason is not null)
+            {
+                sb.Append(",reason=\"").Append(EscapeLabelValue(sample.Reason)).Append('"');
+            }
+            sb.Append("} ");
+            sb.AppendLine(sample.Value.ToString(CultureInfo.InvariantCulture));
+        }
     }
 
     /// <summary>

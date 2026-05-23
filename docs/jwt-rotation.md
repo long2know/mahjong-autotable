@@ -278,9 +278,9 @@ The wave-by-wave migration path:
 | Wave | Owner | Action |
 |------|-------|--------|
 | **W3** | Apone | `appsettings.json` ships `Auth.JwtSigningKeys: []` schema. `tests/smoke/jwt-rotation-smoke.sh` ships forward-compat. Docs land. |
-| **W4** (in progress) | Bishop | Code-side binding: read `IConfiguration` array → `TokenValidationParameters.IssuerSigningKeys` collection. Honor `JwtSigningKey` (singular) as a fallback for one wave. |
-| **W4** (this wave) | Apone | ESO `mahjong-jwt-keys` ExternalSecret shipped at `infra/k8s/overlays/prod/jwt-keys-secret.yaml`; prod kustomization mounts it via `envFrom: { optional: true }`. Operator seeds three SSM SecureString parameters (`/mahjong/prod/auth/jwt/key-{active,previous,archive}`) before applying the overlay. |
-| **W5** | Bishop | Remove `JwtSigningKey` (singular) fallback. Add `kid` header to minted tokens. Drop the secret-management.md "Wave-9 fallback-key list (planned)" note. |
+| **W4** | Bishop | Code-side binding: read `IConfiguration` array → `TokenValidationParameters.IssuerSigningKeys` collection. Honor `JwtSigningKey` (singular) as a fallback for one wave. |
+| **W4** | Apone | ESO `mahjong-jwt-keys` ExternalSecret shipped at `infra/k8s/overlays/prod/jwt-keys-secret.yaml`; prod kustomization mounts it via `envFrom: { optional: true }`. Operator seeds three SSM SecureString parameters (`/mahjong/prod/auth/jwt/key-{active,previous,archive}`) before applying the overlay. |
+| **W5** (this wave) | Bishop | `kid` header on minted tokens (already present from W4) confirmed end-to-end via `JwtKidRolloverContractTests`. `POST /api/auth/token` returns the pinned `AuthTokenResponse` envelope (`token`, `expiresAtUtc`, `kid`, `tokenType="Bearer"`, `expiresInSeconds`). `GET /api/auth/.well-known/jwks.json` reserved at 404 + `Cache-Control: no-store` so Phase L RS256 flip works without cache contamination. Legacy `JwtSigningKey` (singular) **kept** for one-more-wave back-compat — drop slated for Wave 6 once Apone's SSM rotation drill exercises the array path in production. |
 
 Until W4 code-side binding lands, the `envFrom: { optional: true }`
 on the new secret is the gate — the deployment starts fine without
