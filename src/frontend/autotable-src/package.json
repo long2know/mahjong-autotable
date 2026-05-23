@@ -3,8 +3,13 @@
   "version": "1.0.0",
   "author": "Paweł Marczewski <pwmarcz@gmail.com>",
   "license": "MIT",
+  "scripts": {
+    "e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "e2e:install": "playwright install --with-deps chromium"
+  },
   "devDependencies": {
     "@parcel/transformer-image": "2.15.4",
+    "@playwright/test": "^1.45.0",
     "@types/events": "^3.0.3",
     "@types/jquery": "^3.5.33",
     "@types/three": "^0.179.0",
@@ -12,9 +17,11 @@
     "@typescript-eslint/parser": "^8.40.0",
     "eslint": "^9.34.0",
     "parcel": "^2.15.4",
+    "process": "^0.11.10",
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@microsoft/signalr": "^10.0.0",
     "bootstrap": "^4.4.1",
     "events": "^3.1.0",
     "jquery": "^3.7.1",
