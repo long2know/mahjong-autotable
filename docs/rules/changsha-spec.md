@@ -1,11 +1,12 @@
 # Changsha Mahjong (长沙麻将) — Canonical Rules Specification
 
-> **Version:** 1.2 (v1 Locked Scope — Canonical Banker Rotation)
+> **Version:** 1.3 (v1 Locked Scope — Special-Context Big Wins documented)
 > **Author:** Vasquez (Rules Engineer)
-> **Date:** 2026-05-13 (Updated from 2026-05-06)
+> **Date:** 2026-05-24 (Updated from 2026-05-13)
 > **Status:** V1 LOCKED — Implementation-ready baseline
 >
 > **Changelog:**
+> - **v1.3 (2026-05-24):** Documented special-context Big Wins now shipping in v1 (Phase H Wave 2 + Phase I Wave 1): 天和, 地和, 海底捞月, 河底捞鱼, 杠上开花, 抢杠胡. Moved them out of §4.3 (Deferred to V2) into a new §4.2.2 (Special-Context Big Wins) with engine hooks. Bishop, Phase J Wave 7 spec-drift sweep.
 > - **v1.2 (2026-05-13):** Banker rotation now canonical winner-becomes-dealer per MahjongPros (was simplified `+1 mod 4` in v1.1).
 > - **v1.1 (2026-05-06):** V1 scope locked. Open questions resolved. Hudson's 8 test catalog contradictions addressed.
 > - **v1.0 (2026-04-22):** Initial spec.
@@ -216,8 +217,10 @@ Per Baidu: If a player misses a win from a discard (chooses not to claim Hu), th
 2. **七对子 (Seven Pairs)** — Big Win
 3. **碰碰胡 (All Pungs)** — Big Win
 4. **清一色 (Full Flush)** — Big Win
+5. **九幺 (Nine Terminals)** — Big Win (loose default — see §4.2.1)
+6. **Special-context Big Wins** (Phase H Wave 2 / Phase I Wave 1): 天和 (Heavenly Hand), 地和 (Earthly Hand), 海底捞月 (Last Tile from Wall), 河底捞鱼 (Last Discard Catch), 杠上开花 (Win on Kong Replacement), and 抢杠胡 (Robbing the Added Kong). These are **contextual flags layered on top of a valid standard / Big Win shape** rather than independent hand patterns — they upgrade an otherwise-valid hand to Big Win pricing when the runtime context matches. See §4.4.
 
-All other patterns (instant wins, robbing-the-kong, special hands) are deferred to v2.
+The remaining instant-win and special hand patterns (四喜, 板板胡, 缺一色, 六六顺, 三同, 杠上炮, 将将胡, 全求人, 豪华七对) are deferred to v2.
 
 Win methods in v1:
 - **自摸 (Self-draw):** Win by drawing the completing tile from the wall yourself.
@@ -260,6 +263,21 @@ A future tournament option (e.g. `gameOptions.nineTerminalsStrict = true`) could
 
 **Source code:** `Changsha/WinDetector.cs::CheckNineTerminals` implements the loose check; `WinPatternTests.NineTerminals_RankBoundsOnly` pins the binding semantic.
 
+### 4.2.2 Special-Context Big Wins (Phase H Wave 2 / Phase I Wave 1)
+
+These six patterns are **contextual upgrades** rather than structural hand shapes — the engine evaluates the underlying hand for a standard or Big Win shape and **then** sets a contextual flag on the resulting `WinResult` if the runtime state matches the triggering condition. Pricing follows the Big Win schedule (3/4 self-draw, 6/7 discard) per §5.
+
+| Pattern | Chinese | Condition | Engine Hook |
+|---------|---------|-----------|-------------|
+| **Heavenly Hand** | 天和 (tiān-hé) | Dealer wins by self-draw on their initial 14-tile hand with no intervening discards or claims. | `WinResult.IsHeavenlyHand` |
+| **Earthly Hand** | 地和 (dì-hé) | Non-dealer wins by claiming Hu on the dealer's first discard (no intervening draws/claims). | `WinResult.IsEarthlyHand` |
+| **Last Tile from Wall** | 海底捞月 (hǎi-dǐ-lāo-yuè) | Self-draw win on the very last tile drawn from the wall (wall is empty after the draw). | `WinResult.IsLastTileFromWall` |
+| **Last Discard Catch** | 河底捞鱼 (hé-dǐ-lāo-yú) | Discard-claim win on the final discard after the wall is exhausted. | `WinResult.IsLastDiscardCatch` |
+| **Kong Replacement Win** | 杠上开花 (gàng-shàng-kāi-huā) | Self-draw win on a tile drawn as a kong replacement (immediately after declaring concealed / added / exposed kong). | `WinResult.IsKongReplacementWin` |
+| **Robbing the Added Kong** | 抢杠胡 (qiǎng-gàng-hú) | Win by claiming the fourth tile of an opponent's just-declared **added** kong (4-tile kong upgrade). Concealed kongs cannot be robbed. | `WinResult.IsRobbedKong` |
+
+**Source code:** detection lives in `Changsha/ChangshaStateMachine.cs` (`SetSpecialContextFlags` helper at ~line 610) and `Changsha/WinDetector.cs`. Robbing-the-kong claim plumbing is in `Changsha/ClaimAdjudicator.cs` (Phase H Wave 2). Display ordering is pinned in `Changsha/Patterns/ChangshaPatternOrdering.cs`.
+
 ### 4.3 Patterns Deferred to V2
 
 The following patterns from the canonical sources are **explicitly excluded from v1** and deferred to v2:
@@ -271,21 +289,17 @@ The following patterns from the canonical sources are **explicitly excluded from
 - 六六顺 (Six Six Straight) — two pungs in starting hand
 - 三同 (Three Same) — same number from all three suits in pairs (optional variant)
 
-**Draw-Based Big Wins:**
-- 天和 (Blessing of Heaven) — dealer wins on initial 14 tiles
-- 地和 (Blessing of Earth) — non-dealer wins on first draw
-- 杠上开花 (Win After Kong) — win on kong replacement tile
+**Draw-Based Big Wins (remaining deferred items):**
 - 杠上炮 (Kong on Cannon) — opponent wins on your post-kong discard
-- 抢杠胡 (Robbing the Kong) — win by claiming opponent's added kong tile
-- 海底捞月 (Last Tile Draw) — win by self-drawing last tile
-- 河底捞鱼 (Last Tile Discard) — win by claiming discard of last tile drawer
+
+> **Note:** The other draw-/context-based Big Wins (天和, 地和, 杠上开花, 抢杠胡, 海底捞月, 河底捞鱼) shipped in Phase H Wave 2 (抢杠胡) and Phase I Wave 1 (the remaining five). See §4.2.2 for current contracts and engine hooks.
 
 **Hand-Based Big Wins:**
 - 将将胡 (All Generals) — every tile is 2/5/8
 - 全求人 (Full Beggar's Hand) — 4 open melds + win via discard
 - 豪华七对 (Luxury Seven Pairs) — 5 pairs + 1 four-of-a-kind
 
-**Rationale:** These patterns add significant complexity (instant win flow, seabed tile rules, robbing-the-kong interrupts, frozen hand states) and are deferred to maintain v1 delivery focus on core gameplay loop.
+**Rationale:** The remaining deferred patterns add significant complexity (instant win flow, seabed tile rules, dependent discard interrupts on already-completed kongs, frozen hand states) and are deferred to maintain v1 delivery focus on core gameplay loop. The special-context wins migrated to v1 (§4.2.2) were a natural follow-on once the runtime exposed the necessary game-state flags.
 
 ---
 

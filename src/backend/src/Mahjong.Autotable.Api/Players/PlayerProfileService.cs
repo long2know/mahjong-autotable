@@ -40,18 +40,29 @@ public sealed class PlayerProfileService
 
     /// <summary>
     /// Returns a stable default avatar colour keyed off the player id.
-    /// Hashed pick from a 16-entry palette so the colour is deterministic
-    /// (a reconnect with the same id reproduces the same chip colour).
+    /// Hashed pick from Hicks's 8-entry preset palette (the same set
+    /// surfaced in <c>src/frontend/autotable-src/src/profile.ts</c>
+    /// as <c>AVATAR_COLOR_PRESETS</c>) so the colour is deterministic
+    /// (a reconnect with the same id reproduces the same chip colour)
+    /// AND is guaranteed to be a palette member — the frontend renders
+    /// the same colour on the lobby chip, profile card, and onboarding
+    /// preview without any extra mapping. Phase J Wave 7 trimmed the
+    /// helper from the legacy 16-entry HSL palette to this canonical
+    /// 8-entry set; the previous wider palette emitted "ghost" colours
+    /// that didn't match anything the user could pick by hand.
     /// </summary>
     public static string DefaultAvatarColor(string playerId)
     {
-        // Saturated, dark-text-friendly hex palette (HSL spaced ≈22°).
+        // Mirrors AVATAR_COLOR_PRESETS in
+        // src/frontend/autotable-src/src/profile.ts (Hicks, Wave 5).
+        // Order is the canonical palette order; pick is FNV-hash modulo
+        // length so adding/removing an entry deterministically reshuffles
+        // every player's default (acceptable — defaults are advisory and
+        // overridden by any prior UpdateAvatarColor call).
         string[] palette =
         {
-            "#E53935", "#D81B60", "#8E24AA", "#5E35B1",
-            "#3949AB", "#1E88E5", "#039BE5", "#00ACC1",
-            "#00897B", "#43A047", "#7CB342", "#C0CA33",
-            "#FDD835", "#FFB300", "#FB8C00", "#F4511E",
+            "#c0392b", "#e67e22", "#f1c40f", "#2ecc71",
+            "#16a085", "#2980b9", "#8e44ad", "#34495e",
         };
         if (string.IsNullOrEmpty(playerId)) return palette[0];
         var hash = Fnv1aHash(playerId);

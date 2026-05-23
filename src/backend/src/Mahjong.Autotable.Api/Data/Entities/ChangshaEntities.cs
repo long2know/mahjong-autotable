@@ -36,3 +36,30 @@ public class ChangshaGameEvent
     public DateTime OccurredUtc { get; set; }
     public DateTime PersistedUtc { get; set; }
 }
+
+/// <summary>
+/// Phase J Wave 7 — canonical play-by-play snapshot persisted at game
+/// completion. Built from <c>ChangshaGameState.EventLog</c> in
+/// <see cref="Mahjong.Autotable.Api.Changsha.Runtime.ChangshaGameRuntime.EmitGameCompletedAsync"/>
+/// and surfaced through <c>GET /api/games/{gameId}/replay</c>. One row per
+/// completed game — re-completion (rare; only via re-hydration after a
+/// crash + replay endpoint hit during the same lifecycle) is idempotent
+/// (the runtime upserts on <see cref="GameId"/>). Wave 7 read-only
+/// surface; the canonical write path is game-completion.
+///
+/// <para><see cref="EventsJson"/> is a serialised JSON array of
+/// <c>{ turn:int, phase:string, actor:int, action:string, tilesJson:string,
+/// timestampUtc:DateTime }</c> objects covering every event captured by
+/// the runtime state machine (Deal / Discard / Claim / Hu and related
+/// setup events). <c>actor</c> is the seat index (or <c>-1</c> for
+/// system events); <c>tilesJson</c> is itself a JSON-encoded
+/// <c>int[]</c> so the surface is self-describing without the consumer
+/// having to know the runtime tile-id encoding.</para>
+/// </summary>
+public class ChangshaGameReplay
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid GameId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string EventsJson { get; set; } = string.Empty;
+}

@@ -7,10 +7,13 @@ public static class DatabaseBootstrapper
 {
     public static async Task InitializeAsync(AppDbContext db, CancellationToken cancellationToken = default)
     {
-        await db.Database.EnsureCreatedAsync(cancellationToken);
-
         if (db.Database.IsSqlite())
         {
+            // SQLite — dev / single-replica default. EnsureCreated + the
+            // CREATE-IF-NOT-EXISTS bootstrap below remain canonical so
+            // existing dev DBs (which predate the migration set) keep
+            // working without an out-of-band `dotnet ef database update`.
+            await db.Database.EnsureCreatedAsync(cancellationToken);
             // Phase A (autotable-vendored pivot): drop the legacy 136-tile
             // TableSessions + TableSessionEvents tables on startup if a
             // pre-pivot SQLite database is still present. The EF Core entities
@@ -27,6 +30,26 @@ public static class DatabaseBootstrapper
             // working without requiring an out-of-band `dotnet ef database
             // update`, matching the existing Changsha-tables pattern above.
             await EnsureSqlitePlayerTablesAsync(db, cancellationToken);
+            // Phase J Wave 7 — same belt-and-braces pattern for the replay
+            // snapshot table. Canonical schema is the AddChangshaGameReplay
+            // migration; this guard auto-bootstraps the new table on
+            // existing prod DBs so the runtime's game-completion hook
+            // (ChangshaGameRuntime.EmitGameCompletedAsync) never trips on
+            // a missing table.
+            await EnsureSqliteReplayTablesAsync(db, cancellationToken);
+        }
+        else
+        {
+            // Phase J Wave 7 — Apone (DevOps). Postgres + SqlServer go
+            // through the canonical EF Core migration runner so deploys
+            // are versioned, rollbackable, and recorded in the
+            // `__EFMigrationsHistory` table. The provider-specific
+            // migration sets live under Persistence/Migrations/Postgres
+            // and Persistence/Migrations/SqlServer; the right one is
+            // discovered automatically because `AddPersistence` registers
+            // the provider's typed subclass of AppDbContext (the
+            // PostgresAppDbContext / SqlServerAppDbContext shells).
+            await db.Database.MigrateAsync(cancellationToken);
         }
     }
 
@@ -167,6 +190,56 @@ public static class DatabaseBootstrapper
                     """;
                 await createStats.ExecuteNonQueryAsync(cancellationToken);
             }
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase J Wave 7 — defensive SQLite-only bootstrap for the
+    /// ChangshaGameReplays table. Mirrors the
+    /// <c>AddChangshaGameReplay</c> EF migration so existing prod DBs
+    /// running on EnsureCreatedAsync semantics pick up the new table at
+    /// startup without an out-of-band migration sweep. The unique GameId
+    /// index lets the runtime upsert on completion (rare; only when
+    /// hydration re-enters a completed game) without violating PK
+    /// uniqueness.
+    /// </summary>
+    private static async Task EnsureSqliteReplayTablesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var createReplays = connection.CreateCommand())
+            {
+                createReplays.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "ChangshaGameReplays" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_ChangshaGameReplays" PRIMARY KEY,
+                        "GameId" TEXT NOT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "EventsJson" TEXT NOT NULL
+                    );
+                    """;
+                await createReplays.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using var createIndex = connection.CreateCommand();
+            createIndex.CommandText = """
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_ChangshaGameReplays_GameId"
+                ON "ChangshaGameReplays" ("GameId");
+                """;
+            await createIndex.ExecuteNonQueryAsync(cancellationToken);
         }
         finally
         {

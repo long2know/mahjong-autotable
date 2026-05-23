@@ -10,6 +10,7 @@ using Mahjong.Autotable.Api.Persistence;
 using Mahjong.Autotable.Api.Players;
 using Mahjong.Autotable.Api.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using System.Text.Json;
 
@@ -180,15 +181,82 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "mahjo
 // start, and the assembly version string. Distinct from /api/health (legacy
 // short-form probe used by the frontend) so deployment infrastructure has its
 // own stable wire contract.
-app.MapGet("/health", () =>
+//
+// Phase J Wave 7 — extended with optional db connectivity + activeGames
+// counters. `?simple=1` falls back to the 4-field Wave-3 contract so any
+// load balancer / k8s liveness probe that grep-asserts the old shape (the
+// Docker HEALTHCHECK and tests/smoke/docker-build-smoke.sh do exactly that)
+// keeps working unchanged. The detailed shape adds a nested `db` object
+// (`{ connected: bool, latencyMs: number }`) and an `activeGames` integer
+// pulled from the runtime's in-memory game count. Probing the DB issues a
+// single `SELECT 1` round-trip via the EF Core relational connection.
+app.MapGet("/health", async (HttpContext ctx, IServiceProvider services) =>
 {
     var sha = Environment.GetEnvironmentVariable("BUILD_SHA");
+    var resolvedSha = string.IsNullOrEmpty(sha) ? "dev" : sha;
+    var uptime = DateTimeOffset.UtcNow - processStartTime;
+    var version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown";
+
+    // Phase J Wave 7 — `?simple=1` returns the Wave-3 4-field contract so
+    // load-balancer probes continue to grep-assert {status, buildSha,
+    // uptime, version} without picking up the new fields. The default
+    // (no query parameter) returns the extended detail shape.
+    if (ctx.Request.Query.TryGetValue("simple", out var simpleVal) && simpleVal == "1")
+    {
+        return Results.Ok(new
+        {
+            status = "healthy",
+            buildSha = resolvedSha,
+            uptime,
+            version,
+        });
+    }
+
+    // DB probe: lightweight SELECT 1 round-trip. Catch broadly so any
+    // provider-specific exception surfaces as `connected:false`; the
+    // endpoint itself stays 200 so the health probe semantics don't flip
+    // just because a single round-trip blipped (load balancers conflate
+    // "endpoint down" with "service down").
+    var dbConnected = false;
+    long dbLatencyMs = 0;
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    try
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var conn = db.Database.GetDbConnection();
+        var closeWhenDone = conn.State != System.Data.ConnectionState.Open;
+        if (closeWhenDone) await conn.OpenAsync();
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT 1";
+            _ = await cmd.ExecuteScalarAsync();
+            dbConnected = true;
+        }
+        finally
+        {
+            if (closeWhenDone) await conn.CloseAsync();
+        }
+    }
+    catch
+    {
+        dbConnected = false;
+    }
+    stopwatch.Stop();
+    dbLatencyMs = stopwatch.ElapsedMilliseconds;
+
+    var runtime = services.GetService<IChangshaGameRuntime>();
+    var activeGames = runtime?.GameCount ?? 0;
+
     return Results.Ok(new
     {
-        status = "healthy",
-        buildSha = string.IsNullOrEmpty(sha) ? "dev" : sha,
-        uptime = DateTimeOffset.UtcNow - processStartTime,
-        version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"
+        status = dbConnected ? "healthy" : "degraded",
+        buildSha = resolvedSha,
+        uptime,
+        version,
+        db = new { connected = dbConnected, latencyMs = dbLatencyMs },
+        activeGames,
     });
 }).DisableRateLimiting();
 

@@ -130,9 +130,12 @@ public class PlayerProfileServiceTests : IAsyncLifetime
         Assert.Equal("Player-".Length + 6, profile.DisplayName.Length);
         Assert.Matches("^Player-[0-9A-F]{6}$", profile.DisplayName);
 
-        // Avatar colour is one of the 16-entry palette in
-        // DefaultAvatarColor — all uppercase #RRGGBB hex by construction.
-        Assert.Matches("^#[0-9A-F]{6}$", profile.AvatarColor);
+        // Avatar colour is one of the 8-entry palette in DefaultAvatarColor
+        // (Phase J Wave 7 trimmed the helper from the legacy 16-entry HSL
+        // set to Hicks's frontend palette). The palette entries are lower
+        // case — the regex is case-insensitive so a future re-cased palette
+        // edit doesn't tag this assertion.
+        Assert.Matches("^#[0-9A-Fa-f]{6}$", profile.AvatarColor);
 
         // Deterministic check: a fresh call for the same id with no
         // mutation in between must produce the same default values, so
@@ -269,5 +272,48 @@ public class PlayerProfileServiceTests : IAsyncLifetime
 
         var upper = await svc.UpdateAvatarColorAsync(playerId, "#ABCDEF");
         Assert.Equal("#ABCDEF", upper.AvatarColor);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  5. PlayerProfile.AvatarColor class-initializer default is a palette
+    //     member (Phase J Wave 7 backstop — Vasquez)
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Players"), Trait("Wave", "Phase-J-7")]
+    public void PlayerProfile_AvatarColor_ClassDefault_IsInDocumentedPalette()
+    {
+        // Phase J Wave 5 originally initialised PlayerProfile.AvatarColor to
+        // "#808080" (grey) — a colour that does NOT appear in Hicks's 8-entry
+        // AVATAR_COLOR_PRESETS palette in src/frontend/autotable-src/src/profile.ts.
+        // The runtime almost always overrides this via
+        // PlayerProfileService.DefaultAvatarColor before the entity reaches the
+        // DB, so the regression was invisible from the UI in most cases — but
+        // any code path that constructs a PlayerProfile without going through
+        // the service (test fixtures, future migrations, ad-hoc fix-ups) ends
+        // up shipping a "ghost" 9th colour.
+        //
+        // The Wave 7 fix is to make the property initialiser point at the
+        // FIRST entry of the documented palette ("#c0392b"). This test pins
+        // that contract by:
+        //   (a) cross-checking the constant against the 8 preset values that
+        //       Hicks's frontend exports, and
+        //   (b) confirming a freshly-`new`-ed PlayerProfile carries one of
+        //       those preset values out of the box (regardless of which
+        //       palette entry Bishop picks in the future).
+        var palette = new[]
+        {
+            "#c0392b", "#e67e22", "#f1c40f", "#2ecc71",
+            "#16a085", "#2980b9", "#8e44ad", "#34495e",
+        };
+
+        // The constant is the canonical default exposed to fixtures /
+        // backfills; it must equal a palette member.
+        Assert.Contains(PlayerProfile.DefaultPaletteAvatarColor, palette);
+
+        // A freshly-`new`-ed PlayerProfile must carry the palette default,
+        // not the legacy "#808080" ghost colour.
+        var profile = new PlayerProfile();
+        Assert.NotEqual("#808080", profile.AvatarColor);
+        Assert.Contains(profile.AvatarColor, palette);
     }
 }
