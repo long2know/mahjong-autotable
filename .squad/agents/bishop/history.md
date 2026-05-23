@@ -2457,3 +2457,52 @@ the Wave-8 AWS KMS asymmetric-signing migration plan.
 over Wave-6 closeout baseline of 1422). The single failure
 (Hicks W5 frontend three-renderer.ts) is cross-lane and flagged
 in the memo for Wave 8.
+
+📌 Bishop update (Phase K Wave 8): Seven scoped deliverables
+landed on `stlong/phase-k-wave-8-bringup`:
+
+1. **Audit enrichment** — `CorrelationIdMiddleware` +
+   Stripe-style `IdempotencyMiddleware` (cached response replay
+   on same key+payload, 409 on payload mismatch), `GET
+   /api/audit/{correlationId}` query endpoint,
+   `ReconnectAuditEntry` schema extended with `IdempotencyKey`
+   + `CorrelationId` (+2 indexes), EF migrations for all three
+   providers.
+2. **JWKS performance** — `JwksCacheService` (60s TTL, strong
+   base64 SHA-256 ETag); `/.well-known/jwks.json` honours
+   `If-None-Match` → 304. `docs/jwt-rotation.md` §10 covers
+   operator semantics.
+3. **Swiss tiebreaker stack** — `SwissStandingsService` with
+   Wins → Median-Buchholz → Sonneborn-Berger → Cumulative →
+   alphabetical fallback; monotonic + deterministic.
+4. **Tournament bracket endpoint + hub** — typed
+   `BracketSnapshot` records via `GET
+   /api/tournaments/{id:guid}/bracket`; `TournamentMatchHub`
+   broadcasts `BracketUpdateAsync` after every match-result
+   write.
+5. **Livestream auth gate** — `IPlayerTableContext` (6-role
+   enum) resolves caller role against `ChangshaGame.OwnerPlayerId`
+   + runtime seat snapshot; `VoiceLivestreamController` gates
+   401/403.
+6. **LLM commentary generator** —
+   `OpenAiCommentaryGenerator` with `env:VAR` indirection,
+   `InMemoryCommentaryUsageMeter` (hour + monthly budgets),
+   streaming `IAsyncEnumerable<string>` tokens, fail-open
+   envelope on any failure path (missing key / throttle / HTTP
+   / parse / fence-only response).
+7. **Janus SFU bring-up** — `JanusHealthProbe` (HTTP `/info`
+   probe), `JanusSpectatorVoiceHub` extends the un-sealed
+   `SpectatorVoiceHub` with create-session + attach-plugin +
+   deterministic mountpoint id; fail-open to stub on any
+   error. Provider switch `Voice:SpectatorSfuImpl=Janus`.
+
+**Test gate:** `dotnet test
+tests/Mahjong.Autotable.Api.Tests/Mahjong.Autotable.Api.Tests.csproj
+--nologo` → **Passed: 1706, Failed: 0, Skipped: 0** (~1m 48s;
+**+200 over Wave-7 baseline of 1506**).
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-8.md` —
+per-deliverable design, contract-test coverage, forward notes
+for Wave 9 (livestream path alias, durable commentary meter,
+Janus readiness gate, idempotency-store durability, JWKS TTL
+discipline).

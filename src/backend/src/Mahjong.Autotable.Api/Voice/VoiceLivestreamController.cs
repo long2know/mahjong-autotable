@@ -1,7 +1,9 @@
 using Mahjong.Autotable.Api.Auth;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Data.Entities;
+using Mahjong.Autotable.Api.Players;
 using Mahjong.Autotable.Api.RateLimiting;
+using Mahjong.Autotable.Api.Tables;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -48,17 +50,23 @@ public sealed class VoiceLivestreamController : ControllerBase
     private readonly AuthCookieService _cookies;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<VoiceLivestreamController> _logger;
+    private readonly IPlayerTableContext _tableContext;
+    private readonly PlayerIdentityService _identity;
 
     public VoiceLivestreamController(
         ILivestreamRecorder recorder,
         AuthCookieService cookies,
         IServiceScopeFactory scopeFactory,
-        ILogger<VoiceLivestreamController> logger)
+        ILogger<VoiceLivestreamController> logger,
+        IPlayerTableContext tableContext,
+        PlayerIdentityService identity)
     {
         _recorder = recorder;
         _cookies = cookies;
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _tableContext = tableContext;
+        _identity = identity;
     }
 
     [HttpPost("{gameId:guid}/start")]
@@ -106,8 +114,17 @@ public sealed class VoiceLivestreamController : ControllerBase
     }
 
     [HttpGet("{gameId:guid}/playlist.m3u8")]
-    public IActionResult Playlist([FromRoute] Guid gameId)
+    public async Task<IActionResult> Playlist([FromRoute] Guid gameId, CancellationToken ct)
     {
+        // Phase K Wave 8 — Bishop. Auth gate. The W6/W7 endpoint was
+        // anonymous; W8 restricts pulls to admins, table owners,
+        // seated players, and active spectators (where the runtime
+        // has a hydrated snapshot). Two negative responses:
+        //   401 — no session AND no anon-identity cookie.
+        //   403 — caller resolved but not associated with the table.
+        var gateResult = await GateAsync(gameId, ct);
+        if (gateResult is not null) return gateResult;
+
         var body = _recorder.GetPlaylist(gameId);
         if (body is null)
         {
@@ -125,8 +142,18 @@ public sealed class VoiceLivestreamController : ControllerBase
     }
 
     [HttpGet("{gameId:guid}/{segment}.ts")]
-    public IActionResult Segment([FromRoute] Guid gameId, [FromRoute] string segment)
+    public async Task<IActionResult> Segment(
+        [FromRoute] Guid gameId,
+        [FromRoute] string segment,
+        CancellationToken ct)
     {
+        // Phase K Wave 8 — Bishop. Same auth gate as the playlist
+        // endpoint. Without this the segment URLs would be a
+        // bypass — clients could skip the playlist and pull TS
+        // bytes directly.
+        var gateResult = await GateAsync(gameId, ct);
+        if (gateResult is not null) return gateResult;
+
         var bytes = _recorder.GetSegment(gameId, $"{segment}.ts");
         if (bytes is null)
         {
@@ -138,6 +165,55 @@ public sealed class VoiceLivestreamController : ControllerBase
             });
         }
         return File(bytes, HlsSegmentContentType);
+    }
+
+    /// <summary>
+    /// Phase K Wave 8 — Bishop. Auth gate shared by the playlist +
+    /// segment endpoints. Returns null when the caller is permitted;
+    /// otherwise returns the wired-up 401 / 403 IActionResult ready
+    /// to short-circuit the response.
+    /// </summary>
+    private async Task<IActionResult?> GateAsync(Guid gameId, CancellationToken ct)
+    {
+        var session = await _cookies.ResolveAsync(HttpContext, ct);
+        var anonId = _identity.ResolveFromCookie(HttpContext);
+        var assoc = await _tableContext.ResolveAsync(gameId, session, anonId, ct);
+
+        // Allow: Admin, Owner, Seated, Spectator (snapshot present).
+        if (assoc.Role is PlayerTableRole.Admin
+            or PlayerTableRole.Owner
+            or PlayerTableRole.Seated
+            or PlayerTableRole.Spectator)
+        {
+            return null;
+        }
+
+        if (assoc.Role == PlayerTableRole.Anonymous)
+        {
+            await WriteAuditAsync(
+                string.Empty,
+                gameId,
+                ReconnectAuditEntry.KindLivestreamPlaylistUnauthorized,
+                ct);
+            return StatusCode(StatusCodes.Status401Unauthorized, new
+            {
+                error = "livestream-auth-required",
+                reason = assoc.Reason,
+                gameId,
+            });
+        }
+
+        await WriteAuditAsync(
+            assoc.PlayerId ?? string.Empty,
+            gameId,
+            ReconnectAuditEntry.KindLivestreamPlaylistForbidden,
+            ct);
+        return StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            error = "livestream-not-authorised",
+            reason = assoc.Reason,
+            gameId,
+        });
     }
 
     private async Task<IActionResult?> CheckOwnerOrAdminAsync(

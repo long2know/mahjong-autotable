@@ -1,4 +1,4 @@
-import { Vector3, Vector2, Euler, Quaternion } from "three";
+import { Euler, Quaternion, Vector2, Vector3 } from "three";
 import { Slot } from "./slot";
 import { Size, ThingType, GameType } from "./types";
 

@@ -4,8 +4,7 @@
   https://github.com/mrdoob/three.js/blob/dev/examples/jsm/interactive/SelectionBox.js
 */
 
-import { Frustum, Vector3, Vector2, OrthographicCamera, PerspectiveCamera, Mesh, Camera, Box3 } from "three";
-
+import { Box3, Camera, Frustum, Mesh, OrthographicCamera, PerspectiveCamera, Vector2, Vector3 } from "three";
 export class SelectionBox {
   camera: OrthographicCamera | PerspectiveCamera;
   deep: number = Number.MAX_VALUE;

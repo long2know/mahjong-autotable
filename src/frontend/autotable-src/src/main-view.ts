@@ -1,5 +1,4 @@
-import { Scene, Camera, WebGLRenderer, Vector2, Vector3, Group, AmbientLight, DirectionalLight, PerspectiveCamera, OrthographicCamera, Mesh, Object3D, PlaneGeometry } from 'three';
-
+import { AmbientLight, Camera, DirectionalLight, Group, Mesh, Object3D, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { World } from './world';
 import { CustomOutline } from './render/custom-outline';
 
@@ -52,6 +51,23 @@ export class MainView {
 
   private dummyObject: Object3D;
 
+  // Phase K Wave 8 — Commentary tile-ref highlight overlay.  When a
+  // `mahjong:highlight-tile` CustomEvent fires (dispatched by
+  // `commentary-panel.ts` on tile-ref chip click), the overlay flashes
+  // a yellow halo on top of the canvas for `HIGHLIGHT_PULSE_MS`.  The
+  // halo lives as a DOM sibling of the WebGL canvas (not as a 3D
+  // overlay) so it doesn't fight the per-frame `outline.setSelected`
+  // rebuild driven by `objectView.selectedObjects`, and so Playwright
+  // can assert via `[data-highlight-tile-id]` selector without
+  // touching the renderer pipeline.  Latency is one event-loop turn —
+  // well under the 500 ms `commentary-tile-ref-flash` budget.  The
+  // actual tile-id → 3D mesh mapping is deferred to Phase L (the
+  // wire format "S2-Z7" / "M1" is opaque without the runtime tile
+  // dictionary that lives server-side in commentary generation).
+  private highlightOverlay: HTMLDivElement | null = null;
+  private highlightTimer: number | null = null;
+  private static readonly HIGHLIGHT_PULSE_MS = 2000;
+
   constructor(mainGroup: Group) {
     this.mainGroup = mainGroup;
     this.main = document.getElementById('main')!;
@@ -78,6 +94,7 @@ export class MainView {
 
     this.setupLights();
     this.setupRendering();
+    this.setupHighlightOverlay();
 
     // Phase K Wave 6 — Dev-only FPS overlay (lazy).  Only loaded when
     // the URL carries `?stats=1`; the production cold-load no longer
@@ -92,6 +109,84 @@ export class MainView {
         this.stats = stats;
       }).catch(() => { /* dev-only — ignore failures */ });
     }
+  }
+
+  /**
+   * Phase K Wave 8 — Build the commentary highlight overlay + wire
+   * the `mahjong:highlight-tile` window listener.  The overlay is a
+   * pointer-events-none div positioned over the canvas; on event,
+   * we set its `--highlight-color` custom property and toggle
+   * `data-highlight-active` for 2 s, then clear.  The host
+   * `#main` element receives `data-highlight-tile-id` so Playwright
+   * can assert immediately on the event delivery (visible-within
+   * latency contract is < 500 ms because we set the data attr
+   * synchronously inside the click handler chain).
+   */
+  private setupHighlightOverlay(): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'tile-highlight-overlay';
+    overlay.setAttribute('data-testid', 'tile-highlight-overlay');
+    overlay.setAttribute('aria-hidden', 'true');
+    this.main.appendChild(overlay);
+    this.highlightOverlay = overlay;
+
+    window.addEventListener('mahjong:highlight-tile', (event: Event) => {
+      const detail = (event as CustomEvent<{ tileId: string }>).detail;
+      if (detail === undefined || detail === null) return;
+      const tileId = detail.tileId;
+      if (typeof tileId !== 'string' || tileId.length === 0) return;
+      this.pulseHighlight(tileId);
+    });
+  }
+
+  /**
+   * Phase K Wave 8 — Pulse the commentary highlight overlay for the
+   * given tile id.  Re-entrant: a second pulse before the first one
+   * expires resets the timer (the most-recently-clicked chip wins).
+   * No leak: the timer is cleared on every entry and the overlay is
+   * unconditionally deactivated when the timer fires.
+   *
+   * Vasquez's `commentary-tile-ref-latency.spec.ts` reads
+   * `window.__lastHighlightedTile` (string) and
+   * `window.__highlightTimestampMs` (DOMHighResTimeStamp from
+   * `performance.now()`) — both written synchronously inside this
+   * call so the chip-click → observability handoff stays well
+   * under the 500 ms latency budget.
+   */
+  pulseHighlight(tileId: string): void {
+    if (this.highlightOverlay === null) return;
+    if (this.highlightTimer !== null) {
+      window.clearTimeout(this.highlightTimer);
+      this.highlightTimer = null;
+    }
+    const tsMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    this.main.setAttribute('data-highlight-tile-id', tileId);
+    this.highlightOverlay.setAttribute('data-highlight-active', 'true');
+    this.highlightOverlay.setAttribute('data-highlight-tile-id', tileId);
+    (window as unknown as { __lastHighlightedTile?: string }).__lastHighlightedTile = tileId;
+    (window as unknown as { __highlightTimestampMs?: number }).__highlightTimestampMs = tsMs;
+    // Phase K Wave 8 — Re-dispatch as `tile-highlight` (without the
+    // `mahjong:` prefix) for the Vasquez latency-sniffer spec, which
+    // listens for this event name as the canonical "highlight has
+    // landed on the board" signal.  Different from the originating
+    // `mahjong:highlight-tile` event (which is the chip→view
+    // request); this is the view→assertion-harness completion
+    // confirmation.
+    window.dispatchEvent(
+      new CustomEvent<{ tileId: string; timestamp: number }>('tile-highlight', {
+        detail: { tileId, timestamp: tsMs },
+      }),
+    );
+    this.highlightTimer = window.setTimeout(() => {
+      if (this.highlightOverlay !== null) {
+        this.highlightOverlay.removeAttribute('data-highlight-active');
+        this.highlightOverlay.removeAttribute('data-highlight-tile-id');
+      }
+      this.main.removeAttribute('data-highlight-tile-id');
+      this.highlightTimer = null;
+    }, MainView.HIGHLIGHT_PULSE_MS);
   }
 
   private setupLights(): void {

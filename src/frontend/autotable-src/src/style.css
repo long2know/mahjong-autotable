@@ -16,6 +16,11 @@
 
 #main {
     overflow: hidden;
+    /* Phase K Wave 8 — Positioned ancestor for the
+     * `.tile-highlight-overlay` (commentary tile-ref pulse) so
+     * `position: absolute; top/left/right/bottom: 0` covers the
+     * WebGL canvas exactly without re-flowing the page. */
+    position: relative;
 }
 
 #selection {

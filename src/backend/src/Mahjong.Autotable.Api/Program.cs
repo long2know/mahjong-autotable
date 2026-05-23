@@ -302,6 +302,11 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
 }
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>();
+// Phase K Wave 8 — Bishop. JWKS pre-marshal cache. Owns the
+// IMemoryCache the JwksCacheService projects through. Singleton so
+// the 60s TTL is shared across requests.
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwksCacheService>();
 // Phase K Wave 6 — Bishop. Startup logger emits a single warning when
 // the resolved algorithm is HS256 so operators get a nudge toward
 // the RS256 migration. Wired as IStartupFilter so the log fires
@@ -353,6 +358,23 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.IBracketGenerator
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.IBracketGenerator,
     Mahjong.Autotable.Api.Tournament.DoubleEliminationBracket>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.TournamentBracketGenerator>();
+
+// Phase K Wave 8 — Bishop. Swiss final-standings + tiebreaker
+// pipeline. Pure service (no DI deps); singleton so the tournament
+// runtime can pull a stable instance.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.SwissStandingsService>();
+
+// Phase K Wave 8 — Bishop. Bracket snapshot service. Composes the
+// generator's slot layout with the live TournamentMatch rows so the
+// UI gets a single envelope for the bracket tree. Scoped via
+// IServiceScopeFactory; the service is a thin compute layer.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.TournamentBracketSnapshotService>();
+
+// Phase K Wave 8 — Bishop. Real-time bracket-update broadcaster.
+// Fires `TournamentBracketUpdated` on every match completion through
+// the TournamentMatchHub group. Singleton so the runtime can resolve
+// it via DI without per-call instantiation.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.TournamentBracketBroadcaster>();
 
 // Phase K Wave 1 — Elo rating service + quarterly rollover (Bishop).
 // PlayerRatingService is singleton-shaped — it holds an IServiceScopeFactory
@@ -484,18 +506,74 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IFfmpegHealthProbe,
     }
 }
 
+// Phase K Wave 8 — Bishop. Janus health probe + hub registration.
+// The probe is always registered so operators can call it through
+// /health regardless of the SpectatorSfuImpl value; the Janus hub
+// itself is only registered when Voice:SpectatorSfuImpl=Janus so
+// the type-resolver doesn't construct an HttpClient against an
+// empty endpoint in stub-mode hosts.
+{
+    var voiceEndpoint = builder.Configuration.GetValue<string>("Voice:JanusEndpoint") ?? string.Empty;
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IJanusHealthProbe>(_ =>
+        new Mahjong.Autotable.Api.Voice.JanusHealthProbe(voiceEndpoint));
+    var sfuImpl = builder.Configuration.GetValue<string>("Voice:SpectatorSfuImpl") ?? "InMemoryStub";
+    if (string.Equals(sfuImpl, "Janus", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.JanusSpectatorVoiceHub>();
+    }
+}
+
 // Phase K Wave 6 — Bishop. AI commentary generator seam. Wave 6 ships
 // the deterministic stub returning the canonical Phase-L placeholder
 // message; Phase L re-binds this interface to a real LLM pipeline
 // behind the same controller URL + audit Kind.
-builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryGenerator,
-    Mahjong.Autotable.Api.Commentary.StubCommentaryGenerator>();
+//
+// Phase K Wave 8 — Bishop. The provider seam now branches on
+// Commentary:Provider:
+//   * "Stub"   (default) — StubCommentaryGenerator (deterministic).
+//   * "OpenAI" / "Azure" — OpenAiCommentaryGenerator (Chat Completions).
+// The usage meter is always registered so the controller can read
+// per-game + monthly token totals via /api/audit/ + future
+// observability surfaces.
+builder.Services.Configure<Mahjong.Autotable.Api.Commentary.CommentaryOptions>(
+    builder.Configuration.GetSection("Commentary"));
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryUsageMeter,
+    Mahjong.Autotable.Api.Commentary.InMemoryCommentaryUsageMeter>();
+{
+    var commentaryProvider = builder.Configuration.GetValue<string>("Commentary:Provider") ?? "Stub";
+    if (string.Equals(commentaryProvider, "OpenAI", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(commentaryProvider, "Azure", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryGenerator,
+            Mahjong.Autotable.Api.Commentary.OpenAiCommentaryGenerator>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryGenerator,
+            Mahjong.Autotable.Api.Commentary.StubCommentaryGenerator>();
+    }
+}
+
+// Phase K Wave 8 — Bishop. Idempotency store backing the
+// IdempotencyMiddleware replay-protection gate. Singleton so the
+// 5-minute window is shared across requests. The in-memory default
+// is bounded at 4096 entries; Phase L can re-bind to a Redis-backed
+// store without touching the middleware.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.IIdempotencyStore,
+    Mahjong.Autotable.Api.Audit.InMemoryIdempotencyStore>();
 
 // Phase K Wave 2 — Bishop (Backend). Spectator live-stream stub. Owns
 // the future tile-flip event surface (Phase L) so callers can attach
 // today; the `/api/replay/{id}/livestream.m3u8` endpoint returns 404
 // with a structured envelope until the HLS pipeline lands.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>();
+
+// Phase K Wave 8 — Bishop. Centralised "is player on this table?"
+// gate. Backs the livestream playlist auth check + future surfaces.
+// Singleton — the implementation pulls a per-call scope for the
+// AppDbContext lookup so no scoped state escapes.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tables.IPlayerTableContext,
+    Mahjong.Autotable.Api.Tables.PlayerTableContext>();
 
 const string ChangshaCorsPolicy = "ChangshaCors";
 var configuredOrigins = builder.Configuration
@@ -534,6 +612,12 @@ var rateLimitingEnabled = builder.Services.AddMahjongRateLimiting(builder.Config
 
 var app = builder.Build();
 
+// Phase K Wave 8 — Bishop. CorrelationId middleware runs FIRST so
+// every downstream consumer (security headers, MVC, SignalR) sees a
+// populated X-Correlation-Id on the request + response. Idempotent
+// on duplicate registration; pairs with IdempotencyMiddleware below.
+app.UseMiddleware<Mahjong.Autotable.Api.Audit.CorrelationIdMiddleware>();
+
 // Phase J Wave 8 — security + CDN cache headers (Apone, DevOps). Installed
 // first so security headers stamp on every response (including errors and
 // short-circuit returns from rate limiting / CORS). The middleware uses
@@ -549,6 +633,12 @@ if (rateLimitingEnabled)
     // pipelines bypass the middleware entirely.
     app.UseRateLimiter();
 }
+
+// Phase K Wave 8 — Bishop. Idempotency middleware runs after rate
+// limiting (so a replay flood still hits the rate gate first) but
+// before any controller dispatch. The middleware is opt-in: requests
+// without an Idempotency-Key header skip the check.
+app.UseMiddleware<Mahjong.Autotable.Api.Audit.IdempotencyMiddleware>();
 
 // Raw WebSockets (separate transport from SignalR) — required for the
 // upstream pwmarcz/autotable bundle's WS protocol at /autotable/ws.
@@ -811,9 +901,27 @@ app.MapHub<Mahjong.Autotable.Api.Voice.VoiceHub>("/hubs/webrtc");
 
 // Phase K Wave 6 — Bishop. Spectator-voice SFU signalling hub. Mapped
 // separately from /hubs/voice because the topology (one-way fan-out)
-// is incompatible with the peer-mesh contract. The Wave-6 surface
-// returns stub coordinates; Phase L wires the real SFU.
-app.MapHub<Mahjong.Autotable.Api.Voice.SpectatorVoiceHub>("/hubs/voice/spectator");
+// is incompatible with the peer-mesh contract.
+// Phase K Wave 8 — Bishop. The hub implementation is now selected
+// via Voice:SpectatorSfuImpl ("InMemoryStub" default | "Janus"
+// production). The Janus implementation extends SpectatorVoiceHub
+// so the same URL works regardless of binding.
+{
+    var sfuImpl = builder.Configuration.GetValue<string>("Voice:SpectatorSfuImpl") ?? "InMemoryStub";
+    if (string.Equals(sfuImpl, "Janus", StringComparison.OrdinalIgnoreCase))
+    {
+        app.MapHub<Mahjong.Autotable.Api.Voice.JanusSpectatorVoiceHub>("/hubs/voice/spectator");
+    }
+    else
+    {
+        app.MapHub<Mahjong.Autotable.Api.Voice.SpectatorVoiceHub>("/hubs/voice/spectator");
+    }
+}
+
+// Phase K Wave 8 — Bishop. Tournament bracket-update SignalR hub.
+// Clients call JoinTournament(id) to subscribe; the broadcaster
+// fires TournamentBracketUpdated when matches complete.
+app.MapHub<Mahjong.Autotable.Api.Tournament.TournamentMatchHub>("/hubs/tournaments");
 
 // Phase K Wave 2 — Bishop (Backend). ICE-server discovery endpoint.
 // Returns the configured STUN/TURN list as the WebRTC client

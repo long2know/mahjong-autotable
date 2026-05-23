@@ -1,0 +1,271 @@
+{{/*
+Phase K Wave 8 — Apone (DevOps).
+
+Canary deployment strategy via Argo Rollouts.
+
+Rendered ONLY when `.Values.canary.enabled = true`. When enabled,
+this template replaces the static api Deployment (managed by the
+`mahjong-api` subchart) with an Argo Rollouts `Rollout` resource
+that progressively shifts traffic from the stable to the canary
+ReplicaSet through operator-defined steps with automated promotion
+gated on a success-rate metric (an `AnalysisTemplate`).
+
+Why Argo Rollouts (and NOT Flagger):
+
+* **k8s-native.** The `Rollout` CRD is a drop-in replacement for
+  `Deployment` — same pod spec, same selector labels, same
+  resource shape. Operator runs `kubectl argo rollouts <verb>`
+  for promote / abort / set-image; no separate controller config.
+* **Lockstep with the rest of our Argo footprint.** When we
+  eventually ship Argo CD for GitOps (Phase L candidate), the
+  Rollouts controller is the same vendor.
+* **Flagger is heavier** — requires Istio / Linkerd / nginx-ingress-
+  canary plus its own Canary CRD. The W8 chart only needs replica-
+  based canary + an HTTP metric — Argo Rollouts handles both
+  natively without a service mesh.
+
+Co-existence with the subchart Deployment:
+
+When `canary.enabled = true`, set `api.enabled = false` in the
+umbrella values OR rely on the implicit gate documented in
+`docs/helm-charts.md §3.4` — the Rollout's `selector` matches the
+SAME labels as the subchart Deployment, so leaving the Deployment
+on creates two competing ReplicaSet controllers. The chart errors
+loudly on render when both are enabled (see the guard below).
+
+Prerequisites (cluster-side):
+
+  1. Argo Rollouts controller installed:
+       kubectl create namespace argo-rollouts
+       kubectl apply -n argo-rollouts \
+         -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+  2. `kubectl argo rollouts` CLI on the operator workstation
+     (optional but recommended for live `rollouts get <name>`
+     visibility).
+  3. The metric endpoint (Prometheus query URL) reachable from the
+     cluster — set via `.Values.canary.metricEndpoint`.
+
+Operator runbook: `docs/helm-charts.md §3` (Canary deploys).
+*/}}
+
+{{- if .Values.canary.enabled -}}
+{{- if .Values.api.enabled -}}
+{{- if not .Values.canary.coexistWithDeployment -}}
+{{- fail "canary.enabled = true AND api.enabled = true — two controllers managing the same ReplicaSet selector. Set api.enabled = false, OR (advanced) set canary.coexistWithDeployment = true." -}}
+{{- end -}}
+{{- end -}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: mahjong-autotable-canary
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: api
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+    mahjong.io/rollout-strategy: canary
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-8
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  revisionHistoryLimit: {{ .Values.canary.revisionHistoryLimit | default 3 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mahjong-autotable
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mahjong-autotable
+        app.kubernetes.io/component: api
+    spec:
+      securityContext:
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      {{- with .Values.api.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api
+          image: {{ printf "%s/%s:%s" (.Values.api.image.registry | default "ghcr.io") .Values.api.image.repository (.Values.api.image.tag | default .Chart.AppVersion) | quote }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.api.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://+:8080"
+            - name: MAHJONG_ROLLOUT_REVISION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['rollouts-pod-template-hash']
+          envFrom:
+            - configMapRef:
+                name: mahjong-autotable
+            {{- range .Values.api.externalSecrets }}
+            - secretRef:
+                name: {{ .name }}
+                optional: {{ .optional | default false }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.api.probes.liveness.path | quote }}
+              port: http
+            initialDelaySeconds: {{ .Values.api.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.api.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.api.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.api.probes.readiness.path | quote }}
+              port: http
+            initialDelaySeconds: {{ .Values.api.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.api.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.api.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+  strategy:
+    canary:
+      # Pin stable + canary Services so Argo Rollouts manages
+      # endpoint membership separately for each. The two Services
+      # share a selector EXCEPT for the `rollouts-pod-template-hash`
+      # label that Argo Rollouts adds dynamically.
+      stableService: mahjong-autotable-stable
+      canaryService: mahjong-autotable-canary
+      maxSurge: "25%"
+      maxUnavailable: 0
+      # Operator can scale-down the OLD ReplicaSet aggressively
+      # once promotion completes (default false = preserve).
+      scaleDownDelaySeconds: {{ .Values.canary.scaleDownDelaySeconds | default 30 }}
+      steps:
+        {{- range $i, $step := .Values.canary.steps }}
+        - setWeight: {{ $step.setWeight }}
+          {{- if $step.pause }}
+        - pause:
+            {{- if eq (kindOf $step.pause) "map" }}
+              {{- if hasKey $step.pause "duration" }}
+            duration: {{ $step.pause.duration | quote }}
+              {{- else }}
+            {} # no duration = pause indefinitely until operator promotes
+              {{- end }}
+            {{- else }}
+            {} # operator-gated pause
+            {{- end }}
+          {{- end }}
+          {{- if $step.analysis }}
+        - analysis:
+            templates:
+              - templateName: mahjong-autotable-success-rate
+            args:
+              - name: service-name
+                value: mahjong-autotable-canary
+          {{- end }}
+        {{- end }}
+{{- if .Values.canary.metricEndpoint }}
+---
+{{/*
+AnalysisTemplate — referenced by the Rollout's `analysis` step.
+Queries the configured Prometheus endpoint for the success rate
+of the canary Service and FAILS the canary if the rate dips below
+the configured threshold (default 95%) — Argo Rollouts then auto-
+aborts and rolls back to the stable ReplicaSet.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: mahjong-autotable-success-rate
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: api-canary-analysis
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-8
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: success-rate
+      # Run the query every `interval` until `count` succeed (or
+      # any one fails by the failureCondition).
+      interval: {{ .Values.canary.analysis.interval | default "30s" | quote }}
+      count: {{ .Values.canary.analysis.count | default 5 }}
+      successCondition: {{ printf "result[0] >= %v" (.Values.canary.analysis.successThreshold | default 0.95) | quote }}
+      failureLimit: {{ .Values.canary.analysis.failureLimit | default 1 }}
+      provider:
+        prometheus:
+          address: {{ .Values.canary.metricEndpoint | quote }}
+          query: |
+            sum(rate(
+              http_requests_total{service="{{ "{{args.service-name}}" }}",code!~"5.."}[2m]
+            )) /
+            sum(rate(
+              http_requests_total{service="{{ "{{args.service-name}}" }}"}[2m]
+            ))
+{{- end }}
+---
+{{/*
+Stable + canary Services. Argo Rollouts injects the rollouts-
+pod-template-hash label into the selector at runtime, splitting
+endpoint membership between the stable and canary ReplicaSets.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: mahjong-autotable-stable
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: api
+    mahjong.io/rollout-target: stable
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mahjong-autotable-canary
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: api
+    mahjong.io/rollout-target: canary
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: api
+{{- end }}

@@ -1,5 +1,4 @@
-import { Vector3, Quaternion } from "three";
-
+import { Quaternion, Vector3 } from "three";
 export const SEAT_ROTATIONS = [
   new Quaternion(),
   new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 1 * (Math.PI / 2)),

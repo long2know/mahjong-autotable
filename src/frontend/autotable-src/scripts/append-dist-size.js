@@ -45,6 +45,12 @@ const KEY_PATTERNS = [
   { key: 'three-renderer-small', re: /^three-renderer\.[0-9a-f]+\.js$/, min: true },
   // Module addons.
   { key: 'GLTFLoader',     re: /^GLTFLoader\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 8 — manualChunks splits GLTFLoader into its own
+  // chunk under the kebab-case `gltf-loader` name (matches the
+  // chunkFileNames `[name].[hash:8].js` template).  Match both
+  // legacy + W8 layout so the ledger keeps a stable key across
+  // the bundler swap.
+  { key: 'gltf-loader',    re: /^gltf-loader\.[0-9a-f]+\.js$/ },
   { key: 'stats-module',   re: /^stats(?:\.module)?\.[0-9a-f]+\.js$/ },
   // W6 UI surfaces.
   { key: 'commentary-panel',     re: /^commentary-panel\.[0-9a-f]+\.js$/ },

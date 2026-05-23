@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Mahjong-Autotable squad lane map",
-  "description": "Phase K Wave 7 — Vasquez (QA). Per-agent lane regex map consumed by tests/ci/check-cross-lane-bundling.sh. Each entry maps an agent identity to a single anchored ECMA-style regex; a path matches the lane when the regex matches the path. The script applies these in declaration order, then falls back to its legacy case-statement classifier for back-compat (so a missing lane-map.json never breaks CI). Maintain in sync with charters in .squad/agents/<agent>/charter.md.",
+  "description": "Phase K Wave 8 — Vasquez (QA). Per-agent lane regex map consumed by tests/ci/check-cross-lane-bundling.sh. Each entry maps an agent identity to a single anchored ECMA-style regex; a path matches the lane when the regex matches the path. The script applies these in declaration order, then falls back to its legacy case-statement classifier for back-compat (so a missing lane-map.json never breaks CI). Maintain in sync with charters in .squad/agents/<agent>/charter.md.",
   "lanes": {
     "bishop":  "^(src/backend/src/|src/backend/Migrations/|Phase_K_W\\d+/Bishop/|appsettings.*\\.json|\\.squad/agents/bishop/|\\.squad/decisions/inbox/bishop-)",
     "hicks":   "^(src/frontend/|Phase_K_W\\d+/Hicks/|\\.squad/agents/hicks/|\\.squad/decisions/inbox/hicks-)",
@@ -31,6 +31,17 @@
       "^LICENSE$",
       "^docs/"
     ]
+  },
+  "shared_files": {
+    "description": "Phase K Wave 8 — Vasquez refinement. Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case: tests/selectors.md (and src/frontend/autotable-src/tests/selectors.md) catalogs cross-pane Playwright selectors; both Hicks (when adding a selector for a new UI testid) and Vasquez (when documenting a spec that pins that testid) legitimately author the file.",
+    "selectors_md_shared": {
+      "paths": [
+        "^src/frontend/autotable-src/tests/selectors\\.md$",
+        "^tests/selectors\\.md$"
+      ],
+      "authors": ["hicks", "vasquez"],
+      "primary": "vasquez"
+    }
   },
   "authors": {
     "bishop":  "bishop@squad.mahjong",

@@ -85,6 +85,36 @@ public sealed class VoiceOptions
     /// content root; in k8s this is bound to an emptyDir volume.
     /// </summary>
     public string LivestreamWorkingDirectory { get; set; } = "voice-livestream";
+
+    /// <summary>
+    /// Phase K Wave 8 — Bishop. Selects the
+    /// spectator-voice SFU backend bound at startup. Two values
+    /// supported:
+    /// <list type="bullet">
+    ///   <item><c>"InMemoryStub"</c> (default) — deterministic
+    ///         in-process stub matching the W6/W7 surface; the hub
+    ///         returns a synthetic <c>sfu://stub/&lt;tableId&gt;</c>
+    ///         endpoint so the test harness + dev hosts resolve
+    ///         without a Janus install.</item>
+    ///   <item><c>"Janus"</c> — production. The hub opens a Janus
+    ///         session per spectator via the HTTP REST API at
+    ///         <see cref="JanusEndpoint"/>, returns the mountpoint
+    ///         id + Janus session creds. Health is probed via
+    ///         <c>IJanusHealthProbe</c> at startup; an unreachable
+    ///         Janus surface fails the host fast.</item>
+    /// </list>
+    /// Value comparison is case-insensitive. Unknown values fall
+    /// back to <c>InMemoryStub</c> with a startup warning.
+    /// </summary>
+    public string SpectatorSfuImpl { get; set; } = "InMemoryStub";
+
+    /// <summary>
+    /// Phase K Wave 8 — Bishop. Janus Gateway HTTP API base URL
+    /// (e.g. <c>"http://janus:8088/janus"</c>). Required when
+    /// <see cref="SpectatorSfuImpl"/> is <c>"Janus"</c>; ignored on
+    /// the stub.
+    /// </summary>
+    public string JanusEndpoint { get; set; } = string.Empty;
 }
 
 public sealed class TurnServerOption

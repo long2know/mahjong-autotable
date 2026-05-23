@@ -637,8 +637,16 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.Property<DateTime>("At")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Detail")
                         .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Ipv4Hash")
@@ -672,6 +680,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.HasKey("Id");
 
                     b.HasIndex("At");
+
+                    b.HasIndex("CorrelationId");
+
+                    b.HasIndex("IdempotencyKey");
 
                     b.HasIndex("PlayerId");
 

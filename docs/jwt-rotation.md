@@ -485,6 +485,41 @@ emergency rotation pattern but on the RSA path:
    JWKS will see the new `kid` immediately + transparently retry
    any 401-on-stale-kid responses.
 
+## 10. JWKS endpoint performance (Phase K Wave 8)
+
+The `/.well-known/jwks.json` endpoint is now backed by an in-process
+`JwksCacheService` (see `src/backend/src/Mahjong.Autotable.Api/Auth/JwksCacheService.cs`).
+
+Behaviour:
+
+* **TTL.** The cached JWKS document + strong ETag is held for 60s by
+  default (`JwksCacheService.DefaultTtl`). Within the TTL window, the
+  controller does not touch the underlying key store.
+* **Strong ETag.** The ETag is a quoted base64 SHA-256 over the
+  serialised JWKS payload (`"<base64>"`). It changes if and only if
+  the key set changes — rotation invalidates the cache.
+* **Conditional GET.** The controller honours `If-None-Match` and
+  returns `304 Not Modified` (with the cached ETag) when the client
+  presents the current ETag — so well-behaved clients (operator
+  tooling, sidecars, dashboards) pay zero bandwidth on the steady
+  path.
+* **Cache-Control.** Responses carry `Cache-Control: public,
+  max-age=60, must-revalidate` so intermediate caches mirror the
+  server-side TTL.
+* **Invalidation.** Rotation paths (§4, §5, §8.4) call
+  `JwksCacheService.Invalidate()` after persisting new key material
+  — the next request rebuilds the document and ships a new strong
+  ETag. Existing 304-aware clients see a 200 the first hit after
+  rotation, then 304s again until the next rotation.
+* **Failure mode.** If the underlying key store throws, the
+  controller surfaces 503 (unchanged from Wave 7); the cache never
+  serves stale material across an exception.
+
+Operator note: the cache TTL is intentionally short (60s) so emergency
+rotations propagate within one minute end-to-end (cache eviction +
+client refetch). Do not raise the TTL without coordinating with the
+on-call rotation runbook.
+
 ## 9. Cross-references
 
 * [`docs/jwt-ssm-runbook.md`](jwt-ssm-runbook.md) — SSM-Parameter-Store-focused operator runbook (RS256 keypair custody, §8 above is the canonical procedure).

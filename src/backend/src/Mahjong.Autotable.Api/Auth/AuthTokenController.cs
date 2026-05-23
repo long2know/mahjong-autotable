@@ -140,22 +140,39 @@ public sealed class AuthTokenController : ControllerBase
     /// </list>
     /// </summary>
     [HttpGet(".well-known/jwks.json")]
-    public IActionResult Jwks([FromServices] JwtSigningKeyProvider keys)
+    public IActionResult Jwks(
+        [FromServices] JwtSigningKeyProvider keys,
+        [FromServices] JwksCacheService cache)
     {
         if (string.Equals(keys.Algorithm, "RS256", StringComparison.Ordinal)
             && keys.AllRsaKeys.Count > 0)
         {
+            // Phase K Wave 8 — Bishop. Cached marshalling. The W7
+            // endpoint deserialised RSA keys + serialised the JSON
+            // envelope on every request — a heavy CPU path under
+            // load. W8 caches the pre-serialised body + strong ETag
+            // for 60s; rotations invalidate via the kid-fingerprint.
+            var payload = cache.Resolve(keys);
             Response.Headers.CacheControl = "public, max-age=3600";
-            var publishedKeys = keys.AllRsaKeys.Select(k => new
+            Response.Headers.ETag = payload.ETag;
+
+            // RFC 7232 If-None-Match conditional. When the inbound
+            // header matches the cached ETag we return 304 with no
+            // body so the federated verifier saves the bytes.
+            if (Request.Headers.TryGetValue("If-None-Match", out var ifNoneMatch))
             {
-                kty = "RSA",
-                kid = k.Kid,
-                use = "sig",
-                alg = "RS256",
-                n = k.ModulusBase64Url,
-                e = k.ExponentBase64Url,
-            }).ToArray();
-            return Ok(new { keys = publishedKeys });
+                foreach (var candidate in ifNoneMatch)
+                {
+                    if (string.IsNullOrEmpty(candidate)) continue;
+                    if (string.Equals(candidate, payload.ETag, StringComparison.Ordinal)
+                        || string.Equals(candidate, "*", StringComparison.Ordinal))
+                    {
+                        return StatusCode(StatusCodes.Status304NotModified);
+                    }
+                }
+            }
+
+            return Content(payload.Body, "application/json");
         }
 
         Response.Headers.CacheControl = "public, max-age=60";

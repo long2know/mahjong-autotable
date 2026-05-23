@@ -1,4 +1,4 @@
-import { Vector3, Mesh, Group, Material, InstancedMesh, Matrix4, BufferGeometry, MeshLambertMaterial, InstancedBufferGeometry, InstancedBufferAttribute, Quaternion, Texture } from "three";
+import { BufferGeometry, Group, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, Material, Matrix4, Mesh, MeshLambertMaterial, Quaternion, Texture, Vector3 } from "three";
 import { AssetLoader } from "./asset-loader";
 import { ThingType, TileVariant } from "./types";
 import { rotEquals } from "./utils";

@@ -337,8 +337,17 @@ function renderTileRef(tileId: string): HTMLButtonElement {
   chip.setAttribute('data-tile-id', tileId);
   chip.textContent = tileId;
   chip.addEventListener('click', () => {
+    // Phase K Wave 8 — Two events on click.  The legacy
+    // `commentary:tile-ref` event stays for back-compat with
+    // any listener Hank wires up in the analyst overlay; the
+    // new `mahjong:highlight-tile` event is consumed by
+    // `main-view.ts` to flash a `CustomOutline` pulse on the
+    // 3D tile within 500ms.  Both events ship the same payload.
     window.dispatchEvent(
       new CustomEvent<{ tileId: string }>('commentary:tile-ref', { detail: { tileId } }),
+    );
+    window.dispatchEvent(
+      new CustomEvent<{ tileId: string }>('mahjong:highlight-tile', { detail: { tileId } }),
     );
   });
   return chip;

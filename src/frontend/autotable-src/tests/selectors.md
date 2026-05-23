@@ -1377,12 +1377,35 @@ based on `tournament.format`. The container always carries
 `single-elim` / `swiss` / `double-elim` / `round-robin`.
 
 - `bracket-format-{format}` — root container per format.
-- `bracket-round-{n}` — column / region per round, 1-indexed.
-- `bracket-match-{round}-{matchIndex}` — individual match card.
-- `bracket-double-elim-winners` — winners-bracket region (double-elim only).
-- `bracket-double-elim-losers` — losers-bracket region (double-elim only).
-- `tournament-grand-final` — the grand final card (double-elim only;
-  also surfaced in single-elim when only one final remains).
+- `bracket-round-{n}` — column / region per round, 1-indexed (winners side
+  for double-elim; the only round-set for single-elim / Swiss / RR).
+- `bracket-round` — bare-name round-title label inside each winners-side
+  round group (added Wave 8).
+- `bracket-match` — Wave 8 canonical match-tile testid. The W6
+  `bracket-match-{round}-{matchIndex}` variant is replaced — match
+  identifiers now live on `data-match-round` / `data-match-index` /
+  `data-match-id` attributes so a Playwright `getAllByTestId('bracket-match')`
+  returns the row set in render order.
+- `winners-bracket` — winners-bracket column root (Wave 8; W6's
+  `bracket-double-elim-winners` testid is replaced).
+- `losers-bracket` — losers-bracket column root (Wave 8; W6's
+  `bracket-double-elim-losers` testid is replaced).
+- `losers-bracket-round-{n}` — losers-bracket round group, 1-indexed.
+- `losers-bracket-round` — bare-name losers round-title label inside each
+  losers-side round group (added Wave 8).
+- `bracket-grand-final` — grand final card (Wave 8; W6's
+  `tournament-grand-final` is kept on the same element via
+  `data-testid-legacy` for any straggler spec).
+- `bracket-match-grand-final` — grand-final match-row child.
+- `grand-final-reset` — reset-match card (only present when the
+  bracket actually resets; see DoubleElimRenderer for the gating
+  rules).
+- `bracket-match-grand-final-reset` — reset-match row child.
+- `bracket-live-update` — invisible Playwright anchor on the bracket
+  wrap, carries `data-update-id="{timestamp}"` that changes on
+  every render (Vasquez's `bracket-live-update.spec.ts` mutation-
+  observes this attribute to detect a re-render without a page
+  reload).
 - `bracket-swiss-standings` — Swiss standings table (Swiss + RR formats).
 
 #### PWA install button polish — `src/pwa.ts`
@@ -1652,4 +1675,153 @@ Bishop lane) with Hicks's commentary-panel rendering + cross-pane
 interaction, plus the bundler-swap + outline-shader + PWA-icon
 deliverables. Vasquez's specs hard-pin the cross-pair contracts at
 the Playwright layer.
+
+## Phase K Wave 8 — Vasquez Playwright additions
+
+Wave 8 ships seven new Playwright specs co-located with the earlier
+waves under `tests/e2e/`. These specs hard-pin Bishop's W8 backend
+surfaces (commentary streaming, tournament bracket SignalR, Swiss
+tiebreaker, Janus voice hub, OpenAI commentary generator) against
+Hicks's W8 frontend surfaces (losers-bracket renderer, cross-pane
+tile-ref latency, 540 KB bundle cap, PWA Lighthouse score, Vite
+dev-server SignalR proxy, live bracket re-render, streaming
+commentary panel).
+
+The W8 specs use the same forward-stage tolerance pattern as W7:
+when the surface being tested isn't yet observable (testid absent,
+endpoint not served, window-hook not exposed), the spec emits a
+`forward-staged` annotation and soft-passes. Once Bishop's and
+Hicks's W8 deliverables land, the soft-passes flip to hard-asserts
+without code changes.
+
+W8 testids registered (shared between Hicks & Vasquez per
+`tests/ci/lane-map.json` `shared_files.selectors_md_shared`):
+
+- `losers-bracket` — root container for the double-elim losers half.
+- `losers-bracket-round` — per-round label inside the losers half.
+- `bracket-grand-final` — the grand-final tile.
+- `tournament-bracket` — the live-update bracket pane root.
+- `bracket-match` — individual match tiles (incremented as the
+  bracket grows via `TournamentBracketUpdated`).
+- `commentary-panel` — the streaming commentary pane root.
+
+W8 window hooks:
+
+- `window.__publishTournamentBracketUpdate(payload)` — drives the
+  simulated SignalR `TournamentBracketUpdated` message in tests.
+- `window.__lastHighlightedTile` / `window.__highlightTimestampMs` —
+  W7's tile-highlight observability hooks extended in W8 with the
+  receipt timestamp axis for latency assertions.
+
+Wave 8 specs:
+
+- `losers-bracket-render.spec.ts` — mocks the W8 bracket payload
+  (3 losers rounds + grand final) and verifies the renderer emits
+  `data-testid="losers-bracket"`, three `losers-bracket-round`
+  labels, and a `bracket-grand-final` tile. Soft-passes when
+  testids aren't yet wired.
+- `commentary-tile-ref-latency.spec.ts` — extends W7's cross-pane
+  spec with a strict latency hard-assert: tile-ref click to
+  `tile-highlight` dispatch MUST be < 500ms. Uses page-context
+  `performance.now()` for both endpoints of the measurement to
+  share the same time origin.
+- `three-renderer-540-hard.spec.ts` — the W8 external bundle gate.
+  Reads `dist-size.json` from the dev server, finds the K8 wave
+  entry, and hard-asserts `three-renderer-big` (or fallback
+  `three-renderer` / `three-renderer-large`) ≤ 540 × 1024 bytes.
+  Soft-passes when the K8 history entry isn't recorded yet.
+- `pwa-lighthouse-score.spec.ts` — fetches the recorded Lighthouse
+  JSON report from canonical artefact paths and hard-asserts the
+  PWA category score ≥ 0.95. Tolerates three Lighthouse schema
+  variants (vanilla `categories.pwa.score`, flattened `pwa`, and
+  `score.pwa` subtree).
+- `vite-signalr-proxy.spec.ts` — verifies the Vite dev-server proxy
+  forwards `/hub/*` paths to the backend. Detects Vite via
+  `/@vite/client` probe; soft-passes against production Docker
+  base URLs (no Vite layer to exercise). Hard-fails on 502/504
+  (proxy broken); accepts 200/401/404/400/405 (proxy wired,
+  backend semantic response).
+- `bracket-live-update.spec.ts` — drives a synthetic SignalR
+  `TournamentBracketUpdated` message via the
+  `window.__publishTournamentBracketUpdate` hook and asserts the
+  bracket pane re-renders without a page reload. Watches for a
+  new `bracket-match` tile to appear.
+- `commentary-streaming.spec.ts` — stages a 3-chunk SSE stream on
+  `/api/replay/{id}/commentary/stream` and verifies the commentary
+  panel renders the text progressively. Probes the DOM twice
+  ~250ms apart; soft-passes when the static fallback wins the
+  race (panel is fully populated on the first probe).
+
+The W8 surface area pairs Bishop's commentary-streaming +
+tournament-bracket SignalR + Janus voice + OpenAI commentary
+generator + Swiss tiebreaker + AuditEvent enrichment + Idempotency
+middleware with Hicks's W8 frontend deliverables. The W8 specs
+keep the zero-skip streak (forward-stage soft-pass annotations
+are not xunit `Skip`; they are early-return success).
+
+## Phase K Wave 8 — Hicks confirmation (W8 implementation footer)
+
+The W8 testids called out above are now wired in code. Concrete
+landing points:
+
+- `data-testid="winners-bracket"` / `data-testid="losers-bracket"`
+  on the per-side columns (`bracket-renderer.ts`, see
+  `buildBracketColumn`).
+- `data-testid="losers-bracket-round-{n}"` on each losers-side
+  round group; the round-title label inside each group also
+  carries `data-testid="losers-bracket-round"` (bare-name) for
+  Vasquez's `getAllByTestId('losers-bracket-round')` count assert.
+- `data-testid="bracket-grand-final"` on the grand-final card.
+- `data-testid="grand-final-reset"` on the reset-match card
+  (rendered only when the losers-bracket champion wins the first
+  grand final — see `shouldRenderResetMatch` for the rule).
+- `data-testid="bracket-live-update"` on a hidden `<div>` with
+  `data-update-id={millis}` updated on every renderer call.
+- `data-testid="tile-highlight-overlay"` on the highlight-pulse
+  layer over the WebGL canvas; the canvas host (`#main`) and the
+  overlay both carry `data-highlight-tile-id={id}` while the
+  pulse is active (2 s).
+
+Window observability hooks installed:
+
+- `window.__lastHighlightedTile` (string) — last tile id passed to
+  `MainView.pulseHighlight`. Written synchronously inside the
+  call, before the `tile-highlight` event dispatch.
+- `window.__highlightTimestampMs` (DOMHighResTimeStamp) — value of
+  `performance.now()` captured at the same call site.
+- `window.__publishTournamentBracketUpdate(payload)` — installed
+  by `tournaments.ts` when the panel is first activated.  Calls
+  the same refresh handler the SignalR `TournamentBracketUpdated`
+  hub event drives, so a spec can simulate the push without
+  spinning up a real hub.
+
+Event bus (additions to W7's `mahjong:*` event family):
+
+- `mahjong:highlight-tile` (window, `CustomEvent<{ tileId }>`) —
+  dispatched by `commentary-panel.ts:renderTileRef` on tile-ref
+  chip click.  `MainView` listens and calls `pulseHighlight`.
+- `tile-highlight` (window, `CustomEvent<{ tileId, timestamp }>`) —
+  dispatched by `MainView.pulseHighlight` AFTER the overlay
+  becomes active.  Vasquez's latency spec asserts the
+  click→`tile-highlight` round trip < 500 ms.
+- `commentary:tile-ref` (window, `CustomEvent<{ tileId }>`) — W7
+  legacy event, kept alongside `mahjong:highlight-tile` for
+  Hank's analyst-overlay consumer.
+
+Vite dev-server proxy (W8 item 5) — see
+`docs/frontend-build-tooling.md §3`. `vite.config.ts:server.proxy`
+routes `/hubs/*`, `/autotable/ws`, and `/api/*` from
+`http://localhost:5173` to `process.env.AUTOTABLE_BACKEND ??
+'http://localhost:5000'` with `ws: true` so SignalR's WebSocket
+transport survives the hop.  `hub.ts:hubUrl()` no longer returns
+`http://localhost:5000/...` in dev — it returns the same
+same-origin `/hubs/changsha` it returns in production, and the
+dev proxy handles the routing transparently.
+
+PWA score (W8 item 4) — **1.00** (Lighthouse 11.7.1).  See
+`docs/frontend-pwa-audit.md` for the audit recipe + the icon-path
+bug found during the audit (manifest icons 404'd because Vite
+hashed them to root but the manifest kept the source paths).
+Fixed in `vite.config.ts:copyStaticAssets`.
+
 

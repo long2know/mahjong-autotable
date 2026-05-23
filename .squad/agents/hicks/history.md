@@ -3069,3 +3069,147 @@ emit at `src/frontend/autotable/`.
    `commentary-record-shape`, `commentary-tile-ref-click`,
    `commentary-turn-collapse`, `csp-no-jsdelivr`.
 
+
+## 2026-05-23 — Phase K Wave 8 (Hicks frontend lead)
+
+Branch: `stlong/phase-k-wave-8-bringup`
+Identity: `Hicks (Frontend) <hicks@squad.mahjong>` (per-command git env)
+Build gate: `npm run build:vite` clean (~8s); `tsc --noEmit --strict` zero errors.
+
+### W8 scope delivered (5 items)
+
+1. **Three-renderer chunk < 540 KB** (target: hard ceiling for Vasquez's
+   `three-renderer-540-hard.spec.ts`). **Result: 531.86 KB ✅** (+8.14 KB
+   headroom). Driven by the GLTFLoader chunk peel (−44.22 KB) + a
+   hand-rolled `mergeSimpleGeometries` helper (−3.83 KB) in
+   `object-view.ts`. Negative finding documented:
+   per-class deep imports (`from 'three/src/math/Vector3.js'`) make the
+   bundle ~150 KB LARGER, not smaller — three's bundled `build/three.module.js`
+   tree-shakes better than its `src/` tree. Don't retry. Aggressive Rollup
+   tree-shake levers (`propertyReadSideEffects: false`, etc.) had no
+   measurable effect but kept for future-proofing.
+2. **Losers-bracket UI + reset-match row.** `bracket-renderer.ts`
+   `DoubleElimRenderer.render()` now consumes Bishop's W8 server-authored
+   partition (`{ winnersBracket, losersBracket, grandFinal: { match,
+   resetMatch } }`) when present, falls back to the W6 client-side
+   heuristic when the wire still ships flat `matches[]` (mid-deploy
+   safety). Reset row gated by `shouldRenderResetMatch` — renders iff
+   the losers-bracket champion won the first grand final. Testids:
+   `winners-bracket`, `losers-bracket`, `losers-bracket-round-{n}`,
+   `losers-bracket-round` (bare label), `bracket-grand-final`,
+   `grand-final-reset`, `bracket-match` (with `data-match-round` /
+   `data-match-index` siblings), `bracket-live-update` (hidden
+   mutation-observer anchor). Hub: `TournamentBracketUpdated` listener
+   added; `window.__publishTournamentBracketUpdate` window hook for
+   Vasquez's spec to drive synthetic pushes.
+3. **Commentary tile-ref → board highlight.** Two-event chain:
+   `commentary-panel.ts:renderTileRef` dispatches `mahjong:highlight-tile`
+   (W8 new) alongside `commentary:tile-ref` (W7 legacy, kept).
+   `MainView.setupHighlightOverlay` listens for the new event,
+   `pulseHighlight(tileId)` flashes a yellow CSS halo overlay over the
+   WebGL canvas for 2 s with a 120 ms ease-out fade. Re-entrant
+   (re-clicks reset the timer). Observability hooks
+   (`window.__lastHighlightedTile`, `window.__highlightTimestampMs`,
+   `tile-highlight` CustomEvent) written synchronously inside the handler
+   so latency assertions are accurate. `prefers-reduced-motion: reduce`
+   collapses the animation to a static highlight.
+   **CSS overlay chosen over 3D mesh outline** because (a) tile-id ("S2-Z7")
+   has no current world→mesh resolver, (b) `outline.setSelected` gets
+   overwritten every frame from `objectView.selectedObjects` so a direct
+   mesh pulse would fight the main loop. Future Phase L work can add the
+   3D mesh pulse alongside the CSS overlay when a tile-id parser lands.
+4. **Lighthouse PWA audit ≥ 0.95.** Result: **1.00** (lighthouse@11.7.1,
+   `--only-categories=pwa`). Single failing audit in baseline was
+   `installable-manifest` — root cause: Vite hashed icons to root with
+   content-hashed names but the manifest is a static copy that still
+   references the source-tree `img/icon-NNN.auto.png` paths.
+   Manifest icons all 404'd, breaking the install rule. **Pre-existing
+   bug from W7 (Parcel→Vite swap) that was not caught because W7
+   didn't re-run the audit.** Fixed by adding the PWA icons to
+   `vite.config.ts:copyStaticAssets` (copies un-hashed icons to
+   `out/img/icon-NNN.auto.png`). `.lighthouse-pwa.json` added to
+   `.gitignore` — re-generate locally with the recipe in
+   `docs/frontend-pwa-audit.md §3`. Note: Lighthouse 13.x DROPPED the
+   PWA category entirely; the recipe pins lighthouse@11 for repeatable
+   scoring. Lighthouse-13 / PWA-Builder migration flagged for W9.
+5. **Vite SignalR + WS dev proxy.** `vite.config.ts:server.proxy`
+   routes `/hubs/*`, `/autotable/ws`, `/api/*` from
+   `http://localhost:5173` to `http://localhost:5000` (override via
+   `AUTOTABLE_BACKEND` env var). `ws: true` enables WebSocket upgrade
+   for SignalR. `hub.ts:hubUrl()` simplified — always returns the
+   same-origin `/hubs/changsha` (the dev proxy handles routing).
+   Legacy `?hub=<url>` override kept for remote-backend contributors.
+
+### Files touched (lane-conformant)
+
+`src/frontend/autotable-src/{vite.config.ts, src/bracket-renderer.ts,
+src/tournaments.ts, src/main-view.ts, src/commentary-panel.ts,
+src/object-view.ts, src/asset-loader.ts, src/hub.ts, src/style.css,
+src/main.css, .gitignore, scripts/append-dist-size.js,
+scripts/three-deep-imports.js (new, NOT applied), scripts/three-collapse-imports.js
+(new, NOT applied), dist-size.json (K8 entry), tests/selectors.md}`,
+`docs/{frontend-three-budget.md, frontend-build-tooling.md, frontend-pwa-audit.md (new)}`,
+`.squad/{agents/hicks/history.md, decisions/inbox/hicks-phase-k-wave-8.md (new)}`.
+
+Built artefacts in `src/frontend/autotable/` rebuilt by Vite
+(`emptyOutDir: true`); old hashes auto-pruned. Final chunk:
+`three-renderer.eb7db003.js = 531,862 B`, `gltf-loader.424b49f4.js = 44,223 B`.
+
+### dist-size.json K8 entry
+
+| Chunk | Bytes |
+|-------|-------|
+| three-renderer-big | 531,862 |
+| three-renderer-small | 71,263 |
+| gltf-loader (NEW) | 44,223 |
+| tournaments | 41,521 (slight grow — DoubleElimLayout normalizer + reset row code) |
+| scene-effects | 59,041 |
+| scene-shell | 2,341 |
+| autotable-src-eager | 214,455 |
+| game-bootstrap | 174,561 |
+
+Trend ledger (`three-renderer-big`):
+`740 → 579 → 531.86 KB` — Vasquez's monotonic-decrease invariant holds.
+
+### Hand-off to W9
+
+1. **3D mesh pulse for tile-ref highlight.** Currently CSS-overlay only.
+   When a tile-id parser + `World.findThingByFace` API land,
+   `MainView.pulseHighlight` can ALSO call `outline.setHighlight([mesh])`.
+2. **WebGLRenderer.js material-type strip patch.** ~80 KB of dead
+   material classes (`MeshStandardMaterial`, `MeshPhongMaterial`, etc.)
+   are pulled by Rollup because three's internal `material.type` switch
+   references them by string. Patching three's renderer file (we only
+   use `MeshLambertMaterial` + `MeshBasicMaterial`) could shave 15–20 KB
+   more. Defer to W10+.
+3. **Parcel removal.** `build:parcel` was kept for one wave of W7
+   confidence; W7 + W8 both Vite-only deploys. Delete in W9 if no
+   regressions.
+4. **Lighthouse 13 migration.** PWA category dropped; new recipe needs
+   to assemble a PWA score from individual audits (`installable-manifest`,
+   `maskable-icon`, `splash-screen`, `themed-omnibox`, `viewport`).
+   Alternative: switch to PWA Builder.
+5. **Manifest gap-fills.** `screenshots[]`, `id`, `lang`, `dir`,
+   `iarc_rating_id` are PWA-Builder-flagged but not Lighthouse 11
+   blockers. Pick up in W9 if scope allows.
+6. **Bishop wire canonicalization.** `normalizeDoubleElimLayout` tolerates
+   three spellings (`layout` / `doubleElimLayout` / `bracketLayout`); pick
+   one and drop the others.
+7. **Vasquez W8 specs to validate against this build:**
+   `losers-bracket-render.spec.ts`, `commentary-tile-ref-latency.spec.ts`,
+   `three-renderer-540-hard.spec.ts`, `pwa-lighthouse-score.spec.ts`,
+   `vite-signalr-proxy.spec.ts`, `bracket-live-update.spec.ts`. All
+   testids + observability hooks land per the W8 directive.
+
+### Identity discipline confirmed
+
+- All commits use per-command git env
+  (`git -c user.name="Hicks (Frontend)" -c user.email="hicks@squad.mahjong"`).
+- NEVER `git config user.name`.
+- Flock-wrapped commit at `/tmp/squad-git-lock` (-w 120).
+- Stash before, restore at end (no half-baked work left).
+- Only lane-allowed paths staged: `src/frontend/`, `docs/frontend-*`,
+  `.squad/agents/hicks/`, `.squad/decisions/inbox/hicks-*`,
+  `src/frontend/autotable-src/tests/selectors.md`.
+- `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+  trailer included.

@@ -296,7 +296,198 @@ The W6 workflow uploads with `release_status: draft` so the
 operator can review before the testers see anything; flip to
 `release_status: completed` in the workflow YAML to auto-roll-out.
 
-## 7. Verifying a release
+## 7. Production track promotion (Phase K Wave 8 — Apone)
+
+Wave 8 closes the promotion ladder. The full path from PR to
+public release is:
+
+```
+            ┌──────────────────────────────┐
+            │ mobile/** PR → main          │
+            │ mobile-build.yml (every PR)  │
+            │ (unsigned smoke build)       │
+            └─────────────┬────────────────┘
+                          │
+                          ▼  operator cuts tag `mobile-v0.17.0`
+            ┌──────────────────────────────┐
+            │ mobile-internal-testing.yml  │
+            │ (W6 — tag-driven)            │
+            │ → TestFlight Internal        │
+            │ → Play Internal Testing      │
+            └─────────────┬────────────────┘
+                          │
+                          ▼  operator dispatches workflow
+            ┌──────────────────────────────┐
+            │ mobile-external-testing.yml  │
+            │ (W7 — workflow_dispatch)     │
+            │ → TestFlight External Groups │
+            │ → Play Closed Testing track  │
+            └─────────────┬────────────────┘
+                          │
+                          ▼  internal beta cohort signs off
+                          │  operator cuts tag `mobile-prod-v0.17.0`
+            ┌──────────────────────────────┐
+            │ mobile-production-release.yml│
+            │ (W8 — tag + env-gated)       │
+            │ env: release-channel-prod    │
+            │ → App Store Production       │
+            │ → Play Production track      │
+            │   (10% staged → 100%)        │
+            └──────────────────────────────┘
+```
+
+Three workflows; three tag spaces; one shared secret set. The
+W8 workflow lives at
+[`.github/workflows/mobile-production-release.yml`](../.github/workflows/mobile-production-release.yml).
+
+### 7.1 Tag space
+
+| Tag prefix | Workflow | Audience |
+|---|---|---|
+| `mobile-v*.*.*` | `mobile-internal-testing.yml` | TestFlight Internal + Play Internal Testing (dev team) |
+| (no tag — workflow_dispatch on `main`) | `mobile-external-testing.yml` | TestFlight External Groups + Play Closed Testing |
+| `mobile-prod-v*.*.*` | `mobile-production-release.yml` | App Store Production + Play Production |
+
+The prefix split is intentional — a `mobile-prod-v*.*.*` push does
+NOT trigger Internal Testing. The two tag namespaces are disjoint
+by prefix; `git log --tags` shows the production ladder in
+distinct labels.
+
+### 7.2 Pre-flight (operator)
+
+Before cutting a production tag:
+
+1. **Confirm the internal beta cohort has signed off** — the
+   External-Testing build (W7) has been in the wild long enough
+   to surface P0/P1 bugs. The W8 retro committed to a minimum
+   internal soak window of 7 days for routine releases, 24 h
+   for security hotfixes.
+2. **Author user-facing release notes** — max 4000 chars
+   (TestFlight + Play both reject longer blobs). The W8
+   workflow input `release_notes` carries the user-facing copy
+   verbatim into both stores.
+3. **Confirm `release-channel-production` GitHub Environment
+   approvers are reachable** — the W8 workflow's first job is
+   env-gated. A run will sit pending approval indefinitely;
+   weekend cuts need someone on PagerDuty.
+
+### 7.3 Cut + promote
+
+```bash
+# 1. Tag the production release. The version MUST match the
+#    `mobile-v*.*.*` tag whose build is being promoted (the
+#    workflow validates this).
+git tag mobile-prod-v0.17.0
+git push origin mobile-prod-v0.17.0
+
+# 2. The push triggers mobile-production-release.yml. The first
+#    job (prepare) is env-gated — a reviewer approves via
+#    https://github.com/long2know/mahjong-autotable/actions →
+#    pending environment approval.
+
+# 3. Once approved, downstream jobs (android-production +
+#    ios-production) run in parallel. iOS submits for App
+#    Review (~24 h on first submission of a version); Android
+#    promotes to a staged Production rollout (10% by default).
+
+# 4. Slack notification fires once both store jobs complete.
+```
+
+### 7.4 workflow_dispatch (manual promotion from existing tag)
+
+If the tag already exists (e.g. re-running after a transient
+fastlane failure):
+
+```bash
+gh workflow run mobile-production-release.yml \
+    -f tag=mobile-prod-v0.17.0 \
+    -f internal_tag=mobile-v0.17.0 \
+    -f release_notes="$(cat release-notes.md)" \
+    -f android_rollout_fraction=0.10 \
+    -f android_release_status=inProgress \
+    -f ios_automatic_release=true
+```
+
+The `internal_tag` input is required so the workflow can
+validate the originating Internal-Testing tag exists. The
+default `android_rollout_fraction=0.1` means 10% of users get
+the new build initially; subsequent workflow_dispatch runs with
+a higher fraction bump the rollout.
+
+### 7.5 Staged rollout — Android
+
+Play Production supports staged rollout. The W8 baseline:
+
+| Day | Rollout fraction | How |
+|---|---|---|
+| T+0 | 10% | First push: `android_rollout_fraction=0.10`, `release_status=inProgress` |
+| T+2 (no P0 metrics) | 25% | Re-run workflow with `android_rollout_fraction=0.25` |
+| T+4 | 50% | Re-run with 0.50 |
+| T+7 | 100% | Re-run with `android_release_status=completed` |
+
+If a P0 surfaces mid-staged rollout, halt with:
+
+```bash
+gh workflow run mobile-production-release.yml \
+    -f tag=mobile-prod-v0.17.0 \
+    -f internal_tag=mobile-v0.17.0 \
+    -f release_notes="(halt rollout)" \
+    -f android_rollout_fraction=0.0 \
+    -f android_release_status=inProgress
+```
+
+`--rollout 0.0` stops further roll-out without unpublishing
+the build from users who already received it.
+
+### 7.6 Staged rollout — iOS
+
+App Store has NO direct staged rollout for fresh releases
+(only phased release for >7-day distributions). The W8 workflow
+flips `--automatic_release=true` by default so the release goes
+live the moment App Review passes.
+
+To gate manual release (Apple's "Pending Developer Release"):
+
+```bash
+# Run with automatic_release=false; review still happens but
+# the operator clicks "Release this version" in App Store
+# Connect to publish.
+gh workflow run mobile-production-release.yml \
+    -f ios_automatic_release=false \
+    ... (other inputs)
+```
+
+### 7.7 Env approval
+
+`mobile-production-release.yml` declares
+`environment: { name: release-channel-production }` on the
+`prepare` job. The GitHub Environment object (configured in
+repo Settings → Environments) MUST have:
+
+* Required reviewers — at least one of `@long2know`, the on-call
+  operator role.
+* Deployment branches — restricted to `main` (production
+  releases must come off the main branch).
+* No wait-timer — Apple's App Review latency dominates; no need
+  for a workflow-level delay.
+
+Once an approver clicks "Approve and deploy", the workflow
+proceeds without further per-job approval.
+
+### 7.8 Rollback
+
+| Store | Possible? | How |
+|---|---|---|
+| Play Production | Yes (halt) | Set `android_rollout_fraction=0.0` via workflow_dispatch — stops further rollout, doesn't recall builds already installed. |
+| Play Production | Yes (revert) | Re-promote the PRIOR `mobile-prod-v` tag's build (Play retains prior builds). |
+| App Store | No (no revert) | Submit a hotfix build with a higher version number — Apple has no direct revert. |
+
+The W8 retro action item: build a "mobile-production-hotfix"
+workflow that takes a version + a known-good prior tag, cuts a
+patch tag (`mobile-prod-v0.17.1`), and submits within the env
+gate. Scheduled for W9.
+
+## 8. Verifying a release
 
 After the workflow run completes:
 
@@ -314,7 +505,7 @@ gcloud --project "$GCP_PROJECT" \
 # (or fastlane supply --query) — easier: check the Play Console UI.
 ```
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
@@ -324,10 +515,11 @@ gcloud --project "$GCP_PROJECT" \
 | Slack notification missing | `SLACK_WEBHOOK_URL` secret absent | §3.3 |
 | Workflow run shows `have-secrets=false` | Fork PR (cannot read secrets) | Expected — fork PRs cannot push to TestFlight / Play |
 
-## 9. Cross-references
+## 10. Cross-references
 
 * `.github/workflows/mobile-build.yml` — W2 unsigned-build CI (every PR).
 * `.github/workflows/mobile-internal-testing.yml` — Internal Testing tag-driven workflow.
 * `.github/workflows/mobile-external-testing.yml` — **Wave 7** External Testing promotion (operator-driven; §4a).
+* `.github/workflows/mobile-production-release.yml` — **Wave 8** Production track promotion (tag + env-gated; §7).
 * `mobile/capacitor.config.json` — Capacitor app metadata (bundle ID, version).
 * `docs/secret-rotation.md` — rotation cadence for signing identities.

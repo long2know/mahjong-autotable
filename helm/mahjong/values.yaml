@@ -287,3 +287,96 @@ postgresSidecar:
     limits:
       cpu: "500m"
       memory: "1Gi"
+
+# ── Canary deployment strategy (Phase K Wave 8 — Apone) ───────────
+#
+# When `canary.enabled = true`, the umbrella's
+# `templates/canary-deployment.yaml` renders an Argo Rollouts
+# `Rollout` resource (replacing the static api Deployment from the
+# `mahjong-api` subchart) that progressively shifts traffic from
+# the stable to the canary ReplicaSet through the configured steps.
+#
+# Cluster prerequisites:
+#   * Argo Rollouts controller installed in the `argo-rollouts`
+#     namespace (see docs/helm-charts.md §3).
+#   * (optional) Prometheus reachable at `canary.metricEndpoint`
+#     for automated success-rate gating; otherwise the analysis
+#     block is suppressed and the steps fire on duration-only.
+#
+# Co-existence guard:
+#   The Rollout's selector matches the SAME labels as the
+#   subchart Deployment. Helm errors loudly on render when both
+#   `api.enabled` and `canary.enabled` are true (the guard lives
+#   in `templates/canary-deployment.yaml`). To enable canary,
+#   either set `api.enabled = false` (the canary path supersedes
+#   the subchart's static Deployment) or set
+#   `canary.coexistWithDeployment = true` (advanced — for staging
+#   where you want the static surface AND the canary surface
+#   exercised in parallel).
+canary:
+  enabled: false
+
+  # Set true ONLY for advanced staging-soak scenarios where the
+  # static Deployment AND the Rollout-managed canary should
+  # coexist (e.g. comparing two image variants in parallel).
+  # Production MUST keep this false — two controllers on the same
+  # selector is a known foot-gun.
+  coexistWithDeployment: false
+
+  # Argo Rollouts retains this many old ReplicaSets for rollback
+  # via `kubectl argo rollouts undo`. Higher in prod (4 = last 4
+  # promotions are revertable); lower in staging.
+  revisionHistoryLimit: 3
+
+  # Delay before scaling down the OLD stable ReplicaSet after a
+  # successful promotion. 30s lets in-flight requests drain before
+  # the old pods are terminated.
+  scaleDownDelaySeconds: 30
+
+  # Canary steps — the W8 baseline progression. Each entry is one
+  # of:
+  #   { setWeight: <0-100> }       — set canary traffic %
+  #   { setWeight: <%>, pause: { duration: "<go-duration>" } }
+  #                                — set + pause for the duration
+  #   { setWeight: <%>, pause: {} } — set + pause indefinitely
+  #                                  until operator runs
+  #                                  `kubectl argo rollouts promote`
+  #   { setWeight: <%>, analysis: true } — set + run the success-
+  #                                  rate AnalysisTemplate; abort
+  #                                  on failure
+  #
+  # W8 baseline progression: 5% → 20% → 50% → 100% with success-
+  # rate analysis at every weight. Adjust per-environment in
+  # values-staging.yaml / values-prod.yaml.
+  steps:
+    - setWeight: 5
+    - pause:
+        duration: "2m"
+    - analysis: true
+    - setWeight: 20
+    - pause:
+        duration: "5m"
+    - analysis: true
+    - setWeight: 50
+    - pause:
+        duration: "10m"
+    - analysis: true
+    - setWeight: 100
+
+  # Prometheus query URL the AnalysisTemplate hits. Set to empty
+  # string to disable analysis (steps become duration-only).
+  # Example: "http://prometheus-server.monitoring.svc.cluster.local:80"
+  metricEndpoint: ""
+
+  # Tuning for the AnalysisTemplate that drives the `analysis: true`
+  # steps. Each `analysis` step:
+  #   * Polls the prometheus query every `interval`.
+  #   * Marks success when `count` consecutive polls satisfy
+  #     `successCondition` (result >= successThreshold).
+  #   * Marks failure (aborting the rollout, rolling back to
+  #     stable) after `failureLimit` polls fall short.
+  analysis:
+    interval: "30s"
+    count: 5
+    successThreshold: 0.95
+    failureLimit: 1

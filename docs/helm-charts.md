@@ -123,7 +123,202 @@ The chart's `Job` template runs DB migrations **pre-rollout**
 (annotation `helm.sh/hook: pre-upgrade,pre-install`). The hook
 is a separate object that helm reaps on success.
 
-## 3. Helm vs Kustomize — when to use which
+## 3. Canary deploys (Phase K Wave 8 — Apone)
+
+W8 adds a canary deployment strategy on top of the W7 chart-of-
+charts. When `canary.enabled = true`, the umbrella template
+[`helm/mahjong/templates/canary-deployment.yaml`](../helm/mahjong/templates/canary-deployment.yaml)
+renders an [Argo Rollouts](https://argoproj.github.io/argo-rollouts/)
+`Rollout` resource that progressively shifts traffic from the
+stable to the canary ReplicaSet through operator-defined steps
+with automated promotion gated on a Prometheus success-rate
+metric.
+
+### 3.1 Why Argo Rollouts (not Flagger)
+
+| Concern | Argo Rollouts (W8 choice) | Flagger |
+|---|---|---|
+| K8s-native | `Rollout` CRD is a drop-in for `Deployment` | Operates ALONGSIDE Deployment via `Canary` CRD |
+| Service-mesh dependency | None — replica-based + nginx-canary plugin | Requires Istio / Linkerd / nginx-ingress-canary |
+| CLI tooling | `kubectl argo rollouts <verb>` | Flagger annotations + manual `kubectl edit` |
+| Alignment | Same vendor as Argo CD (Phase L candidate) | Distinct vendor |
+| Rollback verb | `kubectl argo rollouts undo` | Re-deploy prior Deployment |
+
+Argo Rollouts also supports nginx-ingress traffic-splitting via
+its nginx plugin — the chart's baseline is replica-based
+(simpler), the doc below covers the traffic-split upgrade path.
+
+### 3.2 Values surface
+
+```yaml
+canary:
+  enabled: false                    # off by default
+
+  # Advanced: keep the static Deployment AND the Rollout alive
+  # in parallel. ONLY for staging soak.
+  coexistWithDeployment: false
+
+  revisionHistoryLimit: 3           # `kubectl argo rollouts undo` history
+  scaleDownDelaySeconds: 30         # drain delay before old pods terminate
+
+  # Canary step sequence — W8 baseline: 5 → 20 → 50 → 100 %.
+  steps:
+    - setWeight: 5
+    - pause: { duration: "2m" }
+    - analysis: true
+    - setWeight: 20
+    - pause: { duration: "5m" }
+    - analysis: true
+    - setWeight: 50
+    - pause: { duration: "10m" }
+    - analysis: true
+    - setWeight: 100
+
+  # Prometheus URL the AnalysisTemplate hits. Empty string =
+  # analysis steps are no-ops (duration-only progression).
+  metricEndpoint: ""                # e.g. http://prometheus-server.monitoring.svc.cluster.local:80
+
+  analysis:
+    interval: "30s"                 # poll cadence
+    count: 5                        # consecutive successes required
+    successThreshold: 0.95          # min success rate (95%)
+    failureLimit: 1                 # polls below threshold → abort
+```
+
+The W8 baseline matches the spec: 5 → 20 → 50 → 100 % with pause
++ analysis between each step. The success-rate query is
+hard-coded to `http_requests_total{service=...,code!~"5.."}` —
+override by editing the rendered AnalysisTemplate or by forking
+the chart's template.
+
+### 3.3 Step semantics
+
+| Step shape | Behaviour |
+|---|---|
+| `{ setWeight: <int 0-100> }` | Set canary traffic % to N |
+| `{ pause: { duration: "<go-duration>" } }` | Pause for the duration |
+| `{ pause: {} }` | Pause indefinitely; operator runs `kubectl argo rollouts promote <name>` |
+| `{ analysis: true }` | Run the success-rate AnalysisTemplate; abort + rollback on failure |
+
+The W8 baseline pairs every weight bump with a pause + analysis.
+Operator can shorten the pauses for hotfix rollouts (e.g. set
+`pause.duration: "30s"`) by overriding `canary.steps` in
+values-prod.yaml.
+
+### 3.4 Co-existence guard
+
+The Rollout's `selector` matches the SAME labels as the subchart
+Deployment (`app.kubernetes.io/name=mahjong-autotable` +
+`app.kubernetes.io/component=api`). When both `api.enabled = true`
+AND `canary.enabled = true`, two controllers manage the same
+selector — the static Deployment + the Rollout race over pod
+ownership, ReplicaSets churn, and the staged rollout collapses.
+
+The chart errors loudly on render:
+
+```
+Error: execution error at (mahjong/templates/canary-deployment.yaml:54:4):
+  canary.enabled = true AND api.enabled = true — two controllers
+  managing the same ReplicaSet selector. Set api.enabled = false,
+  OR (advanced) set canary.coexistWithDeployment = true.
+```
+
+Production usage MUST flip `api.enabled = false` when enabling
+the canary path. The override `canary.coexistWithDeployment = true`
+is reserved for staging soak scenarios where the operator wants
+to compare static + canary surfaces side-by-side.
+
+### 3.5 Operator runbook
+
+#### 3.5.1 Cluster prereq — install Argo Rollouts (once)
+
+```bash
+kubectl create namespace argo-rollouts
+kubectl apply -n argo-rollouts \
+    -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+
+# Optional: CLI for live status.
+curl -fsSL -o ~/.local/bin/kubectl-argo-rollouts \
+    https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+chmod +x ~/.local/bin/kubectl-argo-rollouts
+```
+
+#### 3.5.2 Cut a canary release
+
+```bash
+# Enable canary in the values overlay (or use --set):
+helm upgrade --install mahjong helm/mahjong/ \
+    -n mahjong-prod \
+    -f helm/mahjong/values-prod.yaml \
+    --set canary.enabled=true \
+    --set api.enabled=false \
+    --set canary.metricEndpoint=http://prometheus-server.monitoring.svc.cluster.local:80 \
+    --set api.image.tag=v0.17.1
+
+# Watch progression:
+kubectl argo rollouts get rollout mahjong-autotable-canary -n mahjong-prod --watch
+
+# If a pause step is { pause: {} } (no duration), manually promote:
+kubectl argo rollouts promote mahjong-autotable-canary -n mahjong-prod
+
+# Abort + rollback:
+kubectl argo rollouts abort mahjong-autotable-canary -n mahjong-prod
+kubectl argo rollouts undo  mahjong-autotable-canary -n mahjong-prod
+```
+
+#### 3.5.3 Health metric — wire to your Prometheus
+
+Set `canary.metricEndpoint` to the in-cluster Prometheus URL:
+
+```yaml
+canary:
+  metricEndpoint: "http://prometheus-server.monitoring.svc.cluster.local:80"
+```
+
+The chart's AnalysisTemplate uses the Prometheus query:
+
+```promql
+sum(rate(http_requests_total{service="mahjong-autotable-canary",code!~"5.."}[2m]))
+/
+sum(rate(http_requests_total{service="mahjong-autotable-canary"}[2m]))
+```
+
+Override by editing the rendered template or pre-installing your
+own `AnalysisTemplate` named `mahjong-autotable-success-rate`.
+
+#### 3.5.4 Aborting + rollback
+
+Argo Rollouts auto-aborts when the AnalysisTemplate's
+`failureLimit` is hit (`successCondition` false N times). The
+Rollout immediately scales the canary ReplicaSet to 0, shifts all
+traffic back to stable, and emits an `Event` (visible via
+`kubectl get events`).
+
+Manual abort (operator):
+
+```bash
+kubectl argo rollouts abort mahjong-autotable-canary -n mahjong-prod
+```
+
+To recover after abort:
+
+```bash
+# Undo to the prior known-good revision (last in
+# revisionHistoryLimit):
+kubectl argo rollouts undo mahjong-autotable-canary -n mahjong-prod
+
+# Or re-run the upgrade with a known-good image tag:
+helm upgrade mahjong helm/mahjong/ ... --set api.image.tag=<known-good-tag>
+```
+
+### 3.6 Cross-references
+
+* [`helm/mahjong/templates/canary-deployment.yaml`](../helm/mahjong/templates/canary-deployment.yaml) — the Rollout + AnalysisTemplate + stable/canary Services.
+* [`helm/mahjong/values.yaml`](../helm/mahjong/values.yaml) — `canary.*` defaults.
+* [Argo Rollouts — Canary strategy](https://argoproj.github.io/argo-rollouts/features/canary/)
+* [Argo Rollouts — AnalysisTemplate](https://argoproj.github.io/argo-rollouts/features/analysis/)
+
+## 4. Helm vs Kustomize — when to use which
 
 Both paths ship in this repo, in parallel. The decision matrix:
 
@@ -149,7 +344,7 @@ Both render the same Deployment, Service, ConfigMap, ExternalSecret,
 Ingress, HPA, PVC, and coturn objects. The W7 acceptance gate is
 **parity** — see §4.
 
-## 4. Parity matrix (W7 — chart-of-charts vs Kustomize)
+## 5. Parity matrix (W7 — chart-of-charts vs Kustomize)
 
 The two paths produce equivalent (NOT byte-identical — name
 prefixes + labels differ) manifests. The matrix below lists
@@ -176,7 +371,7 @@ renders it:
 | Postgres StatefulSet | NOT in Kustomize (staging uses Sqlite by default) | `mahjong-postgres-sidecar/templates/statefulset.yaml` (`postgresSidecar.enabled`) | Helm-only; staging soak convenience. |
 | Postgres Service | — | `mahjong-postgres-sidecar/templates/service.yaml` | — |
 
-## 5. Subchart toggles
+## 6. Subchart toggles
 
 The umbrella `values.yaml` ships a sane default. The environment
 files override only the deltas. Significant toggles:
@@ -195,7 +390,7 @@ files override only the deltas. Significant toggles:
 | `externalSecrets.enabled` | true | true | true | ESO ExternalSecret rendering. |
 | `externalSecrets.jwtRsaSecretName` | `mahjong-jwt-rsa-keys` | `mahjong-jwt-rsa-keys-staging` | `mahjong-jwt-rsa-keys` | Wave 7 RS256 secret. |
 
-## 6. Verification — pre-merge gate
+## 7. Verification — pre-merge gate
 
 The W7 acceptance gate is:
 
@@ -222,7 +417,7 @@ for p in ['.work/helm-staging.yaml', '.work/helm-prod.yaml']:
 All three steps MUST be green before a chart PR merges. CI
 parity ride-along is a W8 follow-up.
 
-## 7. Cross-references
+## 8. Cross-references
 
 * [`helm/mahjong/Chart.yaml`](../helm/mahjong/Chart.yaml) — umbrella + aliased dependencies.
 * [`helm/mahjong/values.yaml`](../helm/mahjong/values.yaml) — umbrella defaults.
