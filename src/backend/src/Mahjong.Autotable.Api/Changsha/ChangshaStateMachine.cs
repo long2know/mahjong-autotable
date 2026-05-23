@@ -644,6 +644,10 @@ public sealed class ChangshaGameStateMachine
             WinningTileId = hand.ConcealedTiles[^1], // last drawn tile
             SourceSeatIndex = seatIndex,
             IsFullFlush = result.IsFullFlush,
+            // Phase J Wave 3 — explicit axes mirrored from the WinContext / Method so
+            // downstream consumers don't infer them from Method + AllPatterns.
+            IsSelfDraw = true,
+            IsKongReplacement = state.LastDrawWasKongReplacement,
             AllPatterns = result.AllPatterns
         };
 
@@ -1056,6 +1060,12 @@ public sealed class ChangshaGameStateMachine
                 : claimWindow.DiscardSeatIndex,
             IsFullFlush = result.IsFullFlush,
             IsRobbedKong = isKongRobbing,
+            // Phase J Wave 3 — explicit axes. ResolveHuClaim is the discard/robbing-kong
+            // path, so IsSelfDraw is always false here. IsKongReplacement is likewise
+            // false — robbing-the-added-kong is NOT a kong-replacement win (the winner
+            // intercepted the kong rather than drawing its replacement).
+            IsSelfDraw = false,
+            IsKongReplacement = false,
             AllPatterns = result.AllPatterns
         };
 

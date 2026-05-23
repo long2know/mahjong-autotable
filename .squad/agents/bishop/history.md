@@ -977,3 +977,58 @@ post-Vasquez sync: 384/0/0.
   handoffs to Vasquez (test-setup pattern), Hicks (GameCompleted event
   subscription + payload), and Ripley (MaxHands as a tournament knob
   for future variable-game-length work).
+
+## Phase J Wave 3 — IsSelfDraw/IsKongReplacement bools + canonical pattern order + /health (2026-05-22)
+- **Branch:** `stlong/phase-j-wave-3-completion`
+- **Baseline gate:** 418/0/0. **Final gate:** 424/0/0 (Vasquez's 6 net-new
+  contract probes — `HealthEndpointTests` × 2 + `WinResultSurfaceTests` × 4 —
+  all GREEN).
+- **Commits (landing order, Task 3 first per cross-lane brief):**
+  - `9235859` — Task 3 — `/health` endpoint. Apone's lane needed this
+    before he could finalize the Docker HEALTHCHECK directive, so it
+    shipped first. New `app.MapGet("/health", …)` in `Program.cs` returns
+    `{status, buildSha, uptime, version}`. `processStartTime` captured at
+    module-load before `WebApplication.CreateBuilder` so the uptime
+    reflects host process start (not first-request time). `BUILD_SHA`
+    env-var driven, falls back to `"dev"` when unset (verified locally
+    both with and without the env var). Distinct from the legacy
+    `/api/health` (frontend short-form probe), which stays untouched.
+  - `75baecc` — Task 1 — explicit `IsSelfDraw` + `IsKongReplacement`
+    bool surfaces on `WinResult`. Vasquez's Wave 2 memo flagged the gap:
+    clients had to derive these from `Method` (enum) and
+    `AllPatterns.Contains(KongReplacementWin)`, brittle on both axes.
+    Both bools populated at the **two** `WinResult` construction sites:
+    * `ChangshaGameStateMachine.DeclareSelfDrawWin` — `IsSelfDraw=true`,
+      `IsKongReplacement = state.LastDrawWasKongReplacement` (same gate the
+      detector uses for the `KongReplacementWin` pattern flag).
+    * `ChangshaGameStateMachine.ResolveHuClaim` — both bools false on
+      both the `Discard` and `RobbingKong` branches. Robbing-kong is
+      explicitly **not** a kong-replacement win.
+    Wire surfaces wired through:
+    * SignalR `WinDeclared.winResult` + `ScoringComplete.handSummary.winResult`
+      anonymous-type literals in `ChangshaGameRuntime.cs` — `isSelfDraw`
+      + `isKongReplacement` keys.
+    * Autotable bundle WS `WinResultEntry` in `AutotableProtocol.cs` (DTO)
+      + `ChangshaToAutotableTranslator.cs` (translator) — explicit
+      `[JsonPropertyName("isSelfDraw")]` + `[JsonPropertyName("isKongReplacement")]`.
+    Backward-compat: `Method` + `AllPatterns` unchanged — Wave 2's
+    reflection-defensive helpers continue to pass; Wave 3's direct-bool
+    assertions also pass.
+  - `2e84179` — Task 2 — canonical `WinPattern` display order.
+    Approach (B) per the brief: new static class
+    `Changsha/Patterns/ChangshaPatternOrdering.cs` with a
+    `IReadOnlyDictionary<WinPattern,int> Order` table + `GetOrder()` /
+    `Sort()` helpers. Ordering (1=first): HeavenlyHand, EarthlyHand,
+    LastTileFromWall, LastDiscardCatch, KongReplacementWin (rank 5),
+    NineTerminals (rank 8 — slot 6/7 reserved for RobbedKong/NineGates),
+    AllPungs (9), SevenPairs (11 — slot 10/12/13 reserved for
+    AllConcealed/SelfDraw/SingleWait), then alphabetical tail
+    FullFlush(100), Standard(101). Reserved-slot scheme keeps existing
+    ranks stable when future patterns ship.
+    Wire surface: new `GET /api/changsha/pattern-ordering` Minimal API
+    endpoint in `Program.cs` returns a flat camelCase-keyed JSON map
+    (same wire names as the SignalR `winResult.allPatterns` strings).
+    Frontend fetches once at boot — no per-broadcast payload bloat.
+- **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-3.md` — covers
+  all three tasks with the wire-format details Apone needs (HEALTHCHECK
+  body shape) and the field names + ordering API surface Hicks needs.

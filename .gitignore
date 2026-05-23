@@ -67,3 +67,10 @@ node_modules/
 
 # Local runtime data
 data/
+
+# Docker — developer-local compose overrides + env files
+docker-compose.override.yml
+compose.override.yml
+.env
+.env.local
+.env.*.local

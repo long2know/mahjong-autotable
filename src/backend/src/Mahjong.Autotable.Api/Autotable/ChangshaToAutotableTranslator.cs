@@ -224,7 +224,13 @@ public static class ChangshaToAutotableTranslator
             WinningTileId = win.WinningTileId,
             SourceSeatIndex = win.SourceSeatIndex,
             AllPatterns = win.AllPatterns.Select(WinPatternToWire).ToList(),
-            IsRobbedKong = win.IsRobbedKong
+            IsRobbedKong = win.IsRobbedKong,
+            // Phase J Wave 3 — explicit IsSelfDraw + IsKongReplacement axes mirrored
+            // onto the bundle WS path so the autotable collection-entry payload
+            // matches the SignalR WinDeclared shape (Hicks's UI consumes both
+            // transports). See WinResult.IsSelfDraw / IsKongReplacement.
+            IsSelfDraw = win.IsSelfDraw,
+            IsKongReplacement = win.IsKongReplacement
         };
 
         var score = state.CurrentScore;

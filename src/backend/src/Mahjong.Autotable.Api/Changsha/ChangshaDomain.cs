@@ -148,6 +148,37 @@ public sealed class WinResult
     public bool IsRobbedKong { get; init; }
 
     /// <summary>
+    /// Phase J Wave 3 — explicit boolean axis indicating the win arrived via a draw
+    /// from the wall (regular front-of-wall draw OR kong-replacement draw) rather
+    /// than by claiming another seat's discard. Equivalent to
+    /// <c>Method == <see cref="WinMethod.SelfDraw"/></c> but lifted to a top-level
+    /// flag so downstream consumers (UI banners, replay, JSON wire surface, tests)
+    /// don't have to re-derive it from the method enum. Mirrors the SignalR
+    /// <c>WinDeclared.winResult</c> serialization shape — public auto-property so
+    /// the default <see cref="System.Text.Json"/> camelCase contract picks it up
+    /// as <c>isSelfDraw</c>. See <see cref="ChangshaGameStateMachine.DeclareSelfDrawWin"/>
+    /// (sets true) and <see cref="ChangshaGameStateMachine.ResolveHuClaim"/> (sets
+    /// false — both <see cref="WinMethod.Discard"/> and <see cref="WinMethod.RobbingKong"/>
+    /// are NOT self-draws even when the winning tile was reached via a kong-window).
+    /// </summary>
+    public bool IsSelfDraw { get; init; }
+
+    /// <summary>
+    /// Phase J Wave 3 — explicit boolean axis indicating the winning tile was drawn
+    /// as a kong replacement (杠上开花). Equivalent to
+    /// <c>AllPatterns.Contains(<see cref="WinPattern.KongReplacementWin"/>)</c> but
+    /// lifted to a top-level flag so downstream consumers (UI banner, scoring audit,
+    /// replay) don't have to scan <see cref="AllPatterns"/>. The pattern record is
+    /// retained in <see cref="AllPatterns"/> for backward compatibility (Phase H/I
+    /// callers that consult AllPatterns continue to work unchanged). Set true only
+    /// when <see cref="Method"/> == <see cref="WinMethod.SelfDraw"/> AND the most
+    /// recent hand mutation was a kong-replacement draw — robbing-kong wins
+    /// (<see cref="WinMethod.RobbingKong"/>) are NOT kong-replacement wins, the
+    /// winning seat captured the kong rather than drawing its replacement.
+    /// </summary>
+    public bool IsKongReplacement { get; init; }
+
+    /// <summary>
     /// Phase H Wave 2 — every Big Win pattern satisfied by the winning hand, mirrored
     /// from <see cref="WinDetectionResult.AllPatterns"/> at win-declaration time so the
     /// stacking multiplier survives the detector → state → scoring boundary. Order is

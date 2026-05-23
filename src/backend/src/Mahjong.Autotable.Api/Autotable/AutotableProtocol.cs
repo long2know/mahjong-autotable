@@ -177,6 +177,26 @@ public sealed class WinResultEntry
     /// <summary>True when this hand won by 抢杠胡 (robbing the added kong).</summary>
     [JsonPropertyName("isRobbedKong")]
     public bool IsRobbedKong { get; set; }
+
+    /// <summary>
+    /// Phase J Wave 3 — true when the winning tile arrived via a draw from the wall
+    /// (regular OR kong-replacement) rather than by claiming another seat's discard.
+    /// Mirrors <see cref="WinResult.IsSelfDraw"/>. Provided so the frontend banner /
+    /// result-modal copy can distinguish self-draw from ron without parsing
+    /// <see cref="WinType"/>.
+    /// </summary>
+    [JsonPropertyName("isSelfDraw")]
+    public bool IsSelfDraw { get; set; }
+
+    /// <summary>
+    /// Phase J Wave 3 — true when the winning tile was drawn as a kong replacement
+    /// (杠上开花). Mirrors <see cref="WinResult.IsKongReplacement"/>. Backward-compat:
+    /// the corresponding <c>kongReplacementWin</c> entry is still emitted inside
+    /// <see cref="AllPatterns"/>, so legacy clients that scan the pattern list keep
+    /// working unchanged.
+    /// </summary>
+    [JsonPropertyName("isKongReplacement")]
+    public bool IsKongReplacement { get; set; }
 }
 
 /// <summary>

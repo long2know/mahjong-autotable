@@ -94,25 +94,28 @@ npm install
 npm run dev
 ```
 
-## Docker (single image)
+## Deploy via Docker
 
-Build autotable-first runtime image:
-
-```bash
-docker build -f infra/docker/Dockerfile --target runtime-autotable -t mahjong-autotable:autotable .
-```
-
-Build modern-overlay runtime image:
+The frontend bundle and the .NET 10 backend ship as a single Docker image
+that listens on port `8080` with SQLite persisted on a `/data` volume.
 
 ```bash
-docker build -f infra/docker/Dockerfile --target runtime-modern -t mahjong-autotable:modern .
+docker compose up -d --build
+# Then open http://localhost:8080/autotable/
 ```
 
-Run:
+For a bare `docker run`:
 
 ```bash
-docker run --rm -p 8080:8080 -v $(pwd)/data:/app/data mahjong-autotable:autotable
+docker build -t mahjong-autotable:latest .
+docker run -d --name mahjong --restart unless-stopped \
+    -p 8080:8080 -v mahjong-data:/data \
+    mahjong-autotable:latest
 ```
+
+- **Quickstart:** [`docs/docker.md`](docs/docker.md)
+- **Full runbook (env vars, healthchecks, backups, troubleshooting,
+  production updates):** [`docs/deployment.md`](docs/deployment.md)
 
 ## Notes
 
