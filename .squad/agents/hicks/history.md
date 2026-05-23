@@ -1934,3 +1934,179 @@ Cross-cutting Wave-9 risk notes:
   trade-off for Wave 9.
 
 Memo: `.squad/decisions/inbox/hicks-phase-j-wave-9.md`.
+
+### 2026-05-23: Phase J Wave 10 — Final frontend polish
+
+**Branch:** `stlong/phase-j-wave-10-completion`.
+
+Wave 10 wraps the Phase J polish run.  Five deliverables landed:
+
+1. **CSP `style-src` tightening — bundle now CSP-clean.**
+   Migrated every HTML `style="..."` attribute in
+   `src/frontend/autotable-src/index.html` to a CSS class (added the
+   `.claim-countdown`, `.dropdown-menu-help`, `.modal-source-cite`
+   classes among others) or to the HTML5 `hidden` attribute.  The
+   default CSP still ships `'unsafe-inline'` by design — Vasquez's
+   `CspStyleSrcNoUnsafeInlineTests.DefaultCspConstant_StylesSection_KeepsUnsafeInlineUntilOptIn`
+   contract pins this so ops can flip the
+   `Security:CspStrictStyles` knob deliberately after the canary
+   `/api/csp-report` sink shows zero `style-src` violations from the
+   new bundle.
+
+   **Middleware mechanism (Hicks owns; `Observability/SecurityHeadersMiddleware.cs`):**
+   added the `CspStrictStylesConfigKey = "Security:CspStrictStyles"`
+   constant, the `_cspStrictStyles` ctor field, the
+   `DropStyleUnsafeInline(string)` internal static helper, and the
+   ctor-branch wrap so the chosen base CSP gets the strip applied
+   when the knob is on.  Apone's and Vasquez's Wave-10 test files
+   (`CspHeaderTests.cs` additions + `CspStyleSrcNoUnsafeInlineTests.cs`)
+   reference this surface and pass on their side once committed.
+
+   **`[hidden]` conflict resolution** — Bootstrap ships
+   `[hidden] { display: none !important; }` (bootstrap.css:352-354),
+   so JS code that does `el.style.display = 'block'` to show a
+   `hidden`-attributed element silently fails.  Added
+   `setElHidden(el, hidden)` / `showEl(el)` / `hideEl(el)` helpers
+   to `utils.ts` (sets `el.hidden = false; el.style.display = ''` on
+   show, `el.hidden = true` on hide) and migrated ~80 call sites
+   across `game-ui`, `chat`, `client-ui`, `audit`, `identity`,
+   `leaderboard`, `lobby`, `profile`, `profile-page`, `settings-drawer`.
+
+   CSSOM property mutations (`el.style.X = Y`) are NOT subject to
+   CSP enforcement per the CSP3 spec, so the runtime animation /
+   show-hide paths continue to work even after the knob flips.
+
+2. **Forced avatar-migration modal (`identity.ts`).** Legacy
+   `#808080` sentinel avatars now trigger a blocking modal that
+   picks from `AVATAR_COLOR_PRESETS` (8 hex options from
+   `profile.ts`).  `installAvatarMigrationModalIfNeeded()` (called
+   from `index.ts`) subscribes to `onProfile()` so late-arriving
+   profile loads re-evaluate.  Modal markup at
+   `index.html` `#migrate-avatar-modal`.  `setAvatarColor()` is sync
+   and returns `{ error }` — on success the modal hides.
+
+3. **Tournaments tab (`tournaments.ts`, ~280 LOC NEW).**  New module
+   + new tab pane in the lobby after the leaderboard.
+   Feature-detects `/api/tournaments` (Bishop's Wave-10 commit
+   61a706f ships it) and falls back to a "Coming soon" placeholder
+   on 404.  `installTournamentsPanel()` is called unconditionally
+   from `index.ts`; `refreshTournamentsPanel()` re-probes on each
+   tab activation so the placeholder self-heals.
+
+   Endpoints consumed: `GET /api/tournaments` (list),
+   `GET /api/tournaments/{id}` (detail w/ bracket + standings),
+   `POST` for create/register/unregister/start.
+
+4. **Spectator chat polish (`chat.ts`).**  Two surface improvements
+   over Wave 9:
+   - **Distinct accent**: messages on the `spectators` and
+     `spectator-private` channels render with a 👁/🔒 prefix and a
+     cyan left-border accent for visual separation.
+   - **Spectator-private subchannel**: new UI-only
+     `'spectator-private'` `ChatChannel` value.  Wire-channel is
+     still `'private'` (no backend changes), but a `wireChannel(ch)`
+     helper maps UI → wire and `visibleMessages()` filters by wire-
+     channel so the two queues stay separate per-UI but share the
+     same backend storage.  `needsRecipient()` returns true for both
+     channel kinds.  Spectator-private only appears in the picker
+     when `isSpectator()` (URL `?seat=-1`).  Per-message
+     `data-channel` attr + `.chat-msg-channel-{channel}` class lets
+     CSS target the accents.
+
+5. **Bot decision "Why?" reasoning expand (`audit.ts`).** Each bot
+   row in the replay audit tab gains a `Why?` toggle button that
+   reveals/hides a `reasoning` sub-row.  Items are colour-coded by
+   prefix: `[win]:` → green, `[caution]:` → amber, `[suboptimal]:`
+   → red-orange.  When `AuditRow.reasoning` is null/empty (i.e. the
+   backend doesn't yet emit it), the placeholder "Reasoning
+   unavailable" renders.  Bishop's Wave-10 `BotDecision.reasoning`
+   field (commit 61a706f) lights this up on production.
+
+### i18n additions (all 3 catalogs in lockstep)
+
+- `chat.channel.spectator_private` — "Spectator DM" / "观众私聊" / "觀眾私訊"
+- `replay.audit.why` — "Why?" / "为什么？" / "為什麼？"
+- `replay.audit.reasoning_unavailable` — "Reasoning unavailable." /
+  "暂无推理过程。" / "暫無推理過程。"
+
+Tournament UI copy stays hard-coded English for the placeholder
+state; deferring to a follow-up wave when the UI stabilises.
+
+### Vasquez testid alignment
+
+Mid-wave, Vasquez published the canonical Wave-10 testid contract in
+`src/frontend/autotable-src/tests/selectors.md` along with five
+soft-pass e2e specs (`tournament-flow.spec.ts`,
+`avatar-migration.spec.ts`, `csp-no-inline-styles.spec.ts`,
+`audit-why-expand.spec.ts`, `spectator-chat.spec.ts`).  I aligned my
+implementation to match the contract:
+
+- Tournaments: `lobby-tournament-card`, `lobby-tournament-list`,
+  `lobby-tournament-name`, `lobby-tournament-create`,
+  `tournament-register-btn` (per-card), `tournament-registration-status`
+  (per-card badge), `tournament-start-btn` (per-card),
+  `tournament-matches-table`, `tournament-leaderboard`,
+  `tournaments-placeholder`.  Surfaced register / start buttons inline
+  on the list-row cards so the e2e flow doesn't need to descend into
+  the detail view for the happy path.
+- Avatar migration: `avatar-migration-modal`, `avatar-migration-pick-{name}`
+  (named swatches — `red`, `orange`, `yellow`, `emerald`, `teal`,
+  `blue`, `purple`, `slate`, index-aligned with
+  `AVATAR_COLOR_PRESETS`), `avatar-migration-dismiss` (new "Not now"
+  button — soft-defer that re-prompts on the next profile load),
+  `avatar-migration-confirm`.
+- Audit why: `replay-audit-row-{i}-why`,
+  `replay-audit-row-{i}-reasoning`,
+  `replay-audit-row-{i}-reasoning-list`,
+  `replay-audit-row-{i}-reasoning-line-{j}`,
+  `replay-audit-row-{i}-reasoning-unavailable`, plus the
+  `[data-strategy]` attribute on each bot row (value = `botTier`).
+- Spectator chat: re-uses Wave 9 `chat-*` testids.  Added the
+  contract behaviour: spectator default channel is `spectators`
+  (not `table`), composer stays enabled, and `visibleMessages()`
+  filter prevents table-chat leak into the spectator view.
+
+### Bundle hashes shipped
+
+- JS:  `autotable-src.73dffdb4.js` (1.28 MB)
+- CSS: `autotable-src.4a92b1f1.css` (53.71 kB) + `autotable-src.6633d8fb.css` (12.23 kB)
+- About-CSS: `about.df85b4c4.css` (143.84 kB)
+- ESM: `esm.eb93de05.js` (395 KB)
+
+Stale Wave-9 + intermediate Wave-10 artefacts deleted:
+`autotable-src.6e0d2167.js`, `autotable-src.95ecc0f0.css`,
+`autotable-src.df85b4c4.css`, `autotable-src.83193e10.js`.
+
+`tsc --noEmit --skipLibCheck` clean except the pre-existing Wave-8
+`sentry.ts(97,24): error TS1323` (dynamic import baseline).
+`dotnet test --filter "FullyQualifiedName~Security|FullyQualifiedName~Csp"`:
+33/33 GREEN.
+
+### Author-hygiene this wave
+
+Selective `git add` only — every Wave-10 commit carries my authorship
++ `Co-authored-by: Copilot` trailer.  Apone's
+`CspHeaderTests.cs` additions and Vasquez's new
+`CspStyleSrcNoUnsafeInlineTests.cs` were visible in my working tree
+(prior session coordination) but explicitly NOT staged — those
+belong to Apone's / Vasquez's Wave-10 commits.  Bishop's Wave-10
+backend (61a706f) is already on the branch.
+
+Cross-cutting Wave-10 risk notes:
+
+- **CspStrictStyles flip is operator-driven.** The middleware
+  mechanism ships disabled-by-default per Vasquez's contract.  Ops
+  flips `Security:CspStrictStyles=true` in
+  `appsettings.Production.json` after canary CSP-report shows zero
+  `style-src` violations from this bundle.
+- **`data-channel` CSS hook for chat.** Any future channel kind
+  (e.g. dealer-only, hand-replay-private) just needs a
+  `.chat-msg-channel-{newkind}` rule in `style.css` — the JS
+  side preserves `m.channel` verbatim on the DOM.
+- **Reasoning prefix classifier (`classifyReason`)** is case-insensitive
+  but expects the literal prefixes `[win]`, `[caution]`, `[suboptimal]`.
+  Bishop's `BotDecision.reasoning` strings should follow this format
+  for the colour treatment to surface; otherwise the row renders
+  neutral, which is the safe default.
+
+Memo: `.squad/decisions/inbox/hicks-phase-j-wave-10.md`.
