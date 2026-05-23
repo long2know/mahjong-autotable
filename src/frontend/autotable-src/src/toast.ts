@@ -51,18 +51,37 @@ export function showToast(
   }, duration);
 }
 
-// Phase K Wave 3 — Voice-specific toast.  VoiceHub.JoinVoice can fail
-// with two known reasons surfaced by Bishop's Wave-3 backend:
-//   • "voice not enabled" — the table-creator hasn't flipped the flag.
-//   • "spectators cannot join voice" — the viewer is in spectate mode.
-// We map both to a friendly user-facing toast.
+// Phase K Wave 3 → Phase K Wave 4 — Voice-specific toast.
+//
+// Wave 3 mapped a small handful of free-text reasons from Bishop's
+// `VoiceHub.JoinVoice` to friendly user-facing strings.  Wave 4 wraps
+// `voiceReasonToText()` (defined alongside the new typed
+// `VoiceHubResult` in `voice.ts`) so this helper now accepts either:
+//
+//   • A Wave-4 reason code (`"voice-not-enabled"`, `"not-seated"`,
+//     `"spectator"`, `"rate-limited"`, `"target-not-found"`,
+//     `"unauthorized"`) — looked up via the typed map.
+//   • A Wave-3 free-text reason (`"voice not enabled"`,
+//     `"spectators cannot join voice"`) — kept as a substring
+//     fallback for backward-compat with self-hosted servers that
+//     haven't shipped the typed result yet.
+//
+// Callers can also pre-translate via `voice.voiceReasonToText` and
+// pass the resulting string straight to `showToast` — the substring
+// short-circuit below leaves a pre-translated string untouched.
 export function showVoiceToast(reason: string): void {
   const lc = reason.toLowerCase();
-  if (lc.indexOf('not enabled') !== -1) {
+  if (lc.indexOf('voice chat is not enabled') !== -1
+      || lc.indexOf('voice not enabled') !== -1
+      || lc.indexOf('not enabled') !== -1) {
     showToast(
       'Voice is not enabled for this table. Ask the host to enable it.',
       'error',
     );
+    return;
+  }
+  if (lc.indexOf('take a seat') !== -1) {
+    showToast('Take a seat to join voice chat.', 'error');
     return;
   }
   if (lc.indexOf('spectator') !== -1) {
@@ -70,6 +89,18 @@ export function showVoiceToast(reason: string): void {
       'Spectators cannot join voice chat — take a seat to talk.',
       'error',
     );
+    return;
+  }
+  if (lc.indexOf('rate') !== -1 && lc.indexOf('limit') !== -1) {
+    showToast('Slow down — too many voice messages in a short window.', 'error');
+    return;
+  }
+  if (lc.indexOf('peer disconnected') !== -1 || lc.indexOf('target-not-found') !== -1) {
+    showToast('That peer just disconnected — no voice link to send to.', 'error');
+    return;
+  }
+  if (lc.indexOf('please sign in') !== -1 || lc.indexOf('unauthorized') !== -1) {
+    showToast('Please sign in to use voice chat.', 'error');
     return;
   }
   showToast(`Voice chat error: ${reason}`, 'error');

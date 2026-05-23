@@ -8,20 +8,25 @@ import { MainView } from "./main-view";
 import { Group } from "three";
 import { ClientUi } from "./client-ui";
 import { SoundPlayer } from "./sound-player";
-import { GameUi } from './game-ui';
+import type { GameUi } from './game-ui';
 import { TileVariant } from "./types";
 
 export class Game {
   private assetLoader: AssetLoader;
   private mainGroup: Group;
-  private client: Client;
-  private world: World;
+  client: Client;
+  world: World;
   private objectView: ObjectView;
   private mainView: MainView;
   private mouseUi: MouseUi;
   private clientUi: ClientUi;
   private soundPlayer: SoundPlayer;
-  private gameUi: GameUi;
+  // Phase K Wave 4 — `gameUi` is now installed lazily via
+  // `installGameUi()` so the scene-shell chunk doesn't drag the
+  // ~100 kB result modal / settings drawer / replay UI graph into
+  // first-paint.  The HUD scaffolding lives in the static index.html
+  // markup, so the renderer is fully usable before this hook fires.
+  private gameUi: GameUi | null = null;
 
   benchmark: boolean = false;
 
@@ -49,7 +54,6 @@ export class Game {
     this.mainView = new MainView(this.mainGroup);
     this.mouseUi = new MouseUi(this.world, this.mainGroup);
     this.clientUi = new ClientUi(this.client);
-    this.gameUi = new GameUi(this.client, this.world);
 
     this.settings = {
       perspective: document.getElementById('perspective') as HTMLInputElement,
@@ -62,6 +66,17 @@ export class Game {
 
     this.setupEvents();
     document.getElementById('loading')!.style.visibility = 'hidden';
+  }
+
+  // Phase K Wave 4 — Install the heavy GameUi (result modal, settings
+  // drawer, replay viewer, claim window) once the scene-shell has
+  // composited its first frame.  Idempotent — re-entry returns the
+  // existing instance so `scene-effects` can be imported more than
+  // once without producing duplicate DOM listeners.
+  installGameUi(ctor: new (c: Client, w: World) => GameUi): GameUi {
+    if (this.gameUi !== null) return this.gameUi;
+    this.gameUi = new ctor(this.client, this.world);
+    return this.gameUi;
   }
 
   private setupEvents(): void {

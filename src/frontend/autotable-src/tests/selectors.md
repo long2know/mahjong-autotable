@@ -1077,3 +1077,62 @@ been wired):
   `POST /api/tournaments/{id}/seed`, non-admins never see the
   save action.
 
+
+---
+
+## Phase K Wave 4 — Scene split + sparse seeding
+
+### Scene chunk split (Wave 4)
+
+The Wave-3 `scene.<hash>.js` chunk was split into:
+
+- `scene-shell.<hash>.js` (renderer-critical) — mints
+  `scene-shell-ready` after the first WebGL frame composites.
+  Continues to emit `game-scene-ready` alongside for Wave-3 spec
+  back-compat (`scene-shell.ts#markShellReady`).
+- `scene-effects.<hash>.js` (deferred) — installs `GameUi` (modals,
+  settings drawer, replay viewer) + `MoveLog` sidebar.  Mints
+  `scene-effects-ready` once installation completes
+  (`scene-effects.ts#markEffectsReady`).
+
+| testid                  | origin                     | notes                                              |
+|-------------------------|----------------------------|----------------------------------------------------|
+| `scene-shell-ready`     | `scene-shell.ts:markShellReady` | First-frame WebGL composite                   |
+| `game-scene-ready`      | `scene-shell.ts:markShellReady` | Wave-3 back-compat (same firing as shell-ready) |
+| `scene-effects-ready`   | `scene-effects.ts:markEffectsReady` | GameUi + MoveLog installed                 |
+
+### Tournament sparse seeding (Wave 4)
+
+`buildSeedingPanel` (admin-only, single-elim, registration-open
+tournaments) now renders every registered player, with an "Unseeded"
+divider separating seeded rows (`#1..#N`) from unseeded rows (`—`).
+Dropping a row across the divider promotes/demotes its seed state;
+unseeded rows POST with `seedNumber: 0`.  A `400` body-validation
+response surfaces the toast "Tournament must have unique sequential
+seeds 1..N." (matches Bishop's controller copy).
+
+| testid                                  | origin                                  | notes                                   |
+|-----------------------------------------|------------------------------------------|-----------------------------------------|
+| `tournament-seeding-unseeded-divider`   | `tournaments.ts:buildSeedingPanel`       | Boundary between seeded + unseeded rows |
+| `tournament-seed-row-{i}`               | `tournaments.ts:buildSeedingPanel`       | Sparse rows have `data-seeded="false"` and `aria-label`/rank "—" |
+| `tournament-seeding-status`             | `tournaments.ts:buildSeedingPanel`       | Inline error pill on validation failure |
+
+Existing `tournament-seeding-panel` / `tournament-seeding-save` /
+`tournament-seed-handle` testids remain unchanged.
+
+### Microsoft brand SVG (Wave 4)
+
+`microsoftIconSvg()` in `auth.ts` is now a 24×24 inline SVG with
+`role="img"`, `aria-label="Microsoft"`, and a `<title>Microsoft</title>`
+child element — accessibility-name source moved from the wrapper span
+into the SVG itself.  The wrapper span at `auth.ts:572` no longer
+carries `aria-hidden="true"`.
+
+### Voice toast reason map (Wave 4)
+
+`voice.ts#voiceReasonToText(reason)` maps the Wave-4 typed
+`VoiceHubResult.reason` codes (`voice-not-enabled`, `not-seated`,
+`spectator`, `rate-limited`, `target-not-found`, `unauthorized`) to
+user-facing strings.  `toast.ts#showVoiceToast` keeps the Wave-3
+substring heuristic for back-compat with legacy free-text reasons.
+No new testids — the toast continues to fire `voice-toast`.

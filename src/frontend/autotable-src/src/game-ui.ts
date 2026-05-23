@@ -170,120 +170,24 @@ const PATTERN_TOOLTIPS: Readonly<Record<string, { cn: string; en: string }>> = {
   kongReplacementWin: { cn: '杠上开花',     en: 'Win on the replacement tile drawn after a kong — Big Win.' },
 };
 
-// Normalise a pattern key for label lookup.  Backend canonical wire form is
-// camelCase (e.g. `sevenPairs`); legacy code paths or test fixtures may still
-// emit PascalCase (`SevenPairs`).  Lowercasing the first character collapses
-// both spellings to the same key without disturbing the rest.
-function normalizePatternKey(p: string): string {
-  if (!p) return p;
-  return p.charAt(0).toLowerCase() + p.slice(1);
-}
-
-// Phase J Wave 3 — Canonical display order for AllPatterns.  The list
-// is sourced directly from the Wave 3 directive and matches Bishop's
-// backend `ChangshaPatternOrdering` table (slot numbers as documented in
-// `src/backend/.../Patterns/ChangshaPatternOrdering.cs`).  Patterns NOT
-// in this list sort alphabetically by their normalised key after the
-// listed ones.
-//
-// The frontend optionally fetches Bishop's `GET /api/changsha/pattern-
-// ordering` JSON map at boot via `loadPatternOrderingFromApi()` and
-// merges it on top of this hardcoded list.  When the endpoint is
-// unavailable (offline / static-asset deployment) the hardcoded order
-// keeps the chip strip rendering correctly.
-//
-// Used by:
-//   • result modal chip strip (game-ui.ts:renderResultPatternChips)
-//   • end-of-game recap (game-ui.ts:renderGameComplete)
-//   • move-log win row (move-log.ts:onResult)
-const PATTERN_DISPLAY_ORDER: ReadonlyArray<string> = [
-  'heavenlyHand',
-  'earthlyHand',
-  'lastTileFromWall',      // alias: LastTileDraw
-  'lastDiscardCatch',      // alias: LastTileDiscard
-  'kongReplacementWin',    // alias: KongReplacementWin
-  'robbedKong',            // alias: RobbedKong (kept distinct from RobbingKong)
-  'robbingKong',
-  'nineGates',
-  'nineTerminals',
-  'allPungs',
-  'allConcealed',
-  'sevenPairs',
-  'selfDraw',
-  'singleWait',
-];
-
-// Build an O(1) index lookup for the ordering above.  Mutable so the
-// async API loader can replace it with the backend-supplied map.
-const patternDisplayOrderIndex: Record<string, number> = (() => {
-  const out: Record<string, number> = {};
-  PATTERN_DISPLAY_ORDER.forEach((key, i) => { out[key] = i; });
-  return out;
-})();
-
-// Phase J Wave 3 — Replace the in-process pattern-order index with the
-// backend-pushed map.  Each value is a small integer (lower = render
-// first) so the same compare-by-index logic works.  Unknown patterns
-// keep their alphabetical-fallback behaviour.
-export function setPatternDisplayOrder(map: Record<string, number>): void {
-  // Reset and copy — preserve module-singleton identity so existing
-  // closures keep pointing at the same map.
-  for (const k of Object.keys(patternDisplayOrderIndex)) {
-    delete patternDisplayOrderIndex[k];
-  }
-  for (const [k, v] of Object.entries(map)) {
-    if (typeof v === 'number' && isFinite(v)) {
-      patternDisplayOrderIndex[normalizePatternKey(k)] = v;
-    }
-  }
-}
-
-// Returns a comparator that sorts pattern wire-keys per the active
-// PATTERN_DISPLAY_ORDER map (boot-time hardcoded ← optionally upgraded
-// by `setPatternDisplayOrder`).  Unrecognised patterns sort
-// alphabetically after the listed ones.  Exported via the `sortPatterns`
-// helper below for use in move-log.ts; in-module callers can use
-// `.sort(comparePatterns)` directly.
-export function comparePatterns(a: string, b: string): number {
-  const ka = normalizePatternKey(a);
-  const kb = normalizePatternKey(b);
-  const ia = patternDisplayOrderIndex[ka];
-  const ib = patternDisplayOrderIndex[kb];
-  if (ia !== undefined && ib !== undefined) return ia - ib;
-  if (ia !== undefined) return -1;
-  if (ib !== undefined) return 1;
-  return ka < kb ? -1 : ka > kb ? 1 : 0;
-}
-
-// Convenience helper — returns a NEW sorted array so callers don't have
-// to clone-then-sort.  Used by the result modal + game-complete recap.
-export function sortPatterns(patterns: ReadonlyArray<string>): string[] {
-  return [...patterns].sort(comparePatterns);
-}
-
-// Phase J Wave 3 — fire-and-forget loader for Bishop's canonical
-// ordering endpoint.  The response is a flat `{patternWireKey: order}`
-// JSON object; on success we install it via `setPatternDisplayOrder`.
-// Any failure (404 / network / parse) is swallowed silently because
-// the hardcoded fallback list keeps the UI rendering correctly.
-export async function loadPatternOrderingFromApi(): Promise<void> {
-  try {
-    const res = await fetch('api/changsha/pattern-ordering', {
-      credentials: 'same-origin',
-    });
-    if (!res.ok) return;
-    const json = (await res.json()) as Record<string, unknown>;
-    const map: Record<string, number> = {};
-    for (const [k, v] of Object.entries(json)) {
-      if (typeof v === 'number' && isFinite(v)) map[k] = v;
-    }
-    if (Object.keys(map).length > 0) {
-      setPatternDisplayOrder(map);
-    }
-  } catch {
-    /* hardcoded fallback stays — nothing to do */
-  }
-}
+// Phase J Wave 3 → Phase K Wave 4 — pattern ordering moved into
+// `./pattern-utils` so the renderer-critical `move-log` + `scene-shell`
+// chunks don't drag the full 100 kB game-ui graph in via a comparator
+// import.  Re-exported here for the (small) population of external
+// callers that imported these helpers via `./game-ui`.
+import {
+  comparePatterns,
+  sortPatterns,
+  setPatternDisplayOrder,
+  loadPatternOrderingFromApi,
+  normalizePatternKey,
+} from './pattern-utils';
+export {
+  comparePatterns,
+  sortPatterns,
+  setPatternDisplayOrder,
+  loadPatternOrderingFromApi,
+};
 
 // Phase D — convert a Changsha tile id (0..26 over 3 suits × 9 ranks) to a
 // terse glyph the result modal renders, e.g. tile 0 → "1m", tile 14 → "6p".

@@ -569,7 +569,7 @@ function ensureSignInModal(): void {
         <button id="signin-microsoft" type="button"
                 class="btn btn-block signin-provider-btn signin-provider-microsoft"
                 data-testid="signin-provider-microsoft">
-          <span class="signin-provider-icon" aria-hidden="true">${microsoftIconSvg()}</span>
+          <span class="signin-provider-icon">${microsoftIconSvg()}</span>
           Sign in with Microsoft
         </button>
 
@@ -656,13 +656,25 @@ function googleIconSvg(): string {
 }
 
 function microsoftIconSvg(): string {
-  // Microsoft brand mark — four-tile square per
-  // https://learn.microsoft.com/en-us/style-guide/brand-design/microsoft-logo
-  return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
-    + '<rect x="2"  y="2"  width="9" height="9" fill="#f25022"/>'
-    + '<rect x="13" y="2"  width="9" height="9" fill="#7fba00"/>'
-    + '<rect x="2"  y="13" width="9" height="9" fill="#00a4ef"/>'
-    + '<rect x="13" y="13" width="9" height="9" fill="#ffb900"/>'
+  // Phase K Wave 3 → Phase K Wave 4 — Microsoft four-tile mark, sized
+  // to the Microsoft Identity Platform "Sign in with Microsoft"
+  // branding guidance (24×24 mark with four 11×11 squares separated
+  // by a 1-px gap).  Inline (never fetched at runtime), with a
+  // `<title>` element + `role="img"` so screen readers announce
+  // "Microsoft" rather than the default "image" fallback.
+  //
+  // Source: https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-branding-in-apps
+  // Brand colors (per Microsoft logo style guide):
+  //   • #F25022 — red    (top-left)
+  //   • #7FBA00 — green  (top-right)
+  //   • #00A4EF — blue   (bottom-left)
+  //   • #FFB900 — yellow (bottom-right)
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 23 23" width="24" height="24" role="img" aria-label="Microsoft">'
+    + '<title>Microsoft</title>'
+    + '<rect x="1"  y="1"  width="10" height="10" fill="#F25022"/>'
+    + '<rect x="12" y="1"  width="10" height="10" fill="#7FBA00"/>'
+    + '<rect x="1"  y="12" width="10" height="10" fill="#00A4EF"/>'
+    + '<rect x="12" y="12" width="10" height="10" fill="#FFB900"/>'
     + '</svg>';
 }
 

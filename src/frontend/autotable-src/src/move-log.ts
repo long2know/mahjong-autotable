@@ -25,7 +25,7 @@
 // as Bishop's branch lands, without touching this module.
 
 import { Client } from "./client";
-import { comparePatterns } from "./game-ui";
+import { comparePatterns } from "./pattern-utils";
 import {
   ClaimWindowEntry,
   DiceInfo,

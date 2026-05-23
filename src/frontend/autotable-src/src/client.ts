@@ -25,6 +25,7 @@ import {
   initProfileHubBindings,
 } from './profile';
 import { getHubConnection, stopHubConnection } from './hub';
+import { loadGameState, updateGameState, resetGameState } from './game-state';
 
 
 // Phase J Wave 2 — Server-pushed end-of-game payload.  Bishop's runtime
@@ -142,6 +143,12 @@ export class Client extends BaseClient {
       // loadProfile() so the local cache lands even if the hub
       // already pushed before our listener was installed.
       initProfileHubBindings();
+      // Phase K Wave 4 — Populate the per-table reactive state so
+      // voice / settings-drawer / future owner-only surfaces share
+      // one cached snapshot of `{ ownerId, voiceEnabled,
+      // viewerIsOwner }`.  Fire-and-forget — surfaces degrade to
+      // their disabled state when the fetch fails.
+      void loadGameState(game.gameId);
       void (async (): Promise<void> => {
         try {
           await getHubConnection();
@@ -153,6 +160,18 @@ export class Client extends BaseClient {
           // Cache the pre-game stats snapshot so the post-game modal
           // can render a delta.
           snapshotStatsForGame();
+          // Phase K Wave 4 — Bishop's `ChangshaHub.GameJoined` event
+          // pushes the same `{ ownerId, voiceEnabled }` payload that
+          // the REST endpoint serves.  Subscribe so live owner
+          // transfers + voice toggles refresh the reactive state
+          // without a refetch.  Best-effort: when the event isn't
+          // registered server-side the `on` handler just never fires.
+          try {
+            const conn = await getHubConnection();
+            conn.on('GameJoined', (payload: unknown) => {
+              applyGameJoined(payload, game.gameId);
+            });
+          } catch { /* hub binding best-effort */ }
         } catch {
           // Profile load is best-effort; lobby/UI degrade gracefully.
         }
@@ -225,7 +244,38 @@ export class Client extends BaseClient {
     // disconnect so the server's ProfileLoaded events don't keep
     // landing on a client that no longer cares.  Fire-and-forget.
     void stopHubConnection();
+    // Phase K Wave 4 — Drop the per-table reactive state too so the
+    // next JOIN starts from a clean snapshot.
+    resetGameState();
   }
+}
+
+// Phase K Wave 4 — Normalise Bishop's `GameJoined` SignalR payload and
+// merge it into the per-table reactive state.  Tolerates the camelCase
+// /PascalCase split the .NET serialiser may produce.
+interface GameJoinedPayload {
+  gameId?: string;
+  GameId?: string;
+  ownerId?: string;
+  OwnerId?: string;
+  voiceEnabled?: boolean;
+  VoiceEnabled?: boolean;
+  viewerIsOwner?: boolean;
+  ViewerIsOwner?: boolean;
+}
+
+function applyGameJoined(raw: unknown, fallbackGameId: string): void {
+  if (raw === null || typeof raw !== 'object') return;
+  const p = raw as GameJoinedPayload;
+  const gameId =
+    typeof p.gameId === 'string' && p.gameId !== '' ? p.gameId
+    : (typeof p.GameId === 'string' && p.GameId !== '' ? p.GameId : fallbackGameId);
+  const ownerId =
+    typeof p.ownerId === 'string' && p.ownerId !== '' ? p.ownerId
+    : (typeof p.OwnerId === 'string' && p.OwnerId !== '' ? p.OwnerId : null);
+  const voiceEnabled = p.voiceEnabled === true || p.VoiceEnabled === true;
+  const viewerIsOwner = p.viewerIsOwner === true || p.ViewerIsOwner === true;
+  updateGameState({ gameId, ownerId, voiceEnabled, viewerIsOwner });
 }
 
 // Phase J Wave 5 — read the "is complete" flag from a gameComplete
