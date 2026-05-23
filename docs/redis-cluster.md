@@ -289,6 +289,188 @@ duplicate-request behaviour on multi-pod fleets.
 
 - [`infra/terraform/modules/redis/README.md`](../infra/terraform/modules/redis/README.md) — module surface + input/output reference.
 - [`infra/terraform/envs/staging/main.tf`](../infra/terraform/envs/staging/main.tf) — staging env stack instantiation.
+- [`infra/terraform/envs/prod/main.tf`](../infra/terraform/envs/prod/main.tf) — prod env stack instantiation (Phase K Wave 11 — see §11 below).
 - [`docs/jwt-ssm-runbook.md §3`](./jwt-ssm-runbook.md#3-rotation-cadence) — sibling rotation runbook (matching cadence).
 - [`docs/secret-management.md`](./secret-management.md) — KMS conventions + secret rotation policy.
 - Bishop's W10 `RedisIdempotencyStore` runtime — consumer of `/mahjong/{env}/redis/*` SSM parameters.
+
+## 11. Prod sizing + ESO wiring (Phase K Wave 11)
+
+Wave 10 shipped the module + the staging env stack at the
+cheap-staging shape (`cache.t4g.micro`, 0 replicas, no
+snapshots). Wave 11 ships the **prod env stack** with the
+production-tier shape baked in.
+
+### 11.1 Prod sizing rationale
+
+| Knob                          | Staging (W10)          | Prod (W11)              | Rationale |
+|-------------------------------|------------------------|-------------------------|-----------|
+| `node_type`                   | `cache.t4g.micro`      | `cache.r6g.large`       | r6g is graviton2 + memory-optimised — the right family for an in-memory idempotency cache hot-set. Sized against the W10 load-test baseline (`docs/load-test-results.md`); CloudWatch `Evictions` metric is the bump-trigger if sustained pressure shows up. |
+| `replica_count`               | 0                      | 1                       | Multi-AZ requires ≥ 1 replica (AWS constraint). One replica in a second AZ is the prod baseline; bump to 2 only if read fan-out surfaces in the W11+ metrics (the W10 IdempotencyStore is write-heavy → 1 replica is the sweet spot). |
+| `multi_az_enabled`            | `false`                | `true`                  | Automatic failover ON in prod — a single-AZ outage promotes the replica without operator intervention. |
+| `snapshot_retention_limit`    | 0                      | 7                       | 7-day daily snapshots in prod. Lower than RDS's 30-day window because idempotency keys are 5-min TTL — the snapshot is a debug aid (post-mortem on a corrupted key space), not a recovery surface. |
+| `at_rest_encryption_enabled`  | `true`                 | `true`                  | Encryption at rest in BOTH envs — the connection-string shape stays identical across envs. |
+| `transit_encryption_enabled`  | `true`                 | `true`                  | TLS in transit — REQUIRED to use an auth-token (AWS constraint). |
+| `auth_token_enabled`          | `true`                 | `true`                  | Auth token in BOTH envs — exercises the runtime auth path in staging before prod sees it. |
+| `kms_key_id`                  | `""` (AWS-managed)     | `alias/mahjong-prod-elasticache` | Customer-managed key in prod for SOC-2 / encryption-key-rotation compliance (annual rotation per `docs/secret-management.md`). |
+| `snapshot_window`             | n/a (snapshots off)    | `03:00-05:00`           | Off-peak UTC for US/EU traffic. |
+| `maintenance_window`          | (default sun:05-07)    | `sun:05:00-sun:07:00`   | Sunday off-peak — operator gets weekend coverage for any failover during apply. |
+| `apply_immediately`           | `false`                | `false`                 | Prod waits for the maintenance window — explicit `-var apply_immediately=true` opt-in during incident response only. |
+
+### 11.2 Apply walkthrough
+
+```bash
+# 0. Pre-flight — primary stack outputs must exist.
+cd infra/terraform/
+PRIMARY_VPC_ID=$(terraform output -raw vpc_id)
+PRIMARY_SUBNETS=$(terraform output -json private_subnet_ids)
+PRIMARY_VPC_CIDR=$(terraform output -raw vpc_cidr)
+PRIMARY_EKS_SG=$(terraform output -json eks_worker_security_group_ids 2>/dev/null || echo '[]')
+
+# 1. Env stack — paste those values into prod tfvars.
+cd envs/prod/
+cp backend.example.hcl backend.hcl
+cp terraform.tfvars.example terraform.tfvars
+# EDIT terraform.tfvars:
+#   - vpc_id              = <PRIMARY_VPC_ID>
+#   - private_subnet_ids  = <PRIMARY_SUBNETS>
+#   - vpc_cidr            = <PRIMARY_VPC_CIDR>
+#   - eks_worker_security_group_ids = <PRIMARY_EKS_SG>
+#   - alb_dns_name        = "<output of kubectl get svc ingress-nginx-controller>"
+#   - existing_hosted_zone_id = <prod Route 53 zone ID>
+
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+```
+
+Apply time: ≈ 10–15 minutes (prod multi-AZ ElastiCache creation
+is the long pole).
+
+### 11.3 Prod SSM push
+
+The W11 prod ExternalSecret (`infra/k8s/overlays/prod/redis-connection-string-secret.yaml`)
+mounts a single connection-string blob into the env var
+`Idempotency__Redis__ConnectionString` (mapping to the
+`Idempotency:Redis:ConnectionString` config key Bishop's W10
+runtime reads). This is the **omnibus-string** shape (vs the
+**split-form** in §3) — prod uses omnibus because the
+.NET `StackExchange.Redis.ConnectionMultiplexer.Connect()` reads
+a single blob and the omnibus form is one ESO key → one env-var
+→ one runtime read. The split form remains canonical for the
+**rotation path** (§8) because the operator rotates the token
+without re-uploading the host.
+
+```bash
+ENV=prod
+KMS_KEY=alias/mahjong-prod-secrets
+
+# Capture terraform outputs (no echo).
+CONN=$(terraform output -raw redis_connection_string)
+[ -n "$CONN" ] || { echo "missing redis_connection_string"; exit 1; }
+
+# Push the omnibus connection string to SSM (this is what the
+# prod runtime mounts on every boot).
+aws ssm put-parameter \
+    --name "/mahjong/${ENV}/redis/connection-string" \
+    --type SecureString \
+    --key-id "${KMS_KEY}" \
+    --value "${CONN}" \
+    --description "ElastiCache Redis connection string for ${ENV} (W11 prod). Maps to Idempotency:Redis:ConnectionString."
+
+# Also push the split form — used by §8 rotation procedure.
+HOST=$(terraform output -raw redis_primary_endpoint)
+PORT=$(terraform output -raw redis_port)
+TOKEN=$(terraform output -raw redis_auth_token)
+
+aws ssm put-parameter --name "/mahjong/${ENV}/redis/host" \
+    --type String --value "${HOST}" --overwrite
+aws ssm put-parameter --name "/mahjong/${ENV}/redis/port" \
+    --type String --value "${PORT}" --overwrite
+aws ssm put-parameter --name "/mahjong/${ENV}/redis/auth-token" \
+    --type SecureString --key-id "${KMS_KEY}" --value "${TOKEN}" --overwrite
+
+# Clear local vars — best-effort.
+unset CONN HOST PORT TOKEN
+```
+
+### 11.4 ESO wiring (prod overlay)
+
+The `infra/k8s/overlays/prod/redis-connection-string-secret.yaml`
+ExternalSecret materialises the SSM connection string into the
+k8s Secret `mahjong-redis-prod` with key
+`Idempotency__Redis__ConnectionString`. Apply OUT-OF-BAND (not
+listed in `kustomization.yaml` `resources:` — same pattern as
+`jwt-keys-secret.yaml`):
+
+```bash
+kubectl -n mahjong-prod apply -f \
+    infra/k8s/overlays/prod/redis-connection-string-secret.yaml
+```
+
+A future cluster bootstrap (W12 hand-off — once the prod EKS
+cluster is provisioned + ESO is installed) wires the
+`envFrom: secretRef: mahjong-redis-prod` into the prod
+Deployment patch in `kustomization.yaml`; until then, the
+deployment continues to read the omnibus `mahjong-autotable`
+Secret's `Idempotency__Redis__ConnectionString` key.
+
+### 11.5 Prod smoke test
+
+After `terraform apply` + SSM push + ESO sync, validate the
+runtime path against prod:
+
+```bash
+# 1. Confirm the ExternalSecret synced.
+kubectl -n mahjong-prod get externalsecret mahjong-redis-prod
+# Expected status: SecretSynced=True
+
+# 2. Confirm the Secret materialised.
+kubectl -n mahjong-prod get secret mahjong-redis-prod \
+    -o jsonpath='{.data.Idempotency__Redis__ConnectionString}' \
+    | base64 -d | head -c 80 ; echo
+# Expected first 80 chars: <prod_primary_endpoint>:6379,password=...
+
+# 3. From inside a pod, ping Redis with the auth token.
+POD=$(kubectl -n mahjong-prod get pod -l app=mahjong-autotable \
+    -o jsonpath='{.items[0].metadata.name}')
+kubectl -n mahjong-prod exec "$POD" -- sh -c '
+    set -e
+    : ${REDIS_HOST:?missing}
+    redis-cli -h "$REDIS_HOST" --tls --user default \
+        -a "${REDIS_AUTH_TOKEN}" PING
+'
+# Expected: PONG.
+```
+
+### 11.6 IAM patch — ESO ClusterSecretStore
+
+The prod ClusterSecretStore `aws-secrets-manager-prod` (W4) was
+scoped to `mahjong/prod/*` (Secrets Manager) +
+`/mahjong/prod/auth/jwt/*` (SSM). W11 extends the SSM scope to
+include the Redis params:
+
+```hcl
+# Trust policy delta (in infra/terraform/modules/github-oidc/
+# or the ESO controller's IAM role module).
+statement {
+  effect    = "Allow"
+  actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+  resources = [
+    "arn:aws:ssm:*:*:parameter/mahjong/prod/auth/jwt/*",
+    "arn:aws:ssm:*:*:parameter/mahjong/prod/redis/*",   # ← W11
+  ]
+}
+```
+
+Apply with `terraform plan` against the IAM module; the W6
+narrow-policy invariant (`docs/terraform.md §3`) still holds —
+the prefix `/mahjong/prod/redis/*` only matches the parameters
+this overlay needs.
+
+## 12. Cross-references (legacy index)
+
+See §10 above. This section header is retained as an alias for
+external links that may have indexed the W10 numbering.
+
+

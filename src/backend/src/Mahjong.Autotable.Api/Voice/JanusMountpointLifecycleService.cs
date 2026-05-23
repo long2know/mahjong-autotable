@@ -1,7 +1,33 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Hosting;
 
 namespace Mahjong.Autotable.Api.Voice;
+
+/// <summary>
+/// Phase K Wave 11 — Bishop. Reasons why a Janus mountpoint was
+/// evicted from the <see cref="JanusMountpointRegistry"/>. Each
+/// reason becomes a Prometheus tag on the
+/// <c>signalr_mountpoint_evictions_total</c> counter so dashboards
+/// can render per-reason rates.
+/// </summary>
+public static class MountpointEvictionReason
+{
+    /// <summary>Idle past the lifecycle TTL — the natural sweep
+    /// path. Most evictions land here.</summary>
+    public const string Idle = "idle";
+
+    /// <summary>Forced by the runtime when the owning game
+    /// completes — distinct from idle so dashboards can spot a
+    /// game-end rate that's lower than expected.</summary>
+    public const string GameEnded = "gameEnded";
+
+    /// <summary>Forced because the Janus health probe reports
+    /// the SFU is unhealthy. Surfaces the failover path so
+    /// operators can correlate Janus downtime with mountpoint
+    /// churn.</summary>
+    public const string JanusUnhealthy = "janusUnhealthy";
+}
 
 /// <summary>
 /// Phase K Wave 10 — Bishop. Lifecycle metadata for a single Janus
@@ -178,21 +204,43 @@ public sealed class JanusMountpointLifecycleService : BackgroundService
     /// window is GC'd.</summary>
     public static readonly TimeSpan DefaultIdleTtl = TimeSpan.FromMinutes(5);
 
+    /// <summary>Phase K Wave 11 — Bishop. Meter name for the
+    /// mountpoint-eviction counter. Surfaced as a constant so the
+    /// Prometheus exporter + contract tests pin the
+    /// vocabulary.</summary>
+    public const string MeterName = "Mahjong.Autotable.Api.Voice.JanusMountpoint";
+
+    /// <summary>Phase K Wave 11 — Bishop. Prometheus counter name.
+    /// Tagged by <c>reason</c> (idle | gameEnded | janusUnhealthy)
+    /// per <c>docs/realtime-resilience.md §4</c>.</summary>
+    public const string EvictionCounterName = "signalr_mountpoint_evictions_total";
+
     private readonly JanusMountpointRegistry _registry;
     private readonly ILogger<JanusMountpointLifecycleService> _logger;
     private readonly TimeSpan _sweepInterval;
     private readonly TimeSpan _idleTtl;
+    private readonly Counter<long>? _evictionCounter;
 
     public JanusMountpointLifecycleService(
         JanusMountpointRegistry registry,
         ILogger<JanusMountpointLifecycleService> logger,
         TimeSpan? sweepInterval = null,
-        TimeSpan? idleTtl = null)
+        TimeSpan? idleTtl = null,
+        IMeterFactory? meterFactory = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _sweepInterval = sweepInterval ?? DefaultSweepInterval;
         _idleTtl = idleTtl ?? DefaultIdleTtl;
+
+        if (meterFactory is not null)
+        {
+            var meter = meterFactory.Create(MeterName);
+            _evictionCounter = meter.CreateCounter<long>(
+                EvictionCounterName,
+                unit: null,
+                description: "Janus mountpoints evicted by the lifecycle service, tagged by reason.");
+        }
     }
 
     /// <summary>Sweep cadence — exposed for the contract suite.</summary>
@@ -233,6 +281,10 @@ public sealed class JanusMountpointLifecycleService : BackgroundService
     /// Phase K Wave 10 — Bishop. Single-sweep entry-point exposed
     /// for the contract suite so tests can drive evictions
     /// deterministically without waiting for the timer.
+    ///
+    /// <para>Phase K Wave 11 — Bishop. Idle-eviction emits the
+    /// <see cref="EvictionCounterName"/> metric tagged
+    /// <c>reason="idle"</c>. See <c>docs/realtime-resilience.md §4</c>.</para>
     /// </summary>
     internal int RunOnce()
     {
@@ -240,10 +292,66 @@ public sealed class JanusMountpointLifecycleService : BackgroundService
         foreach (var e in evicted)
         {
             _logger.LogInformation(
-                "JanusMountpoint evicted: tableId={TableId} mountpointId={MountpointId} age={AgeS}s",
+                "JanusMountpoint evicted: tableId={TableId} mountpointId={MountpointId} age={AgeS}s reason={Reason}",
                 e.TableId, e.MountpointId,
-                (DateTimeOffset.UtcNow - e.LastSeenAtUtc).TotalSeconds);
+                (DateTimeOffset.UtcNow - e.LastSeenAtUtc).TotalSeconds,
+                MountpointEvictionReason.Idle);
+            _evictionCounter?.Add(1,
+                new KeyValuePair<string, object?>("reason", MountpointEvictionReason.Idle));
         }
         return evicted.Count;
+    }
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Forced eviction triggered by the
+    /// runtime when the owning game ends. Emits the
+    /// <see cref="EvictionCounterName"/> counter tagged
+    /// <c>reason="gameEnded"</c> so dashboards can correlate
+    /// game-end rate with mountpoint churn. Returns <c>true</c>
+    /// when the table was registered (and now isn't);
+    /// <c>false</c> when no mountpoint existed (idempotent).
+    /// </summary>
+    public bool EvictForGameEnded(string tableId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
+        var existed = _registry.Evict(tableId);
+        if (existed)
+        {
+            _logger.LogInformation(
+                "JanusMountpoint evicted: tableId={TableId} reason={Reason}",
+                tableId, MountpointEvictionReason.GameEnded);
+            _evictionCounter?.Add(1,
+                new KeyValuePair<string, object?>("reason", MountpointEvictionReason.GameEnded));
+        }
+        return existed;
+    }
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Forced eviction triggered by the
+    /// Janus health probe when the SFU is unhealthy. The runtime
+    /// drops every active mountpoint so reconnect attempts land
+    /// on a fresh mountpoint once the SFU returns to health.
+    /// Returns the count of mountpoints evicted.
+    /// </summary>
+    public int EvictAllForJanusUnhealthy()
+    {
+        var entries = _registry.Entries.ToList();
+        var count = 0;
+        foreach (var e in entries)
+        {
+            if (_registry.Evict(e.TableId))
+            {
+                count++;
+                _evictionCounter?.Add(1,
+                    new KeyValuePair<string, object?>("reason", MountpointEvictionReason.JanusUnhealthy));
+            }
+        }
+        if (count > 0)
+        {
+            _logger.LogWarning(
+                "JanusMountpoint evicted: count={Count} reason={Reason}",
+                count, MountpointEvictionReason.JanusUnhealthy);
+        }
+        return count;
     }
 }

@@ -1,0 +1,63 @@
+# Phase K Wave 11 — Apone (DevOps).
+#
+# Example tfvars for the prod edge + Redis stack. Copy +
+# edit the operator-specific values before `terraform apply`.
+
+region      = "us-east-1"
+domain_name = "mahjong.example.com"
+
+# Prod baseline — apex zone pre-exists (registrar-delegated);
+# the operator records `mahjong.*` directly in it. Flip to
+# `create_hosted_zone = true` ONLY for a fresh apex bring-up.
+create_hosted_zone      = false
+existing_hosted_zone_id = "Z000000000000PLACEHOLDER"
+
+# Optional SANs on the prod ACM cert — uncomment to extend:
+# additional_subject_alt_names = ["api.mahjong.example.com", "www.mahjong.example.com"]
+additional_subject_alt_names = []
+
+# ── Operator-specific — replace these once the prod cluster's
+# nginx-ingress controller is installed ───────────────────────────
+# kubectl -n ingress-nginx get svc ingress-nginx-controller \
+#     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+alb_dns_name = "prod-alb-placeholder.us-east-1.elb.amazonaws.com"
+# us-east-1 application load balancer canonical-hosted-zone id:
+alb_zone_id = "Z35SXDOTRQ7X7K"
+
+# WAF — BLOCK mode for prod (W11 cutover from W8 count-only
+# staging soak). 1000 req per IP per 5 min rate limit.
+waf_rate_limit_per_5min = 1000
+
+# CloudFront fronting — disabled at W11 (ALB-direct baseline).
+# Flip ONLY after the squad signs off on the cache-invalidation
+# runbook + CDN cost.
+cloudfront_enabled            = false
+cloudfront_origin_domain_name = ""
+cloudfront_price_class        = "PriceClass_100"
+
+# Log retention — 90 days matches the SOC-2 / audit retention
+# baseline in `docs/audits/`.
+logs_retention_days = 90
+
+# ── Redis VPC wiring (W11 prod) ──────────────────────────────────
+# Copy from `terraform output` against the primary stack:
+#   cd ../../             # back to infra/terraform/
+#   terraform output -raw  vpc_id              # → vpc_id below
+#   terraform output -json private_subnet_ids  # → private_subnet_ids below
+#   terraform output -raw  vpc_cidr            # → vpc_cidr below
+#   terraform output -json eks_worker_security_group_ids
+#                                              # → eks_worker_security_group_ids below
+vpc_id             = "vpc-placeholder"
+private_subnet_ids = ["subnet-placeholder-a", "subnet-placeholder-b", "subnet-placeholder-c"]
+vpc_cidr           = "10.0.0.0/16"
+
+# Preferred — locks Redis ingress to EKS workers only.
+eks_worker_security_group_ids = ["sg-placeholder-eks-workers"]
+
+# ── Redis cluster shape — prod tier ──────────────────────────────
+redis_node_type     = "cache.r6g.large"
+redis_replica_count = 1
+
+# Customer-managed KMS key for SOC-2 / encryption-key-rotation
+# compliance. Empty string = AWS-managed default.
+redis_kms_key_id = "alias/mahjong-prod-elasticache"

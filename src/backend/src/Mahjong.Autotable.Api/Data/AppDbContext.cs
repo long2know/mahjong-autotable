@@ -86,6 +86,12 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     // EfIdempotencyStore. See Mahjong.Autotable.Api.Audit.EfIdempotencyStore.
     public DbSet<IdempotencyEntry> IdempotencyEntries => Set<IdempotencyEntry>();
 
+    // Phase K Wave 11 — Bishop. Optional EF-backed per-record
+    // commentary store. Toggled via Commentary:StorageImpl
+    // ("InMemory" default tests / "Ef" default prod). Backs
+    // EfCommentaryStore; see Mahjong.Autotable.Api.Commentary.EfCommentaryStore.
+    public DbSet<CommentaryRecordRow> CommentaryRecords => Set<CommentaryRecordRow>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -465,6 +471,23 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.HasIndex(x => x.ExpiresAt);
             entity.Property(x => x.RowVersion)
                 .IsConcurrencyToken();
+        });
+
+        // Phase K Wave 11 — Bishop. Per-record commentary store.
+        // Indexed by (GameId, GeneratedAtUtc) so the paginated
+        // `GET /api/games/{gameId}/commentary?after=...` endpoint
+        // serves with a single index seek. The ExpiresAtUtc index
+        // backs the retention sweeper.
+        modelBuilder.Entity<CommentaryRecordRow>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Phase).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.Speaker).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Text).IsRequired();
+            entity.Property(x => x.TileReferencesJson).IsRequired();
+            entity.HasIndex(x => new { x.GameId, x.GeneratedAtUtc });
+            entity.HasIndex(x => x.GeneratedAtUtc);
+            entity.HasIndex(x => x.ExpiresAtUtc);
         });
     }
 }

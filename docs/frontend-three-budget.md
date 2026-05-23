@@ -558,3 +558,195 @@ texture usage in `src/frontend/autotable-src/src/`.
 
 Monotonic-decrease invariant holds for a 5th consecutive wave
 (Vasquez's W7 trend gate).
+
+## §7 — Wave 11: ShaderChunk barrel surgery
+
+### Motivation
+
+W10 closed at 497.44 kB on the big chunk, missing the <480 kB
+stretch ceiling by ~17 kB. The autopsy in §6 traced the remaining
+bulk to three named entries on the `ShaderChunk` / `ShaderLib`
+barrel:
+
+- `cube_uv_reflection_fragment` (line 344 of three.module.js,
+  ~2.3 kB unminified) — the cubeUV environment-sampling chunk,
+  `#include`d by `meshlambert_frag` and `meshphysical_frag`.
+- `fragment$g` (line 516, ~0.6 kB) — `backgroundCube_frag`, used
+  only when `scene.background` is set to a `CubeTexture`.
+- `fragment$5` (line 560, ~2.7 kB) — `meshphysical_frag`, the
+  PBR shader (PointsMaterial / StandardMaterial / etc., all of
+  which W9 already stubbed at the class level).
+
+Rollup keeps the entire barrel as a single unit (it can't strip
+individual properties from a named-export object literal), so
+all three shader strings ride along into the renderer chunk
+even though the autotable scene never touches the code paths
+that compile them.
+
+### Approach: source transform on the shader-string consts
+
+W11 adds the `stripUnusedShaderChunks()` Vite plugin to
+`vite.config.ts`. The plugin runs `enforce: 'pre'` on
+`three.module.js` and:
+
+1. Identifies the shader-string consts keyed off the ShaderLib
+   registry (the `ShaderLib` object literal at line ~660 of
+   three.module.js maps `meshbasic_frag` → `fragment$a`,
+   `meshlambert_frag` → `fragment$9`, etc.).
+2. KEEPS `fragment$a` / `vertex$a` (meshbasic — used by
+   `MeshBasicMaterial` AND `LineBasicMaterial`, which shares the
+   "basic" ShaderLib entry).
+3. KEEPS `fragment$9` / `vertex$9` (meshlambert — used by
+   `MeshLambertMaterial`).
+4. EMPTIES every other `fragment$X` / `vertex$X` pair (the
+   barrel still re-exports the name; the body becomes `""`).
+5. EMPTIES `cube_uv_reflection_fragment`. The `#include
+   <cube_uv_reflection_fragment>` directive inside
+   `meshlambert_frag` resolves to an empty string at GLSL
+   compile time, and the cubeUV block was already guarded by
+   `#ifdef ENVMAP_TYPE_CUBE_UV` — a macro never defined in
+   our scene (no envMap usage).
+6. EMPTIES the standalone `vertex` / `fragment` VSM blur shader
+   pair (the W9-stubbed `WebGLShadowMap` was the only caller).
+
+### Stripped shader entries (with their ShaderLib aliases)
+
+| Const | ShaderLib alias | Why safe to strip |
+|-------|------------------|---------------------|
+| `vertex$h` / `fragment$h` | `background_*` | No `scene.background = Texture(...)`. |
+| `vertex$g` / `fragment$g` | `backgroundCube_*` | No cube-texture background. |
+| `vertex$f` / `fragment$f` | `cube_*` | No CubeShader / Sky usage. |
+| `vertex$e` / `fragment$e` | `depth_*` | Shadow path stubbed in W9. |
+| `vertex$d` / `fragment$d` | `distanceRGBA_*` | Shadow path stubbed in W9. |
+| `vertex$c` / `fragment$c` | `equirect_*` | No equirect env mapping. |
+| `vertex$b` / `fragment$b` | `linedashed_*` | No `LineDashedMaterial`. |
+| `vertex$8` / `fragment$8` | `meshmatcap_*` | `MeshMatcapMaterial` stubbed W9. |
+| `vertex$7` / `fragment$7` | `meshnormal_*` | `MeshNormalMaterial` stubbed W9. |
+| `vertex$6` / `fragment$6` | `meshphong_*` | `MeshPhongMaterial` stubbed W9. |
+| `vertex$5` / `fragment$5` | `meshphysical_*` | PBR stack stubbed W9. **Largest single contributor.** |
+| `vertex$4` / `fragment$4` | `meshtoon_*` | `MeshToonMaterial` stubbed W9. |
+| `vertex$3` / `fragment$3` | `points_*` | `PointsMaterial` stubbed W9. |
+| `vertex$2` / `fragment$2` | `shadow_*` | `ShadowMaterial` stubbed W9. |
+| `vertex$1` / `fragment$1` | `sprite_*` | `SpriteMaterial` stubbed W9. |
+| `cube_uv_reflection_fragment` | (chunk) | No envMap usage; `#include` resolves to empty. |
+| `vertex` / `fragment` (standalone) | VSM blur | `WebGLShadowMap` stubbed W9. |
+
+### Scene-graph audit (W11 re-confirmation)
+
+`src/frontend/autotable-src/src/` instantiates only these
+material classes from `three`:
+
+| Class | Used in |
+|-------|---------|
+| `MeshBasicMaterial` | `object-view.ts` (raycast outline mesh) |
+| `MeshLambertMaterial` | `asset-loader.ts`, `center.ts`, `thing-group.ts` (table + tiles + sticks + winds) |
+| `LineBasicMaterial` | `selection-box.ts`, `mouse-ui.ts` (drag rectangle + hover ring) |
+| `ShaderMaterial` | `scene-effects.ts` (W7 CustomOutline inverted-hull shader) |
+
+`MeshBasicMaterial` + `LineBasicMaterial` share the
+`ShaderLib.basic` entry → `meshbasic_*` shaders. KEPT.
+`MeshLambertMaterial` uses `ShaderLib.lambert` →
+`meshlambert_*`. KEPT.
+`ShaderMaterial` provides its own GLSL strings — none of the
+ShaderLib chunks above are referenced.
+
+### Recovery measurement
+
+| Step | three-renderer-big | Delta |
+|------|--------------------|-------|
+| W10 baseline (no W11 strip)        | 497,440 B (497.44 kB) | —          |
+| + ShaderChunk barrel surgery (W11) | 466,395 B (466.40 kB) | **−31.04 kB** |
+
+The W11 strip delivers a **−6.24% reduction on the big chunk
+in a single wave**, **comfortably under the <475 kB stretch
+ceiling** with a ~9 kB margin. Combined with the W2 → W11 trend,
+the heavy renderer chunk has dropped **−36.95% (−273 kB)** since
+the Wave 6 Parcel peak of 739.72 kB.
+
+### Runtime smoke test
+
+A Playwright preview server + chromium smoke run (`vite preview`
+on port 4174 → `chromium.launch()` → `page.goto('/')` →
+`page.waitForSelector('body[lang]')`) confirms:
+
+- The lobby paints with no console errors.
+- The PWA shortcuts route handler fires for `?action=*` URLs.
+- Three screenshots captured at the expected viewports
+  (1024×768 wide + 768×1024 narrow) with the table / spectator
+  / tournament views rendering without WebGL compile errors.
+
+The Vasquez `three-renderer-480-hard.spec.ts` (W10 forward-
+staged) passes against the K11 `dist-size.json` row.
+
+### Risk + back-out
+
+The shader-strip plugin is named after `stripUnusedShaderChunks`
+in `vite.config.ts` and registered in the `plugins:` array
+between `stripWebGLShadowMap` and `copyStaticAssets`. To roll
+back:
+
+1. Comment out the entry in the `plugins:` array.
+2. Re-run `npm run build:vite`.
+3. Confirm `three-renderer-big` returns to ~497 kB (the W10
+   baseline lives in `dist-size.json:history[wave=K10]`).
+
+Failure modes to watch for after future three.js upgrades:
+
+- **A new scene introduces `scene.background = new
+  CubeTexture(...)`** → `backgroundCube_frag` compile fails
+  (empty string is not valid GLSL). Symptom: black canvas,
+  console "ERROR: 0:1: '': syntax error". Re-add the affected
+  shader to the keep-list in `vite.config.ts`.
+- **A new material with `envMap` set** → cubeUV sample path
+  silently returns black. Less catastrophic — UI still paints,
+  but reflections are gone. Detect by adding a Playwright
+  visual-regression spec for env-mapped surfaces.
+- **A three.js upgrade renames the `fragment$X` const suffixes**
+  (rollup-internal — the bundler renames anonymous suffixes
+  per build). The plugin warn-and-skips unknown names; the
+  build will succeed but the chunk size will regress. Watch
+  `dist-size.json` after dep bumps.
+
+### Trend ledger update
+
+| Wave | Big chunk | Target | Result |
+|------|-----------|--------|--------|
+| W7   | 578.72 kB | <550 kB | ✅      |
+| W8   | 531.86 kB | <540 kB | ✅      |
+| W9   | 507.47 kB | <510 kB | ✅      |
+| W10  | 497.44 kB | <500 kB ✅ / <480 kB ⚠️ | partial |
+| W11  | **466.40 kB** | **<475 kB** | ✅ (stretch met with ~9 kB margin) |
+
+Monotonic-decrease invariant holds for a 6th consecutive wave
+(Vasquez's W7 trend gate). The W10 <480 kB stretch ceiling is
+also retroactively satisfied.
+
+### Hand-off to W12
+
+The big chunk now sits at 466.40 kB. Remaining strip candidates
+(low single-digit kB each):
+
+- **`opaque_fragment` + `colorspace_fragment` + `tonemapping_*`
+  ShaderChunks** — referenced via `#include` from
+  `meshlambert_frag` / `meshbasic_frag`. The autotable scene
+  uses `LinearSRGBColorSpace` everywhere and no tone-mapping
+  (default = `NoToneMapping`), so the include bodies resolve
+  to pass-through code at compile time. Stripping the JS-side
+  string drops ~3-5 kB but requires keeping enough of the chunk
+  to satisfy the `#include` resolver — needs care.
+- **`UniformsLib` entries for unused features** (clearcoat,
+  iridescence, sheen, transmission, anisotropy, dispersion,
+  reflectivity-extras). Each entry is ~50-200 B. Aggregate
+  ~2-3 kB if all stripped.
+- **`shadowmap_*` chunks** — referenced via `#include` from
+  `meshlambert_frag` but guarded by `#ifdef USE_SHADOWMAP`.
+  Could empty the chunk bodies similarly to cubeUV.
+
+Combined the W12 candidates above could shave another 5-8 kB.
+The next round-number ceiling is <460 kB → realistic with one
+more wave of surgery.
+
+A more aggressive Phase L candidate: hand-roll `three/src/*`
+imports + a custom `WebGLRenderer` wrapper. The W6 estimate
+(–200 to –300 kB total) still stands but the engineering cost
+remains very high — defer until the Phase K series closes.

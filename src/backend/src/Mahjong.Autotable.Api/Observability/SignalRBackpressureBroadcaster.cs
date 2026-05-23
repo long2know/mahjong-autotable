@@ -62,6 +62,7 @@ public sealed class SignalRBackpressureBroadcaster<THub>
     private readonly Counter<long>? _dropCounter;
     private readonly Counter<long>? _replayCounter;
     private readonly Counter<long>? _sentCounter;
+    private readonly Histogram<double>? _ageAtPublishHistogram;
 
     // Per-(group) sliding window for rate-cap enforcement. Concurrent
     // dictionary keyed by group name — the window itself is a
@@ -99,8 +100,29 @@ public sealed class SignalRBackpressureBroadcaster<THub>
                 unit: null, description: "Reconnect-replay invocations against the backpressure broadcaster.");
             _sentCounter = meter.CreateCounter<long>("signalr_messages_sent_total",
                 unit: null, description: "Messages sent through the SignalR backpressure broadcaster, tagged by hub.");
+            // Phase K Wave 11 — Bishop. Latency histogram measuring
+            // the time between message creation (envelope CreatedAt)
+            // and the actual SignalR SendAsync call. Surfaces the
+            // queueing tail that the rate-cap counters alone don't
+            // expose. Buckets per docs/realtime-resilience.md §5.
+            _ageAtPublishHistogram = meter.CreateHistogram<double>(
+                "signalr_message_age_at_publish_seconds",
+                unit: "s",
+                description: "Latency between message creation and actual SignalR SendAsync, tagged by hub.");
         }
     }
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Buckets used for the age-at-
+    /// publish histogram. The Prometheus exporter reads
+    /// these via the standard <c>Histogram.Buckets</c> tag
+    /// metadata; surfaced as a constant so the contract suite can
+    /// pin the vocabulary.
+    /// </summary>
+    public static readonly double[] AgeAtPublishBuckets = new[]
+    {
+        0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0,
+    };
 
     /// <summary>
     /// Publishes a message to the given SignalR group with W9
@@ -147,6 +169,15 @@ public sealed class SignalRBackpressureBroadcaster<THub>
 
         try
         {
+            // Phase K Wave 11 — Bishop. Record age-at-publish before
+            // the SendAsync call so the metric captures only the
+            // server-side queueing tail (creation → just-before-
+            // SendAsync). The send itself is measured separately by
+            // standard SignalR instrumentation.
+            var ageAtPublishSeconds = (DateTimeOffset.UtcNow - now).TotalSeconds;
+            _ageAtPublishHistogram?.Record(ageAtPublishSeconds,
+                new KeyValuePair<string, object?>("hub", _hubName));
+
             await _hub.Clients.Group(group).SendAsync(method, new
             {
                 seq,

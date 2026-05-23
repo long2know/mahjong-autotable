@@ -72,6 +72,27 @@
 #   - Bundling-check coverage is now broadly tested at the contract
 #     level by `Phase_K_W10/Vasquez/VasquezW10SelfLaneTests.cs`.
 #
+# Wave 11 refinements (Vasquez):
+#   - SHARED-FILE table BROADENED further:
+#     * `src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/*` is
+#       now treated as shared between ALL FOUR squad authors. The
+#       W10 retro showed Bishop legitimately needs to add a forward-
+#       stage shim alongside Vasquez's contract harness — and the
+#       Shims/ directory is the canonical place for cross-lane test
+#       scaffolding. Authors accepted: bishop|vasquez|hicks|apone.
+#       Primary lane (for the cross-lane bundling detector) stays
+#       at `vasquez` since Shims/ lives under src/backend/tests/.
+#     * `.github/workflows/pwa-audit.yml` and the W11 sibling
+#       `.github/workflows/pwa-builder.yml` are shared between
+#       Hicks (frontend PWA asset author) and Apone (workflow
+#       runtime owner). Primary stays at `apone` since the file
+#       lives under .github/workflows/. The W10 retro flagged this:
+#       Hicks legitimately authored `pwa-audit.yml` but it landed
+#       in Apone's lane.
+#   - Companion `lane-map.json` carries new
+#     `shared_files.shims_shared` + `shared_files.pwa_audit_workflow_shared`.
+#   - See `docs/agent-handoff-protocol.md §5.9` for the registry policy.
+#
 # Owner: Vasquez (QA).
 
 set -euo pipefail
@@ -231,11 +252,21 @@ is_shared_file() {
   # co-authored by both Vasquez (QA stash-discipline + concurrent-safety
   # sections) and Apone (infra branch-protection runbook + lock-file
   # relocation). Mirror entry under `shared_files` in lane-map.json.
+  # W11 broadening (Vasquez):
+  #   * src/backend/tests/.../Shims/* — co-authored by ALL four
+  #     squad agents (bishop|vasquez|hicks|apone). Test shims are
+  #     forward-stage scaffolding for cross-pane contracts.
+  #   * .github/workflows/pwa-audit.yml + pwa-builder.yml — co-
+  #     authored by hicks + apone (PWA assets vs workflow runtime).
   local p="$1"
   case "$p" in
     src/frontend/autotable-src/tests/selectors.md|tests/selectors.md)
       return 0 ;;
     docs/agent-handoff-protocol.md)
+      return 0 ;;
+    src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/*)
+      return 0 ;;
+    .github/workflows/pwa-audit.yml|.github/workflows/pwa-builder.yml)
       return 0 ;;
     *)
       return 1 ;;
@@ -251,6 +282,10 @@ shared_file_authors() {
       echo "hicks vasquez" ;;
     docs/agent-handoff-protocol.md)
       echo "apone vasquez" ;;
+    src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/*)
+      echo "bishop vasquez hicks apone" ;;
+    .github/workflows/pwa-audit.yml|.github/workflows/pwa-builder.yml)
+      echo "hicks apone" ;;
     *)
       echo "" ;;
   esac

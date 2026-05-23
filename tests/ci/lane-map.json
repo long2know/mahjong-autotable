@@ -33,7 +33,7 @@
     ]
   },
   "shared_files": {
-    "description": "Phase K Wave 8 — Vasquez refinement (broadened in Wave 10). Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case. agent_handoff_protocol_md_shared (added in W10) recognises that docs/agent-handoff-protocol.md is co-authored by Vasquez (concurrent-agent safety + stash-discipline) and Apone (branch-protection runbook + lock-file relocation).",
+    "description": "Phase K Wave 8 — Vasquez refinement (broadened in Waves 10 + 11). Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case. agent_handoff_protocol_md_shared (added in W10) recognises that docs/agent-handoff-protocol.md is co-authored by Vasquez (concurrent-agent safety + stash-discipline) and Apone (branch-protection runbook + lock-file relocation). shims_shared (added in W11) recognises that test shims in src/backend/tests/.../Shims/ are co-authored by any contract author so a forward-stage shim for a backend surface (Bishop) can land alongside Vasquez's contract harness without an author-lane mismatch. pwa_audit_workflow_shared (added in W11) recognises that PWA-related workflows (.github/workflows/pwa-audit.yml + .github/workflows/pwa-builder.yml) are co-authored by Hicks (frontend asset author) and Apone (workflow runtime owner) — primary is apone, who owns the .github/workflows/ namespace.",
     "selectors_md_shared": {
       "paths": [
         "^src/frontend/autotable-src/tests/selectors\\.md$",
@@ -48,6 +48,21 @@
       ],
       "authors": ["apone", "vasquez"],
       "primary": "vasquez"
+    },
+    "shims_shared": {
+      "paths": [
+        "^src/backend/tests/Mahjong\\.Autotable\\.Api\\.Tests/Shims/.*$"
+      ],
+      "authors": ["bishop", "vasquez", "hicks", "apone"],
+      "primary": "vasquez"
+    },
+    "pwa_audit_workflow_shared": {
+      "paths": [
+        "^\\.github/workflows/pwa-audit\\.yml$",
+        "^\\.github/workflows/pwa-builder\\.yml$"
+      ],
+      "authors": ["hicks", "apone"],
+      "primary": "apone"
     }
   },
   "authors": {

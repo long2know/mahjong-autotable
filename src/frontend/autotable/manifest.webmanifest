@@ -50,25 +50,25 @@
   ],
   "screenshots": [
     {
-      "src": "img/screenshot-lobby.auto.png",
+      "src": "screenshots/main-game.png",
       "sizes": "1024x768",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Multiplayer lobby with active tables and tournaments"
+      "label": "Main game view with the live mahjong table and seated players"
     },
     {
-      "src": "img/screenshot-table.auto.png",
-      "sizes": "1024x768",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "3D mahjong table during live play"
-    },
-    {
-      "src": "img/screenshot-mobile.auto.png",
+      "src": "screenshots/spectator-commentary.png",
       "sizes": "768x1024",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Mobile portrait view with reachable controls"
+      "label": "Spectator commentary panel highlighting recent moves"
+    },
+    {
+      "src": "screenshots/tournament-dashboard.png",
+      "sizes": "1024x768",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Tournament dashboard with bracket overview and standings"
     }
   ],
   "shortcuts": [
@@ -102,7 +102,7 @@
       "name": "Tournament dashboard",
       "short_name": "Tournaments",
       "description": "Browse and join the tournament bracket dashboard",
-      "url": "/?action=tournaments",
+      "url": "/?action=tournament",
       "icons": [
         {
           "src": "img/icon-96.auto.png",

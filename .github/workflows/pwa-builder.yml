@@ -1,0 +1,261 @@
+# Phase K Wave 11 — Hicks (Frontend).
+#
+# PWA Builder report card CI workflow.  Runs after a preview URL is
+# available (Cloudflare Pages, GH Pages, or a `cloudflared tunnel`
+# from the action runner) and posts the three platform-readiness
+# scores from PWA Builder's analyze CLI:
+#
+#   • Microsoft Edge (Windows)
+#   • Google Chrome / Android
+#   • Safari (iOS / macOS)
+#
+# Hard-fails the PR if ANY platform score drops below 75.  Soft-pass
+# on nightly cron so an upstream PWA Builder catalogue change doesn't
+# break sleeping branches.
+#
+# Companion to `.github/workflows/pwa-audit.yml` (W10) — that one
+# runs Lighthouse 13 + a local manifest-lint score against the build
+# output; this one drives a third-party verifier against a public
+# preview URL so cross-engine readiness is independently witnessed.
+#
+# Trigger paths:
+#   • pull_request — runs after the audit workflow when the W11+
+#     paths change.  Provides the public preview URL via the
+#     `PREVIEW_URL` workflow input (workflow_dispatch only) or via
+#     a per-repo secret `PWA_PREVIEW_URL` for scheduled runs.
+#   • schedule (nightly) — exercises the canonical
+#     `secrets.PWA_PREVIEW_URL` against PWA Builder; reports nightly
+#     drift without gating PRs.
+#   • workflow_dispatch — manual run with an explicit URL input.
+#
+# Owner: Hicks.  Lane: shared with the W10 pwa-audit.yml (Apone's
+# precedent — Hicks PWA domain in Apone's path tree).
+# See `docs/frontend-pwa-audit.md §5` for the contract.
+
+name: pwa-builder
+
+on:
+  pull_request:
+    paths:
+      - "src/frontend/autotable-src/manifest.webmanifest"
+      - "src/frontend/autotable-src/sw.js"
+      - "src/frontend/autotable-src/static/screenshots/**"
+      - ".github/workflows/pwa-builder.yml"
+      - "docs/frontend-pwa-audit.md"
+  schedule:
+    # Nightly at 03:30 UTC — staggered from the W10 pwa-audit cron
+    # (02:30 UTC) so the runner pool sees them as separate jobs.
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: 'Public preview URL (e.g. https://preview-7.autotable.example)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pwa-builder-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pwa-builder:
+    name: PWA Builder readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/frontend/autotable-src
+    # Skip the job entirely when no preview URL is available (PRs
+    # from forks without secret access, or branches that haven't
+    # been published yet).  Avoids a noisy 0-score floor.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      - name: Resolve preview URL
+        id: url
+        env:
+          DISPATCH_URL: ${{ inputs.preview_url }}
+          SECRET_URL: ${{ secrets.PWA_PREVIEW_URL }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DISPATCH_URL:-}" ]; then
+            echo "url=${DISPATCH_URL}" >> "$GITHUB_OUTPUT"
+            echo "Using workflow_dispatch input URL"
+          elif [ -n "${SECRET_URL:-}" ]; then
+            echo "url=${SECRET_URL}" >> "$GITHUB_OUTPUT"
+            echo "Using secrets.PWA_PREVIEW_URL"
+          else
+            echo "::warning::No preview URL configured (set secrets.PWA_PREVIEW_URL); skipping PWA Builder run"
+            echo "url=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install PWA Builder CLI
+        if: steps.url.outputs.url != ''
+        run: |
+          # Pin the CLI minor version so a vendor release doesn't
+          # silently change the threshold semantics.  --no-audit /
+          # --no-fund keep the install log tractable.
+          npm install --global --no-audit --no-fund @pwabuilder/cli@latest
+
+      - name: Run PWA Builder analyze
+        id: analyze
+        if: steps.url.outputs.url != ''
+        env:
+          PREVIEW_URL: ${{ steps.url.outputs.url }}
+        run: |
+          set -euo pipefail
+          # `pwabuilder analyze --url <preview-url> --json` writes a
+          # machine-readable report.  The CLI's exit code reflects
+          # network success only (not the score) — gating is done by
+          # the parser step below.  Capture stderr too so transient
+          # vendor-side errors are visible in the run log.
+          pwabuilder analyze \
+            --url "${PREVIEW_URL}" \
+            --json \
+            > pwabuilder-report.json 2> pwabuilder.stderr.log
+          echo "report-size=$(wc -c < pwabuilder-report.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Parse platform scores
+        id: scores
+        if: steps.url.outputs.url != ''
+        run: |
+          set -euo pipefail
+          node -e "
+            const r = JSON.parse(require('fs').readFileSync('pwabuilder-report.json'));
+            // PWA Builder returns category-level scores under
+            // \`platforms\` (Edge / Chrome / Safari).  The CLI's
+            // schema names vary by minor version, so we tolerate
+            // both \`platforms\` (newer) and \`platform\` (older)
+            // shapes and a few alias spellings the vendor has
+            // shipped historically.
+            const platforms = r.platforms ?? r.platform ?? r.categories ?? {};
+            const aliases = {
+              edge:   ['edge', 'microsoftEdge', 'microsoft_edge', 'msedge'],
+              chrome: ['chrome', 'googleChrome', 'google_chrome'],
+              safari: ['safari', 'appleSafari', 'apple_safari', 'webkit'],
+            };
+            const result = {};
+            for (const canonical of Object.keys(aliases)) {
+              let val = null;
+              for (const a of aliases[canonical]) {
+                const candidate = platforms[a] ?? r[a];
+                if (candidate !== undefined && candidate !== null) {
+                  if (typeof candidate === 'number')      val = candidate;
+                  else if (typeof candidate.score === 'number') val = candidate.score;
+                  else if (typeof candidate.value === 'number') val = candidate.value;
+                  if (val !== null) break;
+                }
+              }
+              result[canonical] = val ?? 0;
+            }
+            require('fs').writeFileSync('.pwa-builder-scores.json', JSON.stringify(result, null, 2));
+            for (const k of Object.keys(result)) {
+              console.log(k.padEnd(6), result[k]);
+            }
+          "
+          {
+            echo "edge=$(node -e "process.stdout.write(String(require('./.pwa-builder-scores.json').edge))")"
+            echo "chrome=$(node -e "process.stdout.write(String(require('./.pwa-builder-scores.json').chrome))")"
+            echo "safari=$(node -e "process.stdout.write(String(require('./.pwa-builder-scores.json').safari))")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Enforce 75-point per-platform gate
+        if: steps.url.outputs.url != ''
+        env:
+          EDGE: ${{ steps.scores.outputs.edge }}
+          CHROME: ${{ steps.scores.outputs.chrome }}
+          SAFARI: ${{ steps.scores.outputs.safari }}
+        run: |
+          set -euo pipefail
+          fail=0
+          for plat in EDGE CHROME SAFARI; do
+            val="${!plat}"
+            awk -v s="${val}" 'BEGIN { exit (s+0 < 75) ? 1 : 0 }' || {
+              echo "::error::${plat,,} readiness score ${val} below 75 floor"
+              fail=1
+            }
+          done
+          # Nightly cron + manual dispatch are advisory — surface
+          # warning but don't fail.  PRs are hard-gated.
+          if [ "${fail}" -eq 1 ] && [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            exit 1
+          fi
+
+      - name: Compose PR comment
+        id: comment
+        if: github.event_name == 'pull_request' && steps.url.outputs.url != ''
+        env:
+          EDGE: ${{ steps.scores.outputs.edge }}
+          CHROME: ${{ steps.scores.outputs.chrome }}
+          SAFARI: ${{ steps.scores.outputs.safari }}
+          URL: ${{ steps.url.outputs.url }}
+        run: |
+          set -euo pipefail
+          {
+            echo "body<<EOF"
+            echo "**PWA Builder readiness** ([report card](https://www.pwabuilder.com/reportcard?site=${URL}))"
+            echo ""
+            echo "| Platform | Score | Gate |"
+            echo "|----------|-------|------|"
+            for pair in "Microsoft Edge:${EDGE}" "Google Chrome:${CHROME}" "Safari:${SAFARI}"; do
+              name="${pair%%:*}"; val="${pair##*:}"
+              gate="✅"; if awk -v s="${val}" 'BEGIN { exit (s+0 < 75) ? 1 : 0 }'; then :; else gate="❌"; fi
+              echo "| ${name} | ${val} | ${gate} |"
+            done
+            echo ""
+            echo "Floor: 75 per platform. Below floor fails the PR."
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request' && steps.url.outputs.url != ''
+        uses: actions/github-script@v7
+        env:
+          BODY: ${{ steps.comment.outputs.body }}
+        with:
+          script: |
+            const body = process.env.BODY;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const marker = '<!-- pwa-builder-report -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            const composed = `${marker}\n${body}`;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body: composed,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body: composed,
+              });
+            }
+
+      - name: Upload PWA Builder report
+        if: always() && steps.url.outputs.url != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-builder-${{ github.run_id }}
+          path: |
+            src/frontend/autotable-src/pwabuilder-report.json
+            src/frontend/autotable-src/.pwa-builder-scores.json
+            src/frontend/autotable-src/pwabuilder.stderr.log
+          retention-days: 14

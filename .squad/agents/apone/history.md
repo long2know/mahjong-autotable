@@ -933,3 +933,66 @@ This wave touched ONLY DevOps-lane paths: `.github/workflows/mobile-production-h
 ### 5. Apone-lane scope discipline (per W6 invariant)
 
 This wave touched ONLY DevOps-lane paths: `.github/workflows/container-scan-remediation.yml` (NEW), `.github/workflows/prod-health-check.yml` (NEW), `infra/terraform/modules/redis/{main,variables,outputs}.tf` + `README.md` (NEW), `infra/terraform/envs/staging/{main,variables,outputs}.tf`, `infra/terraform/envs/staging/terraform.tfvars.example`, `docs/{agent-handoff-protocol,redis-cluster,argo-rollouts-setup,jwt-ssm-runbook,secrets-scanning,production-deployment-runbook,retro-2026-08}.md`, `CHANGELOG.md`, `.squad/decisions.md` (EDIT(W10) blockquote notes at the W6/W7/W8 wave summaries), `.squad/agents/apone/history.md`, `.squad/decisions/inbox/apone-phase-k-wave-10.md`. NO `src/**`, NO `tests/**`, NO mobile source code, NO Helm changes (W10 is post-W9 chart cutover for canary; no Helm chart touched this wave). Pre-push `git status --short` verification confirms zero out-of-lane staging.
+
+
+## Phase K Wave 11 — DevOps bring-up (2026-09-XX)
+
+**Branch:** `stlong/phase-k-wave-11-bringup`. Branched from `0c95748` (W10 close — PR #56, gate 2108/0/0).
+
+**Commits authored:** one squad-style W11 commit covering the six deliverables below.
+
+### 1. Deliverables (six)
+
+1. **Prod Redis Terraform env stack.** `infra/terraform/envs/prod/{main,variables,outputs,backend.example.hcl,terraform.tfvars.example}.tf` — NEW. Edge module (BLOCK-mode WAF, 90-day CloudFront logs, ACM cert in us-east-1) + Redis module at the prod tier (`cache.r6g.large`, `replica_count=1`, multi-AZ, 7-day snapshots, CMK KMS via `alias/mahjong-prod-elasticache`, AUTH + TLS). `terraform validate` clean. Plus `infra/k8s/overlays/prod/redis-connection-string-secret.yaml` (NEW) — out-of-band ESO ExternalSecret with 15-min refresh, mounting `Idempotency__Redis__ConnectionString` from SSM SecureString `/mahjong/prod/redis/connection-string`.
+
+2. **Argo Rollouts auth-aware ingress.** `infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml` — NEW. nginx-ingress `auth-url` / `auth-signin` subrequest pattern gating the dashboard via the existing oauth2-proxy + dex OIDC chain (`auth.mahjong.example.com/oauth2/*`). Path rewrite `/argo-rollouts(/|$)(.*)` → `/$2`. Supersedes the W10 §4.3 placeholder.
+
+3. **Terraform CLI pin bump.** `.github/workflows/dr-rehearsal.yml` `terraform_version` `1.9.8` → `1.10.5`. Plus new `docs/terraform.md §6 "Version policy"` codifying range-floor / exact-pin discipline + quarterly bump cadence (W8 = 1.9.8, W11 = 1.10.5, W14 = TBD).
+
+4. **JWT rotation rehearsal harness.** `.github/workflows/jwt-rotation-rehearsal.yml` (NEW). Staging-only `workflow_dispatch` with hard `target_env=staging` gate. End-to-end exercises the W10 §3 rotation sequence with a 5-min JWKS-validation loop asserting old kid PRESENT + new kid PRESENT + total keys ≥ 3. Plus `docs/jwt-rotation-rehearsal.md` (NEW) operator runbook.
+
+5. **Multi-region prod-health-check matrix.** `.github/workflows/prod-health-check.yml` (REWRITTEN). 4-region matrix (`us-east-1`, `us-west-2`, `eu-west-1`, `ap-southeast-1`) with per-region target via `vars.PROD_BASE_URL_<REGION>`, per-region verdict artefacts, aggregator job maintaining per-region HTML state markers (`<!-- prod-health-check:state region=X strikes=N recoveries=M -->`), opens issue on ANY-region trip + closes only on ALL-region recovery. Plus `docs/edge-region-probes.md` (NEW) operator runbook with per-pattern (1-region / 2-region / 4-region) failure-mode playbook.
+
+6. **CHANGELOG + retro + memo + history.** `CHANGELOG.md` `[Unreleased]` flipped W10 → W11; new `[0.20.0] — Phase K Wave 11 — 2026-09-XX (PR pending)` entry (Added / Changed / Fixed subsections). `docs/retro-2026-09.md` (NEW) — September monthly retro. `Phase_K_W11/Apone/{charter,history}.md` (NEW). `.squad/decisions/inbox/apone-phase-k-wave-11.md` (NEW) — six-decision memo.
+
+### 2. Validation sweep before commit
+
+```bash
+export PATH="$PWD/.work/apone-w11-tools:$PATH"
+actionlint .github/workflows/jwt-rotation-rehearsal.yml .github/workflows/prod-health-check.yml .github/workflows/dr-rehearsal.yml
+# → all clean.
+for d in infra/terraform infra/terraform/modules/{redis,github-oidc} infra/terraform/envs/{staging,prod,dr-us-west-2}; do
+    rm -rf "$d"/.terraform "$d"/.terraform.lock.hcl "$d"/terraform.tfstate*
+    (cd "$d" && terraform fmt -check && terraform init -backend=false -input=false >/dev/null && terraform validate)
+done
+# → all clean.
+kustomize build infra/k8s/overlays/prod/ >/dev/null
+kustomize build infra/k8s/overlays/staging/ >/dev/null
+# → both clean.
+```
+
+**Concurrent-agent collisions observed this wave:** the W10-noted `.tool-*/` wiping pattern persisted at W11 roll-out time (`.tool-terraform/`, `.tool-actionlint/`, `.tool-helm/`, `.tool-kustomize/` all wiped between sequential bash commands). Workaround: install tools into `.work/apone-w11-tools/` (path NOT subject to wiping; lives inside the squad-git-lock-owned `.work/` tree). PATH prepend `export PATH="$PWD/.work/apone-w11-tools:$PATH"`. Defence in force: `.work/apone-w11-safe/` per-batch backup directory (W10 carry-forward; no restoration needed this wave because the wiping targeted `.tool-*/`, not `infra/` or `.github/`).
+
+### 3. Decisions worth carrying forward
+
+- **Range-floor + exact-pin is the right TF version policy.** Modules pin `required_version = ">= 1.5.0"` (forward-compatible for operators on a newer CLI locally); CI workflows pin exact `terraform_version: "1.10.5"` (deterministic plans). Quarterly bump cadence anchored on Wave bring-up (W8/W11/W14). Out-of-band CVE bumps owned by DevOps. Documented at `docs/terraform.md §6`.
+- **Rehearse before the first quarterly drill.** The W11 JWT rehearsal harness is the first instance of the pattern: every NEW recurring operator drill should ship with a rehearsal harness BEFORE the first real execution. Future candidates: the W8-automated quarterly DR rehearsal (failover-promote step is still operator-manual — rehearsal-candidate); the annual RDS major-version bump.
+- **Out-of-band ESO manifests are a feature, not a smell.** Two ExternalSecret files (`jwt-keys-secret.yaml` + the W11-new `redis-connection-string-secret.yaml`) are intentionally NOT in `kustomization.yaml` `resources:` — they bind to env-specific KMS keys + SSM paths that don't exist in dev / preview envs. Documented in file headers + `docs/redis-cluster.md §11.4`.
+- **Multi-region probes need a fan-out failure-mode playbook.** The open-on-ANY-region / close-on-ALL-regions issue lifecycle is the right default, but the on-call SRE's first-look diverges sharply between 1-region trip (regional CDN problem; check AWS Health Dashboard) and 4-region trip (global outage; check origin / DNS / cert expiry). The per-pattern playbook is the runbook's value. Generalises to any fan-out synthetic.
+- **YAML heredoc inside `run: |` does NOT work.** Multi-line `cat <<EOF` inside a `run: |` block requires the `EOF` terminator at column 0, which YAML indentation rules forbid. Use `printf` with explicit `\n` escapes (or multiple `echo` lines).
+- **The `.tool-*/` wiping pattern persists W10 → W11.** Install agent-private tools into `.work/apone-wN-tools/` from the start of every Apone wave. Future agents-onboarding doc should codify.
+- **Wave-count-tracks-version arithmetic always wins against prompt-text version typos.** W10 retro flagged Stephen's W10 prompt typo (`0.18.0`). W11 sidestepped by reading the W10 `CHANGELOG.md [0.19.0]` entry directly. The squad's W11 bump is `0.20.0`, no exception.
+
+### 4. Handoffs into Wave 12
+
+- **Prod Redis stack `terraform apply`** (blocked on prod EKS cluster cutover — cluster, not Redis, is the W12 blocker).
+- **Prod kustomization wiring** — `envFrom: secretRef: mahjong-redis-prod` into the prod Deployment patch once the cluster bootstrap completes.
+- **Prod Redis load-test re-baseline** against `cache.r6g.large` (Hudson — W12).
+- **Per-region R53 records** for the 4 `vars.PROD_BASE_URL_<REGION>` matrix targets (W12 candidate; W11 defaults to same root URL across all four).
+- **NetworkPolicy for argo-rollouts dashboard** — closes the in-cluster bypass gap not covered by the auth-aware ingress (W12).
+- **Second JWT rotation rehearsal run** ahead of Q4 prod rotation (mid-December 2026).
+- **W14 Terraform CLI bump** per the new quarterly cadence (`docs/terraform.md §6`).
+
+### 5. Apone-lane scope discipline (per W6 invariant)
+
+This wave touched ONLY DevOps-lane paths: `.github/workflows/{jwt-rotation-rehearsal,prod-health-check,dr-rehearsal}.yml`, `infra/terraform/envs/prod/{main,variables,outputs,backend.example.hcl,terraform.tfvars.example}.tf`, `infra/k8s/overlays/prod/{redis-connection-string-secret,argo-rollouts-ingress-auth}.yaml`, `docs/{redis-cluster,argo-rollouts-setup,terraform,jwt-rotation-rehearsal,edge-region-probes,retro-2026-09}.md`, `CHANGELOG.md`, `.squad/agents/apone/history.md`, `.squad/decisions/inbox/apone-phase-k-wave-11.md`, `Phase_K_W11/Apone/{charter,history}.md`. NO `src/**`, NO `tests/**`, NO mobile source code, NO Helm chart touches (W11 is post-W9 chart cutover; no chart-level work this wave). Pre-push `git status --short` verification confirms zero out-of-lane staging.

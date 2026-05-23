@@ -68,8 +68,9 @@ public sealed class BishopW10RedisIdempotencyClientTests
             p.ParameterType.Name.StartsWith("IConnectionMultiplexer",
                 StringComparison.Ordinal)
             || p.ParameterType.Name == "ConnectionMultiplexer"));
-        // Soft-pin while the StackExchange.Redis package is being added.
-        _ = seenMux;
+        // W11 hard-flip: Bishop's W10 IConnectionMultiplexer ctor shipped.
+        Assert.True(seenMux,
+            "RedisIdempotencyStore MUST accept IConnectionMultiplexer (W10 → W11 hard-flip).");
     }
 
     [Fact, Trait("Category", "Auth"), Trait("Wave", "Phase-K-10")]
@@ -98,13 +99,15 @@ public sealed class BishopW10RedisIdempotencyClientTests
         var t = T("RedisIdempotencyStore", "RedisIdempotencyKeyStore");
         if (t is null) return;
         var methods = t.GetMethods(BindingFlags.Public | BindingFlags.Instance);
-        _ = methods.Any(m =>
+        // W11 hard-flip: Bishop's W10 Record/Save method shipped.
+        Assert.True(methods.Any(m =>
             m.Name.StartsWith("Save", StringComparison.OrdinalIgnoreCase)
             || m.Name.StartsWith("Set", StringComparison.OrdinalIgnoreCase)
             || m.Name.StartsWith("Store", StringComparison.OrdinalIgnoreCase)
             || m.Name.StartsWith("Put", StringComparison.OrdinalIgnoreCase)
             || m.Name.StartsWith("Record", StringComparison.OrdinalIgnoreCase)
-            || m.Name.StartsWith("Write", StringComparison.OrdinalIgnoreCase));
+            || m.Name.StartsWith("Write", StringComparison.OrdinalIgnoreCase)),
+            "RedisIdempotencyStore MUST expose a Save/Record/Set write method (W10 → W11 hard-flip).");
     }
 
     [Fact, Trait("Category", "Auth"), Trait("Wave", "Phase-K-10")]

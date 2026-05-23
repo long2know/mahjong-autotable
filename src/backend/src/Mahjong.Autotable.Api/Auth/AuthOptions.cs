@@ -170,6 +170,62 @@ public sealed class AuthOptions
     /// docs/oauth-production-setup.md §Microsoft for the migration.
     /// </summary>
     public OAuthProvidersOptions Providers { get; set; } = new();
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Allowlist of client credentials
+    /// accepted by the RFC 7662 token-introspection endpoint
+    /// (<c>POST /api/auth/introspect</c>). Each entry binds a
+    /// <c>ClientId</c> + <c>ClientSecret</c> pair used to gate
+    /// HTTP Basic auth on the endpoint. Empty list = endpoint
+    /// returns 401 for every request (introspection effectively
+    /// disabled).
+    ///
+    /// <para>The endpoint is meant for programmatic verifiers —
+    /// the Janus mountpoint health probe, bot frameworks, etc. —
+    /// that need to confirm a token's <c>active</c> status without
+    /// implementing the full JWT validation themselves. Documented
+    /// in <c>docs/oauth.md §7</c>.</para>
+    /// </summary>
+    public IntrospectionClient[] IntrospectionClients { get; set; } = Array.Empty<IntrospectionClient>();
+
+    /// <summary>
+    /// Phase K Wave 11 — Bishop. Single allowlisted client for the
+    /// introspection endpoint. <see cref="ClientSecret"/> is
+    /// constant-time compared at validation; the surface accepts
+    /// either a literal secret or the <c>env:VAR_NAME</c>
+    /// indirection so secrets stay out of the appsettings.json
+    /// blob (the indirection is resolved at startup time).
+    /// </summary>
+    public sealed class IntrospectionClient
+    {
+        /// <summary>Client identifier — surfaced as the
+        /// <c>client_id</c> field in the introspection response.</summary>
+        public string ClientId { get; set; } = string.Empty;
+
+        /// <summary>Shared secret. Accepts the <c>env:VAR_NAME</c>
+        /// indirection to keep the secret out of the JSON
+        /// blob.</summary>
+        public string ClientSecret { get; set; } = string.Empty;
+
+        /// <summary>Free-form scope label echoed back in the
+        /// introspection response. Empty by default.</summary>
+        public string Scope { get; set; } = string.Empty;
+
+        /// <summary>Resolves the effective shared secret,
+        /// expanding the <c>env:VAR_NAME</c> indirection when
+        /// present. Empty string when unset.</summary>
+        public string ResolveSecret()
+        {
+            if (string.IsNullOrEmpty(ClientSecret)) return string.Empty;
+            if (ClientSecret.StartsWith("env:", StringComparison.Ordinal))
+            {
+                var varName = ClientSecret.Substring("env:".Length).Trim();
+                if (string.IsNullOrEmpty(varName)) return string.Empty;
+                return Environment.GetEnvironmentVariable(varName) ?? string.Empty;
+            }
+            return ClientSecret;
+        }
+    }
 }
 
 /// <summary>

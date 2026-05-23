@@ -3607,3 +3607,117 @@ Bringup-on commit (W9 close): `f518196`
 - Only lane-allowed paths staged.
 - `Co-authored-by: Copilot
   <223556219+Copilot@users.noreply.github.com>` trailer included.
+
+---
+
+## Phase K Wave 11 — Frontend bring-up
+
+Branch: `stlong/phase-k-wave-11-bringup`
+Bringup-on commit (W10 close): `0c95748`.
+
+### Deliverables (six)
+
+1. **ShaderChunk barrel surgery** — `vite.config.ts`
+   `stripUnusedShaderChunks()` plugin empties 32 unused
+   ShaderLib GLSL bodies + `cube_uv_reflection_fragment` + the
+   VSM-blur pair. `three-renderer-big`: **497.44 kB → 466.40 kB
+   (−31.04 kB)**, comfortably under the < 475 kB stretch target
+   with 9 kB margin. The barrel re-export tables stay intact;
+   only the GLSL strings are emptied.
+2. **PWA Builder CI workflow** — `.github/workflows/pwa-builder.yml`
+   NEW. PR-paths-filtered + nightly cron + workflow_dispatch.
+   `npm install -g @pwabuilder/cli@latest` then
+   `pwabuilder analyze --json`, parse per-platform readiness
+   scores (Edge / Chrome / Safari w/ multi-alias parsing), gate
+   ≥ 75 per platform on PR, sticky PR comment.
+3. **LH13 baseline calibration** — `scripts/lh-baseline.js`
+   NEW (5-run methodology). Local p50/p95/mean baseline:
+   perf=100 / a11y=83 / bp=96 / seo=82. W10's `pwa-audit.yml`
+   thresholds for a11y / seo (0.95) are above the measured
+   ceiling; calibrated thresholds documented in
+   `docs/frontend-pwa-audit.md §7`. Workflow edit deferred to
+   W12 (needs ≥ 3 cron data points from real CI).
+4. **Vite cache effectiveness metric** —
+   `scripts/build-with-cache-metric.js` NEW. Pivoted away from
+   the W10 hand-off's suggested `.vite/deps/` mtime walk (that
+   dir stays empty during `vite build`) to chunk-hash stability
+   measurement. Cold run = 0% (no baseline); warm rebuild of
+   unchanged source = 100% (22/22 chunks). Gate at `THRESHOLD=0.70`.
+5. **Real Playwright-captured manifest screenshots** —
+   `scripts/capture-screenshots.js` NEW. Three real captures
+   (`main-game.png` / `spectator-commentary.png` /
+   `tournament-dashboard.png`) replace W10 placeholders.
+   Manifest schema updated: `screenshots/*.png` paths + explicit
+   `form_factor` + `label` per entry. `copyStaticAssets()`
+   extended to copy `static/screenshots/` → `dist/screenshots/`.
+6. **`?action=*` PWA shortcut deep-link routing** —
+   `src/action-router.ts` NEW. Intercepts `?action={new-game,
+   spectate,tournament,tournaments-alias}` BEFORE the W2 game-
+   bootstrap guard fires so the heavy renderer chunk isn't
+   imported when a shortcut URL opens. URL-rewrites to canonical
+   paths (`/spectate`, `/tournament/list`), strips `action=`
+   param, returns `true` to skip game-bootstrap. Manifest
+   `shortcuts[]` updated: `?action=tournaments` (W10 plural) →
+   `?action=tournament` (W11 canonical) — router accepts both
+   for installed-PWA compatibility.
+
+### Files touched
+
+- `src/frontend/autotable-src/vite.config.ts`
+- `src/frontend/autotable-src/src/action-router.ts` (NEW)
+- `src/frontend/autotable-src/src/index.ts`
+- `src/frontend/autotable-src/index.html`
+- `src/frontend/autotable-src/manifest.webmanifest`
+- `src/frontend/autotable-src/static/screenshots/{main-game,spectator-commentary,tournament-dashboard}.png` (NEW)
+- `src/frontend/autotable-src/scripts/capture-screenshots.js` (NEW)
+- `src/frontend/autotable-src/scripts/build-with-cache-metric.js` (NEW)
+- `src/frontend/autotable-src/scripts/lh-baseline.js` (NEW)
+- `src/frontend/autotable-src/package.json`
+- `src/frontend/autotable-src/.gitignore`
+- `src/frontend/autotable-src/dist-size.json`
+- `src/frontend/autotable/*` (rebuilt)
+- `.github/workflows/pwa-builder.yml` (NEW)
+- `docs/frontend-three-budget.md` (§7 W11)
+- `docs/frontend-pwa-audit.md` (§5 retired, §6/§7/§8 W11)
+- `docs/frontend-build-tooling.md` (§6 W11)
+- `docs/frontend-routing.md` (NEW)
+- `src/frontend/autotable-src/tests/selectors.md` (W11 footer)
+- `Phase_K_W11/Hicks/{charter,history}.md` (NEW)
+
+### Trend ledger
+
+| Wave | three-renderer-big | Δ vs prev | Vasquez gate |
+|------|--------------------|-----------|--------------|
+| W11  | 466.40 kB          | -31.04 kB | <475 kB ✅   |
+
+### Open hand-offs to W12
+
+1. PMREMGenerator-adjacent ShaderChunk strip
+   (`opaque_fragment` / `colorspace_fragment` / `tonemapping_*`
+   + remaining standalone chunks). Yield ~8-12 kB.
+2. `UniformsLib` unused-entry strip. Yield ~3-5 kB.
+3. `shadowmap_*` chunk body strip (W9 stubbed the class, the
+   chunks still ship). Yield ~6 kB.
+4. LH13 workflow threshold edit once three real-CI cron data
+   points land.
+5. `secrets.PWA_PREVIEW_URL` provisioning (Apone).
+6. Remove W10 placeholder screenshot copy block after two
+   waves on the `screenshots/` paths.
+7. Visual-regression spec for W11 captures (Vasquez).
+8. `?action=replay` once Drake's replay-by-id endpoint lands.
+
+### Identity discipline (as practised)
+
+- Per-command git env:
+  `git -c user.name="Hicks (Frontend)" -c user.email="hicks@squad.mahjong"`.
+- NEVER `git config user.name`.
+- Flock-wrapped at `.work/squad-git-lock` (-w 120).
+- No stash needed (opened on clean tree).
+- Only lane-allowed paths staged.
+- `Co-authored-by: Copilot
+  <223556219+Copilot@users.noreply.github.com>` trailer included.
+
+### Model
+
+Stephen's standing directive `claude-opus-4.7-xhigh` honoured
+throughout the wave.

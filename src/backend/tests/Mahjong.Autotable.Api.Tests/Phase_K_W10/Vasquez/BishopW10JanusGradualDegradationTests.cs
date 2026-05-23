@@ -40,9 +40,14 @@ public sealed class BishopW10JanusGradualDegradationTests
         if (t is null) return;
         if (!t.IsEnum) return;
         var names = Enum.GetNames(t).Select(n => n.ToLowerInvariant()).ToHashSet();
-        _ = names.Contains("healthy") || names.Contains("ready") || names.Contains("ok");
-        _ = names.Contains("degraded") || names.Contains("partial") || names.Contains("slow");
-        _ = names.Contains("unavailable") || names.Contains("down") || names.Contains("offline");
+        // W11 hard-flip: Bishop's W10 3-level enum shipped
+        // (Healthy / Degraded / Unhealthy).
+        Assert.True(names.Contains("healthy") || names.Contains("ready") || names.Contains("ok"),
+            "JanusReadinessLevel MUST contain Healthy/Ready/Ok (W10 → W11 hard-flip).");
+        Assert.True(names.Contains("degraded") || names.Contains("partial") || names.Contains("slow"),
+            "JanusReadinessLevel MUST contain Degraded/Partial/Slow (W10 → W11 hard-flip).");
+        Assert.True(names.Contains("unhealthy") || names.Contains("unavailable") || names.Contains("down") || names.Contains("offline"),
+            "JanusReadinessLevel MUST contain Unhealthy/Unavailable/Down/Offline (W10 → W11 hard-flip).");
     }
 
     [Fact, Trait("Category", "Voice"), Trait("Wave", "Phase-K-10")]
@@ -52,9 +57,15 @@ public sealed class BishopW10JanusGradualDegradationTests
         var t = T("JanusReadinessSupervisor", "JanusHealthSupervisor");
         if (enumT is null || t is null) return;
         var props = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        _ = props.Any(p => p.PropertyType == enumT
+        // W11 hard-flip: Bishop's W10 supervisor exposes the enum-typed
+        // CurrentLevel property (see JanusReadinessSupervisor.cs).
+        Assert.True(
+            props.Any(p => p.PropertyType == enumT
                         || (p.Name.Equals("Level", StringComparison.OrdinalIgnoreCase)
-                            && p.PropertyType.IsEnum));
+                            && p.PropertyType.IsEnum)
+                        || (p.Name.Equals("CurrentLevel", StringComparison.OrdinalIgnoreCase)
+                            && p.PropertyType.IsEnum)),
+            $"{t.Name} MUST expose an enum-typed Level/CurrentLevel property (W10 → W11 hard-flip).");
     }
 
     [Fact, Trait("Category", "Voice"), Trait("Wave", "Phase-K-10")]

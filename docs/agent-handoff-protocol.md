@@ -320,12 +320,161 @@ correct escalation when this fires.
 
 ### 4. Branch-protection setup (W9 — Vasquez runbook for Stephen)
 
+> **W11 re-prompt.** Branch protection on `main` for the
+> `lane-discipline / check` status check is STILL informational
+> as of W11 start. Stephen: please flip it to required-for-merge.
+> The W11 commit ships the additional screenshot guidance + the
+> 422-troubleshooting section + the one-liner PATCH command
+> below (§4.1).
+
 The lane-discipline workflow (`.github/workflows/lane-discipline.yml`)
 runs `check-cross-lane-bundling.sh --strict` on every PR. To make
 the workflow **required for merge** on `main`, the repository
 administrator (Stephen) runs the following `gh api` commands. The
 runbook is split into three steps so the W9 preview workflow stays
 visible during the transition.
+
+### 4.1. Screenshot-walkthrough + troubleshooting (W11 — Vasquez)
+
+The following walkthrough mirrors the `gh api` runbook below but
+provides UI cues for operators who prefer the GitHub web interface.
+Placeholder text describes the screenshot state at each step (the
+actual image captures land alongside this doc as
+`docs/screenshots/branch-protection-step{1..5}.png` when Stephen
+authors them — for now the placeholders document the expected DOM
+landmarks so a future operator can recreate the workflow without
+guessing).
+
+#### Step A — open the protection editor
+
+> **Screenshot placeholder** — `docs/screenshots/branch-protection-step1.png`.
+> Expected state: GitHub repo page for `long2know/mahjong-autotable`,
+> `Settings` tab selected, left rail shows `Code and automation →
+> Branches`. The `main` row in the *Branch protection rules* list
+> has the `Edit` button visible.
+
+Navigate to `Settings → Branches → Branch protection rules`. Click
+`Edit` next to the `main` rule. If no rule exists for `main`, click
+`Add classic branch protection rule` and enter `main` as the
+*Branch name pattern*.
+
+#### Step B — locate the required status checks section
+
+> **Screenshot placeholder** — `docs/screenshots/branch-protection-step2.png`.
+> Expected state: inside the rule editor, scroll to the
+> *Require status checks to pass before merging* section. The
+> checkbox is ticked; the search input below it accepts a status
+> check name (e.g. `build`, `test`, `lane-discipline / check`).
+
+The DOM landmark is the section heading `Require status checks
+to pass before merging`. The status-check search input has the
+placeholder text `Search status checks…`.
+
+#### Step C — add `lane-discipline / check`
+
+> **Screenshot placeholder** — `docs/screenshots/branch-protection-step3.png`.
+> Expected state: search input contains `lane-discipline`; the
+> autocomplete dropdown shows two candidates:
+> `lane-discipline / check` and
+> `lane-discipline / cross-lane-bundling (OPTIONAL-FOR-NOW)`.
+> The CANONICAL check is `lane-discipline / check`; do NOT add
+> the `(OPTIONAL-FOR-NOW)` variant (it's a preview shadow).
+
+Click `Add` next to `lane-discipline / check`. The check now
+appears in the required-checks list alongside `build`, `test`.
+
+#### Step D — save
+
+> **Screenshot placeholder** — `docs/screenshots/branch-protection-step4.png`.
+> Expected state: bottom of the page; the `Save changes` button
+> is enabled (green). A green banner reads
+> `Branch protection rule for "main" updated`.
+
+Click `Save changes`. GitHub stages the new rule immediately.
+
+#### Step E — validate
+
+> **Screenshot placeholder** — `docs/screenshots/branch-protection-step5.png`.
+> Expected state: open any in-flight PR against `main`. The
+> *Merge* button is disabled if `lane-discipline / check` is
+> still pending or failing. A status block at the bottom of
+> the PR conversation shows the check name with a queued /
+> running / passed / failed icon.
+
+Open the most recent in-flight PR against `main`. Confirm the
+`lane-discipline / check` status block appears AND that the
+merge button gates on it.
+
+#### Troubleshooting
+
+* **`gh api -X PUT ...` returns 422 Unprocessable Entity**
+
+  This usually means the existing protection rule has additional
+  fields (e.g. `restrictions: {...}`, `required_signatures: true`,
+  or `allow_force_pushes: true`) that the PUT payload doesn't
+  reproduce. The PUT semantics replace the rule WHOLESALE so any
+  unstated field gets nulled — and GitHub rejects the PUT if the
+  resulting state is invalid (e.g. `restrictions` must be either
+  `null` or an object, not omitted).
+
+  **Fix:** re-read the current rule first, then PATCH the
+  required-status-checks block alone:
+
+  ```bash
+  # 1. Read current full state.
+  gh api repos/long2know/mahjong-autotable/branches/main/protection \
+      > /tmp/protection-current.json
+
+  # 2. PATCH only the required_status_checks block.
+  gh api -X PATCH \
+    repos/long2know/mahjong-autotable/branches/main/protection/required_status_checks \
+    -F 'contexts[]=build' \
+    -F 'contexts[]=test' \
+    -F 'contexts[]=lane-discipline / check'
+  ```
+
+  The PATCH semantics merge into the existing rule and avoid
+  the wholesale-replace pitfall.
+
+* **One-liner PATCH (canonical W11 shortcut)**
+
+  When the existing required contexts are already `build` + `test`
+  (the typical state on this repo), the entire add-lane-discipline
+  operation collapses to one command:
+
+  ```bash
+  gh api -X PATCH \
+    repos/long2know/mahjong-autotable/branches/main/protection/required_status_checks \
+    -F 'contexts[]=build' \
+    -F 'contexts[]=test' \
+    -F 'contexts[]=lane-discipline / check'
+  ```
+
+  Idempotent — running twice produces the same final state.
+
+* **`lane-discipline / check` doesn't appear in the autocomplete**
+
+  GitHub only surfaces status check names it has SEEN on a recent
+  PR. If the autocomplete is empty, open a trivial PR (e.g. a docs
+  typo fix), wait for the workflow to run once, then return to the
+  branch-protection editor — the check will now autocomplete.
+
+* **Rule edit shows "No status checks found" and refuses to save**
+
+  The repository has zero status-check history. Same fix as
+  above: trigger one PR run first.
+
+* **PR reviewer count fails the save**
+
+  The W9 runbook payload sets `required_approving_review_count: 1`.
+  If your org policy mandates ≥2, override before re-PUTting:
+
+  ```json
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 2,
+    "dismiss_stale_reviews": true
+  }
+  ```
 
 #### Step 1 — read current branch protection (optional but recommended)
 
@@ -803,8 +952,82 @@ silently delete the policy.
 
 ---
 
-*Phase K Wave 10 — Vasquez (QA). Section §5 added in W10 as the
-W9 retro action item "consolidate concurrent-agent safety into
-a single normative section". Co-owned with Apone (the lock-path
-relocation §3.6 + branch-protection §4 are his).*
+### 5.9. Shared-files registry policy (W11 — Vasquez)
+
+> **Status.** Phase K Wave 11 — Vasquez. Consolidates the
+> `shared_files` mechanism (W8 + W10 + W11 broadenings) into
+> a single authoritative policy that future agents and reviewers
+> can cite without spelunking through the bash classifier or the
+> JSON.
+
+The `shared_files` allowlist in `tests/ci/lane-map.json` plus the
+`is_shared_file()` / `shared_file_authors()` helpers in
+`tests/ci/check-cross-lane-bundling.sh` together implement a
+small carve-out from strict single-lane attribution. A handful of
+files are LEGITIMATELY co-authored by two or more squad agents,
+and the bundling check must accept any of the documented authors
+without flagging an author-lane mismatch.
+
+#### Current registry (as of W11)
+
+| Shared file(s)                                                            | Authors                          | Primary | Wave landed | Rationale                                                                                                                                                |
+| ------------------------------------------------------------------------- | -------------------------------- | ------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/frontend/autotable-src/tests/selectors.md` + `tests/selectors.md`    | hicks, vasquez                   | vasquez | W8          | Hicks writes the testid in the renderer; Vasquez codifies it as a Playwright assertion. Both lanes edit in lock-step.                                    |
+| `docs/agent-handoff-protocol.md`                                          | apone, vasquez                   | vasquez | W10         | Apone authors the branch-protection runbook (§4) + lock-file relocation (§3.6/§3.7); Vasquez authors concurrent-agent safety (§5) + stash-discipline.    |
+| `src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/*`                   | bishop, vasquez, hicks, apone    | vasquez | W11         | The Shims/ directory is the canonical place for cross-pane TESTING_SHIM-gated test scaffolding. Any contract author may add a forward-stage shim that pairs with their lane's surface (e.g. Bishop adding a CommentaryGeneratorTestShim alongside his backend interface ship). |
+| `.github/workflows/pwa-audit.yml` + `.github/workflows/pwa-builder.yml`   | hicks, apone                     | apone   | W11         | Hicks authors the PWA asset surface (manifest, screenshots, audit fixtures); Apone owns the workflow runtime that runs them. Either may amend the YAML.  |
+
+#### Policy
+
+1. **Registry is closed-by-default.** Adding a new entry requires
+   a `shared_files` lane-map drift + the bundling-check sibling
+   update + an entry in this table. A `Phase_K_W*/Vasquez/`
+   self-lane test pins each entry's existence so silent rollbacks
+   fail the gate.
+
+2. **Primary owns documentation-of-record.** The `primary` field
+   names the agent responsible for substantive structural
+   rewrites. Small additions / corrections may come from either
+   listed author.
+
+3. **The carve-out is from author-identity only, NOT from
+   single-lane.** A commit touching a shared file PLUS another
+   lane's source still fails the bundling check — the lane-set
+   computation excludes shared files BEFORE single-lane is
+   checked, so the second lane's files trip the gate. This is
+   intentional: shared files are a relaxation of WHO can author,
+   not a license to bundle multi-lane work.
+
+4. **Primary lane controls classification.** When `is_shared_file()`
+   returns true, the path is removed from the per-commit lane set
+   for cross-lane attribution. The `primary` field is the
+   informational marker telling reviewers / nightly cron
+   "in case of doubt, this file's documentation-of-record owner
+   is X".
+
+5. **Adding a new entry — checklist**:
+   ```text
+   [ ] tests/ci/lane-map.json — `shared_files.<name>` entry added
+   [ ] tests/ci/check-cross-lane-bundling.sh — `is_shared_file()` +
+       `shared_file_authors()` extended
+   [ ] docs/agent-handoff-protocol.md §5.9 — table row added
+   [ ] Phase_K_W<N>/Vasquez/Vasquez*SelfLaneTests.cs — pin added
+   [ ] Phase_K_W<N>/W<N>SurfaceSmokeFactsTests.cs — smoke added
+   ```
+
+#### Removing an entry
+
+Removal requires the same diligence as adding. The W11 self-lane
+tests carry the W8 (selectors_md_shared) and W10
+(agent_handoff_protocol_md_shared) regression pins — removing
+either entry without dropping those pins fails the gate.
+
+#### Why this lives in §5
+
+`§5.4` documents the *mechanism* (lane discipline plus the
+allowlist). `§5.9` documents the *policy* (when and how to amend
+the allowlist). The split keeps the operational rule (§5.4)
+brief while giving the governance question a deeper home.
+
+---
 

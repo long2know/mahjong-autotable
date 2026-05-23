@@ -186,3 +186,113 @@ Hard-asserted in
 — meter name pin, sent counter, every drop reason, and replay
 counter all asserted via `MeterListener`.
 
+## Phase K Wave 11 — Mountpoint eviction metrics
+
+Phase K Wave 11 (Bishop). The Janus mountpoint lifecycle
+service emits an evictions counter so operators can
+distinguish *normal* idle reclamation from *adversarial*
+janus-unhealthy churn.
+
+### Meter
+
+| Property | Value |
+|----------|-------|
+| **Meter name** | `Mahjong.Autotable.Api.Voice.JanusMountpoint` |
+| **Counter name** | `signalr_mountpoint_evictions_total` |
+| **Type** | `Counter<long>` |
+| **Tags** | `reason` |
+
+### Reason vocabulary
+
+The `reason` tag carries one of three canonical values
+(constants on `Voice.JanusMountpointLifecycleService.MountpointEvictionReason`):
+
+| Reason | Trigger | Operator significance |
+|--------|---------|----------------------|
+| `idle` | Mountpoint inactivity exceeded `Voice:MountpointIdleEvictionSeconds` (default 600s). | Normal — confirms the reclaim sweep is functioning. |
+| `gameEnded` | Tournament service notified the lifecycle service via `EvictForGameEnded(tableId)`. | Normal — confirms cleanup is wired into the game loop. |
+| `janusUnhealthy` | Janus health-probe flipped to red; service drained every mountpoint via `EvictAllForJanusUnhealthy()`. | **Investigate** — recurrent flips suggest a Janus container restart loop or upstream network issue. |
+
+### Alert recommendations
+
+* **`reason="janusUnhealthy"` rate > 0 across a 5-minute
+  window**: the Janus host is flapping. Page the on-call.
+* **`reason="idle"` rate = 0 across a 1-hour window with
+  active mountpoints**: the sweep may be stuck — inspect
+  `RunOnce` cancellation propagation.
+
+### Wiring
+
+The service consumes an optional `IMeterFactory` ctor
+parameter — when present, it creates the meter and counter
+lazily. When the factory is null (legacy harnesses), the
+counter calls are no-ops; the lifecycle behaviour is
+preserved exactly.
+
+### Tests
+
+Hard-asserted in
+[`Phase_K_W11/Bishop/MountpointEvictionMetricsFacts`](../src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W11/Bishop/MountpointEvictionMetricsFacts.cs)
+— counter name + meter name + every reason value all
+asserted via `MeterListener`.
+
+## Phase K Wave 11 — Latency observability
+
+Phase K Wave 11 (Bishop). The `SignalRBackpressureBroadcaster`
+publishes a histogram of the **server-side queue age** for
+every envelope just before it is fanned out to SignalR
+clients.
+
+### Meter
+
+| Property | Value |
+|----------|-------|
+| **Meter name** | `Mahjong.Autotable.Api.Observability.SignalRBackpressure` |
+| **Histogram name** | `signalr_message_age_at_publish_seconds` |
+| **Unit** | `s` (seconds) |
+| **Type** | `Histogram<double>` |
+| **Tags** | `hub` (short type name of the SignalR hub) |
+
+### Bucket vocabulary
+
+The recommended bucket scheme exposed on
+`SignalRBackpressureBroadcaster.AgeAtPublishBuckets` is:
+
+```text
+[0.01, 0.05, 0.1, 0.5, 1, 5, 10]
+```
+
+The sub-10ms bucket captures the *common path* (envelope
+created → sent in the same tick); the 0.5–1s buckets capture
+*backpressure*; the 5–10s buckets capture *pathological*
+queueing that warrants paging on-call.
+
+### Measurement point
+
+The observation is recorded inside `PublishAsync` **just
+before** the `SendAsync` call:
+
+```text
+age_at_publish = UtcNow - envelope.CreatedAt
+```
+
+This measures *only* the server-side queueing tail — it
+excludes network propagation and client-side processing.
+Pair with the existing `signalr_messages_sent_total` counter
+to derive a per-hub throughput-vs-latency view.
+
+### Alert recommendations
+
+* **P99 > 1s for sustained 5-minute window**: the SignalR
+  hub is saturated; investigate backpressure or rate-limit
+  configuration.
+* **P99 > 5s**: pathological queueing — likely a publisher
+  loop or stuck consumer. Page the on-call.
+
+### Tests
+
+Hard-asserted in
+[`Phase_K_W11/Bishop/SignalRAgeAtPublishHistogramFacts`](../src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W11/Bishop/SignalRAgeAtPublishHistogramFacts.cs)
+— histogram name + unit + bucket vocabulary + per-Publish
+recording + hub tag all asserted via `MeterListener`.
+

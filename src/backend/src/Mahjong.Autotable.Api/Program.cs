@@ -393,8 +393,15 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.SwissStandingsSer
 // with a full per-round Dutch-system pairing (top-half-vs-bottom-
 // half per score group, no rematches, float-down). Registered as
 // singleton because the implementation is stateless / thread-safe.
+//
+// Phase K Wave 11 — Bishop. Swapped to the FIDE C.04.1 Dutch-
+// variation implementation with full backtracking + Berger pre-
+// round Buchholz ordering. The W10 DutchSwissPairingService class
+// is retained for the W10 contract suite + regression pinning
+// (the W11 service supersedes it as the live ISwissPairingService
+// binding). See docs/swiss-pairing.md.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.ISwissPairingService,
-    Mahjong.Autotable.Api.Tournament.DutchSwissPairingService>();
+    Mahjong.Autotable.Api.Tournament.FideC04SwissPairingService>();
 
 // Phase K Wave 8 — Bishop. Bracket snapshot service. Composes the
 // generator's slot layout with the live TournamentMatch rows so the
@@ -569,7 +576,13 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IFfmpegHealthProbe,
         // table → mountpoint mapping; the hosted service runs a slow
         // (60s) sweep that evicts entries idle past the 5-minute TTL.
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.JanusMountpointRegistry>();
-        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.JanusMountpointLifecycleService>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.JanusMountpointLifecycleService>(sp =>
+            new Mahjong.Autotable.Api.Voice.JanusMountpointLifecycleService(
+                sp.GetRequiredService<Mahjong.Autotable.Api.Voice.JanusMountpointRegistry>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Mahjong.Autotable.Api.Voice.JanusMountpointLifecycleService>>(),
+                sweepInterval: null,
+                idleTtl: null,
+                meterFactory: sp.GetService<System.Diagnostics.Metrics.IMeterFactory>()));
         builder.Services.AddHostedService(sp =>
             sp.GetRequiredService<Mahjong.Autotable.Api.Voice.JanusMountpointLifecycleService>());
     }
@@ -620,6 +633,33 @@ builder.Services.Configure<Mahjong.Autotable.Api.Commentary.CommentaryOptions>(
     {
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryGenerator,
             Mahjong.Autotable.Api.Commentary.StubCommentaryGenerator>();
+    }
+}
+
+// Phase K Wave 11 — Bishop. Per-record CommentaryRecord storage
+// seam. The W7-W9 surface kept records in memory inside the
+// generator; W11 makes the store pluggable and ships an
+// EF-backed implementation that persists to the
+// CommentaryRecords table with a configurable retention window.
+// Toggle: Commentary:StorageImpl ("InMemory" default for tests
+// / "Ef" default for prod). See docs/commentary-llm.md.
+{
+    var storageOptions = new Mahjong.Autotable.Api.Commentary.CommentaryStorageOptions();
+    builder.Configuration.GetSection("Commentary").Bind(storageOptions);
+    builder.Services.AddSingleton(storageOptions);
+    var storageImpl = storageOptions.StorageImpl ?? "InMemory";
+    if (string.Equals(storageImpl, "Ef", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryStore,
+            Mahjong.Autotable.Api.Commentary.EfCommentaryStore>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.CommentaryRetentionSweepService>();
+        builder.Services.AddHostedService(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Commentary.CommentaryRetentionSweepService>());
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryStore,
+            Mahjong.Autotable.Api.Commentary.InMemoryCommentaryStore>();
     }
 }
 

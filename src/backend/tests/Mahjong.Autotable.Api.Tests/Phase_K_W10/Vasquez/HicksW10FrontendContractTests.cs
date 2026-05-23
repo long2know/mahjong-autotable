@@ -261,14 +261,10 @@ public sealed class HicksW10FrontendContractTests
             }
         }
         if (k10Size is null) return; // forward-staged: no K10 entry yet
-        // Forward-stage tolerant: regression-backstop at the W9 cap
-        // (510 KB) so a K10 entry can land at any size between the
-        // W10 target (480 KB) and the W9 cap; the dedicated Playwright
-        // spec `three-renderer-480-hard.spec.ts` enforces the W10
-        // target. The strict 480 KB pin hard-flips in W11.
-        Assert.True(k10Size.Value <= 510 * 1024,
-            $"three-renderer-big MUST NOT regress past the W9 cap; got {k10Size.Value} bytes (W10 target ≤ {480 * 1024}).");
-        _ = k10Size.Value <= 480 * 1024;
+        // W11 hard-flip: the K10 size MUST now be ≤ 480 KB (Hicks's
+        // K10 strip shipped at 466,395 bytes per dist-size.json).
+        Assert.True(k10Size.Value <= 480 * 1024,
+            $"three-renderer-big K10 entry MUST be ≤ 480 KB (W10 → W11 hard-flip); got {k10Size.Value} bytes.");
     }
 
     [Fact, Trait("Category", "Frontend"), Trait("Wave", "Phase-K-10")]
