@@ -75,6 +75,17 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     // Mahjong.Autotable.Api.Players.PlayerOnboardingService.
     public DbSet<PlayerOnboardingStatus> PlayerOnboardingStatuses => Set<PlayerOnboardingStatus>();
 
+    // Phase K Wave 9 — Bishop. Durable per-month token usage ledger
+    // for the LLM commentary surface. Backs EfCommentaryUsageMeter
+    // so monthly caps survive across replicas + restarts. See
+    // Mahjong.Autotable.Api.Commentary.EfCommentaryUsageMeter.
+    public DbSet<CommentaryUsageRecord> CommentaryUsage => Set<CommentaryUsageRecord>();
+
+    // Phase K Wave 9 — Bishop. Durable idempotency-replay ledger
+    // for the multi-replica production deployment. Backs
+    // EfIdempotencyStore. See Mahjong.Autotable.Api.Audit.EfIdempotencyStore.
+    public DbSet<IdempotencyEntry> IdempotencyEntries => Set<IdempotencyEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -416,6 +427,44 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         {
             entity.HasKey(x => x.PlayerId);
             entity.Property(x => x.PlayerId).HasMaxLength(128);
+        });
+
+        // Phase K Wave 9 — Bishop. Durable per-month LLM token-usage
+        // ledger. Unique (PeriodYear, PeriodMonth) keeps the increment
+        // path race-safe — every replica converges on the same
+        // monthly row. The RowVersion concurrency token defends
+        // against two replicas racing to credit the same call.
+        //
+        // Note: we use IsConcurrencyToken() only (no IsRowVersion())
+        // so the value is included in INSERT statements. IsRowVersion
+        // marks the column as DB-generated, which works on
+        // SQL Server but leaves the column NULL on SQLite (no native
+        // rowversion). The caller (EfCommentaryUsageMeter) bumps
+        // RowVersion to a fresh Guid byte array on every save so
+        // optimistic-concurrency conflicts surface uniformly.
+        modelBuilder.Entity<CommentaryUsageRecord>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.PeriodYear, x.PeriodMonth }).IsUnique();
+            entity.Property(x => x.RowVersion)
+                .IsConcurrencyToken();
+        });
+
+        // Phase K Wave 9 — Bishop. Durable idempotency-replay ledger
+        // for multi-replica deployments. Key column is the PK so
+        // duplicate POSTs share the row. The ExpiresAt index lets a
+        // background sweeper drop expired rows efficiently; the
+        // middleware also defensively treats expired rows as missing
+        // so the read path never depends on the sweeper running.
+        modelBuilder.Entity<IdempotencyEntry>(entity =>
+        {
+            entity.HasKey(x => x.Key);
+            entity.Property(x => x.Key).HasMaxLength(IdempotencyEntry.MaxKeyLength);
+            entity.Property(x => x.PayloadHash).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.ContentType).HasMaxLength(128);
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.Property(x => x.RowVersion)
+                .IsConcurrencyToken();
         });
     }
 }

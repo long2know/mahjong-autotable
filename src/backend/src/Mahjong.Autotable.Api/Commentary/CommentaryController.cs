@@ -67,9 +67,26 @@ public sealed class CommentaryController : ControllerBase
                 error = "Admin role required to trigger commentary generation.",
             });
 
-        var replay = await _generator.GenerateAsync(gameId, ct);
-        await WriteAuditAsync(session.PlayerId, gameId, replay.Generator, ct);
-        return Ok(BuildEnvelope(replay));
+        try
+        {
+            var replay = await _generator.GenerateAsync(gameId, ct);
+            await WriteAuditAsync(session.PlayerId, gameId, replay.Generator, ct);
+            return Ok(BuildEnvelope(replay));
+        }
+        catch (UsageCapExceededException ex)
+        {
+            // Phase K Wave 9 — Bishop. Hard cap surfaces as HTTP 429
+            // when Commentary:ThrowOnMonthlyCap is true. The envelope
+            // carries the canonical "monthly-token-cap" reason so
+            // clients can branch on the error name without parsing
+            // the human-readable message.
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                error = "monthly-token-cap",
+                detail = ex.Message,
+                gameId,
+            });
+        }
     }
 
     [HttpGet]

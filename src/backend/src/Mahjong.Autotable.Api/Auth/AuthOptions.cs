@@ -144,6 +144,24 @@ public sealed class AuthOptions
     public string Issuer { get; set; } = string.Empty;
 
     /// <summary>
+    /// Phase K Wave 9 — Bishop. JWT rotation grace period in
+    /// seconds. The canonical <c>docs/jwt-rotation.md §3</c> cadence
+    /// keeps the prior 2 keys in <see cref="JwtRsaKeys"/> /
+    /// <see cref="JwtSigningKeys"/> for a multi-day grace window;
+    /// this knob encodes that window in seconds so the W9
+    /// <c>IRotationCadenceValidator</c> can hard-assert
+    /// <c>JwksCacheTtlSeconds &lt;= RotationGracePeriodSeconds / 2</c>
+    /// at startup.
+    /// <para>Default 600 seconds (10 minutes) — short enough that
+    /// the JWKS-TTL invariant is trivially satisfied at the W8 60s
+    /// TTL, long enough that the 1 h JWT lifetime ceiling is well
+    /// covered. Operators running the canonical
+    /// <c>docs/jwt-rotation.md §4</c> 30-day grace window set this
+    /// to 2592000 in production.</para>
+    /// </summary>
+    public int RotationGracePeriodSeconds { get; set; } = 600;
+
+    /// <summary>
     /// Phase K Wave 4 — Bishop. Canonical sub-section for per-provider
     /// OAuth config. Replaces the flat <see cref="Microsoft"/> /
     /// <see cref="Google"/> / <see cref="GitHub"/> properties. When
