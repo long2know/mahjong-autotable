@@ -53,6 +53,15 @@ export interface Render {
   held: boolean;
   temporary: boolean;
   bottom: boolean;
+  /**
+   * Phase K Wave 9 — Commentary tile-ref → 3D mesh outline.  When
+   * set, the ObjectView force-promotes the Thing from the shared
+   * InstancedMesh batch onto its own Mesh (via the existing
+   * `setCustom` path) and appends the result to
+   * `highlightedObjects` so `MainView` can attach the highlight
+   * hull.  Falls through to the regular render path when false.
+   */
+  highlighted: boolean;
 }
 
 const MAX_SHADOWS = 300;
@@ -71,6 +80,17 @@ export class ObjectView {
 
   selectedObjects: Array<Mesh>;
 
+  // Phase K Wave 9 — Commentary tile-ref highlight outline pool.
+  // Filled per-frame by `updateThings` when a Render carries
+  // `highlighted: true`; consumed by `MainView` to drive
+  // `CustomOutline.setHighlight` (a separate hull pool from the
+  // selection ring).  `highlightIntensity` is the sin-wave
+  // envelope value the World computes for the active pulse —
+  // `MainView` propagates it as the outline-thickness multiplier
+  // so the silhouette modulates each frame.
+  highlightedObjects: Array<Mesh>;
+  highlightIntensity: number;
+
   constructor(mainGroup: Group, assetLoader: AssetLoader, client: Client) {
     this.mainGroup = mainGroup;
     this.assetLoader = assetLoader;
@@ -79,6 +99,8 @@ export class ObjectView {
     this.center.mesh.position.set(World.WIDTH / 2, World.WIDTH / 2, 0.75);
     this.dropShadowObjects = [];
     this.selectedObjects = [];
+    this.highlightedObjects = [];
+    this.highlightIntensity = 0;
 
     this.thingGroups = new Map();
     this.thingGroups.set(ThingType.TILE, new TileThingGroup(this.assetLoader, this.mainGroup));
@@ -180,9 +202,10 @@ export class ObjectView {
 
   updateThings(things: Array<Render>): void {
     this.selectedObjects.splice(0);
+    this.highlightedObjects.splice(0);
     for (const thing of things) {
       const thingGroup = this.thingGroups.get(thing.type)!;
-      const custom = thing.hovered || thing.selected || thing.held || thing.bottom;
+      const custom = thing.hovered || thing.selected || thing.held || thing.bottom || thing.highlighted;
       if (!custom && thingGroup.canSetSimple()) {
         thingGroup.setSimple(thing.thingIndex, thing.place.position, thing.place.rotation);
         continue;
@@ -210,6 +233,15 @@ export class ObjectView {
 
       if (thing.selected) {
         this.selectedObjects.push(obj);
+      }
+
+      if (thing.highlighted) {
+        // Subtle warm emissive lift on the mesh face itself so the
+        // outline pulse reads as "this is the referenced tile"
+        // rather than just a floating ring.  The outline hull
+        // carries the dominant signal; this is cosmetic glue.
+        material.emissive.set(0.15, 0.08, 0.0);
+        this.highlightedObjects.push(obj);
       }
 
       if (thing.held) {

@@ -520,6 +520,58 @@ rotations propagate within one minute end-to-end (cache eviction +
 client refetch). Do not raise the TTL without coordinating with the
 on-call rotation runbook.
 
+## 11. TTL discipline — JWKS cache ↔ rotation grace ratio (Phase K Wave 9)
+
+> Phase K Wave 9 — Bishop. Startup-enforced invariant.
+
+The JWKS cache TTL (§10) and the JWT rotation grace period (§3) are
+not independent knobs — a misalignment risks a window of validation
+failure mid-rotation.
+
+**Invariant:**
+
+```text
+JwksCacheTtlSeconds  <=  RotationGracePeriodSeconds / 2
+```
+
+The factor-of-2 ratio is the canonical Nyquist-style margin: a
+downstream verifier refreshes its JWKS cache at least twice during
+the rotation grace window, so even a worst-case stale cache catches
+the new `kid` before the old keys are evicted.
+
+### Configuration
+
+| Knob | Default | Production setting |
+|------|---------|--------------------|
+| `JwksCacheService.DefaultTtl` | 60 s (constant) | 60 s — unchanged |
+| `Auth:JwtRsaKeys:RotationGracePeriodSeconds` | **600** s (10 min) | 2 592 000 s (30 days) per §4 |
+
+The W9 ceiling at the 60 s TTL is `600 / 2 = 300` s; the default
+TTL passes by a 5× margin. The production 30-day grace puts the
+ceiling at 1 296 000 s — orders of magnitude above the TTL.
+
+### Hard-asserted at startup
+
+`RotationCadenceValidator.Validate()` runs at host boot. On
+violation it throws
+[`InvalidOperationException`](https://learn.microsoft.com/dotnet/api/system.invalidoperationexception)
+and the process aborts the boot — better an explicit failure than
+a silent production-incident class. The exception message points
+directly at this docs section.
+
+Contract pin: `Phase_K_W9/Bishop/RotationCadenceValidatorTests`.
+
+### Operator playbook
+
+* **Bumping the TTL.** If you need a longer JWKS TTL (e.g. to
+  reduce origin load for a high-volume federated verifier), first
+  raise `RotationGracePeriodSeconds` to at least `2 * newTtl` and
+  redeploy — the validator will reject the partial change.
+* **Shortening the grace.** Symmetric — lower the TTL first.
+  Emergency rotations (§5) bypass this entirely because the
+  operator has accepted the ≤1 h 401 window as the cost of
+  evicting compromised keys.
+
 ## 9. Cross-references
 
 * [`docs/jwt-ssm-runbook.md`](jwt-ssm-runbook.md) — SSM-Parameter-Store-focused operator runbook (RS256 keypair custody, §8 above is the canonical procedure).

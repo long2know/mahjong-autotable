@@ -54,6 +54,32 @@ public sealed class CommentaryOptions
     public int RequestTimeoutSeconds { get; set; } = 15;
 
     /// <summary>
+    /// Phase K Wave 9 — Bishop. Toggle for the
+    /// <see cref="ICommentaryUsageMeter"/> implementation. Two values
+    /// are supported:
+    /// <list type="bullet">
+    ///   <item><c>"InMemory"</c> — singleton, lost on process
+    ///         restart. Default for tests + single-replica
+    ///         development.</item>
+    ///   <item><c>"Ef"</c> — durable per-month ledger persisted to
+    ///         the <c>CommentaryUsage</c> table via
+    ///         <c>EfCommentaryUsageMeter</c>. Default for the
+    ///         multi-replica production deployment.</item>
+    /// </list>
+    /// </summary>
+    public string UsageMeterImpl { get; set; } = "InMemory";
+
+    /// <summary>
+    /// Phase K Wave 9 — Bishop. When <c>true</c>, exceeding the
+    /// <see cref="MonthlyTokenCap"/> causes the commentary surface
+    /// to throw <see cref="UsageCapExceededException"/> (mapped to
+    /// HTTP 429) instead of returning the fail-open
+    /// "[commentary unavailable]" envelope. Defaults to false so
+    /// existing surfaces keep their soft-degradation posture.
+    /// </summary>
+    public bool ThrowOnMonthlyCap { get; set; } = false;
+
+    /// <summary>
     /// Resolves the effective API key, expanding the
     /// <c>"env:VAR_NAME"</c> indirection when present. Returns null
     /// when the key is unset/empty so callers can short-circuit

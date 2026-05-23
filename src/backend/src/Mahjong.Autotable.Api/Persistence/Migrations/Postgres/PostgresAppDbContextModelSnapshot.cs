@@ -251,6 +251,46 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.ToTable("ChatMessages");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.CommentaryUsageRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("PeriodMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PeriodYear")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("RequestCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PeriodYear", "PeriodMonth")
+                        .IsUnique();
+
+                    b.ToTable("CommentaryUsage");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.CspViolation", b =>
                 {
                     b.Property<long>("Id")
@@ -363,6 +403,47 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                         .IsUnique();
 
                     b.ToTable("EmailMagicLinkTokens");
+                });
+
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.IdempotencyEntry", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResponseBody")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.ToTable("IdempotencyEntries");
                 });
 
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerAuthIdentity", b =>

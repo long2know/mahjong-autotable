@@ -365,16 +365,71 @@ canary:
 
   # Prometheus query URL the AnalysisTemplate hits. Set to empty
   # string to disable analysis (steps become duration-only).
-  # Example: "http://prometheus-server.monitoring.svc.cluster.local:80"
+  # Example: "http://prometheus.monitoring.svc.cluster.local:9090"
+  # Phase K Wave 9: prod overlay (`values-prod.yaml`) points this
+  # at the actual prod Prometheus.
   metricEndpoint: ""
 
-  # Tuning for the AnalysisTemplate that drives the `analysis: true`
-  # steps. Each `analysis` step:
-  #   * Polls the prometheus query every `interval`.
-  #   * Marks success when `count` consecutive polls satisfy
-  #     `successCondition` (result >= successThreshold).
-  #   * Marks failure (aborting the rollout, rolling back to
-  #     stable) after `failureLimit` polls fall short.
+  # ── AnalysisTemplate set (Phase K Wave 9 — Apone) ───────────────
+  #
+  # W9 retargets the W8 single-metric gate at THREE Prometheus
+  # gates that must ALL pass for the canary step to advance:
+  #
+  #   1. success-rate   — >99% non-5xx responses over 5m
+  #   2. p99-latency    — <500ms p99 over 5m
+  #   3. error-budget   — burn-rate < 14.4× over 5m
+  #                       (Google SRE 2%/1h fast-burn alert)
+  #
+  # Argo Rollouts evaluates the templates in parallel; if ANY
+  # template's `failureLimit` polls fall short, the rollout aborts
+  # and Argo Rollouts rolls back to stable. If ALL templates'
+  # `count` polls succeed, the step advances.
+  #
+  # Each template can be independently disabled via
+  # `.enabled: false` (the chart skips rendering AND skips
+  # referencing it in the Rollout's analysis step).
+  #
+  # See `docs/helm-charts.md §canary-analysis` for the per-template
+  # PromQL + interpretation.
+  analyses:
+    successRate:
+      enabled: true
+      interval: "30s"
+      count: 10                  # 30s × 10 = 5m rolling window
+      successThreshold: 0.99     # >99% pass
+      failureLimit: 1
+    p99Latency:
+      enabled: true
+      interval: "30s"
+      count: 10
+      thresholdMillis: 500       # <500ms p99
+      failureLimit: 1
+      # Override if the histogram is published under a different
+      # name (e.g. `request_duration_seconds_bucket` from an older
+      # OTEL exporter). Default matches the .NET 10 + OTEL
+      # `http_request_duration_seconds_bucket` shape.
+      metric: "http_request_duration_seconds_bucket"
+    errorBudget:
+      enabled: true
+      interval: "30s"
+      count: 10
+      # 14.4 × the steady-state error rate consumes 2% of a monthly
+      # error budget in 1h — Google SRE 2%/1h fast-burn alert.
+      burnRateThreshold: 14.4
+      # SLO error rate (denominator of the burn-rate ratio). 0.01
+      # corresponds to a 99% success SLO. Lower = tighter SLO =
+      # more sensitive gate.
+      sloErrorRate: 0.01
+      failureLimit: 1
+
+  # ── Legacy single-metric tuning (Phase K Wave 8 — superseded) ──
+  #
+  # W8 shipped a single `analysis:` block tuning the
+  # `mahjong-autotable-success-rate` template. W9 split the
+  # analysis surface into the three-template `analyses:` block
+  # above. The legacy block stays for one wave of carry-forward;
+  # values are IGNORED by the W9 template (the chart reads
+  # `analyses.*` only). Remove after W10 retro.
   analysis:
     interval: "30s"
     count: 5

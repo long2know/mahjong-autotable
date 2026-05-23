@@ -190,7 +190,117 @@ If the PR check fails:
 | `check-added-large-files` fails | A binary > 512 KB was committed — add an exclude entry OR Git-LFS the file. |
 | Hook env cache miss | Slow first run is expected; subsequent runs are cached. No action needed. |
 
-## 6. Cross-references
+## 6. Other invariants audited (Phase K Wave 9 — Apone)
+
+The W7 signer-identity guard codified the **pattern** for cross-
+file lock-step invariants: identify the canonical literal, list
+every file that references it, write a fail-loud script that
+diffs each surface against the canonical, and wire it into the
+pre-commit hook + CI gate.
+
+W9 audits the codebase for OTHER cross-file bindings that have
+the same drift risk and folds the new checks into a sister
+script,
+[`scripts/check_invariants.py`](../scripts/check_invariants.py).
+The W9 audit surfaces **one** new binding worth guarding:
+
+### 6.1 JwtRsaKeys ↔ ESO Secret name + SSM path + env-var prefix
+
+The W7 RS256 fallback (see [`docs/jwt-rotation.md`](jwt-rotation.md))
+wires four pieces of state in lock-step:
+
+- **K8s Secret name** materialised by External-Secrets-Operator:
+  `mahjong-jwt-rsa-keys` (prod) / `mahjong-jwt-rsa-keys-staging`
+  (staging).
+- **SSM ParameterStore path** that ESO reads from:
+  `/mahjong/{env}/auth/jwt/rsa-{active,previous,archive}`.
+- **Helm `externalSecrets[]` entries** in
+  `helm/mahjong/values.yaml`,
+  `helm/mahjong/values-prod.yaml`,
+  `helm/mahjong/values-staging.yaml`,
+  `helm/mahjong/charts/mahjong-api/values.yaml`
+  that reference the Secret by name.
+- **Env-var binding** on the API container:
+  `Auth__JwtRsaKeys__N` for N = 0, 1, 2 (three rotation slots).
+
+The W5 rehearsal incident was the analogous **HS256 drift**
+(`Auth__JwtSecret` env var named one thing in the deployment
+template, another in the App's `IConfiguration` binding code).
+The signer-identity invariant guard locked that down. The same
+class of bug is latent in the RS256 surface: if a chart-of-charts
+refactor or an ESO upgrade renames the Secret in one file but
+not in another, the pod starts WITHOUT the keys it needs and the
+JWT minter silently falls back to a stale HS256 key. JWKS at
+`/.well-known/jwks.json` would serve mismatched material; downstream
+verifiers (mobile, partner APIs) would fail intermittently.
+
+The W9 invariant guard locks in:
+
+| Surface | What's asserted |
+|---|---|
+| `infra/k8s/overlays/prod/jwt-rsa-keys-secret.yaml` | `target.name: mahjong-jwt-rsa-keys`; 3 `secretKey: auth__jwtrsakeys__{0,1,2}` entries; 3 SSM `key:` references under `/mahjong/prod/auth/jwt/rsa-*` |
+| `infra/k8s/overlays/staging/jwt-rsa-keys-secret.yaml` | `target.name: mahjong-jwt-rsa-keys-staging`; 3 SSM `key:` references under `/mahjong/staging/auth/jwt/rsa-*` |
+| `helm/mahjong/values.yaml` | `externalSecrets[]` entry naming `mahjong-jwt-rsa-keys` |
+| `helm/mahjong/values-prod.yaml` | same |
+| `helm/mahjong/values-staging.yaml` | `externalSecrets[]` entry naming `mahjong-jwt-rsa-keys-staging` |
+| `helm/mahjong/charts/mahjong-api/values.yaml` | subchart default referencing `mahjong-jwt-rsa-keys` |
+| `docs/jwt-rotation.md` | references prod + staging Secret names AND ≥ 3 SSM path templates AND ≥ 3 `Auth__JwtRsaKeys__N` env-var references |
+
+The script handles two assertion modes per surface:
+
+- **Exact-value** (`extractor` + `expected`) — pulls a single
+  value via regex and demands an exact string match. Used for
+  `target.name`-style scalars.
+- **Min-count** (`min_count_pattern` + `min_count`) — counts
+  pattern hits and demands ≥ N. Used for "this binding has 3
+  slots" assertions where the order of slot definitions
+  shouldn't matter.
+
+### 6.2 Wiring
+
+[`scripts/check_invariants.py`](../scripts/check_invariants.py)
+is a wrapper that:
+
+1. Re-runs `scripts/check_signer_identity.py` as a subprocess
+   (single hook covers BOTH invariant scripts; developer doesn't
+   manage two hook entries).
+2. Iterates the `INVARIANTS` tuple — currently `(JWT_RSA_KEYS_BINDING,)`,
+   but new bindings just add a new entry.
+3. Exit code 0 = all pass, 1 = drift, 2 = file missing.
+
+The pre-commit hook entry (`.pre-commit-config.yaml`):
+
+```yaml
+- id: cross-file-invariants
+  name: cross-file invariants — JwtRsaKeys binding (W9 — Apone)
+  entry: python3 scripts/check_invariants.py --skip-signer-identity
+  language: system
+  always_run: true
+  pass_filenames: false
+```
+
+The `--skip-signer-identity` flag matters: the previous hook
+already runs the signer-identity check, so the wrapper would
+otherwise run it twice in the same hook batch.
+
+### 6.3 Extending — adding a new invariant
+
+When a new cross-file binding is identified (e.g. a future
+"OAuth client_id ↔ K8s ConfigMap + Helm value + frontend env"
+drift risk):
+
+1. Add a new `Invariant` constant in
+   `scripts/check_invariants.py` with its `surfaces` tuple.
+2. Add it to the `INVARIANTS` tuple at the bottom of the file.
+3. Document the binding in a new subsection of this §6.
+4. Run `python3 scripts/check_invariants.py --show` locally to
+   sanity-check the regex patterns hit the right number of
+   occurrences (the `--show` flag prints match counts).
+5. Commit the script + doc + a touch to `.pre-commit-config.yaml`
+   timestamp comment (no behavioural change to the hook entry —
+   the wrapper picks up new INVARIANTS automatically).
+
+## 7. Cross-references
 
 * [`scripts/check_signer_identity.py`](../scripts/check_signer_identity.py) — the implementation.
 * [`.pre-commit-config.yaml`](../.pre-commit-config.yaml) — the hook wiring.

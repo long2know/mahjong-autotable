@@ -295,10 +295,26 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
             ?? builder.Configuration.GetValue<string>("Authentication:Issuer")
             ?? authOptions.Issuer
             ?? string.Empty,
+        // Phase K Wave 9 — Bishop. JWT rotation grace period (seconds).
+        // The RotationCadenceValidator hard-asserts
+        // `JwksCacheTtl <= RotationGracePeriod / 2` at startup so a
+        // misaligned configuration aborts the boot. Default 600 s
+        // (10 min) — see docs/jwt-rotation.md §11.
+        RotationGracePeriodSeconds = builder.Configuration.GetValue<int?>("Auth:JwtRsaKeys:RotationGracePeriodSeconds")
+            ?? builder.Configuration.GetValue<int?>("Auth:RotationGracePeriodSeconds")
+            ?? builder.Configuration.GetValue<int?>("Authentication:JwtRsaKeys:RotationGracePeriodSeconds")
+            ?? (authOptions.RotationGracePeriodSeconds > 0 ? authOptions.RotationGracePeriodSeconds : 600),
     };
     builder.Services.AddSingleton(sp => new Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider(
         jwtAuthOptions,
         sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider>>()));
+    // Phase K Wave 9 — Bishop. Hard-asserted JWKS TTL / rotation
+    // cadence invariant. Throws InvalidOperationException at host
+    // boot when JwksCacheTtl > RotationGracePeriod / 2. See
+    // docs/jwt-rotation.md §11.
+    var rotationValidator = new Mahjong.Autotable.Api.Auth.RotationCadenceValidator(jwtAuthOptions);
+    rotationValidator.Validate();
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IRotationCadenceValidator>(rotationValidator);
 }
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>();
@@ -512,6 +528,12 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IFfmpegHealthProbe,
 // itself is only registered when Voice:SpectatorSfuImpl=Janus so
 // the type-resolver doesn't construct an HttpClient against an
 // empty endpoint in stub-mode hosts.
+//
+// Phase K Wave 9 — Bishop. The new JanusReadinessSupervisor is
+// registered alongside the Janus hub. It polls the probe every 5s
+// and trips the binding state after 6 consecutive failures (30s),
+// rebinding after 6 consecutive successes. Admin clients observe
+// state changes via the JanusReadinessHub at /hubs/voice/readiness.
 {
     var voiceEndpoint = builder.Configuration.GetValue<string>("Voice:JanusEndpoint") ?? string.Empty;
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IJanusHealthProbe>(_ =>
@@ -520,6 +542,11 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IFfmpegHealthProbe,
     if (string.Equals(sfuImpl, "Janus", StringComparison.OrdinalIgnoreCase))
     {
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.JanusSpectatorVoiceHub>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.JanusReadinessSupervisor>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IJanusReadinessSupervisor>(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Voice.JanusReadinessSupervisor>());
+        builder.Services.AddHostedService(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Voice.JanusReadinessSupervisor>());
     }
 }
 
@@ -537,8 +564,25 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.IFfmpegHealthProbe,
 // observability surfaces.
 builder.Services.Configure<Mahjong.Autotable.Api.Commentary.CommentaryOptions>(
     builder.Configuration.GetSection("Commentary"));
-builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryUsageMeter,
-    Mahjong.Autotable.Api.Commentary.InMemoryCommentaryUsageMeter>();
+// Phase K Wave 9 — Bishop. Durable EF-backed commentary usage
+// meter. Toggle via Commentary:UsageMeterImpl:
+//   * "InMemory" (default) — in-process counts, lost on restart;
+//     used by tests + single-replica dev.
+//   * "Ef"                 — durable per-month ledger persisted to
+//     the CommentaryUsage table; default for production.
+{
+    var meterImpl = builder.Configuration.GetValue<string>("Commentary:UsageMeterImpl") ?? "InMemory";
+    if (string.Equals(meterImpl, "Ef", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryUsageMeter,
+            Mahjong.Autotable.Api.Commentary.EfCommentaryUsageMeter>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryUsageMeter,
+            Mahjong.Autotable.Api.Commentary.InMemoryCommentaryUsageMeter>();
+    }
+}
 {
     var commentaryProvider = builder.Configuration.GetValue<string>("Commentary:Provider") ?? "Stub";
     if (string.Equals(commentaryProvider, "OpenAI", StringComparison.OrdinalIgnoreCase)
@@ -557,10 +601,39 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.ICommentaryUsageM
 // Phase K Wave 8 — Bishop. Idempotency store backing the
 // IdempotencyMiddleware replay-protection gate. Singleton so the
 // 5-minute window is shared across requests. The in-memory default
-// is bounded at 4096 entries; Phase L can re-bind to a Redis-backed
-// store without touching the middleware.
-builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.IIdempotencyStore,
-    Mahjong.Autotable.Api.Audit.InMemoryIdempotencyStore>();
+// is bounded at 4096 entries; the W9 EF + Redis bindings ship for
+// the multi-replica production deployment.
+//
+// Phase K Wave 9 — Bishop. Toggle via Idempotency:StoreImpl:
+//   * "InMemory" (default for tests + single-replica dev)
+//   * "Ef"       (durable; persists to the IdempotencyEntries table)
+//   * "Redis"    (optional; falls back to Ef until the Redis client
+//                 wire lands in a follow-up wave)
+{
+    var storeImpl = builder.Configuration.GetValue<string>("Idempotency:StoreImpl") ?? "InMemory";
+    if (string.Equals(storeImpl, "Ef", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.EfIdempotencyStore>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.IIdempotencyStore>(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Audit.EfIdempotencyStore>());
+    }
+    else if (string.Equals(storeImpl, "Redis", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.EfIdempotencyStore>();
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.IIdempotencyStore>(sp =>
+            new Mahjong.Autotable.Api.Audit.RedisIdempotencyStore(
+                sp.GetRequiredService<Mahjong.Autotable.Api.Audit.EfIdempotencyStore>(),
+                sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Audit.RedisIdempotencyStore>>(),
+                builder.Configuration.GetConnectionString("Redis")
+                    ?? builder.Configuration.GetValue<string>("Idempotency:RedisConnection")
+                    ?? string.Empty));
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.IIdempotencyStore,
+            Mahjong.Autotable.Api.Audit.InMemoryIdempotencyStore>();
+    }
+}
 
 // Phase K Wave 2 — Bishop (Backend). Spectator live-stream stub. Owns
 // the future tile-flip event surface (Phase L) so callers can attach
@@ -922,6 +995,15 @@ app.MapHub<Mahjong.Autotable.Api.Voice.VoiceHub>("/hubs/webrtc");
 // Clients call JoinTournament(id) to subscribe; the broadcaster
 // fires TournamentBracketUpdated when matches complete.
 app.MapHub<Mahjong.Autotable.Api.Tournament.TournamentMatchHub>("/hubs/tournaments");
+
+// Phase K Wave 9 — Bishop. Janus readiness admin hub. Receives
+// JanusReadinessChanged broadcasts from JanusReadinessSupervisor
+// whenever the Janus binding state transitions (bound ↔ unbound).
+// Mapped regardless of the SpectatorSfuImpl value so admin clients
+// can probe the contract surface even when Janus isn't bound; the
+// supervisor itself is only registered + running when
+// Voice:SpectatorSfuImpl=Janus.
+app.MapHub<Mahjong.Autotable.Api.Voice.JanusReadinessHub>("/hubs/voice/readiness");
 
 // Phase K Wave 2 — Bishop (Backend). ICE-server discovery endpoint.
 // Returns the configured STUN/TURN list as the WebRTC client

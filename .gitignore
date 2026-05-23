@@ -90,3 +90,13 @@ mobile/node_modules/
 mobile/build/
 mobile/.gradle/
 mobile/*.tgz
+
+# Phase K Wave 9 — Apone (DevOps). The .work/ directory is the squad's
+# session-scratch area: helm render outputs, per-agent backups
+# (.work/apone-w9-safe/), the W10+ squad-git-lock file, etc. Nothing
+# under .work/ is meant to land in git, EXCEPT .work/.gitkeep — that
+# placeholder guarantees the directory exists on a fresh clone so
+# `flock 9>.work/squad-git-lock` and `helm template ... > .work/...`
+# don't fail on a missing parent.
+.work/*
+!.work/.gitkeep

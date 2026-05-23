@@ -780,3 +780,121 @@ public sealed class PlayerOnboardingStatus
     /// <summary>Row update timestamp; refreshed on every POST.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Phase K Wave 9 — Bishop. Durable per-month LLM token-usage
+/// ledger. One row per (PeriodYear, PeriodMonth) tuple. Replaces the
+/// W8 in-memory <c>InMemoryCommentaryUsageMeter</c> which lost its
+/// counts across replicas and process restarts.
+///
+/// <para>The <see cref="RowVersion"/> column is the EF Core
+/// concurrency token: every increment loads the row, mutates the
+/// token totals, and saves under optimistic-concurrency semantics so
+/// two API replicas racing to credit the same call don't double-
+/// count. On a concurrency conflict the meter retries the read /
+/// mutate / save loop up to a small bound — the cap is intentionally
+/// finite so a misbehaving caller can't pin a worker thread.</para>
+/// </summary>
+public sealed class CommentaryUsageRecord
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>UTC year of the period this row covers.</summary>
+    public int PeriodYear { get; set; }
+
+    /// <summary>UTC month (1..12) of the period this row covers.</summary>
+    public int PeriodMonth { get; set; }
+
+    /// <summary>Cumulative input-prompt token count across every LLM
+    /// call recorded under this period.</summary>
+    public long InputTokens { get; set; }
+
+    /// <summary>Cumulative completion (output) token count.</summary>
+    public long OutputTokens { get; set; }
+
+    /// <summary>Number of LLM calls credited to this period. Useful
+    /// for per-request cost telemetry separate from the raw token
+    /// totals.</summary>
+    public long RequestCount { get; set; }
+
+    /// <summary>Convenience accessor — sum of input + output tokens.</summary>
+    public long TotalTokens => InputTokens + OutputTokens;
+
+    /// <summary>UTC instant the row was first created.</summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>UTC instant the row was last updated.</summary>
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>EF Core concurrency token — bumped on every update so
+    /// two API replicas can't double-count usage when they race to
+    /// increment the same period row. Initialised to a single-byte
+    /// sentinel so the NOT NULL column constraint is satisfied on
+    /// providers without native rowversion (SQLite).</summary>
+    public byte[] RowVersion { get; set; } = new byte[] { 1 };
+}
+
+/// <summary>
+/// Phase K Wave 9 — Bishop. Durable idempotency-replay ledger.
+/// Replaces the in-memory <c>InMemoryIdempotencyStore</c> for the
+/// multi-replica production deployment — every replica shares the
+/// same row set so a retry that lands on a different pod is still
+/// caught.
+///
+/// <para>The primary key is the client-supplied <see cref="Key"/>;
+/// callers re-using a key with a different payload hash get a
+/// <c>409 Conflict</c> (payload-mismatch) and the existing row is
+/// preserved for forensic comparison. The <see cref="ExpiresAt"/>
+/// column drives the W9 5-minute replay window — a background
+/// sweeper drops expired rows on a slow cadence, but the
+/// middleware also treats an expired row as "not found" defensively
+/// so a stale lookup never blocks a fresh request.</para>
+/// </summary>
+public sealed class IdempotencyEntry
+{
+    /// <summary>Maximum supported key length — matches the
+    /// <see cref="Mahjong.Autotable.Api.Audit.IdempotencyMiddleware.MaxKeyLength"/>
+    /// validation cap.</summary>
+    public const int MaxKeyLength = 128;
+
+    /// <summary>Maximum response-body length cached per entry. Larger
+    /// responses are truncated to avoid the row blowing up — the
+    /// idempotency replay is best-effort for big payloads.</summary>
+    public const int MaxResponseBodyLength = 64 * 1024;
+
+    /// <summary>Client-supplied idempotency key (Stripe convention).
+    /// Primary key — duplicate POSTs share the same row.</summary>
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>SHA-256 (hex-lowercase) of the request body bytes.
+    /// Two calls with the same key but different payload hashes
+    /// produce a 409 Conflict.</summary>
+    public string PayloadHash { get; set; } = string.Empty;
+
+    /// <summary>HTTP status code of the cached response.</summary>
+    public int StatusCode { get; set; }
+
+    /// <summary>Cached <c>Content-Type</c> header value. Empty when
+    /// the original response carried no body.</summary>
+    public string ContentType { get; set; } = string.Empty;
+
+    /// <summary>Cached response body (UTF-8 string). Truncated at
+    /// <see cref="MaxResponseBodyLength"/>; longer payloads emit a
+    /// fresh response on each replay rather than blowing the
+    /// row.</summary>
+    public string ResponseBody { get; set; } = string.Empty;
+
+    /// <summary>UTC instant the row was recorded.</summary>
+    public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>UTC instant past which the row is treated as expired
+    /// (default RecordedAt + 5 minutes per Stripe convention).</summary>
+    public DateTime ExpiresAt { get; set; }
+
+    /// <summary>EF Core concurrency token — defends against two
+    /// replicas racing to insert the same key under the same window.
+    /// Initialised to a single-byte sentinel so the NOT NULL column
+    /// constraint is satisfied on providers without native
+    /// rowversion (SQLite).</summary>
+    public byte[] RowVersion { get; set; } = new byte[] { 1 };
+}

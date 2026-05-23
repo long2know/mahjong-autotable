@@ -1,4 +1,5 @@
 # Phase K Wave 7 — Apone (DevOps).
+# Phase K Wave 9 — Apone (DevOps). YAML-anchor refactor + prod-canary retarget.
 #
 # Production overrides for the mahjong umbrella chart. Mirrors
 # `infra/k8s/overlays/prod/kustomization.yaml` + W6 production
@@ -9,9 +10,33 @@
 #       -n mahjong-prod --create-namespace \
 #       -f helm/mahjong/values-prod.yaml
 #
-# Parity with the Kustomize overlay (see docs/helm-charts.md §5).
+# Parity with the Kustomize overlay (see docs/helm-charts.md §parity-matrix).
 # Any change here MUST track the matching Kustomize patch — the
 # two stay in lock-step until the operator picks a single path.
+#
+# Wave 9 convention: cross-reference to other docs/chart sections
+# uses symbolic anchor names (§parity-matrix, §canary-analysis,
+# §yaml-anchor-pattern) NOT numeric section IDs — see
+# `docs/helm-charts.md §yaml-anchor-pattern`.
+
+# ── Anchor library (Phase K Wave 9 — Apone) ──────────────────────
+#
+# Lock-step values shared between sub-blocks live as YAML anchors
+# at the top of the file. Helm ignores `x-*` top-level keys; the
+# anchors propagate via `*name` references below.
+x-anchors:
+  prod-host: &prod-host "mahjong.example.com"
+  prod-tls-secret: &prod-tls-secret "mahjong-autotable-tls"
+  prod-env-name: &prod-env-name "Production"
+  prod-cors-origin: &prod-cors-origin "https://mahjong.example.com"
+  # In-cluster Prometheus endpoint the canary AnalysisTemplate set
+  # queries. This is the ACTUAL prod observability stack — kube-
+  # prometheus-stack default service in the `monitoring` namespace.
+  # If you migrate to a different observability provider (e.g. an
+  # Amazon Managed Prometheus workspace via the `aws-prometheus-
+  # remote-write` proxy), update THIS anchor — the canary template
+  # picks it up automatically.
+  prod-prometheus: &prod-prometheus "http://prometheus.monitoring.svc.cluster.local:9090"
 
 api:
   replicaCount: 3
@@ -20,8 +45,8 @@ api:
     pullPolicy: IfNotPresent
 
   ingress:
-    host: mahjong.example.com
-    tlsSecretName: mahjong-autotable-tls
+    host: *prod-host
+    tlsSecretName: *prod-tls-secret
 
   hsts:
     enabled: true
@@ -47,8 +72,8 @@ api:
   configMap:
     persistenceProvider: "Postgres"
     extra:
-      ASPNETCORE_ENVIRONMENT: "Production"
-      Cors__AllowedOrigins__0: "https://mahjong.example.com"
+      ASPNETCORE_ENVIRONMENT: *prod-env-name
+      Cors__AllowedOrigins__0: *prod-cors-origin
 
   # In prod, /data is NOT a PVC — Postgres lives on RDS via
   # `infra/terraform/` stack. Disable the SQLite PVC.
@@ -84,7 +109,7 @@ api:
 
 coturn:
   enabled: true
-  realm: "mahjong.example.com"
+  realm: *prod-host
   externalIp: ""  # operator must set post-NLB provisioning
   replicaCount: 2
 
@@ -112,6 +137,52 @@ coturn:
 
 postgresSidecar:
   # PROD NEVER uses the in-cluster sidecar — RDS only. Documented
-  # in docs/helm-charts.md §6 as a chart-level invariant: do NOT
-  # enable in prod.
+  # in docs/helm-charts.md §subchart-toggles as a chart-level
+  # invariant: do NOT enable in prod.
   enabled: false
+
+# ── Canary deployment — prod retarget (Phase K Wave 9 — Apone) ───
+#
+# Canary stays OFF by default in prod (operator opts in per
+# release via `--set canary.enabled=true --set api.enabled=false`,
+# documented in `docs/helm-charts.md §canary-operator-runbook`).
+# When enabled, the AnalysisTemplate set hits the prod Prometheus
+# at the *prod-prometheus anchor above.
+#
+# Three gates must ALL pass for each canary step to advance:
+#
+#   1. success-rate   — >99% over 5m       (analyses.successRate)
+#   2. p99-latency    — <500ms over 5m     (analyses.p99Latency)
+#   3. error-budget   — burn-rate < 14.4×  (analyses.errorBudget)
+#
+# See `docs/helm-charts.md §canary-analysis` for the per-template
+# PromQL + interpretation.
+canary:
+  enabled: false
+  metricEndpoint: *prod-prometheus
+
+  # Prod uses tighter analysis windows than the W8 baseline:
+  # 5m sustained over 10 polls (30s × 10 = 5m) — long enough
+  # to absorb a per-pod spike, short enough that a real
+  # regression aborts the rollout within one step's pause.
+  analyses:
+    successRate:
+      enabled: true
+      interval: "30s"
+      count: 10
+      successThreshold: 0.99
+      failureLimit: 1
+    p99Latency:
+      enabled: true
+      interval: "30s"
+      count: 10
+      thresholdMillis: 500
+      failureLimit: 1
+      metric: "http_request_duration_seconds_bucket"
+    errorBudget:
+      enabled: true
+      interval: "30s"
+      count: 10
+      burnRateThreshold: 14.4
+      sloErrorRate: 0.01
+      failureLimit: 1

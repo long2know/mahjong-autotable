@@ -85,7 +85,46 @@ the signing scheme is symmetric HMAC (oct keys MUST NOT be published).
 Cache-Control: no-store ensures intermediaries don't pin the 404.
 Migration to RS256 in Phase L will flip this to a real key set.
 
-## 5. Voice TURN-credential TTL config convergence
+## 5. Livestream path canonicalization
+
+Phase K Wave 9 — Bishop. The HLS livestream surface ships behind
+two spellings during the Phase-K bringup:
+
+| Wire URL | Wave landed | Status |
+|----------|-------------|--------|
+| `/api/voice/livestream/{gameId}/...`    | Wave 6 (Bishop) | **canonical** — owner/admin gates, OpenAPI source-of-truth, audit Kinds. |
+| `/api/tables/{tableId}/livestream/...`  | pre-Wave 9 (compat) | **deprecated** — 301 redirect to canonical, with `Cache-Control: public, max-age=86400` so CDN edges collapse the hop. Removal one year post-Wave-9 (sunset stamped on every redirect response per [RFC 8594](https://datatracker.ietf.org/doc/html/rfc8594)). |
+
+The redirect controller is
+[`LegacyLivestreamAliasController`](../src/backend/src/Mahjong.Autotable.Api/Voice/LegacyLivestreamAliasController.cs).
+It returns:
+
+* **301 Moved Permanently** for GET / HEAD (playlist + segment
+  pulls). Browsers + intermediaries cache the redirect for 24 h.
+* **308 Permanent Redirect** for POST (start / stop control-plane
+  calls). 308 preserves the request method per
+  [RFC 7538](https://datatracker.ietf.org/doc/html/rfc7538) so the
+  client body is not dropped on the second hop. Most clients won't
+  hit POST against the legacy path — the canonical URL was the
+  default at every documented surface — but the alias covers any
+  forgotten in-flight scripts.
+* Every redirect response includes `Sunset: Wed, 23 May 2027
+  00:00:00 GMT`, `Deprecation: true`, and a
+  `Link: …; rel="sunset"` header pointing at this section so
+  operators monitoring outbound HTTP can spot stragglers.
+
+`tableId` ≡ `gameId` in the W9 model — the Changsha table and
+game records share the same `Guid` (see
+[`ChangshaGame.Id`](../src/backend/src/Mahjong.Autotable.Api/Data/Entities/ChangshaEntities.cs)),
+so the path segment rewrites 1:1 without an extra lookup.
+
+The OpenAPI / surface inventory continues to advertise only the
+canonical path. Hard-asserted by
+[`Phase_K_W9/Bishop/LivestreamPathAliasTests`](../src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W9/Bishop/LivestreamPathAliasTests.cs) and
+the forward-staged
+[`Phase_K_W9/Vasquez/BishopW9LivestreamPathCanonTests`](../src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W9/Vasquez/BishopW9LivestreamPathCanonTests.cs).
+
+## 6. Voice TURN-credential TTL config convergence
 
 Not a status-code precedence, but a related "two valid keys, which
 wins?" surface:
@@ -99,7 +138,7 @@ The startup mapping logs a warning identifying the legacy key value
 so operators can migrate cluster configs before the Wave-6 removal.
 The canonical value wins when both are set.
 
-## 6. JWT signing-key configuration
+## 7. JWT signing-key configuration
 
 Phase K Wave 5 — Bishop. Singular `Auth:JwtSigningKey` /
 `Authentication:JwtSigningKey` is REMOVED. Setting either causes a

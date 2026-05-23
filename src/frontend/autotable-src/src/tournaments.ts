@@ -323,13 +323,21 @@ function normalizeDetail(raw: unknown): TournamentDetail | null {
 
   const matches = normalizeMatches(o.matches ?? o.bracket);
   const standings = normalizeStandings(o.standings ?? o.leaderboard);
-  // Phase K Wave 8 — Bishop's double-elim wire ships the partition
-  // directly: `{ winnersBracket, losersBracket, grandFinal: {
-  // match, resetMatch } }`.  Tolerate either spelling (`bracket`
-  // wraps `winnersBracket` in some Bishop drafts) and tolerate
-  // its absence (single-elim / Swiss responses don't ship it).
-  const layout = normalizeDoubleElimLayout(
-    o.layout ?? o.doubleElimLayout ?? o.bracketLayout ?? null);
+  // Phase K Wave 9 — Canonical Bishop W8 wire shape (per
+  // `docs/contracts/bracket-api.md`):
+  //
+  //   { layout: { winnersBracket, losersBracket,
+  //               grandFinal: { match, resetMatch } } }
+  //
+  // W6→W8 we accepted three wrapper-key aliases (`layout`,
+  // `doubleElimLayout`, `bracketLayout`) and per-field
+  // synonyms — pragmatic at the time but it masked the W6 Bishop
+  // contract drift that landed us here.  W9 hard-requires the
+  // canonical key.  `normalizeDoubleElimLayout` returns null on
+  // any other shape, and `BracketRenderer` will emit a
+  // `bracket-shape-error` testid + `console.error` instead of
+  // falling through to a heuristic partition.
+  const layout = normalizeDoubleElimLayout(o.layout ?? null);
   // Phase K Wave 4 — Sparse-mode seeding needs the registered player
   // list independent of round-1 match slots.  Tolerate a handful of
   // wire vocabularies (`players`, `registered`, `participants`) so we
@@ -351,17 +359,23 @@ function normalizeDetail(raw: unknown): TournamentDetail | null {
 }
 
 function normalizeDoubleElimLayout(raw: unknown): DoubleElimLayout | null {
+  // Phase K Wave 9 — Hard-canonical wire shape.  Only accepts the
+  // exact field names Bishop documents in W8 (`docs/contracts/
+  // bracket-api.md`).  Any other vocabulary returns null so
+  // `BracketRenderer` can surface the discrepancy via the
+  // `bracket-shape-error` testid; we explicitly do NOT fall back
+  // to W6→W8 heuristics that masked Bishop contract drift.
   if (raw === null || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
-  const winners = normalizeMatches(o.winnersBracket ?? o.winners);
-  const losers = normalizeMatches(o.losersBracket ?? o.losers);
-  const grandRaw = (o.grandFinal ?? o.grand_final ?? null) as Record<string, unknown> | null;
+  const winners = normalizeMatches(o.winnersBracket);
+  const losers = normalizeMatches(o.losersBracket);
+  const grandRaw = (o.grandFinal ?? null) as Record<string, unknown> | null;
   let match: BracketMatch | null = null;
   let resetMatch: BracketMatch | null = null;
   if (grandRaw !== null && typeof grandRaw === 'object') {
-    const matchArr = normalizeMatches([grandRaw.match ?? grandRaw.first ?? grandRaw]);
+    const matchArr = normalizeMatches([grandRaw.match]);
     if (matchArr.length > 0) match = matchArr[0];
-    const resetSource = grandRaw.resetMatch ?? grandRaw.reset ?? grandRaw.reset_match;
+    const resetSource = grandRaw.resetMatch;
     if (resetSource !== null && resetSource !== undefined) {
       const resetArr = normalizeMatches([resetSource]);
       if (resetArr.length > 0) resetMatch = resetArr[0];

@@ -178,20 +178,36 @@ spec:
           {{- if $step.analysis }}
         - analysis:
             templates:
+              {{- if ($.Values.canary.analyses.successRate.enabled | default true) }}
               - templateName: mahjong-autotable-success-rate
+              {{- end }}
+              {{- if ($.Values.canary.analyses.p99Latency.enabled | default true) }}
+              - templateName: mahjong-autotable-p99-latency
+              {{- end }}
+              {{- if ($.Values.canary.analyses.errorBudget.enabled | default true) }}
+              - templateName: mahjong-autotable-error-budget
+              {{- end }}
             args:
               - name: service-name
                 value: mahjong-autotable-canary
           {{- end }}
         {{- end }}
 {{- if .Values.canary.metricEndpoint }}
+{{- $endpoint := .Values.canary.metricEndpoint }}
+{{- $serviceTpl := "{{args.service-name}}" }}
+{{- if .Values.canary.analyses.successRate.enabled | default true }}
 ---
 {{/*
-AnalysisTemplate — referenced by the Rollout's `analysis` step.
-Queries the configured Prometheus endpoint for the success rate
-of the canary Service and FAILS the canary if the rate dips below
-the configured threshold (default 95%) — Argo Rollouts then auto-
-aborts and rolls back to the stable ReplicaSet.
+AnalysisTemplate #1/3 — success-rate gate (Phase K Wave 9 retarget).
+
+Passes when >successThreshold of canary requests over a rolling
+5-minute window return non-5xx. Polled every `interval`; `count`
+consecutive passes promote the step. Any single fail (failureLimit:
+1) aborts the rollout and Argo Rollouts auto-rolls back to stable.
+
+W9 prod-retarget defaults: 99% pass over 5m at the actual prod
+Prometheus (`http://prometheus.monitoring.svc.cluster.local:9090`)
+configured via `canary.metricEndpoint` in `values-prod.yaml`.
 */}}
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
@@ -201,29 +217,118 @@ metadata:
     app.kubernetes.io/name: mahjong-autotable
     app.kubernetes.io/part-of: mahjong-autotable
     app.kubernetes.io/component: api-canary-analysis
+    mahjong.io/canary-gate: success-rate
   annotations:
-    rollout.argoproj.io/wave: phase-k-wave-8
+    rollout.argoproj.io/wave: phase-k-wave-9
 spec:
   args:
     - name: service-name
   metrics:
     - name: success-rate
-      # Run the query every `interval` until `count` succeed (or
-      # any one fails by the failureCondition).
-      interval: {{ .Values.canary.analysis.interval | default "30s" | quote }}
-      count: {{ .Values.canary.analysis.count | default 5 }}
-      successCondition: {{ printf "result[0] >= %v" (.Values.canary.analysis.successThreshold | default 0.95) | quote }}
-      failureLimit: {{ .Values.canary.analysis.failureLimit | default 1 }}
+      interval: {{ .Values.canary.analyses.successRate.interval | default "30s" | quote }}
+      count: {{ .Values.canary.analyses.successRate.count | default 10 }}
+      successCondition: {{ printf "result[0] >= %v" (.Values.canary.analyses.successRate.successThreshold | default 0.99) | quote }}
+      failureLimit: {{ .Values.canary.analyses.successRate.failureLimit | default 1 }}
       provider:
         prometheus:
-          address: {{ .Values.canary.metricEndpoint | quote }}
+          address: {{ $endpoint | quote }}
           query: |
             sum(rate(
-              http_requests_total{service="{{ "{{args.service-name}}" }}",code!~"5.."}[2m]
+              http_requests_total{service="{{ $serviceTpl }}",code!~"5.."}[5m]
             )) /
             sum(rate(
-              http_requests_total{service="{{ "{{args.service-name}}" }}"}[2m]
+              http_requests_total{service="{{ $serviceTpl }}"}[5m]
             ))
+{{- end }}
+{{- if .Values.canary.analyses.p99Latency.enabled | default true }}
+---
+{{/*
+AnalysisTemplate #2/3 — p99-latency gate (Phase K Wave 9).
+
+Passes when the 99th-percentile request latency over a rolling
+5-minute window stays under `thresholdMillis` (default 500ms).
+Uses the Prometheus `histogram_quantile` over the OTEL-standard
+`http_request_duration_seconds_bucket` histogram. Override via
+`canary.analyses.p99Latency.metric` if a different name is in use.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: mahjong-autotable-p99-latency
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: api-canary-analysis
+    mahjong.io/canary-gate: p99-latency
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-9
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: p99-latency-ms
+      interval: {{ .Values.canary.analyses.p99Latency.interval | default "30s" | quote }}
+      count: {{ .Values.canary.analyses.p99Latency.count | default 10 }}
+      successCondition: {{ printf "result[0] <= %v" (.Values.canary.analyses.p99Latency.thresholdMillis | default 500) | quote }}
+      failureLimit: {{ .Values.canary.analyses.p99Latency.failureLimit | default 1 }}
+      provider:
+        prometheus:
+          address: {{ $endpoint | quote }}
+          query: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(
+                {{ .Values.canary.analyses.p99Latency.metric | default "http_request_duration_seconds_bucket" }}{service="{{ $serviceTpl }}"}[5m]
+              ))
+            ) * 1000
+{{- end }}
+{{- if .Values.canary.analyses.errorBudget.enabled | default true }}
+---
+{{/*
+AnalysisTemplate #3/3 — error-budget burn-rate gate (Phase K Wave 9).
+
+Passes when the multi-window burn-rate of the canary's error budget
+stays below `burnRateThreshold` over a rolling 5-minute window. The
+default 14.4 is the Google SRE 2%-error-budget / 1h fast-burn alert
+threshold: at 14.4× the steady-state error rate, the canary would
+consume 2% of a monthly error budget in 1h — a clear regression.
+
+Numerator: error rate over 5m. Denominator: the SLO error rate
+(default 0.01 = 99% success). The ratio is the multiplicative burn
+rate; any value < threshold passes.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: mahjong-autotable-error-budget
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: api-canary-analysis
+    mahjong.io/canary-gate: error-budget
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-9
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: error-budget-burn-rate
+      interval: {{ .Values.canary.analyses.errorBudget.interval | default "30s" | quote }}
+      count: {{ .Values.canary.analyses.errorBudget.count | default 10 }}
+      successCondition: {{ printf "result[0] < %v" (.Values.canary.analyses.errorBudget.burnRateThreshold | default 14.4) | quote }}
+      failureLimit: {{ .Values.canary.analyses.errorBudget.failureLimit | default 1 }}
+      provider:
+        prometheus:
+          address: {{ $endpoint | quote }}
+          query: |
+            (
+              sum(rate(
+                http_requests_total{service="{{ $serviceTpl }}",code=~"5.."}[5m]
+              )) /
+              sum(rate(
+                http_requests_total{service="{{ $serviceTpl }}"}[5m]
+              ))
+            ) / {{ .Values.canary.analyses.errorBudget.sloErrorRate | default 0.01 }}
+{{- end }}
 {{- end }}
 ---
 {{/*

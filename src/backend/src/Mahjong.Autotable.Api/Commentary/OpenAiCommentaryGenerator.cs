@@ -143,6 +143,16 @@ public sealed class OpenAiCommentaryGenerator : ICommentaryGenerator, IDisposabl
             _logger.LogWarning(
                 "Monthly commentary token cap hit ({Cap}); returning fail-open record for gameId={GameId}",
                 _options.MonthlyTokenCap, gameId);
+            // Phase K Wave 9 — Bishop. When the operator opts into
+            // hard 429s on cap-exceed, throw the
+            // UsageCapExceededException so the controller can map
+            // it to HTTP 429. Otherwise emit the fail-open envelope
+            // (W8 contract).
+            if (_options.ThrowOnMonthlyCap)
+            {
+                throw new UsageCapExceededException(
+                    $"Monthly commentary token cap ({_options.MonthlyTokenCap}) exceeded.");
+            }
             var capRecords = new[] { BuildFailOpenRecord(gameId, "monthly-token-cap") };
             _cache[gameId] = new GenerationCacheEntry(capRecords, now);
             return capRecords;
@@ -251,7 +261,11 @@ public sealed class OpenAiCommentaryGenerator : ICommentaryGenerator, IDisposabl
             {
                 var prompt = usage.TryGetProperty("prompt_tokens", out var p) ? p.GetInt32() : 0;
                 var completion = usage.TryGetProperty("completion_tokens", out var c) ? c.GetInt32() : 0;
-                _meter.RecordUsage(gameId, prompt, completion);
+                // Phase K Wave 9 — Bishop. Fire-and-forget the async
+                // recorder so the EF-backed meter applies row-version
+                // concurrency on the write. The sync RecordUsage path
+                // remains for tests that wire the in-memory meter.
+                _ = _meter.RecordUsageAsync(gameId, prompt, completion);
             }
             var choices = root.GetProperty("choices");
             if (choices.GetArrayLength() == 0) return new[] { BuildFailOpenRecord(gameId, "empty-choices") };

@@ -61,6 +61,22 @@ export class World {
   private pickup: PickupEntry | null = null;
   private onPickupChanged: ((p: PickupEntry | null) => void) | null = null;
 
+  // Phase K Wave 9 — Commentary tile-ref → 3D mesh outline.  W8 wired a
+  // 2D CSS overlay; W9 adds the actual mesh-outline pulse alongside it.
+  // The CSS overlay stays for spec parity (`commentary-tile-ref-latency`
+  // observes `data-highlight-tile-id`) and as a fallback when the
+  // requested tile is currently inside an InstancedMesh batch that the
+  // ObjectView hasn't promoted to a per-tile mesh yet.
+  //
+  // `highlightedThing` is the Thing currently flagged for outline; the
+  // World re-evaluates it every frame in `updateViewThings` and clears
+  // it once `HIGHLIGHT_DURATION_MS` elapses.  Re-entry (a second
+  // highlight while the first is in flight) resets the timer — the
+  // most-recently-clicked chip wins.
+  private highlightedThing: Thing | null = null;
+  private highlightStartMs: number = 0;
+  static readonly HIGHLIGHT_DURATION_MS = 2000;
+
   constructor(objectView: ObjectView, soundPlayer: SoundPlayer, client: Client) {
     this.setup = new Setup();
     this.slots = this.setup.slots;
@@ -759,6 +775,28 @@ export class World {
     const canDrop = this.canDrop();
     const now = new Date().getTime();
 
+    // Phase K Wave 9 — Compute the commentary highlight envelope once
+    // per frame.  When the elapsed time exceeds the pulse window we
+    // clear `highlightedThing` so the Render flag below stays in
+    // sync with `objectView.highlightIntensity` and the outline pool
+    // drops the mesh next frame.
+    let highlightIntensity = 0;
+    if (this.highlightedThing !== null) {
+      const elapsed = now - this.highlightStartMs;
+      if (elapsed >= 0 && elapsed < World.HIGHLIGHT_DURATION_MS) {
+        // Two sin-wave cycles over the 2 s window with a linear
+        // fade-out envelope so the pulse decays as it expires.  The
+        // 0.5 baseline keeps the outline visible at the troughs
+        // (avoids a flicker-to-zero that would read as a bug).
+        const t = elapsed / World.HIGHLIGHT_DURATION_MS;
+        const wave = 0.5 + 0.5 * Math.sin(t * Math.PI * 4);
+        highlightIntensity = wave * (1 - t);
+      } else {
+        this.highlightedThing = null;
+      }
+    }
+    this.objectView.highlightIntensity = highlightIntensity;
+
     for (const thing of this.things.values()) {
       let place = thing.place();
 
@@ -803,6 +841,13 @@ export class World {
         (slot.links.up.thing === null ||
          slot.links.up.thing.claimedBy !== null);
 
+      // Phase K Wave 9 — Flag the commentary-highlighted Thing so the
+      // ObjectView force-promotes it to a per-tile Mesh (the outline
+      // hull needs a stable Mesh reference; an InstancedMesh draw call
+      // has no per-tile Object3D to attach to).
+      const highlighted = thing === this.highlightedThing
+        && highlightIntensity > 0;
+
       toRender.push({
         type: thing.type,
         thingIndex: thing.index,
@@ -812,6 +857,7 @@ export class World {
         held,
         temporary,
         bottom,
+        highlighted,
       });
     }
     this.objectView.updateThings(toRender);
@@ -850,5 +896,142 @@ export class World {
       }
     }
     this.objectView.replaceShadows(places);
+  }
+
+  /**
+   * Phase K Wave 9 — Map a commentary-record tile id (wire format
+   * `"man5"`, `"pin3"`, `"sou9"`, `"east"`, `"red"`, `"3b"`, etc.)
+   * to the first Thing on the table whose face matches.  Returns
+   * `null` when the id is unparsable OR no in-play tile carries
+   * that face (e.g. the tile is currently in a dead-wall slot the
+   * spectator can't observe).
+   *
+   * The face-id format mirrors Bishop's `CommentaryRecord
+   * .TileReferences` doc-comment: `<suit><rank>` for numbered tiles
+   * (`man`/`pin`/`sou` × 1..9 — also accepts the legacy single-
+   * letter `m`/`p`/`s` notation `"5m"` / `"3b"`) and a fixed
+   * vocabulary for honors (`east|south|west|north|white|green|red`
+   * — also accepts `wind-e` / `dragon-w` shorthands).  The red-five
+   * tiles map to the dedicated typeIndex slots 34/35/36 (set up by
+   * `setup.ts:tileIndex` under `fives='121'`).
+   *
+   * Lookup is `typeIndex % 37` to ignore the per-deal back-color
+   * cycling (W8 setup adds `37 * conditions.back` to mix the two
+   * tile-back textures).
+   */
+  findThingByFace(tileId: string): Thing | null {
+    const face = parseTileFace(tileId);
+    if (face === null) return null;
+    for (const thing of this.things.values()) {
+      if (thing.type !== ThingType.TILE) continue;
+      if ((thing.typeIndex % 37) === face) {
+        return thing;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Phase K Wave 9 — Set (or clear) the commentary-highlight target.
+   * The pulse runs for `HIGHLIGHT_DURATION_MS` (2 s) from the moment
+   * this is called; re-entry resets the timer so the
+   * most-recently-clicked chip wins.  Passing `null` cancels the
+   * highlight on the next frame.
+   */
+  setHighlightedThing(thing: Thing | null): void {
+    this.highlightedThing = thing;
+    this.highlightStartMs = thing === null ? 0 : new Date().getTime();
+  }
+}
+
+/**
+ * Phase K Wave 9 — Parse a commentary wire-string tile id to its
+ * canonical face index (`0..36`).  Returns `null` for unknown / empty
+ * input.  Mirrors the standard mahjong notation Bishop's commentary
+ * generator emits per `ICommentaryGenerator.cs:110-113`.
+ *
+ * Layout (set up by `setup.ts:tileIndex`, mirrors the texture atlas
+ * row-major order at 8 cols/row):
+ *
+ *   • 0..8   → `man1`..`man9`   (characters / wan-zu)
+ *   • 9..17  → `pin1`..`pin9`   (dots / pin-zu)
+ *   • 18..26 → `sou1`..`sou9`   (bamboo / sou-zu)
+ *   • 27..30 → `east|south|west|north`   (winds, ESWN order)
+ *   • 31..33 → `white|green|red`         (dragons, WGR order)
+ *   • 34..36 → `red-man5|red-pin5|red-sou5` (aka-dora red fives)
+ *
+ * Tolerated shorthands (commentary text is LLM-generated and not
+ * pinned to one spelling):
+ *   • Suit-first: `"man5"`, `"pin3"`, `"sou9"`
+ *   • Rank-first: `"5m"`, `"3p"`, `"9s"`, `"3b"` (b = bamboo = sou)
+ *   • Single-letter suits: `m`, `p`, `s`, `b` (bamboo), `c` (man)
+ *   • Honour aliases: `east|east-wind|wind-e|e`, `white|haku`, etc.
+ */
+export function parseTileFace(tileId: string): number | null {
+  if (typeof tileId !== 'string') return null;
+  const id = tileId.trim().toLowerCase();
+  if (id === '') return null;
+
+  // Honor tiles first — fixed vocabulary, no rank suffix.
+  const winds: Record<string, number> = {
+    east: 27, e: 27, 'wind-e': 27, 'east-wind': 27, ton: 27,
+    south: 28, s: 28, 'wind-s': 28, 'south-wind': 28, nan: 28,
+    west: 29, w: 29, 'wind-w': 29, 'west-wind': 29, sha: 29,
+    north: 30, n: 30, 'wind-n': 30, 'north-wind': 30, pei: 30,
+  };
+  if (winds[id] !== undefined) return winds[id];
+  const dragons: Record<string, number> = {
+    white: 31, haku: 31, 'dragon-w': 31, 'white-dragon': 31,
+    green: 32, hatsu: 32, 'dragon-g': 32, 'green-dragon': 32,
+    red: 33, chun: 33, 'dragon-r': 33, 'red-dragon': 33,
+  };
+  if (dragons[id] !== undefined) return dragons[id];
+
+  // Red-five aka-dora aliases.
+  if (id === 'red-man5' || id === 'aka-man5' || id === '0m' || id === 'man0') return 34;
+  if (id === 'red-pin5' || id === 'aka-pin5' || id === '0p' || id === 'pin0') return 35;
+  if (id === 'red-sou5' || id === 'aka-sou5' || id === '0s' || id === 'sou0'
+      || id === 'red-bam5' || id === '0b') return 36;
+
+  // Suit + rank — try suit-first then rank-first.
+  // Suit-first: e.g. "man5", "pin3", "sou9".
+  const suitFirst = /^(man|pin|sou|bam|wan|crak|crack|character|dot|bamboo)\s*-?\s*([1-9])$/.exec(id);
+  if (suitFirst !== null) {
+    const suit = normalizeSuit(suitFirst[1]);
+    const rank = Number.parseInt(suitFirst[2], 10);
+    if (suit !== null) return suit * 9 + (rank - 1);
+  }
+  // Rank-first: e.g. "5m", "3p", "9s", "3b".
+  const rankFirst = /^([1-9])\s*-?\s*(m|p|s|b|c|man|pin|sou|bam|wan)$/.exec(id);
+  if (rankFirst !== null) {
+    const rank = Number.parseInt(rankFirst[1], 10);
+    const suit = normalizeSuit(rankFirst[2]);
+    if (suit !== null) return suit * 9 + (rank - 1);
+  }
+  return null;
+}
+
+function normalizeSuit(token: string): 0 | 1 | 2 | null {
+  switch (token) {
+    case 'm':
+    case 'c':
+    case 'man':
+    case 'wan':
+    case 'crak':
+    case 'crack':
+    case 'character':
+      return 0;
+    case 'p':
+    case 'pin':
+    case 'dot':
+      return 1;
+    case 's':
+    case 'b':
+    case 'sou':
+    case 'bam':
+    case 'bamboo':
+      return 2;
+    default:
+      return null;
   }
 }

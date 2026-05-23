@@ -2506,3 +2506,143 @@ per-deliverable design, contract-test coverage, forward notes
 for Wave 9 (livestream path alias, durable commentary meter,
 Janus readiness gate, idempotency-store durability, JWKS TTL
 discipline).
+
+---
+
+## Phase K Wave 9 — Bishop (Backend) bring-up
+
+**Branch:** `stlong/phase-k-wave-9-bringup`.
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+→ **Passed: 1880, Failed: 0, Skipped: 0** (~2m 0s;
+**+174 over Wave-8 baseline of 1706**).
+
+**Deliverables shipped:**
+
+1. **Livestream path canonicalization.** New
+   `LegacyLivestreamAliasController` at
+   `/api/tables/{tableId}/livestream/{*rest}` 301-redirects
+   GET / HEAD and 308-redirects POST / PUT / PATCH / DELETE
+   to canonical `/api/voice/livestream/{gameId}/...`. Stamps
+   `Cache-Control: public, max-age=86400`,
+   `Sunset: Wed, 23 May 2027 00:00:00 GMT`,
+   `Deprecation: true`, and `Link: rel="sunset"`. `tableId ≡
+   gameId` in W9 so no lookup is required. Docs §5 added to
+   `docs/api-precedence.md` (existing §§5-6 renumbered to §§6-7).
+
+2. **Durable EF commentary usage meter.** New
+   `EfCommentaryUsageMeter` (singleton + scoped DbContext via
+   `IServiceScopeFactory`) backed by the
+   `CommentaryUsageRecord` row family. One row per
+   `(PeriodYear, PeriodMonth)` keyed by unique index, with
+   manual-bump concurrency token (drops `IsRowVersion()` for
+   cross-provider compatibility — SQLite has no native rowversion
+   so `RowVersion = Guid.NewGuid().ToByteArray()` on every
+   save). Retry loop of 3 on `DbUpdateConcurrencyException` /
+   unique-violation. `MonthlyTokens` read is no-tracking. Toggle
+   `Commentary:UsageMeterImpl = "InMemory" | "Ef"` (default
+   InMemory). New `UsageCapExceededException` thrown when
+   `Commentary:ThrowOnMonthlyCap = true` from the OpenAI generator,
+   mapped to HTTP 429 in `CommentaryController.Trigger`.
+
+3. **Janus readiness supervisor.** New
+   `JanusReadinessSupervisor : BackgroundService,
+   IJanusReadinessSupervisor` polls `IJanusHealthProbe` at 5s.
+   Cold-start optimisation: first healthy probe flips Unknown
+   → Bound. Six consecutive failures (30s) trip Bound →
+   Unbound; six consecutive successes flip Unbound → Bound.
+   Emits `JanusReadinessChanged` over new
+   `JanusReadinessHub` at `/hubs/voice/readiness`. Registered
+   only when `Voice:SpectatorSfuImpl=Janus`. Internal
+   `OnProbeResultAsync` exposed for deterministic tests.
+
+4. **Shared IIdempotencyStore (EF + Redis).** New
+   `EfIdempotencyStore` (multi-replica safe via PK on `Key`,
+   defensive expiry check, `Sweep(cutoffUtc)` bulk-delete) and
+   `RedisIdempotencyStore` (W9 ships an EF + in-process LRU
+   wrapper; the StackExchange.Redis client wire lands when
+   Apone's Redis cluster comes up in W10). Toggle
+   `Idempotency:StoreImpl = "InMemory" | "Ef" | "Redis"`.
+   5-minute replay window per Stripe convention; `IdempotencyEntry`
+   table with `Key` PK, `ExpiresAt` index, manual-bump
+   RowVersion.
+
+5. **JWKS TTL ↔ rotation cadence validator.** New
+   `IRotationCadenceValidator` + `RotationCadenceValidator`
+   enforces `JwksCacheTtlSeconds <= RotationGracePeriodSeconds
+   / 2` (factor-of-2 Nyquist margin). Throws
+   `InvalidOperationException` at host boot with operator
+   message pointing at `docs/jwt-rotation.md §11` (TTL
+   discipline). Grace period of 0 exits silently (no rotation
+   plan = out of scope). `AuthOptions.RotationGracePeriodSeconds`
+   added (default 600s). Bound from
+   `Auth:JwtRsaKeys:RotationGracePeriodSeconds` or
+   `Auth:RotationGracePeriodSeconds`. Doc §11 appended to
+   `docs/jwt-rotation.md`.
+
+6. **SignalR backpressure + reconnect resilience.** New
+   `SignalRBackpressureBroadcaster<THub>` (generic per-hub
+   singleton). Per-group sliding-window rate cap (30 msg/s
+   default), 5s age drop on replay, 256-entry retained
+   ring-buffer, monotonic per-instance sequence via
+   `Interlocked.Increment`. `BackpressureEnvelope` record
+   carries sequence + timestamp + payload. `ResumeFromAck`
+   returns the subset newer than the client's last-acked
+   sequence and inside the age window. End-to-end documented
+   in new `docs/realtime-resilience.md`.
+
+**Files created (10 source + 1 doc + 3 × 2 migrations = 17):**
+
+- `src/backend/src/Mahjong.Autotable.Api/Voice/LegacyLivestreamAliasController.cs`
+- `src/backend/src/Mahjong.Autotable.Api/Voice/JanusReadinessSupervisor.cs`
+- `src/backend/src/Mahjong.Autotable.Api/Audit/EfIdempotencyStore.cs`
+- `src/backend/src/Mahjong.Autotable.Api/Auth/RotationCadenceValidator.cs`
+- `src/backend/src/Mahjong.Autotable.Api/Observability/SignalRBackpressureBroadcaster.cs`
+- `docs/realtime-resilience.md`
+- `src/backend/src/Mahjong.Autotable.Api/Persistence/Migrations/{Sqlite,Postgres,SqlServer}/2026052318*_Phase_K_W9_CommentaryUsageAndIdempotency.{cs,Designer.cs}`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W9/Bishop/{LivestreamPathAliasTests,EfCommentaryUsageMeterTests,IdempotencyStoreContractTests,JanusReadinessSupervisorTests,RotationCadenceValidatorTests,SignalRBackpressureTests}.cs`
+
+**Files modified:**
+
+- `src/backend/src/Mahjong.Autotable.Api/Program.cs` — W9 wiring:
+  service registrations gated on the new config knobs, hub
+  mapping, RotationCadenceValidator.Validate() at boot.
+- `src/backend/src/Mahjong.Autotable.Api/Data/Entities/ChangshaEntities.cs`
+  — `CommentaryUsageRecord` + `IdempotencyEntry` entities.
+- `src/backend/src/Mahjong.Autotable.Api/Data/AppDbContext.cs`
+  — DbSets + OnModelCreating entries with `IsConcurrencyToken`
+  (no `IsRowVersion` — manually bumped on save).
+- `src/backend/src/Mahjong.Autotable.Api/Commentary/CommentaryUsageMeter.cs`
+  — async `RecordUsageAsync` + `EfCommentaryUsageMeter` +
+  `UsageCapExceededException`.
+- `src/backend/src/Mahjong.Autotable.Api/Commentary/CommentaryOptions.cs`
+  — `UsageMeterImpl`, `ThrowOnMonthlyCap` knobs.
+- `src/backend/src/Mahjong.Autotable.Api/Commentary/OpenAiCommentaryGenerator.cs`
+  — throws `UsageCapExceededException` when configured.
+- `src/backend/src/Mahjong.Autotable.Api/Commentary/CommentaryController.cs`
+  — catches cap exception → 429.
+- `src/backend/src/Mahjong.Autotable.Api/Auth/AuthOptions.cs`
+  — `RotationGracePeriodSeconds` (default 600).
+- `src/backend/src/Mahjong.Autotable.Api/appsettings.json`
+  — new knobs for Commentary, Auth, Idempotency sections.
+- `docs/api-precedence.md` — §5 livestream canonicalization,
+  renumbered existing §§5-6 to §§6-7.
+- `docs/jwt-rotation.md` — appended §11 TTL discipline.
+
+**Cross-lane observations:**
+
+- Apone may finalise the lock-file relocation from
+  `/tmp/squad-git-lock` → `.work/squad-git-lock` this wave;
+  `.work/squad-git-lock` already exists and is what we use.
+- Vasquez forward-staged W9 contract tests
+  (`Phase_K_W9/Vasquez/BishopW9*`) — all green against the
+  landed symbols.
+- Hicks W9 will consume the canonical livestream wire-shape
+  (legacy alias 301/308); reconnect resilience for SignalR
+  clients lands once the broadcaster is wired into individual
+  hubs (W10).
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-9.md`
+— per-deliverable design, contract-test coverage, forward
+notes for Wave 10 (Redis client wire, EfIdempotencyStore
+sweeper hosted service, backpressure broadcaster retrofit on
+existing W7/W8 hubs).

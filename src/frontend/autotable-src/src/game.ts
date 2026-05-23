@@ -87,6 +87,28 @@ export class Game {
       const element = (this.settings as any)[key] as HTMLInputElement;
       element.addEventListener('change', this.updateSettings.bind(this));
     }
+
+    // Phase K Wave 9 — Commentary tile-ref → 3D mesh highlight.
+    // The CommentaryStream dispatches `mahjong:highlight-tile` with
+    // `{tileId}` in `event.detail` whenever the operator clicks a
+    // tile chip in the commentary feed.  W8 wired a CSS overlay
+    // listener for spec parity; W9 adds the 3D outline pulse in
+    // parallel (both listeners independently react to the same
+    // event — the overlay sits on top of the canvas and the 3D
+    // outline draws on the canvas, so they reinforce rather than
+    // fight each other).
+    window.addEventListener('mahjong:highlight-tile', (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      const tileId = detail !== null && typeof detail === 'object'
+        ? (detail.tileId as string | undefined)
+        : undefined;
+      if (typeof tileId !== 'string' || tileId === '') {
+        this.world.setHighlightedThing(null);
+        return;
+      }
+      const thing = this.world.findThingByFace(tileId);
+      this.world.setHighlightedThing(thing);
+    });
   }
 
   private updateSettings(): void {
@@ -128,6 +150,10 @@ export class Game {
     this.mainView.updateViewport();
     this.mainView.updateCamera(this.world.seat, this.lookDown.pos, this.zoom.pos, this.mouseUi.mouse2);
     this.mainView.updateOutline(this.objectView.selectedObjects);
+    this.mainView.updateHighlight(
+      this.objectView.highlightedObjects,
+      this.objectView.highlightIntensity,
+    );
     this.mouseUi.setCamera(this.mainView.camera);
     this.mouseUi.updateObjects();
     this.mouseUi.update();

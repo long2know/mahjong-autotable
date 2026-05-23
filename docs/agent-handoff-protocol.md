@@ -155,16 +155,274 @@ Once required, any PR with an AUTHOR-LANE MISMATCH or
 disabled until the offending commit is amended (or split).
 
 **Nightly cron pattern** (W9+): a scheduled workflow runs
-`--repo-mode` against `main` weekly and posts the baseline
-violation count to the squad ops channel. The expected baseline
-is 0; any non-zero count is investigated within 24h.
+`--repo-mode` against `main` daily at 06:00 UTC and posts the
+baseline violation count to a tracking GitHub issue
+(`[lane-discipline-nightly] baseline`). The expected baseline
+is 0; any non-zero count is investigated within 24h. The
+workflow lives at `.github/workflows/lane-discipline-nightly.yml`
+(W9 deliverable).
 
-> **Status note (W8):** This protocol exists in the lane-discipline
-> script but is **not yet wired** as a required check on `main`.
-> Stephen has the action; the workflow is already executing per-PR
-> in non-blocking mode so the squad can see the report.
+**Opt-in preview status check** (W9+): an additional workflow
+(`.github/workflows/lane-discipline-status.yml`) publishes the
+status name `lane-discipline / cross-lane-bundling (OPTIONAL-FOR-NOW)`
+on every PR so Stephen can preview the lane-discipline outcome
+BEFORE the canonical `lane-discipline / check` is flipped to
+a required status check. The opt-in workflow is non-blocking;
+once §4 below is executed the opt-in workflow can be removed
+or retained as a secondary preview.
 
-### 4. Per-commit author identity verification
+> **Status note (W9):** Per-PR enforcement still runs through the
+> primary `lane-discipline / check` workflow (non-blocking until
+> Stephen flips the required-status-check). The §4 runbook below
+> documents the exact `gh api` commands. Nightly + opt-in
+> preview workflows ship in W9.
+
+### 3.6. Lock-file relocation `/tmp/` → `.work/squad-git-lock` (W9 — Apone)
+
+W6 introduced `flock -w 120 9 … 9>/tmp/squad-git-lock` to serialise
+the `git add` + `git commit` + `git push` critical section across
+concurrent agents (see §3 / squad charter). The W8 retro flagged
+two problems with the `/tmp/` location:
+
+1. **Ephemeral.** `/tmp/` is wiped on reboot and (on some runtimes)
+   on inactivity. A second agent that comes online between the
+   wipe and the next squad session creates a brand-new lock file
+   instead of attaching to the existing one — losing serialisation
+   exactly when it matters most.
+2. **Shared with non-squad processes.** `/tmp/squad-git-lock` is
+   in a world-writable directory. A non-squad process can `touch`
+   the file or hold an unrelated flock against it (e.g. a wrapper
+   script that grabs every `*.lock` in `/tmp/` as a watchdog).
+   Locks taken on the squad file would then block on an unrelated
+   process.
+3. **Runtime hard-prohibition.** Several agent runtimes (Scribe
+   noted in W8 §3.1; Vasquez confirmed in their W8 memo) actively
+   block writes under `/tmp/` — so the lock file silently never
+   gets created and the flock is a no-op.
+
+**Cutover plan:**
+
+- **W9 (in-flight).** Agents already invoked with the original
+  `/tmp/squad-git-lock` directive CONTINUE using `/tmp/`. Mixing
+  lock locations mid-wave would defeat the mutex (two agents
+  holding two different locks would race). This is a one-wave
+  carve-out only.
+- **W10+ (canonical).** Every agent uses `.work/squad-git-lock`.
+  The directory `.work/` is gitignored except for `.work/.gitkeep`
+  (which guarantees the directory exists on a fresh clone); the
+  lock file itself never lands in git.
+- **Agent prompt templates** for W10 onward MUST cite `.work/squad-git-lock`.
+  The W6/W7/W8 prompt templates (`.squad/agents/_template-prompt.md`
+  if present, or the in-prompt directive when the template is
+  hand-rolled) should be updated in the same commit that touches
+  the first W10 wave.
+- **Onboarding docs.** Update `.squad/decisions.md`, this file,
+  `.squad/agents/<agent>/history.md` references — every place
+  the `/tmp/squad-git-lock` literal appears EXCEPT historical
+  retro entries (those preserve the original-wave reality).
+
+The new path:
+
+```bash
+(
+  flock -w 120 9 || exit 1
+  # ... git critical section ...
+) 9>.work/squad-git-lock
+```
+
+If `.work/` is missing on a fresh clone (the `.gitkeep` got
+deleted or .gitignore evolved), `flock` creates the lock file
+implicitly because `bash` redirection (`9>…`) creates the path
+on demand. But the `.gitkeep` guard reduces surprise.
+
+### 3.7. Rebase-inside-flock pattern (W9 — Apone)
+
+W8 retro flagged a separate race not closed by the flock alone:
+two agents push in rapid succession, and the second push is
+rejected as **non-fast-forward** because the first push moved the
+remote branch tip while the second agent was still inside its
+flock-protected commit. The mutex serialised the local critical
+sections — but not the network's view of the branch tip.
+
+**Pattern (W10 onward should incorporate this; Apone uses it
+starting W9):**
+
+```bash
+(
+  flock -w 120 9 || exit 1
+  git status --short | head -20   # sanity-check the working tree
+  git add <lane paths>             # selective, NEVER -A
+  git -c user.name="<Agent>" -c user.email="<agent>@squad.mahjong" \
+      commit -m "<message>"
+  git log -1 --format='%an <%ae>'  # verify author identity
+
+  # NEW W9 step — fetch + rebase against origin BEFORE pushing.
+  # If a sibling lane pushed during our edit window, this pulls
+  # their commit ahead of ours so the push goes through fast-
+  # forward.
+  git fetch origin <branch>
+  if ! git rebase origin/<branch>; then
+      # Conflict during rebase — abort + bail out of the flock
+      # critical section WITHOUT pushing. The operator (or the
+      # agent itself, in a follow-up turn) is expected to resolve
+      # the conflict by hand. Pushing a half-rebased state would
+      # be worse than not pushing.
+      echo "::error::rebase conflict against origin/<branch>; aborting flock"
+      git rebase --abort
+      exit 2
+  fi
+  git push origin <branch>
+) 9>/tmp/squad-git-lock     # ← W9 carry-over location
+                            # W10+: 9>.work/squad-git-lock
+```
+
+**Why this is safe inside the flock.** The `fetch` + `rebase`
+acquires the latest origin tip while we hold the local lock. A
+SIBLING agent's flock-protected push CANNOT race past us — they
+queue up behind our flock. So the only race we close here is
+against a NON-squad pusher (e.g. Stephen amending a PR off-flock)
+or against a pre-flock push that landed between our last fetch
+and our local commit. Both are real; both are caught.
+
+**Why the rebase MUST happen inside the flock.** Doing it outside
+(e.g. `git pull --rebase` before acquiring the lock) would leave a
+window where the lock is acquired but the local branch is stale
+— another agent could fetch and rebase in parallel, and both
+agents would converge to push the same (stale) tip.
+
+**Conflict semantics.** A rebase conflict on a properly-lane-staged
+single-author commit is unusual — the lane-discipline gate
+(`tests/ci/check-cross-lane-bundling.sh`) hard-rejects cross-lane
+commits, so two agents touching the SAME file is a process bug.
+The abort + bail-out path therefore primarily exists for the
+rare cross-lane-shared-file edits (the W8 `selectors_md_shared`
+allowlist) and for the migration windows where two agents might
+edit a single new file. Operator-level intervention is the
+correct escalation when this fires.
+
+### 4. Branch-protection setup (W9 — Vasquez runbook for Stephen)
+
+The lane-discipline workflow (`.github/workflows/lane-discipline.yml`)
+runs `check-cross-lane-bundling.sh --strict` on every PR. To make
+the workflow **required for merge** on `main`, the repository
+administrator (Stephen) runs the following `gh api` commands. The
+runbook is split into three steps so the W9 preview workflow stays
+visible during the transition.
+
+#### Step 1 — read current branch protection (optional but recommended)
+
+```bash
+# Reveals the current required_status_checks block so Step 2 can
+# add to it without dropping the existing checks (build, test,
+# secrets-scan, etc.).
+gh api repos/long2know/mahjong-autotable/branches/main/protection \
+    --jq '.required_status_checks'
+```
+
+If the JSON output ends with `"contexts": ["build", "test", ...]`,
+those checks must be preserved in Step 2 (add the new context,
+don't replace the list).
+
+#### Step 2 — flip lane-discipline to required
+
+The canonical check name is **`lane-discipline / check`** (the
+job name in `.github/workflows/lane-discipline.yml` is `check`,
+and GitHub renders status checks as `<workflow> / <job>`).
+
+```bash
+# IMPORTANT: replace EXISTING_CHECKS with the array from Step 1.
+# If `enforce_admins` is currently false, leave it false (Stephen
+# can flip that separately).
+gh api -X PUT repos/long2know/mahjong-autotable/branches/main/protection \
+    --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": [
+      "build",
+      "test",
+      "lane-discipline / check"
+    ]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1,
+    "dismiss_stale_reviews": true
+  },
+  "restrictions": null
+}
+JSON
+```
+
+`gh api -X PUT … --input -` accepts a JSON document on stdin and
+replaces the protection rule wholesale. If you prefer the
+narrower `PATCH` semantics, use `gh api -X PATCH …` with
+`required_status_checks.contexts` only — but Stephen's audit
+trail is cleaner with the full PUT.
+
+#### Step 3 — validate
+
+```bash
+# Create a deliberately-cross-lane test branch (e.g. a no-op
+# commit touching .github/workflows/ AND src/backend/tests/) and
+# open a draft PR. Verify the lane-discipline / check status
+# block shows up as REQUIRED in the merge box.
+gh pr create --draft \
+    --title "test: lane-discipline gate validation" \
+    --body "Intentional cross-lane PR for branch-protection validation. DO NOT MERGE."
+```
+
+After the PR opens, watch the Checks tab — the lane-discipline
+check MUST fail AND the merge button MUST be disabled. Then
+close (don't merge) the test PR.
+
+For an ALL-CLEAN sanity check, open a single-lane PR (e.g. a docs
+typo fix) and confirm `lane-discipline / check` passes AND the
+merge button enables.
+
+#### Rollback procedure
+
+If a regression appears (e.g. the script false-positives on a
+legitimate squash-merge), Stephen can demote the check back to
+non-required without redeploying anything:
+
+```bash
+# 1) Re-read current rule (so we don't accidentally drop other
+#    required checks).
+gh api repos/long2know/mahjong-autotable/branches/main/protection \
+    --jq '.required_status_checks.contexts'
+
+# 2) Re-PUT WITHOUT the lane-discipline entry.
+gh api -X PUT repos/long2know/mahjong-autotable/branches/main/protection \
+    --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["build", "test"]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1,
+    "dismiss_stale_reviews": true
+  },
+  "restrictions": null
+}
+JSON
+```
+
+The opt-in preview workflow (`lane-discipline-status.yml`) stays
+visible as a non-blocking signal during the rollback window, so
+the squad keeps observability on cross-lane drift even when the
+gate isn't enforced.
+
+#### Why this is in §4
+
+`§3.5` documents the *workflow* mechanics + the W9 nightly cron.
+`§4` documents the *administrator action* (Stephen's single
+elevated step). Splitting them keeps the agent-facing protocol
+discipline (§1–§3) separate from the one-time admin runbook (§4).
+
+### 5. Per-commit author identity verification
 
 After each commit, verify the author is YOU:
 
@@ -177,7 +435,7 @@ git log -1 --format='%an <%ae>'
 If the identity is wrong, immediately `git commit --amend --reset-author`
 and re-verify.
 
-### 5. Push only your branch
+### 6. Push only your branch
 
 Each agent owns a branch named `stlong/phase-<phase>-wave-<N>-<lane>`.
 Never force-push to a neighbouring agent's branch. Never push to
@@ -231,7 +489,7 @@ contents remain on disk.
 | Hicks   | `src/frontend/autotable-src/src/*`, `scripts/*`, generated `src/frontend/autotable/*` | `tests/`, `infra/`, `src/backend/` |
 | Apone   | `.github/workflows/*`, `infra/k8s/*`, `infra/terraform/*`, `docs/{slsa,hsts,admission}-*.md` | `tests/`, `src/`, `.squad/agents/<other>/` |
 | Hudson  | `tests/` infrastructure (`xunit.runner.json`, harness fixtures) | new test FACTS (those are Vasquez's) |
-| Vasquez | `src/backend/tests/**`, `src/frontend/autotable-src/tests/**`, `docs/test-*.md`, `docs/contracts/`, `.squad/agents/vasquez/`, `.squad/decisions/inbox/vasquez-*`, `docs/agent-handoff-protocol.md` (this file), `docs/test-shims.md` | `src/backend/src/`, `src/frontend/autotable-src/src/`, `infra/`, `.github/workflows/` |
+| Vasquez | `src/backend/tests/**`, `src/frontend/autotable-src/tests/**`, `docs/test-*.md`, `docs/contracts/`, `.squad/agents/vasquez/`, `.squad/decisions/inbox/vasquez-*`, `docs/agent-handoff-protocol.md` (this file), `docs/test-shims.md`, `.github/workflows/lane-discipline*.yml` | `src/backend/src/`, `src/frontend/autotable-src/src/`, `infra/`, other `.github/workflows/` |
 
 When a Vasquez test needs a backend surface to land first, Vasquez
 writes a **forward-staged soft-pass** assertion that hard-asserts

@@ -1,0 +1,98 @@
+# Phase K Wave 9 — Vasquez (QA).
+#
+# Nightly lane-discipline cron — runs the cross-lane bundling
+# detector in --repo-mode against the entire reachable history of
+# `main`, then emits a baseline-violation report. Expected
+# post-W6 baseline is 0; non-zero counts are investigated within
+# 24h.
+#
+# Hand-off from Wave 8: §3.5 of docs/agent-handoff-protocol.md
+# advertised this cron pattern; Wave 9 lands the workflow itself.
+#
+# Owner: Vasquez (QA). See docs/agent-handoff-protocol.md §3.6.
+
+name: lane-discipline-nightly
+
+on:
+  schedule:
+    # 06:00 UTC daily.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: 'Verbose output'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    name: Repo-mode cross-lane scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the repo-mode walk)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Verify lane-map.json is present and parseable
+        run: |
+          test -f tests/ci/lane-map.json \
+            || (echo "lane-map.json missing — Vasquez QA gate"; exit 1)
+          grep -q '"lanes"' tests/ci/lane-map.json
+          echo "lane-map.json OK"
+
+      - name: Run lane-discipline check (repo mode, full history)
+        id: scan
+        run: |
+          chmod +x tests/ci/check-cross-lane-bundling.sh
+          set +e
+          OUTPUT="$(tests/ci/check-cross-lane-bundling.sh --repo-mode 2>&1)"
+          ECODE=$?
+          set -e
+          echo "$OUTPUT"
+          {
+            echo "ecode=$ECODE"
+            echo 'output<<EOF'
+            echo "$OUTPUT"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post baseline report to tracking issue
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Locate the tracking issue (idempotent — search by title).
+          TITLE="[lane-discipline-nightly] baseline"
+          ISSUE_NUMBER="$(gh issue list \
+            --search "$TITLE in:title" \
+            --state open \
+            --json number \
+            --jq '.[0].number' || true)"
+          if [ -z "$ISSUE_NUMBER" ]; then
+            ISSUE_NUMBER="$(gh issue create \
+              --title "[lane-discipline-nightly] baseline" \
+              --label 'lane-discipline,bot' \
+              --body 'Tracking issue for the nightly lane-discipline --repo-mode baseline scan. See workflow: lane-discipline-nightly.yml.' \
+              --json number --jq '.number' || true)"
+          fi
+          if [ -n "$ISSUE_NUMBER" ]; then
+            DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            BODY="$(cat <<EOF
+[lane-discipline-nightly] **$DATE** UTC
+
+Exit code: \`${{ steps.scan.outputs.ecode }}\`
+Expected post-W6 baseline: 0 violations.
+
+\`\`\`
+${{ steps.scan.outputs.output }}
+\`\`\`
+EOF
+)"
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi

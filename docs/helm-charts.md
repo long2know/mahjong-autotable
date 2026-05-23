@@ -228,9 +228,113 @@ the canary path. The override `canary.coexistWithDeployment = true`
 is reserved for staging soak scenarios where the operator wants
 to compare static + canary surfaces side-by-side.
 
-### 3.5 Operator runbook
+### 3.5 AnalysisTemplate gates (Phase K Wave 9 — Apone)
+<a name="canary-analysis"></a>
 
-#### 3.5.1 Cluster prereq — install Argo Rollouts (once)
+W8 shipped a single `success-rate` AnalysisTemplate as the only
+automated gate between canary steps. The W8 retro flagged this as
+**under-instrumented for production**: a canary that doesn't
+regress on the 5xx rate but ships a 2× latency increase or burns
+through the error budget would pass the W8 gate and promote.
+
+W9 retargets the W8 single template into **three independent
+templates**, each evaluating a distinct production signal. The
+Rollout's `analysis` step references all three; **any one failing**
+aborts the rollout (Argo Rollouts evaluates templates in parallel
+and the union of `failureLimit` trips short-circuits).
+
+| Template | Signal | Default threshold | Tunable via |
+|---|---|---|---|
+| `…-canary-success-rate` | Non-5xx response fraction (rolling) | `result[0] >= 0.99` | `canary.analyses.successRate.threshold` |
+| `…-canary-p99-latency` | p99 request latency (ms, rolling) | `result[0] <= 500` | `canary.analyses.p99Latency.threshold` |
+| `…-canary-error-budget` | Burn rate against SLO (5xx / `sloErrorRate`) | `result[0] < 14.4` | `canary.analyses.errorBudget.threshold` |
+
+The default window is 5m (`count: 10` × `interval: 30s`); the
+default `failureLimit` is 1 (a single window below threshold
+trips the abort).
+
+**Success-rate** — same shape as W8, with the metric series
+configurable:
+
+```promql
+sum(rate({{ .metric }}{service="{{ canaryService }}",code!~"5.."}[{{ window }}]))
+/
+sum(rate({{ .metric }}{service="{{ canaryService }}"}[{{ window }}]))
+```
+
+Threshold `>= 0.99` means the canary must serve at LEAST 99% non-
+5xx over the 5m window. Production overrides may raise this to
+`>= 0.995` for high-SLO services.
+
+**p99 latency** — uses Prometheus `histogram_quantile`:
+
+```promql
+histogram_quantile(0.99,
+  sum by (le)(
+    rate({{ .metric }}{service="{{ canaryService }}"}[{{ window }}])
+  )
+) * 1000
+```
+
+The metric series defaults to `http_request_duration_seconds_bucket`
+(ASP.NET Core OpenTelemetry exports this name when the
+`AspNetCoreInstrumentation` is configured with the default
+histogram). The `* 1000` converts seconds to ms so the threshold
+in the values file is human-readable in ms.
+
+Threshold `<= 500` is 500 ms. Override via
+`canary.analyses.p99Latency.threshold` per environment.
+
+**Error budget burn rate** — Google SRE multi-window fast-burn
+pattern:
+
+```promql
+sum(rate({{ .metric }}{service="{{ canaryService }}",code=~"5.."}[{{ window }}]))
+/
+sum(rate({{ .metric }}{service="{{ canaryService }}"}[{{ window }}]))
+/
+{{ sloErrorRate }}
+```
+
+The `sloErrorRate` is the operator's defined acceptable 5xx rate
+(default `0.01` = 99% availability SLO). The query produces the
+**burn rate**: how fast the canary is consuming the error budget
+relative to the SLO.
+
+Threshold `< 14.4` is the Google SRE recommended "fast-burn"
+alert threshold (2% of monthly budget burned in 1h, at SLO =
+99%). Crossing 14.4 inside a 5m window means continuing the
+rollout would exhaust the budget faster than the SRE team can
+respond — abort.
+
+**Tuning playbook for operators:**
+
+| Symptom | Adjust |
+|---|---|
+| Canary aborts too often during normal traffic | Increase `count` (longer window) or `failureLimit` (more tolerant) |
+| Latency gate trips on cold-start | Add a warm-up step before the analysis step (e.g. `setWeight: 5` + `pause: 2m` BEFORE the analysis-gated step) |
+| Different metric name in your Prometheus | Override `canary.analyses.<name>.metric` |
+| Different success criterion (median, p95) | Edit the template directly — values surface intentionally narrow, advanced criteria are a fork-and-modify path |
+
+**Disabling a single template** (e.g. you don't have latency
+histogram instrumentation yet):
+
+```yaml
+canary:
+  analyses:
+    p99Latency:
+      enabled: false   # success-rate + error-budget still gate
+```
+
+The Rollout `analysis.templates[]` is computed at render time —
+only enabled templates contribute. At least one MUST be enabled
+or the analysis step is no-op (chart does not currently hard-
+error in this case; rendering an empty `templates: []` is treated
+as "no gate" by Argo Rollouts).
+
+### 3.6 Operator runbook
+
+#### 3.6.1 Cluster prereq — install Argo Rollouts (once)
 
 ```bash
 kubectl create namespace argo-rollouts
@@ -243,7 +347,7 @@ curl -fsSL -o ~/.local/bin/kubectl-argo-rollouts \
 chmod +x ~/.local/bin/kubectl-argo-rollouts
 ```
 
-#### 3.5.2 Cut a canary release
+#### 3.6.2 Cut a canary release
 
 ```bash
 # Enable canary in the values overlay (or use --set):
@@ -266,27 +370,31 @@ kubectl argo rollouts abort mahjong-autotable-canary -n mahjong-prod
 kubectl argo rollouts undo  mahjong-autotable-canary -n mahjong-prod
 ```
 
-#### 3.5.3 Health metric — wire to your Prometheus
+#### 3.6.3 Health metric — wire to your Prometheus
 
 Set `canary.metricEndpoint` to the in-cluster Prometheus URL:
 
 ```yaml
 canary:
-  metricEndpoint: "http://prometheus-server.monitoring.svc.cluster.local:80"
+  metricEndpoint: "http://prometheus.monitoring.svc.cluster.local:9090"
 ```
 
-The chart's AnalysisTemplate uses the Prometheus query:
+W9 retargets the W8 single AnalysisTemplate into three (see
+§3.5). The default Prometheus queries are documented in §3.5;
+each query inherits `canary.metricEndpoint` and the per-template
+`metric` / `window` settings.
 
-```promql
-sum(rate(http_requests_total{service="mahjong-autotable-canary",code!~"5.."}[2m]))
-/
-sum(rate(http_requests_total{service="mahjong-autotable-canary"}[2m]))
+Override the metric name (e.g. you use `request_count_total`
+instead of `http_requests_total`):
+
+```yaml
+canary:
+  analyses:
+    successRate:
+      metric: request_count_total
 ```
 
-Override by editing the rendered template or pre-installing your
-own `AnalysisTemplate` named `mahjong-autotable-success-rate`.
-
-#### 3.5.4 Aborting + rollback
+#### 3.6.4 Aborting + rollback
 
 Argo Rollouts auto-aborts when the AnalysisTemplate's
 `failureLimit` is hit (`successCondition` false N times). The
@@ -311,12 +419,14 @@ kubectl argo rollouts undo mahjong-autotable-canary -n mahjong-prod
 helm upgrade mahjong helm/mahjong/ ... --set api.image.tag=<known-good-tag>
 ```
 
-### 3.6 Cross-references
+### 3.7 Cross-references
 
-* [`helm/mahjong/templates/canary-deployment.yaml`](../helm/mahjong/templates/canary-deployment.yaml) — the Rollout + AnalysisTemplate + stable/canary Services.
-* [`helm/mahjong/values.yaml`](../helm/mahjong/values.yaml) — `canary.*` defaults.
+* [`helm/mahjong/templates/canary-deployment.yaml`](../helm/mahjong/templates/canary-deployment.yaml) — the Rollout + 3 AnalysisTemplates + stable/canary Services.
+* [`helm/mahjong/values.yaml`](../helm/mahjong/values.yaml) — `canary.*` defaults including `analyses.{successRate,p99Latency,errorBudget}`.
+* [`helm/mahjong/values-prod.yaml`](../helm/mahjong/values-prod.yaml) — production overrides (99% success / 500 ms p99 / 14.4 burn rate).
 * [Argo Rollouts — Canary strategy](https://argoproj.github.io/argo-rollouts/features/canary/)
 * [Argo Rollouts — AnalysisTemplate](https://argoproj.github.io/argo-rollouts/features/analysis/)
+* [Google SRE Workbook — Burn-rate alerts](https://sre.google/workbook/alerting-on-slos/)
 
 ## 4. Helm vs Kustomize — when to use which
 
@@ -345,6 +455,7 @@ Ingress, HPA, PVC, and coturn objects. The W7 acceptance gate is
 **parity** — see §4.
 
 ## 5. Parity matrix (W7 — chart-of-charts vs Kustomize)
+<a name="parity-matrix"></a>
 
 The two paths produce equivalent (NOT byte-identical — name
 prefixes + labels differ) manifests. The matrix below lists
@@ -371,7 +482,119 @@ renders it:
 | Postgres StatefulSet | NOT in Kustomize (staging uses Sqlite by default) | `mahjong-postgres-sidecar/templates/statefulset.yaml` (`postgresSidecar.enabled`) | Helm-only; staging soak convenience. |
 | Postgres Service | — | `mahjong-postgres-sidecar/templates/service.yaml` | — |
 
-## 6. Subchart toggles
+## 6. YAML anchor pattern in values files (W9 — Apone)
+<a name="yaml-anchor-pattern"></a>
+
+W8 retro flagged a maintenance smell in `values-staging.yaml` and
+`values-prod.yaml`: each environment's hostname / TLS-secret /
+CORS-origin / env-name appears in **5–7 distinct keys**
+(ingress hosts, ingress TLS, ingress annotations, environment
+config, externalSecrets refresh interval — and now W9 added
+canary `metricEndpoint`). Editing the hostname required hunting
+down every occurrence; the W4 staging-cutover retrospective
+called out one such miss (the externalSecrets refresh interval
+was updated, but the ingress annotation lagged).
+
+W9 introduces a **YAML anchor convention** to centralise these
+shared scalars at the top of each values file. The pattern uses
+a top-level key `x-anchors:` to declare anchors and reference
+them with `*name` throughout the rest of the file.
+
+**Why `x-anchors:` and not a normal key:**
+
+Helm's templating engine merges the YAML into the chart `.Values`
+object, where extra top-level keys are silently ignored (they
+become accessible as `.Values.x-anchors.staging-host` but no
+template references them). Helm has no formal "ignored prefix"
+convention — but `x-*` is the de-facto convention from
+OpenAPI / docker-compose / GitHub Actions for "extension /
+ignored / for-humans-only" keys. Using `x-anchors:` reads as
+documentation, parses cleanly via PyYAML (the W7 verification
+script's `safe_load_all` accepts it), and survives `helm template`
+without rendering.
+
+**Anchor convention:**
+
+```yaml
+# At the TOP of values-prod.yaml (after any header comments):
+x-anchors:
+  - &prod-host             "play.mahjong.example.com"
+  - &prod-tls-secret       "mahjong-prod-tls"
+  - &prod-env-name         "production"
+  - &prod-cors-origin      "https://play.mahjong.example.com"
+  - &prod-prometheus       "http://prometheus.monitoring.svc.cluster.local:9090"
+  # Add new anchors here; reference via *name throughout the file.
+
+# Later in the same file:
+api:
+  ingress:
+    hosts:
+      - host: *prod-host
+        paths: [...]
+    tls:
+      - hosts: [*prod-host]
+        secretName: *prod-tls-secret
+  env:
+    ASPNETCORE_ENVIRONMENT: *prod-env-name
+    Cors__AllowedOrigins__0: *prod-cors-origin
+canary:
+  metricEndpoint: *prod-prometheus
+```
+
+**Doc cross-references are symbolic, not numeric:**
+
+Earlier values files referenced sections like "see §3.5 of
+docs/helm-charts.md". When `helm-charts.md` was renumbered in W8
+(adding §3 canary deploys shifted §3-§7 → §4-§8), every numeric
+reference in the values files broke silently. W9 switches to
+**symbolic anchors** in the values-file docstring:
+
+```yaml
+# See:
+#   docs/helm-charts.md §parity-matrix      — staging vs prod deltas
+#   docs/helm-charts.md §subchart-toggles   — toggle table
+#   docs/helm-charts.md §canary-analysis    — AnalysisTemplate details
+#   docs/helm-charts.md §yaml-anchor-pattern — this convention
+```
+
+The doc's `<a name="parity-matrix"></a>` anchors (added W9)
+provide a stable target — section renumbering doesn't break the
+reference, and a `Ctrl-F` in the doc by anchor name finds the
+intended section.
+
+**When NOT to use anchors:**
+
+- **Subchart values that need per-overlay distinct typing.** If
+  the staging file passes a string and the prod file passes a
+  list, an anchor flattening confuses readers more than it helps.
+- **Single-occurrence values.** No DRY benefit; the anchor
+  declaration is pure overhead.
+- **Inside subchart values** (`charts/<subchart>/values.yaml`).
+  The umbrella merge semantics interact poorly with anchors that
+  point into subchart scope — keep anchors at the overlay level.
+
+**Verification:**
+
+```bash
+# Anchors must round-trip cleanly through PyYAML safe_load_all:
+python3 -c "
+import yaml
+for p in ['helm/mahjong/values-staging.yaml', 'helm/mahjong/values-prod.yaml']:
+    docs = list(yaml.safe_load_all(open(p)))
+    print('OK', p, 'docs:', len(docs))
+"
+
+# And helm must accept them (anchors resolved at parse time):
+./.tool-helm/helm template mahjong helm/mahjong/ \
+    -f helm/mahjong/values-prod.yaml > .work/render.yaml
+grep "play.mahjong.example.com" .work/render.yaml | head -3
+# Should show the anchor's value resolved into 5+ places.
+```
+
+Both checks land in the W9 acceptance gate (§8 below).
+
+## 7. Subchart toggles
+<a name="subchart-toggles"></a>
 
 The umbrella `values.yaml` ships a sane default. The environment
 files override only the deltas. Significant toggles:
@@ -390,7 +613,7 @@ files override only the deltas. Significant toggles:
 | `externalSecrets.enabled` | true | true | true | ESO ExternalSecret rendering. |
 | `externalSecrets.jwtRsaSecretName` | `mahjong-jwt-rsa-keys` | `mahjong-jwt-rsa-keys-staging` | `mahjong-jwt-rsa-keys` | Wave 7 RS256 secret. |
 
-## 7. Verification — pre-merge gate
+## 8. Verification — pre-merge gate
 
 The W7 acceptance gate is:
 
@@ -417,7 +640,7 @@ for p in ['.work/helm-staging.yaml', '.work/helm-prod.yaml']:
 All three steps MUST be green before a chart PR merges. CI
 parity ride-along is a W8 follow-up.
 
-## 8. Cross-references
+## 9. Cross-references
 
 * [`helm/mahjong/Chart.yaml`](../helm/mahjong/Chart.yaml) — umbrella + aliased dependencies.
 * [`helm/mahjong/values.yaml`](../helm/mahjong/values.yaml) — umbrella defaults.

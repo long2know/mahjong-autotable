@@ -353,7 +353,110 @@ NOT trigger Internal Testing. The two tag namespaces are disjoint
 by prefix; `git log --tags` shows the production ladder in
 distinct labels.
 
-### 7.2 Pre-flight (operator)
+### 7.2 Hotfix path (Phase K Wave 9 — Apone)
+
+The W8 production-release workflow assumes the **happy path**:
+Internal Testing tag → External-Testing soak (≥ 7 days) →
+production tag. That window is correct for routine releases but
+**unworkable for security or revenue-impacting hotfixes** where
+24-h external soak adds 24 h of customer exposure.
+
+W9 adds a **separate** workflow,
+[`.github/workflows/mobile-production-hotfix.yml`](../.github/workflows/mobile-production-hotfix.yml),
+that **bypasses External-Testing** with explicit operator
+acknowledgement.
+
+**Triggers:**
+
+- Tag push matching `mobile-hotfix-v*.*.*` (separate tag
+  namespace from `mobile-prod-v*.*.*` so a hotfix doesn't get
+  confused with a routine cut in `git log --tags`).
+- `workflow_dispatch` on `main` with operator-supplied `version`,
+  `internal_tag`, and `hotfix_reason`.
+
+**Env-gate — two-reviewer rule:**
+
+Where the routine production-release workflow uses environment
+`release-channel-production` (one reviewer), the hotfix workflow
+uses **`release-channel-production-hotfix`** with **two**
+required reviewers. The intent: skipping External-Testing
+demands a second pair of eyes on the decision, not just on the
+output.
+
+Provision the environment in the GitHub UI (operator action,
+one-time):
+
+```
+Settings → Environments → New environment "release-channel-production-hotfix"
+  Required reviewers: 2  (select 3+ named approvers to avoid
+                          single-point bottlenecks)
+  Wait timer: 0          (every minute matters during a hotfix)
+  Deployment branches: main only
+```
+
+**Audit-trail guarantees:**
+
+The workflow emits THREE durable audit-trail markers per run:
+
+1. A `::warning::` line in the job log (visible in the Actions
+   UI summary) calling out that External-Testing was skipped:
+   `::warning::HOTFIX PATH — External-Testing skipped. Reason: <reason>. Reviewers: <list>.`
+2. A `step-summary` banner (markdown rendered at the top of the
+   run page) with the hotfix reason verbatim + a link back to
+   this section of the docs.
+3. A Slack notification on the `#mobile-releases` channel
+   (`SLACK_WEBHOOK_URL` secret) with the hotfix reason embedded
+   — so audit reviewers don't need to dig through the Actions
+   log to reconstruct WHY the cut bypassed soak.
+
+The hotfix reason is REQUIRED — the `workflow_dispatch` input is
+non-empty-validated, and the tag-push path reads the reason from
+the tag annotation (`git tag -a mobile-hotfix-v0.17.1 -m "<reason>"`).
+
+**Internal-tag validation:**
+
+Even on the hotfix path, the cut MUST originate from a build
+that landed in **Internal Testing**. The `prepare` job validates
+that the supplied `internal_tag` exists as a ref and that its
+commit matches the workflow's checkout SHA. This catches the
+class of mistake where an operator cuts a hotfix from an
+uncommitted local branch — that build would never have run
+through the W6 mobile-internal-testing acceptance gates.
+
+**Default rollout posture — full, not staged:**
+
+The W8 routine cut starts Android at 10% staged rollout (see
+§7.6). The W9 hotfix defaults to **100% rollout + `status:
+completed`** because a hotfix that's good enough to skip soak is
+good enough to fully replace the broken build immediately. The
+operator can override via the `android_rollout_fraction` input
+on workflow_dispatch.
+
+On iOS, the hotfix submits with `automatic_release=true` (auto-
+release once approved). The operator should request **Expedited
+App Review** out-of-band via App Store Connect — see Apple's
+[Expedited Review documentation](https://developer.apple.com/contact/app-store/?topic=expedite).
+The workflow does NOT request expedited review programmatically
+(no public API).
+
+**When to use the hotfix path:**
+
+| Scenario | Hotfix? | Why |
+|---|---|---|
+| RCE / auth-bypass / data-loss bug | YES | Customer harm exceeds soak benefit |
+| Crash on launch affecting > 1% of installs | YES | App is effectively down |
+| Crash on launch affecting < 1%, no data loss | NO | Soak 24 h via accelerated External-Testing instead |
+| Revenue-blocking checkout flow | YES | Direct $ impact |
+| UX paper-cut (typo, layout glitch) | NO | Routine release ladder is correct |
+| Compliance-mandated takedown (GDPR / DMCA) | YES | Legal obligation |
+| Subscription pricing bug | judgement call | Discuss with finance + legal first |
+
+When in doubt, **route through External-Testing**. The hotfix
+path's cost is permanent — the audit trail records every
+bypass, and a high bypass rate erodes trust in the soak
+process.
+
+### 7.3 Pre-flight (operator)
 
 Before cutting a production tag:
 
@@ -371,7 +474,7 @@ Before cutting a production tag:
    env-gated. A run will sit pending approval indefinitely;
    weekend cuts need someone on PagerDuty.
 
-### 7.3 Cut + promote
+### 7.4 Cut + promote
 
 ```bash
 # 1. Tag the production release. The version MUST match the
@@ -393,7 +496,7 @@ git push origin mobile-prod-v0.17.0
 # 4. Slack notification fires once both store jobs complete.
 ```
 
-### 7.4 workflow_dispatch (manual promotion from existing tag)
+### 7.5 workflow_dispatch (manual promotion from existing tag)
 
 If the tag already exists (e.g. re-running after a transient
 fastlane failure):
@@ -414,7 +517,7 @@ default `android_rollout_fraction=0.1` means 10% of users get
 the new build initially; subsequent workflow_dispatch runs with
 a higher fraction bump the rollout.
 
-### 7.5 Staged rollout — Android
+### 7.6 Staged rollout — Android
 
 Play Production supports staged rollout. The W8 baseline:
 
@@ -439,7 +542,7 @@ gh workflow run mobile-production-release.yml \
 `--rollout 0.0` stops further roll-out without unpublishing
 the build from users who already received it.
 
-### 7.6 Staged rollout — iOS
+### 7.7 Staged rollout — iOS
 
 App Store has NO direct staged rollout for fresh releases
 (only phased release for >7-day distributions). The W8 workflow
@@ -457,7 +560,7 @@ gh workflow run mobile-production-release.yml \
     ... (other inputs)
 ```
 
-### 7.7 Env approval
+### 7.8 Env approval
 
 `mobile-production-release.yml` declares
 `environment: { name: release-channel-production }` on the
@@ -474,7 +577,7 @@ repo Settings → Environments) MUST have:
 Once an approver clicks "Approve and deploy", the workflow
 proceeds without further per-job approval.
 
-### 7.8 Rollback
+### 7.9 Rollback
 
 | Store | Possible? | How |
 |---|---|---|
