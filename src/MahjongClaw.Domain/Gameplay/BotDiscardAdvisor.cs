@@ -246,6 +246,37 @@ public static class BotDiscardAdvisor
             {
                 var smallWinSingletons = handCounts
                     .Where(entry => entry.Value == 1 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                    .Select(entry => entry.Key)
+                    .ToList();
+
+                if (smallWinSingletons.Count == 1)
+                {
+                    var singletonTile = smallWinSingletons[0];
+                    ownedCounts.TryGetValue(singletonTile, out var ownedCount);
+                    visibleCounts.TryGetValue(singletonTile, out var visibleCount);
+
+                    if (4 - ownedCount - visibleCount > 0)
+                    {
+                        var nonProtectedCandidates = candidates
+                            .Where(candidate => !candidate.Tile.Equals(singletonTile))
+                            .ToList();
+
+                        if (nonProtectedCandidates.Count > 0)
+                        {
+                            candidates = nonProtectedCandidates;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias && visibleCounts.Count > 0)
+        {
+            var smallWinPairCount = handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key));
+            if (smallWinPairCount == 0)
+            {
+                var smallWinSingletons = handCounts
+                    .Where(entry => entry.Value == 1 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
                     .Select(entry =>
                     {
                         ownedCounts.TryGetValue(entry.Key, out var ownedCount);
