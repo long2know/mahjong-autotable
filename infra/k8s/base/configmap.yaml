@@ -1,0 +1,31 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# Non-secret env defaults. Mounted into the container via `envFrom` in
+# deployment.yaml. Connection strings + JWT keys (when added) live in
+# secret.yaml. Overlays patch values (CORS origins, provider) per env.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mahjong-autotable
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+data:
+  # ── Persistence ────────────────────────────────────────────────────
+  # One of: Sqlite | Postgres | SqlServer. Overlays usually flip this
+  # to Postgres for staging/prod and leave Sqlite for ephemeral dev.
+  Persistence__Provider: "Sqlite"
+  ConnectionStrings__Sqlite: "Data Source=/data/mahjong-autotable.db"
+
+  # ── Rate limiting (Wave 6 contract) ────────────────────────────────
+  RateLimiting__Enabled: "true"
+
+  # ── Observability ──────────────────────────────────────────────────
+  # ASP.NET Core JSON console logger is enabled automatically in
+  # Production (Program.cs Phase J Wave 5). Set DOTNET_RUNNING_IN_CONTAINER
+  # for the BCL diagnostics path.
+  DOTNET_RUNNING_IN_CONTAINER: "true"
+
+  # ── CORS (Wave 6) ──────────────────────────────────────────────────
+  # Comma-list NOT supported — must use indexed env (Cors__AllowedOrigins__0).
+  # Set in overlays so the public origin is environment-specific.
+  Cors__AllowedOrigins__0: "https://mahjong.example.com"

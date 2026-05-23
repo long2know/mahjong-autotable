@@ -1,0 +1,110 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# Multi-provider EF Core CI gate. We run the full xUnit suite once
+# against SQLite (the default) and once against Postgres-16 (production
+# target) so a schema change that breaks on the non-SQLite path is
+# caught at PR review. SqlServer is intentionally omitted — the
+# official mcr.microsoft.com/mssql/server image is ~1.4GB and burns
+# >5 min just unpacking on a hosted runner. We rely on
+# `SqlServerAppDbContextModelSnapshot` review + the Postgres CI as
+# proxy; if/when GitHub-hosted runners ship faster, drop SQL Server
+# into the matrix below.
+
+name: db-providers
+
+on:
+  pull_request:
+    branches: [dev, preview, main, insider]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "src/backend/**"
+      - "docker-compose.postgres.yml"
+      - ".github/workflows/db-providers.yml"
+  push:
+    branches: [dev, insider]
+    paths:
+      - "src/backend/**"
+
+permissions:
+  contents: read
+
+jobs:
+  matrix-test:
+    name: Test (${{ matrix.provider }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [Sqlite, Postgres]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mahjong_autotable_ci
+          POSTGRES_USER: mahjong
+          POSTGRES_PASSWORD: mahjong
+        ports:
+          - 5432:5432
+        # GitHub Actions skips this service for non-Postgres matrix
+        # cells via the `if:` on the wait-for-db step below; we still
+        # spin up the container for every cell because services are
+        # job-scoped, but the Postgres container is cheap (~6s) and
+        # the simpler config is worth the runtime cost.
+        options: >-
+          --health-cmd "pg_isready -U mahjong -d mahjong_autotable_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      ASPNETCORE_ENVIRONMENT: Test
+      Persistence__Provider: ${{ matrix.provider }}
+      ConnectionStrings__Sqlite: Data Source=ci-test.db
+      ConnectionStrings__PostgreSql: Host=localhost;Port=5432;Database=mahjong_autotable_ci;Username=mahjong;Password=mahjong
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Wait for Postgres
+        if: matrix.provider == 'Postgres'
+        run: |
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if pg_isready -h localhost -p 5432 -U mahjong -d mahjong_autotable_ci; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "postgres never became ready"
+          exit 1
+
+      - name: Restore
+        working-directory: src/backend
+        run: dotnet restore
+
+      - name: Build
+        working-directory: src/backend
+        run: dotnet build -c Release --no-restore
+
+      - name: Test (${{ matrix.provider }})
+        working-directory: src/backend
+        run: dotnet test -c Release --no-build --logger "trx;LogFileName=test-results-${{ matrix.provider }}.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.provider }}
+          path: src/backend/**/TestResults/*.trx
+          if-no-files-found: warn
+          retention-days: 14

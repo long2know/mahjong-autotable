@@ -1,0 +1,25 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# Persistent volume claim for the SQLite DB. Only used when
+# Persistence__Provider=Sqlite — when Postgres/SqlServer take over,
+# the mount is still present but the file path is unused. The 2Gi
+# request matches Wave-3 capacity planning (~30 days of game-event
+# rows at the worst-case Hudson churn rate).
+#
+# ReadWriteOnce is intentional: SQLite cannot tolerate multi-writer
+# access, so Sqlite + replicas>1 is unsupported (the affinity cookie
+# routes sessions to a single pod but does NOT serialise writes
+# across pods). Production deploys should run with Postgres/SqlServer
+# the moment they need >1 replica writing to the DB.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mahjong-autotable-data
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

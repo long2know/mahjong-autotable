@@ -1,0 +1,43 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# Staging overlay. Single-replica + Sqlite is the cheapest possible footprint
+# for a soak environment; flip to Postgres + replicas=2 in the deployment
+# patch below the moment matchmaking volume warrants it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mahjong-staging
+namePrefix: staging-
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: mahjong-autotable
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Ingress
+      name: mahjong-autotable
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: staging.mahjong.example.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: staging.mahjong.example.com
+
+configMapGenerator:
+  - name: mahjong-autotable
+    behavior: merge
+    literals:
+      - Cors__AllowedOrigins__0=https://staging.mahjong.example.com
+      - ASPNETCORE_ENVIRONMENT=Staging
+
+images:
+  - name: ghcr.io/long2know/mahjong-autotable
+    newTag: latest

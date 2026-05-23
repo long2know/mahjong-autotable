@@ -1,0 +1,118 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# Base Deployment for mahjong-autotable. Overlays (overlays/staging,
+# overlays/prod) patch the image tag, replica count, and resource limits.
+#
+# Container contract (matches Dockerfile + Wave 4 publish workflow):
+#   - Listens on :8080 (Kestrel via ASPNETCORE_URLS=http://+:8080).
+#   - /health is the canonical Kubernetes liveness + readiness probe.
+#   - BUILD_SHA env var is set at image build time and surfaced by /health.
+#   - SQLite DB lives at /data/mahjong-autotable.db on a PVC-backed mount
+#     (overlay-specific). When using Postgres/SqlServer, no /data mount is
+#     required — the connection string points at the external DB.
+#
+# Sticky sessions for WebSockets are enforced at the Ingress layer
+# (see ingress.yaml). Two replicas + rolling update gives zero-downtime
+# deploys; the upgrade pause matches the Dockerfile HEALTHCHECK start-period.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mahjong-autotable
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mahjong-autotable
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mahjong-autotable
+        app.kubernetes.io/component: api
+    spec:
+      # Non-root runtime — matches Dockerfile USER 1000 directive.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # ghcr.io requires an image-pull secret (created from a PAT with
+      # `read:packages` scope). Overlays may patch this name to match
+      # the cluster's actual secret. See docs/kubernetes.md.
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: api
+          image: ghcr.io/long2know/mahjong-autotable:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+          envFrom:
+            - configMapRef:
+                name: mahjong-autotable
+            - secretRef:
+                name: mahjong-autotable
+                optional: true
+          # Liveness: process is up. Readiness: ready to serve traffic.
+          # Both hit /health (Phase J Wave 3 contract — see Program.cs).
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+          # Conservative defaults — Hudson load-tested 2 replicas / 250 mCPU
+          # sustaining ~30 RPS w/ 12 concurrent Changsha games. Overlays may
+          # increase for stress / soak runs (see overlays/prod).
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # `data` is the SQLite mount. When ConnectionStrings__Sqlite is
+        # repointed at Postgres/SqlServer, the volume is still mounted
+        # but unused — keep the manifest portable across providers.
+        - name: data
+          persistentVolumeClaim:
+            claimName: mahjong-autotable-data
+        - name: tmp
+          emptyDir: {}

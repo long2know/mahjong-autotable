@@ -80,10 +80,18 @@ COPY --from=backend-build /out/api/ ./
 # request — no backend change required.
 COPY --from=frontend-build /out/autotable/ /frontend/autotable/
 
-# SQLite database lives on a writable named volume. Connection string is
-# overridden via environment so the EF Core path is absolute (the in-repo
-# default `data/mahjong-autotable.db` is relative to ContentRootPath).
-RUN mkdir -p /data && chmod 777 /data
+# Phase J Wave 7 — Apone (container hardening). Run as a fixed non-root
+# UID/GID so the runtime image is safe to schedule on Kubernetes clusters
+# that enforce `runAsNonRoot: true` (see infra/k8s/base/deployment.yaml).
+# UID 1000 is the conventional first non-system user across both Debian
+# (the aspnet base image) and the Kubernetes Pod Security Standard
+# `restricted` profile. The /data volume is owned by that UID so SQLite
+# can open/write its DB file without root.
+RUN if ! getent group 1000 >/dev/null; then groupadd -g 1000 mahjong; fi \
+    && if ! getent passwd 1000 >/dev/null; then useradd -u 1000 -g 1000 -M -s /usr/sbin/nologin mahjong; fi \
+    && mkdir -p /data \
+    && chown -R 1000:1000 /data /app \
+    && chmod 755 /data
 
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
@@ -92,6 +100,7 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     ConnectionStrings__Sqlite="Data Source=/data/mahjong-autotable.db" \
     Persistence__Provider=Sqlite
 
+USER 1000:1000
 EXPOSE 8080
 VOLUME ["/data"]
 

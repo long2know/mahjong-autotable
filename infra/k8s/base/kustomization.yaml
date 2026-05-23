@@ -1,0 +1,24 @@
+# Phase J Wave 7 — Apone (DevOps).
+#
+# Base kustomization. Overlays (overlays/staging, overlays/prod) inherit
+# everything here and patch the image tag, replica count, ingress host,
+# resource limits, and provider/connection-string env.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+commonLabels:
+  app.kubernetes.io/name: mahjong-autotable
+  app.kubernetes.io/part-of: mahjong-autotable
+
+resources:
+  - configmap.yaml
+  - secret-template.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+
+images:
+  - name: ghcr.io/long2know/mahjong-autotable
+    newTag: latest
