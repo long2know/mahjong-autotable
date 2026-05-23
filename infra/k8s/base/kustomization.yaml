@@ -30,6 +30,13 @@ resources:
   # can `kubectl apply -k . --prune` to peel it back without disturbing
   # the rest of the base.
   - turn-server.yaml
+  # Phase K Wave 6 — Apone (DevOps). Production coturn manifest set
+  # (Deployment + ConfigMap + Secret/ExternalSecret) replacing the W2
+  # scaffold. NetworkPolicy + HMAC auth wired into turnserver.conf.
+  # See docs/turn-server-setup.md §"k8s deployment" for the apply runbook.
+  - coturn-deployment.yaml
+  - coturn-configmap.yaml
+  - coturn-secret.yaml
 
 images:
   - name: ghcr.io/long2know/mahjong-autotable
