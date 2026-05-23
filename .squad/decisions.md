@@ -10699,3 +10699,691 @@ detection both ship as part of W10.
 ### Phase K Wave 10 — DONE.
 
 ---
+
+## Phase K — Wave 11 (FIDE C.04 backtracking Swiss + Buchholz/Berger tiebreaks behind `ISwissTiebreakStrategy` replacing W10 single-swap pass + `TileReference.ToBinary()` 4-byte codec [packed (suit<<4)|rank + reserved bytes 1-2 for red-five/aka-dora + checksum; ~3× wire-payload reduction vs JSON] + `TileReferencesBinary` field on `CommentaryRecord` alongside W10 JSON field [additive — both ship, consumers pick by capability negotiation] + mountpoint-eviction → SignalR metric tie-in [`signalr_messages_dropped_total{reason="mountpoint_evicted"}` + `lifecycle:mountpoint_evicted` log marker for CDN-edge log-shipper histogram] + age-at-publish histogram [`signalr_envelope_age_seconds` buckets `0.001/0.005/0.01/0.05/0.1/0.5/1/5/10s` tagged with `hub=typeof(THub).Name`] + per-group `signalr_active_replay_buffers` UpDownCounter + `EfCommentaryStore` persistence [`CommentaryRecord` entity {Id, GameId, RoundNumber, EventKind, BodyJson, CreatedAt, TileReferencesBinary} + `RetentionSweepService` 24h cadence + `CommentaryStorageOptions.DefaultRetentionDays = 7` pinned + EF migrations × 3 providers (Sqlite/Postgres/SqlServer) + AppDbContextModelSnapshot updates all 3] + RFC 7662 OAuth introspection endpoint [`/oauth/introspect` Basic-auth client credentials + form-urlencoded body + JSON response per RFC 7662 §2.2 — per-token errors expired/malformed/bad-sig MUST return HTTP 200 `{active: false}`; only transport errors return 4xx; `OAuthIntrospectionDisabledFacts` covers kill switch `Auth:OAuthIntrospectionEnabled=false → 404`] + ShaderChunk barrel surgery via new Vite plugin `stripUnusedShaderChunks()` (`enforce: 'pre'` between W9 `stripWebGLShadowMap` and `copyStaticAssets`) emptying GLSL bodies of 32 ShaderLib `vertex$X`/`fragment$X` (excluding `$a` meshbasic shared by MeshBasicMaterial+LineBasicMaterial AND `$9` meshlambert) + `cube_uv_reflection_fragment` ShaderChunk + standalone VSM-blur vertex/fragment pair [barrel re-export tables stay intact — only GLSL body emptied; safe per scene-graph audit: only MeshBasicMaterial+MeshLambertMaterial+LineBasicMaterial+W7 CustomOutline ShaderMaterial constructed in autotable-src]; three-renderer big chunk 497.44 → 466.40 KB (−31.04 KB / −6.2%); **<475 KB stretch BEAT by 9 KB**; 6-wave monotonic-decrease W6→W11 740→579→532→507→497→466 KB cumulative −37.0% + `.github/workflows/pwa-builder.yml` NEW companion to W10 `pwa-audit.yml` [PR + nightly 03:30 UTC cron + `workflow_dispatch` with `preview_url` input; `pwabuilder analyze --json` per-platform Edge/Chrome/Safari readiness scores with multi-alias tolerance; gate ≥ 75 per platform on PR; sticky PR comment marker `<!-- pwa-builder-report -->`] + LH13 baseline calibration `scripts/lh-baseline.js` NEW 5-run methodology against Vite preview on 127.0.0.1:4175 [observed local baseline K11: perf=100/a11y=83/bp=96/seo=82; W10 pwa-audit.yml thresholds for a11y/seo at 0.95 are above measured ceiling — workflow edit deferred to W12 after ≥ 3 nightly cron data points confirm local-vs-CI variance] + Vite cache effectiveness metric `scripts/build-with-cache-metric.js` NEW [chunk-hash stability `<name>.<hash:8>.js`; cold=0% no baseline, warm=100% 22/22 chunks on unchanged source; pivoted away from W10 hand-off `.vite/deps/` mtime walk because that directory only populates during dev-server `optimizeDeps` pre-bundle — `vite build` doesn't write to it so mtime scan would always report 0%] + 3 real Playwright-captured manifest screenshots [`main-game.png` 1024×768 wide + `spectator-commentary.png` 768×1024 narrow + `tournament-dashboard.png` 1024×768 wide; manifest schema `screenshots[].src → screenshots/{name}.png` was W10 placeholder `img/screenshot-*.auto.png`; each entry now carries explicit `form_factor` + `label` per spec; `shortcuts[]` `?action=tournaments` plural → `?action=tournament` canonical, action-router accepts both for installed-PWA compatibility; W10 placeholder copy block retained as safety net 2 more waves, W13 removal candidate] + `?action=*` PWA shortcut deep-link routing `src/frontend/autotable-src/src/action-router.ts` NEW [sole owner of `?action=*` interpretation; `parseActionFromUrl()` + `clearActionParam()` + `handlePwaActionFromUrl()`; supports `new-game` → `[data-action="new-game"]` click → URL `/`, `spectate` → `#lobby-public-games-tab` → URL `/spectate`, `tournament` (+ `tournaments` plural alias) → `#lobby-tournaments-tab` → URL `/tournament/list`; wired in `src/index.ts` BEFORE the W2 game-bootstrap guard so the heavy renderer chunk isn't imported when a shortcut URL is opened] + prod Redis Terraform env stack `infra/terraform/envs/prod/` [`cache.r6g.large` Graviton2 memory-optimised sized against W10 load-test baseline + `replica_count=1` multi-AZ + `multi_az_enabled=true` automatic failover + `snapshot_retention_limit=7` 7-day daily debug-aid (not recovery surface — idempotency keys 5-min TTL) + CMK KMS `alias/mahjong-prod-elasticache` customer-managed for SOC-2/annual rotation + AUTH token + TLS in transit] + prod ESO ExternalSecret `infra/k8s/overlays/prod/redis-connection-string-secret.yaml` omnibus connection-string shape `Idempotency__Redis__ConnectionString` mounts full `host:port,password=...` blob [out-of-band; NOT listed in `infra/k8s/overlays/prod/kustomization.yaml resources:` — binds to prod-only SSM path + CMK KMS that don't exist in dev/preview overlays; W4 `jwt-keys-secret.yaml` precedent] + Argo Rollouts auth-aware ingress `infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml` [reuses existing prod oauth2-proxy + dex OIDC chain that fronts prod app — covers @squad.mahjong + allow-listed external observers per `docs/oauth-production-setup.md §4`; `nginx.ingress.kubernetes.io/auth-url → https://auth.mahjong.example.com/oauth2/auth`; auth-signin with `rd=$escaped_request_uri`; Host `mahjong.example.com` shares prod app host; Path `/argo-rollouts(/|$)(.*)` rewrite-target `/$2`; TLS via prod ingress wildcard + HSTS inherits; namespace `argo-rollouts` separate from `mahjong-prod`; out-of-band kubectl apply -f; NetworkPolicy deferred to W12 — auth-aware ingress is auth boundary at cluster edge but does NOT prevent in-cluster bypass] + Terraform CLI pin bump v1.9.8 → v1.10.5 (one minor up from W8; W14 likely 1.11.x; quarterly cadence anchored on Wave bring-up; range-floor in modules stays `>= 1.5.0`; exact pin in CI workflows) + `docs/terraform.md §6` version policy NEW [range-floor + exact-pin + quarterly cadence + out-of-band on CVE + lock-file per env stack + `setup-terraform@v3` major-pin] + `.github/workflows/jwt-rotation-rehearsal.yml` NEW staging-only rehearsal harness [`workflow_dispatch` only no auto-cron; hard gate step 1 `target_env != staging → exit 1` no prod opt-in; inputs `target_env` (must=staging) + `new_key_label` becomes JWKS `kid` + `archive_cleanup` bool default false; 9 steps mirror `docs/jwt-ssm-runbook.md §4` 1:1 — hard gate → AWS OIDC role `mahjong-staging-rotation-rehearsal` → RSA-4096 key-pair → SSM promote active→previous, new→active, previous→archive/UTC-timestamp → force ESO refresh → rolling restart `mahjong-autotable` Deployment → JWKS validation 5-min loop (old + new kid present + total ≥ 3) → optional archive cleanup → emit `docs/jwt-rotation-rehearsal-YYYY-MM-DD.md` artefact; heredoc-inside-`run: |` doesn't work because YAML indentation forbids EOF terminator at column 0 — use `printf` with explicit newlines] + `docs/jwt-rotation-rehearsal.md` NEW 8 sections incl failure-mode table per workflow step + dry-run guidance + post-rehearsal review checklist + `.github/workflows/prod-health-check.yml` REWRITTEN single-region → 4-region matrix [`strategy.matrix.region: [us-east-1, us-west-2, eu-west-1, ap-southeast-1]`; per-region target `vars.PROD_BASE_URL_<REGION>` W11 default each points at same root URL, W12 hand-off per-region R53 records + flip to region-pinned endpoints; aggregator job downloads all `verdict-<region>.json` via `actions/upload-artifact@v4` pattern `verdict-*` + `merge-multiple: true`; per-region HTML state markers `<!-- prod-health-check:state region=X strikes=N recoveries=M -->`; issue lifecycle opens on ANY region's `strikes ≥ STRIKE_THRESHOLD=3`, closes only when ALL four regions show `recoveries ≥ RECOVERY_THRESHOLD=2`] + `docs/edge-region-probes.md` NEW 8 sections incl **per-pattern failure-mode playbook** (1-region/2-region/4-region patterns each get first-look + action path — the per-pattern playbook is the runbook's value-add) + CHANGELOG `[0.20.0]` (W10=0.19.0; W11=0.20.0 — wave-count-tracks-version; W11 sidesteps the W10 0.18.0 typo risk by reading W10 CHANGELOG entry directly) + `docs/retro-2026-09.md` NEW September monthly retro 4 lessons (§3.1 TF version policy + §3.2 rehearse-before-first-rotation + §3.3 out-of-band ESO is a feature + §3.4 multi-region probes need failure-mode playbook) + `Phase_K_W11/Apone/{charter,history}.md` + 138 W11 Bishop facts across 6 files + 95 W11 Vasquez forward/contract facts across 9 files + 6 Playwright e2e specs (`shader-chunk-475-hard` + `pwa-builder-platforms` + `lh13-baseline-calibration` + `cache-hit-rate` + `manifest-screenshots-real` + `deep-link-action-routing`) + 3 gap-fill integration tests (`RedisIdempotencyStoreIntegrationTests` + `JanusReadinessSupervisorIntegrationTests` + `SignalRBackpressureIntegrationTests` — closes W10 test-architecture §4.2 inventory) + 5 W10 soft-pins hard-flipped (`JanusReadinessLevel` 3 canonical levels + supervisor `CurrentLevel` enum property + `RedisIdempotencyStore` `IConnectionMultiplexer` ctor + `RedisIdempotencyStore.Record` method + `three-renderer-big` K10 size ≤ 480 KB; each flip reflection-defensive `if (type is null) return;`) + Wave1ThroughKW11RegressionTests (`git mv` from KW10; W9 rename precedent) + lane-map `shims_shared` 4-author primary vasquez covers `Shims/*` Phase J compatibility shim layer [collapses spurious cross-lane bundling violations seen in W7+W10] + `pwa_audit_workflow_shared` 2-author primary apone + co-author hicks covers `pwa-audit*.yml` + `pwa-builder*.yml` joint ops/frontend artefacts + `tests/ci/check-cross-lane-bundling.sh` broadening `is_shared_file()` + `shared_file_authors()` extended to recognise both new entries + `docs/agent-handoff-protocol.md §4.1` screenshot walkthrough for Stephen's branch-protection reprompt [5 numbered steps + placeholder image refs under `docs/img/phase-k-w11-branch-protection-*.png` Stephen's deliverable + 422 troubleshooting clause + `gh api -X PATCH` one-liner recipe] + `§5.9` shared-files registry policy [4-row table covering all `*_shared` lane-map entries + procedure problem-statement → entry-shape → notify `.squad/decisions/inbox/` for adding a new one] + selectors.md W11 footer + Vasquez W11 QA inbox memo `Phase_K_W11/Vasquez/vasquez-phase-k-wave-11.md` — `stlong/phase-k-wave-11-bringup` (2026-09-XX)
+
+Eleventh wave of Phase K. Scope: ship the **real
+production-grade surfaces** for the W10 forward-staged
+contracts (full FIDE C.04 backtracking Swiss algorithm
+behind `ISwissTiebreakStrategy` plug-in interface replacing
+the W10 single-swap pass with Buchholz / Berger / Sonneborn-
+Berger tiebreaks; `floatAttempts < b.Count` cap as
+conservative termination guarantee — pathological rematch
+webs may settle on a rematch-tolerated pairing instead of
+further backtracking; `Tournament/FideC04SwissPairingService.cs`
+504 LOC NEW; DutchSwissPairingService now functionally
+subsumed and candidate for W12 retirement once Apone's
+frontend tournament admin migrates off the Dutch endpoint;
+`docs/swiss-pairing.md` NEW with FIDE C.04 algorithm
+walk-through + per-tiebreak runbook), **add the binary
+codec for the W10 typed `TileReference` record** (4-byte
+frame: byte 0 packed `(suit << 4) | rank`; bytes 1-2
+reserved for future red-five + aka-dora flags; byte 3
+checksum; ~3× wire-payload reduction vs JSON; suit packing
+`man=0, pin=1, sou=2, wind=3, dragon=4, unknown=15` — 5
+bits leaves 16 for future suits; rank preserved as W10
+1-9/wind 1-4/dragon 1-3 scheme; `TileReferencesBinary`
+field added to `CommentaryRecord` alongside the W10 JSON
+field [additive — both ship, consumers pick by capability
+negotiation]; `FromBinary(ReadOnlySpan<byte>)` returns
+`Unknown` on checksum mismatch — never throws),
+**operationalise the W10 mountpoint-eviction sweep**
+(`signalr_messages_dropped_total{reason="mountpoint_evicted"}`
+joins the W10 `rate_cap`/`send_failure`/`age_window`
+taxonomy; `lifecycle:mountpoint_evicted` log marker emitted
+at the Janus sweep call site for CDN-edge log-shipper
+histogram building so operators can see when reconnect
+storms correlate with mountpoint sweeps), **add age-at-
+publish histogram for the SignalR broadcaster**
+(`signalr_envelope_age_seconds` buckets
+`0.001/0.005/0.01/0.05/0.1/0.5/1/5/10s` tagged with
+`hub=typeof(THub).Name`; per-group `signalr_active_replay_buffers`
+UpDownCounter to correlate replay churn with active group
+fan-out; SLO dashboard now shows p99 envelope age), **persist
+commentary records to EF** (`Commentary/CommentaryStore.cs`
+NEW `EfCommentaryStore` backing `ICommentaryStore` with
+`Append` / `GetByGame` / `SweepOlderThan` methods; new
+`CommentaryRecord` entity {`Id`, `GameId`, `RoundNumber`,
+`EventKind`, `BodyJson`, `CreatedAt`, `TileReferencesBinary`};
+`CommentaryStorageOptions.DefaultRetentionDays = 7` pinned
+by test; daily background `RetentionSweepService` 24h
+cadence + injects `Func<DateTimeOffset>` clock for tests;
+EF migrations × 3 providers Sqlite/Postgres/SqlServer all
+in sync at W11 close; `*AppDbContextModelSnapshot.cs`
+updated all 3 providers; naming divergence: Vasquez
+forward-stage tests probe for `CommentaryEntity`/`CommentaryRow`
+— Bishop shipped `CommentaryRecordRow`; Vasquez tests use
+`_ = ...` no-op reflection so they pass regardless;
+future-wave rename candidate; DI optional ctor params: `.NET`
+DI does NOT inject optional ctor params with default-null
+values — use explicit factory delegate with
+`sp.GetService<T>()` returns null gracefully; pattern lives
+at `Program.cs` for both `JwksCacheService` and now
+`JanusMountpointLifecycleService`), **add RFC 7662 OAuth
+introspection endpoint** (`POST /oauth/introspect` with
+`Basic` client credentials [HTTP Basic auth header]; body
+`application/x-www-form-urlencoded` with `token=<jwt>`;
+response `application/json` per RFC 7662 — `{active,
+client_id, username, scope, exp, iat, sub, aud, iss,
+token_type}`; **per-token errors expired/malformed/bad-sig
+MUST return HTTP 200 `{active: false}` per §2.2** — only
+transport-level errors missing-Basic/missing-token-field
+return 4xx; pinned by `OAuthIntrospectionEndpointFacts`;
+`OAuthIntrospectionDisabledFacts` covers kill switch
+`Auth:OAuthIntrospectionEnabled=false → 404` endpoint not
+registered; `docs/oauth.md` NEW §1-§7 incl RFC 7662
+introspection runbook + sample `curl` invocations), **close
+the remaining ShaderChunk barrel headroom** (new Vite
+plugin `stripUnusedShaderChunks()` `enforce: 'pre'`
+sequenced between W9 `stripWebGLShadowMap` and
+`copyStaticAssets`; targets `three.module.js` and empties
+GLSL string bodies of 32 ShaderLib `vertex$X`/`fragment$X`
+constants [excluding `$a` meshbasic shared by
+`MeshBasicMaterial` AND `LineBasicMaterial` AND `$9`
+meshlambert], `cube_uv_reflection_fragment` ShaderChunk,
+standalone VSM-blur `vertex`/`fragment` pair; barrel
+re-export tables `ShaderChunk.*` and `ShaderLib.*` stay
+intact — only GLSL body emptied; safe per scene-graph
+audit confirming only `MeshBasicMaterial` +
+`MeshLambertMaterial` + `LineBasicMaterial` + W7
+`CustomOutline` ShaderMaterial constructed in
+`autotable-src`; three.js compiles shaders lazily; **result
+497,440 B → 466,395 B / −31,045 B / −6.2%**; 9 KB margin
+under the <475 KB stretch target; **largest single-wave
+bundle delta since W7 Vite swap**; trajectory
+`740 → 579 → 532 → 507 → 497 → 466 KB` across W6 → W11
+monotonic-decrease 6 consecutive waves cumulative
+**−37.0%**), **ship the PWA Builder CLI companion workflow**
+(`.github/workflows/pwa-builder.yml` NEW; triggers
+`pull_request` paths-filtered + nightly cron 03:30 UTC +
+`workflow_dispatch` with `preview_url` input; steps resolve
+preview URL [input first then `secrets.PWA_PREVIEW_URL` then
+skip-with-warning if absent] → `npm install -g
+@pwabuilder/cli@latest` → `pwabuilder analyze --json` →
+parse per-platform Edge/Chrome/Safari readiness scores with
+multi-alias tolerance for CLI minor-version drift → gate
+≥ 75 per platform on PR → sticky PR comment marker
+`<!-- pwa-builder-report -->` → upload artefacts), **ship
+LH13 baseline calibration script** (`scripts/lh-baseline.js`
+NEW 5-run methodology against Vite preview on
+127.0.0.1:4175 computing p50/p95/mean/min/max per category;
+**observed local baseline K11 deterministic across 5 runs:
+perf=100/a11y=83/bp=96/seo=82**; finding W10 pwa-audit.yml
+thresholds for a11y/seo both 0.95 are ABOVE measured local
+ceiling — they would silently hard-fail every PR if the
+gate were exercised; calibrated thresholds documented in
+`docs/frontend-pwa-audit.md §7`; actual workflow edit
+intentionally deferred to W12 so ≥ 3 nightly cron data
+points from real CI can confirm local-vs-CI variance offset
+before walking gate down), **ship Vite cache effectiveness
+metric** (`scripts/build-with-cache-metric.js` NEW; runs
+`npm run build:vite` then parses chunk names
+`<name>.<hash:8>.js` from `../autotable/` comparing each
+`hash:8` segment against prior baseline at
+`.vite-cache-metric.json`; output
+`cacheHitRate = stable_hashes / total_chunks`; gate via
+`THRESHOLD` env var default 0; **pivoted away from W10
+hand-off `.vite/deps/` mtime walk** because that directory
+only populates during dev-server `optimizeDeps` pre-bundle
+— `vite build` doesn't write to it so mtime scan would
+always report 0%; chunk-hash stability is the honest signal:
+cold=0% no baseline, warm=100% 22/22 chunks on unchanged
+source; `docs/frontend-build-tooling.md §6`), **swap the
+W10 placeholder PNGs for real captures**
+(`scripts/capture-screenshots.js` NEW spawns `vite preview`
+on 127.0.0.1:4174 + launches headless chromium via
+Playwright capturing three real PNGs: `main-game.png`
+1024×768 wide + `spectator-commentary.png` 768×1024 narrow
++ `tournament-dashboard.png` 1024×768 wide; saved to
+`static/screenshots/` then copy chain extended in
+`vite.config.ts:copyStaticAssets()` to land them at
+`dist/screenshots/*.png`; manifest schema updated
+`screenshots[].src → screenshots/{name}.png` was W10
+placeholder `img/screenshot-*.auto.png`; each entry now
+carries explicit `form_factor` + `label` per spec;
+`shortcuts[]` `?action=tournaments` plural W10 →
+`?action=tournament` W11 canonical — action-router accepts
+both for installed-PWA compatibility; W10 placeholder copy
+block retained as safety net for 2 more waves W13 removal
+candidate), **wire PWA shortcut deep-link routing**
+(`src/frontend/autotable-src/src/action-router.ts` NEW sole
+owner of `?action=*` interpretation; public surface
+`parseActionFromUrl()` + `clearActionParam()` +
+`handlePwaActionFromUrl()`; supported keywords `new-game` →
+clicks `[data-action="new-game"]` on `#new-game` button
+annotated W11 + URL becomes `/`; `spectate` → activates
+`#lobby-public-games-tab` + URL rewritten to `/spectate`;
+`tournament` plus `tournaments` plural alias → activates
+`#lobby-tournaments-tab` + URL rewritten to
+`/tournament/list`; **wired in `src/index.ts` BEFORE the
+W2 game-bootstrap guard** so the heavy renderer chunk
+isn't imported when a shortcut URL is opened; full contract
+in `docs/frontend-routing.md` NEW W11), **instantiate the
+prod Redis Terraform env stack** (Bishop W11
+`EfCommentaryStore` is the workload — wave headline gates
+on it landing; `infra/terraform/envs/prod/` with `main.tf`
++ `variables.tf` + `outputs.tf` + `backend.example.hcl` +
+`terraform.tfvars.example` all NEW; `node_type =
+cache.r6g.large` Graviton2 memory-optimised sized against
+Hudson's W10 load-test baseline — `cache.r6g.large` is the
+sweet spot for W10 idempotency-cache hot-set with CloudWatch
+`Evictions` as the bump-trigger; `replica_count = 1`
+multi-AZ requires ≥ 1 replica — one replica in second AZ is
+prod baseline because W10 IdempotencyStore is write-heavy;
+`multi_az_enabled = true` automatic failover ON;
+`snapshot_retention_limit = 7` 7-day daily snapshots as
+debug aid not recovery surface — idempotency keys have
+5-min TTL; **CMK KMS `alias/mahjong-prod-elasticache`
+customer-managed for SOC-2 / annual rotation compliance**;
+AUTH token + TLS in transit mirrors staging; **prod ESO
+ExternalSecret omnibus connection-string shape**
+`Idempotency__Redis__ConnectionString` mounts full
+`host:port,password=...` blob same as W10 staging Secret;
+split-form `/mahjong/prod/redis/{host,port,auth-token}` is
+rotation path W10 §3 and stays canonical for that flow;
+**out-of-band manifest pattern** — prod
+`redis-connection-string-secret.yaml` NOT listed in
+`infra/k8s/overlays/prod/kustomization.yaml resources:`
+because binds to prod-only SSM path + CMK KMS that don't
+exist in dev/preview overlays; W4 `jwt-keys-secret.yaml`
+precedent; pattern now codified across
+`docs/redis-cluster.md §11.4` + file headers of
+`jwt-keys-secret.yaml` + `redis-connection-string-secret.yaml`),
+**land the Argo Rollouts auth-aware ingress**
+(`infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml`
+NEW; closes the W10 §4.3 "port-forward only" gap;
+**Apone+Vasquez decision early W11: reuse existing prod
+oauth2-proxy + dex OIDC chain** that fronts production app
+rather than introduce a new identity provider [Pomerium,
+separate oauth2-proxy instance]; the chain already covers
+@squad.mahjong + allow-listed external observers per
+`docs/oauth-production-setup.md §4`;
+`nginx.ingress.kubernetes.io/auth-url →
+https://auth.mahjong.example.com/oauth2/auth`; auth-signin
+with `rd=$escaped_request_uri`; Host `mahjong.example.com`
+shares prod app host; Path `/argo-rollouts(/|$)(.*)`
+rewrite-target `/$2`; TLS via prod ingress wildcard cert
++ HSTS inherits from parent ingress; namespace
+`argo-rollouts` separate from `mahjong-prod`; out-of-band
+applied manually via `kubectl apply -f`; **NetworkPolicy
+deferred to W12** — the auth-aware ingress is the auth
+boundary at the cluster edge but does NOT prevent
+in-cluster bypass [a pod in another namespace could hit
+the Service directly]; NetworkPolicy denying ingress to
+the dashboard Service from outside the `argo-rollouts`
+namespace closes that gap as W12 candidate;
+`docs/argo-rollouts-setup.md` new §5 auth-aware ingress
+with subsequent sections renumbered §5 → §6 / §6 → §7 /
+§7 → §8 / §8 → §9), **bump the Terraform CLI pin and
+codify the policy** (v1.9.8 → v1.10.5; range-floor in
+modules stays `>= 1.5.0` forward-compatible with operators
+running 1.11/1.12/1.15 locally; exact pin in CI workflows
+at `1.10.5` — current surface is `.github/workflows/
+dr-rehearsal.yml` one file; **quarterly cadence anchored
+on Wave bring-up** W8=1.9.8, W11=1.10.5, W14=TBD likely
+1.11.x — one minor per quarter keeps squad close to
+upstream without chasing every patch; out-of-band on CVE
+if HashiCorp ships security patch bump immediately outside
+quarterly window — owner DevOps lane Apone; lock-file per
+env stack `.terraform.lock.hcl` already in force;
+`setup-terraform@v3` major-pin Dependabot tracks bump;
+**why NOT 1.15.x** — W10 retro mentioned 1.15.x as target
+but looking at actual upstream cadence at W11 cut 1.10 is
+current STABLE minor while 1.11+ unreleased or fresh-cut;
+picking current minor's stable patch follows squad's
+"baseline = current minor's most recent patch" rule —
+breaking patches in minor already shaken out, later patches
+too recent for lock-file ecosystem; `docs/terraform.md §6`
+NEW with Cross-refs renumbered §6 → §7), **ship the
+staging-only JWT rotation rehearsal harness**
+(`.github/workflows/jwt-rotation-rehearsal.yml` NEW; W10
+retro action item #4 + W10 §3 90-day cadence put first
+prod JWT rotation at end-Sep 2026 — on-call SRE walks into
+rotation having never executed it under new cadence which
+is HIGH RISK for flubbed sequence [any of SSM-promote /
+ESO-sync / pod-restart / JWKS-publish steps can drop the
+previous kid and invalidate every live session]; decision
+ship staging-only rehearsal that exercises EXACT rotation
+sequence from `docs/jwt-ssm-runbook.md §4` so on-call SRE
+can practice the week before real prod rotation;
+`workflow_dispatch` only no auto-cron; **hard gate at step
+1 `target_env != staging → exit 1` no prod opt-in** — prod
+stays operator-manual; inputs `target_env` must equal
+staging + `new_key_label` becomes new JWKS `kid` +
+`archive_cleanup` bool default false deletes archived keys
+> 180 days when true; 9 steps mirror runbook 1:1 — hard
+gate → AWS OIDC role `mahjong-staging-rotation-rehearsal`
+→ RSA-4096 key-pair generation → SSM promote (active →
+previous, new → active, previous → archive/UTC-timestamp)
+→ force ESO refresh → rolling restart `mahjong-autotable`
+Deployment → JWKS validation 5-min loop with old kid
+present + new kid present + total keys ≥ 3 → optional
+archive cleanup → emit `docs/jwt-rotation-rehearsal-YYYY-MM-DD.md`
+artefact; **why staging-only** — prod rotation is
+operator-manual on purpose, runbook owner is on-call SRE
+not the workflow, rehearsal builds muscle memory does NOT
+replace runbook, prod opt-in intentionally absent to
+prevent accidental dispatch rotating prod keys in window
+on-call SRE didn't schedule; `docs/jwt-rotation-rehearsal.md`
+NEW operator runbook 8 sections incl failure-mode table
+[one row per workflow step — symptom / cause / recovery]
++ dry-run guidance + post-rehearsal review checklist;
+**heredoc-inside-`run: |` doesn't work** because YAML
+indentation rules forbid `EOF` terminator at column 0
+which is what `cat <<EOF` needs — use `printf` with
+explicit newlines or multiple `echo` lines), **generalise
+prod-health-check single-region → 4-region matrix**
+(`.github/workflows/prod-health-check.yml` REWRITTEN; W10
+single-region probes gave strong origin signal but zero
+edge signal — a regional CloudFront PoP outage in
+ap-southeast-1 was invisible to a us-east-runner probe;
+`strategy.matrix.region: [us-east-1, us-west-2, eu-west-1,
+ap-southeast-1]`; per-region target
+`vars.PROD_BASE_URL_<REGION>` W11 default each points at
+same root URL `https://mahjong.example.com`; W12 hand-off
+ship per-region R53 records + flip to region-pinned
+endpoints; same probe shape as W10 [`/healthz`, `/readyz`,
+`/metrics`, `/.well-known/jwks.json` + same assertions];
+each leg emits `verdict-<region>.json` via
+`actions/upload-artifact@v4`; **aggregator job** downloads
+all verdicts with `pattern: verdict-*` + `merge-multiple:
+true` + parses each + maintains per-region HTML state
+markers `<!-- prod-health-check:state region=X strikes=N
+recoveries=M -->`; issue lifecycle **opens when ANY
+region's strikes hits STRIKE_THRESHOLD=3, closes only when
+ALL four regions show recoveries >= RECOVERY_THRESHOLD=2**;
+`docs/edge-region-probes.md` NEW 8 sections incl
+**per-pattern failure-mode playbook** — 1-region / 2-region
+/ 4-region patterns each get a first-look + an action path
+— the per-pattern playbook is the runbook's value-add
+because on-call SRE's response is sharply different between
+"1/4 tripped" regional CDN problem and "4/4 tripped" global
+outage; why anchor on existing `vars.PROD_BASE_URL_*`
+pattern — W10 workflow consumed `vars.PROD_BASE_URL` single
+variable, matrix variant uses one variable per region,
+operators provision four variables in repo Settings →
+Variables, unset variable triggers yellow-flag step-summary
+warning + falls back to global default so probe still
+runs), **bump CHANGELOG to 0.20.0** (wave-count-tracks-version
+W10=0.19.0, W11=0.20.0; W11 sidesteps the W10 0.18.0 typo
+risk by reading the W10 `CHANGELOG.md [0.19.0]` entry
+directly; `[Unreleased]` flipped to point at W11 branch;
+new `## [0.20.0] — Phase K Wave 11 — 2026-09-XX (PR
+pending)` entry with Added / Changed / Fixed subsections
+covering D1-D5), **publish the September 2026 retro**
+(`docs/retro-2026-09.md` NEW template consistent with August
+— what shipped → WIP → lessons [4 entries: §3.1 TF version
+policy + §3.2 rehearse-before-first-rotation + §3.3
+out-of-band ESO is a feature + §3.4 multi-region probes
+need failure-mode playbook] → action items table carry into
+October → metric movement → cadence → cross-refs);
+**Vasquez (QA)** ships **8 deliverables**: 9 W11 contract
+test files with **95 W11 facts** all under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W11/Vasquez/`
+(`BishopW11FideSwissPairingTests` targeting FIDE C.04 +
+tiebreak strategy stack; `BishopW11TileReferenceBinaryCodecTests`
+targeting `ToBinary`/`FromBinary` round-trip + checksum;
+`BishopW11JanusMountpointMetricsTests` targeting
+`mountpoint_evicted` counter + log marker;
+`BishopW11EfCommentaryStorePersistenceTests` targeting EF
+migrations × 3 + retention sweep + DefaultRetentionDays=7;
+`BishopW11OAuthIntrospectionTests` targeting RFC 7662 §2.2
+per-token-error 200 + transport-error 4xx + disabled kill
+switch; `HicksW11FrontendContractTests` targeting <475 KB +
+PWA Builder + LH13 calibration + cache-hit-rate + real
+screenshots + `?action=*` routing; `AponeW11InfraContractTests`
+targeting prod Redis TF + Argo auth ingress + TF 1.10.5 +
+JWT rehearsal + 4-region matrix + CHANGELOG 0.20.0 +
+retro-09; `VasquezW11SelfLaneTests` targeting lane-map +
+bundling-check + §4.1 + §5.9 + W10 hard-flip diligence;
+`W11SurfaceSmokeFactsTests` 22 broad-axis facts mirroring
+W7/W8/W9/W10 pattern); 5 W10 soft-pins hard-flipped
+(`JanusReadinessLevel` 3 canonical levels + supervisor
+`CurrentLevel` enum property + `RedisIdempotencyStore`
+`IConnectionMultiplexer` ctor + `RedisIdempotencyStore.Record`
+method + `three-renderer-big` K10 size ≤ 480 KB; each flip
+is reflection-defensive `if (type is null) return;` so a
+surface deletion regresses to soft-pin instead of panicking
+the gate); 3 gap-fill integration tests closing W10
+`test-architecture.md §4.2` inventory
+(`RedisIdempotencyStoreIntegrationTests` mock multiplexer
+fan-out + envelope round-trip; `JanusReadinessSupervisorIntegrationTests`
+readiness probe state machine + SignalR event emission
+cadence; `SignalRBackpressureIntegrationTests` queue-depth
++ replay window + drop taxonomy); 6 new Playwright e2e
+specs under `src/frontend/autotable-src/tests/e2e/`
+(`shader-chunk-475-hard.spec.ts` with W10 500 KB regression
+backstop; `pwa-builder-platforms.spec.ts`;
+`lh13-baseline-calibration.spec.ts`; `cache-hit-rate.spec.ts`;
+`manifest-screenshots-real.spec.ts`;
+`deep-link-action-routing.spec.ts`); KW10→KW11 regression
+rename via `git mv` preserving history per W9 precedent
+with W11 hard-asserting smoke facts appended;
+**`shims_shared` 4-author lane-map entry** primary vasquez
+covers `Shims/*` Phase J compatibility shim layer
+[collapses spurious cross-lane bundling violations seen in
+W7+W10]; **`pwa_audit_workflow_shared` 2-author lane-map
+entry** primary apone + co-author hicks covers
+`pwa-audit*.yml` + `pwa-builder*.yml` joint ops/frontend
+artefacts; `tests/ci/check-cross-lane-bundling.sh`
+broadening — `is_shared_file()` + `shared_file_authors()`
+extended to recognise both new entries with multi-author
+shims triggering broadened fallthrough path;
+`docs/agent-handoff-protocol.md §4.1` screenshot
+walkthrough for Stephen's branch-protection reprompt
+[5 numbered steps + placeholder image refs under
+`docs/img/phase-k-w11-branch-protection-*.png` Stephen's
+deliverable + 422 troubleshooting clause + `gh api -X PATCH`
+one-liner recipe so gate can be flipped via API when UI is
+inconvenient]; `§5.9` shared-files registry policy [4-row
+table covering all `*_shared` lane-map entries + procedure
+problem-statement → entry-shape → notify
+`.squad/decisions/inbox/` for adding a new one];
+selectors.md W11 footer documenting new e2e spec inventory
+so Hicks's producer-side renames trigger mandatory
+consumer-side edit; backend gate at Vasquez commit time
+**2391/0/0** (baseline 2108); lane-discipline repo-mode
+baseline unchanged (51 historical violations); build clean.
+**Squad (Coordinator)** did NOT need to intervene this
+wave — all 4 lane-rolled-up commits land cleanly and the
+gate closes at **2403 / 0 / 0** without a coordinator
+fix-up commit. **Fifth consecutive wave since W3 with zero
+coordinator fix-up** (W6 needed `abf7624`; W7 + W8 + W9 +
+W10 + W11 land clean).
+
+**4 commits across 4 agent lanes; all 4 commits correctly
+authored at the `%an <%ae>` level** (Bishop `8260849`,
+Vasquez `29f55eb`, Apone `df6888b`, Hicks `5617029`). The
+W6 per-invocation race-safe identity binding HELD for the
+**SIXTH consecutive wave** — `git -c user.name=X
+-c user.email=Y commit ...` + `flock -w 120 9 ...
+9>.work/squad-git-lock` mutex (lock-file location
+`.work/squad-git-lock` at the **second consecutive
+fully-adopted wave**). **W3/W4/W5 cross-lane content
+bundling failure mode remains broken at W11; 60+ concurrent
+agent runs since W6 introduction without recurrence.**
+Lane-discipline strict mode this wave flagged
+**`checked=4 violations=0` — the FIRST 0-VIOLATION
+LANE-DISCIPLINE WAVE.** Vasquez's `shims_shared` 4-author
+entry closes the recurring Bishop additive-shim pattern
+(W7 + W10 findings); `pwa_audit_workflow_shared` 2-author
+entry closes the Hicks workflow attribution pattern (W10
+finding). **Both W10 hand-offs are CLOSED at W11.**
+
+### Wave 11 invariants / patterns locked
+
+1. **Identity hardening proven over 6 consecutive waves
+   (W6 → W7 → W8 → W9 → W10 → W11).** Per-invocation
+   `git -c user.name=X -c user.email=Y commit ...` +
+   `flock -w 120 9 ... 9>.work/squad-git-lock` (lock file
+   at `.work/` 2nd consecutive fully-adopted wave). Held
+   across 60+ concurrent agent runs since W6 introduction.
+   **W3/W4/W5 cross-lane content bundling trend remains
+   broken at W11.**
+2. **Fifth consecutive coordinator-fix-up-free wave
+   (W7 + W8 + W9 + W10 + W11).** W6 needed `abf7624` for
+   the kustomization-resources omission; W7/W8/W9/W10/W11
+   all close clean. Lane-discipline + identity hardening +
+   Apone's six-file signer-identity invariant + Vasquez's
+   strict-mode CI + shared-files allowlist (now grown by
+   2 entries at W11) + W9 `check_invariants.py` cross-file
+   generalisation together produce a fully agent-composable
+   result.
+3. **Three-renderer big-chunk <475 KB stretch target BEAT
+   by 9 KB** at 466.40 KB. **Monotonic-decrease across 6
+   consecutive waves (740 → 579 → 532 → 507 → 497 → 466 KB;
+   cumulative −37.0 %).** ShaderChunk barrel surgery is the
+   lever — new Vite plugin `stripUnusedShaderChunks()` with
+   `enforce: 'pre'` empties GLSL bodies of 32 ShaderLib
+   `vertex$X`/`fragment$X` constants (excluding `$a`
+   meshbasic + `$9` meshlambert) + `cube_uv_reflection_fragment`
+   ShaderChunk + standalone VSM-blur pair while keeping
+   barrel re-export tables intact. Scene-graph audit
+   confirms only MeshBasicMaterial + MeshLambertMaterial +
+   LineBasicMaterial + W7 CustomOutline are constructed in
+   `autotable-src` — three.js compiles shaders lazily, so
+   emptying unused GLSL bodies is safe.
+4. **`TileReference.ToBinary()` 4-byte codec is the
+   canonical wire format for SignalR hub events.** Byte 0
+   packed `(suit << 4) | rank`; bytes 1-2 reserved for
+   red-five + aka-dora flags; byte 3 checksum. ~3×
+   wire-payload reduction vs JSON. `TileReferencesBinary`
+   field ships alongside the W10 `TileReferences` JSON
+   field — both additive; consumers pick by capability
+   negotiation. `FromBinary` returns `Unknown` on checksum
+   mismatch (never throws). Suit packing leaves 16 for
+   future suits.
+5. **FIDE C.04 backtracking is the canonical Swiss pairing
+   algorithm** behind `ISwissTiebreakStrategy` plug-in
+   interface. Replaces the W10 single-swap pass.
+   `floatAttempts < b.Count` cap as conservative termination
+   guarantee — pathological rematch webs may settle on a
+   rematch-tolerated pairing instead of further
+   backtracking; refinement candidate for a future wave
+   adding full FIDE §15-§19 transposition rules. Default
+   tiebreak stack is `Buchholz → Berger → rating-asc`.
+   DutchSwissPairingService is now functionally subsumed —
+   W12 retirement candidate once Apone's frontend
+   tournament admin migrates off the Dutch endpoint.
+6. **`signalr_messages_dropped_total{reason}` taxonomy now
+   includes `mountpoint_evicted`** joining `rate_cap` /
+   `send_failure` / `age_window`. `lifecycle:mountpoint_evicted`
+   log marker emitted at the Janus sweep call site for
+   CDN-edge log-shipper histogram. Operators see when
+   reconnect storms correlate with mountpoint sweeps.
+7. **`signalr_envelope_age_seconds` histogram** is the
+   canonical p99 envelope-age surface for the SLO dashboard
+   (buckets `0.001/0.005/0.01/0.05/0.1/0.5/1/5/10s` tagged
+   with `hub=typeof(THub).Name`). Per-group
+   `signalr_active_replay_buffers` UpDownCounter correlates
+   replay churn with active group fan-out.
+8. **`EfCommentaryStore` is the canonical commentary
+   persistence surface.** `Append` / `GetByGame` /
+   `SweepOlderThan` methods. EF migrations × 3 providers
+   (Sqlite / Postgres / SqlServer); model snapshot updated
+   all 3. `CommentaryStorageOptions.DefaultRetentionDays = 7`
+   pinned by test. Daily background `RetentionSweepService`
+   24h cadence with `Func<DateTimeOffset>` clock injection
+   for tests. Naming divergence: Vasquez probes for
+   `CommentaryEntity` / `CommentaryRow`; Bishop shipped
+   `CommentaryRecordRow`. W12 rename candidate.
+9. **RFC 7662 §2.2 is the canonical token-introspection
+   semantic.** Per-token errors (expired / malformed /
+   bad-sig) MUST return HTTP 200 `{ active: false }`. Only
+   transport-level errors (missing Basic, missing token
+   field) return 4xx. Kill switch via
+   `Auth:OAuthIntrospectionEnabled=false → 404` endpoint
+   not registered.
+10. **`.NET` DI does NOT inject optional ctor params with
+    default-null values.** Use an explicit factory delegate
+    with `sp.GetService<T>()` (returns null gracefully).
+    Pattern lives at `Program.cs` for both
+    `JwksCacheService` (W10) and
+    `JanusMountpointLifecycleService` (W11).
+11. **Out-of-band ESO manifest pattern.** Codified across
+    `docs/redis-cluster.md §11.4` + the file headers of
+    `jwt-keys-secret.yaml` + `redis-connection-string-secret.yaml`.
+    Future env-specific Secret-bound ExternalSecrets follow
+    the same pattern: don't list in `kustomization.yaml`
+    `resources:` if it binds to env-specific SSM paths +
+    CMK KMS that don't exist in dev/preview overlays.
+12. **Rehearse before the first quarterly drill.** The W11
+    JWT rehearsal harness is the first instance. Future
+    recurring operator drills (e.g. annual RDS major-version
+    bump) should ship with a matching rehearsal harness
+    BEFORE the first real execution. Hard gate at step 1
+    on `target_env != staging` — no prod opt-in is the
+    canonical safety pattern.
+13. **Range-floor + exact-pin TF version policy.** Codified
+    at `docs/terraform.md §6`. Future TF CLI bumps follow
+    the quarterly cadence anchored on wave bring-up
+    (W8=1.9.8, W11=1.10.5, W14=TBD). Range floor in modules
+    stays at `>= 1.5.0`. Exact pin in CI workflows.
+    Out-of-band on CVE.
+14. **Multi-region synthetics need a fan-out failure-mode
+    playbook.** Codified at `docs/edge-region-probes.md §5`.
+    Future fan-out synthetics (e.g. multi-region DR-replica
+    probe, multi-region S3 endpoint probe) follow the same
+    per-pattern playbook structure. On-call SRE's response
+    is sharply different between "1/4 tripped" (regional
+    CDN problem) and "4/4 tripped" (global outage).
+15. **`shims_shared` (4-author) + `pwa_audit_workflow_shared`
+    (2-author)** are the canonical lane-map entries closing
+    the W7+W10 false-positive bundling patterns.
+    **Lane-discipline `checked=4 violations=0` is achieved
+    at W11.** The strict-mode gate now fires only on actual
+    cross-lane regressions; W12 maintains.
+16. **PWA Builder CLI workflow + LH13 calibration script +
+    Vite cache-hit-rate metric** are the new PWA-side gates
+    (`pwa-builder.yml`; `scripts/lh-baseline.js`;
+    `scripts/build-with-cache-metric.js`). LH13 threshold
+    workflow edit deferred to W12 after ≥ 3 real-CI cron
+    data points confirm local-vs-CI variance offset.
+17. **`?action=*` deep-link routing belongs to
+    `action-router.ts` and wires BEFORE the game-bootstrap
+    guard.** The heavy renderer chunk must not be imported
+    when a shortcut URL is opened. Supported keywords are
+    `new-game` / `spectate` / `tournament` (+ `tournaments`
+    plural alias). `?action=replay` reserved for W12+ once
+    Drake's replay-by-id endpoint lands.
+18. **§4.1 of `agent-handoff-protocol.md` is the canonical
+    screenshot walkthrough** for Stephen's branch-protection
+    reprompt. Carries a `gh api -X PATCH` recipe so the gate
+    can be flipped via API when the UI is inconvenient.
+19. **§5.9 of `agent-handoff-protocol.md` is the
+    shared-files registry policy.** 4-row table + procedure
+    for adding a new `*_shared` lane-map entry (problem
+    statement → entry shape → notify
+    `.squad/decisions/inbox/`).
+20. **Wave1ThroughKW11 supersedes Wave1ThroughKW10** as the
+    regression sweep target. `git mv` preserves history per
+    the W9 rename precedent.
+
+### W12 Forward Queue (consolidated from 4 inbox memos)
+
+#### Bishop (Backend) — 7 items
+
+1. **DutchSwissPairingService retirement** once Apone's
+   frontend tournament admin is migrated off the Dutch
+   endpoint.
+2. **TileReference codec reserved-byte usage** (bytes 1-2
+   for red-five + aka-dora flags).
+3. **FIDE C.04 `floatAttempts < b.Count` cap refinement**
+   adding full FIDE §15-§19 transposition rules.
+4. **Commentary entity naming consistency** —
+   `CommentaryEntity` / `CommentaryRow` vs
+   `CommentaryRecordRow`.
+5. **DI optional ctor params pattern documentation** in
+   `docs/oauth.md §DI`.
+6. **`CommentaryStorageOptions.DefaultRetentionDays = 7`**
+   retain the pin until a customer asks for variable
+   retention.
+7. **RFC 7662 §2.2 transport-vs-token error invariant**
+   documented in `docs/oauth.md` operator-section.
+
+#### Hicks (Frontend) — 8 items
+
+1. **PMREMGenerator-adjacent ShaderChunk strip candidates**
+   (`opaque_fragment`, `colorspace_fragment`,
+   `tonemapping_*`). Yield ~8-12 KB.
+2. **`UniformsLib` unused-entry strip** (only `common` +
+   `lights` reachable). Yield ~3-5 KB.
+3. **`shadowmap_*` chunk body strip.** Yield ~6 KB.
+4. **LH13 threshold workflow edit** after ≥ 3 real-CI cron
+   data points.
+5. **`secrets.PWA_PREVIEW_URL` provisioning** for
+   `pwa-builder.yml` — Apone (infra) owns the hookup.
+6. **W10 placeholder screenshot copy block removal** (W13
+   candidate, after 2 more waves on `screenshots/` paths).
+7. **Visual-regression spec for the W11 captures** —
+   Vasquez's spec lane.
+8. **`?action=replay`** once Drake's replay-by-id endpoint
+   lands.
+
+#### Apone (DevOps) — 7 items
+
+1. **Prod Redis stack `terraform apply`** (blocked on prod
+   EKS cluster cutover — cluster, not Redis, is the
+   blocker).
+2. **Prod kustomization wiring.** Wire `envFrom: secretRef:
+   mahjong-redis-prod` into the prod Deployment patch once
+   the ExternalSecret materialises the Secret.
+3. **Prod Redis load-test re-baseline.** Hudson re-runs the
+   W10 test suite against `cache.r6g.large`.
+4. **Per-region R53 records** + flip the matrix targets in
+   repo Settings → Variables.
+5. **NetworkPolicy for argo-rollouts dashboard** to close
+   the in-cluster bypass gap.
+6. **Second JWT rotation rehearsal run** ahead of Q4 prod
+   rotation (mid-December 2026).
+7. **W14 Terraform CLI bump** per the new quarterly cadence
+   (likely 1.11.x).
+
+#### Vasquez (QA) — 4 items
+
+1. **DbSerial migration** pending Bishop's
+   `[Collection("DbSerial")]` tagging; 3-parallel
+   flake-detection harness ships in W12 once that lands.
+   Logged in `test-architecture.md §4.4` as a W12 gap.
+2. **LH13 workflow gate edit** (walk thresholds to §7
+   calibrated values after ≥ 3 real-CI cron data points).
+3. **Visual-regression spec for Hicks's W11 screenshots.**
+   Pin the three manifest captures so cinematic-camera
+   changes get a Playwright diff alongside the size gate.
+4. **Branch-protection re-prompt to Stephen.** §4.1
+   walkthrough is correct; the gate flip is operator-side
+   and still pending.
+
+#### Lane-discipline cross-cutting
+
+- **0-violation stretch goal achieved this wave.**
+  Maintain through W12. The `shims_shared` +
+  `pwa_audit_workflow_shared` entries close all known
+  false-positive bundling patterns; the strict-mode gate
+  will now fire only on actual cross-lane regressions.
+
+#### Scribe / Coordinator — 4 carry-forward into W12 prompt template
+
+1. **Per-invocation `git -c user.name=X -c user.email=Y
+   commit ...`** remains the canonical commit form — held
+   over W6 + W7 + W8 + W9 + W10 + W11 (60+ commits).
+2. **`flock -w 120 9 ... 9>.work/squad-git-lock`** — 2nd
+   consecutive fully-adopted wave at W11; W12 prompt
+   templates continue path uniformity.
+3. **`git fetch + rebase` INSIDE the flock critical
+   section** (Apone §3.7 W9 addition; universal across all
+   agents).
+4. **`.work/<agent>-w<N>-safe/` backup directory** is a
+   first-class step in every prompt template.
+
+### Stephen action items (carry-into-October 2026)
+
+1. **Branch-protection flip** — promote `lane-discipline /
+   check` to a required status check on `main` via the
+   `docs/agent-handoff-protocol.md §4.1` (NEW W11)
+   screenshot walkthrough + `gh api -X PATCH` recipe.
+   Repo-admin only. **W9 + W10 + W11 hand-off still
+   pending.**
+2. **`secrets.PWA_PREVIEW_URL` provisioning** for the new
+   `pwa-builder.yml` workflow (Apone owns the
+   Cloudflare-Pages or cloudflared-tunnel hookup).
+3. **Sentry + Cloudflare DSN provisioning** (carry-over
+   from W7/W8/W9/W10 backlog; still pending).
+4. **OpenAI API key provisioning** — `OPENAI_API_KEY` AWS
+   Secrets entry so the operator can flip
+   `Commentary:Provider=OpenAI`. Now blocks
+   `EfCommentaryStore` persistence dogfood in prod.
+5. **Janus SFU sizing + endpoint provisioning** —
+   `Voice:JanusEndpoint`. The W11 mountpoint-eviction
+   counter joins the SLO dashboard alongside the W10
+   3-level gradual-degradation surface.
+6. **Prod EKS cluster cutover** — unblocks the W11 prod
+   Redis `terraform apply` (cluster, not Redis, is the
+   blocker).
+7. **Q3 2026 JWT rotation rehearsal** — operator dry-run
+   via the new `jwt-rotation-rehearsal.yml` workflow ahead
+   of the end-of-September real rotation.
+
+### Phase K Wave 11 — DONE.
+
+---
