@@ -9,6 +9,7 @@ using Mahjong.Autotable.Api.Observability;
 using Mahjong.Autotable.Api.Persistence;
 using Mahjong.Autotable.Api.Players;
 using Mahjong.Autotable.Api.RateLimiting;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -56,7 +57,15 @@ else
 
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSignalR();
+// Phase J Wave 8 — SignalR hub-method breadcrumbs into Sentry (Apone, DevOps).
+// The hub filter is a no-op when Sentry isn't initialised (SDK gated on
+// `Sentry:Dsn`), so adding it unconditionally costs nothing in dev / test.
+builder.Services.AddSignalR(o => o.AddFilter<Mahjong.Autotable.Api.Observability.SentryHubFilter>());
+
+// Phase J Wave 8 — Sentry crash reporting (Apone, DevOps). The call is a
+// no-op when `Sentry:Dsn` is unset / empty (which is the default in
+// `appsettings.json`), so test / dev runs never hit the network.
+var sentryEnabled = builder.WebHost.AddMahjongSentry(builder.Configuration);
 
 // Phase J Wave 5 — MVC controllers for the matchmaking REST endpoint
 // (MatchmakingController owns GET /api/matchmaking/lobby).
@@ -116,6 +125,13 @@ builder.Services.AddCors(options =>
 var rateLimitingEnabled = builder.Services.AddMahjongRateLimiting(builder.Configuration);
 
 var app = builder.Build();
+
+// Phase J Wave 8 — security + CDN cache headers (Apone, DevOps). Installed
+// first so security headers stamp on every response (including errors and
+// short-circuit returns from rate limiting / CORS). The middleware uses
+// `Response.OnStarting` to mutate headers AFTER UseStaticFiles has set
+// its own Cache-Control.
+app.UseMiddleware<Mahjong.Autotable.Api.Observability.SecurityHeadersMiddleware>();
 
 app.UseCors(ChangshaCorsPolicy);
 
