@@ -498,3 +498,66 @@ When you remove or rename a Wave 8 testid, search
 `src/frontend/autotable-src/tests/e2e/` for the literal string before
 landing the change — the soft-pass annotation will otherwise hide the
 regression from CI.
+
+## Phase J Wave 9 testids — chat / i18n / replay-audit (Vasquez)
+
+Wave 9 ships five new surfaces with selectors that follow the kebab-case,
+surface-prefixed contract.  The testids below are *already present* in
+`index.html` and Hicks's modules at HEAD; any future rename must update
+the matching e2e spec referenced in the next subsection.
+
+| Surface         | testid                       | Where wired                                 |
+|-----------------|------------------------------|---------------------------------------------|
+| Chat            | `chat-panel`                 | `index.html` (#chat-panel container)        |
+| Chat            | `chat-toggle`                | `index.html` (collapse / expand button)     |
+| Chat            | `chat-channel-select`        | `index.html` (table / spectators / private) |
+| Chat            | `chat-recipient-select`      | `index.html` (private DM recipient picker)  |
+| Chat            | `chat-unavailable`           | `index.html` (offline / 404 banner)         |
+| Chat            | `chat-messages`              | `index.html` (rendered message log)         |
+| Chat            | `chat-input`                 | `index.html` (composer textarea — `maxlength=280`) |
+| Chat            | `chat-char-count`            | `index.html` (live `0/280` counter)         |
+| Chat            | `chat-send`                  | `index.html` (Send button)                  |
+| Chat            | `chat-message-{i}`           | `chat.ts` (per-row id)                      |
+| Chat            | `chat-message-{i}-author`    | `chat.ts` (sender pill)                     |
+| Chat            | `chat-message-{i}-body`      | `chat.ts` (body text node)                  |
+| i18n            | `settings-language-select`   | `settings-drawer.ts` (lang picker)          |
+| CSP             | _N/A (header-level)_         | `SecurityHeadersMiddleware.cs` (`DefaultCsp`)|
+| Replay (audit)  | `replay-audit-tab`           | `index.html` (admin-only tab, hidden initially) |
+| Replay (audit)  | `replay-audit-row-{i}`       | `audit.ts` (per-row id)                     |
+| Replay (audit)  | `replay-audit-row-{i}-source`| `audit.ts` (human / bot / system cell)      |
+| Replay (audit)  | `replay-audit-row-{i}-duration` | `audit.ts` (durationMs cell)             |
+| Replay (audit)  | `replay-audit-row-{i}-score` | `audit.ts` (bot decision score cell)        |
+| Reconnect       | `reconnect-copy-link`        | `index.html` (Wave 4, reused for Wave 9 rotation hygiene) |
+
+The CSP row is intentionally header-level — there is no DOM selector to
+pin; `csp-headers.spec.ts` reads the `Content-Security-Policy` HTTP
+header directly off the root document.
+
+### Phase J Wave 9 Playwright coverage — Vasquez
+
+The Wave 9 e2e specs live alongside the Wave 8 ones in
+`src/frontend/autotable-src/tests/e2e/`.  All follow the
+reflection-defensive pattern established by `magic-link.spec.ts` —
+missing surface → `test.info().annotations.push({ type: 'soft-pass', ... })`
+and an early return rather than a hard failure.
+
+| Spec                       | Surface under test                                       |
+|----------------------------|----------------------------------------------------------|
+| `chat-panel.spec.ts`       | chat-panel mount, composer 280-char cap, channel picker, graceful 404 |
+| `i18n-switch.spec.ts`      | settings-language-select → body[lang] flips between en/zh-Hans/zh-Hant |
+| `csp-headers.spec.ts`      | root-document `Content-Security-Policy` shape, `unsafe-eval` ban, nonce/strict-dynamic preference |
+| `admin-audit-tab.spec.ts`  | `replay-audit-tab` admin gate (hidden non-admin, visible admin, row render, 403 grace) |
+| `token-rotation.spec.ts`   | `mahjong:session:v1` localStorage blob present, no token leak in DOM, reload preserves playerId |
+
+Soft-pass annotation contract — keep these stable so CI summaries
+remain searchable:
+
+  - `chat-panel surface not yet wired`
+  - `settings-language-select not yet wired`
+  - `CSP header not yet emitted on root document`
+  - `replay-audit-tab not yet wired`
+  - `no session/reconnect blob persisted yet`
+
+When you remove or rename a Wave 9 testid, run
+`grep -rn '<testid>' src/frontend/autotable-src/tests/e2e/` before
+merging — the soft-pass annotations will silently hide regressions.

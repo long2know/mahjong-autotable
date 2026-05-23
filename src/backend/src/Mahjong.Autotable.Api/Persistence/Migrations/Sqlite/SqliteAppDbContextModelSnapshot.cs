@@ -194,6 +194,81 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.ToTable("ChangshaRulePresets");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.CspViolation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BlockedUri")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ColumnNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Disposition")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DocumentUri")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EffectiveDirective")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("LineNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OriginalPolicy")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlayerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RawJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Referrer")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScriptSample")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceFile")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ViolatedDirective")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EffectiveDirective");
+
+                    b.HasIndex("ReceivedAt");
+
+                    b.ToTable("CspViolations");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.EmailMagicLinkToken", b =>
                 {
                     b.Property<Guid>("Id")

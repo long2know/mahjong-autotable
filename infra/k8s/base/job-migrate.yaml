@@ -1,0 +1,111 @@
+# Phase J Wave 9 — Apone (DevOps).
+#
+# One-shot Kubernetes Job that runs EF Core `database update` (via the
+# Mahjong.Autotable.Api `--migrate` entrypoint introduced in Program.cs)
+# against the production DB BEFORE the Deployment rolls a new image.
+#
+# Workflow (recommended):
+#   1. CI builds + pushes the image.
+#   2. `kubectl apply -f job-migrate.yaml` (Kustomize generates it from
+#      the new image tag — see images: in kustomization.yaml).
+#   3. Wait for the Job to complete (Argo CD / Flux can sync `Job`s
+#      pre-rollout via a sync-wave annotation; for plain kubectl,
+#      `kubectl wait --for=condition=complete job/mahjong-autotable-migrate
+#      --timeout=600s`).
+#   4. Roll the Deployment.
+#
+# The Job uses the SAME image as the Deployment so the EF migration set
+# baked into the image matches the API code that will start serving traffic.
+#
+# restartPolicy: OnFailure — k8s retries the Job pod on crash but stops
+# once it exits 0. backoffLimit caps the number of crash-retries.
+#
+# `ttlSecondsAfterFinished` lets the cluster GC the completed Pod after
+# 10 minutes so kubectl logs from the rollout window remain readable.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mahjong-autotable-migrate
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: migrate
+    app.kubernetes.io/part-of: mahjong-autotable
+  annotations:
+    # Argo CD sync-wave: deploy the Job BEFORE the Deployment.
+    argocd.argoproj.io/sync-wave: "-1"
+    # Argo CD hook: run on every sync, treat success as gate-pass.
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  # Cap retries — a persistent migrate failure should fail the rollout,
+  # not loop forever consuming cluster resources.
+  backoffLimit: 3
+  # Garbage-collect the completed Pod 10 minutes after termination so
+  # `kubectl get jobs -n mahjong-autotable` stays scannable across many
+  # rollouts.
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mahjong-autotable
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: OnFailure
+      # Non-root runtime — matches Deployment's securityContext so the
+      # Job can read the same secret-mounted connection string + write
+      # to the same PVC (for SQLite local-disk deploys).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: migrate
+          image: ghcr.io/long2know/mahjong-autotable:latest
+          imagePullPolicy: IfNotPresent
+          # The API entrypoint understands `--migrate` (Program.cs Wave-9):
+          # boots the DI container, runs db.Database.MigrateAsync (or the
+          # SQLite EnsureCreated + defensive bootstraps), then exits 0.
+          # The HTTP listener port is never bound so the Job pod does not
+          # collide with the live Service's endpoints.
+          args: ["--migrate"]
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+          envFrom:
+            - configMapRef:
+                name: mahjong-autotable
+            - secretRef:
+                name: mahjong-autotable
+                optional: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # SQLite local-disk deployments share the data PVC with the
+            # Deployment so the migrate-job mutates the same file the API
+            # process will open on startup. Postgres / SqlServer deploys
+            # ignore this mount (connection string drives the schema).
+            - name: data
+              mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mahjong-autotable-data
+        - name: tmp
+          emptyDir: {}

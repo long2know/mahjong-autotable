@@ -164,7 +164,7 @@ public sealed class AuthController : ControllerBase
             _playerIdentity.WriteCookie(HttpContext, identity.PlayerId);
         }
 
-        await _cookies.IssueAsync(HttpContext, identity.PlayerId, identity.Id, ct);
+        await _cookies.IssueAsync(HttpContext, identity.PlayerId, identity.Id, ct: ct);
 
         return string.IsNullOrWhiteSpace(returnUrl) ? Redirect("/") : Redirect(returnUrl);
     }
@@ -242,7 +242,7 @@ public sealed class AuthController : ControllerBase
             _playerIdentity.WriteCookie(HttpContext, identity.PlayerId);
         }
 
-        await _cookies.IssueAsync(HttpContext, identity.PlayerId, identity.Id, ct);
+        await _cookies.IssueAsync(HttpContext, identity.PlayerId, identity.Id, ct: ct);
 
         return Ok(new
         {
@@ -324,7 +324,7 @@ public sealed class AuthController : ControllerBase
         {
             _playerIdentity.WriteCookie(HttpContext, identity.PlayerId);
         }
-        var session = await _cookies.IssueAsync(HttpContext, identity.PlayerId, identity.Id, ct);
+        var session = await _cookies.IssueAsync(HttpContext, identity.PlayerId, identity.Id, body.Role, ct);
         var profile = await _profiles.GetOrCreateAsync(identity.PlayerId, ct);
         return Ok(new
         {
@@ -334,6 +334,7 @@ public sealed class AuthController : ControllerBase
             avatarColor = profile.AvatarColor,
             email = identity.Email,
             sessionExpiresAt = session.ExpiresAt,
+            role = session.Role,
         });
     }
 
@@ -370,6 +371,13 @@ public sealed class AuthController : ControllerBase
     {
         public string Email { get; set; } = string.Empty;
         public string? DisplayName { get; set; }
+        /// <summary>
+        /// Phase J Wave 9 — optional role stamp ("admin" unlocks the
+        /// audit endpoint). Dev-only — production sessions are issued
+        /// via the OAuth / magic-link paths which don't accept a role
+        /// override from the caller.
+        /// </summary>
+        public string? Role { get; set; }
     }
 
     public sealed class VerifyBody

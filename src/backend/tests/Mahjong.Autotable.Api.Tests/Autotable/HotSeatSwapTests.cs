@@ -140,15 +140,29 @@ public class HotSeatSwapTests : IAsyncLifetime
             "Hot-seat swap must preserve the runtime binding for the relay gameId; " +
             $"expected {runtimeGameId} but saw {manager.GetRuntimeGameIdBoundTo(gameId)}.");
 
-        // Bob's seat-take binds seat 1 to his connectionId.
+        // Bob's seat-take binds seat 1 to his connectionId. Phase J Wave 9
+        // (Apone) tightens the polling predicate to ALSO wait for the
+        // post-take auto-bot-fill flow to drop a bot into the freed seat 0;
+        // otherwise the assertion below races a still-in-flight
+        // FillEmptySeatsWithBotsAsync and reads the preserved Alice
+        // PlayerId before the fill completes. See the Wave-2 contract note
+        // above for the seat-0 release semantics.
         var bobSeated = await WaitForAsync(() =>
         {
             if (!runtime.TryGetSnapshot(runtimeGameId, out var s) || s is null) return false;
-            return string.Equals(s.Seats[1].PlayerId, bob.PlayerId, StringComparison.Ordinal)
+            var bobOnSeatOne =
+                string.Equals(s.Seats[1].PlayerId, bob.PlayerId, StringComparison.Ordinal)
                 && !s.Seats[1].IsBot;
+            // Auto-bot-fill is complete once seat 0 is no longer pinned to
+            // Alice. Either it's a bot (PlayerId rewritten) or the slot has
+            // a different player id; both satisfy the post-fill contract.
+            var seatZeroFreedOrFilled =
+                !string.Equals(s.Seats[0].PlayerId, alice.PlayerId, StringComparison.Ordinal);
+            return bobOnSeatOne && seatZeroFreedOrFilled;
         }, timeoutMs: 2000);
         Assert.True(bobSeated,
-            "Bob's seat-take on the same gameId should bind state.Seats[1] to his connectionId.");
+            "Bob's seat-take on the same gameId should bind state.Seats[1] to his connectionId " +
+            "AND the post-take auto-bot-fill should release seat 0 from Alice's PlayerId.");
 
         // Phase J Wave 2 flipped this contract: when Alice disconnects from the
         // autotable WS path, the runtime seat binding IS released (mirror of

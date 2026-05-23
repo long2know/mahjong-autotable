@@ -67,10 +67,22 @@ public class ChangshaGameEvent
 /// </summary>
 public class ChangshaGameReplay
 {
+    /// <summary>Phase J Wave 9 — current replay schema version stamped on
+    /// every new write. Old rows persisted under v1 keep their stored
+    /// <see cref="SchemaVersion"/> (defaulted to 1 by the migration) so
+    /// readers can branch on the value.</summary>
+    public const int CurrentSchemaVersion = 2;
+
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid GameId { get; set; }
     public DateTime CreatedAt { get; set; }
     public string EventsJson { get; set; } = string.Empty;
+
+    /// <summary>Phase J Wave 9 — version of the JSON envelope stored in
+    /// <see cref="EventsJson"/>. v1 = Wave 7/8 (events array only).
+    /// v2 = Wave 9 (per-event source/durationMs/debugScore + envelope
+    /// schemaVersion). Defaults to 1 so legacy reads don't break.</summary>
+    public int SchemaVersion { get; set; } = 1;
 }
 
 /// <summary>
@@ -189,4 +201,176 @@ public class PlayerAuthSession
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddDays(30);
     public DateTime LastUsedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Phase J Wave 9 — optional role stamp used by the
+    /// <c>GET /api/games/{gameId}/audit</c> admin gate. Null = ordinary
+    /// player. "admin" = full access to the audit endpoint. Future
+    /// roles ("moderator", "tournament-host") are just additional
+    /// strings; the column is intentionally open-ended.</summary>
+    public string? Role { get; set; }
+}
+
+/// <summary>
+/// Phase J Wave 9 — opaque, rotating reconnect token. The Wave 4 reconnect
+/// flow only needed <c>(gameId, seatIndex, playerId)</c> to resume; in
+/// Wave 9 we now also hand the client a fresh one-shot token on every
+/// successful <c>ReconnectGame</c> RPC and verify the previous token's
+/// row before accepting the next reconnect. The chain of
+/// <see cref="RotatedFromTokenId"/> back-pointers forms an append-only
+/// audit trail (also surfaced via <see cref="ReconnectAuditEntry"/>).
+/// </summary>
+public class ReconnectToken
+{
+    /// <summary>Default TTL applied to a freshly-issued (or freshly-rotated)
+    /// reconnect token. Matches the Wave-4 reconnect window so behaviour is
+    /// invariant — a player who steps away for &lt;5 minutes still
+    /// reconnects, and the rotation just refreshes the window.</summary>
+    public const int DefaultTtlMinutes = 5;
+
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Token { get; set; } = string.Empty;
+    public string PlayerId { get; set; } = string.Empty;
+    public string GameId { get; set; } = string.Empty;
+    public int SeatIndex { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddMinutes(DefaultTtlMinutes);
+
+    /// <summary>Set the moment the token is consumed (one-shot). A second
+    /// reconnect attempt with the same token is rejected once this is non-null.</summary>
+    public DateTime? ConsumedAt { get; set; }
+
+    /// <summary>When non-null, identifies the token row this one was rotated
+    /// from — i.e. the previous link in the rotation chain. Forms a singly-
+    /// linked list back to the initial mint (<see cref="RotatedFromTokenId"/> = null).</summary>
+    public Guid? RotatedFromTokenId { get; set; }
+}
+
+/// <summary>
+/// Phase J Wave 9 — append-only audit log of reconnect-token rotations.
+/// One row per rotation event so a security review can replay the chain
+/// without re-deriving it from the <see cref="ReconnectToken"/> table
+/// (which can be rotated / pruned without losing the trail). IPv4 and
+/// User-Agent are SHA-256 hashed for storage; the raw values are never
+/// persisted (privacy by default, but operators can still pivot on a
+/// suspected client by re-hashing).
+/// </summary>
+public class ReconnectAuditEntry
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PlayerId { get; set; } = string.Empty;
+    public Guid OldTokenId { get; set; }
+    public Guid NewTokenId { get; set; }
+
+    /// <summary>SHA-256 (hex-lowercase) of the caller's IPv4 / IPv6 address.
+    /// Empty string when the address could not be resolved (in-memory test
+    /// transports leave <c>HttpContext.Connection.RemoteIpAddress</c> null).</summary>
+    public string Ipv4Hash { get; set; } = string.Empty;
+
+    /// <summary>SHA-256 (hex-lowercase) of the inbound <c>User-Agent</c>
+    /// header. Empty string when the header is absent.</summary>
+    public string UserAgentHash { get; set; } = string.Empty;
+
+    public DateTime At { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Phase J Wave 9 — server-side chat message captured by the hub's
+/// <c>SendChat</c> RPC. Persisted so a player rejoining mid-game can
+/// lazily back-fill the conversation via the
+/// <c>GET /api/games/{gameId}/chat</c> REST endpoint. The
+/// <see cref="Channel"/> field encodes the routing decision at send time:
+/// <list type="bullet">
+///   <item><c>table</c> — broadcast to every connection currently in the
+///     game's SignalR group (players + spectators).</item>
+///   <item><c>private:&lt;to-playerId&gt;</c> — DM routed to a specific
+///     player; the receiver and the sender are both delivered the
+///     message so both ends of the conversation render the bubble.</item>
+///   <item><c>spectator</c> — visible only to seats whose
+///     <c>state.Seats[i].IsBot == false</c> AND whose connection sits in
+///     the game group but does not own a seat (i.e. spectator camera).</item>
+/// </list>
+/// </summary>
+public class ChatMessage
+{
+    /// <summary>Hub-level validation cap on the inbound <see cref="Body"/>.
+    /// The persisted column is sized to 512 (see <c>AppDbContext</c>) to
+    /// keep room for future emoji-padded payloads without a schema bump,
+    /// but the hub rejects anything over <see cref="MaxBodyLength"/> at
+    /// send time.</summary>
+    public const int MaxBodyLength = 280;
+
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string GameId { get; set; } = string.Empty;
+    public string PlayerId { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public DateTime At { get; set; } = DateTime.UtcNow;
+    public string Channel { get; set; } = "table";
+}
+
+/// <summary>
+/// Phase J Wave 9 — Content-Security-Policy violation report (Apone, DevOps).
+///
+/// <para>Persisted by <c>POST /api/csp-report</c> for every browser-reported
+/// CSP violation. Schema mirrors the canonical <c>application/csp-report</c>
+/// (legacy) and <c>application/reports+json</c> (Reporting API) envelopes;
+/// fields are unbounded text because user agents disagree on which keys are
+/// present (Chromium ships every directive; Firefox sometimes elides
+/// <c>script-sample</c>). All columns are nullable so the endpoint never
+/// drops a malformed-but-parseable report.</para>
+///
+/// <para>No FK to <c>PlayerProfiles</c>: reports may arrive from anonymous
+/// callers (the public landing page) before any cookie is set. The
+/// <see cref="PlayerId"/> column is a best-effort capture of the
+/// <c>mahjong_pid</c> cookie at report time.</para>
+/// </summary>
+public class CspViolation
+{
+    public long Id { get; set; }
+
+    /// <summary>Best-effort capture of the <c>mahjong_pid</c> cookie at
+    /// report time. Null when the caller is fully anonymous.</summary>
+    public string? PlayerId { get; set; }
+
+    /// <summary>URL of the document the violation occurred on.</summary>
+    public string? DocumentUri { get; set; }
+
+    /// <summary>Origin or page that referred the violating resource.</summary>
+    public string? Referrer { get; set; }
+
+    /// <summary>The full effective directive name (e.g. <c>script-src-elem</c>).</summary>
+    public string? ViolatedDirective { get; set; }
+
+    /// <summary>Effective parent directive (e.g. <c>script-src</c>).</summary>
+    public string? EffectiveDirective { get; set; }
+
+    /// <summary>The original policy header that produced this violation.</summary>
+    public string? OriginalPolicy { get; set; }
+
+    /// <summary>Disposition: <c>enforce</c> or <c>report</c>.</summary>
+    public string? Disposition { get; set; }
+
+    /// <summary>The URI that was blocked (resource URL or <c>inline</c>/<c>eval</c>).</summary>
+    public string? BlockedUri { get; set; }
+
+    /// <summary>Optional source-file URL for inline / eval violations.</summary>
+    public string? SourceFile { get; set; }
+
+    /// <summary>Optional line + column position when reported by the UA.</summary>
+    public int? LineNumber { get; set; }
+    public int? ColumnNumber { get; set; }
+
+    /// <summary>Optional 40-char sample of the offending script. Truncated server-side.</summary>
+    public string? ScriptSample { get; set; }
+
+    /// <summary>HTTP status code the user agent saw when serving the document.</summary>
+    public int? StatusCode { get; set; }
+
+    /// <summary>Caller's User-Agent header.</summary>
+    public string? UserAgent { get; set; }
+
+    /// <summary>Raw JSON envelope, retained for forensics even when parsing
+    /// extracts the canonical fields above.</summary>
+    public string RawJson { get; set; } = string.Empty;
+
+    public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
 }

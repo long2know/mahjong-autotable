@@ -36,6 +36,7 @@ import {
   type ServerReplayEvent,
   type ServerReplayResponse,
 } from "./replay-launcher";
+import { setAuditGameId } from "./audit";
 
 // ── Move-log types ───────────────────────────────────────────────────
 
@@ -197,6 +198,9 @@ export class Replay {
     // in-memory open path.
     this.serverPayload = null;
     this.updateSourceLabel('Live capture');
+    // Phase J Wave 9 — surface the live gameId so the Audit tab can
+    // fetch /api/games/{gameId}/audit when an admin opens the tab.
+    setAuditGameId(this.client.lastGameId);
 
     // Merge server-side history with the client-side capture.  If the
     // server ships a full handHistory array we trust it for the result
@@ -237,6 +241,9 @@ export class Replay {
     if (!this.screenEl) return;
 
     this.serverPayload = payload;
+    // Phase J Wave 9 — propagate the gameId so the Audit tab can fetch
+    // matching audit rows when an admin clicks the Audit tab.
+    setAuditGameId(payload.gameId);
     this.hands = this.materializeHandsFromServerPayload(payload);
     if (this.hands.length === 0) {
       // Empty payload (Bishop's endpoint not implemented yet, or no

@@ -43,6 +43,19 @@ public static class DatabaseBootstrapper
             // bootstraps existing-prod SQLite databases that pre-date Wave 8
             // without requiring an out-of-band `dotnet ef database update`.
             await EnsureSqliteWave8TablesAsync(db, cancellationToken);
+            // Phase J Wave 9 — CSP violation report sink (Apone, DevOps).
+            // Canonical schema is the AddCspViolations EF migration; this
+            // guard ensures existing SQLite DBs gain the table on boot so
+            // POST /api/csp-report never trips a runtime "no such table".
+            await EnsureSqliteCspViolationsAsync(db, cancellationToken);
+            // Phase J Wave 9 — reconnect token rotation, append-only audit
+            // log, and persisted chat backlog. Canonical schema is the
+            // AddWave9ReconnectTokensAndChat migration; this guard keeps
+            // existing SQLite DBs working without an out-of-band update,
+            // adds the Role column to PlayerAuthSessions, and stamps a
+            // SchemaVersion column onto ChangshaGameReplays for the v2
+            // replay schema (defaulting legacy rows to 1).
+            await EnsureSqliteWave9TablesAsync(db, cancellationToken);
         }
         else
         {
@@ -434,6 +447,250 @@ public static class DatabaseBootstrapper
             {
                 await using var alter = connection.CreateCommand();
                 alter.CommandText = "ALTER TABLE \"ChangshaGames\" ADD COLUMN \"RulePresetId\" TEXT NULL;";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase J Wave 9 — defensive SQLite-only bootstrap for the
+    /// <c>CspViolations</c> append-only table. Mirrors the
+    /// AddCspViolations EF migration so existing prod SQLite installs
+    /// pick up the new table on boot without an out-of-band migration sweep.
+    /// </summary>
+    private static async Task EnsureSqliteCspViolationsAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var createTable = connection.CreateCommand())
+            {
+                createTable.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "CspViolations" (
+                        "Id" INTEGER NOT NULL CONSTRAINT "PK_CspViolations" PRIMARY KEY AUTOINCREMENT,
+                        "PlayerId" TEXT NULL,
+                        "DocumentUri" TEXT NULL,
+                        "Referrer" TEXT NULL,
+                        "ViolatedDirective" TEXT NULL,
+                        "EffectiveDirective" TEXT NULL,
+                        "OriginalPolicy" TEXT NULL,
+                        "Disposition" TEXT NULL,
+                        "BlockedUri" TEXT NULL,
+                        "SourceFile" TEXT NULL,
+                        "LineNumber" INTEGER NULL,
+                        "ColumnNumber" INTEGER NULL,
+                        "ScriptSample" TEXT NULL,
+                        "StatusCode" INTEGER NULL,
+                        "UserAgent" TEXT NULL,
+                        "RawJson" TEXT NOT NULL,
+                        "ReceivedAt" TEXT NOT NULL
+                    );
+                    """;
+                await createTable.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxReceived = connection.CreateCommand())
+            {
+                idxReceived.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_CspViolations_ReceivedAt"
+                    ON "CspViolations" ("ReceivedAt");
+                    """;
+                await idxReceived.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxDirective = connection.CreateCommand())
+            {
+                idxDirective.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_CspViolations_EffectiveDirective"
+                    ON "CspViolations" ("EffectiveDirective");
+                    """;
+                await idxDirective.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase J Wave 9 — defensive SQLite-only bootstrap for the
+    /// <c>ReconnectTokens</c>, <c>ReconnectAuditEntries</c>, and
+    /// <c>ChatMessages</c> tables, plus the additive <c>Role</c> column on
+    /// <c>PlayerAuthSessions</c> and <c>SchemaVersion</c> on
+    /// <c>ChangshaGameReplays</c>. Mirrors the
+    /// AddWave9ReconnectTokensAndChat EF migration so existing prod
+    /// SQLite installs pick up the new tables / columns on boot without
+    /// an out-of-band migration sweep. PRAGMA-probe-then-ALTER is the
+    /// idiom for additive columns because SQLite has no
+    /// <c>ADD COLUMN IF NOT EXISTS</c>.
+    /// </summary>
+    private static async Task EnsureSqliteWave9TablesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var createReconnect = connection.CreateCommand())
+            {
+                createReconnect.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "ReconnectTokens" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_ReconnectTokens" PRIMARY KEY,
+                        "Token" TEXT NOT NULL,
+                        "PlayerId" TEXT NOT NULL,
+                        "GameId" TEXT NOT NULL,
+                        "SeatIndex" INTEGER NOT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "ExpiresAt" TEXT NOT NULL,
+                        "ConsumedAt" TEXT NULL,
+                        "RotatedFromTokenId" TEXT NULL
+                    );
+                    """;
+                await createReconnect.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxToken = connection.CreateCommand())
+            {
+                idxToken.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_ReconnectTokens_Token"
+                    ON "ReconnectTokens" ("Token");
+                    """;
+                await idxToken.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxPlayerGame = connection.CreateCommand())
+            {
+                idxPlayerGame.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_ReconnectTokens_PlayerId_GameId"
+                    ON "ReconnectTokens" ("PlayerId", "GameId");
+                    """;
+                await idxPlayerGame.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createAudit = connection.CreateCommand())
+            {
+                createAudit.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "ReconnectAuditEntries" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_ReconnectAuditEntries" PRIMARY KEY,
+                        "PlayerId" TEXT NOT NULL,
+                        "OldTokenId" TEXT NOT NULL,
+                        "NewTokenId" TEXT NOT NULL,
+                        "Ipv4Hash" TEXT NOT NULL,
+                        "UserAgentHash" TEXT NOT NULL,
+                        "At" TEXT NOT NULL
+                    );
+                    """;
+                await createAudit.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxAuditPlayer = connection.CreateCommand())
+            {
+                idxAuditPlayer.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_ReconnectAuditEntries_PlayerId"
+                    ON "ReconnectAuditEntries" ("PlayerId");
+                    """;
+                await idxAuditPlayer.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxAuditAt = connection.CreateCommand())
+            {
+                idxAuditAt.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_ReconnectAuditEntries_At"
+                    ON "ReconnectAuditEntries" ("At");
+                    """;
+                await idxAuditAt.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createChat = connection.CreateCommand())
+            {
+                createChat.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "ChatMessages" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_ChatMessages" PRIMARY KEY,
+                        "GameId" TEXT NOT NULL,
+                        "PlayerId" TEXT NOT NULL,
+                        "Body" TEXT NOT NULL,
+                        "At" TEXT NOT NULL,
+                        "Channel" TEXT NOT NULL DEFAULT 'table'
+                    );
+                    """;
+                await createChat.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxChatGameAt = connection.CreateCommand())
+            {
+                idxChatGameAt.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_ChatMessages_GameId_At"
+                    ON "ChatMessages" ("GameId", "At");
+                    """;
+                await idxChatGameAt.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // PlayerAuthSessions.Role — additive column for the Wave 9 admin
+            // gate (DevLogin can stamp role="admin"; AuthCookieService
+            // hands the value back via ResolveAsync). PRAGMA-probe so
+            // re-runs are no-ops.
+            var hasRole = false;
+            await using (var probeRole = connection.CreateCommand())
+            {
+                probeRole.CommandText = "PRAGMA table_info(\"PlayerAuthSessions\");";
+                await using var reader = await probeRole.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (reader.GetString(1).Equals("Role", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasRole = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasRole)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE \"PlayerAuthSessions\" ADD COLUMN \"Role\" TEXT NULL;";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // ChangshaGameReplays.SchemaVersion — additive column for v2.
+            // Default 1 so legacy rows keep their implicit version.
+            var hasSchemaVersion = false;
+            await using (var probeSchema = connection.CreateCommand())
+            {
+                probeSchema.CommandText = "PRAGMA table_info(\"ChangshaGameReplays\");";
+                await using var reader = await probeSchema.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (reader.GetString(1).Equals("SchemaVersion", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasSchemaVersion = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasSchemaVersion)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE \"ChangshaGameReplays\" ADD COLUMN \"SchemaVersion\" INTEGER NOT NULL DEFAULT 1;";
                 await alter.ExecuteNonQueryAsync(cancellationToken);
             }
         }

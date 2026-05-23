@@ -1494,3 +1494,82 @@ post-Vasquez sync: 384/0/0.
 - **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
   → Passed: 654, Failed: 0, Skipped: 0 (+100 over Wave 7 baseline of
   554; Vasquez + Apone + Hicks forward-staged tests all join in).
+
+---
+
+## Phase J — Wave 9 — `stlong/phase-j-wave-9-polish`
+
+**Scope:** four backend slices — reconnect-token rotation w/ audit
+chain; server-side table chat with private/spectator channels and a
+6-msg / 30s sliding rate limit; i18n pattern resource catalog +
+endpoint; per-hand audit log v2 envelope + admin retrieval endpoint.
+
+- **Reconnect-token rotation.** New entities `ReconnectToken` and
+  `ReconnectAuditEntry` (`PlayerId`, `GameId`, `Token` hex, `IpHash` +
+  `UserAgentHash` SHA-256, `PredecessorTokenId?` audit chain).
+  `ReconnectTokenService.{IssueAsync, VerifyAndRotateAsync,
+  VerifyAsync, RecentAuditAsync}`. REST surface at
+  `/api/reconnect/{issue,rotate,verify}`. Hub plumbing deferred to
+  Wave 10 (REST surface is sufficient for the contract tests).
+- **Table chat.** New entity `ChatMessage` (`(GameId, At)` composite
+  index for backfill). `ChatService` ships a per-process sliding
+  rate limit (6 msgs / 30s / `playerId` via `ConcurrentDictionary`).
+  Profanity is masked, **not** rejected — delegated to
+  `ChatContentFilter.Sanitize` which replaces banned tokens with
+  asterisk runs of the same length so persisted body + audit logs
+  never carry the original token. REST surface at
+  `POST /api/chat/send` and `GET /api/games/{id}/chat?since=&limit=`.
+- **i18n pattern catalog.** New `[PatternResource("camelCaseKey")]`
+  attribute on every `WinPattern` enum member; reflection-cached
+  `PatternResourceCatalog.KeyFor` with a camelCase enum-name
+  fallback for resilience against parallel resets of
+  `ChangshaDomain.cs`. en / zh-Hans / zh-Hant catalogs exposed via
+  `GET /api/i18n/patterns?lang=` and `/api/i18n/patterns/{lang}`.
+  `WinResult.PatternKeys` is populated at win-declaration time in
+  `ChangshaGameStateMachine.{DeclareSelfDrawWin, ResolveHuClaim}` so
+  the wire surface (WinDeclared event + replay v2) carries the keys
+  inline.
+- **Audit log v2.** `ChangshaGameReplay.SchemaVersion` (defaults 1
+  for legacy rows; `CurrentSchemaVersion = 2`).
+  `ChangshaGameRuntime.PersistReplayAsync` now emits the v2 envelope
+  `{ schemaVersion: 2, events: [...] }` with each event carrying
+  `source` (`"human" | "bot:unknown" | "system"` — bot difficulty
+  wiring deferred to Wave 10) and `durationMs`.
+  `ChangshaReplayController` read path normalises both v1 (bare
+  array) and v2 (envelope object) into a single canonical response
+  with `schemaVersion` surfaced. Admin retrieval lives at
+  `/api/admin/games/{id}/audit` (alias `/api/games/{id}/audit`)
+  gated on `session.Role == "admin"`; unauth payload deliberately
+  omits all audit-shaped keys so Vasquez's existence-oracle test
+  reads as empty.
+- **Role plumbing.** `AuthCookieService.IssueAsync` now takes an
+  optional `role` string; `AuthController.DevLogin` accepts `Role`
+  in its body and threads it through. `PlayerAuthSession.Role`
+  nullable `string(32)` added.
+- **DB bootstrap.** `DatabaseBootstrapper.EnsureSqliteWave9TablesAsync`
+  creates the three new tables idempotently and ALTERs
+  `PlayerAuthSessions.Role` + `ChangshaGameReplays.SchemaVersion`
+  via `PRAGMA table_info` probes. Wired into `InitializeAsync`
+  after the Wave 8 CspViolations bootstrap. **EF migration deferred**
+  — Apone has parallel `CspViolation` work churning the snapshot,
+  so `dotnet ef migrations add` would pollute the migration with
+  Apone's work-in-progress. Postgres + SqlServer providers will
+  pick up `AddWave9ReconnectTokensAndChat` in a follow-up wave.
+- **Apone collision recovery.** `ChangshaDomain.cs` and `AppDbContext.cs`
+  got reset to baseline twice mid-wave by Apone's concurrent edits in
+  the shared working tree. Recovered each time by re-applying small
+  atomic `edit` calls (large `edit` blocks risk silent corruption on
+  parallel writes) and verifying with `grep`. The
+  `PatternResourceCatalog.KeyFor` camelCase fallback was added as a
+  defence-in-depth measure so the wire keys are stable even when
+  `[PatternResource]` decorations get stripped from the enum
+  mid-flight.
+- **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-9.md` —
+  endpoint contracts, EF entity table, wire shapes for
+  reconnect/chat/replay-v2, the deferred-hub-method note, and the
+  Postgres / SqlServer migration follow-up.
+- **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+  → Passed: 729, Failed: 0, Skipped: 0 (+75 over Wave 8 baseline of
+  654; Vasquez's Wave 9 forward-staged contract tests in `Auth`,
+  `Chat`, `I18n`, `Replay`, `Negative`, `Security`, `Changsha` all
+  bind to my surfaces).

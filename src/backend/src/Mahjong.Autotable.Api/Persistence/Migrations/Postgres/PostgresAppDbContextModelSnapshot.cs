@@ -201,6 +201,83 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.ToTable("ChangshaRulePresets");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.CspViolation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("BlockedUri")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int?>("ColumnNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Disposition")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("DocumentUri")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("EffectiveDirective")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int?>("LineNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OriginalPolicy")
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<string>("PlayerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("RawJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Referrer")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("ScriptSample")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("SourceFile")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("ViolatedDirective")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EffectiveDirective");
+
+                    b.HasIndex("ReceivedAt");
+
+                    b.ToTable("CspViolations");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.EmailMagicLinkToken", b =>
                 {
                     b.Property<Guid>("Id")

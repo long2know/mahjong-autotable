@@ -19,14 +19,44 @@ namespace Mahjong.Autotable.Api.Observability;
 ///         hit rate.</item>
 /// </list>
 ///
-/// <para>The CSP starts permissive: <c>script-src 'self' 'unsafe-eval'</c>
-/// because Three.js's runtime shader compiler uses <c>new Function(...)</c>.
-/// <c>'unsafe-inline'</c> is intentionally NOT in the policy — the
-/// frontend bundles every <c>&lt;script&gt;</c> tag through Parcel so
-/// inline scripts are already absent. See <c>docs/cloudflare.md</c> for
-/// the rationale + the planned follow-up to swap <c>'unsafe-eval'</c>
-/// for a nonce-based policy once we've audited which Three.js callsites
-/// actually need eval.</para>
+/// <para>The CSP is tight: <c>script-src 'self' 'wasm-unsafe-eval'</c>.
+/// Hicks's Phase-J-Wave-9 audit confirmed the shipped Parcel bundle
+/// contains zero <c>new Function(...)</c> / <c>eval(...)</c> callsites
+/// (Three.js's <c>three.module.js</c> build doesn't need eval — that's
+/// only <c>three.webgpu.js</c>, which we don't import). The
+/// <c>'wasm-unsafe-eval'</c> token is the CSP-Level-3 permission that
+/// allows <c>WebAssembly.compile()</c> only (used by future Draco /
+/// KTX decoders); it does NOT re-enable <c>eval()</c> /
+/// <c>new Function</c>. <c>'unsafe-inline'</c> is intentionally NOT in
+/// the policy — the frontend bundles every <c>&lt;script&gt;</c> tag
+/// through Parcel so inline scripts are already absent.</para>
+///
+/// <para><b>Phase J Wave 9 — strict-mode + nonces + report-uri (Apone).</b>
+/// The middleware now ships three CSP knobs:
+/// <list type="bullet">
+///   <item><c>Security:CspStrict</c> (bool, default <c>false</c>) — when
+///         true, drops <c>'wasm-unsafe-eval'</c> too, leaving
+///         <c>script-src 'self'</c>. The Wave-9 default already
+///         removed <c>'unsafe-eval'</c>; flip CspStrict on once we've
+///         confirmed no future loader pulls in WebAssembly.</item>
+///   <item><c>Security:UseScriptNonces</c> (bool, default <c>false</c>) —
+///         when true, the middleware generates a per-request 16-byte
+///         base64url nonce, exposes it via <c>HttpContext.Items["csp-nonce"]</c>
+///         for any view that injects an inline script, and emits
+///         <c>script-src 'self' 'nonce-…'</c>. Most responses won't use
+///         the nonce (Parcel bundles all scripts), but the hook is in
+///         place for future inline-bootstrap injection.</item>
+///   <item><c>Security:CspReportOnly</c> (bool, default <c>false</c>) —
+///         when true, the policy ships under the
+///         <c>Content-Security-Policy-Report-Only</c> header instead of
+///         the enforcing <c>Content-Security-Policy</c>. Useful for
+///         canary deployments where you want to audit violations
+///         before enforcing.</item>
+/// </list>
+/// In every mode the policy carries
+/// <c>report-uri /api/csp-report</c> so browsers POST violation reports to
+/// <see cref="CspReportEndpoint"/>; that hooks into a persisted
+/// <c>CspViolation</c> table + the structured logging pipeline.</para>
 ///
 /// <para><b>Cache policy.</b> Parcel emits filenames of the form
 /// <c>name.&lt;hash&gt;.{js,css,wav,png,glb}</c> where <c>&lt;hash&gt;</c>
@@ -41,7 +71,22 @@ namespace Mahjong.Autotable.Api.Observability;
 /// <list type="bullet">
 ///   <item><b>ContentSecurityPolicy</b> (string, optional) — overrides the
 ///         default CSP entirely. Useful when a specific deploy needs to
-///         allow additional script sources (e.g. an analytics CDN).</item>
+///         allow additional script sources (e.g. an analytics CDN).
+///         When set, the <c>CspStrict</c>/<c>UseScriptNonces</c> knobs
+///         have no effect — the operator-supplied policy ships verbatim
+///         (the middleware still appends a <c>report-uri</c> directive
+///         if absent, so reports keep flowing).</item>
+///   <item><b>CspStrict</b> (bool, default <c>false</c>) — drops
+///         <c>'wasm-unsafe-eval'</c> from the built-in default CSP.</item>
+///   <item><b>UseScriptNonces</b> (bool, default <c>false</c>) — adds a
+///         per-request <c>'nonce-…'</c> source to <c>script-src</c> and
+///         exposes the nonce via <c>HttpContext.Items["csp-nonce"]</c>.</item>
+///   <item><b>CspReportOnly</b> (bool, default <c>false</c>) — ships
+///         under the <c>Content-Security-Policy-Report-Only</c> header
+///         instead of enforcing.</item>
+///   <item><b>CspReportUri</b> (string, default <c>/api/csp-report</c>) —
+///         endpoint browsers POST violations to. Setting this to the
+///         empty string disables the directive entirely.</item>
 ///   <item><b>EnableHsts</b> (bool, default <c>false</c>) — when true,
 ///         adds <c>Strict-Transport-Security: max-age=31536000; includeSubDomains</c>.
 ///         Off by default because HSTS sticks once issued; production
@@ -57,14 +102,68 @@ public sealed class SecurityHeadersMiddleware
     /// <summary>Configuration key for the HSTS opt-in (bool).</summary>
     public const string HstsConfigKey = "Security:EnableHsts";
 
+    /// <summary>Phase J Wave 9 — configuration key for strict CSP (bool).
+    /// When true, drops <c>'wasm-unsafe-eval'</c> from the default CSP.</summary>
+    public const string CspStrictConfigKey = "Security:CspStrict";
+
+    /// <summary>Phase J Wave 9 — configuration key for per-request CSP
+    /// nonces (bool). When true, emits a <c>'nonce-…'</c> source on
+    /// <c>script-src</c> and exposes the nonce via HttpContext.Items.</summary>
+    public const string CspUseNoncesConfigKey = "Security:UseScriptNonces";
+
+    /// <summary>Phase J Wave 9 — configuration key for report-only mode
+    /// (bool). When true, ships under <c>Content-Security-Policy-Report-Only</c>.</summary>
+    public const string CspReportOnlyConfigKey = "Security:CspReportOnly";
+
+    /// <summary>Phase J Wave 9 — override for the report-uri endpoint
+    /// (string). Set to empty string to disable the directive.</summary>
+    public const string CspReportUriConfigKey = "Security:CspReportUri";
+
+    /// <summary>HttpContext.Items key under which the per-request CSP
+    /// nonce is exposed (when <see cref="CspUseNoncesConfigKey"/> is on).
+    /// Views / endpoints that inject an inline script can read it as
+    /// <c>HttpContext.Items["csp-nonce"] as string</c>.</summary>
+    public const string CspNonceItemKey = "csp-nonce";
+
+    /// <summary>Default CSP report endpoint. Routed by
+    /// <see cref="CspReportEndpoint.Path"/>.</summary>
+    public const string DefaultCspReportUri = "/api/csp-report";
+
     /// <summary>
-    /// Default Content-Security-Policy. Permissive on script-src
-    /// (<c>'unsafe-eval'</c> for Three.js shader compilation), tight on
-    /// everything else.
+    /// Phase J Wave 9 — production CSP. Drops <c>'unsafe-eval'</c>
+    /// (the Wave-8 permission for Three.js's runtime shader compiler)
+    /// after Hicks's Wave-9 audit confirmed the shipped bundle contains
+    /// zero <c>new Function(...)</c> / <c>eval(...)</c> callsites.
+    /// <c>'wasm-unsafe-eval'</c> remains so any future Three.js loader
+    /// that compiles a WebAssembly draco / ktx decoder keeps working;
+    /// per CSP Level 3 this allows <c>WebAssembly.compile()</c> only
+    /// and does NOT re-open <c>eval()</c>. Vasquez's
+    /// <c>CspHeaderTests.DefaultCspConstant_Wave9_HasNoUnsafeEval</c>
+    /// uses <c>'wasm-unsafe-eval'</c> as the canonical landed signal.
+    /// A <c>report-uri</c> directive is appended at runtime.
     /// </summary>
     public const string DefaultCsp =
         "default-src 'self'; " +
-        "script-src 'self' 'unsafe-eval'; " +
+        "script-src 'self' 'wasm-unsafe-eval'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data: blob:; " +
+        "media-src 'self'; " +
+        "font-src 'self' data:; " +
+        "connect-src 'self' ws: wss:; " +
+        "worker-src 'self' blob:; " +
+        "frame-ancestors 'none'; " +
+        "object-src 'none'; " +
+        "base-uri 'self'; " +
+        "form-action 'self'";
+
+    /// <summary>
+    /// Phase J Wave 9 — ultra-strict CSP that drops even
+    /// <c>'wasm-unsafe-eval'</c>. Selected when <c>Security:CspStrict</c>
+    /// is true. Otherwise identical to <see cref="DefaultCsp"/>.
+    /// </summary>
+    public const string StrictCsp =
+        "default-src 'self'; " +
+        "script-src 'self'; " +
         "style-src 'self' 'unsafe-inline'; " +
         "img-src 'self' data: blob:; " +
         "media-src 'self'; " +
@@ -86,19 +185,61 @@ public sealed class SecurityHeadersMiddleware
         [".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".woff", ".woff2", ".ttf", ".glb", ".gltf", ".wav", ".mp4", ".m4a", ".ogg", ".mp3"];
 
     private readonly RequestDelegate _next;
-    private readonly string _csp;
+    private readonly string _cspTemplate;
     private readonly bool _hstsEnabled;
+    private readonly bool _cspStrict;
+    private readonly bool _useNonces;
+    private readonly bool _reportOnly;
+    private readonly string? _reportUri;
+    private readonly bool _cspOverrideSupplied;
 
     public SecurityHeadersMiddleware(RequestDelegate next, IConfiguration configuration)
     {
         _next = next;
-        var override_ = configuration.GetValue<string?>(CspConfigKey);
-        _csp = string.IsNullOrWhiteSpace(override_) ? DefaultCsp : override_;
+
+        _cspStrict = configuration.GetValue<bool?>(CspStrictConfigKey) ?? false;
+        _useNonces = configuration.GetValue<bool?>(CspUseNoncesConfigKey) ?? false;
+        _reportOnly = configuration.GetValue<bool?>(CspReportOnlyConfigKey) ?? false;
         _hstsEnabled = configuration.GetValue<bool?>(HstsConfigKey) ?? false;
+
+        var rawReportUri = configuration.GetValue<string?>(CspReportUriConfigKey);
+        _reportUri = rawReportUri is null ? DefaultCspReportUri
+            : string.IsNullOrWhiteSpace(rawReportUri) ? null
+            : rawReportUri;
+
+        var overrideCsp = configuration.GetValue<string?>(CspConfigKey);
+        if (!string.IsNullOrWhiteSpace(overrideCsp))
+        {
+            _cspTemplate = overrideCsp;
+            _cspOverrideSupplied = true;
+        }
+        else
+        {
+            _cspTemplate = _cspStrict ? StrictCsp : DefaultCsp;
+            _cspOverrideSupplied = false;
+        }
     }
+
+    /// <summary>The CSP header name we ship under. <c>Content-Security-Policy</c>
+    /// for enforcing mode, <c>-Report-Only</c> for canary mode.</summary>
+    private string CspHeaderName => _reportOnly
+        ? "Content-Security-Policy-Report-Only"
+        : "Content-Security-Policy";
 
     public async Task InvokeAsync(HttpContext context)
     {
+        // Phase J Wave 9 — generate the nonce up front (cheap; 16 bytes)
+        // so it's available to downstream code via HttpContext.Items
+        // BEFORE the response is generated. The nonce is only attached
+        // to the header inside ApplyHeaders, but views need to read it
+        // earlier to embed it in `<script nonce="...">` tags.
+        string? nonce = null;
+        if (_useNonces)
+        {
+            nonce = GenerateNonce();
+            context.Items[CspNonceItemKey] = nonce;
+        }
+
         // OnStarting fires just before the response body is written so
         // header mutations (Cache-Control, Vary) by downstream middleware
         // (UseStaticFiles in particular) have already settled. Closure
@@ -107,13 +248,13 @@ public sealed class SecurityHeadersMiddleware
         var self = this;
         context.Response.OnStarting(() =>
         {
-            ApplyHeaders(context, self);
+            ApplyHeaders(context, self, nonce);
             return Task.CompletedTask;
         });
         await _next(context);
     }
 
-    private static void ApplyHeaders(HttpContext ctx, SecurityHeadersMiddleware instance)
+    private static void ApplyHeaders(HttpContext ctx, SecurityHeadersMiddleware instance, string? nonce)
     {
         var headers = ctx.Response.Headers;
 
@@ -133,9 +274,26 @@ public sealed class SecurityHeadersMiddleware
         {
             headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
         }
-        if (!headers.ContainsKey("Content-Security-Policy"))
+
+        // Build the final CSP string. When a per-request nonce is in play
+        // and the operator hasn't supplied a hard override, splice the
+        // nonce into the script-src directive so any future inline
+        // script (carrying matching `nonce="<value>"`) is permitted.
+        var headerName = instance.CspHeaderName;
+        if (!headers.ContainsKey(headerName) && !headers.ContainsKey("Content-Security-Policy"))
         {
-            headers["Content-Security-Policy"] = instance._csp;
+            var csp = instance._cspTemplate;
+            if (!instance._cspOverrideSupplied && nonce is not null)
+            {
+                csp = InjectNonceIntoScriptSrc(csp, nonce);
+            }
+            if (!string.IsNullOrEmpty(instance._reportUri) && !csp.Contains("report-uri", StringComparison.OrdinalIgnoreCase))
+            {
+                // Append (single source of truth — directives are
+                // semicolon-separated; trailing ';' is tolerated by every UA).
+                csp = csp.TrimEnd(';', ' ') + "; report-uri " + instance._reportUri;
+            }
+            headers[headerName] = csp;
         }
         if (instance._hstsEnabled && !headers.ContainsKey("Strict-Transport-Security"))
         {
@@ -175,6 +333,50 @@ public sealed class SecurityHeadersMiddleware
                 AppendVary(headers, "Accept-Encoding");
             }
         }
+    }
+
+    /// <summary>
+    /// Inserts <c>'nonce-…'</c> into the <c>script-src</c> directive of
+    /// a CSP string. Preserves the existing source list and other
+    /// directives. Internal-public for unit testing.
+    /// </summary>
+    internal static string InjectNonceIntoScriptSrc(string csp, string nonce)
+    {
+        // Walk directives ('; ' separated). Replace script-src; if absent,
+        // we leave the policy alone — a hand-rolled policy with no script-src
+        // already falls back to default-src.
+        var parts = csp.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (var i = 0; i < parts.Length; i++)
+        {
+            if (parts[i].StartsWith("script-src", StringComparison.OrdinalIgnoreCase))
+            {
+                if (parts[i].Contains("'nonce-", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Already nonce-bearing — replace the first nonce token.
+                    parts[i] = System.Text.RegularExpressions.Regex.Replace(
+                        parts[i],
+                        @"'nonce-[A-Za-z0-9_\-]+'",
+                        $"'nonce-{nonce}'");
+                }
+                else
+                {
+                    parts[i] = parts[i] + " 'nonce-" + nonce + "'";
+                }
+                return string.Join("; ", parts);
+            }
+        }
+        return csp;
+    }
+
+    /// <summary>Generates a base64url-encoded 16-byte CSP nonce. Public
+    /// for unit testing — cryptographically random.</summary>
+    public static string GenerateNonce()
+    {
+        Span<byte> buf = stackalloc byte[16];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(buf);
+        // base64url — strip padding, replace + / per RFC 4648 §5.
+        var b64 = Convert.ToBase64String(buf);
+        return b64.TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
     private static void AppendVary(IHeaderDictionary headers, string value)

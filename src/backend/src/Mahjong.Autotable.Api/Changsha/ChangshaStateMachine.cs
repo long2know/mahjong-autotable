@@ -648,7 +648,13 @@ public sealed class ChangshaGameStateMachine
             // downstream consumers don't infer them from Method + AllPatterns.
             IsSelfDraw = true,
             IsKongReplacement = state.LastDrawWasKongReplacement,
-            AllPatterns = result.AllPatterns
+            AllPatterns = result.AllPatterns,
+            // Phase J Wave 9 — pre-resolved i18n keys for every pattern,
+            // mirrored at win-declaration time so the wire surface
+            // (WinDeclared event + replay) carries the catalog keys.
+            PatternKeys = result.AllPatterns
+                .Select(Mahjong.Autotable.Api.Changsha.Patterns.PatternResourceCatalog.KeyFor)
+                .ToArray(),
         };
 
         state.Phase = ChangshaPhase.Scoring;
@@ -1074,7 +1080,11 @@ public sealed class ChangshaGameStateMachine
             // intercepted the kong rather than drawing its replacement).
             IsSelfDraw = false,
             IsKongReplacement = false,
-            AllPatterns = result.AllPatterns
+            AllPatterns = result.AllPatterns,
+            // Phase J Wave 9 — pre-resolved i18n keys.
+            PatternKeys = result.AllPatterns
+                .Select(Mahjong.Autotable.Api.Changsha.Patterns.PatternResourceCatalog.KeyFor)
+                .ToArray(),
         };
 
         // §3.6 missed-win: if multiple seats had Hu in this window and only one declared,

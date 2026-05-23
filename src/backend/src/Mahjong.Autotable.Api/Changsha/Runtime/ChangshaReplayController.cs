@@ -100,32 +100,64 @@ public sealed class ChangshaReplayController : ControllerBase
         // `EventsJson` (admin import, partial replay merge), the endpoint
         // must hand the frontend scrubber a monotonic turn sequence.
         //
+        // Phase J Wave 9 — the writer now emits a v2 envelope
+        // ({ schemaVersion, events: [...] }); we normalise both v1
+        // (bare array) and v2 (envelope object with "events" key) into
+        // the same canonical wire response and surface schemaVersion
+        // so a client can branch on shape if it wants.
+        //
         // If the stored payload is malformed (it shouldn't be — we own the
         // writer) we fall back to surfacing the raw string so the client at
         // least gets the data.
         object events;
+        int schemaVersion = row.SchemaVersion;
         try
         {
             using var doc = JsonDocument.Parse(row.EventsJson);
+            JsonElement eventsArrayElement;
             if (doc.RootElement.ValueKind == JsonValueKind.Array)
             {
-                var sorted = doc.RootElement.EnumerateArray()
-                    .Select((el, idx) => (
-                        Element: el.Clone(),
-                        Turn: el.TryGetProperty("turn", out var t) && t.ValueKind == JsonValueKind.Number
-                            ? t.GetInt32()
-                            : int.MaxValue,
-                        Order: idx))
-                    .OrderBy(x => x.Turn)
-                    .ThenBy(x => x.Order)
-                    .Select(x => x.Element)
-                    .ToArray();
-                events = sorted;
+                // v1 — bare events array. Legacy rows; schemaVersion
+                // already defaults to 1 in the row.
+                eventsArrayElement = doc.RootElement;
+            }
+            else if (doc.RootElement.ValueKind == JsonValueKind.Object
+                  && doc.RootElement.TryGetProperty("events", out var maybeEvents)
+                  && maybeEvents.ValueKind == JsonValueKind.Array)
+            {
+                // v2 envelope. Read schemaVersion from the payload so the
+                // wire surface reflects what was actually stored even if
+                // the row's column drifted.
+                eventsArrayElement = maybeEvents;
+                if (doc.RootElement.TryGetProperty("schemaVersion", out var sv) && sv.ValueKind == JsonValueKind.Number)
+                {
+                    schemaVersion = sv.GetInt32();
+                }
             }
             else
             {
                 events = doc.RootElement.Clone();
+                return Ok(new
+                {
+                    gameId = gameGuid,
+                    createdAt = row.CreatedAt,
+                    schemaVersion,
+                    events,
+                });
             }
+
+            var sorted = eventsArrayElement.EnumerateArray()
+                .Select((el, idx) => (
+                    Element: el.Clone(),
+                    Turn: el.TryGetProperty("turn", out var t) && t.ValueKind == JsonValueKind.Number
+                        ? t.GetInt32()
+                        : int.MaxValue,
+                    Order: idx))
+                .OrderBy(x => x.Turn)
+                .ThenBy(x => x.Order)
+                .Select(x => x.Element)
+                .ToArray();
+            events = sorted;
         }
         catch (JsonException ex)
         {
@@ -137,6 +169,7 @@ public sealed class ChangshaReplayController : ControllerBase
         {
             gameId = gameGuid,
             createdAt = row.CreatedAt,
+            schemaVersion,
             events,
         });
     }

@@ -158,6 +158,73 @@ at startup (Postgres / SQL Server) so the new pod migrates the shared DB
 before serving traffic. Run **one** replica during a destructive
 migration to avoid double-apply races.
 
+### Pre-rollout migration Job (Phase J Wave 9)
+
+In addition to the per-pod `MigrateAsync` boot path above, Wave 9 ships
+a dedicated **pre-rollout** Kubernetes Job at
+[`infra/k8s/base/job-migrate.yaml`](../infra/k8s/base/job-migrate.yaml).
+The Job runs `dotnet Mahjong.Autotable.Api.dll --migrate` — a stand-
+alone entrypoint (added in `Program.cs`) that boots the DI container
+just far enough to resolve `AppDbContext`, runs
+`db.Database.MigrateAsync()` (or `EnsureCreatedAsync` for SQLite), and
+exits 0. The HTTP listener port is **never bound**, so the Job pod
+doesn't fight the Deployment's readiness probe.
+
+#### Why bother, when the Deployment already migrates on boot?
+
+Three reasons:
+
+1. **No double-apply race on multi-replica rollouts.** When two new
+   pods start in parallel and both call `MigrateAsync` against the
+   same schema, EF Core's `__EFMigrationsHistory` table serialises the
+   work — but on Postgres specifically this can deadlock the lock-table
+   acquisition during long-running ALTERs. Running the Job once,
+   pre-rollout, removes the contention window entirely.
+2. **Clean rollback signal.** If the migration fails, the Job goes RED
+   *before* the new image rolls. The existing Deployment keeps serving;
+   the operator can investigate without an active outage.
+3. **Argo CD / Flux compatibility.** The Job carries
+   `argocd.argoproj.io/sync-wave: -1` + `argocd.argoproj.io/hook: PreSync`
+   so GitOps tools sequence it ahead of the Deployment automatically.
+
+#### Wiring
+
+The Job is referenced from
+[`infra/k8s/base/kustomization.yaml`](../infra/k8s/base/kustomization.yaml)
+under `resources:`, so `kubectl apply -k infra/k8s/base/` (or the
+overlay equivalent) creates / updates it on every sync. The Job uses
+the same image tag as the Deployment — Kustomize's `images:` patch
+covers both — so the migration set baked into the image always
+matches the API code that will start serving.
+
+#### Manual invocation
+
+For a one-off migration outside of a normal rollout (e.g. after
+restoring from a Postgres backup taken before the latest migration
+landed):
+
+```bash
+# Delete the previous Job (Job names are immutable; success-completed
+# Jobs hang around for ttlSecondsAfterFinished — 10 min by default).
+kubectl delete job mahjong-autotable-migrate --ignore-not-found
+
+# Apply just the Job manifest (rest of the base is untouched).
+kubectl apply -f infra/k8s/base/job-migrate.yaml
+
+# Wait for the Job to complete.
+kubectl wait --for=condition=complete job/mahjong-autotable-migrate --timeout=600s
+
+# Inspect the migration log.
+kubectl logs job/mahjong-autotable-migrate
+```
+
+#### Failure handling
+
+`restartPolicy: OnFailure` + `backoffLimit: 3` — k8s retries a
+crashed pod 3 times before marking the Job failed. The completed Pod is
+GC'd after `ttlSecondsAfterFinished: 600` (10 min) so `kubectl get jobs`
+stays scannable across many rollouts.
+
 ## Observability
 
 - Prometheus scrape: `GET /metrics` (Phase J Wave 5 — `MetricsEndpoint`).

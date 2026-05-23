@@ -39,6 +39,13 @@ import {
   type MotionPreference,
   type ThemePreference,
 } from './theme';
+import {
+  getLanguage,
+  setLanguage,
+  onLanguageChange,
+  t,
+  type LanguagePreference,
+} from './i18n';
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -70,12 +77,12 @@ export const SETTINGS_DEFAULT: AppSettings = {
   serverUrl: '',
 };
 
-const TABS: ReadonlyArray<{ id: SettingsTab; label: string }> = [
-  { id: 'general',       label: 'General' },
-  { id: 'audio',         label: 'Audio' },
-  { id: 'display',       label: 'Display' },
-  { id: 'network',       label: 'Network' },
-  { id: 'rule-presets',  label: 'Rule presets' },
+const TABS: ReadonlyArray<{ id: SettingsTab; labelKey: string; fallback: string }> = [
+  { id: 'general',       labelKey: 'settings.tab.general',       fallback: 'General' },
+  { id: 'audio',         labelKey: 'settings.tab.audio',         fallback: 'Audio' },
+  { id: 'display',       labelKey: 'settings.tab.display',       fallback: 'Display' },
+  { id: 'network',       labelKey: 'settings.tab.network',       fallback: 'Network' },
+  { id: 'rule-presets',  labelKey: 'settings.tab.rule_presets',  fallback: 'Rule presets' },
 ];
 
 // ── State ───────────────────────────────────────────────────────────
@@ -204,18 +211,18 @@ export function installSettingsDrawerV2(): void {
   if (tabsHost === null || panelHost === null) return;
 
   tabsHost.replaceChildren();
-  for (const t of TABS) {
+  for (const tab_ of TABS) {
     const tab = document.createElement('button');
     tab.type = 'button';
     tab.className = 'settings-v2-tab';
     tab.setAttribute('role', 'tab');
-    tab.setAttribute('aria-controls', `settings-panel-${t.id}`);
-    tab.setAttribute('aria-selected', t.id === activeTab ? 'true' : 'false');
-    tab.setAttribute('data-tab', t.id);
-    tab.setAttribute('data-testid', `settings-tab-${t.id}`);
-    tab.id = `settings-tab-${t.id}`;
-    tab.textContent = t.label;
-    tab.addEventListener('click', () => activateTab(t.id));
+    tab.setAttribute('aria-controls', `settings-panel-${tab_.id}`);
+    tab.setAttribute('aria-selected', tab_.id === activeTab ? 'true' : 'false');
+    tab.setAttribute('data-tab', tab_.id);
+    tab.setAttribute('data-testid', `settings-tab-${tab_.id}`);
+    tab.id = `settings-tab-${tab_.id}`;
+    tab.textContent = t(tab_.labelKey) || tab_.fallback;
+    tab.addEventListener('click', () => activateTab(tab_.id));
     tabsHost.appendChild(tab);
   }
 
@@ -278,6 +285,17 @@ export function installSettingsDrawerV2(): void {
   // Profile mirror — sync the General tab when the profile changes
   // externally (e.g. via the onboarding card).
   onProfile(() => rerenderPanels());
+
+  // Phase J Wave 9 — re-render the drawer's tab strip + panel labels
+  // whenever the active locale changes (Language picker change).
+  onLanguageChange(() => {
+    // Re-render tabs (textContent depends on t()).
+    for (const tab_ of TABS) {
+      const tabEl = document.getElementById(`settings-tab-${tab_.id}`);
+      if (tabEl !== null) tabEl.textContent = t(tab_.labelKey) || tab_.fallback;
+    }
+    rerenderPanels();
+  });
 }
 
 function openDrawer(): void {
@@ -305,10 +323,10 @@ function closeDrawer(): void {
 
 function activateTab(id: SettingsTab): void {
   activeTab = id;
-  for (const t of TABS) {
-    const tab = document.getElementById(`settings-tab-${t.id}`);
-    const panel = document.getElementById(`settings-panel-${t.id}`);
-    const isActive = t.id === id;
+  for (const tab_ of TABS) {
+    const tab = document.getElementById(`settings-tab-${tab_.id}`);
+    const panel = document.getElementById(`settings-panel-${tab_.id}`);
+    const isActive = tab_.id === id;
     if (tab !== null) {
       tab.classList.toggle('settings-v2-tab-active', isActive);
       tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
@@ -323,7 +341,7 @@ function activateTab(id: SettingsTab): void {
 function flashSavedNote(): void {
   const note = document.getElementById('settings-saved-note-v2');
   if (note === null) return;
-  note.textContent = 'Saved ✓';
+  note.textContent = t('settings.saved') || 'Saved ✓';
   (note as HTMLElement).style.display = 'inline';
   window.setTimeout(() => {
     (note as HTMLElement).style.display = 'none';
@@ -357,7 +375,7 @@ function buildPanelShell(id: SettingsTab, ariaLabel: string): HTMLDivElement {
 }
 
 function buildGeneralPanel(): HTMLDivElement {
-  const panel = buildPanelShell('general', 'General settings');
+  const panel = buildPanelShell('general', t('settings.tab.general') || 'General settings');
   const profile = getProfile();
   const currentName = profile?.displayName ?? '';
   const currentColor = profile?.avatarColor ?? AVATAR_COLOR_PRESETS[5];
@@ -366,7 +384,7 @@ function buildGeneralPanel(): HTMLDivElement {
   nameField.className = 'settings-v2-field';
   const nameLabel = document.createElement('span');
   nameLabel.className = 'settings-v2-label';
-  nameLabel.textContent = 'Display name';
+  nameLabel.textContent = t('settings.display_name') || 'Display name';
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.className = 'settings-v2-input';
@@ -392,12 +410,12 @@ function buildGeneralPanel(): HTMLDivElement {
   colorField.className = 'settings-v2-field';
   const colorLabel = document.createElement('span');
   colorLabel.className = 'settings-v2-label';
-  colorLabel.textContent = 'Avatar colour';
+  colorLabel.textContent = t('settings.avatar_color') || 'Avatar colour';
   colorField.appendChild(colorLabel);
   const presets = document.createElement('div');
   presets.className = 'settings-v2-color-presets';
   presets.setAttribute('role', 'radiogroup');
-  presets.setAttribute('aria-label', 'Avatar colour presets');
+  presets.setAttribute('aria-label', t('settings.avatar_color') || 'Avatar colour presets');
   AVATAR_COLOR_PRESETS.forEach((hex, i) => {
     const swatch = document.createElement('button');
     swatch.type = 'button';
@@ -439,13 +457,44 @@ function buildGeneralPanel(): HTMLDivElement {
   customRow.appendChild(customInput);
   colorField.appendChild(customRow);
 
+  // Phase J Wave 9 — Language selector.  Persists to
+  // `mahjong.settings.v1.lang` via i18n.ts; default Auto follows
+  // navigator.language family detection.
+  const langRow = document.createElement('label');
+  langRow.className = 'settings-v2-field';
+  const langLabel = document.createElement('span');
+  langLabel.className = 'settings-v2-label';
+  langLabel.textContent = t('settings.language') || 'Language';
+  const langSelect = document.createElement('select');
+  langSelect.className = 'dark-select form-control form-control-sm';
+  langSelect.setAttribute('data-testid', 'settings-language-select');
+  langSelect.setAttribute('aria-label', t('settings.language') || 'Language preference');
+  for (const opt of [
+    { v: 'auto',    label: t('settings.language_auto')    || 'Auto (browser default)' },
+    { v: 'en',      label: t('settings.language_en')      || 'English' },
+    { v: 'zh-Hans', label: t('settings.language_zh_hans') || '简体中文' },
+    { v: 'zh-Hant', label: t('settings.language_zh_hant') || '繁體中文' },
+  ] as ReadonlyArray<{ v: LanguagePreference; label: string }>) {
+    const o = document.createElement('option');
+    o.value = opt.v;
+    o.textContent = opt.label;
+    langSelect.appendChild(o);
+  }
+  langSelect.value = getLanguage();
+  langSelect.addEventListener('change', () => {
+    setLanguage(langSelect.value as LanguagePreference);
+  });
+  langRow.appendChild(langLabel);
+  langRow.appendChild(langSelect);
+
   panel.appendChild(nameField);
   panel.appendChild(colorField);
+  panel.appendChild(langRow);
   return panel;
 }
 
 function buildAudioPanel(): HTMLDivElement {
-  const panel = buildPanelShell('audio', 'Audio settings');
+  const panel = buildPanelShell('audio', t('settings.tab.audio') || 'Audio settings');
 
   const soundRow = document.createElement('label');
   soundRow.className = 'settings-v2-field settings-v2-checkbox-row';
@@ -454,7 +503,7 @@ function buildAudioPanel(): HTMLDivElement {
   soundInput.checked = current.soundEnabled;
   soundInput.setAttribute('data-testid', 'settings-sound-toggle');
   const soundText = document.createElement('span');
-  soundText.textContent = 'Sound effects';
+  soundText.textContent = t('settings.sound_effects') || 'Sound effects';
   soundInput.addEventListener('change', () => {
     setSettings({ soundEnabled: soundInput.checked });
   });
@@ -465,7 +514,7 @@ function buildAudioPanel(): HTMLDivElement {
   volumeRow.className = 'settings-v2-field';
   const volumeLabel = document.createElement('span');
   volumeLabel.className = 'settings-v2-label';
-  volumeLabel.textContent = 'Master volume';
+  volumeLabel.textContent = t('settings.master_volume') || 'Master volume';
   const volumeInput = document.createElement('input');
   volumeInput.type = 'range';
   volumeInput.min = '0';
@@ -492,7 +541,7 @@ function buildAudioPanel(): HTMLDivElement {
 }
 
 function buildDisplayPanel(): HTMLDivElement {
-  const panel = buildPanelShell('display', 'Display settings');
+  const panel = buildPanelShell('display', t('settings.tab.display') || 'Display settings');
 
   const perspRow = document.createElement('label');
   perspRow.className = 'settings-v2-field settings-v2-checkbox-row';
@@ -501,7 +550,7 @@ function buildDisplayPanel(): HTMLDivElement {
   perspInput.checked = current.perspective;
   perspInput.setAttribute('data-testid', 'settings-perspective-toggle');
   const perspText = document.createElement('span');
-  perspText.textContent = 'Perspective camera (uncheck for flat top-down)';
+  perspText.textContent = t('settings.perspective') || 'Perspective camera (uncheck for flat top-down)';
   perspInput.addEventListener('change', () => {
     setSettings({ perspective: perspInput.checked });
   });
@@ -512,7 +561,7 @@ function buildDisplayPanel(): HTMLDivElement {
   colorRow.className = 'settings-v2-field';
   const colorLabel = document.createElement('span');
   colorLabel.className = 'settings-v2-label';
-  colorLabel.textContent = 'Table cloth colour';
+  colorLabel.textContent = t('settings.table_color') || 'Table cloth colour';
   const colorInput = document.createElement('input');
   colorInput.type = 'color';
   colorInput.value = current.tableColor;
@@ -523,7 +572,7 @@ function buildDisplayPanel(): HTMLDivElement {
   const colorReset = document.createElement('button');
   colorReset.type = 'button';
   colorReset.className = 'btn btn-secondary btn-sm';
-  colorReset.textContent = 'Reset';
+  colorReset.textContent = t('common.reset') || 'Reset';
   colorReset.setAttribute('data-testid', 'settings-table-color-reset');
   colorReset.addEventListener('click', () => {
     colorInput.value = SETTINGS_DEFAULT.tableColor;
@@ -541,15 +590,15 @@ function buildDisplayPanel(): HTMLDivElement {
   motionRow.className = 'settings-v2-field';
   const motionLabel = document.createElement('span');
   motionLabel.className = 'settings-v2-label';
-  motionLabel.textContent = 'Motion';
+  motionLabel.textContent = t('settings.motion') || 'Motion';
   const motionSelect = document.createElement('select');
   motionSelect.className = 'dark-select form-control form-control-sm';
   motionSelect.setAttribute('data-testid', 'settings-motion-select');
-  motionSelect.setAttribute('aria-label', 'Motion preference');
+  motionSelect.setAttribute('aria-label', t('settings.motion') || 'Motion preference');
   for (const opt of [
-    { v: 'auto',    label: 'Auto (follow OS preference)' },
-    { v: 'reduced', label: 'Reduced (disable animations)' },
-    { v: 'full',    label: 'Full (always animate)' },
+    { v: 'auto',    label: t('settings.motion_auto')    || 'Auto (follow OS preference)' },
+    { v: 'reduced', label: t('settings.motion_reduced') || 'Reduced (disable animations)' },
+    { v: 'full',    label: t('settings.motion_full')    || 'Full (always animate)' },
   ] as ReadonlyArray<{ v: MotionPreference; label: string }>) {
     const o = document.createElement('option');
     o.value = opt.v;
@@ -570,15 +619,15 @@ function buildDisplayPanel(): HTMLDivElement {
   themeRow.className = 'settings-v2-field';
   const themeLabel = document.createElement('span');
   themeLabel.className = 'settings-v2-label';
-  themeLabel.textContent = 'Theme';
+  themeLabel.textContent = t('settings.theme') || 'Theme';
   const themeSelect = document.createElement('select');
   themeSelect.className = 'dark-select form-control form-control-sm';
   themeSelect.setAttribute('data-testid', 'settings-theme-select');
-  themeSelect.setAttribute('aria-label', 'Theme preference');
+  themeSelect.setAttribute('aria-label', t('settings.theme') || 'Theme preference');
   for (const opt of [
-    { v: 'auto',  label: 'Auto (follow OS preference)' },
-    { v: 'light', label: 'Light' },
-    { v: 'dark',  label: 'Dark' },
+    { v: 'auto',  label: t('settings.theme_auto')  || 'Auto (follow OS preference)' },
+    { v: 'light', label: t('settings.theme_light') || 'Light' },
+    { v: 'dark',  label: t('settings.theme_dark')  || 'Dark' },
   ] as ReadonlyArray<{ v: ThemePreference; label: string }>) {
     const o = document.createElement('option');
     o.value = opt.v;
@@ -600,13 +649,13 @@ function buildDisplayPanel(): HTMLDivElement {
 }
 
 function buildNetworkPanel(): HTMLDivElement {
-  const panel = buildPanelShell('network', 'Network settings');
+  const panel = buildPanelShell('network', t('settings.tab.network') || 'Network settings');
 
   const urlField = document.createElement('label');
   urlField.className = 'settings-v2-field';
   const urlLabel = document.createElement('span');
   urlLabel.className = 'settings-v2-label';
-  urlLabel.textContent = 'Server URL override';
+  urlLabel.textContent = t('settings.server_url') || 'Server URL override';
   const urlInput = document.createElement('input');
   urlInput.type = 'url';
   urlInput.placeholder = 'Defaults to page origin';
@@ -634,7 +683,7 @@ function buildNetworkPanel(): HTMLDivElement {
 // state (current draft, picker selection) survives a settings
 // drawer close+reopen without leaking back into this module.
 function buildRulePresetsPanel(): HTMLDivElement {
-  const panel = buildPanelShell('rule-presets', 'Rule presets');
+  const panel = buildPanelShell('rule-presets', t('settings.tab.rule_presets') || 'Rule presets');
   // The host element is the panel itself; rule-presets.ts looks up
   // `#settings-panel-rule-presets` and populates its body in-place.
   renderRulePresetsEditor();

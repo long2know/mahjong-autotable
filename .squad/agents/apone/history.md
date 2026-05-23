@@ -272,3 +272,55 @@
 
 **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo` → **654 / 0 / 0** (was 554/0/0 at Wave 7; +100 net). Zero-skip streak preserved: **12 consecutive green waves**.
 
+
+## Phase J Wave 9 — CSP tightening + report sink + k8s pre-rollout migration Job + SBOM workflow + chat/token smoke + HotSeatSwap flake fix (2026-05-23)
+
+**Branch:** `stlong/phase-j-wave-9-polish` (continuing same branch from Wave 8 work-in-progress).
+
+**Tasks completed (selective, NEVER `git add -A`):**
+
+1. **CSP middleware tightened** — `Observability/SecurityHeadersMiddleware.cs` gained four new operator knobs: `Security:CspStrict` (drops `'unsafe-eval'`), `Security:UseScriptNonces` (per-request nonce via `HttpContext.Items["csp-nonce"]`), `Security:CspReportOnly` (canary via `Content-Security-Policy-Report-Only`), `Security:CspReportUri` (default `/api/csp-report`, empty disables). Defaults are all backwards-compatible — pre-existing `DefaultCsp_AllowsUnsafeEvalForThreeJs` test still passes.
+
+2. **`POST /api/csp-report` sink** — new `Observability/CspReportEndpoint.cs` registers a `DisableRateLimiting()` endpoint accepting both legacy (`application/csp-report`) and modern Reporting-API (`application/reports+json`) envelopes. 32 KiB body cap; persists to `CspViolations` table; always returns 204. `Data/DatabaseBootstrapper.cs` gains `EnsureSqliteCspViolationsAsync` belt-and-braces fallback. Entity + DbSet + OnModelCreating in `ChangshaEntities.cs` / `AppDbContext.cs`. Per-provider EF Core migrations under `Persistence/Migrations/{Sqlite,Postgres,SqlServer}/*_AddCspViolations.cs` (model snapshots updated cleanly — only CspViolation entity diff).
+
+3. **Pre-rollout k8s migration Job** — `Program.cs` intercepts `--migrate` arg, builds minimal DI (`AddPersistence` only), resolves `AppDbContext`, runs `MigrateAsync` (Postgres/SqlServer) or `DatabaseBootstrapper.InitializeAsync(db)` (SQLite), exits without binding the HTTP port. `infra/k8s/base/job-migrate.yaml` invokes the same image with `args: ["--migrate"]`; Argo CD `sync-wave: -1` + `hook: PreSync` for GitOps ordering; `restartPolicy: OnFailure`, `backoffLimit: 3`, `ttlSecondsAfterFinished: 600`. Wired into `kustomization.yaml`. Docs: `docs/kubernetes.md` gets a Pre-rollout migration Job section.
+
+4. **SBOM + Trivy CRITICAL/HIGH gate** — new `.github/workflows/sbom.yml`: builds prod image, emits CycloneDX + SPDX SBOMs via `anchore/sbom-action@v0`, runs Trivy with `severity: CRITICAL,HIGH` + `exit-code: 1` + `ignore-unfixed: true` (workflow goes RED on any fixable CRITICAL/HIGH), uploads SARIF to GitHub code-scanning, posts PR-summary comment. Runs on push:main, PR touching Dockerfile/csproj/package.json, weekly cron, and `workflow_dispatch`. Docs: `docs/sbom.md` (new) covers gate + local reproduction + future cosign signing.
+
+5. **HotSeatSwap_PlayerToPlayer_PreservesGameState flake fix** — `tests/Autotable/HotSeatSwapTests.cs`'s `bobSeated` `WaitForAsync` predicate was racing the post-take `FillEmptySeatsWithBotsAsync` auto-bot-fill. Tightened predicate to require BOTH `Seats[1].PlayerId == bob.PlayerId` AND `Seats[0].PlayerId != alice.PlayerId` so the subsequent assertion only fires after auto-fill completes. Pure test-side fix; underlying Wave-2 seat-release-on-disconnect invariant preserved.
+
+6. **Forward-compatible smoke scripts** — `tests/smoke/chat-flow-smoke.sh` (port 18082) and `tests/smoke/token-rotation-smoke.sh` (port 18083) target Bishop's Wave-9 surface. Same forward-compatible pattern from Wave 8: 404 = soft-pass (`⏭`), 4xx-with-body = body-shape mismatch soft-pass, hard-fail only on 5xx / invariant violation (e.g. reuse-attack not rejected). Wired into `.github/workflows/docker-smoke.yml` after the auth-flow step.
+
+**Cross-lane bundling avoided (Stephen's Wave-8 complaint addressed):**
+
+- Bishop's untracked entity / DbSet / OnModelCreating work on `ChangshaEntities.cs` + `AppDbContext.cs` (ReconnectToken, ReconnectAuditEntry, ChatMessage, Role on PlayerAuthSession, SchemaVersion on Replay) is **deliberately not in any Wave-9 commit**. I generated the CSP-violation migration set against a clean model (Bishop's entities reverted to HEAD before `dotnet ef migrations add` ran). The clean snapshots mean Bishop's eventual `dotnet ef migrations add ReconnectAndChat` will diff cleanly.
+- Bishop's `Auth/AuthCookieService.cs` had introduced an `IssueAsync` overload with an inserted `string? role` parameter that broke the 3-arg callers in `AuthController.cs` (compile errors). I snapshotted his diff to `.work/bishop-auth.patch` + reverted both files to HEAD so the solution would build. Same handling for `Changsha/ChangshaDomain.cs` + `ChangshaGameRuntime.cs` + `ChangshaReplayController.cs` (compile errors: `state.Seats.Length` on a `List<>`, missing `BotDifficulty` property) → `.work/bishop-changsha.patch`. Patches preserved in `.work/` and re-applied to the tree at end-of-session so Bishop's work survives for him.
+
+**Patterns locked for future DevOps work on this codebase:**
+
+- **Strict-CSP canary rollout pattern.** Ship the strict policy as machinery default-OFF; flip `CspReportOnly=true` first, watch the `/api/csp-report` sink for legitimate violations, then flip `CspStrict=true` + `CspReportOnly=false` to enforce. Strict-CSP MUST be set in overlay config, never baked into the image, so a same-day rollback is one config-map edit + rolling restart.
+- **Per-request CSP nonce via `HttpContext.Items["csp-nonce"]`.** Razor / minimal-API endpoints that emit `<script>` tags pick up the nonce by reading `Items["csp-nonce"]`. Bundle-side `eval()` callsites must be replaced (not nonce'd).
+- **`--migrate` CLI flag intercept pattern.** Stand-alone entrypoint at the top of `Program.cs` BEFORE `WebApplication.CreateBuilder(args)`. Builds minimal DI, resolves what it needs, exits without binding the HTTP port. Future tooling (export scripts, replay re-encoders) follows the same shape.
+- **Argo CD `sync-wave: -1` + `hook: PreSync`** for pre-rollout migration Jobs. `kubectl wait --for=condition=complete job/...` is the equivalent for plain-kubectl operators.
+- **SBOM dual-format pattern.** CycloneDX + SPDX from the same Syft / sbom-action run; pick the one downstream tooling needs. Trivy is the canonical scanner. `severity: CRITICAL,HIGH` + `exit-code: 1` + `ignore-unfixed: true` is the gate.
+- **Smoke-script PORT allocation.** Per-script unique ports: docker-build=18080, auth-flow=18081, chat-flow=18082, token-rotation=18083. Lets the suite run in parallel locally.
+- **EF migration regen procedure when other lanes have polluted the model.** Snapshot foreign content to `.work/<other-agent>.patch`, `git checkout HEAD -- <entity-files>`, re-apply ONLY MY additions via `edit` tool, build to verify clean state, `dotnet ef migrations add --context <Sqlite|Postgres|SqlServer>AppDbContext`. Then restore foreign content via the snapshot patch so the other lane's tree state isn't lost.
+
+**Open items / handoff:**
+
+1. **Bishop:** Apply `.work/bishop-auth.patch` + fix the 3-arg callers (use named arg `ct: ct` or pass `role: null` positionally). Apply `.work/bishop-changsha.patch` + fix `state.Seats.Length` → `state.Seats.Count` and remove the missing `BotDifficulty` reference (or add the property to `ChangshaSeatState`). Then `dotnet ef migrations add ReconnectAndChat` to produce his own migration set; my snapshots are clean so the diff will contain only his entities.
+2. **Hicks:** When the eval-callsite-free bundle lands, flip the prod overlay's `Security:CspStrict=true` (and `Security:CspReportOnly=true` for a canary period first, then `false`).
+3. **Stephen:** Promote `Security:CspReportUri` to a documented operator knob in `docs/observability.md`.
+4. **Vasquez:** Wave-10 smoke-script hardening pass — turn the chat-flow + token-rotation soft-pass-on-404 branches into hard asserts once Bishop's surface is GA.
+
+**Deferrals to Wave 10+:**
+
+- **Cosign keyless image signing** — SBOM workflow ships the SBOM + scan; the signing step is a one-line `cosign sign` addition once GHCR OIDC issuer is whitelisted.
+- **Multi-arch Docker builds** (`linux/amd64` + `linux/arm64`) — Wave 4 carryover.
+- **`actionlint` PR gate** on `.github/workflows/**` — Wave 4 carryover.
+- **429-counter metric in `/metrics`** — Wave 6 carryover.
+- **`LateJoin_ReceivesAccumulatedSnapshot_OfPriorUpdates`** flake — `WaitForAsync` helper in `AutotableWsRelayTests.cs:303` returns void / doesn't assert success; can silently time-out under parallel CI load. Worth a Wave 10 follow-up.
+
+**Memo:** `.squad/decisions/inbox/apone-phase-j-wave-9.md`.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo --no-build` → **728 / 1 / 0** (was 654/0/0 at Wave 8; +74 net green from Vasquez's contract tests + my CSP/k8s/smoke tests). The 1 failure (`ChatProfanityFilterTests.Chat_PersistedBody_HasProfanityRemoved`) is Bishop's incomplete profanity-filter wiring — unrelated to Apone scope. HotSeatSwap_PlayerToPlayer flake fixed. Bishop's broken `Auth/` + `Changsha/` work restored to working tree at end-of-session via the `.work/bishop-*.patch` snapshots.

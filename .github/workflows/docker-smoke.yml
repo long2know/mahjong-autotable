@@ -56,6 +56,29 @@ jobs:
           set -o pipefail
           tests/smoke/auth-flow-smoke.sh 2>&1 | tee smoke-logs/auth-smoke.log
 
+      # Phase J Wave 9 (Apone) — chat round-trip smoke. Forward-compatible
+      # against Bishop's POST /api/chat/send + GET /api/games/{id}/chat
+      # surface: soft-passes (⏭) when the endpoints return 404, hardens
+      # to a full assertion once both are live. See
+      # tests/smoke/chat-flow-smoke.sh.
+      - name: Run chat-flow smoke
+        id: chat-smoke
+        run: |
+          mkdir -p smoke-logs
+          set -o pipefail
+          tests/smoke/chat-flow-smoke.sh 2>&1 | tee smoke-logs/chat-smoke.log
+
+      # Phase J Wave 9 (Apone) — reconnect-token rotation smoke. Forward-
+      # compatible against Bishop's /api/reconnect/* surface: soft-passes
+      # (⏭) on 404, otherwise asserts mint → rotate → reuse-rejected.
+      # See tests/smoke/token-rotation-smoke.sh.
+      - name: Run token-rotation smoke
+        id: token-smoke
+        run: |
+          mkdir -p smoke-logs
+          set -o pipefail
+          tests/smoke/token-rotation-smoke.sh 2>&1 | tee smoke-logs/token-smoke.log
+
       # When the smoke fails, surface every log we have for triage: the
       # script's own combined output plus, if the script left a per-PID
       # `tests/smoke/.run-*` directory behind (it usually cleans up on

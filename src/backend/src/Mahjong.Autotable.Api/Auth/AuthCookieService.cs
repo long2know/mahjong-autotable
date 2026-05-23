@@ -41,8 +41,12 @@ public sealed class AuthCookieService
     /// Issues a fresh auth session for <paramref name="playerId"/> tied to
     /// <paramref name="identityId"/>, persists the row, and writes the
     /// cookie. Returns the resolved <see cref="PlayerAuthSession"/>.
+    /// <para>Phase J Wave 9 — the optional <paramref name="role"/>
+    /// argument stamps <see cref="PlayerAuthSession.Role"/>, used by
+    /// the admin gate on <c>/api/admin/games/{id}/audit</c>. Null =
+    /// ordinary player.</para>
     /// </summary>
-    public async Task<PlayerAuthSession> IssueAsync(HttpContext context, string playerId, Guid identityId, CancellationToken ct = default)
+    public async Task<PlayerAuthSession> IssueAsync(HttpContext context, string playerId, Guid identityId, string? role = null, CancellationToken ct = default)
     {
         var token = GenerateOpaqueToken();
         var session = new PlayerAuthSession
@@ -53,6 +57,7 @@ public sealed class AuthCookieService
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.Add(SessionLifetime),
             LastUsedAt = DateTime.UtcNow,
+            Role = role,
         };
         using (var scope = _scopeFactory.CreateScope())
         {
