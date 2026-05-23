@@ -255,22 +255,41 @@ public enum ChangshaPhase
     EndHand,
     RotatingBanker,
     WallExhausted,
-    EndGame,
 
     /// <summary>
-    /// Phase J Wave 2 — terminal phase reached when
+    /// Phase J Wave 2 — canonical terminal phase reached when
     /// <see cref="ChangshaGameState.HandNumber"/> exceeds
-    /// <see cref="ChangshaGameState.MaxHands"/>. Distinct from
-    /// <see cref="EndGame"/> (which is the legacy 16-hand / 4-round terminal):
-    /// the autotable / lobby surface defaults to a 4-hand rotation, and
+    /// <see cref="ChangshaGameState.MaxHands"/>.
     /// <see cref="ChangshaGameStateMachine.RotateBanker"/> sets this phase
     /// + <see cref="ChangshaGameState.IsGameComplete"/> when the cap is hit.
-    /// Like <see cref="EndGame"/>, downstream phase-guards
-    /// (<see cref="ChangshaGameStateMachine.RollDice"/>,
+    /// Downstream phase-guards (<see cref="ChangshaGameStateMachine.RollDice"/>,
     /// <see cref="ChangshaGameStateMachine.StartGame"/>, etc.) reject any
     /// further mutation: the only valid exit is creating a new game.
+    ///
+    /// <para><b>Phase J Wave 4 merger:</b> <see cref="EndGame"/> is now a
+    /// deprecated source-level alias for this value (same underlying int).
+    /// Tests and tournament configurations that explicitly reference
+    /// <c>ChangshaPhase.EndGame</c> continue to compile and pass equality
+    /// checks; new code should prefer <c>GameComplete</c>. Because
+    /// <c>GameComplete</c> is declared first, <c>state.Phase.ToString()</c>
+    /// always returns <c>"GameComplete"</c> for either terminal trigger,
+    /// giving the SignalR <c>GameCompleted</c> payload a single canonical
+    /// wire string. See <c>.squad/decisions/inbox/bishop-phase-j-wave-4.md</c>.</para>
     /// </summary>
-    GameComplete
+    GameComplete,
+
+    /// <summary>
+    /// Deprecated alias for <see cref="GameComplete"/> (Phase J Wave 4 merger).
+    /// Historically the legacy 16-hand / 4-round terminal — now merged into
+    /// the canonical <c>GameComplete</c> phase (both map to the same underlying
+    /// int value). The 4-wind-rotation branch in
+    /// <see cref="ChangshaGameStateMachine.RotateBanker"/> still fires for
+    /// tournament configurations that raise <c>MaxHands</c> above 16, and it
+    /// continues to set this enum value, which is identical to
+    /// <c>GameComplete</c>. Retained for source / test compatibility — new
+    /// code should reference <c>GameComplete</c> directly.
+    /// </summary>
+    EndGame = GameComplete
 }
 
 /// <summary>
@@ -308,22 +327,24 @@ public sealed class ChangshaGameState
     /// <see cref="IsGameComplete"/> to <c>true</c>. Default is <c>4</c> — one
     /// full east-wind rotation, the standard solo / autotable bot-match length.
     /// Tournament play can override via the runtime <c>CreateGame</c> /
-    /// <c>?maxHands=</c> WS query param. The legacy 16-hand (4 × 4) terminal in
-    /// <see cref="ChangshaPhase.EndGame"/> remains for tests that explicitly
-    /// raise <c>MaxHands</c> above 16.
+    /// <c>?maxHands=</c> WS query param. The legacy 16-hand (4 × 4) terminal
+    /// (still reachable via <see cref="ChangshaPhase.EndGame"/>, which is a
+    /// Phase J Wave 4 alias of <see cref="ChangshaPhase.GameComplete"/>)
+    /// remains for tests that explicitly raise <c>MaxHands</c> above 16.
     /// </summary>
     public int MaxHands { get; set; } = 4;
 
     /// <summary>
     /// Phase J Wave 2 — terminal flag flipped to <c>true</c> by
     /// <see cref="ChangshaGameStateMachine.RotateBanker"/> when the game reaches
-    /// <see cref="ChangshaPhase.GameComplete"/> (new N-hand cap) or
-    /// <see cref="ChangshaPhase.EndGame"/> (legacy 16-hand terminal). Provides a
-    /// phase-agnostic predicate for callers that need a single "is the game
-    /// over?" signal — used by the runtime's <see cref="ChangshaGameRuntime"/>
-    /// to gate the <c>GameCompleted</c> SignalR event and by the autotable
-    /// translator to emit the <c>gameComplete</c> collection entry that drives
-    /// Hicks's end-of-game summary modal.
+    /// <see cref="ChangshaPhase.GameComplete"/> (the canonical terminal phase;
+    /// <see cref="ChangshaPhase.EndGame"/> is a Phase J Wave 4 deprecated alias
+    /// for the same value). Provides a phase-agnostic predicate for callers
+    /// that need a single "is the game over?" signal — used by the runtime's
+    /// <see cref="ChangshaGameRuntime"/> to gate the <c>GameCompleted</c>
+    /// SignalR event and by the autotable translator to emit the
+    /// <c>gameComplete</c> collection entry that drives Hicks's end-of-game
+    /// summary modal.
     /// </summary>
     public bool IsGameComplete { get; set; } = false;
 

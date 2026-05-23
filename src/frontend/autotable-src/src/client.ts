@@ -16,6 +16,7 @@ import {
   HandResultEntry,
   PickupEntry,
 } from './types';
+import { clearSession, saveSession } from './reconnect';
 
 
 // Phase J Wave 2 — Server-pushed end-of-game payload.  Bishop's runtime
@@ -89,6 +90,13 @@ export class Client extends BaseClient {
   seat: number | null = 0;
   seatPlayers: Array<string | null> = new Array(4).fill(null);
 
+  // Phase J Wave 4 — last seen `gameId` from a JOIN response.  Public so
+  // the reconnect-token save path can read it without poking BaseClient's
+  // private `game` reference (which TypeScript's compile-time access
+  // check refuses to widen even with a cast).  Set on the `connect` event
+  // handler below, cleared on user-initiated disconnect.
+  lastGameId: string | null = null;
+
   constructor() {
     super();
 
@@ -106,6 +114,20 @@ export class Client extends BaseClient {
     this.pickup = new Collection('pickup', this, { ephemeral: true });
     this.gameComplete = new Collection('gameComplete', this, { ephemeral: true });
     this.seats.on('update', this.onSeats.bind(this));
+
+    // Phase J Wave 4 — keep the reconnect session in sync with live
+    // server state:
+    //   • On `connect` (server JOIN ack): stash the freshly-issued
+    //     gameId so subsequent saveReconnectSession() reads have a
+    //     gameId to key the localStorage entry on.
+    //   • On every `seats.update`: re-save (seat may have shifted via
+    //     move-seat or kick).  Save is cheap; the localStorage write is
+    //     fire-and-forget.
+    this.on('connect', (game: Game) => {
+      this.lastGameId = game.gameId;
+      this.saveReconnectSession();
+    });
+    this.seats.on('update', () => this.saveReconnectSession());
   }
 
   private onSeats(): void {
@@ -119,6 +141,33 @@ export class Client extends BaseClient {
         this.seatPlayers[seatInfo.seat] = playerId;
       }
     }
+  }
+
+  // Phase J Wave 4 — persist the current (gameId, playerId, seat) to
+  // localStorage so a refresh / clean tab-reopen within TOKEN_TTL_MS
+  // can auto-rejoin.  No-op when we haven't completed a JOIN yet
+  // (lastGameId === null).  Fire-and-forget — localStorage write
+  // errors (privacy mode, quota) are swallowed by reconnect.ts.
+  private saveReconnectSession(): void {
+    if (this.lastGameId === null) return;
+    const playerId = this.playerId();
+    if (playerId === null || playerId === '') return;
+    saveSession({
+      gameId: this.lastGameId,
+      playerId,
+      seat: this.seat,
+      connectionId: null,
+    });
+  }
+
+  // Phase J Wave 4 — explicit clear, invoked by client-ui.ts when the
+  // user clicks Disconnect or New Game (intentional teardown — we
+  // don't want to silently auto-rejoin a game the user just left).
+  clearReconnectSession(): void {
+    if (this.lastGameId !== null) {
+      clearSession(this.lastGameId);
+    }
+    this.lastGameId = null;
   }
 }
 

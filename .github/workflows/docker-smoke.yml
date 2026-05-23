@@ -1,0 +1,67 @@
+# Phase J Wave 4 — Apone (DevOps).
+#
+# Nightly Docker smoke test. Runs Vasquez's `tests/smoke/docker-build-smoke.sh`,
+# which builds the multi-stage image from scratch, starts a container, polls
+# `/health`, and asserts the four-field response shape (status / buildSha /
+# uptime / version). Surfaces failures as build-log + container-log artifacts
+# so the next person on rotation can pull the .log files instead of having to
+# re-run the whole pipeline locally.
+#
+# Schedule rationale: 08:00 UTC = 03:00 CST (UTC-5, Stephen's typical TZ) /
+# 04:00 CDT — early enough that a broken nightly is visible on his morning
+# dashboard but late enough that any same-day main pushes have finished
+# building.
+
+name: docker-smoke
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Build + run + /health smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The smoke script is the canonical surface — same script Vasquez runs
+      # locally, same one Apone runs as part of the Wave-3 release rehearsal.
+      # We capture stdout + stderr to a file so the upload-artifact step has
+      # something to attach when the step fails.
+      - name: Run Docker build + /health smoke
+        id: smoke
+        run: |
+          mkdir -p smoke-logs
+          set -o pipefail
+          tests/smoke/docker-build-smoke.sh 2>&1 | tee smoke-logs/smoke.log
+
+      # When the smoke fails, surface every log we have for triage: the
+      # script's own combined output plus, if the script left a per-PID
+      # `tests/smoke/.run-*` directory behind (it usually cleans up on
+      # success but may not on hard fail), copy those in too.
+      - name: Collect debug logs on failure
+        if: failure()
+        run: |
+          mkdir -p smoke-logs
+          cp -r tests/smoke/.run-* smoke-logs/ 2>/dev/null || true
+          docker ps -a > smoke-logs/docker-ps.txt 2>&1 || true
+          docker images > smoke-logs/docker-images.txt 2>&1 || true
+
+      - name: Upload smoke artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-smoke-failure-${{ github.run_id }}
+          path: smoke-logs/
+          if-no-files-found: warn
+          retention-days: 14

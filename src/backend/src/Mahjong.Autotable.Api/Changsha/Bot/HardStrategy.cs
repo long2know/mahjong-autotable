@@ -20,10 +20,10 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 /// <see cref="SelectDiscardTile"/> as the keep-score tie-breaker: when two
 /// candidate discards have identical keep-scores, the one whose removal keeps
 /// post-discard shanten lowest wins. Promoting shanten to the primary ordering
-/// key was investigated and rolled back — the Phase F keep-score heuristic was
-/// already statistically stronger than naive shanten-greedy for Changsha's mix
-/// of Big Win patterns, and BotStrengthTests pins this ordering as the no-regression
-/// baseline (see <c>vasquez-phase-i-wave-4.md</c>).
+/// key was investigated and rolled back at the time — the Phase F keep-score
+/// heuristic was statistically stronger than naive shanten-greedy because
+/// claim-acceptance still ran on the legacy heuristic path that occasionally
+/// broke strong hand shapes, which made shanten-greedy discards lose ground.
 ///
 /// <para><b>Phase J Wave 1</b> promoted the rigorous shanten counter again — from
 /// "discard tie-breaker only" to "claim acceptance gate". <see cref="DecideClaimPhase"/>
@@ -41,6 +41,21 @@ namespace Mahjong.Autotable.Api.Changsha.Bot;
 /// <c>ChangshaGameStateMachine.RemoveChowTilesByLowestPattern</c> (the runtime's
 /// chow-form picker when a bot supplies no explicit tile IDs) so the gate decision
 /// reflects the chow shape that will actually be played.</para>
+///
+/// <para><b>Phase J Wave 4</b> re-investigated promoting shanten to the primary
+/// discard key — the question was whether the Wave 1 claim-acceptance gate had
+/// neutralised the Wave 4 (Phase I) rollback rationale. The seed-40595 hang noted
+/// in Vasquez's Wave 2 review no longer reproduces on any seed in the
+/// <c>BotStrengthTests</c> i=0..19 range (verified with shanten-primary +
+/// <c>ComputeDiscardScore</c> tie-breaker + tile-id stable tertiary), and a
+/// Hard-vs-3×Medium probe at the same seeds measured 7 / 20 Hard wins under
+/// shanten-primary vs 4 / 20 under keep-score-primary (a meaningful lift). The
+/// <see cref="SelectDiscardTile"/> ordering is now
+/// <c>shanten → keep-score → tile-id-desc</c> — the bot strictly minimises
+/// post-discard shanten and uses the Phase F keep-score / safety bias as the
+/// tie-breaker. <c>BotStrengthTests</c> + the full xunit suite remain green.
+/// See <c>.squad/decisions/inbox/bishop-phase-j-wave-4.md</c> for the full
+/// investigation memo.</para>
 /// </summary>
 public sealed class HardStrategy : IChangshaBotStrategy
 {
@@ -310,12 +325,14 @@ public sealed class HardStrategy : IChangshaBotStrategy
 
         var discardedLogicals = HandEvaluator.CollectDiscardedLogicals(state);
 
-        // Phase I Wave 4 — keep-score remains the primary discard heuristic
-        // (defensive bias + neighbour preservation has been the production
-        // baseline since Phase F and is what BotStrengthTests pins). The proper
-        // shanten counter from this wave breaks ties between equally-attractive
-        // candidates: when keep-score is identical, prefer the discard whose
-        // removal keeps post-discard shanten lowest.
+        // Phase J Wave 4 — shanten is now the primary discard key. The Phase F
+        // keep-score (defensive bias + neighbour preservation) and stable tile-id
+        // serve as tie-breakers. Promotion was safe-gated by the Phase J Wave 1
+        // claim-acceptance shanten gate (see DecideClaimPhase): with the bot
+        // refusing shape-breaking claims, shanten-greedy discards no longer lose
+        // ground to opponents capitalising on broken meld shapes. The seed-40595
+        // hang noted in Vasquez's Wave 2 review no longer reproduces on any seed
+        // in the BotStrengthTests i=0..19 range. See bishop-phase-j-wave-4.md.
         var shantenByLogical = new Dictionary<int, int>();
         foreach (var logical in logicalCounts.Keys)
         {
@@ -323,8 +340,8 @@ public sealed class HardStrategy : IChangshaBotStrategy
         }
 
         return hand.ConcealedTiles
-            .OrderBy(t => ComputeDiscardScore(t, logicalCounts, discardedLogicals))
-            .ThenBy(t => shantenByLogical[ChangshaDeckBuilder.GetLogicalTile(t)])
+            .OrderBy(t => shantenByLogical[ChangshaDeckBuilder.GetLogicalTile(t)])
+            .ThenBy(t => ComputeDiscardScore(t, logicalCounts, discardedLogicals))
             .ThenByDescending(t => t)
             .First();
     }

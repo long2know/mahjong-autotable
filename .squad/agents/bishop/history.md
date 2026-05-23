@@ -1032,3 +1032,80 @@ post-Vasquez sync: 384/0/0.
 - **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-3.md` — covers
   all three tasks with the wire-format details Apone needs (HEALTHCHECK
   body shape) and the field names + ordering API surface Hicks needs.
+
+## Phase J Wave 4
+
+- **Tasks:**
+  - Task 1 — seed 40595 shanten-primary discard pathology (PRIMARY).
+  - Task 2 — `ChangshaPhase.GameComplete` vs legacy `EndGame` reconciliation
+    (PRIMARY).
+  - Task 3 — NineTerminals strict-vs-loose default (SECONDARY).
+- **Outcome:**
+  - **Task 1 — FIXED (shanten promoted to primary discard key).** A probe
+    console app in `scratch/bishop-seed40595/` (deleted before commit)
+    mirrored `BotStrengthTests.RunOneHand` and exercised all 20 seeds in the
+    `Hard_BeatsMedium_AcrossNHands` series under three discard orderings:
+    keep-score-primary (production), shanten-primary, shanten-primary +
+    stable secondary. Seed 40595 (i=5) terminates cleanly under all three —
+    the pathology the brief described is closed by Phase J Wave 1's claim-
+    acceptance shanten gate (`DecideClaimPhase`), which refuses any non-Hu
+    claim that doesn't strictly drop post-claim shanten. Pre-Wave-1, Hard
+    accepted shape-breaking heuristic claims that could trap a shanten-greedy
+    discard rule in an unreachable structural search; post-Wave-1 that
+    failure mode is gone. With shanten-primary the probe measured Hard
+    wins 7/20 vs 4/20 under keep-score-primary (a +75% relative win-rate
+    lift) at the same seeds. Production
+    `HardStrategy.SelectDiscardTile` now orders `shanten → keep-score →
+    tile-id-desc`; XML docs updated with the Wave 4 `<para>`.
+  - **Task 2 — MERGED via option (C).** `ChangshaPhase.EndGame` is now a
+    deprecated source-level alias of `ChangshaPhase.GameComplete` (same int
+    value). `GameComplete` is declared FIRST so `state.Phase.ToString()`
+    always emits `"GameComplete"` on the SignalR `GameCompleted.phase` wire
+    field. The legacy 16-hand 4-round terminal branch in
+    `ChangshaStateMachine.RotateBanker` still references the `EndGame`
+    symbol as a source-level signal of "this is the historical tournament
+    terminal" — at the value level it is identical to `GameComplete`.
+    `ChangshaGameRuntime.StartNextHandOrEndAsync`'s terminal check is
+    collapsed to a single equality. `ChangshaGameRuntime.HydrateAsync`
+    defensively rewrites any pre-merger persisted `Phase==18` snapshot
+    (Wave 2 GameComplete at its previous int slot) to
+    `ChangshaPhase.GameComplete` and sets `IsGameComplete=true` before the
+    terminal-skip check, keeping hydration robust against snapshot
+    persistence ordinals from before the merger. No tests touched — all
+    existing `Assert.Equal(ChangshaPhase.EndGame, …)` assertions pass via
+    enum-int equality. **Vasquez:** canonical name is now
+    `ChangshaPhase.GameComplete`; new tests should pin that symbol.
+  - **Task 3 — LOOSE default documented + spec updated.** The current
+    `WinDetector.cs::CheckNineTerminals` already implements the loose
+    semantic (rank-bounds + six-distinct, no structural 4-sets-plus-pair).
+    Added a Wave 4 `<para>` to the XML doc spelling out the strict-vs-loose
+    decision, citing MahjongPros + Baidu Baike, and leaving the door open
+    for a future `gameOptions.nineTerminalsStrict` tournament option. Added
+    `§4.2.1 Nine Terminals — Strict vs Loose Default` to
+    `docs/rules/changsha-spec.md` with the canonical-source citations and
+    the rationale (loose matches MahjongPros + Baidu Baike, consistent with
+    Big Win "random eye" exemption, strict 4+1 is effectively unreachable
+    over the 108-tile deck). The brief named `Patterns/NineTerminalsPattern.cs`
+    as the target file — no such file exists; the check lives in
+    `WinDetector.cs` and the doc / spec update there is the canonical
+    location (spinning the check out is unscoped refactoring).
+- **Files touched:**
+  - `e71b4d0` (Task 1) — `src/backend/src/Mahjong.Autotable.Api/Changsha/Bot/HardStrategy.cs`
+    — shanten primary, doc + comment updates.
+  - `5835361` (Task 2) — `src/backend/src/Mahjong.Autotable.Api/Changsha/ChangshaDomain.cs`
+    (`EndGame = GameComplete` alias + doc rewrite),
+    `ChangshaStateMachine.cs` (comment-only update on the legacy
+    `RotateBanker` 4-round terminal branch),
+    `Runtime/ChangshaGameRuntime.cs` (defensive `Phase==18` migration in
+    `HydrateAsync`, single-equality terminal check in
+    `StartNextHandOrEndAsync`, doc update on `EmitGameCompletedAsync`
+    recording the always-`"GameComplete"` wire).
+  - `ce7ebec` (Task 3) — `src/backend/src/Mahjong.Autotable.Api/Changsha/WinDetector.cs`
+    (Wave 4 `<para>` on `CheckNineTerminals`), `docs/rules/changsha-spec.md`
+    (§4.2 NineTerminals row + §4.2.1 strict-vs-loose decision).
+  - `fc479d1` — this history entry.
+- **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-4.md` — covers all
+  three tasks with the cross-lane notes Vasquez (canonical name +
+  `phase=GameComplete` wire) and Apone (no CI smoke timing shift) need.
+- **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+  → Passed: 431, Failed: 0, Skipped: 0.

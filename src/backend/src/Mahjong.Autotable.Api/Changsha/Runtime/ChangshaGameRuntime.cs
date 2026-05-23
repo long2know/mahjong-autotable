@@ -181,9 +181,22 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             // out is functionally finished; the runtime's scoring loop only
             // drains it forward via HandleWallExhaustedAsync when actively
             // playing, which a freshly-hydrated row will never be. Phase J Wave 2
-            // adds <see cref="ChangshaPhase.GameComplete"/> (N-hand cap terminal).
-            if (state.Phase == ChangshaPhase.EndGame ||
-                state.Phase == ChangshaPhase.GameComplete ||
+            // added <see cref="ChangshaPhase.GameComplete"/> (N-hand cap terminal),
+            // and Phase J Wave 4 merged <see cref="ChangshaPhase.EndGame"/> into
+            // <c>GameComplete</c> as a deprecated alias (same underlying int);
+            // checking either name is equivalent. We additionally normalize any
+            // legacy persisted Phase ordinal that fell outside the named-value
+            // set — pre-merger snapshots stored the Wave-2 GameComplete at
+            // int 18 (one slot after the old EndGame=17). After the merger
+            // both names live at int 17; a stale int-18 snapshot is also a
+            // terminal record and rewritten to <c>GameComplete</c> defensively
+            // so any downstream comparison (or re-persist) sees a named value.
+            if ((int)state.Phase == 18)
+            {
+                state.Phase = ChangshaPhase.GameComplete;
+                state.IsGameComplete = true;
+            }
+            if (state.Phase == ChangshaPhase.GameComplete ||
                 state.Phase == ChangshaPhase.WallExhausted) continue;
 
             // Authoritative key is the row GUID — guard against a hypothetical
@@ -1139,13 +1152,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             ChangshaGameStateMachine.RotateBanker(instance.State);
             await EmitBankerRotatedAsync(instance, ct);
-            // Phase J Wave 2 — either terminal phase ends the loop:
-            // <see cref="ChangshaPhase.GameComplete"/> (new N-hand cap, default 4)
-            // OR <see cref="ChangshaPhase.EndGame"/> (legacy 16-hand / 4-round).
-            // Both flip <see cref="ChangshaGameState.IsGameComplete"/> in
-            // <see cref="ChangshaGameStateMachine.RotateBanker"/>.
-            ended = instance.State.Phase == ChangshaPhase.EndGame
-                 || instance.State.Phase == ChangshaPhase.GameComplete;
+            // Phase J Wave 4 — <see cref="ChangshaPhase.EndGame"/> is a
+            // deprecated alias of <see cref="ChangshaPhase.GameComplete"/>
+            // (same underlying int value). A single equality check covers
+            // both legacy 16-hand-rotation and new N-hand-cap terminations;
+            // either branch in <see cref="ChangshaGameStateMachine.RotateBanker"/>
+            // also flips <see cref="ChangshaGameState.IsGameComplete"/>.
+            ended = instance.State.Phase == ChangshaPhase.GameComplete;
             if (ended)
             {
                 await EmitGameEndedAsync(instance, ct);
@@ -1587,7 +1600,12 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     /// new clients (Hicks's end-of-game summary modal) subscribe to
     /// <c>GameCompleted</c> for the dedicated N-hand-cap payload. Payload
     /// shape: <c>{ gameId, hand: int, maxHands: int, finalScores: Dictionary,
-    /// winner: { seatIndex, score }, phase: "GameComplete"|"EndGame" }</c>.
+    /// winner: { seatIndex, score }, phase: "GameComplete" }</c>. Phase J Wave 4
+    /// note: <see cref="ChangshaPhase.EndGame"/> is now a deprecated alias of
+    /// <see cref="ChangshaPhase.GameComplete"/>; the wire <c>phase</c> field
+    /// always serialises as <c>"GameComplete"</c> because that value is
+    /// declared first in <see cref="ChangshaPhase"/> and shared int values
+    /// resolve to the first-declared name in <c>Enum.ToString()</c>.
     /// </summary>
     private async Task EmitGameCompletedAsync(ChangshaGameInstance instance, CancellationToken ct)
     {

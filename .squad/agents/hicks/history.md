@@ -1517,3 +1517,58 @@ Consumed in `move-log.ts` — prefix selection prefers `winType === 'selfDraw'` 
 - **Vasquez (`d7c5337`)** — new DOM ids `#replay-screen`, `#settings-sound`, `#game-complete-replay` available for future Playwright selectors.
 
 Memo: `.squad/decisions/inbox/hicks-phase-j-wave-3.md`.
+
+
+## Phase J Wave 4
+
+**Scope:** Mobile responsive layout, lobby polish (player chips + Quick Match + seat preview), reconnect-token UI (Copy rejoin link + auto-rejoin on `?rejoin=`).
+
+### Surfaces touched
+
+- `src/frontend/autotable-src/src/reconnect.ts` — **NEW** localStorage + URL session-token manager.
+- `src/frontend/autotable-src/src/client.ts` — save/clear rejoin session on JOIN + seats.update + user disconnect (per-directive reconnect-token wiring only).
+- `src/frontend/autotable-src/src/client-ui.ts` — banner Copy-rejoin-link button revealed after first failed retry, toast region wiring, `?rejoin=` consumer with "session ended" fallback.
+- `src/frontend/autotable-src/src/lobby.ts` — `attachLobbyClient` deferred binding, player chip strip, seat preview, Quick Match, ⚙ Settings shortcut.
+- `src/frontend/autotable-src/src/game-ui.ts` — mobile move-log drawer hamburger wiring (`setupMobileDrawer`).
+- `src/frontend/autotable-src/src/index.ts` — rejoin-URL apply at module load + `attachLobbyClient` after Game.start.
+- `src/frontend/autotable-src/src/style.css` — +484 lines: lobby polish styles, toast, mobile breakpoints @ 1024 / 768 / 480 px.
+- `src/frontend/autotable-src/index.html` — viewport meta with `initial-scale=1, user-scalable=no`, mobile-only hamburger, lobby chips section, copy-link banner button, toast region.
+- `src/frontend/autotable/` — Parcel rebuild + stale-bundle prune.
+
+### Methodology — what worked
+
+- **Token = page-URL stamping, not a side-channel rejoin RPC.** Reusing the existing `buildWsUrl` seat/gameId forwarding means the rejoin path has zero new wire contract — every test that already covers `?gameId=…&seat=…` covers the rejoin flow for free.
+- **`attachLobbyClient` deferred-bind pattern.** The first `initLobby()` runs before assets load (so the Quick Match button is clickable immediately); `attachLobbyClient` wires the live collection listeners after `Game.start`.  No double-init, no race on first paint.
+- **CSS `:has()` for card-group selection state.** Pure CSS, no JavaScript hook; gracefully degrades on older browsers (the radio itself is still selectable; only the visual highlight is lost).
+- **Mobile = additive media queries, not a separate stylesheet.** Every desktop rule survives; the breakpoint blocks only override the few rules that need to change.  Single-file CSS keeps Parcel's cache happy and avoids a regression sweep on the desktop baseline.
+
+### Surprises / blind spots
+
+- **Bootstrap `.d-flex` columns must be reset to `flex-direction: column` per row, not on the parent.** Several sidebar rows use Bootstrap's `d-flex` directly; the mobile rule has to target `#sidebar .d-flex` to override per-row.
+- **`localStorage` write inside `saveSession` is fire-and-forget.** Private-mode / quota raises silently; the live reconnect loop still works because that loop reads from `Client.lastGameId` directly, not from localStorage.  Auto-rejoin on refresh is the only path that degrades in private mode.
+- **`navigator.clipboard` is unavailable on http://localhost in some embedded WebViews.** The `document.execCommand('copy')` fallback covers it; final fallback surfaces the URL inside a 12-second toast for manual copy.
+
+### Stability
+
+- **TypeScript strict (`tsc --noEmit -p tsconfig.json`):** **0 errors** in `src/`.  Five pre-existing `TS6305` on `server/dist/*.d.ts` artifacts (Wave 3 carryover, unrelated).
+- **Parcel build:** **succeeded in 2.86s** — new bundle `autotable-src.0b7c71c7.js` (1.09 MB) + `autotable-src.094cde3a.css` (31.17 kB).
+- **Backend tests (Vasquez):** **431 passed / 0 failed / 0 skipped** — zero-skip streak preserved.
+- **Stale bundles pruned:** `autotable-src.330c36fd.js` + `autotable-src.f8d8d79e.css` removed.
+
+### Viewport sizes tested
+
+| Width | Behavior |
+| --- | --- |
+| ≥ 1025 px | Desktop baseline; toggle hamburger hidden. |
+| 1024 px (tablet landscape) | Sidebar 200 px, move-log 220 px (compaction only). |
+| 768 px (tablet portrait) | HUD stacks; move-log → off-canvas drawer + hamburger; modals 95vw; tap targets 44 px. |
+| 480 px (phone portrait) | Settings drawer = full-screen overlay; lobby fills viewport; player chips stack. |
+| 375 px (iPhone SE) | Same as 480-px rules, no horizontal overflow. |
+
+### Cross-agent coordination
+
+- **Vasquez** — added stable `data-testid` attributes: `lobby-player-chip-{n}` (occupancy-indexed, also carries `data-seat="<0..3>"` for seat-keyed compound queries), `lobby-seat-preview-{0..3}`, `lobby-quick-match`, `lobby-open-settings`, `reconnect-copy-link` (directive-mandated stable name), `toast-region`, `toast-info`, `toast-error`, `mobile-move-log-toggle`.
+- **Apone** — no Dockerfile change required.  Viewport meta is inlined HTML, copied through the existing static-bundle copy rule.  No CDN/proxy header config involved.
+- **Bishop** — reconnect token opaque to backend.  Wave-2 `?seat=N` seat-if-empty / reject-if-taken validation in `AutotableWsEndpoint` covers the rejoin flow unchanged.  Schema reserves `connectionId` field for future SignalR cookie-based session work.
+
+Memo: `.squad/decisions/inbox/hicks-phase-j-wave-4.md`.
