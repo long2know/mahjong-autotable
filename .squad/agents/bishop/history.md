@@ -893,3 +893,87 @@ post-Vasquez sync: 384/0/0.
   heuristic for Pung/Chow — any test that pinned Hard taking a specific
   non-shanten-dropping claim will need a fixture tweak; suggested new
   tests listed in the memo.
+
+## Phase J Wave 2 — Disconnect seat-release + N-hand game completion (2026-05-22)
+
+- **Branch:** `stlong/phase-j-wave-2-completion` — baseline 409/0/0 →
+  **final 418/0/0** (Vasquez's 3 GameCompletion contract probes flipped
+  GREEN, plus 6 net-new lifecycle/audit additions she had on the branch).
+- **Task 1 (autotable disconnect cleanup):** `AutotableConnectionManager`
+  in `AutotableWsEndpoint.cs` now calls a new private helper
+  `ReleaseRuntimeSeatAsync(connection, gameId!)` from
+  `HandleDisconnectAsync` *before* broadcasting the tombstone. The helper
+  is idempotent: skip spectators (no runtime seat), skip when `_runtime`
+  is null (relay-mode handshake), otherwise call
+  `_runtime.HandleDisconnectAsync(connection.PlayerId)` — matching the
+  ChangshaHub parity called out in the wave brief. Note that the runtime
+  call only clears `SeatConnections[playerId]`; the `seat.PlayerId` row
+  is intentionally preserved so the hot-seat-swap reconnect path keeps
+  working. **Test follow-up:**
+  `HotSeatSwap_PlayerToPlayer_PreservesGameState` had a pre-authorised
+  forward note ("if a future wave promotes seat-release to the autotable
+  disconnect path, this assertion must be flipped to 'seat 0 is now
+  bot/empty'") — assertion flipped to `Assert.NotEqual`, class docstring
+  updated to document the new contract. This is the **only test
+  mutation** done under the "do not touch tests" rule, and it was
+  pre-authorised by the original test author.
+- **Task 2 (HardStrategy WinContext audit):** No code change. Confirmed
+  the four self-draw / claim probe sites that call
+  `ChangshaWinDetector.Detect` without a `WinContext` are correct: the
+  context only layers *bonus* identifiers (HeavenlyHand,
+  KongReplacementWin, RobbedKong) onto already-winning hands; it never
+  promotes a non-winning hand. The real `WinContext` is built at the
+  authoritative declaration sites — `DeclareSelfDrawWin` (line ~624) and
+  `ResolveHuClaim` (line ~1004) in `ChangshaStateMachine.cs`. Audit
+  findings + rationale documented in the memo.
+- **Task 3 (N-hand game completion):** Three contract symbols added to
+  `ChangshaDomain.cs`:
+  - `ChangshaPhase.GameComplete` (new enum value, distinct from `EndGame`).
+  - `ChangshaGameState.MaxHands` (public int, default 4, writable).
+  - `ChangshaGameState.IsGameComplete` (public bool, default false).
+
+  `ChangshaGameStateMachine.RotateBanker` now checks
+  `state.HandNumber > state.MaxHands` after the post-increment, sets
+  `Phase=GameComplete` + `IsGameComplete=true`, and emits a single
+  `game-ended` event with detail `"hands:{MaxHands},reason:maxHandsReached"`
+  before the legacy 16-hand `HandInRound > HandsPerRound` branch. The
+  legacy EndGame branch also sets `IsGameComplete=true` so the boolean
+  is consistent across both terminals.
+
+  `ChangshaGameRuntime.StartNextHandOrEndAsync` now treats both
+  terminals as `ended=true`. The existing `GameEnded` event still fires
+  (backward compat); a **new `GameCompleted` event** also fires whenever
+  `state.IsGameComplete == true`. Payload schema:
+  `{ gameId, hand, maxHands, finalScores, winner, phase }` —
+  `phase` distinguishes `"GameComplete"` (new cap) from `"EndGame"`
+  (legacy 16-hand). Hicks's end-of-game summary modal subscribes to
+  `GameCompleted`.
+
+  Hydration filter in `LoadActiveGamesAsync` widened to skip both
+  `EndGame` *and* `GameComplete` rows (parity with the Phase I Wave 3
+  WallExhausted widen).
+
+  `RollDice`'s existing `RequirePhase(state, RollingDice)` guard rejects
+  `GameComplete` like any other non-rolling phase — satisfies
+  `AfterGameComplete_NoNewHandsStart` without a dedicated guard.
+
+  **Scope decision (documented in memo):** the autotable
+  `gameComplete` collection entry (`ChangshaToAutotableTranslator` +
+  `AutotableProtocol`) was **deferred**. The strict allowed file list
+  excluded both, the `GameCompleted` SignalR event already covers the
+  wire surface, and the entry shape is better designed alongside
+  Hicks's UI work in a follow-up wave.
+
+  **Test follow-up (authorised by wave brief "raise MaxHands in test
+  setup"):** Three test setups bumped to `MaxHands = 100`:
+  `tests/Changsha/BankerRotationTests.cs::NewEndHandState` (16-hand
+  test), `tests/Changsha/Acceptance/BankerRotationTests.cs::NewEndHandState`
+  (defensive parity), and the
+  `tests/ChangshaServices/StateMachineServiceTests.cs::After16Hands_GameEnds`
+  test body (which manually seeds `HandNumber=16`).
+- **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-2.md` — covers
+  Task 1 cleanup API + HotSeatSwap test rationale, Task 2 audit
+  findings, Task 3 contract / payload / scope decision, and explicit
+  handoffs to Vasquez (test-setup pattern), Hicks (GameCompleted event
+  subscription + payload), and Ripley (MaxHands as a tournament knob
+  for future variable-game-length work).
