@@ -18,6 +18,12 @@ resources:
   - service.yaml
   - ingress.yaml
   - hpa.yaml
+  # Phase J Wave 9 — pre-rollout migration Job. `kubectl apply -k` will
+  # create the Job each sync; Argo CD / Flux operators sequence it via
+  # the `argocd.argoproj.io/sync-wave: -1` annotation in
+  # job-migrate.yaml so the migration completes BEFORE the Deployment
+  # rolls a new image. See docs/kubernetes.md.
+  - job-migrate.yaml
 
 images:
   - name: ghcr.io/long2know/mahjong-autotable
