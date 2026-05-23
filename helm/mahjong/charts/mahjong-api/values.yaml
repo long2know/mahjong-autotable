@@ -1,0 +1,120 @@
+# Standalone defaults — when this subchart is installed directly
+# (without the umbrella) it reads values from this file. When
+# installed via the umbrella, the umbrella's `api.*` subtree
+# OVERWRITES these.
+#
+# Keep this file in lock-step with the `api.*` subtree of the
+# umbrella `values.yaml` for the "installed directly" case.
+
+image:
+  registry: ghcr.io
+  repository: long2know/mahjong-autotable
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    - name: ghcr-pull
+
+replicaCount: 2
+affinity: {}
+topologySpreadConstraints: []
+nodeSelector: {}
+tolerations: []
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "192Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: http
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: nginx
+  host: mahjong.example.com
+  tlsSecretName: mahjong-autotable-tls
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "mahjong_aff"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+
+hsts:
+  enabled: false
+  maxAgeSeconds: 63072000
+  includeSubDomains: true
+  preload: true
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  cpuUtilization: 70
+  memoryUtilization: 80
+
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 20
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+configMap:
+  persistenceProvider: "Sqlite"
+  sqliteConnectionString: "Data Source=/data/mahjong-autotable.db"
+  rateLimitingEnabled: "true"
+  extra: {}
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  storageClassName: ""
+
+externalSecrets:
+  - name: mahjong-autotable
+    optional: true
+  - name: mahjong-jwt-keys
+    optional: true
+  - name: mahjong-jwt-rsa-keys
+    optional: true
+
+migrationJob:
+  enabled: false
+  image: ""
+  args:
+    - migrate
+    - --provider
+    - Postgres
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]

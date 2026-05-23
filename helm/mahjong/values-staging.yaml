@@ -1,0 +1,62 @@
+# Phase K Wave 7 — Apone (DevOps).
+#
+# Staging overrides for the mahjong umbrella chart. Mirrors
+# `infra/k8s/overlays/staging/kustomization.yaml`.
+#
+# Apply:
+#   helm upgrade --install mahjong helm/mahjong \
+#       -n mahjong-staging --create-namespace \
+#       -f helm/mahjong/values-staging.yaml
+#
+# Parity with the Kustomize overlay (see docs/helm-charts.md §3):
+#
+#   * single replica (cheap soak)
+#   * staging.mahjong.example.com host
+#   * staging-named JWT-keys ExternalSecret
+#   * ASPNETCORE_ENVIRONMENT=Staging
+#   * optional in-cluster Postgres (disabled by default; flip on
+#     when the cost of an RDS staging instance is unjustified)
+
+api:
+  replicaCount: 1
+
+  ingress:
+    host: staging.mahjong.example.com
+    tlsSecretName: mahjong-autotable-staging-tls
+
+  hsts:
+    enabled: false  # staging does NOT preload (test surface)
+
+  hpa:
+    enabled: false  # single-replica soak
+
+  configMap:
+    extra:
+      ASPNETCORE_ENVIRONMENT: "Staging"
+      Cors__AllowedOrigins__0: "https://staging.mahjong.example.com"
+
+  externalSecrets:
+    - name: mahjong-autotable
+      optional: true
+    - name: mahjong-jwt-keys-staging
+      optional: true
+    - name: mahjong-jwt-rsa-keys-staging
+      optional: true
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "192Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+coturn:
+  # Staging may or may not have a TURN server depending on whether
+  # the operator wants WebRTC voice in soak. Default OFF in
+  # staging — flip on when needed.
+  enabled: false
+  realm: "staging.mahjong.example.com"
+
+postgresSidecar:
+  enabled: false  # operator-driven flip when in-cluster PG is preferred

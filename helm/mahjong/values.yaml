@@ -1,0 +1,289 @@
+# Phase K Wave 7 — Apone (DevOps).
+#
+# Umbrella values for the mahjong chart-of-charts. Each subchart
+# reads its own subtree (`api.*`, `coturn.*`, `postgresSidecar.*`).
+# Overlays land in `values-staging.yaml` + `values-prod.yaml` and
+# merge on top of these defaults via `helm upgrade -f`.
+#
+# Convention: any value that maps onto a Kustomize patch in
+# `infra/k8s/overlays/<env>/kustomization.yaml` is exposed as a
+# values key here, named to mirror the underlying field path
+# (camelCase Helm-side, snake_case ConfigMap-side). The parity
+# matrix is documented in `docs/helm-charts.md` §3.
+
+# ── Top-level namespace + naming ──────────────────────────────────
+#
+# Namespace is set by `helm install -n <ns>` — NOT by a values key.
+# Helm's standard. Don't move the namespace into values; that
+# breaks the standard `helm -n` flag.
+
+# ── Subchart toggles ──────────────────────────────────────────────
+#
+# Each subchart can be enabled/disabled independently. The
+# matching `condition:` in Chart.yaml's `dependencies` block
+# triggers conditional rendering.
+api:
+  enabled: true
+
+  # Container image. The umbrella's `appVersion` is the canonical
+  # tag this chart was validated against; overlays bump.
+  image:
+    registry: ghcr.io
+    repository: long2know/mahjong-autotable
+    tag: ""  # falls back to .Chart.AppVersion when empty
+    pullPolicy: IfNotPresent
+    pullSecrets:
+      - name: ghcr-pull
+
+  # Replica count. Overlays patch to env-appropriate floors
+  # (staging=1, prod=3).
+  replicaCount: 2
+
+  # Pod-level affinity / topology spread. The default empty stanza
+  # leaves placement to the scheduler; overlays add
+  # podAntiAffinity for prod (matches the W6 coturn pattern).
+  affinity: {}
+  topologySpreadConstraints: []
+  nodeSelector: {}
+  tolerations: []
+
+  # Container resource pin. Sized for a small-game footprint;
+  # overlays patch for prod (cpu 250m-1000m / memory 384Mi-1Gi
+  # per the W7 prod values).
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "192Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: http
+    annotations: {}
+
+  ingress:
+    enabled: true
+    className: nginx
+    host: mahjong.example.com
+    tlsSecretName: mahjong-autotable-tls
+    # nginx-ingress annotations from infra/k8s/base/ingress.yaml.
+    # Sticky-session cookie annotations are MANDATORY — SignalR
+    # negotiate → connect → reconnect fails without affinity.
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+      nginx.ingress.kubernetes.io/affinity: "cookie"
+      nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+      nginx.ingress.kubernetes.io/session-cookie-name: "mahjong_aff"
+      nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+      nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+
+  # HSTS preload header — applied via configuration-snippet
+  # annotation when `hsts.enabled: true`. Mirrors the W4
+  # overlay-prod hsts-patch.yaml shape; prod overlay flips on.
+  hsts:
+    enabled: false
+    maxAgeSeconds: 63072000  # 2 years (the preload-eligible floor)
+    includeSubDomains: true
+    preload: true
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    cpuUtilization: 70
+    memoryUtilization: 80
+
+  # Health probes — both hit /health per Phase J Wave 3 contract.
+  probes:
+    liveness:
+      path: /health
+      initialDelaySeconds: 20
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+  # Non-secret env defaults — mirrors infra/k8s/base/configmap.yaml.
+  # Overlays patch via configMap.extra entries (merged).
+  configMap:
+    persistenceProvider: "Sqlite"
+    sqliteConnectionString: "Data Source=/data/mahjong-autotable.db"
+    rateLimitingEnabled: "true"
+    extra: {}  # additional env vars (string→string) merged into the ConfigMap
+
+  # PVC for the SQLite case. Disabled when persistenceProvider is
+  # Postgres or SqlServer (in-cluster Postgres ships via the
+  # `postgresSidecar` subchart, not this PVC).
+  persistence:
+    enabled: true
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    storageClassName: ""  # cluster default
+
+  # External secret references the deployment envFrom-mounts.
+  # Defaults match the W4/W5/W6 ESO surface; the secret objects
+  # themselves are NOT created by this chart — they're materialised
+  # out-of-band by ExternalSecretsOperator from SSM.
+  externalSecrets:
+    - name: mahjong-autotable
+      optional: true
+    - name: mahjong-jwt-keys
+      optional: true
+    # W7: RSA JWT keys (RS256) — mounted alongside the W4/W5
+    # HS256 keys. Optional so a fresh cluster without the
+    # ESO bootstrap still starts.
+    - name: mahjong-jwt-rsa-keys
+      optional: true
+
+  # Pre-rollout migration Job (Phase J Wave 9). Disabled for
+  # SQLite (the file-backed DB self-migrates on container start);
+  # enable for Postgres/SqlServer where schema migration is
+  # owner-managed.
+  migrationJob:
+    enabled: false
+    image: ""  # defaults to the api image when empty
+    args:
+      - migrate
+      - --provider
+      - Postgres
+
+  # Pod security baseline — matches the deployment.yaml defaults.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false  # /data is the writable volume
+    capabilities:
+      drop: ["ALL"]
+
+# ── Coturn subchart ───────────────────────────────────────────────
+#
+# Mirrors the W6 production manifests
+# (`infra/k8s/base/coturn-*.yaml`).
+coturn:
+  enabled: true
+
+  image:
+    repository: coturn/coturn
+    tag: "4.6"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  # Realm + external IP MUST be set per-env. Defaults work for the
+  # default values; overlays patch.
+  realm: "mahjong.example.com"
+  externalIp: ""  # populated post-NLB provisioning
+
+  ports:
+    listening: 3478
+    tls: 5349
+    minRelay: 49152
+    maxRelay: 65535
+
+  # ExternalSecret materialising the HMAC auth secret from SSM
+  # — `/mahjong/<env>/turn/auth_secret`. Bishop's `/api/turn`
+  # endpoint shares the same key; one rotation rolls both sides.
+  externalSecret:
+    enabled: true
+    name: coturn-static-auth-secret
+    refreshInterval: 15m
+    secretStoreName: "aws-secrets-manager"  # env override required
+    ssmKey: "/mahjong/<env>/turn/auth_secret"  # env override required
+
+  # NetworkPolicy gating UDP 49152-65535 (IANA ephemeral) +
+  # 3478 UDP/TCP + 5349 TCP. Egress wide-open (TURN job is to
+  # NAT-traverse to arbitrary peers).
+  networkPolicy:
+    enabled: true
+
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 998
+    runAsGroup: 998
+    fsGroup: 998
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+  # AZ-spread (W6 invariant).
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: mahjong-coturn
+
+# ── Postgres sidecar (optional, staging-only) ─────────────────────
+#
+# DISABLED BY DEFAULT. Prod uses RDS via the Terraform
+# `infra/terraform/` stack — this subchart is for the cheapest
+# possible staging soak (no AWS-tab spend).
+postgresSidecar:
+  enabled: false
+
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+
+  # Connection-info exposed for the API subchart to consume.
+  # The chart-of-charts writes these into the api ConfigMap via
+  # template logic in charts/mahjong-api/templates/configmap.yaml
+  # ONLY when postgresSidecar.enabled is true.
+  database: "mahjong"
+  username: "mahjong"
+  # Password is NOT in values — it lands in the existing
+  # `mahjong-autotable` omnibus secret under the
+  # `ConnectionStrings__Postgres` key (the W5 ESO shape).
+  port: 5432
+
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClassName: ""
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"

@@ -1,0 +1,95 @@
+# Phase K Wave 7 — Apone (DevOps).
+#
+# Chart-of-charts umbrella for `mahjong-autotable`. Wraps the three
+# subcharts that together stand up the runtime data plane:
+#
+#   * `mahjong-api`             — the .NET API + supporting k8s objects
+#                                  (Deployment, Service, Ingress, HPA,
+#                                  ConfigMap, optional pre-rollout
+#                                  migration Job).
+#   * `mahjong-coturn`           — coturn 4.6 (W6 production shape:
+#                                  HMAC mode, NetworkPolicy admitting
+#                                  the IANA ephemeral relay range,
+#                                  AZ-spread podAntiAffinity).
+#   * `mahjong-postgres-sidecar` — optional in-cluster Postgres
+#                                  StatefulSet (single-replica;
+#                                  intended for staging soak ONLY —
+#                                  prod uses RDS via the Terraform
+#                                  `infra/terraform/` stack).
+#
+# The chart-of-charts intentionally PARALLELS the existing
+# `infra/k8s/base/` + `infra/k8s/overlays/{staging,prod}/`
+# Kustomize tree — it does NOT replace it. Both paths are
+# supported in parallel and ship the SAME runtime contract; the
+# choice between them is operator-preference + tooling-shop
+# alignment:
+#
+#   * Kustomize: simpler when the deltas are pure JSON-patches and
+#     you want zero templating-language surface area.
+#   * Helm: simpler when the deltas need conditionals
+#     (toggle TURN; toggle in-cluster Postgres; flip RS256 vs HS256
+#     JWT key material) AND you want one `helm upgrade` to manage
+#     the full release lifecycle.
+#
+# W7 keeps BOTH working until Stephen picks a winner — see
+# `docs/helm-charts.md` for the parity matrix.
+#
+# Versioning convention: the chart `version` tracks the umbrella
+# chart shape (bump on subchart-list changes, values-schema
+# additions, etc.); `appVersion` tracks the runtime image tag
+# this chart was last validated against. Both bump on every wave
+# the chart's surface changes.
+apiVersion: v2
+name: mahjong
+description: |
+  Umbrella chart for the mahjong-autotable runtime (API + coturn TURN
+  server + optional in-cluster Postgres sidecar for staging soak).
+type: application
+version: 0.16.0
+appVersion: "0.16.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - mahjong
+  - changsha
+  - signalr
+  - webrtc
+  - turn
+home: https://github.com/long2know/mahjong-autotable
+sources:
+  - https://github.com/long2know/mahjong-autotable
+maintainers:
+  - name: Apone (DevOps)
+    email: apone@squad.mahjong
+
+# Subcharts. `condition:` toggles let operators disable a subchart
+# from values.yaml without having to vendor it out of the chart
+# tree — useful in staging where you may want to ship the API
+# only and skip TURN until a real client wants it.
+dependencies:
+  # Aliases let the umbrella's values use short keys (`api.*`,
+  # `coturn.*`, `postgresSidecar.*`) instead of the subchart names
+  # (`mahjong-api.*` etc.). Helm routes the aliased subtree to the
+  # subchart's `Values`.
+  - name: mahjong-api
+    alias: api
+    version: 0.16.0
+    repository: "file://charts/mahjong-api"
+    condition: api.enabled
+  - name: mahjong-coturn
+    alias: coturn
+    version: 0.16.0
+    repository: "file://charts/mahjong-coturn"
+    condition: coturn.enabled
+  - name: mahjong-postgres-sidecar
+    alias: postgresSidecar
+    version: 0.16.0
+    repository: "file://charts/mahjong-postgres-sidecar"
+    condition: postgresSidecar.enabled
+
+annotations:
+  # Render-time hints (for `helm-docs` and downstream chart
+  # repository indexers). Not required by Helm itself.
+  artifacthub.io/changes: |
+    - kind: added
+      description: "Initial Helm chart-of-charts (W7); parallels infra/k8s/ kustomize tree."
+  artifacthub.io/license: "MIT"

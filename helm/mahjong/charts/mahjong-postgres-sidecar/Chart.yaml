@@ -1,0 +1,17 @@
+# Phase K Wave 7 — Apone (DevOps). Postgres sidecar subchart.
+#
+# STAGING-ONLY. Prod uses RDS via Terraform. See README.md for
+# the chart-level invariant.
+apiVersion: v2
+name: mahjong-postgres-sidecar
+description: "Single-replica Postgres StatefulSet for staging soak. NOT FOR PROD."
+type: application
+version: 0.16.0
+appVersion: "16"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - postgres
+  - staging
+maintainers:
+  - name: Apone (DevOps)
+    email: apone@squad.mahjong

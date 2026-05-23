@@ -1,0 +1,15 @@
+{{/* Phase K Wave 7 — Apone (DevOps). API non-secret env defaults. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mahjong-api.fullname" . }}
+  labels:
+    {{- include "mahjong-api.labels" . | nindent 4 }}
+data:
+  Persistence__Provider: {{ .Values.configMap.persistenceProvider | quote }}
+  ConnectionStrings__Sqlite: {{ .Values.configMap.sqliteConnectionString | quote }}
+  RateLimiting__Enabled: {{ .Values.configMap.rateLimitingEnabled | quote }}
+  DOTNET_RUNNING_IN_CONTAINER: "true"
+  {{- range $key, $value := .Values.configMap.extra }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

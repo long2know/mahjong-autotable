@@ -1,0 +1,73 @@
+{{/*
+Phase K Wave 7 — Apone (DevOps). Coturn Deployment (W6 prod shape).
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mahjong-coturn.fullname" . }}
+  labels:
+    {{- include "mahjong-coturn.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "mahjong-coturn.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mahjong-coturn.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: coturn
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          args:
+            - "-c"
+            - "/etc/coturn/turnserver.conf"
+          env:
+            - name: TURN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecret.name }}
+                  key: static_auth_secret
+                  optional: true
+          ports:
+            - name: turn-udp
+              containerPort: {{ .Values.ports.listening }}
+              protocol: UDP
+            - name: turn-tcp
+              containerPort: {{ .Values.ports.listening }}
+              protocol: TCP
+            - name: turns-tcp
+              containerPort: {{ .Values.ports.tls }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: turnserver-conf
+              mountPath: /etc/coturn
+            - name: var-tmp
+              mountPath: /var/tmp
+      volumes:
+        - name: turnserver-conf
+          configMap:
+            name: {{ include "mahjong-coturn.fullname" . }}
+            items:
+              - key: turnserver.conf
+                path: turnserver.conf
+        - name: var-tmp
+          emptyDir:
+            medium: Memory

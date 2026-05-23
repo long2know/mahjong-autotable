@@ -1,0 +1,17 @@
+{{/* Phase K Wave 7 — Apone (DevOps). Headless service for the StatefulSet. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mahjong-postgres.fullname" . }}
+  labels:
+    {{- include "mahjong-postgres.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None  # headless — direct pod DNS
+  selector:
+    {{- include "mahjong-postgres.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.port }}
+      targetPort: postgres
+      protocol: TCP

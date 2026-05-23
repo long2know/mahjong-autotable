@@ -1,0 +1,65 @@
+# Standalone defaults for the mahjong-coturn subchart. The
+# umbrella's `coturn.*` subtree overrides when installed via
+# the umbrella.
+
+image:
+  repository: coturn/coturn
+  tag: "4.6"
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+realm: "mahjong.example.com"
+externalIp: ""
+
+ports:
+  listening: 3478
+  tls: 5349
+  minRelay: 49152
+  maxRelay: 65535
+
+externalSecret:
+  enabled: true
+  name: coturn-static-auth-secret
+  refreshInterval: 15m
+  secretStoreName: "aws-secrets-manager"
+  ssmKey: "/mahjong/<env>/turn/auth_secret"
+
+networkPolicy:
+  enabled: true
+
+service:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 998
+  runAsGroup: 998
+  fsGroup: 998
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: mahjong-coturn

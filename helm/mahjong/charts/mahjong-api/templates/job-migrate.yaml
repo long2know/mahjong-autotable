@@ -1,0 +1,52 @@
+{{- if .Values.migrationJob.enabled -}}
+{{/*
+Phase K Wave 7 — Apone (DevOps). Pre-rollout DB-migration Job.
+
+Mirrors `infra/k8s/base/job-migrate.yaml`. Helm-hooks the Job at
+`pre-upgrade,pre-install` so it runs BEFORE the new Deployment
+rolls. `helm.sh/hook-delete-policy: before-hook-creation` cleans
+up the previous run's Job so re-runs don't collide.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "mahjong-api.fullname" . }}-migrate
+  labels:
+    {{- include "mahjong-api.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "mahjong-api.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ if .Values.migrationJob.image }}{{ .Values.migrationJob.image | quote }}{{ else }}{{ include "mahjong-api.image" . | quote }}{{ end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          args:
+            {{- toYaml .Values.migrationJob.args | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "mahjong-api.fullname" . }}
+            {{- range .Values.externalSecrets }}
+            - secretRef:
+                name: {{ .name }}
+                optional: {{ .optional | default false }}
+            {{- end }}
+{{- end }}
