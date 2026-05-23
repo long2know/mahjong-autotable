@@ -440,6 +440,36 @@ public sealed class ChangshaGameState
     /// before declaring Hu is on a kong-replacement win, not a heavenly hand).
     /// </summary>
     public bool LastDrawWasKongReplacement { get; set; } = false;
+
+    // ── Phase J Wave 5 — Public matchmaking lobby ─────────────────────
+    /// <summary>
+    /// Phase J Wave 5 — when <c>true</c>, this game appears in the
+    /// <c>GET /api/matchmaking/lobby</c> listing while <see cref="Phase"/> is
+    /// <see cref="ChangshaPhase.Seating"/>. Defaults to <c>false</c> so every
+    /// existing code path that creates a game (autotable WS, hub
+    /// <c>CreateGame</c>, tests) stays private. Toggled by the host via the
+    /// <c>SetGamePublic</c> hub RPC; once dealing begins the listing query
+    /// drops the game regardless of this flag.
+    /// </summary>
+    public bool IsPublic { get; set; } = false;
+
+    /// <summary>
+    /// Phase J Wave 5 — host-supplied friendly name shown in the matchmaking
+    /// lobby (e.g. "Bishop's Game"). Null when the game is private or the host
+    /// hasn't named it yet. Trimmed and length-capped at 64 chars by
+    /// <c>MatchmakingService.SetGamePublic</c>.
+    /// </summary>
+    public string? PublicName { get; set; }
+
+    /// <summary>
+    /// Phase J Wave 5 — the <c>PlayerId</c> of the connection that created the
+    /// game (initial host). Used to (a) authorize <c>SetGamePublic</c> (only
+    /// the host can toggle), (b) populate the matchmaking lobby's
+    /// <c>creatorDisplayName</c> field via <c>PlayerProfileService</c>, and
+    /// (c) drive host-transfer when the original host disconnects from a
+    /// public game (see <c>MatchmakingService.HandleHostDisconnect</c>).
+    /// </summary>
+    public string? CreatorPlayerId { get; set; }
 }
 
 public sealed class ChangshaSeatState

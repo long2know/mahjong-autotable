@@ -1,0 +1,273 @@
+using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Data;
+using Mahjong.Autotable.Api.Players;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Mahjong.Autotable.Api.Tests.Players;
+
+/// <summary>
+/// Phase J Wave 5 — <see cref="PlayerProfileService"/> contract tests
+/// (Vasquez).
+///
+/// <para>Bishop's Wave 5 player-profile service backs the lobby "name +
+/// avatar chip", the post-game stats panel, and the matchmaking-lobby
+/// "hosted by &lt;name&gt;" subtitle. The service is the only writer for
+/// the <c>PlayerProfiles</c> and <c>PlayerStats</c> tables, so its input
+/// validation is the canonical guardrail against:
+/// <list type="bullet">
+///   <item>Empty / blank / over-long display names polluting the lobby.</item>
+///   <item>Non-hex avatar colour strings reaching the frontend (the
+///         renderer would inject them straight into a CSS variable).</item>
+///   <item>Reconnects creating duplicate profile rows for the same id.</item>
+/// </list></para>
+///
+/// <para><b>Test surface choices.</b>
+/// <list type="bullet">
+///   <item>The service is resolved straight from the host's DI container —
+///         it's a singleton with an <see cref="IServiceScopeFactory"/> field,
+///         so calling it directly mirrors the production code path (the
+///         <see cref="ChangshaGameRuntime"/> and
+///         <see cref="ChangshaHub"/> both consume it the same way).</item>
+///   <item>The <c>WebApplicationFactory</c> is configured with the
+///         "tests-only" temp-SQLite + snapshot-off pattern that the rest of
+///         the Wave 5 backend test suite uses.</item>
+///   <item>Each test uses a fresh per-instance temp DB so concurrent xUnit
+///         test classes can't collide on the same player-id rows.</item>
+/// </list></para>
+///
+/// <para><b>Determinism.</b> The <c>DefaultDisplayName</c> /
+/// <c>DefaultAvatarColor</c> helpers are FNV-1a-hashed picks (free
+/// 6-hex-digit suffix + a 16-entry palette) so any randomly-generated
+/// player id collapses to a stable deterministic default. The tests assert
+/// on the structural shape (<c>"Player-XXXXXX"</c> + hex regex) rather
+/// than a fixed value so adding a colour to the palette doesn't break the
+/// suite.</para>
+/// </summary>
+public class PlayerProfileServiceTests : IAsyncLifetime
+{
+    private WebApplicationFactory<Program>? _factory;
+    private string? _tempDb;
+
+    public Task InitializeAsync()
+    {
+        var dataDir = Path.Combine(AppContext.BaseDirectory, "test-data");
+        Directory.CreateDirectory(dataDir);
+        _tempDb = Path.Combine(dataDir, $"mahjong-profile-{Guid.NewGuid():N}.db");
+
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Development");
+            b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={_tempDb}");
+            b.ConfigureServices(s =>
+            {
+                s.Configure<ChangshaRuntimeOptions>(o =>
+                {
+                    o.BotTurnDelayMs = 1;
+                    o.BotClaimDelayMs = 1;
+                    o.ClaimWindowTimeoutMs = 50;
+                    o.DealBatchDelayMs = 0;
+                    o.PersistSnapshots = false;
+                });
+            });
+        });
+        _ = _factory.Server;
+        return Task.CompletedTask;
+    }
+
+    public Task DisposeAsync()
+    {
+        _factory?.Dispose();
+        try { if (_tempDb is not null && File.Exists(_tempDb)) File.Delete(_tempDb); } catch { }
+        return Task.CompletedTask;
+    }
+
+    private PlayerProfileService GetService()
+    {
+        Assert.NotNull(_factory);
+        return _factory!.Services.GetRequiredService<PlayerProfileService>();
+    }
+
+    private async Task<PlayerStats> ReadStatsAsync(string playerId)
+    {
+        // Read directly off the DB context instead of going through
+        // GetStatsAsync — that way we can assert on values without having
+        // the service auto-create a missing stats row (which would mask
+        // a regression where RecordGameCompletedAsync silently failed).
+        Assert.NotNull(_factory);
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stats = await db.PlayerStats.AsNoTracking().FirstOrDefaultAsync(s => s.PlayerId == playerId);
+        Assert.NotNull(stats);
+        return stats!;
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  1. GetOrCreate creates with deterministic defaults
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Players"), Trait("Wave", "Phase-J-5")]
+    public async Task GetOrCreate_CreatesNewProfile_WithDeterministicDefaults()
+    {
+        // The very first connection of a freshly-onboarded player must hit
+        // the create-branch and emerge with a non-empty `Player-XXXXXX`
+        // name + a `#RRGGBB`-shaped avatar colour. Frontend already trusts
+        // these defaults verbatim — if either field came back blank the
+        // lobby chip would render as a transparent ghost.
+        var svc = GetService();
+        var playerId = "test-player-" + Guid.NewGuid().ToString("N");
+
+        var profile = await svc.GetOrCreateAsync(playerId);
+
+        Assert.Equal(playerId, profile.PlayerId);
+
+        // Default name structural shape: "Player-" + 6-char hex (matches
+        // PlayerProfileService.DefaultDisplayName). Asserting on the
+        // prefix + length keeps the test resilient to FNV palette tweaks.
+        Assert.StartsWith("Player-", profile.DisplayName);
+        Assert.Equal("Player-".Length + 6, profile.DisplayName.Length);
+        Assert.Matches("^Player-[0-9A-F]{6}$", profile.DisplayName);
+
+        // Avatar colour is one of the 16-entry palette in
+        // DefaultAvatarColor — all uppercase #RRGGBB hex by construction.
+        Assert.Matches("^#[0-9A-F]{6}$", profile.AvatarColor);
+
+        // Deterministic check: a fresh call for the same id with no
+        // mutation in between must produce the same default values, so
+        // a reconnect doesn't reshuffle the user's name + colour.
+        var defaultName = PlayerProfileService.DefaultDisplayName(playerId);
+        var defaultColor = PlayerProfileService.DefaultAvatarColor(playerId);
+        Assert.Equal(defaultName, profile.DisplayName);
+        Assert.Equal(defaultColor, profile.AvatarColor);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  2. GetOrCreate returns the same row on repeat calls
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Players"), Trait("Wave", "Phase-J-5")]
+    public async Task GetOrCreate_ReturnsExisting_WhenCalledTwice()
+    {
+        // Phase J Wave 5 ChangshaHub.OnConnectedAsync calls GetOrCreate
+        // on every connection. A reconnect must NOT mint a second profile
+        // row — that would (a) violate the unique PK and crash SaveChanges,
+        // or (b) silently double-count games depending on the provider.
+        // Assert by snapshotting CreatedAt (immutable per profile) and
+        // confirming it matches across two back-to-back calls.
+        var svc = GetService();
+        var playerId = "test-player-" + Guid.NewGuid().ToString("N");
+
+        var first = await svc.GetOrCreateAsync(playerId);
+        var createdAt = first.CreatedAt;
+        // Sleep a few ms to give LastSeenAt room to update without affecting CreatedAt.
+        await Task.Delay(5);
+
+        var second = await svc.GetOrCreateAsync(playerId);
+
+        Assert.Equal(playerId, second.PlayerId);
+        Assert.Equal(createdAt, second.CreatedAt);
+
+        // LastSeenAt SHOULD advance on every call (lobby UI uses it for
+        // "recently online" — see PlayerProfileService.GetOrCreateAsync).
+        // Use >= so we don't fail when the clock resolves at ms granularity.
+        Assert.True(second.LastSeenAt >= first.LastSeenAt);
+
+        // And there must be exactly one row in the DB.
+        Assert.NotNull(_factory);
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var rows = await db.PlayerProfiles.AsNoTracking().Where(p => p.PlayerId == playerId).CountAsync();
+        Assert.Equal(1, rows);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  3. UpdateDisplayName rejects empty / over-long / whitespace
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Players"), Trait("Wave", "Phase-J-5")]
+    public async Task UpdateDisplayName_RejectsEmpty_AndOverlength()
+    {
+        // The hub layer translates ArgumentException → HubException so the
+        // frontend sees a structured error. If a value here ever slips
+        // through, the lobby would render either a blank chip (empty) or
+        // a layout-breaking wall of text (>32 chars).
+        var svc = GetService();
+        var playerId = "test-player-" + Guid.NewGuid().ToString("N");
+
+        // Empty / pure-whitespace inputs both fail (the service trims
+        // first; the trim collapses pure whitespace to "").
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateDisplayNameAsync(playerId, ""));
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateDisplayNameAsync(playerId, "   "));
+
+        // 33 characters — one byte over the cap. New string('a', 33) keeps
+        // the assertion ASCII so we don't accidentally exercise the
+        // surrogate-pair length-counting edge case.
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            svc.UpdateDisplayNameAsync(playerId, new string('a', 33)));
+
+        // Leading / trailing whitespace is rejected explicitly even when
+        // the trimmed length is within bounds — the service wants the
+        // raw input to match the trimmed value so the stored row is
+        // visibly the same as the user's submission.
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateDisplayNameAsync(playerId, " Vasquez"));
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateDisplayNameAsync(playerId, "Vasquez "));
+
+        // Happy-path sanity: 1-char name is fine and 32-char name is fine
+        // (boundary checks — exactly at the bounds rather than safely in
+        // the middle, which is the regression risk).
+        var single = await svc.UpdateDisplayNameAsync(playerId, "V");
+        Assert.Equal("V", single.DisplayName);
+
+        var thirtyTwo = new string('z', 32);
+        var maxed = await svc.UpdateDisplayNameAsync(playerId, thirtyTwo);
+        Assert.Equal(thirtyTwo, maxed.DisplayName);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  4. UpdateAvatarColor enforces #RRGGBB shape
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Players"), Trait("Wave", "Phase-J-5")]
+    public async Task UpdateAvatarColor_RejectsInvalid_HexFormat()
+    {
+        // The avatar colour is rendered into a CSS `background-color`
+        // variable in lobby chips. Letting a non-hex string through would
+        // both (a) break the chip render and (b) allow trivial CSS
+        // injection (`red; ...`). Validation lives in the service, not the
+        // hub, so this is the canonical guard.
+        var svc = GetService();
+        var playerId = "test-player-" + Guid.NewGuid().ToString("N");
+
+        // Pre-seed the profile so we exercise the existing-row branch,
+        // not the auto-create branch (both should fail validation but
+        // testing the more-common branch keeps the assertion concrete).
+        await svc.GetOrCreateAsync(playerId);
+
+        // Invalid shapes — exhaustive across the regex axes:
+        //   • Not a hex string at all
+        //   • Missing leading `#`
+        //   • 3-digit shorthand (CSS allows it; the service does NOT)
+        //   • 4-digit (alpha) — also out of spec
+        //   • Empty / whitespace
+        //   • `null` (treated as empty by the service)
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateAvatarColorAsync(playerId, "red"));
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateAvatarColorAsync(playerId, "ABCDEF"));
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateAvatarColorAsync(playerId, "#abc"));
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateAvatarColorAsync(playerId, "#abcd"));
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateAvatarColorAsync(playerId, ""));
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateAvatarColorAsync(playerId, "   "));
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.UpdateAvatarColorAsync(playerId, null!));
+
+        // Happy path: canonical #RRGGBB form (both cases accepted, since
+        // the regex is case-insensitive). The service stores whatever
+        // case the caller supplied — the frontend's only requirement is
+        // that the value parses as CSS hex.
+        var lower = await svc.UpdateAvatarColorAsync(playerId, "#abcdef");
+        Assert.Equal("#abcdef", lower.AvatarColor);
+
+        var upper = await svc.UpdateAvatarColorAsync(playerId, "#ABCDEF");
+        Assert.Equal("#ABCDEF", upper.AvatarColor);
+    }
+}

@@ -20,6 +20,13 @@ public static class DatabaseBootstrapper
             // migrations (it relied on EnsureCreatedAsync + manual ALTERs).
             await DropLegacyTableSessionsAsync(db, cancellationToken);
             await EnsureSqliteChangshaTablesAsync(db, cancellationToken);
+            // Phase J Wave 5 — defensive SQLite-only bootstrap for the new
+            // PlayerProfiles + PlayerStats tables. The EF Core migration
+            // (AddPlayerProfileAndStats) is the canonical schema source; this
+            // CREATE-IF-NOT-EXISTS pass keeps existing-DB Sqlite installs
+            // working without requiring an out-of-band `dotnet ef database
+            // update`, matching the existing Changsha-tables pattern above.
+            await EnsureSqlitePlayerTablesAsync(db, cancellationToken);
         }
     }
 
@@ -108,6 +115,58 @@ public static class DatabaseBootstrapper
                 ON "ChangshaGameEvents" ("GameId", "Sequence");
                 """;
             await createIndex.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private static async Task EnsureSqlitePlayerTablesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var createProfiles = connection.CreateCommand())
+            {
+                createProfiles.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "PlayerProfiles" (
+                        "PlayerId" TEXT NOT NULL CONSTRAINT "PK_PlayerProfiles" PRIMARY KEY,
+                        "DisplayName" TEXT NOT NULL,
+                        "AvatarColor" TEXT NOT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "LastSeenAt" TEXT NOT NULL
+                    );
+                    """;
+                await createProfiles.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createStats = connection.CreateCommand())
+            {
+                createStats.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "PlayerStats" (
+                        "PlayerId" TEXT NOT NULL CONSTRAINT "PK_PlayerStats" PRIMARY KEY,
+                        "GamesPlayed" INTEGER NOT NULL DEFAULT 0,
+                        "GamesWon" INTEGER NOT NULL DEFAULT 0,
+                        "TotalScore" INTEGER NOT NULL DEFAULT 0,
+                        "HighestSingleGameScore" INTEGER NOT NULL DEFAULT 0,
+                        "LongestWinStreak" INTEGER NOT NULL DEFAULT 0,
+                        "CurrentWinStreak" INTEGER NOT NULL DEFAULT 0,
+                        "LastGameAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                        CONSTRAINT "FK_PlayerStats_PlayerProfiles_PlayerId" FOREIGN KEY ("PlayerId") REFERENCES "PlayerProfiles" ("PlayerId") ON DELETE CASCADE
+                    );
+                    """;
+                await createStats.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
         finally
         {

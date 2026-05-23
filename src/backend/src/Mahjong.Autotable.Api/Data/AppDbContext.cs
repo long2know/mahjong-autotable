@@ -1,4 +1,5 @@
 using Mahjong.Autotable.Api.Data.Entities;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.EntityFrameworkCore;
 
 namespace Mahjong.Autotable.Api.Data;
@@ -7,6 +8,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<ChangshaGame> ChangshaGames => Set<ChangshaGame>();
     public DbSet<ChangshaGameEvent> ChangshaGameEvents => Set<ChangshaGameEvent>();
+
+    // Phase J Wave 5 — persistent per-player profile + stats. See
+    // Mahjong.Autotable.Api.Players.PlayerProfileService.
+    public DbSet<PlayerProfile> PlayerProfiles => Set<PlayerProfile>();
+    public DbSet<PlayerStats> PlayerStats => Set<PlayerStats>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +33,24 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasOne<ChangshaGame>()
                 .WithMany()
                 .HasForeignKey(x => x.GameId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PlayerProfile>(entity =>
+        {
+            entity.HasKey(x => x.PlayerId);
+            entity.Property(x => x.PlayerId).HasMaxLength(128);
+            entity.Property(x => x.DisplayName).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.AvatarColor).HasMaxLength(7).IsRequired();
+        });
+
+        modelBuilder.Entity<PlayerStats>(entity =>
+        {
+            entity.HasKey(x => x.PlayerId);
+            entity.Property(x => x.PlayerId).HasMaxLength(128);
+            entity.HasOne<PlayerProfile>()
+                .WithOne()
+                .HasForeignKey<PlayerStats>(x => x.PlayerId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

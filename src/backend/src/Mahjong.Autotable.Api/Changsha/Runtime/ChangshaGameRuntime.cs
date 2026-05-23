@@ -19,6 +19,7 @@ namespace Mahjong.Autotable.Api.Changsha.Runtime;
 public interface IChangshaGameRuntime
 {
     Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostConnectionId, CancellationToken ct = default);
+
     Task JoinTableAsync(string gameId, string connectionId, CancellationToken ct = default);
     Task<int> TakeSeatAsync(string gameId, string connectionId, int? seatIndex, CancellationToken ct = default);
     Task FillEmptySeatsWithBotsAsync(string gameId, CancellationToken ct = default);
@@ -78,7 +79,56 @@ public interface IChangshaGameRuntime
     /// event is intentionally fire-and-forget (synchronous invocation).
     /// </summary>
     event Action<string>? StateChanged;
+
+    // ── Phase J Wave 5 — Public matchmaking lobby ────────────────────
+
+    /// <summary>
+    /// Phase J Wave 5 — snapshot of currently public, currently
+    /// <see cref="ChangshaPhase.Seating"/>-phase games. Sorted newest-first,
+    /// capped at <paramref name="max"/> entries. Lock-free read (matches
+    /// <see cref="TryGetSnapshot"/> semantics — callers should treat results
+    /// as a hint; a game may have started by the time the caller acts).
+    /// </summary>
+    IReadOnlyList<LobbyGameSnapshot> SnapshotLobbyGames(int max = 50);
+
+    /// <summary>
+    /// Phase J Wave 5 — toggle a game's public-listing flag. Only the original
+    /// creator (matched by <c>state.CreatorPlayerId == callerPlayerId</c>) may
+    /// flip the bit; any other caller throws <see cref="Microsoft.AspNetCore.SignalR.HubException"/>.
+    /// </summary>
+    Task SetGamePublicAsync(string gameId, string callerPlayerId, bool isPublic, string? publicName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase J Wave 5 — picks a public, lobby-phase game with at least one
+    /// free non-bot seat and seats <paramref name="connectionId"/> into it.
+    /// Returns the chosen <c>(gameId, seatIndex)</c> tuple, or <c>null</c> if
+    /// no candidate exists.
+    /// </summary>
+    Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string connectionId, string? variant, CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase J Wave 5 — destroys an in-memory game and disposes its
+    /// <see cref="ChangshaGameInstance"/>. Used by host-disconnect cleanup
+    /// when a public lobby empties out. No-op if the game id is unknown.
+    /// </summary>
+    Task RemoveGameAsync(string gameId, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Phase J Wave 5 — denormalised lobby-list row returned by
+/// <see cref="IChangshaGameRuntime.SnapshotLobbyGames"/>. Captured under the
+/// instance read so the caller doesn't have to re-walk the runtime to project
+/// to a wire DTO. <c>CreatorPlayerId</c> is the raw player id; the matchmaking
+/// service substitutes a display name via <c>PlayerProfileService</c>.
+/// </summary>
+public sealed record LobbyGameSnapshot(
+    string GameId,
+    string? PublicName,
+    string? CreatorPlayerId,
+    int SeatedCount,
+    int MaxSeats,
+    string Variant,
+    DateTime CreatedAt);
 
 public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 {
@@ -86,6 +136,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ChangshaRuntimeOptions _options;
     private readonly ILogger<ChangshaGameRuntime> _logger;
+    private readonly Players.PlayerProfileService? _profileService;
     private readonly ConcurrentDictionary<string, ChangshaGameInstance> _games = new();
     // Phase H Wave 1 — typed as IChangshaBotStrategy (not the legacy ChangshaBotPolicy
     // facade) so test harnesses can swap in a slow / scripted strategy to exercise the
@@ -105,12 +156,17 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         IHubContext<ChangshaHub> hub,
         IServiceScopeFactory scopeFactory,
         IOptions<ChangshaRuntimeOptions> options,
-        ILogger<ChangshaGameRuntime> logger)
+        ILogger<ChangshaGameRuntime> logger,
+        Players.PlayerProfileService? profileService = null)
     {
         _hub = hub;
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _logger = logger;
+        // Phase J Wave 5 — optional so existing test harnesses that construct
+        // the runtime directly (without DI) keep compiling. Production wiring
+        // in Program.cs injects the service; absence skips stats updates.
+        _profileService = profileService;
     }
 
     public bool TryGetSnapshot(string gameId, out ChangshaGameState? state)
@@ -235,6 +291,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         // "game-created" event emitted inside CreateGame is treated as setup, not as
         // a mutation that consumes a version slot. First real mutation advances to 1.
         state.StateVersion = 0;
+        // Phase J Wave 5 — record the creator's connection id as the host
+        // identity. Used by MatchmakingService.SetGamePublic for the only-host-
+        // may-toggle check and by HandleDisconnectAsync for host-transfer /
+        // auto-destroy on public games. Null when the runtime is bootstrapping
+        // a game from a non-SignalR transport (autotable WS) that doesn't
+        // surface a host id at create time.
+        state.CreatorPlayerId = string.IsNullOrEmpty(hostConnectionId) ? null : hostConnectionId;
         var instance = new ChangshaGameInstance(state.GameId, state);
         _games[state.GameId] = instance;
 
@@ -704,6 +767,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     public async Task HandleDisconnectAsync(string connectionId, CancellationToken ct = default)
     {
+        // Phase J Wave 5 — collect games to destroy outside the per-instance
+        // lock so we don't try to await a Task that re-enters the same lock.
+        var toDestroy = new List<string>();
         foreach (var (gameId, instance) in _games)
         {
             await instance.Lock.WaitAsync(ct);
@@ -715,8 +781,43 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     .ToList();
                 foreach (var seat in matched)
                     instance.SeatConnections.TryRemove(seat, out _);
+
+                // Phase J Wave 5 — host transfer / auto-destroy for public games
+                // still in the Seating lobby phase. Private games and games that
+                // have already started keep the existing semantics (orphaned
+                // SeatConnections only, state is preserved for reconnect).
+                if (instance.State.IsPublic &&
+                    instance.State.Phase == ChangshaPhase.Seating &&
+                    !string.IsNullOrEmpty(instance.State.CreatorPlayerId) &&
+                    string.Equals(instance.State.CreatorPlayerId, connectionId, StringComparison.Ordinal))
+                {
+                    // Pick the lowest-indexed seat that still has a live human
+                    // connection — that connection becomes the new host. A bot
+                    // seat is never a viable host (bots can't authorise
+                    // SetGamePublic). If no candidate is found the game is
+                    // empty and queued for destruction.
+                    var newHost = instance.SeatConnections
+                        .Where(kvp => !instance.State.Seats[kvp.Key].IsBot)
+                        .OrderBy(kvp => kvp.Key)
+                        .Select(kvp => (string?)kvp.Value)
+                        .FirstOrDefault();
+
+                    if (newHost is null)
+                    {
+                        toDestroy.Add(gameId);
+                    }
+                    else
+                    {
+                        instance.State.CreatorPlayerId = newHost;
+                    }
+                }
             }
             finally { instance.Lock.Release(); }
+        }
+
+        foreach (var gameId in toDestroy)
+        {
+            await RemoveGameAsync(gameId, ct);
         }
     }
 
@@ -1620,6 +1721,45 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             winner = new { seatIndex = winnerKvp.Key, score = winnerKvp.Value },
             phase = state.Phase.ToString()
         }, ct);
+
+        // Phase J Wave 5 — career-stats hookup. Project the per-seat
+        // CumulativeScores to per-PlayerId scores, identify the winners (all
+        // seats tied at the top score — handles 2-way splits cleanly), then
+        // delegate to PlayerProfileService.RecordGameCompletedAsync for a
+        // single SaveChangesAsync transaction. Bots are filtered there
+        // (PlayerId starts with "bot-"). The service swallows its own DB
+        // exceptions so a stats failure can never break the game-completion
+        // hot path; we still wrap defensively for the projection.
+        if (_profileService is not null)
+        {
+            try
+            {
+                var topScore = state.CumulativeScores.Count == 0
+                    ? 0
+                    : state.CumulativeScores.Values.Max();
+
+                var finalScores = new Dictionary<string, int>(StringComparer.Ordinal);
+                var winners = new HashSet<string>(StringComparer.Ordinal);
+
+                foreach (var seat in state.Seats)
+                {
+                    if (string.IsNullOrEmpty(seat.PlayerId)) continue;
+                    if (!state.CumulativeScores.TryGetValue(seat.SeatIndex, out var score)) continue;
+                    if (finalScores.TryGetValue(seat.PlayerId, out var existing))
+                        finalScores[seat.PlayerId] = existing + score;
+                    else
+                        finalScores[seat.PlayerId] = score;
+
+                    if (score == topScore) winners.Add(seat.PlayerId);
+                }
+
+                await _profileService.RecordGameCompletedAsync(finalScores, winners, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Recording completed-game stats for {GameId} failed.", instance.GameId);
+            }
+        }
     }
 
     private static object BuildGameSummary(ChangshaGameInstance instance) => new
@@ -1746,6 +1886,168 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to persist snapshot for game {GameId}", instance.GameId);
+        }
+    }
+
+    // ── Phase J Wave 5 — Public matchmaking lobby ─────────────────────
+
+    /// <inheritdoc />
+    public IReadOnlyList<LobbyGameSnapshot> SnapshotLobbyGames(int max = 50)
+    {
+        // Lock-free scan — accepts an inconsistent read by design (the matchmaking
+        // lobby is a hint surface; SetGamePublic / StartGame are the real source of
+        // truth). Same pattern as TryGetSnapshot.
+        if (max < 1) max = 1;
+        var list = new List<LobbyGameSnapshot>(Math.Min(max, _games.Count));
+        foreach (var (gameId, instance) in _games)
+        {
+            var state = instance.State;
+            if (!state.IsPublic) continue;
+            if (state.Phase != ChangshaPhase.Seating) continue;
+
+            // SeatedCount counts seats with a live connection. Bots don't count
+            // as "seated humans" but they do occupy a seat — they're reflected
+            // in the (MaxSeats - SeatedCount) gap implicitly.
+            var seated = instance.SeatConnections.Count;
+            list.Add(new LobbyGameSnapshot(
+                GameId: gameId,
+                PublicName: state.PublicName,
+                CreatorPlayerId: state.CreatorPlayerId,
+                SeatedCount: seated,
+                MaxSeats: state.Seats.Count,
+                Variant: "Changsha",
+                CreatedAt: instance.CreatedUtc));
+        }
+
+        list.Sort((a, b) => b.CreatedAt.CompareTo(a.CreatedAt));
+        return list.Count > max ? list.Take(max).ToList() : list;
+    }
+
+    /// <inheritdoc />
+    public async Task SetGamePublicAsync(string gameId, string callerPlayerId, bool isPublic, string? publicName, CancellationToken ct = default)
+    {
+        var instance = Require(gameId);
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            var state = instance.State;
+            if (string.IsNullOrEmpty(state.CreatorPlayerId) ||
+                !string.Equals(state.CreatorPlayerId, callerPlayerId, StringComparison.Ordinal))
+            {
+                throw new HubException("Only the game host may change the public-listing flag.");
+            }
+            if (state.Phase != ChangshaPhase.Seating)
+            {
+                throw new HubException("Public-listing flag may only change while the game is in the Seating phase.");
+            }
+
+            state.IsPublic = isPublic;
+            if (isPublic)
+            {
+                if (publicName is not null)
+                {
+                    var trimmed = publicName.Trim();
+                    if (trimmed.Length == 0) trimmed = null!;
+                    if (trimmed is { Length: > 64 }) trimmed = trimmed[..64];
+                    state.PublicName = trimmed;
+                }
+            }
+            else
+            {
+                state.PublicName = null;
+            }
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string connectionId, string? variant, CancellationToken ct = default)
+    {
+        // Variant is a hint — only Changsha is supported in this codebase so
+        // an explicit non-match returns "no candidate" rather than a hard error
+        // (lets the frontend gracefully fall back to "create a game").
+        if (!string.IsNullOrEmpty(variant) &&
+            !string.Equals(variant, "Changsha", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var candidates = new List<(string GameId, ChangshaGameInstance Instance)>();
+        foreach (var (gameId, instance) in _games)
+        {
+            var state = instance.State;
+            if (!state.IsPublic) continue;
+            if (state.Phase != ChangshaPhase.Seating) continue;
+            // Must have at least one free non-bot seat.
+            var hasFreeSeat = false;
+            for (var i = 0; i < state.Seats.Count; i++)
+            {
+                if (state.Seats[i].IsBot) continue;
+                if (instance.SeatConnections.ContainsKey(i)) continue;
+                hasFreeSeat = true;
+                break;
+            }
+            if (hasFreeSeat) candidates.Add((gameId, instance));
+        }
+
+        if (candidates.Count == 0) return null;
+
+        var pick = candidates[Random.Shared.Next(candidates.Count)];
+        try
+        {
+            var seat = await TakeSeatAsync(pick.GameId, connectionId, seatIndex: null, ct);
+            return (pick.GameId, seat);
+        }
+        catch (HubException)
+        {
+            // Race: another caller took the last seat between candidate-pick
+            // and TakeSeatAsync. Caller can retry with a fresh JoinRandom.
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task RemoveGameAsync(string gameId, CancellationToken ct = default)
+    {
+        if (!_games.TryRemove(gameId, out var instance)) return;
+        try
+        {
+            await instance.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Disposing removed game {GameId} threw.", gameId);
+        }
+
+        // Best-effort persistence cleanup — mark the row as terminal so a
+        // restart's HydrateAsync skips it. We don't hard-delete the row
+        // because the event log references it via FK and Apone's CI / audit
+        // pipelines may want post-hoc replay. Marking phase=GameComplete +
+        // IsGameComplete=true is the existing terminal signal used by the
+        // hydration filter.
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            if (!Guid.TryParse(gameId, out var gameGuid)) return;
+            var entity = await db.ChangshaGames.FirstOrDefaultAsync(g => g.Id == gameGuid, ct);
+            if (entity is null) return;
+            // Re-serialise the (now-disposed) snapshot so the terminal flag is
+            // recorded. Keep the state-version monotonic.
+            var terminalState = instance.State;
+            terminalState.Phase = ChangshaPhase.GameComplete;
+            terminalState.IsGameComplete = true;
+            entity.StateJson = JsonSerializer.Serialize(terminalState, SnapshotJson);
+            entity.UpdatedUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Persisting removal-terminal snapshot for {GameId} failed.", gameId);
         }
     }
 

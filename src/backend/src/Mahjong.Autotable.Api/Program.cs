@@ -3,9 +3,13 @@ using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Patterns;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
+using Mahjong.Autotable.Api.Matchmaking;
+using Mahjong.Autotable.Api.Observability;
 using Mahjong.Autotable.Api.Persistence;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
+using System.Text.Json;
 
 // Phase J Wave 3 — Apone's Docker HEALTHCHECK / Linux deploy needs a stable
 // process-uptime anchor. Captured at module load (before WebApplication build)
@@ -16,13 +20,53 @@ var processStartTime = DateTimeOffset.UtcNow;
 var builder = WebApplication.CreateBuilder(args);
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));
 
+// Phase J Wave 5 — structured logging contract (Apone, DevOps). Production
+// emits one JSON document per log line so log shippers (Loki promtail, Vector,
+// CloudWatch agent, etc.) ingest categories/levels/scopes without parsing
+// human-formatted text. Non-production environments keep the readable
+// AddSimpleConsole output so `dotnet run` / `docker compose up` stays
+// developer-friendly. ClearProviders() is required — without it the default
+// Console provider double-emits each entry alongside the JSON one. Scopes are
+// surfaced in both modes so SignalR's ConnectionId / HubMethodName scopes
+// appear in the structured payload (see docs/observability.md).
+builder.Logging.ClearProviders();
+if (builder.Environment.IsProduction())
+{
+    builder.Logging.AddJsonConsole(o =>
+    {
+        o.IncludeScopes = true;
+        o.UseUtcTimestamp = true;
+        o.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ ";
+        o.JsonWriterOptions = new JsonWriterOptions { Indented = false };
+    });
+}
+else
+{
+    builder.Logging.AddSimpleConsole(o =>
+    {
+        o.IncludeScopes = true;
+        o.SingleLine = true;
+        o.UseUtcTimestamp = true;
+        o.TimestampFormat = "HH:mm:ss.fff ";
+    });
+}
+
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSignalR();
 
+// Phase J Wave 5 — MVC controllers for the matchmaking REST endpoint
+// (MatchmakingController owns GET /api/matchmaking/lobby).
+builder.Services.AddControllers();
+
 builder.Services.Configure<ChangshaRuntimeOptions>(builder.Configuration.GetSection("ChangshaRuntime"));
 builder.Services.AddSingleton<IChangshaGameRuntime, ChangshaGameRuntime>();
 builder.Services.AddSingleton<AutotableConnectionManager>();
+
+// Phase J Wave 5 — player profile + matchmaking services. Singleton-scoped so
+// they share the runtime's lifetime and use IServiceScopeFactory for DB scopes.
+builder.Services.AddSingleton<PlayerProfileService>();
+builder.Services.AddSingleton<MatchmakingService>();
 
 const string ChangshaCorsPolicy = "ChangshaCors";
 builder.Services.AddCors(options =>
@@ -111,6 +155,12 @@ app.MapGet("/api/system/persistence", (IConfiguration configuration) =>
     return Results.Ok(new { provider });
 });
 
+// Phase J Wave 5 — Prometheus scrape endpoint (Apone, DevOps). The body
+// is rendered by Observability.MetricsEndpoint.Render in the canonical
+// text/plain v0.0.4 exposition format. See docs/observability.md for
+// the metric catalog.
+app.MapGet("/metrics", (IServiceProvider services) => MetricsEndpoint.Render(services));
+
 // Phase J Wave 3 — canonical display ordering for WinPattern values (Hicks's UI).
 // Returns a flat JSON object keyed by the camelCase pattern wire-name (same strings
 // the SignalR winResult.allPatterns array uses) mapped to the integer canonical
@@ -127,6 +177,10 @@ app.MapGet("/api/changsha/pattern-ordering", () =>
 });
 
 app.MapHub<ChangshaHub>("/hubs/changsha");
+
+// Phase J Wave 5 — map MVC controllers (MatchmakingController owns
+// GET /api/matchmaking/lobby).
+app.MapControllers();
 
 // Autotable WS endpoint — speaks upstream NEW/JOIN/JOINED/UPDATE protocol
 // so the byte-identical autotable.9519e86d.js bundle connects unchanged.

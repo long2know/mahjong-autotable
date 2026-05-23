@@ -1109,3 +1109,92 @@ post-Vasquez sync: 384/0/0.
   `phase=GameComplete` wire) and Apone (no CI smoke timing shift) need.
 - **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
   → Passed: 431, Failed: 0, Skipped: 0.
+
+## Phase J Wave 5 — public matchmaking lobby + player profile + career stats
+
+- **Branch:** `stlong/phase-j-wave-5-completion` (from `579711b`).
+- **Baseline gate:** 431/0/0.
+- **Final gate (Bishop scope):** 435/0/0 (4 new tests from Hudson's
+  Players suite picked up automatically; Apone's MetricsEndpointTests
+  remain RED until Apone commits his Observability runtime — out of
+  scope).
+- **Tasks delivered:**
+  - **Task 1 — Public matchmaking lobby.** Added `IsPublic` / `PublicName`
+    / `CreatorPlayerId` to `ChangshaGameState`. New
+    `IChangshaGameRuntime` methods `SnapshotLobbyGames`,
+    `SetGamePublicAsync` (host-only, Seating-phase only),
+    `JoinRandomAsync` (race-safe; returns null on no candidate /
+    seat-take race), and `RemoveGameAsync` (terminal snapshot
+    persistence). `MatchmakingService` joins runtime snapshots with
+    `PlayerProfileService.GetOrCreateAsync` to resolve creator display
+    names. `MatchmakingController` exposes
+    `GET /api/matchmaking/lobby` returning `{ games: [...] }` (cap 50,
+    newest-first, only `IsPublic && Phase == Seating`).
+    `ChangshaHub.SetGamePublic` / `JoinRandom` RPCs route to the
+    service. `HandleDisconnectAsync` adds host-transfer / auto-destroy
+    semantics for **public lobby-phase** games only: when the original
+    creator drops, the lowest-indexed live non-bot connection becomes
+    the new host; if no live human remains, the game is queued for
+    `RemoveGameAsync`. Private games and games past Seating keep the
+    pre-existing semantics (only `SeatConnections[seat]` released).
+  - **Task 2 — `PlayerProfile` / `PlayerStats` EF entities +
+    `PlayerProfileService`.** New EF entities in
+    `Mahjong.Autotable.Api.Players`. `AppDbContext` registers both
+    DbSets and configures key + length + one-to-one cascade FK.
+    `PlayerProfileService` (singleton + scoped DbContext via
+    `IServiceScopeFactory`) owns `GetOrCreateAsync`, `GetStatsAsync`,
+    `UpdateDisplayNameAsync` (1–32 chars, no leading/trailing
+    whitespace), `UpdateAvatarColorAsync` (`#RRGGBB`), and
+    `RecordGameCompletedAsync` (filters bots, single
+    `SaveChangesAsync`, swallows DB exceptions). Default display name +
+    avatar colour are FNV-1a-hashed off the PlayerId so they're stable
+    across the session.
+  - **Task 3 — Stats hookup on `GameCompleted`.**
+    `ChangshaGameRuntime.EmitGameCompletedAsync` now projects per-seat
+    `CumulativeScores` to per-PlayerId scores, computes winners (all
+    seats tied at the top score — clean 2-way / 3-way split handling),
+    and calls `_profileService.RecordGameCompletedAsync`. Wrapped in
+    try/catch; stats failure cannot break game completion.
+  - **Task 4 — EF migration + bootstrap.**
+    `Persistence/Migrations/AddPlayerProfileAndStats` is the first
+    formal EF migration in the project — it includes the existing
+    `ChangshaGames` / `ChangshaGameEvents` tables as well, intentional
+    new baseline. `DatabaseBootstrapper.EnsureSqlitePlayerTablesAsync`
+    adds defensive `CREATE TABLE IF NOT EXISTS` for SQLite so existing
+    installs come up without an out-of-band `dotnet ef database
+    update` (matches the existing Changsha-tables bootstrap pattern).
+  - **Task 5 — Hub profile surface.**
+    `ChangshaHub.OnConnectedAsync` calls
+    `PlayerProfileService.GetOrCreateAsync` + `GetStatsAsync` and
+    sends `ProfileLoaded { profile, stats }` to the caller; failure
+    is logged and swallowed (a profile read should never block the
+    connect). New `UpdateProfile(displayName, avatarColor?)` RPC for
+    in-session edits; returns the same DTO shape.
+- **Files touched (1 commit):**
+  - `64aac5c` — `feat(backend): Phase J Wave 5 — public matchmaking
+    lobby + player profile + career stats`:
+    `src/.../Changsha/ChangshaDomain.cs` (matchmaking fields),
+    `src/.../Changsha/Runtime/ChangshaGameRuntime.cs` (matchmaking
+    methods + interface, host transfer, stats hookup, profile ctor
+    param, `state.CreatorPlayerId` in `CreateGameAsync`),
+    `src/.../Changsha/ChangshaHub.cs` (rewritten: ctor deps,
+    `SetGamePublic` / `JoinRandom` / `UpdateProfile` RPCs,
+    `OnConnectedAsync` ProfileLoaded, `BuildProfileDto` helper),
+    `src/.../Data/AppDbContext.cs` (DbSets + OnModelCreating),
+    `src/.../Data/DatabaseBootstrapper.cs`
+    (`EnsureSqlitePlayerTablesAsync`),
+    `src/.../Players/PlayerProfile.cs`,
+    `src/.../Players/PlayerStats.cs`,
+    `src/.../Players/PlayerProfileService.cs`,
+    `src/.../Matchmaking/MatchmakingService.cs`,
+    `src/.../Matchmaking/MatchmakingController.cs`,
+    `src/.../Persistence/Migrations/20260523031206_AddPlayerProfileAndStats.cs`
+    (+ Designer + ModelSnapshot),
+    `src/.../Program.cs` (DI + AddControllers + MapControllers).
+- **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-5.md` —
+  REST + SignalR wire contracts, schema / migration policy,
+  PlayerId reconnect limitation, downstream notes for Hicks /
+  Vasquez / Apone.
+- **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+  → Passed: 435, Failed: 0, Skipped: 0 (Bishop-scope filter
+  excludes Apone's still-uncommitted MetricsEndpointTests).

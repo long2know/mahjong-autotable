@@ -17,6 +17,14 @@ import {
   PickupEntry,
 } from './types';
 import { clearSession, saveSession } from './reconnect';
+import {
+  loadProfile,
+  refreshProfile,
+  snapshotStatsForGame,
+  onProfile,
+  initProfileHubBindings,
+} from './profile';
+import { getHubConnection, stopHubConnection } from './hub';
 
 
 // Phase J Wave 2 — Server-pushed end-of-game payload.  Bishop's runtime
@@ -126,8 +134,53 @@ export class Client extends BaseClient {
     this.on('connect', (game: Game) => {
       this.lastGameId = game.gameId;
       this.saveReconnectSession();
+      // Phase J Wave 5 — connect to Bishop's SignalR hub (idempotent
+      // singleton) and load the player profile.  The hub's
+      // OnConnectedAsync fires a `ProfileLoaded` event which
+      // profile.ts is already subscribed to via
+      // initProfileHubBindings.  We also kick off an explicit
+      // loadProfile() so the local cache lands even if the hub
+      // already pushed before our listener was installed.
+      initProfileHubBindings();
+      void (async (): Promise<void> => {
+        try {
+          await getHubConnection();
+          const profile = await loadProfile(game.playerId);
+          // Mirror the local player's displayName into the WS-broadcast
+          // nicks collection so every other surface (move log, seat
+          // chips on remote tabs) renders the profile-edited name.
+          this.nicks.set(game.playerId, profile.displayName);
+          // Cache the pre-game stats snapshot so the post-game modal
+          // can render a delta.
+          snapshotStatsForGame();
+        } catch {
+          // Profile load is best-effort; lobby/UI degrade gracefully.
+        }
+      })();
     });
     this.seats.on('update', () => this.saveReconnectSession());
+
+    // Phase J Wave 5 — propagate the local profile's displayName into
+    // the WS-broadcast nicks collection on every profile update, so
+    // the lobby + move-log + other surfaces re-render with the new
+    // name immediately after Save in the profile drawer.
+    onProfile((profile) => {
+      const pid = this.playerId();
+      if (pid !== null && pid !== '') {
+        this.nicks.set(pid, profile.displayName);
+      }
+    });
+
+    // Phase J Wave 5 — when the server pushes a gameComplete singleton
+    // with the complete flag set, refresh the profile so the post-game
+    // modal renders the updated stats with the correct delta against
+    // the pre-game snapshot.
+    this.gameComplete.on('update', () => {
+      const cur = this.gameComplete.get('current');
+      if (cur === null || cur === undefined) return;
+      if (!readCompleteFlag(cur)) return;
+      void refreshProfile();
+    });
   }
 
   private onSeats(): void {
@@ -168,7 +221,24 @@ export class Client extends BaseClient {
       clearSession(this.lastGameId);
     }
     this.lastGameId = null;
+    // Phase J Wave 5 — tear down the SignalR hub on intentional
+    // disconnect so the server's ProfileLoaded events don't keep
+    // landing on a client that no longer cares.  Fire-and-forget.
+    void stopHubConnection();
   }
+}
+
+// Phase J Wave 5 — read the "is complete" flag from a gameComplete
+// payload tolerating Bishop's PascalCase / alt-name variants.  Mirrors
+// the GameUi side's readCompleteFlag helper so we don't drift if the
+// runtime wire shape shifts.
+function readCompleteFlag(v: GameCompleteEntry): boolean {
+  return Boolean(
+    v.isComplete
+    || v.IsComplete
+    || v.isGameComplete
+    || v.IsGameComplete,
+  );
 }
 
 interface CollectionOptions {

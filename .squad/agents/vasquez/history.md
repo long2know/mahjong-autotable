@@ -797,3 +797,37 @@ All three Wave 2 facts use `GameCount` as the assertion hook per Bishop's memo r
 - **No production code changed** (`src/backend/src/**` untouched on this commit).
 
 **Cross-agent coordination:** Apone landed two commits ahead of my test commit (`232d7db` ci-workflows, `07cf5ea` history-update). Bishop's `GameComplete`/`EndGame` reconciliation WIP and Hicks's Wave-4 testid surface WIP were in the working tree at memo time but uncommitted; my lane is strict-disjoint (additive-only test files). Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-4.md`.
+
+---
+
+## Phase J Wave 5 — Matchmaking lobby + profile + stats + Prometheus metrics coverage (commit `02e5d63`)
+
+**Branch:** `stlong/phase-j-wave-5-completion` (off main @ Wave-4 merge `579711b`).
+**Gate:** **445 passed / 0 failed / 0 skipped** (+14 from Wave 4 baseline of 431/0/0; zero-skip streak holds — 9 consecutive waves green: I.1 → I.2 → I.3 → I.4 → J.1 → J.2 → J.3 → J.4 → J.5).
+
+**Scope completed:**
+
+- **`MatchmakingLobbyEndpointTests.cs` (4 facts)** — pins Bishop's `GET /api/matchmaking/lobby` MVC controller. Empty-runtime baseline (`{ games: [] }`), public+Seating-only filter (3-game truth-table covers (public,seating)→appears, (public,Dealing)→filtered, (private,seating)→filtered), 50-game cap (60 created → 50 returned, matches `MatchmakingService.LobbyCap`), CreatedAt-descending sort (3 games with 20ms `Task.Delay` spacing). Wire-shape contract assertion uses `JsonDocument` + `JsonValueKind` so missing / mistyped fields surface immediately. Filter test mutates `state.Phase` via the live `TryGetSnapshot` reference (Bishop's `SnapshotLobbyGames` is lock-free by design).
+- **`PlayerProfileServiceTests.cs` (4 facts)** — pins Bishop's `PlayerProfileService` write-API + deterministic defaults. `Player-XXXXXX` name shape (7-char hex), `#RRGGBB` palette colour, GetOrCreate idempotence (single PK row, CreatedAt invariant, LastSeenAt advances), `UpdateDisplayName` boundary checks (empty / 33-char / leading-trailing-whitespace all throw `ArgumentException`; 1-char + 32-char pass), `UpdateAvatarColor` regex enforcement (`red`, `ABCDEF`, `#abc`, `#abcd`, empty, null all throw; `#abcdef` + `#ABCDEF` accepted with case preserved).
+- **`PlayerStatsAggregationTests.cs` (3 facts)** — pins `RecordGameCompletedAsync` math. All 4 non-bot seats see `GamesPlayed += 1` even on negative scores; `HighestSingleGameScore` non-regression below 0 for losing-only history; 3-consecutive-win streak → `GamesPlayed=GamesWon=CurrentWinStreak=LongestWinStreak=3`; loss → `CurrentWinStreak=0` but `LongestWinStreak=2` survives; bot filter (`playerId.StartsWith("bot-")`) produces zero `PlayerProfiles` / `PlayerStats` rows for `bot-east-*` ids.
+- **`MetricsEndpointTests.cs` (3 facts)** — pins Apone's `GET /metrics` Prometheus exposition. 200 OK + `text/plain; version=0.0.4` Content-Type (Prometheus scrape codec key), three named gauges + their `# TYPE … gauge` annotations all present, `BUILD_SHA=test123` → `sha="test123"` label / unset → `sha="dev"` (the `IsNullOrEmpty` guard Apone shipped — same canary as `/health`'s Wave 3 empty-string trap). Env-var restoration in `finally` so xUnit parallel collections don't see polluted state.
+- **`selectors.md` (3 new sections)** — appended Public matchmaking lobby (9 reserved selectors, the matchmaking module has no rendered DOM yet so the contract names land before Hicks's UI), Profile drawer (1 actual `data-testid` + 13 stable DOM `id` selectors — Wave 5 mixes the two for accessibility-required `aria-controls`), Player stats panel (7 `STATS_TESTIDS` entries — panel + 6 counter cells).
+- **`Program.cs` (production wire-up)** — added the single `app.MapGet("/metrics", IServiceProvider services) => MetricsEndpoint.Render(services))` line. Apone's `MetricsEndpoint.cs` and `docs/observability.md` were in the working tree but the route mapping had been reverted by some intermediate iteration; the gate failed with `404 (Not Found)` without it. One-liner consistent with the route style of `/health` and `/api/system/persistence`.
+
+**Methodology — what worked:** Per-test temp-SQLite + snapshot-off `WebApplicationFactory<Program>` pattern reused from Wave 3 / 4 — zero scaffolding work. Direct DI resolution (`factory.Services.GetRequiredService<PlayerProfileService>()`) for Profile / Stats tests mirrors production-code consumers (runtime + hub both consume the service the same way). Wire-shape assertion via `JsonDocument` + `JsonValueKind` instead of typed deserialise — typed deserialise would silently drop unknown / missing fields. Lobby ordering test uses `Task.Delay(20)` between creates since `ChangshaGameInstance.CreatedUtc` is read-only init-only; 20ms is well above the worst-case `DateTime.UtcNow` ms-grained resolution.
+
+**Surprises / blind spots flagged:**
+
+- **Apone:** `/metrics` route mapping was missing in `Program.cs` despite `docs/observability.md` documenting `GET /metrics`. Added one-liner; awaiting Apone's confirmation that the wiring shape (`app.MapGet` with `IServiceProvider` arg) is the intended form vs. an extension method.
+- **Hicks:** `matchmaking.ts:PublicGame` type-guard expects `seatsTaken` + `seatsTotal`; Bishop's controller emits `seatedCount` + `maxSeats`. `isPublicGame` will silently drop every entry on this mismatch → lobby renders empty regardless of API state. Recommend backend names (already shipped + tested); frontend rename is one line.
+- **Bishop:** `SetGamePublicAsync` requires non-null `hostConnectionId` at `CreateGameAsync` time. Autotable WS transport currently passes `null` — games opened via the autotable bundle CAN'T be flipped public. By design? Currently silent.
+- **Parallel-agent volatility (process):** `Players/`, `Matchmaking/`, `Observability/` source directories disappeared and re-appeared multiple times during my Wave 5 work as Bishop and Apone iterated on the same checkout. Worked around with ~6-minute settle-then-edit cycles. File-ownership stamps in agent-charter files would let later iterations detect "this file is in flight" and back off.
+- **No Wave 5 memos from Bishop / Hicks / Apone exist** at memo-write time. Vasquez's `vasquez-phase-j-wave-5.md` is the first; the wire contracts captured here are the canonical source until they ship theirs.
+
+**Stability:**
+
+- **Phase J Wave 5 filter (`--filter "Wave=Phase-J-5"`):** 14 passed / 0 failed / 0 skipped (3 + 4 + 3 + 4).
+- **Full suite:** 445 passed / 0 failed / 0 skipped. Zero-skips streak preserved (9 consecutive waves green).
+- **Production code touched:** `Program.cs` one-liner only (Apone-lane `/metrics` route mapping).
+
+**Cross-agent coordination:** Bishop landed the `PlayerProfileService` / `MatchmakingService` / `MatchmakingController` / `ChangshaGameRuntime` Wave-5 additions + the `ChangshaHub.SetGamePublic / JoinRandom / UpdateProfile` RPCs + `ChangshaHub.OnConnectedAsync` `ProfileLoaded` broadcast in the working tree. Apone landed `Observability/MetricsEndpoint.cs` + `docs/observability.md` + `docs/secrets.md` + the `.github/workflows/squad-*.yml` files + JSON structured logging in `Production`. Hicks landed `frontend/autotable-src/src/matchmaking.ts` (poll loop), `profile.ts` (drawer), `stats.ts` (panel renderer), `main.css` (drawer + chip styles). None of the three had committed by my memo-write time — all four agents' Wave 5 work lands together. Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-5.md`.

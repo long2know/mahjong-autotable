@@ -78,3 +78,41 @@
 - GHA cache (`type=gha,mode=max`) is free and dramatically cuts build time — every multi-stage workflow should opt in.
 - Workflow-level "post a failure issue" is **discouraged** for flaky-prone schedules — artifact upload + the red dashboard square is enough signal, and avoids a perpetually-flapping issue thread.
 
+## Phase J Wave 5 — Playwright E2E + /metrics + structured logging + secrets audit (2026-05-23)
+
+**Commits authored:**
+- `072fd00` — `feat(devops): Phase J Wave 5 — Playwright E2E + /metrics + structured logging + secrets audit`
+
+**What shipped:**
+- `src/frontend/autotable-src/tests/e2e/playwright.config.ts` (NEW) — `chromium` + Pixel-5 `mobile-chrome` projects, `baseURL` resolves from `E2E_BASE_URL` (default `http://localhost:8080/autotable/`), `'github'` reporter under CI / `'list'` locally.
+- `src/frontend/autotable-src/tests/e2e/smoke.spec.ts` (NEW) — 4 tests (title, lobby visibility, Quick Match URL transition, mobile drawer toggle). Quick Match assertion is the lesson of the wave: clicked via `locator.evaluate(el => el.click())` JS-dispatch (mobile-chrome's touch synthesis was swallowing `force: true` clicks) and polls `page.url()` for `[?&]variant=` since `buildUrl()` in `src/lobby.ts:328–342` always emits the `variant` param. Viewport-portable across chromium + mobile-chrome at ~6s end-to-end.
+- `src/frontend/autotable-src/tests/e2e/README.md` (NEW) — local quickstart, CI usage, troubleshooting (`force: true` rationale for the off-screen settings drawer at `right: -340px, z-index: 1080`), future-wave notes.
+- `src/frontend/autotable-src/package.json` — added `e2e` + `e2e:install` scripts and `@playwright/test ^1.45.0` devDep. `package-lock.json` regenerated.
+- `.github/workflows/e2e-playwright.yml` (NEW) — push-to-`main` + PR-to-`main` + `workflow_dispatch`. Pipeline: `actions/checkout@v4` → `actions/setup-node@v4` (node 20 + npm lockfile cache) → `npm ci` → `npx playwright install --with-deps chromium` → `docker build` (BUILD_SHA passthrough) → `docker run -d -p 8080:8080` → wait /health (30s) → `npm run e2e` → teardown → `actions/upload-artifact@v4` on failure (`playwright-report/`). actionlint v1.7.7 clean.
+- `src/backend/src/Mahjong.Autotable.Api/Observability/MetricsEndpoint.cs` (NEW, ~114 lines) — three Prometheus gauges in canonical text/plain v0.0.4 exposition format: `mahjong_uptime_seconds` (anchored to `Process.GetCurrentProcess().StartTime.ToUniversalTime()` with try/catch fallback for AOT — *not* a static `DateTimeOffset.UtcNow` field because static fields lazily init on first type touch which produced ~0 uptime on the first scrape during early dev), `mahjong_active_games_total` (reads existing `IChangshaGameRuntime.GameCount` — no new interface surface), `mahjong_build_info{sha="..."} 1` (`BUILD_SHA` env, collapses null/empty → `"dev"` per `/health` contract). No new NuGet dep — pure `System.Diagnostics` + `System.Text`.
+- `src/backend/src/Mahjong.Autotable.Api/Program.cs` — added `using Mahjong.Autotable.Api.Observability;` + `using System.Text.Json;`, env-aware logger config (`builder.Logging.ClearProviders()` then `AddJsonConsole` in Production with `JsonWriterOptions { Indented = false }` / `AddSimpleConsole` everywhere else, `IncludeScopes = true` in both so SignalR `ConnectionId` / `HubMethodName` surface in the structured payload), and `app.MapGet("/metrics", sp => MetricsEndpoint.Render(sp));`.
+- `docs/observability.md` (NEW, ~230 lines) — endpoint catalog, metric definitions, sample exposition output (live-captured), PromQL examples (`rate()`, uptime alerts, build-info join), LogQL for Loki, KQL for Azure Log Analytics, runbook snippets.
+- `docs/secrets.md` (NEW, ~275 lines) — audit findings (`appsettings.json` placeholder SqlServer password documented as needing env override pre-SQL-Server migration; no real secrets in tracked source), env-var contract table, recipes for Docker secrets / GHA encrypted secrets / k8s `Secret` / AWS Secrets Manager / Azure Key Vault / GCP Secret Manager, 90-day rotation baseline.
+
+**Verified locally:**
+- `dotnet test` over `src/backend` → **445 / 0 / 0** (includes Vasquez's untracked `MetricsEndpointTests.cs` contract tests that exercise the new `/metrics` route — they pass against my implementation).
+- Built and ran Docker container in a separate worktree (`/data/source/mahjong-w5-verify`) on `localhost:8088` to avoid Bishop's parallel WIP polluting the build context:
+  - `/health` → `{"status":"healthy","buildSha":"test-phase-j-w5","uptime":"…","version":"1.0.0.0"}` ✅
+  - `/metrics` → valid Prometheus exposition; `mahjong_uptime_seconds` grew monotonically across successive scrapes (5.080s → 13.092s → 21.115s) confirming the `Process.StartTime` anchor works ✅
+  - Production logs were one JSON document per line ✅
+- Playwright smoke against the live container: **7 passed / 1 skipped** in 6.1–6.2s, two consecutive runs (skip is the chromium-only `mobile drawer toggle` guard on the mobile project).
+- `actionlint v1.7.7` on `e2e-playwright.yml` → exit 0, no findings.
+
+**Cross-lane:** No backend domain code touched — `MetricsEndpoint` consumes the existing `IChangshaGameRuntime.GameCount` Bishop added in Phase I Wave 2. No frontend `src/` code touched — smoke spec works against the bundle as-is and uses only testids that exist in HEAD's `index.html` (selectors.md is aspirational for many entries; the spec sticks to the live ones).
+
+**Lane discipline:** Selective `git add` of exactly 10 files mine (the 3 e2e files, `package.json`, `package-lock.json`, `MetricsEndpoint.cs`, `Program.cs`, `e2e-playwright.yml`, `observability.md`, `secrets.md`). Explicitly avoided `git add -A` because the working tree carried Bishop's uncommitted WIP (`index.html`, `client-ui.ts`, `client.ts`, `lobby.ts`, regenerated bundle artifacts, his `MetricsEndpointTests.cs` contract tests) and pre-session `.github/workflows/squad-*.yml` files — all left untracked for their owners.
+
+**Patterns locked for future DevOps work on this codebase:**
+- **`Process.StartTime` over `DateTimeOffset.UtcNow` at static init** for any "since process start" anchor — static fields lazily init on first type touch which produces a near-zero diff on the first endpoint hit. Wrap `Process.GetCurrentProcess()` in `try/catch` for AOT scenarios.
+- **`builder.Logging.ClearProviders()` is mandatory** before `AddJsonConsole` / `AddSimpleConsole` — otherwise the default Console provider double-emits and operators see each line twice. Confirmed empirically in the verify worktree.
+- **Env-aware logger config** (`IsProduction()` switch) — Production gets JSON, everything else gets human-readable. Keeps `dotnet run` ergonomic without losing structured ingestion in deployment. `IncludeScopes = true` in both modes so SignalR scope state surfaces.
+- **`force: true` is the canonical Playwright escape hatch** when the visual stack is correct but the hit-test layer disagrees. On `isMobile: true` projects, even `force: true` can be insufficient — `locator.evaluate(el => el.click())` to fire the JS `click` event directly is the next step and proved viewport-portable across chromium + mobile-chrome.
+- **Prefer URL-shape assertions over DOM-state assertions** for navigation-triggering interactions: `window.location.replace(url)` reliably mutates `page.url()`, whereas which DOM nodes are visible afterwards can differ between viewports and CSS configurations.
+- **Verify in a separate worktree** when another agent is writing to the same source tree in parallel. `git worktree add` off detached HEAD is the cheapest way to get a clean live-build environment without fighting concurrent edits.
+
+

@@ -10,6 +10,9 @@
     <link href="img/icon-16.auto.png" rel="shortcut icon" sizes="16x16">
     <link rel="stylesheet" href="./node_modules/bootstrap/dist/css/bootstrap.css">
     <link rel="stylesheet" href="./src/style.css">
+    <!-- Phase J Wave 5 — public matchmaking lobby, profile drawer,
+         stats panel.  Layered after style.css so its overrides win. -->
+    <link rel="stylesheet" href="./src/main.css">
     </head>
 <body>
     <img id="dice-img" src="img/dice.auto.png" style="opacity: 0">
@@ -582,6 +585,15 @@
                         <h4 class="game-complete-section-title">Hand-by-hand</h4>
                         <div id="game-complete-recap" class="game-complete-recap"></div>
                     </div>
+
+                    <!-- Phase J Wave 5 — Stats delta panel.  Populated
+                         by client-ui.ts:setupPostGameStatsPanel() when
+                         the gameComplete singleton flips to complete.
+                         Shows the local player's career stats with a
+                         per-row delta vs. the pre-game snapshot. -->
+                    <div id="game-complete-stats-delta"
+                         class="game-complete-section"
+                         style="display: none;"></div>
                 </div>
                 <div class="modal-footer justify-content-center">
                     <button type="button" class="btn btn-warning"
@@ -667,6 +679,33 @@
                     aria-label="Close lobby" title="Close">×</button>
         </div>
         <div class="lobby-body">
+            <!-- Phase J Wave 5 — Lobby tab strip.  Toggles between the
+                 existing "My Game" surface (Quick Match / seat picker /
+                 settings) and the new "Public Games" matchmaking
+                 browser.  The buttons own ARIA tab semantics; their
+                 click handler in lobby.ts:installLobbyTabs() flips
+                 #lobby-tab-my-game / #lobby-tab-public-games. -->
+            <div class="lobby-tabs" role="tablist"
+                 aria-label="Lobby sections">
+                <button id="lobby-my-game-tab" type="button"
+                        class="lobby-tab lobby-tab-active"
+                        role="tab" aria-selected="true"
+                        aria-controls="lobby-tab-my-game"
+                        data-testid="lobby-my-game-tab">My Game</button>
+                <button id="lobby-public-games-tab" type="button"
+                        class="lobby-tab"
+                        role="tab" aria-selected="false"
+                        aria-controls="lobby-tab-public-games"
+                        data-testid="lobby-public-games-tab">Public Games</button>
+            </div>
+
+            <!-- Phase J Wave 5 — "My Game" tab pane wraps every existing
+                 lobby control (player chips, seat preview, pickers,
+                 advanced settings).  installLobbyTabs() toggles its
+                 visibility against the public-games pane below. -->
+            <section id="lobby-tab-my-game" class="lobby-tab-pane lobby-tab-panel-active"
+                     role="tabpanel"
+                     aria-labelledby="lobby-my-game-tab">
             <!-- Phase J Wave 4 — Player chip strip.  Surfaces the live
                  `seats`+`nicks` collections as a 0..4 chip row so the
                  lobby user sees who is already in the game (and which
@@ -831,6 +870,73 @@
                     </p>
                 </div>
             </details>
+
+            <!-- Phase J Wave 5 — Make-public toggle.  Only meaningful
+                 when the user is the host of an active game; the
+                 toggle's change handler calls Bishop's SignalR
+                 `SetGamePublic` RPC.  The friendly name input is
+                 optional (server falls back to "<host>'s game"). -->
+            <section class="lobby-make-public"
+                     aria-label="Make this game public">
+                <h3 class="lobby-section-title">Make public</h3>
+                <label class="lobby-make-public-row">
+                    <input id="lobby-make-public-toggle" type="checkbox"
+                           data-testid="lobby-set-public-toggle">
+                    <span>List this game in the public lobby</span>
+                </label>
+                <input id="lobby-make-public-name" type="text"
+                       class="lobby-make-public-name"
+                       data-testid="lobby-public-name-input"
+                       placeholder="Friendly name (optional)"
+                       maxlength="64" autocomplete="off">
+                <div id="lobby-make-public-status"
+                     class="lobby-make-public-status" aria-live="polite"></div>
+            </section>
+
+            <!-- Phase J Wave 5 — Stats panel.  Renders the local
+                 player's career stats from the cached profile.
+                 Empty until the SignalR ProfileLoaded event lands. -->
+            <section class="lobby-stats-section"
+                     aria-label="Your stats">
+                <h3 class="lobby-section-title">Your stats</h3>
+                <div id="lobby-stats-panel" class="lobby-stats-panel"
+                     data-testid="lobby-stats-panel"></div>
+            </section>
+            </section>
+            <!-- /lobby-tab-my-game -->
+
+            <!-- Phase J Wave 5 — Public games pane.  Polled every 5 s
+                 via matchmaking.ts:startPolling() while this tab is
+                 active.  Each card renders publicName +
+                 creatorDisplayName + seatedCount/maxSeats + a Join
+                 button. -->
+            <section id="lobby-tab-public-games"
+                     class="lobby-tab-pane public-games-pane"
+                     role="tabpanel"
+                     aria-labelledby="lobby-public-games-tab"
+                     data-testid="lobby-public-section"
+                     style="display: none;">
+                <div class="public-games-header">
+                    <h3 class="lobby-section-title">Public Games</h3>
+                    <button id="lobby-join-random" type="button"
+                            class="btn btn-success btn-sm"
+                            data-testid="lobby-join-random"
+                            title="Join any public game with free seats">
+                        🎲 Join Random
+                    </button>
+                </div>
+                <div id="lobby-public-games-error"
+                     class="public-games-status public-games-error"
+                     aria-live="polite" style="display: none;"></div>
+                <div id="lobby-public-games-empty"
+                     class="public-games-empty">
+                    No public games right now. Try Quick Match in the
+                    "My Game" tab to start your own.
+                </div>
+                <div id="lobby-public-games-list"
+                     class="public-games-list" role="list"
+                     data-testid="lobby-public-list"></div>
+            </section>
         </div>
         <div class="lobby-footer">
             <label class="lobby-save-defaults" title="Persist these choices in this browser for next visit">
@@ -854,8 +960,20 @@
         </div>
         <!-- Phase J Wave 4 — Settings shortcut.  Opens the existing
              settings drawer without closing the lobby; lets returning
-             players tweak per-game overrides before clicking Apply. -->
+             players tweak per-game overrides before clicking Apply.
+             Phase J Wave 5 — adds an Open Profile shortcut alongside
+             that opens the profile drawer for display-name + avatar
+             colour editing. -->
         <div class="lobby-settings-shortcut">
+            <button id="lobby-open-profile" type="button"
+                    class="lobby-settings-link profile-toggle"
+                    data-testid="lobby-open-profile"
+                    title="Edit your display name and avatar colour">
+                <span id="lobby-open-profile-avatar"
+                      class="profile-toggle-avatar"
+                      aria-hidden="true">?</span>
+                <span id="lobby-open-profile-label">Profile</span>
+            </button>
             <button id="lobby-open-settings" type="button"
                     class="lobby-settings-link"
                     data-testid="lobby-open-settings"
@@ -871,6 +989,67 @@
             </a>
         </div>
     </div>
+
+    <!-- Phase J Wave 5 — Profile drawer.  Sibling of #lobby-panel so
+         it can slide in from the right without nesting inside the
+         lobby's transform.  Content is hand-mounted by
+         profile.ts:installProfileDrawer() at boot. -->
+    <aside id="profile-drawer" class="profile-drawer"
+           role="dialog" aria-label="Profile" aria-hidden="true"
+           data-testid="profile-drawer">
+        <div class="profile-drawer-header">
+            <h2 class="profile-drawer-title">Profile</h2>
+            <button id="profile-drawer-close" type="button"
+                    class="profile-drawer-close"
+                    aria-label="Close profile">×</button>
+        </div>
+        <div class="profile-drawer-body">
+            <div class="profile-preview">
+                <div id="profile-preview-avatar"
+                     class="profile-preview-avatar" aria-hidden="true">?</div>
+                <div id="profile-preview-name"
+                     class="profile-preview-name">Guest</div>
+            </div>
+
+            <label class="profile-field">
+                <span class="profile-field-label profile-section-title">Display name</span>
+                <input id="profile-display-name-input" type="text"
+                       class="profile-display-name-input"
+                       data-testid="profile-display-name-input"
+                       maxlength="32" autocomplete="off"
+                       spellcheck="false">
+                <span id="profile-display-name-error"
+                      class="profile-display-name-error"
+                      aria-live="polite"></span>
+            </label>
+
+            <div class="profile-field">
+                <span class="profile-field-label profile-section-title">Avatar colour</span>
+                <div id="profile-avatar-presets"
+                     class="profile-avatar-presets" role="radiogroup"
+                     aria-label="Avatar colour presets"></div>
+                <label class="profile-avatar-custom-row">
+                    <span>Or pick any colour:</span>
+                    <input id="profile-avatar-color-custom" type="color"
+                           class="profile-avatar-custom"
+                           data-testid="profile-avatar-color-custom"
+                           value="#2980b9">
+                </label>
+            </div>
+
+            <div class="profile-drawer-footer">
+                <button id="profile-save" type="button"
+                        class="btn btn-warning btn-sm"
+                        data-testid="profile-save">Save</button>
+                <button id="profile-reset" type="button"
+                        class="btn btn-secondary btn-sm"
+                        data-testid="profile-reset">Reset to default</button>
+                <span id="profile-saved-note"
+                      class="profile-saved-note"
+                      aria-live="polite" style="display: none;"></span>
+            </div>
+        </div>
+    </aside>
 
     <script type="module" src="./src/index.ts"></script>
 </body>

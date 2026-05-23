@@ -10,7 +10,7 @@ the Changsha Mahjong frontend. Future Playwright / Cypress integration tests
 - Removing or renaming a testid is a breaking change — open a coordinated
   Hicks ↔ Vasquez memo before doing it.
 
-Format conventions (Phase J Wave 4):
+Format conventions (Phase J Wave 5):
 
 - All testids are **kebab-case**, prefixed with their surface
   (`lobby-`, `connection-banner-`, `hud-`, …) so a CSS selector
@@ -21,9 +21,10 @@ Format conventions (Phase J Wave 4):
 - Each entry cites the file + line of origin so a future grep keeps the
   doc in sync.
 
-> **Maintenance note.** The catalog is captured as of Phase J Wave 4
-> (Hicks's working-tree commit `feat(frontend): wave-4 reconnect banner +
-> mobile drawers + testid surface`). When you change a testid:
+> **Maintenance note.** The catalog is captured as of Phase J Wave 5
+> (Hicks's working-tree commit `feat(frontend): phase j wave 5 — public
+> matchmaking lobby + profile drawer + stats panel`). When you change a
+> testid:
 > 1. Update the citation lines below.
 > 2. Bump the relevant section's "Phase" annotation.
 > 3. Run `grep -rn 'data-testid' src/frontend/autotable-src/` to detect
@@ -120,6 +121,104 @@ modal:
 - `data-testid="game-over-winner-seat"` — winner display (seat + score).
 - `data-testid="game-over-final-scores"` — full-seat breakdown.
 - `data-testid="game-over-rematch"` — start-new-game CTA.
+
+## Public matchmaking lobby *(Phase J Wave 5)*
+
+Hicks's `src/matchmaking.ts` poll loop (5s cadence — see
+`MATCHMAKING_POLL_MS`) reads `GET /api/matchmaking/lobby` and emits
+`update` events with the `PublicGame` array. Phase J Wave 5 — Hicks's
+`installPublicGamesPane()` in `lobby.ts` now mounts the list host +
+per-card chips so every testid in the table below resolves at runtime
+when the "Public Games" tab is active.
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="lobby-my-game-tab"` | `<button class="lobby-tab">` | "My Game" tab — re-shows the existing Quick-Match + seat picker pane. | `src/frontend/autotable-src/index.html:694` |
+| `data-testid="lobby-public-games-tab"` | `<button class="lobby-tab">` | "Public Games" tab — toggles the matchmaking browser pane and starts/stops the 5 s matchmaking poll loop. | `src/frontend/autotable-src/index.html:699` |
+| `data-testid="lobby-public-section"` | `<section id="lobby-tab-public-games">` | Wrapper around the "Public games" list — only visible while the poll loop is active. | `src/frontend/autotable-src/index.html:917` |
+| `data-testid="lobby-public-list"` | `<div class="public-games-list">` | Container holding the per-game chips; one child per `PublicGame` entry from the poll cache. | `src/frontend/autotable-src/index.html:937` |
+| `data-testid="lobby-public-game-{0..49}"` | `<div class="public-game-card">` | One chip per public game. Index is the lobby cache position (newest-first, capped at `MAX_PUBLIC_GAMES_RENDERED = 50`). | `src/frontend/autotable-src/src/lobby.ts:1016` |
+| `data-testid="lobby-public-game-name-{0..49}"` | `<div class="public-game-card-name">` | The friendly host-supplied `publicName` (≤64 chars per `ChangshaGameRuntime.SetGamePublicAsync`); falls back to `"<host>'s game"` when null. | `src/frontend/autotable-src/src/lobby.ts:1022` |
+| `data-testid="lobby-public-game-host-{0..49}"` | `<span class="public-game-card-meta-creator">` | The host's `creatorDisplayName` (resolved through `PlayerProfileService`). | `src/frontend/autotable-src/src/lobby.ts:1030` |
+| `data-testid="lobby-public-game-seats-{0..49}"` | `<span class="public-game-card-meta-seats">` | The `seatedCount / maxSeats` text. The wire shape is Bishop's `LobbyGameDto` (`seatedCount` + `maxSeats`); `matchmaking.ts:normalizePublicGame` consumes those keys directly. | `src/frontend/autotable-src/src/lobby.ts:1034` |
+| `data-testid="lobby-public-game-join-{0..49}"` | `<button class="public-game-card-join">` | Per-chip "Join" CTA — calls `navigateToGame(gameId)` which rewrites the URL and reloads into the chosen game. Disabled when `seatedCount === maxSeats`. | `src/frontend/autotable-src/src/lobby.ts:1051` |
+| `data-testid="lobby-join-random"` | `<button id="lobby-join-random">` | "Join any public game" shortcut — invokes the SignalR `JoinRandom` RPC (`MatchmakingService.JoinRandomAsync` picks a random public-seating game). | `src/frontend/autotable-src/index.html:923` |
+| `data-testid="lobby-set-public-toggle"` | `<input type="checkbox" id="lobby-make-public-toggle">` | Host-only checkbox in the lobby that flips `SetGamePublic`. Sender must be the host of the current `?gameId=…`. | `src/frontend/autotable-src/index.html:884` |
+| `data-testid="lobby-public-name-input"` | `<input id="lobby-make-public-name">` | Friendly public-name input bound to the `SetGamePublic` `publicName` argument. Server trims + caps at 64 chars; blank is sent as `null`. | `src/frontend/autotable-src/index.html:889` |
+
+> **Wire contract reminder.** Each `PublicGame` entry from
+> `/api/matchmaking/lobby` is `{ gameId, publicName, creatorDisplayName,
+> seatedCount, maxSeats, variant, createdAt }`.
+> `matchmaking.ts:normalizePublicGame` consumes the wire shape as-is
+> (post-Wave-5 alignment with Bishop's `LobbyGameDto`). Backend
+> wire-shape assertions live in `MatchmakingLobbyEndpointTests`.
+
+## Profile drawer *(Phase J Wave 5)*
+
+Hicks's `src/profile.ts` mounts the per-player profile drawer (display
+name + avatar colour edit + preview). The drawer surfaces a single
+`data-testid` (the colour-preset buttons) plus a stable family of
+DOM `id="..."` selectors — both are documented here because the
+Wave 5 Playwright suite uses the `id` selectors directly (no
+`data-testid` indirection) for the drawer-open/close + name-validation
+flows.
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="profile-avatar-color-preset-{0..N}"` | `<button class="profile-avatar-preset">` | Colour-preset buttons in the avatar picker. Index reflects palette position. | `src/frontend/autotable-src/src/profile.ts:470` |
+| `id="profile-drawer"` | `<aside>` / `<div>` | Drawer root — toggled visible via `profile-drawer-open` class. | `src/frontend/autotable-src/src/profile.ts:447, 586, 597` |
+| `id="profile-drawer-close"` | `<button>` | Close-drawer CTA. | `src/frontend/autotable-src/src/profile.ts:451` |
+| `id="profile-display-name-input"` | `<input type="text">` | Name editor; service rejects empty / >32 chars / leading-trailing whitespace (`PlayerProfileService.UpdateDisplayNameAsync`). | `src/frontend/autotable-src/src/profile.ts:452, 590` |
+| `id="profile-display-name-error"` | `<span>` / `<div>` | Inline validation message; populated when `UpdateProfile` raises a `HubException` (translated from `ArgumentException`). | `src/frontend/autotable-src/src/profile.ts:453` |
+| `id="profile-avatar-presets"` | `<div>` | Host element for the 16-entry colour-preset grid. | `src/frontend/autotable-src/src/profile.ts:454` |
+| `id="profile-avatar-color-custom"` | `<input type="color">` | Free-form `#RRGGBB` picker — service-validated via the `^#[0-9A-Fa-f]{6}$` regex. | `src/frontend/autotable-src/src/profile.ts:455` |
+| `id="profile-preview-avatar"` | `<div>` | Live preview chip — colour reflects the in-flight edits before save. | `src/frontend/autotable-src/src/profile.ts:456` |
+| `id="profile-preview-name"` | `<span>` | Live preview of the in-flight display-name string. | `src/frontend/autotable-src/src/profile.ts:457` |
+| `id="profile-save"` | `<button>` | Commit edits via the `UpdateProfile` hub RPC. Disabled while validation fails. | `src/frontend/autotable-src/src/profile.ts:458` |
+| `id="profile-reset"` | `<button>` | Reset edits to the server-side current value. | `src/frontend/autotable-src/src/profile.ts:459` |
+| `id="profile-saved-note"` | `<span>` | "Saved ✓" toast shown after a successful `UpdateProfile`. | `src/frontend/autotable-src/src/profile.ts:460` |
+| `id="lobby-open-profile-avatar"` | `<div>` | Lobby header avatar chip — clicking opens the drawer. Reflects the current profile colour. | `src/frontend/autotable-src/src/profile.ts:612` |
+| `id="lobby-open-profile-label"` | `<span>` | Display-name label next to the lobby header avatar. | `src/frontend/autotable-src/src/profile.ts:613` |
+| `data-testid="lobby-open-profile"` | `<button id="lobby-open-profile">` | Open-profile shortcut button rendered in the lobby footer settings row. Mirrors the profile-toggle on-canvas chip but lives in the lobby's settings-shortcut strip so it remains reachable while no game is active. | `src/frontend/autotable-src/index.html:967` |
+| `data-testid="profile-drawer"` | `<aside id="profile-drawer">` | Supplemental testid on the drawer root for Wave 5 Playwright selectors that prefer `data-testid` over `id`. The drawer's `id` remains the contract anchor (it doubles as `aria-controls` / `aria-labelledby` target). | `src/frontend/autotable-src/index.html:997` |
+| `data-testid="profile-display-name-input"` | `<input id="profile-display-name-input">` | Supplemental testid on the display-name editor. | `src/frontend/autotable-src/index.html:1014` |
+| `data-testid="profile-avatar-color-custom"` | `<input id="profile-avatar-color-custom">` | Supplemental testid on the free-form colour picker. | `src/frontend/autotable-src/index.html:1031` |
+| `data-testid="profile-save"` | `<button id="profile-save">` | Supplemental testid on the Save button. | `src/frontend/autotable-src/index.html:1040` |
+| `data-testid="profile-reset"` | `<button id="profile-reset">` | Supplemental testid on the Reset-to-default button. | `src/frontend/autotable-src/index.html:1043` |
+
+> **Drawer-id vs. testid policy.** Wave 5 Hicks made a deliberate choice
+> to use plain DOM `id` selectors (instead of `data-testid`) for the
+> profile drawer because the drawer is also referenced from inline
+> `aria-controls` / `aria-labelledby` attributes that themselves require
+> `id` (not `data-testid`). Vasquez accepts this exception — the `id`
+> family above is treated as contract-grade for Wave 5+ tests. A future
+> wave may unify on `data-testid` if accessibility tooling lands a
+> first-class `aria-controls`/`testid` bridge.
+
+## Player stats panel *(Phase J Wave 5)*
+
+Hicks's `src/stats.ts` renders the player stats grid in two surfaces:
+the lobby's per-player stats card (`#lobby-stats-panel` host) and the
+post-game modal's "Your stats" delta section. The shared `STATS_TESTIDS`
+constant is the source of truth; both surfaces consume the same builder
+function (`buildPanel`) so a single fact-set covers both renders.
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="lobby-stats-panel"` | `<div id="lobby-stats-panel">` | Host element for the lobby's "Your stats" card. Populated by `lobby.ts:renderLobbyStatsPanel` whenever the profile cache updates. | `src/frontend/autotable-src/index.html:903` |
+| `data-testid="stats-panel"` | `<div class="stats-grid">` | Root grid container. Carries the panel testid so callers can scope-query into the rows. | `src/frontend/autotable-src/src/stats.ts:17, 137` |
+| `data-testid="stats-games-played"` | `<span>` (value cell) | `PlayerStats.GamesPlayed` integer. Delta span (when shown) carries the change vs the pre-game snapshot. | `src/frontend/autotable-src/src/stats.ts:19, 64` |
+| `data-testid="stats-games-won"` | `<span>` (value cell) | `PlayerStats.GamesWon` integer. | `src/frontend/autotable-src/src/stats.ts:20, 71` |
+| `data-testid="stats-win-rate"` | `<span>` (value cell) | `gamesWon / gamesPlayed * 100`, 1-decimal-place pct (e.g. `42.9%`); `—` when no games yet. | `src/frontend/autotable-src/src/stats.ts:21, 78` |
+| `data-testid="stats-longest-streak"` | `<span>` (value cell) | `PlayerStats.LongestWinStreak` integer (all-time best consecutive-win run). | `src/frontend/autotable-src/src/stats.ts:22, 88` |
+| `data-testid="stats-current-streak"` | `<span>` (value cell) | `PlayerStats.CurrentWinStreak` integer (resets to 0 on any loss). | `src/frontend/autotable-src/src/stats.ts:23, 95` |
+| `data-testid="stats-highest-score"` | `<span>` (value cell) | `PlayerStats.HighestSingleGameScore` integer (largest positive `finalScores[me]` ever recorded). | `src/frontend/autotable-src/src/stats.ts:24, 102` |
+
+> **Backend contract.** The six counters above are populated by
+> `PlayerProfileService.RecordGameCompletedAsync` (one call per
+> game-completed transition; bot-prefixed player ids are skipped).
+> Counter semantics, including the win-streak reset on loss + the bot
+> filter, are pinned by Vasquez's `PlayerStatsAggregationTests`.
 
 ## Stability contract
 
