@@ -22,4 +22,13 @@
     <PackageReference Include="Sentry.AspNetCore" Version="6.5.0" />
   </ItemGroup>
 
+  <!-- Phase J Wave 8 — expose `internal` helpers (e.g.,
+       SecurityHeadersMiddleware.HasContentHash) to the test assembly so
+       Apone's contract tests for the Parcel content-hash detector
+       compile without making the API surface artificially public.
+       Vasquez (QA), 2026-05-XX. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mahjong.Autotable.Api.Tests" />
+  </ItemGroup>
+
 </Project>

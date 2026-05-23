@@ -15,8 +15,9 @@ namespace Mahjong.Autotable.Api.Observability;
 /// <c>builder.Services.AddSignalR(o =&gt; o.AddFilter&lt;SentryHubFilter&gt;())</c>
 /// in <c>Program.cs</c>. When the Sentry SDK is not initialised
 /// (<c>Sentry:Dsn</c> empty) the breadcrumb / capture calls are no-ops
-/// because <c>SentrySdk.IsEnabled</c> is false and we short-circuit
-/// before invoking the Sentry API surface.</para>
+/// because <see cref="SentrySdk.AddBreadcrumb(string,string,string,IDictionary{string,string}?,BreadcrumbLevel)"/>
+/// and <see cref="SentrySdk.CaptureException"/> are disabled by the
+/// uninitialised hub.</para>
 /// </summary>
 public sealed class SentryHubFilter : IHubFilter
 {
@@ -29,7 +30,8 @@ public sealed class SentryHubFilter : IHubFilter
         if (SentrySdk.IsEnabled)
         {
             // Connection id is the per-tab identifier used by Bishop's
-            // profile pipeline. Argument count (not values) keeps PII
+            // profile pipeline; it's already exposed in /metrics so it's
+            // safe to surface here. Argument count (not values) keeps PII
             // out of the breadcrumb.
             var data = new Dictionary<string, string>(StringComparer.Ordinal)
             {

@@ -16,6 +16,16 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
 
+  <!-- Phase J Wave 8 — Apone's SentryConfigurationApiTests calls
+       WebApplication.CreateBuilder directly (not via the testing
+       harness), which requires the AspNetCore shared framework. The
+       Microsoft.NET.Sdk (non-Web) SDK doesn't pull this in transitively
+       from a ProjectReference, so add the framework reference
+       explicitly. Vasquez (QA), 2026-05-XX. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Microsoft.AspNetCore.Hosting" />

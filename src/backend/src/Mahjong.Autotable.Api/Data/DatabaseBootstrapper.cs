@@ -1,4 +1,5 @@
 using System.Data;
+using Mahjong.Autotable.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Mahjong.Autotable.Api.Data;
@@ -37,6 +38,11 @@ public static class DatabaseBootstrapper
             // (ChangshaGameRuntime.EmitGameCompletedAsync) never trips on
             // a missing table.
             await EnsureSqliteReplayTablesAsync(db, cancellationToken);
+            // Phase J Wave 8 — auth identity + rule presets. The canonical
+            // schema is the AddAuthAndRulePresets EF migration; this guard
+            // bootstraps existing-prod SQLite databases that pre-date Wave 8
+            // without requiring an out-of-band `dotnet ef database update`.
+            await EnsureSqliteWave8TablesAsync(db, cancellationToken);
         }
         else
         {
@@ -51,6 +57,13 @@ public static class DatabaseBootstrapper
             // PostgresAppDbContext / SqlServerAppDbContext shells).
             await db.Database.MigrateAsync(cancellationToken);
         }
+
+        // Phase J Wave 8 — seed the "Classic Changsha" default preset on
+        // every provider once the schema is up. Idempotent: the upsert is
+        // gated on the canonical preset id so repeated boot cycles never
+        // create duplicates and never overwrite a manually-tuned row that
+        // an operator may have edited.
+        await SeedClassicChangshaPresetAsync(db, cancellationToken);
     }
 
     private static async Task DropLegacyTableSessionsAsync(AppDbContext db, CancellationToken cancellationToken)
@@ -248,5 +261,220 @@ public static class DatabaseBootstrapper
                 await connection.CloseAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// Phase J Wave 8 — defensive SQLite-only bootstrap for the new auth +
+    /// rule-preset tables: ChangshaRulePresets, PlayerAuthIdentities,
+    /// EmailMagicLinkTokens, PlayerAuthSessions. Also adds the nullable
+    /// <c>RulePresetId</c> column to ChangshaGames when the column doesn't
+    /// already exist (PRAGMA table_info probe). Mirrors the
+    /// AddAuthAndRulePresets EF migration so existing prod SQLite DBs pick
+    /// up the new schema without an out-of-band migration sweep.
+    /// </summary>
+    private static async Task EnsureSqliteWave8TablesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var createPresets = connection.CreateCommand())
+            {
+                createPresets.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "ChangshaRulePresets" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_ChangshaRulePresets" PRIMARY KEY,
+                        "Name" TEXT NOT NULL,
+                        "Description" TEXT NOT NULL DEFAULT '',
+                        "HandLimit" INTEGER NOT NULL DEFAULT 4,
+                        "MaxScorePerHand" INTEGER NOT NULL DEFAULT 0,
+                        "AllowWashout" INTEGER NOT NULL DEFAULT 1,
+                        "AllowKongRobbing" INTEGER NOT NULL DEFAULT 1,
+                        "AllowConcealedKongPromotion" INTEGER NOT NULL DEFAULT 1,
+                        "AllowSevenPairs" INTEGER NOT NULL DEFAULT 1,
+                        "AllowChow" INTEGER NOT NULL DEFAULT 1,
+                        "BotDecisionTimeoutMs" INTEGER NOT NULL DEFAULT 2000,
+                        "CreatorPlayerId" TEXT NOT NULL DEFAULT 'system',
+                        "CreatedAt" TEXT NOT NULL,
+                        "UpdatedAt" TEXT NOT NULL
+                    );
+                    """;
+                await createPresets.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxPresets = connection.CreateCommand())
+            {
+                idxPresets.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_ChangshaRulePresets_Name"
+                    ON "ChangshaRulePresets" ("Name");
+                    """;
+                await idxPresets.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createIdentities = connection.CreateCommand())
+            {
+                createIdentities.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "PlayerAuthIdentities" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_PlayerAuthIdentities" PRIMARY KEY,
+                        "PlayerId" TEXT NOT NULL,
+                        "Provider" TEXT NOT NULL,
+                        "ProviderSubject" TEXT NOT NULL,
+                        "Email" TEXT NULL,
+                        "EmailVerified" INTEGER NOT NULL DEFAULT 0,
+                        "CreatedAt" TEXT NOT NULL,
+                        "LastUsedAt" TEXT NOT NULL,
+                        CONSTRAINT "FK_PlayerAuthIdentities_PlayerProfiles_PlayerId" FOREIGN KEY ("PlayerId") REFERENCES "PlayerProfiles" ("PlayerId") ON DELETE CASCADE
+                    );
+                    """;
+                await createIdentities.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxIdentitiesProv = connection.CreateCommand())
+            {
+                idxIdentitiesProv.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_PlayerAuthIdentities_Provider_ProviderSubject"
+                    ON "PlayerAuthIdentities" ("Provider", "ProviderSubject");
+                    """;
+                await idxIdentitiesProv.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxIdentitiesPlayer = connection.CreateCommand())
+            {
+                idxIdentitiesPlayer.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_PlayerAuthIdentities_PlayerId"
+                    ON "PlayerAuthIdentities" ("PlayerId");
+                    """;
+                await idxIdentitiesPlayer.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createTokens = connection.CreateCommand())
+            {
+                createTokens.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "EmailMagicLinkTokens" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_EmailMagicLinkTokens" PRIMARY KEY,
+                        "Token" TEXT NOT NULL,
+                        "Email" TEXT NOT NULL,
+                        "RequestedPlayerId" TEXT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "ExpiresAt" TEXT NOT NULL,
+                        "ConsumedAt" TEXT NULL
+                    );
+                    """;
+                await createTokens.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxTokens = connection.CreateCommand())
+            {
+                idxTokens.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_EmailMagicLinkTokens_Token"
+                    ON "EmailMagicLinkTokens" ("Token");
+                    """;
+                await idxTokens.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createSessions = connection.CreateCommand())
+            {
+                createSessions.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "PlayerAuthSessions" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_PlayerAuthSessions" PRIMARY KEY,
+                        "Token" TEXT NOT NULL,
+                        "PlayerId" TEXT NOT NULL,
+                        "IdentityId" TEXT NOT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "ExpiresAt" TEXT NOT NULL,
+                        "LastUsedAt" TEXT NOT NULL
+                    );
+                    """;
+                await createSessions.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxSessionsToken = connection.CreateCommand())
+            {
+                idxSessionsToken.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_PlayerAuthSessions_Token"
+                    ON "PlayerAuthSessions" ("Token");
+                    """;
+                await idxSessionsToken.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxSessionsPlayer = connection.CreateCommand())
+            {
+                idxSessionsPlayer.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_PlayerAuthSessions_PlayerId"
+                    ON "PlayerAuthSessions" ("PlayerId");
+                    """;
+                await idxSessionsPlayer.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Add RulePresetId column to ChangshaGames if missing. PRAGMA
+            // table_info returns one row per column; we scan for the name
+            // and only ALTER when it isn't there. SQLite has no
+            // ADD-COLUMN-IF-NOT-EXISTS so this probe-then-add pattern is
+            // standard.
+            var hasRulePresetId = false;
+            await using (var probe = connection.CreateCommand())
+            {
+                probe.CommandText = "PRAGMA table_info(\"ChangshaGames\");";
+                await using var reader = await probe.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    // Column name is index 1 in PRAGMA table_info output.
+                    if (reader.GetString(1).Equals("RulePresetId", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasRulePresetId = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasRulePresetId)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE \"ChangshaGames\" ADD COLUMN \"RulePresetId\" TEXT NULL;";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase J Wave 8 — seeds the canonical "Classic Changsha" preset row.
+    /// Idempotent: keyed off <see cref="ChangshaRulePreset.ClassicPresetId"/>
+    /// so repeated boots are no-ops and don't overwrite hand-edited values.
+    /// Runs on every provider once the table exists.
+    /// </summary>
+    private static async Task SeedClassicChangshaPresetAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var canonicalId = Guid.Parse(ChangshaRulePreset.ClassicPresetId);
+        var exists = await db.ChangshaRulePresets.AnyAsync(p => p.Id == canonicalId, cancellationToken);
+        if (exists) return;
+
+        db.ChangshaRulePresets.Add(new ChangshaRulePreset
+        {
+            Id = canonicalId,
+            Name = "Classic Changsha",
+            Description = "Standard Changsha Mahjong house rules.",
+            HandLimit = 4,
+            MaxScorePerHand = 0,
+            AllowWashout = true,
+            AllowKongRobbing = true,
+            AllowConcealedKongPromotion = true,
+            AllowSevenPairs = true,
+            AllowChow = true,
+            BotDecisionTimeoutMs = 2000,
+            CreatorPlayerId = "system",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync(cancellationToken);
     }
 }

@@ -14,21 +14,26 @@ namespace Mahjong.Autotable.Api.Observability;
 ///   <item>Rewrites <c>Cache-Control</c> and <c>Vary</c> on static-asset
 ///         responses so Cloudflare and downstream CDNs cache hashed bundles
 ///         immutably while letting <c>index.html</c> revalidate every
-///         request.</item>
+///         request. Without this, Parcel's hashed bundles get the
+///         framework's default <c>no-cache</c>, which kills Cloudflare's
+///         hit rate.</item>
 /// </list>
 ///
 /// <para>The CSP starts permissive: <c>script-src 'self' 'unsafe-eval'</c>
 /// because Three.js's runtime shader compiler uses <c>new Function(...)</c>.
-/// <c>'unsafe-inline'</c> is intentionally NOT in the policy — Parcel
-/// already bundles every <c>&lt;script&gt;</c> tag so inline scripts are
-/// absent. See <c>docs/cloudflare.md</c> for the rationale + the planned
-/// follow-up to swap <c>'unsafe-eval'</c> for a nonce-based policy.</para>
+/// <c>'unsafe-inline'</c> is intentionally NOT in the policy — the
+/// frontend bundles every <c>&lt;script&gt;</c> tag through Parcel so
+/// inline scripts are already absent. See <c>docs/cloudflare.md</c> for
+/// the rationale + the planned follow-up to swap <c>'unsafe-eval'</c>
+/// for a nonce-based policy once we've audited which Three.js callsites
+/// actually need eval.</para>
 ///
 /// <para><b>Cache policy.</b> Parcel emits filenames of the form
 /// <c>name.&lt;hash&gt;.{js,css,wav,png,glb}</c> where <c>&lt;hash&gt;</c>
 /// is 8 hex chars. These are content-addressed so we serve them with
-/// <c>Cache-Control: public, max-age=31536000, immutable</c>. Everything
-/// else (HTML, the index shell, non-hashed assets) is served with
+/// <c>Cache-Control: public, max-age=31536000, immutable</c> — Cloudflare
+/// caches indefinitely + skip revalidation. Everything else (HTML,
+/// the index.html shell, and any non-hashed asset) is served with
 /// <c>Cache-Control: no-cache, must-revalidate</c> so a new deploy
 /// becomes immediately visible.</para>
 ///
@@ -73,13 +78,12 @@ public sealed class SecurityHeadersMiddleware
 
     /// <summary>
     /// Suffixes that Parcel attaches a content hash to. These get the
-    /// immutable Cache-Control treatment iff <see cref="HasContentHash"/>
-    /// also matches the filename.
+    /// immutable Cache-Control treatment. Kept as a static array so the
+    /// hot path skips a regex compile. Hash detection is delegated to
+    /// <see cref="HasContentHash"/>.
     /// </summary>
     private static readonly string[] HashableSuffixes =
-        [".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
-         ".woff", ".woff2", ".ttf", ".glb", ".gltf", ".wav", ".mp4",
-         ".m4a", ".ogg", ".mp3"];
+        [".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".woff", ".woff2", ".ttf", ".glb", ".gltf", ".wav", ".mp4", ".m4a", ".ogg", ".mp3"];
 
     private readonly RequestDelegate _next;
     private readonly string _csp;
@@ -88,25 +92,25 @@ public sealed class SecurityHeadersMiddleware
     public SecurityHeadersMiddleware(RequestDelegate next, IConfiguration configuration)
     {
         _next = next;
-        var overrideCsp = configuration.GetValue<string?>(CspConfigKey);
-        _csp = string.IsNullOrWhiteSpace(overrideCsp) ? DefaultCsp : overrideCsp;
+        var override_ = configuration.GetValue<string?>(CspConfigKey);
+        _csp = string.IsNullOrWhiteSpace(override_) ? DefaultCsp : override_;
         _hstsEnabled = configuration.GetValue<bool?>(HstsConfigKey) ?? false;
     }
 
-    public Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context)
     {
         // OnStarting fires just before the response body is written so
         // header mutations (Cache-Control, Vary) by downstream middleware
-        // (UseStaticFiles in particular) have already settled. Capture
-        // `this` so the CSP / HSTS settings are reachable without
-        // spinning up DI inside the callback.
+        // (UseStaticFiles in particular) have already settled. Closure
+        // captures `this` so the CSP / HSTS settings are reachable
+        // without spinning up DI inside the callback.
         var self = this;
         context.Response.OnStarting(() =>
         {
             ApplyHeaders(context, self);
             return Task.CompletedTask;
         });
-        return _next(context);
+        await _next(context);
     }
 
     private static void ApplyHeaders(HttpContext ctx, SecurityHeadersMiddleware instance)
@@ -203,9 +207,10 @@ public sealed class SecurityHeadersMiddleware
     /// <c>autotable.9519e86d.js</c>, <c>autotable-src.6633d8fb.css</c>,
     /// <c>tiles.df85b4c4.png</c>. Examples that don't match (and so get
     /// the short-lived <c>max-age=3600</c> policy): <c>index.html</c>,
-    /// <c>img/icon-32.auto.png</c> (the <c>.auto</c> token is 4 chars).
+    /// <c>img/icon-32.auto.png</c> (the <c>.auto</c> token is 4 chars, not 8).
+    /// Public for unit testing — pure function, safe to expose.
     /// </summary>
-    internal static bool HasContentHash(string path)
+    public static bool HasContentHash(string path)
     {
         var slash = path.LastIndexOf('/');
         var fileName = slash >= 0 ? path[(slash + 1)..] : path;

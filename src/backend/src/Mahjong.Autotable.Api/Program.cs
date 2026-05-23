@@ -89,6 +89,37 @@ builder.Services.AddSingleton<MatchmakingService>();
 builder.Services.AddSingleton<PlayerIdentityService>();
 builder.Services.AddSingleton<LeaderboardService>();
 
+// Phase J Wave 8 — Bishop: OAuth / magic-link auth + rule-preset CRUD
+// (see .squad/decisions/inbox/bishop-phase-j-wave-8.md). Auth services are
+// scope-shaped wrappers around AppDbContext: they take an
+// IServiceScopeFactory and open a fresh scope per call, mirroring the
+// PlayerProfileService / MatchmakingService pattern. Singleton lifetime
+// is therefore safe.
+var authSection = builder.Configuration.GetSection("Authentication");
+var authOptions = authSection.Get<Mahjong.Autotable.Api.Auth.AuthOptions>()
+    ?? new Mahjong.Autotable.Api.Auth.AuthOptions();
+builder.Services.AddSingleton(authOptions);
+var smtpOptions = builder.Configuration.GetSection("Smtp").Get<Mahjong.Autotable.Api.Auth.SmtpOptions>()
+    ?? new Mahjong.Autotable.Api.Auth.SmtpOptions();
+builder.Services.AddSingleton(smtpOptions);
+builder.Services.AddHttpClient("oauth");
+if (!string.IsNullOrWhiteSpace(smtpOptions.Host))
+{
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IEmailSender>(sp =>
+        new Mahjong.Autotable.Api.Auth.SmtpEmailSender(
+            smtpOptions,
+            sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Auth.SmtpEmailSender>>()));
+}
+else
+{
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IEmailSender,
+        Mahjong.Autotable.Api.Auth.LogEmailSender>();
+}
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthCookieService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthIdentityService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.MagicLinkService>();
+
 const string ChangshaCorsPolicy = "ChangshaCors";
 var configuredOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")

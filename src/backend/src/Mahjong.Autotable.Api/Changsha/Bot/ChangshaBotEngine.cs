@@ -19,6 +19,7 @@ public static class ChangshaBotEngine
     private static readonly IChangshaBotStrategy EasyInstance = new EasyStrategy();
     private static readonly IChangshaBotStrategy MediumInstance = new MediumStrategy();
     private static readonly IChangshaBotStrategy HardInstance = new HardStrategy();
+    private static readonly IChangshaBotStrategy MasterInstance = new MasterStrategy();
 
     /// <summary>
     /// Resolves a difficulty string to its strategy. Case-insensitive; whitespace
@@ -34,6 +35,7 @@ public static class ChangshaBotEngine
             "easy" => EasyInstance,
             "medium" => MediumInstance,
             "hard" => HardInstance,
+            "master" => MasterInstance,
             _ => MediumInstance
         };
     }

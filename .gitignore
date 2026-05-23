@@ -74,3 +74,8 @@ compose.override.yml
 .env
 .env.local
 .env.*.local
+# Phase J Wave 8 — dev-only secret bundles + secret-bearing appsettings
+.env.dev
+appsettings.Development.json
+appsettings.Production.json
+appsettings.Staging.json

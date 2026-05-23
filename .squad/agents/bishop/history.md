@@ -1386,3 +1386,111 @@ post-Vasquez sync: 384/0/0.
   ReplayPhaseBucket table, Apone-untracked-work note.
 - **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
   → Passed: 554, Failed: 0, Skipped: 0.
+
+## Phase J Wave 8 — auth (OAuth + magic link), rule-preset CRUD, Master bot tier (2026-05-23)
+- **Branch:** `stlong/phase-j-wave-8-completion`.
+- **Brief:** three independent backend slices for Wave 8 — (1) Google /
+  GitHub OAuth + passwordless email magic-link auth layered on the
+  existing `mahjong_pid` cookie (auth = *upgrade*, not a wall);
+  (2) server-driven `ChangshaRulePreset` CRUD with a canonical "Classic
+  Changsha" seed; (3) a "Master" bot tier above Hard for the
+  difficulty ladder.
+- **Decisions:**
+  1. Auth is layered, not replacement. A returning OAuth user on a new
+     browser **rewrites** `mahjong_pid` to their server-side
+     `PlayerProfile` row id (the existing identity row wins on the
+     `(provider, providerSubject)` unique lookup). The anonymous
+     `PlayerId` from the new browser is abandoned — profile row stays
+     in the DB but nothing else points at it. Display-name overwrite
+     is **gated** on the current name still matching the default
+     `Player-XXXXXX` shape, never clobbers a user-customised name.
+  2. Server-side sessions, not JWT. `mahjong_auth` cookie value is a
+     64-char URL-safe base64 opaque token; the `PlayerAuthSession`
+     row carries `PlayerId`, `IdentityId`, `ExpiresAt`, `RevokedAt?`.
+     Logout = one DB UPDATE. SessionLifetimeDays default 30.
+  3. Email magic-link tokens are 64-char URL-safe base64 (48 random
+     bytes), 15-min TTL, single-use via atomic `ConsumedAt` set
+     inside `MagicLinkService.ConsumeAsync`. `IEmailSender` interface
+     with three impls: `LogEmailSender` (dev / test default — writes
+     the URL to `ILogger`), `InMemoryEmailSender` (buffer for tests
+     that round-trip a token), `SmtpEmailSender` (registered only
+     when `Smtp:Host` is non-empty).
+  4. OAuth state CSRF via `mahjong_oauth_state` short-lived cookie
+     (10-min); compared via `CryptographicOperations.FixedTimeEquals`
+     on callback. Google + GitHub endpoints hardcoded with
+     `AuthOptions.{Google,GitHub}.{AuthorizationEndpoint,…}` override
+     hooks so a tenant can repoint to a private GH Enterprise / GSuite
+     OIDC if needed.
+  5. **Endpoint aliasing** — `/api/auth/email/{request,verify}` AND
+     `/api/auth/magic-link/{request,verify}` both work (single
+     controller method, multiple `[Http*]` attributes). Vasquez's
+     forward-staged tests probe both candidate paths; this avoids the
+     "tests soft-pass on 404" trap.
+  6. **`ChangshaRulePreset.ClassicPresetId`** =
+     `00000000-0000-0000-0000-000000000001`. Seeded idempotently on
+     every provider via `DatabaseBootstrapper
+     .SeedClassicChangshaPresetAsync`. **Cannot be deleted** —
+     controller short-circuits because the runtime falls back to this
+     id when `ChangshaGame.RulePresetId` is null.
+  7. **`RulePresetController` auth gate:** GET (list / detail) is
+     anonymous; POST / PUT / DELETE require an auth session via
+     `AuthCookieService.ResolveAsync`. PUT / DELETE additionally
+     gated on `CreatorPlayerId == session.PlayerId` — 403 otherwise.
+     Sits under `ApiPolicy` (token-bucket) so it shares the budget
+     with the other authenticated `/api/*` surfaces.
+  8. **Master bot tier** = HardStrategy + opponent-safety tertiary
+     tie-breaker. First prototype added suit-purity flush bias and
+     opponent-discard primary penalty, which **regressed below Hard**
+     on the 12-seed sweep (Master 1 wins vs Hard avg 2.67/seat, fell
+     below the 0.5× floor of 1.33). Final design uses Hard's exact
+     primary + secondary ordering (shanten → keep-score), then layers
+     opponent-discard as a *tie-only* tertiary. Strict superset of
+     Hard → can never make a worse decision than Hard in a given
+     position. `Master_NotWorseThan_Hard_OnSeedSweep` now passes.
+- **Files added:** `Auth/{AuthCookieService,AuthController,
+  AuthIdentityService,AuthOptions,EmailSender,MagicLinkService,
+  OAuthService}.cs`, `Rules/RulePresetController.cs`,
+  `Changsha/Bot/MasterStrategy.cs`, + EF migrations
+  `20260523054453_AddAuthAndRulePresets.cs` (Sqlite),
+  `…054504…` (Postgres), `…054509…` (SqlServer).
+- **Files modified:** `Data/AppDbContext.cs` (4 new DbSets +
+  configuration), `Data/DatabaseBootstrapper.cs`
+  (`EnsureSqliteWave8TablesAsync` CREATE-IF-NOT-EXISTS +
+  `SeedClassicChangshaPresetAsync`),
+  `Data/Entities/ChangshaEntities.cs` (`RulePresetId` on
+  `ChangshaGame` + 4 new entities), `Program.cs` (DI wiring for all
+  Auth services + conditional `IEmailSender` resolution + named
+  `HttpClient("oauth")`), `Changsha/Bot/ChangshaBotEngine.cs`
+  (register `MasterInstance` + `"master"` switch arm),
+  provider snapshot files, `Auth/EmailMagicLinkTests.cs` (added
+  missing `using Microsoft.Extensions.DependencyInjection.Extensions;`
+  for Vasquez's WIP).
+- **Apone collision:** Apone's Wave 8 commit `fbedff6` edits
+  `Program.cs` to reference Sentry / security-headers classes that
+  live in three **untracked** files
+  (`Observability/{SentryConfiguration,SentryHubFilter,
+  SecurityHeadersMiddleware}.cs`). Without those files the branch
+  doesn't compile. I'm shipping them in this Wave 8 commit so the
+  merge stays green. The files match Sentry 6.5.0's API verbatim —
+  no edits beyond what Apone wrote.
+- **Test backstops added:** (Vasquez's forward-staged tests cover the
+  contract surface; I deliberately did NOT write parallel
+  backstops on the same paths to avoid duplicate-fail noise.) New
+  passes pulled in from Vasquez's WIP:
+  `Auth/{AuthLinkTests,AuthMeTests,AuthProvidersEndpointTests,
+  DevLoginTests,EmailMagicLinkTests,LogoutTests,
+  OAuthCallbackTests,PlayerAuthIdentityModelTests}.cs`,
+  `RulePresets/{RulePresetCrudTests,RulePresetGameWiringTests}.cs`,
+  `Changsha/Acceptance/MasterBotTests.cs` (4 tests),
+  `Negative/NegativeWave8Tests.cs`,
+  `Security/{CdnCacheHeadersTests,SecurityHeadersTests}.cs`,
+  `Observability/{SentryConfigTests,SentryConfigurationApiTests,
+  MetricsEndpointTests}.cs`,
+  `Deploy/ChangelogShapeTests.cs`.
+- **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-8.md` —
+  endpoint contracts (auth + rule-presets), EF entity table,
+  config sections (`Authentication`, `Smtp`), Apone-collision note,
+  Master bot tier ordering invariant.
+- **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+  → Passed: 654, Failed: 0, Skipped: 0 (+100 over Wave 7 baseline of
+  554; Vasquez + Apone + Hicks forward-staged tests all join in).
