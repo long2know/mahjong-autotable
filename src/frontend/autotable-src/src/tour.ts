@@ -41,7 +41,7 @@ const STEPS: ReadonlyArray<TourStep> = [
   {
     index: 1,
     title: 'Welcome to Changsha Mahjong',
-    body: 'Quick tour: 6 stops, ~30 seconds. You can skip any time — '
+    body: 'Quick tour: 10 stops, ~45 seconds. You can skip any time — '
       + 'we won\'t show this again unless you reset it in Settings.',
     selectors: ['[data-testid="lobby-my-game-tab"]', '#lobby-my-game-tab'],
   },
@@ -81,14 +81,31 @@ const STEPS: ReadonlyArray<TourStep> = [
     selectors: ['[data-testid="chat-panel"]', '#chat-panel'],
   },
   {
+    // Phase K Wave 6 — voice setup walkthrough.  Highlights the mic
+    // toggle that voice.ts mounts once a game URL is open.  The
+    // selector falls back to a top-bar settings hint when the user
+    // is still in the lobby (no mic mounted yet).
     index: 6,
+    title: 'Voice chat (push-to-talk)',
+    body: 'When a table has voice enabled, the mic toggle lights up '
+      + 'here. Click once to join the voice room; hold Space to talk. '
+      + 'You can mute or block other players from the settings drawer.',
+    selectors: [
+      '[data-testid="voice-mic-toggle"]',
+      '#voice-mic-toggle',
+      '[data-testid="settings-button"]',
+      '#settings-button',
+    ],
+  },
+  {
+    index: 7,
     title: 'Switch language anytime',
     body: 'Open the settings drawer and pick a language. The lobby '
       + 'and HUD strings update immediately.',
     selectors: ['[data-testid="settings-button"]', '#settings-button'],
   },
   {
-    index: 7,
+    index: 8,
     title: 'Tournament mode + ELO ratings',
     body: 'Tournament brackets live in the Tournaments tab; flip the '
       + 'Rated toggle on the Leaderboard to see season ratings.',
@@ -100,7 +117,26 @@ const STEPS: ReadonlyArray<TourStep> = [
     activateTab: 'tournaments',
   },
   {
-    index: 8,
+    // Phase K Wave 6 — Tournament-view deep dive.  Walks the user
+    // through what the bracket / standings panels look like once a
+    // tournament is open.  Anchors on `#tournament-detail` so the
+    // spotlight lands on the actual bracket viewer; selectors fall
+    // back to the tab button when no tournament is selected.
+    index: 9,
+    title: 'Inside a tournament',
+    body: 'Tournaments support single-elim, Swiss, and double-elim '
+      + 'formats. Brackets, round-by-round Swiss tables, and the '
+      + 'winners + losers double-elim split all live on this panel.',
+    selectors: [
+      '[data-testid="tournament-detail"]',
+      '#tournament-detail',
+      '[data-testid="lobby-tournaments-tab"]',
+      '#lobby-tournaments-tab',
+    ],
+    activateTab: 'tournaments',
+  },
+  {
+    index: 10,
     title: 'You\'re ready to play!',
     body: 'That\'s the tour. Quick-Match to start a game vs bots, or '
       + 'create a public lobby to find opponents.',

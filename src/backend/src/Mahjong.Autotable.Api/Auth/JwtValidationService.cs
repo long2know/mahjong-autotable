@@ -25,6 +25,16 @@ namespace Mahjong.Autotable.Api.Auth;
 ///         pre-iat). The error wire-names are pinned by
 ///         <c>POST /api/auth/validate</c>.</item>
 /// </list></para>
+///
+/// <para>Phase K Wave 6 — Bishop. RS256 tokens are accepted alongside
+/// HS256 to support a zero-downtime HMAC→RSA migration. The token
+/// header's <c>alg</c> selects the algorithm family (HS256 vs RS256);
+/// the <c>kid</c> selects the specific key inside that family. We
+/// never cross algorithm families — a token claiming RS256 MUST
+/// verify against an entry in <see cref="JwtSigningKeyProvider.AllRsaKeys"/>
+/// and a token claiming HS256 MUST verify against an entry in
+/// <see cref="JwtSigningKeyProvider.AllKeys"/>. Any other algorithm
+/// returns <see cref="ErrorUnsupportedAlg"/>.</para>
 /// </summary>
 public sealed class JwtValidationService
 {
@@ -81,43 +91,42 @@ public sealed class JwtValidationService
         if (header is null || payload is null)
             return JwtValidationResult.Failure(ErrorMalformed);
 
-        if (!header.TryGetValue("alg", out var algEl)
-            || algEl.ValueKind != JsonValueKind.String
-            || !string.Equals(algEl.GetString(), "HS256", StringComparison.Ordinal))
-        {
+        if (!header.TryGetValue("alg", out var algEl) || algEl.ValueKind != JsonValueKind.String)
             return JwtValidationResult.Failure(ErrorUnsupportedAlg);
-        }
+        var alg = algEl.GetString();
+        var isHs256 = string.Equals(alg, "HS256", StringComparison.Ordinal);
+        var isRs256 = string.Equals(alg, "RS256", StringComparison.Ordinal);
+        if (!isHs256 && !isRs256)
+            return JwtValidationResult.Failure(ErrorUnsupportedAlg);
 
         var signingInput = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
 
-        // Phase K Wave 4 — kid fast-path. When a token carries a
-        // recognised kid header we verify against the matching key
-        // first; on miss (or no kid) we iterate every key. The
-        // backward-compat fallback IS the iteration loop, not a
-        // separate path.
-        JwtSigningKey? matchedKey = null;
+        string? kid = null;
         if (header.TryGetValue("kid", out var kidEl) && kidEl.ValueKind == JsonValueKind.String)
+            kid = kidEl.GetString();
+
+        string? matchedKid = null;
+
+        // Phase K Wave 6 — alg-aware verification. RS256 tokens MUST
+        // verify against an RSA key; HS256 tokens MUST verify against
+        // an HMAC key. The kid header is a fast-path hint inside the
+        // algorithm-appropriate fallback list — we never cross
+        // algorithm families (a forged token claiming alg=HS256 with
+        // an RSA-public-key kid would otherwise let an attacker
+        // bypass the signature; the alg-family check upstream blocks
+        // that path).
+        if (isRs256)
         {
-            var kid = kidEl.GetString();
-            var fastPathKey = _keys.TryGetByKid(kid);
-            if (fastPathKey is not null && VerifySignature(signingInput, signatureBytes, fastPathKey))
-            {
-                matchedKey = fastPathKey;
-            }
+            matchedKid = TryVerifyRsa(signingInput, signatureBytes, kid);
+            if (matchedKid is null)
+                return JwtValidationResult.Failure(ErrorBadSignature);
         }
-        if (matchedKey is null)
+        else
         {
-            foreach (var candidate in _keys.AllKeys)
-            {
-                if (VerifySignature(signingInput, signatureBytes, candidate))
-                {
-                    matchedKey = candidate;
-                    break;
-                }
-            }
+            matchedKid = TryVerifyHmac(signingInput, signatureBytes, kid);
+            if (matchedKid is null)
+                return JwtValidationResult.Failure(ErrorBadSignature);
         }
-        if (matchedKey is null)
-            return JwtValidationResult.Failure(ErrorBadSignature);
 
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         if (payload.TryGetValue("exp", out var expEl)
@@ -151,7 +160,33 @@ public sealed class JwtValidationService
             }
         }
 
-        return JwtValidationResult.Success(subject, claims, matchedKey.Kid);
+        return JwtValidationResult.Success(subject, claims, matchedKid);
+    }
+
+    private string? TryVerifyHmac(byte[] signingInput, byte[] expected, string? kid)
+    {
+        var fastPathKey = _keys.TryGetByKid(kid);
+        if (fastPathKey is not null && VerifySignature(signingInput, expected, fastPathKey))
+            return fastPathKey.Kid;
+        foreach (var candidate in _keys.AllKeys)
+        {
+            if (VerifySignature(signingInput, expected, candidate))
+                return candidate.Kid;
+        }
+        return null;
+    }
+
+    private string? TryVerifyRsa(byte[] signingInput, byte[] expected, string? kid)
+    {
+        var fastPathKey = _keys.TryGetRsaByKid(kid);
+        if (fastPathKey is not null && VerifyRsaSignature(signingInput, expected, fastPathKey))
+            return fastPathKey.Kid;
+        foreach (var candidate in _keys.AllRsaKeys)
+        {
+            if (VerifyRsaSignature(signingInput, expected, candidate))
+                return candidate.Kid;
+        }
+        return null;
     }
 
     private static bool VerifySignature(byte[] signingInput, byte[] expected, JwtSigningKey key)
@@ -160,6 +195,15 @@ public sealed class JwtValidationService
         HMACSHA256.HashData(key.Material, signingInput, computed);
         if (expected.Length != computed.Length) return false;
         return CryptographicOperations.FixedTimeEquals(computed, expected);
+    }
+
+    private static bool VerifyRsaSignature(byte[] signingInput, byte[] expected, JwtRsaSigningKey key)
+    {
+        return key.Rsa.VerifyData(
+            signingInput,
+            expected,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
     }
 
     private static object? JsonElementToObject(JsonElement el) => el.ValueKind switch

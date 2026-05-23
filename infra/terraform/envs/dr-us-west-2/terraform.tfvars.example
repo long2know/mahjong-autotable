@@ -1,0 +1,29 @@
+# Phase K Wave 6 — Apone (DevOps).
+#
+# Example tfvars for the DR env. Replace the operator-specific
+# values (hosted_zone_id, *_target_dns, failover_record_name)
+# before `terraform apply`.
+
+primary_region   = "us-east-1"
+secondary_region = "us-west-2"
+vpc_cidr         = "10.1.0.0/16"
+
+# Pulled from primary stack remote state. Override if your primary
+# state bucket / key differs.
+primary_state_bucket = "mahjong-tfstate-prod"
+primary_state_key    = "infra/terraform/prod.tfstate"
+
+# Replica sizing. db.t4g.small is the DR-warm floor; bump on
+# promotion via `aws rds modify-db-instance`.
+replica_instance_class        = "db.t4g.small"
+replica_backup_retention_days = 7
+replica_deletion_protection   = true
+
+ecr_repository_filter = "mahjong-autotable"
+
+# ── Operator-specific — replace these ─────────────────────────────
+hosted_zone_id       = "Z000000000000000PLACEHOLDER"
+failover_record_name = "mahjong.example.com"
+failover_record_ttl  = 30
+primary_target_dns   = "primary.alb.us-east-1.elb.amazonaws.com"
+secondary_target_dns = "secondary.alb.us-west-2.elb.amazonaws.com"

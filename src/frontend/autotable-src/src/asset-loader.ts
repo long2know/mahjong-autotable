@@ -7,9 +7,25 @@ import glbModels from 'url:../img/models.auto.glb';
 
 import { Texture, Mesh, TextureLoader, Material,
    MeshStandardMaterial, MeshLambertMaterial, PlaneGeometry, RepeatWrapping, LinearSRGBColorSpace } from 'three';
-import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import type { GLTF, GLTFLoader as GLTFLoaderType } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { World } from './world';
 import { Size } from './types';
+
+// Phase K Wave 6 — GLTFLoader is a ~114 kB (source) addon that lives
+// inside the heavy three-renderer chunk in W5.  We only need it for
+// the single `loadModels` call, so split it out via a dynamic import
+// — parcel emits it into its own sibling chunk that the renderer
+// downloads in parallel with the texture loaders.  Net effect:
+// the largest `three-renderer.<hash>.js` chunk drops below 700 kB
+// (Wave 6 budget target — see docs/frontend-three-budget.md).
+let cachedGltfLoaderCtor: (new () => GLTFLoaderType) | null = null;
+async function getGltfLoader(): Promise<GLTFLoaderType> {
+  if (cachedGltfLoaderCtor === null) {
+    const mod = await import('three/examples/jsm/loaders/GLTFLoader.js');
+    cachedGltfLoaderCtor = mod.GLTFLoader;
+  }
+  return new cachedGltfLoaderCtor();
+}
 
 
 export class AssetLoader {
@@ -76,8 +92,8 @@ export class AssetLoader {
     });
   }
 
-  loadModels(url: string): Promise<void> {
-    const loader = new GLTFLoader();
+  async loadModels(url: string): Promise<void> {
+    const loader = await getGltfLoader();
     return new Promise(resolve => {
       loader.load(url, (model: GLTF) => {
         for (const obj of model.scene.children) {

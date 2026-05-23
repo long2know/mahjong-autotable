@@ -165,10 +165,18 @@ public class GameVoiceEnabledFlagTests : IAsyncLifetime
     public void GameVoiceEnabled_VoiceHubJoin_StillPublic()
     {
         var asm = typeof(Program).Assembly;
-        var hub = asm.GetTypes().FirstOrDefault(t =>
+        // Phase K Wave 6: Bishop added SpectatorVoiceHub (a sibling
+        // SignalR hub) so a name-contains match is no longer unique.
+        // Prefer the exact "VoiceHub" type; fall back to any
+        // Voice-named hub that actually exposes JoinVoice.
+        var hubs = asm.GetTypes().Where(t =>
             !t.IsInterface && !t.IsAbstract
             && typeof(Microsoft.AspNetCore.SignalR.Hub).IsAssignableFrom(t)
-            && (t.Name == "VoiceHub" || t.Name.Contains("Voice", StringComparison.Ordinal)));
+            && (t.Name == "VoiceHub" || t.Name.Contains("Voice", StringComparison.Ordinal)))
+            .ToList();
+        var hub = hubs.FirstOrDefault(t => t.Name == "VoiceHub")
+                  ?? hubs.FirstOrDefault(t => t.GetMethod("JoinVoice", BindingFlags.Public | BindingFlags.Instance) is not null)
+                  ?? hubs.FirstOrDefault();
         if (hub is null) return;
         var join = hub.GetMethod("JoinVoice", BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(join);

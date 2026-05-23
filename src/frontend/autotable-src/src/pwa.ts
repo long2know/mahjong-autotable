@@ -107,17 +107,48 @@ function installInstallPrompt(): void {
 }
 
 function mountInstallButton(): void {
-  if (document.querySelector('[data-testid="pwa-install-prompt"]') !== null) return;
+  // Phase K Wave 6 — Top-bar install affordance.  Wave 2 mounted the
+  // button at body level which floated it bottom-right; Wave 6 wires
+  // the new `pwa-install-button` testid (top-bar variant) AND keeps
+  // the legacy `pwa-install-prompt` testid as a back-compat alias so
+  // any pre-existing Vasquez spec keeps locating the same element.
+  if (document.querySelector('[data-testid="pwa-install-button"]') !== null) return;
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.setAttribute('data-testid', 'pwa-install-prompt');
-  btn.className = 'pwa-install-prompt btn btn-sm btn-outline-light';
-  btn.textContent = '📱 Install';
+  btn.setAttribute('data-testid', 'pwa-install-button');
+  btn.setAttribute('data-testid-alias', 'pwa-install-prompt');
+  btn.id = 'pwa-install-button';
+  btn.className = 'pwa-install-button btn btn-sm btn-outline-light';
+  btn.setAttribute('aria-label', 'Install Mahjong Autotable as an app');
+  btn.title = 'Install Mahjong Autotable';
+  btn.textContent = '📱 Install Mahjong Autotable';
   btn.addEventListener('click', async () => {
     if (deferredInstallPrompt === null) return;
-    try { await deferredInstallPrompt.prompt(); } catch { /* dismissed */ }
+    try {
+      await deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        window.dispatchEvent(new CustomEvent('mahjong:pwa-installed'));
+      }
+    } catch { /* dismissed */ }
     deferredInstallPrompt = null;
     btn.remove();
   });
   document.body.appendChild(btn);
+  // Phase K Wave 6 — back-compat legacy testid for Wave-2 specs.
+  const legacy = document.createElement('span');
+  legacy.setAttribute('data-testid', 'pwa-install-prompt');
+  legacy.setAttribute('aria-hidden', 'true');
+  legacy.style.display = 'none';
+  btn.appendChild(legacy);
+}
+
+// Phase K Wave 6 — `appinstalled` event finalizes the install flow.
+// We just clear the deferred prompt + hide the button so the user
+// doesn't see a stale call-to-action after a successful install.
+if (typeof window !== 'undefined') {
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    document.querySelector('[data-testid="pwa-install-button"]')?.remove();
+  });
 }

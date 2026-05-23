@@ -1,4 +1,4 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"2swaP":"./three-renderer.c3e34903.js","2uvRJ":"./three-renderer.9b0cd931.js","3e4Zx":"./chat.15082322.js","461qc":"./game-bootstrap.68251e93.js","4QgAT":"./audit.ad23ffae.js","4jPHw":"./scene-effects.65ff99f4.js","6ILap":"./history.1f49606e.js","6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","8kvBH":"./toast.c5b8481f.js","UhuSk":"./voice.ef5d6345.js","dqY0J":"./tour.1947dae1.js","eXxe5":"./scene-shell.6e7f6886.js","faDNA":"./esm.2f314286.js","gnk7P":"./tournaments.50127ca1.js","j8vWm":"./game-state.4a92c6b6.js","lCwxh":"./tiles-labels.auto.9a041239.png","z6JwJ":"./esm.eb93de05.js"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><meta name=sentry-dsn content><meta name=sentry-environment content=production><link rel=manifest href=manifest.webmanifest><meta name=theme-color content=#1e2a36><meta name=apple-mobile-web-app-capable content=yes><meta name=apple-mobile-web-app-title content=Mahjong><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-96.auto.958c14fe.png rel=apple-touch-icon sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.f07081dc.css><link rel=stylesheet href=autotable-src.6633d8fb.css><body>
+<!DOCTYPE html><script type=importmap>{"imports":{"1442r":"./stats.module.045485ef.js","1ICDY":"./GLTFLoader.0da151d6.js","2swaP":"./three-renderer.c3e34903.js","2uvRJ":"./three-renderer.4dcdd52b.js","3e4Zx":"./chat.15082322.js","461qc":"./game-bootstrap.68251e93.js","4QgAT":"./audit.ad23ffae.js","4jPHw":"./scene-effects.f5762f1d.js","6ILap":"./history.1f49606e.js","6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","8kvBH":"./toast.c5b8481f.js","UhuSk":"./voice.ef5d6345.js","dqY0J":"./tour.6e27eb71.js","eXxe5":"./scene-shell.6e7f6886.js","faDNA":"./esm.2f314286.js","gnk7P":"./tournaments.3c82a6f0.js","hcvI2":"./commentary-panel.ed2a86bd.js","iwh6W":"./spectator-livestream.e8fa27a2.js","j8vWm":"./game-state.4a92c6b6.js","lCwxh":"./tiles-labels.auto.9a041239.png","z6JwJ":"./esm.eb93de05.js"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><meta name=sentry-dsn content><meta name=sentry-environment content=production><link rel=manifest href=manifest.webmanifest><meta name=theme-color content=#1e2a36><meta name=apple-mobile-web-app-capable content=yes><meta name=apple-mobile-web-app-title content=Mahjong><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-96.auto.958c14fe.png rel=apple-touch-icon sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link href=icon-192.auto.ed82e5b6.png rel=apple-touch-icon sizes=192x192><link href=icon-512.auto.49837a0d.png rel=apple-touch-icon sizes=512x512><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.f07081dc.css><link rel=stylesheet href=autotable-src.97b4d4f8.css><body>
     <img id=dice-img src=dice.auto.391822b5.png alt aria-hidden=true>
     <canvas id=center></canvas>
     
@@ -576,6 +576,8 @@
                     <h4 class=replay-side-title>Move log</h4>
                     <div id=replay-move-log class=replay-move-log></div>
                 </aside>
+                
+                <aside id=replay-commentary-host class="replay-commentary-host replay-side-pane" aria-label="AI commentary" data-testid=replay-commentary-host></aside>
             </div>
             <div class=replay-footer role=group aria-label="Replay playback controls">
                 <button id=replay-prev type=button class="btn btn-secondary btn-sm" data-testid=replay-prev aria-label="Previous hand" title="Previous hand">⏮</button>
@@ -1021,6 +1023,6 @@
         </div>
     </div>
 
-    <script type=module src=autotable-src.effc7cfa.js></script>
+    <script type=module src=autotable-src.ea40ed40.js></script>
 
 

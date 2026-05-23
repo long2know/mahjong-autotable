@@ -1327,3 +1327,136 @@ defensive with `soft-pass` annotations; chromium-only via
 Each spec uses `test.info().annotations.push({ type: 'soft-pass', … })`
 to record forward-staged surfaces — these annotations are visible in
 the Playwright HTML report without inflating the failure count.
+
+### Phase K Wave 6 selector map — Hicks (Frontend)
+
+W6 introduces five new frontend surfaces. The test-IDs below are the
+**hard-pin** selectors future Playwright specs (W7+) should consume.
+None of the matching elements are present on first-paint of any
+existing screen, so e2e specs MUST treat absence as "feature gated
+behind route / event / server reply" (use the soft-pass pattern
+introduced in W5) — never assume the panel mounts unconditionally.
+
+#### AI commentary side panel — `src/commentary-panel.ts`
+Mounts into `<aside id="replay-commentary-host" data-testid="replay-commentary-host">`
+on the replay screen when `replay.openServer(payload)` resolves
+with a non-zero `gameId`. The fetch hits
+`/api/games/{gameId}/commentary/replay`; on `404`/`503` the empty-
+state copy renders pointing at the Phase L plan.
+
+- `replay-commentary-host` — the wrapper aside (always present in
+  the DOM, even when the panel module hasn't been loaded yet).
+- `commentary-panel` — the root element of the live module
+  (only appears after dynamic import resolves).
+- `commentary-panel-loading` — visible while fetch is in flight.
+- `commentary-panel-empty` — visible when the API replies with
+  no commentary lines (or 404/503 forward-staged response).
+- `commentary-panel-error` — visible when the fetch throws.
+- `commentary-line-{idx}` — one per rendered commentary turn,
+  `idx` is the zero-based index in the response array.
+
+#### Spectator HLS livestream viewer — `src/spectator-livestream.ts`
+Bound to the `#/spectate/{tableId}` hash route by
+`installSpectatorRoute()` (called from `scheduleSpectatorRouteLazyMount()`
+in `src/index.ts`). HLS.js is loaded from the public CDN on demand
+for non-Safari browsers; Safari falls through to native HLS.
+
+- `spectator-livestream-screen` — root container.
+- `spectator-livestream-player` — the `<video>` element.
+- `spectator-livestream-status` — status text region (announces
+  "connecting", "live", "stalled", or error copy).
+- `spectator-count` — current spectator count badge driven by
+  the SignalR `spectatorCountUpdate` event.
+- `spectator-livestream-leave` — the leave button (returns to
+  the lobby; releases the spectator group).
+
+#### Bracket renderer strategy — `src/bracket-renderer.ts`
+`rerenderBracket()` in `tournaments.ts` now dispatches to a strategy
+based on `tournament.format`. The container always carries
+`data-testid="bracket-format-{format}"` where `{format}` is one of
+`single-elim` / `swiss` / `double-elim` / `round-robin`.
+
+- `bracket-format-{format}` — root container per format.
+- `bracket-round-{n}` — column / region per round, 1-indexed.
+- `bracket-match-{round}-{matchIndex}` — individual match card.
+- `bracket-double-elim-winners` — winners-bracket region (double-elim only).
+- `bracket-double-elim-losers` — losers-bracket region (double-elim only).
+- `tournament-grand-final` — the grand final card (double-elim only;
+  also surfaced in single-elim when only one final remains).
+- `bracket-swiss-standings` — Swiss standings table (Swiss + RR formats).
+
+#### PWA install button polish — `src/pwa.ts`
+The install affordance is now a real `<button data-testid="pwa-install-button">`
+in the top-bar (was an inline prompt). The legacy `pwa-install-prompt`
+testid is preserved as an alias on a hidden `<span>` inside the
+button so existing W3/W4 e2e specs continue to resolve until rewritten.
+
+- `pwa-install-button` — the visible top-bar control.
+- `pwa-install-prompt` — legacy alias (hidden span child).
+- `appinstalled` handler at module bottom hides the button after
+  install completes; Playwright should not poll the visibility
+  state after dispatching the install event.
+
+#### Tour additions — `src/tour.ts`
+Two new tour stops are inserted (existing copy updated from
+"6 stops" to "10 stops, ~45 seconds"):
+
+- Step 6 — voice-setup walkthrough (anchors on `voice-toggle` /
+  `voice-settings`). Selector: `tour-step-voice-setup`.
+- Step 9 — tournament-view stop (anchors on `tournament-tab` /
+  `bracket-format-*`). Selector: `tour-step-tournament-view`.
+
+Generic per-step containers still expose `data-testid="tour-step"`;
+the named selectors above are additive.
+
+---
+
+### Phase K Wave 6 Playwright spec map — Vasquez
+
+Seven new specs land in Wave 6 (each chromium-only via `test.skip(…)`,
+each soft-pass annotates `test.info().annotations.push({ type:'soft-pass', … })`
+when the underlying surface is forward-staged):
+
+- `commentary-panel-loads.spec.ts` — Hicks's W6 commentary panel mounts
+  on the replay route with `data-testid="commentary-panel"`. Mock
+  backend returns a 2-item stub envelope (`generator: "stub"`); the
+  panel state-machine arms (loading → empty → content) settle into
+  the content arm. Soft-passes when the testid root is not yet
+  observable (forward-staged Hicks module).
+- `spectator-livestream-player.spec.ts` — `<audio>` element with an
+  HLS playlist source (`.m3u8` or `application/vnd.apple.mpegurl`)
+  mounts under `data-testid="spectator-livestream-viewer"`. Mock
+  returns a minimal HLS manifest (`#EXTM3U`). Soft-passes when no
+  `<audio>` with HLS-looking source is yet observable.
+- `bracket-format-swiss.spec.ts` — Swiss bracket renderer emits
+  `data-testid="bracket-format-swiss"` for a tournament with
+  `format: "swiss"`. Probes the lobby first and falls back to
+  `#/tournaments/{id}`. Soft-passes when the testid is not yet
+  observable.
+- `bracket-format-double-elim.spec.ts` — symmetric to the Swiss
+  spec, asserts `data-testid="bracket-format-double-elim"` for a
+  tournament with `format: "double-elim"`.
+- `pwa-install-prompt.spec.ts` — synthesises a
+  `beforeinstallprompt` event (`new Event(…)` + `prompt()` +
+  `userChoice` polyfilled) and asserts the install button at
+  `data-testid="pwa-install-button"` is attached. Chromium does
+  not fire the event organically in headless / sandboxed mode, so
+  the spec is responsible for the synthesis.
+- `three-renderer-tree-shake.spec.ts` — three-renderer chunk is
+  NOT fetched before `networkidle` AND when observed lazily MUST
+  be under the 700 kB W6 ceiling. Soft-passes when no chunk is
+  observed at all (canvas not mounted in test env). The pre-
+  networkidle assertion is HARD (a regression where the chunk
+  rides on lobby load is a hard failure).
+- `oidc-discovery-shape.spec.ts` — `GET /.well-known/openid-configuration`
+  returns either 404 with a structured `{ error | reason | error_description }`
+  body (HS256 default mode) OR 200 with `{ issuer, jwks_uri }` (RS256
+  mode). Never 5xx. Soft-passes on dev-server unreachability.
+
+The W6 surface area extends Bishop's auth lane (RS256 migration,
+OIDC discovery, voice livestream HLS, spectator SFU stub, AI
+commentary stub, Swiss + double-elim brackets) and Hicks's frontend
+lane (commentary panel UI, spectator livestream viewer, bracket
+renderers, three-renderer tree-shake to <700 kB, PWA install
+prompt). Bishop and Hicks pair-land their surfaces; these specs
+hard-pin the cross-pair contracts at the Playwright layer.

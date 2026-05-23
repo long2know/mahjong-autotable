@@ -1,0 +1,62 @@
+# Phase K Wave 6 — Vasquez (QA).
+#
+# Lane-discipline check. Runs the cross-lane bundling detector on
+# every PR so the W3/W4 git-config-race / Wave-5 stash-discipline
+# recurrence is caught at the CI gate, not at squash-merge time.
+#
+# Hard-fails when a single commit touches MORE than one agent's lane
+# OR when an author identity does NOT match the lane it touched.
+#
+# Owner: Vasquez (QA). See `docs/agent-handoff-protocol.md`.
+
+name: lane-discipline
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: 'Verbose output'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Cross-lane bundling check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the PR branch)
+        uses: actions/checkout@v4
+        with:
+          # Full history so the script can walk PR_REF..BASE_REF.
+          fetch-depth: 0
+
+      - name: Determine PR refs
+        id: refs
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "pr_ref=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            echo "base_ref=origin/${{ github.event.pull_request.base.ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr_ref=HEAD" >> "$GITHUB_OUTPUT"
+            echo "base_ref=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run lane-discipline check (PR mode)
+        env:
+          PR_REF: ${{ steps.refs.outputs.pr_ref }}
+          BASE_REF: ${{ steps.refs.outputs.base_ref }}
+          VERBOSE: ${{ github.event.inputs.verbose == 'true' && '1' || '0' }}
+        run: |
+          chmod +x tests/ci/check-cross-lane-bundling.sh
+          tests/ci/check-cross-lane-bundling.sh --pr "$PR_REF" --base "$BASE_REF"
+
+      - name: Run main historical report (non-failing)
+        if: ${{ always() }}
+        run: |
+          tests/ci/check-cross-lane-bundling.sh --branch --count 4 || true

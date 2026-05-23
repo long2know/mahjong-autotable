@@ -235,6 +235,20 @@ public sealed class TournamentService
                     matches.Add(BuildMatch(t.Id, round: 1, pair));
                 }
                 break;
+            case "double-elimination":
+                // Phase K Wave 6 — Bishop. Winners-bracket round 1
+                // shares the single-elim seeding shape; the losers
+                // bracket + grand final slots get populated lazily by
+                // the service as matches resolve. We only persist the
+                // winners-bracket round 1 today — placeholder rows for
+                // the losers bracket would introduce phantom "pending"
+                // matches in the leaderboard before any real losers
+                // exist.
+                foreach (var pair in TournamentPairing.SingleEliminationFirstRound(seededPlayers))
+                {
+                    matches.Add(BuildMatch(t.Id, round: 1, pair));
+                }
+                break;
             default:
                 throw new InvalidOperationException($"Unknown format '{t.Format}'.");
         }
@@ -553,7 +567,7 @@ public sealed class TournamentService
     }
 
     private static bool IsKnownFormat(string format)
-        => format is "single-elimination" or "round-robin" or "swiss";
+        => format is "single-elimination" or "round-robin" or "swiss" or "double-elimination";
 
     private static TournamentMatch BuildMatch(Guid tournamentId, int round, TournamentPairing.Pairing pair)
         => new()
@@ -630,8 +644,14 @@ public sealed class TournamentService
         }
 
         var nextRound = round + 1;
-        if (tournament.Format == "single-elimination")
+        if (tournament.Format == "single-elimination" || tournament.Format == "double-elimination")
         {
+            // Phase K Wave 6 — Bishop. Double-elimination shares the
+            // winners-bracket advancement shape; the losers-bracket
+            // resurrection path lands in a follow-up wave (Phase L).
+            // Today's path keeps double-elim functioning as a
+            // single-bracket tournament so the format string is
+            // usable end-to-end.
             for (var i = 0; i < winners.Count; i += 2)
             {
                 if (i + 1 >= winners.Count) break;

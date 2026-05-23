@@ -1777,3 +1777,113 @@ extraction all appeared during the bring-up and were moved to the
 picked up by `git add`.
 
 Full details in `.squad/decisions/inbox/vasquez-phase-k-wave-5.md`.
+
+
+---
+
+## Phase K Wave 6 — forward-stage W6 contracts + lane-discipline CI + commentary-generator shim + 7 e2e specs
+
+**Gate:** 1421/1/0 on the WORKING TREE → expected 1422/0/0 on the
+Vasquez-only branch state (the 1 fail is Apone's untracked
+`infra/k8s/base/coturn-*.yaml` files not yet listed in
+`kustomization.yaml`; not in Vasquez's commit).
+
+**Delta:** **+76 facts** (vs Wave 5 baseline 1345/0/0), all carrying
+`Trait("Wave", "Phase-K-6")`. Zero-skips streak preserved =
+20th consecutive green wave on the Vasquez-owned facts.
+
+### Scope completed
+
+- **Backend tests** (5 new files in
+  `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W6/`):
+  - `BishopW6SurfaceTests.cs` — 11 facts (RS256 / JwtAlgorithm,
+    JWKS algorithm switch, voice livestream HLS controller +
+    playlist envelope, SpectatorVoiceHub Hub subclass,
+    ICommentaryGenerator interface, commentary endpoint envelope,
+    BracketFormat.Swiss + DoubleElimination, Swiss pairing type,
+    double-elim grand-final, OIDC discovery 404/200 envelope).
+  - `HicksW6FrontendContractTests.cs` — 5 facts (commentary-panel
+    <80 KB + testid, spectator-livestream `<audio>` + HLS source,
+    bracket per-format testid Swiss/double-elim, three-renderer
+    <700 KB, PWA install button + beforeinstallprompt).
+  - `AponeW6InfraContractTests.cs` — 8 facts (DR replication
+    Terraform module, GH OIDC `ecr:*` / `iam:*` wildcard ban,
+    coturn manifest fields, Trivy allowlist `expires-at`
+    ISO 8601 parseability, mobile-internal-testing workflow,
+    verify-slsa-on-deploy workflow, CHANGELOG 0.15.0 section,
+    retro doc structure).
+  - `W6SurfaceSmokeFactsTests.cs` — 25 broad smoke facts across
+    all 3 lanes + cross-wave carry-forward (TurnCredentialTtl,
+    JwtSigningKeys array, three-renderer module).
+  - `CommentaryGeneratorTestShimSanityTests.cs` — 7 sanity facts
+    pinning the new test shim's determinism contract.
+
+- **Cross-wave regression** (renamed + 10 W6 facts added):
+  - `Wave1ThroughKW5RegressionTests.cs` → `Wave1ThroughKW6RegressionTests.cs`
+    (class + filename rename).
+  - Appended 10 new W6 smokes: AuthOptions.JwtAlgorithm property
+    shape, VoiceLivestreamController type, SpectatorVoiceHub type,
+    ICommentaryGenerator interface, BracketFormat Swiss + DoubleElim
+    members, coturn manifest presence, mobile-internal-testing
+    workflow, dr-replication module dir, verify-slsa-on-deploy
+    workflow, lane-discipline script + workflow.
+
+- **Test shim** (`#if TESTING_SHIM` gated):
+  - `Shims/CommentaryGeneratorTestShim.cs` — deterministic
+    per-game commentary generator stub. SHA-256 keyed; same
+    gameId → same items every run; 4 items per call rotating
+    across 3 speakers; empty/null guard throws ArgumentException.
+    Documented in `docs/test-shims.md §2`.
+
+- **Playwright specs** (7 new in
+  `src/frontend/autotable-src/tests/e2e/`):
+  - `commentary-panel-loads.spec.ts`
+  - `spectator-livestream-player.spec.ts`
+  - `bracket-format-swiss.spec.ts`
+  - `bracket-format-double-elim.spec.ts`
+  - `pwa-install-prompt.spec.ts` (synthesises beforeinstallprompt)
+  - `three-renderer-tree-shake.spec.ts` (HARD pre-networkidle assert)
+  - `oidc-discovery-shape.spec.ts` (HS256 404 / RS256 200)
+  All chromium-only via `test.skip(testInfo.project.name !== 'chromium', …)`
+  with `soft-pass` annotations for forward-staged surfaces.
+
+- **Lane-discipline CI** (NEW — the formal end of the W3/W4
+  cross-lane regression risk):
+  - `tests/ci/check-cross-lane-bundling.sh` — path-prefix → lane
+    mapper + per-commit lane classifier. Modes: `--branch` (last
+    N first-parent on main, WARN-only for historical squash-merges)
+    + `--pr` (every commit on PR_REF, HARD-FAIL on cross-lane
+    bundling AND on author-lane mismatch).
+  - `.github/workflows/lane-discipline.yml` — runs on
+    `pull_request` to main. Strict PR-mode check + informational
+    main-mode report.
+
+- **Documentation**:
+  - `docs/test-shims.md` — appended §2 documenting the
+    `CommentaryGeneratorTestShim`.
+  - `src/frontend/autotable-src/tests/selectors.md` — appended
+    Phase K Wave 6 footer with the 7 new spec descriptions.
+
+### Per-invocation identity protocol — reinforced
+
+Wave 6 is the FIRST wave to enforce per-invocation identity:
+`git -c user.name="Vasquez (QA)" -c user.email="vasquez@squad.mahjong" commit -m …`.
+This avoids the `.git/config`-rewrite race that Apone's `b346157`
+(W5) demonstrated. Wrapped in `flock -w 120 9 || exit 1; …; 9>/tmp/squad-git-lock`
+so concurrent agents serialise on commit + push.
+
+### Concurrent-agent activity observed during bring-up
+
+Working tree saw active modifications from Bishop (Auth*.cs,
+Program.cs, Data entities), Hicks (commentary-panel.ts,
+bracket-renderer.ts, pwa.ts, replay.ts, tournaments.ts,
+main-view.ts, main.css, index.html, manifest.webmanifest), and
+Apone (coturn-*.yaml, iam-github-oidc.tf, outputs.tf, container-scan.yml,
+slsa-provenance.md, turn-server-setup.md). Vasquez observed but
+NEVER staged any of these — every commit in this PR is verified
+single-lane via the stage allowlist (`src/backend/tests/`,
+`src/frontend/autotable-src/tests/`, `tests/ci/`, `docs/test-*.md`,
+`docs/test-shims.md`, `.squad/agents/vasquez/`,
+`.squad/decisions/inbox/vasquez-*`, `.github/workflows/lane-discipline.yml`).
+
+Full details in `.squad/decisions/inbox/vasquez-phase-k-wave-6.md`.

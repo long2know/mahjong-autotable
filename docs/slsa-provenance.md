@@ -287,10 +287,74 @@ permission-scoping) applies one more time:
   cosign-signed; the SLSA predicate arrives on the next
   workflow re-run.
 
+## 7a. `slsa-verifier` in the admission webhook + on PR (Phase K Wave 6 — Apone)
+
+Wave-5 introduced the Kyverno `attestations:` block that verifies
+the SLSA predicate at admission time (in-cluster). Wave 6 adds
+TWO additional verification layers:
+
+### 7a.1 `slsa-verifier` v2 binary inside the admission webhook container
+
+Beyond Kyverno's cosign-via-policy verification, the admission
+webhook container bundles the `slsa-verifier` v2.6.0 binary
+(installed at `/usr/local/bin/slsa-verifier` in the webhook
+Dockerfile). The binary is invoked as a SECOND-pass check on
+every admit event:
+
+```bash
+slsa-verifier verify-image \
+    <registry>/mahjong-autotable@<digest> \
+    --source-uri github.com/long2know/mahjong-autotable
+```
+
+Why two passes:
+
+* Kyverno's cosign integration evaluates the policy at admission
+  but does NOT enforce the `slsa-verifier` semantic checks the
+  upstream CLI implements (subject normalisation, multi-subject
+  predicate handling, builder ID regex matching at the verifier
+  layer). The W6 CLI pass is defence in depth.
+* When Kyverno's cosign upstream changes its verification
+  semantics (e.g. a 2.x → 3.x cosign-policy major bump), the
+  `slsa-verifier` binary remains a stable, separately-versioned
+  signal. A regression in either Kyverno or the CLI is caught
+  by the OTHER layer.
+
+### 7a.2 `verify-slsa-on-deploy.yml` — pre-merge gate
+
+`.github/workflows/verify-slsa-on-deploy.yml` runs `slsa-verifier
+verify-image` on every PR labelled `deploy:prod`. The PR cannot
+merge until the verifier passes against the image the prod
+overlay would deploy. Mechanics:
+
+* Trigger: `pull_request` opened/synchronized/labeled, gated on
+  the `deploy:prod` label.
+* Image lookup: pulled from `infra/k8s/overlays/prod/kustomization.yaml`'s
+  `images:` block (preferring the `digest:` field).
+* Failure: PR cannot merge (the workflow becomes a required
+  status check; configure in repo settings).
+* Sticky PR comment: pass/fail visible to reviewers without
+  drilling into the Actions tab.
+
+This gate is the CI-side mirror of the admission-time check:
+the SAME binary verifies the SAME predicate against the SAME
+source URI in BOTH places. A deploy:prod PR that passes here
+WILL be admitted by the admission webhook in steady state; if
+it isn't, the discrepancy is a regression in one of the two
+verification layers and warrants investigation.
+
+### 7a.3 Operator runbook
+
+The verifier outputs the verified predicate JSON (via
+`--print-provenance`) as a workflow artefact. Download it from
+the PR's Actions run when investigating an admission rejection
+or audit-trail question.
+
 ## 8. Cross-references
 
 * [`docs/image-signing.md`](image-signing.md) — Wave-1 cosign signing of the image manifest.
 * [`docs/admission-policy.md`](admission-policy.md) — Wave-3 Kyverno admission policy.
 * [`.github/workflows/slsa-provenance.yml`](../.github/workflows/slsa-provenance.yml) — the workflow itself.
+* [`.github/workflows/verify-slsa-on-deploy.yml`](../.github/workflows/verify-slsa-on-deploy.yml) — Wave-6 pre-merge gate.
 * [SLSA v1.0 provenance spec](https://slsa.dev/spec/v1.0/provenance) — upstream predicate schema.
 * [slsa-verifier README](https://github.com/slsa-framework/slsa-verifier) — verifier CLI usage.

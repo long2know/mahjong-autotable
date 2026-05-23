@@ -69,6 +69,16 @@ output "db_endpoint" {
   value       = aws_db_instance.this.endpoint
 }
 
+output "db_instance_arn" {
+  description = "RDS Postgres instance ARN. Consumed by the DR env (`envs/dr-us-west-2/`) via `terraform_remote_state` to set up the cross-region read replica's `replicate_source_db`."
+  value       = aws_db_instance.this.arn
+}
+
+output "db_kms_key_arn" {
+  description = "ARN of the customer-managed KMS key encrypting the primary RDS storage. Surfaced for audit (DR replicas use a SECONDARY-region KMS key — AWS forbids cross-region CMK sharing — but the primary's key ARN is logged in the DR module's tags)."
+  value       = aws_kms_key.rds.arn
+}
+
 output "db_address" {
   description = "RDS Postgres host only (no port). Often handier than db_endpoint when composing connection strings."
   value       = aws_db_instance.this.address

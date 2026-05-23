@@ -47,18 +47,26 @@ public sealed class JwksEndpointContractTests : IAsyncLifetime
     }
 
     [Fact, Trait("Category", "Auth"), Trait("Wave", "Phase-K-5"), Trait("Lane", "Bishop")]
-    public async Task Jwks_Returns404WithCacheControlNoStore()
+    public async Task Jwks_Returns404WithBrieflyCacheableNegative()
     {
         Assert.NotNull(_factory);
         using var client = _factory!.CreateClient();
         using var resp = await client.GetAsync("/api/auth/.well-known/jwks.json");
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        // Phase K Wave 6 — Bishop. JWKS-HS256 negative is now briefly
+        // cacheable (public, max-age=60) so CDNs can absorb the
+        // negative without pinning it indefinitely. The Wave-5
+        // `no-store` is intentionally relaxed; the 60-second window
+        // bounds the lag on the eventual RS256 flip.
         Assert.True(
-            resp.Headers.CacheControl?.NoStore == true
-            || (resp.Headers.TryGetValues("Cache-Control", out var vals)
-                && vals.Any(v => v.Contains("no-store", StringComparison.OrdinalIgnoreCase))),
-            "JWKS 404 MUST carry Cache-Control: no-store so the negative isn't cached by an intermediate proxy/CDN ahead of the Phase L RS256 flip.");
+            resp.Headers.CacheControl?.Public == true,
+            "JWKS 404 MUST carry Cache-Control: public (Wave 6 tuning)."
+        );
+        Assert.True(
+            resp.Headers.CacheControl?.MaxAge is { } maxAge && maxAge.TotalSeconds is > 0 and <= 300,
+            "JWKS 404 MUST carry a bounded max-age (Wave-6 spec: 60s; allow up to 5 min for operator tuning)."
+        );
     }
 
     [Fact, Trait("Category", "Auth"), Trait("Wave", "Phase-K-5"), Trait("Lane", "Bishop")]
@@ -76,5 +84,13 @@ public sealed class JwksEndpointContractTests : IAsyncLifetime
         Assert.Equal("HS256", algEl.GetString());
         Assert.True(root.TryGetProperty("note", out _));
         Assert.True(root.TryGetProperty("error", out _));
+        // Phase K Wave 6 — Bishop. Negative envelope advertises the
+        // migration target so downstream operators can wire a JWKS
+        // verifier without a separate doc trip.
+        Assert.True(root.TryGetProperty("reason", out var reasonEl));
+        Assert.Equal("jwt-algorithm-is-hs256", reasonEl.GetString());
+        Assert.True(root.TryGetProperty("migrateTo", out var migrateEl)
+            || root.TryGetProperty("migrate_to", out migrateEl));
+        Assert.Equal("RS256", migrateEl.GetString());
     }
 }

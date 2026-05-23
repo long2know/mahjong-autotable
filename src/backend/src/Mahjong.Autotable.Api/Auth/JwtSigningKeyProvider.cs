@@ -22,15 +22,32 @@ namespace Mahjong.Autotable.Api.Auth;
 ///         is logged so operators notice the unsuitable-for-prod
 ///         state.</item>
 /// </list></para>
+///
+/// <para>Phase K Wave 6 — Bishop. <see cref="AuthOptions.JwtAlgorithm"/>
+/// selects between HS256 (HMAC; <see cref="AllKeys"/> populated) and
+/// RS256 (RSA; <see cref="AllRsaKeys"/> populated). The HMAC fallback
+/// list is always loaded even when the active algorithm is RS256 so
+/// validation of legacy HMAC tokens continues to work during the
+/// migration window — issuance, however, branches strictly on the
+/// resolved algorithm.</para>
 /// </summary>
 public sealed class JwtSigningKeyProvider
 {
     private readonly IReadOnlyList<JwtSigningKey> _keys;
     private readonly Dictionary<string, JwtSigningKey> _byKid;
+    private readonly IReadOnlyList<JwtRsaSigningKey> _rsaKeys;
+    private readonly Dictionary<string, JwtRsaSigningKey> _rsaByKid;
     private readonly bool _fallbackKeyInUse;
+    private readonly string _algorithm;
 
     public JwtSigningKeyProvider(AuthOptions options, ILogger<JwtSigningKeyProvider> logger)
     {
+        // Phase K Wave 6 — resolve the configured algorithm. Anything
+        // other than the two supported values defaults to HS256 +
+        // emits a warning so an operator typo doesn't silently fall
+        // into a "neither algorithm works" state.
+        _algorithm = NormaliseAlgorithm(options.JwtAlgorithm, logger);
+
         var resolved = new List<JwtSigningKey>();
         if (options.JwtSigningKeys is { Length: > 0 })
         {
@@ -69,26 +86,110 @@ public sealed class JwtSigningKeyProvider
         }
         _keys = resolved;
         _byKid = resolved.ToDictionary(k => k.Kid, StringComparer.Ordinal);
+
+        // Phase K Wave 6 — load any configured RSA private keys
+        // regardless of the active algorithm so a future flip from
+        // HS256→RS256 doesn't require a pod restart to pre-load the
+        // material. A PEM that fails to parse is logged + skipped so
+        // a single bad entry never bricks the surface.
+        var rsa = new List<JwtRsaSigningKey>();
+        if (options.JwtRsaKeys is { Length: > 0 })
+        {
+            for (var i = 0; i < options.JwtRsaKeys.Length; i++)
+            {
+                var pem = options.JwtRsaKeys[i];
+                if (string.IsNullOrWhiteSpace(pem)) continue;
+                try
+                {
+                    rsa.Add(new JwtRsaSigningKey(rsa.Count, pem));
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "RSA signing key at index {Index} failed to parse — skipping. Provide a valid PKCS#1 or PKCS#8 PEM blob.",
+                        i);
+                }
+            }
+        }
+        if (_algorithm == "RS256" && rsa.Count == 0)
+        {
+            logger.LogError(
+                "Authentication:JwtAlgorithm is RS256 but Authentication:JwtRsaKeys is empty. Token issuance will fail until at least one PEM-encoded private key is provided. See docs/jwt-rotation.md §RS256.");
+        }
+        else if (rsa.Count > 0 && _algorithm == "RS256")
+        {
+            logger.LogInformation(
+                "JWT RSA signing keys loaded: {Count} key(s); active RSA signer kid={Kid}.",
+                rsa.Count, rsa[0].Kid);
+        }
+        _rsaKeys = rsa;
+        _rsaByKid = rsa.ToDictionary(k => k.Kid, StringComparer.Ordinal);
     }
 
-    /// <summary>Active signer used for new token issuance.</summary>
+    /// <summary>Resolved JWT signing algorithm — either <c>HS256</c>
+    /// or <c>RS256</c>. Determines which key set the issuer signs
+    /// with and which JWKS shape the discovery endpoint publishes.</summary>
+    public string Algorithm => _algorithm;
+
+    /// <summary>Active HMAC signer used for new HS256 token issuance.</summary>
     public JwtSigningKey ActiveKey => _keys[0];
 
-    /// <summary>Full fallback list in load order. Index 0 is the active
-    /// signer; later entries are accepted on validation only.</summary>
+    /// <summary>Active RSA signer used for new RS256 token issuance.
+    /// Throws <see cref="InvalidOperationException"/> when no RSA key
+    /// is configured — callers should check <see cref="Algorithm"/>
+    /// first.</summary>
+    public JwtRsaSigningKey ActiveRsaKey
+    {
+        get
+        {
+            if (_rsaKeys.Count == 0)
+                throw new InvalidOperationException(
+                    "No RSA signing keys configured. Populate Authentication:JwtRsaKeys[0] with a PEM-encoded private key.");
+            return _rsaKeys[0];
+        }
+    }
+
+    /// <summary>Full HMAC fallback list in load order. Index 0 is the
+    /// active signer; later entries are accepted on validation only.</summary>
     public IReadOnlyList<JwtSigningKey> AllKeys => _keys;
+
+    /// <summary>Full RSA fallback list in load order. Index 0 is the
+    /// active signer; later entries are accepted on validation only.
+    /// May be empty when only HMAC keys are configured.</summary>
+    public IReadOnlyList<JwtRsaSigningKey> AllRsaKeys => _rsaKeys;
 
     /// <summary>True when the active key was minted at process start
     /// because the operator left both knobs unset — diagnostic-only.</summary>
     public bool UsingEphemeralFallbackKey => _fallbackKeyInUse;
 
-    /// <summary>Looks up a key by its deterministic <see cref="JwtSigningKey.Kid"/>.
-    /// Returns null when the token's <c>kid</c> header does not match
-    /// any loaded key (validators then fall through to the
-    /// try-all-keys loop).</summary>
+    /// <summary>Looks up an HMAC key by its deterministic
+    /// <see cref="JwtSigningKey.Kid"/>. Returns null when the token's
+    /// <c>kid</c> header does not match any loaded HMAC key.</summary>
     public JwtSigningKey? TryGetByKid(string? kid)
     {
         if (string.IsNullOrEmpty(kid)) return null;
         return _byKid.TryGetValue(kid, out var key) ? key : null;
+    }
+
+    /// <summary>Looks up an RSA key by its deterministic
+    /// <see cref="JwtRsaSigningKey.Kid"/>. Returns null when the
+    /// token's <c>kid</c> header does not match any loaded RSA key —
+    /// validators then fall through to the HMAC path.</summary>
+    public JwtRsaSigningKey? TryGetRsaByKid(string? kid)
+    {
+        if (string.IsNullOrEmpty(kid)) return null;
+        return _rsaByKid.TryGetValue(kid, out var key) ? key : null;
+    }
+
+    private static string NormaliseAlgorithm(string? configured, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(configured)) return "HS256";
+        var trimmed = configured.Trim();
+        if (string.Equals(trimmed, "HS256", StringComparison.OrdinalIgnoreCase)) return "HS256";
+        if (string.Equals(trimmed, "RS256", StringComparison.OrdinalIgnoreCase)) return "RS256";
+        logger.LogWarning(
+            "Authentication:JwtAlgorithm value '{Value}' is not supported (expected HS256 or RS256). Falling back to HS256.",
+            configured);
+        return "HS256";
     }
 }

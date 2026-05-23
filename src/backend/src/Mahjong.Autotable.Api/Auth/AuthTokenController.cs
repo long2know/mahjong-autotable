@@ -120,16 +120,95 @@ public sealed class AuthTokenController : ControllerBase
     /// <c>Cache-Control: no-store</c>, preventing them from blocking
     /// the Phase L RS256 flip when this route will start returning a
     /// real <c>{ keys: [...] }</c> array under the same URL.
+    ///
+    /// <para>Phase K Wave 6 — Bishop. The endpoint now branches on
+    /// <see cref="JwtSigningKeyProvider.Algorithm"/>:</para>
+    /// <list type="bullet">
+    ///   <item><b>RS256:</b> publishes the full RFC 7517 JWKS document
+    ///         carrying every loaded public key (modulus + exponent),
+    ///         with <c>Cache-Control: public, max-age=3600</c> so
+    ///         downstream verifiers can briefly cache the resolved
+    ///         keys without missing a rotation window.</item>
+    ///   <item><b>HS256:</b> retains the negative 404 — the body now
+    ///         carries <c>{"reason":"jwt-algorithm-is-hs256","migrate-to":"RS256"}</c>
+    ///         so the migration target is wire-discoverable, and the
+    ///         cache header is tuned from <c>no-store</c> to
+    ///         <c>public, max-age=60</c> so CDNs can briefly absorb
+    ///         the negative without pinning it indefinitely (a
+    ///         60-second window keeps the lag-on-flip under one
+    ///         CDN-refresh cycle).</item>
+    /// </list>
     /// </summary>
     [HttpGet(".well-known/jwks.json")]
-    public IActionResult Jwks()
+    public IActionResult Jwks([FromServices] JwtSigningKeyProvider keys)
     {
-        Response.Headers.CacheControl = "no-store";
+        if (string.Equals(keys.Algorithm, "RS256", StringComparison.Ordinal)
+            && keys.AllRsaKeys.Count > 0)
+        {
+            Response.Headers.CacheControl = "public, max-age=3600";
+            var publishedKeys = keys.AllRsaKeys.Select(k => new
+            {
+                kty = "RSA",
+                kid = k.Kid,
+                use = "sig",
+                alg = "RS256",
+                n = k.ModulusBase64Url,
+                e = k.ExponentBase64Url,
+            }).ToArray();
+            return Ok(new { keys = publishedKeys });
+        }
+
+        Response.Headers.CacheControl = "public, max-age=60";
         return StatusCode(StatusCodes.Status404NotFound, new
         {
             error = "JWKS document is not published for HMAC-signed tokens.",
             algorithm = "HS256",
             note = "Phase L will flip this surface to an RS256 JWKS array; the URL is reserved.",
+            reason = "jwt-algorithm-is-hs256",
+            migrateTo = "RS256",
+            // Wave 6 — wire-name with hyphen for clients that consume the
+            // raw JSON property key directly (matches the OAuth/OIDC
+            // convention for migration-hint envelopes).
+            migrate_to = "RS256",
+        });
+    }
+
+    /// <summary>
+    /// Phase K Wave 6 — Bishop. Companion OIDC discovery document for
+    /// the JWKS surface. Published only when
+    /// <see cref="JwtSigningKeyProvider.Algorithm"/> is RS256 (when
+    /// HS256, returns 404 with
+    /// <c>{"reason":"oidc-discovery-disabled"}</c> + the same brief
+    /// cacheable negative as the JWKS endpoint). Carries the minimum
+    /// fields a downstream verifier needs to bootstrap against the
+    /// Mahjong-Autotable auth surface — issuer, jwks_uri,
+    /// token_endpoint, and the supported grant types.
+    /// </summary>
+    [HttpGet(".well-known/openid-configuration")]
+    public IActionResult OpenIdConfiguration([FromServices] JwtSigningKeyProvider keys)
+    {
+        if (!string.Equals(keys.Algorithm, "RS256", StringComparison.Ordinal))
+        {
+            Response.Headers.CacheControl = "public, max-age=60";
+            return StatusCode(StatusCodes.Status404NotFound, new
+            {
+                reason = "oidc-discovery-disabled",
+                algorithm = keys.Algorithm,
+                note = "OIDC discovery activates with the RS256 flip; the URL is reserved.",
+            });
+        }
+
+        var origin = $"{Request.Scheme}://{Request.Host}";
+        Response.Headers.CacheControl = "public, max-age=3600";
+        return Ok(new
+        {
+            issuer = origin,
+            jwks_uri = $"{origin}/api/auth/.well-known/jwks.json",
+            token_endpoint = $"{origin}/api/auth/token",
+            grant_types_supported = new[] { "password", "authorization_code" },
+            id_token_signing_alg_values_supported = new[] { "RS256" },
+            response_types_supported = new[] { "token" },
+            subject_types_supported = new[] { "public" },
         });
     }
 

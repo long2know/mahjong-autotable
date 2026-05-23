@@ -292,3 +292,121 @@ the cluster logs. Key log shapes to alert on:
 * `infra/k8s/overlays/turn/` — the dedicated overlay applied by §2.
 * `.github/workflows/multi-arch-runtime.yml` — runtime gate for the
   API; does NOT exercise the TURN lane (load-test only).
+
+## 9. k8s deployment (Phase K Wave 6 — Apone)
+
+Phase K Wave 2 + Wave 3 shipped the single-replica `turn-server.yaml`
+and the TLS-on-5349 augmentation. **Wave 6** ships the
+production-shape manifests as a parallel set under
+`infra/k8s/base/coturn-*.yaml` (the W6 resources are named
+`coturn-*` so they can be applied alongside the W2 `turn-server-*`
+resources during the cutover; the W2 manifests stay in `base/` for
+staging).
+
+Files:
+
+| File | Purpose |
+|------|---------|
+| `infra/k8s/base/coturn-deployment.yaml` | 2-replica Deployment + LoadBalancer Service + NetworkPolicy. |
+| `infra/k8s/base/coturn-configmap.yaml` | `turnserver.conf` with `realm`, `listening-port=3478`, `tls-listening-port=5349`, `fingerprint`, `lt-cred-mech`, `use-auth-secret`. |
+| `infra/k8s/base/coturn-secret.yaml` | `ExternalSecret` materialising `coturn-static-auth-secret` (the HMAC key Bishop's W3 `/api/turn` endpoint shares) from SSM `/mahjong/<env>/turn/auth_secret`. |
+
+### 9.1 What's new in Wave 6
+
+* **2 replicas, AZ-spread.** `podAntiAffinity` on
+  `topology.kubernetes.io/zone` guarantees the two coturn pods land
+  in different AZs; a single-AZ outage keeps the TURN data plane
+  reachable. RollingUpdate strategy is pinned `maxSurge=1,
+  maxUnavailable=0` so a refresh always spins a fresh pod and waits
+  for `Ready` before evicting an old one (rolling restarts do drop
+  in-flight ICE channels — be deliberate about rollouts).
+* **HMAC-mode (`use-auth-secret`) by default.** W3 documented the
+  migration; W6's `coturn-configmap.yaml` enables it out of the
+  box. Bishop's `/api/turn` endpoint reads the SAME
+  `/mahjong/<env>/turn/auth_secret` SSM parameter, so HMAC
+  validation works symmetrically. A rotation flips both sides at
+  once.
+* **Wider relay port range (49152-65535)** matching the IANA
+  ephemeral range. The W2 base used a narrow 49160-49200 (≈40
+  ports) which caps concurrency. W6 opens the full range; the
+  matching NetworkPolicy admits the same range so a future
+  cluster-default-deny baseline doesn't silently break ICE.
+* **NetworkPolicy `coturn-relay-ports`** admits UDP 3478,
+  TCP 3478, TCP 5349, and UDP 49152-65535. Egress is wide open
+  (a TURN server's job is to NAT-traverse to arbitrary public
+  peers; restricting egress defeats the purpose).
+* **NLB annotations** — Service is annotated for `aws-load-balancer-type=nlb`
+  + `target-type=ip` so the W5-provisioned EKS cluster terminates
+  the public IP with a low-overhead NLB rather than the default
+  classic ELB. `externalTrafficPolicy: Local` preserves the
+  client source IP (coturn needs the real IP to mint relay
+  candidates).
+* **`readOnlyRootFilesystem: true` + `runAsNonRoot: true`.**
+  Coturn binds 3478 + 5349 — both >1024 — so it does NOT need
+  `CAP_NET_BIND_SERVICE`. Defence-in-depth.
+
+### 9.2 Apply runbook
+
+Pre-requisite: SSM key seeded per §5.1 (HMAC secret).
+
+```bash
+# 1. Seed the HMAC secret (one-time per env).
+openssl rand -base64 48 | \
+    aws ssm put-parameter \
+        --name /mahjong/prod/turn/auth_secret \
+        --type SecureString \
+        --value file:///dev/stdin
+
+# 2. Apply the W6 base resources via the prod overlay (the prod
+#    overlay patches `realm`, `external-ip`, and the
+#    ClusterSecretStore name).
+kubectl apply -k infra/k8s/overlays/prod/
+
+# 3. Verify both replicas land in different AZs.
+kubectl -n mahjong-prod get pods -l app.kubernetes.io/name=coturn \
+    -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,AZ:.spec.topology
+# Expect: 2 pods, two different AZs.
+
+# 4. Verify the NetworkPolicy applied.
+kubectl -n mahjong-prod describe networkpolicy coturn-relay-ports
+# Expect: ports 3478 UDP/TCP, 5349 TCP, 49152-65535 UDP.
+
+# 5. Smoke-test from a client (use `turnutils_uclient` from the
+#    coturn package on any laptop):
+turnutils_uclient -v \
+    -u "$(date -d '+1 hour' +%s):smoke" \
+    -w "$(echo -n "$(date -d '+1 hour' +%s):smoke" | openssl dgst -sha1 -hmac "$(aws ssm get-parameter --name /mahjong/prod/turn/auth_secret --with-decryption --query Parameter.Value --output text)" -binary | base64)" \
+    turn.mahjong.example.com 3478
+# Expect: "RELAY-CONNECT created" within ~2 s.
+```
+
+### 9.3 Cutover from Wave 2 → Wave 6
+
+The W2 single-replica `turn-server.yaml` resources (`turn-server`
+Deployment + `turn-server` Service + `turn-server-config` ConfigMap)
+stay in place for staging. The W6 `coturn-*` resources are
+parallel-deployed in prod first; once verified, the operator deletes
+the W2 resources in prod:
+
+```bash
+kubectl -n mahjong-prod delete deployment turn-server
+kubectl -n mahjong-prod delete service turn-server
+kubectl -n mahjong-prod delete configmap turn-server-config
+# DNS A-record stays — both Services have the same public IP if the
+# operator pre-binds via `loadBalancerIP` (single IP, two Services
+# disallowed) OR cuts DNS over from the W2 LB to the W6 LB in a
+# coordinated step. Recommended: blue-green via separate DNS
+# records (`turn.mahjong.example.com` → W6 LB; W2 LB IP
+# decommissioned after a 24h cool-down).
+```
+
+### 9.4 Cross-references
+
+* `infra/k8s/base/coturn-deployment.yaml` — Deployment + Service +
+  NetworkPolicy (W6 production shape).
+* `infra/k8s/base/coturn-configmap.yaml` — turnserver.conf.
+* `infra/k8s/base/coturn-secret.yaml` — ExternalSecret for
+  `coturn-static-auth-secret`.
+* `docs/admission-policy.md` — if cluster-default-deny lands, the
+  W6 NetworkPolicy is the canonical TURN admit rule (else ICE
+  silently breaks).

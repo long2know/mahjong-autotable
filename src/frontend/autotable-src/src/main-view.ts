@@ -2,15 +2,35 @@ import { Scene, Camera, WebGLRenderer, Vector2, Vector3, Group, AmbientLight, Di
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
-import Stats from 'three/examples/jsm/libs/stats.module.js';
 
 import { World } from './world';
 
 const RATIO = 1.5;
 
+// Phase K Wave 6 — Tree-shake the dev-only FPS overlay out of the
+// production build.  Wave 5's `three-renderer.<hash>.js` carried
+// `three/examples/jsm/libs/stats.module.js` even though the FPS panel
+// has no production owner — every user paid for a debug widget they
+// could not see (the DOM node was appended to `#full` but pinned
+// off-screen by `style.right = '0'`).  Wave 6 swaps the static import
+// for a lazy `?stats=1` query-string opt-in: the dev tool still works
+// (`?stats=1` triggers a dynamic import of `stats.module.js`), the
+// production user no longer fetches it.  See
+// docs/frontend-three-budget.md for the full add-on audit.
+interface StatsLike {
+  readonly dom: HTMLElement;
+  update(): void;
+}
+
+const isStatsEnabled = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try { return /[?&]stats=1\b/.test(window.location.search); }
+  catch { return false; }
+};
+
 export class MainView {
   private main: HTMLElement;
-  private stats: Stats;
+  private stats: StatsLike | null = null;
   private perspective = false;
 
   private scene: Scene;
@@ -50,11 +70,19 @@ export class MainView {
     this.setupLights();
     this.setupRendering();
 
-    this.stats = new Stats(); // @ts-ignore
-    this.stats.dom.style.left = 'auto';
-    this.stats.dom.style.right = '0';
-    const full = document.getElementById('full')!;
-    full.appendChild(this.stats.dom);
+    // Phase K Wave 6 — Dev-only FPS overlay (lazy).  Only loaded when
+    // the URL carries `?stats=1`; the production cold-load no longer
+    // ships ~3 kB of stats.module.js minified.
+    if (isStatsEnabled()) {
+      void import('three/examples/jsm/libs/stats.module.js').then(mod => {
+        const StatsCtor = (mod as { default: new () => StatsLike }).default;
+        const stats = new StatsCtor();
+        stats.dom.style.left = 'auto';
+        stats.dom.style.right = '0';
+        document.getElementById('full')?.appendChild(stats.dom);
+        this.stats = stats;
+      }).catch(() => { /* dev-only — ignore failures */ });
+    }
   }
 
   private setupLights(): void {
@@ -187,7 +215,7 @@ export class MainView {
 
   render(): void {
     this.composer.render();
-    this.stats.update();
+    this.stats?.update();
   }
 
   updateViewport(): void {

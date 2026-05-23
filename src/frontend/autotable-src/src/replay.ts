@@ -278,6 +278,29 @@ export class Replay {
       // the replay rather than the original lobby surface.
       this.screenEl.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
+    // Phase K Wave 6 — Lazy-load the AI commentary panel.  Only the
+    // server-replay path has a stable gameId so we only fetch the
+    // chunk here (the in-memory `open()` path has no commentary
+    // source yet).  Failures inside the panel are self-contained;
+    // the replay viewer keeps working.
+    void this.mountCommentaryPanel(payload.gameId);
+  }
+
+  /**
+   * Phase K Wave 6 — Dynamic-import the commentary chunk and mount
+   * it inside `#replay-commentary-host`.  No-op if the host element
+   * isn't in the DOM (older `index.html` snapshots).  All failures
+   * are swallowed — the replay viewer never depends on commentary.
+   */
+  private async mountCommentaryPanel(gameId: string): Promise<void> {
+    const host = document.getElementById('replay-commentary-host');
+    if (host === null || gameId === '') return;
+    try {
+      const mod = await import('./commentary-panel');
+      await mod.openCommentaryPanel(host, gameId);
+    } catch {
+      /* commentary is best-effort; never tear down the replay */
+    }
   }
 
   /** Convert flat ServerReplayEvent[] → per-hand ReplayMove[] buckets. */
@@ -325,6 +348,19 @@ export class Replay {
     this.stopPlay();
     this.screenEl.classList.remove('replay-open');
     this.screenEl.setAttribute('aria-hidden', 'true');
+    // Phase K Wave 6 — Tear down the commentary panel so a re-open
+    // for a different game can re-fetch.  Best-effort — the dynamic
+    // import may not have resolved.
+    void this.unmountCommentaryPanel();
+  }
+
+  private async unmountCommentaryPanel(): Promise<void> {
+    try {
+      const mod = await import('./commentary-panel');
+      mod.closeCommentaryPanel();
+    } catch {
+      /* never resolved — nothing to tear down */
+    }
   }
 
   // ── DOM wiring ─────────────────────────────────────────────────────

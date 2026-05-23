@@ -21,6 +21,12 @@
     <link href="img/icon-96.auto.png" rel="apple-touch-icon" sizes="96x96">
     <link href="img/icon-32.auto.png" rel="shortcut icon" sizes="32x32">
     <link href="img/icon-16.auto.png" rel="shortcut icon" sizes="16x16">
+    <!-- Phase K Wave 6 — Larger PWA icons (192/512 + maskable 512)
+         so Android's home-screen install affordance renders the
+         high-resolution glyph + the maskable variant honours safe-
+         zone padding inside the launcher's circle/squircle mask. -->
+    <link href="img/icon-192.auto.png" rel="apple-touch-icon" sizes="192x192">
+    <link href="img/icon-512.auto.png" rel="apple-touch-icon" sizes="512x512">
     <link rel="stylesheet" href="./node_modules/bootstrap/dist/css/bootstrap.css">
     <link rel="stylesheet" href="./src/style.css">
     <!-- Phase J Wave 5 — public matchmaking lobby, profile drawer,
@@ -831,6 +837,17 @@
                     <h4 class="replay-side-title">Move log</h4>
                     <div id="replay-move-log" class="replay-move-log"></div>
                 </aside>
+                <!-- Phase K Wave 6 — AI commentary side-panel mount
+                     point.  The `commentary-panel.<hash>.js` chunk is
+                     dynamic-imported by `replay.ts:openServer()` and
+                     anchors a `data-testid="commentary-panel"` element
+                     inside this host.  Until Bishop's W6 endpoint
+                     lands, the panel surfaces a "Phase L feature —
+                     not yet available" placeholder. -->
+                <aside id="replay-commentary-host"
+                       class="replay-side-pane replay-commentary-host"
+                       aria-label="AI commentary"
+                       data-testid="replay-commentary-host"></aside>
             </div>
             <div class="replay-footer" role="group"
                  aria-label="Replay playback controls">

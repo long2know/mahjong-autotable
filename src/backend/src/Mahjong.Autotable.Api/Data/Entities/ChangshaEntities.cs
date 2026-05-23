@@ -355,6 +355,27 @@ public class ReconnectAuditEntry
     /// <summary>Phase K Wave 4 — Bishop. Tournament admin reseed audit row.</summary>
     public const string KindTournamentSeeded = "tournament.seeded";
 
+    /// <summary>Phase K Wave 6 — Bishop. HLS livestream recording
+    /// started for a table by an admin / dealer. <see cref="PlayerId"/>
+    /// records the caller; <see cref="Detail"/> carries the table /
+    /// game id (Guid "N" form) so the trail joins back to the
+    /// game row without a separate lookup.</summary>
+    public const string KindVoiceLivestreamStart = "voice.livestream.start";
+
+    /// <summary>Phase K Wave 6 — Bishop. HLS livestream recording
+    /// stopped for a table. Paired with <see cref="KindVoiceLivestreamStart"/>;
+    /// the trail records both lifecycle transitions so operators can
+    /// reconcile recording duration without joining to the encoder
+    /// state.</summary>
+    public const string KindVoiceLivestreamStop = "voice.livestream.stop";
+
+    /// <summary>Phase K Wave 6 — Bishop. AI commentary generation
+    /// triggered for a completed game by an admin caller. The Wave-6
+    /// surface ships the stub generator; the real LLM-driven
+    /// commentary lands in Phase L behind the same audit Kind so
+    /// operator dashboards stay aligned.</summary>
+    public const string KindCommentaryReplayRequested = "commentary.replay.requested";
+
     /// <summary>Phase K Wave 2 — free-form classifier payload (tournament
     /// round number, forfeit reason, voice tableId). Nullable so existing
     /// Wave-9 rows backfill clean.</summary>

@@ -2224,3 +2224,110 @@ notes.
 (1m 39s; +113 over Wave-4 closeout baseline of 1232; 22 new
 Bishop facts plus Vasquez's broader `Phase_K_W5/` surface plus
 Hicks's frontend pin updates, every one green).
+
+---
+
+## 2025-XX-XX — Phase K Wave 6 closeout
+
+**Branch:** `stlong/phase-k-wave-6-bringup`
+**Scope:** eight scoped W6 deliverables — RS256 JWT migration,
+voice livestream HLS controller stub, WebRTC SFU spectator hub +
+sizing memo, JWKS header tuning (folded into RS256), AI commentary
+stub API, Swiss + double-elimination bracket generators, OAuth
+production runbook (zero-downtime dev→prod migration), and OIDC
+discovery stub (folded into RS256).
+
+**Author hygiene — Wave-6 hardening.** Started the wave by
+formalising the per-invocation `git -c user.name=... -c user.email=...`
+mantra. NEVER touch `git config --local user.name` again. Every
+state-mutating sequence wraps in
+`flock -w 120 9 ... 9>/tmp/squad-git-lock` to serialize against
+sibling agents.
+
+**Implementation surfaces.**
+
+- **RS256 JWT.** `Auth:JwtAlgorithm` config toggle (default
+  `HS256`); `Auth:JwtRsaKeys` array of PEM RSA keys (first =
+  active). `JwtRsaSigningKey` derives kid from SHA-256 of SPKI
+  (RFC 7517 §4.5). `JwtIssuingService.IssueAsync` branches on
+  algorithm; `JwtValidationService` accepts both families but
+  refuses cross-algorithm tokens (blocks the CVE-2015-9235
+  algorithm-confusion vector). `AuthTokenController.Jwks()`
+  returns 200 + real JWKS on RS256 (`Cache-Control: public,
+  max-age=3600`) or 404 + structured body on HS256
+  (`max-age=60`; `reason: "jwt-algorithm-is-hs256"`;
+  `migrateTo: "RS256"`). `JwtAlgorithmStartupLogger`
+  (`IStartupFilter`) emits a single warning when running HS256.
+- **Voice livestream.** `ILivestreamRecorder` interface +
+  `InMemoryLivestreamRecorder` stub (ConcurrentDictionary +
+  canonical m3u8 + 1-byte stub-000.ts). `VoiceLivestreamController`
+  at `/api/voice/livestream/{gameId}` exposes start/stop/playlist/
+  segment routes; owner-or-admin gate on writes. Audit Kinds
+  `voice.livestream.start` + `voice.livestream.stop` added to
+  `ReconnectAuditEntry`.
+- **Spectator voice hub.** `SpectatorVoiceHub` SignalR Hub at
+  `/hubs/voice/spectator`. Single method `JoinSpectatorVoice`
+  returns `{ Ok, Reason?, SfuEndpoint?, PeerId? }` with stub
+  endpoint `sfu://stub/{tableId}`. Authentication via
+  `PlayerIdentityService.ResolveFromCookie` (the *actual* method
+  name — I tripped on `GetIdFromCookie` first; fixed mid-session).
+- **AI commentary.** `ICommentaryGenerator` interface +
+  `StubCommentaryGenerator` (returns one canonical item: *"Game
+  commentary not yet available — Phase L feature."*).
+  `CommentaryController` at `/api/games/{id}/commentary` exposes
+  POST (admin) + GET (anon) plus `/commentary/replay` variants.
+  Audit Kind `commentary.replay.requested`.
+- **Brackets.** Typed `BracketFormat` enum (`SingleElimination`,
+  `RoundRobin`, `Swiss`, `DoubleElimination`). `IBracketGenerator`
+  + `TournamentBracketGenerator` factory + four concrete impls.
+  `SwissBracket` uses a 4-round Latin-square baseline (rotation
+  `(round-1) % half`); `DoubleEliminationBracket` emits WB round
+  1 + LB round 1 placeholders + grand-final slot.
+  `TournamentService.IsKnownFormat` accepts `"double-elimination"`;
+  `PairAllAsync` switch grows a `double-elimination` case that
+  persists WB round 1 only (LB resurrection is Phase L);
+  `MaybeAdvanceRoundAsync` shares the single-elim advancement
+  path. Determinism contract pinned by
+  `Phase_K_W6/Bishop/BracketGeneratorDeterminismTests` (9 tests).
+- **OIDC discovery.** Top-level
+  `GET /.well-known/openid-configuration` minimal-API route +
+  `AuthTokenController.OpenIdConfiguration()` action. RS256 → 200
+  + canonical OIDC fields + `max-age=3600`; HS256 → 404 + structured
+  `{ reason: "oidc-discovery-disabled" }` + `max-age=60`.
+- **OAuth production runbook.** `docs/oauth-production-setup.md`
+  §7 added (110 lines): per-provider verification + scope
+  justifications (Google), admin-consent runbook (Microsoft),
+  rate-limit math (GitHub), 6-step zero-downtime dev→prod
+  migration playbook, Phase L forward-compat hooks.
+
+**Cross-lane sighting.** While running the closeout gate I caught
+`K8sManifestSanityTests.BaseKustomization_IncludesAllResources`
+red. The `coturn-configmap.yaml` resource has been missing from
+`infra/k8s/base/kustomization.yaml` since Wave 2. Logged in the
+memo's forward-notes for Apone — outside Bishop's lane so I did
+not touch the YAML.
+
+**Sibling collaboration.** Vasquez had already landed
+`Phase_K_W6/BishopW6SurfaceTests.cs` (20.3 KB) on the bring-up
+branch by the time I started. Read his test paths first and built
+each implementation to match (e.g. `/api/voice/livestream/{gameId}/
+playlist.m3u8` rather than my initial `/api/tables/{id}/...`
+guess). The W5 `JwksEndpointContractTests` needed a W6 contract
+flip (`no-store` → `public, max-age=*` + body fields) to keep
+green under the new behaviour; that's the only previously-mine
+test that needed updating. Also touched a Wave-3 test
+(`GameVoiceEnabledFlagTests.GameVoiceEnabled_VoiceHubJoin_StillPublic`)
+because my new `SpectatorVoiceHub` broke a name-contains hub
+discovery — patched the discovery to prefer exact `VoiceHub`
+first, then fall back to hubs that actually expose `JoinVoice`.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-6.md` —
+per-deliverable design, contract-test coverage, forward-looking
+notes including the Apone DevOps cross-lane fix.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx
+--nologo` → **Passed: 1421, Failed: 1, Skipped: 0** (2m 38s; +76
+over Wave-5 closeout baseline of 1345). The single failure
+(`K8sManifestSanityTests`) is Apone DevOps cross-lane and has
+been red since the coturn files landed in Wave 2 — flagged in
+the memo for Wave 7.
