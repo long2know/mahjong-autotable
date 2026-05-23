@@ -88,6 +88,14 @@ public sealed class OAuthProviderHealthCheck
             result["github"] = await ProbeAsync("github",
                 "https://api.github.com/zen", ct);
         }
+        // Phase K Wave 3 — Bishop. Microsoft probe targets the v2.0
+        // discovery document on the configured tenant (default `common`).
+        if (IsConfigured(opts.Microsoft))
+        {
+            var tenant = string.IsNullOrWhiteSpace(opts.Microsoft.TenantId) ? "common" : opts.Microsoft.TenantId;
+            result["microsoft"] = await ProbeAsync("microsoft",
+                $"https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration", ct);
+        }
         return result;
     }
 

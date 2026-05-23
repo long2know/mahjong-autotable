@@ -55,6 +55,8 @@ public sealed class OAuthService
     {
         "google" => _options.Google,
         "github" => _options.GitHub,
+        // Phase K Wave 3 — Bishop. Microsoft (Azure AD / Entra ID).
+        "microsoft" => _options.Microsoft,
         _ => new OAuthProviderOptions(),
     };
 
@@ -98,8 +100,13 @@ public sealed class OAuthService
             query["code_challenge"] = codeChallenge;
             query["code_challenge_method"] = "S256";
         }
-        if (!string.IsNullOrEmpty(nonce) && provider.Equals("google", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrEmpty(nonce)
+            && (provider.Equals("google", StringComparison.OrdinalIgnoreCase)
+                || provider.Equals("microsoft", StringComparison.OrdinalIgnoreCase)))
         {
+            // Phase K Wave 3 — Bishop. Microsoft v2.0 also issues an
+            // id_token; carry the nonce through so the discovery-aware
+            // verifier can bind it like the Google path.
             query["nonce"] = nonce;
         }
         return QueryHelpers.AddQueryString(authorize, query);
@@ -278,6 +285,33 @@ public sealed class OAuthService
                 // magic link.
                 return new OAuthUserInfo(sub, email, false, name);
             }
+
+            if (provider.Equals("microsoft", StringComparison.OrdinalIgnoreCase))
+            {
+                // Phase K Wave 3 — Bishop. Microsoft Graph /me + Entra
+                // ID userinfo both surface `id` (Graph) and `sub`/`oid`
+                // (OIDC userinfo). Prefer `oid` (immutable across apps)
+                // then `sub`, then Graph `id`. Email is `mail` (Graph)
+                // / `email` (OIDC userinfo); display name is
+                // `displayName` (Graph) / `name` (OIDC).
+                string? sub = null;
+                if (root.TryGetProperty("oid", out var oid)) sub = oid.GetString();
+                if (string.IsNullOrEmpty(sub) && root.TryGetProperty("sub", out var sm)) sub = sm.GetString();
+                if (string.IsNullOrEmpty(sub) && root.TryGetProperty("id", out var idm)) sub = idm.GetString();
+                if (string.IsNullOrEmpty(sub)) return null;
+                string? email = null;
+                if (root.TryGetProperty("email", out var em)) email = em.GetString();
+                if (string.IsNullOrWhiteSpace(email) && root.TryGetProperty("mail", out var mail)) email = mail.GetString();
+                if (string.IsNullOrWhiteSpace(email) && root.TryGetProperty("userPrincipalName", out var upn)) email = upn.GetString();
+                string? name = null;
+                if (root.TryGetProperty("name", out var nm)) name = nm.GetString();
+                if (string.IsNullOrWhiteSpace(name) && root.TryGetProperty("displayName", out var dn)) name = dn.GetString();
+                // Microsoft Graph exposes the work-account verification
+                // out-of-band; for now treat returned email as
+                // unverified pending a magic-link confirmation, matching
+                // the GitHub path.
+                return new OAuthUserInfo(sub, email, false, name);
+            }
         }
         catch (JsonException)
         {
@@ -304,6 +338,25 @@ public sealed class OAuthService
                 string.IsNullOrEmpty(opts.TokenEndpoint) ? "https://github.com/login/oauth/access_token" : opts.TokenEndpoint,
                 string.IsNullOrEmpty(opts.UserInfoEndpoint) ? "https://api.github.com/user" : opts.UserInfoEndpoint,
                 "read:user user:email");
+        }
+        if (provider.Equals("microsoft", StringComparison.OrdinalIgnoreCase))
+        {
+            // Phase K Wave 3 — Bishop. Microsoft v2.0 endpoints. The
+            // tenant segment is interpolated from `opts.TenantId`
+            // (default `common`). Operators can also pin the full URL
+            // via the per-endpoint overrides, which take precedence.
+            var tenant = string.IsNullOrWhiteSpace(opts.TenantId) ? "common" : opts.TenantId;
+            return (
+                string.IsNullOrEmpty(opts.AuthorizationEndpoint)
+                    ? $"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize"
+                    : opts.AuthorizationEndpoint,
+                string.IsNullOrEmpty(opts.TokenEndpoint)
+                    ? $"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+                    : opts.TokenEndpoint,
+                string.IsNullOrEmpty(opts.UserInfoEndpoint)
+                    ? "https://graph.microsoft.com/oidc/userinfo"
+                    : opts.UserInfoEndpoint,
+                "openid profile email User.Read");
         }
         return (opts.AuthorizationEndpoint, opts.TokenEndpoint, opts.UserInfoEndpoint, opts.Scopes);
     }

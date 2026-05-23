@@ -30,6 +30,18 @@ public sealed class OAuthDiscoveryOptions
     /// of staleness on average.</summary>
     public int RefreshIntervalHours { get; set; } = 6;
 
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Optional finer-grained refresh knob in
+    /// SECONDS, taking precedence over <see cref="RefreshIntervalHours"/>
+    /// when non-zero. Lets operators dial the cadence below the 1h
+    /// floor implied by the Hours knob (e.g. set
+    /// <c>RefreshIntervalSeconds = 60</c> in integration / staging
+    /// environments to verify the refresher round-trips without
+    /// waiting six hours). Default 0 ⇒ fall back to
+    /// <see cref="RefreshIntervalHours"/>.
+    /// </summary>
+    public int RefreshIntervalSeconds { get; set; } = 0;
+
     /// <summary>When true, the service NEVER reaches out to the upstream
     /// — it falls straight back to its cached value (or hardcoded
     /// constants). Xunit + air-gapped environments set this via
@@ -106,6 +118,22 @@ public sealed class OAuthDiscoveryService
     /// configured TTL when the upstream returns 200 + valid JSON.</summary>
     public const string GoogleDiscoveryUrl = "https://accounts.google.com/.well-known/openid-configuration";
 
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Default Microsoft v2.0 OIDC discovery
+    /// URL. <c>common</c> is the multi-tenant + personal-account
+    /// metadata endpoint; per-tenant overrides flow through
+    /// <see cref="OAuthProviderOptions.TenantId"/> and the runtime
+    /// re-points <see cref="FetchMicrosoftAsync"/> at the matching
+    /// <c>https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration</c>
+    /// when the tenant is non-default.
+    /// </summary>
+    public const string MicrosoftDiscoveryUrl = "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration";
+
+    /// <summary>Phase K Wave 3 — canonical Microsoft v2.0 issuer
+    /// pattern used as a fallback when the discovery document is
+    /// unparseable.</summary>
+    public const string MicrosoftIssuer = "https://login.microsoftonline.com/common/v2.0";
+
     private readonly IHttpClientFactory? _httpClientFactory;
     private readonly OAuthDiscoveryOptions _options;
     private readonly ILogger<OAuthDiscoveryService> _logger;
@@ -155,6 +183,7 @@ public sealed class OAuthDiscoveryService
         {
             "github" => UpsertGitHub(),
             "google" => await FetchGoogleAsync(ct),
+            "microsoft" => await FetchMicrosoftAsync(ct),
             _ => cached?.Document,
         };
     }
@@ -169,6 +198,11 @@ public sealed class OAuthDiscoveryService
         _ = UpsertGitHub();
         try { _ = await FetchGoogleAsync(ct); }
         catch (Exception ex) { _logger.LogDebug(ex, "OAuth discovery refresh: Google fetch failed (cache retained)"); }
+        // Phase K Wave 3 — Bishop. Microsoft refresh runs in the same
+        // best-effort sweep; an Entra outage does NOT bleed into the
+        // other providers' freshness.
+        try { _ = await FetchMicrosoftAsync(ct); }
+        catch (Exception ex) { _logger.LogDebug(ex, "OAuth discovery refresh: Microsoft fetch failed (cache retained)"); }
     }
 
     /// <summary>
@@ -228,7 +262,7 @@ public sealed class OAuthDiscoveryService
                 return _cache.TryGetValue("google", out var cached) ? cached.Document : null;
             }
             var body = await resp.Content.ReadAsStringAsync(ct);
-            var parsed = JsonSerializer.Deserialize<GoogleDiscoveryPayload>(body);
+            var parsed = JsonSerializer.Deserialize<OidcDiscoveryPayload>(body);
             if (parsed is null
                 || string.IsNullOrWhiteSpace(parsed.AuthorizationEndpoint)
                 || string.IsNullOrWhiteSpace(parsed.TokenEndpoint))
@@ -253,6 +287,57 @@ public sealed class OAuthDiscoveryService
         }
     }
 
+    /// <summary>
+    /// Phase K Wave 3 — Bishop. Mirror of <see cref="FetchGoogleAsync"/>
+    /// for the Microsoft v2.0 endpoint. Microsoft publishes a per-tenant
+    /// discovery document; we always pull <c>common</c> here so the
+    /// cache stays cheap and the per-tenant tenant-id substitution
+    /// happens at authorize-URL build time in
+    /// <see cref="OAuthService.ResolveProviderEndpoints"/>.
+    /// </summary>
+    private async Task<OAuthDiscoveryDocument?> FetchMicrosoftAsync(CancellationToken ct)
+    {
+        if (_options.SkipNetwork || _httpClientFactory is null)
+        {
+            return _cache.TryGetValue("microsoft", out var cached) ? cached.Document : null;
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("oauth");
+            client.Timeout = TimeSpan.FromSeconds(10);
+            using var resp = await client.GetAsync(MicrosoftDiscoveryUrl, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                MarkLastError("microsoft", $"HTTP {(int)resp.StatusCode}");
+                return _cache.TryGetValue("microsoft", out var cached) ? cached.Document : null;
+            }
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            var parsed = JsonSerializer.Deserialize<OidcDiscoveryPayload>(body);
+            if (parsed is null
+                || string.IsNullOrWhiteSpace(parsed.AuthorizationEndpoint)
+                || string.IsNullOrWhiteSpace(parsed.TokenEndpoint))
+            {
+                MarkLastError("microsoft", "missing-fields");
+                return _cache.TryGetValue("microsoft", out var cached) ? cached.Document : null;
+            }
+            var doc = new OAuthDiscoveryDocument(
+                Issuer: parsed.Issuer ?? MicrosoftIssuer,
+                AuthorizationEndpoint: parsed.AuthorizationEndpoint!,
+                TokenEndpoint: parsed.TokenEndpoint!,
+                UserinfoEndpoint: parsed.UserinfoEndpoint ?? "https://graph.microsoft.com/oidc/userinfo",
+                JwksUri: parsed.JwksUri);
+            _cache["microsoft"] = new CachedEntry(doc, DateTime.UtcNow, LastError: null);
+            return doc;
+        }
+        catch (Exception ex)
+        {
+            MarkLastError("microsoft", ex.Message);
+            _logger.LogDebug(ex, "Microsoft OIDC discovery fetch failed; cached doc retained.");
+            return _cache.TryGetValue("microsoft", out var cached) ? cached.Document : null;
+        }
+    }
+
     private void MarkLastError(string provider, string error)
     {
         if (_cache.TryGetValue(provider, out var existing))
@@ -263,7 +348,7 @@ public sealed class OAuthDiscoveryService
 
     private sealed record CachedEntry(OAuthDiscoveryDocument Document, DateTime FetchedAtUtc, string? LastError);
 
-    private sealed class GoogleDiscoveryPayload
+    private sealed class OidcDiscoveryPayload
     {
         [JsonPropertyName("issuer")] public string? Issuer { get; set; }
         [JsonPropertyName("authorization_endpoint")] public string? AuthorizationEndpoint { get; set; }
