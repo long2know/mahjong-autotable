@@ -241,6 +241,24 @@ The following Big Win patterns are supported in v1. All of these **do NOT requir
 | **All Pungs** | 碰碰胡 (Pèng Pèng Hú) | 4 pungs/kongs + any pair. No sequences. May be open. |
 | **Full Flush** | 清一色 (Qīng Yī Sè) | All tiles from one suit only. Any melds (sequences allowed). May be open. |
 | **Seven Pairs** | 七对子 (Qī Duì Zi) | Exactly 7 pairs. Must be concealed. |
+| **Nine Terminals** | 九幺 / 九门十三幺 (Jiǔ-Yāo) | Every tile is rank 1 or rank 9 (any suit). All six distinct terminal tiles (1万 9万 1筒 9筒 1条 9条) present at least once. **Loose default** — see note below. |
+
+#### 4.2.1 Nine Terminals — Strict vs Loose Default (Phase J Wave 4)
+
+There are two readings of 九幺 in the wild:
+
+- **Loose** (v1 default): every tile is rank 1 or 9 *and* all six distinct terminals appear at least once. No structural 4-sets-plus-pair requirement. The hand is recognised as a Big Win on rank-bounds + six-distinct alone (analogous to the classical 十三幺 / ThirteenOrphans shape, which bypasses decomposition by convention).
+- **Strict** (not implemented in v1; reserved for a future game-options flag): every tile is rank 1 or 9 *and* the hand decomposes as 4 valid sets + 1 pair *and* all six terminals appear.
+
+**Decision:** v1 ships the **loose** definition. Rationale:
+
+- Matches the descriptions of 九幺 on **MahjongPros** ("Changsha Mahjong patterns") and the **Baidu Baike** entry for 长沙麻将 (section 牌型 / hand patterns), both of which frame the pattern in terms of rank-bounds + six-distinct without a strict structural clause.
+- Consistent with Changsha's "random eye" exemption for Big Wins (see §4.2 intro) — Big Win shapes do not require the conventional 258-pair eye.
+- Accessible to casual players and streamers; tightening to strict 4+1 over the 108-tile Changsha deck (24 physical terminal tiles total across all four copies of each of the six logical terminals) makes the pattern effectively unreachable, contradicting source descriptions that frame 九幺 as "rare but achievable".
+
+A future tournament option (e.g. `gameOptions.nineTerminalsStrict = true`) could add the strict variant without breaking v1 behaviour; the loose path remains the default. No options surface is implemented in this wave — the door is simply left open in `Changsha/WinDetector.cs::CheckNineTerminals` doc comments.
+
+**Source code:** `Changsha/WinDetector.cs::CheckNineTerminals` implements the loose check; `WinPatternTests.NineTerminals_RankBoundsOnly` pins the binding semantic.
 
 ### 4.3 Patterns Deferred to V2
 

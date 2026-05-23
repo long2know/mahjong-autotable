@@ -370,6 +370,25 @@ public sealed class ChangshaWinDetector : IWinDetector
     /// to ThirteenOrphans). Treated as a Big Win at the same precedence tier as FullFlush.
     /// See Ripley's Phase H design memo §2.1 + Bishop's Phase H Wave 2 memo for the
     /// structural-validity deviation footnote.
+    ///
+    /// <para><b>Phase J Wave 4 — strict-vs-loose default decision:</b> the "loose" reading
+    /// above (rank-bounds + six-distinct, no 4-sets/pair requirement) is the canonical
+    /// v1 default. The alternative "strict" reading — every tile is rank 1 or 9 AND the
+    /// hand decomposes as 4 valid sets + 1 pair AND all six terminals appear — is left
+    /// unimplemented for v1; the door is intentionally open via a future game-options
+    /// flag (see <c>docs/rules/changsha-spec.md §4.2</c>). Rationale: the loose form is
+    /// the variant beginners and casual streamers describe on MahjongPros and the Baidu
+    /// Baike 长沙麻将 beginner-rules page — accessible, rare enough to feel special,
+    /// and consistent with Changsha's "random eye" exemption for Big Win shapes (see
+    /// spec §4.2). Tightening the rule to strict 4+1 would make the pattern essentially
+    /// unreachable in the 108-tile Changsha deck given only six logical terminals (24
+    /// physical tiles total across all four copies), which contradicts the source
+    /// descriptions framing 九幺 as "achievable but rare". Citations: MahjongPros
+    /// "Changsha Mahjong patterns" (web), Baidu Baike entry 长沙麻将 (section 牌型),
+    /// Vasquez's Phase H Wave 2 acceptance memo (consulted same sources). The loose
+    /// implementation also matches the spec's classical analogue 十三幺 (ThirteenOrphans
+    /// in honor-bearing rulesets) which bypasses structural decomposition by
+    /// convention.</para>
     /// </summary>
     private static bool CheckNineTerminals(List<int> concealedTileIds, List<Meld> melds)
     {
