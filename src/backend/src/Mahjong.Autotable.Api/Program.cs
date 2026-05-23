@@ -3,10 +3,12 @@ using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Patterns;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
+using Mahjong.Autotable.Api.Leaderboard;
 using Mahjong.Autotable.Api.Matchmaking;
 using Mahjong.Autotable.Api.Observability;
 using Mahjong.Autotable.Api.Persistence;
 using Mahjong.Autotable.Api.Players;
+using Mahjong.Autotable.Api.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using System.Text.Json;
@@ -68,24 +70,60 @@ builder.Services.AddSingleton<AutotableConnectionManager>();
 builder.Services.AddSingleton<PlayerProfileService>();
 builder.Services.AddSingleton<MatchmakingService>();
 
+// Phase J Wave 6 — identity + leaderboard services. PlayerIdentityService
+// owns the mahjong_pid cookie (mint/read/refresh) consumed by both the
+// REST identity endpoint and the autotable WS upgrade handshake;
+// LeaderboardService backs GET /api/leaderboard. Both are thin stateless
+// wrappers around HttpContext + EF Core scopes, so singleton lifetime is
+// fine.
+builder.Services.AddSingleton<PlayerIdentityService>();
+builder.Services.AddSingleton<LeaderboardService>();
+
 const string ChangshaCorsPolicy = "ChangshaCors";
+var configuredOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(options =>
 {
-    // Phase H Wave 1 — the `modern/` Vite frontend (localhost:5173) was deleted in
-    // Phase A; the remaining origins are the Kestrel HTTP/HTTPS endpoints used by
-    // the in-tree `frontend/autotable/` bundle and the SignalR ChangshaHub clients.
-    options.AddPolicy(ChangshaCorsPolicy, policy => policy
-        .WithOrigins(
-            "http://localhost:5114",
-            "https://localhost:7135")
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials());
+    // Phase J Wave 6 — origins now come from configuration (Apone, DevOps).
+    // appsettings.json carries the two localhost dev origins (the Kestrel HTTP
+    // listener and the Parcel dev server); appsettings.Production.json
+    // ships with an empty list so production deploys MUST set
+    // `Cors__AllowedOrigins__0=https://<public-host>` (see docs/secrets.md
+    // and docs/deployment.md § "CORS"). AllowCredentials() is required for
+    // the autotable WS `mahjong_pid` cookie + SignalR cookie auth — which is
+    // why we deliberately do NOT call AllowAnyOrigin() (the framework
+    // rejects that combination at policy-build time).
+    options.AddPolicy(ChangshaCorsPolicy, policy =>
+    {
+        var builderPolicy = policy
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+        if (configuredOrigins.Length > 0)
+        {
+            builderPolicy.WithOrigins(configuredOrigins);
+        }
+    });
 });
+
+// Phase J Wave 6 — production rate limiting (Apone, DevOps). Gated by
+// `RateLimiting:Enabled` so the xUnit `WebApplicationFactory` harness
+// (which boots `Development`) and `dotnet run` keep their unrestricted
+// throughput. See RateLimitingExtensions for the policy contract and
+// docs/deployment.md § "Rate limiting" for the runbook.
+var rateLimitingEnabled = builder.Services.AddMahjongRateLimiting(builder.Configuration);
 
 var app = builder.Build();
 
 app.UseCors(ChangshaCorsPolicy);
+
+if (rateLimitingEnabled)
+{
+    // Phase J Wave 6 — installed only when the gate is on so dev / test
+    // pipelines bypass the middleware entirely.
+    app.UseRateLimiter();
+}
 
 // Raw WebSockets (separate transport from SignalR) — required for the
 // upstream pwmarcz/autotable bundle's WS protocol at /autotable/ws.
@@ -128,7 +166,12 @@ if (Directory.Exists(autotablePath))
     });
 }
 
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "mahjong-autotable-api" }));
+// Phase J Wave 6 — /api/health is a probe surface. Excluded from rate
+// limiting via DisableRateLimiting() (works whether the middleware is
+// registered or not — the attribute is metadata-only when no limiter is
+// wired). Same treatment for /health and /metrics below.
+app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "mahjong-autotable-api" }))
+    .DisableRateLimiting();
 
 // Phase J Wave 3 — Docker HEALTHCHECK + Linux deploy probe (Apone). Returns a
 // stable JSON shape: status="healthy", buildSha from BUILD_SHA env var (or
@@ -147,19 +190,21 @@ app.MapGet("/health", () =>
         uptime = DateTimeOffset.UtcNow - processStartTime,
         version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"
     });
-});
+}).DisableRateLimiting();
 
 app.MapGet("/api/system/persistence", (IConfiguration configuration) =>
 {
     var provider = configuration.GetValue<string>("Persistence:Provider") ?? "Sqlite";
     return Results.Ok(new { provider });
-});
+}).RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
 
 // Phase J Wave 5 — Prometheus scrape endpoint (Apone, DevOps). The body
 // is rendered by Observability.MetricsEndpoint.Render in the canonical
 // text/plain v0.0.4 exposition format. See docs/observability.md for
-// the metric catalog.
-app.MapGet("/metrics", (IServiceProvider services) => MetricsEndpoint.Render(services));
+// the metric catalog. Phase J Wave 6 — explicitly off-limits to rate
+// limiting so the scrape loop doesn't trip on high-cardinality polls.
+app.MapGet("/metrics", (IServiceProvider services) => MetricsEndpoint.Render(services))
+    .DisableRateLimiting();
 
 // Phase J Wave 3 — canonical display ordering for WinPattern values (Hicks's UI).
 // Returns a flat JSON object keyed by the camelCase pattern wire-name (same strings
@@ -174,18 +219,27 @@ app.MapGet("/api/changsha/pattern-ordering", () =>
         map[WinPatternWireName(kvp.Key)] = kvp.Value;
     }
     return Results.Ok(map);
-});
+}).RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
 
+// Phase J Wave 6 — SignalR hubs are long-lived connections; the
+// rate-limiter middleware would only see the initial handshake and then
+// be bypassed for the persistent transport anyway, so leaving the hub
+// route un-limited keeps semantics honest and avoids surprising 429s on
+// the upgrade request when a client reconnects rapidly.
 app.MapHub<ChangshaHub>("/hubs/changsha");
 
 // Phase J Wave 5 — map MVC controllers (MatchmakingController owns
-// GET /api/matchmaking/lobby).
-app.MapControllers();
+// GET /api/matchmaking/lobby). Phase J Wave 6 — controllers under
+// /api/** opt into the token-bucket policy so any future REST endpoint
+// Bishop adds inherits the limit automatically.
+app.MapControllers()
+    .RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
 
 // Autotable WS endpoint — speaks upstream NEW/JOIN/JOINED/UPDATE protocol
 // so the byte-identical autotable.9519e86d.js bundle connects unchanged.
 // Force singleton manager construction so it subscribes to runtime events
-// before any games are created.
+// before any games are created. Phase J Wave 6 — raw WS is a long-lived
+// transport, intentionally unlimited (same reasoning as /hubs/changsha).
 _ = app.Services.GetRequiredService<AutotableConnectionManager>();
 app.MapAutotableWs();
 

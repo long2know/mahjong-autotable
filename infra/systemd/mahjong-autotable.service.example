@@ -1,0 +1,90 @@
+# Mahjong Autotable — systemd unit sample.
+#
+# Phase J Wave 6 (Apone, DevOps). Install path:
+#
+#     sudo install -m 0644 mahjong-autotable.service.example \
+#         /etc/systemd/system/mahjong-autotable.service
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now mahjong-autotable
+#
+# Inspect:
+#
+#     systemctl status mahjong-autotable
+#     journalctl -u mahjong-autotable -f
+#
+# This unit wraps `docker run` so a fresh boot brings the container up
+# automatically and `systemctl restart` is the canonical way to redeploy.
+# If you instead want to run on the Docker daemon's own restart-policy,
+# delete this file and use `--restart unless-stopped` on the docker
+# command — see docs/deployment.md § "Run".
+#
+# The unit assumes:
+#   - Docker is installed and the daemon is running (`docker.service`).
+#   - The image `ghcr.io/long2know/mahjong-autotable:latest` is
+#     pullable.  Tag pin if you want a stable rollback target — see
+#     docs/ci.md for the published tag scheme.
+#   - A named volume `mahjong-data` exists (auto-created on first run).
+#   - You've decided on the public origin for CORS and exported it
+#     via /etc/default/mahjong-autotable (see EnvironmentFile= below).
+
+[Unit]
+Description=Mahjong Autotable (Docker)
+Documentation=https://github.com/long2know/mahjong-autotable
+Documentation=file:///opt/mahjong-autotable/docs/deployment.md
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+# Drop env-var overrides here; the file is optional (`-` prefix). Example:
+#
+#     # /etc/default/mahjong-autotable
+#     IMAGE=ghcr.io/long2know/mahjong-autotable:latest
+#     BUILD_SHA=2026-05-23-rc1
+#     Cors__AllowedOrigins__0=https://mahjong.example.com
+#
+EnvironmentFile=-/etc/default/mahjong-autotable
+Environment=IMAGE=ghcr.io/long2know/mahjong-autotable:latest
+
+# Make the unit idempotent across `systemctl restart`. Failing to find a
+# running container is OK; the `-` prefix tells systemd to ignore the
+# exit code on these pre-start cleanups.
+ExecStartPre=-/usr/bin/docker rm -f mahjong-autotable
+ExecStartPre=/usr/bin/docker pull ${IMAGE}
+
+ExecStart=/usr/bin/docker run \
+    --rm \
+    --name mahjong-autotable \
+    --pull=always \
+    -p 8080:8080 \
+    -v mahjong-data:/data \
+    -e BUILD_SHA=${BUILD_SHA} \
+    -e ASPNETCORE_ENVIRONMENT=Production \
+    -e Cors__AllowedOrigins__0=${Cors__AllowedOrigins__0} \
+    --log-driver json-file \
+    --log-opt max-size=10m \
+    --log-opt max-file=5 \
+    ${IMAGE}
+
+ExecStop=/usr/bin/docker stop mahjong-autotable
+
+# Many concurrent SignalR / WebSocket sockets can blow past the default
+# 1024 ulimit. Raise it here so the .NET runtime + docker daemon have
+# room.
+LimitNOFILE=65536
+
+# Lock down the unit a little. The container itself runs as the .NET
+# runtime user; these are belt-and-braces for the host wrapper.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

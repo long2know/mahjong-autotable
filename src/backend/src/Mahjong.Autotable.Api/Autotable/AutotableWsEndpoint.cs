@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Players;
 
 namespace Mahjong.Autotable.Api.Autotable;
 
@@ -64,7 +65,7 @@ public static class AutotableWsEndpoint
 
     /// <summary>Maps the autotable WS handler onto the application pipeline.</summary>
     public static IEndpointConventionBuilder MapAutotableWs(this IEndpointRouteBuilder endpoints) =>
-        endpoints.Map(Path, async (HttpContext context, AutotableConnectionManager manager) =>
+        endpoints.Map(Path, async (HttpContext context, AutotableConnectionManager manager, PlayerIdentityService identity) =>
         {
             if (!context.WebSockets.IsWebSocketRequest)
             {
@@ -73,8 +74,22 @@ public static class AutotableWsEndpoint
                 return;
             }
 
+            // Phase J Wave 6 — resolve the persistent mahjong_pid cookie
+            // BEFORE accepting the WS upgrade so we can append a Set-Cookie
+            // if the client doesn't have one yet (response headers are
+            // immutable once the WS handshake completes). Mint+write gives
+            // first-time visitors a one-year sliding cookie without forcing
+            // the frontend to call POST /api/identity first.
+            var playerId = identity.ResolveFromCookie(context);
+            if (string.IsNullOrEmpty(playerId))
+            {
+                playerId = identity.Mint();
+                try { identity.WriteCookie(context, playerId); }
+                catch { /* response headers may already be flushed in test harnesses */ }
+            }
+
             using var ws = await context.WebSockets.AcceptWebSocketAsync();
-            await manager.HandleConnectionAsync(ws, context.Request.Query, context.RequestAborted);
+            await manager.HandleConnectionAsync(ws, context.Request.Query, playerId, context.RequestAborted);
         });
 }
 
@@ -150,7 +165,7 @@ public sealed class AutotableConnectionManager : IDisposable
         _relayBinding[runtimeGameId] = relayGameId;
     }
 
-    public async Task HandleConnectionAsync(WebSocket ws, IQueryCollection query, CancellationToken serverShutdown)
+    public async Task HandleConnectionAsync(WebSocket ws, IQueryCollection query, string playerId, CancellationToken serverShutdown)
     {
         // Phase I Wave 3 — honor ?gameId=X. Empty / absent ids fall back to the
         // legacy DefaultGameId so the upstream pwmarcz bundle (which omits the
@@ -220,6 +235,11 @@ public sealed class AutotableConnectionManager : IDisposable
             BotCount = botCount,
             BotDifficulty = botDifficulty,
             IsSpectator = isSpectator,
+            // Phase J Wave 6 — persistent cookie-derived player id (resolved
+            // by AutotableWsEndpoint.MapAutotableWs before the WS upgrade).
+            // Replaces the previous random per-connection token so career
+            // stats and host-promotion key off the same id across reconnects.
+            PlayerId = playerId,
         };
         _connections[connection.Id] = connection;
         _logger.LogInformation(
@@ -378,7 +398,9 @@ public sealed class AutotableConnectionManager : IDisposable
 
         try
         {
-            var runtimeGameId = await EnsureRuntimeBoundAsync(connection.GameId!, ct);
+            // Spectator auto-deal binds the runtime game with no host id —
+            // there is no human player at the table to act as host.
+            var runtimeGameId = await EnsureRuntimeBoundAsync(connection.GameId!, hostPlayerId: null, ct);
             if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
             if (snap.Phase != ChangshaPhase.Seating) return;
 
@@ -501,8 +523,11 @@ public sealed class AutotableConnectionManager : IDisposable
 
         try
         {
-            var runtimeGameId = await EnsureRuntimeBoundAsync(connection.GameId!, ct);
-            await _runtime.TakeSeatAsync(runtimeGameId, connection.PlayerId, seatIndex, ct);
+            var runtimeGameId = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct);
+            // Phase J Wave 6 — pass the persistent player id alongside the
+            // per-connection transport id (the AutotableConnection.Id GUID
+            // serves as the connection-level routing key inside the runtime).
+            await _runtime.TakeSeatAsync(runtimeGameId, connection.PlayerId, connection.Id.ToString("N"), seatIndex, ct);
 
             if (connection.AutoBotFill)
             {
@@ -667,10 +692,15 @@ public sealed class AutotableConnectionManager : IDisposable
     }
 
     /// <summary>
-    /// Lazily binds <paramref name="relayGameId"/> to a Changsha runtime game.
-    /// Idempotent: subsequent calls return the same runtime gameId.
+    /// Lazily binds <paramref name="relayGameId"/> to a Changsha runtime
+    /// game. Idempotent: subsequent calls return the same runtime gameId.
+    /// Phase J Wave 6 — accepts a <paramref name="hostPlayerId"/> so the
+    /// runtime can record a persistent <c>CreatorPlayerId</c> on the new
+    /// game; this is what unblocks autotable-WS games being toggled
+    /// public via the matchmaking service (closes Vasquez's Wave-5 blind
+    /// spot #4 where autotable games carried a null host id).
     /// </summary>
-    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, CancellationToken ct)
+    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct)
     {
         if (_runtimeBinding.TryGetValue(relayGameId, out var existing)) return existing;
 
@@ -680,7 +710,12 @@ public sealed class AutotableConnectionManager : IDisposable
             if (_runtimeBinding.TryGetValue(relayGameId, out existing)) return existing;
             // botSeatIndexes = empty so the runtime starts with all-human seats;
             // we'll convert seats to bots on demand via FillEmptySeatsWithBotsAsync.
-            var runtimeGameId = await _runtime.CreateGameAsync(seed: null, botSeatIndexes: Array.Empty<int>(), hostConnectionId: null, ct);
+            var runtimeGameId = await _runtime.CreateGameAsync(
+                seed: null,
+                botSeatIndexes: Array.Empty<int>(),
+                hostPlayerId: hostPlayerId,
+                hostConnectionId: null,
+                ct);
             _runtimeBinding[relayGameId] = runtimeGameId;
             _relayBinding[runtimeGameId] = relayGameId;
             return runtimeGameId;
@@ -761,7 +796,14 @@ public sealed class AutotableConnectionManager : IDisposable
 
         try
         {
-            await _runtime.HandleDisconnectAsync(connection.PlayerId);
+            // Phase J Wave 6 — pass both the persistent playerId and the
+            // per-connection transport id. The runtime matches
+            // SeatConnections by transport id (so other tabs holding the
+            // same playerId aren't dropped) and uses playerId for host-
+            // promotion / stats keying. The AutotableConnection.Id GUID
+            // serves as the transport key, matching the value used at
+            // TakeSeat time.
+            await _runtime.HandleDisconnectAsync(connection.PlayerId, connection.Id.ToString("N"));
         }
         catch (Exception ex)
         {
@@ -1187,7 +1229,16 @@ public sealed class AutotableConnection
     public WebSocket Socket { get; }
     public string? GameId { get; set; }
     public int? ViewerSeat { get; }
-    public string PlayerId { get; } = Guid.NewGuid().ToString("N").Substring(0, 8);
+    /// <summary>
+    /// Phase J Wave 6 — persistent player identity (cookie-derived) for stats
+    /// and host-promotion keying. <see cref="AutotableConnectionManager"/>
+    /// resolves the <c>mahjong_pid</c> cookie at WS-upgrade time and sets
+    /// this via the object initializer; if no cookie is supplied a fresh
+    /// 8-hex token is used as a session-scoped fallback so legacy clients
+    /// without identity-cookie support still get a unique value within the
+    /// connection's lifetime.
+    /// </summary>
+    public string PlayerId { get; init; } = Guid.NewGuid().ToString("N").Substring(0, 8);
     public SemaphoreSlim SendLock { get; } = new(1, 1);
 
     /// <summary>

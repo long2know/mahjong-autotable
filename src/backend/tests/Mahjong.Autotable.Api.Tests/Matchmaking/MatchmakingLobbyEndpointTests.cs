@@ -107,7 +107,10 @@ public class MatchmakingLobbyEndpointTests : IAsyncLifetime
     private async Task<string> CreatePublicGameAsync(string hostId, string? publicName = "Test Game")
     {
         var runtime = Runtime();
-        var gameId = await runtime.CreateGameAsync(seed: 0, botSeatIndexes: null, hostConnectionId: hostId);
+        // Phase J Wave 6 — hostId is the persistent player id used by
+        // SetGamePublicAsync's callerPlayerId check. Connection-id is not
+        // used by the lobby snapshot path so we leave it null.
+        var gameId = await runtime.CreateGameAsync(seed: 0, botSeatIndexes: null, hostPlayerId: hostId, hostConnectionId: null);
         await runtime.SetGamePublicAsync(gameId, callerPlayerId: hostId, isPublic: true, publicName: publicName, default);
         return gameId;
     }
@@ -162,7 +165,7 @@ public class MatchmakingLobbyEndpointTests : IAsyncLifetime
         // CreateGameAsync defaults IsPublic=false; skipping SetGamePublic
         // leaves the game in the private state.
         var privateId = await runtime.CreateGameAsync(seed: 0, botSeatIndexes: null,
-            hostConnectionId: "host-3-" + Guid.NewGuid().ToString("N"));
+            hostPlayerId: "host-3-" + Guid.NewGuid().ToString("N"), hostConnectionId: null);
 
         Assert.NotNull(_factory);
         using var client = _factory!.CreateClient();

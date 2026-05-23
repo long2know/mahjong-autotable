@@ -221,6 +221,25 @@ export function getProfile(): PlayerProfile | null {
 }
 
 /**
+ * Boot-time cache hydration.  Safe to call at lobby init — does NOT
+ * touch SignalR.  If the localStorage cache holds a previous-session
+ * profile, we seed `current` from it so the lobby chip + onProfile
+ * subscribers see a populated state before (or even without) the hub
+ * ever connecting.  Idempotent — bails out if a profile is already
+ * loaded.  Phase J Wave 6 — required because the hub only connects
+ * once the user enters a game (via the WS `connect` event), so
+ * post-onboarding reloads would otherwise show "Profile" until the
+ * first game starts.
+ */
+export function hydrateProfileFromCacheIfAvailable(): PlayerProfile | null {
+  if (current !== null) return current;
+  const cached = loadCache();
+  if (cached === null) return null;
+  setCurrent(cached);
+  return cached;
+}
+
+/**
  * Subscribe to profile updates.  Returns an unsubscribe function.
  * Fires whenever the cached profile is replaced (cache hydration +
  * initial ProfileLoaded + UpdateProfile round-trip).  If a profile

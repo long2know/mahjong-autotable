@@ -122,7 +122,7 @@ public class SpectatorModeTests : IAsyncLifetime
         // translator (rather than the match-only empty fallback).
         var runtime = _factory!.Services.GetRequiredService<IChangshaGameRuntime>();
         var runtimeGameId = await runtime.CreateGameAsync(
-            seed: 31, botSeatIndexes: new[] { 1, 2, 3 }, hostConnectionId: null);
+            seed: 31, botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null);
         await runtime.StartGameAsync(runtimeGameId);
         await Task.Delay(50); // let any deal-batch fanout settle
 
@@ -167,7 +167,7 @@ public class SpectatorModeTests : IAsyncLifetime
         // EVERY hand-slot tile must come back face-stripped.
         var runtime = _factory!.Services.GetRequiredService<IChangshaGameRuntime>();
         var runtimeGameId = await runtime.CreateGameAsync(
-            seed: 47, botSeatIndexes: new[] { 1, 2, 3 }, hostConnectionId: null);
+            seed: 47, botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null);
         await runtime.StartGameAsync(runtimeGameId);
         await Task.Delay(50);
 

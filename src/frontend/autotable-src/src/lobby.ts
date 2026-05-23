@@ -50,11 +50,23 @@ import {
 import {
   installProfileDrawer,
   installProfileToggle,
+  hydrateProfileFromCacheIfAvailable,
   onProfile,
   getProfile,
   type PlayerProfile,
 } from './profile';
 import { formatStats } from './stats';
+import {
+  bootstrapIdentity,
+  installOnboardingCard,
+  onIdentity,
+  refreshOnboardingVisibility,
+} from './identity';
+import {
+  installLeaderboardSurface,
+  startLeaderboardPolling,
+  stopLeaderboardPolling,
+} from './leaderboard';
 //
 // The lobby is a small overlay panel anchored top-left of the autotable
 // page.  It lets the user pick the Phase F query params
@@ -676,10 +688,42 @@ export function initLobby(client?: Client): void {
   // anchor elements are missing.
   installProfileDrawer();
   installProfileToggle();
+  // Phase J Wave 6 — seed profile.ts.current from the localStorage
+  // cache so the lobby chip shows the previously-saved displayName
+  // *before* the SignalR hub connects (which only happens once the
+  // user enters a game).  Without this, a fresh lobby visit after a
+  // previous-session onboarding shows the default "Profile" text
+  // until the hub round-trip eventually lands.
+  hydrateProfileFromCacheIfAvailable();
   installLobbyTabs();
   installPublicGamesPane();
   installMakePublicToggle();
   installLobbyStatsPanel();
+
+  // Phase J Wave 6 — kick off the cookie-bound identity bootstrap +
+  // mount the onboarding card + leaderboard surface.  bootstrapIdentity
+  // is idempotent (the in-flight POST is deduped), so calling it from
+  // both index.ts and here is safe.  installOnboardingCard reads the
+  // first-visit hint from the bootstrap result; we also refresh the
+  // visibility once the identity arrives in case the identity lands
+  // after the lobby is mounted.
+  installOnboardingCard();
+  installLeaderboardSurface();
+  void bootstrapIdentity().then(() => {
+    refreshOnboardingVisibility();
+  });
+  onIdentity(() => {
+    refreshOnboardingVisibility();
+  });
+
+  // Phase J Wave 6 — sound-toggle localStorage mirror.  The Wave-3
+  // settings drawer persists the sound knob inside a JSON-encoded
+  // payload at `autotable.phaseJ.v1.settings.*`; the Wave-6 directive
+  // also wants a discoverable scalar key (`mahjong:soundEnabled`) so
+  // tests and external integrations can flip / read the state without
+  // parsing JSON.  This mirror reads the current state at boot and
+  // writes the key on every change of the #settings-sound checkbox.
+  installSoundEnabledMirror();
 
   if (shouldShowOnLoad()) showPanel();
 }
@@ -910,30 +954,50 @@ function installLobbyTabs(): void {
     'lobby-my-game-tab') as HTMLButtonElement | null;
   const pubTab = document.getElementById(
     'lobby-public-games-tab') as HTMLButtonElement | null;
+  const lbTab = document.getElementById(
+    'lobby-leaderboard-tab') as HTMLButtonElement | null;
   const myPane = document.getElementById('lobby-tab-my-game');
   const pubPane = document.getElementById('lobby-tab-public-games');
+  const lbPane = document.getElementById('lobby-tab-leaderboard');
   if (myTab === null || pubTab === null
       || myPane === null || pubPane === null) {
     return;
   }
 
-  const activate = (which: 'my' | 'public'): void => {
+  const activate = (which: 'my' | 'public' | 'leaderboard'): void => {
     const isMy = which === 'my';
+    const isPub = which === 'public';
+    const isLb = which === 'leaderboard';
     myTab.classList.toggle('lobby-tab-active', isMy);
-    pubTab.classList.toggle('lobby-tab-active', !isMy);
+    pubTab.classList.toggle('lobby-tab-active', isPub);
+    if (lbTab !== null) lbTab.classList.toggle('lobby-tab-active', isLb);
     myTab.setAttribute('aria-selected', isMy ? 'true' : 'false');
-    pubTab.setAttribute('aria-selected', !isMy ? 'true' : 'false');
+    pubTab.setAttribute('aria-selected', isPub ? 'true' : 'false');
+    if (lbTab !== null) lbTab.setAttribute('aria-selected', isLb ? 'true' : 'false');
     myPane.style.display = isMy ? '' : 'none';
-    pubPane.style.display = !isMy ? '' : 'none';
-    if (!isMy) {
+    pubPane.style.display = isPub ? '' : 'none';
+    if (lbPane !== null) lbPane.style.display = isLb ? '' : 'none';
+
+    // Per-tab polling discipline — Apone's rate-limit budget is the
+    // motivation here.  Each tab owns one timer; we tear the other
+    // tabs' timers down on activate.
+    if (isPub) {
       if (!isMatchmakingPolling()) startMatchmakingPolling();
     } else {
       stopMatchmakingPolling();
+    }
+    if (isLb) {
+      startLeaderboardPolling();
+    } else {
+      stopLeaderboardPolling();
     }
   };
 
   myTab.addEventListener('click', () => activate('my'));
   pubTab.addEventListener('click', () => activate('public'));
+  if (lbTab !== null) {
+    lbTab.addEventListener('click', () => activate('leaderboard'));
+  }
   // Default: My Game pane visible.
   activate('my');
 }
@@ -1199,4 +1263,62 @@ function renderLobbyStatsPanel(): void {
   heading.textContent = profile.displayName;
   host.appendChild(heading);
   host.appendChild(panel);
+}
+
+// ---------------------------------------------------------------------
+// Phase J Wave 6 — sound-toggle localStorage mirror.
+//
+// The Wave-3 settings drawer persists the sound knob inside a
+// JSON-encoded payload at `autotable.phaseJ.v1.settings.*`.  Wave 6
+// adds a discoverable scalar key — `mahjong:soundEnabled` — so the
+// state can be flipped / read from the outside (Playwright specs,
+// browser DevTools, future cross-tab sync) without parsing JSON.
+//
+// The mirror is one-way (settings → key) with two sync points:
+//   • boot — derive the initial key value from the current state of
+//     the #settings-sound checkbox.  At boot the checkbox is hydrated
+//     from localStorage by game-ui.ts:setupSettingsDrawer() before
+//     the user can interact, so this captures the persisted state.
+//   • on `change` event — write the new value whenever the user
+//     flips the checkbox.
+// ---------------------------------------------------------------------
+
+const LS_KEY_SOUND_ENABLED = 'mahjong:soundEnabled';
+let soundMirrorInstalled = false;
+
+function installSoundEnabledMirror(): void {
+  if (soundMirrorInstalled) return;
+  const checkbox = document.getElementById(
+    'settings-sound') as HTMLInputElement | null;
+  if (checkbox === null) return;
+  soundMirrorInstalled = true;
+
+  const writeKey = (enabled: boolean): void => {
+    try {
+      window.localStorage.setItem(LS_KEY_SOUND_ENABLED, enabled ? 'true' : 'false');
+    } catch {
+      /* private mode / quota — skip */
+    }
+  };
+
+  // Initial mirror.  The checkbox's `checked` property is the source of
+  // truth — game-ui.ts seeds it from the JSON-encoded settings payload
+  // before the user can interact; if it hasn't hydrated yet the default
+  // is "on" (matches SETTINGS_DEFAULT.sound).
+  writeKey(checkbox.checked);
+
+  checkbox.addEventListener('change', () => writeKey(checkbox.checked));
+
+  // Also rewrite the key on programmatic changes (e.g. game-ui.ts
+  // toggling the checkbox from a settings-apply flow).  MutationObserver
+  // doesn't fire on .checked changes, so we install a one-shot
+  // re-mirror on every settings drawer click event as a safety net.
+  const drawerToggle = document.getElementById('settings-toggle');
+  if (drawerToggle !== null) {
+    drawerToggle.addEventListener('click', () => {
+      // After the drawer-toggle handler runs the checkbox state may
+      // have been re-hydrated; schedule the mirror for the next tick.
+      window.setTimeout(() => writeKey(checkbox.checked), 0);
+    });
+  }
 }

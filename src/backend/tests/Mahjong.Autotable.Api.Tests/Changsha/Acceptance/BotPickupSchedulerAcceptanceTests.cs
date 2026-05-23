@@ -85,7 +85,7 @@ public sealed class BotPickupSchedulerAcceptanceTests
         int seed = 4242,
         CancellationToken ct = default)
     {
-        var gameId = await runtime.CreateGameAsync(seed, botSeats, hostConnectionId: null, ct);
+        var gameId = await runtime.CreateGameAsync(seed, botSeats, hostPlayerId: null, hostConnectionId: null, ct);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         Assert.NotNull(state);
         state!.DealerSeatIndex = dealerSeat;
@@ -357,7 +357,7 @@ public sealed class BotPickupSchedulerAcceptanceTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
         var gameId = await runtime.CreateGameAsync(seed: 1005, botSeatIndexes: new[] { 0, 1, 2, 3 },
-            hostConnectionId: null, cts.Token);
+            hostPlayerId: null, hostConnectionId: null, cts.Token);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         Assert.Equal(DealMode.Auto, state!.DealMode); // default is Auto
 

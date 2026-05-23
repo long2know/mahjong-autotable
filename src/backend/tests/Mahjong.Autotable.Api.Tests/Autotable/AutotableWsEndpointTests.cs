@@ -87,7 +87,7 @@ public class AutotableWsEndpointTests : IAsyncLifetime
     public async Task Join_KnownGameId_ReturnsFullSnapshot()
     {
         var runtime = _factory!.Services.GetRequiredService<IChangshaGameRuntime>();
-        var gameId = await runtime.CreateGameAsync(seed: 11, botSeatIndexes: new[] { 1, 2, 3 }, hostConnectionId: null);
+        var gameId = await runtime.CreateGameAsync(seed: 11, botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null);
         await runtime.StartGameAsync(gameId);
         await Task.Delay(50); // let any deal-batch fanout settle
 
@@ -122,7 +122,7 @@ public class AutotableWsEndpointTests : IAsyncLifetime
     public async Task StateChange_BroadcastsUpdate_ToBoundConnection()
     {
         var runtime = _factory!.Services.GetRequiredService<IChangshaGameRuntime>();
-        var gameId = await runtime.CreateGameAsync(seed: 23, botSeatIndexes: new[] { 1, 2, 3 }, hostConnectionId: null);
+        var gameId = await runtime.CreateGameAsync(seed: 23, botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null);
         await runtime.StartGameAsync(gameId);
         await Task.Delay(50);
 

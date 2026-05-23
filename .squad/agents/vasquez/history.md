@@ -831,3 +831,41 @@ All three Wave 2 facts use `GameCount` as the assertion hook per Bishop's memo r
 - **Production code touched:** `Program.cs` one-liner only (Apone-lane `/metrics` route mapping).
 
 **Cross-agent coordination:** Bishop landed the `PlayerProfileService` / `MatchmakingService` / `MatchmakingController` / `ChangshaGameRuntime` Wave-5 additions + the `ChangshaHub.SetGamePublic / JoinRandom / UpdateProfile` RPCs + `ChangshaHub.OnConnectedAsync` `ProfileLoaded` broadcast in the working tree. Apone landed `Observability/MetricsEndpoint.cs` + `docs/observability.md` + `docs/secrets.md` + the `.github/workflows/squad-*.yml` files + JSON structured logging in `Production`. Hicks landed `frontend/autotable-src/src/matchmaking.ts` (poll loop), `profile.ts` (drawer), `stats.ts` (panel renderer), `main.css` (drawer + chip styles). None of the three had committed by my memo-write time — all four agents' Wave 5 work lands together. Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-5.md`.
+
+---
+
+## Phase J Wave 6 — Persistent identity + leaderboard + rate-limit contract tests (commit `4bd9e53`)
+
+**Branch:** `stlong/phase-j-wave-6-completion` (off main @ Wave-5 merge `3e7db66`).
+**Gate:** **456 passed / 0 failed / 0 skipped** (+11 from Wave 5 baseline of 445/0/0; zero-skip streak holds — 10 consecutive waves green: I.1 → I.2 → I.3 → I.4 → J.1 → J.2 → J.3 → J.4 → J.5 → J.6).
+
+**Scope completed:**
+
+- **`PersistentPlayerIdTests.cs` (4 facts)** — pins Bishop's persistent-id cookie + `POST /api/identity` + hub-side resolution contract. `PostIdentity_NoCookie_MintsNewPlayer_AndSetsCookie` (200 OK + 32-char hex playerId + `mahjong_pid` cookie with HttpOnly/SameSite=Lax/Max-Age=31536000/Path=/), `PostIdentity_WithExistingCookie_ReturnsSameProfile` (second POST with Cookie header echoed returns same playerId; Set-Cookie still carries same value — pins read-then-write order in `PlayerIdentityService.ResolveOrMint`), `HubConnection_ReadsPlayerIdFromCookie` (SignalR LongPolling client with synthetic Cookie header → ChangshaHub's `OnConnectedAsync` stashes the id on `Context.Items["playerId"]` and broadcasts `ProfileLoaded` keyed by it), `ReconnectAfterDisconnect_PreservesProfile` (disconnect → reconnect with same cookie → same playerId on both `ProfileLoaded` broadcasts).
+- **`LeaderboardEndpointTests.cs` (4 facts)** — pins Bishop's `GET /api/leaderboard?sort&limit&offset&minGames` envelope. `Leaderboard_ReturnsTopByGamesWon_ByDefault` (10 seeds, sort omitted → monotonic `gamesWon DESC`; all 10 row fields asserted by `JsonValueKind`), `Leaderboard_FiltersOut_PlayersBelowMinGames` (default `minGames=5` hides 2/4-game seeds; `minGames=0` surfaces them), `Leaderboard_SortBy_WinRate_OrdersCorrectly` (A: 0.8 vs B: 0.6 → A first, projection within 0.0001 epsilon), `Leaderboard_RespectsLimitAndOffset` (60 seeds, `?limit=10&offset=20` → ranks 21..30, `total=60` paging-independent).
+- **`RateLimitingTests.cs` (3 facts)** — pins Apone's middleware contract under `Production` + `RateLimiting:Enabled=true` + per-test `X-Forwarded-For` partition isolation. `PostIdentity_RapidBurst_TriggersRateLimit` (60 rapid POSTs trip the `ApiPolicy` token bucket; 429 carries `Retry-After` + `{"error":"too_many_requests"}` body — NOT generic ProblemDetails), `ApiLeaderboard_ExceedsTokenBucket_Returns429` (same policy proven to travel with every `MapControllers` route), `Health_NotRateLimited_AcceptsBurst` (100x `/health` + 100x `/api/health` all return 200; pins `.DisableRateLimiting()` on the probe surface so Docker / k8s liveness probes stay green).
+- **`selectors.md` (2 new sections, additive only)** — appended `## Onboarding` (9 selectors from Hicks's `identity.ts` + `index.html` first-visit onboarding card: card root, name input, name error, presets host, indexed colour-preset buttons, custom colour picker, preview avatar, continue, skip) and `## Leaderboard` (11 selectors + 1 templated row testid from Hicks's `leaderboard.ts` + `index.html` lobby leaderboard pane: tab, section, sort select, min-games input, status placeholders, table host, paging controls, indexed row tr). Each entry cites file + line; the docnotes pin to the Wave-6 backend test files above.
+
+**Methodology — what worked:**
+
+- **WebApplicationFactory<Program> + per-test temp SQLite + `PersistSnapshots=false`.** Same pattern from Waves 3/4/5. Zero new scaffolding.
+- **Manual Cookie-header forwarding instead of CookieContainer.** TestServer's host is `localhost`; RFC-6265-compliant containers may reject domain-less cookies, so reading `Set-Cookie` and explicitly attaching it as `Cookie` on the second request is unambiguous and matches the assertion text.
+- **LongPolling transport for SignalR cookie tests.** TestServer's WS upgrade is brittle in this assembly; `opts.Transports = HttpTransportType.LongPolling` + `WebSocketFactory = throw` short-circuits the brittle path. `opts.Headers.Add("Cookie", ...)` is what plumbs the cookie to the hub's `HttpContext.Request.Cookies`.
+- **`X-Forwarded-For` for rate-limit test isolation.** TestServer always reports loopback `RemoteIpAddress`; per-test XFF (`10.1.1.1`, `10.2.2.2`, `10.3.3.3`) gives each test its own partition key so the second test doesn't inherit the first's depleted bucket.
+- **`Production` + `RateLimiting:Enabled=true` is the only on-combination.** Either knob alone is a no-op — `appsettings.Production.json` flips the flag but a Development host doesn't read it; `UseSetting` overrides the flag but the limiter services are still keyed off `Enabled == true` in the extension.
+- **`JsonDocument` + `JsonValueKind` over typed deserialise for wire-shape assertions.** Catches field-rename and null-regression on the first assertion that touches the bad property.
+
+**Surprises / blind spots flagged:**
+
+- **Apone:** `AnonymousPolicy` (`fixed-window-anonymous`, 10/min/IP) is registered but unattached to any endpoint. `POST /api/identity` inherits the looser `ApiPolicy` (30-token bucket, 5/sec refill) via `MapControllers`. Not a defect — both policies are in-scope — but if /api/identity becomes an abuse target, Bishop or Apone needs to add `[EnableRateLimiting(AnonymousPolicy)]` to the controller. My `PostIdentity_RapidBurst_TriggersRateLimit` test pins the actual production behaviour; changing the policy would require updating the burst threshold but not the test's intent.
+- **Bishop:** `PlayerProfile.AvatarColor` default is `#808080` (mid-grey); the preset palette doesn't include this colour. First-paint of a freshly minted profile shows a grey chip until the user picks. Worth deciding if the bootstrap should auto-pick on first-mint.
+- **Hicks:** `HotSeatSwap_PlayerToPlayer_PreservesGameState` (Wave 1) is a pre-existing race-condition flake — not in scope, did not surface in the Wave-6 final gate but sporadically fails in parallel runs. Worth a follow-up issue.
+- **Parallel-agent volatility (process, same as Wave 5).** Bishop's `Leaderboard/` + `Players/` directories disappeared and re-appeared 3-4 times during my work; same ~6-min settle cycles as Wave 5. Polling log at `.git/poll-log.txt` captured the cadence; consider promoting to `.squad/state/upstream-cadence.log` so future waves can tune settle windows without re-deriving the rhythm.
+
+**Stability:**
+
+- **Phase J Wave 6 filter (`--filter "Wave=Phase-J-6"`):** 11 passed / 0 failed / 0 skipped (4 + 4 + 3).
+- **Full suite:** 456 passed / 0 failed / 0 skipped. Zero-skips streak preserved (10 consecutive waves green).
+- **No production code changed** (`src/backend/src/**` untouched on this commit).
+
+**Cross-agent coordination:** Bishop landed `21515fe` (persistent player ids + leaderboard endpoint, 20 files, +886/-90) and `81beb15` (memo + history). Apone landed `408e0d1` (rate limiting + CORS + reverse-proxy / systemd / log-rotation guides) and `c3289eb` (Wave 6 journal memo). Hicks had `identity.ts` + `leaderboard.ts` + `index.html` + `lobby.ts` + `main.css` + e2e specs in the working tree but uncommitted at memo-write time. Strict-disjoint lanes preserved (Bishop = identity + leaderboard backend, Apone = rate limiting + ops docs, Hicks = onboarding + leaderboard frontend, Vasquez = tests + selectors). Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-6.md`.

@@ -304,7 +304,7 @@ public class EdgeCaseTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         var gameId = await runtime.CreateGameAsync(seed: 1, botSeatIndexes: null,
-            hostConnectionId: null, cts.Token);
+            hostPlayerId: null, hostConnectionId: null, cts.Token);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
 
         Assert.Equal(0, state!.StateVersion);
@@ -321,7 +321,7 @@ public class EdgeCaseTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         var gameId = await runtime.CreateGameAsync(seed: 42,
-            botSeatIndexes: new[] { 0, 1, 2, 3 }, hostConnectionId: null, cts.Token);
+            botSeatIndexes: new[] { 0, 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         state!.DealMode = DealMode.Auto;
 
@@ -347,7 +347,7 @@ public class EdgeCaseTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         var gameId = await runtime.CreateGameAsync(seed: 7,
-            botSeatIndexes: new[] { 1, 2, 3 }, hostConnectionId: null, cts.Token);
+            botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         state!.DealerSeatIndex = 0;
         foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
@@ -386,7 +386,7 @@ public class EdgeCaseTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         var gameId = await runtime.CreateGameAsync(seed: 17,
-            botSeatIndexes: new[] { 1, 2, 3 }, hostConnectionId: null, cts.Token);
+            botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         state!.DealerSeatIndex = 0;
         foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
@@ -454,7 +454,7 @@ public class EdgeCaseTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         var gameId = await runtime.CreateGameAsync(seed: 23,
-            botSeatIndexes: new[] { 1, 2, 3 }, hostConnectionId: null, cts.Token);
+            botSeatIndexes: new[] { 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         state!.DealerSeatIndex = 0;
         foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;
@@ -522,7 +522,7 @@ public class EdgeCaseTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
         var gameId = await runtime.CreateGameAsync(seed: 4242,
-            botSeatIndexes: new[] { 0, 1, 2, 3 }, hostConnectionId: null, cts.Token);
+            botSeatIndexes: new[] { 0, 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null, cts.Token);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         state!.DealerSeatIndex = 0;
         foreach (var s in state.Seats) s.IsDealer = s.SeatIndex == 0;

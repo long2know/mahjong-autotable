@@ -1,0 +1,76 @@
+# Mahjong Autotable — Caddyfile sample.
+#
+# Phase J Wave 6 (Apone, DevOps). Caddy is the lowest-effort way to put
+# the mahjong-autotable container behind TLS: it speaks ACME natively
+# (Let's Encrypt + ZeroSSL), upgrades WebSocket connections by default,
+# and re-uses the same backend port (8080) the Docker deploy already
+# binds.
+#
+# Install path on Debian/Ubuntu:
+#   /etc/caddy/Caddyfile
+#
+# Reload:
+#   systemctl reload caddy
+#
+# Or run ad-hoc:
+#   caddy run --config /path/to/Caddyfile
+
+# Replace `mahjong.example.com` with your real public hostname.  Caddy
+# will provision and renew a certificate for it automatically as long as
+# DNS resolves to this host and port 80/443 are reachable from the
+# public internet (the HTTP-01 / TLS-ALPN-01 challenge requirement).
+mahjong.example.com {
+    encode gzip zstd
+
+    # Stream the request to the container.  reverse_proxy auto-detects
+    # the SignalR / WebSocket Upgrade handshake and passes it through —
+    # no extra flags required (Caddy v2.6+).
+    reverse_proxy 127.0.0.1:8080 {
+        # Pass through the real client IP / scheme to Kestrel so the
+        # ASP.NET ForwardedHeaders middleware + the rate-limiter
+        # partition key see the right values.  Caddy sets these by
+        # default when using `header_up X-Forwarded-*`; the lines below
+        # are explicit for clarity.
+        header_up X-Real-IP         {http.request.remote.host}
+        header_up X-Forwarded-For   {http.request.remote.host}
+        header_up X-Forwarded-Proto {http.request.scheme}
+        header_up X-Forwarded-Host  {http.request.host}
+
+        # SignalR + raw autotable WS connections are long-lived.  Caddy's
+        # default flush_interval is fine for streaming, but bump the
+        # transport timeout to avoid early teardown.
+        transport http {
+            read_timeout    24h
+            write_timeout   24h
+            dial_timeout    10s
+        }
+    }
+
+    # Optional — gate /metrics so it isn't world-readable.  Replace
+    # `op:HASH` with a bcrypt hash produced by `caddy hash-password`.
+    #
+    # @metrics path /metrics
+    # basicauth @metrics {
+    #     op JDJhJDE0JE0u…
+    # }
+
+    # Useful access log; Caddy rotates it for you when configured this
+    # way (the file gets a *.log.gz pile alongside).
+    log {
+        output file /var/log/caddy/mahjong.access.log {
+            roll_size     50MiB
+            roll_keep     7
+            roll_keep_for 168h
+        }
+        format json
+        level  INFO
+    }
+}
+
+# Local-host variant — handy on a dev box.  Caddy serves the same
+# upstream over plain HTTP at :8000; no TLS, no ACME.
+# Uncomment to enable.
+#
+# http://localhost:8000 {
+#     reverse_proxy 127.0.0.1:8080
+# }

@@ -78,6 +78,13 @@ public sealed class MatchmakingService
     public Task SetGamePublicAsync(string gameId, string callerPlayerId, bool isPublic, string? publicName, CancellationToken ct = default)
         => _runtime.SetGamePublicAsync(gameId, callerPlayerId, isPublic, publicName, ct);
 
-    public Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string connectionId, string? variant, CancellationToken ct = default)
-        => _runtime.JoinRandomAsync(connectionId, variant, ct);
+    /// <summary>
+    /// Phase J Wave 6 — picks a public lobby-phase game with a free human seat
+    /// and seats the caller into it. Wave-6 split the conflated identity arg
+    /// into <paramref name="playerId"/> (persistent cookie-derived identifier
+    /// used for stats and seat ownership) and <paramref name="connectionId"/>
+    /// (transport-level SignalR id used for per-connection routing).
+    /// </summary>
+    public Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string playerId, string connectionId, string? variant, CancellationToken ct = default)
+        => _runtime.JoinRandomAsync(playerId, connectionId, variant, ct);
 }

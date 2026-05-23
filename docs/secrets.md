@@ -89,6 +89,42 @@ inspected here.
 Scanned. Environment-driven config only (`BUILD_SHA`, `Persistence`
 section, `ConnectionStrings` section). No hardcoded credentials.
 
+### CORS origins (Phase J Wave 6)
+
+The Phase J Wave 6 CORS policy (Apone, DevOps) reads
+`Cors:AllowedOrigins` from configuration. `appsettings.json` lists
+localhost-only dev origins; `appsettings.Production.json` ships with
+**an empty list** — production deploys must populate the public
+origin via env var, identical in shape to the existing connection-string
+overrides:
+
+```bash
+docker run ... \
+    -e Cors__AllowedOrigins__0=https://mahjong.example.com \
+    ...
+```
+
+| Variable                              | Purpose                                              | Secret? | Default                              |
+| ------------------------------------- | ---------------------------------------------------- | ------- | ------------------------------------ |
+| `Cors__AllowedOrigins__0` (and __1, etc.) | One origin per indexed env var. Production policy refuses all requests if empty. | no (public origin) | `[]` in Production, localhost list in Development |
+| `RateLimiting__Enabled`               | Toggles the Phase J Wave 6 limiter middleware.       | no      | `true` in Production, `false` elsewhere |
+
+`Cors__AllowedOrigins__0` is **not a secret** — it's the public-facing
+hostname of the deployment, the same one users type into their
+browser. The reason it gets the same secret-store treatment as
+`ConnectionStrings__*` is operational: putting deploy-time configuration
+in a single store keeps `docker run` / systemd unit files identical
+across environments. Don't commit it to the repo, though, because
+that would couple the image to a particular environment.
+
+> **`AllowCredentials()` precludes `AllowAnyOrigin()`.** The autotable
+> bundle relies on the `mahjong_pid` cookie, which means the CORS policy
+> calls `.AllowCredentials()`. The framework rejects
+> `.AllowAnyOrigin().AllowCredentials()` at policy-build time as a
+> CSRF mitigation, so the production deploy MUST enumerate origins
+> explicitly. Hostnames don't count as secrets, so the secret-store
+> recipes below apply only for the connection-string entries.
+
 ## Required environment variables
 
 The values below are the contract every deployment target must honor.
