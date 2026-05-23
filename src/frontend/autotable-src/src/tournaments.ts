@@ -245,14 +245,25 @@ async function probeAdmin(): Promise<boolean> {
 }
 
 /**
- * Phase K Wave 2 — POST the new seed order to Bishop's seeding
- * endpoint.  `seeds` is an ordered list of `playerId`s — the first
- * entry is the #1 seed, etc.  Returns true on a 2xx response.
+ * Phase K Wave 2 → Wave 3 — POST the new seed order to Bishop's
+ * seeding endpoint.  Wave-3 wire shape switches from a flat array of
+ * player ids to a richer `{ seeds: [{ playerId, seedNumber }, ...] }`
+ * payload (Bishop's Wave-3 spec) so the server can attribute each
+ * seed without inferring position from array index.  `seeds` is an
+ * ordered list of `playerId`s — the first entry becomes the #1 seed.
+ * Returns true on a 2xx response.
  *
- * Wire: `POST /api/tournaments/{id}/seed` body `{ seeds: [...] }`.
+ * Wire: `POST /api/tournaments/{id}/seed`
+ *       body `{ seeds: [{ playerId, seedNumber }, ...] }`.
  */
 async function postSeed(tournamentId: string, seeds: string[]): Promise<boolean> {
-  return doPost(`/api/tournaments/${encodeURIComponent(tournamentId)}/seed`, { seeds });
+  const payload = {
+    seeds: seeds.map((playerId, idx) => ({
+      playerId,
+      seedNumber: idx + 1,
+    })),
+  };
+  return doPost(`/api/tournaments/${encodeURIComponent(tournamentId)}/seed`, payload);
 }
 
 // ── Normalisers ─────────────────────────────────────────────────────
@@ -598,10 +609,18 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
   list.className = 'tournament-seeding-list';
   list.setAttribute('role', 'list');
 
-  // Working copy that drives the optimistic re-render; saved when the
-  // user clicks Save.  We don't mutate state.detail directly so a
-  // failed save can roll back cleanly by re-rendering.
+  // Working copy that drives the optimistic re-render; saved
+  // automatically on each drop (Phase K Wave 3) with rollback on
+  // failure.  We keep the last-known-good ordering so a 4xx response
+  // can restore the previous seeds + re-render.
   const seeds = seedSlots.slice();
+  let lastSavedSeeds = seeds.slice();
+
+  // Actions container is declared here so `persistSeeds` (which surfaces
+  // an inline error pill) can append to it.  Wired into `wrap` at the
+  // bottom of this function after the row list lands.
+  const actions = document.createElement('div');
+  actions.className = 'tournament-seeding-actions';
 
   const rerender = (): void => {
     list.replaceChildren();
@@ -660,18 +679,48 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
         const [moved] = seeds.splice(fromIdx, 1);
         seeds.splice(toIdx, 0, moved);
         rerender();
+        // Phase K Wave 3 — auto-save on drop.
+        void persistSeeds();
       });
 
       list.appendChild(li);
     });
   };
 
+  // Phase K Wave 3 — Persist after each drop.  Optimistic update is
+  // already applied (the `rerender()` runs before this fires); on
+  // failure we restore the last-known-good ordering and re-render.
+  const persistSeeds = async (): Promise<void> => {
+    const playerIds = seeds
+      .map(s => s.playerId)
+      .filter((p): p is string => p !== null && p !== '');
+    const ok = await postSeed(detail.tournament.id, playerIds);
+    if (ok) {
+      lastSavedSeeds = seeds.slice();
+      const { showToast } = await import('./toast');
+      showToast('Seeding saved.', 'success', 2400);
+    } else {
+      // Roll back optimistic state to the last server-acknowledged
+      // ordering and re-render.
+      seeds.splice(0, seeds.length, ...lastSavedSeeds);
+      rerender();
+      const status = document.createElement('span');
+      status.className = 'tournament-seeding-status tournament-seeding-status-error';
+      status.setAttribute('data-testid', 'tournament-seeding-status');
+      status.textContent = 'Failed to save seeding — reverted.';
+      actions.appendChild(status);
+      window.setTimeout(() => status.remove(), 4000);
+      const { showToast } = await import('./toast');
+      showToast('Failed to save seeding — reverted to last saved order.', 'error');
+    }
+  };
+
   rerender();
   wrap.appendChild(list);
 
-  const actions = document.createElement('div');
-  actions.className = 'tournament-seeding-actions';
-
+  // Phase K Wave 3 — Manual Save button retained as a belt-and-braces
+  // affordance for keyboard-only users (who can reorder via keyboard
+  // accessibility hooks that we add in Wave 4).
   const save = document.createElement('button');
   save.type = 'button';
   save.className = 'btn btn-primary btn-sm tournament-seeding-save';
@@ -685,6 +734,9 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
     const ok = await postSeed(detail.tournament.id, playerIds);
     save.disabled = false;
     if (ok) {
+      lastSavedSeeds = seeds.slice();
+      const { showToast } = await import('./toast');
+      showToast('Seeding saved.', 'success', 2400);
       // Refresh the tournament detail so we reflect the server's
       // canonical bracket layout (server may rearrange seeds → matches).
       void openDetail(detail.tournament.id);
@@ -695,6 +747,8 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
       status.textContent = 'Failed to save seeding.';
       actions.appendChild(status);
       window.setTimeout(() => status.remove(), 4000);
+      const { showToast } = await import('./toast');
+      showToast('Failed to save seeding.', 'error');
     }
   });
   actions.appendChild(save);
