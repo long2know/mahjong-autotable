@@ -1,0 +1,71 @@
+# Phase K Wave 4 — Apone (DevOps).
+#
+# HSTS preload patch — production overlay.
+#
+# Wave-3 dev/staging defaults shipped the ASP.NET-Core
+# SecurityHeadersMiddleware with `Security:EnableHsts=true` producing:
+#
+#   Strict-Transport-Security: max-age=31536000; includeSubDomains
+#
+# That's the 1-year max-age + includeSubDomains shape — sufficient for
+# everyday HSTS but NOT eligible for the chromium / firefox /
+# safari preload list (the public HSTS preload list at
+# https://hstspreload.org/ requires `preload` directive + at least
+# `max-age=63072000` ≈ 2 years).
+#
+# This patch fires the production-only `preload` directive on the
+# Ingress so the response header on the prod origin meets every
+# preload requirement:
+#
+#   * Has the `preload` token.
+#   * `max-age` ≥ 31536000 (we use 63072000 = 2 years — the
+#     hstspreload.org recommended minimum).
+#   * Has `includeSubDomains`.
+#   * Served on the apex (root) domain over HTTPS.
+#   * Redirects HTTP → HTTPS on the same host.
+#
+# This patch only changes the INGRESS-LAYER response header so that
+# nginx-ingress emits the preload-eligible value EVEN IF the upstream
+# app middleware emits a weaker one (defense-in-depth — once the
+# operator submits the domain to https://hstspreload.org/, the
+# header MUST never weaken or the browser-shipped pin will desync
+# and serve scary errors). Pinning at the Ingress means a future
+# refactor of the C# middleware cannot accidentally weaken the
+# header.
+#
+# Why ingress-layer for the preload directive vs C# middleware?
+#
+#   * `Security:EnableHsts` lives in the appsettings config tree;
+#     changing the in-process middleware would either require
+#     hardcoding the preload string (less testable) or adding a
+#     second config key (`Security:HstsPreload`). The latter is
+#     fine but lossless to defer — the Ingress patch already
+#     covers prod's wire-level header without touching `src/`.
+#   * Operators who want to PROBE the header BEFORE submitting to
+#     the preload list (the canonical 2-week dry-run procedure in
+#     `docs/hsts-preload.md`) need the header firing from the
+#     SAME layer that production users hit — the Ingress, not the
+#     upstream pod.
+#
+# Cross-reference: `docs/hsts-preload.md` for the operator
+# submission runbook to https://hstspreload.org/.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mahjong-autotable
+  annotations:
+    # HSTS preload-eligible value:
+    #   max-age=63072000 (2 years — hstspreload.org recommended floor),
+    #   includeSubDomains,
+    #   preload.
+    # nginx-ingress emits this on EVERY response (HTTPS only — the
+    # backend redirect block below ensures the HTTP listener 301s
+    # to HTTPS so a browser never sees a non-HTTPS leaf).
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload";
+    # Force HTTP → HTTPS redirect. nginx-ingress defaults to
+    # `ssl-redirect: true` already; setting it explicitly here so a
+    # future global ConfigMap edit cannot weaken prod accidentally.
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"

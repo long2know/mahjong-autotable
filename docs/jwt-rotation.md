@@ -43,25 +43,50 @@ Auth__JwtSigningKeys__2=<previous-2>
 ```
 
 ESO / Kubernetes Secret mounting (production —
-[`infra/k8s/overlays/prod/secret-template.yaml`](../infra/k8s/overlays/prod/secret-template.yaml)
-will gain three new entries in Wave 4 once Bishop's code-side
-binding lands):
+[`infra/k8s/overlays/prod/jwt-keys-secret.yaml`](../infra/k8s/overlays/prod/jwt-keys-secret.yaml)
+SHIPPED in Wave 4 as a SEPARATE `ExternalSecret` (`mahjong-jwt-keys`)
+distinct from the omnibus `mahjong-autotable` secret. Splitting them
+keeps JWT rotation on its own data plane — operators rotate the
+signing keys WITHOUT having to re-shape the omnibus secret JSON):
 
 ```yaml
 data:
-  - secretKey: Auth__JwtSigningKeys__0
+  - secretKey: auth__jwtsigningkeys__0
     remoteRef:
-      key: mahjong/prod/app
-      property: auth__jwtsigningkeys__0
-  - secretKey: Auth__JwtSigningKeys__1
+      key: /mahjong/prod/auth/jwt/key-active
+  - secretKey: auth__jwtsigningkeys__1
     remoteRef:
-      key: mahjong/prod/app
-      property: auth__jwtsigningkeys__1
-  - secretKey: Auth__JwtSigningKeys__2
+      key: /mahjong/prod/auth/jwt/key-previous
+  - secretKey: auth__jwtsigningkeys__2
     remoteRef:
-      key: mahjong/prod/app
-      property: auth__jwtsigningkeys__2
+      key: /mahjong/prod/auth/jwt/key-archive
 ```
+
+**SSM key-naming convention (Wave 4):** the SSM parameter names are
+**rotation-state names** (`key-active`, `key-previous`, `key-archive`)
+rather than array indices (`__0`, `__1`, `__2`). Operators rotate by
+moving values BETWEEN named SSM parameters; ESO's template
+re-binds the values to indexed env vars at materialise time. The
+operator NEVER has to compute "which SSM key holds index 1 today?":
+
+| SSM parameter                              | env var binding             | Role |
+|--------------------------------------------|-----------------------------|------|
+| `/mahjong/prod/auth/jwt/key-active`        | `Auth__JwtSigningKeys__0`   | Signer (new tokens minted with this) |
+| `/mahjong/prod/auth/jwt/key-previous`      | `Auth__JwtSigningKeys__1`   | Validator-only fallback (most recent rotated-out key) |
+| `/mahjong/prod/auth/jwt/key-archive`       | `Auth__JwtSigningKeys__2`   | Validator-only fallback (second-most recent rotated-out key, optional) |
+
+The deployment patch in
+[`infra/k8s/overlays/prod/kustomization.yaml`](../infra/k8s/overlays/prod/kustomization.yaml)
+mounts the resulting Secret via `envFrom: secretRef: { name: mahjong-jwt-keys, optional: true }`.
+`optional: true` means a fresh cluster without ESO bootstrapped can
+still start (the app falls back to the singular `Auth:JwtSigningKey`
+from the omnibus secret).
+
+**ESO refresh cadence:** 15 minutes (vs the omnibus secret's 1 h).
+JWT key rotation is the most security-sensitive rotation we run;
+the tighter cadence means an emergency rotation propagates within
+minutes rather than within the hour. The `force-sync` annotation
+flow below still applies for immediate refresh.
 
 ## 2. Code-side contract (Bishop's Wave 4 / Wave 5 deliverable)
 
@@ -130,30 +155,40 @@ canonical SaaS grace window.
     openssl rand -base64 48 > new-key.txt
     ```
 
-2. **Update SSM** — prepend the new key, shift the existing active
-   key to index 1, keep the second-prior key at index 2, drop
-   anything older:
+2. **Cycle SSM** — the operator does NOT touch array indices;
+   instead, they cycle VALUES BETWEEN the three rotation-state-
+   named SSM parameters (see §1 for the naming convention):
 
     ```bash
     NEW_KEY=$(cat new-key.txt)
-    OLD_KEY_0=$(aws ssm get-parameter --name /mahjong/prod/app/auth__jwtsigningkeys__0 --with-decryption --query Parameter.Value --output text)
-    OLD_KEY_1=$(aws ssm get-parameter --name /mahjong/prod/app/auth__jwtsigningkeys__1 --with-decryption --query Parameter.Value --output text 2>/dev/null || echo "")
+    OLD_ACTIVE=$(aws ssm get-parameter --name /mahjong/prod/auth/jwt/key-active   --with-decryption --query Parameter.Value --output text)
+    OLD_PREV=$(aws ssm get-parameter   --name /mahjong/prod/auth/jwt/key-previous --with-decryption --query Parameter.Value --output text 2>/dev/null || echo "")
 
-    aws ssm put-parameter --name /mahjong/prod/app/auth__jwtsigningkeys__0 \
+    # active     → previous
+    # previous   → archive
+    # new key    → active
+    aws ssm put-parameter --name /mahjong/prod/auth/jwt/key-active \
         --type SecureString --value "$NEW_KEY"   --overwrite
-    aws ssm put-parameter --name /mahjong/prod/app/auth__jwtsigningkeys__1 \
-        --type SecureString --value "$OLD_KEY_0" --overwrite
-    if [ -n "$OLD_KEY_1" ]; then
-      aws ssm put-parameter --name /mahjong/prod/app/auth__jwtsigningkeys__2 \
-          --type SecureString --value "$OLD_KEY_1" --overwrite
+    aws ssm put-parameter --name /mahjong/prod/auth/jwt/key-previous \
+        --type SecureString --value "$OLD_ACTIVE" --overwrite
+    if [ -n "$OLD_PREV" ]; then
+      aws ssm put-parameter --name /mahjong/prod/auth/jwt/key-archive \
+          --type SecureString --value "$OLD_PREV" --overwrite
     fi
     ```
 
-3. **Wait for ESO refresh** (≤ 1 h per the refreshInterval). Or
+   ESO (Wave-4 `mahjong-jwt-keys` ExternalSecret) re-binds the
+   rotation-state names to the indexed env vars
+   (`Auth__JwtSigningKeys__{0,1,2}`) at materialise time — the
+   operator never has to compute which numeric index a value
+   ends up at.
+
+3. **Wait for ESO refresh** (≤ 15 min per the Wave-4 ESO refresh
+   interval — tighter than the 1 h omnibus refresh). Or
    force-refresh immediately:
 
     ```bash
-    kubectl -n mahjong-prod annotate externalsecret mahjong-autotable \
+    kubectl -n mahjong-prod annotate externalsecret mahjong-jwt-keys \
         force-sync="$(date +%s)" --overwrite
     ```
 
@@ -199,10 +234,10 @@ If the active signing key is suspected leaked:
    key in the fallback list:
 
     ```bash
-    aws ssm put-parameter --name /mahjong/prod/app/auth__jwtsigningkeys__0 \
+    aws ssm put-parameter --name /mahjong/prod/auth/jwt/key-active \
         --type SecureString --value "$NEW_KEY" --overwrite
-    aws ssm delete-parameter --name /mahjong/prod/app/auth__jwtsigningkeys__1 2>/dev/null || true
-    aws ssm delete-parameter --name /mahjong/prod/app/auth__jwtsigningkeys__2 2>/dev/null || true
+    aws ssm delete-parameter --name /mahjong/prod/auth/jwt/key-previous 2>/dev/null || true
+    aws ssm delete-parameter --name /mahjong/prod/auth/jwt/key-archive  2>/dev/null || true
     ```
 
 3. **Force-refresh ESO + immediate rolling restart** (step 3–4 above).
@@ -242,14 +277,16 @@ The wave-by-wave migration path:
 
 | Wave | Owner | Action |
 |------|-------|--------|
-| **W3** (this wave) | Apone | `appsettings.json` ships `Auth.JwtSigningKeys: []` schema. `tests/smoke/jwt-rotation-smoke.sh` ships forward-compat. Docs land. |
-| **W4** | Bishop | Code-side binding: read `IConfiguration` array → `TokenValidationParameters.IssuerSigningKeys` collection. Honor `JwtSigningKey` (singular) as a fallback for one wave. |
+| **W3** | Apone | `appsettings.json` ships `Auth.JwtSigningKeys: []` schema. `tests/smoke/jwt-rotation-smoke.sh` ships forward-compat. Docs land. |
+| **W4** (in progress) | Bishop | Code-side binding: read `IConfiguration` array → `TokenValidationParameters.IssuerSigningKeys` collection. Honor `JwtSigningKey` (singular) as a fallback for one wave. |
+| **W4** (this wave) | Apone | ESO `mahjong-jwt-keys` ExternalSecret shipped at `infra/k8s/overlays/prod/jwt-keys-secret.yaml`; prod kustomization mounts it via `envFrom: { optional: true }`. Operator seeds three SSM SecureString parameters (`/mahjong/prod/auth/jwt/key-{active,previous,archive}`) before applying the overlay. |
 | **W5** | Bishop | Remove `JwtSigningKey` (singular) fallback. Add `kid` header to minted tokens. Drop the secret-management.md "Wave-9 fallback-key list (planned)" note. |
-| **W6** (or later) | Apone | ESO `secret-template.yaml` extension to mount `auth__jwtsigningkeys__{0,1,2}`. Production SSM seeded with the three keys before deploy. |
 
-Until W4, production STAYS on the singular `Auth:JwtSigningKey`
-binding — the new array is a forward-compat schema only. Operators
-do NOT need to do anything before Bishop's binding lands.
+Until W4 code-side binding lands, the `envFrom: { optional: true }`
+on the new secret is the gate — the deployment starts fine without
+the secret (current behaviour), and AS SOON AS Bishop binds
+`Auth.JwtSigningKeys`, the ESO-materialised values feed the array
+with zero further DevOps work.
 
 ## 8. Cross-references
 
@@ -257,4 +294,6 @@ do NOT need to do anything before Bishop's binding lands.
 * [`docs/secret-rotation.md`](secret-rotation.md) — day-of-rotation cadence + runbooks.
 * [`tests/smoke/jwt-rotation-smoke.sh`](../tests/smoke/jwt-rotation-smoke.sh) — end-to-end rotation smoke.
 * [`src/backend/src/Mahjong.Autotable.Api/appsettings.json`](../src/backend/src/Mahjong.Autotable.Api/appsettings.json) — `Auth.JwtSigningKeys` schema (forward-compat shipped in Wave 3).
-* [`infra/k8s/overlays/prod/secret-template.yaml`](../infra/k8s/overlays/prod/secret-template.yaml) — ESO mounting (W6 extension pending).
+* [`infra/k8s/overlays/prod/jwt-keys-secret.yaml`](../infra/k8s/overlays/prod/jwt-keys-secret.yaml) — Wave-4 ESO `mahjong-jwt-keys` ExternalSecret (active/previous/archive SSM mounts).
+* [`infra/k8s/overlays/prod/kustomization.yaml`](../infra/k8s/overlays/prod/kustomization.yaml) — `envFrom: { secretRef: { name: mahjong-jwt-keys, optional: true } }` mount.
+* [`infra/k8s/overlays/prod/secret-template.yaml`](../infra/k8s/overlays/prod/secret-template.yaml) — omnibus ESO (kept distinct from the JWT keys ESO so rotation surfaces don't entangle).

@@ -43,11 +43,12 @@ export async function bootstrapGame(): Promise<void> {
   // the `game-shell-ready` marker that Vasquez's specs gate on.
   markShellReady();
 
-  // Lazy-import the heavy 3D scene chunk.  This is the Wave-3 split:
-  // three.js (~575 kB), AssetLoader (textures, GLB models), Game,
-  // World, MoveLog, and the post-processing pipeline all land in
-  // `scene.<hash>.js` rather than the shell bundle.
-  const sceneMod = await import('./scene');
+  // Lazy-import the renderer-critical 3D scene chunk.  Wave 4 split
+  // this further: `scene-shell` contains three.js (~575 kB) +
+  // AssetLoader + Game + World + ClientUi; the heavy GameUi modal
+  // graph + MoveLog now live in `scene-effects` which the shell
+  // dynamic-imports itself after first-frame.
+  const sceneMod = await import('./scene-shell');
   const client = await sceneMod.mountScene();
 
   // Phase K Wave 1 — Chat panel: only needed when the user is in a
@@ -70,13 +71,15 @@ export async function bootstrapGame(): Promise<void> {
   }
 }
 
-// Phase K Wave 3 — Preload helper.  Lobby wires this to mouseenter /
+// Phase K Wave 4 — Preload helper.  Lobby wires this to mouseenter /
 // pointerdown on Quick Match / Apply so the next page load (after
-// `location.replace`) gets both the shell + the scene chunks from
-// cache.
+// `location.replace`) gets the shell + scene chunks from cache.  We
+// preload `scene-shell` (renderer-critical) but deliberately skip
+// `scene-effects` — that chunk starts loading after first-frame and
+// shouldn't block warm navigations.
 export function preloadGameBootstrap(): void {
   void import('./game-bootstrap');
-  void import('./scene');
+  void import('./scene-shell');
 }
 
 // ── Shell paint ─────────────────────────────────────────────────────

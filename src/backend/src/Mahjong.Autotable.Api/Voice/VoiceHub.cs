@@ -28,6 +28,12 @@ namespace Mahjong.Autotable.Api.Voice;
 // new VoiceHubMetricsService records a 60s rolling-window counter for
 // each relay so /metrics can observe signalling pressure without
 // reaching into the rate-limiter's buckets.
+//
+// Phase K Wave 4 — Bishop. Hub methods now return typed
+// VoiceHubResult{Ok,Reason?} instead of throwing HubException. The
+// reason strings preserve the Wave-3 wire-names verbatim so existing
+// SignalR clients keep their switch tables. JoinVoice / RelayOffer /
+// RelayAnswer / RelayIceCandidate all share the typed-result contract.
 public sealed class VoiceHub : Hub
 {
     public const int MeshPeerCeiling = 4;
@@ -59,9 +65,9 @@ public sealed class VoiceHub : Hub
         _logger = logger;
     }
 
-    public async Task JoinVoice(string tableId)
+    public async Task<VoiceHubResult> JoinVoice(string tableId)
     {
-        if (string.IsNullOrWhiteSpace(tableId)) return;
+        if (string.IsNullOrWhiteSpace(tableId)) return VoiceHubResult.Fail(VoiceHubResult.ReasonTargetNotFound);
 
         // Phase K Wave 3 — anon identity gate. SignalR connections do
         // not run through the ASP.NET auth pipeline by default; we
@@ -71,7 +77,8 @@ public sealed class VoiceHub : Hub
         var playerId = http is null ? null : _identity.ResolveFromCookie(http);
         if (string.IsNullOrEmpty(playerId))
         {
-            throw new HubException("voice-join-unauthorized");
+            _metrics.RecordJoinUnauthorized();
+            return VoiceHubResult.Fail(VoiceHubResult.ReasonUnauthorized);
         }
 
         // Phase K Wave 3 — per-table voice-enabled gate. We look up the
@@ -89,7 +96,8 @@ public sealed class VoiceHub : Hub
                 .FirstOrDefaultAsync();
             if (row is null || !row.VoiceEnabled)
             {
-                throw new HubException("voice-disabled-for-table");
+                _metrics.RecordJoinUnauthorized();
+                return VoiceHubResult.Fail(VoiceHubResult.ReasonVoiceNotEnabled);
             }
 
             // Phase K Wave 3 — seated-player gate. Read the live state;
@@ -112,47 +120,53 @@ public sealed class VoiceHub : Hub
             }
             if (!isOwner && !isSeated)
             {
-                throw new HubException("voice-not-seated");
+                _metrics.RecordJoinUnauthorized();
+                return VoiceHubResult.Fail(VoiceHubResult.ReasonNotSeated);
             }
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(tableId));
         await Clients.OthersInGroup(GroupName(tableId)).SendAsync("PeerJoined", Context.ConnectionId);
         await AuditAsync(tableId, ReconnectAuditEntry.KindVoiceJoin, playerId);
+        return VoiceHubResult.Success;
     }
 
-    public async Task LeaveVoice(string tableId)
+    public async Task<VoiceHubResult> LeaveVoice(string tableId)
     {
-        if (string.IsNullOrWhiteSpace(tableId)) return;
+        if (string.IsNullOrWhiteSpace(tableId)) return VoiceHubResult.Fail(VoiceHubResult.ReasonTargetNotFound);
         var http = Context.GetHttpContext();
         var playerId = http is null ? null : _identity.ResolveFromCookie(http);
         await Clients.OthersInGroup(GroupName(tableId)).SendAsync("PeerLeft", Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(tableId));
         await AuditAsync(tableId, ReconnectAuditEntry.KindVoiceLeave, playerId);
+        return VoiceHubResult.Success;
     }
 
-    public async Task RelayOffer(string targetConnectionId, string sdp)
+    public async Task<VoiceHubResult> RelayOffer(string targetConnectionId, string sdp)
     {
-        if (!Throttle()) return;
-        if (string.IsNullOrWhiteSpace(targetConnectionId)) return;
+        if (string.IsNullOrWhiteSpace(targetConnectionId)) return VoiceHubResult.Fail(VoiceHubResult.ReasonTargetNotFound);
+        if (!Throttle()) return VoiceHubResult.Fail(VoiceHubResult.ReasonRateLimited);
         _metrics.RecordRelay(Context.ConnectionId);
         await Clients.Client(targetConnectionId).SendAsync("OfferReceived", Context.ConnectionId, sdp);
+        return VoiceHubResult.Success;
     }
 
-    public async Task RelayAnswer(string targetConnectionId, string sdp)
+    public async Task<VoiceHubResult> RelayAnswer(string targetConnectionId, string sdp)
     {
-        if (!Throttle()) return;
-        if (string.IsNullOrWhiteSpace(targetConnectionId)) return;
+        if (string.IsNullOrWhiteSpace(targetConnectionId)) return VoiceHubResult.Fail(VoiceHubResult.ReasonTargetNotFound);
+        if (!Throttle()) return VoiceHubResult.Fail(VoiceHubResult.ReasonRateLimited);
         _metrics.RecordRelay(Context.ConnectionId);
         await Clients.Client(targetConnectionId).SendAsync("AnswerReceived", Context.ConnectionId, sdp);
+        return VoiceHubResult.Success;
     }
 
-    public async Task RelayIceCandidate(string targetConnectionId, string candidate)
+    public async Task<VoiceHubResult> RelayIceCandidate(string targetConnectionId, string candidate)
     {
-        if (!Throttle()) return;
-        if (string.IsNullOrWhiteSpace(targetConnectionId)) return;
+        if (string.IsNullOrWhiteSpace(targetConnectionId)) return VoiceHubResult.Fail(VoiceHubResult.ReasonTargetNotFound);
+        if (!Throttle()) return VoiceHubResult.Fail(VoiceHubResult.ReasonRateLimited);
         _metrics.RecordRelay(Context.ConnectionId);
         await Clients.Client(targetConnectionId).SendAsync("IceCandidateReceived", Context.ConnectionId, candidate);
+        return VoiceHubResult.Success;
     }
 
     public override Task OnDisconnectedAsync(Exception? exception)
@@ -162,7 +176,12 @@ public sealed class VoiceHub : Hub
         return base.OnDisconnectedAsync(exception);
     }
 
-    private bool Throttle() => _rateLimiter.TryConsume(Context.ConnectionId);
+    private bool Throttle()
+    {
+        if (_rateLimiter.TryConsume(Context.ConnectionId)) return true;
+        _metrics.RecordRateLimitRejection();
+        return false;
+    }
 
     private static string GroupName(string tableId) => $"voice:{tableId}";
 

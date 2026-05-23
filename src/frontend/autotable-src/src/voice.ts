@@ -35,6 +35,7 @@
 import type { Client } from './client';
 import { setElHidden } from './dom-utils';
 import { showVoiceToast } from './toast';
+import { getGameState, loadGameState, subscribeGameState } from './game-state';
 
 const FALLBACK_ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -44,23 +45,16 @@ interface IceConfig {
   iceServers: RTCIceServer[];
 }
 
-// Phase K Wave 3 — Per-game voice-enabled flag.
+// Phase K Wave 3 → Phase K Wave 4 — Per-game voice-enabled flag.
 //
-// Bishop's Wave-3 backend exposes `Game.VoiceEnabled` (default `false`)
-// through `GET /api/games/{id}/settings` and a settings-write endpoint
-// at `POST /api/games/{id}/settings/voice`.  The voice module probes
-// the GET on install — when the flag is `false` we still mount the mic
-// button (so the table-creator's settings drawer has somewhere to
-// flip the flag from) but render it disabled with the
-// "Voice not enabled for this table" tooltip.
+// Wave 3 fetched `/api/games/{id}/settings` directly from this
+// module; Wave 4 routes the lookup through the unified `game-state`
+// reactive store so voice + settings-drawer + future owner-only
+// surfaces share one cached snapshot and respond to Bishop's
+// `GameJoined` SignalR push without independent refetches.
 //
 // `?voice=1` on the URL remains as the E2E / self-hosted override —
 // when present we skip the probe and treat voice as enabled.
-
-interface GameVoiceSettings {
-  voiceEnabled?: boolean;
-  VoiceEnabled?: boolean;
-}
 
 const VOICE_ENABLED_URL_OVERRIDE_RE = /[?&]voice=1\b/;
 
@@ -78,17 +72,83 @@ async function probeVoiceEnabled(): Promise<boolean> {
   if (VOICE_ENABLED_URL_OVERRIDE_RE.test(window.location.search)) return true;
   const gameId = gameIdFromUrl();
   if (gameId === null) return false;
-  try {
-    const r = await fetch(
-      `/api/games/${encodeURIComponent(gameId)}/settings`,
-      { credentials: 'same-origin', headers: { Accept: 'application/json' } },
-    );
-    if (!r.ok) return false;
-    const body = (await r.json()) as GameVoiceSettings;
-    return body.voiceEnabled === true || body.VoiceEnabled === true;
-  } catch {
-    return false;
+  // Prefer the reactive snapshot (populated by Client.connect's
+  // loadGameState fire-and-forget); when it hasn't landed yet we
+  // resolve it ourselves rather than blocking on an unbounded race.
+  const cached = getGameState();
+  if (cached !== null && cached.gameId === gameId) return cached.voiceEnabled;
+  const fetched = await loadGameState(gameId);
+  return fetched?.voiceEnabled === true;
+}
+
+/**
+ * Phase K Wave 4 — Map Bishop's `VoiceHubResult.reason` enum to a
+ * user-friendly toast string.  Bishop's Wave-4 VoiceHub returns
+ * `{ ok: false, reason: "voice-not-enabled" | "not-seated"
+ * | "spectator" | "rate-limited" | "target-not-found"
+ * | "unauthorized" }` on rejection; we localise here so the wire
+ * vocabulary doesn't leak into the toast region.
+ *
+ * Unknown codes fall through to a defensive "Voice chat error:
+ * <reason>" string so a new server-side code still renders something
+ * actionable rather than silently swallowing the failure.
+ */
+export function voiceReasonToText(reason: string): string {
+  const key = reason.trim().toLowerCase();
+  switch (key) {
+    case 'voice-not-enabled':
+    case 'voice_not_enabled':
+    case 'voicenotenabled':
+      return 'Voice chat is not enabled on this table';
+    case 'not-seated':
+    case 'not_seated':
+    case 'notseated':
+      return 'Take a seat to join voice';
+    case 'spectator':
+    case 'spectators':
+      return 'Spectators cannot join voice';
+    case 'rate-limited':
+    case 'rate_limited':
+    case 'ratelimited':
+      return 'Too many voice messages; slow down';
+    case 'target-not-found':
+    case 'target_not_found':
+    case 'targetnotfound':
+      return 'Peer disconnected';
+    case 'unauthorized':
+    case 'unauthenticated':
+      return 'Please sign in to use voice';
+    default:
+      // Tolerate legacy free-text Wave-3 reasons by re-routing to the
+      // existing `showVoiceToast` heuristic mapper (which falls back
+      // to a generic toast string for unknown content).
+      return `Voice chat error: ${reason}`;
   }
+}
+
+interface VoiceHubResult {
+  ok?: boolean;
+  Ok?: boolean;
+  reason?: string;
+  Reason?: string;
+}
+
+function readVoiceResult(raw: unknown): { ok: boolean; reason: string | null } {
+  if (raw === null || raw === undefined) return { ok: true, reason: null };
+  // Legacy Wave-3 shape: a free-text string ("ok" / error reason).
+  if (typeof raw === 'string') {
+    if (raw === '' || raw.toLowerCase() === 'ok') return { ok: true, reason: null };
+    return { ok: false, reason: raw };
+  }
+  if (typeof raw === 'object') {
+    const r = raw as VoiceHubResult;
+    const ok = r.ok === true || r.Ok === true;
+    const reason = typeof r.reason === 'string' ? r.reason
+      : (typeof r.Reason === 'string' ? r.Reason : null);
+    if (ok) return { ok: true, reason: null };
+    return { ok: false, reason };
+  }
+  return { ok: true, reason: null };
 }
 
 interface SignallingMessage {
@@ -122,6 +182,7 @@ let iceServers: RTCIceServer[] = FALLBACK_ICE;
 // mic button so the table-creator's settings drawer has a visible
 // affordance to flip it on from, but skip the WebRTC mesh.
 let voiceEnabledForGame = false;
+let stateUnsub: (() => void) | null = null;
 
 export async function installVoicePanel(_client: Client): Promise<void> {
   if (installed) return;
@@ -132,9 +193,25 @@ export async function installVoicePanel(_client: Client): Promise<void> {
   // it returns false we still leave the panel mounted in disabled
   // state so the table-creator can find the "Enable voice" toggle in
   // the settings drawer; voice signalling + WebRTC are skipped until
-  // a future `mahjong:voice-enabled` event flips the gate.
+  // a future `mahjong:voice-enabled` event (or game-state push) flips
+  // the gate.
   voiceEnabledForGame = await probeVoiceEnabled();
   setVoiceEnabled(voiceEnabledForGame);
+
+  // Phase K Wave 4 — Live re-sync from the shared game-state store so
+  // a SignalR `GameJoined` push that flips `voiceEnabled` updates
+  // the mic button without the user touching the URL.
+  stateUnsub = subscribeGameState((s) => {
+    const url = VOICE_ENABLED_URL_OVERRIDE_RE.test(window.location.search);
+    const next = url || s.voiceEnabled === true;
+    if (next === voiceEnabledForGame) return;
+    voiceEnabledForGame = next;
+    setVoiceEnabled(next);
+    if (next && signaller === null) {
+      void startSignalling();
+    }
+  });
+
   if (!voiceEnabledForGame) {
     // Listen for settings updates that flip the flag while the user
     // sits at the table.  Owners flipping the toggle in the settings
@@ -229,7 +306,7 @@ async function toggleMic(): Promise<void> {
   // happened; the actual `disabled` attribute also stops most clicks
   // from reaching here but we guard defensively.
   if (!voiceEnabledForGame) {
-    showVoiceToast('voice not enabled');
+    showVoiceToast(voiceReasonToText('voice-not-enabled'));
     return;
   }
   if (localStream === null) {
@@ -249,21 +326,23 @@ async function toggleMic(): Promise<void> {
         peer.pc.addTrack(track, localStream);
       }
     }
-    // Phase K Wave 3 — Notify the VoiceHub that we want to join.
-    // Bishop's `JoinVoice` returns the error reason as a string when
-    // the server refuses (`"voice not enabled"` or
-    // `"spectators cannot join voice"`); surface it as a toast.
+    // Phase K Wave 3 → Phase K Wave 4 — Notify the VoiceHub that we
+    // want to join.  Bishop's Wave-4 hub returns a typed
+    // `VoiceHubResult { ok, reason }`; we still tolerate the Wave-3
+    // free-text string for backward-compat (see `readVoiceResult`).
     if (signaller !== null) {
       try {
-        const result = await signaller.invoke('JoinVoice');
-        if (typeof result === 'string' && result !== '' && result.toLowerCase() !== 'ok') {
-          showVoiceToast(result);
+        const raw = await signaller.invoke('JoinVoice');
+        const parsed = readVoiceResult(raw);
+        if (!parsed.ok) {
+          const reason = parsed.reason ?? 'unknown';
+          showVoiceToast(voiceReasonToText(reason));
           micBtn.disabled = true;
           return;
         }
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
-        showVoiceToast(reason);
+        showVoiceToast(voiceReasonToText(reason));
       }
     }
   }
@@ -516,5 +595,9 @@ export function shutdownVoice(): void {
   }
   if (panel !== null) {
     setElHidden(panel, true);
+  }
+  if (stateUnsub !== null) {
+    try { stateUnsub(); } catch { /* ignore */ }
+    stateUnsub = null;
   }
 }

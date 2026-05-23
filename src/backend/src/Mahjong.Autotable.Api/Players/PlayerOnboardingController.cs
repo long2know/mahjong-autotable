@@ -82,6 +82,18 @@ public sealed class PlayerOnboardingController : ControllerBase
             return BadRequest(new { error = "Body must include at least one of `completed` or `stepsCompleted`." });
         }
 
+        // Phase K Wave 4 — Bishop. Apone flagged a Wave-3 failure where
+        // POST stepsCompleted=999 was persisted verbatim. The canonical
+        // tour has 8 steps (CompletedStepCount); the controller now
+        // clamps any inbound stepsCompleted to [0, MaxStepsCompleted]
+        // BEFORE any persistence logic. Negative values clamp to 0;
+        // values above the ceiling clamp to MaxStepsCompleted (8).
+        // A no-op POST (4 → 4) stays a no-op; the clamp never
+        // introduces a 400.
+        int? clampedSteps = body.StepsCompleted is int requestedSteps
+            ? Math.Clamp(requestedSteps, MinStepsCompleted, MaxStepsCompleted)
+            : null;
+
         // POST mints a cookie if none exists so the client can persist
         // progress across the first session.
         var playerId = _identity.ResolveOrMint(HttpContext);
@@ -94,8 +106,8 @@ public sealed class PlayerOnboardingController : ControllerBase
             {
                 PlayerId = playerId,
                 Completed = body.Completed ?? false,
-                StepsCompleted = Math.Max(0, body.StepsCompleted ?? 0),
-                LastStepCompletedUtc = (body.Completed == true || (body.StepsCompleted ?? 0) > 0) ? now : null,
+                StepsCompleted = clampedSteps ?? 0,
+                LastStepCompletedUtc = (body.Completed == true || (clampedSteps ?? 0) > 0) ? now : null,
                 CreatedAt = now,
                 UpdatedAt = now,
             };
@@ -104,8 +116,9 @@ public sealed class PlayerOnboardingController : ControllerBase
         else
         {
             // Monotonic step count — a lower value never regresses
-            // the persisted progress.
-            if (body.StepsCompleted is int steps && steps > row.StepsCompleted)
+            // the persisted progress. Clamp before the comparison so
+            // overflow inputs cap at MaxStepsCompleted.
+            if (clampedSteps is int steps && steps > row.StepsCompleted)
             {
                 row.StepsCompleted = steps;
                 row.LastStepCompletedUtc = now;
@@ -127,6 +140,17 @@ public sealed class PlayerOnboardingController : ControllerBase
             lastStepCompletedUtc = row.LastStepCompletedUtc,
         });
     }
+
+    /// <summary>Phase K Wave 4 — Bishop. Lower bound for the
+    /// onboarding clamp; matches the storage column's non-negative
+    /// invariant.</summary>
+    public const int MinStepsCompleted = 0;
+
+    /// <summary>Phase K Wave 4 — Bishop. Upper bound for the
+    /// onboarding clamp; matches the canonical 8-step tour shipped by
+    /// the frontend. Inbound POSTs above this value clamp to the
+    /// ceiling instead of rejecting (Apone's Wave-3 failure note).</summary>
+    public const int MaxStepsCompleted = 8;
 
     private async Task<string?> ResolvePlayerIdAsync(CancellationToken ct)
     {

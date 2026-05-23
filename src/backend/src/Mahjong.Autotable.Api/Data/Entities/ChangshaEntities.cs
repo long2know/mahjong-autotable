@@ -339,6 +339,22 @@ public class ReconnectAuditEntry
     /// <summary>Phase K Wave 2 — voice signalling: peer left a voice room.</summary>
     public const string KindVoiceLeave = "voice.leave";
 
+    /// <summary>Phase K Wave 3 — TURN short-term credential mint.</summary>
+    public const string KindTurnCredentialsMinted = "voice.turn.credentials.minted";
+
+    /// <summary>
+    /// Phase K Wave 4 — Bishop. Prefix for the per-key JWT issuance
+    /// audit Kind. The full classifier appends the key's index in
+    /// <c>AuthOptions.JwtSigningKeys</c> (e.g.
+    /// <c>auth.jwt.signed.with_key.0</c> when the active signer is at
+    /// position 0). <see cref="Detail"/> carries the deterministic
+    /// <c>kid</c> so operators can reconcile rotations.
+    /// </summary>
+    public const string KindAuthJwtSignedPrefix = "auth.jwt.signed.with_key.";
+
+    /// <summary>Phase K Wave 4 — Bishop. Tournament admin reseed audit row.</summary>
+    public const string KindTournamentSeeded = "tournament.seeded";
+
     /// <summary>Phase K Wave 2 — free-form classifier payload (tournament
     /// round number, forfeit reason, voice tableId). Nullable so existing
     /// Wave-9 rows backfill clean.</summary>

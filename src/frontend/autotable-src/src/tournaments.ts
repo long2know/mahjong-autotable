@@ -88,6 +88,13 @@ interface TournamentDetail {
   /** Single-elim bracket; empty for round-robin / Swiss formats. */
   matches: BracketMatch[];
   standings: StandingsRow[];
+  /**
+   * Phase K Wave 4 — Registered players list, used to render the
+   * seeding panel in sparse mode (some players haven't been placed
+   * into round-1 match slots yet).  Optional because Bishop's
+   * pre-Wave-4 detail payload doesn't carry it.
+   */
+  players?: BracketSlot[];
   viewerRegistered?: boolean;
   viewerCanStart?: boolean;
 }
@@ -181,6 +188,21 @@ async function fetchDetail(id: string): Promise<TournamentDetail | null> {
 }
 
 async function doPost(path: string, body?: unknown): Promise<boolean> {
+  const r = await doPostStatus(path, body);
+  return r.ok;
+}
+
+/**
+ * Phase K Wave 4 — Status-aware POST.  Returns `{ ok, status }` so
+ * callers can branch on the specific HTTP code (e.g. 400 → schema
+ * validation toast).  Network errors map to `{ ok: false, status: 0 }`.
+ */
+interface PostResult {
+  ok: boolean;
+  status: number;
+}
+
+async function doPostStatus(path: string, body?: unknown): Promise<PostResult> {
   try {
     const resp = await fetch(path, {
       method: 'POST',
@@ -191,9 +213,9 @@ async function doPost(path: string, body?: unknown): Promise<boolean> {
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return resp.ok;
+    return { ok: resp.ok, status: resp.status };
   } catch {
-    return false;
+    return { ok: false, status: 0 };
   }
 }
 
@@ -245,25 +267,27 @@ async function probeAdmin(): Promise<boolean> {
 }
 
 /**
- * Phase K Wave 2 → Wave 3 — POST the new seed order to Bishop's
- * seeding endpoint.  Wave-3 wire shape switches from a flat array of
- * player ids to a richer `{ seeds: [{ playerId, seedNumber }, ...] }`
- * payload (Bishop's Wave-3 spec) so the server can attribute each
- * seed without inferring position from array index.  `seeds` is an
- * ordered list of `playerId`s — the first entry becomes the #1 seed.
- * Returns true on a 2xx response.
+ * Phase K Wave 2 → Wave 4 — POST the new seed order to Bishop's
+ * seeding endpoint.  Wave-4 surfaces sparse seeding (some players
+ * unseeded) — the wire shape stays `{ seeds: [{ playerId, seedNumber
+ * }, …] }`, but unseeded slots send `seedNumber: 0`.  Bishop's server
+ * interprets 0 as "preserve as unseeded".
+ *
+ * Returns `{ ok, status }` so the caller can surface a 400-specific
+ * toast ("Tournament must have unique sequential seeds 1..N.") when
+ * the server's body validation fails.
  *
  * Wire: `POST /api/tournaments/{id}/seed`
  *       body `{ seeds: [{ playerId, seedNumber }, ...] }`.
  */
-async function postSeed(tournamentId: string, seeds: string[]): Promise<boolean> {
-  const payload = {
-    seeds: seeds.map((playerId, idx) => ({
-      playerId,
-      seedNumber: idx + 1,
-    })),
-  };
-  return doPost(`/api/tournaments/${encodeURIComponent(tournamentId)}/seed`, payload);
+interface SeedEntry {
+  playerId: string;
+  seedNumber: number;
+}
+
+async function postSeed(tournamentId: string, entries: SeedEntry[]): Promise<PostResult> {
+  const payload = { seeds: entries };
+  return doPostStatus(`/api/tournaments/${encodeURIComponent(tournamentId)}/seed`, payload);
 }
 
 // ── Normalisers ─────────────────────────────────────────────────────
@@ -289,16 +313,33 @@ function normalizeDetail(raw: unknown): TournamentDetail | null {
 
   const matches = normalizeMatches(o.matches ?? o.bracket);
   const standings = normalizeStandings(o.standings ?? o.leaderboard);
+  // Phase K Wave 4 — Sparse-mode seeding needs the registered player
+  // list independent of round-1 match slots.  Tolerate a handful of
+  // wire vocabularies (`players`, `registered`, `participants`) so we
+  // don't need a Bishop wire-shape commit to land first.
+  const players = normalizeSlots(
+    o.players ?? o.Players ?? o.registered ?? o.Registered ?? o.participants);
 
   return {
     tournament,
     matches,
     standings,
+    players,
     viewerRegistered: typeof o.viewerRegistered === 'boolean'
       ? o.viewerRegistered : tournament.viewerRegistered,
     viewerCanStart: typeof o.viewerCanStart === 'boolean'
       ? o.viewerCanStart : tournament.viewerCanStart,
   };
+}
+
+function normalizeSlots(raw: unknown): BracketSlot[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BracketSlot[] = [];
+  for (const r of raw) {
+    const slot = normalizeSlot(r);
+    if (slot !== null) out.push(slot);
+  }
+  return out;
 }
 
 function normalizeMatches(raw: unknown): BracketMatch[] {
@@ -568,7 +609,22 @@ function rerenderBracket(): void {
   }
 }
 
-// ── Phase K Wave 2 — Admin drag-drop seeding panel ─────────────────
+// ── Phase K Wave 2 → Wave 4 — Admin drag-drop seeding panel ────────
+
+/**
+ * Phase K Wave 4 — Sparse-mode row.  Each entry tracks a registered
+ * player, a flag for whether they are currently seeded (drives the
+ * `#N` vs `—` rank label), and the optimistic-render seed number.
+ * When the user drops a row above the "Unseeded" divider (i.e.
+ * within the first `seededCount` slots) it becomes seeded; dropping
+ * below the divider returns it to unseeded.
+ */
+interface SeedRow {
+  slot: BracketSlot;
+  seeded: boolean;
+}
+
+const SPARSE_VALIDATION_TOAST = 'Tournament must have unique sequential seeds 1..N.';
 
 function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
   if (!state.isAdmin) return null;
@@ -579,20 +635,28 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
   const isOpen = status === 'open' || status === 'registration-open';
   if (!isOpen) return null;
 
-  // Extract the seeded round-1 players in match-slot order: m0.p1, m0.p2,
-  // m1.p1, m1.p2, …  Empty slots (TBD) are filtered out — admins drag
-  // around real registrants.
+  // Phase K Wave 4 — Build the unified row list.  Seeded players come
+  // from round-1 match slots (in slot-order); unseeded come from the
+  // registered-players list (`detail.players`) minus everyone already
+  // placed into a seeded slot.
   const round1 = detail.matches
     .filter(m => m.round === 1)
     .sort((a, b) => a.matchIndex - b.matchIndex);
-  if (round1.length === 0) return null;
 
-  const seedSlots: BracketSlot[] = [];
+  const seededSlots: BracketSlot[] = [];
   for (const m of round1) {
-    if (m.player1 !== null && m.player1.playerId !== null) seedSlots.push(m.player1);
-    if (m.player2 !== null && m.player2.playerId !== null) seedSlots.push(m.player2);
+    if (m.player1 !== null && m.player1.playerId !== null) seededSlots.push(m.player1);
+    if (m.player2 !== null && m.player2.playerId !== null) seededSlots.push(m.player2);
   }
-  if (seedSlots.length < 2) return null;
+  const seededIds = new Set(seededSlots.map(s => s.playerId).filter((p): p is string => p !== null));
+
+  const rows: SeedRow[] = seededSlots.map(slot => ({ slot, seeded: true }));
+  for (const slot of detail.players ?? []) {
+    if (slot.playerId !== null && !seededIds.has(slot.playerId)) {
+      rows.push({ slot, seeded: false });
+    }
+  }
+  if (rows.length < 2) return null;
 
   const wrap = document.createElement('div');
   wrap.className = 'tournament-seeding-panel';
@@ -602,46 +666,70 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
 
   const header = document.createElement('div');
   header.className = 'tournament-seeding-header';
-  header.textContent = 'Seeding (drag to reorder)';
+  header.textContent = 'Seeding (drag to reorder; drop into Unseeded to release)';
   wrap.appendChild(header);
 
   const list = document.createElement('ol');
   list.className = 'tournament-seeding-list';
   list.setAttribute('role', 'list');
 
-  // Working copy that drives the optimistic re-render; saved
-  // automatically on each drop (Phase K Wave 3) with rollback on
-  // failure.  We keep the last-known-good ordering so a 4xx response
-  // can restore the previous seeds + re-render.
-  const seeds = seedSlots.slice();
-  let lastSavedSeeds = seeds.slice();
+  let lastSavedRows = cloneRows(rows);
 
-  // Actions container is declared here so `persistSeeds` (which surfaces
-  // an inline error pill) can append to it.  Wired into `wrap` at the
-  // bottom of this function after the row list lands.
   const actions = document.createElement('div');
   actions.className = 'tournament-seeding-actions';
 
   const rerender = (): void => {
     list.replaceChildren();
-    seeds.forEach((slot, i) => {
+    let seedRank = 0;
+    let unseededDividerRendered = false;
+    rows.forEach((row, i) => {
+      if (!row.seeded && !unseededDividerRendered) {
+        const divider = document.createElement('li');
+        divider.className = 'tournament-seeding-divider';
+        divider.setAttribute('data-testid', 'tournament-seeding-unseeded-divider');
+        divider.setAttribute('role', 'separator');
+        divider.textContent = 'Unseeded';
+        // Drop-onto-divider promotes the row into the unseeded zone.
+        divider.addEventListener('dragover', (ev) => { ev.preventDefault(); });
+        divider.addEventListener('drop', (ev) => {
+          ev.preventDefault();
+          if (ev.dataTransfer === null) return;
+          const fromIdx = parseInt(ev.dataTransfer.getData('text/plain'), 10);
+          if (!isFinite(fromIdx)) return;
+          moveRow(rows, fromIdx, i);
+          rows[i].seeded = false;
+          recomputeSeededFlags(rows);
+          rerender();
+          void persistSeeds();
+        });
+        list.appendChild(divider);
+        unseededDividerRendered = true;
+      }
+      if (row.seeded) seedRank += 1;
+
       const li = document.createElement('li');
-      li.className = 'tournament-seeding-row';
+      li.className = row.seeded
+        ? 'tournament-seeding-row tournament-seeding-row-seeded'
+        : 'tournament-seeding-row tournament-seeding-row-unseeded';
       li.draggable = true;
       li.setAttribute('data-testid', `tournament-seed-row-${i}`);
       li.setAttribute('data-seed-index', String(i));
-      li.setAttribute('data-player-id', slot.playerId ?? '');
+      li.setAttribute('data-player-id', row.slot.playerId ?? '');
+      li.setAttribute('data-seeded', row.seeded ? 'true' : 'false');
       li.setAttribute('role', 'listitem');
       li.setAttribute('aria-grabbed', 'false');
 
       const rank = document.createElement('span');
       rank.className = 'tournament-seeding-rank';
-      rank.textContent = `#${i + 1}`;
+      // Phase K Wave 4 — sparse-mode "—" placeholder for unseeded
+      // rows so admins see at a glance which players still need a
+      // seed before the tournament can start.
+      rank.textContent = row.seeded ? `#${seedRank}` : '—';
       li.appendChild(rank);
 
       const name = document.createElement('span');
       name.className = 'tournament-seeding-name';
-      name.textContent = slot.displayName;
+      name.textContent = row.slot.displayName;
       li.appendChild(name);
 
       const handle = document.createElement('span');
@@ -676,10 +764,12 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
         const fromIdx = parseInt(ev.dataTransfer.getData('text/plain'), 10);
         const toIdx = i;
         if (!isFinite(fromIdx) || fromIdx === toIdx) return;
-        const [moved] = seeds.splice(fromIdx, 1);
-        seeds.splice(toIdx, 0, moved);
+        moveRow(rows, fromIdx, toIdx);
+        // Dropping onto a seeded target promotes the dropped row to
+        // seeded.  Dropping onto an unseeded target leaves it unseeded.
+        rows[toIdx].seeded = row.seeded;
+        recomputeSeededFlags(rows);
         rerender();
-        // Phase K Wave 3 — auto-save on drop.
         void persistSeeds();
       });
 
@@ -687,30 +777,33 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
     });
   };
 
-  // Phase K Wave 3 — Persist after each drop.  Optimistic update is
-  // already applied (the `rerender()` runs before this fires); on
-  // failure we restore the last-known-good ordering and re-render.
+  // Phase K Wave 4 — Persist after each drop.  Wire shape includes
+  // every registered player; seeded entries carry `seedNumber: 1..N`,
+  // unseeded carry `seedNumber: 0`.  On HTTP failure we restore the
+  // last-known-good ordering + re-render; on 400 we surface the
+  // body-validation toast Bishop's controller returns ("Tournament
+  // must have unique sequential seeds 1..N.").
   const persistSeeds = async (): Promise<void> => {
-    const playerIds = seeds
-      .map(s => s.playerId)
-      .filter((p): p is string => p !== null && p !== '');
-    const ok = await postSeed(detail.tournament.id, playerIds);
-    if (ok) {
-      lastSavedSeeds = seeds.slice();
+    const entries = buildSeedEntries(rows);
+    const result = await postSeed(detail.tournament.id, entries);
+    if (result.ok) {
+      lastSavedRows = cloneRows(rows);
       const { showToast } = await import('./toast');
       showToast('Seeding saved.', 'success', 2400);
+      return;
+    }
+    rows.splice(0, rows.length, ...cloneRows(lastSavedRows));
+    rerender();
+    const statusEl = document.createElement('span');
+    statusEl.className = 'tournament-seeding-status tournament-seeding-status-error';
+    statusEl.setAttribute('data-testid', 'tournament-seeding-status');
+    statusEl.textContent = 'Failed to save seeding — reverted.';
+    actions.appendChild(statusEl);
+    window.setTimeout(() => statusEl.remove(), 4000);
+    const { showToast } = await import('./toast');
+    if (result.status === 400) {
+      showToast(SPARSE_VALIDATION_TOAST, 'error');
     } else {
-      // Roll back optimistic state to the last server-acknowledged
-      // ordering and re-render.
-      seeds.splice(0, seeds.length, ...lastSavedSeeds);
-      rerender();
-      const status = document.createElement('span');
-      status.className = 'tournament-seeding-status tournament-seeding-status-error';
-      status.setAttribute('data-testid', 'tournament-seeding-status');
-      status.textContent = 'Failed to save seeding — reverted.';
-      actions.appendChild(status);
-      window.setTimeout(() => status.remove(), 4000);
-      const { showToast } = await import('./toast');
       showToast('Failed to save seeding — reverted to last saved order.', 'error');
     }
   };
@@ -718,43 +811,81 @@ function buildSeedingPanel(detail: TournamentDetail): HTMLDivElement | null {
   rerender();
   wrap.appendChild(list);
 
-  // Phase K Wave 3 — Manual Save button retained as a belt-and-braces
-  // affordance for keyboard-only users (who can reorder via keyboard
-  // accessibility hooks that we add in Wave 4).
   const save = document.createElement('button');
   save.type = 'button';
   save.className = 'btn btn-primary btn-sm tournament-seeding-save';
   save.setAttribute('data-testid', 'tournament-seeding-save');
   save.textContent = 'Save seeding';
   save.addEventListener('click', async () => {
-    const playerIds = seeds
-      .map(s => s.playerId)
-      .filter((p): p is string => p !== null && p !== '');
     save.disabled = true;
-    const ok = await postSeed(detail.tournament.id, playerIds);
+    const entries = buildSeedEntries(rows);
+    const result = await postSeed(detail.tournament.id, entries);
     save.disabled = false;
-    if (ok) {
-      lastSavedSeeds = seeds.slice();
+    if (result.ok) {
+      lastSavedRows = cloneRows(rows);
       const { showToast } = await import('./toast');
       showToast('Seeding saved.', 'success', 2400);
-      // Refresh the tournament detail so we reflect the server's
-      // canonical bracket layout (server may rearrange seeds → matches).
       void openDetail(detail.tournament.id);
     } else {
-      const status = document.createElement('span');
-      status.className = 'tournament-seeding-status tournament-seeding-status-error';
-      status.setAttribute('data-testid', 'tournament-seeding-status');
-      status.textContent = 'Failed to save seeding.';
-      actions.appendChild(status);
-      window.setTimeout(() => status.remove(), 4000);
+      const statusEl = document.createElement('span');
+      statusEl.className = 'tournament-seeding-status tournament-seeding-status-error';
+      statusEl.setAttribute('data-testid', 'tournament-seeding-status');
+      statusEl.textContent = 'Failed to save seeding.';
+      actions.appendChild(statusEl);
+      window.setTimeout(() => statusEl.remove(), 4000);
       const { showToast } = await import('./toast');
-      showToast('Failed to save seeding.', 'error');
+      if (result.status === 400) {
+        showToast(SPARSE_VALIDATION_TOAST, 'error');
+      } else {
+        showToast('Failed to save seeding.', 'error');
+      }
     }
   });
   actions.appendChild(save);
 
   wrap.appendChild(actions);
   return wrap;
+}
+
+function cloneRows(rows: SeedRow[]): SeedRow[] {
+  return rows.map(r => ({ slot: r.slot, seeded: r.seeded }));
+}
+
+function moveRow(rows: SeedRow[], fromIdx: number, toIdx: number): void {
+  const [moved] = rows.splice(fromIdx, 1);
+  rows.splice(toIdx, 0, moved);
+}
+
+// Ensure the seeded rows form a contiguous prefix.  Re-classifies
+// stragglers so the rendered "Unseeded" divider always lands at a
+// stable boundary regardless of where the user dropped a row.
+function recomputeSeededFlags(rows: SeedRow[]): void {
+  let inSeededRun = true;
+  for (const r of rows) {
+    if (inSeededRun && r.seeded) continue;
+    if (!r.seeded) { inSeededRun = false; continue; }
+    // A seeded row that follows an unseeded row: demote it so the
+    // divider stays a single boundary.
+    r.seeded = false;
+    inSeededRun = false;
+  }
+}
+
+function buildSeedEntries(rows: SeedRow[]): SeedEntry[] {
+  const entries: SeedEntry[] = [];
+  let seed = 0;
+  for (const r of rows) {
+    if (r.slot.playerId === null || r.slot.playerId === '') continue;
+    if (r.seeded) {
+      seed += 1;
+      entries.push({ playerId: r.slot.playerId, seedNumber: seed });
+    } else {
+      // Phase K Wave 4 — sparse marker: seedNumber 0 tells Bishop's
+      // controller "this player is registered but unseeded".
+      entries.push({ playerId: r.slot.playerId, seedNumber: 0 });
+    }
+  }
+  return entries;
 }
 
 // ── Bracket SVG ─────────────────────────────────────────────────────

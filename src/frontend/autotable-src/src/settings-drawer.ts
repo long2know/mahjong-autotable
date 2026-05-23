@@ -706,12 +706,11 @@ function buildNetworkPanel(): HTMLDivElement {
 //   • `viewerIsOwner` is false (the user is a guest at someone else's
 //     table — the server enforces this anyway via 403).
 
-interface GameSettingsResponse {
-  voiceEnabled?: boolean;
-  VoiceEnabled?: boolean;
-  viewerIsOwner?: boolean;
-  ViewerIsOwner?: boolean;
-}
+// Phase K Wave 4 — Voice settings are now fetched via the unified
+// `./game-state` reactive store (`loadGameState` / `subscribeGameState`),
+// so the per-module response type that lived here is gone.  The
+// settings POST writer below still owns the wire-shape for the
+// PUT body (`{ enabled }`).
 
 function currentGameIdFromUrl(): string | null {
   try {
@@ -774,25 +773,34 @@ async function primeVoiceToggle(
   wrap: HTMLElement,
   input: HTMLInputElement,
 ): Promise<void> {
-  try {
-    const r = await fetch(
-      `/api/games/${encodeURIComponent(gameId)}/settings`,
-      { credentials: 'same-origin', headers: { Accept: 'application/json' } },
-    );
-    if (!r.ok) {
-      // 404 → endpoint not deployed; leave the toggle hidden.
-      return;
-    }
-    const body = (await r.json()) as GameSettingsResponse;
-    const isOwner = body.viewerIsOwner === true || body.ViewerIsOwner === true;
-    if (!isOwner) return;
-    const enabled = body.voiceEnabled === true || body.VoiceEnabled === true;
-    input.checked = enabled;
+  // Phase K Wave 4 — Prefer the shared `game-state` reactive snapshot
+  // so we don't double-fetch `/api/games/{id}/settings` when the voice
+  // module already populated it on JOIN.  Fall back to a direct fetch
+  // only when the snapshot is missing (e.g. settings drawer opened
+  // before the WS JOIN completed).
+  const { getGameState, loadGameState, subscribeGameState } = await import('./game-state');
+  const apply = (snapshot: { voiceEnabled: boolean; viewerIsOwner: boolean }): void => {
+    if (!snapshot.viewerIsOwner) return;
+    input.checked = snapshot.voiceEnabled;
     input.disabled = false;
     wrap.hidden = false;
-  } catch {
-    // Network error — leave the toggle hidden.
+  };
+  const cached = getGameState();
+  if (cached !== null && cached.gameId === gameId) {
+    apply(cached);
+  } else {
+    const fresh = await loadGameState(gameId);
+    if (fresh !== null) apply(fresh);
   }
+  // Live sync — a `GameJoined` push after the drawer renders will
+  // flip the toggle in place.
+  subscribeGameState((s) => {
+    if (s.gameId !== gameId) return;
+    if (!s.viewerIsOwner) return;
+    if (input.checked !== s.voiceEnabled) input.checked = s.voiceEnabled;
+    input.disabled = false;
+    wrap.hidden = false;
+  });
 }
 
 async function postVoiceEnable(
@@ -831,6 +839,10 @@ async function postVoiceEnable(
       desired ? 'Voice enabled for this table.' : 'Voice disabled for this table.',
       'success',
     );
+    // Phase K Wave 4 — Mirror the new flag into the shared game-state
+    // store so voice.ts + any other subscribers flip in lockstep.
+    const { updateGameState } = await import('./game-state');
+    updateGameState({ gameId, voiceEnabled: desired });
     // Notify voice.ts so the mic toggle enables in place — voice.ts
     // listens for this event when it mounted in the disabled state.
     if (desired) {

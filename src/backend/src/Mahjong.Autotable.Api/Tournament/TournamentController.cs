@@ -182,17 +182,32 @@ public sealed class TournamentController : ControllerBase
         [FromBody] SeedBody? body,
         CancellationToken ct)
     {
+        // Phase K Wave 4 — Bishop. HTTP precedence is:
+        //   401 (no session)
+        //   → 403 (non-admin)
+        //   → 404 (tournament missing)
+        //   → 400 (body validation)
+        // Wave-3 returned 400 ahead of 404 because the controller
+        // validated the body before reading the tournament row. The
+        // reorder lets clients distinguish "wrong route" (404) from
+        // "right route, malformed payload" (400) — Vasquez's
+        // contract test pins the order.
         var session = await _cookies.ResolveAsync(HttpContext, ct);
         if (session is null)
             return Unauthorized(new { error = "Authentication required to seed." });
         if (!string.Equals(session.Role, "admin", StringComparison.OrdinalIgnoreCase))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Admin role required." });
+
+        using var scope = _scopeFactory.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<TournamentService>();
+        var tournament = await svc.GetAsync(id, ct);
+        if (tournament is null)
+            return NotFound(new { error = "Tournament not found.", id });
+
         var entries = body?.Seeds;
         if (entries is null || entries.Length == 0)
             return BadRequest(new { error = "Body must include a non-empty `seeds` array." });
 
-        using var scope = _scopeFactory.CreateScope();
-        var svc = scope.ServiceProvider.GetRequiredService<TournamentService>();
         try
         {
             var assignments = entries

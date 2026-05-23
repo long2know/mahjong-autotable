@@ -2429,3 +2429,103 @@ parallel with tile-texture round-trips.
   returning-user game loads.
 
 Memo: `.squad/decisions/inbox/hicks-phase-k-wave-3.md`.
+
+## Phase K Wave 4 (2026-06-14) — scene split + reactive game-state cache
+
+**Branch:** `stlong/phase-k-wave-4-bringup`
+
+### Goals delivered
+
+1. Split renderer-critical `scene.<hash>.js` chunk into
+   `scene-shell` (three.js + AssetLoader + Game + ClientUi) and
+   deferred `scene-effects` (GameUi + MoveLog).
+2. Unified `game-state.ts` reactive cache replacing per-module
+   `/api/games/{id}/settings` probes; live-pushed via SignalR
+   `GameJoined` for ownerId + voiceEnabled flips.
+3. Sparse-mode tournament seeding UI — render unseeded rows with
+   "—" rank; POST `seedNumber: 0` for unseeded; toast on 400
+   validation failure with Bishop's "must have unique sequential
+   seeds 1..N." copy.
+4. Inline Microsoft brand SVG (24×24, `role="img"`, `<title>`,
+   `aria-label="Microsoft"`); wrapper span no longer aria-hidden.
+5. Typed `VoiceHubResult { ok, reason }` parsing with reason→toast
+   map for the six Wave-4 codes (voice-not-enabled, not-seated,
+   spectator, rate-limited, target-not-found, unauthorized); Wave-3
+   string-reason fallback retained.
+
+### Files touched
+
+- `src/frontend/autotable-src/src/scene-shell.ts` (RENAMED from
+  `scene.ts`, rewritten) — mints `scene-shell-ready` + back-compat
+  `game-scene-ready`; dynamic-imports `./scene-effects`.
+- `src/frontend/autotable-src/src/scene-effects.ts` (NEW) — installs
+  `GameUi` via `Game.installGameUi(ctor)`; mounts `MoveLog`; mints
+  `scene-effects-ready`.
+- `src/frontend/autotable-src/src/game.ts` — `client`/`world` made
+  public; `gameUi` field typed `GameUi | null` (now `import type`
+  only); added `installGameUi(ctor)` deferred-construction hook.
+- `src/frontend/autotable-src/src/game-state.ts` (NEW) — `GameState`
+  singleton + `loadGameState` (in-flight-dedup), `subscribeGameState`,
+  `updateGameState`, `resetGameState`.  Falls back from
+  `/api/games/{id}` → `/api/games/{id}/settings`.
+- `src/frontend/autotable-src/src/client.ts` — on connect, calls
+  `loadGameState(gameId)` + subscribes to SignalR `GameJoined` event
+  (new `applyGameJoined` helper); `clearReconnectSession` resets.
+- `src/frontend/autotable-src/src/voice.ts` — replaced own probe
+  with `getGameState`/`loadGameState`/`subscribeGameState`; exported
+  `voiceReasonToText(reason)`; added `readVoiceResult()` typed
+  parser; `JoinVoice` errors translated via reason map.
+- `src/frontend/autotable-src/src/toast.ts` — `showVoiceToast`
+  expanded substring heuristic for the six Wave-4 reasons.
+- `src/frontend/autotable-src/src/settings-drawer.ts` —
+  `primeVoiceToggle` + `postVoiceEnable` use game-state instead of
+  direct fetch; removed dead `GameSettingsResponse` interface.
+- `src/frontend/autotable-src/src/auth.ts` — `microsoftIconSvg()`
+  rewritten 24×24 with `role="img"` + `<title>` + `aria-label`;
+  wrapper span no longer aria-hidden.
+- `src/frontend/autotable-src/src/tournaments.ts` — `postSeed`
+  signature now `(id, SeedEntry[]) => Promise<{ ok, status }>`;
+  `buildSeedingPanel` rewritten for sparse-mode with "Unseeded"
+  divider; 400-validation toast wired.
+- `src/frontend/autotable-src/src/pattern-utils.ts` (NEW) — pure
+  pattern ordering helpers extracted from `game-ui.ts` so
+  `move-log.ts` no longer drags the 102 kB game-ui graph into the
+  renderer-critical chain.
+- `src/frontend/autotable-src/src/game-ui.ts` — re-exports from
+  `./pattern-utils`; pattern code removed locally.
+- `src/frontend/autotable-src/src/move-log.ts` — imports
+  `comparePatterns` from `./pattern-utils` (was `./game-ui`).
+- `src/frontend/autotable-src/src/game-bootstrap.ts` —
+  `import('./scene-shell')` instead of `./scene`;
+  `preloadGameBootstrap` updated.
+- `src/frontend/autotable-src/tests/selectors.md` — appended Wave 4
+  footer (scene split + sparse seeding + Microsoft SVG + voice
+  reason map).
+- `src/frontend/autotable/*` — built artefacts (new hashed
+  `scene-shell.<hash>.js` + `scene-effects.<hash>.js` +
+  `game-state.<hash>.js`; pruned 6 stale Wave-3 chunks; updated
+  `manifest-precache.json`).
+
+### Bundle delta (eager + shell + scene on game URL)
+
+| Metric                       | Wave 3 | Wave 4 | Δ |
+|---|---|---|---|
+| Eager JS                     | 214 kB | **219 kB** | +5 kB (game-state import) |
+| Game shell JS                | 166 kB | **170 kB** | +4 kB (preloadGameBootstrap + game-state) |
+| Renderer shell (`scene-shell`) | 922 kB | **886 kB** | −36 kB (game-ui + move-log peeled) |
+| Renderer effects (NEW)       | —      | 60 kB     | game-ui + move-log lazy subgraph |
+| `game-state` (NEW)           | —      | 1.9 kB    | singleton cache |
+
+scene-shell did not hit the 500 kB target — three.js alone is
+~575 kB minified.  Logged as Wave-5 followup (lazy-import three
+into a third chunk).
+
+### Open Wave-5 questions
+
+- Replace `data-testid="game-scene-ready"` callers with
+  `scene-shell-ready` and remove the back-compat marker emit.
+- Keyboard-accessible re-ordering for the sparse seeding panel.
+- Pre-cache `scene-shell` in `manifest-precache.json` for warm
+  returning-user game URL loads (depends on Wave-5 size reduction).
+
+Memo: `.squad/decisions/inbox/hicks-phase-k-wave-4.md`.
