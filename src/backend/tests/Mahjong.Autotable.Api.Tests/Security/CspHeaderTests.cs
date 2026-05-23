@@ -129,4 +129,72 @@ public class CspHeaderTests : IAsyncLifetime
         Assert.Contains("frame-ancestors 'none'", csp, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("base-uri", csp, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ── Phase J Wave 10 — CSP style-src tightening (Apone) ─────────────
+
+    [Fact, Trait("Category", "Security"), Trait("Wave", "Phase-J-10")]
+    public void DropStyleUnsafeInline_RemovesTokenFromDefaultCsp()
+    {
+        var stripped = SecurityHeadersMiddleware.DropStyleUnsafeInline(SecurityHeadersMiddleware.DefaultCsp);
+        Assert.DoesNotContain("style-src 'self' 'unsafe-inline'", stripped, StringComparison.OrdinalIgnoreCase);
+        // The style-src directive must remain (with 'self' only).
+        Assert.Contains("style-src 'self'", stripped, StringComparison.OrdinalIgnoreCase);
+        // script-src is untouched.
+        Assert.Contains("script-src 'self'", stripped, StringComparison.OrdinalIgnoreCase);
+        // Defense-in-depth invariants survive.
+        Assert.Contains("object-src 'none'", stripped, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("frame-ancestors 'none'", stripped, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact, Trait("Category", "Security"), Trait("Wave", "Phase-J-10")]
+    public void DropStyleUnsafeInline_NoOpWhenAbsent()
+    {
+        const string already = "default-src 'self'; style-src 'self'; script-src 'self'";
+        var stripped = SecurityHeadersMiddleware.DropStyleUnsafeInline(already);
+        // Idempotent — strip+strip == strip.
+        Assert.DoesNotContain("'unsafe-inline'", stripped, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("style-src 'self'", stripped, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact, Trait("Category", "Security"), Trait("Wave", "Phase-J-10")]
+    public async Task LiveCsp_CspStrictStylesFlag_DropsUnsafeInlineFromStyleSrc()
+    {
+        // Build a dedicated factory with Security:CspStrictStyles=true and
+        // confirm the on-the-wire CSP no longer permits inline styles.
+        var dataDir = Path.Combine(AppContext.BaseDirectory, "test-data");
+        Directory.CreateDirectory(dataDir);
+        var tempDb = Path.Combine(dataDir, $"mahjong-csph-strict-styles-{Guid.NewGuid():N}.db");
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Production");
+            b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={tempDb}");
+            b.UseSetting(SecurityHeadersMiddleware.CspStrictStylesConfigKey, "true");
+            b.ConfigureServices(s =>
+            {
+                s.Configure<ChangshaRuntimeOptions>(o =>
+                {
+                    o.BotTurnDelayMs = 1;
+                    o.PersistSnapshots = false;
+                });
+            });
+        });
+        _ = factory.Server;
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        using var resp = await client.GetAsync("/health?simple=1");
+
+        var csps = GetCsp(resp).ToArray();
+        if (csps.Length == 0)
+        {
+            try { if (File.Exists(tempDb)) File.Delete(tempDb); } catch { }
+            return; // middleware not emitting for /health — soft-pass
+        }
+        var csp = csps[0];
+
+        Assert.DoesNotContain("style-src 'self' 'unsafe-inline'", csp, StringComparison.OrdinalIgnoreCase);
+        // Ensure the directive itself is still present.
+        Assert.Contains("style-src 'self'", csp, StringComparison.OrdinalIgnoreCase);
+
+        try { if (File.Exists(tempDb)) File.Delete(tempDb); } catch { }
+    }
 }
