@@ -1460,3 +1460,60 @@ Surface area (Hicks-owned):
   and will go green when Bishop's commit lands.  Confirm no frontend
   follow-up is needed (parser superset should cover most cases) once
   the contract crystallises.
+
+## Phase J Wave 3 — Sound effects, replay viewer, canonical pattern ordering (commit `77855da`)
+
+**Brief:** Stephen's Wave 3 directive — three parallel UI tracks:
+1. Sound effects manager wired into game events (settings toggle + autoplay unlock).
+2. End-of-game replay viewer accessible from the gameComplete modal.
+3. Canonical pattern display ordering applied to the result modal chip strip + move-log win row.
+
+All three landed in a single commit `77855da` on `stlong/phase-j-wave-3-completion`.
+
+### Scope completed
+
+**Sound effects (`src/sound.ts`, ~310 LOC, new file)**
+
+Six events — draw / discard / claim / win / washout / gameComplete — wired through a synth-generated Web Audio API module. Picked synth over CC0 assets to keep the bundle weightless and the licensing audit empty: ~310 LOC of self-contained recipes (`playClack`, `playChime`, `playFanfare`, `playWashout`, `playGameComplete`), AudioContext created lazily on first user gesture, master gain at 0.6 + per-voice envelopes 0.3-0.5 peak. Settings drawer toggle `#settings-sound` (default ON) + `?sound=on|off` URL override drive `Sound.setMuted()`. Draw SFX throttled 200 ms minimum so the initial 13-tile deal collapses to one clack instead of a typewriter rattle.
+
+**Replay viewer (`src/replay.ts`, ~640 LOC, new file)**
+
+2D top-down DOM-based viewer accessed from the end-of-game modal via a new `#game-complete-replay` button. Per-seat zones (4 quadrants) with tile glyph chips; per-hand timeline with play/pause/step/scrub footer controls. Captures tile transitions in real time from `client.things` (`hand.*` → draw, `discard.*` → discard, `meld.*` → meld) into a per-hand buffer; flushes the in-progress hand on every `result.current` update. Server-pushed `handHistory` (from `gameComplete` payload) merged in `Replay.open()` with server results taking precedence over client-captured moves. 3D scene reuse deferred — the live scene is too coupled to active game state to retrofit a playback mode within Wave 3 scope.
+
+**Canonical pattern ordering (`src/game-ui.ts` + `src/move-log.ts`)**
+
+`PATTERN_DISPLAY_ORDER` hardcoded list matches Bishop's `ChangshaPatternOrdering` table 1:1 (slot 1 HeavenlyHand → slot 13 SingleWait, with reserved slots 6, 7, 10, 12-13 for patterns not yet implemented). Unknown patterns sort alphabetically after the listed ones. `comparePatterns()` / `sortPatterns()` exported and applied to (a) result-modal chip strip via `renderResultPatternChips`, (b) move-log Hu-row patterns via `.sort(comparePatterns)`. 
+
+**Live wire upgrade** — `loadPatternOrderingFromApi()` fires a one-shot `fetch('api/changsha/pattern-ordering')` from `src/index.ts` at boot. On success, `setPatternDisplayOrder()` overwrites the in-process map with Bishop's canonical table. On failure (404 / offline / parse), the hardcoded list keeps rendering correctly. Result: a future Wave that adds a new pattern to Bishop's table is picked up on next page-load without a frontend code change.
+
+**`WinResult.IsSelfDraw` + `IsKongReplacement` (Bishop's new bools)**
+
+Consumed in `move-log.ts` — prefix selection prefers `winType === 'selfDraw'` (existing Wave I.2 path); when `winType` is missing, falls back to Bishop's `isSelfDraw` bool. `isKongReplacement` destructured but informational — the contextual verb selector already picks up `kongReplacementWin` from `AllPatterns`.
+
+### Methodology — what worked
+
+- **Hardcoded fallback + live wire upgrade, not either/or.** Initial implementation only had the hardcoded list. When Bishop's commits landed I added the boot-time fetch as a non-blocking upgrade — the hardcoded list keeps the chip strip correct even if the endpoint is offline, but a Wave-N pattern addition propagates without a frontend rebuild.
+- **Synth-only sound = zero coordination tax.** No asset files = no Dockerfile change = no Apone follow-up = no CC0 audit. The whole sound feature shipped without touching any other agent's lane.
+- **2D replay first, 3D later.** 3D scene reuse was the obvious instinct but the cost estimate (~800-1500 LOC for a separate scene, or a fragile state-rewind layer) broke the Wave 3 budget. 2D DOM-based viewer is ~640 LOC, ships in one commit, and validates whether players actually want replay before investing in 3D polish.
+- **Throttle draw sounds.** Without the 200 ms minimum gap the initial 13-tile deal sounds like a typewriter; with it, the deal collapses to one clack and per-turn draws stay distinct.
+
+### Surprises / blind spots
+
+- **`tsconfig.json` includes server/dist by default.** TypeScript strict run flagged 5x TS6305 errors on `server/dist/*.d.ts` artifacts left over from a prior server build. These are pre-existing (not introduced by my changes); confirmed by filtering on `src/` paths only. No real type errors from Wave 3 code.
+- **`?sound=on|off` URL override conflicts with localStorage default-true.** First implementation read localStorage first then applied URL override; resulted in a stale-toggle bug when toggling between tabs. Fixed by URL override winning unconditionally and persisting back to localStorage on first apply.
+- **`client.things` collection doesn't expose per-event deltas.** Capture loop reconstructs deltas by diffing the full `things` map against the previous snapshot — works but is O(N) per `things.update`. Performance acceptable (~136 tiles + melds = sub-millisecond on tested hardware) but a future optimization could subscribe to the underlying `Thing` collection's per-key events instead.
+
+### Stability
+
+- **TypeScript strict (`tsc --noEmit`):** **0 src/ errors** (5 pre-existing TS6305 on server/dist artifacts unrelated to Wave 3).
+- **Parcel build:** **succeeded in 4.29s** — new bundle `autotable-src.330c36fd.js` (1.08 MB) + `autotable-src.f8d8d79e.css` (25.27 kB).
+- **Backend tests (Vasquez `d7c5337`):** **424 passed / 0 failed / 0 skipped** — zero skips streak preserved.
+- **Stale bundle pruned:** `autotable-src.90818e21.js` + `autotable-src.60a1fda4.css` removed (parcel-renames recorded in the commit).
+
+### Cross-agent coordination
+
+- **Bishop (`9235859`, `75baecc`, `2e84179`)** — three contract surfaces consumed: `/api/changsha/pattern-ordering` fetched at boot, `WinResult.IsSelfDraw` consumed as fallback in move-log prefix selection, `WinResult.IsKongReplacement` destructured (informational). Every consumer falls back gracefully on a pre-W3 payload.
+- **Apone (`ea2c991`)** — **no Dockerfile change required** for Wave 3 (synth-only sounds ship zero asset files; existing `COPY src/frontend/autotable/ → wwwroot/autotable` bundle copy holds).
+- **Vasquez (`d7c5337`)** — new DOM ids `#replay-screen`, `#settings-sound`, `#game-complete-replay` available for future Playwright selectors.
+
+Memo: `.squad/decisions/inbox/hicks-phase-j-wave-3.md`.
