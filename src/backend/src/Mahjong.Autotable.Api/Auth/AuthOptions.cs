@@ -56,6 +56,69 @@ public sealed class AuthOptions
     /// — the secret is hashed into a 256-bit key on use.
     /// </summary>
     public string StateSigningKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Phase K Wave 4 — Bishop. Ordered fallback list of HMAC-SHA256
+    /// signing keys used by <see cref="JwtIssuingService"/> +
+    /// <see cref="JwtValidationService"/>. Position 0 is the ACTIVE
+    /// signer (new tokens are minted with this key); positions 1..N
+    /// are PREVIOUS keys accepted for validation only. See
+    /// docs/jwt-rotation.md §2 for the operator runbook.
+    ///
+    /// <para>Bound from <c>Authentication:JwtSigningKeys</c> as a
+    /// string array. Each entry is the raw key material — a value of
+    /// at least 32 bytes is recommended (HMAC-SHA256 lower bound).
+    /// Production deployments source these from ESO / SSM /
+    /// k8s-Secret; appsettings.json carries the empty schema only.</para>
+    ///
+    /// <para>When the array is empty AND no legacy
+    /// <see cref="JwtSigningKey"/> is configured, the host process
+    /// mints a per-process random key + logs a warning so
+    /// development workflows keep working without operator
+    /// intervention.</para>
+    /// </summary>
+    public string[] JwtSigningKeys { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Phase K Wave 4 — Bishop. Legacy singular HMAC signing key
+    /// retained for one-wave backward compatibility with pre-Wave-3
+    /// deployments. When <see cref="JwtSigningKeys"/> is non-empty,
+    /// this value is ignored. When the array is empty AND this is
+    /// set, the host treats it as the active signer. Slated for
+    /// removal in Wave 5 per docs/jwt-rotation.md §7.
+    /// </summary>
+    public string JwtSigningKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Phase K Wave 4 — Bishop. Canonical sub-section for per-provider
+    /// OAuth config. Replaces the flat <see cref="Microsoft"/> /
+    /// <see cref="Google"/> / <see cref="GitHub"/> properties. When
+    /// the legacy flat path is also populated, a startup warning is
+    /// emitted; the canonical path always wins. See
+    /// docs/oauth-production-setup.md §Microsoft for the migration.
+    /// </summary>
+    public OAuthProvidersOptions Providers { get; set; } = new();
+}
+
+/// <summary>
+/// Phase K Wave 4 — Bishop. Container for per-provider OAuth options
+/// under the canonical <c>Authentication:Providers:{provider}</c>
+/// configuration path. Only providers whose <see cref="OAuthProviderOptions.ClientId"/>
+/// + <see cref="OAuthProviderOptions.ClientSecret"/> are populated
+/// surface in <c>GET /api/auth/providers</c>; empty entries are
+/// equivalent to "provider not configured".
+/// </summary>
+public sealed class OAuthProvidersOptions
+{
+    /// <summary>Google OAuth provider — canonical config path.</summary>
+    public OAuthProviderOptions Google { get; set; } = new();
+
+    /// <summary>GitHub OAuth provider — canonical config path.</summary>
+    public OAuthProviderOptions GitHub { get; set; } = new();
+
+    /// <summary>Microsoft Entra ID provider — canonical config path
+    /// (replaces the legacy <c>Authentication:Microsoft:*</c> shape).</summary>
+    public OAuthProviderOptions Microsoft { get; set; } = new();
 }
 
 /// <summary>

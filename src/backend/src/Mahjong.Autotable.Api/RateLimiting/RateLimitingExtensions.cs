@@ -51,6 +51,16 @@ public static class RateLimitingExtensions
     public const string ApiPolicy = "token-bucket-api";
 
     /// <summary>
+    /// Phase K Wave 4 — Bishop. Per-IP policy for the unauthenticated
+    /// <c>POST /api/auth/validate</c> token-introspection endpoint.
+    /// Fixed-window limiter capped at 100 requests / minute / IP — the
+    /// brief target. Tight enough to deter a brute-force signature
+    /// attack while loose enough to support legitimate machine-to-
+    /// machine validation traffic.
+    /// </summary>
+    public const string AuthValidatePolicy = "fixed-window-auth-validate";
+
+    /// <summary>
     /// Configuration key whose boolean value gates the entire middleware.
     /// Default <c>false</c> in <c>appsettings.json</c>; flipped to
     /// <c>true</c> by <c>appsettings.Production.json</c>.
@@ -113,6 +123,22 @@ public static class RateLimitingExtensions
                     TokenLimit = 30,
                     TokensPerPeriod = 5,
                     ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+                    QueueLimit = 0,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    AutoReplenishment = true,
+                });
+            });
+
+            // Phase K Wave 4 — Bishop. Validate endpoint: 100 / min / IP.
+            // Fixed window (rather than token bucket) so the burst
+            // semantics are predictable for downstream M2M callers.
+            options.AddPolicy(AuthValidatePolicy, httpContext =>
+            {
+                var key = ResolvePartitionKey(httpContext);
+                return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 100,
+                    Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0,
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     AutoReplenishment = true,

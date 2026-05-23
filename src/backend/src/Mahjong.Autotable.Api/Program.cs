@@ -172,11 +172,65 @@ builder.Services.AddSingleton<PlayerGameHistoryService>();
 var authSection = builder.Configuration.GetSection("Authentication");
 var authOptions = authSection.Get<Mahjong.Autotable.Api.Auth.AuthOptions>()
     ?? new Mahjong.Autotable.Api.Auth.AuthOptions();
+
+// Phase K Wave 4 — Bishop. Microsoft Entra config-key canonicalisation.
+// Wave 3 left two equally-valid paths (`Authentication:Providers:Microsoft:*`
+// vs. `Authentication:Microsoft:*`). Wave 4 picks the canonical
+// `Authentication:Providers:Microsoft:*` shape and emits a startup
+// warning when the legacy flat path is still populated so operators
+// notice the deprecation. The canonical value always wins on
+// conflict. See docs/oauth-production-setup.md §Microsoft for the
+// operator migration steps.
+{
+    var canonicalMs = authOptions.Providers.Microsoft;
+    var legacyMs = authOptions.Microsoft;
+    var legacyPopulated = !string.IsNullOrWhiteSpace(legacyMs.ClientId)
+        || !string.IsNullOrWhiteSpace(legacyMs.ClientSecret);
+    var canonicalPopulated = !string.IsNullOrWhiteSpace(canonicalMs.ClientId)
+        || !string.IsNullOrWhiteSpace(canonicalMs.ClientSecret);
+    if (canonicalPopulated)
+    {
+        // Canonical wins; collapse onto AuthOptions.Microsoft so
+        // downstream readers (OAuthService, AuthController) keep
+        // their existing access pattern unchanged.
+        authOptions.Microsoft = canonicalMs;
+        if (legacyPopulated)
+        {
+            var startupLogger = LoggerFactory
+                .Create(b => b.AddConsole())
+                .CreateLogger("Mahjong.Autotable.Api.Auth.MicrosoftConfigCanonicalisation");
+            startupLogger.LogWarning(
+                "Both `Authentication:Providers:Microsoft:*` (canonical) and `Authentication:Microsoft:*` (legacy) are set. The canonical path wins; please remove the legacy keys — see docs/oauth-production-setup.md §Microsoft.");
+        }
+    }
+    else if (legacyPopulated)
+    {
+        var startupLogger = LoggerFactory
+            .Create(b => b.AddConsole())
+            .CreateLogger("Mahjong.Autotable.Api.Auth.MicrosoftConfigCanonicalisation");
+        startupLogger.LogWarning(
+            "`Authentication:Microsoft:*` is configured via the deprecated flat path. Migrate to `Authentication:Providers:Microsoft:*` — the legacy keys are scheduled for removal in a later wave. See docs/oauth-production-setup.md §Microsoft.");
+    }
+}
+
 builder.Services.AddSingleton(authOptions);
 // Phase K Wave 1 — also bind via IOptions<AuthOptions> so newer
 // services (OAuthProviderHealthCheck, OAuthStateProtector) that take
 // the options-pattern signature resolve cleanly.
 builder.Services.Configure<Mahjong.Autotable.Api.Auth.AuthOptions>(authSection);
+// Phase K Wave 4 — Bishop. Mirror the Microsoft canonicalisation
+// onto the IOptions-bound instance so consumers that resolve through
+// IOptions<AuthOptions> (OAuthProviderHealthCheck, etc.) see the same
+// collapsed Microsoft block as the AuthOptions singleton above.
+builder.Services.PostConfigure<Mahjong.Autotable.Api.Auth.AuthOptions>(o =>
+{
+    var canonical = o.Providers.Microsoft;
+    if (!string.IsNullOrWhiteSpace(canonical.ClientId)
+        || !string.IsNullOrWhiteSpace(canonical.ClientSecret))
+    {
+        o.Microsoft = canonical;
+    }
+});
 var smtpOptions = builder.Configuration.GetSection("Smtp").Get<Mahjong.Autotable.Api.Auth.SmtpOptions>()
     ?? new Mahjong.Autotable.Api.Auth.SmtpOptions();
 builder.Services.AddSingleton(smtpOptions);
@@ -196,6 +250,35 @@ else
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthCookieService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.AuthIdentityService>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
+// Phase K Wave 4 — Bishop. JWT signing-key fallback list + issuance /
+// validation services. The provider materialises Auth:JwtSigningKeys
+// into JwtSigningKey records (kid = deterministic SHA-256 truncation of
+// the raw key material). The issuer always signs with keys[0]; the
+// validator iterates every key (kid fast-path + try-all fallback) so a
+// token signed under any historical key continues to validate.
+// See docs/jwt-rotation.md §2 for the rotation runbook.
+//
+// JwtSigningKeys live under the top-level "Auth" section (Apone's
+// Wave-3 schema in appsettings.json) — distinct from the
+// "Authentication" section that carries the OAuth provider config.
+// We bind both shapes into a synthetic JwtAuthOptions instance so the
+// existing AuthOptions schema stays untouched.
+{
+    var jwtAuthOptions = new Mahjong.Autotable.Api.Auth.AuthOptions
+    {
+        JwtSigningKeys = builder.Configuration.GetSection("Auth:JwtSigningKeys").Get<string[]>()
+            ?? authOptions.JwtSigningKeys
+            ?? Array.Empty<string>(),
+        JwtSigningKey = builder.Configuration.GetValue<string>("Auth:JwtSigningKey")
+            ?? authOptions.JwtSigningKey
+            ?? string.Empty,
+    };
+    builder.Services.AddSingleton(sp => new Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider(
+        jwtAuthOptions,
+        sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider>>()));
+}
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>();
 // Phase K Wave 1 — HMAC-signed OAuth state protector (PKCE+nonce
 // supporting). Singleton so the signing key stays stable across
 // requests; OAuthStateProtector mints + caches its own per-process
@@ -668,14 +751,43 @@ app.MapPost("/api/turn/credentials", async (
     var urls = opts.TurnServers is { Count: > 0 }
         ? opts.TurnServers.Select(s => s.Url).ToArray()
         : Array.Empty<string>();
+    // Phase K Wave 4 — Bishop. iceServers[].urls is always an array
+    // (per WebRTC RTCIceServer canonical shape) — each entry collapses
+    // its single configured URL into a one-element array so the
+    // client never has to switch on string-vs-array. The top-level
+    // {username, credential, ttl, expiresAt, urls} fields are
+    // preserved from Wave 3 because Vasquez's contract tests pin
+    // them; ttlSeconds is added as the canonical Wave-4 alias for
+    // ttl (Apone's smoke harness asserts ttlSeconds).
     var iceServers = urls
-        .Select(u => (object)new { urls = u, username, credential })
+        .Select(u => (object)new { urls = new[] { u }, username, credential })
         .ToArray();
+
+    // Phase K Wave 4 — Bishop. Audit row Kind="voice.turn.credentials.minted"
+    // so the operator trail records every mint. Best-effort: failure
+    // to write the audit row never breaks the credential mint.
+    try
+    {
+        await using var scope = ctx.RequestServices.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<Mahjong.Autotable.Api.Data.AppDbContext>();
+        db.ReconnectAuditEntries.Add(new Mahjong.Autotable.Api.Data.Entities.ReconnectAuditEntry
+        {
+            Id = Guid.NewGuid(),
+            PlayerId = session.PlayerId,
+            At = DateTime.UtcNow,
+            Kind = Mahjong.Autotable.Api.Data.Entities.ReconnectAuditEntry.KindTurnCredentialsMinted,
+            Detail = username,
+        });
+        await db.SaveChangesAsync(ct);
+    }
+    catch { /* best-effort */ }
+
     return Results.Ok(new
     {
         username,
         credential,
         ttl,
+        ttlSeconds = ttl,
         expiresAt,
         urls,
         iceServers,
