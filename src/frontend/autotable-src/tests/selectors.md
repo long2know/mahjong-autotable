@@ -2215,7 +2215,31 @@ Hicks: future producer-side renames of any of the above
 selectors / module exports / file paths require a corresponding
 edit to this footer per the W5 maintenance note.
 
+### W11 Vasquez QA inventory (canonical spec names)
+
+The Vasquez W11 QA lane adds six Playwright specs under
+`src/frontend/autotable-src/tests/e2e/`. Each spec carries a
+file-level header comment with the W11 surface it pins and a
+forward-stage tolerance clause:
+
+| Playwright spec (Vasquez W11)            | Target surface                                         |
+|------------------------------------------|--------------------------------------------------------|
+| `shader-chunk-475-hard.spec.ts`          | `three-renderer-big` ≤ 475 KB (W11 hard cap)            |
+| `pwa-builder-platforms.spec.ts`          | Edge / Chrome / Safari PWA Builder score ≥ 75           |
+| `lh13-baseline-calibration.spec.ts`      | 3-run LH13 calibration; p95 ≥ 95 + worst-of-3 ≥ 90      |
+| `cache-hit-rate.spec.ts`                 | Vite persistent-cache hit rate ≥ 70%                    |
+| `manifest-screenshots-real.spec.ts`      | Manifest `screenshots[]` resolve + PNG dimensions match |
+| `deep-link-action-routing.spec.ts`       | `?action=new-game|tournaments|history|admin` routing    |
+
+These specs are the canonical W11 frontend gates. Hicks's
+producer-side renames of any pinned chunk / manifest field / URL
+shape MUST land with a corresponding spec edit.
+
 ---
 
 *Phase K Wave 11 — Hicks (Frontend). Footer added in W11 as
 the producer-side mirror of the W7/W8/W9/W10 pattern.*
+
+*Phase K Wave 11 — Vasquez (QA). Vasquez W11 QA inventory
+appended above with the 6 canonical Playwright spec names that
+pin the W11 frontend surfaces.*

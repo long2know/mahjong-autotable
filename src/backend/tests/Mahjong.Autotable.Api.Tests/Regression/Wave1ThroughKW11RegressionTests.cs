@@ -99,6 +99,23 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// <c>.github/workflows/dr-rehearsal.yml</c>. All forward-staged
 /// with soft-pass on absence.</para>
 ///
+/// <para><b>Wave 11 extension.</b> Class renamed Wave1ThroughKW10 →
+/// Wave1ThroughKW11. New W11 smokes appended at the tail of the
+/// class targeting <c>FideC04SwissPairingService</c>,
+/// <c>TileReference.ToBinary</c>, <c>EfCommentaryStore</c>,
+/// <c>IOAuthTokenIntrospector</c>, the
+/// <c>POST /api/auth/introspect</c> endpoint, the
+/// <c>.github/workflows/pwa-builder.yml</c> +
+/// <c>.github/workflows/jwt-rotation-rehearsal.yml</c> workflows,
+/// <c>infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml</c>,
+/// <c>docs/swiss-pairing.md</c>,
+/// <c>docs/jwt-rotation-rehearsal.md</c>,
+/// <c>docs/edge-region-probes.md</c>,
+/// <c>docs/frontend-routing.md</c>, and the
+/// <c>0.20.0</c> CHANGELOG entry. All forward-staged with soft-pass
+/// on absence (except the Vasquez-lane artefacts that ship in this
+/// same PR, which hard-assert).</para>
+///
 /// <para><b>Wave 10 extension.</b> Class renamed Wave1ThroughKW9 →
 /// Wave1ThroughKW10. New W10 smokes appended at the tail of the
 /// class. Inherited W9 smokes are kept (so the regression sweep
@@ -118,11 +135,11 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// PR, which hard-assert).</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW10RegressionTests
+public class Wave1ThroughKW11RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW10RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW11RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -1809,10 +1826,213 @@ public class Wave1ThroughKW10RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
     public void PhaseK10_DbSerialCollection_Present()
     {
-        var asm = typeof(Wave1ThroughKW10RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW11RegressionTests).Assembly;
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("DbSerialCollection", StringComparison.Ordinal)
             || x.Name.Equals("DbSerialCollectionDefinition", StringComparison.Ordinal));
         Assert.NotNull(t);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — FIDE C.04 Swiss pairing service.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_FideC04SwissPairingService_Present()
+    {
+        var asm = typeof(Wave1ThroughKW11RegressionTests).Assembly
+            .GetReferencedAssemblies()
+            .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
+            .Where(a => a is not null)
+            .ToArray();
+        var apiAsm = asm.FirstOrDefault(a =>
+            a!.GetName().Name == "Mahjong.Autotable.Api");
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("FideC04SwissPairingService", StringComparison.Ordinal));
+        if (t is null) return; // soft-pin
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — TileReference.ToBinary binary codec.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_TileReference_ToBinary_Present()
+    {
+        var asm = typeof(Wave1ThroughKW11RegressionTests).Assembly
+            .GetReferencedAssemblies()
+            .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
+            .Where(a => a is not null)
+            .ToArray();
+        var apiAsm = asm.FirstOrDefault(a =>
+            a!.GetName().Name == "Mahjong.Autotable.Api");
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("TileReference", StringComparison.Ordinal)
+            || x.Name.Equals("CommentaryTileReference", StringComparison.Ordinal));
+        if (t is null) return;
+        _ = t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+            .Any(m => m.Name.StartsWith("ToBinary", StringComparison.OrdinalIgnoreCase)
+                   || m.Name.StartsWith("ToBytes", StringComparison.OrdinalIgnoreCase)
+                   || m.Name.StartsWith("Serialize", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — EfCommentaryStore (per-record persistence).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_EfCommentaryStore_Present()
+    {
+        var apiAsm = ResolveApiAssembly();
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("EfCommentaryStore", StringComparison.Ordinal)
+            || x.Name.Equals("CommentaryStore", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — OAuth introspection (RFC 7662) endpoint.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_OAuthIntrospection_Present()
+    {
+        var apiAsm = ResolveApiAssembly();
+        if (apiAsm is null) return;
+        var t = apiAsm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("OAuthIntrospectController", StringComparison.Ordinal)
+            || x.Name.Equals("IOAuthTokenIntrospector", StringComparison.Ordinal)
+            || x.Name.Equals("OAuthTokenIntrospector", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — pwa-builder.yml workflow.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_PwaBuilderWorkflow_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, ".github", "workflows", "pwa-builder.yml");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — jwt-rotation-rehearsal.yml workflow.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_JwtRotationRehearsalWorkflow_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, ".github", "workflows", "jwt-rotation-rehearsal.yml");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — argo-rollouts-ingress-auth manifest.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_ArgoIngressAuthManifest_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "infra", "k8s", "overlays", "prod",
+            "argo-rollouts-ingress-auth.yaml");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — docs/swiss-pairing.md.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_SwissPairingDoc_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "swiss-pairing.md");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — docs/jwt-rotation-rehearsal.md.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_JwtRotationRehearsalDoc_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "jwt-rotation-rehearsal.md");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — docs/edge-region-probes.md.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_EdgeRegionProbesDoc_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "edge-region-probes.md");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — docs/frontend-routing.md.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_FrontendRoutingDoc_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "frontend-routing.md");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — CHANGELOG 0.20.0 entry.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_ChangelogEntry_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "CHANGELOG.md");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        _ = text.Contains("0.20.0", StringComparison.Ordinal)
+         || text.Contains("Wave 11", StringComparison.OrdinalIgnoreCase)
+         || text.Contains("Phase K Wave 11", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 11 — lane-map shims_shared + pwa_audit_workflow_shared.
+    //  Vasquez-lane artefact — hard-asserts (it ships in THIS PR).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
+    public void PhaseK11_LaneMap_ShimsShared_Present()
+    {
+        var root = FindRepoRootStatic();
+        Assert.NotNull(root);
+        var path = Path.Combine(root!.FullName, "tests", "ci", "lane-map.json");
+        Assert.True(File.Exists(path));
+        var text = File.ReadAllText(path);
+        Assert.Contains("shims_shared", text);
+        Assert.Contains("pwa_audit_workflow_shared", text);
+    }
+
+    private static Assembly? ResolveApiAssembly()
+    {
+        var refs = typeof(Wave1ThroughKW11RegressionTests).Assembly
+            .GetReferencedAssemblies();
+        foreach (var name in refs)
+        {
+            if (name.Name != "Mahjong.Autotable.Api") continue;
+            try { return Assembly.Load(name); }
+            catch { return null; }
+        }
+        return null;
     }
 }

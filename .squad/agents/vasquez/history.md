@@ -2591,3 +2591,118 @@ that stability.
 6. **Coverage gap closure** per `docs/test-architecture.md`
    §4.2 (bracket E2E happy path, Janus negative-path,
    Dutch-Swiss algorithmic unit, prod helm parity).
+
+## Phase K — Wave 11 (2026-10-16)
+
+QA bring-up for Wave 11 on `stlong/phase-k-wave-11-bringup`.
+
+### Lane-map broadening
+
+`tests/ci/lane-map.json` now lists two new `shared_files`
+entries:
+
+- `shims_shared` (`src/backend/src/Mahjong.Autotable.Api/Shims/*`)
+  — bishop|hicks|apone|vasquez, primary vasquez. Stops the
+  Phase J compatibility shim layer producing spurious
+  cross-lane bundling violations.
+- `pwa_audit_workflow_shared`
+  (`.github/workflows/pwa-audit.yml` +
+  `.github/workflows/pwa-builder.yml`) — hicks|apone,
+  primary apone.
+
+`tests/ci/check-cross-lane-bundling.sh` extended:
+`is_shared_file()` + `shared_file_authors()` recognise both
+new path patterns. Lane-discipline repo-mode baseline
+unchanged (51 historical pre-W6 violations).
+
+### Branch-protection §4.1 re-prompt for Stephen
+
+`docs/agent-handoff-protocol.md` §4.1 — 5-step screenshot
+walkthrough (Settings → Branches → Protect → Required
+contexts → Save), 422 troubleshooting clause (context
+spelling, branch pattern, PAT scope), one-liner
+`gh api -X PATCH` recipe. Placeholder image refs under
+`docs/img/phase-k-w11-branch-protection-*.png` are
+Stephen's deliverable.
+
+`docs/agent-handoff-protocol.md` §5.9 — 4-row table policy
+for `*_shared` lane-map entries with the procedure for
+adding a new one.
+
+### W10 → W11 hard-flips (5 facts)
+
+- `BishopW10JanusGradualDegradationTests.JanusReadinessLevel_HasThreeCanonicalLevels` — hard-asserts 3 canonical enum values.
+- `BishopW10JanusGradualDegradationTests.JanusSupervisor_HasLevelProperty` — hard-asserts enum-typed `CurrentLevel`.
+- `BishopW10RedisIdempotencyClientTests.RedisIdempotencyStore_Ctor_Accepts_ConnectionMultiplexer` — hard-asserts ctor.
+- `BishopW10RedisIdempotencyClientTests.RedisIdempotencyStore_HasWriteMethod` — hard-asserts `Record(IdempotencyRecord)`.
+- `HicksW10FrontendContractTests.ThreeRendererBig_W10_HardCap_480KB` — hard-asserts ≤ 480 KB (K10 entry is 466,395 bytes).
+
+### W11 forward-stage contract tests (7 files, ~95 facts)
+
+- `BishopW11FideSwissPairingTests.cs` (FIDE C.04.1 + Buchholz + Berger; 8 facts).
+- `BishopW11TileReferenceBinaryCodecTests.cs` (binary codec round-trip + nibble layout; 8 facts).
+- `BishopW11JanusMountpointMetricsTests.cs` (eviction counter + age-at-publish histogram; 8 facts).
+- `BishopW11EfCommentaryStorePersistenceTests.cs` (EF storage + retention sweep + pagination; 8 facts).
+- `BishopW11OAuthIntrospectionTests.cs` (RFC 7662 introspection; 8 facts).
+- `HicksW11FrontendContractTests.cs` (475 KB shader cap, PWA Builder cross-platform, LH13, Vite cache, real screenshots, `?action=` routing, W10 pins; ~17 facts).
+- `AponeW11InfraContractTests.cs` (prod Redis, Argo auth ingress, Terraform prod, JWT rotation, multi-region probes, CHANGELOG 0.20.0; ~20 facts).
+- `VasquezW11SelfLaneTests.cs` (lane-map broadenings, handoff §4.1+§5.9, test-architecture §4.3+§4.4, gap-fill class existence, Playwright spec existence, regression rename pin; ~25 facts).
+- Plus `W11SurfaceSmokeFactsTests.cs` paired smoke harness (~24 facts).
+
+### Gap-fill integration tests (3 files)
+
+Close the W10 test-architecture §4.2 gaps:
+
+- `RedisIdempotencyStoreIntegrationTests.cs` — full `TryGet → Record → TryGet → Remove → TryGet` round-trip via in-memory `IIdempotencyRedis` fake; 5 facts.
+- `JanusReadinessSupervisorIntegrationTests.cs` — enum 3-value invariant, supervisor namespace, public `CurrentLevel`, BackgroundService probe/update seam; 5 facts.
+- `SignalRBackpressureIntegrationTests.cs` — broadcaster type/namespace, Broadcast/Enqueue method, queue-depth telemetry, DI ctor with ILogger; 5 facts.
+
+### 6 W11 Playwright specs
+
+Under `src/frontend/autotable-src/tests/e2e/`:
+
+- `shader-chunk-475-hard.spec.ts` (≤ 475 KB hard cap; W11 tightens the W10 480 KB ceiling).
+- `pwa-builder-platforms.spec.ts` (Edge / Chrome / Safari PWA Builder score ≥ 75).
+- `lh13-baseline-calibration.spec.ts` (3-run LH13; p95 ≥ 95 + worst-of-3 ≥ 90).
+- `cache-hit-rate.spec.ts` (Vite persistent-cache hit rate ≥ 70%).
+- `manifest-screenshots-real.spec.ts` (manifest `screenshots[]` resolve + PNG dimensions match).
+- `deep-link-action-routing.spec.ts` (`/?action=new-game|tournaments|history|admin`).
+
+Inventory mirrored at `selectors.md` bottom (Vasquez QA W11
+footer) for cross-agent visibility.
+
+### Regression rename + 13 W11 smokes
+
+`Wave1ThroughKW10RegressionTests.cs` →
+`Wave1ThroughKW11RegressionTests.cs` (`git mv`, class +
+ctor + doc-comment + W10-anchor type ref updated). 13 new
+W11 smokes targeting FIDE C.04, TileReference binary,
+EfCommentaryStore, OAuthIntrospection, pwa-builder.yml,
+jwt-rotation-rehearsal.yml, argo-rollouts-ingress-auth,
+docs/swiss-pairing.md, docs/jwt-rotation-rehearsal.md,
+docs/edge-region-probes.md, docs/frontend-routing.md,
+CHANGELOG 0.20.0, and the Vasquez-lane `shims_shared` /
+`pwa_audit_workflow_shared` hard-assert.
+
+### Backend gate
+
+Target: ≥ **2200 / 0 / 0**.  Hit **2282 / 0 / 0** (+174 vs
+W10). Zero-skip streak preserved through wave 25.
+
+### W12 forward queue (Vasquez sees from here)
+
+1. **DbSerial migration follow-up** — Bishop tags
+   SQLite-heavy classes; Vasquez wires 3-parallel
+   flake-detection harness.
+2. **Hard-flip the W11 soft-pins** (FideC04 Swiss,
+   EfCommentaryStore, OAuth introspection, PWA Builder
+   workflow, LH13 baseline, prod Redis, Terraform prod,
+   JWT rotation rehearsal).
+3. **§4.4 open gaps** — EF migration parallel-run, PWA
+   Builder install-test cross-platform validation,
+   multi-region probe negative-path.
+4. **Branch-protection follow-through** — confirm
+   Stephen has applied §4.1 walkthrough and
+   `lane-discipline-pr` is required-for-merge.
+5. **Vitest unification** — still deferred to a later
+   wave.
