@@ -29,7 +29,10 @@ type Variant =
 type DealMode = 'manual' | 'auto';
 type BotCount = 0 | 3 | 4;
 type BotDifficulty = 'Easy' | 'Medium' | 'Hard';
-type HandCount = 4 | 8 | 16 | 32;
+// Phase J Wave 2 — Hand counts now include 1 (single-hand sandbox) and the
+// default shifts from 8 to 4 to mirror Bishop's runtime default east-wind
+// rotation (see Phase J Wave 2 directive §Task 3).
+type HandCount = 1 | 4 | 8 | 16 | 32;
 
 // Phase I Wave 4 — seat selection.
 //   • null  → no preference (server seats us in the first open chair,
@@ -61,18 +64,19 @@ interface LobbyState {
 }
 
 // Hardcoded defaults — the floor of the resolution chain.  Match Phase F's
-// backend defaults (variant=changsha, dealMode=manual, botCount=3,
-// botDifficulty=Medium) plus the Phase H Wave 1 additions
-// (seed=null → server randomises, handCount=8 → East round only).
-// Phase I Wave 4 adds seat=null (let the server seat us — legacy flow).
-// See .squad/decisions.md Phase F §AutotableWsEndpoint.
+// backend defaults (variant=changsha, dealMode=manual, botCount=3) plus
+// Phase J Wave 2 directive defaults:
+//   • botDifficulty = Hard (Phase J Wave 2 settings drawer default)
+//   • handCount = 4 (mirrors Bishop's runtime east-wind rotation default)
+//   • seed = null (server randomises)
+//   • seat = null (server picks, legacy flow)
 const DEFAULTS: LobbyState = {
   variant: 'changsha',
   dealMode: 'manual',
   botCount: 3,
-  botDifficulty: 'Medium',
+  botDifficulty: 'Hard',
   seed: null,
-  handCount: 8,
+  handCount: 4,
   seat: null,
 };
 
@@ -80,7 +84,7 @@ const VARIANTS: ReadonlyArray<Variant> = [
   'changsha', 'four-player', 'three-player', 'bamboo', 'minefield',
 ];
 
-const HAND_COUNTS: ReadonlyArray<HandCount> = [4, 8, 16, 32];
+const HAND_COUNTS: ReadonlyArray<HandCount> = [1, 4, 8, 16, 32];
 
 // localStorage key for persisted lobby defaults.  Versioned so we can
 // migrate the shape later without colliding with an old payload.
@@ -435,7 +439,7 @@ export function initLobby(): void {
       variant: isVariant(v) ? v : DEFAULTS.variant,
       dealMode: (dm === 'auto' ? 'auto' : 'manual'),
       botCount: clampBotCountForSeat(botCount, seat),
-      botDifficulty: (bd === 'Easy' || bd === 'Hard') ? bd : 'Medium',
+      botDifficulty: (bd === 'Easy' || bd === 'Medium') ? bd : 'Hard',
       handCount: isHandCount(hcNum) ? hcNum : DEFAULTS.handCount,
       seed,
       seat,

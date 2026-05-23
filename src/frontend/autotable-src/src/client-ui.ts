@@ -4,8 +4,17 @@ import { Game } from './base-client';
 
 const TITLE_DISCONNECTED = 'Autotable';
 const TITLE_CONNECTED = 'Autotable (online)';
-const RECONNECT_DELAY = 2000;
-const RECONNECT_ATTEMPTS = 15;
+
+// Phase J Wave 2 — exponential-backoff reconnect.  Replaces the pre-Wave-2
+// constant 2 s / 15-attempts loop with a 5-step backoff schedule
+// (1/2/4/8/16 s) per directive §Task 2.  Each attempt is surfaced in the
+// connection banner so the user sees what's happening; the previous loop
+// was silent.
+const RECONNECT_DELAYS_MS: ReadonlyArray<number> = [1000, 2000, 4000, 8000, 16000];
+const RECONNECT_MAX_ATTEMPTS = RECONNECT_DELAYS_MS.length;
+
+// Lifetime of the green "reconnected" flash before the banner self-hides.
+const RECONNECT_OK_FLASH_MS = 2000;
 
 // Phase I Wave 3 — Default game routing key.  Mirrors
 // AutotableWsEndpoint.DefaultGameId on the backend; used when the URL
@@ -72,6 +81,23 @@ export class ClientUi {
   currentGameIdElement: HTMLElement | null;
   spectatorPillElement: HTMLElement | null;
 
+  // Phase J Wave 2 — connection-lost banner elements + reconnect state.
+  // The banner is the visible counterpart of the exponential-backoff
+  // reconnect loop: yellow during attempts, red on failure, green flash
+  // on successful reconnect.  All four optional so the banner can be
+  // omitted (legacy tests / minimal HTML).
+  private connectionBanner: HTMLElement | null;
+  private connectionBannerText: HTMLElement | null;
+  private connectionBannerActions: HTMLElement | null;
+  private connectionBannerRetry: HTMLButtonElement | null;
+  private connectionBannerLobby: HTMLButtonElement | null;
+  private reconnectTimer: number | null = null;
+  private reconnectFlashTimer: number | null = null;
+  // True from the first disconnect until the next successful JOIN.  Used
+  // to flash the green "Reconnected" pill only when the user actually saw
+  // a stale connection (not on the first-page connect).
+  private wasDisconnected: boolean = false;
+
   disconnecting = false;
   reconnectAttempts: number = 0;
   reconnectSeat: number | null = null;
@@ -134,6 +160,29 @@ export class ClientUi {
     // the pill is the right initial state on auto-reconnect.
     this.spectating = readSpectatorFromUrl();
     this.applySpectatorClass();
+
+    // Phase J Wave 2 — wire the connection banner.  All elements are
+    // optional so a stripped-down host page (e.g. unit-test harness) can
+    // omit them without breaking the constructor.
+    this.connectionBanner = document.getElementById('connection-banner');
+    this.connectionBannerText =
+      document.getElementById('connection-banner-text');
+    this.connectionBannerActions =
+      document.getElementById('connection-banner-actions');
+    this.connectionBannerRetry =
+      document.getElementById('connection-banner-retry') as HTMLButtonElement | null;
+    this.connectionBannerLobby =
+      document.getElementById('connection-banner-lobby') as HTMLButtonElement | null;
+    if (this.connectionBannerRetry !== null) {
+      this.connectionBannerRetry.addEventListener('click', () => this.manualRetry());
+    }
+    if (this.connectionBannerLobby !== null) {
+      this.connectionBannerLobby.addEventListener('click', () => {
+        // Punt the user back to the bare URL — the lobby auto-opens
+        // when ?... is empty (see lobby.ts:shouldShowOnLoad).
+        window.location.search = '';
+      });
+    }
   }
 
   // Phase I Wave 3 — Read ?gameId= from the URL.  Falls back to the
@@ -339,6 +388,18 @@ export class ClientUi {
     } else if (this.reconnectSeat !== null) {
       this.client.seats.set(this.client.playerId(), { seat: this.reconnectSeat });
     }
+
+    // Phase J Wave 2 — flash the green "Reconnected" banner only when
+    // the user actually saw a stale connection.  Reset the disconnected
+    // flag + attempts counter so the next disconnect starts fresh.
+    if (this.wasDisconnected) {
+      this.showBannerSuccess();
+    } else {
+      this.hideBanner();
+    }
+    this.wasDisconnected = false;
+    this.reconnectAttempts = 0;
+    this.clearReconnectTimer();
   }
 
   onDisconnect(game: Game | null): void {
@@ -346,22 +407,127 @@ export class ClientUi {
     document.getElementById('lobby-gameId-row')?.classList.remove('connected');
     document.getElementsByTagName('title')[0].innerText = TITLE_DISCONNECTED;
 
-    if (game && !this.disconnecting) {
-      this.reconnectSeat = this.client.seat;
-      setTimeout(
-        () => this.connect(RECONNECT_ATTEMPTS, this.client.seat ?? undefined),
-        RECONNECT_DELAY
-      );
-      this.setStatus('Trying to reconnect...');
-    } else if (!game && this.reconnectAttempts > 0) {
-      setTimeout(
-        () => this.connect(this.reconnectAttempts - 1, this.reconnectSeat ?? undefined),
-        RECONNECT_DELAY);
-    } else {
+    if (this.disconnecting) {
+      // User-initiated disconnect (Disconnect button, hot-seat swap,
+      // Apply & Start).  Don't auto-reconnect or surface a banner — the
+      // page is intentionally going stale.
       (document.getElementById('connect')! as HTMLButtonElement).disabled = false;
-      if (!this.disconnecting) {
-        this.setStatus('Failed to connect.');
+      this.disconnecting = false;
+      this.hideBanner();
+      return;
+    }
+
+    if (game) {
+      // First drop in a chain — capture the seat for re-take and start
+      // the exponential-backoff schedule from attempt 1.
+      this.reconnectSeat = this.client.seat;
+      this.wasDisconnected = true;
+      this.reconnectAttempts = 0;
+      this.scheduleReconnect();
+    } else if (this.wasDisconnected && this.reconnectAttempts < RECONNECT_MAX_ATTEMPTS) {
+      // Continuation of a reconnect chain — another attempt failed; keep
+      // climbing the backoff ladder.
+      this.scheduleReconnect();
+    } else {
+      // Either we never connected in the first place, or we exhausted
+      // every reconnect attempt.
+      (document.getElementById('connect')! as HTMLButtonElement).disabled = false;
+      if (this.wasDisconnected) {
+        this.showBannerFailed();
       }
+    }
+  }
+
+  // Phase J Wave 2 — schedule the next reconnect attempt according to
+  // the exponential-backoff ladder, with the connection banner reflecting
+  // the next-attempt timer.  Attempts run 1..RECONNECT_MAX_ATTEMPTS;
+  // beyond that onDisconnect surfaces the failure banner.
+  private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+      this.showBannerFailed();
+      return;
+    }
+    const delay = RECONNECT_DELAYS_MS[this.reconnectAttempts];
+    const attemptNumber = this.reconnectAttempts + 1;
+    this.showBannerReconnecting(attemptNumber, RECONNECT_MAX_ATTEMPTS);
+    this.clearReconnectTimer();
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.reconnectAttempts += 1;
+      this.connect(undefined, this.reconnectSeat ?? undefined);
+    }, delay);
+  }
+
+  // Phase J Wave 2 — user clicked Retry on the failed-reconnect banner.
+  // Resets the chain and starts again from delay #1, so a "ladder
+  // exhausted" state is recoverable without a page reload.
+  private manualRetry(): void {
+    this.wasDisconnected = true;
+    this.reconnectAttempts = 0;
+    this.scheduleReconnect();
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private showBannerReconnecting(attempt: number, max: number): void {
+    if (this.connectionBanner === null || this.connectionBannerText === null) return;
+    if (this.reconnectFlashTimer !== null) {
+      window.clearTimeout(this.reconnectFlashTimer);
+      this.reconnectFlashTimer = null;
+    }
+    this.connectionBanner.className =
+      'connection-banner connection-banner-reconnecting';
+    this.connectionBannerText.textContent =
+      `⚠️ Connection lost — reconnecting… (attempt ${attempt}/${max})`;
+    if (this.connectionBannerActions !== null) {
+      this.connectionBannerActions.style.display = 'none';
+    }
+    this.connectionBanner.style.display = 'flex';
+  }
+
+  private showBannerFailed(): void {
+    if (this.connectionBanner === null || this.connectionBannerText === null) return;
+    if (this.reconnectFlashTimer !== null) {
+      window.clearTimeout(this.reconnectFlashTimer);
+      this.reconnectFlashTimer = null;
+    }
+    this.connectionBanner.className =
+      'connection-banner connection-banner-failed';
+    this.connectionBannerText.textContent = '❌ Could not reconnect.';
+    if (this.connectionBannerActions !== null) {
+      this.connectionBannerActions.style.display = '';
+    }
+    this.connectionBanner.style.display = 'flex';
+  }
+
+  private showBannerSuccess(): void {
+    if (this.connectionBanner === null || this.connectionBannerText === null) return;
+    this.connectionBanner.className =
+      'connection-banner connection-banner-success';
+    this.connectionBannerText.textContent = '✅ Reconnected.';
+    if (this.connectionBannerActions !== null) {
+      this.connectionBannerActions.style.display = 'none';
+    }
+    this.connectionBanner.style.display = 'flex';
+    if (this.reconnectFlashTimer !== null) {
+      window.clearTimeout(this.reconnectFlashTimer);
+    }
+    this.reconnectFlashTimer = window.setTimeout(() => {
+      this.reconnectFlashTimer = null;
+      this.hideBanner();
+    }, RECONNECT_OK_FLASH_MS);
+  }
+
+  private hideBanner(): void {
+    if (this.connectionBanner === null) return;
+    this.connectionBanner.style.display = 'none';
+    if (this.connectionBannerActions !== null) {
+      this.connectionBannerActions.style.display = 'none';
     }
   }
 
@@ -385,7 +551,13 @@ export class ClientUi {
     }
   }
 
-  connect(reconnectAttempts?: number, reconnectSeat?: number): void {
+  // Phase J Wave 2 — connect() signature simplified: legacy callers used
+  // `reconnectAttempts` to drive the constant-delay loop; the new
+  // exponential-backoff path in scheduleReconnect / onDisconnect owns the
+  // attempts counter directly, so connect() no longer takes (or resets) it.
+  // `reconnectSeat` is still passed by the reconnect loop so the seat is
+  // re-taken after JOIN.
+  connect(_legacy?: undefined, reconnectSeat?: number): void {
     if (this.client.connected()) {
       return;
     }
@@ -408,7 +580,14 @@ export class ClientUi {
     this.applySpectatorClass();
 
     (document.getElementById('connect')! as HTMLButtonElement).disabled = true;
-    this.reconnectSeat = null;
+    // Preserve any reconnectSeat passed in (used by the reconnect loop to
+    // re-take the player's previous chair on JOIN).  A bare manual
+    // connect leaves it null.
+    if (reconnectSeat !== undefined) {
+      this.reconnectSeat = reconnectSeat;
+    } else {
+      this.reconnectSeat = null;
+    }
     const wsUrl = this.buildWsUrl(gameId);
     const existing = this.getUrlState();
     if (existing !== null) {
@@ -416,12 +595,14 @@ export class ClientUi {
     } else {
       this.client.new(wsUrl);
     }
-    this.reconnectAttempts = reconnectAttempts ?? 0;
-    this.reconnectSeat = reconnectSeat ?? null;
   }
 
   disconnect(): void {
     this.disconnecting = true;
+    // Phase J Wave 2 — cancel any in-flight reconnect timer so the
+    // user-initiated disconnect doesn't race against a pending retry.
+    this.clearReconnectTimer();
+    this.wasDisconnected = false;
     this.client.disconnect();
     // this.setUrlState(null);
   }

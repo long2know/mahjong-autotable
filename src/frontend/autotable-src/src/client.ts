@@ -18,6 +18,42 @@ import {
 } from './types';
 
 
+// Phase J Wave 2 — Server-pushed end-of-game payload.  Bishop's runtime
+// emits this when the configured hand count (default 4) is exhausted.
+//
+// The exact key/field names live behind Bishop's memo
+// (.squad/decisions/inbox/bishop-phase-j-wave-2.md); the bundle accepts a
+// flexible superset so the modal renders regardless of which subset the
+// backend ends up shipping:
+//
+//   • `isComplete`        — required boolean flag (true → game over).
+//   • `totalScores`       — optional Map<seat,points> for the per-seat
+//                           summary table.  When absent we derive totals
+//                           client-side by summing the `result.current`
+//                           updates seen during the match.
+//   • `handHistory`       — optional Array<HandResultEntry> recap.  When
+//                           absent we use the client-side history built
+//                           from `result.current`.
+//   • `maxHands`          — optional number echoing the runtime's
+//                           configured limit so the modal can show "4/4".
+//
+// Tombstone (value=null) on a new game so the modal hides automatically.
+export interface GameCompleteEntry {
+  isComplete: boolean;
+  totalScores?: Record<string, number>;
+  handHistory?: Array<HandResultEntry>;
+  maxHands?: number;
+  // Tolerated PascalCase / alt-name fallbacks for forward-compat with
+  // whatever wire vocabulary Bishop settles on:
+  IsComplete?: boolean;
+  TotalScores?: Record<string, number>;
+  HandHistory?: Array<HandResultEntry>;
+  MaxHands?: number;
+  isGameComplete?: boolean;
+  IsGameComplete?: boolean;
+}
+
+
 export class Client extends BaseClient {
   match: Collection<number, MatchInfo>;
   seats: Collection<string, SeatInfo>;
@@ -43,6 +79,13 @@ export class Client extends BaseClient {
   // entries share one collection without a parallel event system.
   pickup: Collection<string | number, PickupEntry>;
 
+  // Phase J Wave 2 — singleton key="current" carrying the end-of-game
+  // payload Bishop's runtime emits when MaxHands is exhausted.  We treat
+  // this as a server-authoritative signal: when the singleton's
+  // `isComplete`-style flag flips true the GameUi renders the end-of-game
+  // modal.  Ephemeral by design — a fresh game wipes it on the new JOIN.
+  gameComplete: Collection<string, GameCompleteEntry>;
+
   seat: number | null = 0;
   seatPlayers: Array<string | null> = new Array(4).fill(null);
 
@@ -61,6 +104,7 @@ export class Client extends BaseClient {
     this.claim = new Collection('claim', this, { ephemeral: true });
     this.result = new Collection('result', this);
     this.pickup = new Collection('pickup', this, { ephemeral: true });
+    this.gameComplete = new Collection('gameComplete', this, { ephemeral: true });
     this.seats.on('update', this.onSeats.bind(this));
   }
 

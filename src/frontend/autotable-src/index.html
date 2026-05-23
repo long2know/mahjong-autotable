@@ -425,6 +425,136 @@
         <span class="lobby-toggle-label">Lobby</span>
     </button>
 
+    <!-- Phase J Wave 2 — Settings drawer toggle (top-right, beside the
+         variant badge).  Opens an inline panel exposing per-game session
+         overrides: bot strength, hand count, auto-deal.  Persists via
+         localStorage keyed by gameId so each game keeps its own settings.
+         The values flow into the new-game URL on Apply / New Game. -->
+    <button id="settings-toggle" type="button" title="Settings">
+        <span class="settings-toggle-icon">⚙</span>
+    </button>
+
+    <!-- Phase J Wave 2 — Connection banner (top-center).  Surfaces the
+         WS reconnect lifecycle: yellow while attempting, red when all
+         attempts fail, green flash on success.  Visibility + state-class
+         owned by client-ui.ts. -->
+    <div id="connection-banner" class="connection-banner" role="status"
+         aria-live="polite" style="display: none;">
+        <span class="connection-banner-text" id="connection-banner-text"></span>
+        <span class="connection-banner-actions" id="connection-banner-actions"
+              style="display: none;">
+            <button type="button" class="btn btn-sm btn-warning"
+                    id="connection-banner-retry">Retry</button>
+            <button type="button" class="btn btn-sm btn-secondary"
+                    id="connection-banner-lobby">Back to Lobby</button>
+        </span>
+    </div>
+
+    <!-- Phase J Wave 2 — Settings drawer (top-right slide-out).  Mirrors
+         a subset of the lobby pickers (bot strength, hand count, auto-deal)
+         so users can adjust mid-session without bouncing through the lobby.
+         Values persist in localStorage (gameId-keyed) and apply on the next
+         New Game.  Hidden by default; #settings-toggle flips .settings-open. -->
+    <aside id="settings-drawer" class="settings-drawer" role="dialog"
+           aria-label="Game settings" aria-hidden="true">
+        <div class="settings-drawer-header">
+            <h3 class="settings-drawer-title">⚙ Settings</h3>
+            <button id="settings-close" type="button"
+                    class="settings-drawer-close" aria-label="Close settings"
+                    title="Close">×</button>
+        </div>
+        <div class="settings-drawer-body">
+            <div class="settings-row">
+                <label for="settings-bot-strength" class="settings-label">
+                    Bot Strength
+                </label>
+                <select id="settings-bot-strength" class="dark-select form-control form-control-sm">
+                    <option value="Easy">Easy</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Hard" selected>Hard</option>
+                </select>
+            </div>
+            <div class="settings-row">
+                <label for="settings-hand-count" class="settings-label">
+                    Hand Count
+                </label>
+                <select id="settings-hand-count" class="dark-select form-control form-control-sm">
+                    <option value="1">1 (single hand)</option>
+                    <option value="4" selected>4 (east-wind)</option>
+                    <option value="8">8 (east round)</option>
+                    <option value="16">16 (half match)</option>
+                </select>
+            </div>
+            <div class="settings-row">
+                <label class="settings-checkbox-label">
+                    <input type="checkbox" id="settings-auto-deal">
+                    Auto-Deal
+                    <small class="settings-hint">
+                        Runtime auto-starts the next hand after each result.
+                    </small>
+                </label>
+            </div>
+        </div>
+        <div class="settings-drawer-footer">
+            <small class="settings-saved-note" id="settings-saved-note"
+                   style="display: none;">Saved ✓</small>
+            <button id="settings-apply" type="button"
+                    class="btn btn-warning btn-sm">
+                Apply &amp; Restart
+            </button>
+        </div>
+    </aside>
+
+    <!-- Phase J Wave 2 — End-of-game summary modal.  Rendered when the
+         runtime pushes `gameComplete["current"].isComplete = true` after
+         the final hand of the match.  Shows per-seat totals plus a hand-
+         by-hand recap (built client-side from each `result.current` we
+         observed, or from a `handHistory` array if Bishop ships one).
+         The two action buttons clear the modal and either start a new
+         game with the current settings drawer values or punt the user
+         back to the lobby URL. -->
+    <div class="modal" id="game-complete-modal" tabindex="-1"
+         aria-hidden="true" data-backdrop="static" data-keyboard="false">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content game-complete-modal-content">
+                <div class="modal-body text-light text-center">
+                    <h2 id="game-complete-headline" class="mb-1">🏆 GAME OVER 🏆</h2>
+                    <div id="game-complete-subtitle" class="mb-3 text-warning"></div>
+
+                    <div class="game-complete-section">
+                        <h4 class="game-complete-section-title">Final Scores</h4>
+                        <table class="table table-sm table-dark mx-auto"
+                               id="game-complete-totals">
+                            <thead>
+                                <tr>
+                                    <th>座位 Seat</th>
+                                    <th>玩家 Player</th>
+                                    <th>总分 Total Δ</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <div class="game-complete-section">
+                        <h4 class="game-complete-section-title">Hand-by-hand</h4>
+                        <div id="game-complete-recap" class="game-complete-recap"></div>
+                    </div>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-warning"
+                            id="game-complete-new-game">
+                        🆕 New Game
+                    </button>
+                    <button type="button" class="btn btn-secondary"
+                            id="game-complete-lobby">
+                        ☰ Back to Lobby
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Phase G — Lobby panel (top-left overlay).  Pickers map 1:1 to the
          Phase F query params; Apply & Start rebuilds the URL and calls
          window.location.replace() so a fresh game starts with the new
@@ -486,13 +616,14 @@
                 <label><input type="radio" name="lobby-bot-difficulty" value="Hard"> Hard</label>
             </fieldset>
 
-            <!-- Phase H Wave 1 — hand count selector.  Default 8 = East round
-                 only.  The backend doesn't read this yet (V2 wiring); the
-                 param being present in the URL is the lobby contract. -->
+            <!-- Phase H Wave 1 — hand count selector.  Default 4 = Bishop's
+                 runtime east-wind rotation default (Phase J Wave 2).  The
+                 backend reads this off the URL and pins it to MaxHands. -->
             <fieldset class="lobby-fieldset" id="lobby-hand-count-fieldset">
                 <legend>Hands per match</legend>
-                <label><input type="radio" name="lobby-hand-count" value="4"> 4 <small class="lobby-hint">(quick)</small></label>
-                <label><input type="radio" name="lobby-hand-count" value="8" checked> 8 <small class="lobby-hint">(East round)</small></label>
+                <label><input type="radio" name="lobby-hand-count" value="1"> 1 <small class="lobby-hint">(single)</small></label>
+                <label><input type="radio" name="lobby-hand-count" value="4" checked> 4 <small class="lobby-hint">(east-wind)</small></label>
+                <label><input type="radio" name="lobby-hand-count" value="8"> 8 <small class="lobby-hint">(East round)</small></label>
                 <label><input type="radio" name="lobby-hand-count" value="16"> 16 <small class="lobby-hint">(half match)</small></label>
                 <label><input type="radio" name="lobby-hand-count" value="32"> 32 <small class="lobby-hint">(full match)</small></label>
             </fieldset>
