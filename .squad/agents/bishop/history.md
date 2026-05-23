@@ -1925,3 +1925,92 @@ appsettings additions, surprises, and Phase-L hand-offs.
 baseline of 977; Vasquez's six Wave-2 contract-test files under
 `tests/Phase_K_W2/` plus eight cross-wave regression facts in
 `Wave1ThroughKW2RegressionTests.cs` all green).
+
+📌 Bishop — Phase K Wave 3 (branch `stlong/phase-k-wave-3-bringup`)
+
+Wave 3 closed the seven cross-lane dependencies surfaced by Wave 2
+(PR #48) plus the Vasquez contract-gap rename trio:
+
+1. **Per-table voice toggle.** `ChangshaGame.VoiceEnabled` +
+   `ChangshaGame.OwnerPlayerId` columns; runtime mirror from
+   `state.CreatorPlayerId` on every persist; `POST
+   /api/games/{id:guid}/settings/voice` (owner-or-admin gated)
+   flips the column.
+
+2. **VoiceHub per-table auth.** Three-step gate in `JoinVoice`:
+   anon-cookie identity → `VoiceEnabled` flag → seated-or-owner.
+   Failures raise `HubException` codes `voice-join-unauthorized`,
+   `voice-disabled-for-table`, `voice-not-seated`. Non-GUID
+   tableIds soft-pass for legacy lobby tags. Audit rows now prefer
+   the persistent `PlayerId` over `Context.ConnectionId`.
+
+3. **`VoiceHubMetricsService`.** Singleton; per-connection 60s
+   rolling-window relay counter. Wired into all three relay paths
+   (`SendOffer`/`SendAnswer`/`SendIceCandidate`).
+
+4. **TURN HMAC mint.** `POST /api/turn/credentials` (auth-gated)
+   returns `username = "{unix_ttl}:{playerId}"` + `credential =
+   Base64(HMACSHA1(TurnSharedSecret, username))`. 503 when
+   `TurnSharedSecret` unset. Anonymous `/api/turn` now strips
+   `username`/`credential` — STUN-only fallback.
+
+5. **Microsoft OAuth.** New `AuthOptions.Microsoft`
+   `OAuthProviderOptions`, shared `TenantId` property (default
+   `"common"`). `OAuthService` switch arms in `GetProviderOptions` /
+   `ParseUserInfo` / `ResolveProviderEndpoints` hitting Entra v2.0
+   endpoints. `OAuthDiscoveryService.FetchMicrosoftAsync` mirrors
+   the Google fetch; payload class renamed `GoogleDiscoveryPayload`
+   → `OidcDiscoveryPayload` and reused. `RefreshIntervalSeconds`
+   knob added with precedence over `RefreshIntervalHours`. Health
+   probe + `AuthController` provider list extended.
+
+6. **Onboarding-status endpoints.** `PlayerOnboardingStatus`
+   entity (PK = `PlayerId`); `GET`/`POST /api/players/me/onboarding-status`
+   with monotonic step counter and one-way `completed` flip.
+   Anon-cookie scoped.
+
+7. **Tournament seed admin endpoint.** `TournamentService.SeedAsync`
+   + `POST /api/tournaments/{id}/seed` (admin-only, 409 unless
+   `draft` or `open`).
+
+**Vasquez contract-gap closures:**
+`PlayerSeasonRolloverDeferral` columns renamed
+`FromSeason→FromSeasonId`, `ToSeason→ToSeasonId`,
+`DrainedAtUtc→ResolvedAtUtc`; all `SeasonRolloverService`
+references updated; indices rebuilt; pre-existing
+`ReconnectAuditEntries.Detail` Wave-2 schema drift backfilled.
+
+**Migrations × 3 providers:** `Phase_K_W3_VoiceAndOnboardingSchema`
+landed for Sqlite (`20260523112245`), Postgres (`20260523112259`),
+SqlServer (`20260523112308`). Each handles deferral renames + index
+rebuild, `OwnerPlayerId`/`VoiceEnabled` on `ChangshaGames`,
+`Detail` on `ReconnectAuditEntries`, and creates
+`PlayerOnboardingStatuses`. `DatabaseBootstrapper.EnsureSqlitePhaseK3TablesAsync`
+covers the same shape changes idempotently for air-gapped SQLite
+upgrades.
+
+**Surprises:**
+
+- The brief's "Seat" was a phantom. Seats live inside
+  `ChangshaGameState.Seats[]` serialised into
+  `ChangshaGame.StateJson`. The VoiceHub gate walks the runtime
+  snapshot rather than the JSON column.
+- Default xUnit parallelism flakes on
+  `Wave1ThroughKW3RegressionTests.InitializeAsync` due to a
+  WebApplicationFactory tempfile/port collision. The test passes
+  isolated; reducing `MaxParallelThreads` to 2 stabilises the
+  whole-suite run. Hand-off to Hudson for the harness lane.
+- `OwnerPlayerId` is best-effort on existing rows (`null` until
+  next persist). VoiceHub treats `null` as "no host bypass" so
+  this never grants unintended access.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-3.md` —
+per-deliverable design, migration table, bootstrap fallback,
+appsettings hand-offs, surprises.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx
+--nologo --no-build -- xUnit.MaxParallelThreads=2` →
+**Passed: 1149, Failed: 0, Skipped: 0** (+87 over Wave-2 closeout
+baseline of 1062; Vasquez's eight Wave-3 contract-test files under
+`tests/Phase_K_W3/` plus the new cross-wave regression facts in
+`Wave1ThroughKW3RegressionTests.cs` all green).
