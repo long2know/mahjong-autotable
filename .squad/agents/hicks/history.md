@@ -1359,3 +1359,104 @@ Surface area (Hicks-owned):
 ## Phase J Wave 1
 
 - Shipped **hot-seat swap** (Move button + inline picker in the in-game HUD, visible only when connected + no match in progress; soft reconnect via `history.replaceState` on `?seat=` + `client.disconnect()` — client-ui.ts's existing auto-reconnect picks up the new seat on its own) AND **spectator camera lock** (one-line tweak: `world.seat` initial value is `null` when `?seat=-1`, so `main-view.ts`'s existing `fromTop` branch puts the camera top-down from the first frame instead of flashing seat-0 view).  Commit `781798e`, bundle `autotable-src.214d524e.js` + `autotable-src.884bb475.css` (pruned the Wave-I.4 hashes).  TS strict exit 0, Parcel build clean (7.75s), backend tests `Passed: 403` unchanged.  `client-ui.ts` / `main-view.ts` untouched — no client-ui.ts edit was needed because `buildWsUrl` already reads `?seat=` off the page URL.
+
+## Phase J Wave 2
+
+- **What shipped** — three primary UX deliverables on branch
+  `stlong/phase-j-wave-2-completion`, commit `a92e5d1`
+  ("feat(ui): Phase J Wave 2 — end-of-game summary + reconnect banner
+  + settings drawer"):
+  1. **End-of-game summary modal.**  Subscribes to a new `gameComplete`
+     collection (singleton key `"current"`), renders per-seat totals
+     table (winner-first) + hand-by-hand recap, with New Game / Back
+     to Lobby actions.  Payload parsed defensively — accepts
+     camelCase, PascalCase, `isComplete`, `IsComplete`, `isGameComplete`,
+     `IsGameComplete`, optional `totalScores` / `handHistory` /
+     `maxHands`.  When the server omits totals or history, the bundle
+     derives both from the client-side `result.current` accumulator
+     it already maintains during the match.
+  2. **Connection-lost banner.**  Replaces the silent 2 s × 15-attempts
+     reconnect loop with a visible state machine: yellow
+     "reconnecting (N/5)", red "Could not reconnect" + Retry/Lobby
+     buttons, green "Reconnected" 2 s flash.  Exponential backoff:
+     1 s / 2 s / 4 s / 8 s / 16 s, 5 attempts.  User-initiated
+     `disconnect()` is silent (cancels timers + clears
+     `wasDisconnected`).
+  3. **Settings drawer.**  ⚙ gear top-right opens a slide-out aside
+     with Bot Strength / Hand Count / Auto-Deal.  Persists per-gameId
+     in localStorage under `autotable.phaseJ.v1.settings.<gameId>`
+     (plus a global default key for fresh tabs).  Apply rewrites URL
+     params (`botDifficulty`, `handCount`, `dealMode`) and reloads.
+- **Lobby alignment.**  Hand-count default 8 → 4, added `1` as an
+  option (default east-wind rotation matches Bishop's runtime).  Bot
+  difficulty default Medium → Hard per directive.
+- **Files** — `client.ts` (new `gameComplete` Collection +
+  `GameCompleteEntry` interface), `client-ui.ts` (new reconnect loop +
+  banner lifecycle, `connect()` signature simplified), `game-ui.ts`
+  (modal + settings drawer + client-side history accumulator;
+  module-level `SettingsState` helpers), `lobby.ts` (default shifts +
+  hand-count widening), `index.html` (4 new top-level UI nodes),
+  `style.css` (~220 lines appended).  Strictly untouched:
+  `src/backend/**` (Bishop's lane), `src/backend/tests/**` (Vasquez's
+  lane), `src/frontend/autotable-src/src/types.ts`, `world.ts`,
+  `game.ts`, `main-view.ts`.
+- **Gates** — TS strict exit 0; Parcel build success; dotnet test
+  `Passed: 415, Failed: 3` (the 3 failures are Vasquez's red
+  `GameCompletionTests` waiting on Bishop's `MaxHands` /
+  `IsGameComplete` / `ChangshaPhase.GameComplete` backend contract,
+  entirely within their lane, pre-existed my work and are unmoved by
+  my frontend-only commit).
+- **Bundle** — `autotable-src.90818e21.js` + `autotable-src.60a1fda4.css`
+  (replaced Wave J.1's `autotable-src.214d524e.js` +
+  `autotable-src.884bb475.css`; bootstrap CSS `df85b4c4` retained
+  byte-identical).
+- **Memo** — `.squad/decisions/inbox/hicks-phase-j-wave-2.md` carries
+  the full deliverable description + Bishop / Vasquez coordination
+  notes + UX rationale.
+
+### Discoveries / notes
+
+- **Bishop's wire vocabulary unknown at ship time.**  His
+  `bishop-phase-j-wave-2.md` memo hadn't dropped before I shipped, so
+  the bundle accepts a superset of plausible field names (camelCase /
+  PascalCase / `isComplete` / `isGameComplete`) and falls back to
+  client-derived totals/history when the payload omits them.  Vasquez's
+  red tests in `GameCompletionTests.cs` revealed his backend contract
+  surface (`MaxHands`, `IsGameComplete`, `ChangshaPhase.GameComplete`)
+  but NOT the WS-collection vocabulary.  If his collection lands as
+  `match["current"]` or `gameState["current"]` instead of
+  `gameComplete["current"]`, the follow-up is a one-liner subscription
+  rewrite.
+- **`connect()` signature change is a soft breakage.**  Old first
+  arg (`reconnectAttempts`) is now `_legacy` — no internal caller
+  passes it, but the rename is preserved so a stray external caller
+  (if any future code is added) trips a TS warning rather than a
+  silent zero.
+- **Hand-history dedup uses structural fingerprint
+  (`JSON.stringify(last) === JSON.stringify(result)`).**  Suppresses
+  double-counting when connect-time full-syncs replay the current
+  `result.current`.  May be brittle if Bishop mutates the object
+  reference shape between sends — worth revisiting if a follow-up
+  reveals dup recap rows.
+- **localStorage read priority is URL > gameId-keyed > global > defaults.**
+  So a deep-linked URL always wins over personal localStorage, and
+  the per-game key always wins over the global default key.
+- **Auto-Deal maps to existing wire field.**  Settings drawer's
+  checkbox surfaces as `?dealMode=auto|manual` in the URL — the Phase F
+  contract.  No new wire field was added for Wave 2's drawer; Bot
+  Strength → existing `?botDifficulty=`, Hand Count → existing
+  `?handCount=`.
+
+### Outstanding / next-pickup
+
+- Watch for Bishop's memo at
+  `.squad/decisions/inbox/bishop-phase-j-wave-2.md`.  If his collection
+  / key / payload schema doesn't match the defensive
+  `gameComplete["current"]` scaffolding, a follow-up commit needs to
+  realign the subscription (the parser already accepts most field-name
+  variants).
+- The 3 RED tests in `GameCompletionTests.cs` are Vasquez's red gates
+  for Bishop's backend contract — they live entirely outside my lane
+  and will go green when Bishop's commit lands.  Confirm no frontend
+  follow-up is needed (parser superset should cover most cases) once
+  the contract crystallises.
