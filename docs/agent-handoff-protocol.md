@@ -177,7 +177,18 @@ or retained as a secondary preview.
 > documents the exact `gh api` commands. Nightly + opt-in
 > preview workflows ship in W9.
 
-### 3.6. Lock-file relocation `/tmp/` → `.work/squad-git-lock` (W9 — Apone)
+### 3.6. Lock-file relocation `/tmp/` → `.work/squad-git-lock` (W9 — Apone; **W10 cutover COMPLETE**)
+
+> **EDIT(W10).** The cutover described below is now COMPLETE. From
+> Wave 10 onward, `.work/squad-git-lock` is the canonical squad
+> mutex path; every agent prompt template + the onboarding docs
+> cite the new path. The body of this section is preserved as
+> the historical W9-era cutover plan so future readers
+> understand WHY the migration happened. The literal
+> `/tmp/squad-git-lock` references in §3.7's snippet, in
+> `docs/retro-2026-05.md`, and in `.squad/agents/*/history.md`
+> are preserved as wave-original; new work paths use
+> `.work/squad-git-lock` exclusively.
 
 W6 introduced `flock -w 120 9 … 9>/tmp/squad-git-lock` to serialise
 the `git add` + `git commit` + `git push` critical section across
@@ -200,26 +211,31 @@ two problems with the `/tmp/` location:
    block writes under `/tmp/` — so the lock file silently never
    gets created and the flock is a no-op.
 
-**Cutover plan:**
+**Cutover plan (executed across W9 + W10):**
 
-- **W9 (in-flight).** Agents already invoked with the original
-  `/tmp/squad-git-lock` directive CONTINUE using `/tmp/`. Mixing
-  lock locations mid-wave would defeat the mutex (two agents
-  holding two different locks would race). This is a one-wave
+- **W9 (executed).** Agents already invoked with the original
+  `/tmp/squad-git-lock` directive CONTINUED using `/tmp/`. Mixing
+  lock locations mid-wave would have defeated the mutex (two agents
+  holding two different locks would race). This was a one-wave
   carve-out only.
-- **W10+ (canonical).** Every agent uses `.work/squad-git-lock`.
-  The directory `.work/` is gitignored except for `.work/.gitkeep`
-  (which guarantees the directory exists on a fresh clone); the
-  lock file itself never lands in git.
+- **W10+ (canonical — IN FORCE).** Every agent uses
+  `.work/squad-git-lock`. The directory `.work/` is gitignored
+  except for `.work/.gitkeep` (which guarantees the directory
+  exists on a fresh clone); the lock file itself never lands in
+  git. Apone's W10 commit ships the prompt-template flip + the
+  onboarding-doc sweep that completes the cutover (see
+  `.squad/decisions.md` Wave-6/7/8 sections — each carries an
+  `EDIT(W10)` note pointing at the new path).
 - **Agent prompt templates** for W10 onward MUST cite `.work/squad-git-lock`.
   The W6/W7/W8 prompt templates (`.squad/agents/_template-prompt.md`
   if present, or the in-prompt directive when the template is
-  hand-rolled) should be updated in the same commit that touches
-  the first W10 wave.
-- **Onboarding docs.** Update `.squad/decisions.md`, this file,
-  `.squad/agents/<agent>/history.md` references — every place
-  the `/tmp/squad-git-lock` literal appears EXCEPT historical
-  retro entries (those preserve the original-wave reality).
+  hand-rolled) have been updated as of the first W10 commit.
+- **Onboarding docs.** `.squad/decisions.md`, this file, and the
+  per-agent `charter.md` references all point at
+  `.work/squad-git-lock`. The per-agent `history.md` files are
+  EXEMPT: historical retro entries preserve the original-wave
+  reality (so a reader can correlate a W6/W7/W8/W9 commit message
+  with the path it actually used at the time).
 
 The new path:
 
@@ -272,8 +288,10 @@ starting W9):**
       exit 2
   fi
   git push origin <branch>
-) 9>/tmp/squad-git-lock     # ← W9 carry-over location
-                            # W10+: 9>.work/squad-git-lock
+) 9>.work/squad-git-lock     # ← W10+ canonical location
+                             # (W9 wave used `9>/tmp/squad-git-lock`
+                             # per the §3.6 mid-wave carryover —
+                             # cutover completed at start of W10).
 ```
 
 **Why this is safe inside the flock.** The `fetch` + `rebase`

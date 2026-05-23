@@ -19,10 +19,152 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-9-bringup`. Phase K Wave 9
+Working branch: `stlong/phase-k-wave-10-bringup`. Phase K Wave 10
 in flight. Other lane deliverables outstanding.
 
-## [0.18.0] — Phase K Wave 9 — 2026-07-23 (PR pending)
+## [0.19.0] — Phase K Wave 10 — 2026-08-09 (PR pending)
+
+**Theme:** Squad-git-lock path cutover (`/tmp/squad-git-lock` →
+`.work/squad-git-lock` — survives `/tmp` cleanup, lives inside the
+repo's working tree, completes the W9 hand-off plan) + Redis
+ElastiCache Terraform module (Bishop's W10 `RedisIdempotencyStore`
+dependency — single-shard replication group with auth-token + TLS,
+custom parameter group with `allkeys-lru`, wired into the staging
+env stack) + Argo Rollouts cluster install runbook (W9 hand-off —
+pinned chart 2.37.7, kubectl plugin v1.7.2, dashboard via port-
+forward only, wires to W9 `canary-deployment.yaml`) + JWT SSM
+runbook §3 quarterly rotation (cadence tightened 180d → 90d,
+explicit `aws ssm put-parameter` walkthrough + JWKS validation +
+rollback procedure) + `container-scan-remediation.yml` workflow
+(consumes W6 Trivy artefact, opens / updates a de-duped GitHub
+issue with HIGH+CRITICAL CVE list + suggested base-image bump
+heuristic + W6 allowlist pointer) + `prod-health-check.yml`
+workflow (every 5 min: `/healthz` + `/readyz` + `/metrics` +
+`/.well-known/jwks.json`; 3-strike cooldown opens incident issue,
+2-strike recovery closes it; optional Slack webhook) + retro
+2026-08 W10 entries.
+
+### Added (Phase K Wave 10 — PR pending)
+
+- **`infra/terraform/modules/redis/` — Redis ElastiCache module.**
+  Single-shard replication group (`aws_elasticache_replication_group`)
+  with configurable replica count + multi-AZ. Custom parameter
+  group with `maxmemory-policy=allkeys-lru` (Bishop's idempotency
+  store treats Redis as a cache, not a primary store). Optional
+  `random_password`-generated auth-token (sensitive output) +
+  TLS in transit (`transit_encryption_enabled=true`) + at-rest
+  encryption (`at_rest_encryption_enabled=true`). Security group
+  pre-wired with VPC-CIDR ingress + opt-in allowed-SG ingress.
+  Outputs: primary/reader endpoints, port, security group id,
+  `redis_connection_string` (sensitive), `redis_auth_token`
+  (sensitive). `terraform validate` clean. Wired into the staging
+  env stack at the cheap shape (`cache.t4g.micro`, 0 replicas,
+  no snapshots).
+- **`docs/redis-cluster.md` — Redis operator runbook (W10).**
+  10 sections: topology, provisioning, SSM push for the
+  connection string, KMS wiring, version-bump procedure, ESO
+  wiring for the `RedisIdempotencyStore` runtime, smoke test,
+  rotation cadence (matches JWT §3 quarterly), rollback,
+  cross-refs.
+- **`docs/argo-rollouts-setup.md` — Argo Rollouts cluster install
+  runbook (W10 — picks up W9 hand-off).** 8 sections: prereqs,
+  Helm install pinned to chart `argo-rollouts 2.37.7`, kubectl
+  plugin install (`v1.7.2`), dashboard access via `kubectl
+  port-forward` (no public ingress; Apone+Vasquez decided
+  against an auth-aware proxy until W11+), validation, Helm
+  chart wiring (`helm/mahjong/templates/canary-deployment.yaml`
+  from W9), rollback, cross-refs.
+- **`.github/workflows/container-scan-remediation.yml` —
+  remediation issue automation (W10).** Triggers: nightly
+  05:00 UTC (1 h after W6 `container-scan.yml`), `workflow_run`
+  on `container-scan` failure, manual dispatch. Downloads the
+  W6 findings artefact, filters to HIGH+CRITICAL, opens or
+  updates a single de-duped GitHub issue (title prefix
+  `[container-scan] CVE remediation`, labels
+  `security,automated`). Issue body includes the CVE table,
+  suggested base-image bump if the same target accounts for the
+  majority of findings, and a pointer to `docs/secrets-scanning.md`
+  §4 (W10 — new section). Does NOT open base-image bump PRs
+  (the squad reviews CVE remediation before bumping).
+- **`.github/workflows/prod-health-check.yml` — synthetic prod
+  probe (W10).** Cron `*/5 * * * *`. Probes `/healthz` +
+  `/readyz` + `/metrics` + `/.well-known/jwks.json`. Asserts
+  HTTP 200 + body shape (`status:"ok"`, JWKS `keys` count ≥ 3)
+  + latency budget (`/readyz` ≤ 1500 ms) + body size
+  (`/metrics` > 1024 B). 3-strike cooldown opens an incident
+  issue (`labels: incident,automated,production`); 2 clean
+  runs close it. Optional `SLACK_WEBHOOK_URL` secret triggers
+  best-effort Slack notification. `workflow_dispatch.inputs`
+  cover target URL override, latency-budget override, and a
+  reset-strike-counter switch.
+- **JWT SSM runbook §3 quarterly rotation walkthrough.**
+  Tightens cadence 180-day → **90-day (quarterly)** to match
+  the W10 secret-management quarterly cadence. New §3.2 ships
+  the full `aws ssm put-parameter` command sequence with
+  pre-flight + post-flight JWKS validation (`curl
+  /.well-known/jwks.json | jq '.keys | length'` ≥ 3 distinct
+  `kid` values). New §3.3 quarterly hand-off checklist. New
+  §3.4 quarterly rollback (promote previous→active +
+  archive→previous; the just-minted key is intentionally
+  discarded — a key clients have rejected is a key we never
+  want to revisit).
+- **`docs/secrets-scanning.md` §4 — CVE remediation flow.**
+  Net-new section that turns the W6 container-scan findings
+  into action: §4.1 two-scanner taxonomy table (W3/W6 gate
+  vs W10 remediation), §4.2 triage tree, §4.3 base-image
+  bump walkthrough, §4.4 W6 allowlist as last resort, §4.5
+  closing-the-loop matrix. Existing §4 "Operational cadence"
+  renumbered to §5; §5 Triage SLA → §6; §6 Cross-references → §7
+  (and the §7 cross-refs picked up two new entries for the
+  W10 workflow + the W3/W6 scanner).
+- **`docs/production-deployment-runbook.md` §8 — Continuous
+  health probes (W10).** Inserted BEFORE the existing
+  Companion docs section (renumbered to §9). Documents the
+  W10 prod-health-check workflow: what it checks, the 3-strike
+  cooldown / 2-strike recovery behaviour, operator integration
+  (probe is backstop, not pager replacement), configuration,
+  disabling for planned maintenance, troubleshooting (flaky
+  probe vs silent probe vs suppress-without-disable), cross-refs.
+- **`docs/retro-2026-08.md` — Phase K Wave 10 retro.** Modelled
+  on `docs/retro-2026-07.md`. Sections: What shipped, What
+  worked, What broke, Decisions worth carrying, Open items /
+  W11 hand-offs.
+
+### Changed (Phase K Wave 10 — PR pending)
+
+- **Squad git-lock cutover COMPLETE.** All flock invocations now
+  use `9>.work/squad-git-lock` (was `/tmp/squad-git-lock` in W9).
+  `docs/agent-handoff-protocol.md` §3.6 + §3.7 updated;
+  `.squad/decisions.md` carries EDIT(W10) blockquote notes at
+  the top of the W6, W7, W8 summaries explaining the new lock
+  path. Historical `.squad/agents/*/history.md` blocks left
+  unchanged per the retro exemption (§3.6).
+- **Wave tag bump.** `infra/terraform/envs/staging/main.tf`
+  common_tags `Wave` field bumped `phase-k-wave-8` →
+  `phase-k-wave-10`. (Bumped to W10 — W9 didn't touch the
+  envs stack.)
+- **W9 CHANGELOG entry.** `[0.18.0]` annotation flipped from
+  `(PR pending)` to `(PR #55)` now that PR #55 has merged.
+
+### Hand-offs to Wave 11
+
+- **Production stack for Redis.** The W10 module is wired into
+  staging only; W11 picks up the prod env stack (will need
+  multi-AZ + a replica + KMS rotation policy review). Cheap
+  shape `cache.t4g.micro` is intentional for staging; prod will
+  bump to `cache.r7g.large` or similar based on the W10 load
+  test once it runs.
+- **Argo Rollouts dashboard ingress.** Currently port-forward
+  only (Apone+Vasquez decided against a public dashboard
+  ingress until an auth-aware proxy with OIDC SSO is in
+  place). W11 picks up the proxy design.
+- **Terraform CLI pin.** `.tool-terraform/terraform` is v1.9.8.
+  Latest at W10 cut was v1.15.x. The pin still works for the
+  current modules but is stale; W11 should evaluate a bump.
+- **Quarterly JWT rotation.** First quarterly rotation under
+  the new cadence: end of September 2026 (Q3). The W11 on-call
+  inherits this — the W10 §3.3 checklist is the entry point.
+
 
 **Theme:** Production canary retarget (single W8 AnalysisTemplate
 → three independent gates: success-rate + p99-latency + error-

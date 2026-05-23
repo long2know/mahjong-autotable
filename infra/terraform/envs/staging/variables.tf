@@ -78,3 +78,43 @@ variable "logs_retention_days" {
     error_message = "logs_retention_days must be between 7 and 3653 (S3 lifecycle range)."
   }
 }
+
+# ── Redis VPC wiring (W10) ───────────────────────────────────────
+#
+# The Redis module needs VPC + private subnet IDs + the VPC CIDR
+# from the PRIMARY stack. Plumbed through tfvars (operator copies
+# the values from `terraform output` against the primary stack)
+# rather than via terraform_remote_state — keeps the env stack
+# dependency-free at `terraform init` time and lets the operator
+# run the Redis apply without granting cross-state read access.
+
+variable "vpc_id" {
+  description = "VPC ID from the primary stack (`terraform output -raw vpc_id` against `infra/terraform/`). Required for the Redis security group."
+  type        = string
+
+  validation {
+    condition     = can(regex("^vpc-[a-f0-9]{8,17}$", var.vpc_id))
+    error_message = "vpc_id must look like `vpc-…` (8-17 hex chars after the prefix)."
+  }
+}
+
+variable "private_subnet_ids" {
+  description = "Private subnet IDs from the primary stack (`terraform output -json private_subnet_ids`). Required for the Redis subnet group. ≥ 2 subnets when `multi_az_enabled = true` in the module (staging defaults to false so any non-empty list passes)."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.private_subnet_ids) >= 2
+    error_message = "private_subnet_ids must contain at least 2 subnet IDs (Redis subnet-group constraint, even when multi-AZ is disabled at the cluster level)."
+  }
+}
+
+variable "vpc_cidr" {
+  description = "VPC CIDR from the primary stack (`terraform output -raw vpc_cidr`). Used as the broad ingress CIDR on the Redis security group."
+  type        = string
+  default     = "10.10.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.vpc_cidr, 0))
+    error_message = "vpc_cidr must be a valid CIDR block (e.g. `10.10.0.0/16`)."
+  }
+}

@@ -1,0 +1,300 @@
+# Phase K Wave 10 — Apone (DevOps).
+#
+# Container scan remediation — turns the W6 `container-scan.yml`
+# findings into action by AUTO-CREATING a GitHub issue (or
+# updating an existing one) with the CVE list + a suggested
+# base-image bump.
+#
+# ## Triggers
+#
+# 1. Nightly at 05:00 UTC — runs ONE hour after `container-scan.yml`
+#    (which is at 04:00 UTC). The container scan uploads its
+#    findings as a workflow artefact + writes them to the Security
+#    tab; this workflow downloads the latest artefact and acts on
+#    the high+critical subset.
+# 2. `workflow_run` on `container-scan` completion (failed runs only)
+#    — if the PR-time scan blocks a merge, this workflow fires
+#    immediately so the issue surface is ready before the next on-
+#    call check-in. The `workflow_run.conclusion == failure` filter
+#    is enforced at the job level (GH does not expose it on `on:`).
+# 3. `workflow_dispatch` — operator-initiated; useful to backfill an
+#    issue after a one-off Trivy upgrade.
+#
+# ## Output shape
+#
+# A single open GitHub issue with title
+#   `[container-scan] CVE remediation — <YYYY-MM-DD>`
+# labelled `security` + `automated`. Body lists:
+#   * the failing CVE IDs with severity + package name + fixed
+#     version (per Trivy's `Vulnerabilities[]` schema).
+#   * a suggested base-image bump if the same CVE class affects
+#     the alpine/Debian/.NET runtime base.
+#   * a link to the Security tab + the latest workflow run.
+#
+# Re-runs UPDATE the existing open issue rather than creating a
+# new one (de-dup key: identical title prefix + open state). The
+# operator closes the issue when the CVE is allowlisted via the
+# W6 trivy-allowlist.yaml OR when a base-image bump PR lands.
+#
+# ## What this workflow does NOT do
+#
+# * Open a PR to bump the base image — the squad reviews CVE
+#   findings before bumping (alpine v3.19 → v3.20 occasionally
+#   ships breaking-glibc changes for the runtime). The suggested
+#   bump in the issue body is a HINT, not an auto-PR.
+# * Re-run the container scan — that workflow runs on its own
+#   cron + every PR. This workflow consumes the artefact.
+
+name: container-scan-remediation
+
+on:
+  schedule:
+    # 05:00 UTC daily — runs 1h after the W6 container-scan cron.
+    - cron: "0 5 * * *"
+  workflow_run:
+    workflows: ["container-scan"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      severity_floor:
+        description: "Lowest severity to include in the issue (HIGH or CRITICAL)."
+        required: false
+        default: "HIGH"
+        type: choice
+        options:
+          - CRITICAL
+          - HIGH
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: container-scan-remediation
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/long2know/mahjong-autotable
+  ISSUE_LABELS: "security,automated"
+  ISSUE_TITLE_PREFIX: "[container-scan] CVE remediation"
+
+jobs:
+  remediate:
+    name: Open remediation issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # workflow_run fires on success AND failure; we only care
+    # about failures (a failed container scan = HIGH+CRITICAL
+    # findings exceeded the gate). Other triggers always run.
+    if: >-
+      github.event_name != 'workflow_run'
+      || github.event.workflow_run.conclusion == 'failure'
+    steps:
+      - name: Checkout (for the suggested-bump heuristic)
+        uses: actions/checkout@v4
+
+      - name: Fetch latest container-scan artefact
+        id: fetch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Find the most recent successful OR failed run of
+            // container-scan.yml on the default branch.
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'container-scan.yml',
+              branch: 'main',
+              per_page: 5,
+            });
+            const run = runs.data.workflow_runs.find(r => r.conclusion);
+            if (!run) {
+              core.setFailed('no recent container-scan run found');
+              return;
+            }
+            core.setOutput('run_id', String(run.id));
+            core.setOutput('run_url', run.html_url);
+
+            // Download the findings artefact.
+            const arts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+            });
+            const findings = arts.data.artifacts.find(a => a.name.startsWith('container-scan-findings'));
+            if (!findings) {
+              core.warning('no container-scan-findings artefact on the latest run');
+              return;
+            }
+            const dl = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: findings.id,
+              archive_format: 'zip',
+            });
+            const fs = require('fs');
+            fs.writeFileSync('findings.zip', Buffer.from(dl.data));
+            core.setOutput('artefact_found', 'true');
+
+      - name: Extract Trivy JSON
+        if: steps.fetch.outputs.artefact_found == 'true'
+        run: |
+          set -euo pipefail
+          unzip -o findings.zip
+          ls -la
+          test -f trivy-findings.json || {
+            echo "::error::artefact missing trivy-findings.json — W10 expects the W6 workflow to upload it"
+            exit 1
+          }
+
+      - name: Filter to HIGH + CRITICAL CVEs
+        id: filter
+        if: steps.fetch.outputs.artefact_found == 'true'
+        run: |
+          set -euo pipefail
+          FLOOR="${{ github.event.inputs.severity_floor || 'HIGH' }}"
+          case "$FLOOR" in
+            CRITICAL) SEV_REGEX='^CRITICAL$' ;;
+            HIGH)     SEV_REGEX='^(HIGH|CRITICAL)$' ;;
+            *) echo "::error::unsupported severity_floor: $FLOOR"; exit 1 ;;
+          esac
+
+          python3 - "$SEV_REGEX" > cve-summary.md <<'PY'
+          import json, re, sys, collections
+          from pathlib import Path
+
+          sev_pat = re.compile(sys.argv[1])
+          data = json.loads(Path("trivy-findings.json").read_text())
+          rows = []
+          base_image_targets = collections.Counter()
+
+          for result in data.get("Results", []) or []:
+              target = result.get("Target", "")
+              for v in result.get("Vulnerabilities", []) or []:
+                  sev = v.get("Severity", "")
+                  if not sev_pat.match(sev):
+                      continue
+                  rows.append({
+                      "id":   v.get("VulnerabilityID", "?"),
+                      "sev":  sev,
+                      "pkg":  v.get("PkgName", "?"),
+                      "ver":  v.get("InstalledVersion", "?"),
+                      "fix":  v.get("FixedVersion", "(no fix)"),
+                      "title": (v.get("Title") or "").strip(),
+                      "target": target,
+                  })
+                  # Heuristic: if the target looks like the OS
+                  # package DB, the right remediation is usually a
+                  # base-image bump.
+                  if "alpine" in target.lower() or "debian" in target.lower() or "node_modules" not in target:
+                      base_image_targets[target] += 1
+
+          print(f"## {len(rows)} CVE(s) above severity floor `{sys.argv[1]}`\n")
+          if not rows:
+              print("_No findings above floor — closing the loop._")
+              sys.exit(0)
+
+          print("| Severity | CVE | Package | Installed | Fixed | Title |")
+          print("| --- | --- | --- | --- | --- | --- |")
+          for r in sorted(rows, key=lambda x: (x["sev"] != "CRITICAL", x["id"])):
+              title = (r["title"][:80] + "…") if len(r["title"]) > 80 else r["title"]
+              print(f"| {r['sev']} | `{r['id']}` | `{r['pkg']}` | `{r['ver']}` | `{r['fix']}` | {title} |")
+
+          print()
+          if base_image_targets:
+              top = base_image_targets.most_common(1)[0]
+              print(f"### Suggested base-image action")
+              print(f"Most CVE hits land on `{top[0]}` ({top[1]} CVE(s)).")
+              print("Consider bumping the base image to its latest patch level —")
+              print("see `Dockerfile` `FROM` directives.")
+          PY
+
+      - name: Compose issue body
+        if: steps.fetch.outputs.artefact_found == 'true'
+        run: |
+          set -euo pipefail
+          today=$(date -u +%Y-%m-%d)
+          {
+            echo "## Container scan — automated CVE remediation"
+            echo
+            echo "- Generated by [\`container-scan-remediation.yml\`](../.github/workflows/container-scan-remediation.yml) (W10 — Apone)."
+            echo "- Source artefact: workflow run [\`${{ steps.fetch.outputs.run_id }}\`](${{ steps.fetch.outputs.run_url }})."
+            echo "- Severity floor: \`${{ github.event.inputs.severity_floor || 'HIGH' }}\`."
+            echo "- Image: \`${IMAGE_NAME}\`."
+            echo "- Run date: ${today}."
+            echo
+            cat cve-summary.md
+            echo
+            echo "### Triage path"
+            echo
+            echo "1. **Allowlist** — for a CVE with no upstream fix yet:"
+            echo "   add an entry to \`.github/trivy-allowlist.yaml\` with a"
+            echo "   justification + 30-day max expiry (W6 invariant)."
+            echo "2. **Base-image bump** — if the package belongs to the OS DB,"
+            echo "   bump the \`Dockerfile\` \`FROM\` directive to the latest"
+            echo "   patch tag. Rebuild + re-run \`container-scan\`."
+            echo "3. **Pin upgrade** — for a .NET or npm CVE, bump the affected"
+            echo "   project file pin + run the test gate."
+            echo
+            echo "See [\`docs/secrets-scanning.md\` §4](../docs/secrets-scanning.md#4-cve-remediation-flow) for the full triage flow."
+          } > issue-body.md
+
+          {
+            echo "issue_title=${ISSUE_TITLE_PREFIX} — ${today}"
+            echo "issue_body_file=issue-body.md"
+          } >> "$GITHUB_OUTPUT"
+        id: compose
+
+      - name: Open / update remediation issue
+        if: steps.fetch.outputs.artefact_found == 'true'
+        uses: actions/github-script@v7
+        env:
+          ISSUE_TITLE: ${{ steps.compose.outputs.issue_title }}
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('issue-body.md', 'utf8');
+            const labels = process.env.ISSUE_LABELS.split(',').map(s => s.trim()).filter(Boolean);
+            const title = process.env.ISSUE_TITLE;
+
+            // Look for an open issue whose title starts with the
+            // de-dup prefix. If found, update in place; else open new.
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security,automated',
+              per_page: 100,
+            });
+            const existing = open.find(i => i.title.startsWith(process.env.ISSUE_TITLE_PREFIX || '[container-scan] CVE remediation'));
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body,
+              });
+              core.notice(`updated issue #${existing.number} (${title})`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels,
+              });
+              core.notice(`opened issue #${created.data.number} (${title})`);
+            }
+
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            echo "## container-scan-remediation"
+            echo
+            echo "- Trigger: \`${{ github.event_name }}\`"
+            echo "- Artefact found: \`${{ steps.fetch.outputs.artefact_found || 'false' }}\`"
+            echo "- Source run: ${{ steps.fetch.outputs.run_url || 'n/a' }}"
+          } >> "$GITHUB_STEP_SUMMARY"

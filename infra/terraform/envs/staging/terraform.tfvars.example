@@ -29,3 +29,13 @@ alb_zone_id = "Z35SXDOTRQ7X7K"
 # per IP per 5 min rate limit, 30-day log retention.
 waf_rate_limit_per_5min = 1000
 logs_retention_days     = 30
+
+# ── Redis VPC wiring (W10) ───────────────────────────────────────
+# Copy from `terraform output` against the primary stack:
+#   cd ../../             # back to infra/terraform/
+#   terraform output -raw  vpc_id              # → vpc_id below
+#   terraform output -json private_subnet_ids  # → private_subnet_ids below
+#   terraform output -raw  vpc_cidr            # → vpc_cidr below
+vpc_id             = "vpc-placeholder"
+private_subnet_ids = ["subnet-placeholder-a", "subnet-placeholder-b", "subnet-placeholder-c"]
+vpc_cidr           = "10.10.0.0/16"

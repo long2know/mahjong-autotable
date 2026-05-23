@@ -7002,6 +7002,13 @@ Stack:
 
 ## Phase K — Wave 6 (RS256 JWT + voice HLS + SFU spectator stub + commentary stub + Swiss/double-elim + DR Terraform + OIDC narrow + Coturn k8s + mobile internal-testing + SLSA verifier + commentary/livestream/bracket UI + lane-discipline CI) — `stlong/phase-k-wave-6-bringup` (2026-07-04)
 
+> **EDIT(W10):** the `flock` mutex lock-file now lives at
+> `.work/squad-git-lock`. Every literal `/tmp/squad-git-lock` in the
+> body of this Wave-6 section is preserved as historical
+> wave-reality (per `docs/agent-handoff-protocol.md` §3.6 — historical
+> retro entries preserve the original-wave path). New work uses
+> `9>.work/squad-git-lock` only.
+
 Sixth wave of Phase K. Scope: ship the **forward-staged Phase L
 surfaces** under config gates so the bring-up is byte-identical
 to W5 on first paint but every Phase-L hand-off has its contract
@@ -8048,6 +8055,11 @@ agent commit; gate verified post-commit via
 
 ## Phase K — Wave 7 (RS256 issuer + OIDC e2e + full losers-bracket + ffmpeg HLS recorder + CommentaryRecord DTO + Vite bundler swap + CustomOutline inverted-hull shader + vendored HLS.js + Helm chart-of-charts + Edge Terraform module + GHCR→ECR mirror + Mobile External Testing + six-file signer-identity invariant + RS256 ESO secret + lane-discipline strict mode + KW7 regression rename + three-renderer trend gate + 6 Playwright specs) — `stlong/phase-k-wave-7-bringup` (2026-07-18)
 
+> **EDIT(W10):** lock now lives at `.work/squad-git-lock`. Wave-7
+> body text below preserves the original `/tmp/squad-git-lock`
+> literal per the historical-retro convention; new W10+ work uses
+> `9>.work/squad-git-lock`.
+
 Seventh wave of Phase K. Scope: ship the **operational drill +
 real backing implementations** for the W6 forward-staged surfaces
 (RS256 JWT moves from config-toggle stub to e2e issuer-claim +
@@ -8560,6 +8572,12 @@ for W8 hand-off:
 ---
 
 ## Phase K — Wave 8 (audit enrichment + JWKS cache 304 + Swiss tiebreaker stack + Tournament bracket endpoint + SignalR `TournamentMatchHub` + livestream auth gate + LLM commentary generator with streaming/rate-limit/monthly-cap + Janus SFU bring-up + three-renderer <540 KB + losers-bracket UI with reset-row + commentary tile-ref board-highlight + PWA Lighthouse 1.00 + Vite SignalR/WS dev proxy + staging edge cutover + CI pre-commit gate + kyverno path-confusion guard + Mobile Production track + Helm canary via Argo Rollouts + DR rehearsal workflow + lane-discipline `selectors_md_shared` + `--repo-mode` + 7 Playwright specs + KW7→KW8 regression rename) — `stlong/phase-k-wave-8-bringup` (2026-07-09)
+
+> **EDIT(W10):** lock now lives at `.work/squad-git-lock`. The W8
+> body preserves the mid-wave Vasquez relocation note (`/tmp/` →
+> `.work/`) as historical reality; from W10 onward every agent
+> prompt template + onboarding doc cites `.work/squad-git-lock`
+> canonically.
 
 Eighth wave of Phase K. Scope: ship the **real backing
 implementations** for the W7 forward-staged surfaces (LLM
