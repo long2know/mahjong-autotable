@@ -1852,3 +1852,85 @@ are merged.
   rules collapse to a single `:root` override block.
 
 Memo: `.squad/decisions/inbox/hicks-phase-j-wave-8.md`.
+
+### 2026-05-23: Phase J Wave 9 — Frontend polish
+
+Branch `stlong/phase-j-wave-9-polish`.  Four-track wave landing the
+remaining UI chrome polish before Vasquez's E2E gate:
+
+1. **Chat panel (`src/chat.ts`, ~580 LOC)** — bottom-right docked
+   collapse-toggle panel with three channels (`table`, `spectators`,
+   `private`), 280-char composer, polled history every 6s when
+   expanded, slash commands `/clear` + `/help`, Web Audio chime on
+   inbound (re-uses Wave-3 `Sound.play('claim')` mute mirror). 404
+   on Bishop's `/api/games/{id}/chat` → "Chat unavailable" placeholder.
+   LS keys: `mahjong.chat.collapsed.v1`, `mahjong.chat.lastSeenIso.v1`.
+
+2. **i18n module (`src/i18n.ts` + 3 JSON catalogs)** — tiny
+   string-table runtime with `t(key, params?)`, `tPattern(key,
+   legacy)`, `installI18n()`, `setLanguage()`, `onLanguageChange()`,
+   `mergeServerCatalog()`.  Three locales × ~85 keys each:
+   en / zh-Hans / zh-Hant.  `'auto'` resolves via `navigator.languages`
+   (zh-CN/SG → Hans; zh-TW/HK/MO → Hant).  body[lang] set on apply.
+   Wired into settings drawer (full tab strip + every label flows
+   through `t()`), chat module, audit module.  Other chrome (lobby
+   tabs, sign-in modal, replay viewer) keeps raw English literals —
+   keys exist in the catalog, sweep is a mechanical future-wave task.
+
+3. **CSP tightening — `'unsafe-eval'` removed** — Audited shipped
+   Parcel bundle for `new Function` / `eval(`: **0 matches**.
+   `three.module.js` (what we import) doesn't need eval; only
+   `three.webgpu.js` does, and that's not in the bundle.  Replaced
+   `script-src 'self' 'unsafe-eval'` with `script-src 'self'
+   'wasm-unsafe-eval'` in `SecurityHeadersMiddleware.cs:DefaultCsp`.
+   `'wasm-unsafe-eval'` is CSP-Level-3 — allows `WebAssembly.compile`
+   but NOT `eval()` — keeps any future Three.js draco/ktx wasm loader
+   working without re-opening the eval door, and is Vasquez's
+   canonical "landed" signal for the soft-pass test in `CspHeaderTests`.
+   Flipped Wave-8 `DefaultCsp_AllowsUnsafeEvalForThreeJs` test to
+   `DefaultCsp_DropsUnsafeEvalAfterWave9Audit`.  `dotnet test
+   --filter SecurityHeaders|Csp`: 8/8 GREEN.
+
+4. **Audit replay tab (`src/audit.ts`, ~310 LOC)** — admin-only tab
+   next to the existing Replay tab.  Probes `/api/auth/me` for
+   `claims.role === 'admin'`; non-admins never see the tab
+   (`style.display = 'none'`).  Wired into `replay.ts` via two
+   `setAuditGameId(gameId)` hooks — `Replay.open()` (live capture)
+   and `Replay.openServer(payload)` (server replay).  404 / 403 from
+   `/api/games/{id}/audit` → graceful "unavailable" / "admin only"
+   placeholders.
+
+### Bundle hashes shipped
+
+- JS:  `autotable-src.6e0d2167.js` (1.27 MB)
+- CSS: `autotable-src.df85b4c4.css` + `autotable-src.95ecc0f0.css` + `autotable-src.6633d8fb.css`
+- ESM: `esm.eb93de05.js` (395 KB)
+
+### Author-hygiene this wave
+
+Selective `git add` only.  Every Wave-9 commit carries my authorship
++ the `Co-authored-by: Copilot` trailer.  Bishop's untracked backend
+work (chat / audit / i18n / migrations) was visible in the working
+tree but explicitly NOT staged — those belong to Bishop's own
+Wave-9 commits.  Apone's untracked `.github/workflows/squad-*.yml`
+files and `.copilot/skills/error-recovery/` were similarly left
+alone.
+
+Cross-cutting Wave-9 risk notes:
+
+- **`'wasm-unsafe-eval'` rollback knob** — flip
+  `Security:CspStrict=true` in appsettings to drop even
+  `'wasm-unsafe-eval'`, leaving `script-src 'self'`. Future loader
+  that pulls in a wasm decoder (Draco / KTX / basis-universal) will
+  need this off.
+- **Catalog drift** — the 3 JSON catalogs are hand-aligned by key.
+  Adding a key to en.json without the others is a soft fallback (en
+  is the fallback locale), but it WILL show English to Chinese
+  users — keep the three files in lockstep, or extend
+  `mergeServerCatalog` to publish patches from a single source.
+- **`onLanguageChange` subscribers** — settings drawer + chat +
+  audit re-render on change.  Other surfaces (lobby tabs, replay
+  viewer) will be stale until next navigation; an acceptable
+  trade-off for Wave 9.
+
+Memo: `.squad/decisions/inbox/hicks-phase-j-wave-9.md`.
