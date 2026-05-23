@@ -768,3 +768,32 @@ All three Wave 2 facts use `GameCount` as the assertion hook per Bishop's memo r
 - No production code changed (`src/backend/src/**` untouched on this commit).
 
 **Cross-agent coordination:** Bishop landed three commits (`9235859 → 75baecc → 2e84179`) and Apone landed one (`ea2c991`) ahead of my test commit `d7c5337`. Strict-disjoint lanes across all four agents (Bishop = state-machine + endpoint + ordering, Apone = Docker + docs, Hicks = frontend pending, Vasquez = tests + smoke). Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-3.md`.
+
+---
+
+## Phase J Wave 4 — Pattern-ordering endpoint coverage + game-completion lifecycle suite + frontend DOM contract (commit `3c5ee33`)
+
+**Branch:** `stlong/phase-j-wave-4-completion` (off main @ `a82213e`).
+**Gate:** **431 passed / 0 failed / 0 skipped** (+7 from Wave 3 baseline of 424/0/0; zero-skip streak holds — 8 consecutive waves green: I.1 → I.2 → I.3 → I.4 → J.1 → J.2 → J.3 → J.4).
+
+**Scope completed:**
+
+- **`PatternOrderingEndpointTests.cs` (3 facts)** — pins the `GET /api/changsha/pattern-ordering` wire contract Bishop's Wave 3 shipped without tests (followed up the blind spot I flagged in my Wave 3 memo's "Surprises" section). WebApplicationFactory<Program> over the real Minimal-API handler. Tests: `PatternOrdering_ReturnsOk_WithFlatJsonMap` (200 + flat camelCase→int dictionary shape, every key camelCase, every value ≥0, count matches `ChangshaPatternOrdering.Order` size), `PatternOrdering_AllWinPatternEnumValues_HaveAnOrderingEntry` (reflects `Enum.GetValues<WinPattern>()` and asserts every value has a wire entry — catches future Bishop work that adds a `WinPattern` member but forgets the ordering table or wire-name mapper), `PatternOrdering_HeavenlyHand_OutranksAllPungs` (canonical tier order: Big Win < bonus-structural < alphabetical tail; pinned via two relative-rank pairs to survive Bishop's reserved-slot scheme).
+- **`GameCompletionLifecycleTests.cs` (4 facts)** — pins the N-hand cap game-completion lifecycle through Bishop's Phase J Wave 4 reconciliation of `GameComplete` vs `EndGame`. Reflection-defensive: discovers terminal-phase set via `ResolveTerminalPhases()` (matches any enum name containing "Complete" or "EndGame") so Bishop's actual reconciliation choice (collapse-via-alias `EndGame = GameComplete`) keeps the suite green regardless. Tests: `FourHandsCompleted_TransitionsToCanonicalTerminalPhase`, `BeforeMaxHands_StaysInPlayablePhase`, `GameCompletedEvent_Fires_OnceOnly` (SignalR exact-once via 90s ceiling + 1s grace; payload shape check), `HydrationFilter_SkipsTerminalPhase` (per-terminal-phase row + active control row).
+- **`src/frontend/autotable-src/tests/selectors.md` (NEW directory)** — DOM-contract documentation for Hicks's Wave 4 `data-testid` surface. 19 distinct selectors across Lobby (13), Mobile drawers (1), Reconnect/disconnect banner (5); Wave-4 NEW: `mobile-move-log-toggle`, `reconnect-copy-link`, `toast-region`. Reserved sections for in-game HUD, result-modal, game-over modal. Stability Contract spells out identity / cardinality / lifetime / naming guarantees.
+
+**Methodology — what worked:** Reflection-defensive name resolution survived Bishop's `EndGame = GameComplete` alias merger without code change (`Enum.GetValues<T>` collapses aliased ints to canonical name; pre-Wave-4 it returned both, post-Wave-4 just one — both behaviours satisfy the tests). Verified by stashing Bishop's WIP and running tests against committed-only state: 7/7 green either way. SignalR exact-once assertion uses TaskCompletionSource for first-fire signal + 1s grace before count read; runtime serialises hand transitions behind `instance.Lock` so duplicate fires would arrive within ms.
+
+**Surprises / blind spots flagged:**
+
+- **Bishop:** Alias-merged enum has rehydrate wire-shape implications (legacy `"EndGame"` JSON round-trips back as `GameComplete` semantically but `ToString()` re-serializes as `"GameComplete"`); `AlphabeticalFallbackOrder = 999` is a silent fallback (my Test #2 makes it loud).
+- **Hicks:** `reconnect.ts` is untracked-but-uncommitted (260 LOC); reconnect-copy-link button is inert unless the module is wired in from `client.ts`/`index.ts`; no testids on game-over modal yet.
+- **Apone:** 7 untracked `squad-*.yml` workflow files in `.github/workflows/` — unclear if scratchpad or pending; the `BUILD_SHA=""` empty-string issue I flagged in Wave 3 still appears unaddressed.
+
+**Stability:**
+
+- **Phase J Wave 4 filter (`--filter "Wave=Phase-J-4"`):** 7 passed / 0 failed / 0 skipped.
+- **Full suite:** 431 passed / 0 failed / 0 skipped. Zero-skips streak preserved (8 consecutive waves green).
+- **No production code changed** (`src/backend/src/**` untouched on this commit).
+
+**Cross-agent coordination:** Apone landed two commits ahead of my test commit (`232d7db` ci-workflows, `07cf5ea` history-update). Bishop's `GameComplete`/`EndGame` reconciliation WIP and Hicks's Wave-4 testid surface WIP were in the working tree at memo time but uncommitted; my lane is strict-disjoint (additive-only test files). Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-4.md`.
