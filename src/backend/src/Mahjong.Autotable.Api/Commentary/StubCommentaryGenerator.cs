@@ -25,6 +25,30 @@ public sealed class StubCommentaryGenerator : ICommentaryGenerator
     public Task<CommentaryReplay> GetAsync(Guid gameId, CancellationToken ct = default)
         => Task.FromResult(BuildStubEnvelope(gameId));
 
+    /// <summary>
+    /// Phase K Wave 7 — Bishop. Emits one valid
+    /// <see cref="CommentaryRecord"/> matching the finalised Phase-L
+    /// JSON contract. The single record uses the canonical phase /
+    /// speaker / intensity values so the wire shape is verifiable
+    /// today without an LLM dependency.
+    /// </summary>
+    public Task<IReadOnlyList<CommentaryRecord>> GetRecordsAsync(Guid gameId, CancellationToken ct = default)
+    {
+        IReadOnlyList<CommentaryRecord> records = new[]
+        {
+            new CommentaryRecord(
+                GameId: gameId.ToString("N"),
+                TurnNumber: 0,
+                Phase: CommentaryPhases.Draw,
+                Speaker: CommentarySpeakers.PlayByPlay,
+                Text: PhaseLPlaceholderMessage,
+                EmotionIntensity: 0.0,
+                TileReferences: Array.Empty<string>(),
+                GeneratedAt: DateTimeOffset.UtcNow),
+        };
+        return Task.FromResult(records);
+    }
+
     private CommentaryReplay BuildStubEnvelope(Guid gameId)
         => new(
             GameId: gameId,

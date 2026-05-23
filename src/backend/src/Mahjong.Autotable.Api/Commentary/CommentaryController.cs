@@ -73,11 +73,40 @@ public sealed class CommentaryController : ControllerBase
     }
 
     [HttpGet]
-    [HttpGet("replay")]
     public async Task<IActionResult> Get([FromRoute] Guid gameId, CancellationToken ct)
     {
         var replay = await _generator.GetAsync(gameId, ct);
         return Ok(BuildEnvelope(replay));
+    }
+
+    /// <summary>
+    /// Phase K Wave 7 — Bishop. Records-flavoured replay endpoint.
+    /// Returns the per-turn <see cref="CommentaryRecord"/> array per
+    /// the finalised Phase-L JSON contract (one record per speaker
+    /// utterance, with phase/speaker/intensity/tileReferences fields).
+    /// Anonymous-allowed so the lobby spectator UI can pull commentary
+    /// without an authenticated session.
+    /// </summary>
+    [HttpGet("replay")]
+    public async Task<IActionResult> Replay([FromRoute] Guid gameId, CancellationToken ct)
+    {
+        var records = await _generator.GetRecordsAsync(gameId, ct);
+        // Project to a wire-explicit anonymous object so the field
+        // casing (camelCase wire / PascalCase record) is fixed at the
+        // controller boundary instead of leaking the System.Text.Json
+        // default for record properties.
+        var wire = records.Select(r => new
+        {
+            gameId = r.GameId,
+            turnNumber = r.TurnNumber,
+            phase = r.Phase,
+            speaker = r.Speaker,
+            text = r.Text,
+            emotionIntensity = r.EmotionIntensity,
+            tileReferences = r.TileReferences ?? Array.Empty<string>(),
+            generatedAt = r.GeneratedAt,
+        }).ToArray();
+        return Ok(wire);
     }
 
     private static object BuildEnvelope(CommentaryReplay replay) => new
