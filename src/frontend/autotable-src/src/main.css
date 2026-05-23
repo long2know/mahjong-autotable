@@ -851,12 +851,17 @@
     }
 }
 
-/* ── Phase K Wave 6 — AI commentary panel ───────────────────────── */
+/* ── Phase K Wave 6 → 7 — AI commentary panel ───────────────────── */
 /* Anchored inside `#replay-commentary-host` (rendered by
    `commentary-panel.<hash>.js`).  Mirrors the existing
    `.replay-side-pane` width so the replay viewer's flex row keeps
    its symmetric look (board pane in the middle, two narrow asides
-   flanking it). */
+   flanking it).
+   Wave 7 expanded the renderer to group records by turn, surface
+   speaker badges (PBP / Color / Analyst / Narrator), an emotion-
+   intensity bar, and clickable tile-reference chips.  The W6
+   `.commentary-line` rules are kept as a fallback for the legacy
+   `{ lines: [...] }` envelope. */
 .replay-commentary-host {
     flex: 0 0 280px;
     overflow: hidden;
@@ -925,6 +930,101 @@
 .commentary-line-text {
     line-height: 1.4;
     color: #e8f0ff;
+}
+
+/* Wave 7 — grouped record renderer */
+.commentary-turn {
+    border-bottom: 1px solid rgba(31, 58, 95, 0.4);
+    margin-bottom: 4px;
+}
+.commentary-turn:last-child { border-bottom: none; }
+.commentary-turn-header {
+    width: 100%;
+    text-align: left;
+    background: rgba(31, 58, 95, 0.25);
+    color: #ffd166;
+    border: none;
+    padding: 6px 10px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    margin-bottom: 4px;
+}
+.commentary-turn-header:hover { background: rgba(31, 58, 95, 0.45); }
+.commentary-turn[data-collapsed="true"] > .commentary-turn-body {
+    display: none;
+}
+.commentary-record {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas:
+        "speaker text"
+        "refs    refs"
+        "intensity intensity"
+        "meta    meta";
+    gap: 4px 8px;
+    padding: 6px 4px;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+    align-items: start;
+}
+.commentary-record:last-child { border-bottom: none; }
+.commentary-speaker {
+    grid-area: speaker;
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-align: center;
+    color: #fff;
+}
+.commentary-speaker-pbp      { background: rgba(220, 80, 80, 0.55); }
+.commentary-speaker-color    { background: rgba(60, 180, 100, 0.55); }
+.commentary-speaker-analyst  { background: rgba(60, 120, 220, 0.55); }
+.commentary-speaker-narrator { background: rgba(120, 120, 120, 0.55); }
+.commentary-text {
+    grid-area: text;
+    line-height: 1.4;
+    color: #e8f0ff;
+}
+.commentary-tile-refs {
+    grid-area: refs;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+}
+.commentary-tile-ref {
+    background: rgba(255, 209, 102, 0.12);
+    border: 1px solid rgba(255, 209, 102, 0.45);
+    color: #ffd166;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 0.7rem;
+    font-family: 'Segoe UI', monospace;
+    cursor: pointer;
+}
+.commentary-tile-ref:hover {
+    background: rgba(255, 209, 102, 0.28);
+}
+.commentary-intensity {
+    grid-area: intensity;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.commentary-intensity-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #5fd1a7, #ffd166, #f56c4d);
+    transition: width 200ms ease-out;
+}
+.commentary-record-meta {
+    grid-area: meta;
+    font-size: 0.68rem;
+    color: rgba(184, 197, 209, 0.65);
 }
 @media (max-width: 1100px) {
     .replay-commentary-host { display: none; }

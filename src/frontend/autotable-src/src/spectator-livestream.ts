@@ -237,26 +237,41 @@ interface HlsConstructor {
 }
 
 async function loadHlsJs(): Promise<HlsConstructor | null> {
-  // Phase K Wave 6 — hls.js is not bundled into the W6 dependency set
-  // because it would add ~120 kB minified to a polyfill many users
-  // (Safari, iOS) never need.  Pull it from the unpkg CDN at runtime
-  // via a <script> tag the first time a non-Safari spectator opens a
-  // table.  When the CDN is unreachable we fall back to the error
-  // banner — degraded but functional.
-  const w = window as unknown as { Hls?: HlsConstructor };
-  if (w.Hls !== undefined) return w.Hls;
-  return new Promise<HlsConstructor | null>((resolve) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js';
-    script.async = true;
-    script.crossOrigin = 'anonymous';
-    script.onload = () => {
-      const w2 = window as unknown as { Hls?: HlsConstructor };
-      resolve(w2.Hls ?? null);
-    };
-    script.onerror = () => resolve(null);
-    document.head.appendChild(script);
-  });
+  // Phase K Wave 7 — hls.js is now bundled and dynamic-imported.
+  // W6 loaded it from `cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/
+  // hls.min.js` via a `<script>` tag.  That required a CSP
+  // allowlist for `cdn.jsdelivr.net` in `script-src` (Bishop's
+  // CspMiddleware), an extra DNS / TLS handshake on every cold
+  // spectate, and an integrity gap (no SRI hash because Vite would
+  // need to know the file at build time).
+  //
+  // W7 instead `import('hls.js/dist/hls.light.mjs')`s the polyfill;
+  // rollup's `manualChunks` peels it into a sibling `hls.<hash>.js`
+  // chunk that is fetched from our own origin only when a non-
+  // Safari spectator clicks `#/spectate/{tableId}`.  Net effects:
+  //
+  //   • CSP requirements stay minimal — `script-src 'self'` is
+  //     enough for the polyfill path (see
+  //     docs/frontend-csp-requirements.md).
+  //   • Spectator code-load uses the existing connection-keep-
+  //     alive instead of a fresh CDN handshake.
+  //   • SRI / supply-chain story improves (the polyfill ships
+  //     with our signed deploy artefacts).
+  //
+  // The light build (no MP4 muxer, no transmuxing fallbacks for
+  // legacy stream tracks) is sufficient for our backend's HLS
+  // output, which is an audio-only AAC stream — the full build
+  // would carry ~140 kB extra we cannot use.
+  try {
+    const mod = await import('hls.js/dist/hls.light.mjs');
+    const Hls = (mod as { default?: HlsConstructor }).default ?? (mod as unknown as HlsConstructor);
+    if (Hls === undefined || typeof (Hls as HlsConstructor).isSupported !== 'function') {
+      return null;
+    }
+    return Hls as HlsConstructor;
+  } catch {
+    return null;
+  }
 }
 
 function canPlayHlsNatively(audio: HTMLAudioElement): boolean {

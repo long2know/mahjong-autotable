@@ -1460,3 +1460,196 @@ lane (commentary panel UI, spectator livestream viewer, bracket
 renderers, three-renderer tree-shake to <700 kB, PWA install
 prompt). Bishop and Hicks pair-land their surfaces; these specs
 hard-pin the cross-pair contracts at the Playwright layer.
+
+---
+
+## Phase K Wave 7 — Vite swap + CustomOutline + vendored HLS.js + commentary contract (Hicks)
+
+W7 reshapes three existing surfaces (build tooling, three.js
+post-processing stack, HLS.js loader) and one new surface
+(commentary panel contract). All four touch testids visible to
+Playwright; this section is the hard-pin reference.
+
+### Bundler swap → Vite
+
+The eager + lazy chunks all kept their canonical filenames
+(`autotable-src.<hash>.js`, `game-bootstrap.<hash>.js`,
+`scene-shell.<hash>.js`, `three-renderer.<hash>.js`, etc.) so
+**no Playwright spec needs updating for the bundler swap**.
+
+Vasquez's `three-renderer-tree-shake.spec.ts` continues to assert
+the chunk is not loaded before `networkidle` AND, when lazily
+observed, is under the **W7 ceiling**:
+
+> W7 lowered the renderer-chunk ceiling from 700 kB (W6) to
+> **600 kB**. Update the spec's hard-fail constant accordingly.
+> Current build: 578.72 kB (single biggest chunk).
+
+A new spec, `dist-size-monotonic.spec.ts` (forward-staged for
+Vasquez's W7 lane), reads `src/frontend/autotable-src/dist-size.json`
+and asserts `three-renderer-big` is monotonically non-increasing
+across consecutive history entries. Regression = hard fail.
+
+### CustomOutline (OutlinePass replacement)
+
+No testid impact. The yellow outline visible during the discard
+selection flow is rendered by `src/render/custom-outline.ts` now
+instead of `OutlinePass`; Vasquez's `expect.toHaveScreenshot`
+diff threshold remains ≤2% (same color, same thickness).
+
+If a screenshot regression surfaces, see
+`docs/frontend-three-budget.md §3` for the visual-parity table.
+
+### Vendored HLS.js
+
+`spectator-livestream.spec.ts` previously asserted (W6 lane)
+that the spectator viewer fetched a CDN-hosted HLS.js bundle on
+`#/spectate/{tableId}` route entry. **W7 changes the URL to a
+same-origin chunk**:
+
+- Before (W6): `https://cdn.jsdelivr.net/npm/hls.js@1.5.13/...`
+- After (W7): `/autotable/hls.<hash>.js` (same-origin, served
+  by our static handler)
+
+The spec's network mock needs adjusting:
+
+```diff
+- await page.route('**/cdn.jsdelivr.net/npm/hls.js**', route => …);
++ await page.route('**/hls.*.js', route => …);
+```
+
+`spectator-livestream-status` continues to emit `connecting →
+live → stalled` exactly as in W6; no other testid changed.
+
+### Commentary panel — W7 JSON contract rewrite
+
+Bishop's W7 commentary endpoint returns a `CommentaryRecord[]`
+shape (richer than W6's `{lines: string[]}` envelope):
+
+```ts
+interface CommentaryRecord {
+  gameId: string;
+  turnNumber: number;
+  phase: 'draw' | 'discard' | 'call' | 'win' | 'reveal' | 'narration';
+  speaker: 'pbp' | 'color' | 'analyst' | 'narrator';
+  text: string;
+  emotionIntensity: number;      // 0..100
+  tileReferences: string[];      // tile IDs (e.g., "m1", "p5", "s9", "z3")
+  generatedAt: string;           // ISO-8601
+}
+```
+
+The panel renderer groups records by `turnNumber` (collapsible
+sections) and emits per-record:
+
+- A **speaker badge** (color-coded per role).
+- The **text body**.
+- **Tile-reference chips** (clickable; emit a `commentary:tile-ref`
+  `CustomEvent` carrying `{tileId, turnNumber}` for the board-pane
+  to consume — Wave-8 board-pane integration item).
+- An **emotion-intensity bar** (CSS gradient, 0..100% width).
+
+The legacy W6 `{lines:[…]}` envelope is parse-fallback-compatible:
+`commentary-panel.ts:normalizeRecords()` accepts either shape so
+mid-deploy a stale server reply doesn't crash the panel.
+
+#### W7 testid map
+
+| Testid                                | Element                  | Notes                                                                                          |
+|---------------------------------------|--------------------------|------------------------------------------------------------------------------------------------|
+| `commentary-panel`                    | Root `<section>`         | Carried over from W6 — same root testid.                                                        |
+| `commentary-panel-loading`            | `<div>` (loading spinner)| Carried over from W6.                                                                           |
+| `commentary-panel-empty`              | `<div>` (empty state)    | Carried over from W6.                                                                           |
+| `commentary-panel-error`              | `<div>` (error state)    | Carried over from W6.                                                                           |
+| `commentary-turn-{n}`                 | `<section>` per turn     | NEW. `n` = `turnNumber` from the record. Collapsible group.                                     |
+| `commentary-turn-toggle-{n}`          | `<button>` (toggle)      | NEW. Expand/collapse the turn group; ARIA-controlled.                                            |
+| `commentary-record-{idx}`             | `<article>` per record   | NEW. `idx` is the zero-based index across the full record array (NOT per-turn).                  |
+| `commentary-speaker-{role}`           | `<span>` speaker badge   | NEW. `role` is one of `pbp` / `color` / `analyst` / `narrator`. One badge per record.            |
+| `commentary-tile-ref-{tileId}`        | `<button>` chip          | NEW. `tileId` is the tile reference (e.g., `m1`, `z3`). Click dispatches `commentary:tile-ref`.  |
+| `commentary-intensity-{idx}`          | `<div>` intensity bar    | NEW. `idx` matches the `commentary-record-{idx}` index. ARIA `progressbar` role + `aria-valuenow`. |
+
+The W6 `commentary-line-{idx}` testid is **retired** — W7 specs
+should target `commentary-record-{idx}` (the rename reflects the
+shape change from `string` to `CommentaryRecord`).
+
+### Vasquez Playwright additions expected for W7
+
+| Spec                                  | What it asserts                                                                                                                                         |
+|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `three-renderer-budget-w7.spec.ts`    | Renderer chunk ≤600 kB (down from 700 kB ceiling). Reads `dist-size.json` for the current wave's `three-renderer-big` entry.                              |
+| `dist-size-monotonic.spec.ts`         | `history[].chunks["three-renderer-big"]` is non-increasing across consecutive history entries.                                                            |
+| `commentary-record-shape.spec.ts`     | `commentary-record-0` rendered when API replies `[{turnNumber: 1, speaker: 'pbp', text: 'East draws…', tileReferences: ['m1'], emotionIntensity: 40, …}]`. |
+| `commentary-tile-ref-click.spec.ts`   | Clicking `commentary-tile-ref-m1` fires a `commentary:tile-ref` CustomEvent on the panel root with `detail = {tileId: 'm1', turnNumber: 1}`.              |
+| `commentary-turn-collapse.spec.ts`    | Clicking `commentary-turn-toggle-2` flips `aria-expanded` from `true` → `false` and hides the matching `commentary-record-{idx}` children.                |
+| `csp-no-jsdelivr.spec.ts`             | Page response carries `Content-Security-Policy` header without `cdn.jsdelivr.net` in `script-src` (W7 vendoring win).                                     |
+
+All six specs should follow the existing soft-pass pattern (skip
+when surface not yet observable; hard-fail when observable AND
+violating).
+
+The W7 surface area extends Hicks's frontend lane only (no Bishop
+pairing this wave). Apone, Vasquez and Bishop are notified via
+the inbox memo `.squad/decisions/inbox/hicks-phase-k-wave-7.md`.
+
+---
+
+### Phase K Wave 7 Playwright spec map — Vasquez
+
+Six new specs land in Wave 7 (each runs on chromium + mobile-chrome
+via the default playwright project list, chromium-only via
+`test.skip(testInfo.project.name !== 'chromium', …)`; each soft-pass
+annotates `test.info().annotations.push({ type:'soft-pass', … })`
+when the underlying surface is forward-staged):
+
+- `bundler-swap-no-regression.spec.ts` — Hicks's W7 bundler swap
+  (Vite / Rspack / Parcel-manual). Probes the lobby load for
+  `console.error` + `pageerror` events. Filters out HMR /
+  sourcemap / service-worker / websocket noise. Hard-fails when
+  real errors emerge — joined error list surfaces in the failure
+  message so Hicks can diagnose what the bundler emitted.
+- `commentary-record-rendering.spec.ts` — Bishop's W7
+  `CommentaryRecord` envelope ships from
+  `/api/replay/{id}/commentary` with `{ items: [{ gameId,
+  turnNumber, phase, speaker, text, emotionIntensity,
+  tileReferences, generatedAt }] }`. Hicks's panel mounts three
+  visualisation axes: `data-testid="commentary-speaker"`,
+  `data-testid="commentary-emotion"`,
+  `data-testid="commentary-tile-ref"`. Mock-backend supplies a
+  2-item record stub. All-three present → hard-assert; any
+  partial → soft-pass.
+- `outline-shader-visual.spec.ts` — Hicks's W7 outline-shader
+  module (OutlinePass replacement). Probes for
+  `window.enableOutline()` OR `window.game?.renderer?.enableOutline()`.
+  When the hook is observable, invokes it and confirms it does
+  NOT throw. Soft-pass when no hook observable.
+- `three-renderer-trend.spec.ts` — the wave-over-wave regression
+  gate for the three-renderer chunk byte size. Fetches
+  `dist-size.json` from `/dist-size.json` (or `/dist/dist-size.json`
+  or `/autotable/dist-size.json`). Three schema variants
+  tolerated: `{ current, previous }` pair, `{ waves: [{wave, …}] }`
+  array, or a flat current-only object. When the previous-wave
+  comparison is available, hard-asserts `current ≤ previous`
+  bytes. Otherwise asserts the W7 ceiling (≤ 550 kB). Failure
+  message names the bytes + suggests `npm run bundle:visualize`.
+- `commentary-tile-ref-cross-pane.spec.ts` — the cross-pane
+  interaction smoke. Installs a `tile-highlight` event sniffer
+  on `document` BEFORE page boot, then clicks a
+  `data-testid="commentary-tile-ref"` and waits up to 500ms for
+  `window.__lastHighlightedTile` to populate. Hard-pin: the
+  highlight detail MUST carry a non-empty tile id. Soft-passes
+  when the testid or handler isn't yet observable.
+- `pwa-icon-maskable.spec.ts` — Hicks's W7 manifest carries
+  `purpose: "maskable"` on at least one icon. Fetches the
+  manifest from `/manifest.webmanifest` (or
+  `/autotable/manifest.webmanifest`, or `.json` variants);
+  searches `manifest.icons[]` for an entry where `purpose`
+  includes the `maskable` token. Hard-fails when the icon set
+  ships but no maskable entry is present; soft-passes when
+  the manifest or icons array isn't yet populated.
+
+The W7 surface area pairs Bishop's `CommentaryRecord` DTO (Wave 7
+Bishop lane) with Hicks's commentary-panel rendering + cross-pane
+interaction, plus the bundler-swap + outline-shader + PWA-icon
+deliverables. Vasquez's specs hard-pin the cross-pair contracts at
+the Playwright layer.
+

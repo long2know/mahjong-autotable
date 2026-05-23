@@ -1,9 +1,15 @@
 import { Scene, Camera, WebGLRenderer, Vector2, Vector3, Group, AmbientLight, DirectionalLight, PerspectiveCamera, OrthographicCamera, Mesh, Object3D, PlaneGeometry } from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
 
 import { World } from './world';
+import { CustomOutline } from './render/custom-outline';
+
+// Phase K Wave 7 — OutlinePass + EffectComposer + RenderPass are
+// gone.  The renderer is now a single-pass `renderer.render(scene,
+// camera)` call; the yellow tile-selection halo is provided by the
+// custom inverted-hull `CustomOutline` helper (≈3 kB) instead of
+// three's post-processing pipeline (≈90 kB combined).  See
+// docs/frontend-three-budget.md §3 for the spike rationale + visual
+// parity audit.
 
 const RATIO = 1.5;
 
@@ -39,8 +45,7 @@ export class MainView {
   private renderer: WebGLRenderer;
 
   camera: Camera = null!;
-  private composer: EffectComposer = null!;
-  private outlinePass: OutlinePass = null!;
+  private outline: CustomOutline = new CustomOutline();
 
   private width = 0;
   private height = 0;
@@ -62,7 +67,11 @@ export class MainView {
 
     this.renderer = new WebGLRenderer({
       antialias: false,
-      // Apparently needed for OutlinePass not to cause glitching on some browsers.
+      // Phase K Wave 7 — Kept for visual continuity with W6 (the
+      // logarithmic depth buffer also helps the inverted-hull
+      // outline stay tight against the silhouette at small zoom
+      // levels).  The historical reason — "OutlinePass causes
+      // glitching on some browsers" — no longer applies.
       logarithmicDepthBuffer: true,
     });
     this.main.appendChild(this.renderer.domElement);
@@ -102,8 +111,12 @@ export class MainView {
   }
 
   private setupRendering(): void {
-    const w = this.renderer.domElement.clientWidth;
-    const h = this.renderer.domElement.clientHeight;
+    // Wave 7 — w/h previously sized OutlinePass's offscreen FBO.
+    // The hull-expansion outline has no FBO so no resize is
+    // needed; the values are kept for future spike work that
+    // might want a screen-space stroke.
+    // const w = this.renderer.domElement.clientWidth;
+    // const h = this.renderer.domElement.clientHeight;
 
     if (this.camera !== null) {
       this.scene.remove(this.camera);
@@ -111,20 +124,16 @@ export class MainView {
 
     this.camera = this.makeCamera(this.perspective);
     this.viewGroup.add(this.camera);
-    this.composer = new EffectComposer(this.renderer);
-    const renderPass = new RenderPass(this.scene, this.camera);
-    this.outlinePass = new OutlinePass(new Vector2(w, h), this.scene, this.camera);
-    this.outlinePass.visibleEdgeColor.setHex(0xffff99);
-    this.outlinePass.hiddenEdgeColor.setHex(0x333333);
-    this.composer.addPass(renderPass);
-    this.composer.addPass(this.outlinePass);
-    // const gammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
-    // this.composer.addPass(gammaCorrectionPass);
-    // Force OutlinePass to precompile shadows, otherwise there is a pause when
-    // you first select something.
-    this.outlinePass.selectedObjects.push(this.dummyObject);
-    this.composer.render();
-    this.outlinePass.selectedObjects.pop();
+    this.outline.setEdgeColor(0xffff99);
+
+    // Phase K Wave 7 — Pre-warm the outline shader so the first
+    // tile selection does not stutter on shader compile.  The W6
+    // code did this by pushing a dummy object onto OutlinePass +
+    // running one composer.render(); the hull helper exposes the
+    // same one-shot warm via `precompile`.
+    this.outline.precompile(this.dummyObject as Mesh, () => {
+      this.renderer.render(this.scene, this.camera);
+    });
   }
 
   private makeCamera(perspective: boolean): Camera {
@@ -205,7 +214,7 @@ export class MainView {
   }
 
   updateOutline(selectedObjects: Array<Mesh>): void {
-    this.outlinePass.selectedObjects = selectedObjects;
+    this.outline.setSelected(selectedObjects);
   }
 
   setPerspective(perspective: boolean): void {
@@ -214,7 +223,9 @@ export class MainView {
   }
 
   render(): void {
-    this.composer.render();
+    // Phase K Wave 7 — Direct single-pass render.  EffectComposer +
+    // OutlinePass + RenderPass are gone — see ./render/custom-outline.
+    this.renderer.render(this.scene, this.camera);
     this.stats?.update();
   }
 
@@ -243,8 +254,8 @@ export class MainView {
       this.main.style.height = `${renderHeight}px`;
       this.renderer.setSize(renderWidth, renderHeight);
       this.renderer.setPixelRatio(pixelRatio);
-      this.composer.setSize(renderWidth, renderHeight);
-      this.composer.setPixelRatio(pixelRatio);
+      // Phase K Wave 7 — The composer (and its FBO) is gone; only
+      // the WebGLRenderer needs resizing.
     }
   }
 }

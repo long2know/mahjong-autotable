@@ -1,1 +1,0 @@
-function e(e,n,o,r){Object.defineProperty(e,n,{get:o,set:r,enumerable:!0,configurable:!0})}var n=globalThis.parcelRequire7651;(0,n.register)("8hEO8",function(o,r){e(o.exports,"HubConnectionBuilder",()=>n("z4VcG").HubConnectionBuilder),e(o.exports,"LogLevel",()=>n("gJAJO").LogLevel),n("kY3pn"),n("z4VcG"),n("gJAJO")});

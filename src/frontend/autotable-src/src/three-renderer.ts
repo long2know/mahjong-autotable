@@ -49,21 +49,17 @@ export async function mountThreeRenderer(): Promise<RendererHandles> {
     await assetLoader.loadAll();
 
     const game = new Game(assetLoader);
-    // Phase K Wave 4 → Wave 5 → Wave 6 — Expose `game` on `window`
-    // for debug callers (E2E specs, manual console poking).  Wave 5
-    // also exposed the full `three` namespace via
-    // `import * as three from 'three'`; that wildcard import
-    // suppressed parcel's three.js tree-shake and added ~50-60 kB to
-    // the renderer chunk for a debug surface no production caller
-    // touches.  Wave 6 drops the wildcard — `window.three` is now
-    // lazy-loaded by appending `?debug=three` to the URL (see
-    // docs/frontend-three-budget.md).
+    // Phase K Wave 4 → Wave 5 → Wave 6 → Wave 7 — Expose `game` on
+    // `window` for debug callers (E2E specs, manual console
+    // poking).  Wave 6 introduced a `?debug=three` lazy-import
+    // hook that exposed the full `three` namespace; under Vite
+    // that dynamic import conflicts with the static `from 'three'`
+    // imports in this module's static graph (rollup raises a
+    // warning + collapses the chunk back).  Wave 7 retires the
+    // hook — debug callers can `import('three')` from devtools
+    // directly if needed (the chunk is already loaded by the time
+    // the debug query string is read).
     Object.assign(window, { game });
-    if (typeof window !== 'undefined' && /[?&]debug=three\b/.test(window.location.search)) {
-      void import('three').then(threeMod => {
-        Object.assign(window, { three: threeMod });
-      });
-    }
     game.start();
 
     const client = game.client;
