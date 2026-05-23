@@ -3,6 +3,7 @@ using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Patterns;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
+using Mahjong.Autotable.Api.Leaderboard;
 using Mahjong.Autotable.Api.Matchmaking;
 using Mahjong.Autotable.Api.Observability;
 using Mahjong.Autotable.Api.Persistence;
@@ -68,6 +69,15 @@ builder.Services.AddSingleton<AutotableConnectionManager>();
 // they share the runtime's lifetime and use IServiceScopeFactory for DB scopes.
 builder.Services.AddSingleton<PlayerProfileService>();
 builder.Services.AddSingleton<MatchmakingService>();
+
+// Phase J Wave 6 — identity + leaderboard services. PlayerIdentityService
+// owns the mahjong_pid cookie (mint/read/refresh) consumed by both the
+// REST identity endpoint and the autotable WS upgrade handshake;
+// LeaderboardService backs GET /api/leaderboard. Both are thin stateless
+// wrappers around HttpContext + EF Core scopes, so singleton lifetime is
+// fine.
+builder.Services.AddSingleton<PlayerIdentityService>();
+builder.Services.AddSingleton<LeaderboardService>();
 
 const string ChangshaCorsPolicy = "ChangshaCors";
 var configuredOrigins = builder.Configuration

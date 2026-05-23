@@ -156,7 +156,7 @@ public class EndToEndPlayableTests
                     // Clear binding so the next iteration sees a fresh snapshot.
                     manager.BindRuntimeGameForTest(Mahjong.Autotable.Api.Autotable.AutotableWsEndpoint.DefaultGameId, runtimeGameId);
                 }
-                runtimeGameId = await runtime.CreateGameAsync(seed: seed, botSeatIndexes: new[] { 0, 1, 2, 3 }, hostConnectionId: null);
+                runtimeGameId = await runtime.CreateGameAsync(seed: seed, botSeatIndexes: new[] { 0, 1, 2, 3 }, hostPlayerId: null, hostConnectionId: null);
                 manager.BindRuntimeGameForTest(Mahjong.Autotable.Api.Autotable.AutotableWsEndpoint.DefaultGameId, runtimeGameId);
 
                 using var ws = await factory.Server.CreateWebSocketClient()

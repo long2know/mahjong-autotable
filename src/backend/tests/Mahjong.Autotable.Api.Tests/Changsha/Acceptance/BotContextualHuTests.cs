@@ -471,7 +471,7 @@ public class BotContextualHuTests
         var gameId = await runtime.CreateGameAsync(
             seed: seed,
             botSeatIndexes: new[] { 0, 1, 2, 3 },
-            hostConnectionId: null,
+            hostPlayerId: null, hostConnectionId: null,
             ct);
         Assert.True(runtime.TryGetSnapshot(gameId, out var state));
         state!.DealerSeatIndex = dealerSeat;

@@ -124,7 +124,7 @@ public class AutotableDisconnectSeatReleaseTests : IAsyncLifetime
         {
             try
             {
-                runtime.TakeSeatAsync(runtimeGameId, probeConnectionId, 0, CancellationToken.None)
+                runtime.TakeSeatAsync(runtimeGameId, probeConnectionId, probeConnectionId, 0, CancellationToken.None)
                     .GetAwaiter().GetResult();
                 return true;
             }

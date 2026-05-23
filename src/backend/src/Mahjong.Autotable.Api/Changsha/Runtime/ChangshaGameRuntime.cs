@@ -18,10 +18,29 @@ namespace Mahjong.Autotable.Api.Changsha.Runtime;
 /// </summary>
 public interface IChangshaGameRuntime
 {
-    Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostConnectionId, CancellationToken ct = default);
+    /// <summary>
+    /// Creates a new game. <paramref name="hostPlayerId"/> is the persistent
+    /// player identity (cookie-derived in v1, stored on
+    /// <see cref="ChangshaGameState.CreatorPlayerId"/>); <paramref name="hostConnectionId"/>
+    /// is the SignalR connection id that should be added to the per-game
+    /// group on creation. Both are nullable for non-SignalR transports (e.g.
+    /// the autotable WS bridge) — Phase J Wave 6 wires the autotable
+    /// connection's cookie-derived player id through here so even WS-created
+    /// games carry a non-null <c>CreatorPlayerId</c> (unblocks public-lobby
+    /// support for WS games).
+    /// </summary>
+    Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostPlayerId, string? hostConnectionId, CancellationToken ct = default);
 
     Task JoinTableAsync(string gameId, string connectionId, CancellationToken ct = default);
-    Task<int> TakeSeatAsync(string gameId, string connectionId, int? seatIndex, CancellationToken ct = default);
+    /// <summary>
+    /// Seats a player. <paramref name="playerId"/> is the persistent
+    /// identity (stored on <see cref="ChangshaSeatState.PlayerId"/>);
+    /// <paramref name="connectionId"/> is the transport connection id
+    /// stored in <see cref="ChangshaGameInstance.SeatConnections"/> for
+    /// per-seat private routing. Phase J Wave 6 split (was previously
+    /// a single conflated <c>connectionId</c> argument).
+    /// </summary>
+    Task<int> TakeSeatAsync(string gameId, string playerId, string connectionId, int? seatIndex, CancellationToken ct = default);
     Task FillEmptySeatsWithBotsAsync(string gameId, CancellationToken ct = default);
     Task StartGameAsync(string gameId, CancellationToken ct = default, int? expectedVersion = null);
     Task AcknowledgeDealAsync(string gameId, int seatIndex, CancellationToken ct = default);
@@ -30,8 +49,25 @@ public interface IChangshaGameRuntime
     Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
     Task DeclareKongAsync(string gameId, int seatIndex, int[] tileIds, CancellationToken ct = default, int? expectedVersion = null);
     Task DeclareWinAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
-    Task<bool> ReconnectAsync(string gameId, int seatIndex, string connectionId, CancellationToken ct = default);
-    Task HandleDisconnectAsync(string connectionId, CancellationToken ct = default);
+    /// <summary>
+    /// Rebinds <paramref name="seatIndex"/> to <paramref name="playerId"/> +
+    /// <paramref name="connectionId"/>. Phase J Wave 6 splits the previous
+    /// single-string argument so the persistent identity (stored on
+    /// <see cref="ChangshaSeatState.PlayerId"/>) survives even when the
+    /// SignalR transport connection cycles.
+    /// </summary>
+    Task<bool> ReconnectAsync(string gameId, int seatIndex, string playerId, string connectionId, CancellationToken ct = default);
+    /// <summary>
+    /// Handles a transport disconnect. <paramref name="playerId"/> is the
+    /// persistent identity (used for the host-transfer comparison against
+    /// <see cref="ChangshaGameState.CreatorPlayerId"/>);
+    /// <paramref name="connectionId"/> identifies the specific transport
+    /// connection being released — only seats whose
+    /// <see cref="ChangshaGameInstance.SeatConnections"/> entry matches
+    /// this connection id are freed (so a player with multiple active
+    /// browser tabs doesn't lose their seat when one tab closes).
+    /// </summary>
+    Task HandleDisconnectAsync(string playerId, string connectionId, CancellationToken ct = default);
 
     /// <summary>
     /// Phase F §3 — dealer-driven dice roll for manual deal. Transitions the
@@ -100,11 +136,15 @@ public interface IChangshaGameRuntime
 
     /// <summary>
     /// Phase J Wave 5 — picks a public, lobby-phase game with at least one
-    /// free non-bot seat and seats <paramref name="connectionId"/> into it.
+    /// free non-bot seat and seats the caller into it. Phase J Wave 6 split
+    /// the single conflated <c>connectionId</c> into a persistent
+    /// <paramref name="playerId"/> and a transport
+    /// <paramref name="connectionId"/> (passes through to
+    /// <see cref="TakeSeatAsync(string,string,string,int?,CancellationToken)"/>).
     /// Returns the chosen <c>(gameId, seatIndex)</c> tuple, or <c>null</c> if
     /// no candidate exists.
     /// </summary>
-    Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string connectionId, string? variant, CancellationToken ct = default);
+    Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string playerId, string connectionId, string? variant, CancellationToken ct = default);
 
     /// <summary>
     /// Phase J Wave 5 — destroys an in-memory game and disposes its
@@ -283,7 +323,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     // ── CreateGame ────────────────────────────────────────────────────
 
-    public async Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostConnectionId, CancellationToken ct = default)
+    public async Task<string> CreateGameAsync(int? seed, int[]? botSeatIndexes, string? hostPlayerId, string? hostConnectionId, CancellationToken ct = default)
     {
         var resolvedSeed = seed ?? Random.Shared.Next(int.MinValue, int.MaxValue);
         var (state, _) = ChangshaGameStateMachine.CreateGame(resolvedSeed, botSeatIndexes);
@@ -291,13 +331,16 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         // "game-created" event emitted inside CreateGame is treated as setup, not as
         // a mutation that consumes a version slot. First real mutation advances to 1.
         state.StateVersion = 0;
-        // Phase J Wave 5 — record the creator's connection id as the host
-        // identity. Used by MatchmakingService.SetGamePublic for the only-host-
-        // may-toggle check and by HandleDisconnectAsync for host-transfer /
-        // auto-destroy on public games. Null when the runtime is bootstrapping
-        // a game from a non-SignalR transport (autotable WS) that doesn't
-        // surface a host id at create time.
-        state.CreatorPlayerId = string.IsNullOrEmpty(hostConnectionId) ? null : hostConnectionId;
+        // Phase J Wave 6 — record the creator's persistent player id as the
+        // host identity. Used by MatchmakingService.SetGamePublic for the
+        // only-host-may-toggle check and by HandleDisconnectAsync for
+        // host-transfer / auto-destroy on public games. Wave-6 split the
+        // previous single-id parameter so non-SignalR transports (autotable
+        // WS bridge) can pass through their cookie-derived player id even
+        // when no SignalR connection exists — this is what unblocks
+        // public-lobby support for autotable-WS games (Vasquez's Wave-5
+        // blind spot #4).
+        state.CreatorPlayerId = string.IsNullOrEmpty(hostPlayerId) ? null : hostPlayerId;
         var instance = new ChangshaGameInstance(state.GameId, state);
         _games[state.GameId] = instance;
 
@@ -331,7 +374,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     // ── TakeSeat ──────────────────────────────────────────────────────
 
-    public async Task<int> TakeSeatAsync(string gameId, string connectionId, int? seatIndex, CancellationToken ct = default)
+    public async Task<int> TakeSeatAsync(string gameId, string playerId, string connectionId, int? seatIndex, CancellationToken ct = default)
     {
         var instance = Require(gameId);
         await instance.Lock.WaitAsync(ct);
@@ -357,7 +400,12 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
             var seat = instance.State.Seats[chosenSeat];
             seat.IsBot = false;
-            seat.PlayerId = connectionId;
+            // Phase J Wave 6 — persistent player identity (cookie-derived in
+            // v1). Survives reconnects, drives career-stats keying.
+            seat.PlayerId = playerId;
+            // Transport connection id for per-seat private routing (e.g.
+            // TilesDealt private payload). Cleared on disconnect; rebound on
+            // reconnect.
             instance.SeatConnections[chosenSeat] = connectionId;
             instance.LastActivityUtc = DateTime.UtcNow;
 
@@ -366,7 +414,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             {
                 gameId,
                 seatIndex = chosenSeat,
-                playerId = connectionId,
+                playerId,
                 isBot = false
             }, ct);
 
@@ -746,7 +794,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
 
     // ── Reconnect / Disconnect ────────────────────────────────────────
 
-    public async Task<bool> ReconnectAsync(string gameId, int seatIndex, string connectionId, CancellationToken ct = default)
+    public async Task<bool> ReconnectAsync(string gameId, int seatIndex, string playerId, string connectionId, CancellationToken ct = default)
     {
         if (!_games.TryGetValue(gameId, out var instance)) return false;
 
@@ -756,7 +804,11 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             instance.SeatConnections[seatIndex] = connectionId;
             var seat = instance.State.Seats[seatIndex];
             seat.IsBot = false;
-            seat.PlayerId = connectionId;
+            // Phase J Wave 6 — persistent identity rebind. Wave-5 code stored
+            // the connection id here; Wave-6 stores the cookie-derived player
+            // id so career-stats persistence keys off the same identifier
+            // across reconnects.
+            seat.PlayerId = playerId;
         }
         finally { instance.Lock.Release(); }
 
@@ -765,7 +817,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         return true;
     }
 
-    public async Task HandleDisconnectAsync(string connectionId, CancellationToken ct = default)
+    public async Task HandleDisconnectAsync(string playerId, string connectionId, CancellationToken ct = default)
     {
         // Phase J Wave 5 — collect games to destroy outside the per-instance
         // lock so we don't try to await a Task that re-enters the same lock.
@@ -775,6 +827,11 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             await instance.Lock.WaitAsync(ct);
             try
             {
+                // Phase J Wave 6 — release seats whose transport binding
+                // matches the dropped connection id only. A player holding
+                // the same seat from another tab (different connectionId,
+                // same playerId) is unaffected — the SeatConnections value
+                // differs so the entry is left in place.
                 var matched = instance.SeatConnections
                     .Where(kvp => kvp.Value == connectionId)
                     .Select(kvp => kvp.Key)
@@ -782,25 +839,26 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 foreach (var seat in matched)
                     instance.SeatConnections.TryRemove(seat, out _);
 
-                // Phase J Wave 5 — host transfer / auto-destroy for public games
-                // still in the Seating lobby phase. Private games and games that
-                // have already started keep the existing semantics (orphaned
-                // SeatConnections only, state is preserved for reconnect).
+                // Phase J Wave 6 — host transfer / auto-destroy for public
+                // games still in the Seating lobby phase. Compare against
+                // the persistent <paramref name="playerId"/> (Wave-5 used
+                // the connection id, which is now decoupled from identity).
                 if (instance.State.IsPublic &&
                     instance.State.Phase == ChangshaPhase.Seating &&
                     !string.IsNullOrEmpty(instance.State.CreatorPlayerId) &&
-                    string.Equals(instance.State.CreatorPlayerId, connectionId, StringComparison.Ordinal))
+                    !string.IsNullOrEmpty(playerId) &&
+                    string.Equals(instance.State.CreatorPlayerId, playerId, StringComparison.Ordinal))
                 {
-                    // Pick the lowest-indexed seat that still has a live human
-                    // connection — that connection becomes the new host. A bot
-                    // seat is never a viable host (bots can't authorise
-                    // SetGamePublic). If no candidate is found the game is
-                    // empty and queued for destruction.
+                    // Pick the lowest-indexed seat that still has a live
+                    // human connection — its persistent player id becomes
+                    // the new host. Bots can't authorise SetGamePublic so
+                    // they're never viable hosts. No candidate ⇒ the game
+                    // is empty and is queued for destruction.
                     var newHost = instance.SeatConnections
                         .Where(kvp => !instance.State.Seats[kvp.Key].IsBot)
                         .OrderBy(kvp => kvp.Key)
-                        .Select(kvp => (string?)kvp.Value)
-                        .FirstOrDefault();
+                        .Select(kvp => (string?)instance.State.Seats[kvp.Key].PlayerId)
+                        .FirstOrDefault(p => !string.IsNullOrEmpty(p));
 
                     if (newHost is null)
                     {
@@ -1965,7 +2023,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     }
 
     /// <inheritdoc />
-    public async Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string connectionId, string? variant, CancellationToken ct = default)
+    public async Task<(string GameId, int SeatIndex)?> JoinRandomAsync(string playerId, string connectionId, string? variant, CancellationToken ct = default)
     {
         // Variant is a hint — only Changsha is supported in this codebase so
         // an explicit non-match returns "no candidate" rather than a hard error
@@ -1999,7 +2057,10 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         var pick = candidates[Random.Shared.Next(candidates.Count)];
         try
         {
-            var seat = await TakeSeatAsync(pick.GameId, connectionId, seatIndex: null, ct);
+            // Phase J Wave 6 — forward both ids so the seat records its
+            // persistent player id and the transport connection id is wired
+            // for private-payload routing.
+            var seat = await TakeSeatAsync(pick.GameId, playerId, connectionId, seatIndex: null, ct);
             return (pick.GameId, seat);
         }
         catch (HubException)

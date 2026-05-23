@@ -74,7 +74,7 @@ public class HydrationOnStartupTests
             gameId = await runtime.CreateGameAsync(
                 seed: 0xACED,
                 botSeatIndexes: new[] { 0, 1, 2, 3 },
-                hostConnectionId: null,
+                hostPlayerId: null, hostConnectionId: null,
                 cts.Token);
 
             Assert.True(runtime.TryGetSnapshot(gameId, out var preStart));
