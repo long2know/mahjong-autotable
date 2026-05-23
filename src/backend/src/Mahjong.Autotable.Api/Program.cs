@@ -284,6 +284,9 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.VoiceRateLimiter>(sp =
     var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Mahjong.Autotable.Api.Voice.VoiceOptions>>().Value;
     return new Mahjong.Autotable.Api.Voice.VoiceRateLimiter(opts.RateLimitPerSecond);
 });
+// Phase K Wave 3 — Bishop. Per-connection relay metrics for the voice
+// hub; the singleton lets /metrics surfaces query a rolling 60s window.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Voice.VoiceHubMetricsService>();
 
 // Phase K Wave 2 — Bishop (Backend). Spectator live-stream stub. Owns
 // the future tile-flip event surface (Phase L) so callers can attach
@@ -607,18 +610,127 @@ app.MapHub<Mahjong.Autotable.Api.Voice.VoiceHub>("/hubs/webrtc");
 // Returns the configured STUN/TURN list as the WebRTC client
 // `RTCIceServer[]` shape; falls back to Google's public STUN server
 // when no operator-supplied TURN credentials live in Voice:TurnServers.
+//
+// Phase K Wave 3 — Bishop. This stays the anonymous STUN-only fallback;
+// the new auth-gated TURN-credential mint lives at
+// `POST /api/turn/credentials` (HMAC-SHA1 short-term credentials).
+// Production TURN access flows through the credential endpoint; this
+// route never returns a credential field (defends against accidental
+// leak of static TURN secrets via the anon surface).
 app.MapGet("/api/turn", (Microsoft.Extensions.Options.IOptions<Mahjong.Autotable.Api.Voice.VoiceOptions> voiceOpts) =>
 {
     var opts = voiceOpts.Value;
+    // Wave 3 — strip credential/username fields from anon responses so
+    // any operator-misconfigured shared secret can't leak. Anon callers
+    // get URL-only entries; full credentials require the auth-gated
+    // /api/turn/credentials mint.
     var servers = opts.TurnServers is { Count: > 0 }
-        ? opts.TurnServers.Select(s => (object)new
-        {
-            urls = s.Url,
-            username = string.IsNullOrEmpty(s.Username) ? null : s.Username,
-            credential = string.IsNullOrEmpty(s.Credential) ? null : s.Credential,
-        }).ToList()
+        ? opts.TurnServers.Select(s => (object)new { urls = s.Url }).ToList()
         : new List<object> { new { urls = "stun:stun.l.google.com:19302" } };
     return Results.Ok(new { iceServers = servers, voiceEnabled = opts.Enabled });
+}).RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
+
+// Phase K Wave 3 — Bishop (Backend). Short-term TURN credential mint
+// (RFC 7635-style). Auth required (any signed-in session). Returns a
+// `{ username, credential, ttl, urls, iceServers }` envelope where
+// `username = "<unix_ttl>:<playerId>"` and `credential =
+// base64(HMAC-SHA1(VoiceOptions.TurnSharedSecret, username))`. The
+// coturn server validates the credential by recomputing the same HMAC
+// against its `--static-auth-secret`; the `<unix_ttl>` prefix bounds
+// the credential to the configured TTL (default 1h).
+//
+// 401 ⇒ no session; 503 ⇒ TURN shared secret is unconfigured
+// (operator hasn't opted in); 200 ⇒ minted credential envelope.
+app.MapPost("/api/turn/credentials", async (
+    HttpContext ctx,
+    Mahjong.Autotable.Api.Auth.AuthCookieService cookies,
+    Microsoft.Extensions.Options.IOptions<Mahjong.Autotable.Api.Voice.VoiceOptions> voiceOpts,
+    CancellationToken ct) =>
+{
+    var session = await cookies.ResolveAsync(ctx, ct);
+    if (session is null)
+    {
+        return Results.Json(new { error = "Authentication required to mint TURN credentials." },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+    var opts = voiceOpts.Value;
+    if (string.IsNullOrWhiteSpace(opts.TurnSharedSecret))
+    {
+        return Results.Json(new { error = "TURN shared secret is not configured.", code = "turn-secret-missing" },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    var ttl = opts.TurnCredentialTtlSeconds > 0 ? opts.TurnCredentialTtlSeconds : 3600;
+    var expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + ttl;
+    var username = $"{expiresAt}:{session.PlayerId}";
+    using var hmac = new System.Security.Cryptography.HMACSHA1(System.Text.Encoding.UTF8.GetBytes(opts.TurnSharedSecret));
+    var credentialBytes = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(username));
+    var credential = Convert.ToBase64String(credentialBytes);
+    var urls = opts.TurnServers is { Count: > 0 }
+        ? opts.TurnServers.Select(s => s.Url).ToArray()
+        : Array.Empty<string>();
+    var iceServers = urls
+        .Select(u => (object)new { urls = u, username, credential })
+        .ToArray();
+    return Results.Ok(new
+    {
+        username,
+        credential,
+        ttl,
+        expiresAt,
+        urls,
+        iceServers,
+    });
+}).RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
+
+// Phase K Wave 3 — Bishop (Backend). Per-table voice toggle. The
+// table creator (resolved via the ChangshaGame.OwnerPlayerId column)
+// flips `VoiceEnabled` on/off via `POST /api/games/{id}/settings/voice`
+// with body `{ "enabled": true|false }`. The VoiceHub.JoinVoice gate
+// reads this column, so flipping false immediately closes the door
+// (new joiners get rejected; in-flight peers stay connected until
+// they next call JoinVoice).
+app.MapPost("/api/games/{id:guid}/settings/voice", async (
+    HttpContext ctx,
+    Guid id,
+    Mahjong.Autotable.Api.Auth.AuthCookieService cookies,
+    Mahjong.Autotable.Api.Data.AppDbContext db,
+    Mahjong.Autotable.Api.Voice.VoiceSettingsBody? body,
+    CancellationToken ct) =>
+{
+    var session = await cookies.ResolveAsync(ctx, ct);
+    if (session is null)
+    {
+        return Results.Json(new { error = "Authentication required." },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+    if (body is null)
+    {
+        return Results.Json(new { error = "Body must include `enabled`." },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+    var row = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+        .FirstOrDefaultAsync(db.ChangshaGames, g => g.Id == id, ct);
+    if (row is null)
+    {
+        return Results.Json(new { error = "Game not found.", gameId = id },
+            statusCode: StatusCodes.Status404NotFound);
+    }
+    // Only the table creator (or an admin) may flip the toggle. The
+    // OwnerPlayerId column is mirrored from state.CreatorPlayerId at
+    // game-creation time so this works even when the runtime hasn't
+    // rehydrated the live game in-memory.
+    var isAdmin = string.Equals(session.Role, "admin", StringComparison.OrdinalIgnoreCase);
+    var isOwner = !string.IsNullOrEmpty(row.OwnerPlayerId)
+        && string.Equals(row.OwnerPlayerId, session.PlayerId, StringComparison.Ordinal);
+    if (!isAdmin && !isOwner)
+    {
+        return Results.Json(new { error = "Only the table creator may change voice settings." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+    row.VoiceEnabled = body.Enabled;
+    row.UpdatedUtc = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { gameId = id, voiceEnabled = row.VoiceEnabled });
 }).RequireRateLimiting(RateLimitingExtensions.ApiPolicy);
 
 // Phase K Wave 2 — Bishop (Backend). Spectator livestream stub. The HLS
