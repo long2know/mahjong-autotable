@@ -2669,4 +2669,131 @@ Both files are .gitignored so future Scribes can re-fold them if needed; their c
 
 ---
 
+## Phase J — Wave 4 — `232d7db..b33a890` (2026-05-22)
+
+**Branch:** `stlong/phase-j-wave-4-completion` (all commits pushed)
+**Final test count:** **431 / 0 / 0** (was 424/0/0 at Phase J Wave 3 → +7 net passes, zero-skip streak **6 waves**: I.4 → J.1 → J.2 → J.3 → J.4, or 8 consecutive counting back to I.1 per Vasquez's tally).
+**Bundle hashes (Hicks):** JS `330c36fd.js` → `0b7c71c7.js`; CSS `f8d8d79e.css` → `094cde3a.css`.
+
+### Wave goal
+
+Four parallel lanes burning down the Wave-3 backlog: Bishop re-investigates and closes the seed 40595 shanten-primary pathology (now safe behind Wave-1's claim-shanten gate), reconciles `GameComplete` vs `EndGame` via enum-alias merge, and documents the NineTerminals loose default with citations. Hicks ships mobile responsive layout (4 breakpoints), lobby polish (player chips + Quick Match + seat preview + settings shortcut), and reconnect-token UI (localStorage + `?rejoin=` + Copy rejoin link). Apone (DevOps) stands up GitHub Actions CI: per-`main`-push Docker build + ghcr.io publish, nightly smoke, and the `BUILD_SHA` ARG→ENV chain so published images carry the real commit SHA. Vasquez locks the new surfaces with 7 new tests + first canonical frontend DOM-testid contract document.
+
+### Outcomes
+
+**Bishop — seed 40595 closure + `EndGame`/`GameComplete` alias merge + NineTerminals doc**
+
+- **Seed 40595 shanten-primary pathology — FIXED (promoted)** (`e71b4d0`) — Re-investigated via a deleted `scratch/bishop-seed40595/` probe console app mirroring `BotStrengthTests.RunOneHand`. Ran 20 seeds × 3 orderings (keep-score / shanten / shanten+stable); seed 40595 terminates cleanly under all three. Root cause: the historical pathology dates from before Phase J Wave 1's `HardStrategy.DecideClaimPhase` shanten-gate (`711d995`); with the gate in place, opponents can no longer break Hard's hand shape via heuristic claims, so shanten-greedy discards stay converging. **Promoted `shanten` to primary discard key** in `HardStrategy.SelectDiscardTile` with `ComputeDiscardScore` as the tie-breaker. Probe strength lift: Hard win-rate 4/20 (keep-score) → 7/20 (shanten primary), +75% relative. Phase I Wave 4 "investigated and rolled back" XML doc superseded with a Phase J Wave 4 `<para>` recording the re-investigation.
+- **`EndGame` → `GameComplete` enum-alias merge** (`5835361`) — Chose **Option (C)** over (A) remove or (B) document-both: declared `GameComplete` FIRST in `ChangshaPhase` enum, then `EndGame = GameComplete` (same underlying int 17). Both names still compile + equal at the int level, so `BankerRotationTests.cs:129`, `StateMachineServiceTests.cs:200`, `BotPolicyTests.cs`, `HydrationOnStartupTests.cs` continue to pass without touching Vasquez's lane. `state.Phase.ToString()` always returns `"GameComplete"` post-merger because `Enum.ToString()` resolves shared ints to the first declared name — SignalR `GameCompleted.phase` is now unambiguous on the wire. `HydrateAsync` adds a defensive `Phase==18` → `GameComplete` rewrite so legacy snapshots persisted with the Wave-2 int=18 round-trip cleanly to the canonical int=17. `ChangshaGameRuntime.StartNextHandOrEndAsync`'s terminal check collapsed from `Phase==EndGame || Phase==GameComplete` to a single comparison.
+- **NineTerminals loose default documented + cited** (`ce7ebec`) — Existing `WinDetector.cs::CheckNineTerminals` implementation (rank-bounds + six-distinct, no 4-sets+pair structural requirement) declared the v1 default. Strict variant (every tile rank 1/9 AND 4 sets + pair AND all six terminals) reserved for future `gameOptions.nineTerminalsStrict = true` tournament mode; not shipped this wave. Citations: **MahjongPros "Changsha Mahjong patterns"** + **Baidu Baike 长沙麻将 §牌型**, both frame 九幺 as rank-bounds + six-distinct. Also consistent with Changsha's "random eye" Big Win exemption, and tightening to strict 4+1 over the 108-tile deck makes the pattern effectively unreachable. `Patterns/NineTerminalsPattern.cs` from the brief does not exist — logic lives in `WinDetector.cs::CheckNineTerminals` and spec lives in `docs/rules/changsha-spec.md §4.2.1`. No behavioural change.
+
+**Hicks — mobile responsive + lobby polish + reconnect-token UI**
+
+- **Mobile responsive layout** (`b33a890`) — Four breakpoints: `≥1025px` desktop baseline (hamburger hidden); `1024px` sidebar 200px / move-log 220px compaction; `768px` tablet-portrait → HUD stacks (sidebar drops to bottom at `max-height: 50vh`), move-log collapses to off-canvas slide-out drawer behind `#move-log-toggle` 📜 hamburger, modals capped to `95vw / 90vh`, tap targets bumped to `min-height: 44px` (iOS standard); `480px` phone-portrait → settings drawer + lobby become full-screen overlays, player chips stack vertically; `375px` (iPhone SE) same as 480 + comfortable padding, no horizontal overflow. Viewport meta `initial-scale=1, user-scalable=no`; `<canvas id=center>` keeps default pointer-events so autotable camera controller still receives raw touch. **Additive media queries, not a separate stylesheet** — desktop baseline survives untouched; +484 LOC in `style.css`.
+- **Lobby polish** — `.lobby-player-chip` strip (one chip per occupied seat; deterministic-colour djb2-HSL avatars + initials + compass sub-label E/S/W/N + `You`/`Bot`/`Seated` right badge; re-renders on `seats`/`nicks` update; `data-seat="<0..3>"` for seat-keyed compound queries). `#lobby-quick-match` single-click action sets `botCount=3 botDifficulty=Medium variant=<current> seat=null` and replays through existing `buildUrl` pipeline (Wave-2 auto-deal flows lobby → first deal with one tap). Hand-count / difficulty radios as compact card group with iconography column (短/局/圈/半/长 length glyphs + 😌🙂😈 difficulty); selected state via `:has(input:checked)` selector (pure CSS, no JS hook). `#lobby-seat-preview` 2×2 / 4×1 grid showing E/S/W/N occupancy + your selection. `#lobby-open-settings` inline ⚙ shortcut closes lobby and triggers `#settings-toggle`. **`attachLobbyClient` deferred-bind pattern** — first `initLobby()` runs before assets load (Quick Match clickable immediately); `attachLobbyClient` wires live collection listeners after `Game.start`, no double-init / first-paint race.
+- **Reconnect-token UI** (`src/reconnect.ts` NEW, 260 LOC) — Token shape `{v:1, gameId, playerId, seat, connectionId:null, savedAt}` encoded as `base64url(JSON)` (no padding); TTL 5 min; stored at `localStorage['mahjong:lastSession:<gameId>']` + URL form `?rejoin=<token>`. **Save** on every `connect` + `seats.update` (stamps fresh `savedAt`, sliding window); **clear** on user-initiated `disconnect` + `newGame` (transient disconnects leave token alone). Banner `#connection-banner-copy-link` button (`data-testid="reconnect-copy-link"`) reveals after `attempt >= 2`; copy uses `navigator.clipboard` first then hidden-textarea `document.execCommand('copy')` fallback then 12-second toast for manual copy. **Auto-rejoin** = `index.ts` parses `?rejoin=<token>` at module load and stamps `gameId`+`seat` onto the page URL so the existing `ClientUi.start` → `connect` boot path takes the same flow as a hand-typed URL. **Zero new wire contract** — reuses Wave-2 `AutotableWsEndpoint` `?seat=N` seat-if-empty / reject-if-taken; Bishop's future SignalR cookie-based session work can layer on the reserved `connectionId` field. Failure toast: `Your previous session has ended.` strips the `?rejoin=` param.
+
+**Apone — Docker CI publish + nightly smoke + `BUILD_SHA` ARG/ENV chain**
+
+- **`.github/workflows/docker-build.yml` (NEW)** (`232d7db`) — Triggers: push to `main`, `v*.*.*` tag pushes, manual `workflow_dispatch`. Steps: checkout → `setup-buildx-action@v3` → `login-action@v3` to `ghcr.io` via auto-provisioned `GITHUB_TOKEN` (no PAT, no secrets) → `metadata-action@v5` computes tag set → `build-push-action@v6` multi-stage repo-root Dockerfile with `BUILD_SHA=${{ github.sha }}` build-arg + GHA cache (`type=gha, mode=max`) → step-summary block listing every pushed tag + baked `BUILD_SHA`. Permissions: `contents: read, packages: write`. **Tag scheme:** `latest` only on `main` (feature-branch dispatch can't clobber prod); `sha-<commit>` every event (immutable rollback); `<tag-name>` only on `refs/tags/*`.
+- **`.github/workflows/docker-smoke.yml` (NEW)** — Nightly cron `0 8 * * *` UTC (≈03:00 CST / 04:00 CDT for Stephen) + manual dispatch. Runs Vasquez's Wave-3 `tests/smoke/docker-build-smoke.sh` from scratch; on failure only collects `tests/smoke/.run-*` + `docker ps -a` + `docker images` snapshots into `smoke-logs/` and uploads via `actions/upload-artifact@v4` as `docker-smoke-failure-<run-id>` (14-day retention). **Failure surface = artifact, not issue** — rationale documented in `docs/ci.md`: red Actions run is already visible, artifacts give one-click triage (`gh run download <id>`) without issue-tracker spam. Timeout 30 min (cold Parcel stage can push 5-8 min). Permissions: `contents: read`.
+- **`Dockerfile` `BUILD_SHA` ARG/ENV chain (MODIFIED)** — Added `ARG BUILD_SHA=""` + `ENV BUILD_SHA=${BUILD_SHA}` after `WORKDIR /app` in the runtime stage; removed the redundant `BUILD_SHA=""` from the lower `ENV` block (would have **overridden** the build-arg). Local `docker build .` → `"dev"` via Wave-3 `IsNullOrEmpty` widening; `docker build --build-arg BUILD_SHA=abc123 .` → `"abc123"`; CI `BUILD_SHA=${{ github.sha }}` → real commit SHA. Verified locally: `actionlint v1.7.7` clean (exit 0), YAML syntax OK, smoke green, default-build still returns `"buildSha":"dev"` per Wave-3 contract.
+- **`docs/ci.md` (NEW)** — End-to-end docs for both workflows: triggers, manual run (`gh workflow run`), tag scheme + `docker pull` examples, `gh api /users/long2know/packages/...` enumeration, one-time ghcr "Make package public" steps (`https://github.com/long2know?tab=packages`), required secrets (**none** — auto-provisioned token covers same-repo ghcr push), artifact-vs-issue rationale, local pre-PR verification snippet. Pre-session `squad-*.yml` workflows explicitly called out as out-of-scope.
+
+**Vasquez — 7 new test facts + first frontend DOM contract document**
+
+- **`PatternOrderingEndpointTests.cs` (3 facts, NEW)** — `WebApplicationFactory<Program>` over real Minimal-API + per-test SQLite isolation (mirrors `HealthEndpointTests`). Tests: `PatternOrdering_ReturnsOk_WithFlatJsonMap` (200 + flat `Dictionary<string,int>` + every key starts lowercase camelCase + every value ≥ 0 + total count == `ChangshaPatternOrdering.Order.Count`); `PatternOrdering_AllWinPatternEnumValues_HaveAnOrderingEntry` (reflects `Enum.GetValues<WinPattern>()`, mirrors `Program.cs::WinPatternWireName` switch locally so a future Bishop rename fails the test for the right reason — closes Vasquez's Wave-3 blind spot #1 + catches `AlphabeticalFallbackOrder = 999` silent-fallback gap); `PatternOrdering_HeavenlyHand_OutranksAllPungs` (canonical tier ordering: HeavenlyHand < AllPungs; SevenPairs < FullFlush — asserts relative ranks only since Bishop's reserved-slot scheme allows absolute shifts).
+- **`GameCompletionLifecycleTests.cs` (4 facts, NEW)** — Reflection-defensive `ResolveTerminalPhases()` helper discovers terminal-phase set via name-match heuristic (any enum value whose name contains `"Complete"` or `"EndGame"`), so Bishop's actual reconciliation choice (collapse-via-alias `EndGame = GameComplete`) keeps the suite green regardless. Tests: `FourHandsCompleted_TransitionsToCanonicalTerminalPhase` (default MaxHands=4 → terminal after exactly 4 hands, `IsGameComplete=true`; inline bot step-machine); `BeforeMaxHands_StaysInPlayablePhase` (3 of 4 hands → not terminal — guards `>` vs `>=` regression in cap check); `GameCompletedEvent_Fires_OnceOnly` (SignalR `ChangshaHubTestHarness` subscribe, 90s ceiling on first fire + 1s grace, payload shape `gameId, maxHands, finalScores, winner.seatIndex, phase` present); `HydrationFilter_SkipsTerminalPhase` (per-terminal-phase via reflection, insert synthesized snapshot, assert `HydrateAsync` skips it + active `AwaitingDiscard` control row hydrates).
+- **`src/frontend/autotable-src/tests/selectors.md` (NEW directory + file)** — First canonical frontend DOM contract document. **19 distinct testids** across four surfaces (13 Wave-2/3 lobby + connection-banner basics; 3 NEW in Wave 4: `mobile-move-log-toggle`, `reconnect-copy-link`, `toast-region`; 3 dynamically injected from TS — `lobby-seat-preview-{i}`, `lobby-players-empty`, `lobby-player-chip-{chipIndex}`). Reserved prefixes for future surfaces: `hud-*` (in-game HUD), `result-modal-pattern-chip-{wireName}` (MUST consume `/api/changsha/pattern-ordering` wire names so the integration test asserts ordering end-to-end), `game-over-*` (modal). Every entry carries file:line citation; Stability Contract section spells out identity / cardinality / lifetime / naming guarantees Hicks owes the upcoming Playwright suite.
+
+### Wire surface additions
+
+- **GitHub Actions:**
+  - `.github/workflows/docker-build.yml` → pushes `ghcr.io/long2know/mahjong-autotable:{latest,sha-<sha>,<tag>}` on every `main` push + tag push. OCI standard labels auto-emitted by `metadata-action@v5`.
+  - `.github/workflows/docker-smoke.yml` → nightly artifact `docker-smoke-failure-<run-id>` (14-day retention) on failure only.
+- **Dockerfile:** new `ARG BUILD_SHA=""` + `ENV BUILD_SHA=${BUILD_SHA}` chain accepted at runtime stage; baked SHA surfaces at `/health.buildSha` in CI-built images.
+- **Backend enum / wire:** `ChangshaPhase.GameComplete` is the canonical terminal phase; `ChangshaPhase.EndGame = GameComplete` is a deprecated source-compat alias at the same int (17). SignalR `GameCompleted.phase` always serializes as `"GameComplete"` post-merger. `HydrateAsync` defensively rewrites legacy `Phase==18` → `GameComplete` on snapshot deserialization.
+- **Frontend DOM testids (Hicks's Wave-4 additions, pinned by Vasquez's `selectors.md`):**
+  - **Lobby:** `lobby-toggle`, `lobby-players-section`, `lobby-players-strip`, `lobby-players-empty`, `lobby-player-chip-{0..3}` (also carries `data-seat="<0..3>"`), `lobby-seat-preview`, `lobby-seat-preview-{0..3}`, `lobby-quick-match`, `lobby-open-settings`, `lobby-apply`, `lobby-variant-fieldset`, `lobby-bot-difficulty-fieldset`, `lobby-hand-count-fieldset`.
+  - **Connection banner / toast (Wave-4 NEW):** `connection-banner`, `connection-banner-retry`, `reconnect-copy-link`, `connection-banner-lobby`, `toast-region`, `toast-info`, `toast-error`.
+  - **Mobile drawer (Wave-4 NEW):** `mobile-move-log-toggle`.
+- **Reconnect token:** `localStorage['mahjong:lastSession:<gameId>']` + URL `?rejoin=<base64url(JSON)>`; opaque to backend (reuses `?seat=N` + `?gameId=...` validation).
+- **`docs/ci.md`** (NEW) — companion to Wave-3's `docs/deployment.md` + `docs/docker.md`.
+
+### Tech-debt + follow-ups
+
+**Vasquez's blind spots (Wave 5 candidates):**
+
+1. **`reconnect.ts` runtime wiring** — 260 LOC new module exports `SESSION_KEY_PREFIX`, `TOKEN_TTL_MS`, `SessionToken`; the `reconnect-copy-link` button's behaviour depends on `client.ts` / `index.ts` actually importing the module at runtime. Vasquez's Wave-4 contract test catches `data-testid` presence but not behaviour. Schedule a Playwright/Cypress smoke that drives a real disconnect + verifies the copy-link works.
+2. **No game-over-modal `data-testid`s yet** — `GameCompletedEvent_Fires_OnceOnly` pins the SignalR event but the UI Hicks surfaces from it has no contract. `selectors.md` reserves the `game-over-*` prefix; Hicks Wave-5 to populate.
+3. **Legacy snapshot rehydrate round-trip not pinned** — `Phase==18` (Wave-2 GameComplete int) defensive rewrite is unit-tested via `HydrationFilter_SkipsTerminalPhase` (covers the skip path) but a dedicated test for "snapshot persisted as `EndGame` deserializes + re-serializes as `GameComplete`" would lock the alias-merger wire migration explicitly. Low priority — no production deployments carry pre-Wave-4 snapshots.
+4. **`squad-*.yml` workflow files untracked** — 7 files under `.github/workflows/` (`squad-ci.yml`, `squad-docs.yml`, `squad-insider-release.yml`, `squad-label-enforce.yml`, `squad-preview.yml`, `squad-promote.yml`, `squad-release.yml`); Apone confirmed they are pre-session scaffolding out of his Wave-4 scope. Coordinator to decide whether they land in a future wave or move to `scratch/`.
+
+**Coordinator follow-ups for Wave 5:**
+
+1. **Multi-arch Docker builds** — Apone's workflow currently builds runner-native arch only (amd64). Add `platforms: linux/amd64,linux/arm64` to `docker/build-push-action` for M-series Macs / ARM cloud at the cost of ~2× first-build before GHA cache warms.
+2. **PR-time `docker-build` dry run** — call `docker/build-push-action` with `push: false` on PRs touching `Dockerfile` / `.dockerignore` / `docker-compose.yml` / `src/frontend/autotable-src/package*.json` to surface build-only failures pre-merge (Apone Wave-3 follow-up still open).
+3. **ghcr.io retention policy** — image layers stored indefinitely until manual prune. Hygiene: delete `sha-*` tags older than 90 days, keep `latest` + all `v*.*.*` release tags.
+4. **`docker-smoke` cron DST-aware** — current `0 8 * * *` UTC drifts between CST and CDT for Stephen. Two-cron / script-gated solution deferred.
+5. **`actionlint` PR gate** — Apone runs it locally but no CI workflow checks `.github/workflows/**` on PRs.
+6. **CodeQL / Trivy scan + cosign signed images** — supply-chain follow-ups out of Wave-4 scope.
+7. **Playwright/Cypress integration tests** wired against the canonical `selectors.md` surface — sound toggle (`#settings-sound`), replay viewer (`#replay-screen`, `#game-complete-replay`), Quick Match flow, reconnect copy-link behaviour.
+8. **3D replay scene upgrade** — Hicks deferred from Wave 3; reuse `Replay` data buffer.
+9. **`loadPatternOrderingFromApi()` unit test** — mock `fetch`, assert order takes effect over hardcoded fallback (Hicks/Vasquez carryover from Wave 3).
+10. **`tournament-mode gameOptions.nineTerminalsStrict` flag** — Bishop's Wave-4 doc reserves the door; not implemented.
+11. **i18n display ordering for `AllPatterns`** (carryover from J-W2).
+12. **`_bindingLock` per-game profiling**, **`infra/docker/Dockerfile` deletion**, **`Program.cs` L16 `data/` dir creation review** — carryover housekeeping from Wave 3.
+
+**Standing directives still pinned (verified locally on disk):**
+
+- `.squad/decisions/inbox/copilot-directive-20260522-no-pauses.md` — Stephen's "no pauses, fan out and keep iterating until 100% done done." Coordinator launches new waves immediately after merge.
+- `.squad/decisions/inbox/copilot-directive-20260522-opus-default.md` — All agents (including Scribe + mechanical roles) use `claude-opus-4.7-xhigh`. Persisted via `.squad/config.json` `defaultModel`. Overrides any cost-based downgrade defaults in `squad.agent.md` — Scribe ignored the "Scribe uses haiku" line per this directive when folding Wave 4.
+
+Both files remain .gitignored so future Scribes can re-fold them if needed; their continued local presence is the source of truth for the directive surviving across sessions.
+
+### Test gate
+
+- **Baseline (Phase J Wave 3):** 424 / 0 / 0
+- **Final (Phase J Wave 4):** **431 / 0 / 0** (+7 net: `PatternOrderingEndpointTests` × 3 + `GameCompletionLifecycleTests` × 4)
+- **Wave-4 filter (`Wave=Phase-J-4`):** 7 / 7 green.
+- **TypeScript strict (`tsc --noEmit --strict ... src/index.ts`):** 0 errors on bundle entry (5 pre-existing `TS6305` on `server/dist/*.d.ts` artifacts are Wave-3 carryover, unrelated).
+- **Parcel build:** 4.70s; new bundle `autotable-src.0b7c71c7.js` (1.09 MB) + `autotable-src.094cde3a.css` (31.17 kB).
+- **CI workflow validation:** `actionlint v1.7.7` exit 0 against both new workflows; YAML syntax OK; local `docker build --build-arg BUILD_SHA=test123 .` + smoke green; default build still returns `"buildSha":"dev"` per Wave-3 contract.
+- **Zero-skip streak:** **6 waves** (J-only count: J.1 → J.2 → J.3 → J.4; or 8 consecutive counting back to I.1 per Vasquez's tally).
+
+### Notable findings
+
+**Bishop seed 40595 4000-step pathology is CLOSED by Wave 1's claim-shanten gate.** The brief carried this seed forward as a Phase I Wave 4 backlog item that survived Wave 3. Bishop's re-investigation via a probe console app (20 seeds × 3 orderings) confirms the pathology no longer reproduces under any ordering. The root cause was a feedback loop: pre-Wave-1 Hard accepted any heuristic claim, so opponents' shape-breaking claims could leave Hard's hand structurally unreachable while a shanten-primary discard chased "best swaps" that opponents had already foreclosed. With Wave-1's `HardStrategy.DecideClaimPhase` strictly refusing any non-Hu claim that doesn't drop post-claim shanten, the cycle is closed. **Lesson:** old pathology backlog items should be re-probed against the current main before scheduling work — fixes upstream of the reproduction may have already closed them. The `scratch/bishop-seed40595/` probe app was deleted before commit (out of scope for production), but the seed-by-seed table is preserved in Bishop's memo.
+
+**`EndGame` → `GameComplete` alias merge chose Option (C) to keep Vasquez's lane untouched.** Option (A) (remove `EndGame` symbol) would have required edits to `BankerRotationTests.cs:129`, `StateMachineServiceTests.cs:200`, `BotPolicyTests.cs`, `HydrationOnStartupTests.cs` — explicitly forbidden by Bishop's task brief. Option (B) (document both) leaves the tech debt that motivated the task open. **Option (C) — `EndGame = GameComplete` enum-alias at the same int — achieves canonical-single-name on the wire while preserving source-compat.** Wave-2 `GameCompletionTests.cs`'s use of reflection rather than literal enum names is what made this trick viable: reflection-defensive tests don't pin a name, so the alias-merger is invisible to them. The defensive `HydrateAsync` rewrite of legacy `Phase==18` → `GameComplete` ensures pre-Wave-4 snapshots round-trip cleanly through the int collapse (Wave-2 ints 17/18 → Wave-4 int 17). **`Enum.ToString()` resolves shared ints to the FIRST declared name** — so the declaration order (`GameComplete` first, `EndGame` second) is the load-bearing piece that makes `phase` always serialize as `"GameComplete"` on the wire.
+
+**NineTerminals loose default chosen + cited from MahjongPros + Baidu Baike.** Three independent reasons: (1) both authoritative sources frame 九幺 as rank-bounds + six-distinct without a strict decomposition clause; (2) consistent with Changsha's "random eye" Big Win exemption (Big Win shapes don't require a conventional 258 pair eye); (3) over the 108-tile Changsha deck (24 physical terminal tiles total across all six logical terminals × four copies), strict 4+1 makes the pattern effectively unreachable, contradicting sources framing it as "rare but achievable". Door left open for `gameOptions.nineTerminalsStrict = true` future tournament-mode flag — not implemented. Spec text + XML doc updated in-place at `Changsha/WinDetector.cs::CheckNineTerminals` + `docs/rules/changsha-spec.md §4.2.1`; the briefed file path `Patterns/NineTerminalsPattern.cs` does not exist (NineTerminals logic was never spun out into a dedicated Patterns/ class).
+
+**Apone's CI workflows can't execute until this branch lands on `main`.** GitHub Actions only honors `on: push` triggers on the default branch. Post-merge: `docker-build` fires automatically on the merge commit; first `docker-smoke` fires on the next 08:00 UTC tick after merge (or manually via `gh workflow run docker-smoke.yml`). **One-time post-merge action by Stephen:** make the ghcr package public if external pulls are intended (steps documented in `docs/ci.md` § "Making the package public").
+
+**Vasquez ships first canonical frontend DOM contract document.** `src/frontend/autotable-src/tests/selectors.md` is the source of truth for `data-testid` stability that the upcoming Playwright / Cypress suite will target. 19 distinct testids documented across four surfaces; Stability Contract section explicitly covers identity, cardinality, lifetime, and naming guarantees Hicks's surface owes the integration suite. **Pattern locked for future frontend coverage:** Hicks adds testid in HTML/TS, Vasquez pins it in `selectors.md` with file:line citation. The reserved `result-modal-pattern-chip-{wireName}` prefix MUST consume `/api/changsha/pattern-ordering` wire names so the future integration test asserts ordering end-to-end (closing the Wave-3 loop where Hicks's `loadPatternOrderingFromApi()` had no integration coverage).
+
+### Phase J Wave 5 backlog
+
+1. Multi-arch Docker builds (`linux/amd64` + `linux/arm64`) (Apone Wave-5).
+2. PR-time `docker-build` dry run wired into PR workflow (Apone Wave-3 carryover).
+3. ghcr.io retention policy for `sha-*` tags (Apone).
+4. `docker-smoke` cron DST-aware (Apone).
+5. `actionlint` PR gate on `.github/workflows/**` (Apone).
+6. CodeQL / Trivy image scans + cosign signed images (Apone).
+7. Playwright/Cypress integration suite targeting `selectors.md` (Vasquez + Hicks).
+8. `loadPatternOrderingFromApi()` unit test (Hicks/Vasquez Wave-3 carryover).
+9. Snapshot-rehydrate `EndGame`-as-JSON round-trip pinning test (Vasquez follow-up to Bishop's alias merge).
+10. Game-over modal `data-testid`s populated under reserved `game-over-*` prefix (Hicks Wave-5).
+11. `reconnect.ts` runtime-wiring smoke (Vasquez Playwright).
+12. `tournament-mode gameOptions.nineTerminalsStrict` flag (Bishop, pending Stephen's tournament-mode call).
+13. 3D replay scene upgrade (Hicks deferred from Wave 3).
+14. Coordinator decision on the 7 untracked `squad-*.yml` workflows (`squad-ci`, `squad-docs`, `squad-insider-release`, `squad-label-enforce`, `squad-preview`, `squad-promote`, `squad-release`).
+15. `infra/docker/Dockerfile` deletion (Apone Wave-3 carryover).
+16. `Program.cs` L16 `data/` dir creation review (Bishop call, Wave-3 carryover).
+17. i18n display ordering for `AllPatterns` (carryover from J-W2).
+18. `_bindingLock` per-game profiling (carryover from earlier waves).
+
+---
+
 
