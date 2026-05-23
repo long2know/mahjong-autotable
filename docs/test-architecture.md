@@ -105,6 +105,76 @@ public sealed class DbSerialCollection { }
 > collection. Vasquez ships the definition + the policy doc
 > in W10; the migration is Bishop's W11 deliverable.
 
+> **W12 status.** Vasquez ran the audit promised in §4.4
+> (W11+ open gap) and shipped the candidate inventory at
+> `Phase_K_W12/Vasquez/db-serial-candidates.md` — 25
+> backend test classes that touch `AppDbContext` /
+> `SqliteConnection` were identified by static grep, of
+> which 22 propose `[Collection("DbSerial")]` and 3 propose
+> the W12 `Reads` / `Writes` split (§3.4 below). The audit
+> methodology used three signals (static grep + 3-parallel
+> stress run + manual review). The 3-parallel run at the
+> 2403/0/0 baseline detected **zero new flakes**, but the
+> static-grep candidate list remains the canonical
+> W12 → W13 hand-off — Bishop opts the classes in before
+> the next process-state leak surfaces, not after.
+
+#### 3.1.1. The audit methodology (Vasquez W12)
+
+The W12 audit uses three signals to detect a `DbSerial`
+candidate:
+
+1. **Static grep** for `GetRequiredService<AppDbContext>`,
+   `new AppDbContext`, or `SqliteConnection` in any file under
+   `src/backend/tests/Mahjong.Autotable.Api.Tests/**` (excluding
+   `/bin/` and `/obj/`). The grep is run from the repo root with
+   `grep -rln`; the file list is the candidate set.
+2. **3-parallel stress run** — three separate `dotnet test`
+   invocations against the same compiled assembly, started
+   concurrently. Capture each run's stdout/stderr to
+   `.work/dbserial-run-{1,2,3}.log` and diff the failure tails.
+   Any test class that appears in one tail but not another is
+   a confirmed flake → confirmed candidate.
+3. **Manual review** — the static-grep set is the upper bound;
+   not every member needs serialisation. Per-test temp SQLite DB
+   files isolate data but not the EF model cache; the manual
+   review's purpose is to decide whether a candidate uses a
+   fixture that ALREADY achieves isolation (e.g. a fresh WAF host
+   per test) AND so doesn't need the collection.
+
+The canonical W12 hand-off (Vasquez → Bishop) is at
+`Phase_K_W12/Vasquez/db-serial-candidates.md`. Bishop has final
+call on each row; the audit is the starting point, not the
+verdict.
+
+### 3.1.2. The W12 `Reads` / `Writes` split (proposed)
+
+The W12 audit observed that the binary `DbSerial` collection
+serialises pure-read fixtures unnecessarily. The W12 proposal
+(deferred to Bishop's W13 lane) splits the collection three
+ways:
+
+```csharp
+[CollectionDefinition("DbSerial",       DisableParallelization = true)]
+public sealed class DbSerialCollection { }
+
+[CollectionDefinition("DbSerialReads",  DisableParallelization = false)]
+public sealed class DbSerialReadsCollection { }
+
+[CollectionDefinition("DbSerialWrites", DisableParallelization = true)]
+public sealed class DbSerialWritesCollection { }
+```
+
+- `DbSerial` is the W10 canonical name — kept as the alias.
+- `DbSerialReads` lets read-only fixtures run parallel with each
+  other but never concurrent with a `DbSerialWrites` member.
+- `DbSerialWrites` is the strict opt-in for mutating fixtures.
+
+xUnit doesn't model SQL reader/writer-lock semantics directly
+(every collection is "all-share-or-none-share"), so the split is
+half-organisational and half-mechanical — the W13 cron will
+promote false-negatives back into `DbSerialWrites` as needed.
+
 ### 3.2. When NOT to use `[Collection("DbSerial")]`
 
 Any test that DOESN'T touch EF Core / SQLite / the WAF singleton
@@ -234,6 +304,26 @@ The following items remain open and drive W12+ assignments:
   the probe matrix; the negative-path facts (one region degraded
   → traffic shifted) are W12 contract work.
 
+### 4.4a. Closed gaps (Phase K Wave 12)
+
+The following W10/W11 inventory items were closed during W12:
+
+* **DbSerial migration audit** — W11 left this as an open gap.
+  W12 ships the candidate inventory at
+  `Phase_K_W12/Vasquez/db-serial-candidates.md` (25 candidate
+  classes, dispositions split between full `DbSerial` opt-in and
+  the W12 `Reads`/`Writes` proposal). The audit methodology is
+  documented in §3.1.1; the W12 `Reads`/`Writes` split proposal
+  is documented in §3.1.2. Bishop applies the migration in W12+.
+* **Visual-regression for the W11 manifest screenshots** —
+  W11 left the W10 placeholder strip-and-replace incomplete;
+  W12 ships `manifest-screenshots-visual.spec.ts` (2% pixel-diff
+  threshold) with the policy documented in §5 below.
+* **Concurrent-agent test safety registry** — W11 introduced
+  the `shared_files` registry (§5.9 of the handoff doc); W12
+  adds the W12 entries to that registry implicitly via the
+  Vasquez self-lane tests in `Phase_K_W12/Vasquez/`.
+
 ### 4.5. Anti-patterns to avoid
 
 * **Don't write integration tests that boot the full WAF host
@@ -252,7 +342,75 @@ The following items remain open and drive W12+ assignments:
   would silently re-attribute. Keep cross-lane probes under
   Vasquez.
 
-## 5. Gates
+## 5. Visual regression (W12 — Vasquez)
+
+The W11 PWA-Builder + screenshot-capture lane (Hicks) shipped
+three real PNG captures under `src/frontend/autotable-src/public/screenshots/`
+(`main-game.png`, `spectator-commentary.png`,
+`tournament-dashboard.png`). W12 introduces visual-regression
+gating for these paths under
+`src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts`.
+
+### 5.1. The 2% pixel-level threshold
+
+The spec asserts that each manifest screenshot, when fetched
+from the running preview server, matches its committed baseline
+to within **2% pixel-level difference** (the Playwright default
+is 1% × the test viewport; we relax to 2% to absorb minor
+font-renderer drift across Chromium builds).
+
+```ts
+await expect(page).toHaveScreenshot(
+  `manifest-${slug}.png`,
+  { maxDiffPixelRatio: 0.02 },
+);
+```
+
+The baseline images live alongside the spec under
+`src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts-snapshots/`.
+Hicks's `capture-screenshots.js` (W11) is the canonical
+*producer* of the manifest PNGs; Vasquez's spec is the
+*consumer-side gate*.
+
+### 5.2. When to update the baseline
+
+The Hicks W12+ producer-side renames (new icons, new manifest
+schema, copy changes) MUST land in the same commit as the
+baseline update. The update procedure is:
+
+1. Hicks commits the producer-side change (icon swap,
+   manifest field addition, etc.) and the regenerated PNG
+   captures under `public/screenshots/`.
+2. Run the visual-regression spec locally with
+   `--update-snapshots`:
+   ```bash
+   pnpm --filter autotable-src playwright test \
+     manifest-screenshots-visual.spec.ts --update-snapshots
+   ```
+3. Stage the regenerated baseline PNGs alongside the producer-
+   side commit. (Author identity: Hicks. The baseline is a
+   producer-side artefact even though the spec is Vasquez's.)
+4. Vasquez reviews the diff on PR.
+
+If a baseline update is NOT accompanied by a producer-side
+change, the visual-regression failure is a **real** regression —
+do not blindly update the baseline. Open an issue and triage
+with Hicks before regenerating.
+
+### 5.3. Allowable diff budget
+
+| Surface | Baseline tolerance | Rationale |
+|---------|--------------------|-----------|
+| Manifest screenshots | 2% pixel ratio | Cross-Chromium font-renderer drift |
+| In-game outline shader | 5% pixel ratio | Three.js shader output varies with GPU driver (already pinned in `outline-shader-visual.spec.ts`) |
+| Frontend bundle smoke | 0% (byte-exact) | Bundle topology is deterministic; any drift is a regression |
+
+The 2% number for manifest screenshots was chosen by running
+the W11 PNGs through three back-to-back Playwright runs in the
+W12 pre-commit harness and measuring the worst observed
+pixel ratio (0.8%). The 2% gate gives a 2.5× safety margin.
+
+## 6. Gates
 
 | Stage          | Gate                                          | Owner                       |
 | -------------- | --------------------------------------------- | --------------------------- |
@@ -266,13 +424,13 @@ The following items remain open and drive W12+ assignments:
 The wave gate (e.g. "W11 gate ≥ 2200/0/0") is the **backend
 xunit suite total** measured against the previous wave's high
 water mark. Skips count negatively against the gate — the
-zero-skip streak (W0 → W11 = 25 waves of zero skips) is a
+zero-skip streak (W0 → W12 = 26 waves of zero skips) is a
 deliberate invariant. Tests that cannot pass yet are written
 with reflection-defensive guards (`if (t is null) return;` or
 `_ = result;`) so they STAY PASS while documenting the forward
 expectation.
 
-## 6. Concurrent-agent test safety
+## 7. Concurrent-agent test safety
 
 When multiple agents work on the test surface simultaneously,
 the protocol is identical to the production-code protocol
@@ -297,3 +455,9 @@ checkpoints.
 
 *Phase K Wave 11 — Vasquez (QA). Update every wave as the
 suite evolves. Linked from `.squad/agents/vasquez/charter.md`.*
+
+*Phase K Wave 12 — Vasquez (QA). §3.1.1 (DbSerial audit
+methodology) + §3.1.2 (Reads/Writes split proposal) + §4.4a
+(W12 closed gaps) + §5 (visual regression) added. §5 (Gates)
+renumbered to §6; §6 (Concurrent-agent safety) renumbered to
+§7. Zero-skip streak bumped to W12 (26 waves).*

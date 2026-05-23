@@ -612,3 +612,37 @@ The `JwksCacheService.SizeLimit` constant is pinned at 16 (contract test in `Pha
 * [`infra/k8s/overlays/staging/jwt-rsa-keys-secret.yaml`](../infra/k8s/overlays/staging/jwt-rsa-keys-secret.yaml) — Wave-7 staging equivalent (`mahjong-jwt-rsa-keys-staging`).
 * [`infra/k8s/overlays/prod/kustomization.yaml`](../infra/k8s/overlays/prod/kustomization.yaml) — both `envFrom` mounts (HS256 + RS256), each `optional: true`.
 * [`infra/k8s/overlays/prod/secret-template.yaml`](../infra/k8s/overlays/prod/secret-template.yaml) — omnibus ESO (kept distinct from the JWT keys ESO so rotation surfaces don't entangle).
+
+## 13. Staged rotation overlap window (Phase K Wave 12)
+
+Phase K Wave 12 lands the explicit *staged rotation overlap window* contract: a 30-day default period during which **both** the new active signer and the previous active key continue to validate, while only the new key is used to mint tokens. Operators can override the window via `Authentication:RotationOverlapDays` (integer days) and pin the calendar start via `Authentication:RotationStartUtc` (ISO-8601 timestamp).
+
+### Surface
+
+* `Auth/JwtStagedRotationPolicy.cs` — singleton seam consumed by the cadence validator + the W13 operator dashboard.
+* Properties:
+  * `OverlapDays` — resolved window length (defaults to 30 when the config value is ≤ 0).
+  * `RotationStartUtc` — pinned start timestamp (null when no rotation is in progress).
+  * `OverlapWindowEndsAtUtc` — derived `RotationStartUtc + OverlapDays`.
+  * `IsWithinOverlapWindow(utcNow)` — predicate used by audit/dashboard surfaces.
+  * `RemainingOverlapDays(utcNow)` — countdown surfaced as a banner / metric in W13.
+
+### Why a separate policy seam
+
+The existing `JwtSigningKeyProvider` already supports multi-key validation (active + previous + archive). The W12 policy doesn't change that behaviour — it documents and surfaces the **operator-facing contract** that the cadence validator + ops dashboard hook for "are we in a staged rotation right now?" The signing path is unaffected: index 0 in `JwtRsaKeys[]` continues to be the active signer.
+
+### Operator playbook
+
+1. **Begin rotation:** add the new key to `Authentication:JwtRsaKeys[0]`, demote the old key to `[1]`, and stamp `Authentication:RotationStartUtc` with the current UTC timestamp. Roll the pods.
+2. **Validate during overlap:** every JWT signed under the old or new key continues to verify. The W11 cadence validator hard-asserts `JwksCacheTtlSeconds ≤ RotationGracePeriodSeconds / 2`; the new W12 policy is informational on top of that.
+3. **Close the window:** after `OverlapWindowEndsAtUtc` has passed, remove the previous key from `JwtRsaKeys[1]` (or demote it to archive). Clear `RotationStartUtc` to drop the dashboard banner.
+
+### Contract pins
+
+Hard-asserted in `tests/Mahjong.Autotable.Api.Tests/Phase_K_W12/Bishop/JwtStagedRotationFacts.cs`:
+
+* `JwtStagedRotationPolicy.DefaultOverlapDays == 30`.
+* `AuthOptions.RotationOverlapDays` defaults to 30, `RotationStartUtc` defaults to null.
+* `OverlapWindowEndsAtUtc == RotationStartUtc + OverlapDays` when both are set.
+* `IsWithinOverlapWindow` is true in `[start, start + OverlapDays]` and false outside.
+* `RemainingOverlapDays` counts down from `OverlapDays` to 0 across the window.

@@ -1,0 +1,304 @@
+# Phase K Wave 12 — Apone (DevOps).
+#
+# Prod-shape Redis load test — k6 scenario manifest.
+#
+# Drives the W11 prod Redis cluster (`infra/terraform/envs/prod/`
+# at `cache.r6g.large` multi-AZ) against the W10 Bishop
+# `RedisIdempotencyStore` API surface — specifically the
+# idempotent POST endpoints (lookup + write) that the runtime
+# protects via the `Idempotency-Key` header.
+#
+# Why a load test re-baseline at W12:
+#
+#   * W10's load-test baseline (`docs/load-test-results.md`) was
+#     run against `cache.t4g.micro` (staging) and a Debug-build
+#     of the .NET API. Both numbers were a lower bound for the
+#     prod-tier shape (W11 retro action item §3 in
+#     `docs/retro-2026-09.md`).
+#   * W11 shipped the prod env stack at `cache.r6g.large` (graviton2
+#     + memory-optimised) but the cutover is blocked on EKS prod
+#     cluster bring-up — the apply doesn't happen this wave.
+#   * THIS manifest captures the load-test METHODOLOGY so the
+#     re-baseline is reproducible once the cluster lands.
+#     Hudson's original W10 harness is the upstream methodology
+#     reference; this is the prod-Redis-specific extension that
+#     stresses the idempotency-cache hot-set rather than the
+#     full lobby surface.
+#
+# SLO targets (W12 — prod-tier `cache.r6g.large`):
+#
+#   * Sustained throughput: 1000 RPS for ≥ 5 min.
+#   * p99 latency for the idempotency-cache lookup: < 5 ms.
+#   * p99 latency for the idempotency-cache write: < 8 ms.
+#   * Error rate: < 0.1% (5xx + connection errors combined).
+#   * Eviction rate (CloudWatch `Evictions`): 0 for the full
+#     run (the hot-set MUST fit comfortably under the `r6g.large`
+#     12.85 GiB memory; eviction means the node type is undersized).
+#
+# Why these targets:
+#
+#   * 1000 RPS matches the W7 WAF rate-based rule's per-IP ceiling
+#     (above that the WAF takes over) — a single client + a single
+#     IP can't legitimately do more sustained, so re-baselining at
+#     this rate gives us "fleet-equivalent" pressure across a
+#     synthetic mix of IPs.
+#   * The < 5 ms p99 lookup ceiling matches the in-process L1 cache
+#     budget — a Redis round-trip should NOT degrade the .NET
+#     request-pipeline latency floor (the idempotency check is
+#     synchronous on the hot path).
+#
+# Runner shape:
+#
+#   * k6 OSS, image `grafana/k6:0.51.0`.
+#   * Concurrency: 50 VUs (virtual users), shared-iterations
+#     scenario at 1000 RPS sustained.
+#   * Duration: 5 min sustained + 1 min ramp-up + 1 min ramp-down
+#     = 7 min total run.
+#
+# Where this runs:
+#
+#   * NOT a nightly cron — the W1 `load-test-nightly.yml` exercises
+#     the API surface; this manifest is OPERATOR-DRIVEN
+#     (`kubectl run` against a load-test namespace OR a
+#     `workflow_dispatch` GitHub job once the prod cluster is up).
+#   * Invocation patterns documented in `docs/redis-cluster.md §4
+#     "Load-test methodology"` (added in W12).
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-load-test-script
+  namespace: load-test
+  labels:
+    app.kubernetes.io/name: redis-load-test
+    app.kubernetes.io/component: k6-script
+    app.kubernetes.io/managed-by: apone
+    app.kubernetes.io/part-of: mahjong-autotable
+data:
+  # k6 script — sustained idempotent POST traffic against the
+  # production base URL. The script generates a deterministic
+  # `Idempotency-Key` distribution so:
+  #
+  #   * 80% of keys are FIRST seen (write path) — exercises the
+  #     `SETNX` + TTL set against Redis.
+  #   * 20% of keys are RE-USED within the 5 min idempotency
+  #     window — exercises the `GET` lookup path against the
+  #     hot-set. The 20:80 ratio matches the W10 production
+  #     traffic profile Hudson captured at the staging baseline.
+  #
+  # The script does NOT bypass the WAF — it relies on the load-
+  # test namespace being in the EKS workers' SG, so traffic
+  # exits the cluster's VPC NAT gateway, hits the ALB, gets
+  # WAF-evaluated, and lands on the runtime. THIS IS DELIBERATE
+  # — we want the WHOLE path under load, not just Redis.
+  script.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Counter, Trend, Rate } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
+
+    const idempLookupLatency = new Trend('idem_lookup_latency_ms', true);
+    const idempWriteLatency = new Trend('idem_write_latency_ms', true);
+    const errorRate = new Rate('error_rate');
+    const reusedKeyCount = new Counter('reused_idempotency_keys');
+
+    export const options = {
+      scenarios: {
+        sustained_1000_rps: {
+          executor: 'constant-arrival-rate',
+          rate: 1000,
+          timeUnit: '1s',
+          duration: '5m',
+          preAllocatedVUs: 50,
+          maxVUs: 200,
+          gracefulStop: '30s',
+          startTime: '1m', // ramp-up window
+        },
+      },
+      thresholds: {
+        // W12 prod-tier `cache.r6g.large` targets.
+        'idem_lookup_latency_ms': ['p(99)<5'],
+        'idem_write_latency_ms': ['p(99)<8'],
+        'error_rate': ['rate<0.001'],
+        'http_req_failed': ['rate<0.001'],
+      },
+      // Re-baseline run output destination — JSON summary uploaded
+      // as a GitHub workflow artefact + a row appended to
+      // `docs/load-test-results.md`.
+      summaryTrendStats: ['min', 'med', 'avg', 'p(95)', 'p(99)', 'p(99.9)', 'max'],
+    };
+
+    // Deterministic key pool — 80/20 first-seen / re-used ratio.
+    // The pool is pre-seeded so re-used keys exist in Redis when
+    // the lookup-path VUs hit them.
+    const REUSE_POOL_SIZE = 200;
+    const reusePool = [];
+    for (let i = 0; i < REUSE_POOL_SIZE; i++) {
+      reusePool.push(`reuse-${i}-${randomString(16)}`);
+    }
+
+    const BASE = __ENV.BASE_URL || 'https://mahjong.example.com';
+    const PATH = __ENV.IDEMPOTENT_PATH || '/api/v1/matchmaking/lobby/join';
+
+    export default function () {
+      const reuse = Math.random() < 0.2;
+      const key = reuse
+        ? reusePool[Math.floor(Math.random() * REUSE_POOL_SIZE)]
+        : `fresh-${randomString(24)}`;
+
+      const payload = JSON.stringify({
+        gameId: `loadtest-${randomString(8)}`,
+        seat: Math.floor(Math.random() * 4),
+        bot: true,
+      });
+
+      const params = {
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': key,
+          'X-LoadTest-Run': __ENV.LOADTEST_RUN_ID || 'w12-baseline',
+        },
+        tags: { path: 'idempotent_post' },
+      };
+
+      const res = http.post(`${BASE}${PATH}`, payload, params);
+
+      const ok = check(res, {
+        'status is 2xx': (r) => r.status >= 200 && r.status < 300,
+      });
+
+      errorRate.add(!ok);
+
+      // Distinguish the cache lookup vs write paths via the
+      // `X-Idempotency-Cache` response header (Bishop's W10
+      // runtime emits it on every idempotent POST — `HIT` =
+      // lookup served, `MISS` = first-seen write).
+      const cacheHeader = res.headers['X-Idempotency-Cache'] || res.headers['x-idempotency-cache'];
+      if (cacheHeader === 'HIT') {
+        idempLookupLatency.add(res.timings.duration);
+        reusedKeyCount.add(1);
+      } else if (cacheHeader === 'MISS') {
+        idempWriteLatency.add(res.timings.duration);
+      }
+    }
+
+    export function handleSummary(data) {
+      // Stdout + an explicit JSON path so the surrounding shell
+      // (or workflow step) can pick it up for the
+      // load-test-results.md history append.
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: false }),
+        '/results/redis-load-test-summary.json': JSON.stringify(data, null, 2),
+      };
+    }
+
+    function textSummary(data, options) {
+      const indent = options.indent || '';
+      const lines = [];
+      lines.push(`${indent}--- redis-load-test summary ---`);
+      for (const [name, metric] of Object.entries(data.metrics)) {
+        if (metric.values && (name.startsWith('idem_') || name === 'error_rate' || name === 'http_req_failed' || name === 'http_req_duration')) {
+          lines.push(`${indent}${name}: ${JSON.stringify(metric.values)}`);
+        }
+      }
+      return lines.join('\n');
+    }
+
+---
+# k6 Job — operator runs this against the production cluster
+# after `terraform apply` of the prod Redis stack + ESO sync.
+# Single-shot Job (no schedule); the cluster's job retention
+# policy GCs the pod after success.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-load-test
+  namespace: load-test
+  labels:
+    app.kubernetes.io/name: redis-load-test
+    app.kubernetes.io/component: k6-runner
+    app.kubernetes.io/managed-by: apone
+    app.kubernetes.io/part-of: mahjong-autotable
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis-load-test
+        app.kubernetes.io/component: k6-runner
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.51.0
+          imagePullPolicy: IfNotPresent
+          # Read-only root + non-root + drop-all caps — matches the
+          # cluster's W4 PodSecurity baseline-`restricted` profile.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
+          args:
+            - "run"
+            - "--out"
+            - "json=/results/redis-load-test-raw.json"
+            - "/scripts/script.js"
+          env:
+            - name: BASE_URL
+              value: "https://mahjong.example.com"
+            - name: IDEMPOTENT_PATH
+              value: "/api/v1/matchmaking/lobby/join"
+            - name: LOADTEST_RUN_ID
+              value: "w12-baseline"
+            - name: K6_NO_USAGE_REPORT
+              value: "true"
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+            - name: results
+              mountPath: /results
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: script
+          configMap:
+            name: redis-load-test-script
+            items:
+              - key: script.js
+                path: script.js
+        - name: results
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+
+---
+# Namespace for the load test. Out-of-band — apply BEFORE the
+# Job manifest above. Labelled per the W4 PodSecurity baseline
+# (`restricted`) so the k6 pod gets the right SCC.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: load-test
+  labels:
+    app.kubernetes.io/managed-by: apone
+    app.kubernetes.io/part-of: mahjong-autotable
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

@@ -171,6 +171,12 @@ module "edge" {
     price_class              = var.cloudfront_price_class
     minimum_protocol_version = "TLSv1.2_2021"
   }
+
+  # Multi-region endpoints (Phase K Wave 12). Empty by default;
+  # operator populates via tfvars once the regional EKS clusters
+  # are stood up. Drives the latency-based RR set + per-region
+  # health checks in `modules/edge/r53-regional-records.tf`.
+  regional_endpoints = var.regional_endpoints
 }
 
 # ── Redis module (W10 — IdempotencyStore backing; W11 prod) ──────

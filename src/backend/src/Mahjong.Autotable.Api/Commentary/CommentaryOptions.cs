@@ -80,6 +80,39 @@ public sealed class CommentaryOptions
     public bool ThrowOnMonthlyCap { get; set; } = false;
 
     /// <summary>
+    /// Phase K Wave 12 — Bishop. LLM cost budgeting. The
+    /// <see cref="CommentaryCostBudget"/> surface multiplies the
+    /// usage meter's token counts by <see cref="CostBudget.TokensPerDollar"/>
+    /// to expose a USD ledger; at the configured cap the runtime
+    /// switches generation to the deterministic stub.
+    /// See <c>docs/commentary-llm.md §4</c>.
+    /// </summary>
+    public CostBudgetOptions CostBudget { get; set; } = new();
+
+    /// <summary>
+    /// Phase K Wave 12 — Bishop. Nested cost-budget knobs. Held as
+    /// a separate type so the appsettings binding stays explicit
+    /// (<c>Commentary:CostBudget:MonthlyCapUsd</c>).
+    /// </summary>
+    public sealed class CostBudgetOptions
+    {
+        /// <summary>Monthly cap in USD. 0 = no cap (default for
+        /// local dev). 100 is the canonical production default.</summary>
+        public decimal MonthlyCapUsd { get; set; } = 0m;
+
+        /// <summary>How many tokens equate to one USD. 200_000 is
+        /// the published gpt-4o-mini rate; operators tune this per
+        /// the active <see cref="Model"/>.</summary>
+        public long TokensPerDollar { get; set; } = 200_000L;
+
+        /// <summary>Warning threshold expressed as a fraction of
+        /// the monthly cap. Default 0.8 (80%). When crossed, the
+        /// surface emits a SignalR + audit warning event.</summary>
+        public double WarnThreshold { get; set; } = 0.8;
+    }
+
+
+    /// <summary>
     /// Resolves the effective API key, expanding the
     /// <c>"env:VAR_NAME"</c> indirection when present. Returns null
     /// when the key is unset/empty so callers can short-circuit

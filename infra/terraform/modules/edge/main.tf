@@ -521,9 +521,15 @@ resource "aws_cloudfront_distribution" "this" {
 # When CloudFront enabled: ALIAS A → distribution.
 # When CloudFront disabled + alb_dns_name supplied: ALIAS A → ALB.
 # When both disabled: NO record (operator-driven).
+#
+# Phase K Wave 12 — when `var.regional_endpoints` is non-empty,
+# this single-ALIAS record is SKIPPED via `local.use_latency_apex`
+# (the latency-based RR set in r53-regional-records.tf takes over
+# the apex). The two record shapes can't coexist on the same name
+# (AWS Route 53 forbids overlapping records of the same type).
 
 resource "aws_route53_record" "apex" {
-  count   = (var.cloudfront.enabled || var.alb_dns_name != "") ? 1 : 0
+  count   = (!local.use_latency_apex && (var.cloudfront.enabled || var.alb_dns_name != "")) ? 1 : 0
   zone_id = local.hosted_zone_id
   name    = var.domain_name
   type    = "A"

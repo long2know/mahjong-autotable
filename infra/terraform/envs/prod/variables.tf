@@ -181,3 +181,29 @@ variable "redis_kms_key_id" {
   type        = string
   default     = ""
 }
+
+# ── Multi-region endpoints (Phase K Wave 12) ─────────────────────
+#
+# Wires the W12 per-region R53 records + health checks in the edge
+# module. Empty list (default) preserves the W11 single-ALB apex
+# behaviour — operator opts in once the regional EKS clusters are
+# stood up.
+#
+# Operator-supplied per-region ALB DNS + zone IDs are typically
+# captured from each regional cluster's `kubectl -n ingress-nginx
+# get svc ingress-nginx-controller` output (DNS) + `aws elbv2
+# describe-load-balancers` (zone ID).
+#
+# See `docs/edge-region-probes.md §3` for the W12 hand-off
+# walkthrough.
+
+variable "regional_endpoints" {
+  description = "Per-region endpoint config for the W12 multi-region latency-based apex RR set + per-region health checks. Empty list (default) skips the multi-region wiring — apex stays on the single-ALB ALIAS from W11."
+  type = list(object({
+    region       = string
+    hostname     = string
+    alb_dns_name = string
+    alb_zone_id  = string
+  }))
+  default = []
+}

@@ -205,29 +205,34 @@ function copyStaticAssets(): {
         const iconDst = `${out}/img/${name}`;
         if (existsSync(iconSrc)) copyFileSync(iconSrc, iconDst);
       }
-      // Phase K Wave 10 — Manifest gap-fills.  Lighthouse 13 +
-      // PWA Builder flag the manifest's `screenshots[]` entries
-      // as 404s without these copies.  The placeholder assets
-      // live next to the icons (committed under `img/`).  See
-      // `docs/frontend-pwa-audit.md §4` for the Wave 10 manifest
-      // checklist + the screenshot generation recipe.
-      const screenshotNames = [
-        'screenshot-lobby.auto.png',
-        'screenshot-table.auto.png',
-        'screenshot-mobile.auto.png',
-      ];
-      for (const name of screenshotNames) {
-        const src = `${root}/img/${name}`;
-        const dst = `${out}/img/${name}`;
-        if (existsSync(src)) copyFileSync(src, dst);
-      }
+      // Phase K Wave 12 — W10 placeholder screenshot copy block removed.
+      //
+      // W10 shipped three mid-grey placeholder PNGs (`img/screenshot-
+      // {lobby,table,mobile}.auto.png`).  W11 replaced those with real
+      // Playwright captures at `screenshots/{main-game,
+      // spectator-commentary,tournament-dashboard}.png` (copy block
+      // immediately below).  The W11 manifest.webmanifest's
+      // `screenshots[]` field references ONLY the real captures — no
+      // entry in the live manifest points at the W10 placeholders.
+      //
+      // W12 retires the placeholder copy block + deletes the source
+      // PNGs (see `git mv` history under `img/screenshot-*.auto.png`).
+      // Only real screenshots ship in the bundle.  If a stale PWA
+      // cache from a pre-W11 install ever requests the old path the
+      // SW will surface a 404, which is the same behaviour the user
+      // would get if they typed the URL manually — acceptable since
+      // those URLs were never user-visible.
       // Phase K Wave 11 — Real PWA screenshots captured by
       // Playwright (see `scripts/capture-screenshots.js`).  These
       // live under `static/screenshots/` (committed) and are
-      // copied to `dist/screenshots/` so the W11 manifest's new
-      // `screenshots[]` form_factor + label entries resolve.  The
-      // W10 placeholder copy above stays as a safety net for
-      // schemas that point at the legacy `img/screenshot-*` paths.
+      // copied to `dist/screenshots/` so the W11 manifest's
+      // `screenshots[]` form_factor + label entries resolve.
+      //
+      // W12 retired the W10 placeholder copy block + deleted the
+      // legacy `img/screenshot-*.auto.png` PNGs — only real
+      // captures ship in the bundle (no safety net for stale
+      // pre-W11 PWA cache entries; the manifest points solely at
+      // `screenshots/*.png`).
       const realScreenshots = [
         'main-game.png',              // 1024×768, form_factor: wide
         'spectator-commentary.png',   // 768×1024, form_factor: narrow
@@ -721,7 +726,46 @@ function stripWebGLShadowMap(): { name: string; enforce: 'pre'; transform(code: 
 // roll back.  The unstripped baseline lives at W10's 497.44 kB.
 const SHADER_CHUNKS_TO_EMPTY = [
   // ShaderChunk barrel: unused chunks (mostly env-map related).
+  //
+  // W11 stripped `cube_uv_reflection_fragment` (~2.3 KB GLSL).  W12
+  // extends the same surgical approach to:
+  //
+  //   • shadowmap_pars_fragment / _pars_vertex / _vertex /
+  //     shadowmask_pars_fragment — every shadow-related ShaderChunk.
+  //     The autotable never enables `renderer.shadowMap.enabled` nor
+  //     sets `castShadow` / `receiveShadow` on any mesh, so the bulk
+  //     of each chunk's body sits inside `#ifdef USE_SHADOWMAP` (which
+  //     the GLSL preprocessor strips when the renderer never defines
+  //     the macro).  `shadowmask_pars_fragment` defines
+  //     `getShadowMask()` which is ONLY referenced from `shadow_frag`
+  //     (W9-stripped ShadowMaterial shader) — safe to empty entirely.
+  //   • envmap_* (6 chunks) — every envmap chunk's body sits inside
+  //     `#ifdef USE_ENVMAP`.  The autotable uses only 2D textures
+  //     (`tiles.auto.png`, `sticks.auto.png`, `center.auto.png`,
+  //     `winds.auto.png`) — no `scene.environment`, no `material.envMap`
+  //     — so USE_ENVMAP is never defined and the entire #ifdef block
+  //     is stripped at GLSL compile time.  The chunk body in the JS
+  //     bundle is therefore deadweight.
+  //
+  // Combined W12 saving: ~10-12 KB of GLSL strings off the renderer
+  // chunk (uncompressed; ~3-4 KB after esbuild + gzip).  See
+  // `docs/frontend-three-budget.md §8` for the full surgical recipe.
+  //
+  // Risk + back-out: identical to W11 — if a future scene introduces
+  // `renderer.shadowMap.enabled = true` or `scene.environment = ...`,
+  // GLSL compile will hit a syntax error on the empty include.  Roll
+  // back by removing the offending name from this list.
   'cube_uv_reflection_fragment',
+  'shadowmap_pars_fragment',
+  'shadowmap_pars_vertex',
+  'shadowmap_vertex',
+  'shadowmask_pars_fragment',
+  'envmap_fragment',
+  'envmap_common_pars_fragment',
+  'envmap_pars_fragment',
+  'envmap_pars_vertex',
+  'envmap_physical_pars_fragment',
+  'envmap_vertex',
 ];
 
 const SHADER_STRINGS_TO_EMPTY = [
@@ -796,6 +840,118 @@ function stripUnusedShaderChunks(): { name: string; enforce: 'pre'; transform(co
       if (replaced === 0) return null;
       const after = out.length;
       console.log(`[shaderchunk-strip] ${id.split('node_modules/').pop()} — emptied ${replaced} shader string(s), saved ${(before - after).toLocaleString()} chars (${before.toLocaleString()} → ${after.toLocaleString()})`);
+      return { code: out, map: null };
+    },
+  };
+}
+
+
+// ── Phase K Wave 12 — UniformsLib unused-entries strip ──────────
+//
+// `three.module.js:724` declares a `const UniformsLib = { ... }`
+// registry that ShaderLib references via `mergeUniforms([...])` —
+// each material's per-shader-program uniform set is composed from
+// these top-level keys at build time.
+//
+// The autotable scene uses only:
+//   • MeshBasicMaterial    → ShaderLib.basic    (UniformsLib: common,
+//                            specularmap, envmap, aomap, lightmap, fog)
+//   • MeshLambertMaterial  → ShaderLib.lambert  (same as basic plus
+//                            emissivemap, bumpmap, normalmap,
+//                            displacementmap, lights)
+//   • LineBasicMaterial    → shares ShaderLib.basic
+//   • ShaderMaterial       → CustomOutline (autotable's own shader)
+//
+// Five UniformsLib entries are referenced ONLY by ShaderLib material
+// definitions whose material classes were W9-stubbed:
+//
+//   • UniformsLib.roughnessmap → ShaderLib.standard (W9 PBR stub)
+//   • UniformsLib.metalnessmap → ShaderLib.standard (W9 PBR stub)
+//   • UniformsLib.gradientmap  → ShaderLib.toon (W9 toon stub)
+//   • UniformsLib.points       → ShaderLib.points (W9 Points stub)
+//   • UniformsLib.sprite       → ShaderLib.sprite (W9 Sprite stub)
+//
+// Even though the stubbed materials never instantiate their
+// ShaderLib entries at runtime, Rollup keeps the UniformsLib
+// definitions live because ShaderLib still names them statically
+// at module load.  We replace each entry's value with an empty
+// object literal (the ShaderLib references stay intact — the keys
+// remain enumerable, just yielding `{}` — and the runtime materials
+// that would consume them are stubbed anyway).
+//
+// Combined W12 saving: ~0.5-1 KB after minification.  Modest, but
+// the strip stays surgical and contained to the well-typed map
+// below — no regex over the giant module file.
+//
+// Risk + back-out: if a future wave un-stubs PBR / toon / points /
+// sprite, the un-stubbed ShaderLib programs will silently yield
+// undefined uniforms.  Symptom: console warns from three.js about
+// missing uniforms when the material is actually used.  Roll back
+// by removing the offending key from this list.
+const UNIFORMS_LIB_KEYS_TO_EMPTY = [
+  'roughnessmap',
+  'metalnessmap',
+  'gradientmap',
+  'points',
+  'sprite',
+];
+
+function stripUnusedUniformsLib(): { name: string; enforce: 'pre'; transform(code: string, id: string): { code: string; map: null } | null } {
+  return {
+    name: 'autotable-three-uniformslib-strip',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.includes('/three/build/three.module.js')) return null;
+
+      const before = code.length;
+      let out = code;
+      let replaced = 0;
+
+      for (const key of UNIFORMS_LIB_KEYS_TO_EMPTY) {
+        // Match `<tab><key>: {` followed by depth-walked body close
+        // `<tab>}` at the same indent.  The UniformsLib registry is
+        // formatted with a single-tab indent per top-level entry, and
+        // each entry's value is an object literal — we don't bother
+        // with arbitrary expressions because we know the surface.
+        const headerRe = new RegExp(`(\\n\\t)(${key})(:\\s*\\{)`);
+        const m = headerRe.exec(out);
+        if (m === null) continue;
+        const openBraceIdx = m.index + m[0].length - 1;
+        let depth = 1;
+        let i = openBraceIdx + 1;
+        while (i < out.length && depth > 0) {
+          const ch = out[i];
+          if (ch === '{') depth++;
+          else if (ch === '}') depth--;
+          else if (ch === '/' && out[i + 1] === '/') {
+            const eol = out.indexOf('\n', i);
+            i = eol === -1 ? out.length : eol;
+            continue;
+          } else if (ch === '/' && out[i + 1] === '*') {
+            const close = out.indexOf('*/', i + 2);
+            i = close === -1 ? out.length : close + 2;
+            continue;
+          } else if (ch === '"' || ch === "'" || ch === '`') {
+            const quote = ch;
+            i++;
+            while (i < out.length && out[i] !== quote) {
+              if (out[i] === '\\') i++;
+              i++;
+            }
+          }
+          i++;
+        }
+        if (depth !== 0) {
+          console.warn(`[uniformslib-strip] could not find matching brace for ${key}; skipping`);
+          continue;
+        }
+        out = out.slice(0, openBraceIdx) + `{}` + out.slice(i);
+        replaced++;
+      }
+
+      if (replaced === 0) return null;
+      const after = out.length;
+      console.log(`[uniformslib-strip] ${id.split('node_modules/').pop()} — emptied ${replaced} UniformsLib entr(ies), saved ${(before - after).toLocaleString()} chars (${before.toLocaleString()} → ${after.toLocaleString()})`);
       return { code: out, map: null };
     },
   };
@@ -982,5 +1138,5 @@ export default defineConfig({
   esbuild: {
     legalComments: 'none',
   },
-  plugins: [stripUnusedThreeMaterials(), stripWebGLShadowMap(), stripUnusedShaderChunks(), copyStaticAssets(), runSwManifestScript(), appendDistSize()],
+  plugins: [stripUnusedThreeMaterials(), stripWebGLShadowMap(), stripUnusedShaderChunks(), stripUnusedUniformsLib(), copyStaticAssets(), runSwManifestScript(), appendDistSize()],
 });

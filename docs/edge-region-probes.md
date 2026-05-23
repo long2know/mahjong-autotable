@@ -71,16 +71,22 @@ variables. Each may be:
   operator wants to rely on Anycast / global resolution and
   measure the regional path purely by runner topology.
 * A **region-anchored** hostname
-  (`https://us-east-1.mahjong.example.com`) if W11+ ships
-  region-pinned R53 records (NOT in W11 scope).
+  (`https://us-east-1.mahjong.example.com`) routed via the W12
+  per-region R53 records (see §3.1 below).
 
-The W11 default is **same root URL** — the matrix derives
-its regional signal from the GitHub-hosted runners' egress
+The W11 default was **same root URL** — the matrix derived its
+regional signal from the GitHub-hosted runners' egress
 distribution. The runners themselves don't run in
 ap-southeast-1; the probe captures the
 US-runner → AP-edge path. That's deliberate: real-world traffic
 ALSO crosses runner-to-edge distance, and the synthetic must
 mirror it.
+
+W12 lands the region-anchored hostname path: operators can now
+provision per-region ALIAS records pointing at each regional
+ALB + a latency-based RR set on the apex. See §3.1 for the
+shape and §3.2 for the cutover from "same root URL" to
+region-anchored.
 
 If a region's variable is unset, the matrix leg falls back to
 a global default
@@ -88,6 +94,76 @@ a global default
 line. The leg still runs; the operator gets a yellow flag in
 the workflow output reminding them to provision the
 region-specific URL.
+
+### 3.1 W12 R53 records (terraform-managed)
+
+The `modules/edge/r53-regional-records.tf` file (W12 — Apone)
+provisions three resource types per entry in the
+`regional_endpoints` tfvar:
+
+```hcl
+# infra/terraform/envs/prod/terraform.tfvars
+regional_endpoints = [
+  {
+    region       = "us-east-1"
+    alb_dns_name = "k8s-mahjong-us-east-1-….elb.amazonaws.com"
+    alb_zone_id  = "Z35SXDOTRQ7X7K"
+    hostname     = "us-east-1.mahjong.example.com"
+  },
+  {
+    region       = "us-west-2"
+    alb_dns_name = "k8s-mahjong-us-west-2-….elb.amazonaws.com"
+    alb_zone_id  = "Z1H1FL5HABSF5"
+    hostname     = "us-west-2.mahjong.example.com"
+  },
+  {
+    region       = "eu-west-1"
+    alb_dns_name = "k8s-mahjong-eu-west-1-….elb.amazonaws.com"
+    alb_zone_id  = "Z32O12XQLNTSW2"
+    hostname     = "eu-west-1.mahjong.example.com"
+  },
+]
+```
+
+For each entry the terraform module creates:
+
+| Resource | Name | Purpose |
+|---|---|---|
+| `aws_route53_health_check.regional[<region>]` | per-region | TCP/443 probe against the regional ALB; ties the latency RR set's health-aware fail-over. |
+| `aws_route53_record.regional_alias[<region>]` | `<hostname>` | Region-anchored ALIAS A record (the per-region URL that the probe matrix uses). |
+| `aws_route53_record.latency_apex[<region>]` | `<domain_name>` | Latency-based RR set on the apex — clients hitting the apex resolve to the lowest-latency healthy region. |
+
+When `regional_endpoints` is NON-empty, the W7 apex A record
+(`aws_route53_record.apex`) is SKIPPED (count = 0) — the
+latency RR set takes over. When `regional_endpoints` is empty,
+the W7 single-region apex stays as-is (no behaviour change for
+operators who haven't yet stood up regional clusters).
+
+### 3.2 Cutover from "same root URL" to region-anchored
+
+The cutover is gated by **regional EKS cluster availability**.
+The recommended sequence is:
+
+1. Stand up the regional EKS clusters (Hicks W12+ owns the
+   cluster lifecycle; this doc covers only the EDGE side).
+2. Install nginx-ingress in each regional cluster and capture
+   the per-region ALB DNS hostnames.
+3. Populate `regional_endpoints` in `terraform.tfvars` and run
+   `terraform plan -out=regional.tfplan` — verify the plan
+   creates the per-region records and DESTROYS the W7 single-
+   region apex (NOT the regional aliases).
+4. `terraform apply regional.tfplan`.
+5. Update the four `vars.PROD_BASE_URL_<REGION>` repository
+   variables in the operator console (Settings → Variables →
+   Repository) to the new region-anchored hostnames.
+6. Re-run the prod-region-probes workflow and confirm the
+   regional legs hit their target regions (state markers in
+   §4 should show 200 OK on each leg).
+
+Rollback: see `docs/prod-cutover.md §5.3` — single `terraform
+apply -var='regional_endpoints=[]'` reverts to the W7 single-
+region apex shape. R53 propagation ≤ 60 s once the apex record
+is rewritten (TTL 60 in the W7 module).
 
 ## 4. State-marker decoding
 

@@ -211,3 +211,70 @@ variable "cloudfront" {
     error_message = "cloudfront.price_class must be one of PriceClass_100, PriceClass_200, PriceClass_All."
   }
 }
+
+# ── Per-region endpoints (Phase K Wave 12) ───────────────────────
+#
+# Operator passes one entry per region with its regional ALB DNS +
+# Route 53 zone ID + the desired regional hostname. The module
+# provisions, per entry:
+#
+#   * One Route 53 health check (HTTPS, `/api/v1/health`, 30 s
+#     interval, 3-failure threshold).
+#   * One per-region ALIAS A record (`<region>.<domain_name>`)
+#     pointing at that region's ALB.
+#   * One latency-based RR-set entry on the apex `<domain_name>`,
+#     gated by the per-region health check.
+#
+# Empty list (default) = the module skips all of the above —
+# backwards-compatible with the W11 baseline (single apex ALIAS
+# to one ALB or CloudFront). The W12 prod env stack populates
+# this list once the regional EKS clusters cut over; until then,
+# the apex stays on the single-region ALIAS.
+#
+# See `infra/terraform/modules/edge/r53-regional-records.tf` for
+# the resources + the apex-precedence logic.
+
+variable "regional_endpoints" {
+  description = <<-EOT
+    Per-region endpoint config for the multi-region latency-based
+    apex RR set + per-region health checks. One entry per region:
+
+      [
+        {
+          region       = "us-east-1"
+          hostname     = "us-east-1.mahjong.example.com"
+          alb_dns_name = "k8s-mahjong-prod-…us-east-1.elb.amazonaws.com"
+          alb_zone_id  = "Z35SXDOTRQ7X7K"
+        },
+        …
+      ]
+
+    Empty list (default) skips the W12 multi-region wiring — the
+    apex stays on the single-ALB ALIAS from W11.
+
+    `region` MUST be a valid Route 53 latency-record region code
+    (the AWS region string — `us-east-1`, `us-west-2`, etc.).
+    `hostname` MUST be a sub-domain of `var.domain_name` (the
+    module does NOT validate this — operator's responsibility).
+  EOT
+  type = list(object({
+    region       = string
+    hostname     = string
+    alb_dns_name = string
+    alb_zone_id  = string
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for r in var.regional_endpoints :
+      can(regex("^[a-z]{2}-[a-z]+-[0-9]+$", r.region))
+    ])
+    error_message = "Each regional_endpoints.region must look like an AWS region code (e.g. `us-east-1`, `ap-southeast-1`)."
+  }
+
+  validation {
+    condition     = length(distinct([for r in var.regional_endpoints : r.region])) == length(var.regional_endpoints)
+    error_message = "regional_endpoints.region values must be unique (Route 53 set_identifier per latency record)."
+  }
+}

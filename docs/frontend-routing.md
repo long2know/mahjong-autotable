@@ -90,6 +90,51 @@ This is the **only** function the boot sequence in
 `src/index.ts` should call. The other two exports are utility
 hooks for future tests / future shortcuts.
 
+### `?action=replay` (W12) — co-parameter contract
+
+`replay` is the first action keyword that depends on a
+co-parameter on the same URL. The wire shape is:
+
+```
+/?action=replay&replayId=<guid>
+```
+
+`replayId` MUST appear alongside `action=replay`; the router
+reads `replayId` from the same `URLSearchParams` instance after
+identifying the action. Missing / empty / whitespace-only
+`replayId` is treated as a fetch failure (same "Replay not
+found" toast as a 404), to keep the user-visible error path
+uniform across configuration mistakes vs. real misses.
+
+Dispatch sequence (W12):
+
+1. `parseActionFromUrl()` returns `"replay"`.
+2. `handlePwaActionFromUrl()` switches to the `replay` case.
+3. `dispatchReplay()`:
+   a. Reads `replayId` from the URL.
+   b. Strips BOTH `action` and `replayId` from the URL via
+      `history.replaceState` so a mid-flight refresh doesn't
+      re-fire the shortcut.
+   c. `fetch("/api/replays/{replayId}")` (Bishop W12 endpoint).
+   d. On success: rewrites the URL to `/replay/{replayId}`
+      and hands the JSON payload to
+      `replay-launcher.ts:openReplayPayload()`. The launcher
+      module is lazy-imported on this code path so the
+      `?action=replay` cold launch doesn't pay the replay-
+      viewer bundle cost up-front.
+   e. On 404 / 5xx / network error / JSON parse failure: shows
+      the toast "Replay not found" via the W3 shared toast
+      helper.
+
+Why no fallback to `/api/games/{gameId}/replay`?
+`?action=replay` exposes a NEW id space (Bishop W12 introduces
+the `Replay.Id` primary key as a separate addressable id, not
+the `GameId` foreign key the W7 endpoint uses). Falling back to
+the game-id endpoint would silently hide configuration drift —
+the W12 contract is "the URL gives us a replay id, period." If
+a future wave unifies the two id spaces, this fallback can be
+revisited.
+
 ## §3 — Supported actions
 
 | Keyword | Aliases | Side-effect | URL after dispatch |
@@ -97,6 +142,8 @@ hooks for future tests / future shortcuts.
 | `new-game` | — | Click `[data-action="new-game"]` (the lobby's "New game" button) once DOM is ready. | `/` (param stripped, no path change) |
 | `spectate` | — | Activate `#lobby-public-games-tab`. | `/spectate` (path rewritten, no reload) |
 | `tournament` | `tournaments` | Activate `#lobby-tournaments-tab`. | `/tournament/list` (path rewritten, no reload) |
+| `replay` (W12) | — | Reads `replayId=<guid>` co-param, fetches `/api/replays/{replayId}` (Bishop W12), feeds the payload to the replay viewer. On error → "Replay not found" toast. | `/replay/<replayId>` (path rewritten on success) / `/` (path bare on failure) |
+
 
 Any keyword not in this table returns `null` from
 `parseActionFromUrl()` and is treated as no-action by
@@ -226,11 +273,14 @@ anything other than the documented intent:
 
 | Reserved keyword | Planned use |
 |------------------|-------------|
-| `replay` | Launch the replay viewer for a tableId passed via a separate query param (e.g. `?action=replay&table=<id>`). |
 | `settings` | Open the user-preferences modal post-bootstrap. |
 | `help` | Open the keyboard-shortcuts help overlay. |
 
 Adding any of these requires the §4 two-PR contract.
+
+> W12 cashed in the `replay` reservation — see §3 + §2 for the
+> co-parameter contract (`?action=replay&replayId=<guid>` →
+> `/api/replays/{replayId}` → `/replay/{replayId}`).
 
 ## §8 — Failure modes
 
@@ -245,16 +295,27 @@ Adding any of these requires the §4 two-PR contract.
 
 ## §9 — Wave hand-off
 
-W11 wires the three documented actions. W12 candidates:
+W11 wires the three documented actions. W12 cashed in the
+`?action=replay` reservation (see §3) against Bishop's new
+id-addressable replay endpoint. Remaining W12 candidates:
 
-- **`?action=replay`** — needs the replay-viewer module from
-  Drake's W10 line; awaiting the replay-by-id endpoint contract.
 - **Multi-param shortcuts** — e.g. `?action=new-game&seats=4`.
   Requires action-specific param schemas; today the router
-  only reads the keyword.
+  only reads the keyword plus a single ad-hoc co-param
+  (`replayId` for `replay`). A more general schema layer (e.g.
+  per-action `parseCoParams<T>()`) would generalise the
+  W12 co-param trick without forcing each new action to
+  reimplement the URL parse / strip / refetch sequence.
 - **Server-confirmed deep links** — for shortcuts that mutate
   server state (e.g. a hypothetical `?action=join&table=<id>`),
   we'd need a server round-trip after dispatch. Not yet needed.
 - **Visual-regression coverage** — Vasquez's W11 spec exercises
   the URL probes; a future Playwright visual-regression sweep
   could capture the post-dispatch tab visuals.
+- **Replay-launcher payload-shape contract test** — W12 reuses
+  `normalizeServerReplay()` for both the W7 game-id endpoint
+  AND the W12 replay-id endpoint on the assumption Bishop's W12
+  emits the same wire shape. If those shapes ever diverge the
+  toast will fire silently (we only show "Replay not found");
+  add a Playwright spec that mocks the W12 endpoint with a
+  malformed body to guard against drift.
