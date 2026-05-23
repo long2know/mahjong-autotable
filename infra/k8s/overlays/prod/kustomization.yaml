@@ -12,6 +12,12 @@ namePrefix: prod-
 
 resources:
   - ../../base
+  # Phase K Wave 4 — Apone. Cluster-scoped supplemental policy.
+  # Listed as a resource (rather than a patch) because Kyverno
+  # ClusterPolicies are independent objects; multiple policies on
+  # the same image set just compose (both must verify before
+  # admission). See per-file header for rationale.
+  - kyverno-enforce-patch.yaml
 
 patches:
   - target:
@@ -53,6 +59,32 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: mahjong.example.com
+  # Phase K Wave 4 — Apone (DevOps). HSTS preload header patch on
+  # the Ingress. The header is set via nginx-ingress
+  # `configuration-snippet` annotation — see `hsts-patch.yaml` per-
+  # file header for the choice of ingress-layer pin vs C# middleware.
+  - target:
+      kind: Ingress
+      name: mahjong-autotable
+    path: hsts-patch.yaml
+  # Phase K Wave 4 — Apone (DevOps). Mount the JWT signing-keys
+  # Secret (materialised by `jwt-keys-secret.yaml` ExternalSecret —
+  # OUT-OF-BAND, NOT in resources). Three indexed env vars feed
+  # Bishop's W4/W5 `Auth.JwtSigningKeys` array binding (see
+  # `docs/jwt-rotation.md` §3 for the ESO + rotation flow). Marked
+  # `optional: true` so a fresh cluster without ESO bootstrapped
+  # can still start (the app falls back to the singular
+  # `Auth:JwtSigningKey` from the omnibus secret).
+  - target:
+      kind: Deployment
+      name: mahjong-autotable
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          secretRef:
+            name: mahjong-jwt-keys
+            optional: true
 
 configMapGenerator:
   - name: mahjong-autotable

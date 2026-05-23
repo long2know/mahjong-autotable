@@ -1,0 +1,130 @@
+# Phase K Wave 4 — Apone (DevOps).
+#
+# Kyverno enforcement hard-pin for `mahjong-prod`.
+#
+# Wave 3 shipped `infra/k8s/policies/kyverno-cosign-verify.yaml` with:
+#
+#   spec:
+#     validationFailureAction: Audit
+#     validationFailureActionOverrides:
+#       - action: Enforce
+#         namespaces: [mahjong-prod]
+#       - action: Audit
+#         namespaces: [mahjong-staging]
+#
+# That ships globally Audit-by-default with a per-namespace Enforce
+# override for prod. Wave 4 tightens prod further: this Kustomize
+# strategic-merge patch DOES NOT replace the cluster-scoped policy —
+# it's a SUPPLEMENTAL ClusterPolicy applied alongside the Wave-3
+# policy that GLOBALLY ENFORCES image signatures for any workload
+# admitted into `mahjong-prod`, regardless of which other policies
+# may flip to Audit later.
+#
+# Why "hard-pin" with a SECOND policy instead of just a patch on
+# the first?
+#
+#   * The Wave-3 policy is cluster-wide and serves BOTH staging and
+#     prod. Patching it (e.g. setting validationFailureAction:
+#     Enforce globally) would flip staging to Enforce too, breaking
+#     the audit-only experimentation surface staging is meant for.
+#   * A SEPARATE Enforce-only policy scoped to `mahjong-prod` lets
+#     the cluster fail-safe even if someone mistakenly edits the
+#     Wave-3 policy to drop the prod override.
+#   * Two policies on the same image means a signed image admits
+#     (both verify), an unsigned image rejects (this policy rejects
+#     even if the Wave-3 policy was demoted to Audit by mistake).
+#
+# Apply order (operator runbook in `docs/admission-policy.md` §4.1):
+#
+#   1. `kubectl apply -f infra/k8s/policies/kyverno-cosign-verify.yaml`  # cluster default
+#   2. `kubectl apply -k infra/k8s/overlays/prod/`                       # picks up this file
+#
+# Canary procedure (codified in `docs/admission-policy.md` §5.3):
+#
+#   1. Build + push an INTENTIONALLY-unsigned test image
+#      (`ghcr.io/long2know/mahjong-autotable:dev-unsigned-canary`).
+#   2. Deploy to `mahjong-staging` → expect ADMIT + PolicyReport
+#      warning (Wave-3 audit-only override fires).
+#   3. Deploy the same image to `mahjong-prod` → expect REJECT
+#      ("admission webhook denied the request"). This is the
+#      Wave-4 hard-pin firing.
+#   4. Clean up: `kubectl delete -n mahjong-staging deployment cosign-canary-test`.
+#
+# The `match:` block here is INTENTIONALLY namespace-scoped (NOT
+# `kinds: [Pod]` cluster-wide): this policy never speaks to
+# staging or any other namespace — it's a prod hard-pin and the
+# staging canary needs the Wave-3 Audit-mode policy's report-only
+# path to keep working.
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: enforce-prod-mahjong-images
+  annotations:
+    policies.kyverno.io/title: "Enforce mahjong-autotable image signatures in mahjong-prod (Wave-4 hard-pin)"
+    policies.kyverno.io/category: "Supply-Chain Security"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod, Deployment, StatefulSet"
+    policies.kyverno.io/description: >-
+      Wave-4 hard-pin: regardless of what
+      `verify-mahjong-images` may be configured to do globally,
+      `mahjong-prod` REJECTS any workload whose image lacks a valid
+      cosign keyless signature issued to this repo's `sign-image.yml`
+      workflow. Acts as a fail-safe second layer alongside the
+      Wave-3 cluster policy so a misedit of the Wave-3 override
+      cannot accidentally let unsigned images into prod.
+spec:
+  # HARD-PIN: enforce, not audit. Per-namespace overrides are NOT
+  # present here — this policy is single-purpose, prod-only.
+  validationFailureAction: Enforce
+  # `background: false` — verifyImages MUST run synchronously on
+  # admission (Kyverno docs §verifyImages). Background scans cannot
+  # examine the signing-cert presentation in time to admit/deny.
+  background: false
+  webhookTimeoutSeconds: 30
+  # `failurePolicy: Fail` — Sigstore unreachable → block admission.
+  # Stephen's stated preference: "an outage of Sigstore should
+  # block NEW rollouts in prod; existing pods keep running. The
+  # alternative (Ignore) would let unsigned images through during
+  # a Sigstore outage — unacceptable for a supply-chain policy."
+  failurePolicy: Fail
+  rules:
+    - name: enforce-cosign-keyless-prod
+      match:
+        # SCOPE TIGHT: only the prod namespace, only workload kinds.
+        # No `exclude:` — kyverno + kube-system don't run prod
+        # workloads. This makes the policy single-purpose and
+        # trivially auditable.
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+              namespaces:
+                - mahjong-prod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/long2know/mahjong-autotable:*"
+            - "ghcr.io/long2know/mahjong-autotable@sha256:*"
+          mutateDigest: true
+          verifyDigest: false
+          required: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    # IDENTITY CONTRACT — MUST stay in lock-step with
+                    # `infra/k8s/policies/kyverno-cosign-verify.yaml`
+                    # AND `.github/workflows/sign-image.yml` AND
+                    # `.github/workflows/verify-signature.yml`. Any
+                    # rename or move is a coordinated four-file change.
+                    issuer: "https://token.actions.githubusercontent.com"
+                    subjectRegExp: "^https://github\\.com/long2know/mahjong-autotable/\\.github/workflows/sign-image\\.yml@refs/(heads/main|tags/v.*)$"
+                    rekor:
+                      url: "https://rekor.sigstore.dev"
+                    ctlog:
+                      ignoreSCT: false

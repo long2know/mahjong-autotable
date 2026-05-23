@@ -217,6 +217,93 @@ kubectl -n mahjong-staging get policyreport cpol-verify-mahjong-images -o yaml
 #         unsigned image.
 ```
 
+### 5.3 Canary procedure for the Wave-4 prod hard-pin
+
+The Wave-4 supplemental policy at
+[`infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`](../infra/k8s/overlays/prod/kyverno-enforce-patch.yaml)
+adds a SECOND ClusterPolicy (`enforce-prod-mahjong-images`)
+scoped exclusively to `mahjong-prod`. It's a fail-safe pin —
+regardless of what `verify-mahjong-images` may be configured to
+do globally, prod rejects unsigned images. The end-to-end canary
+that proves both policies are wired correctly:
+
+**Step 1 — build + push the unsigned canary image.** This is the
+ONLY image we ever intentionally publish unsigned. Tag it so
+nobody mistakes it for a release artefact:
+
+```bash
+docker build -t ghcr.io/long2know/mahjong-autotable:dev-unsigned-canary .
+docker push  ghcr.io/long2know/mahjong-autotable:dev-unsigned-canary
+# DO NOT run sign-image.yml against this digest; the canary's whole
+# purpose is to be unsigned.
+```
+
+**Step 2 — staging admit + warn.** Apply the canary to staging.
+The Wave-3 cluster policy in Audit mode for `mahjong-staging`
+should ADMIT the pod AND log a failing PolicyReport:
+
+```bash
+cat <<'EOF' | kubectl -n mahjong-staging apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cosign-canary-staging
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: cosign-canary-staging } }
+  template:
+    metadata: { labels: { app: cosign-canary-staging } }
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/long2know/mahjong-autotable:dev-unsigned-canary
+EOF
+
+# Expect: deployment created, pod running (admit), PolicyReport "fail":
+kubectl -n mahjong-staging get pods -l app=cosign-canary-staging
+kubectl -n mahjong-staging get policyreport
+```
+
+**Step 3 — prod reject.** Try to deploy the SAME image to prod.
+BOTH the Wave-3 policy (`verify-mahjong-images`, Enforce override
+for `mahjong-prod`) AND the Wave-4 hard-pin
+(`enforce-prod-mahjong-images`, single-purpose Enforce on
+`mahjong-prod`) should reject the admission:
+
+```bash
+cat <<'EOF' | kubectl -n mahjong-prod apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cosign-canary-prod
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: cosign-canary-prod } }
+  template:
+    metadata: { labels: { app: cosign-canary-prod } }
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/long2know/mahjong-autotable:dev-unsigned-canary
+EOF
+
+# Expect: admission webhook denied the request, message references
+#         BOTH policies (the request is gated by EITHER firing).
+```
+
+**Step 4 — clean up:**
+
+```bash
+kubectl -n mahjong-staging delete deployment cosign-canary-staging
+# Prod resource never created (Step 3 failed at admission).
+# Optional: delete the unsigned image from GHCR via the UI / API.
+```
+
+The canary should be run after every Kyverno upgrade + after
+every Wave-N change that touches either policy file. It's the
+only smoke that proves the cluster-layer + namespace-layer
+enforcement composes correctly under realistic edit-pressure.
+
 ## 6. Observability
 
 ### 6.1 Policy Reports (staging)
