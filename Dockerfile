@@ -59,6 +59,17 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Phase J Wave 4 — CI publish wiring (Apone). The `/health` endpoint reads
+# BUILD_SHA from the environment at request time and falls back to "dev" when
+# unset or empty. To surface the actual commit SHA in published images we
+# accept it as a build-arg here and promote it into the runtime ENV so the
+# value bakes into the layer that runs `dotnet Mahjong.Autotable.Api.dll`.
+# Local `docker build` without `--build-arg BUILD_SHA=...` keeps the empty
+# default, which Program.cs resolves to "dev" — matching pre-CI behavior.
+ARG BUILD_SHA=""
+ENV BUILD_SHA=${BUILD_SHA}
+
 COPY --from=backend-build /out/api/ ./
 
 # Program.cs resolves the autotable bundle at:
@@ -79,8 +90,7 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_EnableDiagnostics=0 \
     ConnectionStrings__Sqlite="Data Source=/data/mahjong-autotable.db" \
-    Persistence__Provider=Sqlite \
-    BUILD_SHA=""
+    Persistence__Provider=Sqlite
 
 EXPOSE 8080
 VOLUME ["/data"]
