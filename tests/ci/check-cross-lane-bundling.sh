@@ -166,7 +166,8 @@ agent_for_path() {
     .squad/decisions/inbox/vasquez-*|\
     .github/workflows/lane-discipline.yml|\
     .github/workflows/lane-discipline-nightly.yml|\
-    .github/workflows/lane-discipline-status.yml)
+    .github/workflows/lane-discipline-status.yml|\
+    .github/workflows/playwright-visual-regression.yml)
       echo "vasquez" ;;
     # Bishop — backend migrations + appsettings (auth lane spillover)
     src/backend/Migrations/*|\

@@ -218,10 +218,14 @@ public sealed class VasquezW12SelfLaneTests
     public void Wave1ThroughKW12Regression_ClassRenamed()
     {
         var asm = typeof(VasquezW12SelfLaneTests).Assembly;
-        var t12 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal));
-        Assert.NotNull(t12);
-        // The old class must be gone.
+        // W13 renames Wave1ThroughKW12RegressionTests → Wave1ThroughKW13RegressionTests.
+        // Accept either so this self-lane test stays green across
+        // the W13 rename wave.
+        var t12or13 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal));
+        Assert.NotNull(t12or13);
+        // The W11 class must be gone.
         var t11 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW11RegressionTests", StringComparison.Ordinal));
         Assert.Null(t11);

@@ -16,6 +16,7 @@ namespace Mahjong.Autotable.Api.Tests.Tournaments;
 /// rows so we can pin exactly what the freeze/reset cycle does at a
 /// quarter boundary.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class SeasonRolloverIntegrationTests
 {
     [Fact]

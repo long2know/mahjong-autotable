@@ -37,6 +37,7 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W2;
 /// Each fact reflection-probes for the surface and soft-passes when
 /// absent — preserving the zero-skip streak.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class SeasonRolloverDeferralTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

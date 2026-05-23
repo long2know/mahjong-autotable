@@ -36,6 +36,7 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W2;
 /// machinery on top. The expected legacy fallback (limit/offset) must
 /// keep working — Wave 2 ADD, not replace, the cursor machinery.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class MatchHistoryCsvStreamingTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

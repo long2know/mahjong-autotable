@@ -6,7 +6,7 @@
     "bishop":  "^(src/backend/src/|src/backend/Migrations/|Phase_K_W\\d+/Bishop/|appsettings.*\\.json|\\.squad/agents/bishop/|\\.squad/decisions/inbox/bishop-)",
     "hicks":   "^(src/frontend/|Phase_K_W\\d+/Hicks/|\\.squad/agents/hicks/|\\.squad/decisions/inbox/hicks-)",
     "apone":   "^(\\.github/workflows/|infra/|docs/(slsa|hsts|turn|admission|oauth|jwt-rotation|kubernetes|terraform|secrets|mobile|retro|helm|signer|ghcr|production)\\.md|Dockerfile|helm/|CHANGELOG\\.md|\\.squad/agents/apone/|\\.squad/decisions/inbox/apone-)",
-    "vasquez": "^(src/backend/tests/|src/frontend/autotable-src/tests/|tests/ci/|docs/test-|docs/contracts/|\\.github/workflows/lane-discipline(-[a-z]+)?\\.yml|\\.squad/agents/vasquez/|\\.squad/decisions/inbox/vasquez-)"
+    "vasquez": "^(src/backend/tests/|src/frontend/autotable-src/tests/|tests/ci/|docs/test-|docs/contracts/|\\.github/workflows/lane-discipline(-[a-z]+)?\\.yml|\\.github/workflows/playwright-visual-regression\\.yml|\\.squad/agents/vasquez/|\\.squad/decisions/inbox/vasquez-)"
   },
   "wave_subdir_overrides": {
     "description": "Files under src/backend/tests/*/Phase_K_W*/<AgentName>/ and Phase_K_W*/<AgentName>/ (anywhere) are attributed to <AgentName>, not Vasquez. This lets each agent author contract-style tests under their own subdirectory inside Vasquez's broader test lane. AgentName must match one of the lanes above (case-sensitive PascalCase: Bishop / Hicks / Apone / Vasquez).",

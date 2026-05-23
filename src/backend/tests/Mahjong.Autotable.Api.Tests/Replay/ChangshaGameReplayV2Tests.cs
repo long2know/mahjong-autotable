@@ -24,6 +24,7 @@ namespace Mahjong.Autotable.Api.Tests.Replay;
 /// The endpoint is responsible for normalising v1 → v2 on read (or returning
 /// v1 unchanged and letting the client tolerate missing fields).</para>
 /// </summary>
+[Collection("DbSerial")]
 public class ChangshaGameReplayV2Tests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

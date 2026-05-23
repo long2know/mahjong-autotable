@@ -15,6 +15,7 @@ namespace Mahjong.Autotable.Api.Tests.Players;
 /// endpoint (Bishop). Seeds rows directly into <c>PlayerGameHistory</c>
 /// then hits <c>GET /api/games</c> in JSON + CSV formats.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class GamesHistoryEndpointTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

@@ -31,6 +31,7 @@ namespace Mahjong.Autotable.Api.Tests.Changsha;
 ///   <item><b>400 for malformed id</b> — non-GUID route value → 400.</item>
 /// </list>
 /// </summary>
+[Collection("DbSerial")]
 public class ChangshaReplayEndpointTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

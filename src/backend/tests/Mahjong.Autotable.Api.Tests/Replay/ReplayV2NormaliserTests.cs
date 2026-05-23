@@ -47,6 +47,7 @@ namespace Mahjong.Autotable.Api.Tests.Replay;
 /// hitting the endpoint with curated payloads; either signal is acceptable
 /// evidence that the surface has shipped.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class ReplayV2NormaliserTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

@@ -383,10 +383,13 @@ public sealed class VasquezW11SelfLaneTests
     {
         var asm = typeof(VasquezW11SelfLaneTests).Assembly;
         // W12 renames Wave1ThroughKW11RegressionTests → Wave1ThroughKW12RegressionTests.
-        // Accept either name so the W11 self-lane test stays green across the rename.
+        // W13 renames again to Wave1ThroughKW13RegressionTests.
+        // Accept any of the three so the W11 self-lane test stays
+        // green across each rename wave.
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW11RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 }

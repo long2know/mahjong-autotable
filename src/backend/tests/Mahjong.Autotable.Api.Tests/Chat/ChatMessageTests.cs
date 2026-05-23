@@ -27,6 +27,7 @@ namespace Mahjong.Autotable.Api.Tests.Chat;
 ///
 /// <para>Tests are reflection-defensive: a missing entity type soft-passes.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class ChatMessageTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

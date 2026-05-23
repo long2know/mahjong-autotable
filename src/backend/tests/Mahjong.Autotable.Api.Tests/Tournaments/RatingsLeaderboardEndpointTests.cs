@@ -14,6 +14,7 @@ namespace Mahjong.Autotable.Api.Tests.Tournaments;
 /// endpoint (Bishop). Seeds rows directly into the DB then hits
 /// <c>GET /api/ratings/leaderboard</c> and asserts ordering + paging.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class RatingsLeaderboardEndpointTests : TournamentHarness
 {
     [Fact]

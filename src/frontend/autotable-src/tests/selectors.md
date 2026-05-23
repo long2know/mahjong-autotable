@@ -2533,3 +2533,37 @@ shader-chunk + UniformsLib strip, the visual-regression
 baselines, and the bundle-health.yml CI workflow. Pairs
 with the W13 Vasquez QA footer (appended later by Vasquez
 in her own commit).*
+
+---
+
+## Phase K Wave 13 — Vasquez (QA) footer
+
+Six new Playwright specs land in this wave under
+`src/frontend/autotable-src/tests/e2e/`. All chromium-only,
+all forward-stage tolerant via `testInfo.annotations.push({
+type: 'forward-stage', … })` when surfaces are still
+converging.
+
+| # | Spec | Surface pinned |
+|---|------|----------------|
+| 1 | `spectate-deep-link.spec.ts` | Hicks W13 spectate deep-link action router (`?action=spectate`, `/spectate?room=…`, `/spectate/{room}`); HTML retains the room id on the URL. |
+| 2 | `shader-chunk-440-stretch.spec.ts` | Tighter stretch goal vs. the W12 450-byte spec; tracks the shader chunk towards ≤ 440 B without hard-failing (until the goal is met). |
+| 3 | `lh13-thresholds-hard-pinned.spec.ts` | LH13 **hard-pin** at the W11 §7 calibration values (perf 0.85 / a11y 0.80 / best-practices 0.90 / seo 0.80) — the W12 soft-pin replacement per `docs/frontend-pwa-audit.md` §6.2. |
+| 4 | `bracket-tournament-integration.spec.ts` | Bishop W13 `TournamentService.AdvanceMatchAsync` + `EfBracketStore` integration surface; admin tournaments shell renders bracket / tournament / advance / match noun. |
+| 5 | `commentary-cost-warning-toast.spec.ts` | Bishop W13 `CommentaryCostAdminHub` SignalR + frontend warning toast (`[data-testid="commentary-cost-toast"]`, `.toast.commentary-cost`, `[role="status"]`). |
+| 6 | `bundle-health-pr-comment.spec.ts` | Hicks W13 bundle-health.yml CI surface — preview `bundle-health.json` / `dist-size.json` / `.bundle-health/report.json` are observable when the workflow is wired. |
+
+### Shared-file authorship pin
+
+`tests/selectors.md` is a `shared_files.selectors_md_shared`
+entry in `tests/ci/lane-map.json` (authors: `hicks` +
+`vasquez`, primary: `vasquez`). The W13 Vasquez footer
+appended here pairs with the W13 Hicks footer above and is
+covered by the same shared-file lane-discipline rule.
+
+---
+
+*Phase K Wave 13 — Vasquez (QA). Six Playwright specs land
+under `tests/e2e/` and are inventoried above. The matching
+backend mirror tests live under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W13/Vasquez/`.*

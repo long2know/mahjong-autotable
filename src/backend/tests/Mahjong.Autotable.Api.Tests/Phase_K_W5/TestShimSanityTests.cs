@@ -29,6 +29,7 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W5;
 ///         DB-aware overload).</item>
 /// </list>
 /// </summary>
+[Collection("DbSerial")]
 public class TestShimSanityTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

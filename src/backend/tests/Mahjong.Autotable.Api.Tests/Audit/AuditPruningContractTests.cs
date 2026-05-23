@@ -32,6 +32,7 @@ namespace Mahjong.Autotable.Api.Tests.Audit;
 ///         counter fields doesn't break the public read surface.</item>
 /// </list>
 /// </summary>
+[Collection("DbSerial")]
 public class AuditPruningContractTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

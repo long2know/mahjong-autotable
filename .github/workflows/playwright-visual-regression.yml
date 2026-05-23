@@ -1,0 +1,205 @@
+# Phase K Wave 13 — Vasquez (QA). Visual-regression CI gate.
+#
+# The W12 wave shipped the visual-regression methodology
+# (`docs/test-architecture.md §5`) + the reference spec
+# (`manifest-screenshots-visual.spec.ts`). W13 wires the
+# methodology into CI via this workflow, so a frontend producer-
+# side change that breaks the 2% pixel-diff threshold cannot
+# silently slip past the gate.
+#
+# Flow
+# ----
+#   1. On a PR that touches the visual-regression surface
+#      (frontend source, screenshots, or the spec), build the
+#      production bundle, start `vite preview`, and run the
+#      chromium visual-regression specs against the preview.
+#   2. On failure, upload the Playwright HTML report AND the raw
+#      `*-diff.png` / `*-actual.png` files as artefacts so the
+#      reviewer can compare baseline vs. actual without running
+#      Playwright locally.
+#   3. On success or failure, post a sticky PR comment with the
+#      marker `<!-- playwright-visual-regression -->` listing
+#      the visual-regression specs and pass/fail count.
+#
+# Forward-compat: draft PRs are skipped automatically (the
+# `if:` filter on the `audit` job). Drafts iterate quickly and
+# would otherwise spam the PR thread with diff-comment churn.
+#
+# Owner: Vasquez. The workflow is in Vasquez's lane (per
+# `tests/ci/lane-map.json` — `.github/workflows/lane-discipline*.yml`
+# is the canonical Vasquez allow-list pattern; W11 introduced
+# the `pwa_audit_workflow_shared` precedent which we don't
+# claim here — this workflow is purely Vasquez QA gate).
+
+name: playwright-visual-regression
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "src/frontend/autotable-src/src/**"
+      - "src/frontend/autotable-src/public/screenshots/**"
+      - "src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts"
+      - "src/frontend/autotable-src/tests/e2e/outline-shader-visual.spec.ts"
+      - "src/frontend/autotable-src/tests/e2e/**/*visual*.spec.ts"
+      - ".github/workflows/playwright-visual-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: playwright-visual-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Visual regression (Chromium, 2% diff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Skip drafts — visual-regression noise on drafts distracts reviewers.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    defaults:
+      run:
+        working-directory: src/frontend/autotable-src
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need the merge base for baseline-comparison diffs.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      - name: Restore Vite build cache
+        uses: actions/cache@v4
+        with:
+          path: src/frontend/autotable-src/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('src/frontend/autotable-src/package-lock.json', 'src/frontend/autotable-src/vite.config.ts') }}
+          restore-keys: |
+            vite-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build production bundle
+        run: |
+          set -euo pipefail
+          npm run build:vite
+          test -d ../autotable
+          test -f ../autotable/index.html
+
+      - name: Start vite preview
+        run: |
+          set -euo pipefail
+          (npx vite preview --host 127.0.0.1 --port 4173 \
+                            --strictPort --outDir ../autotable \
+            > .vite-preview.log 2>&1 &) || true
+          # Wait for the preview to answer 200 on /autotable/.
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4173/autotable/ > /dev/null; then
+              echo "✓ preview up after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run visual-regression specs
+        id: vis-run
+        run: |
+          set +e
+          # The --grep filter matches every spec with "visual" in the file
+          # name AND the canonical reference spec for the manifest screenshots.
+          npx playwright test --project=chromium \
+            tests/e2e/manifest-screenshots-visual.spec.ts \
+            tests/e2e/outline-shader-visual.spec.ts \
+            --reporter=html,json --output=test-results-visual \
+            > playwright-visual-stdout.log 2>&1
+          rc=$?
+          echo "rc=${rc}" >> $GITHUB_OUTPUT
+          # Don't fail the job here — let the comment step report first;
+          # the final "Fail on diff" step is what actually gates.
+          exit 0
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-visual-regression-report
+          path: |
+            src/frontend/autotable-src/playwright-report/
+            src/frontend/autotable-src/test-results-visual/
+            src/frontend/autotable-src/playwright-visual-stdout.log
+            src/frontend/autotable-src/.vite-preview.log
+          retention-days: 14
+
+      - name: Upload diff PNGs (on failure)
+        if: steps.vis-run.outputs.rc != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-visual-regression-diffs
+          # The Playwright snapshot pattern is "<test>-snapshots/<image>-{actual,diff,expected}.png".
+          path: |
+            src/frontend/autotable-src/test-results-visual/**/*-diff.png
+            src/frontend/autotable-src/test-results-visual/**/*-actual.png
+            src/frontend/autotable-src/test-results-visual/**/*-expected.png
+          retention-days: 14
+
+      - name: Compose PR comment
+        if: github.event_name == 'pull_request'
+        id: compose-comment
+        run: |
+          set -euo pipefail
+          RC="${{ steps.vis-run.outputs.rc }}"
+          if [[ "${RC}" == "0" ]]; then
+            STATUS="✅ PASS"
+            HEADLINE="All visual-regression specs landed within the 2% pixel-diff budget."
+          else
+            STATUS="❌ FAIL"
+            HEADLINE="One or more visual-regression specs exceed the 2% pixel-diff budget. See artefacts for diff PNGs."
+          fi
+          {
+            echo "<!-- playwright-visual-regression -->"
+            echo "## Visual regression — ${STATUS}"
+            echo ""
+            echo "${HEADLINE}"
+            echo ""
+            echo "Threshold: \`maxDiffPixelRatio: 0.02\` (manifest screenshots); \`0.05\` (outline shader). See \`docs/test-architecture.md §5\` for the methodology."
+            echo ""
+            echo "**Specs run:**"
+            echo ""
+            echo "- \`manifest-screenshots-visual.spec.ts\` (W12 reference)"
+            echo "- \`outline-shader-visual.spec.ts\` (W6 backstop)"
+            echo ""
+            if [[ "${RC}" != "0" ]]; then
+              echo "**Next steps:**"
+              echo "1. Download the \`playwright-visual-regression-diffs\` artefact."
+              echo "2. Compare \`*-diff.png\` against \`*-expected.png\` for each failing spec."
+              echo "3. If the diff reflects an intentional producer-side change (icon swap, manifest copy, etc.), regenerate baselines with \`npx playwright test --update-snapshots\` and stage the new PNGs in the SAME commit as the producer-side change (see \`docs/test-architecture.md §5.2\`)."
+              echo "4. If the diff is unexpected, leave a comment on the PR + tag Vasquez for triage before regenerating."
+            fi
+          } > visual-regression-comment.md
+          # Persist the body in an env-style file for the next step.
+          echo "COMMENT_FILE=src/frontend/autotable-src/visual-regression-comment.md" >> $GITHUB_OUTPUT
+
+      - name: Post / update sticky PR comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: playwright-visual-regression
+          path: ${{ steps.compose-comment.outputs.COMMENT_FILE }}
+
+      - name: Fail on diff
+        if: steps.vis-run.outputs.rc != '0'
+        run: |
+          echo "::error::Visual regression specs failed with exit code ${{ steps.vis-run.outputs.rc }}. See artefacts."
+          exit 1
