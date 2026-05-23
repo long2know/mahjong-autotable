@@ -1,0 +1,233 @@
+# Phase K Wave 13 — Hicks (Frontend).
+#
+# Bundle health auto-report.  On every PR open / sync that touches
+# the autotable source tree, this workflow:
+#
+#   1. Builds the frontend with `npm run build:vite` (no manifest
+#      writes — uses `WAVE_NAME=PR-${{ github.event.number }}` so the
+#      append never lands on a shared wave row).
+#   2. Parses the LAST row of `dist-size.json:history` (which the
+#      build pipeline just appended) and compares the
+#      `three-renderer-big` chunk size against the W12 baseline
+#      (448,648 B / 448.65 KB).
+#   3. Posts a sticky PR comment with the chunk's current size,
+#      delta vs the W12 baseline, and a pass / warn / fail badge.
+#
+# Pass/Warn/Fail rules (the W13 contract):
+#
+#   • `pass`  → current ≤ W12 baseline + 1 % AND current ≤ 445 KB.
+#               (W13 strech ceiling is <440 KB; <445 KB is the
+#               acceptable band.)
+#   • `warn`  → current > W12 baseline × 1.02 (i.e. >2 % growth) OR
+#               current > 445 KB.  Surfaces a warning in the comment
+#               but does NOT fail the job — the PR can still merge if
+#               the reviewer signs off (e.g. an intentional
+#               feature-add that bumps the chunk).
+#   • `fail`  → current > 500 KB.  Indicates a regression past the
+#               W10 ceiling that retired three waves ago; almost
+#               certainly an accidental side-effect of an unrelated
+#               PR.  Hard-fail to force reviewer attention.
+#
+# Owner: Hicks.  Lane review: Vasquez (sees the YAML during nightly
+# lane-discipline scan; this workflow lives under shared CI policy).
+#
+# See `docs/frontend-three-budget.md §10` for the recipe + rollback
+# instructions.
+
+name: bundle-health
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "src/frontend/autotable-src/**"
+      - "src/frontend/autotable/**"
+      - ".github/workflows/bundle-health.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: bundle-health-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Bundle health report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/frontend/autotable-src
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend/autotable-src/package-lock.json
+
+      - name: Restore Vite build cache
+        id: vite-cache
+        uses: actions/cache@v4
+        with:
+          path: src/frontend/autotable-src/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('src/frontend/autotable-src/package-lock.json', 'src/frontend/autotable-src/vite.config.ts') }}
+          restore-keys: |
+            vite-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build production bundle
+        env:
+          # Tag the dist-size.json row with the PR number so the
+          # build's `append-dist-size.js` doesn't mutate the canonical
+          # K13 / K14 / ... history rows on `main`.
+          WAVE_NAME: PR-${{ github.event.number }}
+        run: |
+          set -euo pipefail
+          npm run build:vite
+          test -d ../autotable
+          test -f ../autotable/index.html
+
+      - name: Compute chunk-size report
+        id: report
+        run: |
+          set -euo pipefail
+          node <<'NODE' > ../../../bundle-health.json
+          const fs = require('fs');
+          const path = require('path');
+          const LEDGER = 'dist-size.json';
+          const W12_BASELINE = 448648; // bytes — `three-renderer-big` at W12 close
+          const STRETCH = 440 * 1024;   // <440 KB stretch target (W13)
+          const ACCEPTABLE = 445 * 1024;// <445 KB acceptable band (W13)
+          const WARN_PCT = 0.02;        // 2 % growth = warn
+          const HARD_FAIL = 500 * 1024; // > 500 KB = hard fail
+
+          const ledger = JSON.parse(fs.readFileSync(LEDGER, 'utf8'));
+          const history = ledger.history || [];
+          if (history.length === 0) {
+            console.error('dist-size.json:history is empty — cannot report');
+            process.exit(1);
+          }
+          // The PR build appends a `PR-<n>` row at the tail; pluck it.
+          const current = history[history.length - 1];
+          const big = current.chunks['three-renderer-big'];
+          if (typeof big !== 'number') {
+            console.error('three-renderer-big chunk missing from latest history row');
+            process.exit(1);
+          }
+
+          const delta = big - W12_BASELINE;
+          const pctOfBaseline = (big / W12_BASELINE - 1) * 100;
+          let verdict;
+          if (big > HARD_FAIL) {
+            verdict = 'fail';
+          } else if (big > ACCEPTABLE || delta > W12_BASELINE * WARN_PCT) {
+            verdict = 'warn';
+          } else {
+            verdict = 'pass';
+          }
+
+          const out = {
+            wave: current.wave,
+            three_renderer_big: big,
+            w12_baseline: W12_BASELINE,
+            delta_bytes: delta,
+            delta_pct: pctOfBaseline,
+            stretch_target: STRETCH,
+            acceptable_target: ACCEPTABLE,
+            verdict,
+            all_chunks: current.chunks,
+          };
+          process.stdout.write(JSON.stringify(out, null, 2));
+          NODE
+          cat ../../../bundle-health.json
+          # Surface the verdict as a job output so the next step can
+          # decide whether to fail.
+          verdict=$(node -e "console.log(require('../../../bundle-health.json').verdict)")
+          echo "verdict=${verdict}" >> "$GITHUB_OUTPUT"
+
+      - name: Render PR comment
+        id: comment-body
+        run: |
+          set -euo pipefail
+          node <<'NODE' > ../../../bundle-health.md
+          const fs = require('fs');
+          const r = JSON.parse(fs.readFileSync('../../../bundle-health.json', 'utf8'));
+          const kb = (b) => (b / 1024).toFixed(2) + ' KB';
+          const sign = r.delta_bytes >= 0 ? '+' : '−';
+          const deltaAbs = Math.abs(r.delta_bytes);
+          const deltaPct = r.delta_pct.toFixed(2);
+          const emoji = r.verdict === 'pass' ? '✅' : (r.verdict === 'warn' ? '⚠️' : '❌');
+          const verdictLabel = r.verdict.toUpperCase();
+          const baselineLabel = `W12 baseline (${kb(r.w12_baseline)})`;
+
+          let body = `<!-- bundle-health-report -->\n`;
+          body += `## ${emoji} Bundle health — **${verdictLabel}**\n\n`;
+          body += `**three-renderer-big** (heavy renderer chunk) for this PR:\n\n`;
+          body += `| Metric | Value |\n|---|---|\n`;
+          body += `| Current size | **${kb(r.three_renderer_big)}** (${r.three_renderer_big.toLocaleString()} B) |\n`;
+          body += `| ${baselineLabel} | ${kb(r.w12_baseline)} |\n`;
+          body += `| Delta vs W12 | **${sign}${kb(deltaAbs)}** (${sign}${deltaPct} %) |\n`;
+          body += `| W13 stretch target | <${kb(r.stretch_target)} |\n`;
+          body += `| W13 acceptable band | <${kb(r.acceptable_target)} |\n\n`;
+          if (r.verdict === 'pass') {
+            body += `Within budget. No reviewer action required.\n`;
+          } else if (r.verdict === 'warn') {
+            body += `> ⚠️ The renderer chunk grew more than 2 % vs W12, OR exceeds the <${kb(r.acceptable_target)} acceptable band. Soft warning — not a merge blocker, but please double-check the change is intentional.\n`;
+          } else {
+            body += `> ❌ The renderer chunk exceeded **500 KB** — past the W10 ceiling that retired three waves ago. Please investigate before merging.\n`;
+          }
+          body += `\n<details><summary>All chunks</summary>\n\n| Chunk | Size |\n|---|---|\n`;
+          for (const [k, v] of Object.entries(r.all_chunks).sort((a, b) => b[1] - a[1])) {
+            body += `| ${k} | ${kb(v)} |\n`;
+          }
+          body += `\n</details>\n\n`;
+          body += `_Hicks W13 bundle-health workflow — see \`docs/frontend-three-budget.md §10\` for details._\n`;
+          process.stdout.write(body);
+          NODE
+          # Surface a single-line summary on the runner log too.
+          head -5 ../../../bundle-health.md
+
+      - name: Post / update PR comment
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          # `body-path` is resolved relative to `GITHUB_WORKSPACE`,
+          # not the job's `working-directory`.  The previous render
+          # step wrote the file at `../../../bundle-health.md` from
+          # the `src/frontend/autotable-src` working directory →
+          # lands at the workspace root.
+          body-path: bundle-health.md
+          edit-mode: replace
+          # Sticky marker — re-runs update the existing comment in
+          # place instead of spamming the PR.
+          body-includes: <!-- bundle-health-report -->
+
+      - name: Upload bundle-health.json artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bundle-health
+          path: |
+            bundle-health.json
+            bundle-health.md
+            src/frontend/autotable-src/dist-size.json
+
+      - name: Enforce hard-fail gate
+        run: |
+          set -euo pipefail
+          verdict="${{ steps.report.outputs.verdict }}"
+          if [ "$verdict" = "fail" ]; then
+            echo "::error::Bundle health gate FAILED — three-renderer-big exceeded 500 KB."
+            exit 1
+          fi
+          echo "Bundle health verdict: ${verdict}"

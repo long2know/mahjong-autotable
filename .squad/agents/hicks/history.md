@@ -3844,3 +3844,169 @@ Branch: `stlong/phase-k-wave-12-bringup` (off `ee9dba0`, W11 PR
 
 Stephen's standing directive `claude-opus-4.7-xhigh` honoured
 throughout the wave.
+
+
+## Phase K Wave 13 — Frontend bring-up
+
+Branch: `stlong/phase-k-wave-13-bringup`
+Bringup-on commit (W12 close): the W12 PR merged into the
+bringup branch immediately before W13 launch.
+
+### Deliverables (five)
+
+1. **PMREMGenerator deeper strip
+   (tonemapping_* + PBR-extras + map-feature chains).**
+   `vite.config.ts` —
+   `SHADER_CHUNKS_TO_EMPTY` extended from 11 → 53
+   entries (+42 new); `UNIFORMS_LIB_KEYS_TO_EMPTY` from
+   5 → 14 (+9 new). All targets verified guarded by
+   `#ifdef USE_<MACRO>` via inline three.module.js audit.
+   New strips: tonemapping_*, lights_phong/toon/physical_*,
+   transmission_*, iridescence_*, clearcoat_* partials,
+   dithering_*, premultiplied_alpha_fragment, every
+   map-feature _fragment/_pars_fragment chain (alphamap,
+   alphahash, alphatest, aomap, lightmap, emissivemap,
+   bumpmap, normalmap, specularmap_pars, metalnessmap,
+   roughnessmap, displacementmap), fog_*. NOT stripped for
+   safety: opaque_fragment (unconditional gl_FragColor),
+   colorspace_fragment (unguarded), specularmap_fragment
+   (sets specularStrength=1.0 for lambert).
+
+   **Result: three-renderer-big = 448,648 B → 406,635 B
+   (−42,013 B / −9.4 %).** ~34 kB margin under <440 kB
+   stretch.
+
+2. **LH13 workflow threshold hard-pin — DEFERRED TO W14.**
+   `gh run list -w pwa-audit.yml -L 30` failed with a
+   credentials error (no working GH_TOKEN in the W13 CLI
+   runtime). Per the W12 hand-off explicit fallback path,
+   deferred to W14 with memo notification to Vasquez. The
+   current threshold gates remain the W11 calibration
+   values from `docs/frontend-pwa-audit.md §7`.
+
+3. **Visual-regression baselines.**
+   Captured the three
+   `manifest-screenshots-visual.spec.ts` baselines for
+   main-game, spectator-commentary, tournament-dashboard at
+   the Jest-style location
+   `tests/e2e/__screenshots__/manifest-screenshots-visual.spec.ts/<slug>.png`
+   (3 PNGs, 1280x720, ~25-40 kB each). Captured via a
+   side-channel script
+   `scripts/capture-visual-baselines.js` (Playwright
+   runtime API) because Vasquez W12 spec calls
+   `page.setContent()` without a prior
+   `page.goto(BASE_URL)`, so the relative img src resolves
+   against about:blank → Chromium 404s → spec exits via its
+   forward-staged annotation without writing baselines even
+   with `--update-snapshots=all`. Spec fix (Vasquez lane)
+   handed off in `docs/frontend-pwa-audit.md §11.5`.
+
+4. **`?action=spectate&gameId=<id>` deep-link routing.**
+   `src/action-router.ts` —
+   `dispatchSpectate()` now branches on a `gameId`
+   co-param. With a gameId, the new
+   `fetchHandoffAndOpenSpectator(gameId)` POSTs
+   `/api/spectator/handoff` (Bishop W12, unchanged) with
+   `{ gameId }`, credentials-included. On 200 navigates
+   to `/spectate/<id>?token=<jwt>#/spectate/<id>` via
+   `history.replaceState` AND directly calls
+   `openSpectatorLivestream({ tableId: gameId })`
+   (replaceState with combined path+hash doesn't emit
+   hashchange). On 401 redirects to `/` so
+   `installAuthUi()` mounts sign-in at boot. On 404 / 5xx /
+   network fires a "Game not found" toast and rewrites the
+   URL to `/spectate`. The W11 bare `?action=spectate`
+   keyword (lobby-tab activation) is unchanged.
+
+5. **bundle-health.yml CI workflow (new W13 deliverable).**
+   `.github/workflows/bundle-health.yml` — per-PR
+   auto-report. Triggers on PR open/sync for frontend
+   touches; builds the bundle with `WAVE_NAME=PR-<n>`
+   (segregated row in `dist-size.json`); parses the row;
+   computes verdict (pass when ≤ W12-baseline × 1.02 AND ≤
+   445 kB; warn when above 2 % growth OR > 445 kB; fail
+   when > 500 kB hard-fail); posts a sticky PR comment via
+   `peter-evans/create-or-update-comment@v4` with marker
+   `<!-- bundle-health-report -->`; uploads the report
+   JSON as an artifact. Verdict logic smoke-tested locally
+   against the W13 build: pass.
+
+### Files touched
+
+- `src/frontend/autotable-src/vite.config.ts`
+  (SHADER_CHUNKS_TO_EMPTY 11→53; UNIFORMS_LIB_KEYS_TO_EMPTY
+  5→14; comment blocks documenting risk/back-out)
+- `src/frontend/autotable-src/src/action-router.ts`
+  (top doc comment refresh; new
+  `dispatchSpectateWithGameId`,
+  `fetchHandoffAndOpenSpectator`,
+  `redirectToLobbyForSignIn`,
+  `showGameNotFoundToast` helpers;
+  `dispatchSpectate` branches on gameId)
+- `src/frontend/autotable-src/scripts/capture-visual-baselines.js`
+  (NEW — Playwright-runtime side-channel baseline capture)
+- `src/frontend/autotable-src/tests/e2e/__screenshots__/manifest-screenshots-visual.spec.ts/{main-game,spectator-commentary,tournament-dashboard}.png`
+  (NEW — 3 binary baselines)
+- `src/frontend/autotable-src/dist-size.json` (K13 row
+  appended)
+- `src/frontend/autotable/*` (rebuilt)
+- `.github/workflows/bundle-health.yml` (NEW)
+- `docs/frontend-three-budget.md` (§9 W13 strip writeup +
+  §10 bundle-health writeup)
+- `docs/frontend-routing.md` (§3 table row + §3.1
+  spectate-with-gameId flow contract)
+- `docs/frontend-pwa-audit.md` (§10 LH13 deferral notice +
+  §11 visual-regression baselines + spec bug + W14
+  follow-ups)
+- `src/frontend/autotable-src/tests/selectors.md` (W13
+  Hicks footer)
+- `Phase_K_W13/Hicks/{charter,history}.md` (NEW)
+- `.squad/agents/hicks/history.md` (this entry)
+- `.squad/decisions/inbox/hicks-phase-k-wave-13.md` (NEW
+  memo with LH13 deferral + W14 dispatch to Vasquez)
+
+### Trend ledger
+
+| Wave | three-renderer-big | Δ vs prev | Vasquez gate |
+|------|--------------------|-----------|--------------|
+| W11  | 466.40 kB          | −31.04 kB | <475 kB ✅   |
+| W12  | 448.65 kB          | −17.75 kB | <450 kB ✅ (stretch) |
+| W13  | 406.64 kB          | −42.01 kB | <440 kB ✅ (stretch w/ 34 kB margin) |
+
+### Open hand-offs to W14
+
+1. LH13 hard-pin (carried fwd from W13 deferral) — needs
+   working GH_TOKEN to verify cron data points.
+2. Visual-regression spec fix (Vasquez lane) — add
+   `page.goto(BASE_URL)` before `setContent()` and a
+   `snapshotPathTemplate` to playwright.config.ts.
+3. Further strip candidates (sub-kB each):
+   logdepthbuf_*, clipping_planes_*. Phase L hand-roll
+   spike remains the larger play for sub-300 kB.
+4. Action-router co-parameter schema layer
+   (`parseCoParams<T>()`) — carried fwd from W12; W13
+   added a second co-param-driven action, generalisation
+   becomes higher value as more keywords land.
+5. Real visual-regression captures — once the W14 spec fix
+   lands, replace the placeholder manifest-screenshot
+   baselines with live-rendered table/spectator/tournament
+   surfaces.
+
+### Identity discipline (as practised)
+
+- Per-command git env:
+  `git -c user.name="Hicks (Frontend)" -c user.email="hicks@squad.mahjong"`.
+- NEVER `git config user.name`.
+- Flock-wrapped at `.work/squad-git-lock` (-w 120).
+- Only lane-allowed paths staged
+  (`.github/workflows/bundle-health.yml` is the W13
+  exception — new workflow, declared in memo under shared
+  CI policy).
+- `Co-authored-by: Copilot
+  <223556219+Copilot@users.noreply.github.com>` trailer
+  included.
+
+### Model
+
+Stephen standing directive `claude-opus-4.7-xhigh` honoured
+throughout the wave.

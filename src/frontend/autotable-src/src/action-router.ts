@@ -15,6 +15,21 @@
 //
 //   `/?action=replay&replayId=<guid>` → fetch + open the replay viewer
 //
+// Phase K Wave 13 extends `?action=spectate` with a `gameId` co-param
+// that routes the spectator directly into a known game via Bishop's
+// W12 handoff token endpoint:
+//
+//   `/?action=spectate&gameId=<guid>`
+//     → POST /api/spectator/handoff
+//     → on 200: navigate to `/spectate/{gameId}?token=<jwt>` + bootstrap
+//       the spectator-livestream viewer for the game
+//     → on 401: redirect to the lobby root (sign-in modal lives there)
+//     → on 404 / any other error: "Game not found" toast
+//
+// The bare `?action=spectate` (no gameId) keeps the W11 / W12 lobby-
+// tab fallback so the PWA shortcut still works as a "pick a game to
+// watch" launcher when no specific game is targeted.
+//
 // Bishop's W12 backend lane ships `GET /api/replays/{replayId}` (the
 // new id-addressable replay endpoint, alongside the existing
 // `GET /api/games/{gameId}/replay`).  This router intercepts the
@@ -121,8 +136,21 @@ function dispatchNewGame(): void {
  * spectate-by-id flow still lives at `#/spectate/{tableId}` (W6 hash
  * route).  This shortcut takes a user from a cold PWA launch into a
  * "pick a table to watch" state.
+ *
+ * Phase K Wave 13 — when a `gameId=<guid>` co-param is present, the
+ * dispatch delegates to `dispatchSpectateWithGameId()` which mints
+ * Bishop's W12 handoff JWT and routes directly into the spectator
+ * viewer for that game.  The bare `?action=spectate` form keeps the
+ * W11 / W12 lobby-tab fallback.
  */
 function dispatchSpectate(): void {
+  const params = new URLSearchParams(window.location.search);
+  const rawGameId = (params.get('gameId') ?? '').trim();
+  if (rawGameId !== '') {
+    dispatchSpectateWithGameId(rawGameId);
+    return;
+  }
+
   try {
     const url = new URL(window.location.href);
     url.pathname = '/spectate';
@@ -141,6 +169,166 @@ function dispatchSpectate(): void {
     document.addEventListener('DOMContentLoaded', () => {
       window.setTimeout(() => { activate(); }, 0);
     }, { once: true });
+  }
+}
+
+/**
+ * Phase K Wave 13 — `?action=spectate&gameId=<guid>` dispatch.
+ *
+ * Mints Bishop's W12 short-lived spectator-handoff JWT (5-minute TTL,
+ * scope `spectator:<gameId>`) via `POST /api/spectator/handoff`, then
+ * navigates to the canonical `/spectate/{gameId}?token=<jwt>` URL and
+ * bootstraps the existing W6 spectator-livestream viewer by setting
+ * `window.location.hash = '#/spectate/<gameId>'` (the viewer's
+ * `installSpectatorRoute()` hashchange listener owns the mount).
+ *
+ * The token is kept on the query-string so a refresh / share-link
+ * round-trip carries the spectator credential along; a future wave
+ * can extend `openSpectatorLivestream()` to read the token from the
+ * URL and append `?token=<jwt>` to the HLS playlist fetch when the
+ * caller doesn't have a session cookie (mobile webview / embedded
+ * native client paths).  For W13 the existing cookie-auth playback
+ * still works because the caller already has a session (the handoff
+ * endpoint required one to mint the token).
+ *
+ * Failure modes:
+ *   • 401 (no session) → navigate to lobby root (`/`); the sign-in
+ *     modal is mounted at boot and the user can authenticate there.
+ *   • 404 / 5xx / network error → "Game not found" toast.  We
+ *     deliberately don't differentiate; the user-visible string is
+ *     the same.
+ *   • Malformed JSON response → same "Game not found" toast.
+ *
+ * The fetch + toast modules are lazy-imported to keep the
+ * `?action=spectate&gameId=…` cold-launch off the eager lobby chunk.
+ */
+function dispatchSpectateWithGameId(gameId: string): void {
+  // Strip the action + gameId params from the URL synchronously
+  // before the network round-trip so a refresh during the fetch
+  // doesn't re-fire the shortcut.  The path rewrite below (in the
+  // success branch) will set the canonical `/spectate/{gameId}?token=…`.
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('action');
+    url.searchParams.delete('gameId');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash,
+    );
+  } catch {
+    /* legacy browsers — best effort */
+  }
+
+  void fetchHandoffAndOpenSpectator(gameId);
+}
+
+async function fetchHandoffAndOpenSpectator(gameId: string): Promise<void> {
+  let resp: Response;
+  try {
+    resp = await fetch(
+      '/api/spectator/handoff',
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ gameId }),
+      },
+    );
+  } catch {
+    await showGameNotFoundToast();
+    return;
+  }
+
+  if (resp.status === 401) {
+    redirectToLobbyForSignIn();
+    return;
+  }
+
+  if (!resp.ok) {
+    await showGameNotFoundToast();
+    return;
+  }
+
+  let body: { token?: unknown; expiresAt?: unknown } | null = null;
+  try {
+    body = await resp.json() as { token?: unknown; expiresAt?: unknown };
+  } catch {
+    await showGameNotFoundToast();
+    return;
+  }
+
+  const token = typeof body?.token === 'string' ? body.token : '';
+  if (token === '') {
+    await showGameNotFoundToast();
+    return;
+  }
+
+  // Rewrite the URL to `/spectate/{gameId}?token=<jwt>` and set the
+  // hash to `#/spectate/{gameId}` so the W6 hashchange listener in
+  // `spectator-livestream.installSpectatorRoute()` mounts the
+  // viewer.  The token sits on the query-string for share-link
+  // symmetry; the existing viewer ignores it (W13) but the URL is
+  // the canonical reference for a spectator session.
+  const encodedId = encodeURIComponent(gameId);
+  const encodedToken = encodeURIComponent(token);
+  const canonicalPath = `/spectate/${encodedId}`;
+  const canonicalQuery = `?token=${encodedToken}`;
+  const canonicalHash = `#/spectate/${encodedId}`;
+  try {
+    window.history.replaceState(
+      window.history.state,
+      '',
+      canonicalPath + canonicalQuery + canonicalHash,
+    );
+  } catch {
+    /* ignore */
+  }
+
+  // Bootstrap the spectator viewer.  The existing `installSpectator
+  // Route()` fires its hashchange handler on install + on hash
+  // change; calling `openSpectatorLivestream()` directly is the
+  // most reliable path because the `replaceState()` call above does
+  // not emit a `hashchange` event when the hash component is added
+  // alongside a path rewrite.
+  try {
+    const mod = await import('./spectator-livestream');
+    mod.installSpectatorRoute();
+    await mod.openSpectatorLivestream({ tableId: gameId });
+  } catch {
+    await showGameNotFoundToast();
+  }
+}
+
+function redirectToLobbyForSignIn(): void {
+  // No dedicated `/login` route exists in the SPA — the sign-in
+  // modal is mounted at boot under `installAuthUi()` and lives at
+  // the lobby root.  Send the user there so they can authenticate
+  // and re-try the spectator deep-link.
+  try {
+    const url = new URL(window.location.href);
+    url.pathname = '/';
+    url.search = '';
+    url.hash = '';
+    window.location.replace(url.toString());
+  } catch {
+    window.location.href = '/';
+  }
+}
+
+async function showGameNotFoundToast(): Promise<void> {
+  try {
+    const { showToast } = await import('./toast');
+    showToast('Game not found', 'error');
+  } catch {
+    // Toast module failed to load — fall back to console so the
+    // failure isn't completely silent.  Production builds keep the
+    // toast chunk eagerly available so this branch is exotic.
+    // eslint-disable-next-line no-console
+    console.warn('[action-router] spectator game not found, toast unavailable');
   }
 }
 

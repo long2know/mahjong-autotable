@@ -766,6 +766,124 @@ const SHADER_CHUNKS_TO_EMPTY = [
   'envmap_pars_vertex',
   'envmap_physical_pars_fragment',
   'envmap_vertex',
+  // ── Phase K Wave 13 — PMREMGenerator deeper strip ──────────────
+  //
+  // W13 extends the strip to the remaining ShaderChunks that are
+  // structurally guarded by `#ifdef USE_*` macros the autotable
+  // scene never defines, plus the Phong/Toon/Physical material
+  // chains (W9-stubbed classes) and the PBR-extras chunks
+  // (transmission / iridescence / clearcoat).  Two further chunks
+  // — `tonemapping_pars_fragment` + `tonemapping_fragment` — sit
+  // under the `#if defined(TONE_MAPPING)` guard which is never
+  // defined because the scene uses the default `NoToneMapping`.
+  //
+  // Each chunk's GLSL body was verified to be wrapped in an
+  // `#ifdef USE_<MACRO>` (or equivalent) guard at the JS-string
+  // level (see `tools/three-chunk-guards.mjs` audit + the
+  // companion table in `docs/frontend-three-budget.md §9`).  The
+  // GLSL preprocessor strips the include body when the macro is
+  // never `#define`d by `WebGLProgram.getProgramDefines()`, so
+  // emptying the JS-side string is equivalent to what the GLSL
+  // compiler already does — except now the JS payload doesn't
+  // ship the body bytes.
+  //
+  // The biggest contributors are `transmission_pars_fragment`
+  // (~6 KB of GLSL, all behind `USE_TRANSMISSION`), the four
+  // light/material pairs (`lights_phong_*`, `lights_toon_*`,
+  // `lights_physical_*` — each pars-fragment is 1-5 KB), and
+  // `tonemapping_pars_fragment` (~4 KB of tone-mapping function
+  // definitions never called).  The smaller `*_pars_fragment`
+  // chunks (alphamap, alphatest, alphahash, aomap, lightmap,
+  // emissivemap, bumpmap, normalmap, specularmap, metalnessmap,
+  // roughnessmap, displacementmap, fog, dithering,
+  // premultiplied_alpha, clearcoat_*, iridescence_*) each carry
+  // 50-1500 B of declarations / setup code, all under their
+  // respective `USE_*` macros.
+  //
+  // `specularmap_fragment` is intentionally NOT in this list: it
+  // contains the `#else` branch that sets `specularStrength =
+  // 1.0;` which `lights_lambert_fragment` reads downstream.
+  // Same for `opaque_fragment` (sets the final `gl_FragColor`)
+  // and `colorspace_fragment` (one-liner output-colorspace
+  // conversion, unguarded).
+  //
+  // Combined W13 saving: ~10-18 KB of GLSL strings off the
+  // renderer chunk (uncompressed; ~3-6 KB after esbuild minify).
+  // Target: drop big chunk from W12's 448.65 KB to <445 KB
+  // acceptable / <440 KB stretch.
+  //
+  // Risk + back-out: each name is independently removable.  If a
+  // future scene un-stubs a material that introduces one of the
+  // guarded `USE_*` macros, the empty chunk yields no syntax
+  // error (the include resolves to ""), but the corresponding
+  // shader logic disappears.  Symptom = silently-wrong rendering
+  // (e.g. transparent meshes with `transparent: true` rendering
+  // opaque, or alphaTest meshes not discarding pixels).  Roll
+  // back by removing the offending chunk from this list.
+  // Tone-mapping group.
+  'tonemapping_pars_fragment',
+  'tonemapping_fragment',
+  // MeshPhongMaterial (W9 class-stubbed) — lighting chain.
+  'lights_phong_fragment',
+  'lights_phong_pars_fragment',
+  // MeshToonMaterial (W9 class-stubbed) — lighting chain.
+  'lights_toon_fragment',
+  'lights_toon_pars_fragment',
+  // MeshPhysicalMaterial / MeshStandardMaterial (W9 class-stubbed)
+  // — lighting chain (biggest single contributor after the bulk
+  // `meshphysical_*` shader strings, which were W9-stripped).
+  'lights_physical_fragment',
+  'lights_physical_pars_fragment',
+  // PBR-extras: transmission + iridescence + clearcoat (all
+  // require `material.transmission` / `iridescence` / `clearcoat`
+  // > 0 which the autotable materials never set; AND all are
+  // reachable only via `fragment$5` / meshphysical_frag which is
+  // W9-empty).
+  'transmission_fragment',
+  'transmission_pars_fragment',
+  'iridescence_fragment',
+  'iridescence_pars_fragment',
+  'clearcoat_pars_fragment',
+  'clearcoat_normal_fragment_begin',
+  'clearcoat_normal_fragment_maps',
+  // Map-extension chains the autotable scene never opts into.
+  // Every chunk listed below is wrapped in `#ifdef USE_<MACRO>`
+  // and the macro is only `#define`d by WebGLProgram when the
+  // corresponding `material.<map>` property is set.  Autotable's
+  // MeshBasic / MeshLambert / LineBasic materials never set
+  // alphaMap / alphaHash / alphaTest / aoMap / lightMap /
+  // emissiveMap / bumpMap / normalMap / specularMap /
+  // metalnessMap / roughnessMap / displacementMap.
+  'alphamap_fragment',
+  'alphamap_pars_fragment',
+  'alphahash_fragment',
+  'alphahash_pars_fragment',
+  'alphatest_fragment',
+  'alphatest_pars_fragment',
+  'aomap_fragment',
+  'aomap_pars_fragment',
+  'lightmap_pars_fragment',
+  'emissivemap_fragment',
+  'emissivemap_pars_fragment',
+  'bumpmap_pars_fragment',
+  'normalmap_pars_fragment',
+  'specularmap_pars_fragment',
+  'metalnessmap_fragment',
+  'metalnessmap_pars_fragment',
+  'roughnessmap_fragment',
+  'roughnessmap_pars_fragment',
+  'displacementmap_pars_vertex',
+  'displacementmap_vertex',
+  // Fog / dithering / premultiplied-alpha — none of these are
+  // toggled by the autotable scene (no `scene.fog`, no
+  // `renderer.dithering`, no `material.premultipliedAlpha`).
+  'fog_fragment',
+  'fog_pars_fragment',
+  'fog_vertex',
+  'fog_pars_vertex',
+  'dithering_fragment',
+  'dithering_pars_fragment',
+  'premultiplied_alpha_fragment',
 ];
 
 const SHADER_STRINGS_TO_EMPTY = [
@@ -894,6 +1012,62 @@ const UNIFORMS_LIB_KEYS_TO_EMPTY = [
   'gradientmap',
   'points',
   'sprite',
+  // ── Phase K Wave 13 — Map-feature UniformsLib entries ──────────
+  //
+  // Each of these UniformsLib top-level keys holds the uniform
+  // values that ShaderLib.basic / .lambert reference for the
+  // corresponding `material.<map>` feature.  Autotable's
+  // MeshBasic / MeshLambert / LineBasic materials never set:
+  //
+  //   • specularMap → UniformsLib.specularmap
+  //   • envMap      → UniformsLib.envmap (renderer chunk strip
+  //                    already nukes the consuming shader code
+  //                    via the W12 envmap_* ShaderChunk pass)
+  //   • aoMap       → UniformsLib.aomap
+  //   • lightMap    → UniformsLib.lightmap
+  //   • bumpMap     → UniformsLib.bumpmap
+  //   • normalMap   → UniformsLib.normalmap
+  //   • displacementMap → UniformsLib.displacementmap
+  //   • emissiveMap → UniformsLib.emissivemap
+  //   • scene.fog   → UniformsLib.fog (we don't set scene.fog)
+  //
+  // ShaderLib.basic.uniforms = mergeUniforms([UniformsLib.common,
+  //   UniformsLib.specularmap, UniformsLib.envmap, UniformsLib.aomap,
+  //   UniformsLib.lightmap, UniformsLib.fog])
+  // — emptying each value-object yields `{}` and the merge still
+  // works (the result has the keys from `.common` plus nothing
+  // from these), and three's uniform-binding machinery never
+  // looks up these uniforms because the consuming `USE_<MACRO>`
+  // shader code is `#define`-stripped at GLSL compile time
+  // (no `material.<map>` set → no macro → no uniform reference).
+  //
+  // `UniformsLib.common` is KEPT — it holds the always-set
+  // `diffuse` / `opacity` / `map` / `uv` uniforms that
+  // MeshBasic + MeshLambert universally consume.
+  // `UniformsLib.lights` is KEPT — the autotable scene attaches
+  // AmbientLight + DirectionalLight, so the lighting uniforms are
+  // live and `lights_pars_begin` consumes them via NUM_DIR_LIGHTS.
+  //
+  // Combined W13 saving: ~0.5-1.5 KB after minification.  Modest
+  // but the strip stays surgical and contained.
+  //
+  // Risk + back-out: if a future wave un-stubs a material that
+  // sets one of the listed maps (e.g. enabling normal mapping on
+  // a tile), the un-stubbed shader would `#define USE_NORMALMAP`,
+  // and the uniform `normalMap` / `normalMatrix` etc. would be
+  // expected.  Symptom: console warns from three.js's uniform-
+  // validation about missing values, then a black render where
+  // the map should be sampled.  Roll back by removing the
+  // offending key from this list.
+  'specularmap',
+  'envmap',
+  'aomap',
+  'lightmap',
+  'bumpmap',
+  'normalmap',
+  'displacementmap',
+  'emissivemap',
+  'fog',
 ];
 
 function stripUnusedUniformsLib(): { name: string; enforce: 'pre'; transform(code: string, id: string): { code: string; map: null } | null } {
