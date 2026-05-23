@@ -3,7 +3,9 @@ using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Patterns;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
+using Mahjong.Autotable.Api.Matchmaking;
 using Mahjong.Autotable.Api.Persistence;
+using Mahjong.Autotable.Api.Players;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 
@@ -20,9 +22,18 @@ builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSignalR();
 
+// Phase J Wave 5 — MVC controllers for the matchmaking REST endpoint
+// (MatchmakingController owns GET /api/matchmaking/lobby).
+builder.Services.AddControllers();
+
 builder.Services.Configure<ChangshaRuntimeOptions>(builder.Configuration.GetSection("ChangshaRuntime"));
 builder.Services.AddSingleton<IChangshaGameRuntime, ChangshaGameRuntime>();
 builder.Services.AddSingleton<AutotableConnectionManager>();
+
+// Phase J Wave 5 — player profile + matchmaking services. Singleton-scoped so
+// they share the runtime's lifetime and use IServiceScopeFactory for DB scopes.
+builder.Services.AddSingleton<PlayerProfileService>();
+builder.Services.AddSingleton<MatchmakingService>();
 
 const string ChangshaCorsPolicy = "ChangshaCors";
 builder.Services.AddCors(options =>
@@ -127,6 +138,10 @@ app.MapGet("/api/changsha/pattern-ordering", () =>
 });
 
 app.MapHub<ChangshaHub>("/hubs/changsha");
+
+// Phase J Wave 5 — map MVC controllers (MatchmakingController owns
+// GET /api/matchmaking/lobby).
+app.MapControllers();
 
 // Autotable WS endpoint — speaks upstream NEW/JOIN/JOINED/UPDATE protocol
 // so the byte-identical autotable.9519e86d.js bundle connects unchanged.
