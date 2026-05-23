@@ -1624,3 +1624,46 @@ Memo: `.squad/decisions/inbox/hicks-phase-j-wave-4.md`.
 - **Apone** — No-op this wave.  Apone's DevOps commit pre-installed `@microsoft/signalr ^10.0.0` + `process ^0.11.10` polyfill; the Playwright smoke spec uses only Wave-4-era testids, so Wave-5 testids land fresh for Wave-6 acceptance suites to target.
 
 Memo: `.squad/decisions/inbox/hicks-phase-j-wave-5.md`.
+
+## Phase J Wave 6 — auth bootstrap + leaderboard + Playwright suites
+
+Branch: `stlong/phase-j-wave-6-completion`.  Commit: `447bacc`.
+
+Wires Bishop's Wave-6 backend (`POST /api/identity`, `GET /api/leaderboard`, plus the persistent `mahjong_pid` HttpOnly cookie + PlayerId/ConnectionId split on the hub) into the frontend, lands a first-visit onboarding card so returning visitors keep their profile across reloads, and pays down our biggest E2E debt with three Playwright specs (replay, sound-toggle, lobby-flow).
+
+### Wire contract verified against Bishop's `21515fe`
+
+- `POST /api/identity` → `{ playerId, displayName, avatarColor, createdAt, lastSeenAt }`. No `isNewProfile` flag — frontend uses the LS flag `mahjong.identity.onboarded.v1` as the authoritative "first visit" signal because the `mahjong_pid` cookie is HttpOnly (so `document.cookie` always returns null for it).
+- `GET /api/leaderboard?sort&limit&offset&minGames` → `{ total, rows[{ rank, playerId, displayName, avatarColor, gamesPlayed, gamesWon, winRate, totalScore, highestSingleGameScore, longestWinStreak }] }`. Defaults: `limit=50` (max 100), `offset=0`, `minGames=5`, `sort=gamesWon`. Frontend normalises verbose row names at the boundary so the rest of the UI stays in compact vocabulary (`highestScore`, `longestStreak`).
+
+### Methodology — what worked
+
+- **Synthesise gameComplete through the real Collection path.** The replay spec pushes a fake `{ isComplete: true, handHistory: [...] }` into `client.gameComplete` via `page.evaluate`. `Collection.set()` emits locally when `client.connected()` is false (bare URL with no `?gameId=`), so the game-ui handler fires its real Bootstrap modal + click handler. Tests the production code path in <2 s instead of racing a real 4-bot match through to completion (which takes 90 s+ and is hopelessly flaky).
+- **Hydrate profile chip at lobby init, not on hub connect.** `profile.ts:installProfileLoadedListener()` only wires the `ProfileLoaded` handler once `hubIsConnected()` is true, and the hub only connects when entering a game. Without `hydrateProfileFromCacheIfAvailable()` returning visitors saw the default "Profile" until they joined a match. Idempotent — bails when `current !== null`. Routes through the existing private `setCurrent(loadCache())` so the chip's `onProfile` listeners fire synchronously.
+- **Sound state in localStorage as canonical store.** `installSoundEnabledMirror()` keeps `mahjong:soundEnabled` ↔ the settings-drawer Sound checkbox in lock-step both ways. The E2E spec flips the LS key directly to seed state, then asserts the checkbox follows; flips the checkbox manually then asserts LS follows. Both reload paths preserve the value.
+- **`test.skip()` inside each test, not at describe level.** Playwright's describe-level `test.skip(({}, testInfo) => …)` signature confused our two Chromium-engine projects (both report `browserName === 'chromium'`). Moving the skip *inside* the test with `testInfo` as the second positional arg matches the working pattern in `smoke.spec.ts:78`.
+- **Project-scoped skips, not browser-scoped.** Both `chromium` and `mobile-chrome` projects use the Chromium engine. The skip clause has to inspect `testInfo.project.name`.
+
+### Surprises / blind spots
+
+- **HttpOnly cookies are invisible to JS.** `document.cookie` returns `null` for `mahjong_pid` by Bishop's design (security, not bug). The LS flag is the only signal the frontend can use to gate first-visit UI.
+- **`UpdateProfile` RPC doesn't re-broadcast `ProfileLoaded`.** It returns the DTO as the RPC response only. External callers can't use `setCurrent` (private), so `applyProfileFromOnboarding()` must route through `setDisplayName`/`setAvatarColor` — both of which require `current !== null` to do anything. Hence the 2 s polling wait on `getProfile()` after forcing a hub connect.
+- **`client-ui.start()` gates WS auto-connect on `?gameId=` presence.** Bare URLs (`?variant=…&seat=…`) don't open the autotable WS, the game shell stays in the lobby. Spec-time we use the absence of `?gameId=` deliberately so `client.connected()` stays false and `Collection.set()` emits locally.
+- **Parcel splits CSS into multiple bundles.** `index.html` now references three CSS files (`2391eb20`-paired main + two split chunks `094cde3a` + `df85b4c4` for bootstrap + vendor styles). The split chunks re-emit byte-identical until their upstream deps move, so each Parcel build only changes 1–2 hashes — don't `git rm` the unchanged ones.
+
+### Stability
+
+- **TypeScript strict (`tsc --noEmit --strict --target es6 --moduleResolution bundler --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts`):** **0 errors**.
+- **Parcel build:** **succeeded in ~3 s** — `autotable-src.2391eb20.js` (1.18 MB) + `autotable-src.6633d8fb.css` (12.2 kB) plus pre-existing split chunks (`094cde3a.css` 31.2 kB + `df85b4c4.css` 143.8 kB) unchanged.
+- **Backend tests:** **456 passed / 0 failed / 0 skipped** (`dotnet test src/backend/Mahjong.Autotable.slnx`). The +11 over Wave 5's 445 baseline are Vasquez's Wave-6 identity + leaderboard + rate-limit contract tests (`4bd9e53`).
+- **Docker:** `mahjong-autotable:wave6` builds clean; `/health = 200`; live smoke of `POST /api/identity` + `GET /api/leaderboard?limit=5&minGames=0` returns expected payloads.
+- **Playwright suite:** **10 passed / 4 skipped / 0 failed** across `chromium` + `mobile-chrome` projects (the 4 skips are project-scoped — replay/sound-toggle/lobby-flow are desktop-only on first pass, `mobile-drawer-toggle` is mobile-only).
+- **Stale bundle pruning:** Parcel `4c6071a7.js` + `3501ce9a.css` renamed to new hashes via Parcel's content-hash output.
+
+### Cross-agent coordination
+
+- **Bishop** — Wire contract verified against `Players/PlayerIdentityController.cs` and `Leaderboard/LeaderboardController.cs` field-by-field. Frontend normalises his verbose row names at the boundary so no DTO rename is required.
+- **Apone** — No changes to his DevOps commits. The new rate-limiting + CORS infra applies as-is.
+- **Vasquez** — Three new specs follow her selector contract in `tests/selectors.md` (onboarding-*, leaderboard-*, settings-sound, replay-*, game-complete-replay testids). Spec patterns mirror her smoke-spec scaffold (project-scoped skips, fixed timeouts, hermetic storageState).
+
+Memo: `.squad/decisions/inbox/hicks-phase-j-wave-6.md`.
