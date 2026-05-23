@@ -220,6 +220,78 @@ function (`buildPanel`) so a single fact-set covers both renders.
 > Counter semantics, including the win-streak reset on loss + the bot
 > filter, are pinned by Vasquez's `PlayerStatsAggregationTests`.
 
+## Onboarding *(Phase J Wave 6)*
+
+Hicks's `src/identity.ts` mounts the first-visit onboarding card: the
+DOM block lives inline in `index.html` and stays
+`style="display: none"` until the bootstrap detects a missing
+`mahjong_pid` cookie (Bishop's persistent-id contract — see
+`PersistentPlayerIdTests`). The card collects a display name and avatar
+colour, then POSTs to `/api/identity` and lets the backend mint the
+cookie. The Onboarding flow shares the avatar-preset palette pattern
+with the Wave 5 Profile drawer; the only static testids live on the
+card root + form controls, while the colour-preset buttons carry a
+templated testid for indexed access.
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="onboarding-card"` | `<section id="onboarding-card">` | Card root. Toggled from `display: none` → visible by `identity.ts:openOnboardingCard` after the first-visit cookie check. | `src/frontend/autotable-src/index.html:724` |
+| `data-testid="onboarding-display-name-input"` | `<input id="onboarding-display-name-input" type="text">` | Display-name editor. Backend rejects empty / >32 chars / leading-trailing whitespace (mirrors `PlayerProfileService.UpdateDisplayNameAsync`). | `src/frontend/autotable-src/index.html:741` |
+| `id="onboarding-display-name-error"` | `<span>` | Inline validation message; populated when the name fails the same rules the server applies (so the user gets feedback before the POST). | `src/frontend/autotable-src/src/identity.ts:305` |
+| `id="onboarding-avatar-presets"` | `<div role="radiogroup">` | Host for the colour-preset buttons (one `<button>` per palette entry). Built by `identity.ts:renderAvatarPresets`. | `src/frontend/autotable-src/src/identity.ts:306` |
+| `data-testid="onboarding-avatar-color-preset-{0..N}"` | `<button class="onboarding-avatar-preset">` | Colour-preset buttons in the avatar picker; index reflects palette position (same indexing convention as the Profile drawer's `profile-avatar-color-preset-{idx}`). | `src/frontend/autotable-src/src/identity.ts:346` |
+| `data-testid="onboarding-avatar-color-custom"` | `<input id="onboarding-avatar-color-custom" type="color">` | Free-form `#RRGGBB` picker — same validation surface as the Profile drawer's custom-colour input. | `src/frontend/autotable-src/index.html:758` |
+| `id="onboarding-preview-avatar"` | `<div>` | Live avatar preview; the chip's background colour reflects the in-flight preset/custom selection before the user commits. | `src/frontend/autotable-src/src/identity.ts:309` |
+| `data-testid="onboarding-continue"` | `<button id="onboarding-continue">` | Primary CTA — submits the form, POSTs `/api/identity`, dismisses the card on 200. | `src/frontend/autotable-src/index.html:765` |
+| `data-testid="onboarding-skip"` | `<button id="onboarding-skip">` | Secondary CTA — dismisses the card without sending; the user gets the server-assigned default name + colour on first hub connect (path falls through to the cookie-mint codepath in `PlayerIdentityService.ResolveOrMint`). | `src/frontend/autotable-src/index.html:770` |
+
+> **Backend contract.** The form sends `POST /api/identity` with a JSON
+> body `{ displayName?, avatarColor? }`. The server returns the full
+> `PlayerProfile` envelope `{ playerId, displayName, avatarColor,
+> createdAt, lastSeenAt }` and sets the `mahjong_pid` cookie
+> (`HttpOnly; SameSite=Lax; Max-Age=31536000`). The cookie value is a
+> 32-char lowercase hex (`Guid.NewGuid().ToString("N")`); the same id
+> is returned in the body and on the hub's `ProfileLoaded` broadcast.
+> Wire contract is pinned by Vasquez's `PersistentPlayerIdTests`.
+
+## Leaderboard *(Phase J Wave 6)*
+
+Hicks's `src/leaderboard.ts` mounts the lobby's leaderboard pane (the
+third tab in the lobby tab-strip, after "My Game" and "Public Games").
+The pane reads `GET /api/leaderboard?sort&limit&offset&minGames` and
+renders a paged table; the sort + min-games controls are static, the
+row testids are templated by 0-based index, and the table also exposes
+`data-rank` + `data-player-id` attributes on each `<tr>` for tests that
+want to scope-query by content rather than index.
+
+| Selector | Element | Purpose | Source |
+|---|---|---|---|
+| `data-testid="lobby-leaderboard-tab"` | `<button>` | Tab-strip button that activates the leaderboard pane. Wires up to `lobby.ts:setActiveLobbyTab('leaderboard')`. | `src/frontend/autotable-src/index.html:715` |
+| `data-testid="lobby-leaderboard-section"` | `<section id="lobby-tab-leaderboard">` | Pane root. Toggled from `display: none` → visible by the tab handler. Hosts every child below. | `src/frontend/autotable-src/index.html:1024` |
+| `data-testid="leaderboard-sort-select"` | `<select id="leaderboard-sort-select">` | Sort axis chooser. Values are the wire strings `gamesWon` / `totalScore` / `winRate` / `longestStreak` / `highestScore` (case-insensitive on the server; the frontend ships canonical camelCase). | `src/frontend/autotable-src/index.html:1033` |
+| `data-testid="leaderboard-min-games-input"` | `<input type="number" id="leaderboard-min-games-input">` | Minimum-games-played filter. Default value `5` mirrors `LeaderboardService.DefaultMinGames`. Set to `0` to include everyone (admin / debug view). | `src/frontend/autotable-src/index.html:1039` |
+| `id="leaderboard-error"` | `<div>` | Error banner — populated when the fetch fails (network, 5xx, or 429 from Apone's rate limiter). Hidden until needed. | `src/frontend/autotable-src/src/leaderboard.ts:394` |
+| `id="leaderboard-loading"` | `<div>` | "Loading leaderboard…" placeholder shown while the fetch is in flight. | `src/frontend/autotable-src/src/leaderboard.ts:396` |
+| `id="leaderboard-empty"` | `<div>` | Empty-state placeholder shown when `rows.length === 0` (e.g., the min-games threshold filters everyone out). | `src/frontend/autotable-src/src/leaderboard.ts:395` |
+| `data-testid="leaderboard-table"` | `<div>` (table host) | Outer host for the rendered `<table>` — `leaderboard.ts:renderTable` clears + repaints this on every refresh. The `<table>` itself is unwrapped child content. | `src/frontend/autotable-src/index.html:1058` |
+| `data-testid="leaderboard-prev-page"` | `<button id="leaderboard-prev-page">` | Pagination — previous page. Disabled when `offset === 0`. | `src/frontend/autotable-src/index.html:1063` |
+| `data-testid="leaderboard-paging-summary"` | `<span id="leaderboard-paging-summary">` | Paging summary text (e.g. `Rows 21-30 of 60`). Updated alongside the table render. | `src/frontend/autotable-src/index.html:1067` |
+| `data-testid="leaderboard-next-page"` | `<button id="leaderboard-next-page">` | Pagination — next page. Disabled when `offset + rows.length >= total`. | `src/frontend/autotable-src/index.html:1071` |
+| `id="leaderboard-row-{0..N}"` | `<tr class="leaderboard-row">` | One row per leaderboard entry on the current page. `idx` is the 0-based offset within the page, NOT the global rank. The `<tr>` also exposes `data-rank` (global 1-based) and `data-player-id` for content-based scoping. Cardinality is `0..limit` (default 50, max 100). | `src/frontend/autotable-src/src/leaderboard.ts:507` |
+
+> **Backend contract.** The pane consumes Bishop's
+> `GET /api/leaderboard?sort=<axis>&limit=<n>&offset=<m>&minGames=<k>`
+> envelope `{ total: int, rows: [{ rank, playerId, displayName,
+> avatarColor, gamesPlayed, gamesWon, winRate, totalScore,
+> highestSingleGameScore, longestWinStreak }] }`. Defaults are
+> `limit=50` (`MaxLimit=100`), `offset=0`, `minGames=5`; sort defaults
+> to `gamesWon` and silently falls back to `gamesWon` on unknown axis.
+> All four query knobs + the row shape are pinned by Vasquez's
+> `LeaderboardEndpointTests`. Apone's `token-bucket-api` policy (30
+> tokens, 5/sec refill) is in front of this endpoint when
+> `RateLimiting:Enabled=true` — rejection shape is pinned by
+> `RateLimitingTests`.
+
 ## Stability contract
 
 A test relying on a selector from this document gets the following
