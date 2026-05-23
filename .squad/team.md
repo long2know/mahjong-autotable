@@ -17,6 +17,7 @@
 | Hicks | Frontend Dev | `.squad/agents/hicks/charter.md` | Active |
 | Vasquez | Rules Engineer | `.squad/agents/vasquez/charter.md` | Active |
 | Hudson | Tester | `.squad/agents/hudson/charter.md` | Active |
+| Apone | DevOps / Platform Engineer | `.squad/agents/apone/charter.md` | Active |
 | Scribe | Session Logger | `.squad/agents/scribe/charter.md` | Active |
 | Ralph | Work Monitor | `.squad/agents/ralph/charter.md` | Active |
 
