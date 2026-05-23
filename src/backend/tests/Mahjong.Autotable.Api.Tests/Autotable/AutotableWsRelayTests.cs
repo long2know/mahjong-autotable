@@ -124,8 +124,14 @@ public class AutotableWsRelayTests : IAsyncLifetime
         });
 
         // Wait until the server has applied Alice's UPDATE (defeat the race
-        // between the WS-send completion and the server-side read loop).
-        await WaitForAsync(() => manager.GetStoredEntryCount("GAME-C") >= 3, timeoutMs: 2000);
+        // between the WS-send completion and the server-side read loop). We
+        // count "things" specifically — the aggregate count is non-deterministic
+        // because translator-emitted match/seat entries may already push it
+        // ≥3 before the UPDATE lands, causing the wait to fire prematurely.
+        await WaitForAsync(
+            () => manager.GetStoredEntryCount("GAME-C", "things") >= 3,
+            timeoutMs: 5000,
+            reason: "server never recorded all 3 things entries for GAME-C");
 
         // Now Bob joins late.
         await using var bob = await OpenAndJoinAsync("GAME-C", seat: 1);
@@ -147,6 +153,66 @@ public class AutotableWsRelayTests : IAsyncLifetime
         Assert.Contains(10L, thingEntries);
         Assert.Contains(11L, thingEntries);
         Assert.Contains(12L, thingEntries);
+    }
+
+    // ── 3b. Late JOIN stability — re-run the scenario 50× ─────────────
+    //
+    // Phase J Wave 10 regression gate for the
+    // <c>LateJoin_ReceivesAccumulatedSnapshot_OfPriorUpdates</c> flake. Loops
+    // the same accumulated-snapshot path 50 times in-process to flush out the
+    // server-side UPDATE → store → JOIN-snapshot race that intermittently let
+    // a late joiner observe an empty/partial snapshot under CI load.
+    // Trait("Category", "Stability") so the suite can be filtered for
+    // dedicated stability runs.
+    [Fact, Trait("Category", "PhaseC-Relay"), Trait("Category", "Stability"), Trait("Wave", "Phase-J-10")]
+    public async Task LateJoin_ReceivesAccumulatedSnapshot_OfPriorUpdates_Stability50x()
+    {
+        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
+
+        for (var iteration = 0; iteration < 50; iteration++)
+        {
+            var gameId = $"GAME-C-STAB-{iteration}";
+
+            await using var alice = await OpenAndJoinAsync(gameId, seat: 0);
+
+            var thingValue1 = JsonSerializer.SerializeToElement(new { slotName = "hand.0@0", rotationIndex = 1 });
+            var thingValue2 = JsonSerializer.SerializeToElement(new { slotName = "hand.1@0", rotationIndex = 1 });
+            var thingValue3 = JsonSerializer.SerializeToElement(new { slotName = "hand.2@0", rotationIndex = 1 });
+            await alice.SendUpdateAsync(new[]
+            {
+                new object[] { "things", 10L, thingValue1 },
+                new object[] { "things", 11L, thingValue2 },
+                new object[] { "things", 12L, thingValue3 }
+            });
+
+            await WaitForAsync(
+                () => manager.GetStoredEntryCount(gameId, "things") >= 3,
+                timeoutMs: 5000,
+                reason: $"iteration {iteration}: server never recorded all 3 things entries for {gameId}");
+
+            await using var bob = await OpenAndJoinAsync(gameId, seat: 1);
+
+            var snapshot = bob.LastSnapshot!.Value;
+            Assert.Equal("UPDATE", snapshot.GetProperty("type").GetString());
+            Assert.True(snapshot.GetProperty("full").GetBoolean(),
+                $"iteration {iteration}: snapshot.full must be true");
+
+            var entries = snapshot.GetProperty("entries");
+            var thingEntries = new List<long>();
+            for (var i = 0; i < entries.GetArrayLength(); i++)
+            {
+                if (entries[i][0].GetString() == "things")
+                {
+                    thingEntries.Add(entries[i][1].GetInt64());
+                }
+            }
+            Assert.True(thingEntries.Contains(10L),
+                $"iteration {iteration}: bob's snapshot missing things[10] (saw [{string.Join(",", thingEntries)}])");
+            Assert.True(thingEntries.Contains(11L),
+                $"iteration {iteration}: bob's snapshot missing things[11] (saw [{string.Join(",", thingEntries)}])");
+            Assert.True(thingEntries.Contains(12L),
+                $"iteration {iteration}: bob's snapshot missing things[12] (saw [{string.Join(",", thingEntries)}])");
+        }
     }
 
     // ── 4. NEW gameId starts empty ────────────────────────────────────
@@ -300,13 +366,25 @@ public class AutotableWsRelayTests : IAsyncLifetime
         return session;
     }
 
-    private static async Task WaitForAsync(Func<bool> predicate, int timeoutMs)
+    private static async Task WaitForAsync(Func<bool> predicate, int timeoutMs, string? reason = null)
     {
+        // Phase J Wave 10 — hard-assert on timeout. Previously this helper
+        // returned silently when the deadline elapsed, which let the
+        // `LateJoin_ReceivesAccumulatedSnapshot_OfPriorUpdates` flake (and any
+        // future race-style test) limp forward and fail downstream with a
+        // misleading assertion. By raising on timeout the failing test now
+        // points at the actual stuck precondition instead.
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
             if (predicate()) return;
             await Task.Delay(25);
+        }
+        if (!predicate())
+        {
+            throw new Xunit.Sdk.XunitException(
+                $"WaitForAsync timed out after {timeoutMs}ms" +
+                (string.IsNullOrEmpty(reason) ? "" : $": {reason}"));
         }
     }
 

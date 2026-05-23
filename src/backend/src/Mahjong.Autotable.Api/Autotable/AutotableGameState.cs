@@ -154,6 +154,21 @@ public sealed class AutotableGameState
     }
 
     /// <summary>
+    /// Test/diagnostic hook: returns the number of stored entries for a specific
+    /// collection <paramref name="kind"/>. Lets integration tests wait on a
+    /// deterministic per-kind count instead of an aggregate count that may already
+    /// be satisfied by translator-emitted initial state.
+    /// </summary>
+    public int CountFor(string kind)
+    {
+        if (string.IsNullOrEmpty(kind)) return 0;
+        lock (_lock)
+        {
+            return _collections.TryGetValue(kind, out var collection) ? collection.Count : 0;
+        }
+    }
+
+    /// <summary>
     /// Removes <paramref name="playerId"/> from every per-player collection
     /// (<c>seats</c>, <c>nicks</c>, <c>mouse</c>, …) and returns the resulting
     /// tombstone entries to broadcast. Mirrors upstream <c>leave()</c>.
