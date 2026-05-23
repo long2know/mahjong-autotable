@@ -2646,3 +2646,140 @@ discipline).
 notes for Wave 10 (Redis client wire, EfIdempotencyStore
 sweeper hosted service, backpressure broadcaster retrofit on
 existing W7/W8 hubs).
+
+---
+
+## Phase K — Wave 10 (bring-up)
+
+**Branch:** `stlong/phase-k-wave-10-bringup`
+**Date:** 2026-05-23 (session run)
+**Test gate at close:** Passed: **2108**, Failed: **0**,
+Skipped: **0**, 0 warnings (~1m 38s).
+Baseline at session start: **1880/0/0**. **+228 net passing.**
+
+**Seven scoped deliverables, all landed:**
+
+1. **Real Redis client for `RedisIdempotencyStore`** —
+   `StackExchange.Redis` 2.8.16 behind a thin
+   `IIdempotencyRedis` adapter; pipe-delimited v1 wire
+   envelope; `mahjong:idem:` key prefix; 5-min replay
+   window; `Set(IdempotencyRecord) => Record(record)` alias
+   for Vasquez forward-pin compliance.
+2. **Janus readiness gradual degradation** —
+   `JanusReadinessLevel` enum (`Healthy`/`Degraded`/
+   `Unhealthy`), `DegradeAfterConsecutiveFailures = 3`,
+   `CurrentLevel` on interface + supervisor; richer
+   SignalR payload (`previousLevel`, `level`,
+   `consecutiveFailures`).
+3. **`CommentaryRecord.TileReferences` typed shape** —
+   `TileReference(string TileId, string Suit, int Rank)`
+   record + `Parse(string)` factory + reference-stable
+   `Unknown` sentinel; property name `TileReferences`
+   preserved (Vasquez W9 regression pin); JSON emission as
+   `{tileId, suit, rank}` camelCase.
+4. **JwksCacheService hygiene** — `SizeLimit = 16` bounded
+   cache, `SemaphoreSlim(1, 1)` stampede gate,
+   `MeterName` + IMeterFactory-backed counters
+   (`jwks_cache_hit_total`, `..._miss_total`,
+   `..._rebuild_total`), `CreateWithDedicatedCache()`
+   factory, `IDisposable`.
+5. **DutchSwissPairingService** — `ISwissPairingService` +
+   `DutchSwissPairingService`; top-half-vs-bottom-half per
+   score group, single-swap rematch avoidance, odd-group
+   float-down, `"__bye__"` sentinel.
+6. **Janus mountpoint lifecycle** —
+   `JanusMountpointRegistry` (concurrent dictionary;
+   `RegisterJoin`/`RecordLeave`/`Sweep`/`TryGet`/`Evict`)
+   + `JanusMountpointLifecycleService` (`BackgroundService`,
+   60s sweep, 5min idle TTL, internal `RunOnce` for tests);
+   wired only when `Voice:SpectatorSfuImpl=Janus`.
+7. **SignalR backpressure Prometheus metrics** —
+   optional `IMeterFactory?` ctor param on the W9
+   broadcaster; meter
+   `Mahjong.Autotable.Api.Observability.SignalRBackpressure`
+   with `signalr_messages_sent_total`,
+   `signalr_messages_dropped_total{reason=rate_cap|send_failure|age_window}`,
+   `signalr_replay_requests_total`.
+
+**Files added:**
+
+- `src/backend/src/Mahjong.Autotable.Api/Tournament/DutchSwissPairingService.cs`
+- `src/backend/src/Mahjong.Autotable.Api/Voice/JanusMountpointLifecycleService.cs`
+- `docs/redis-idempotency.md`
+- `docs/janus-deployment.md`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/RedisIdempotencyStoreContractTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/RedisIdempotencyStoreLiveTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/JanusReadinessGradualDegradationTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/CommentaryTileReferenceShapeTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/JwksCacheHygieneTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/DutchSwissPairingTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/JanusMountpointLifecycleTests.cs`
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/SignalRBackpressureMetricsTests.cs`
+
+**Files modified:**
+
+- `src/backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj`
+  — `StackExchange.Redis` 2.8.16 package reference.
+- `src/backend/src/Mahjong.Autotable.Api/Audit/EfIdempotencyStore.cs`
+  — full Redis adapter rewrite (IIdempotencyRedis +
+  StackExchangeRedisAdapter + RedisIdempotencyStore +
+  Set alias).
+- `src/backend/src/Mahjong.Autotable.Api/Program.cs` —
+  Redis idempotency branch, JwksCacheService factory wire-up,
+  JanusMountpointRegistry + LifecycleService DI under the
+  Janus branch, DutchSwissPairingService DI.
+- `src/backend/src/Mahjong.Autotable.Api/Voice/JanusReadinessSupervisor.cs`
+  — 3-level state machine, richer payload, level-transition
+  logging.
+- `src/backend/src/Mahjong.Autotable.Api/Commentary/ICommentaryGenerator.cs`
+  — `TileReference` record + property type change.
+- `src/backend/src/Mahjong.Autotable.Api/Commentary/OpenAiCommentaryGenerator.cs`
+  — parser dual-shape support.
+- `src/backend/src/Mahjong.Autotable.Api/Commentary/StubCommentaryGenerator.cs`
+- `src/backend/src/Mahjong.Autotable.Api/Commentary/CommentaryController.cs`
+  — camelCase JSON emission.
+- `src/backend/src/Mahjong.Autotable.Api/Auth/JwksCacheService.cs`
+  — full hygiene rewrite (size limit, semaphore, meters,
+  factory, IDisposable).
+- `src/backend/src/Mahjong.Autotable.Api/Observability/SignalRBackpressureBroadcaster.cs`
+  — optional IMeterFactory wiring, counters on every drop +
+  send + replay site.
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W9/Bishop/IdempotencyStoreContractTests.cs`
+  — forward-port for the W10 store rewrite.
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/CommentaryGeneratorTestShim.cs`
+  — uses `TileReference.Parse`.
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Regression/Wave1ThroughKW10RegressionTests.cs`
+  — renamed from `Wave1ThroughKW9RegressionTests.cs`.
+- `docs/voice-sfu-design.md` — W10 § appended for gradual
+  degradation.
+- `docs/jwt-rotation.md` — § 12 appended for cache hygiene.
+- `docs/realtime-resilience.md` — Phase K Wave 10 § appended
+  for Prometheus metrics.
+
+**Cross-lane observations:**
+
+- Vasquez aggressively stashes / parks concurrent agent WIP
+  during W10 — early in the session Vasquez stashed Bishop's
+  W10 WIP into `stash@{0}` and parked the test files into
+  `.work/vasquez-w10-safe/parked-bishop-wip-*/Bishop/`.
+  Recovery: pop the stash, unpark the test files, then
+  re-run the build. Verified via `git stash list` +
+  `git reflog`.
+- Vasquez W10 forward-pinned contract tests in
+  `Phase_K_W10/Vasquez/BishopW10*` use reflection-tolerant
+  assertions, but some have hard pins (e.g. the `Save`/`Set`/
+  `Store`/`Put` method requirement on
+  `RedisIdempotencyStore`). Satisfied by adding the `Set`
+  alias.
+- Hicks W10 frontend should pick up the new typed
+  `TileReference` shape from the commentary API (now emits
+  `{tileId, suit, rank}` camelCase) and the richer Janus
+  readiness payload (`previousLevel`/`level`/
+  `consecutiveFailures` fields).
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-10.md`
+— per-deliverable design, contract-test coverage, forward
+notes for Wave 11 (FIDE C.04 backtracking + Buchholz/Berger
+tiebreaks for Swiss; binary `TileReference.ToBinary()` codec;
+mountpoint-eviction signal into the backpressure metric
+surface; age-at-publish histogram).

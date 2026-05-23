@@ -311,10 +311,28 @@ public sealed class OpenAiCommentaryGenerator : ICommentaryGenerator, IDisposabl
                 var intensity = item.TryGetProperty("emotionIntensity", out var ei) && ei.ValueKind == JsonValueKind.Number
                     ? Math.Clamp(ei.GetDouble(), 0.0, 1.0)
                     : 0.5;
-                var tiles = Array.Empty<string>();
+                var tiles = new List<TileReference>();
                 if (item.TryGetProperty("tileReferences", out var tr) && tr.ValueKind == JsonValueKind.Array)
                 {
-                    tiles = tr.EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToArray();
+                    foreach (var entry in tr.EnumerateArray())
+                    {
+                        // Phase K Wave 10 — Bishop. Accept both the
+                        // legacy bare-string wire ("man5") AND the new
+                        // typed shape ({tileId,suit,rank}). LLM prompt
+                        // tuning aside, models occasionally regress to
+                        // the older format mid-stream.
+                        if (entry.ValueKind == JsonValueKind.String)
+                        {
+                            var parsed = TileReference.Parse(entry.GetString());
+                            if (parsed != TileReference.Unknown) tiles.Add(parsed);
+                        }
+                        else if (entry.ValueKind == JsonValueKind.Object)
+                        {
+                            var id = entry.TryGetProperty("tileId", out var tid) ? tid.GetString() : null;
+                            var parsed = TileReference.Parse(id);
+                            if (parsed != TileReference.Unknown) tiles.Add(parsed);
+                        }
+                    }
                 }
                 if (!CommentaryPhases.All.Contains(phase)) phase = CommentaryPhases.Draw;
                 if (!CommentarySpeakers.All.Contains(speaker)) speaker = CommentarySpeakers.PlayByPlay;
@@ -346,7 +364,7 @@ public sealed class OpenAiCommentaryGenerator : ICommentaryGenerator, IDisposabl
             Speaker: CommentarySpeakers.PlayByPlay,
             Text: $"{FailOpenMessage} ({reason})",
             EmotionIntensity: 0.0,
-            TileReferences: Array.Empty<string>(),
+            TileReferences: Array.Empty<TileReference>(),
             GeneratedAt: DateTimeOffset.UtcNow);
 
     private static string Truncate(string value, int maxLength) =>

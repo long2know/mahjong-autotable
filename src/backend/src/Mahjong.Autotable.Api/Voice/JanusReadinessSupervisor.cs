@@ -39,6 +39,29 @@ public interface IJanusReadinessSupervisor
     /// <summary>Returns the current state of the Janus binding.</summary>
     JanusReadinessState CurrentState { get; }
 
+    /// <summary>
+    /// Phase K Wave 10 — Bishop. Gradual-degradation level. The W9
+    /// state machine is binary (Bound / Unbound); operators asked
+    /// for a richer signal that distinguishes "fully healthy" from
+    /// "wobbly but still routing" from "circuit tripped". The level
+    /// is derived from <see cref="ConsecutiveFailures"/>:
+    /// <list type="bullet">
+    ///   <item><see cref="JanusReadinessLevel.Healthy"/> when
+    ///         failures &lt;
+    ///         <c>JanusReadinessSupervisor.DegradeAfterConsecutiveFailures</c>
+    ///         AND the binding is <see cref="JanusReadinessState.Bound"/>.</item>
+    ///   <item><see cref="JanusReadinessLevel.Degraded"/> when
+    ///         failures ≥ <c>DegradeAfter</c> (3 probes / 15s by
+    ///         default) but the supervisor has NOT yet tripped the
+    ///         circuit — routes still attempt Janus, but admin
+    ///         dashboards are warned.</item>
+    ///   <item><see cref="JanusReadinessLevel.Unhealthy"/> when the
+    ///         supervisor has tripped — equivalent to
+    ///         <see cref="JanusReadinessState.Unbound"/>.</item>
+    /// </list>
+    /// </summary>
+    JanusReadinessLevel CurrentLevel { get; }
+
     /// <summary>Latest probe result; null until the first poll has
     /// completed.</summary>
     JanusHealthResult? LastProbeResult { get; }
@@ -50,6 +73,28 @@ public interface IJanusReadinessSupervisor
     /// <summary>Number of consecutive successes observed since the
     /// last transition.</summary>
     int ConsecutiveSuccesses { get; }
+}
+
+/// <summary>
+/// Phase K Wave 10 — Bishop. Three-step readiness level — operators
+/// see "Healthy / Degraded / Unhealthy" instead of the binary
+/// W9 Bound/Unbound. See
+/// <see cref="IJanusReadinessSupervisor.CurrentLevel"/> for the
+/// derivation rules.
+/// </summary>
+public enum JanusReadinessLevel
+{
+    /// <summary>All recent probes succeeded. Janus is routing
+    /// spectator-voice traffic.</summary>
+    Healthy,
+
+    /// <summary>Some recent probes failed but the supervisor has
+    /// not yet tripped the circuit. Routes still attempt Janus.</summary>
+    Degraded,
+
+    /// <summary>Supervisor tripped — routes return 503 / fall back
+    /// to the stub.</summary>
+    Unhealthy,
 }
 
 /// <summary>
@@ -97,6 +142,17 @@ public sealed class JanusReadinessSupervisor : BackgroundService, IJanusReadines
     /// flapping gateway doesn't cause spurious transitions.</summary>
     public const int RebindAfterConsecutiveSuccesses = 6;
 
+    /// <summary>
+    /// Phase K Wave 10 — Bishop. Gradual-degradation warning
+    /// threshold. After this many consecutive failures the
+    /// supervisor is still <see cref="JanusReadinessState.Bound"/>
+    /// (routes keep flowing) but
+    /// <see cref="JanusReadinessLevel.Degraded"/> is reported so
+    /// the admin dashboard can warn before the circuit actually
+    /// trips. Three probes at the default 5s cadence = 15s.
+    /// </summary>
+    public const int DegradeAfterConsecutiveFailures = 3;
+
     private readonly IJanusHealthProbe _probe;
     private readonly IHubContext<JanusReadinessHub>? _hub;
     private readonly ILogger<JanusReadinessSupervisor> _logger;
@@ -123,6 +179,22 @@ public sealed class JanusReadinessSupervisor : BackgroundService, IJanusReadines
     public JanusHealthResult? LastProbeResult => _lastResult;
     public int ConsecutiveFailures => _consecutiveFailures;
     public int ConsecutiveSuccesses => _consecutiveSuccesses;
+
+    /// <summary>
+    /// Phase K Wave 10 — Bishop. Gradual-degradation level derived
+    /// from <see cref="CurrentState"/> + <see cref="ConsecutiveFailures"/>.
+    /// </summary>
+    public JanusReadinessLevel CurrentLevel
+    {
+        get
+        {
+            if (_state == JanusReadinessState.Unbound)
+                return JanusReadinessLevel.Unhealthy;
+            if (_consecutiveFailures >= DegradeAfterConsecutiveFailures)
+                return JanusReadinessLevel.Degraded;
+            return JanusReadinessLevel.Healthy;
+        }
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -175,6 +247,7 @@ public sealed class JanusReadinessSupervisor : BackgroundService, IJanusReadines
     {
         _lastResult = result;
         var previous = _state;
+        var previousLevel = CurrentLevel;
 
         if (result.IsHealthy)
         {
@@ -208,11 +281,24 @@ public sealed class JanusReadinessSupervisor : BackgroundService, IJanusReadines
             }
         }
 
-        if (_state != previous)
+        var currentLevel = CurrentLevel;
+        var stateChanged = _state != previous;
+        var levelChanged = currentLevel != previousLevel;
+
+        if (stateChanged || levelChanged)
         {
-            _logger.LogWarning(
-                "JanusReadinessSupervisor: state {Previous} → {Current} (last error={Error}).",
-                previous, _state, result.Error ?? "none");
+            if (stateChanged)
+            {
+                _logger.LogWarning(
+                    "JanusReadinessSupervisor: state {Previous} → {Current} (level={Level}, last error={Error}).",
+                    previous, _state, currentLevel, result.Error ?? "none");
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "JanusReadinessSupervisor: level {PreviousLevel} → {CurrentLevel} (state={State}, last error={Error}).",
+                    previousLevel, currentLevel, _state, result.Error ?? "none");
+            }
 
             if (_hub is not null)
             {
@@ -222,6 +308,9 @@ public sealed class JanusReadinessSupervisor : BackgroundService, IJanusReadines
                     {
                         previous = previous.ToString(),
                         current = _state.ToString(),
+                        previousLevel = previousLevel.ToString(),
+                        level = currentLevel.ToString(),
+                        consecutiveFailures = _consecutiveFailures,
                         lastError = result.Error,
                         at = DateTimeOffset.UtcNow,
                     }, ct);

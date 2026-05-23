@@ -15,6 +15,16 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <!-- Phase K Wave 10 — Bishop (Backend). StackExchange.Redis client
+         for the durable RedisIdempotencyStore. The W9 surface shipped
+         a wrapper-around-EF stub; W10 wires the real Redis client so
+         multi-replica deployments share a single low-latency
+         replay-window store instead of round-tripping through the
+         backing RDBMS. The client is only consumed when
+         `Idempotency:StoreImpl = "Redis"` so the package adds zero
+         runtime cost to the in-memory/EF defaults. See
+         docs/redis-idempotency.md for the operator runbook. -->
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
     <!-- Phase J Wave 8 — Sentry crash reporting (Apone, DevOps).
          Gated on Sentry:Dsn configuration: when the DSN is empty the
          SDK initializes but performs no network I/O. See docs/sentry.md

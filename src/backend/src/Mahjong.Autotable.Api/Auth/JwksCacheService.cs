@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -31,19 +32,86 @@ namespace Mahjong.Autotable.Api.Auth;
 /// inbound ETag matches the cached value the endpoint returns
 /// <c>304 Not Modified</c> with no body, saving the network bytes
 /// entirely.</para>
+///
+/// <para>Phase K Wave 10 — Bishop hygiene additions:</para>
+/// <list type="bullet">
+///   <item>A dedicated <see cref="MemoryCache"/> instance with a
+///         hard <see cref="MemoryCacheOptions.SizeLimit"/> so the
+///         service no longer borrows the shared application cache
+///         (which could be evicted by unrelated callers).</item>
+///   <item>Cache hit / miss / rebuild counters via
+///         <see cref="IMeterFactory"/> — exposed as
+///         <c>jwks_cache_hit_total</c>,
+///         <c>jwks_cache_miss_total</c>,
+///         <c>jwks_cache_rebuild_total</c>.</item>
+///   <item>Stampede protection via a <see cref="SemaphoreSlim"/>
+///         so a concurrent miss only rebuilds the payload once —
+///         the second caller blocks on the gate and reads the
+///         freshly cached entry instead of paying the
+///         re-serialisation cost twice.</item>
+/// </list>
 /// </summary>
-public sealed class JwksCacheService
+public sealed class JwksCacheService : IDisposable
 {
     public static readonly TimeSpan DefaultTtl = TimeSpan.FromSeconds(60);
     private const string CacheKey = "Mahjong.Autotable.Api.Auth.JwksCacheService::doc";
 
-    private readonly IMemoryCache _cache;
-    private readonly TimeSpan _ttl;
+    /// <summary>Phase K Wave 10 — Bishop. Meter name for the
+    /// cache-hygiene counters. Surfaced as a constant so the
+    /// contract tests + the Prometheus exporter can pin the
+    /// vocabulary.</summary>
+    public const string MeterName = "Mahjong.Autotable.Api.Auth.JwksCache";
 
-    public JwksCacheService(IMemoryCache cache, TimeSpan? ttl = null)
+    /// <summary>Hard cap on the cache size. The cache only ever
+    /// holds the single JWKS payload — the limit is set
+    /// conservatively at 16 so any unexpected key collision (e.g.
+    /// a misuse that records under a per-tenant key) can't grow
+    /// without bound.</summary>
+    public const int SizeLimit = 16;
+
+    private readonly IMemoryCache _cache;
+    private bool _ownsCache;
+    private readonly TimeSpan _ttl;
+    private readonly SemaphoreSlim _stampedeGate = new(1, 1);
+
+    private readonly Counter<long>? _hitCounter;
+    private readonly Counter<long>? _missCounter;
+    private readonly Counter<long>? _rebuildCounter;
+
+    public JwksCacheService(IMemoryCache cache, TimeSpan? ttl = null, IMeterFactory? meterFactory = null)
     {
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _ttl = ttl ?? DefaultTtl;
+        _ownsCache = false;
+        if (meterFactory is not null)
+        {
+            var meter = meterFactory.Create(MeterName);
+            _hitCounter = meter.CreateCounter<long>("jwks_cache_hit_total",
+                unit: null, description: "JWKS cache hits (entry served from memory).");
+            _missCounter = meter.CreateCounter<long>("jwks_cache_miss_total",
+                unit: null, description: "JWKS cache misses (entry rebuilt on demand).");
+            _rebuildCounter = meter.CreateCounter<long>("jwks_cache_rebuild_total",
+                unit: null, description: "JWKS payloads serialised + ETagged from the key provider.");
+        }
+    }
+
+    /// <summary>
+    /// Phase K Wave 10 — Bishop. Convenience factory used by
+    /// Program.cs so the production registration owns a dedicated
+    /// <see cref="MemoryCache"/> with the
+    /// <see cref="SizeLimit"/> applied. Tests can still pass an
+    /// arbitrary <see cref="IMemoryCache"/> via the ctor.
+    /// </summary>
+    public static JwksCacheService CreateWithDedicatedCache(
+        TimeSpan? ttl = null,
+        IMeterFactory? meterFactory = null)
+    {
+        var dedicated = new MemoryCache(new MemoryCacheOptions { SizeLimit = SizeLimit });
+        var svc = new JwksCacheService(dedicated, ttl, meterFactory)
+        {
+            _ownsCache = true,
+        };
+        return svc;
     }
 
     /// <summary>
@@ -56,16 +124,53 @@ public sealed class JwksCacheService
         ArgumentNullException.ThrowIfNull(keys);
         var fingerprint = ComputeFingerprint(keys);
 
+        if (TryReadFresh(fingerprint, out var cachedFast))
+        {
+            _hitCounter?.Add(1);
+            return cachedFast!;
+        }
+
+        // Phase K Wave 10 — Bishop. Stampede protection: only one
+        // concurrent caller rebuilds the payload. The second caller
+        // blocks on the gate, then reads the cached value populated
+        // by the winner.
+        _stampedeGate.Wait();
+        try
+        {
+            if (TryReadFresh(fingerprint, out var cachedAfterGate))
+            {
+                _hitCounter?.Add(1);
+                return cachedAfterGate!;
+            }
+
+            _missCounter?.Add(1);
+            var payload = Build(keys, fingerprint);
+            _rebuildCounter?.Add(1);
+            var entryOptions = new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = _ttl,
+                Size = 1,
+            };
+            _cache.Set(CacheKey, payload, entryOptions);
+            return payload;
+        }
+        finally
+        {
+            _stampedeGate.Release();
+        }
+    }
+
+    private bool TryReadFresh(string fingerprint, out JwksPayload? payload)
+    {
         if (_cache.TryGetValue(CacheKey, out JwksPayload? cached)
             && cached is not null
             && string.Equals(cached.Fingerprint, fingerprint, StringComparison.Ordinal))
         {
-            return cached;
+            payload = cached;
+            return true;
         }
-
-        var payload = Build(keys, fingerprint);
-        _cache.Set(CacheKey, payload, _ttl);
-        return payload;
+        payload = null;
+        return false;
     }
 
     /// <summary>
@@ -74,6 +179,15 @@ public sealed class JwksCacheService
     /// after a manual rotation).
     /// </summary>
     public void Invalidate() => _cache.Remove(CacheKey);
+
+    public void Dispose()
+    {
+        _stampedeGate.Dispose();
+        if (_ownsCache && _cache is IDisposable disposableCache)
+        {
+            disposableCache.Dispose();
+        }
+    }
 
     private static string ComputeFingerprint(JwtSigningKeyProvider keys)
     {

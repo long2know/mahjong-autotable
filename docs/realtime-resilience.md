@@ -135,3 +135,54 @@ The W9 surface ships with hard-asserted tests in
   surfaces co-exist behind the same auth gates).
 * [`docs/rules/changsha-signalr-contract.md`](rules/changsha-signalr-contract.md)
   — the original Changsha hub wire contract.
+
+## Phase K Wave 10 — Prometheus metrics
+
+The broadcaster now emits OpenTelemetry counters via the
+`IMeterFactory` system. Meter name:
+
+```
+Mahjong.Autotable.Api.Observability.SignalRBackpressure
+```
+
+The constructor takes an **optional** `IMeterFactory`. When
+supplied, the following counters are created. Every counter has
+a `hub` tag whose value is `typeof(THub).Name`.
+
+| Counter                                | Tags                              | Meaning                                                                                                   |
+| -------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `signalr_messages_sent_total`          | `hub`                             | Incremented once for every envelope successfully shipped via `Clients.Group(...).SendAsync(...)`.         |
+| `signalr_messages_dropped_total`       | `hub`, `reason=rate_cap`          | Per-group rate-cap drop. Indicates a hot publisher exceeded `maxPerSecond`.                               |
+| `signalr_messages_dropped_total`       | `hub`, `reason=send_failure`      | `SendAsync` threw — usually transient transport failure. Envelope is retained for reconnect replay.       |
+| `signalr_messages_dropped_total`       | `hub`, `reason=age_window`        | During reconnect replay, envelopes newer than the ack but older than `maxAge` are silently filtered out — each one counts as a drop so the dashboard reflects the full backpressure picture. |
+| `signalr_replay_requests_total`        | `hub`                             | `ResumeFromAck` invocations. Spikes here usually mirror reconnect storms.                                 |
+
+### Alert recommendations
+
+* **Sustained rate-cap drops > 1% of sent**: investigate whether
+  a publisher is over-batching or whether the cap is too tight for
+  the deployment.
+* **`send_failure` > 0 across multiple windows**: SignalR transport
+  is unhealthy; check the underlying hub host.
+* **Replay rate >> baseline**: clients are reconnecting unusually
+  often — investigate network or auth churn.
+
+### Wiring example
+
+```csharp
+services.AddSingleton(sp => new SignalRBackpressureBroadcaster<MyHub>(
+    sp.GetRequiredService<IHubContext<MyHub>>(),
+    sp.GetRequiredService<ILogger<MyHub>>(),
+    meterFactory: sp.GetService<IMeterFactory>()));
+```
+
+The factory parameter is optional — passing `null` preserves the
+W9 behaviour exactly (no metrics, no exceptions).
+
+### Tests
+
+Hard-asserted in
+[`Phase_K_W10/Bishop/SignalRBackpressureMetricsTests`](../src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Bishop/SignalRBackpressureMetricsTests.cs)
+— meter name pin, sent counter, every drop reason, and replay
+counter all asserted via `MeterListener`.
+
