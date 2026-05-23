@@ -1,7 +1,72 @@
-.git
-.github
-.squad
-.copilot
-**/bin
-**/obj
-**/node_modules
+# Keep the Docker build context small and reproducible.
+# Anything that is rebuilt inside the image — or that has no business inside
+# the image at all — gets ignored here.
+
+# VCS + IDE noise
+.git/
+.gitignore
+.gitattributes
+.github/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Squad / Copilot orchestration state (not part of the runtime)
+.squad/
+.copilot/
+.copilot-instructions/
+
+# Node / Parcel build artefacts — Stage 1 rebuilds these from scratch
+**/node_modules/
+**/.parcel-cache/
+**/dist/
+**/build/
+
+# Pre-built frontend bundle checked into the repo — Stage 1 produces a fresh
+# one, so excluding the committed copy keeps the context lean and prevents
+# stale assets from sneaking into the image.
+src/frontend/autotable/
+
+# .NET intermediates — Stage 2 publishes from source
+**/bin/
+**/obj/
+**/*.user
+**/TestResults/
+
+# Test projects are not part of the runtime image
+src/backend/tests/
+
+# Existing scaffold Dockerfile (kept for legacy compose references). The
+# canonical Dockerfile is at the repo root.
+infra/
+
+# Documentation + local notes (don't ship into the image)
+docs/
+README.md
+**/README.md
+
+# Local runtime data — never bake host DBs into the image
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs / coverage / scratch
+*.log
+logs/
+tmp/
+coverage/
+
+# Compose overrides + env files (developer-local)
+docker-compose.override.yml
+compose.override.yml
+.env
+.env.*
+!.env.example
+
+# OS junk
+.DS_Store
+Thumbs.db

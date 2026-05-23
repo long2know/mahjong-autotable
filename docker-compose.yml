@@ -1,12 +1,29 @@
+# Mahjong Autotable — local-dev compose file.
+#
+# Builds the single image defined in ./Dockerfile and exposes it on host
+# port 8080. SQLite persistence lives on the `mahjong-data` named volume so
+# data survives `docker compose down` (use `docker compose down -v` to wipe).
+#
+# Quickstart:
+#   docker compose up -d --build
+#   open http://localhost:8080/autotable/
+#
+# Phase J Wave 3 — Apone (DevOps).
 services:
-  mahjong-autotable:
+  mahjong:
     build:
       context: .
-      dockerfile: infra/docker/Dockerfile
-      target: runtime-autotable
+      dockerfile: Dockerfile
+    image: mahjong-autotable:local
+    container_name: mahjong-autotable
     ports:
       - "8080:8080"
     volumes:
-      - ./data:/app/data
+      - mahjong-data:/data
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
+      BUILD_SHA: ${BUILD_SHA:-local}
+    restart: unless-stopped
+
+volumes:
+  mahjong-data:
