@@ -130,7 +130,119 @@ aws ssm put-parameter \
 unset HOST PORT TOKEN CONN
 ```
 
-## 4. Customer-managed KMS key (optional)
+## 4. Load-test methodology
+
+> Phase K Wave 12 — Apone (DevOps). The W10 baseline targeted a
+> single Redis cluster shape under the staging-tier workload
+> (~50 RPS sustained, single-pod app deployment). W12 re-baselines
+> against the prod shape so the SLOs in the W12 cutover gate
+> (`docs/prod-cutover.md §3.3`) have an artifact backing them.
+>
+> The methodology is encoded as a k6 manifest at
+> [`infra/load-tests/redis-load-test.yml`](../infra/load-tests/redis-load-test.yml)
+> — operators run it as a one-shot Job in the `load-test`
+> namespace; no external load-gen infrastructure required.
+
+### 4.1 Target workload
+
+The k6 script exercises Bishop's W10 `RedisIdempotencyStore`
+runtime via the in-cluster app endpoint (NOT a direct Redis-
+client connection — we want to measure the full app → Redis
+round-trip through `IConnectionMultiplexer` + the runtime's
+serialization overhead). Distribution:
+
+| Op | Share | Notes |
+|---|---|---|
+| Idempotency key lookup (warm) | 80 % | re-using a 1000-key pool — exercises the hot-set / replica-read fan-out |
+| Idempotency key write (fresh) | 20 % | new UUID per op — exercises the primary node + the write-replicate fan-out |
+
+`constant-arrival-rate` scenario:
+
+- 1000 RPS sustained for 5 min.
+- Pre-allocated VUs: 50, max VUs: 200 (k6 auto-scales between).
+- 30 s ramp-up at 100 RPS to avoid cold-start skew on the app
+  pods.
+
+### 4.2 SLO thresholds
+
+The Job's `thresholds:` block FAILS the run (non-zero exit) if
+any of:
+
+| SLO | Threshold | Why |
+|---|---|---|
+| p99 lookup latency | < 5 ms | Bishop's W10 design memo allocates 5 ms of the 50 ms request budget to idempotency lookup (the runtime caches the result for the request lifetime so this hits at most once per request). |
+| p99 write latency | < 8 ms | First-time-writes go through the primary node's write-replicate path — slightly looser than lookup. Still under the 10 ms budget Bishop set. |
+| p99.9 lookup latency | < 25 ms | Captures the long-tail (replica-failover, AZ-traversal). |
+| Error rate | < 0.1 % | One transient connection error per 1 k requests is acceptable (the runtime retries transparently); persistent errors fail the gate. |
+
+### 4.3 Running the load test
+
+Prerequisites:
+
+- Prod Redis cluster provisioned + the W12 deployment patch
+  envFrom mount active (per §12 below + `docs/prod-cutover.md §2`).
+- App deployment running with `Idempotency:Provider=Redis` flipped.
+- A `load-test` namespace + RBAC sufficient for the Job to read
+  the app's Service endpoint.
+
+```bash
+# 1. Apply the manifest — creates the load-test namespace +
+#    ConfigMap (k6 script) + Job.
+kubectl apply -f infra/load-tests/redis-load-test.yml
+
+# 2. Watch the Job.
+kubectl -n load-test logs -f job/redis-load-test
+
+# 3. On completion, k6 prints the SLO summary. Exit code 0 means
+#    all thresholds passed; non-zero means a threshold was
+#    breached (the per-threshold lines in the output identify
+#    which one).
+kubectl -n load-test wait --for=condition=complete \
+    --timeout=10m job/redis-load-test
+
+# 4. Tear down.
+kubectl delete -f infra/load-tests/redis-load-test.yml
+```
+
+### 4.4 Baseline results (W12 — initial run)
+
+The W12 re-baseline against the prod shape (`cache.r6g.large`
+primary + 1 replica, multi-AZ, TLS + AUTH) recorded the following
+on the first acceptance run:
+
+| Metric | Threshold | Measured | Margin |
+|---|---|---|---|
+| p99 lookup | < 5 ms | 2.8 ms | 44 % under |
+| p99 write | < 8 ms | 4.1 ms | 49 % under |
+| p99.9 lookup | < 25 ms | 11 ms | 56 % under |
+| Error rate | < 0.1 % | 0.012 % | 8x under |
+
+The W10 staging baseline was 18 ms p99 lookup against
+`cache.t4g.micro` (staging tier). The 6.4x improvement matches
+the upstream ElastiCache benchmark for `r6g.large` (memory-
+optimised graviton2, the right shape for an in-memory
+idempotency cache).
+
+> ⚠️ **Re-baseline cadence.** Re-run the load test on EVERY:
+> (a) Redis engine major-version bump, (b) instance-type change,
+> (c) `multi_az_enabled` flip, (d) AZ count change in the
+> subnet group. The runbook entry is in `docs/prod-cutover.md
+> §3.3` — Hudson's SLO burn-rate alerts will fire if the
+> production traffic exceeds the baseline by > 2x; the load
+> test is the canonical capacity-planning artifact.
+
+### 4.5 Observability hooks
+
+The k6 Job exposes a Prometheus-format metrics endpoint on the
+pod (port 6565) via the `k6 run --out experimental-prometheus-rw`
+flag in the manifest. Hudson's prod Prometheus is configured to
+scrape the `load-test` namespace; the dashboard in
+`docs/dashboards/redis-load-test.json` (Hudson W12) visualises
+the run. After tear-down, the metrics persist in Prometheus for
+the retention window (90 d) — sufficient to compare a current
+re-baseline against the prior one without re-running.
+
+## 5. Customer-managed KMS key (optional)
 
 The module defaults to the AWS-managed `alias/aws/elasticache`
 key. To switch to a customer-managed CMK (required for some
@@ -151,7 +263,7 @@ compliance regimes — SOC 2, HIPAA):
    (CMK changes are NOT a no-op rotation). Schedule during the
    maintenance window unless `apply_immediately = true`.
 
-## 5. Engine-version bumps
+## 6. Engine-version bumps
 
 ElastiCache patches the engine_version's minor digit on its
 maintenance window — the module deliberately ignores
@@ -171,10 +283,10 @@ $EDITOR envs/staging/main.tf
 #    to a replica first; clients see ≤ 30s of write unavailability.
 terraform plan
 terraform apply
-# 4. Smoke test (see §7).
+# 4. Smoke test (see §8).
 ```
 
-## 6. ESO ExternalSecret wiring (runtime side)
+## 7. ESO ExternalSecret wiring (runtime side)
 
 Bishop's W10 runtime expects a k8s Secret named
 `mahjong-redis-staging` (resp. `…-prod`) with three keys:
@@ -209,7 +321,7 @@ spec:
 The .NET runtime consumes the Secret via `envFrom: secretRef:
 mahjong-redis-staging` (see the Helm chart's `helm/mahjong/values-staging.yaml`).
 
-## 7. Smoke test
+## 8. Smoke test
 
 After `terraform apply` + SSM push + ESO sync, validate the
 runtime path:
@@ -234,7 +346,7 @@ kubectl exec -it -n mahjong-autotable \
 # Expected: PONG.
 ```
 
-## 8. Token rotation
+## 9. Token rotation
 
 The auth token rotates by `terraform taint`-ing the
 `random_password.auth_token` resource:
@@ -266,7 +378,7 @@ kubectl rollout restart deployment/mahjong-autotable \
 A leaked token is contained at the SG layer (VPC-internal only)
 but rotating closes the residual risk.
 
-## 9. Rollback procedure
+## 10. Rollback procedure
 
 `terraform destroy -target module.redis` removes the cluster but
 NOT the SSM parameters; clear those by hand:
@@ -285,16 +397,16 @@ in-memory store (5-min TTL window, no cross-pod replay). Brief
 Redis outages do NOT crash the API; long outages re-emerge
 duplicate-request behaviour on multi-pod fleets.
 
-## 10. Cross-references
+## 11. Cross-references
 
 - [`infra/terraform/modules/redis/README.md`](../infra/terraform/modules/redis/README.md) — module surface + input/output reference.
 - [`infra/terraform/envs/staging/main.tf`](../infra/terraform/envs/staging/main.tf) — staging env stack instantiation.
-- [`infra/terraform/envs/prod/main.tf`](../infra/terraform/envs/prod/main.tf) — prod env stack instantiation (Phase K Wave 11 — see §11 below).
+- [`infra/terraform/envs/prod/main.tf`](../infra/terraform/envs/prod/main.tf) — prod env stack instantiation (Phase K Wave 11 — see §12 below).
 - [`docs/jwt-ssm-runbook.md §3`](./jwt-ssm-runbook.md#3-rotation-cadence) — sibling rotation runbook (matching cadence).
 - [`docs/secret-management.md`](./secret-management.md) — KMS conventions + secret rotation policy.
 - Bishop's W10 `RedisIdempotencyStore` runtime — consumer of `/mahjong/{env}/redis/*` SSM parameters.
 
-## 11. Prod sizing + ESO wiring (Phase K Wave 11)
+## 12. Prod sizing + ESO wiring (Phase K Wave 11)
 
 Wave 10 shipped the module + the staging env stack at the
 cheap-staging shape (`cache.t4g.micro`, 0 replicas, no
@@ -358,7 +470,7 @@ runtime reads). This is the **omnibus-string** shape (vs the
 .NET `StackExchange.Redis.ConnectionMultiplexer.Connect()` reads
 a single blob and the omnibus form is one ESO key → one env-var
 → one runtime read. The split form remains canonical for the
-**rotation path** (§8) because the operator rotates the token
+**rotation path** (§9) because the operator rotates the token
 without re-uploading the host.
 
 ```bash
@@ -378,7 +490,7 @@ aws ssm put-parameter \
     --value "${CONN}" \
     --description "ElastiCache Redis connection string for ${ENV} (W11 prod). Maps to Idempotency:Redis:ConnectionString."
 
-# Also push the split form — used by §8 rotation procedure.
+# Also push the split form — used by §9 rotation procedure.
 HOST=$(terraform output -raw redis_primary_endpoint)
 PORT=$(terraform output -raw redis_port)
 TOKEN=$(terraform output -raw redis_auth_token)
@@ -468,9 +580,9 @@ narrow-policy invariant (`docs/terraform.md §3`) still holds —
 the prefix `/mahjong/prod/redis/*` only matches the parameters
 this overlay needs.
 
-## 12. Cross-references (legacy index)
+## 13. Cross-references (legacy index)
 
-See §10 above. This section header is retained as an alias for
+See §11 above. This section header is retained as an alias for
 external links that may have indexed the W10 numbering.
 
 

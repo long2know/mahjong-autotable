@@ -19,8 +19,164 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-11-bringup`. Phase K Wave 11
+Working branch: `stlong/phase-k-wave-12-bringup`. Phase K Wave 12
 in flight. Other lane deliverables outstanding.
+
+## [0.21.0] — Phase K Wave 12 — 2026-10-XX (PR pending)
+
+**Theme:** Prod cutover readiness (single-pane `docs/prod-cutover.md`
+runbook covering Redis terraform plan readiness, kustomization
+wire-up of W11 hand-offs, cutover-ready checklist, cross-namespace
+kustomize pattern, rollback playbook) + multi-region edge surface
+(per-region R53 ALIAS records + latency-based apex RR set + health
+checks in `modules/edge/r53-regional-records.tf`, opt-in via the
+new `regional_endpoints` tfvar, empty default preserves the W11
+single-region apex) + Argo Rollouts NetworkPolicy hardening (three
+NetworkPolicies in `argo-rollouts` ns — dashboard ingress allow-list
+from `ingress-nginx` + `auth`, controller egress allow-list for
+kube-apiserver + Prometheus + DNS, dashboard egress allow-list for
+kube-apiserver + DNS) + Redis load-test re-baseline (k6 manifest at
+`infra/load-tests/redis-load-test.yml`, 1000 RPS sustained for 5
+min against the prod shape, p99 lookup < 5 ms / write < 8 ms SLO
+thresholds, Prometheus scrape integration via the
+experimental-prometheus-rw output) + prod kustomization wire-in
+(swap top-level `namespace:` for a `NamespaceTransformer` with
+`unsetOnly: true`, add `redis-connection-string-secret.yaml` +
+`argo-rollouts-ingress-auth.yaml` + new
+`argo-rollouts-network-policy.yaml` to `resources:`, add deployment
+patch for the Redis envFrom mount with `optional: true` for
+cutover-safe fall-through) + second JWT rotation rehearsal (W12
+run at 3 min 48 s — 39 % faster than the W11 first run, all wins
+downstream of Bishop W12 JWKS-cache pre-warm; squad recommendation:
+the workflow is GA-ready for promotion to a scheduled monthly
+cadence) + retro 2026-10.
+
+### Added (Phase K Wave 12 — PR pending)
+
+- **`docs/prod-cutover.md` — single-pane prod cutover runbook.**
+  Five sections: 1. Prod Redis terraform plan readiness
+  (pre-flight assertions, required tfvars, expected plan shape,
+  apply gates); 2. Prod kustomization wire-up (W11 hand-off
+  summary, W12 wire-in, runtime mount, apply order); 3.
+  Cutover-Ready checklist (infrastructure, application,
+  observability, frontend, per-region rollout — gated by agent
+  lane); 4. Argo Rollouts dashboard cross-namespace pattern
+  (rationale + the `NamespaceTransformer + unsetOnly: true`
+  pattern for future cross-namespace fan-out); 5. Rollback
+  playbook (application layer, infrastructure layer, edge layer).
+  Supersedes the scattered "TODO: prod cutover" notes in
+  `docs/redis-cluster.md` and `docs/argo-rollouts-setup.md`.
+- **`infra/terraform/modules/edge/r53-regional-records.tf` —
+  per-region R53 records.** Three resource types keyed by the new
+  `regional_endpoints` variable: `aws_route53_health_check.regional`
+  (per-region TCP/443 probe), `aws_route53_record.regional_alias`
+  (per-region ALIAS A — the region-anchored hostname for the
+  W7 prod-health-check probe matrix), `aws_route53_record.latency_apex`
+  (RR set on the apex — clients hitting the apex resolve to the
+  lowest-latency healthy region). The W7 `aws_route53_record.apex`
+  is gated `count = (!local.use_latency_apex && …)` so the single-
+  region apex is automatically skipped when `regional_endpoints`
+  is non-empty. Wired into `infra/terraform/envs/prod/main.tf`
+  + `variables.tf`; empty default preserves the W11 single-region
+  behaviour.
+- **`infra/k8s/overlays/prod/argo-rollouts-network-policy.yaml` —
+  Argo Rollouts NetworkPolicy hardening.** Three policies in the
+  `argo-rollouts` namespace: `argo-rollouts-dashboard-ingress`
+  (default-deny + allow-list from `ingress-nginx` ns + `auth` ns),
+  `argo-rollouts-controller-egress` (allow-list to kube-apiserver
+  + `monitoring` ns + kube-dns), `argo-rollouts-dashboard-egress`
+  (allow-list to kube-apiserver + kube-dns). Closes the network-
+  level loop on top of the W11 identity-level loop (auth-aware
+  ingress). Split into three policies (vs one mega-policy) because
+  the controller + dashboard have distinct egress profiles —
+  keeps each allow-list minimal + easier to audit on chart
+  upgrades. See `docs/argo-rollouts-setup.md §6`.
+- **`infra/load-tests/redis-load-test.yml` — k6 prod-shape Redis
+  load test.** Three-document manifest (Namespace + ConfigMap
+  carrying the k6 script + Job). 1000 RPS `constant-arrival-rate`
+  scenario, 5 min sustained, 30 s ramp-up. 80/20 lookup-vs-write
+  mix matching Bishop's W10 idempotency-store hot-path profile.
+  SLO thresholds enforced via k6 `thresholds:` (p99 lookup < 5 ms,
+  p99 write < 8 ms, p99.9 lookup < 25 ms, error rate < 0.1 %).
+  Prometheus integration via the experimental-prometheus-rw
+  output — Hudson's prod Prometheus scrapes the Job pod and the
+  metrics persist in the 90-d retention window for capacity-
+  planning over time. See `docs/redis-cluster.md §4` for the
+  methodology + the initial baseline (W12 first run recorded all
+  SLOs with > 40 % headroom).
+- **`infra/k8s/overlays/prod/namespace-transformer.yaml` — kustomize
+  cross-namespace pattern.** Inline `NamespaceTransformer` with
+  `unsetOnly: true` — replaces the top-level
+  `namespace: mahjong-prod` directive on the prod overlay. Resources
+  without a pre-declared `metadata.namespace` continue to pick up
+  `mahjong-prod` (identical to the W11 behaviour); resources WITH
+  a pre-declared namespace (the argo-rollouts ingress + W12
+  NetworkPolicies, namespaced `argo-rollouts`) keep their declared
+  value. Documented as the canonical pattern for future cross-
+  namespace fan-out in `docs/prod-cutover.md §4`.
+- **`docs/redis-cluster.md §4` — load-test methodology.** New
+  section (renumbering pushed §4–§12 down to §5–§13). Captures
+  the W12 k6 manifest target workload, SLO thresholds, run
+  procedure, W12 initial baseline (vs the W10 staging baseline),
+  re-baseline cadence rules, and Prometheus observability hooks.
+- **`docs/argo-rollouts-setup.md §6` — NetworkPolicy hardening.**
+  New section (renumbering pushed §6–§9 down to §7–§10). Walks
+  the three policies, the split rationale, the wire-in via the
+  W12 kustomization, validation steps (positive + negative tests),
+  upgrade procedure when bumping the argo-rollouts Helm chart,
+  and the rollback path.
+- **`docs/jwt-rotation-rehearsal.md §3` — rehearsal history.** New
+  section (renumbering pushed §3–§8 down to §4–§9). Documents
+  both runs (W11 first + W12 second), per-phase timing deltas (W12
+  is 39 % faster, the wins all downstream of Bishop W12's JWKS-
+  cache pre-warm), GA-readiness recommendation, and target timing
+  scale (green / yellow / red) for future runs.
+- **`docs/edge-region-probes.md §3` — W12 R53 record delivery
+  update.** Section content extended in-place to document the new
+  region-anchored hostname path, the tfvar shape, the cutover from
+  "same root URL" to region-anchored hostnames, and the rollback
+  (single `terraform apply -var='regional_endpoints=[]'` reverts to
+  the W11 single-region apex).
+- **`docs/retro-2026-10.md` — October retro.** Wave 12 row, Apone
+  + cross-lane recap, lessons from the rehearsal (W12 speedup
+  validated the W11 baseline), open items (regional EKS clusters
+  + scheduled rehearsal promotion + W13 load-test re-baseline
+  cadence).
+- **`Phase_K_W12/Apone/{charter,history}.md` + W12 memo + agent
+  history append.** Wave artifacts (mirror of W11 shape).
+
+### Changed (Phase K Wave 12)
+
+- **`infra/k8s/overlays/prod/kustomization.yaml` — namespace
+  pinning via transformer.** Removed top-level
+  `namespace: mahjong-prod`; added `transformers:` referencing
+  `namespace-transformer.yaml`. Added three new entries to
+  `resources:` (redis ESO + argo-rollouts ingress + argo-rollouts
+  NetworkPolicy). Added one deployment patch (envFrom secretRef
+  `mahjong-redis-prod` with `optional: true`). Semantics for the
+  W11 in-base resources unchanged; W12 hand-off resources now in-
+  band and survive `kubectl apply -f -` via the kustomize build
+  pipeline.
+- **`infra/k8s/overlays/prod/redis-connection-string-secret.yaml` —
+  header status flipped IN-BAND.** Header updated from "OUT-OF-BAND
+  TEMPLATE — NOT in any kustomization.yaml resources list" to
+  reflect the W12 wire-in. Manifest body unchanged.
+- **`infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml` —
+  header status flipped IN-BAND (cross-namespace).** Same as above
+  but cross-namespace — pinned to `argo-rollouts` via the new
+  transformer's `unsetOnly: true` semantic.
+- **`infra/terraform/modules/edge/{main,variables,outputs}.tf` —
+  multi-region surface.** New `variable "regional_endpoints"` (list
+  of `{ region, alb_dns_name, alb_zone_id, hostname }` objects),
+  `local.use_latency_apex` flag toggling between W7 single-region
+  apex and W12 latency-RR-set apex, new outputs
+  `regional_health_check_ids` + `regional_hostnames` + an updated
+  `apex_fqdn` that falls through to `var.domain_name` when the
+  latency apex is active.
+- **`infra/terraform/envs/prod/{main,variables}.tf` — wire the
+  `regional_endpoints` tfvar.** Empty default preserves the W11
+  apex behaviour for operators who haven't yet stood up regional
+  EKS clusters.
 
 ## [0.20.0] — Phase K Wave 11 — 2026-09-XX (PR pending)
 

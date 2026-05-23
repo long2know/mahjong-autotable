@@ -1,0 +1,236 @@
+# Phase K Wave 12 — Apone (DevOps).
+#
+# NetworkPolicy hardening for the Argo Rollouts dashboard
+# Service.
+#
+# W11 shipped the auth-aware Ingress
+# (`infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml`).
+# The Ingress is the auth boundary AT THE CLUSTER EDGE, but the
+# dashboard Service (`argo-rollouts-dashboard:3100` in the
+# `argo-rollouts` namespace) is reachable from ANY pod in the
+# cluster by default. A compromised workload in `mahjong-prod`
+# (or any other namespace) could hit the Service directly —
+# bypassing the Ingress and the OIDC chain.
+#
+# W11 retro called this out as a deferred follow-up
+# (`docs/retro-2026-09.md §2`). W12 closes the gap with a
+# default-deny ingress + explicit allowlist for the auth chain.
+#
+# Egress hardening:
+#
+#   The argo-rollouts CONTROLLER pod (separate from the dashboard
+#   Service) needs egress to:
+#     * The Kubernetes API server (port 443 to `kubernetes.default.svc`)
+#       — the controller watches Rollout CRDs + writes status.
+#     * Prometheus (port 9090 in ns `monitoring`) — the controller
+#       evaluates `AnalysisTemplate` Prometheus queries for the
+#       canary success-rate / p99-latency / error-budget gates
+#       (see `docs/helm-charts.md §3.5`).
+#     * DNS (port 53 UDP to `kube-system`).
+#
+#   The dashboard pod only needs egress to the kube API + DNS;
+#   it doesn't query Prometheus directly (the controller does).
+#
+# Why NetworkPolicy (vs OPA / Kyverno):
+#
+#   * NetworkPolicy is the canonical L3/L4 isolation primitive in
+#     k8s — admission policies (Kyverno) gate POD-CREATE but don't
+#     re-enforce network-path policy.
+#   * Calico / Cilium / aws-vpc-cni-network-policies all
+#     consume the standard `networking.k8s.io/v1 NetworkPolicy`
+#     resource — no CNI-specific syntax needed.
+#
+# Apply order:
+#
+#   This file is referenced by `kustomization.yaml` resources list
+#   (W12 — wired in alongside the Ingress). Once the cluster has
+#   the `argo-rollouts` namespace + the controller + dashboard
+#   Service:
+#
+#     kustomize build infra/k8s/overlays/prod/ | kubectl apply -f -
+#
+#   Or stand-alone:
+#
+#     kubectl -n argo-rollouts apply -f \
+#         infra/k8s/overlays/prod/argo-rollouts-network-policy.yaml
+#
+# Verification:
+#
+#   * From a pod in `mahjong-prod`:
+#       kubectl -n mahjong-prod exec -it deploy/mahjong-autotable -- \
+#           curl -sv --max-time 5 http://argo-rollouts-dashboard.argo-rollouts:3100/
+#     Expected: connection timeout (NetworkPolicy denies).
+#
+#   * From a pod in `auth` (oauth2-proxy ns — the allowlist):
+#       kubectl -n auth exec -it deploy/oauth2-proxy -- \
+#           curl -sv --max-time 5 http://argo-rollouts-dashboard.argo-rollouts:3100/
+#     Expected: HTTP 200 (NetworkPolicy permits).
+#
+#   * The Ingress path (https://mahjong.example.com/argo-rollouts/)
+#     continues to work because nginx-ingress lives in
+#     `ingress-nginx` namespace AND is in the allowlist below.
+
+# ── Ingress policy — default-deny + explicit allowlist ───────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argo-rollouts-dashboard-ingress
+  namespace: argo-rollouts
+  labels:
+    app.kubernetes.io/name: argo-rollouts
+    app.kubernetes.io/component: dashboard-network-policy
+    app.kubernetes.io/managed-by: apone
+    app.kubernetes.io/part-of: mahjong-autotable
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argo-rollouts
+      app.kubernetes.io/component: dashboard
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow from the `oauth2-proxy` namespace — the auth chain
+    # that fronts the W11 Ingress. nginx-ingress hits the
+    # subrequest URL on `auth.mahjong.example.com/oauth2/auth`,
+    # and the oauth2-proxy then proxies the original request to
+    # the dashboard.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: auth
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: oauth2-proxy
+      ports:
+        - port: 3100
+          protocol: TCP
+    # Allow from the `ingress-nginx` namespace — nginx-ingress
+    # controller pods that terminate the public TLS + apply the
+    # auth-request subrequest. After the subrequest 2xx, nginx-
+    # ingress reuses the connection to proxy the upstream
+    # request directly to the dashboard Service.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - port: 3100
+          protocol: TCP
+
+---
+# ── Egress policy — k8s API + Prometheus + DNS only ──────────────
+#
+# Locked-down egress for the argo-rollouts CONTROLLER pod. The
+# controller reads Rollout CRDs (kube API) + evaluates
+# AnalysisTemplate Prometheus queries (port 9090 in the
+# `monitoring` namespace).
+#
+# The dashboard pod is a separate Deployment (label
+# `app.kubernetes.io/component: dashboard`) and gets its OWN
+# egress policy via the second NetworkPolicy below — narrower
+# still, since the dashboard only needs the kube API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argo-rollouts-controller-egress
+  namespace: argo-rollouts
+  labels:
+    app.kubernetes.io/name: argo-rollouts
+    app.kubernetes.io/component: controller-network-policy
+    app.kubernetes.io/managed-by: apone
+    app.kubernetes.io/part-of: mahjong-autotable
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argo-rollouts
+      app.kubernetes.io/component: rollouts-controller
+  policyTypes:
+    - Egress
+  egress:
+    # DNS (kube-dns / CoreDNS) — required for in-cluster service
+    # discovery. Both UDP and TCP for large responses.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Kubernetes API server — controller watches CRDs + writes
+    # AnalysisRun status. The API server is reachable via the
+    # default ClusterIP `kubernetes.default.svc:443` — no
+    # namespace selector needed (the cluster CIDR is matched
+    # via the `ipBlock` fallback). On EKS the API server is
+    # PUBLIC (private endpoint depending on `enable_private_access`)
+    # — the egress to 443 covers both cases.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            # Exclude the 100.64/10 CIDR — that's the EKS
+            # secondary CIDR; we don't want the controller
+            # reaching out to arbitrary pods.
+            except:
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP
+    # Prometheus — AnalysisTemplate evaluation queries. The
+    # `monitoring` namespace hosts the kube-prometheus-stack
+    # Prometheus Service (`prometheus-server:9090` or
+    # `prometheus-operated:9090` depending on the chart).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - port: 9090
+          protocol: TCP
+
+---
+# Dashboard pod egress — k8s API + DNS only (narrower than the
+# controller — the dashboard doesn't query Prometheus).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argo-rollouts-dashboard-egress
+  namespace: argo-rollouts
+  labels:
+    app.kubernetes.io/name: argo-rollouts
+    app.kubernetes.io/component: dashboard-network-policy
+    app.kubernetes.io/managed-by: apone
+    app.kubernetes.io/part-of: mahjong-autotable
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argo-rollouts
+      app.kubernetes.io/component: dashboard
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP

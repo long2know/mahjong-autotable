@@ -281,7 +281,144 @@ The dashboard service is unaffected; port-forward (§4.1) keeps
 working. No data loss — the dashboard reads cluster state
 directly and is stateless.
 
-## 6. Validation
+## 6. NetworkPolicy hardening (Phase K Wave 12)
+
+> Phase K Wave 12 — Apone (DevOps). The W11 auth-aware ingress
+> closed the **identity** loop (only squad members can reach the
+> dashboard). W12 closes the **network** loop: a NetworkPolicy
+> set in `argo-rollouts` ns that pins both the controller and the
+> dashboard to a minimal allow-list — no lateral access to / from
+> arbitrary workloads in the cluster.
+
+### 6.1 The three policies
+
+[`infra/k8s/overlays/prod/argo-rollouts-network-policy.yaml`](../infra/k8s/overlays/prod/argo-rollouts-network-policy.yaml)
+defines three `NetworkPolicy` objects in the `argo-rollouts`
+namespace:
+
+| Policy | Pod selector | Direction | Allow-list |
+|---|---|---|---|
+| `argo-rollouts-dashboard-ingress` | `app.kubernetes.io/component=dashboard` | Ingress | `ingress-nginx` ns (the W11 ingress controller) + `auth` ns (the oauth2-proxy auth-url subrequest path — see W11 §5 for the flow) |
+| `argo-rollouts-controller-egress` | `app.kubernetes.io/component=rollouts-controller` | Egress | kube-apiserver (CRD reconcile loop), Prometheus (`monitoring` ns — Hudson's W11 metrics scrape), kube-dns (UDP 53 to `kube-system`) |
+| `argo-rollouts-dashboard-egress` | `app.kubernetes.io/component=dashboard` | Egress | kube-apiserver (the dashboard reads CRD state directly), kube-dns (UDP 53) |
+
+Default-deny is the **starting position**: each policy declares
+`policyTypes: [Ingress, Egress]` so any traffic NOT in the
+allow-list is dropped at the CNI layer. The cluster MUST run a
+NetworkPolicy-aware CNI (Calico, Cilium, or AWS VPC CNI with
+the network-policy add-on enabled) for these to take effect —
+verify with:
+
+```bash
+kubectl -n kube-system get pods -l k8s-app=calico-node \
+    -o jsonpath='{.items[0].status.phase}'
+# Expected: Running (or equivalent for cilium-node).
+```
+
+### 6.2 Why split policies (vs one mega-policy)?
+
+The default `argo-rollouts` Helm chart ships TWO distinct
+workloads in the same namespace:
+
+- **`rollouts-controller`** — the operator pod (long-lived, reads
+  CRDs via the apiserver watch, writes events back, scrapes
+  Prometheus for analysis-template metric queries).
+- **`argo-rollouts-dashboard`** — the SPA-serving pod (short-
+  lived from a network-traffic POV; only proxies the
+  /api/v1/rollouts read path to the apiserver).
+
+Their egress profiles are different (the dashboard does NOT
+need Prometheus access; the controller does), and splitting
+the policies keeps each one's allow-list minimal — easier to
+audit + easier to update when a new Helm version adds a new
+endpoint. The ingress policy is ONLY on the dashboard because
+the controller has no ingress callers (its only inbound traffic
+is the kube-apiserver's webhook callbacks via the ValidatingAdmissionWebhook
+that the chart installs — that's a cluster-scoped path managed
+by the apiserver and is not subject to NetworkPolicy).
+
+### 6.3 Wire-in
+
+The W12 prod overlay's `kustomization.yaml` references the
+file in its `resources:` list. The cross-namespace pinning
+(`argo-rollouts` rather than `mahjong-prod`) is preserved via
+the W12 `namespace-transformer.yaml` (`unsetOnly: true`) — see
+[`docs/prod-cutover.md §4`](./prod-cutover.md#4-argo-rollouts-dashboard-cross-namespace-pattern)
+for the design rationale.
+
+### 6.4 Validation
+
+After `kustomize build … | kubectl apply -f -`:
+
+```bash
+# 1. All three policies present.
+kubectl -n argo-rollouts get netpol
+# Expected:
+#   prod-argo-rollouts-controller-egress
+#   prod-argo-rollouts-dashboard-egress
+#   prod-argo-rollouts-dashboard-ingress
+
+# 2. Dashboard reachable from ingress-nginx (negative test —
+#    from a pod in a NON-allowed namespace, the request must
+#    fail).
+kubectl -n default run netpol-probe --rm -i --tty --image=curlimages/curl:8.10.0 -- \
+    curl -s --max-time 5 http://argo-rollouts-dashboard.argo-rollouts.svc.cluster.local:3100/
+# Expected: curl exit code 28 (timeout) — the default ns is NOT in the ingress allow-list.
+
+# 3. Dashboard reachable from ingress-nginx (positive test).
+kubectl -n ingress-nginx exec deploy/ingress-nginx-controller -- \
+    curl -s --max-time 5 -o /dev/null -w '%{http_code}' \
+    http://argo-rollouts-dashboard.argo-rollouts.svc.cluster.local:3100/
+# Expected: 200 (or 302 to /argo-rollouts/ — the dashboard's SPA root).
+
+# 4. Controller still talks to the apiserver (positive test —
+#    reconcile loop still running).
+kubectl -n argo-rollouts logs deploy/argo-rollouts --tail=20 \
+    | grep -Ei "reconcile|sync" | head -5
+# Expected: recent reconcile lines (every ~30s).
+```
+
+### 6.5 Updating the policies
+
+When upgrading the argo-rollouts Helm chart:
+
+1. Diff the new chart's `templates/` against the prior version
+   for any NEW network egress (e.g. a new metrics endpoint, a
+   new sidecar).
+2. If any new egress is added, append a matching rule to the
+   relevant policy file.
+3. Re-run the validation steps above.
+
+Chart upgrades that ADD a new pod or workload to the
+`argo-rollouts` namespace WILL be blocked by these policies
+until a matching NetworkPolicy is added — this is intentional
+default-deny behaviour. Read the chart's release notes for any
+"new workload" callouts before bumping.
+
+### 6.6 Rollback
+
+If the policies cause an outage (e.g. dashboard unreachable due
+to a missing allow-list entry):
+
+```bash
+# Fast revert — delete all three policies.
+kubectl -n argo-rollouts delete netpol \
+    prod-argo-rollouts-dashboard-ingress \
+    prod-argo-rollouts-dashboard-egress \
+    prod-argo-rollouts-controller-egress
+
+# Re-apply once the missing rule is identified.
+kustomize build infra/k8s/overlays/prod/ | kubectl apply -f -
+```
+
+The policies are pure-additive — removing them returns the
+namespace to the default no-policy posture (all pod-to-pod
+traffic allowed within the cluster). The W11 ingress + W11
+oauth2-proxy chain still gates external access; rolling back
+the NetworkPolicies degrades the lateral-access posture but
+does NOT open the dashboard to the public internet.
+
+## 7. Validation
 
 After install, validate the controller + CRDs are healthy:
 
@@ -313,7 +450,7 @@ curl -sf http://localhost:3100/api/v1/rollouts/argo-rollouts | jq '.|keys'
 kill $PF_PID
 ```
 
-## 7. Wiring to the Mahjong chart
+## 8. Wiring to the Mahjong chart
 
 Once the controller is healthy:
 
@@ -338,7 +475,7 @@ happens at `Rollout` reconcile time, so the templates MUST
 exist in the same namespace as the Rollout (the chart renders
 them alongside).
 
-## 8. Rollback procedure
+## 9. Rollback procedure
 
 ### 8.1 Rolling back an in-flight canary
 
@@ -384,7 +521,7 @@ Helm chart falls back to a plain `Deployment` when
 `canary.enabled = false`; the operator can flip that knob
 before uninstall to convert the workload cleanly.
 
-## 9. Cross-references
+## 10. Cross-references
 
 - [`docs/helm-charts.md` §3.5](./helm-charts.md) — the
   `AnalysisTemplate` gates this controller evaluates.
@@ -392,7 +529,9 @@ before uninstall to convert the workload cleanly.
   references this install as a prerequisite (§8 "Continuous
   health probes" cross-link added in W10).
 - [`helm/mahjong/templates/canary-deployment.yaml`](../helm/mahjong/templates/canary-deployment.yaml) — the chart-side resource that needs this controller.
+- [`infra/k8s/overlays/prod/argo-rollouts-network-policy.yaml`](../infra/k8s/overlays/prod/argo-rollouts-network-policy.yaml) — Phase K Wave 12 NetworkPolicy hardening (§6).
 - [`infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml`](../infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml) — Phase K Wave 11 auth-aware ingress manifest (§5).
+- [`docs/prod-cutover.md`](./prod-cutover.md) §4 — cross-namespace kustomize pattern (W12 wire-in for §5 + §6).
 - [`docs/oauth-production-setup.md`](./oauth-production-setup.md) §4 — the oauth2-proxy + dex OIDC chain that fronts §5.
 - Upstream docs: <https://argoproj.github.io/argo-rollouts/>
 - Upstream chart: <https://github.com/argoproj/argo-helm/tree/main/charts/argo-rollouts>

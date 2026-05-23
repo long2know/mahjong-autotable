@@ -56,6 +56,18 @@ output "athena_workgroup_name" {
 }
 
 output "apex_fqdn" {
-  description = "Fully-qualified domain name of the apex A record. Empty when neither CloudFront nor ALB DNS were supplied."
-  value       = length(aws_route53_record.apex) > 0 ? aws_route53_record.apex[0].fqdn : ""
+  description = "Fully-qualified domain name of the apex A record. Empty when neither CloudFront nor ALB DNS were supplied. When the W12 latency-based RR set is active (`var.regional_endpoints` non-empty), this returns the `var.domain_name` directly — the apex resolves via the per-region RR set in `r53-regional-records.tf`."
+  value = length(aws_route53_record.apex) > 0 ? aws_route53_record.apex[0].fqdn : (
+    length(aws_route53_record.latency_apex) > 0 ? var.domain_name : ""
+  )
+}
+
+output "regional_health_check_ids" {
+  description = "Map of region → Route 53 health-check ID (Phase K Wave 12). Empty map when `var.regional_endpoints` is empty. Operators reference these IDs from CloudWatch alarms or external monitoring."
+  value       = { for k, v in aws_route53_health_check.regional : k => v.id }
+}
+
+output "regional_hostnames" {
+  description = "Map of region → per-region FQDN (e.g. `us-east-1.mahjong.example.com`). Empty map when `var.regional_endpoints` is empty. The W11 prod-health-check matrix consumes these via the `vars.PROD_BASE_URL_<REGION>` repo variables."
+  value       = { for k, v in aws_route53_record.regional_alias : k => v.fqdn }
 }

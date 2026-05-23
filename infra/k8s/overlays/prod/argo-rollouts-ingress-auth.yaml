@@ -1,4 +1,4 @@
-# Phase K Wave 11 — Apone (DevOps).
+# Phase K Wave 11 — Apone (DevOps). Phase K Wave 12 wire-in.
 #
 # Argo Rollouts dashboard ingress with auth-aware OIDC proxy.
 #
@@ -10,9 +10,19 @@
 # the W2/W3 OAuth chain already covers @squad.mahjong + the
 # allow-listed external observers).
 #
-# *** OUT-OF-BAND RESOURCE — NOT in any kustomization.yaml
-# resources list at W11. Apply manually with `kubectl apply -f`
-# AFTER the operator has:
+# W12 status — IN-BAND (cross-namespace). Wired into the prod
+# overlay via `kustomization.yaml` (`resources:` list). The
+# overlay swapped its top-level `namespace: mahjong-prod`
+# directive for a `NamespaceTransformer` with `unsetOnly: true`
+# (`namespace-transformer.yaml`) — that transformer leaves
+# resources that pre-declare `metadata.namespace` alone, so this
+# Ingress stays pinned to `argo-rollouts` (the dashboard
+# Service's namespace, which nginx-ingress requires for upstream
+# resolution) while in-base resources continue to pick up
+# `mahjong-prod` by default. See `docs/prod-cutover.md §2` for
+# the cross-namespace wire-up rationale.
+#
+# Pre-reqs (unchanged from W11):
 #
 #   1. Argo Rollouts installed per `docs/argo-rollouts-setup.md`
 #      §2 (helm chart `argo-rollouts 2.37.7`, controller in
@@ -23,11 +33,6 @@
 #      OIDC chain — see `docs/oauth-production-setup.md` §4).
 #   3. cert-manager + the wildcard ACM cert on `*.mahjong.example.com`
 #      (or the per-host LE cert flow).
-#
-# Apply:
-#
-#   kubectl -n argo-rollouts apply -f \
-#       infra/k8s/overlays/prod/argo-rollouts-ingress-auth.yaml
 #
 # The ingress is namespace-scoped to `argo-rollouts` (NOT the
 # `mahjong-prod` app namespace) because the dashboard service

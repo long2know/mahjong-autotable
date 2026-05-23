@@ -7,7 +7,15 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: mahjong-prod
+# Phase K Wave 12 — Apone (DevOps). Namespace pin moved from the
+# top-level `namespace:` directive into a `NamespaceTransformer`
+# with `unsetOnly: true` (see `namespace-transformer.yaml`). This
+# preserves the W11 behaviour for in-base manifests AND keeps
+# the cross-namespace W11 hand-offs
+# (`argo-rollouts-ingress-auth.yaml`,
+#  `argo-rollouts-network-policy.yaml`) pinned to their declared
+# `argo-rollouts` namespace. The old `namespace: mahjong-prod`
+# is preserved inside the transformer config above.
 namePrefix: prod-
 
 resources:
@@ -18,6 +26,20 @@ resources:
   # the same image set just compose (both must verify before
   # admission). See per-file header for rationale.
   - kyverno-enforce-patch.yaml
+  # Phase K Wave 12 — Apone (DevOps). Wire in the W11 hand-off
+  # manifests previously documented as out-of-band. See
+  # `docs/prod-cutover.md §2` for the wire-up rationale.
+  # `redis-connection-string-secret.yaml` has no metadata.namespace —
+  # picks up `mahjong-prod` from the NamespaceTransformer.
+  - redis-connection-string-secret.yaml
+  # `argo-rollouts-ingress-auth.yaml` + the W12
+  # NetworkPolicy both pre-declare `namespace: argo-rollouts` —
+  # the NamespaceTransformer with `unsetOnly: true` honours that.
+  - argo-rollouts-ingress-auth.yaml
+  - argo-rollouts-network-policy.yaml
+
+transformers:
+  - namespace-transformer.yaml
 
 patches:
   - target:
@@ -103,6 +125,32 @@ patches:
         value:
           secretRef:
             name: mahjong-jwt-rsa-keys
+            optional: true
+
+  # Phase K Wave 12 — Apone (DevOps). Mount the prod Redis
+  # connection-string Secret (materialised by
+  # `redis-connection-string-secret.yaml` — wired in via
+  # `resources:` above so the ExternalSecret is part of the
+  # `kustomize build` graph). The secret carries the
+  # `Idempotency__Redis__ConnectionString` env var that the
+  # IConnectionMultiplexer factory consumes when
+  # `Idempotency:Provider=Redis`. `optional: true` so the
+  # deployment can still start during the cutover window before
+  # ESO has hydrated the secret from AWS Secrets Manager — the
+  # in-memory provider remains the fallback until
+  # `Idempotency:Provider=Redis` is flipped via the omnibus
+  # configmap. See `docs/redis-cluster.md §11` for the prod
+  # sizing + cutover sequence and `docs/prod-cutover.md §2`
+  # for the wire-up rationale.
+  - target:
+      kind: Deployment
+      name: mahjong-autotable
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          secretRef:
+            name: mahjong-redis-prod
             optional: true
 
 configMapGenerator:

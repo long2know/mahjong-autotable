@@ -1,0 +1,52 @@
+# Phase K Wave 12 — Apone (DevOps).
+#
+# Built-in `NamespaceTransformer` with `unsetOnly: true`.
+#
+# Why this file exists (W12):
+#
+# The prod overlay's W11 baseline used the kustomization-top-level
+# `namespace: mahjong-prod` field. That field replaces the
+# namespace on EVERY namespaced resource — including resources
+# that pre-declare a different namespace in their YAML
+# (`metadata.namespace`). The behaviour matches kustomize v5's
+# documented contract.
+#
+# W12 wires in the W11-hand-off out-of-band manifests
+# (`redis-connection-string-secret.yaml`,
+#  `argo-rollouts-ingress-auth.yaml`,
+#  `argo-rollouts-network-policy.yaml`). The first lives in the
+# `mahjong-prod` namespace (good — picks up the default). The
+# latter two live in the `argo-rollouts` namespace (NOT
+# `mahjong-prod`) — they front the in-cluster argo-rollouts
+# controller + dashboard installed via the upstream Helm chart in
+# its own namespace per `docs/argo-rollouts-setup.md §2`.
+#
+# To preserve the cross-namespace targeting WITHOUT splitting the
+# overlay into multiple kustomizations, W12 swaps the
+# `namespace: mahjong-prod` directive for an explicit
+# `NamespaceTransformer` with `unsetOnly: true`:
+#
+#   * Resources WITHOUT a pre-declared namespace get
+#     `mahjong-prod` (the W11 default — preserves the existing
+#     behaviour for all in-base manifests + the JWT/HSTS patches).
+#   * Resources WITH a pre-declared namespace KEEP their declared
+#     value (argo-rollouts ingress + NetworkPolicies stay in
+#     `argo-rollouts`).
+#
+# This is the same pattern documented at
+# <https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_namespacetransformer_>
+# under "unsetOnly".
+#
+# Apply order — kustomize processes `transformers:` AFTER
+# `resources:` are loaded, so the in-namespace targeting is honoured
+# at apply time the same way the old `namespace:` field worked.
+
+apiVersion: builtin
+kind: NamespaceTransformer
+metadata:
+  name: mahjong-prod-namespace-transformer
+  namespace: mahjong-prod
+unsetOnly: true
+fieldSpecs:
+  - path: metadata/namespace
+    create: true
