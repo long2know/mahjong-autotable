@@ -1825,3 +1825,57 @@ hashed them to root but the manifest kept the source paths).
 Fixed in `vite.config.ts:copyStaticAssets`.
 
 
+
+---
+
+## Phase K Wave 9 — testid + DOM axis additions (Vasquez QA)
+
+The W9 forward-stage Playwright suite drives six new specs.  None
+adds a *new* `data-testid` — all six reuse existing testids from
+W7/W8 — but they introduce two new DOM-side axes that Hicks must
+keep stable.
+
+### Axis: `findThingByFace` (three.js raycast helper)
+
+Spec: `tests/e2e/three-mesh-pulse.spec.ts`
+
+`findThingByFace(faceIndex)` MUST be exposed on the global
+`window` object during dev/E2E builds (gated behind
+`import.meta.env.DEV || window.__e2e === true`).  The function
+takes an integer `faceIndex` (the THREE.Raycaster intersection
+face index) and returns:
+
+- A reference to the `Thing` (tile / panel / surface mesh) that
+  owns that face, OR
+- `null` if no Thing is registered for that face.
+
+The companion call `pulseHighlight(Thing)` MUST animate the
+returned Thing for ≥ 320 ms with a per-frame transform delta
+visible in the Playwright pixel-diff (≥ 4 channel-delta over a
+40×40 patch centred on the Thing).  The W9 spec measures the
+visible pixel delta directly — no `data-testid` is asserted.
+
+### Axis: `three-mesh-pulse` (legacy event channel)
+
+Spec: `tests/e2e/three-mesh-pulse.spec.ts`
+
+A `window.dispatchEvent(new CustomEvent('three-mesh-pulse',
+{ detail: { thingId } }))` MUST drive the same animation path
+as `pulseHighlight(Thing)`.  Bishop's commentary-overlay landed
+the event channel in W8; the W9 spec asserts the channel still
+fires `tile-highlight` after the 100 ms pulse delay.
+
+### Spec inventory (all chromium-only, all forward-stage tolerant)
+
+| Spec | Asserts | Soft-pass condition |
+|------|---------|---------------------|
+| `three-mesh-pulse.spec.ts` | `findThingByFace` returns a Thing, `pulseHighlight` animates ≥ 320 ms, `tile-highlight` event fires | `window.findThingByFace` or `window.pulseHighlight` missing |
+| `three-renderer-510-hard.spec.ts` | `scripts/dist-size.json` K9 entry ≤ 510 KB | `dist-size.json` missing or no K9 entry |
+| `lighthouse-13-pwa.spec.ts` | `docs/lighthouse-13-report.json` schema 13.x, PWA score ≥ 0.95 | report file absent |
+| `bracket-canonical-shape.spec.ts` | `window.__publishTournamentBracketUpdate({…unknown payload…})` triggers `console.error` mentioning `canonical`/`schema`/`bracket` | publisher fn missing |
+| `livestream-canonical-path.spec.ts` | `GET /api/tables/{id}/livestream` returns 301/308 with `Location: /api/voice/livestream/...` (uses `maxRedirects: 0`) | backend not running / route not present |
+| `signalr-backpressure.spec.ts` | 5000-msg push keeps `performance.memory.usedJSHeapSize` growth < 50 MB | `performance.memory` unavailable (non-Chromium) |
+
+Hicks: when you wire `findThingByFace` + `pulseHighlight` on the
+global, append the canonical citation here (file + line) per the
+W5 maintenance note above.

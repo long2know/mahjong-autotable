@@ -129,7 +129,9 @@ agent_for_path() {
     docs/agent-handoff-protocol.md|\
     .squad/agents/vasquez/*|\
     .squad/decisions/inbox/vasquez-*|\
-    .github/workflows/lane-discipline.yml)
+    .github/workflows/lane-discipline.yml|\
+    .github/workflows/lane-discipline-nightly.yml|\
+    .github/workflows/lane-discipline-status.yml)
       echo "vasquez" ;;
     # Bishop — backend migrations + appsettings (auth lane spillover)
     src/backend/Migrations/*|\

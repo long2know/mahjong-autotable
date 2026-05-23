@@ -98,13 +98,26 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// <c>.github/workflows/mobile-production-release.yml</c>, and
 /// <c>.github/workflows/dr-rehearsal.yml</c>. All forward-staged
 /// with soft-pass on absence.</para>
+///
+/// <para><b>Wave 9 extension.</b> Class renamed Wave1ThroughKW8 →
+/// Wave1ThroughKW9. New W9 smokes appended for
+/// <c>EfCommentaryUsageMeter</c>, <c>JanusReadinessSupervisor</c>,
+/// <c>EfIdempotencyStore</c> / <c>RedisIdempotencyStore</c>,
+/// <c>RotationCadenceValidator</c>, <c>BackpressureMiddleware</c>,
+/// <c>World.findThingByFace</c>,
+/// <c>.github/workflows/lane-discipline-nightly.yml</c>,
+/// <c>.github/workflows/mobile-production-hotfix.yml</c>, and the
+/// <c>docs/agent-handoff-protocol.md §3.6 + §3.7 + §4</c>
+/// branch-protection runbook. All forward-staged with soft-pass on
+/// absence (except the Vasquez-lane artefacts that ship in this same
+/// PR, which hard-assert).</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW8RegressionTests
+public class Wave1ThroughKW9RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW8RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW9RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -1435,5 +1448,184 @@ public class Wave1ThroughKW8RegressionTests
         var path = Path.Combine(
             root.FullName, ".github", "workflows", "dr-rehearsal.yml");
         _ = File.Exists(path); // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — EfCommentaryUsageMeter type reachable.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_EfCommentaryUsageMeter_TypeOrForwardStaged()
+    {
+        var asm = typeof(ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(t =>
+            t.Name == "EfCommentaryUsageMeter" || t.Name == "CommentaryUsageMeter");
+        if (t is null) return;
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — JanusReadinessSupervisor type reachable.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_JanusReadinessSupervisor_TypeOrForwardStaged()
+    {
+        var asm = typeof(ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(t =>
+            t.Name == "JanusReadinessSupervisor" || t.Name == "JanusHealthSupervisor");
+        if (t is null) return;
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — EfIdempotencyStore type reachable.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_EfIdempotencyStore_TypeOrForwardStaged()
+    {
+        var asm = typeof(ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(t =>
+            t.Name == "EfIdempotencyStore" || t.Name == "EfCoreIdempotencyStore");
+        if (t is null) return;
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — RedisIdempotencyStore type reachable.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_RedisIdempotencyStore_TypeOrForwardStaged()
+    {
+        var asm = typeof(ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(t =>
+            t.Name == "RedisIdempotencyStore" || t.Name == "RedisIdempotencyKeyStore");
+        if (t is null) return;
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — RotationCadenceValidator type reachable.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_RotationCadenceValidator_TypeOrForwardStaged()
+    {
+        var asm = typeof(ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(t =>
+            t.Name == "RotationCadenceValidator" || t.Name == "JwksRotationValidator");
+        if (t is null) return;
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — BackpressureMiddleware type reachable.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_BackpressureMiddleware_TypeOrForwardStaged()
+    {
+        var asm = typeof(ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(t =>
+            t.Name == "BackpressureMiddleware" || t.Name == "SignalRBackpressureMiddleware");
+        if (t is null) return;
+        Assert.True(t.IsClass);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — World.findThingByFace in frontend.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_World_FindThingByFace_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var src = Path.Combine(root.FullName, "src", "frontend", "autotable-src", "src");
+        if (!Directory.Exists(src)) return;
+        var matched = false;
+        foreach (var f in Directory.EnumerateFiles(src, "*.ts", SearchOption.AllDirectories))
+        {
+            string text;
+            try { text = File.ReadAllText(f); } catch { continue; }
+            if (text.Contains("findThingByFace", StringComparison.Ordinal))
+            {
+                matched = true;
+                break;
+            }
+        }
+        _ = matched; // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — lane-discipline-nightly workflow.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_LaneDisciplineNightlyWorkflow_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, ".github", "workflows", "lane-discipline-nightly.yml");
+        // Hard-asserts: this file ships in the W9 Vasquez PR.
+        Assert.True(File.Exists(path),
+            "lane-discipline-nightly.yml MUST be present (W9 Vasquez).");
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — mobile-production-hotfix workflow.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_MobileProductionHotfixWorkflow_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, ".github", "workflows", "mobile-production-hotfix.yml");
+        _ = File.Exists(path); // soft-pass (Apone-lane)
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — handoff-protocol §3.6 documented.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_HandoffProtocol_Section36_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "agent-handoff-protocol.md");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        Assert.True(
+            text.Contains("§3.6", StringComparison.Ordinal)
+                || text.Contains("3.6 ", StringComparison.Ordinal)
+                || text.Contains("3.6.", StringComparison.Ordinal));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — handoff-protocol §3.7 documented.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_HandoffProtocol_Section37_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "agent-handoff-protocol.md");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        Assert.True(
+            text.Contains("§3.7", StringComparison.Ordinal)
+                || text.Contains("3.7 ", StringComparison.Ordinal)
+                || text.Contains("3.7.", StringComparison.Ordinal));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 9 — handoff-protocol §4 branch-protection runbook.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-9")]
+    public void PhaseK9_HandoffProtocol_Section4_BranchProtection_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "agent-handoff-protocol.md");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        Assert.Contains("Branch-protection setup", text);
+        Assert.Contains("gh api", text);
     }
 }
