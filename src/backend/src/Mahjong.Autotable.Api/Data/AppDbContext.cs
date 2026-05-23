@@ -53,6 +53,16 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<TournamentRegistration> TournamentRegistrations => Set<TournamentRegistration>();
     public DbSet<TournamentMatch> TournamentMatches => Set<TournamentMatch>();
 
+    // Phase K Wave 1 — match-history denormalization + Elo-rating tables
+    // (Bishop). See Mahjong.Autotable.Api.Players.PlayerGameHistoryService
+    // (writer at game completion) + the GET /api/games match-history
+    // endpoint; Mahjong.Autotable.Api.Tournament.PlayerRatingService
+    // (writer at tournament-match completion) + the
+    // GET /api/ratings/leaderboard endpoint.
+    public DbSet<PlayerGameHistory> PlayerGameHistory => Set<PlayerGameHistory>();
+    public DbSet<PlayerRating> PlayerRatings => Set<PlayerRating>();
+    public DbSet<PlayerRatingHistory> PlayerRatingHistory => Set<PlayerRatingHistory>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -281,12 +291,58 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.Property(x => x.WinnerPlayerId).HasMaxLength(128);
             entity.Property(x => x.GameIdsJson).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.ForfeitedPlayerId).HasMaxLength(128);
             entity.HasIndex(x => new { x.TournamentId, x.Round });
             entity.HasIndex(x => x.TournamentId);
             entity.HasOne<Mahjong.Autotable.Api.Data.Entities.Tournament>()
                 .WithMany()
                 .HasForeignKey(x => x.TournamentId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Phase K Wave 1 — per-player game-history denormalization
+        // (Bishop). Written at game completion by
+        // PlayerGameHistoryService.RecordAsync (game runtime hook); read
+        // by GET /api/games?playerId=. The (PlayerId, CompletedAt) index
+        // backs the canonical paging query; the unique (PlayerId, GameId)
+        // pair keeps re-completion idempotent (matches the existing
+        // ChangshaGameReplays.GameId-unique upsert posture).
+        modelBuilder.Entity<PlayerGameHistory>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.OpponentPlayerIdsCsv).HasMaxLength(1024).IsRequired();
+            entity.HasIndex(x => new { x.PlayerId, x.CompletedAt });
+            entity.HasIndex(x => new { x.PlayerId, x.GameId }).IsUnique();
+        });
+
+        // Phase K Wave 1 — per-(player, season) Elo rating (Bishop).
+        // Updated by PlayerRatingService at tournament-match completion;
+        // surfaced via GET /api/ratings/leaderboard. The unique
+        // (PlayerId, Season) constraint guarantees one live row per
+        // season; the (Season, EloRating desc) index supports the
+        // leaderboard sort.
+        modelBuilder.Entity<PlayerRating>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Season).HasMaxLength(16).IsRequired();
+            entity.HasIndex(x => new { x.PlayerId, x.Season }).IsUnique();
+            entity.HasIndex(x => x.Season);
+        });
+
+        // Phase K Wave 1 — frozen prior-season snapshot (Bishop).
+        // SeasonRolloverService copies live PlayerRatings rows here at
+        // each quarter boundary then resets the live row. Unique
+        // (PlayerId, Season) keeps the snapshot table idempotent on
+        // re-runs (the service guards against double-freeze).
+        modelBuilder.Entity<PlayerRatingHistory>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Season).HasMaxLength(16).IsRequired();
+            entity.HasIndex(x => new { x.PlayerId, x.Season }).IsUnique();
+            entity.HasIndex(x => x.Season);
         });
     }
 }

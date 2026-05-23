@@ -812,6 +812,17 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         }
         finally { instance.Lock.Release(); }
 
+        // Phase K Wave 1 — clear any pending forfeit timer for this
+        // (game, player) pair so the BackgroundService doesn't auto-
+        // forfeit a player who reconnected within the grace window.
+        try
+        {
+            var forfeit = _scopeFactory.CreateScope().ServiceProvider
+                .GetService<Tournament.TournamentForfeitService>();
+            forfeit?.NoteReconnect(gameId, playerId);
+        }
+        catch { /* best-effort; never block reconnect on telemetry */ }
+
         await _hub.Groups.AddToGroupAsync(connectionId, gameId, ct);
         await SendFullStateAsync(instance, connectionId, seatIndex, ct);
         return true;
@@ -822,6 +833,11 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         // Phase J Wave 5 — collect games to destroy outside the per-instance
         // lock so we don't try to await a Task that re-enters the same lock.
         var toDestroy = new List<string>();
+        // Phase K Wave 1 — also collect (gameId, playerId) tuples to feed
+        // into the TournamentForfeitService once we drop the per-instance
+        // lock. The forfeit BackgroundService filters by tournament
+        // ownership at sweep time, so we don't need to repeat that here.
+        var disconnectsToNote = new List<string>();
         foreach (var (gameId, instance) in _games)
         {
             await instance.Lock.WaitAsync(ct);
@@ -838,6 +854,15 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     .ToList();
                 foreach (var seat in matched)
                     instance.SeatConnections.TryRemove(seat, out _);
+
+                // Phase K Wave 1 — capture for forfeit tracking. We only
+                // care when the dropped connection actually held a seat
+                // (matched.Count > 0) so a stray "I never sat down"
+                // disconnect doesn't pollute the tracker.
+                if (matched.Count > 0 && !string.IsNullOrEmpty(playerId))
+                {
+                    disconnectsToNote.Add(gameId);
+                }
 
                 // Phase J Wave 6 — host transfer / auto-destroy for public
                 // games still in the Seating lobby phase. Compare against
@@ -871,6 +896,29 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 }
             }
             finally { instance.Lock.Release(); }
+        }
+
+        // Phase K Wave 1 — notify the forfeit BackgroundService outside
+        // the per-instance lock. Resolved via scope so we don't pin the
+        // singleton to a request scope; best-effort.
+        if (disconnectsToNote.Count > 0)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var forfeit = scope.ServiceProvider.GetService<Tournament.TournamentForfeitService>();
+                if (forfeit is not null)
+                {
+                    foreach (var gid in disconnectsToNote)
+                    {
+                        forfeit.NoteDisconnect(gid, playerId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Forfeit disconnect notification failed for {PlayerId}.", playerId);
+            }
         }
 
         foreach (var gameId in toDestroy)
@@ -1836,12 +1884,57 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         // re-emits GameCompleted simply refreshes its replay row).
         await PersistReplayAsync(instance, ct);
 
+        // Phase K Wave 1 — per-player match-history denormalization
+        // (Bishop). Writes one PlayerGameHistory row per human seat so
+        // GET /api/games?playerId=… can list a player's completed games
+        // without a JSON scan of ChangshaGame.StateJson. Best-effort:
+        // failures never break the completion hot path.
+        await PersistPlayerGameHistoryAsync(instance, ct);
+
         // Phase J Wave 10 — tournament-match advancement. If the
         // completed game is bound to any TournamentMatch row, flip
         // that match to "complete" with the top-score player as the
         // winner. Best-effort: a tournament-service hiccup never
         // breaks the game-completion hot path.
         await AdvanceTournamentMatchAsync(instance, ct);
+    }
+
+    /// <summary>
+    /// Phase K Wave 1 — projects the completed game's seats into one
+    /// <see cref="PlayerGameHistory"/> row per human player via
+    /// <see cref="Players.PlayerGameHistoryService"/>. Best-effort:
+    /// missing service registration (legacy test harnesses) or DB
+    /// exceptions are logged + swallowed.
+    /// </summary>
+    private async Task PersistPlayerGameHistoryAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        try
+        {
+            if (!Guid.TryParse(instance.GameId, out var gameGuid)) return;
+
+            using var scope = _scopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetService<Players.PlayerGameHistoryService>();
+            if (svc is null) return;
+
+            // Best-effort RulePresetId resolution: the column exists on
+            // the ChangshaGames row (Wave 8) but legacy callers may not
+            // populate it. Null is the safe fallback.
+            Guid? rulePresetId = null;
+            try
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var row = await db.ChangshaGames.AsNoTracking()
+                    .FirstOrDefaultAsync(g => g.Id == gameGuid, ct);
+                rulePresetId = row?.RulePresetId;
+            }
+            catch { /* fall through with null */ }
+
+            await svc.RecordAsync(gameGuid, instance.CreatedUtc, instance.State, rulePresetId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PlayerGameHistory write failed for {GameId}; surface will be stale.", instance.GameId);
+        }
     }
 
     private async Task AdvanceTournamentMatchAsync(ChangshaGameInstance instance, CancellationToken ct)
@@ -1859,7 +1952,30 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             using var scope = _scopeFactory.CreateScope();
             var svc = scope.ServiceProvider.GetService<Tournament.TournamentService>();
             if (svc is null) return;
-            await svc.AdvanceMatchAsync(gameGuid, winnerSeat.PlayerId, ct);
+            var match = await svc.AdvanceMatchAsync(gameGuid, winnerSeat.PlayerId, ct);
+
+            // Phase K Wave 1 — Elo rating update. Only fires when the
+            // completed game actually mapped to a tournament match
+            // (AdvanceMatchAsync returned a non-null match); ad-hoc /
+            // public games skip the rating delta. Best-effort.
+            if (match is not null)
+            {
+                try
+                {
+                    var ratings = scope.ServiceProvider.GetService<Tournament.PlayerRatingService>();
+                    if (ratings is not null)
+                    {
+                        var participants = new List<string> { match.Player1Id, match.Player2Id };
+                        if (!string.IsNullOrWhiteSpace(match.Player3Id)) participants.Add(match.Player3Id!);
+                        if (!string.IsNullOrWhiteSpace(match.Player4Id)) participants.Add(match.Player4Id!);
+                        await ratings.RecordMatchOutcomeAsync(participants, winnerSeat.PlayerId, ct: ct);
+                    }
+                }
+                catch (Exception rex)
+                {
+                    _logger.LogWarning(rex, "Rating update for tournament match {MatchId} failed; swallowing.", match.Id);
+                }
+            }
         }
         catch (Exception ex)
         {

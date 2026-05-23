@@ -433,6 +433,126 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.ToTable("PlayerAuthSessions");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerGameHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FinalScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("GameId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OpponentPlayerIdsCsv")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlayerId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("RulePresetId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SeatIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Won")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerId", "CompletedAt");
+
+                    b.HasIndex("PlayerId", "GameId")
+                        .IsUnique();
+
+                    b.ToTable("PlayerGameHistory");
+                });
+
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerRating", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EloRating")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("GamesPlayed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastUpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlayerId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Season")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Season");
+
+                    b.HasIndex("PlayerId", "Season")
+                        .IsUnique();
+
+                    b.ToTable("PlayerRatings");
+                });
+
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.PlayerRatingHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EloRating")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("FrozenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GamesPlayed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PlayerId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Season")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Season");
+
+                    b.HasIndex("PlayerId", "Season")
+                        .IsUnique();
+
+                    b.ToTable("PlayerRatingHistory");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.ReconnectAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -578,6 +698,13 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ForfeitedByDisconnect")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ForfeitedPlayerId")
+                        .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("GameIdsJson")

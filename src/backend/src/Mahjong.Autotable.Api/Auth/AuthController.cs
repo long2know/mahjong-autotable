@@ -29,6 +29,7 @@ public sealed class AuthController : ControllerBase
     private readonly AuthCookieService _cookies;
     private readonly AuthIdentityService _identities;
     private readonly OAuthService _oauth;
+    private readonly OAuthStateProtector _stateProtector;
     private readonly MagicLinkService _magicLinks;
     private readonly PlayerIdentityService _playerIdentity;
     private readonly PlayerProfileService _profiles;
@@ -39,6 +40,7 @@ public sealed class AuthController : ControllerBase
         AuthCookieService cookies,
         AuthIdentityService identities,
         OAuthService oauth,
+        OAuthStateProtector stateProtector,
         MagicLinkService magicLinks,
         PlayerIdentityService playerIdentity,
         PlayerProfileService profiles,
@@ -48,6 +50,7 @@ public sealed class AuthController : ControllerBase
         _cookies = cookies;
         _identities = identities;
         _oauth = oauth;
+        _stateProtector = stateProtector;
         _magicLinks = magicLinks;
         _playerIdentity = playerIdentity;
         _profiles = profiles;
@@ -85,10 +88,17 @@ public sealed class AuthController : ControllerBase
         // bind the identity to on callback.
         _playerIdentity.ResolveOrMint(HttpContext);
 
-        var state = OAuthService.GenerateState();
+        // Phase K Wave 1 — issue HMAC-signed state, PKCE verifier+challenge,
+        // and (for OIDC providers) a nonce. The nonce + verifier are stored
+        // in HttpOnly cookies so the callback can verify the binding without
+        // the values ever leaving the user agent.
+        var stateIssue = _stateProtector.Issue();
+        var codeVerifier = OAuthService.GeneratePkceVerifier();
+        var codeChallenge = OAuthService.BuildPkceChallenge(codeVerifier);
+        var nonce = OAuthService.GenerateState();
         var redirectUri = BuildCallbackUri(provider);
 
-        HttpContext.Response.Cookies.Append(OAuthService.StateCookieName, state, new CookieOptions
+        var cookieBase = new CookieOptions
         {
             HttpOnly = true,
             Secure = HttpContext.Request.IsHttps,
@@ -96,21 +106,17 @@ public sealed class AuthController : ControllerBase
             MaxAge = TimeSpan.FromMinutes(10),
             Path = "/",
             IsEssential = true,
-        });
+        };
+        HttpContext.Response.Cookies.Append(OAuthService.StateCookieName, stateIssue.Nonce, cookieBase);
+        HttpContext.Response.Cookies.Append(OAuthService.PkceVerifierCookieName, codeVerifier, cookieBase);
+        HttpContext.Response.Cookies.Append(OAuthService.NonceCookieName, nonce, cookieBase);
+
         if (!string.IsNullOrWhiteSpace(returnUrl))
         {
-            HttpContext.Response.Cookies.Append(OAuthService.ReturnUrlCookieName, returnUrl, new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = HttpContext.Request.IsHttps,
-                SameSite = SameSiteMode.Lax,
-                MaxAge = TimeSpan.FromMinutes(10),
-                Path = "/",
-                IsEssential = true,
-            });
+            HttpContext.Response.Cookies.Append(OAuthService.ReturnUrlCookieName, returnUrl, cookieBase);
         }
 
-        var authUrl = _oauth.BuildAuthorizeUrl(provider, redirectUri, state);
+        var authUrl = _oauth.BuildAuthorizeUrl(provider, redirectUri, stateIssue.Token, codeChallenge, nonce);
         return Redirect(authUrl);
     }
 
@@ -132,17 +138,36 @@ public sealed class AuthController : ControllerBase
         if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
             return BadRequest(new { error = "Missing code or state." });
 
-        if (!HttpContext.Request.Cookies.TryGetValue(OAuthService.StateCookieName, out var expectedState)
-            || !OAuthService.ConstantTimeEquals(state, expectedState ?? string.Empty))
+        // Phase K Wave 1 — verify the HMAC-signed state token + bind it to
+        // the cookie-stored nonce. Either failure short-circuits with a
+        // 400 so an attacker can't replay or smuggle a tampered state.
+        var verify = _stateProtector.Verify(state);
+        if (!verify.Ok)
+        {
+            return BadRequest(new { error = "Invalid state token.", reason = verify.Reason });
+        }
+        if (!HttpContext.Request.Cookies.TryGetValue(OAuthService.StateCookieName, out var stateCookie)
+            || !OAuthService.ConstantTimeEquals(stateCookie ?? string.Empty, verify.Nonce ?? string.Empty))
         {
             return BadRequest(new { error = "Invalid state token." });
         }
         HttpContext.Response.Cookies.Delete(OAuthService.StateCookieName);
+
+        // Pull the PKCE verifier + nonce from cookies (best-effort — the
+        // cookies are only set on Wave-K-1+ Login paths but the existing
+        // surface remains backward-compatible with providers that don't
+        // require either).
+        HttpContext.Request.Cookies.TryGetValue(OAuthService.PkceVerifierCookieName, out var codeVerifier);
+        HttpContext.Response.Cookies.Delete(OAuthService.PkceVerifierCookieName);
+        HttpContext.Request.Cookies.TryGetValue(OAuthService.NonceCookieName, out var expectedNonce);
+        HttpContext.Response.Cookies.Delete(OAuthService.NonceCookieName);
+
         HttpContext.Request.Cookies.TryGetValue(OAuthService.ReturnUrlCookieName, out var returnUrl);
         HttpContext.Response.Cookies.Delete(OAuthService.ReturnUrlCookieName);
 
         var redirectUri = BuildCallbackUri(provider);
-        var info = await _oauth.ExchangeAndFetchUserInfoAsync(provider, code, redirectUri, ct);
+        var info = await _oauth.ExchangeAndFetchUserInfoAsync(
+            provider, code, redirectUri, codeVerifier, expectedNonce, ct);
         if (info is null)
             return BadRequest(new { error = "OAuth exchange failed." });
 
