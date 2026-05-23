@@ -2314,3 +2314,118 @@ carry `Hicks (Frontend) <hicks@squad.mahjong>` +
   follow-up: `aria-live="polite"` "Showing finals" status.
 
 Memo: `.squad/decisions/inbox/hicks-phase-k-wave-2.md`.
+
+---
+
+## Phase K Wave 3 — scene split, SW pre-cache manifest, offline tour, voice-enabled flag, Microsoft OAuth, tournament seed auto-save
+
+Branch: `stlong/phase-k-wave-3-bringup`.  Six discrete frontend
+deliverables; build-gate clean (`tsc --noEmit --module esnext` zero
+new errors; parcel build ~10 s).
+
+### What shipped
+
+1. **Scene split** — `game-bootstrap.ts` (was 1.11 MB) is now a
+   three.js-free HUD shell at **166 kB**, plus a new
+   `scene.ts` chunk at **922 kB** loaded by dynamic-import after
+   the shell paints.  Two new testids — `game-shell-ready` (after
+   shell mount) and `game-scene-ready` (after first rAF in scene)
+   — give Playwright clean wait targets for HUD-only vs
+   tile-painted assertions.
+2. **Service-worker pre-cache manifest** —
+   `scripts/generate-sw-manifest.js` (chained from `npm run
+   build:post`) emits `manifest-precache.json`, copies the latest
+   `sw.js` into the dist, and prunes superseded hashed chunks
+   from previous builds.  Cache version bumped to `autotable-v3`;
+   first install fetches the manifest and pre-warms the eager
+   chain.
+3. **Offline-friendly onboarding tour** — `tour.ts` now races the
+   `/api/players/me/onboarding-status` probe against a 300 ms
+   timer; offline users see the tour immediately, completion POST
+   is fire-and-forget (LS remains authoritative offline).
+4. **Per-game `voiceEnabled` flag wired end-to-end** —
+   `voice.ts` probes `GET /api/games/{id}/settings`, disables the
+   mic + tooltip "Voice not enabled for this table" when the flag
+   is off; `JoinVoice` hub rejection routes through a new
+   `toast.ts` helper for human-readable surface; new
+   `voice-enable-toggle` in the settings drawer (owner-only)
+   POSTs `/api/games/{id}/settings/voice` with optimistic flip,
+   rollback + toast on failure, dispatches `mahjong:voice-enabled`
+   CustomEvent so the in-flight voice module live-flips.
+5. **Microsoft OAuth** — third provider button alongside
+   Google/GitHub; inline 4-tile SVG (Microsoft brand colours),
+   direct GET redirect to `/api/auth/login?provider=microsoft`
+   (matches Bishop's Entra cookie-state handshake, different from
+   Google's POST flow).  Also added `ensureAuthMarkup()` which
+   mounts the full sign-in modal scaffold (it was missing from
+   `index.html` entirely — Wave 2's e2e soft-passed on count=0).
+6. **Tournament seed auto-POST** — refactored `tournaments.ts`
+   seeding panel to auto-save on each successful drop with
+   `lastSavedSeeds` rollback + toast on failure.  Wire shape
+   changed to `{ seeds: [{ playerId, seedNumber }, …] }` per
+   Bishop's Wave-3 spec.  Manual Save button retained as
+   keyboard-only fallback.
+
+### Files touched (selective git add only)
+
+NEW:
+- `src/frontend/autotable-src/src/scene.ts` — three.js-bound
+  renderer mount; exports `mountScene()`.
+- `src/frontend/autotable-src/src/toast.ts` — shared toast helper
+  (`showToast`, `showVoiceToast`).
+- `src/frontend/autotable-src/scripts/generate-sw-manifest.js` —
+  post-build script (sw copy + chunk prune + manifest emit).
+- `.squad/decisions/inbox/hicks-phase-k-wave-3.md` — memo.
+
+MODIFIED:
+- `src/frontend/autotable-src/src/game-bootstrap.ts` — rewrote as
+  three-free shell, dynamic-imports `./scene`.
+- `src/frontend/autotable-src/src/voice.ts` — voiceEnabled probe,
+  mic-disabled state, hub-error toast, live-flip listener.
+- `src/frontend/autotable-src/src/settings-drawer.ts` — owner-only
+  `voice-enable-toggle` in Network panel.
+- `src/frontend/autotable-src/src/tour.ts` — 300 ms probe race,
+  fire-and-forget completion POST, offlineFallback flag.
+- `src/frontend/autotable-src/src/auth.ts` — Microsoft provider
+  added to `KNOWN_PROVIDERS` / `coerceProvider` /
+  `providerBadgeLabel`; `ensureAuthMarkup()` injects modal
+  scaffold; inline SVG icon helpers.
+- `src/frontend/autotable-src/src/tournaments.ts` — auto-POST on
+  drop with rollback; new `{ playerId, seedNumber }` wire shape.
+- `src/frontend/autotable-src/sw.js` — cache version v3, install
+  handler fetches manifest-precache.json + cache.addAll after
+  HEAD-probe filter.
+- `src/frontend/autotable-src/package.json` — added `build` +
+  `build:post` scripts.
+- `src/frontend/autotable-src/tests/selectors.md` — new Wave 3
+  section with all new testids + Vasquez soft-pass annotations.
+- `src/frontend/autotable/*` — built artefacts (new hashed
+  chunks, pruned 6 stale Wave-2 chunks, updated `sw.js`,
+  `manifest-precache.json`).
+
+### Bundle delta (eager + shell on game URL)
+
+| Metric                    | Wave 2     | Wave 3     | Δ |
+|---|---|---|---|
+| Eager JS                  | 208 kB     | **214 kB** | +6 kB (modal + toast) |
+| Game shell JS             | 1.11 MB    | **166 kB** | **−85 %** |
+| Scene chunk (NEW)         | —          | 922 kB     | (was inside game-bootstrap) |
+| Toast helper (NEW)        | —          | 1.2 kB     | — |
+
+Total transfer on a game URL is roughly the same, but
+user-perceived latency drops dramatically: lobby paints in 214 kB,
+HUD shell mounts in 166 kB before the scene chunk streams in
+parallel with tile-texture round-trips.
+
+### Open Wave-4 questions
+
+- Bishop may migrate VoiceHub `JoinVoice` to a typed result
+  `{ ok, reason }` — `toast.ts#showVoiceToast` reason map will
+  need to mirror.
+- Microsoft 4-tile inline SVG — verify against Microsoft
+  brand-asset usage guidelines; trivial swap to CDN if pushback.
+- Scene chunk is 922 kB; three.js tree-shake in Wave 5 would
+  enable adding it to the SW pre-cache manifest for warm
+  returning-user game loads.
+
+Memo: `.squad/decisions/inbox/hicks-phase-k-wave-3.md`.
