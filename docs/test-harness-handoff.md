@@ -147,3 +147,51 @@ Passed!  - Failed: 0, Passed: 1232, Skipped: 0, Total: 1232
 Filed by Vasquez during Phase K Wave 4 bring-up. Hand-off ready —
 all Wave-4 specs already follow the reflection-defensive pattern,
 so the workaround above is strictly a flake mitigation.
+
+---
+
+## Phase K Wave 5 — addendum (Vasquez)
+
+The Wave-5 bring-up brief asked Hudson to introduce a
+`CollectionFixture` for the regression class so the cross-wave
+file (`Wave1ThroughKW5RegressionTests`) returns to running under
+the default xUnit collection-per-class parallelism. Hudson did
+not action this in Wave 5 (other Wave-5 priorities). Vasquez
+implemented the fixture as part of the bring-up:
+
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Regression/RegressionHostFixture.cs`
+  exposes a shared `WebApplicationFactory<Program>` via
+  `[CollectionDefinition("regression-host")]`.
+- The regression test class adopts the fixture via
+  `[Collection("regression-host")]` + constructor injection,
+  removing the old `IAsyncLifetime` boot per-class.
+
+The Wave-4 disposal race we observed under high parallelism (an
+intermittent `ObjectDisposedException` on the shared sqlite
+connection when two collections raced through teardown) is
+eliminated by this change — the factory's lifetime is now scoped
+to the collection rather than the class, so xUnit's parallel
+scheduler can't tear it down while another fact still holds a
+`HttpClient` against it.
+
+The Wave-4 `xunit.runner.json` workaround (force-serial collection
+boundary) was NOT needed once the fixture is in place. The repo
+currently has no `xunit.runner.json` and the default parallelism
+runs green at **1329 / 0 / 0** over multiple consecutive gate
+invocations.
+
+### Forward-looking: TESTING_SHIM
+
+The Wave-5 bring-up also lands a `TESTING_SHIM`-gated
+`TestHttpClientExtensions.WithDirectSession` helper. See
+`docs/test-shims.md` for the inventory + the production-leakage
+guarantee. The harness itself does NOT load the shim — it is a
+test-only convenience for individual fact authors.
+
+### Recommended next step for Hudson
+
+If the regression class grows past ~80 facts, consider splitting
+into `Wave1ThroughKW5RegressionTests` and a sibling
+`Wave1ThroughKW5RegressionEnvelopeTests` — both sharing the same
+`regression-host` collection. The shared fixture pattern composes
+trivially across multiple classes.

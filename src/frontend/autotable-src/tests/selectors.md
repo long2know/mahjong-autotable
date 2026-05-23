@@ -1295,3 +1295,35 @@ with a soft-pass annotation):
 - `voice-reason-exhaustive.spec.ts` — for every entry in
   `ALL_VOICE_REASONS`, the mapper returns a non-empty string that
   is neither the raw enum value nor an empty default.
+
+### Phase K Wave 5 Playwright spec map — Vasquez (final)
+
+The five Vasquez-owned W5 specs are now landed (all reflection-
+defensive with `soft-pass` annotations; chromium-only via
+`test.skip(testInfo.project.name !== 'chromium', ...)`):
+
+- `scene-shell-budget-strict.spec.ts` — STRICT < 500 kB combined
+  scene-shell payload (Wave 4 was soft). Excludes the new
+  `three-renderer` chunk from the budget (intentional per the
+  W5 split). Soft-passes only when no shell chunks emit
+  (dev-server / pre-build).
+- `keyboard-seed-reorder.spec.ts` — focus a
+  `[data-testid="seed-row-handle"]` element and press `ArrowDown`;
+  hard-asserts the first two rows' `data-seed-id` attribute swap.
+  Soft-passes when the panel hasn't yet mounted.
+- `voice-reason-spectator-distinct.spec.ts` — dispatches
+  `voice:failure` with `reason: 'spectator'` then with
+  `reason: 'not-seated'`, reads the `voice-failure-toast` text
+  for each, and hard-asserts the spectator copy is non-empty
+  AND differs from the not-seated copy.
+- `three-renderer-lazy.spec.ts` — observes JS requests on lobby
+  load; hard-asserts no chunk matching `three-renderer|three\..*\.js`
+  is fetched before `networkidle`. Soft-passes when no three chunk
+  has yet been observed (pre-split / dev-server).
+- `jwks-endpoint-shape.spec.ts` — `GET /api/auth/.well-known/jwks.json`
+  MUST return HTTP 404 with `Cache-Control: no-store`. Soft-passes
+  only on network unreachability (dev-server preview).
+
+Each spec uses `test.info().annotations.push({ type: 'soft-pass', … })`
+to record forward-staged surfaces — these annotations are visible in
+the Playwright HTML report without inflating the failure count.
