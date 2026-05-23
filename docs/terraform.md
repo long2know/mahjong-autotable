@@ -195,12 +195,207 @@ investigate the largest contributor (typically resolver TTL
 caching at upstream resolvers; mitigated by the TTL<60s rule
 the W6 module enforces).
 
-## 5. Cross-references
+## 5. Edge module (Phase K Wave 7 — Apone)
+
+`infra/terraform/modules/edge/` provisions the **public-facing
+edge** for the API + frontend: Route53 hosted zone, ACM
+certificates (regional + CloudFront us-east-1), WAFv2 ACL
+(REGIONAL + CLOUDFRONT scopes), WAF log delivery to S3, an
+Athena workgroup over those logs, and an optional CloudFront
+distribution + apex DNS records.
+
+It is a **separate Terraform module** — not collapsed into the
+primary stack — because:
+
+* **Independent blast radius.** A misconfigured WAF rule
+  shouldn't risk a `terraform apply` against the cluster IAM or
+  the SSM parameters. The edge module owns its own state slice;
+  callers compose it via `module "edge" { source = "./modules/edge" ... }`.
+* **CloudFront opt-in.** Half-fanout: staging runs Route53+ACM+
+  WAFv2 against the ALB only (`cloudfront = null`); prod adds
+  the CloudFront distribution. The same module renders both
+  shapes — the `cloudfront` input is an object that, when
+  `null`, suppresses the CloudFront resources entirely.
+* **`us-east-1` provider alias requirement.** CloudFront ACM
+  certificates MUST live in us-east-1 regardless of the primary
+  AWS region (AWS constraint). The module declares
+  `configuration_aliases = [aws.us_east_1]` so callers pass an
+  aliased provider explicitly; this is the same pattern
+  `dr-replication/` uses for its us-west-2 alias.
+
+### 5.1 What it builds
+
+| Resource | Purpose |
+|---|---|
+| `aws_route53_zone` | Hosted zone for the apex domain. |
+| `aws_acm_certificate` (regional + us_east_1) | Two certificates — regional for the ALB / API Gateway, us-east-1 for CloudFront. DNS-validated. |
+| `aws_acm_certificate_validation` | Blocks `apply` until both certs validate. |
+| `aws_wafv2_web_acl` (REGIONAL) | Front of the ALB. Managed rule groups + per-IP rate limit. |
+| `aws_wafv2_web_acl` (CLOUDFRONT) | Front of the CloudFront distribution (opt-in). |
+| `aws_s3_bucket` | WAF logs landing bucket — name MUST start with `aws-waf-logs-` (AWS constraint for WAF log delivery destinations). |
+| `aws_wafv2_web_acl_logging_configuration` | Per-ACL log delivery to the S3 bucket. |
+| `aws_athena_workgroup` | Query workgroup for WAF-log analytics. |
+| `aws_cloudfront_distribution` (opt-in) | Optional CDN in front of the ALB. |
+| `aws_route53_record` (apex ALIAS + AAAA) | Points the apex at either the CloudFront distribution or the ALB. |
+
+### 5.2 Validators + defaults
+
+`variables.tf` carries argument-level validators so callers
+fail-loud on shape mismatches at `plan` time, NOT at `apply`:
+
+* `domain_name` — lowercase FQDN regex (Route53 zone names are
+  case-sensitive; Terraform doesn't enforce normalisation
+  natively).
+* `waf_rate_limit_per_5min` — bounded `[100, 20_000_000]`
+  (AWS hard limits). Wave 7 baseline = `1000` per IP / 5 min
+  (matches the W4 ALB-side rate limit; once CloudFront is in
+  front in prod, this is the LAST-MILE limit hit by direct-to-ALB
+  traffic).
+* `logs_retention_days` — bounded `[7, 3653]` (Athena needs a
+  minimum for query usefulness; max is the S3-lifecycle hard cap).
+* `cloudfront.price_class` — one of `PriceClass_100`,
+  `PriceClass_200`, `PriceClass_All`.
+
+### 5.3 Usage
+
+Single-region usage from the primary stack — pass the aliased
+provider explicitly:
+
+```hcl
+provider "aws" {
+  region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
+module "edge_prod" {
+  source = "./modules/edge"
+
+  providers = {
+    aws            = aws
+    aws.us_east_1  = aws.us_east_1
+  }
+
+  environment             = "prod"
+  domain_name             = "mahjong-autotable.com"
+  alb_dns_name            = module.alb.dns_name
+  alb_zone_id             = module.alb.zone_id
+  waf_rate_limit_per_5min = 1000
+  logs_retention_days     = 90
+
+  cloudfront = {
+    price_class = "PriceClass_100"
+    origin_id   = "primary-alb"
+    allowed_methods = ["GET", "HEAD", "OPTIONS"]
+  }
+
+  tags = local.common_tags
+}
+
+module "edge_staging" {
+  source = "./modules/edge"
+
+  providers = {
+    aws            = aws
+    aws.us_east_1  = aws.us_east_1
+  }
+
+  environment             = "staging"
+  domain_name             = "staging.mahjong-autotable.com"
+  alb_dns_name            = module.alb_staging.dns_name
+  alb_zone_id             = module.alb_staging.zone_id
+  waf_rate_limit_per_5min = 1000
+  logs_retention_days     = 30
+
+  # CloudFront opt-out for staging — saves the CDN fixed cost +
+  # keeps the staging surface a one-hop test target.
+  cloudfront = null
+
+  tags = local.common_tags
+}
+```
+
+### 5.4 Validation caveat
+
+Modules that declare `configuration_aliases` cannot
+`terraform validate` standalone — the validator expects every
+declared provider to be supplied by a caller. The `dr-replication`
+module has the same property. To validate this module
+in isolation:
+
+```bash
+mkdir .work/tf-edge-validate
+cat > .work/tf-edge-validate/main.tf <<'EOF'
+terraform {
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+  }
+}
+
+provider "aws" {
+  region                      = "us-east-1"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+}
+
+provider "aws" {
+  alias                       = "us_east_1"
+  region                      = "us-east-1"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+}
+
+module "edge" {
+  source = "../../infra/terraform/modules/edge"
+
+  providers = {
+    aws            = aws
+    aws.us_east_1  = aws.us_east_1
+  }
+
+  environment  = "validate"
+  domain_name  = "example.com"
+  alb_dns_name = "dummy-alb-12345.us-east-1.elb.amazonaws.com"
+  alb_zone_id  = "Z35SXDOTRQ7X7K"
+}
+EOF
+cd .work/tf-edge-validate && terraform init -backend=false && terraform validate
+```
+
+The primary stack's `terraform validate` covers the edge module
+implicitly once it's wired via `module "edge" { ... }`.
+
+### 5.5 Interplay with DR module (Wave 6)
+
+The edge module and `dr-replication` are **complementary,
+non-overlapping** slices:
+
+| Concern | Module | Provider alias |
+|---|---|---|
+| Hosted zone + ACM + WAF + CloudFront | `edge` | `aws.us_east_1` (CloudFront ACM constraint) |
+| ECR cross-region replication | `dr-replication` | `aws.us_west_2` (DR target region) |
+| Route53 health-check + failover policy (W8) | TBD — likely `edge` extension | both aliases |
+
+A DR failover (W6 procedure) does NOT re-apply the edge module —
+the apex DNS record is **active-passive against the primary ALB
+DNS name**, and the operator's failover step is to update the
+`alb_dns_name` input + `terraform apply` against the edge module
+alone. The cluster + ECR resources are unchanged.
+
+## 6. Cross-references
 
 * `infra/terraform/README.md` — primary-stack bootstrap runbook.
 * `infra/terraform/modules/dr-replication/README.md` — DR module.
 * `infra/terraform/modules/github-oidc/README.md` — OIDC module.
+* `infra/terraform/modules/edge/README.md` — Wave-7 edge module reference.
 * `docs/production-deployment-runbook.md` — operator runbook for
   the helm post-bootstrap sequence.
 * `docs/retro-2026-05.md` — May 2026 monthly retro
   (documents the W6 DR rehearsal commitments).
+* `docs/retro-2026-06.md` — June 2026 monthly retro
+  (documents the W7 edge module + helm chart-of-charts roll-out).
