@@ -63,6 +63,12 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<PlayerRating> PlayerRatings => Set<PlayerRating>();
     public DbSet<PlayerRatingHistory> PlayerRatingHistory => Set<PlayerRatingHistory>();
 
+    // Phase K Wave 2 — quarter-boundary deferral table (Bishop). Written
+    // by SeasonRolloverService when a player is mid-tournament; drained
+    // when the tournament completes. See
+    // Mahjong.Autotable.Api.Tournament.SeasonRolloverService.
+    public DbSet<PlayerSeasonRolloverDeferral> PlayerSeasonRolloverDeferrals => Set<PlayerSeasonRolloverDeferral>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -195,14 +201,25 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         // Phase J Wave 9 — append-only audit log for reconnect-token
         // rotations. PlayerId index for per-player drill-downs;
         // At index for time-window queries from the audit endpoint.
+        // Phase K Wave 2 — generalised via the Kind classifier; the new
+        // (Kind, At) composite supports operator queries that filter by
+        // event class first (e.g. "all tournament forfeits in the last
+        // hour"). Existing per-player + per-At indexes stay so the
+        // Wave-9 drill-down queries keep their plans.
         modelBuilder.Entity<ReconnectAuditEntry>(entity =>
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
             entity.Property(x => x.Ipv4Hash).HasMaxLength(64).IsRequired();
             entity.Property(x => x.UserAgentHash).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.Kind)
+                .HasMaxLength(64)
+                .IsRequired()
+                .HasDefaultValue(ReconnectAuditEntry.KindReconnectTokenRotated);
+            entity.Property(x => x.Detail).HasMaxLength(256);
             entity.HasIndex(x => x.PlayerId);
             entity.HasIndex(x => x.At);
+            entity.HasIndex(x => new { x.Kind, x.At });
         });
 
         // Phase J Wave 9 — persisted chat backlog. (GameId, At) composite
@@ -343,6 +360,22 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.Property(x => x.Season).HasMaxLength(16).IsRequired();
             entity.HasIndex(x => new { x.PlayerId, x.Season }).IsUnique();
             entity.HasIndex(x => x.Season);
+        });
+
+        // Phase K Wave 2 — quarter-boundary rollover deferral. Written
+        // when a quarter flips while the player is mid-tournament; the
+        // (TournamentId, DrainedAtUtc) composite index supports the
+        // "what's still pending for this tournament" lookup performed
+        // when the tournament completes. (PlayerId, FromSeason,
+        // TournamentId) unique keeps the recorder idempotent on re-runs.
+        modelBuilder.Entity<PlayerSeasonRolloverDeferral>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.FromSeason).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.ToSeason).HasMaxLength(16).IsRequired();
+            entity.HasIndex(x => new { x.PlayerId, x.FromSeason, x.TournamentId }).IsUnique();
+            entity.HasIndex(x => new { x.TournamentId, x.DrainedAtUtc });
         });
     }
 }

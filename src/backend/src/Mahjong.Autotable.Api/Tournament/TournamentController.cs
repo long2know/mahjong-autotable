@@ -163,6 +163,52 @@ public sealed class TournamentController : ControllerBase
         return Ok(new { leaderboard = rows.Select(r => new { r.PlayerId, r.Wins, r.Buchholz }).ToArray() });
     }
 
+    /// <summary>
+    /// Phase K Wave 2 — manual-surrender forfeit endpoint. <c>POST
+    /// /api/tournaments/{tid}/matches/{mid}/forfeit</c> with body
+    /// <c>{ playerId, reason? }</c>. Auth required; the resolved
+    /// session player MUST be either the forfeiting player themselves
+    /// or the tournament creator. Returns 404 if the match doesn't
+    /// exist or isn't in-progress (idempotent — re-forfeit returns
+    /// 404 rather than 500 because the first call already settled it).
+    ///
+    /// <para>An <see cref="Data.Entities.ReconnectAuditEntry"/> row is
+    /// written with <c>Kind = "tournament.forfeit"</c> (Vasquez's
+    /// contract pin); the disconnect-driven background sweeper uses the
+    /// game-id path so the two surfaces don't collide.</para>
+    /// </summary>
+    [HttpPost("{tid:guid}/matches/{mid:guid}/forfeit")]
+    public async Task<IActionResult> ForfeitMatch(
+        [FromRoute] Guid tid,
+        [FromRoute] Guid mid,
+        [FromBody] ForfeitBody? body,
+        CancellationToken ct)
+    {
+        var session = await _cookies.ResolveAsync(HttpContext, ct);
+        if (session is null) return Unauthorized(new { error = "Authentication required to forfeit." });
+        var forfeitPlayerId = body?.PlayerId?.Trim();
+        if (string.IsNullOrWhiteSpace(forfeitPlayerId))
+            forfeitPlayerId = session.PlayerId;
+
+        using var scope = _scopeFactory.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<TournamentService>();
+        try
+        {
+            var match = await svc.ForfeitMatchByIdAsync(tid, mid, forfeitPlayerId!, ct);
+            if (match is null)
+                return NotFound(new { error = "Match not found or not in progress.", tournamentId = tid, matchId = mid });
+            return Ok(new
+            {
+                match = MatchToDto(match),
+                kind = Data.Entities.ReconnectAuditEntry.KindTournamentForfeit,
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     private static object ToDto(Data.Entities.Tournament t) => new
     {
         t.Id,
@@ -198,5 +244,16 @@ public sealed class TournamentController : ControllerBase
         public string? Format { get; set; }
         public int? MaxPlayers { get; set; }
         public int? GamesPerMatch { get; set; }
+    }
+
+    /// <summary>Phase K Wave 2 — body shape for the
+    /// <c>POST /api/tournaments/{tid}/matches/{mid}/forfeit</c>
+    /// endpoint. <see cref="PlayerId"/> identifies the player
+    /// forfeiting; when omitted, defaults to the resolved session
+    /// player (the typical "I'm surrendering" case).</summary>
+    public sealed class ForfeitBody
+    {
+        public string? PlayerId { get; set; }
+        public string? Reason { get; set; }
     }
 }
