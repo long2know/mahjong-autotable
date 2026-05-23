@@ -1572,3 +1572,55 @@ Memo: `.squad/decisions/inbox/hicks-phase-j-wave-3.md`.
 - **Bishop** — reconnect token opaque to backend.  Wave-2 `?seat=N` seat-if-empty / reject-if-taken validation in `AutotableWsEndpoint` covers the rejoin flow unchanged.  Schema reserves `connectionId` field for future SignalR cookie-based session work.
 
 Memo: `.squad/decisions/inbox/hicks-phase-j-wave-4.md`.
+
+## Phase J Wave 5 — Public matchmaking lobby, profile drawer, stats display (commit `1db666c`)
+
+**Scope:** Public-games browser + Join Random + Make Public toggle in the lobby; profile drawer (display name + avatar colour) with SignalR-backed store; lobby + post-game player-stats display panels.
+
+### Surfaces touched
+
+- `src/frontend/autotable-src/src/hub.ts` — **NEW** 138 lines.  SignalR singleton (`getHubConnection / invokeHub / onHubConnected / stopHubConnection`).  Same-origin in prod (`/hubs/changsha`), `http://localhost:5000` in dev, `?hub=…` query override.
+- `src/frontend/autotable-src/src/profile.ts` — **NEW** 640 lines.  Profile store (`loadProfile / getProfile / onProfile / setDisplayName / setAvatarColor / resetProfile / snapshotStatsForGame / refreshProfile`) + drawer mount (`installProfileDrawer / installProfileToggle / openProfileDrawer / closeProfileDrawer`) + idempotent SignalR `ProfileLoaded` subscription.  Normalises Bishop's `longestWinStreak / highestSingleGameScore` → `longestStreak / highestScore` for the front-end stats shape.
+- `src/frontend/autotable-src/src/matchmaking.ts` — **NEW** 244 lines.  REST poll loop (`startLobbyPoll / stopLobbyPoll`, 5 s, capped at 50 cards, AbortController-cancelled on tab-off) + SignalR `joinRandom / setGamePublic` wrappers + `PublicGame` and `SetGamePublicResult` interfaces matching Bishop's DTO.
+- `src/frontend/autotable-src/src/stats.ts` — **NEW** 202 lines.  `formatStats` + `formatStatsDelta` DocumentFragment builders + shared `STATS_TESTIDS` (single source of truth for the 6 testids the lobby + post-game panels emit).
+- `src/frontend/autotable-src/src/main.css` — **NEW** 522 lines.  All Wave-5 surfaces (tab strip, public-game cards, make-public, profile drawer, stats grid).  Layered after `style.css` so its rules win.
+- `src/frontend/autotable-src/src/lobby.ts` — `initLobby` installs profile drawer, lobby tabs, public-games pane, make-public toggle, lobby stats panel.  `bindLiveListeners` subscribes to `onProfile` for re-render.  `buildPlayerChip` uses `resolveDisplayName / resolveAvatarColor` (profile precedence over WS-broadcast nicks).
+- `src/frontend/autotable-src/src/client.ts` — connect handler boots hub + profile + pre-game stats snapshot; `gameComplete.on('update')` refreshes the profile when the final-flag flips; `clearReconnectSession` also stops the hub.  Profile.displayName mirrored into `client.nicks[localPlayerId]` on every `onProfile` event so remote chips see the latest display name through the existing WS broadcast.
+- `src/frontend/autotable-src/src/client-ui.ts` — `setupPostGameStatsPanel()` listens on `gameComplete` + `onProfile` to render the delta section inside the post-game modal.  Tolerates missing pre-game snapshot (renders current stats with no Δ badges).
+- `src/frontend/autotable-src/index.html` — Wave-5 markup: `main.css` link, `#game-complete-stats-delta` placeholder, lobby tab strip + my-game pane wrapper, public-games pane, make-public section, lobby stats panel host, open-profile shortcut button, full profile drawer.
+- `src/frontend/autotable-src/tests/selectors.md` — Wave-5 catalog filled in (Public Matchmaking + Player Stats + Profile drawer rows with file:line citations).  Phase header bumped to Wave 5.
+- `src/frontend/autotable/` — Parcel rebuild + stale-bundle prune.  New bundles `autotable-src.4c6071a7.js` (1.17 MB) + `autotable-src.3501ce9a.css` (7.4 kB); stale `autotable-src.0b7c71c7.js` removed.
+
+### Wire contract verified against Bishop's `ChangshaHub.cs`
+
+- `GET /api/matchmaking/lobby` → `{ games: LobbyGameDto[] }` with `{ gameId, publicName, creatorDisplayName, seatedCount, maxSeats, variant, createdAt }`.
+- SignalR `/hubs/changsha`: server→client `'ProfileLoaded'(dto)` from `OnConnectedAsync`; client→server `UpdateProfile(displayName, avatarColor?)`, `SetGamePublic(gameId, isPublic, publicName?)`, `JoinRandom(variant?)`.
+
+### Methodology — what worked
+
+- **One SignalR singleton, all RPCs through `invokeHub`.** No ad-hoc `new HubConnectionBuilder()` calls scattered through modules.  Reconnection, server-event subscription, and teardown all live in `hub.ts`.
+- **Profile-aware chip renderer with WS-broadcast fallback.** The lobby's `buildPlayerChip` calls `resolveDisplayName / resolveAvatarColor` which return the profile values for the local player and fall back to `client.nicks` (and the existing djb2 hue) for everyone else.  Solves the identity-mismatch problem (profile.playerId == SignalR ConnectionId vs. autotable WS playerId) without touching the WS contract.
+- **Tab-driven matchmaking poll.** The My-Game tab stops the 5 s REST poll loop so the endpoint isn't hammered while users tweak pickers.  Tab visibility toggle is the only switch — no debounce, no idle timer.
+- **Stats normalisation at the boundary.** `profile.ts` rewrites Bishop's verbose stats names (`longestWinStreak`, `highestSingleGameScore`) at the SignalR-receive boundary so `stats.ts:STATS_TESTIDS` stays terse and the post-game delta builder sees a flat shape.  Backend doesn't need to rename.
+
+### Surprises / blind spots
+
+- **`@microsoft/signalr` source uses `process.platform`.** Parcel auto-installs the `process` polyfill but Apone's DevOps commit pre-installed `process ^0.11.10` (and signalr ^10.0.0) directly to keep the build deterministic.  No package.json changes this wave from Hicks.
+- **`profile.playerId` ≠ autotable WS playerId.**  Two parallel identities for the same person.  The lobby chip renderer only resolves the *local* user's profile — remote chips continue to use the WS-broadcast nicks collection.  `client.ts` mirrors `profile.displayName` into `nicks[localPlayerId]` so other players see the updated name via the existing WS broadcast.
+- **First-game-in-tab stats delta.** When `snapshotStatsForGame()` hasn't been called yet (fresh tab, no prior game), the post-game modal renders current stats with no Δ badges instead of leaving the section blank.
+- **`SetGamePublic` requires host.** The hub throws when the caller isn't the game's host.  The make-public toggle is hidden for non-hosts and the RPC errors are caught + surfaced as inline status text.
+
+### Stability
+
+- **TypeScript strict (`tsc --noEmit --strict --target es6 --moduleResolution bundler --esModuleInterop --lib DOM,DOM.Iterable,es6,es2017 src/index.ts`):** **0 errors**.
+- **Parcel build:** **succeeded in ~3s** — new bundles `autotable-src.4c6071a7.js` (1.17 MB) + `autotable-src.3501ce9a.css` (7.4 kB).
+- **Backend tests:** **445 passed / 0 failed / 0 skipped** (`dotnet test src/backend/Mahjong.Autotable.slnx`) — zero-skip streak preserved.  Run confirms Bishop's Wave-5 wire-shape contract suite stays green with the docs Wave-5 frontend consumes.
+- **Stale bundles pruned:** `autotable-src.0b7c71c7.js` removed.
+
+### Cross-agent coordination
+
+- **Bishop** — Wire contract verified against `ChangshaHub.cs` line-by-line; no request to rename DTO fields (Hicks normalises at the boundary).
+- **Vasquez** — `tests/selectors.md` Public-Matchmaking section moved out of the "*reserved*" block; Stats + Profile sections gained the testids my markup actually ships.  Selector catalog now covers every Wave-5 testid with file:line citations.
+- **Apone** — No-op this wave.  Apone's DevOps commit pre-installed `@microsoft/signalr ^10.0.0` + `process ^0.11.10` polyfill; the Playwright smoke spec uses only Wave-4-era testids, so Wave-5 testids land fresh for Wave-6 acceptance suites to target.
+
+Memo: `.squad/decisions/inbox/hicks-phase-j-wave-5.md`.
