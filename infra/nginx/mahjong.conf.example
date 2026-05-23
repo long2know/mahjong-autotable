@@ -1,0 +1,130 @@
+# Mahjong Autotable — nginx reverse-proxy sample.
+#
+# Phase J Wave 6 (Apone, DevOps). Drop this in
+# /etc/nginx/sites-available/mahjong.conf, then:
+#
+#     ln -s /etc/nginx/sites-available/mahjong.conf \
+#           /etc/nginx/sites-enabled/mahjong.conf
+#     nginx -t
+#     systemctl reload nginx
+#
+# Adjust the `server_name`, `ssl_certificate*`, and `proxy_pass` host/port
+# to match your deployment. The mahjong-autotable container listens on
+# :8080 by default (see docs/deployment.md § "Environment variables");
+# this proxy fronts it on :80 + :443 and terminates TLS.
+#
+# Critical bits:
+#   - WebSocket Upgrade headers on /hubs/ and /autotable/ws  — SignalR +
+#     the raw autotable transport both require Connection: Upgrade /
+#     Upgrade: websocket to be passed through verbatim.
+#   - `proxy_read_timeout 86400s` on the same locations — SignalR holds
+#     long-lived connections; nginx's default 60s would tear them down.
+#   - `X-Forwarded-For` / `X-Forwarded-Proto` so the Kestrel app can
+#     resolve the real client IP (used by the rate-limiter partition key
+#     in RateLimitingExtensions.ResolvePartitionKey).
+
+# Map directive used by the WebSocket upgrade locations below.
+# Put this at http{} scope in your main nginx.conf if it isn't already
+# defined globally.
+map $http_upgrade $mahjong_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# 1. Redirect plain HTTP to HTTPS.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name mahjong.example.com;
+
+    # Let's Encrypt HTTP-01 challenge — keep this prefix served over plain HTTP.
+    location /.well-known/acme-challenge/ {
+        root /var/lib/letsencrypt;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# 2. TLS + reverse proxy to the container on localhost:8080.
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name mahjong.example.com;
+
+    # TLS — replace with paths to your real certificate (Let's Encrypt /
+    # certbot puts them under /etc/letsencrypt/live/<domain>/).
+    ssl_certificate     /etc/letsencrypt/live/mahjong.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mahjong.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Reasonable upload cap. The app itself doesn't accept large uploads,
+    # but the default 1m is fine for the JSON-only API surface.
+    client_max_body_size 1m;
+
+    # Static assets + REST API + minimal-API endpoints.
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+
+        proxy_buffering off;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    # SignalR hub — long-lived; needs WebSocket upgrade + 24-hour read timeout.
+    location /hubs/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $mahjong_connection_upgrade;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+    # Raw WebSocket transport used by the autotable bundle. Same shape
+    # as /hubs/ — SignalR-style negotiation isn't used here but the
+    # Upgrade dance is identical.
+    location /autotable/ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $mahjong_connection_upgrade;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+    # Optional — gate the Prometheus scrape behind basic-auth at the
+    # proxy. The app itself does NOT authenticate /metrics (see
+    # docs/observability.md § "Security note").
+    #
+    # location /metrics {
+    #     auth_basic           "metrics";
+    #     auth_basic_user_file /etc/nginx/metrics.htpasswd;
+    #     proxy_pass http://127.0.0.1:8080;
+    #     proxy_set_header Host $host;
+    # }
+}

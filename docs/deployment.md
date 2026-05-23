@@ -319,3 +319,137 @@ docker inspect --format='{{.State.Health.Status}}' mahjong
 ```
 
 See also [`docs/docker.md`](docker.md) for the 5-minute quickstart.
+
+---
+
+## 12. Production with reverse proxy
+
+The container ships HTTP only on port 8080; TLS + WebSocket upgrade
+fidelity are deployment concerns. The repo carries ready-to-copy
+samples for the two most common fronts:
+
+- nginx — [`infra/nginx/mahjong.conf.example`](../infra/nginx/mahjong.conf.example)
+- Caddy — [`infra/caddy/Caddyfile.example`](../infra/caddy/Caddyfile.example)
+
+The full operator guide (TLS via Let's Encrypt, WebSocket upgrade
+headers for SignalR + `/autotable/ws`, 24-hour `proxy_read_timeout`,
+`X-Forwarded-For` propagation so the rate limiter sees real client
+IPs) lives in [`docs/reverse-proxy.md`](reverse-proxy.md).
+
+---
+
+## 13. Production with systemd
+
+For deployments that prefer `systemctl restart mahjong-autotable` over
+`docker compose up -d`, the sample unit
+[`infra/systemd/mahjong-autotable.service.example`](../infra/systemd/mahjong-autotable.service.example)
+wraps the canonical `docker run` line in a hardened unit (`Type=simple`,
+`Restart=on-failure`, `LimitNOFILE=65536`, `NoNewPrivileges=true`,
+optional `EnvironmentFile=/etc/default/mahjong-autotable` override).
+The walk-through is in [`docs/systemd.md`](systemd.md).
+
+---
+
+## 14. Log rotation
+
+The default `docker run` from § 4 lets `json-file` logs grow
+unboundedly. For self-hosted production, set the rotation opts on the
+log driver:
+
+```bash
+docker run -d \
+    --log-driver json-file \
+    --log-opt max-size=10m \
+    --log-opt max-file=5 \
+    ...
+```
+
+Caps disk usage at `10m × 5 = 50 MiB` per container. The full guide
+(daemon-wide default in `/etc/docker/daemon.json`, alternative via
+`logrotate(8)` for bind-mounted log files) is in
+[`docs/log-rotation.md`](log-rotation.md). The systemd unit at
+[`infra/systemd/mahjong-autotable.service.example`](../infra/systemd/mahjong-autotable.service.example)
+already wires the recommended rotation opts.
+
+---
+
+## 15. CORS
+
+The runtime CORS policy reads `Cors:AllowedOrigins` from
+configuration:
+
+| Environment                | Default                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| `Development` / base       | `http://localhost:5114`, `https://localhost:7135`, `http://localhost:5173`, `http://localhost:8080` |
+| `Production` (override)    | `[]` — empty list, **no origins allowed by default**                                          |
+
+Production deployments MUST set the real public origin via env var so
+the browser can issue credentialled requests against the API:
+
+```bash
+docker run ... \
+    -e Cors__AllowedOrigins__0=https://mahjong.example.com \
+    ...
+```
+
+Setting the same value via systemd's `EnvironmentFile` or compose's
+`environment:` block works identically. See
+[`docs/secrets.md`](secrets.md) § "CORS origins" for the secret-store
+patterns and rationale for why `AllowCredentials()` precludes
+`AllowAnyOrigin()`.
+
+---
+
+## 16. Rate limiting
+
+The Phase J Wave 6 rate limiter (Apone, DevOps) wires two policies on
+top of `Microsoft.AspNetCore.RateLimiting`:
+
+| Policy name                  | Backing limiter                         | Quota               | Applied to                                                                       |
+| ---------------------------- | --------------------------------------- | ------------------- | -------------------------------------------------------------------------------- |
+| `fixed-window-anonymous`     | `FixedWindowRateLimiter`, partitioned by IP | 10 req / minute / IP | Reserved for future unauthenticated mutating endpoints (e.g. profile create). Apply via `.RequireRateLimiting(RateLimitingExtensions.AnonymousPolicy)`. |
+| `token-bucket-api`           | `TokenBucketRateLimiter`, partitioned by IP | 30-token bucket, 5 tokens/sec refill (≈300 req/min/IP with 30-burst) | Auto-applied to MapControllers + the per-endpoint minimal-API `/api/system/persistence` and `/api/changsha/pattern-ordering`. |
+
+Rejected requests get **HTTP 429** with body `{"error":"too_many_requests"}` and a
+`Retry-After` header.
+
+**Not rate limited** (deliberately):
+
+- `/health`, `/api/health` — probes need to hit hard during boot loops.
+- `/metrics` — Prometheus scrapes every 15–60 s; the limiter would
+  produce false alerts.
+- `/hubs/changsha` — SignalR persistent transport; the limiter only
+  sees the handshake.
+- `/autotable/ws` — raw WS transport; same reasoning as SignalR.
+
+### Toggle
+
+The middleware is gated by `RateLimiting:Enabled`:
+
+| File                         | Value        | Effect                                  |
+| ---------------------------- | ------------ | --------------------------------------- |
+| `appsettings.json`           | `false`      | Off in dev + test (xUnit boots `Development`). |
+| `appsettings.Production.json`| `true`       | On in production deploys.               |
+
+Override with `RateLimiting__Enabled=false` (e.g. for a load / stress
+test):
+
+```bash
+docker run ... -e RateLimiting__Enabled=false ...
+```
+
+### Identifying the limit source
+
+When a client gets a 429, check the JSON log line for the failing
+endpoint. The structured log includes `RequestId` + `RequestPath` so
+operators can correlate. A custom `429` response counter can be added
+in a future wave (Phase K candidate).
+
+### IP attribution behind a reverse proxy
+
+The limiter partitions by the client IP, preferring `X-Forwarded-For`
+when set. Both [`infra/nginx/mahjong.conf.example`](../infra/nginx/mahjong.conf.example)
+and [`infra/caddy/Caddyfile.example`](../infra/caddy/Caddyfile.example)
+forward `X-Forwarded-For`, so the partition key matches reality
+without additional middleware. See
+[`docs/reverse-proxy.md`](reverse-proxy.md) for the full discussion.
