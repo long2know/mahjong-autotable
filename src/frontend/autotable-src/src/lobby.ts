@@ -73,6 +73,7 @@ import { installAuthUi } from './auth';
 import { installRulePresetsUi, getSelectedPresetId } from './rule-presets';
 import { installDisplayPreferences } from './theme';
 import { installSpectatorFollow } from './spectator-follow';
+import { setElHidden, showEl, hideEl } from './utils';
 //
 // The lobby is a small overlay panel anchored top-left of the autotable
 // page.  It lets the user pick the Phase F query params
@@ -498,7 +499,7 @@ export function initLobby(client?: Client): void {
     const { valid } = readSeedField();
     seedInput.classList.toggle('lobby-seed-invalid', !valid);
     if (seedError !== null) {
-      seedError.style.display = valid ? 'none' : 'block';
+      setElHidden(seedError, valid);
     }
     return valid;
   }
@@ -574,7 +575,7 @@ export function initLobby(client?: Client): void {
       botCount4Input.parentElement?.classList.toggle('lobby-radio-disabled', !isSpectator);
     }
     if (spectatorHint !== null) {
-      spectatorHint.style.display = isSpectator ? 'block' : 'none';
+      setElHidden(spectatorHint, !isSpectator);
     }
   }
 
@@ -833,7 +834,7 @@ function renderPlayerChips(client: Client): void {
   for (let i = 0; i < occupants.length; i++) {
     list.appendChild(buildPlayerChip(occupants[i], i));
   }
-  strip.style.display = occupants.length > 0 ? '' : 'none';
+  setElHidden(strip, occupants.length === 0);
 }
 
 // Render the lobby's seat-preview grid from the live `seats` + `nicks`
@@ -875,7 +876,7 @@ function renderSeatPreview(client: Client): void {
         : occupant.nick;
     }
   }
-  preview.style.display = '';
+  showEl(preview);
 }
 
 function buildPlayerChip(
@@ -991,27 +992,37 @@ function installLobbyTabs(): void {
     'lobby-public-games-tab') as HTMLButtonElement | null;
   const lbTab = document.getElementById(
     'lobby-leaderboard-tab') as HTMLButtonElement | null;
+  // Phase J Wave 10 — Tournaments tab (graceful-degrade — backend is not
+  // yet merged; tournaments.ts feature-detects /api/tournaments and shows
+  // a "coming soon" placeholder on 404).
+  const tournTab = document.getElementById(
+    'lobby-tournaments-tab') as HTMLButtonElement | null;
   const myPane = document.getElementById('lobby-tab-my-game');
   const pubPane = document.getElementById('lobby-tab-public-games');
   const lbPane = document.getElementById('lobby-tab-leaderboard');
+  const tournPane = document.getElementById('lobby-tab-tournaments');
   if (myTab === null || pubTab === null
       || myPane === null || pubPane === null) {
     return;
   }
 
-  const activate = (which: 'my' | 'public' | 'leaderboard'): void => {
+  const activate = (which: 'my' | 'public' | 'leaderboard' | 'tournaments'): void => {
     const isMy = which === 'my';
     const isPub = which === 'public';
     const isLb = which === 'leaderboard';
+    const isTourn = which === 'tournaments';
     myTab.classList.toggle('lobby-tab-active', isMy);
     pubTab.classList.toggle('lobby-tab-active', isPub);
     if (lbTab !== null) lbTab.classList.toggle('lobby-tab-active', isLb);
+    if (tournTab !== null) tournTab.classList.toggle('lobby-tab-active', isTourn);
     myTab.setAttribute('aria-selected', isMy ? 'true' : 'false');
     pubTab.setAttribute('aria-selected', isPub ? 'true' : 'false');
     if (lbTab !== null) lbTab.setAttribute('aria-selected', isLb ? 'true' : 'false');
-    myPane.style.display = isMy ? '' : 'none';
-    pubPane.style.display = isPub ? '' : 'none';
-    if (lbPane !== null) lbPane.style.display = isLb ? '' : 'none';
+    if (tournTab !== null) tournTab.setAttribute('aria-selected', isTourn ? 'true' : 'false');
+    setElHidden(myPane, !isMy);
+    setElHidden(pubPane, !isPub);
+    if (lbPane !== null) setElHidden(lbPane, !isLb);
+    if (tournPane !== null) setElHidden(tournPane, !isTourn);
 
     // Per-tab polling discipline — Apone's rate-limit budget is the
     // motivation here.  Each tab owns one timer; we tear the other
@@ -1032,6 +1043,9 @@ function installLobbyTabs(): void {
   pubTab.addEventListener('click', () => activate('public'));
   if (lbTab !== null) {
     lbTab.addEventListener('click', () => activate('leaderboard'));
+  }
+  if (tournTab !== null) {
+    tournTab.addEventListener('click', () => activate('tournaments'));
   }
   // Default: My Game pane visible.
   activate('my');
@@ -1059,18 +1073,18 @@ function installPublicGamesPane(): void {
     const games = getCachedGames();
     const err = getMatchmakingError();
     if (err !== null) {
-      errorEl.style.display = '';
+      showEl(errorEl);
       errorEl.textContent = `Failed to load public games: ${err}`;
     } else {
-      errorEl.style.display = 'none';
+      hideEl(errorEl);
       errorEl.textContent = '';
     }
     listEl.replaceChildren();
     if (games.length === 0) {
-      emptyEl.style.display = '';
+      showEl(emptyEl);
       return;
     }
-    emptyEl.style.display = 'none';
+    hideEl(emptyEl);
     const cap = Math.min(games.length, 50);
     for (let i = 0; i < cap; i++) {
       listEl.appendChild(buildPublicGameCard(games[i], i));
@@ -1091,11 +1105,11 @@ function installPublicGamesPane(): void {
       if (result !== null) {
         navigateToGame(result.gameId, result.seatIndex);
       } else {
-        errorEl.style.display = '';
+        showEl(errorEl);
         errorEl.textContent = 'No public games with free seats right now.';
       }
     } catch (e) {
-      errorEl.style.display = '';
+      showEl(errorEl);
       const msg = e instanceof Error ? e.message : String(e);
       errorEl.textContent = `Join Random failed: ${msg}`;
     } finally {

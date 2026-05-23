@@ -1059,3 +1059,88 @@ Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-8.md`.
 **Cross-agent coordination:** Bishop dropped `Data/Entities/ChangshaEntities.cs` extensions (`ReconnectToken`, `ReconnectAuditEntry`, `ChatMessage`, `PlayerAuthSession.Role`), `ChangshaGameReplay.CurrentSchemaVersion` const, plus chat / reconnect-rotation / replay-v2 services. Apone dropped `Observability/CspReportEndpoint.cs`, `CspViolation` entity + `AddCspViolations` migrations for all 3 DB providers, the k8s migration `Job` manifest, and the SBOM GitHub Actions workflow. Hicks dropped `src/{chat,i18n,audit}.ts`, `src/i18n/*.json` catalogs, plus modifications to `index.html`, `index.ts`, `replay.ts`, `settings-drawer.ts`, `style.css`, `tsconfig.json`. Lane discipline preserved: my commit touches only **my test files + selectors footer + memo + history**.
 
 Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-9.md`.
+
+---
+
+## Phase J Wave 10 (2026-Q1 ish) — tournaments + audit-pruning + bot-reasoning + multi-arch + CSP-style-src + 5 e2e specs (2026-)
+
+**Branch:** `stlong/phase-j-wave-10-completion`
+**Base:** Wave 9 merge `stlong/phase-j-wave-9-polish` (origin/main @ 75df674).
+
+**Scope.** Wave 10 ships:
+- Bishop — `Tournament` mode (CRUD / Start / Pairing / Advancement /
+  Leaderboard endpoints + EF entities), `AuditPruningService`
+  background worker, `BotDecision`/`DecideWithReasoning` on every bot
+  strategy.
+- Apone — `Security:CspStrictStyles` knob to drop `'unsafe-inline'`
+  from `style-src`, a 50× late-join WS stability loop inline in
+  `AutotableWsRelayTests`, multi-arch Docker build (linux/amd64 +
+  linux/arm64) — forward-staged.
+- Hicks — lobby Tournament card, `?seat=-1` spectator chat polish,
+  audit-tab "why" row-expand panel, avatar-migration modal for
+  legacy `#808080`.
+
+**My QA scope (56 backend facts + 22 e2e tests + memo + footer):**
+
+| Area                              | File                                                                | Facts |
+|-----------------------------------|---------------------------------------------------------------------|-------|
+| Replay v2 normaliser              | `Replay/ReplayV2NormaliserTests.cs`                                 | 6     |
+| Audit pruning (supplemental)      | `Audit/AuditPruningContractTests.cs`                                | 6     |
+| Tournament CRUD                   | `Tournaments/TournamentCrudTests.cs`                                | 7     |
+| Tournament Start                  | `Tournaments/TournamentStartTests.cs`                               | 5     |
+| Tournament Pairing                | `Tournaments/TournamentPairingTests.cs`                             | 5     |
+| Tournament Advancement            | `Tournaments/TournamentAdvancementTests.cs`                         | 4     |
+| Tournament Leaderboard            | `Tournaments/TournamentLeaderboardTests.cs`                         | 5     |
+| /health detail (Wave 10 db block) | `Api/DatabaseHealthDetailTests.cs`                                  | 6     |
+| Bot reasoning                     | `ChangshaServices/BotDecisionReasoningTests.cs`                     | 7     |
+| Late-join supplementary           | `Autotable/LateJoinSnapshotStabilityTests.cs`                       | 5     |
+| CSP style-src tightening          | `Security/CspStyleSrcNoUnsafeInlineTests.cs`                        | 6     |
+| Multi-arch Docker sanity          | `Deploy/MultiArchDockerSanityTests.cs`                              | 6     |
+| Cross-wave regression             | `Regression/Wave1Through10RegressionTests.cs`                       | 12    |
+
+Plus `Tournaments/TournamentHarness.cs` (shared multi-candidate URL
+base, no facts).
+
+**E2E (Playwright):** `tournament-flow.spec.ts` (5), `avatar-migration.spec.ts` (4),
+`csp-no-inline-styles.spec.ts` (3), `audit-why-expand.spec.ts` (5),
+`spectator-chat.spec.ts` (5) — 22 cases total. All follow the
+Hicks-mocking pattern (`page.route('**/api/...', ...)`) + canonical
+soft-pass annotations.
+
+**Cross-lane unblock.** Bishop's WIP shipped a
+`Mahjong.Autotable.Api.Tournament` namespace AND a
+`Mahjong.Autotable.Api.Data.Entities.Tournament` entity class
+simultaneously. The `AppDbContext.Tournaments` DbSet declaration
+resolved `Tournament` to the sibling namespace (CS0118), bricking
+the build. I applied a minimal cross-lane fix (4 fully-qualified
+references in `AppDbContext.cs`). Flagged for Bishop in the memo.
+
+**Stability:**
+
+- **Phase J Wave 10 filter:** new facts all green; full suite
+  filtered with `--filter "Wave=Phase-J-10"` selects this wave's
+  facts cleanly.
+- **Full suite:** **832 / 0 / 0.**
+- **Zero-skips streak preserved.** Wave 10 = **14 consecutive green waves**.
+- **No production behavioural code changed** beyond the surgical
+  4-line `AppDbContext.cs` disambiguation fix (cross-lane unblock).
+
+**Cross-agent coordination:** Bishop dropped `Changsha/Audit/AuditPruningService.cs`
++ `AuditPruningOptions.cs`, `Changsha/Bot/BotDecision.cs`, modifications
+to all 4 bot strategies + `IChangshaBotStrategy`, `Tournament/`
+namespace (`TournamentPairing`, `TournamentService`), `Data/Entities`
+extensions for `Tournament`/`TournamentRegistration`/`TournamentMatch`,
+plus `Changsha/Bot/ChangshaBotEngine.cs`. Apone dropped
+`SecurityHeadersMiddleware.CspStrictStylesConfigKey` +
+`DropStyleUnsafeInline`, the inline 50× `LateJoin_..._Stability50x`
+fact in `AutotableWsRelayTests`, multi-arch Dockerfile + workflow
+WIP, the Audit options binding in `Program.cs` and `appsettings.json`.
+Hicks dropped index.html / src/audit.ts / src/chat.ts / src/client-ui.ts /
+src/game-ui.ts / src/identity.ts / src/leaderboard.ts changes
+(Tournament card + spectator chat default + audit-why expand +
+avatar-migration modal). Lane discipline preserved: my commit
+touches **my test files + selectors footer + memo + history +
+1 surgical cross-lane fix to AppDbContext.cs (Tournament type
+disambiguation)**.
+
+Memo: `.squad/decisions/inbox/vasquez-phase-j-wave-10.md`.

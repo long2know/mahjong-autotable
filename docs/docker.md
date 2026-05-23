@@ -61,4 +61,24 @@ docker run -d --name mahjong -p 8080:8080 -v mahjong-data:/data mahjong-autotabl
 ## Production deploy
 
 See [`deployment.md`](deployment.md) for env vars, image tagging,
-backup/restore, healthcheck details, and troubleshooting.
+backup/restore, healthcheck details, and troubleshooting. For the
+end-to-end production runbook (pre-flight, rolling update, rollback,
+incident response) see
+[`production-deployment-runbook.md`](production-deployment-runbook.md).
+
+## Multi-arch images (Wave 10)
+
+The CI workflow [`docker-build.yml`](../.github/workflows/docker-build.yml)
+publishes a manifest list covering **both** `linux/amd64` and
+`linux/arm64`. `docker pull ghcr.io/long2know/mahjong-autotable:latest`
+on an arm64 host (Raspberry Pi, AWS Graviton, Apple Silicon Linux VM)
+gets the arm64 variant transparently; an amd64 host gets the amd64
+variant. To reproduce the multi-arch build locally:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+docker buildx create --name multiarch --use --bootstrap
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t mahjong-autotable:wave10 .
+```

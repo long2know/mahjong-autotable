@@ -158,6 +158,23 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Reconnect.Reconnect
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Chat.ChatContentFilter>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Chat.ChatService>();
 
+// Phase J Wave 10 — audit-table pruning. Default retention: 30 days for
+// ReconnectAuditEntries, 90 days for CspViolations, sweeping daily.
+// Wired as a BackgroundService so the host owns the timer lifecycle
+// (clean shutdown on SIGTERM). Test harnesses set Audit:Enabled=false
+// to avoid timer noise against the in-memory SQLite DB; the service
+// remains DI-resolvable for direct PruneOnceAsync invocation in tests.
+builder.Services.Configure<Mahjong.Autotable.Api.Changsha.Audit.AuditPruningOptions>(
+    builder.Configuration.GetSection("Audit"));
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Changsha.Audit.AuditPruningService>();
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Mahjong.Autotable.Api.Changsha.Audit.AuditPruningService>());
+
+// Phase J Wave 10 — Tournament service. Scoped to match AppDbContext;
+// the controller resolves through IServiceScopeFactory so the scope
+// lifetime matches the request.
+builder.Services.AddScoped<Mahjong.Autotable.Api.Tournament.TournamentService>();
+
 const string ChangshaCorsPolicy = "ChangshaCors";
 var configuredOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
@@ -302,13 +319,22 @@ app.MapGet("/health", async (HttpContext ctx, IServiceProvider services) =>
     // endpoint itself stays 200 so the health probe semantics don't flip
     // just because a single round-trip blipped (load balancers conflate
     // "endpoint down" with "service down").
+    //
+    // Phase J Wave 10 — also captures the provider name + applied
+    // migration count so ops can identify partial-migration states
+    // (e.g. a deploy that crashed mid-rollout leaves the new image
+    // running against a schema older than its expected migration tip).
     var dbConnected = false;
     long dbLatencyMs = 0;
+    var dbProviderName = "Unknown";
+    var dbCanQuery = false;
+    var dbMigrationsApplied = 0;
     var stopwatch = System.Diagnostics.Stopwatch.StartNew();
     try
     {
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        dbProviderName = db.Database.ProviderName ?? "Unknown";
         var conn = db.Database.GetDbConnection();
         var closeWhenDone = conn.State != System.Data.ConnectionState.Open;
         if (closeWhenDone) await conn.OpenAsync();
@@ -318,6 +344,29 @@ app.MapGet("/health", async (HttpContext ctx, IServiceProvider services) =>
             cmd.CommandText = "SELECT 1";
             _ = await cmd.ExecuteScalarAsync();
             dbConnected = true;
+            dbCanQuery = true;
+
+            // Best-effort migration count. SQLite's bootstrap pattern
+            // (EnsureCreatedAsync) doesn't populate __EFMigrationsHistory
+            // so the count is 0 on SQLite by design — operators reading
+            // this field know to gate on providerName=Sqlite. Postgres /
+            // SqlServer always populate the table because they go through
+            // Database.MigrateAsync.
+            try
+            {
+                await using var migCmd = conn.CreateCommand();
+                migCmd.CommandText = "SELECT COUNT(*) FROM \"__EFMigrationsHistory\"";
+                var result = await migCmd.ExecuteScalarAsync();
+                if (result is not null && result != DBNull.Value)
+                {
+                    dbMigrationsApplied = Convert.ToInt32(result);
+                }
+            }
+            catch
+            {
+                // SQLite bootstrap-only databases legitimately don't have
+                // this table — swallow + keep dbMigrationsApplied=0.
+            }
         }
         finally
         {
@@ -340,7 +389,14 @@ app.MapGet("/health", async (HttpContext ctx, IServiceProvider services) =>
         buildSha = resolvedSha,
         uptime,
         version,
-        db = new { connected = dbConnected, latencyMs = dbLatencyMs },
+        db = new
+        {
+            connected = dbConnected,
+            latencyMs = dbLatencyMs,
+            providerName = dbProviderName,
+            canQuery = dbCanQuery,
+            migrationsApplied = dbMigrationsApplied,
+        },
         activeGames,
     });
 }).DisableRateLimiting();

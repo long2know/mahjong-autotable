@@ -111,9 +111,23 @@ re-run.
 
 ## Related docs
 
+- [`production-deployment-runbook.md`](production-deployment-runbook.md) —
+  the end-to-end production runbook (Wave 10).
 - [`kubernetes.md`](kubernetes.md) — production deployment pattern
   (Wave 9 also adds the pre-rollout migration Job).
 - [`docker.md`](docker.md) — image build + runtime contract.
 - [`backup-restore.md`](backup-restore.md) — DR runbook;
   cross-references the SBOM artefacts when restoring to a sealed
   image tag.
+
+## Wave-10 — multi-arch image (`linux/amd64` + `linux/arm64`)
+
+[`.github/workflows/docker-build.yml`](../.github/workflows/docker-build.yml)
+now publishes a **single manifest list** that resolves to either
+`linux/amd64` or `linux/arm64` depending on the puller's architecture.
+The SBOM workflow continues to scan the amd64 image (the canonical
+production target); arm64 inherits the same dependency tree from the
+identical multi-stage Dockerfile so the CVE results are equivalent.
+If a future supply-chain audit needs arm64-specific layer scanning,
+add `platforms: linux/arm64` to the `anchore/sbom-action` step in
+the SBOM workflow.

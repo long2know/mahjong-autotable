@@ -65,6 +65,7 @@
   "chat.toggle": "Chat",
   "chat.channel.table": "Table",
   "chat.channel.spectators": "Spectators",
+  "chat.channel.spectator_private": "Spectator DM",
   "chat.channel.private": "Private",
   "chat.placeholder": "Say something… (Enter to send, Shift+Enter for newline)",
   "chat.send": "Send",
@@ -102,6 +103,8 @@
   "replay.audit.col.score": "Bot score",
   "replay.audit.col.decision": "Claim decision",
   "replay.audit.admin_only": "Audit data is visible to admins only.",
+  "replay.audit.why": "Why?",
+  "replay.audit.reasoning_unavailable": "Reasoning unavailable.",
 
   "pattern.standard": "Standard",
   "pattern.sevenPairs": "Seven Pairs",

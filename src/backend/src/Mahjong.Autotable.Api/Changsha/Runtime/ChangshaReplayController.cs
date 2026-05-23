@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Mahjong.Autotable.Api.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -155,7 +156,7 @@ public sealed class ChangshaReplayController : ControllerBase
                     Order: idx))
                 .OrderBy(x => x.Turn)
                 .ThenBy(x => x.Order)
-                .Select(x => x.Element)
+                .Select(x => NormaliseLegacyEvent(x.Element))
                 .ToArray();
             events = sorted;
         }
@@ -172,5 +173,44 @@ public sealed class ChangshaReplayController : ControllerBase
             schemaVersion,
             events,
         });
+    }
+
+    /// <summary>
+    /// Phase J Wave 10 — v1 → v2 read-path normaliser. Some replay rows were
+    /// persisted before Wave 9's schema-versioning hook existed; their per-
+    /// event objects lack the v2 envelope fields (<c>source</c>,
+    /// <c>durationMs</c>, <c>debugScore</c>). The reader synthesises stable
+    /// defaults so the wire surface is shape-invariant regardless of when
+    /// the row was written:
+    /// <list type="bullet">
+    ///   <item><c>source</c> → <c>"unknown"</c> (cannot retroactively
+    ///     classify human vs bot vs system without state).</item>
+    ///   <item><c>durationMs</c> → <c>null</c> (the inter-event gap was
+    ///     never recorded for legacy rows; <c>null</c> distinguishes
+    ///     "unknown" from "instantaneous" in the wire shape).</item>
+    ///   <item><c>debugScore</c> → <c>null</c> (no bot decision metadata
+    ///     was captured pre-Wave-10).</item>
+    /// </list>
+    ///
+    /// <para>Non-legacy events (already carrying the v2 fields) pass
+    /// through unchanged — we re-emit the object so the response wire
+    /// shape stays a flat object even after the per-key check.
+    /// <c>JsonNode</c> is the projection target because <see cref="JsonElement"/>
+    /// is immutable; the parsed clone is rebuilt on every read which is
+    /// fine (a typical end-game replay has &lt;200 events).</para>
+    ///
+    /// <para>The same projection runs against v2 rows that lack
+    /// <c>debugScore</c> (Wave 9 wrote source + durationMs but
+    /// <see cref="BotDecision"/> bot reasoning didn't land until Wave 10),
+    /// so the synthesised <c>debugScore: null</c> is what Wave 9 rows
+    /// surface too.</para>
+    /// </summary>
+    private static JsonNode NormaliseLegacyEvent(JsonElement element)
+    {
+        var node = JsonNode.Parse(element.GetRawText()) as JsonObject ?? new JsonObject();
+        if (!node.ContainsKey("source")) node["source"] = "unknown";
+        if (!node.ContainsKey("durationMs")) node["durationMs"] = null;
+        if (!node.ContainsKey("debugScore")) node["debugScore"] = null;
+        return node;
     }
 }

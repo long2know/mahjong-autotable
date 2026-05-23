@@ -111,4 +111,54 @@ public static class ChangshaBotEngine
 
         return safeDefault();
     }
+
+    /// <summary>
+    /// Phase J Wave 10 — explainable variant of
+    /// <see cref="DecideActionWithTimeoutAsync"/>. Same timeout / safe-default
+    /// semantics, but threads a <see cref="BotDecision"/> all the way through
+    /// so the runtime can capture reasoning + score for the audit replay.
+    /// On timeout the caller's <paramref name="safeDefault"/> factory is
+    /// invoked; the safe default typically wraps a stable
+    /// <see cref="BotAction"/> with empty reasoning + score 0.
+    /// </summary>
+    public static async Task<BotDecision> DecideWithReasoningWithTimeoutAsync(
+        Func<BotDecision> decision,
+        int timeoutMs,
+        Func<BotDecision> safeDefault,
+        ILogger? logger = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(decision);
+        ArgumentNullException.ThrowIfNull(safeDefault);
+
+        if (timeoutMs <= 0)
+        {
+            return decision();
+        }
+
+        var decisionTask = Task.Run(decision, ct);
+        var winner = await Task.WhenAny(decisionTask, Task.Delay(timeoutMs, ct)).ConfigureAwait(false);
+
+        if (winner == decisionTask && decisionTask.IsCompletedSuccessfully)
+        {
+            return decisionTask.Result;
+        }
+
+        if (decisionTask.IsCompleted && !decisionTask.IsCompletedSuccessfully)
+        {
+            return decisionTask.GetAwaiter().GetResult();
+        }
+
+        logger?.LogWarning(
+            "Bot decision timed out after {TimeoutMs}ms; using safe-default decision.",
+            timeoutMs);
+
+        _ = decisionTask.ContinueWith(
+            static t => { _ = t.Exception; },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        return safeDefault();
+    }
 }

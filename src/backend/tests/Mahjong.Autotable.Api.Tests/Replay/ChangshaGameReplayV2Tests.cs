@@ -134,16 +134,12 @@ public class ChangshaGameReplayV2Tests : IAsyncLifetime
         var body = await resp.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
 
-        // The endpoint may surface either the raw envelope or a
-        // normalised projection. v1 endpoint expects an array; v2 may
-        // emit an envelope object. We accept any of:
-        //   • root.events: array (v1 behaviour, normalised v2)
-        //   • root: array (legacy bare)
-        //   • root.events: object with nested events array (v2 envelope
-        //     passed through unchanged)
-        // Until Bishop's Wave 9 actually normalises v2 → array on the
-        // read path we soft-pass when the events field is still an
-        // envelope object.
+        // Phase J Wave 10 — Bishop's normaliser pins the wire shape:
+        // `events` is always a JSON array on the response, regardless of
+        // whether the persisted row was v1 (bare array) or v2 (envelope
+        // object). The soft-pass branch (events still an envelope object)
+        // is gone — if the endpoint hands us a non-array events field
+        // that's a wire-contract regression and we fail loudly.
         var root = doc.RootElement;
         JsonElement events;
         if (root.TryGetProperty("events", out events))
@@ -154,14 +150,13 @@ public class ChangshaGameReplayV2Tests : IAsyncLifetime
         {
             events = root;
         }
-        else return;
-
-        if (events.ValueKind != JsonValueKind.Array)
+        else
         {
-            // Wave-9 v2 envelope passed through — endpoint hasn't been
-            // updated to normalise it yet. Soft-pass.
+            Assert.Fail($"Unexpected replay shape: {root.ValueKind}");
             return;
         }
+
+        Assert.Equal(JsonValueKind.Array, events.ValueKind);
         Assert.True(events.GetArrayLength() >= 1);
     }
 
@@ -226,14 +221,15 @@ public class ChangshaGameReplayV2Tests : IAsyncLifetime
         {
             events = root;
         }
-        else return;
-
-        if (events.ValueKind != JsonValueKind.Array)
+        else
         {
-            // v2 envelope passed through unchanged — soft-pass until
-            // Bishop's Wave 9 normaliser lands.
+            Assert.Fail($"Unexpected replay shape: {root.ValueKind}");
             return;
         }
+
+        // Phase J Wave 10 — Bishop's normaliser guarantees `events` is
+        // an array. We no longer soft-pass envelopes.
+        Assert.Equal(JsonValueKind.Array, events.ValueKind);
 
         // The events array should retain (or surface) patternKeys when
         // present in the source row. We tolerate the endpoint stripping
@@ -246,5 +242,93 @@ public class ChangshaGameReplayV2Tests : IAsyncLifetime
                 Assert.True(pk.ValueKind == JsonValueKind.Array || pk.ValueKind == JsonValueKind.Null);
             }
         }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase J Wave 10 — v1 → v2 read-path normaliser contract.
+    // ────────────────────────────────────────────────────────────────────
+    //  Some replay rows persisted before Wave 9's schema-versioning hook
+    //  existed lack the v2 envelope fields (source/durationMs/debugScore).
+    //  Bishop's Wave 10 normaliser synthesises stable defaults so the wire
+    //  surface is shape-invariant regardless of when the row was written.
+    //  The two facts below pin the synthesis contract end-to-end.
+
+    [Fact, Trait("Category", "Replay"), Trait("Wave", "Phase-J-10")]
+    public async Task ReplayV1_LegacyEventsAreNormalisedToV2Envelope()
+    {
+        Assert.NotNull(_factory);
+        // Pre-Wave-9 v1 row: bare array, events lack source/durationMs/debugScore.
+        var gameId = await SeedReplayAsync(V1EventsJson());
+        using var client = _factory!.CreateClient();
+        using var resp = await GetFirstNonNotFoundAsync(client, gameId);
+        if (resp.StatusCode == HttpStatusCode.NotFound) return;
+        Assert.True(resp.IsSuccessStatusCode);
+
+        var body = await resp.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("events", out var events));
+        Assert.Equal(JsonValueKind.Array, events.ValueKind);
+        Assert.True(events.GetArrayLength() >= 1);
+
+        foreach (var ev in events.EnumerateArray())
+        {
+            Assert.Equal(JsonValueKind.Object, ev.ValueKind);
+            // source synthesized as "unknown" when missing.
+            Assert.True(ev.TryGetProperty("source", out var source));
+            Assert.Equal("unknown", source.GetString());
+            // durationMs synthesized as null when missing (distinguishes
+            // "unknown" from "instantaneous"/0).
+            Assert.True(ev.TryGetProperty("durationMs", out var duration));
+            Assert.Equal(JsonValueKind.Null, duration.ValueKind);
+            // debugScore synthesized as null when missing.
+            Assert.True(ev.TryGetProperty("debugScore", out var debugScore));
+            Assert.Equal(JsonValueKind.Null, debugScore.ValueKind);
+        }
+    }
+
+    [Fact, Trait("Category", "Replay"), Trait("Wave", "Phase-J-10")]
+    public async Task ReplayV2_PreservesExistingEnvelopeFields()
+    {
+        Assert.NotNull(_factory);
+        // v2 row already carries source/durationMs on each event. Verify
+        // the normaliser preserves them and adds the missing debugScore
+        // without overwriting the existing keys.
+        var v2WithFields = JsonSerializer.Serialize(new
+        {
+            schemaVersion = 2,
+            events = new object[]
+            {
+                new
+                {
+                    turn = 1,
+                    phase = "Discard",
+                    actor = 0,
+                    action = "tile-discarded",
+                    tilesJson = "[5]",
+                    timestampUtc = DateTime.UtcNow,
+                    source = "human",
+                    durationMs = 1234,
+                },
+            },
+        });
+        var gameId = await SeedReplayAsync(v2WithFields);
+        using var client = _factory!.CreateClient();
+        using var resp = await GetFirstNonNotFoundAsync(client, gameId);
+        if (resp.StatusCode == HttpStatusCode.NotFound) return;
+        Assert.True(resp.IsSuccessStatusCode);
+
+        var body = await resp.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("events", out var events));
+        Assert.Equal(JsonValueKind.Array, events.ValueKind);
+
+        var first = events.EnumerateArray().First();
+        Assert.Equal("human", first.GetProperty("source").GetString());
+        Assert.Equal(1234, first.GetProperty("durationMs").GetInt32());
+        // debugScore added by the normaliser (the source row never had it).
+        Assert.True(first.TryGetProperty("debugScore", out var debugScore));
+        Assert.Equal(JsonValueKind.Null, debugScore.ValueKind);
     }
 }

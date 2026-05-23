@@ -1,5 +1,5 @@
-<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png","z6JwJ":"./esm.eb93de05.js"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><meta name=sentry-dsn content><meta name=sentry-environment content=production><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=autotable-src.df85b4c4.css><link rel=stylesheet href=autotable-src.95ecc0f0.css><link rel=stylesheet href=autotable-src.6633d8fb.css><body>
-    <img id=dice-img src=dice.auto.391822b5.png style=opacity:0>
+<!DOCTYPE html><script type=importmap>{"imports":{"6LsDO":"./models.auto.72ee60ea.glb","7cut1":"./table.60230825.jpg","lCwxh":"./tiles-labels.auto.9a041239.png","z6JwJ":"./esm.eb93de05.js"}}</script><meta charset=utf-8><title>Autotable</title><meta name=viewport content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"><meta name=sentry-dsn content><meta name=sentry-environment content=production><link href=icon-96.auto.958c14fe.png rel="icon shortcut" sizes=96x96><link href=icon-32.auto.f841a7ef.png rel="icon shortcut" sizes=32x32><link href=icon-16.auto.5ed6a291.png rel="icon shortcut" sizes=16x16><link rel=stylesheet href=about.df85b4c4.css><link rel=stylesheet href=autotable-src.4a92b1f1.css><link rel=stylesheet href=autotable-src.6633d8fb.css><body>
+    <img id=dice-img src=dice.auto.391822b5.png alt aria-hidden=true>
     <canvas id=center></canvas>
     
     <audio preload id=sound-discard src=discard.c3151c81.wav></audio>
@@ -17,28 +17,28 @@
         <div class=seat-buttons>
             <div class="seat-button seat-button-0">
                 <button class="btn btn-primary take-seat">Take seat</button>
-                <button class="btn btn-dark btn-progress-main kick" style=display:none data-toggle=tooltip data-placement=top title="Click and hold to unseat">
+                <button class="btn btn-dark btn-progress-main kick" hidden data-toggle=tooltip data-placement=top title="Click and hold to unseat">
                     <div class=btn-progress></div>
                     <span class=btn-progress-text></span>
                 </button>
             </div>
             <div class="seat-button seat-button-1">
                 <button class="btn btn-primary take-seat">Take seat</button>
-                <button class="btn btn-dark btn-progress-main kick" style=display:none data-toggle=tooltip data-placement=top title="Click and hold to unseat">
+                <button class="btn btn-dark btn-progress-main kick" hidden data-toggle=tooltip data-placement=top title="Click and hold to unseat">
                     <div class=btn-progress></div>
                     <span class=btn-progress-text></span>
                 </button>
             </div>
             <div class="seat-button seat-button-2">
                 <button class="btn btn-primary take-seat">Take seat</button>
-                <button class="btn btn-dark btn-progress-main kick" style=display:none data-toggle=tooltip data-placement=top title="Click and hold to unseat">
+                <button class="btn btn-dark btn-progress-main kick" hidden data-toggle=tooltip data-placement=top title="Click and hold to unseat">
                     <div class=btn-progress></div>
                     <span class=btn-progress-text></span>
                 </button>
             </div>
             <div class="seat-button seat-button-3">
                 <button class="btn btn-primary take-seat">Take seat</button>
-                <button class="btn btn-dark btn-progress-main kick" style=display:none data-toggle=tooltip data-placement=top title="Click and hold to unseat">
+                <button class="btn btn-dark btn-progress-main kick" hidden data-toggle=tooltip data-placement=top title="Click and hold to unseat">
                     <div class=btn-progress></div>
                     <span class=btn-progress-text></span>
                 </button>
@@ -144,7 +144,7 @@
                         跳过 <small>Pass</small>
                     </button>
                 </div>
-                <div class="mt-1 text-warning" id=claim-countdown style=font-size:.8rem;display:none>
+                <div class="claim-countdown mt-1 text-warning" id=claim-countdown hidden>
                     Decide in <span id=claim-countdown-value>5.0</span>s
                 </div>
             </div>
@@ -153,7 +153,7 @@
             <div class="lobby-row mt-4" id=lobby-gameId-row>
                 <label for=lobby-gameId class=server-disconnected>Game ID</label>
                 <input id=lobby-gameId maxlength=64 class=server-disconnected placeholder=changsha-default pattern=[A-Za-z0-9_\-\.]+ title="Letters, digits, _, -, . only" autocomplete=off spellcheck=false>
-                <div id=lobby-gameId-error class="lobby-error server-disconnected" style=display:none>
+                <div id=lobby-gameId-error class="lobby-error server-disconnected" hidden>
                     Game ID may only contain letters, digits, _, -, and . (max 64 chars).
                 </div>
                 <small class="current-game-display server-connected" id=current-game-display>
@@ -183,11 +183,11 @@
             </div>
 
             
-            <div class="lobby-row mt-2" id=move-seat-row style=display:none>
+            <div class="lobby-row mt-2" id=move-seat-row hidden>
                 <button class="btn btn-dark btn-sm w-100" id=move-seat-btn type=button aria-haspopup=true aria-expanded=false aria-controls=move-seat-panel>
                     Move
                 </button>
-                <div id=move-seat-panel class=move-seat-panel role=menu aria-labelledby=move-seat-btn style=display:none>
+                <div id=move-seat-panel class=move-seat-panel role=menu aria-labelledby=move-seat-btn hidden>
                     <button class="btn btn-primary btn-sm move-seat-option" type=button data-seat=0 role=menuitem>Seat 0</button>
                     <button class="btn btn-primary btn-sm move-seat-option" type=button data-seat=1 role=menuitem>Seat 1</button>
                     <button class="btn btn-primary btn-sm move-seat-option" type=button data-seat=2 role=menuitem>Seat 2</button>
@@ -202,7 +202,7 @@
                     <button class="btn btn-block btn-dark btn-sm dropdown-toggle" data-toggle=dropdown>
                         More
                     </button>
-                    <div class="dropdown-menu dropdown-menu-right p-3 text-light" style=width:300px>
+                    <div class="dropdown-menu dropdown-menu-help dropdown-menu-right p-3 text-light">
                         <h4>Instructions</h4>
                         <p>
                         <b>Drag mouse</b> to move or select<br>
@@ -254,7 +254,7 @@
                 </small>
             </div>
 
-            <div class="mt-2 text-warning" id=status style=display:none>
+            <div class="mt-2 text-warning" id=status hidden>
                 <small class=mt-2 id=status-text>
                     Status text
                 </small>
@@ -266,7 +266,7 @@
         <div class="modal-dialog modal-xl">
             <div class=modal-content>
                 <div class=modal-body></div>
-                <div style="margin-top:-.5rem;padding:0 1rem 1rem">
+                <div class=modal-source-cite>
                     (source: <a target=_blank href=https://www.reddit.com/r/Mahjong/comments/l5b221/riichi_mahjong_cheat_sheet_1_page_pdf_or_images/>Aranlyde</a>)
                 </div>
             </div>
@@ -307,7 +307,7 @@
     </div>
 
     
-    <div id=dice-hud style=display:none>
+    <div id=dice-hud hidden>
         <span class=dice-face id=dice-hud-d1>⚀</span>
         <span class=dice-face id=dice-hud-d2>⚀</span>
         <span class=dice-sum>= <span id=dice-hud-sum>2</span></span>
@@ -315,7 +315,7 @@
     </div>
 
     
-    <div id=bot-banner style=display:none></div>
+    <div id=bot-banner hidden></div>
 
     
     <div id=variant-badge>🀄 Changsha</div>
@@ -324,7 +324,7 @@
     <aside id=move-log aria-label="Move log"></aside>
 
     
-    <div id=pickup-hud style=display:none>
+    <div id=pickup-hud hidden>
         <span id=pickup-hud-text>Your turn — pick 4 tiles</span>
         <button class="btn btn-sm btn-warning ml-2" id=pickup-take-btn>
             Take <span id=pickup-take-count>4</span>
@@ -332,13 +332,13 @@
     </div>
 
     
-    <button id=roll-dice style=display:none title="Click to roll the dice and start picking tiles">
+    <button id=roll-dice hidden title="Click to roll the dice and start picking tiles">
         <img src=dice.auto.391822b5.png alt="Roll dice">
         <span class=roll-dice-label>Roll dice</span>
     </button>
 
     
-    <div id=break-marker style=display:none>▼</div>
+    <div id=break-marker hidden>▼</div>
 
     
     <button id=lobby-toggle type=button title="Open lobby">
@@ -363,11 +363,11 @@
     </button>
 
     
-    <div id=connection-banner class=connection-banner role=status aria-live=polite style=display:none>
+    <div id=connection-banner class=connection-banner role=status aria-live=polite hidden>
         <span class=connection-banner-text id=connection-banner-text></span>
-        <span class=connection-banner-actions id=connection-banner-actions style=display:none>
+        <span class=connection-banner-actions id=connection-banner-actions hidden>
             
-            <button type=button class="btn btn-info btn-sm" id=connection-banner-copy-link data-testid=reconnect-copy-link style=display:none title="Copy a link you can paste into another tab to keep this seat">
+            <button type=button class="btn btn-info btn-sm" id=connection-banner-copy-link data-testid=reconnect-copy-link hidden title="Copy a link you can paste into another tab to keep this seat">
                 🔗 Copy rejoin link
             </button>
             <button type=button class="btn btn-sm btn-warning" id=connection-banner-retry>Retry</button>
@@ -427,7 +427,7 @@
             </div>
         </div>
         <div class=settings-drawer-footer>
-            <small class=settings-saved-note id=settings-saved-note style=display:none>Saved ✓</small>
+            <small class=settings-saved-note id=settings-saved-note hidden>Saved ✓</small>
             <button id=settings-apply type=button class="btn btn-sm btn-warning">
                 Apply &amp; Restart
             </button>
@@ -443,7 +443,7 @@
         <div class=settings-drawer-v2-tabs id=settings-drawer-v2-tabs role=tablist aria-label="Settings sections"></div>
         <div class=settings-drawer-v2-panels id=settings-drawer-v2-panels></div>
         <div class=settings-drawer-v2-footer>
-            <small class=settings-saved-note-v2 id=settings-saved-note-v2 role=status aria-live=polite style=display:none>Saved ✓</small>
+            <small class=settings-saved-note-v2 id=settings-saved-note-v2 role=status aria-live=polite hidden>Saved ✓</small>
             <button id=settings-reset type=button class="btn btn-secondary btn-sm" data-testid=settings-reset>
                 Reset
             </button>
@@ -495,8 +495,8 @@
 
             <section class=profile-page-section aria-labelledby=profile-page-recent-heading>
                 <h3 id=profile-page-recent-heading class=profile-page-section-title>Recent games</h3>
-                <div id=profile-recent-games-error class=profile-recent-error aria-live=polite style=display:none></div>
-                <div id=profile-recent-games-loading class=profile-recent-loading aria-live=polite style=display:none>Loading recent games…</div>
+                <div id=profile-recent-games-error class=profile-recent-error aria-live=polite hidden></div>
+                <div id=profile-recent-games-loading class=profile-recent-loading aria-live=polite hidden>Loading recent games…</div>
                 <div id=profile-recent-games class=profile-recent-games data-testid=profile-recent-games role=list></div>
             </section>
         </div>
@@ -530,7 +530,7 @@
                     </div>
 
                     
-                    <div id=game-complete-stats-delta class=game-complete-section style=display:none></div>
+                    <div id=game-complete-stats-delta class=game-complete-section hidden></div>
                 </div>
                 <div class="justify-content-center modal-footer">
                     <button type=button class="btn btn-warning" id=game-complete-new-game>
@@ -555,7 +555,7 @@
                 <h3 class=replay-title>🎞 Hand Replay</h3>
                 <div class=replay-tabs role=tablist aria-label="Replay view tabs">
                     <button id=replay-tab-replay type=button class="replay-tab replay-tab-active" role=tab aria-controls=replay-pane-replay aria-selected=true data-testid=replay-replay-tab>Replay</button>
-                    <button id=replay-tab-audit type=button class=replay-tab role=tab aria-controls=replay-pane-audit aria-selected=false data-testid=replay-audit-tab style=display:none>Audit</button>
+                    <button id=replay-tab-audit type=button class=replay-tab role=tab aria-controls=replay-pane-audit aria-selected=false data-testid=replay-audit-tab hidden>Audit</button>
                 </div>
                 <div class=replay-header-actions>
                     <span id=replay-source-label class=replay-source-label aria-live=polite></span>
@@ -601,7 +601,7 @@
     </div>
 
     
-    <div id=chat-panel class="chat-panel chat-panel-collapsed" data-testid=chat-panel style=display:none aria-label="Table chat">
+    <div id=chat-panel class="chat-panel chat-panel-collapsed" data-testid=chat-panel hidden aria-label="Table chat">
         <div class=chat-header>
             <button id=chat-toggle type=button class=chat-toggle data-testid=chat-toggle aria-controls=chat-panel-body aria-expanded=false>
                 <span class=chat-toggle-label>💬 Chat</span>
@@ -612,7 +612,7 @@
                 </label>
                 <select id=chat-channel-select class="chat-channel-select dark-select form-control form-control-sm" data-testid=chat-channel-select aria-label="Chat channel">
                 </select>
-                <span id=chat-recipient-wrap class=chat-recipient-wrap style=display:none>
+                <span id=chat-recipient-wrap class=chat-recipient-wrap hidden>
                     <label class="chat-recipient-label sr-only" for=chat-recipient-select>
                         Recipient
                     </label>
@@ -622,7 +622,7 @@
             </div>
         </div>
         <div id=chat-panel-body class=chat-panel-body>
-            <div id=chat-unavailable class=chat-unavailable role=status aria-live=polite data-testid=chat-unavailable style=display:none></div>
+            <div id=chat-unavailable class=chat-unavailable role=status aria-live=polite data-testid=chat-unavailable hidden></div>
             <div id=chat-messages class=chat-messages role=log aria-live=polite aria-relevant=additions data-testid=chat-messages></div>
             <div id=chat-status class=chat-status role=status aria-live=polite></div>
             <div class=chat-composer>
@@ -648,10 +648,12 @@
                 <button id=lobby-public-games-tab type=button class=lobby-tab role=tab aria-selected=false aria-controls=lobby-tab-public-games data-testid=lobby-public-games-tab>Public Games</button>
                 
                 <button id=lobby-leaderboard-tab type=button class=lobby-tab role=tab aria-selected=false aria-controls=lobby-tab-leaderboard data-testid=lobby-leaderboard-tab>Leaderboard</button>
+                
+                <button id=lobby-tournaments-tab type=button class=lobby-tab role=tab aria-selected=false aria-controls=lobby-tab-tournaments data-testid=lobby-tournaments-tab>Tournaments</button>
             </div>
 
             
-            <section id=onboarding-card class=onboarding-card role=region aria-label="Welcome — set up your profile" aria-hidden=true data-testid=onboarding-card style=display:none>
+            <section id=onboarding-card class=onboarding-card role=region aria-label="Welcome — set up your profile" aria-hidden=true data-testid=onboarding-card hidden>
                 <div class=onboarding-card-header>
                     <h3 class=onboarding-card-title>👋 Welcome!</h3>
                     <p class=onboarding-card-subtitle>
@@ -687,13 +689,13 @@
             
             <section id=lobby-tab-my-game class="lobby-tab-pane lobby-tab-panel-active" role=tabpanel aria-labelledby=lobby-my-game-tab>
             
-            <section class=lobby-players-strip id=lobby-players-strip aria-label="Players in this game" style=display:none>
+            <section class=lobby-players-strip id=lobby-players-strip aria-label="Players in this game" hidden>
                 <h3 class=lobby-section-title>Players</h3>
                 <div id=lobby-players-list class=lobby-players-list role=list></div>
             </section>
 
             
-            <section class=lobby-seat-preview id=lobby-seat-preview aria-label="Seat preview" style=display:none>
+            <section class=lobby-seat-preview id=lobby-seat-preview aria-label="Seat preview" hidden>
                 <h3 class=lobby-section-title>Seats</h3>
                 <div class=lobby-seat-preview-grid>
                     <div class=lobby-seat-preview-cell data-seat=0 data-testid=lobby-seat-preview-0>
@@ -746,7 +748,7 @@
                 <label><input type=radio name=lobby-seat value=2> Seat 2 <small class=lobby-hint>(West 西)</small></label>
                 <label><input type=radio name=lobby-seat value=3> Seat 3 <small class=lobby-hint>(North 北)</small></label>
                 <label><input type=radio name=lobby-seat value=-1> 👁 Spectate <small class=lobby-hint>(no seat — watch bots play)</small></label>
-                <p id=lobby-spectator-hint class=lobby-spectator-hint style=display:none>
+                <p id=lobby-spectator-hint class=lobby-spectator-hint hidden>
                     All four seats can be filled with bots — sit back and
                     watch.  The runtime auto-deals once all four seats are
                     bots.
@@ -810,7 +812,7 @@
                         Seed <small class=lobby-hint>(optional, 0–2³¹−1)</small>
                     </label>
                     <input id=lobby-seed inputmode=numeric pattern=[0-9]* autocomplete=off spellcheck=false placeholder=random maxlength=10>
-                    <div id=lobby-seed-error class=lobby-seed-error style=display:none>
+                    <div id=lobby-seed-error class=lobby-seed-error hidden>
                         Seed must be an integer between 0 and 2147483647.
                     </div>
                     <p class=lobby-advanced-hint>
@@ -840,14 +842,14 @@
             
 
             
-            <section id=lobby-tab-public-games class="lobby-tab-pane public-games-pane" role=tabpanel aria-labelledby=lobby-public-games-tab data-testid=lobby-public-section style=display:none>
+            <section id=lobby-tab-public-games class="lobby-tab-pane public-games-pane" role=tabpanel aria-labelledby=lobby-public-games-tab data-testid=lobby-public-section hidden>
                 <div class=public-games-header>
                     <h3 class=lobby-section-title>Public Games</h3>
                     <button id=lobby-join-random type=button class="btn btn-sm btn-success" data-testid=lobby-join-random title="Join any public game with free seats">
                         🎲 Join Random
                     </button>
                 </div>
-                <div id=lobby-public-games-error class="public-games-error public-games-status" aria-live=polite style=display:none></div>
+                <div id=lobby-public-games-error class="public-games-error public-games-status" aria-live=polite hidden></div>
                 <div id=lobby-public-games-empty class=public-games-empty>
                     No public games right now. Try Quick Match in the
                     "My Game" tab to start your own.
@@ -856,7 +858,7 @@
             </section>
 
             
-            <section id=lobby-tab-leaderboard class="leaderboard-pane lobby-tab-pane" role=tabpanel aria-labelledby=lobby-leaderboard-tab data-testid=lobby-leaderboard-section style=display:none>
+            <section id=lobby-tab-leaderboard class="leaderboard-pane lobby-tab-pane" role=tabpanel aria-labelledby=lobby-leaderboard-tab data-testid=lobby-leaderboard-section hidden>
                 <div class=leaderboard-header>
                     <h3 class=lobby-section-title>Leaderboard</h3>
                     <div class=leaderboard-controls>
@@ -870,9 +872,9 @@
                         </label>
                     </div>
                 </div>
-                <div id=leaderboard-error class="leaderboard-error leaderboard-status" aria-live=polite style=display:none></div>
+                <div id=leaderboard-error class="leaderboard-error leaderboard-status" aria-live=polite hidden></div>
                 <div id=leaderboard-loading class="leaderboard-loading leaderboard-status" aria-live=polite>Loading leaderboard…</div>
-                <div id=leaderboard-empty class="leaderboard-empty leaderboard-status" style=display:none>
+                <div id=leaderboard-empty class="leaderboard-empty leaderboard-status" hidden>
                     No players match this filter yet — try lowering the
                     "Min games" threshold or play a few hands.
                 </div>
@@ -882,6 +884,48 @@
                     <span id=leaderboard-paging-summary class=leaderboard-paging-summary data-testid=leaderboard-paging-summary aria-live=polite></span>
                     <button id=leaderboard-next-page type=button class="btn btn-secondary btn-sm" data-testid=leaderboard-next-page disabled>Next page →</button>
                 </div>
+            </section>
+            
+            <section id=lobby-tab-tournaments class=lobby-tab-pane role=tabpanel aria-labelledby=lobby-tournaments-tab data-testid=lobby-tournament-card hidden>
+                <div id=tournaments-placeholder class=lobby-tab-tournaments-empty data-testid=tournaments-placeholder>
+                    Tournaments are coming soon. Check back once the next
+                    backend update lands.
+                </div>
+                <div id=tournament-list class=tournament-list data-testid=lobby-tournament-list role=list hidden></div>
+                <div id=tournament-detail class=tournament-detail data-testid=tournament-detail hidden>
+                    <h4 id=tournament-detail-name class=tournament-detail-name></h4>
+                    <div id=tournament-detail-meta class=tournament-detail-meta></div>
+                    <pre id=tournament-bracket class=tournament-bracket data-testid=tournament-matches-table></pre>
+                    <pre id=tournament-standings class=tournament-standings data-testid=tournament-leaderboard></pre>
+                    <div class=tournament-detail-actions>
+                        <button id=tournament-register type=button class="btn btn-sm btn-success" data-testid=tournament-register-btn hidden>Register</button>
+                        <button id=tournament-unregister type=button class="btn btn-secondary btn-sm" data-testid=tournament-unregister-btn hidden>Unregister</button>
+                        <button id=tournament-start type=button class="btn btn-sm btn-warning" data-testid=tournament-start-btn hidden>Start</button>
+                        <button id=tournament-detail-back type=button class="btn btn-secondary btn-sm">Back</button>
+                    </div>
+                </div>
+                <form id=tournament-create-form class=tournament-create-form data-testid=tournament-create-form hidden>
+                    <h4>Create tournament</h4>
+                    <label>
+                        Name
+                        <input id=tournament-create-name class="form-control form-control-sm" data-testid=lobby-tournament-name minlength=1 maxlength=64 required>
+                    </label>
+                    <label>
+                        Format
+                        <select id=tournament-create-format class="form-control form-control-sm" data-testid=tournament-create-format>
+                            <option value=round-robin>Round-robin</option>
+                            <option value=single-elim>Single elimination</option>
+                            <option value=swiss>Swiss</option>
+                        </select>
+                    </label>
+                    <label>
+                        Max players
+                        <input id=tournament-create-max-players type=number class="form-control form-control-sm" data-testid=tournament-create-max-players min=4 max=64 value=8 step=1>
+                    </label>
+                    <button class="btn btn-sm btn-success" data-testid=lobby-tournament-create>
+                        Create
+                    </button>
+                </form>
             </section>
         </div>
         <div class=lobby-footer>
@@ -944,11 +988,30 @@
             <div class=profile-drawer-footer>
                 <button id=profile-save type=button class="btn btn-sm btn-warning" data-testid=profile-save>Save</button>
                 <button id=profile-reset type=button class="btn btn-secondary btn-sm" data-testid=profile-reset>Reset to default</button>
-                <span id=profile-saved-note class=profile-saved-note aria-live=polite style=display:none></span>
+                <span id=profile-saved-note class=profile-saved-note aria-live=polite hidden></span>
             </div>
         </div>
     </aside>
 
-    <script type=module src=autotable-src.6e0d2167.js></script>
+    
+    <div id=migrate-avatar-modal class=migrate-avatar-modal role=dialog aria-modal=true aria-labelledby=migrate-avatar-title data-testid=avatar-migration-modal hidden>
+        <div class=migrate-avatar-card>
+            <h3 id=migrate-avatar-title class=migrate-avatar-title>
+                Pick your avatar colour
+            </h3>
+            <p class=migrate-avatar-body>
+                We're retiring the default grey avatar so players can tell
+                each other apart at a glance. Pick a colour to keep using
+                this profile.
+            </p>
+            <div id=migrate-avatar-grid class=migrate-avatar-grid role=radiogroup aria-label="Avatar colour presets"></div>
+            <div class=migrate-avatar-actions>
+                <button id=migrate-avatar-dismiss type=button class="btn btn-secondary btn-sm" data-testid=avatar-migration-dismiss>Not now</button>
+                <button id=migrate-avatar-confirm type=button class="btn btn-sm btn-success" data-testid=avatar-migration-confirm disabled>Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script type=module src=autotable-src.73dffdb4.js></script>
 
 

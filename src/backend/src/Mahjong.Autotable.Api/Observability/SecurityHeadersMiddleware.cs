@@ -111,6 +111,15 @@ public sealed class SecurityHeadersMiddleware
     /// <c>script-src</c> and exposes the nonce via HttpContext.Items.</summary>
     public const string CspUseNoncesConfigKey = "Security:UseScriptNonces";
 
+    /// <summary>Phase J Wave 10 — configuration key for strict styles
+    /// (bool). When true, drops <c>'unsafe-inline'</c> from
+    /// <c>style-src</c>. Default OFF for backwards compat — flip on
+    /// once Hicks's Wave-10 bundle has eliminated every inline
+    /// <c>style="…"</c> attribute and the canary's
+    /// <c>/api/csp-report</c> sink shows zero <c>style-src</c>
+    /// violations.</summary>
+    public const string CspStrictStylesConfigKey = "Security:CspStrictStyles";
+
     /// <summary>Phase J Wave 9 — configuration key for report-only mode
     /// (bool). When true, ships under <c>Content-Security-Policy-Report-Only</c>.</summary>
     public const string CspReportOnlyConfigKey = "Security:CspReportOnly";
@@ -141,6 +150,17 @@ public sealed class SecurityHeadersMiddleware
     /// <c>CspHeaderTests.DefaultCspConstant_Wave9_HasNoUnsafeEval</c>
     /// uses <c>'wasm-unsafe-eval'</c> as the canonical landed signal.
     /// A <c>report-uri</c> directive is appended at runtime.
+    ///
+    /// Phase J Wave 10 — <c>style-src</c> retains <c>'unsafe-inline'</c>
+    /// in this default by design.  Apone's opt-in knob
+    /// (<see cref="CspStrictStylesConfigKey"/>, default OFF) drops it
+    /// at runtime via <see cref="DropStyleUnsafeInline(string)"/>.
+    /// Hicks's Wave-10 frontend pass migrated every HTML
+    /// <c>style="..."</c> attribute to a CSS class
+    /// (<c>src/frontend/autotable-src/src/style.css</c>) so the knob is
+    /// now safe to flip in production without bricking the bundle.
+    /// The contract that pins the default is
+    /// <c>CspStyleSrcNoUnsafeInlineTests.DefaultCspConstant_StylesSection_KeepsUnsafeInlineUntilOptIn</c>.
     /// </summary>
     public const string DefaultCsp =
         "default-src 'self'; " +
@@ -188,6 +208,7 @@ public sealed class SecurityHeadersMiddleware
     private readonly string _cspTemplate;
     private readonly bool _hstsEnabled;
     private readonly bool _cspStrict;
+    private readonly bool _cspStrictStyles;
     private readonly bool _useNonces;
     private readonly bool _reportOnly;
     private readonly string? _reportUri;
@@ -198,6 +219,7 @@ public sealed class SecurityHeadersMiddleware
         _next = next;
 
         _cspStrict = configuration.GetValue<bool?>(CspStrictConfigKey) ?? false;
+        _cspStrictStyles = configuration.GetValue<bool?>(CspStrictStylesConfigKey) ?? false;
         _useNonces = configuration.GetValue<bool?>(CspUseNoncesConfigKey) ?? false;
         _reportOnly = configuration.GetValue<bool?>(CspReportOnlyConfigKey) ?? false;
         _hstsEnabled = configuration.GetValue<bool?>(HstsConfigKey) ?? false;
@@ -215,7 +237,8 @@ public sealed class SecurityHeadersMiddleware
         }
         else
         {
-            _cspTemplate = _cspStrict ? StrictCsp : DefaultCsp;
+            var baseCsp = _cspStrict ? StrictCsp : DefaultCsp;
+            _cspTemplate = _cspStrictStyles ? DropStyleUnsafeInline(baseCsp) : baseCsp;
             _cspOverrideSupplied = false;
         }
     }
@@ -333,6 +356,37 @@ public sealed class SecurityHeadersMiddleware
                 AppendVary(headers, "Accept-Encoding");
             }
         }
+    }
+
+    /// <summary>
+    /// Phase J Wave 10 — strips <c>'unsafe-inline'</c> from the
+    /// <c>style-src</c> directive of a CSP string while leaving every
+    /// other directive (including <c>script-src</c> nonces / 
+    /// <c>'wasm-unsafe-eval'</c>) untouched. Internal-public for unit
+    /// testing. If the policy has no <c>style-src</c> directive, returns
+    /// the input unchanged (default-src fallback applies).
+    /// </summary>
+    internal static string DropStyleUnsafeInline(string csp)
+    {
+        var parts = csp.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var changed = false;
+        for (var i = 0; i < parts.Length; i++)
+        {
+            if (parts[i].StartsWith("style-src", StringComparison.OrdinalIgnoreCase))
+            {
+                // Remove "'unsafe-inline'" tokens (whitespace-separated).
+                var tokens = parts[i].Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var kept = new List<string>(tokens.Length);
+                foreach (var t in tokens)
+                {
+                    if (string.Equals(t, "'unsafe-inline'", StringComparison.OrdinalIgnoreCase)) continue;
+                    kept.Add(t);
+                }
+                parts[i] = string.Join(' ', kept);
+                changed = true;
+            }
+        }
+        return changed ? string.Join("; ", parts) : csp;
     }
 
     /// <summary>

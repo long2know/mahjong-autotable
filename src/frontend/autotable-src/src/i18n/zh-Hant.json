@@ -65,6 +65,7 @@
   "chat.toggle": "聊天",
   "chat.channel.table": "牌桌",
   "chat.channel.spectators": "觀眾",
+  "chat.channel.spectator_private": "觀眾私訊",
   "chat.channel.private": "私訊",
   "chat.placeholder": "聊點什麼吧…（Enter 傳送，Shift+Enter 換行）",
   "chat.send": "傳送",
@@ -102,6 +103,8 @@
   "replay.audit.col.score": "AI評分",
   "replay.audit.col.decision": "鳴牌決策",
   "replay.audit.admin_only": "稽核資料僅管理員可見。",
+  "replay.audit.why": "為什麼？",
+  "replay.audit.reasoning_unavailable": "暫無推理過程。",
 
   "pattern.standard": "普通胡",
   "pattern.sevenPairs": "七對",

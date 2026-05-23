@@ -10,6 +10,8 @@ import { initSentry } from './sentry';
 import { installI18n } from './i18n';
 import { installChatPanel } from './chat';
 import { installAuditTab } from './audit';
+import { installAvatarMigrationModalIfNeeded } from './identity';
+import { installTournamentsPanel } from './tournaments';
 import * as three from 'three';
 
 // Phase J Wave 9 — install i18n before any other UI install hook so
@@ -21,6 +23,17 @@ installI18n();
 // /api/auth/me to detect admin role; the tab stays hidden for
 // non-admin users.  Idempotent.
 installAuditTab();
+
+// Phase J Wave 10 — install the tournaments tab.  Feature-detects
+// /api/tournaments and falls back to a "Coming soon" placeholder when
+// the backend isn't deployed yet.  Idempotent.
+installTournamentsPanel();
+
+// Phase J Wave 10 — install the forced avatar-migration modal.  The
+// modal only renders when the persisted avatarColor is still the
+// legacy `#808080` sentinel.  Idempotent + listens for late-arriving
+// profile updates.
+installAvatarMigrationModalIfNeeded();
 
 // Phase J Wave 8 — Frontend error reporting.  Sentry only initialises
 // when a non-empty DSN is exposed via <meta name="sentry-dsn"> or

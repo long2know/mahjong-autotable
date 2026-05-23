@@ -149,6 +149,20 @@ public sealed class AutotableConnectionManager : IDisposable
         return _games.TryGetValue(gameId, out var state) ? state.Snapshot().Count : 0;
     }
 
+    /// <summary>
+    /// Test/diagnostic hook: returns the number of stored entries for a specific
+    /// collection <paramref name="kind"/> in the given <paramref name="gameId"/>.
+    /// Deterministic counterpart to <see cref="GetStoredEntryCount(string)"/> for
+    /// tests that need to wait on a particular collection (e.g. <c>"things"</c>)
+    /// rather than the aggregate count, which may already be satisfied by
+    /// translator-emitted initial state.
+    /// </summary>
+    public int GetStoredEntryCount(string gameId, string kind)
+    {
+        if (string.IsNullOrEmpty(gameId)) return 0;
+        return _games.TryGetValue(gameId, out var state) ? state.CountFor(kind) : 0;
+    }
+
     /// <summary>Test hook: reports the runtime gameId bound to a relay gameId, if any.</summary>
     public string? GetRuntimeGameIdBoundTo(string relayGameId)
         => _runtimeBinding.TryGetValue(relayGameId ?? string.Empty, out var rid) ? rid : null;

@@ -35,6 +35,7 @@ import {
   type PlayerProfile,
 } from './profile';
 import { openReplayForGame } from './replay-launcher';
+import { setElHidden } from './utils';
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -279,7 +280,7 @@ function renderEditors(): void {
   // another player's profile (read-only mode).
   const editSection = nameInput?.closest('.profile-page-section') as HTMLElement | null;
   if (editSection !== null) {
-    editSection.style.display = viewingRemote !== null ? 'none' : '';
+    setElHidden(editSection, viewingRemote !== null);
   }
   if (viewingRemote !== null) return;
   if (nameInput !== null && document.activeElement !== nameInput) {
@@ -343,14 +344,14 @@ function renderRecentGames(): void {
   const loadingEl = document.getElementById('profile-recent-games-loading');
   if (host === null) return;
   if (loadingEl !== null) {
-    loadingEl.style.display = recentGamesLoading ? '' : 'none';
+    setElHidden(loadingEl, !recentGamesLoading);
   }
   if (errorEl !== null) {
     if (recentGamesError !== null) {
-      errorEl.style.display = '';
+      setElHidden(errorEl, false);
       errorEl.textContent = recentGamesError;
     } else {
-      errorEl.style.display = 'none';
+      setElHidden(errorEl, true);
       errorEl.textContent = '';
     }
   }

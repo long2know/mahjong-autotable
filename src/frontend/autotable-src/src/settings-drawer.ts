@@ -46,6 +46,7 @@ import {
   t,
   type LanguagePreference,
 } from './i18n';
+import { hideEl } from './utils';
 
 // ── Public types ────────────────────────────────────────────────────
 
@@ -342,9 +343,10 @@ function flashSavedNote(): void {
   const note = document.getElementById('settings-saved-note-v2');
   if (note === null) return;
   note.textContent = t('settings.saved') || 'Saved ✓';
+  (note as HTMLElement).hidden = false;
   (note as HTMLElement).style.display = 'inline';
   window.setTimeout(() => {
-    (note as HTMLElement).style.display = 'none';
+    hideEl(note as HTMLElement);
   }, 1400);
 }
 

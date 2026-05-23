@@ -1,0 +1,14 @@
+{
+  "name": "mahjong-load-tests",
+  "private": true,
+  "description": "Phase J Wave 10 — load test harness for the Mahjong Autotable production surface.",
+  "scripts": {
+    "lobby-flood": "node lobby-flood.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

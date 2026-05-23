@@ -56,6 +56,11 @@ public static class DatabaseBootstrapper
             // SchemaVersion column onto ChangshaGameReplays for the v2
             // replay schema (defaulting legacy rows to 1).
             await EnsureSqliteWave9TablesAsync(db, cancellationToken);
+            // Phase J Wave 10 — Tournament tables. Canonical schema is
+            // the AddTournaments EF migration; this guard bootstraps
+            // existing SQLite DBs that pre-date Wave 10 without
+            // requiring an out-of-band `dotnet ef database update`.
+            await EnsureSqliteWave10TablesAsync(db, cancellationToken);
         }
         else
         {
@@ -733,5 +738,146 @@ public static class DatabaseBootstrapper
             UpdatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Phase J Wave 10 — idempotent CREATE-IF-NOT-EXISTS pass for the
+    /// Tournament/Registration/Match tables. SQLite-only; Postgres and
+    /// SqlServer reach these tables through the canonical
+    /// AddTournaments EF migration. The migration is the schema source
+    /// of truth — this bootstrap exists so legacy dev SQLite DBs (which
+    /// historically relied on EnsureCreatedAsync) keep working without
+    /// an out-of-band `dotnet ef database update`.
+    /// </summary>
+    private static async Task EnsureSqliteWave10TablesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != ConnectionState.Open;
+        if (closeWhenDone)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using (var createTournaments = connection.CreateCommand())
+            {
+                createTournaments.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "Tournaments" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_Tournaments" PRIMARY KEY,
+                        "Name" TEXT NOT NULL,
+                        "Format" TEXT NOT NULL,
+                        "Status" TEXT NOT NULL,
+                        "CreatedByPlayerId" TEXT NOT NULL,
+                        "MaxPlayers" INTEGER NOT NULL,
+                        "GamesPerMatch" INTEGER NOT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "StartedAt" TEXT NULL,
+                        "CompletedAt" TEXT NULL
+                    );
+                    """;
+                await createTournaments.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxStatus = connection.CreateCommand())
+            {
+                idxStatus.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_Tournaments_Status"
+                    ON "Tournaments" ("Status");
+                    """;
+                await idxStatus.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxCreated = connection.CreateCommand())
+            {
+                idxCreated.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_Tournaments_CreatedAt"
+                    ON "Tournaments" ("CreatedAt");
+                    """;
+                await idxCreated.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createReg = connection.CreateCommand())
+            {
+                createReg.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "TournamentRegistrations" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_TournamentRegistrations" PRIMARY KEY,
+                        "TournamentId" TEXT NOT NULL,
+                        "PlayerId" TEXT NOT NULL,
+                        "Seed" INTEGER NOT NULL,
+                        "RegisteredAt" TEXT NOT NULL,
+                        CONSTRAINT "FK_TournamentRegistrations_Tournaments" FOREIGN KEY ("TournamentId")
+                            REFERENCES "Tournaments" ("Id") ON DELETE CASCADE
+                    );
+                    """;
+                await createReg.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxRegUnique = connection.CreateCommand())
+            {
+                idxRegUnique.CommandText = """
+                    CREATE UNIQUE INDEX IF NOT EXISTS "IX_TournamentRegistrations_Tournament_Player"
+                    ON "TournamentRegistrations" ("TournamentId", "PlayerId");
+                    """;
+                await idxRegUnique.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxRegTour = connection.CreateCommand())
+            {
+                idxRegTour.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_TournamentRegistrations_TournamentId"
+                    ON "TournamentRegistrations" ("TournamentId");
+                    """;
+                await idxRegTour.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var createMatch = connection.CreateCommand())
+            {
+                createMatch.CommandText = """
+                    CREATE TABLE IF NOT EXISTS "TournamentMatches" (
+                        "Id" TEXT NOT NULL CONSTRAINT "PK_TournamentMatches" PRIMARY KEY,
+                        "TournamentId" TEXT NOT NULL,
+                        "Round" INTEGER NOT NULL,
+                        "Player1Id" TEXT NOT NULL,
+                        "Player2Id" TEXT NOT NULL,
+                        "Player3Id" TEXT NULL,
+                        "Player4Id" TEXT NULL,
+                        "WinnerPlayerId" TEXT NULL,
+                        "GameIdsJson" TEXT NOT NULL,
+                        "Status" TEXT NOT NULL,
+                        "CreatedAt" TEXT NOT NULL,
+                        "CompletedAt" TEXT NULL,
+                        CONSTRAINT "FK_TournamentMatches_Tournaments" FOREIGN KEY ("TournamentId")
+                            REFERENCES "Tournaments" ("Id") ON DELETE CASCADE
+                    );
+                    """;
+                await createMatch.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxMatchRound = connection.CreateCommand())
+            {
+                idxMatchRound.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_TournamentMatches_Tournament_Round"
+                    ON "TournamentMatches" ("TournamentId", "Round");
+                    """;
+                await idxMatchRound.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var idxMatchTour = connection.CreateCommand())
+            {
+                idxMatchTour.CommandText = """
+                    CREATE INDEX IF NOT EXISTS "IX_TournamentMatches_TournamentId"
+                    ON "TournamentMatches" ("TournamentId");
+                    """;
+                await idxMatchTour.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            if (closeWhenDone)
+            {
+                await connection.CloseAsync();
+            }
+        }
     }
 }

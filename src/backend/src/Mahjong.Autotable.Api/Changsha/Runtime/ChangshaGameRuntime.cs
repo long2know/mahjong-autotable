@@ -1000,13 +1000,18 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             if (instance.PendingClaims.ContainsKey(seatIndex)) return;
             // Phase H Wave 1 — race the strategy against BotDecisionTimeoutMs. A hung
             // strategy yields BotAction.Pass so the claim window can still resolve.
+            // Phase J Wave 10 — DecideWithReasoning surfaces the strategy's
+            // tiered explanation; the BotDecision is stashed on the
+            // instance for replay-debugScore enrichment.
             var state = instance.State;
-            var action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
-                () => _strategy.DecideAction(state, seatIndex),
+            var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+                () => _strategy.DecideWithReasoning(state, seatIndex),
                 _options.BotDecisionTimeoutMs,
-                BotAction.Pass,
+                () => BotDecision.FromAction(BotAction.Pass()),
                 _logger,
                 ct).ConfigureAwait(false);
+            instance.LastBotDecisions[seatIndex] = decision;
+            var action = decision.Action;
             decided = action.Type == BotActionType.Claim ? action.ClaimType : null;
             instance.PendingClaims[seatIndex] = new ClaimResponse(decided, null);
         }
@@ -1237,14 +1242,18 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 // Phase H Wave 1 — race the strategy against BotDecisionTimeoutMs. A hung
                 // strategy yields the deterministic Medium-tier discard so the turn loop
                 // makes progress instead of blocking the table indefinitely.
+                // Phase J Wave 10 — capture the decision (with reasoning)
+                // and stash on the instance for replay-debugScore enrichment.
                 var state = instance.State;
                 var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
-                action = await ChangshaBotEngine.DecideActionWithTimeoutAsync(
-                    () => _strategy.DecideAction(state, seatIndex),
+                var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
+                    () => _strategy.DecideWithReasoning(state, seatIndex),
                     _options.BotDecisionTimeoutMs,
-                    () => BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(hand)),
+                    () => BotDecision.FromAction(BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(hand))),
                     _logger,
                     ct).ConfigureAwait(false);
+                instance.LastBotDecisions[seatIndex] = decision;
+                action = decision.Action;
             }
             finally { instance.Lock.Release(); }
 
@@ -1826,6 +1835,36 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         // GameId keeps re-completion idempotent (e.g. a hydrated game that
         // re-emits GameCompleted simply refreshes its replay row).
         await PersistReplayAsync(instance, ct);
+
+        // Phase J Wave 10 — tournament-match advancement. If the
+        // completed game is bound to any TournamentMatch row, flip
+        // that match to "complete" with the top-score player as the
+        // winner. Best-effort: a tournament-service hiccup never
+        // breaks the game-completion hot path.
+        await AdvanceTournamentMatchAsync(instance, ct);
+    }
+
+    private async Task AdvanceTournamentMatchAsync(ChangshaGameInstance instance, CancellationToken ct)
+    {
+        try
+        {
+            if (!Guid.TryParse(instance.GameId, out var gameGuid)) return;
+            var state = instance.State;
+            if (state.CumulativeScores.Count == 0) return;
+            var topScore = state.CumulativeScores.Values.Max();
+            var winnerSeat = state.Seats.FirstOrDefault(s =>
+                state.CumulativeScores.TryGetValue(s.SeatIndex, out var sc) && sc == topScore);
+            if (winnerSeat is null || string.IsNullOrEmpty(winnerSeat.PlayerId)) return;
+
+            using var scope = _scopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetService<Tournament.TournamentService>();
+            if (svc is null) return;
+            await svc.AdvanceMatchAsync(gameGuid, winnerSeat.PlayerId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Tournament-advance failed for {GameId}; swallowing.", instance.GameId);
+        }
     }
 
     /// <summary>
@@ -1859,6 +1898,27 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             {
                 var tileIds = evt.TileId.HasValue ? new[] { evt.TileId.Value } : Array.Empty<int>();
                 var duration = prevTs is null ? 0 : Math.Max(0, (int)(evt.OccurredUtc - prevTs.Value).TotalMilliseconds);
+                // Phase J Wave 10 — for bot-source events, attach the most
+                // recent BotDecision for the seat as `debugScore`. Per-event
+                // accuracy is approximate (a single decision can spawn
+                // multiple state-machine events); operators get the seat's
+                // most-recent reasoning at event time, which is sufficient
+                // for debugging strategy regressions. Non-bot events leave
+                // the field null so the wire shape is uniform.
+                object? debugScore = null;
+                if (evt.SeatIndex >= 0
+                    && evt.SeatIndex < state.Seats.Count
+                    && state.Seats[evt.SeatIndex].IsBot
+                    && instance.LastBotDecisions.TryGetValue(evt.SeatIndex, out var dec))
+                {
+                    debugScore = new
+                    {
+                        score = dec.Score,
+                        tile = dec.Tile,
+                        actionType = dec.Action.Type.ToString(),
+                        reasoning = dec.Reasoning,
+                    };
+                }
                 events.Add(new
                 {
                     turn = evt.TurnNumber,
@@ -1870,6 +1930,9 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     // Phase J Wave 9 — per-event metadata for the v2 envelope.
                     source = ResolveReplayEventSource(state, evt),
                     durationMs = duration,
+                    // Phase J Wave 10 — per-bot-event reasoning + score
+                    // (Hicks's admin audit drilldown).
+                    debugScore,
                 });
                 prevTs = evt.OccurredUtc;
             }
@@ -1912,16 +1975,19 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     /// Phase J Wave 9 — classify a replay event by source for the v2
     /// envelope. Returns <c>"system"</c> for engine-emitted events
     /// (no seat actor), <c>"human"</c> for human seats, and
-    /// <c>"bot:&lt;difficulty&gt;"</c> for bots. Bot difficulty is not
-    /// currently surfaced on <see cref="ChangshaSeatState"/>, so the
-    /// difficulty axis falls back to <c>"unknown"</c>; wiring the
-    /// bot-policy registry into the runtime is a Wave 10 follow-up.
+    /// <c>"bot:&lt;difficulty&gt;"</c> for bots.
+    ///
+    /// <para>Phase J Wave 10 — bot difficulty now reflects the runtime's
+    /// active <see cref="IChangshaBotStrategy.Difficulty"/> instead of the
+    /// "unknown" placeholder. The runtime owns one strategy at a time
+    /// (singleton lifetime), so this is necessarily uniform across all
+    /// bot seats in the same game — sufficient for the audit drilldown.</para>
     /// </summary>
-    private static string ResolveReplayEventSource(ChangshaGameState state, ChangshaEvent evt)
+    private string ResolveReplayEventSource(ChangshaGameState state, ChangshaEvent evt)
     {
         if (evt.SeatIndex < 0 || evt.SeatIndex >= state.Seats.Count) return "system";
         var seat = state.Seats[evt.SeatIndex];
-        return seat.IsBot ? "bot:unknown" : "human";
+        return seat.IsBot ? $"bot:{_strategy.Difficulty}" : "human";
     }
 
     /// <summary>

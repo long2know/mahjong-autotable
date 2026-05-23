@@ -73,6 +73,76 @@ public sealed class MediumStrategy : IChangshaBotStrategy
         return BotAction.Wait();
     }
 
+    /// <summary>
+    /// Phase J Wave 10 — explainable variant. Medium populates a reasoning
+    /// list with the keep-score tier, kong/win detection, and claim-tier
+    /// acceptance ordering so the audit replay surfaces "why" alongside
+    /// "what". Score is the keep-score of the chosen tile (lower = better
+    /// to discard), useful for ranking decisions across hands.
+    /// </summary>
+    public BotDecision DecideWithReasoning(ChangshaGameState state, int botSeatIndex)
+    {
+        var reasoning = new List<string> { "strategy:medium" };
+
+        if (state.Phase == ChangshaPhase.AwaitingDiscard && state.ActiveSeatIndex == botSeatIndex)
+        {
+            var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
+            var detector = new ChangshaWinDetector();
+            var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
+            if (winResult.IsWin)
+            {
+                reasoning.Add("winning hand detected on self-draw");
+                return new BotDecision(BotAction.DeclareWin(), null, Score: 0, reasoning);
+            }
+
+            var kongLogical = HandEvaluator.FindConcealedKongCandidate(hand);
+            if (kongLogical >= 0)
+            {
+                reasoning.Add($"concealed kong candidate: logical={kongLogical}");
+                return new BotDecision(BotAction.DeclareConcealedKong(kongLogical), null, Score: 0, reasoning);
+            }
+            var addedKongTile = HandEvaluator.FindAddedKongCandidate(hand);
+            if (addedKongTile >= 0)
+            {
+                reasoning.Add($"added kong candidate: tile={addedKongTile}");
+                return new BotDecision(BotAction.DeclareAddedKong(addedKongTile), addedKongTile, Score: 0, reasoning);
+            }
+
+            var tileId = SelectDiscardTile(hand);
+            var logicalCounts = hand.ConcealedTiles
+                .GroupBy(ChangshaDeckBuilder.GetLogicalTile)
+                .ToDictionary(g => g.Key, g => g.Count());
+            var score = ComputeKeepScore(tileId, logicalCounts);
+            reasoning.Add($"keep-score primary: discard tile={tileId} score={score} (lower=better to discard)");
+            reasoning.Add("tie-breaker: tile-id descending");
+            return new BotDecision(BotAction.Discard(tileId), tileId, Score: score, reasoning);
+        }
+
+        if (state.Phase == ChangshaPhase.AwaitingClaim && state.ClaimWindow is not null)
+        {
+            var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
+            var action = DecideClaimPhase(state, hand, botSeatIndex);
+            if (action.Type == BotActionType.Claim)
+            {
+                reasoning.Add($"claim accepted: type={action.ClaimType} (Hu>Kong>Pung>Chow priority)");
+            }
+            else
+            {
+                reasoning.Add("no claim opportunity matched gate (chow requires <3 melds)");
+            }
+            return new BotDecision(action, action.TileId, Score: 0, reasoning);
+        }
+
+        if (ChangshaGameStateMachine.IsPickupPhase(state.Phase) && state.PickupSeatIndex == botSeatIndex)
+        {
+            reasoning.Add("pickup phase: take expected wall slice");
+            return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
+        }
+
+        reasoning.Add("no decision required this tick (wait)");
+        return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
+    }
+
     private static BotAction DecideDiscardPhase(ChangshaGameState state, ChangshaHandState hand)
     {
         var detector = new ChangshaWinDetector();

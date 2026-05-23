@@ -23,6 +23,7 @@
 //   • the admin probe + showAuditTabIfAdmin() helper
 
 import { t, onLanguageChange } from './i18n';
+import { showEl, hideEl, setElHidden } from './utils';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -36,6 +37,16 @@ export interface AuditRow {
   durationMs: number | null;
   botScore?: number | null;
   claimDecisionTree?: string | null;
+  /**
+   * Phase J Wave 10 — Bishop's bot engine emits a per-decision
+   * Reasoning trail (list of short strings, each optionally prefixed
+   * with `[win]:`, `[caution]:`, or `[suboptimal]:` to drive the
+   * frontend's colour coding).  Optional because (a) the backend may
+   * not have shipped this field yet (graceful degrade — we render a
+   * "Reasoning unavailable" sub-row) and (b) human/system rows never
+   * have reasoning.
+   */
+  reasoning?: string[] | null;
 }
 
 interface AuditResponse {
@@ -194,6 +205,12 @@ function renderRows(rows: AuditRow[]): void {
     rowEl.className = 'replay-audit-row';
     rowEl.setAttribute('role', 'row');
     rowEl.setAttribute('data-testid', `replay-audit-row-${i}`);
+    // Phase J Wave 10 (Vasquez) — `[data-strategy]` attribute on the
+    // row header lets the audit-why-expand spec target a bot's
+    // strategy badge without parsing the source cell text.
+    if (row.botTier !== undefined && row.botTier !== '') {
+      rowEl.setAttribute('data-strategy', row.botTier);
+    }
 
     const idxCell = document.createElement('span');
     idxCell.textContent = `H${row.handNumber}·T${row.turn}·S${row.seat}`;
@@ -225,11 +242,82 @@ function renderRows(rows: AuditRow[]): void {
     rowEl.appendChild(scoreCell);
 
     const decisionCell = document.createElement('span');
-    decisionCell.textContent = row.claimDecisionTree ?? '—';
-    rowEl.appendChild(decisionCell);
+    // Phase J Wave 10 — collapse the decision cell to a "Why?" expander
+    // for bot rows (where reasoning surfaces the bot's heuristic
+    // breakdown).  Human/system rows continue to render the inline
+    // claimDecisionTree string (or "—" when absent).
+    const isBot = src === 'bot';
+    if (isBot) {
+      const whyBtn = document.createElement('button');
+      whyBtn.type = 'button';
+      whyBtn.className = 'audit-why-btn';
+      whyBtn.textContent = t('replay.audit.why');
+      whyBtn.setAttribute('data-testid', `replay-audit-row-${i}-why`);
+      whyBtn.setAttribute('aria-expanded', 'false');
+      decisionCell.appendChild(whyBtn);
+      rowEl.appendChild(decisionCell);
+      tableEl.appendChild(rowEl);
 
-    tableEl.appendChild(rowEl);
+      const reasoningRow = document.createElement('div');
+      reasoningRow.className = 'replay-audit-row audit-reasoning-row';
+      reasoningRow.setAttribute('role', 'row');
+      reasoningRow.setAttribute('data-testid', `replay-audit-row-${i}-reasoning`);
+      reasoningRow.hidden = true;
+      const reasoningCell = document.createElement('div');
+      reasoningCell.style.gridColumn = '1 / -1';
+      reasoningRow.appendChild(reasoningCell);
+      renderReasoning(reasoningCell, row.reasoning ?? null, i);
+      tableEl.appendChild(reasoningRow);
+
+      whyBtn.addEventListener('click', () => {
+        const open = !reasoningRow.hidden;
+        reasoningRow.hidden = open;
+        whyBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      });
+    } else {
+      decisionCell.textContent = row.claimDecisionTree ?? '—';
+      rowEl.appendChild(decisionCell);
+      tableEl.appendChild(rowEl);
+    }
   });
+}
+
+function classifyReason(item: string): 'win' | 'caution' | 'suboptimal' | null {
+  const m = item.match(/^\s*\[(win|caution|suboptimal)\]\s*:?\s*/i);
+  if (m === null) return null;
+  return m[1].toLowerCase() as 'win' | 'caution' | 'suboptimal';
+}
+
+function stripReasonPrefix(item: string): string {
+  return item.replace(/^\s*\[(win|caution|suboptimal)\]\s*:?\s*/i, '');
+}
+
+function renderReasoning(host: HTMLElement, reasoning: string[] | null, rowIndex: number): void {
+  host.replaceChildren();
+  if (reasoning === null || reasoning.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'audit-reasoning-unavailable';
+    empty.textContent = t('replay.audit.reasoning_unavailable');
+    empty.setAttribute('data-testid', `replay-audit-row-${rowIndex}-reasoning-unavailable`);
+    host.appendChild(empty);
+    return;
+  }
+  const list = document.createElement('ul');
+  list.className = 'audit-reasoning-list';
+  list.setAttribute('data-testid', `replay-audit-row-${rowIndex}-reasoning-list`);
+  reasoning.forEach((item, j) => {
+    const li = document.createElement('li');
+    li.className = 'audit-reasoning-item';
+    li.setAttribute('data-testid', `replay-audit-row-${rowIndex}-reasoning-line-${j}`);
+    const kind = classifyReason(item);
+    if (kind !== null) {
+      li.classList.add(`audit-reasoning-${kind}`);
+      li.setAttribute('data-reason-kind', kind);
+    }
+    li.textContent = stripReasonPrefix(item);
+    list.appendChild(li);
+  });
+  host.appendChild(list);
 }
 
 function activateTab(which: 'replay' | 'audit'): void {
@@ -288,7 +376,7 @@ export function installAuditTab(): void {
   }
   void probeAdmin().then((admin) => {
     if (admin && auditTab !== null) {
-      auditTab.style.display = '';
+      showEl(auditTab);
     }
   });
 
@@ -338,7 +426,7 @@ export function refreshAdminStatus(): void {
   void probeAdmin().then((admin) => {
     const auditTab = document.getElementById('replay-tab-audit') as HTMLButtonElement | null;
     if (auditTab !== null) {
-      auditTab.style.display = admin ? '' : 'none';
+      setElHidden(auditTab, !admin);
     }
   });
 }

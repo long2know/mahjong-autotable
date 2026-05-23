@@ -93,6 +93,83 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         return BotAction.Wait();
     }
 
+    /// <summary>
+    /// Phase J Wave 10 — explainable variant. Master surfaces opponent-
+    /// discard inference (the Master-only safety tier-breaker) alongside
+    /// shanten + keep-score. Reasoning explicitly calls out the
+    /// "safety analysis" line so Vasquez's audit-replay coverage can
+    /// gate on Master producing safety-aware reasoning.
+    /// </summary>
+    public BotDecision DecideWithReasoning(ChangshaGameState state, int botSeatIndex)
+    {
+        var reasoning = new List<string> { "strategy:master" };
+
+        if (state.Phase == ChangshaPhase.AwaitingDiscard && state.ActiveSeatIndex == botSeatIndex)
+        {
+            var hand = state.Hands.Single(h => h.SeatIndex == botSeatIndex);
+            var detector = new ChangshaWinDetector();
+            var winResult = detector.Detect(hand, method: WinMethod.SelfDraw);
+            if (winResult.IsWin)
+            {
+                reasoning.Add("winning hand detected on self-draw");
+                return new BotDecision(BotAction.DeclareWin(), null, Score: 0, reasoning);
+            }
+
+            if (HandEvaluator.CountLooseTiles(hand) >= 2)
+            {
+                var kongLogical = HandEvaluator.FindConcealedKongCandidate(hand);
+                if (kongLogical >= 0)
+                {
+                    reasoning.Add($"concealed kong (loose-tile guard ≥2): logical={kongLogical}");
+                    return new BotDecision(BotAction.DeclareConcealedKong(kongLogical), null, Score: 0, reasoning);
+                }
+                var addedKongTile = HandEvaluator.FindAddedKongCandidate(hand);
+                if (addedKongTile >= 0)
+                {
+                    reasoning.Add($"added kong (loose-tile guard ≥2): tile={addedKongTile}");
+                    return new BotDecision(BotAction.DeclareAddedKong(addedKongTile), addedKongTile, Score: 0, reasoning);
+                }
+            }
+
+            var tileId = SelectDiscardTile(hand, state, botSeatIndex);
+            var logical = ChangshaDeckBuilder.GetLogicalTile(tileId);
+            var opponentDiscardLogicals = CollectOpponentDiscardLogicals(state, botSeatIndex);
+            var postShanten = ShantenAfterDiscardingLogical(logical, hand);
+            reasoning.Add($"shanten-primary: post-discard shanten={postShanten}");
+            // Safety analysis is Master's signature tier — surface it
+            // explicitly so the Vasquez Wave-10 test can gate on a
+            // safety-aware reasoning line for Master specifically.
+            if (opponentDiscardLogicals.Contains(logical))
+            {
+                reasoning.Add("safety analysis: discard tile already played by an opponent (low Pung/Chow risk)");
+            }
+            else
+            {
+                reasoning.Add("safety analysis: no opponent has yet discarded this logical tile");
+            }
+            reasoning.Add($"opponent-discard inference tier active (Master-only): logical={logical}");
+            return new BotDecision(BotAction.Discard(tileId), tileId, Score: postShanten, reasoning);
+        }
+
+        if (state.Phase == ChangshaPhase.AwaitingClaim && state.ClaimWindow is not null)
+        {
+            // Defer to Hard's claim driver but surface reasoning here.
+            var hardDecision = _hard.DecideWithReasoning(state, botSeatIndex);
+            reasoning.AddRange(hardDecision.Reasoning);
+            reasoning.Add("master delegates claim window to Hard's shanten gate");
+            return new BotDecision(hardDecision.Action, hardDecision.Tile, hardDecision.Score, reasoning);
+        }
+
+        if (ChangshaGameStateMachine.IsPickupPhase(state.Phase) && state.PickupSeatIndex == botSeatIndex)
+        {
+            reasoning.Add("pickup phase: take expected wall slice");
+            return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
+        }
+
+        reasoning.Add("no decision required this tick (wait)");
+        return new BotDecision(BotAction.Wait(), null, Score: 0, reasoning);
+    }
+
     private static int SelectDiscardTile(ChangshaHandState hand, ChangshaGameState state, int botSeatIndex)
     {
         if (hand.ConcealedTiles.Count == 0)
