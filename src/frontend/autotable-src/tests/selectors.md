@@ -2111,3 +2111,111 @@ the next-wave footer.
 *Phase K Wave 10 — Vasquez (QA). Footer added in W10 as the
 spec inventory + cross-pane mapping mirroring the W7/W8/W9
 pattern.*
+
+---
+
+## Phase K Wave 11 — Hicks footer (frontend producer side)
+
+W11 introduces the `?action=*` PWA shortcut router and three
+new author-time artefacts (real PWA screenshots, the cache-
+effectiveness metric, and the LH13 baseline calibration).
+This footer mirrors the W10 pattern: the producer-side
+selector / event / file-path contract that Vasquez's specs
+consume.
+
+### W11 selector additions
+
+| Selector | Owner | Producer (Hicks) | Used by |
+|----------|-------|------------------|---------|
+| `[data-action="new-game"]` | Hicks | `index.html` (#new-game button) | `action-router.ts` `dispatchNewGame()`; Vasquez's `?action=new-game` spec probe |
+| `#lobby-public-games-tab` | Hicks | `lobby-app.ts` (W8) | `action-router.ts` `dispatchSpectate()` |
+| `#lobby-tournaments-tab` | Hicks | `lobby-app.ts` (W8) | `action-router.ts` `dispatchTournament()` |
+
+The `data-action` attribute style is the W11-preferred pattern
+for new router hooks (more test-friendly than mixing CSS-styling
+IDs with behavioural lookups). Existing IDs are kept for
+selector stability.
+
+### W11 module-surface additions
+
+`src/action-router.ts` exports three functions (full contract
+in `docs/frontend-routing.md`):
+
+| Export | Signature | Behaviour |
+|--------|-----------|-----------|
+| `parseActionFromUrl` | `() => string \| null` | Returns canonical action keyword or `null`. Pure parse — never mutates URL. |
+| `clearActionParam` | `() => void` | `history.replaceState` strips `action=` only. |
+| `handlePwaActionFromUrl` | `() => boolean` | Top-level dispatch. Returns `true` if action handled (caller skips game-bootstrap). |
+
+### W11 boot-sequence ordering invariant
+
+`src/index.ts` MUST call `handlePwaActionFromUrl()` BEFORE the
+W2 game-bootstrap guard fires. If reorganising `index.ts`, keep
+the action-router call immediately after the eager lobby
+import and before any `if (window.location.search) …` clause.
+Vasquez's W11 spec asserts this by probing
+`?action=new-game&game=fake-id` and verifying the renderer
+chunk is **not** fetched.
+
+### W11 manifest schema (producer)
+
+Vasquez's `manifest-fields.spec.ts` (W10) is extended in W11 to
+also assert:
+
+- `shortcuts[]` has at least 3 entries.
+- Every `shortcuts[].url` value with `?action=*` uses a keyword
+  in `docs/frontend-routing.md §3`.
+- `screenshots[].src` resolves to `screenshots/*.png` (not the
+  W10 `img/screenshot-*.auto.png` placeholders).
+- `screenshots[]` has at least one `form_factor: 'wide'` and
+  one `form_factor: 'narrow'` entry.
+
+### W11 file-path artefacts
+
+| Path | Producer (Hicks) | Asserted by |
+|------|------------------|--------------|
+| `static/screenshots/main-game.png` | `scripts/capture-screenshots.js` (W11) | Vasquez's manifest spec (path resolution) |
+| `static/screenshots/spectator-commentary.png` | same | same |
+| `static/screenshots/tournament-dashboard.png` | same | same |
+| `dist/screenshots/*.png` | `vite.config.ts:copyStaticAssets` (W11 update) | Build verification (file existence) |
+| `.vite-cache-metric.json` | `scripts/build-with-cache-metric.js` (W11) | Local + CI cache-effectiveness gate |
+| `.github/workflows/pwa-builder.yml` | Hicks (W11 NEW) | Backend contract test (file-existence pin, similar to W10 `pwa-audit.yml` pin) |
+
+### W11 budget gate
+
+`dist-size.json` K11 row pins:
+- `three-renderer-big` = 466,395 B (`<` 475,000 B target ✅)
+- `autotable-src-eager` = 216,262 B (no change vs W10)
+
+Vasquez's `three-renderer-480-hard.spec.ts` continues to gate at
+< 480 kB hard / < 475 kB soft (W10 thresholds unchanged); the
+W11 strip leaves a 9 kB margin under the soft gate.
+
+### W11 LH13 baseline reference
+
+`docs/frontend-pwa-audit.md §7` (Wave 11) is the canonical
+LH13 calibration table. CI thresholds in
+`.github/workflows/pwa-audit.yml` should reference that table
+verbatim. Re-calibration cadence + procedure documented in the
+same section.
+
+### Cross-pane references (W11 specs ↔ backend pins)
+
+| Playwright spec | Backend xunit pin (expected) |
+|------------------|--------------------------------|
+| `action-router.spec.ts` | `HicksW11FrontendContractTests.ActionRouter_*` |
+| `manifest-shortcuts-w11.spec.ts` | `HicksW11FrontendContractTests.ManifestShortcuts_*` |
+| `pwa-builder-workflow.spec.ts` | `HicksW11FrontendContractTests.PwaBuilderWorkflow_*` |
+| `three-renderer-475-soft.spec.ts` | `HicksW11FrontendContractTests.ThreeRendererBig_W11Soft_*` |
+
+(The exact spec / xunit names are placeholders for Vasquez's
+W11 inventory — listed here as the producer-side expectation.)
+
+Hicks: future producer-side renames of any of the above
+selectors / module exports / file paths require a corresponding
+edit to this footer per the W5 maintenance note.
+
+---
+
+*Phase K Wave 11 — Hicks (Frontend). Footer added in W11 as
+the producer-side mirror of the W7/W8/W9/W10 pattern.*

@@ -391,3 +391,133 @@ PWA screenshot placeholders
 (`img/screenshot-{lobby,table,mobile}.auto.png`) referenced by
 the W10 manifest gap-fills. See `docs/frontend-pwa-audit.md §4`
 for the manifest schema delta.
+
+## §6 — Wave 11: Cache effectiveness metric
+
+W10 §5 wired up `actions/cache@v4` for `node_modules` + `.vite/`
+in the LH13 workflow but had no way to observe whether the cache
+was actually saving work between runs. W11 adds a chunk-hash
+stability metric that measures how many emitted chunks Rollup
+re-uses across builds — a more honest proxy for "cache
+effectiveness" than the cache-step hit/miss flag alone.
+
+### Why not measure `.vite/deps/`?
+
+The W10 plan was to walk `.vite/deps/` and count files whose
+`mtime` matched a prior run. That doesn't work in practice:
+
+- Vite's `optimizeDeps` pre-bundle (which populates `.vite/deps/`)
+  only runs during **dev server** startup. `vite build` does
+  not write to `.vite/deps/` — Rollup processes
+  `node_modules` directly.
+- The cached `.vite/` directory mostly preserves Rollup's
+  internal bookkeeping (`.vite/manifest.json`, plugin caches),
+  which is opaque and version-fragile.
+- An empty `.vite/deps/` directory is the normal post-build
+  state, so the W10 mtime scan would always report "0% cache
+  hit" regardless of the actual `actions/cache` outcome.
+
+### What we measure instead
+
+`scripts/build-with-cache-metric.js` (NEW W11) runs the normal
+`build:vite` pipeline, then parses the emitted chunk names
+(`<name>.<hash:8>.js` format) from `dist/`. It compares the
+`hash:8` segment per chunk against a prior baseline at
+`.vite-cache-metric.json` and computes:
+
+```
+cacheHitRate = stable_hashes / total_chunks
+```
+
+A chunk whose hash is unchanged between runs means Rollup
+re-derived the same module graph + the same bytes from the
+same inputs — which is what an effective cache enables.
+
+### Output schema
+
+```json
+{
+  "wave": "K11",
+  "timestamp": "2025-01-20T12:34:56.789Z",
+  "totalChunks": 22,
+  "stableChunks": 22,
+  "hitRate": 1.0,
+  "chunks": [
+    { "name": "three-renderer", "hash": "7d8e1bf3", "stable": true },
+    ...
+  ]
+}
+```
+
+### Threshold gate
+
+`THRESHOLD=0.7 node scripts/build-with-cache-metric.js` exits
+non-zero if `hitRate < THRESHOLD`. Default threshold is 0 (no
+gate) so local dev doesn't accidentally fail. CI wires it at
+0.70 for warm-cache PR runs — empirically the threshold
+catches both:
+
+- **Dependency churn**: `package-lock.json` rev → most chunks
+  re-hash → hit rate drops to ~0.
+
+- **Inefficient cache key**: a CI cache-key bug that invalidates
+  on every run → hit rate stays at ~0.
+
+A passing build with hit rate ≥ 0.70 means at least 16 of the
+22 chunks were re-used as-is — strong evidence that
+`actions/cache@v4` is doing its job.
+
+### Cold vs warm runs
+
+| Scenario | Expected hit rate | Notes |
+|----------|-------------------|-------|
+| First run on a fresh checkout (cold) | 0.0 | No `.vite-cache-metric.json` baseline to compare against. The script writes the baseline and reports 0. |
+| Immediate rebuild with no source changes (warm) | 1.0 | Every chunk hashes the same. |
+| Rebuild after `npm install` of an unrelated dev-only dep | ≥ 0.95 | Most chunks unaffected; only metadata-touching plugins re-emit. |
+| Rebuild after touching `vite.config.ts` | varies | Plugin order changes can invalidate every chunk; expect 0-0.3. |
+| Rebuild after touching `src/cleanup-store.ts` (eager) | ≥ 0.90 | Only the eager bundle re-hashes; vendor + lazy chunks stable. |
+
+### CI integration
+
+The intended CI shape (W12 hand-off — not wired into
+`pwa-audit.yml` yet because the workflow doesn't run on every
+PR):
+
+```yaml
+- name: build with cache metric
+  run: |
+    cd src/frontend/autotable-src
+    THRESHOLD=0.70 node scripts/build-with-cache-metric.js
+  env:
+    WAVE_NAME: K12
+- name: upload cache metric
+  uses: actions/upload-artifact@v4
+  with:
+    name: vite-cache-metric
+    path: src/frontend/autotable-src/.vite-cache-metric.json
+```
+
+The metric file is git-ignored (see `.gitignore` — added in W11)
+so it stays a CI artefact rather than a tracked file.
+
+### Local invocation
+
+```bash
+cd src/frontend/autotable-src
+WAVE_NAME=K11 npm run build:metric   # first run writes baseline
+WAVE_NAME=K11 npm run build:metric   # second run measures
+```
+
+### Hand-off to W12
+
+- Wire the metric into the W10 LH13 CI workflow once that
+  workflow has at least three nightly cron runs behind it
+  (so the 0.70 threshold isn't gated against an empty cache).
+- Add a `--baseline=path/to/<wave>.json` flag for cross-wave
+  comparisons (today the metric only knows about the prior
+  same-wave run).
+- The metric currently treats chunk rename (e.g. a chunk
+  splitting in two) as 100% miss. A "ancestry-aware" mode that
+  matches by chunk name (ignoring hash) would surface
+  source-cache hits even when chunk identity shifts. Low
+  priority — chunk renames are rare in steady state.

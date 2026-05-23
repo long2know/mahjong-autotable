@@ -16,6 +16,7 @@ import { initSentry } from './sentry';
 import { installI18n } from './i18n';
 import { installAvatarMigrationModalIfNeeded } from './identity';
 import { registerServiceWorker } from './pwa';
+import { handlePwaActionFromUrl } from './action-router';
 
 // Phase J Wave 9 — install i18n before any other UI install hook so
 // chrome paints with the resolved locale (body[lang=…] attribute is
@@ -184,6 +185,14 @@ if (rejoinAtBoot !== null) {
 // renderer chunk has finished downloading.
 initLobby();
 
+// Phase K Wave 11 — PWA shortcut `?action=*` deep-link routing.
+// Must run BEFORE the game-bootstrap import guard below, since the
+// guard treats any non-empty search as a game URL.  Returns true if
+// a PWA shortcut was handled; we then skip the game-bootstrap path
+// so we don't dynamic-import the renderer chunk for a lobby-shaped
+// deep link.  See `docs/frontend-routing.md`.
+const pwaActionHandled = handlePwaActionFromUrl();
+
 // Phase K Wave 2 — Lazy game bootstrap.  Empty search → lobby-only;
 // any query string means the user is either entering a table or
 // resuming via rejoin token, so we dynamic-import the renderer.
@@ -191,6 +200,11 @@ initLobby();
 // Quick Match / Apply paths reload the page (`location.replace`), so
 // they don't need to preload the bootstrap chunk in the lobby tab —
 // the new page load will see a non-empty search and pull it.
-if (window.location.search !== '') {
+//
+// W11 — the action-router strips its own `?action=*` param before
+// returning true, so `window.location.search` here reflects any
+// non-action params still on the URL (e.g. a rejoin token alongside
+// the shortcut).  Empty search after the strip → lobby-only.
+if (!pwaActionHandled && window.location.search !== '') {
   void import('./game-bootstrap').then(mod => mod.bootstrapGame());
 }

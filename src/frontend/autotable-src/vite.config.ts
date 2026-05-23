@@ -221,6 +221,30 @@ function copyStaticAssets(): {
         const dst = `${out}/img/${name}`;
         if (existsSync(src)) copyFileSync(src, dst);
       }
+      // Phase K Wave 11 — Real PWA screenshots captured by
+      // Playwright (see `scripts/capture-screenshots.js`).  These
+      // live under `static/screenshots/` (committed) and are
+      // copied to `dist/screenshots/` so the W11 manifest's new
+      // `screenshots[]` form_factor + label entries resolve.  The
+      // W10 placeholder copy above stays as a safety net for
+      // schemas that point at the legacy `img/screenshot-*` paths.
+      const realScreenshots = [
+        'main-game.png',              // 1024×768, form_factor: wide
+        'spectator-commentary.png',   // 768×1024, form_factor: narrow
+        'tournament-dashboard.png',   // 1024×768, form_factor: wide
+      ];
+      const realScreenshotsSrc = `${root}/static/screenshots`;
+      const realScreenshotsDst = `${out}/screenshots`;
+      if (existsSync(realScreenshotsSrc)) {
+        if (!existsSync(realScreenshotsDst)) {
+          mkdirSync(realScreenshotsDst, { recursive: true });
+        }
+        for (const name of realScreenshots) {
+          const src = `${realScreenshotsSrc}/${name}`;
+          const dst = `${realScreenshotsDst}/${name}`;
+          if (existsSync(src)) copyFileSync(src, dst);
+        }
+      }
     },
   };
 }
@@ -628,6 +652,155 @@ function stripWebGLShadowMap(): { name: string; enforce: 'pre'; transform(code: 
   return stripModuleFeatures();
 }
 
+// ── Phase K Wave 11 — ShaderChunk barrel surgery ────────────────
+//
+// W10 left the heavy renderer chunk at 497.44 kB, missing the
+// <480 kB stretch ceiling by ~17 kB.  The autopsy in
+// `docs/frontend-three-budget.md §6` traced the remaining bulk to
+// the GLSL shader-string consts inside three.module.js — they're
+// re-exported through the `ShaderChunk` / `ShaderLib` barrel and
+// Rollup keeps the entire barrel as a single unit (it can't drop
+// individual properties from a named-export object literal).
+//
+// W11 takes a surgical approach: walk the source of three.module.js
+// in the Vite `transform()` hook, identify the shader-string consts
+// keyed off the ShaderLib registry, and replace the unused ones
+// with empty strings.  The barrel re-export stays intact (so any
+// runtime lookup like `ShaderLib.meshphysical_frag` still resolves);
+// the *bodies* (each 1-4 kB of GLSL) drop out of the emitted chunk.
+//
+// Scene-graph audit (re-confirmed W11): the autotable uses
+//   • `MeshBasicMaterial` (object-view.ts)
+//   • `MeshLambertMaterial` (asset-loader, center, thing-group)
+//   • `LineBasicMaterial` (selection-box, mouse-ui) — shares
+//     "basic" ShaderLib entry with MeshBasicMaterial
+//   • `ShaderMaterial` (scene-effects' CustomOutline shader)
+// — every other material class is either stubbed (W9) or unused.
+//
+// Three's standard ShaderLib name → const-suffix mapping
+// (line 660-720 of three.module.js, also documented in three.js's
+// `src/renderers/shaders/ShaderLib.js`):
+//
+//   meshbasic    → vertex$a, fragment$a   KEEP
+//   meshlambert  → vertex$9, fragment$9   KEEP
+//   background   → vertex$h, fragment$h   strip (no scene.background)
+//   backgroundCube → vertex$g, fragment$g strip (no cube/equirect bg)
+//   cube         → vertex$f, fragment$f   strip (no sky cube shader)
+//   depth        → vertex$e, fragment$e   strip (W9 shadow strip)
+//   distanceRGBA → vertex$d, fragment$d   strip (W9 shadow strip)
+//   equirect     → vertex$c, fragment$c   strip (no equirect maps)
+//   linedashed   → vertex$b, fragment$b   strip (no dashed lines)
+//   meshmatcap   → vertex$8, fragment$8   strip (W9 matcap stub)
+//   meshnormal   → vertex$7, fragment$7   strip (W9 normal stub)
+//   meshphong    → vertex$6, fragment$6   strip (W9 phong stub)
+//   meshphysical → vertex$5, fragment$5   strip (W9 PBR stub) — BIGGEST
+//   meshtoon     → vertex$4, fragment$4   strip (W9 toon stub)
+//   points       → vertex$3, fragment$3   strip (W9 points stub)
+//   shadow       → vertex$2, fragment$2   strip (W9 shadow stub)
+//   sprite       → vertex$1, fragment$1   strip (W9 sprite stub)
+//
+// Plus the `cube_uv_reflection_fragment` ShaderChunk (line 344 of
+// three.module.js, ~2.3 kB).  It's `#include`d by meshlambert_frag
+// (and meshphysical_frag, but that's stripped) inside an
+// `#ifdef ENVMAP_TYPE_CUBE_UV` guard.  Our scene never sets a
+// cubeUV env map (asset-loader uses only 2D PNG textures), so the
+// guard never evaluates true at GLSL compile time — the include
+// resolves to an empty string and the GLSL preprocessor strips the
+// guarded block.
+//
+// Standalone `vertex` / `fragment` at line ~8400 are the VSM shadow
+// blur shader inside the W9-stubbed WebGLShadowMap; they're now
+// unreachable but Rollup keeps them as named exports of the same
+// scope.  Strip them too.
+//
+// Risk + back-out: if the strip causes WebGL compile errors at
+// runtime (e.g. an unexpected scene introduces an envMap or sets
+// scene.background), the symptom is a black canvas + a console
+// "ERROR: 0:N: '...': syntax error" message.  Disable
+// `stripUnusedShaderChunks()` from the `plugins:` array below to
+// roll back.  The unstripped baseline lives at W10's 497.44 kB.
+const SHADER_CHUNKS_TO_EMPTY = [
+  // ShaderChunk barrel: unused chunks (mostly env-map related).
+  'cube_uv_reflection_fragment',
+];
+
+const SHADER_STRINGS_TO_EMPTY = [
+  // Background / sky / env shaders — none of these are used.
+  'vertex$h', 'fragment$h',     // background (non-cube)
+  'vertex$g', 'fragment$g',     // backgroundCube
+  'vertex$f', 'fragment$f',     // cube (sky)
+  'vertex$e', 'fragment$e',     // depth (W9 shadow stub)
+  'vertex$d', 'fragment$d',     // distanceRGBA (W9 shadow stub)
+  'vertex$c', 'fragment$c',     // equirect
+  'vertex$b', 'fragment$b',     // linedashed
+  'vertex$8', 'fragment$8',     // meshmatcap
+  'vertex$7', 'fragment$7',     // meshnormal
+  'vertex$6', 'fragment$6',     // meshphong
+  'vertex$5', 'fragment$5',     // meshphysical (PBR — biggest)
+  'vertex$4', 'fragment$4',     // meshtoon
+  'vertex$3', 'fragment$3',     // points
+  'vertex$2', 'fragment$2',     // shadow
+  'vertex$1', 'fragment$1',     // sprite
+  // Standalone VSM blur shader pair (WebGLShadowMap is stubbed).
+  // Plain `vertex`/`fragment` identifiers — handled separately.
+];
+
+function stripUnusedShaderChunks(): { name: string; enforce: 'pre'; transform(code: string, id: string): { code: string; map: null } | null } {
+  return {
+    name: 'autotable-three-shaderchunk-strip',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.includes('/three/build/three.module.js')) return null;
+
+      const before = code.length;
+      let out = code;
+      let replaced = 0;
+
+      // Empty each ShaderChunk constant (`var X = "..."`).
+      for (const name of SHADER_CHUNKS_TO_EMPTY) {
+        const re = new RegExp(`^var\\s+${name}\\s*=\\s*"([\\s\\S]*?)";`, 'm');
+        const m = re.exec(out);
+        if (m === null) continue;
+        out = out.slice(0, m.index) + `var ${name} = "";` + out.slice(m.index + m[0].length);
+        replaced++;
+      }
+
+      // Empty each unused fragment$X / vertex$X (`const X = "..."`).
+      for (const name of SHADER_STRINGS_TO_EMPTY) {
+        // `$` is a regex metachar but JS allows it raw in identifiers;
+        // escape it for the regex while keeping it in the replacement.
+        const esc = name.replace(/\$/g, '\\$');
+        const re = new RegExp(`^const\\s+${esc}\\s*=\\s*"([\\s\\S]*?)";`, 'm');
+        const m = re.exec(out);
+        if (m === null) continue;
+        out = out.slice(0, m.index) + `const ${name} = "";` + out.slice(m.index + m[0].length);
+        replaced++;
+      }
+
+      // Standalone `const vertex` / `const fragment` pair (VSM blur,
+      // inside the W9-stubbed WebGLShadowMap scope).  Anchored on
+      // word-boundary so we don't accidentally match e.g.
+      // `const vertexCount = ...` if a future three.js refactor adds
+      // such a sibling.
+      const standalonePairs: Array<{ name: 'vertex' | 'fragment' }> = [
+        { name: 'vertex' }, { name: 'fragment' },
+      ];
+      for (const { name } of standalonePairs) {
+        const re = new RegExp(`^const\\s+${name}\\s*=\\s*"([\\s\\S]*?)";`, 'm');
+        const m = re.exec(out);
+        if (m === null) continue;
+        out = out.slice(0, m.index) + `const ${name} = "";` + out.slice(m.index + m[0].length);
+        replaced++;
+      }
+
+      if (replaced === 0) return null;
+      const after = out.length;
+      console.log(`[shaderchunk-strip] ${id.split('node_modules/').pop()} — emptied ${replaced} shader string(s), saved ${(before - after).toLocaleString()} chars (${before.toLocaleString()} → ${after.toLocaleString()})`);
+      return { code: out, map: null };
+    },
+  };
+}
+
 
 //
 // Wave 3 ships `scripts/generate-sw-manifest.js` which:
@@ -809,5 +982,5 @@ export default defineConfig({
   esbuild: {
     legalComments: 'none',
   },
-  plugins: [stripUnusedThreeMaterials(), stripWebGLShadowMap(), copyStaticAssets(), runSwManifestScript(), appendDistSize()],
+  plugins: [stripUnusedThreeMaterials(), stripWebGLShadowMap(), stripUnusedShaderChunks(), copyStaticAssets(), runSwManifestScript(), appendDistSize()],
 });
