@@ -33,13 +33,20 @@
     ]
   },
   "shared_files": {
-    "description": "Phase K Wave 8 — Vasquez refinement. Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case: tests/selectors.md (and src/frontend/autotable-src/tests/selectors.md) catalogs cross-pane Playwright selectors; both Hicks (when adding a selector for a new UI testid) and Vasquez (when documenting a spec that pins that testid) legitimately author the file.",
+    "description": "Phase K Wave 8 — Vasquez refinement (broadened in Wave 10). Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case. agent_handoff_protocol_md_shared (added in W10) recognises that docs/agent-handoff-protocol.md is co-authored by Vasquez (concurrent-agent safety + stash-discipline) and Apone (branch-protection runbook + lock-file relocation).",
     "selectors_md_shared": {
       "paths": [
         "^src/frontend/autotable-src/tests/selectors\\.md$",
         "^tests/selectors\\.md$"
       ],
       "authors": ["hicks", "vasquez"],
+      "primary": "vasquez"
+    },
+    "agent_handoff_protocol_md_shared": {
+      "paths": [
+        "^docs/agent-handoff-protocol\\.md$"
+      ],
+      "authors": ["apone", "vasquez"],
       "primary": "vasquez"
     }
   },

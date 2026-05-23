@@ -607,3 +607,204 @@ git stash pop
 Never. If an emergency `main` push is needed, follow the squad
 charter's hot-fix procedure (see `.squad/charter.md` § Hot fixes)
 instead of bypassing the checkpoint discipline.
+
+---
+
+## 5. Concurrent agent safety guarantees (W10 — Vasquez)
+
+> **Status.** Phase K Wave 10 — Vasquez (QA). This section
+> consolidates every concurrent-agent safety mechanism that has
+> accumulated across Waves 6–10 into a single normative
+> reference. Each agent prompt and the onboarding doc cite
+> §5 from W10 onwards.
+
+When two or more squad agents work the same branch in parallel,
+the following invariants MUST hold. Each invariant cites the
+mechanism that enforces it and the wave in which the mechanism
+landed.
+
+### 5.1. Critical section: lock at `.work/squad-git-lock`
+
+The `git add` + `git commit` + (rebase) + `git push` triplet is
+the critical section. Every agent serialises through:
+
+```bash
+( flock -w 120 9 || { echo "lock-timeout" >&2; exit 1; }
+  # critical section here
+) 9>.work/squad-git-lock
+```
+
+* **Path is `.work/squad-git-lock`** — relocated from `/tmp/`
+  in W9/W10 (see §3.6) because some agent runtimes block writes
+  under `/tmp/`. The `.work/` dir is gitignored.
+* **Timeout is 120s** — long enough that a normal commit
+  finishes; short enough that a stuck agent doesn't deadlock
+  the squad.
+* **Rebase happens INSIDE the flock** — see §3.7. Rebasing
+  before acquiring the lock can race against another agent's
+  push.
+
+### 5.2. Backup discipline: `.work/<agent>-w<N>-safe/`
+
+Per-agent, per-wave backup directories under `.work/` mirror
+the work-in-progress on disk. They survive `git stash`, `git
+reset --hard`, and a concurrent agent's `git clean -fdx`
+because they're outside the index AND outside the working-tree
+attribution.
+
+The canonical layout:
+
+```
+.work/
+├── squad-git-lock                       # the mutex itself
+├── bishop-w<N>-safe/                    # Bishop's per-wave backup
+│   ├── backend/                         #   mirrored source files
+│   └── migrations/                      #   mirrored EF migrations
+├── hicks-w<N>-safe/                     # Hicks's per-wave backup
+│   ├── frontend/                        #   mirrored Vite + Three sources
+│   └── e2e/                             #   mirrored Playwright specs
+├── apone-w<N>-safe/                     # Apone's per-wave backup
+│   ├── workflows/                       #   mirrored CI workflows
+│   ├── helm/                            #   mirrored helm charts
+│   └── terraform/                       #   mirrored TF modules
+└── vasquez-w<N>-safe/                   # Vasquez's per-wave backup
+    ├── backend/                         #   mirrored test files
+    ├── ci/                              #   mirrored tests/ci/
+    ├── docs/                            #   mirrored docs additions
+    ├── playwright/                      #   mirrored e2e specs
+    └── squad/                           #   mirrored memos + history
+```
+
+Agents back up after each non-trivial authoring step (file
+authored, file modified, test green) BEFORE they enter the
+flock-wrapped commit critical section. The directory layout
+matches the regex `\.work/[a-z]+-w\d+-safe` which the W10
+self-lane test
+(`HandoffProtocol_Section5_DocumentsLockPath_BackupDirs_DbSerial`)
+asserts is documented here.
+
+### 5.3. Stash-discipline: NEVER `--include-untracked` for protective checkpoints
+
+The W9 retro identified that `git stash --include-untracked`
+under concurrent execution can wipe other agents' untracked
+files. Two W9 incidents confirmed this — both wiped the
+`Phase_K_W9/` per-agent dirs that contained in-flight memos.
+
+The W10 rule:
+
+* **Use `git stash push`** (NO `--include-untracked`) when you
+  need to roll back tracked-modified files temporarily for a
+  build-in-isolation check.
+* **Use `.work/<agent>-w<N>-safe/`** (a real directory, not a
+  stash) when you need to *back up* in-flight work that the
+  other agents might overwrite.
+* **NEVER use `git clean -fdx`** to "tidy up" before commit.
+  Other agents' untracked WIP is not yours to remove.
+
+The bundling-check's `shared_files` table (§5.5 below) plus
+the lane-map exclusions are what allow multiple agents to
+co-author shared files safely; the `.work/` backup discipline
+is what makes accidental deletes recoverable.
+
+### 5.4. Lane discipline + `shared_files` allowlist
+
+`tests/ci/check-cross-lane-bundling.sh` (Vasquez, W6→W10)
+rejects any commit whose changed paths span more than one
+agent's lane. The `shared_files` allowlist in
+`tests/ci/lane-map.json` carves out specific paths that
+legitimately span lanes:
+
+| Shared file                          | Authors          | Primary lane | Wave landed |
+| ------------------------------------ | ---------------- | ------------ | ----------- |
+| `tests/selectors.md`                 | hicks, vasquez   | vasquez      | W8          |
+| `src/frontend/.../tests/selectors.md`| hicks, vasquez   | vasquez      | W8          |
+| `docs/agent-handoff-protocol.md`     | apone, vasquez   | vasquez      | W10         |
+
+For these files, the bundling-check strips them from the
+per-commit lane set BEFORE computing single-lane attribution,
+so a commit touching ONLY a shared file + the author's own
+lane doesn't trigger a false positive.
+
+### 5.5. Rebase-inside-flock (W9 hardening)
+
+The bare `git push` can race against another agent's push if
+the rebase happens BEFORE entering the flock. The canonical
+order INSIDE the lock:
+
+1. `git fetch origin <branch>`
+2. `git rebase origin/<branch>`  ← rebase HERE, inside flock
+3. `git add <paths>`             ← stage explicit Vasquez/agent paths
+4. `git commit -m "..." --author="..."`
+5. `git push origin <branch>`
+
+If the rebase fails inside the flock, abort cleanly:
+`git rebase --abort && exit 1`. Do NOT push a half-rebased
+state.
+
+### 5.6. `[Collection("DbSerial")]` for DB-touching tests
+
+The W9 retro identified that the EF Core + SQLite test fixture
+contention is a CONCURRENT-AGENT safety issue at the *test
+suite* layer. Two parallel test classes that both build a
+`WebApplicationFactory<Program>` can corrupt each other's
+EF model cache. The W10 mitigation:
+
+* `src/backend/tests/Mahjong.Autotable.Api.Tests/Collections/DbSerialCollection.cs`
+  defines the `DbSerial` xUnit collection with
+  `DisableParallelization = true`.
+* Bishop's W11 deliverable: attribute each DB-touching test
+  class with `[Collection("DbSerial")]`.
+* `docs/test-architecture.md` §3 documents the policy.
+
+This is concurrent-agent safety at the TEST level, but it
+belongs in the handoff doc because the migration is a
+cross-wave, cross-agent change.
+
+### 5.7. Branch-protection alignment
+
+The lane-discipline workflow (`.github/workflows/lane-discipline-status.yml`)
+runs on every PR and must be required-for-merge via GitHub
+branch protection. See §4 above for the `gh api` runbook.
+Without branch protection, the bundling check is informational
+only — an agent can land a cross-lane commit even when the
+check fails.
+
+### 5.8. Quick-reference: pre-commit safety checklist
+
+Every agent runs through this checklist BEFORE entering the
+flock:
+
+```text
+[ ] My work-in-progress is mirrored in .work/<agent>-w<N>-safe/
+[ ] I have NOT run `git stash --include-untracked`
+[ ] I have NOT run `git clean -fdx`
+[ ] My staging plan touches ONLY paths in my lane (per lane-map.json)
+[ ] If I touch a shared_files entry, my identity is in `authors`
+[ ] My tests (or the suite gate) pass in isolation
+[ ] My commit message includes the wave tag + Co-authored-by trailer
+```
+
+Inside the flock:
+
+```text
+[ ] git fetch origin <branch>
+[ ] git rebase origin/<branch>  (abort cleanly if it fails)
+[ ] git add <explicit lane paths>
+[ ] git commit --author="<Agent> <agent@squad.mahjong>"
+[ ] git push origin <branch>
+```
+
+The W10 self-lane test
+`Phase_K_W10/Vasquez/VasquezW10SelfLaneTests.cs` pins this
+section's existence via `Concurrent agent safety`, the
+`.work/squad-git-lock` literal, the `\.work/[a-z]+-w\d+-safe`
+regex, and the `DbSerial` literal so future waves cannot
+silently delete the policy.
+
+---
+
+*Phase K Wave 10 — Vasquez (QA). Section §5 added in W10 as the
+W9 retro action item "consolidate concurrent-agent safety into
+a single normative section". Co-owned with Apone (the lock-path
+relocation §3.6 + branch-protection §4 are his).*
+

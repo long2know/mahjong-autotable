@@ -2047,3 +2047,67 @@ locally via the recipes in `docs/frontend-pwa-audit.md §2`.
 cold-build path should set the `VITE_FORCE_DEP_PRE_BUNDLE`
 env var or remove the directory before invoking the build.
 This is a CI / harness concern only; no DOM surface.
+
+## Phase K Wave 10 — Vasquez Playwright additions (W10 spec inventory)
+
+The W10 wave adds six chromium-only, forward-stage-tolerant
+specs that pin the surfaces Hicks documented in the W10 footer
+above. Each spec follows the W9 selectors-inventory pattern:
+soft-pass when the surface isn't observable, hard-assert when it
+is. Together they raise the E2E count from ~20 (W9) to ~26 (W10).
+
+### Spec inventory (all chromium-only, all forward-stage tolerant)
+
+| Spec | Asserts | Soft-pass condition |
+|------|---------|---------------------|
+| `three-renderer-480-hard.spec.ts` | `dist-size.json` K10 entry ≤ 480 KB (with W9 510 KB regression backstop) | no K10 entry yet OR mid-strip between 480 KB and 510 KB |
+| `commentary-dispatch.spec.ts` | click on `data-testid="commentary-tileref-<row>-<idx>"` dispatches `mahjong:highlight-tile` with `detail.tileId` set | autotable shell or commentary tile-refs not in DOM |
+| `pwa-audit-workflow.spec.ts` | `.github/workflows/pwa-audit.yml` declares `name: PWA*`, `on: pull_request`, and an `audit`/`pwa-audit`/`lighthouse` job | workflow not mirror-served by dev server |
+| `manifest-fields.spec.ts` | `manifest.webmanifest` carries description (≥ 30 chars), categories[], screenshots[] (well-shaped), shortcuts[] | manifest unreachable or individual fields not yet authored |
+| `bracket-canonical-no-fallback.spec.ts` | unknown bracket kind triggers `data-testid="bracket-renderer-error"` containing `unknown bracket`; valid single-elim renders `round-heading` testids | `bracket-demo` route or `window.mahjongBracketRenderer` missing |
+| `redis-idempotency-replay.spec.ts` | POST `/api/games` with same `Idempotency-Key` + same payload returns identical body; with same key + DIFFERENT payload returns 409 (or 422 collapse) | endpoint unreachable, requires auth, or replay-conflict not yet enforced |
+
+### W10 testid additions (Vasquez side, mirrored from W10 footer)
+
+| Testid | Owner | Producer (Hicks) | Consumer (Vasquez spec) |
+|--------|-------|------------------|--------------------------|
+| `commentary-tileref-<row>-<idx>` | Hicks | `commentary-panel.ts` | `commentary-dispatch.spec.ts` |
+| `bracket-renderer-root` | Hicks | `bracket-renderer.ts` | `bracket-canonical-no-fallback.spec.ts` |
+| `bracket-renderer-error` | Hicks | `bracket-renderer.ts` (W10 strict mode) | `bracket-canonical-no-fallback.spec.ts` |
+| `round-heading-<n>` | Hicks | `bracket-renderer.ts` | `bracket-canonical-no-fallback.spec.ts` |
+
+### W10 DOM-event additions
+
+| Event | Direction | Owner | Consumer |
+|-------|-----------|-------|----------|
+| `mahjong:highlight-tile` (with `detail.source === 'commentary-panel'`) | document → scene-shell | Hicks (commentary-panel) | `commentary-dispatch.spec.ts` (round-trip check) |
+
+### Cross-pane references (backend contract test pins)
+
+The W10 Playwright specs each have a backend contract-test
+counterpart under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W10/Vasquez/`
+so the surface is double-pinned: at the API/file/reflection layer
+(backend xunit) and at the rendered-DOM/HTTP layer (Playwright).
+This is the W10 "double-pin" convention — see
+`docs/test-architecture.md §4.2` for the gap-analysis rationale.
+
+| Playwright spec | Backend xunit pin |
+|------------------|--------------------|
+| `commentary-dispatch.spec.ts` | `HicksW10FrontendContractTests.CommentaryTileRef_*` |
+| `three-renderer-480-hard.spec.ts` | `HicksW10FrontendContractTests.ThreeRendererBig_*` |
+| `pwa-audit-workflow.spec.ts` | `HicksW10FrontendContractTests.PwaAuditWorkflow_*` |
+| `manifest-fields.spec.ts` | `HicksW10FrontendContractTests.ManifestFields_*` |
+| `bracket-canonical-no-fallback.spec.ts` | `HicksW10FrontendContractTests.BracketRenderer_CanonicalShape_*` |
+| `redis-idempotency-replay.spec.ts` | `BishopW10RedisIdempotencyClientTests.*` |
+
+Hicks: when you wire any of the producer-side testids above (or
+move them to a new location), append the canonical citation here
+per the W5 maintenance note. Vasquez will roll those edits into
+the next-wave footer.
+
+---
+
+*Phase K Wave 10 — Vasquez (QA). Footer added in W10 as the
+spec inventory + cross-pane mapping mirroring the W7/W8/W9
+pattern.*

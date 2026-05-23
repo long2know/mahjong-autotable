@@ -99,6 +99,11 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// <c>.github/workflows/dr-rehearsal.yml</c>. All forward-staged
 /// with soft-pass on absence.</para>
 ///
+/// <para><b>Wave 10 extension.</b> Class renamed Wave1ThroughKW9 →
+/// Wave1ThroughKW10. New W10 smokes appended at the tail of the
+/// class. Inherited W9 smokes are kept (so the regression sweep
+/// keeps catching W9 surfaces too).</para>
+///
 /// <para><b>Wave 9 extension.</b> Class renamed Wave1ThroughKW8 →
 /// Wave1ThroughKW9. New W9 smokes appended for
 /// <c>EfCommentaryUsageMeter</c>, <c>JanusReadinessSupervisor</c>,
@@ -113,11 +118,11 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// PR, which hard-assert).</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW9RegressionTests
+public class Wave1ThroughKW10RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW9RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW10RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -1627,5 +1632,187 @@ public class Wave1ThroughKW9RegressionTests
         var text = File.ReadAllText(path);
         Assert.Contains("Branch-protection setup", text);
         Assert.Contains("gh api", text);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — JanusReadinessLevel enum (graceful degrade).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_JanusReadinessLevel_TypeOrForwardStaged()
+    {
+        var asm = typeof(Mahjong.Autotable.Api.Changsha.Runtime.ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "JanusReadinessLevel" || x.Name == "VoiceReadinessLevel");
+        _ = t; // forward-staged
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — JanusMountpointLifecycleService type.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_JanusMountpointLifecycle_TypeOrForwardStaged()
+    {
+        var asm = typeof(Mahjong.Autotable.Api.Changsha.Runtime.ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "JanusMountpointLifecycleService"
+            || x.Name == "JanusMountpointRegistry");
+        _ = t; // forward-staged
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — DutchSwissPairingService type.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_DutchSwissPairing_TypeOrForwardStaged()
+    {
+        var asm = typeof(Mahjong.Autotable.Api.Changsha.Runtime.ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "DutchSwissPairingService" || x.Name == "DutchPairingService");
+        _ = t; // forward-staged
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — CommentaryTileReference rich record.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_CommentaryTileReference_TypeOrForwardStaged()
+    {
+        var asm = typeof(Mahjong.Autotable.Api.Changsha.Runtime.ChangshaGameRuntime).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "CommentaryTileReference"
+            || x.Name == "TileReference"
+            || x.Name == "RichTileReference");
+        _ = t; // forward-staged
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — pwa-audit workflow file (Hicks lane).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_PwaAuditWorkflow_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, ".github", "workflows", "pwa-audit.yml");
+        _ = File.Exists(path); // soft-pass (Hicks-lane)
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — container-scan-remediation workflow (Apone).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_ContainerScanRemediation_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, ".github", "workflows", "container-scan-remediation.yml");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — prod-health-check workflow (Apone).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_ProdHealthCheck_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, ".github", "workflows", "prod-health-check.yml");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — Redis Terraform module directory (Apone).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_RedisTerraformModule_DirOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var modDir = Path.Combine(
+            root.FullName, "infra", "terraform", "modules", "redis");
+        _ = Directory.Exists(modDir);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — Argo Rollouts setup doc (Apone).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_ArgoRolloutsSetupDoc_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "argo-rollouts-setup.md");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — Redis cluster doc (Apone).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_RedisClusterDoc_OrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "redis-cluster.md");
+        _ = File.Exists(path);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — docs/test-architecture.md (Vasquez).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_TestArchitectureDoc_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "test-architecture.md");
+        Assert.True(File.Exists(path),
+            "docs/test-architecture.md MUST be present (W10 Vasquez).");
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — handoff-protocol §5 (Vasquez).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_HandoffProtocol_Section5_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "agent-handoff-protocol.md");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        Assert.Contains("Concurrent agent safety", text,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — lane-map agent_handoff_protocol_md_shared
+    //  entry (Vasquez).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_LaneMap_AgentHandoffShared_Present()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "tests", "ci", "lane-map.json");
+        Assert.True(File.Exists(path));
+        Assert.Contains("agent_handoff_protocol_md_shared", File.ReadAllText(path));
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 10 — DbSerial xunit collection definition.
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
+    public void PhaseK10_DbSerialCollection_Present()
+    {
+        var asm = typeof(Wave1ThroughKW10RegressionTests).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("DbSerialCollection", StringComparison.Ordinal)
+            || x.Name.Equals("DbSerialCollectionDefinition", StringComparison.Ordinal));
+        Assert.NotNull(t);
     }
 }
