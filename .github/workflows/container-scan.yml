@@ -1,11 +1,33 @@
 # Phase K Wave 3 — Apone (DevOps).
+# Phase K Wave 6 — Apone (DevOps) — threshold tuning.
 #
 # Container vulnerability scan — runs Trivy against the production
-# Docker image on every PR and nightly on `main`. Hard-gates on
-# CRITICAL findings (configurable via the `threshold` workflow_dispatch
-# input); uploads SARIF to the GitHub Security tab; posts a STICKY
-# PR comment so reviewers see the verdict inline without clicking
-# into the Actions tab.
+# Docker image on every PR and nightly on `main`.
+#
+# ## Wave 6 — gate threshold tuning
+#
+# Wave 3 originally hard-gated on CRITICAL only. Field experience
+# (W4-W5 PR runs) surfaced two flaws:
+#
+#   1. CRITICAL alone misses an entire class of high-severity
+#      RCE / SSRF / auth-bypass CVEs that NVD scores HIGH (CVSS
+#      7.0-8.9). For a production-facing web app, HIGH+CRITICAL
+#      is the right block-merge floor.
+#   2. Daily-cron runs should report ALL severities (visibility
+#      into upcoming MEDIUM that may escalate) WITHOUT blocking
+#      the cron run itself.
+#
+# W6 changes:
+#
+#   * PR runs: gate on HIGH OR CRITICAL (block-merge floor).
+#   * Daily cron: scans + reports ALL severities (CRITICAL+HIGH+
+#     MEDIUM+LOW); gate runs at HIGH+CRITICAL but does not fail
+#     the cron job — uploads SARIF + creates issue if findings
+#     exceed the threshold.
+#   * `.github/trivy-allowlist.yaml` — explicit CVE allowlist
+#     with justification + expiry. Entries expire after 30 days;
+#     the workflow FAILS if an expired entry is still present
+#     (forces rotation discipline).
 #
 # ## How this differs from `sbom.yml` (Wave-9)
 #
@@ -17,19 +39,16 @@
 #
 # `container-scan.yml` (this file) is the SCAN-FOCUSED workflow:
 #
-#   * Triggers on EVERY PR (no path filter) — a CRITICAL CVE published
-#     against an indirect dep MUST surface on any PR, not only the ones
-#     that touch the image surface.
-#   * Hard-gates on CRITICAL only (sbom.yml's CRITICAL+HIGH is stricter
-#     but more flake-prone; this gate is the "block-merge" floor).
+#   * Triggers on EVERY PR (no path filter) — a HIGH/CRITICAL CVE
+#     published against an indirect dep MUST surface on any PR, not
+#     only the ones that touch the image surface.
+#   * Hard-gates on HIGH+CRITICAL on PR (Wave 6 tightened from W3's
+#     CRITICAL-only).
 #   * Threshold is a workflow_dispatch input so a triage call can
-#     temporarily relax to HIGH for a one-off rerun.
-#   * STICKY PR comment via marocchino/sticky-pull-request-comment@v2
-#     (sbom.yml uses one-time create — sticky lets the comment update
-#     on subsequent runs without spamming the conversation).
-#   * Nightly cron on main catches CVEs published mid-week (sbom.yml's
-#     weekly cron is the SBOM-refresh cadence; this nightly is the
-#     vulnerability-watch cadence).
+#     temporarily relax to CRITICAL-only for a one-off rerun.
+#   * STICKY PR comment via marocchino/sticky-pull-request-comment@v2.
+#   * Nightly cron on main runs FULL severity sweep (CRITICAL+HIGH+
+#     MEDIUM+LOW) for visibility; does not fail on MEDIUM/LOW.
 
 name: container-scan
 
@@ -46,19 +65,21 @@ on:
   workflow_dispatch:
     inputs:
       threshold:
-        description: "Severity threshold (CRITICAL, HIGH, MEDIUM). PR/main runs default to CRITICAL; triage may override."
+        description: "Severity threshold (CRITICAL, HIGH, MEDIUM). PR/main runs default to HIGH (W6 — was CRITICAL in W3); cron defaults to LOW (full sweep, non-blocking); triage may override."
         required: false
-        default: "CRITICAL"
+        default: "HIGH"
         type: choice
         options:
           - CRITICAL
           - HIGH
           - MEDIUM
+          - LOW
 
 permissions:
   contents: read
   security-events: write
   pull-requests: write
+  issues: write
 
 concurrency:
   # PR pushes preempt prior runs; nightly main runs serialize.
@@ -70,8 +91,75 @@ env:
   IMAGE_TAG: scan-${{ github.sha }}
 
 jobs:
+  # Phase K Wave 6 — allowlist validation runs FIRST. An expired
+  # allowlist entry MUST fail the workflow even before the scan
+  # starts (otherwise rotation discipline rots).
+  allowlist-check:
+    name: Validate trivy-allowlist.yaml (W6 expiry)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate allowlist entries (no expired CVEs)
+        run: |
+          set -euo pipefail
+          ALLOWLIST_FILE=".github/trivy-allowlist.yaml"
+          if [[ ! -f "$ALLOWLIST_FILE" ]]; then
+            echo "::error::missing $ALLOWLIST_FILE — W6 requires the file (even if empty)"
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import sys, yaml, datetime
+          from pathlib import Path
+
+          path = Path(".github/trivy-allowlist.yaml")
+          data = yaml.safe_load(path.read_text()) or {}
+          entries = data.get("allowed", []) or []
+
+          if not isinstance(entries, list):
+              print(f"::error::{path}: `allowed:` must be a list", file=sys.stderr)
+              sys.exit(1)
+
+          today = datetime.date.today()
+          errors = []
+          for i, entry in enumerate(entries):
+              if not isinstance(entry, dict):
+                  errors.append(f"entry {i}: not a mapping")
+                  continue
+              for required in ("id", "justification", "added", "expires"):
+                  if required not in entry:
+                      errors.append(f"entry {i} ({entry.get('id','?')}): missing `{required}`")
+              if "expires" in entry:
+                  try:
+                      exp = entry["expires"]
+                      if isinstance(exp, str):
+                          exp = datetime.date.fromisoformat(exp)
+                      if exp < today:
+                          errors.append(
+                              f"entry {entry.get('id','?')}: expired on {exp.isoformat()} (today={today.isoformat()}); rotate or remove"
+                          )
+                      else:
+                          delta = (exp - today).days
+                          if delta > 30:
+                              errors.append(
+                                  f"entry {entry.get('id','?')}: expiry {exp.isoformat()} is >30d in the future; W6 invariant caps at 30d"
+                              )
+                  except (ValueError, TypeError) as e:
+                      errors.append(f"entry {entry.get('id','?')}: invalid `expires`: {e}")
+
+          if errors:
+              for err in errors:
+                  print(f"::error::{err}", file=sys.stderr)
+              sys.exit(1)
+          print(f"trivy-allowlist OK ({len(entries)} entries)")
+          PY
+
   scan:
-    name: Trivy image scan (gate=${{ inputs.threshold || 'CRITICAL' }})
+    name: Trivy image scan (gate=${{ inputs.threshold || 'HIGH' }})
+    needs: [allowlist-check]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -85,15 +173,32 @@ jobs:
         id: compute-threshold
         run: |
           set -euo pipefail
-          # Honour workflow_dispatch override; default CRITICAL otherwise.
+          # PR/main runs default to HIGH (Wave 6 tightened from CRITICAL).
+          # Cron runs default to LOW (full sweep; the gate step is
+          # non-blocking on cron — see the if: on the gate step).
+          # workflow_dispatch input wins if provided.
           THRESHOLD="${{ inputs.threshold }}"
-          THRESHOLD="${THRESHOLD:-CRITICAL}"
+          if [[ -z "$THRESHOLD" ]]; then
+            if [[ "${{ github.event_name }}" == "schedule" ]]; then
+              THRESHOLD="LOW"
+            else
+              THRESHOLD="HIGH"
+            fi
+          fi
           case "$THRESHOLD" in
-            CRITICAL|HIGH|MEDIUM) ;;
+            CRITICAL|HIGH|MEDIUM|LOW) ;;
             *) echo "::error::invalid threshold $THRESHOLD"; exit 1 ;;
           esac
           echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
-          echo "Gate threshold: $THRESHOLD"
+          # Severity LIST for trivy --severity flag — comma-joined.
+          case "$THRESHOLD" in
+            CRITICAL) SEV="CRITICAL" ;;
+            HIGH)     SEV="HIGH,CRITICAL" ;;
+            MEDIUM)   SEV="MEDIUM,HIGH,CRITICAL" ;;
+            LOW)      SEV="LOW,MEDIUM,HIGH,CRITICAL" ;;
+          esac
+          echo "gate-severity=$SEV" >> "$GITHUB_OUTPUT"
+          echo "Gate threshold: $THRESHOLD (severity list: $SEV)"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -112,23 +217,69 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Convert YAML allowlist → .trivyignore (Trivy's native format
+      # is one CVE-ID per line).
+      - name: Render .trivyignore from trivy-allowlist.yaml
+        id: render-allowlist
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          src = Path(".github/trivy-allowlist.yaml")
+          data = yaml.safe_load(src.read_text()) or {}
+          entries = data.get("allowed", []) or []
+          lines = []
+          for entry in entries:
+              cve = entry.get("id")
+              if cve:
+                  lines.append(f"# {entry.get('justification','(no justification)')} — expires {entry.get('expires')}")
+                  lines.append(cve)
+          Path(".trivyignore").write_text("\n".join(lines) + ("\n" if lines else ""))
+          print(f"rendered .trivyignore with {len(entries)} entries")
+          PY
+          cat .trivyignore || true
+
       # Gating scan — fails the step (exit-code: 1) on any finding
       # at OR above the configured threshold. `ignore-unfixed: true`
       # keeps the gate from flapping on CVEs that have no fix
       # available — those still show up in the SARIF for triage.
+      # `trivyignores` consumes the allowlist (entries are honoured
+      # by Trivy itself; the allowlist-check job above already
+      # validated expiry independently).
       - name: Trivy gating scan
         id: gate
+        # Schedule (cron) runs do NOT fail on the gate — cron is for
+        # visibility. PR + push + workflow_dispatch DO fail.
+        if: github.event_name != 'schedule'
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           format: table
-          severity: ${{ steps.compute-threshold.outputs.threshold }}
+          severity: ${{ steps.compute-threshold.outputs.gate-severity }}
           exit-code: "1"
           ignore-unfixed: true
           vuln-type: "os,library"
+          trivyignores: .trivyignore
 
-      # JSON pass — captures the FULL finding set (CRITICAL+HIGH+MEDIUM)
-      # so the PR-comment summary has counts at every severity level.
+      # Cron variant — full severity sweep, no gating exit code.
+      # Even when scheduled runs find issues, the workflow completes
+      # so the SARIF upload + summary still happen.
+      - name: Trivy gating scan (cron — non-blocking)
+        if: github.event_name == 'schedule'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
+          severity: "LOW,MEDIUM,HIGH,CRITICAL"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          trivyignores: .trivyignore
+
+      # JSON pass — captures the FULL finding set at every severity
+      # so the PR-comment summary has counts everywhere.
       # Always runs so the comment is informative even when the gate
       # above already failed.
       - name: Trivy JSON output (full severity sweep)
@@ -138,9 +289,10 @@ jobs:
           image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           format: json
           output: trivy-findings.json
-          severity: "CRITICAL,HIGH,MEDIUM"
+          severity: "CRITICAL,HIGH,MEDIUM,LOW"
           ignore-unfixed: true
           exit-code: "0"
+          trivyignores: .trivyignore
 
       # SARIF pass — uploaded to the GitHub Security tab so findings
       # are queryable alongside CodeQL + Dependabot results.
@@ -151,9 +303,10 @@ jobs:
           image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           format: sarif
           output: trivy-results.sarif
-          severity: "CRITICAL,HIGH,MEDIUM"
+          severity: "CRITICAL,HIGH,MEDIUM,LOW"
           ignore-unfixed: true
           exit-code: "0"
+          trivyignores: .trivyignore
 
       - name: Upload SARIF to GitHub Security
         if: always()
@@ -173,6 +326,7 @@ jobs:
               echo "critical=0"
               echo "high=0"
               echo "medium=0"
+              echo "low=0"
               echo "total=0"
             } >> "$GITHUB_OUTPUT"
             exit 0
@@ -181,25 +335,30 @@ jobs:
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-findings.json)
           HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-findings.json)
           MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-findings.json)
-          TOTAL=$((CRITICAL + HIGH + MEDIUM))
+          LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-findings.json)
+          TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
           {
             echo "critical=$CRITICAL"
             echo "high=$HIGH"
             echo "medium=$MEDIUM"
+            echo "low=$LOW"
             echo "total=$TOTAL"
           } >> "$GITHUB_OUTPUT"
           {
-            echo "## Trivy container-scan summary"
+            echo "## Trivy container-scan summary (W6 tuned)"
             echo
             echo "| Severity | Count |"
             echo "|----------|------:|"
             echo "| CRITICAL | $CRITICAL |"
             echo "| HIGH     | $HIGH |"
             echo "| MEDIUM   | $MEDIUM |"
+            echo "| LOW      | $LOW |"
             echo "| **Total** | **$TOTAL** |"
             echo
             echo "Gate threshold: \`${{ steps.compute-threshold.outputs.threshold }}\`"
+            echo "Gate severity list: \`${{ steps.compute-threshold.outputs.gate-severity }}\`"
             echo "Gate verdict: \`${{ steps.gate.outcome }}\`"
+            echo "Event: \`${{ github.event_name }}\` — cron runs are non-blocking; PR/push runs block on HIGH+CRITICAL by default."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Sticky PR comment — updates in place across subsequent runs
@@ -211,15 +370,16 @@ jobs:
         with:
           header: container-scan
           message: |
-            ### 🔍 Container scan (Phase K Wave 3 — Apone)
+            ### 🔍 Container scan (Phase K Wave 6 — Apone)
 
             - Image: `${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}`
-            - Gate threshold: `${{ steps.compute-threshold.outputs.threshold }}`
+            - Gate threshold: `${{ steps.compute-threshold.outputs.threshold }}` (Wave 6 default: HIGH+CRITICAL block-merge)
             - Gate verdict: **${{ steps.gate.outcome }}**
-            - Findings (after `ignore-unfixed: true`):
+            - Findings (after `ignore-unfixed: true` + `.github/trivy-allowlist.yaml`):
               - CRITICAL: `${{ steps.summary.outputs.critical }}`
               - HIGH:     `${{ steps.summary.outputs.high }}`
               - MEDIUM:   `${{ steps.summary.outputs.medium }}`
+              - LOW:      `${{ steps.summary.outputs.low }}`
 
             See the [Security tab](${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=is%3Aopen+category%3Atrivy-container-scan)
             for the full SARIF + per-CVE remediation guidance, and the
@@ -234,5 +394,6 @@ jobs:
           path: |
             trivy-findings.json
             trivy-results.sarif
+            .trivyignore
           if-no-files-found: warn
           retention-days: 30

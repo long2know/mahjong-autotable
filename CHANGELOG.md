@@ -19,11 +19,264 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-5-bringup`. Phase K Wave 5
-in flight (DevOps lane shipping unified SLSA+SBOM multi-subject
-predicate + Kyverno `attestations:` block + staging JWT-keys
-secret + secrets-history sweep workflow + HSTS readiness check +
-Terraform bootstrap module). Other lane deliverables outstanding.
+Working branch: `stlong/phase-k-wave-6-bringup`. Phase K Wave 6
+in flight (DevOps lane shipping multi-region DR replication
+module + GitHub-OIDC least-privilege narrowing + production
+coturn k8s manifests with NetworkPolicy + Trivy severity-tuned
+gate with allowlist + tag-driven mobile internal-testing
+promotion + SLSA-verifier pre-merge gate on `deploy:prod` PRs).
+Other lane deliverables outstanding.
+
+## [0.15.0] — Phase K Wave 6 — 2026-06-04 (PR pending)
+
+**Theme:** Multi-region DR (us-east-1 → us-west-2 warm pair) +
+IAM least-privilege hardening + production coturn k8s data plane
++ Trivy severity-tuned gate (HIGH+CRITICAL block, 30-day
+allowlist) + tag-driven mobile internal-testing promotion to
+TestFlight + Play Console + SLSA-verifier pre-merge gate on
+deploy:prod PRs.
+
+### Added (Phase K Wave 6 — PR pending)
+- **Terraform `modules/dr-replication/` — cross-region DR module.**
+    New reusable module instantiated by the secondary-region env
+    (`envs/dr-us-west-2/`). Wires three cross-region resources
+    onto the existing single-region stack: (1) RDS Postgres
+    cross-region read replica (`replicate_source_db` = primary
+    ARN, replica encrypted with secondary-region KMS — AWS forbids
+    cross-region CMK sharing, so the secondary env's `main.tf`
+    provisions its own CMK; backup retention 7d so a promoted
+    replica is immediately backup-protected; deletion-protection
+    on by default for DR-prod), (2) account-level ECR replication
+    rule (PREFIX_MATCH filter scoped to `mahjong-autotable` repo;
+    typical replication lag 1-5 min; secondary-region ECR
+    repository auto-created on first replication event — no
+    pre-creation needed), (3) Route 53 PRIMARY + SECONDARY
+    failover records sharing one FQDN + an HTTPS health check
+    against the primary's `/health` (Bishop's endpoint). Module
+    pins TTL<60s via a variable validator (W6 invariant — clients
+    must pick up failover within ≈2 min). Two AWS provider
+    aliases (`aws.primary` + `aws.secondary`) so every resource
+    is explicitly placed; no default-provider fall-through. Six
+    outputs documented for the rehearsal runbook
+    (`replica_db_arn`, `primary_health_check_id`,
+    `failover_record_fqdn`, …). (Apone)
+- **Terraform `envs/dr-us-west-2/` — DR env stack.** New
+    secondary-region (us-west-2) Terraform stack. VPC CIDR pinned
+    to **10.1.0.0/16** (non-overlapping with the primary's
+    10.0.0.0/16 — future VPC peering / Transit Gateway works
+    without renumbering). Three private subnets across us-west-2's
+    first three AZs (no public subnets in DR-warm — ingress
+    lands when a promotion fires). Provisions the secondary-region
+    DB subnet group + SG + KMS key, then instantiates the
+    `modules/dr-replication` module passing both provider aliases.
+    Reads primary stack outputs via `terraform_remote_state` so
+    the primary DB ARN + KMS ARN don't have to be hand-plumbed.
+    Backend bootstrap follows the same chicken-and-egg pattern
+    as the primary — `backend.example.hcl` + the runbook in
+    `docs/terraform.md` §2. (Apone)
+- **Terraform `modules/github-oidc/` — reusable OIDC module +
+    least-privilege grants.** New module replacing the inline
+    W5-style grants for future envs (the primary env's flat
+    `iam-github-oidc.tf` is also W6-narrowed in place). `ecr:*`
+    narrowed to the eight discrete actions a `docker push`
+    actually invokes (push-only; no `Describe*`/`List*`) scoped
+    to the repository ARN. `ssm:Get*` narrowed to `ssm:GetParameter`
+    only on `parameter/mahjong/<env>/*` (drops GetParameterHistory
+    which leaks rotation history; drops DescribeParameters which
+    leaks parameter names = org-structure intel). `iam:PassRole`
+    introduced as an opt-in dynamic block guarded by
+    `iam:PassedToService` (W5 had no PassRole; W6 adds the
+    grant in fenced form so future widenings can't be a silent
+    privilege-escalation vector). Companion `least-privilege.tf`
+    documents per-action rationale (no resources/policies — pure
+    documentation that lives next to the policy it audits). The
+    `least-privilege.tf` + `main.tf` files are W6 lock-step:
+    ANY policy widening MUST update the rationale in the SAME
+    commit. (Apone)
+- **`infra/k8s/base/coturn-{deployment,configmap,secret}.yaml` —
+    production coturn data plane.** Three new k8s manifests
+    deploying coturn 4.6 as a 2-replica AZ-spread Deployment
+    behind an NLB Service, with HMAC-mode authentication
+    (`use-auth-secret` + `lt-cred-mech`) using the
+    `coturn-static-auth-secret` ExternalSecret (sourced from
+    SSM `/mahjong/<env>/turn/auth_secret`). Bishop's W3
+    `/api/turn` endpoint shares the same HMAC key so credential
+    minting + validation work symmetrically; one rotation
+    rolls both sides. `coturn-configmap.yaml` pins
+    `listening-port=3478`, `tls-listening-port=5349`,
+    `fingerprint`, `min-port=49152`, `max-port=65535` (IANA
+    ephemeral range) + drops `lt-cred-mech`/`no-cli`/`no-loopback-peers`
+    hardening + 1080 quota cap. A new `NetworkPolicy
+    coturn-relay-ports` admits the relay range (49152-65535 UDP)
+    + the three control-plane ports (3478 UDP+TCP, 5349 TCP);
+    egress wide-open (a TURN server's job is to NAT-traverse to
+    arbitrary peers). Pod-level security: `runAsNonRoot=true`,
+    `runAsUser=998`, `readOnlyRootFilesystem=true`, `capabilities
+    drop ALL`. RollingUpdate pinned `maxSurge=1, maxUnavailable=0`
+    so refreshes always spin a fresh pod first. NLB annotations
+    + `externalTrafficPolicy: Local` preserve the client source
+    IP (coturn needs it to mint relay candidates). The W2
+    single-replica `turn-server.yaml` stays in place for staging;
+    the W6 `coturn-*` resources land alongside in prod (parallel
+    names — `coturn-*` not `turn-server-*` — so the cutover is
+    operator-driven blue-green). (Apone)
+- **`.github/workflows/mobile-internal-testing.yml` — tag-driven
+    TestFlight + Play Internal promotion.** New workflow,
+    triggers on `mobile-v*.*.*` tags. Five-job shape: `prepare`
+    (tag regex validation + version extraction) → `build-web-bundle`
+    (npm ci + npm run build of the autotable frontend that the
+    Capacitor shell wraps) → `android` (gradle bundleRelease
+    SIGNED + fastlane supply → Play Internal Testing,
+    `release_status: draft` so the operator gates the
+    promotion-to-testers click) → `ios` (CocoaPods + gym +
+    pilot SIGNED via App Store Connect API key → TestFlight) →
+    `notify` (Slack webhook). Code-signing secrets soft-fail
+    (fork PRs without secrets log a warning and skip the upload
+    job; operator-driven tag pushes from main always have them).
+    Ephemeral keychain provisioned per run for iOS cert import;
+    Provisioning Profile UUID auto-extracted from the
+    `.mobileprovision` plist + installed at the canonical macOS
+    path. Companion `docs/mobile-release.md` (NEW) covers the
+    full release-flow diagram, signing-identity setup runbook
+    (App Store Connect API key, distribution `.p12`,
+    provisioning profile, Play keystore, Play service-account
+    JSON, Slack webhook), TestFlight + Play tester-management
+    runbook, and a troubleshooting table. (Apone)
+- **`.github/workflows/verify-slsa-on-deploy.yml` — pre-merge
+    SLSA verification gate on `deploy:prod` PRs.** New workflow,
+    label-gated. Installs `slsa-verifier` v2.6.0 (the SAME binary
+    the admission webhook bundles for in-cluster verification),
+    resolves the image digest from `infra/k8s/overlays/prod/kustomization.yaml`'s
+    `images:` block, runs `slsa-verifier verify-image
+    <image>@<digest> --source-uri github.com/long2know/mahjong-autotable
+    --print-provenance > slsa-provenance.json`. Sticky PR
+    comment communicates the pass/fail to reviewers without
+    needing to drill into the Actions tab; the verified
+    predicate JSON uploads as a workflow artefact (30-day
+    retention). Belt-AND-suspenders for the Wave-5 Kyverno
+    `attestations:` block: the same predicate is verified at
+    CI time AND at admission time; a regression in either layer
+    is caught by the other. `docs/slsa-provenance.md` §7a (NEW)
+    documents the two-layer model + the `slsa-verifier` binary's
+    role inside the admission webhook container. (Apone)
+- **`.github/trivy-allowlist.yaml` (NEW) + container-scan
+    threshold tuning.** PR gate tightened from W3's CRITICAL-only
+    to HIGH+CRITICAL (the W6 block-merge floor); daily cron
+    relaxed to full-severity sweep (LOW+MEDIUM+HIGH+CRITICAL) +
+    non-blocking — visibility, not gating. New CVE allowlist
+    file with W6-invariant schema: every entry MUST carry
+    `id` + `justification` + `added` + `expires`; expiry capped
+    at 30 days (`allowlist-check` job fails the workflow if an
+    entry's expiry is in the past OR more than 30d in the
+    future). Trivy's native `.trivyignore` is rendered from the
+    YAML allowlist at scan time so we get human-readable
+    justification + Trivy-native suppression in one source of
+    truth. Wave-6 ships with the allowlist EMPTY — `allowed: []`
+    — establishing the schema baseline. (Apone)
+- **`docs/terraform.md` (NEW).** Cross-module reference covering
+    the W5+W6 module layout (`infra/terraform/` flat primary +
+    `modules/dr-replication/` + `modules/github-oidc/` +
+    `envs/dr-us-west-2/`), the apply-order rule (primary stack
+    first; DR reads primary via `terraform_remote_state`), the
+    W6 OIDC narrowing summary table, AND **§4 "DR rehearsal"**
+    — quarterly drill runbook: pre-flight checks (replica
+    replication-status confirmation, ECR image-delivery
+    confirmation, Route 53 health-check status), the
+    non-destructive failover (invert the Route 53 health check
+    via `aws route53 update-health-check --inverted`; ~90s
+    propagation × 30s TTL = ≈2 min total failover time), the
+    DESTRUCTIVE annual full-rehearsal (`aws rds promote-read-replica`
+    — one-way; replica must be re-provisioned via terraform
+    after), the restore step (un-invert the health check), and
+    the post-rehearsal report template (time-to-DNS-cut,
+    time-to-200-from-secondary, anomalies). 5-min total
+    failover SLO documented. (Apone)
+- **`docs/retro-2026-05.md` (NEW).** May 2026 monthly retro —
+    what shipped (W5 SLSA+SBOM unified predicate + Kyverno
+    attestations + Terraform bootstrap + W6 DR + OIDC narrowing
+    + coturn k8s + …), what's WIP (Bishop's W6 backend lane,
+    Hicks's frontend, the test-gate ascent past 1345), lessons
+    learned (the W5 `.git/config` race incident — Apone's
+    `b346157` absorbed Hicks's frontend work because a concurrent
+    agent rewrote `.git/config` between `git config user.name`
+    and the `git commit`; **W6 mitigation pattern**: per-invocation
+    `git -c user.name=… -c user.email=… commit` ONLY, never the
+    stateful `git config` form). Establishes the monthly retro
+    cadence + template for future months. (Apone)
+
+### Changed (Phase K Wave 6 — PR pending)
+- **`infra/terraform/iam-github-oidc.tf` — narrowed in place.**
+    The primary env's inline OIDC role policy now matches the
+    `modules/github-oidc/` shape (push-only ECR verbs scoped to
+    the repo ARN, `ssm:GetParameter` only on the per-env path,
+    opt-in PassRole). `variables.tf` gains the two new
+    `passrole_target_roles` / `passrole_target_services`
+    variables. Apply-time: `terraform plan -var-file=prod.tfvars`
+    will show DELETIONS of the W5-broad statements + ADDITIONS
+    of the W6-narrowed ones — review carefully before apply.
+    Outputs unchanged (the role ARN is stable; only the inline
+    policy changes). (Apone)
+- **`.github/workflows/container-scan.yml` — threshold tuning.**
+    PR/push runs default to HIGH+CRITICAL (was CRITICAL-only in
+    W3); cron runs default to full-severity sweep (LOW+MEDIUM+HIGH+CRITICAL)
+    with the gate step non-blocking. New `allowlist-check` job
+    runs FIRST + fails the workflow on expired allowlist entries.
+    Sticky PR comment + STEP_SUMMARY tables updated to show LOW
+    counts. Trivy gating + JSON + SARIF passes all consume the
+    rendered `.trivyignore` so the YAML allowlist becomes the
+    single source of truth. (Apone)
+- **`docs/turn-server-setup.md` — §9 "k8s deployment" (NEW).**
+    Documents the W6 production-shape coturn manifests
+    (`infra/k8s/base/coturn-*.yaml`), the differences from the
+    W2 single-replica `turn-server.yaml` (AZ-spread, HMAC mode by
+    default, wider relay port range, NetworkPolicy, NLB
+    annotations, readOnlyRootFilesystem), the apply runbook (SSM
+    seed → kubectl apply -k → verify two pods in different AZs
+    → smoke-test with turnutils_uclient), and the cutover
+    procedure (the W2 resources stay for staging; the W6
+    resources land in parallel in prod; W2 prod resources
+    decommissioned after a 24h cool-down). (Apone)
+- **`docs/slsa-provenance.md` — §7a (NEW).** Documents the
+    `slsa-verifier` v2 binary's role inside the admission
+    webhook container (second-pass verification beyond Kyverno's
+    cosign-via-policy integration; defends against a future
+    Kyverno or cosign upstream regression) AND the W6
+    `verify-slsa-on-deploy.yml` pre-merge gate (same binary,
+    same predicate, same source URI verified at BOTH CI time
+    AND admission time). (Apone)
+
+### Notes (Phase K Wave 6 — PR pending)
+- **W5 git-config race incident (lessons learned in W6).**
+    Apone's W5 `b346157` accidentally absorbed Hicks's frontend
+    work because the Wave-5 `commit-tree` recovery used the
+    stateful `git config user.name "Apone (DevOps)"` form, and
+    a concurrent agent rewrote `.git/config` to its own identity
+    between the `git config` call and the `git commit`. The
+    commit landed under the WRONG author. **W6 mitigation**:
+    every commit in this wave uses `git -c user.name="Apone (DevOps)"
+    -c user.email="apone@squad.mahjong" commit -m …` (atomic
+    per-invocation override; no time window where the config
+    state can be raced). All git operations wrapped in `flock`
+    on a shared lock file so two agents cannot run a
+    commit+push pair concurrently. The pattern is documented in
+    `docs/retro-2026-05.md` as a permanent reference + in
+    `.squad/agents/apone/history.md` Wave-6 entry. (Apone)
+- **Backend gate preserved.** This wave's scope is pure DevOps
+    + docs + infra (`src/**` untouched). The W5 1345/0/0 backend
+    gate carries forward; `dotnet test` not re-run. (Apone)
+- **Lock-step invariant updates.** The signer-identity invariant
+    in `docs/admission-policy.md` §7.1 (now SIX files since W5)
+    is not touched in W6 because the SLSA workflow + Kyverno
+    policy + image digest list are unchanged. The OIDC policy +
+    its rationale comment in `modules/github-oidc/least-privilege.tf`
+    is a NEW lock-step pair: ANY widening of the inline
+    `github_deploy_inline` policy MUST land alongside an
+    updated rationale paragraph in `least-privilege.tf`. (Apone)
+- **DR rehearsal SLO.** 5-min total failover time
+    (health-check trip → DNS resolver cache flush → first
+    successful `/health` 200 from us-west-2). Documented in
+    `docs/terraform.md` §4.5; reported in the May 2026 retro;
+    re-reported every quarter at the rehearsal cadence. (Apone)
 
 ## [0.14.0] — Phase K Wave 5 — 2026-05-28 (PR pending)
 
@@ -876,7 +1129,8 @@ Phases A through I shipped on `main` without semver tags. Highlights:
     `pwmarcz/autotable` engine, scoring & yaku catalogue, swap-call
     discipline, gang/chi/pong/ron implementations.
 
-[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/long2know/mahjong-autotable/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/long2know/mahjong-autotable/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/long2know/mahjong-autotable/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/long2know/mahjong-autotable/compare/v0.11.0...v0.12.0

@@ -1,0 +1,93 @@
+# Phase K Wave 6 — Apone (DevOps).
+#
+# coturn turnserver.conf — production HMAC-mode shape.
+#
+# Differs from the W2 base `turn-server-config` ConfigMap:
+#   * `use-auth-secret` instead of static `--user-file` credentials
+#     (W3 migration §5 — HMAC time-limited; Bishop's `/api/turn`
+#     mints credentials from the SAME `static-auth-secret`).
+#   * Wider min-port/max-port range (49152-65535 — the IANA
+#     ephemeral range; matched by the NetworkPolicy in
+#     `coturn-deployment.yaml`).
+#   * `fingerprint` enabled (required for ICE STUN/TURN binding).
+#   * `realm` + `external-ip` overlay-patched per environment.
+#
+# Operators MUST patch `realm` + `external-ip` in the prod overlay;
+# the base ships `STUB_REPLACE_IN_OVERLAY` so an accidental
+# `kubectl apply -k base/` against a real cluster fails fast.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coturn-config
+  labels:
+    app.kubernetes.io/name: coturn
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: turn
+    mahjong.io/wave: phase-k-wave-6
+data:
+  turnserver.conf: |
+    # ── REALM (overlay-patched) ──────────────────────────────────
+    # Production: turn.mahjong.example.com (patched by
+    # `infra/k8s/overlays/prod/coturn-config-patch.yaml`).
+    realm=STUB_REPLACE_IN_OVERLAY
+
+    # ── EXTERNAL IP (overlay-patched) ────────────────────────────
+    # The NLB's public IP. coturn advertises this as the relay
+    # candidate address; mismatches manifest as silent ICE
+    # failures (relay candidate unreachable).
+    external-ip=STUB_REPLACE_IN_OVERLAY
+
+    # ── LISTENING PORTS ──────────────────────────────────────────
+    listening-port=3478
+    tls-listening-port=5349
+
+    # ── RELAY MEDIA PORT RANGE ───────────────────────────────────
+    # IANA ephemeral range; matched by the NetworkPolicy in
+    # `coturn-deployment.yaml`.
+    min-port=49152
+    max-port=65535
+
+    # ── ICE FINGERPRINT (RFC 5389) ───────────────────────────────
+    # Required for STUN/TURN. coturn defaults to false in some
+    # builds — pin to true explicitly so a coturn upgrade doesn't
+    # silently flip behaviour.
+    fingerprint
+
+    # ── AUTHENTICATION (W3 HMAC migration §5) ────────────────────
+    # `lt-cred-mech` enables the long-term-credential mechanism
+    # (RFC 5389). `use-auth-secret` switches the validation from a
+    # `--user-file` lookup to HMAC-SHA1 against `static-auth-secret`
+    # (mounted from the `coturn-static-auth-secret` Secret).
+    # Bishop's `/api/turn` mints credentials of the form
+    # `<expiry-unix-ts>:<session-id>` + HMAC-SHA1(secret, username)
+    # — coturn validates on the fly; no per-user state on this side.
+    lt-cred-mech
+    use-auth-secret
+
+    # ── HARDENING ────────────────────────────────────────────────
+    # No loopback / multicast peers (prevents abuse via SSRF /
+    # local-net pivot).
+    no-loopback-peers
+    no-multicast-peers
+    # Disable the CLI (we manage coturn via kubectl, not telnet).
+    no-cli
+    cli-password=DISABLED_BY_NO_CLI
+    # Disable insecure auth mechanisms — TLS-only for the credential
+    # channel. Plain UDP for the relay data is unavoidable (that's
+    # the protocol).
+    no-tlsv1
+    no-tlsv1_1
+
+    # ── QUOTAS (DoS mitigation) ──────────────────────────────────
+    # 12 sessions per user (4 audio + 4 video + 4 datachannel headroom)
+    # × 120 total = 10 concurrent voice rooms worst case. Bump per
+    # `docs/load-test-results.md` if voice peak exceeds these limits.
+    user-quota=12
+    total-quota=120
+
+    # ── LOGGING ──────────────────────────────────────────────────
+    # `simple-log` — single-line records; stdout capture per the
+    # standard cluster log pipeline. `verbose` would balloon the
+    # log volume — keep off in prod.
+    simple-log
+    log-file=stdout

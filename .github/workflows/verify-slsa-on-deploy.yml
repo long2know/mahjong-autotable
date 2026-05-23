@@ -1,0 +1,208 @@
+# Phase K Wave 6 — Apone (DevOps).
+#
+# SLSA verifier on deploy PRs.
+#
+# Beyond the Kyverno admission policy (which verifies signatures
+# + attestations IN-CLUSTER at deploy time), this workflow runs
+# the `slsa-verifier` CLI on every PR labelled `deploy:prod`
+# BEFORE the PR can merge. The verifier is the same binary
+# Kyverno's cosign call wraps; running it standalone in CI gives
+# us:
+#
+#   1. A short-circuit on broken provenance — a malformed
+#      `.intoto.jsonl` fails CI without needing a real cluster.
+#   2. A REVIEWER-VISIBLE pass/fail (sticky PR comment) on
+#      every deploy:prod PR — admission-policy errors show up
+#      in cluster logs, which reviewers may not check.
+#   3. Defense in depth — the SAME predicate that Kyverno will
+#      verify at admission time is verified here. If a future
+#      cosign / Kyverno upgrade introduces a regression, the
+#      CI verification step catches it before the broken policy
+#      gets deployed.
+#
+# The verifier targets the IMAGE that the production overlay
+# would deploy — looked up from the Kustomize patch in
+# `infra/k8s/overlays/prod/`. Branches that haven't bumped the
+# image tag in the prod overlay are no-op (the labelled PR
+# can still merge; the verifier short-circuits with "image
+# unchanged since the previous prod-deploy commit").
+
+name: verify-slsa-on-deploy
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+  packages: read
+
+concurrency:
+  group: verify-slsa-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SLSA_VERIFIER_VERSION: v2.6.0
+  SOURCE_URI: github.com/long2know/mahjong-autotable
+
+jobs:
+  # Gate the entire workflow on the deploy:prod label.
+  gate:
+    name: Gate (deploy:prod label required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      should-run: ${{ steps.check.outputs.should-run }}
+    steps:
+      - name: Check labels
+        id: check
+        run: |
+          set -euo pipefail
+          LABELS='${{ toJSON(github.event.pull_request.labels.*.name) }}'
+          if echo "$LABELS" | grep -q '"deploy:prod"'; then
+            echo "should-run=true" >> "$GITHUB_OUTPUT"
+            echo "deploy:prod label present — running SLSA verification"
+          else
+            echo "should-run=false" >> "$GITHUB_OUTPUT"
+            echo "deploy:prod label NOT present — skipping (this workflow is required only for prod-deploy PRs)"
+          fi
+
+  verify:
+    name: slsa-verifier verify-image
+    needs: [gate]
+    if: needs.gate.outputs.should-run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          # Use the PR head, not the merge ref — we verify what
+          # WILL be deployed, not the speculative merge commit.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+
+      - name: Install slsa-verifier
+        # Pinned to v2 per spec. The release artefact is a
+        # statically-linked Go binary — single file, no runtime
+        # deps. The admission webhook container will bundle THIS
+        # SAME binary (see `docs/slsa-provenance.md` §7).
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /usr/local/bin/slsa-verifier \
+            "https://github.com/slsa-framework/slsa-verifier/releases/download/${SLSA_VERIFIER_VERSION}/slsa-verifier-linux-amd64"
+          chmod +x /usr/local/bin/slsa-verifier
+          slsa-verifier version
+
+      - name: Resolve image digest from prod overlay
+        id: image
+        run: |
+          set -euo pipefail
+          # Heuristic: the prod overlay's image patch is either
+          # `infra/k8s/overlays/prod/kustomization.yaml` (`images:`
+          # block) or `infra/k8s/overlays/prod/deployment-patch.yaml`.
+          # We prefer the kustomization images block as the canonical
+          # source.
+          IMAGE=""
+          DIGEST=""
+          if [[ -f infra/k8s/overlays/prod/kustomization.yaml ]]; then
+            # Use python yaml to be robust against multi-doc / comments.
+            read -r IMAGE DIGEST < <(python3 - <<'PY'
+          import yaml, sys
+          try:
+              with open("infra/k8s/overlays/prod/kustomization.yaml") as f:
+                  k = yaml.safe_load(f) or {}
+          except FileNotFoundError:
+              print(""); sys.exit(0)
+          for img in (k.get("images") or []):
+              name = img.get("newName") or img.get("name") or ""
+              digest = img.get("digest") or ""
+              tag = img.get("newTag") or img.get("tag") or ""
+              if "mahjong-autotable" in name:
+                  print(f"{name} {digest or tag}")
+                  break
+          PY
+            )
+          fi
+          if [[ -z "$IMAGE" || -z "$DIGEST" ]]; then
+            echo "::warning::could not resolve image digest from prod overlay — falling back to PR head SHA tag"
+            IMAGE="ghcr.io/long2know/mahjong-autotable"
+            DIGEST="${{ github.event.pull_request.head.sha }}"
+          fi
+          # Normalise: if DIGEST starts with sha256:, it's a digest;
+          # otherwise it's a tag. The verifier accepts both via
+          # @ vs : syntax.
+          if [[ "$DIGEST" == sha256:* ]]; then
+            IMAGE_REF="${IMAGE}@${DIGEST}"
+          else
+            IMAGE_REF="${IMAGE}:${DIGEST}"
+          fi
+          echo "image-ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+          echo "Verifying: $IMAGE_REF"
+
+      - name: slsa-verifier verify-image
+        id: verify
+        env:
+          SOURCE_URI: ${{ env.SOURCE_URI }}
+          IMAGE_REF: ${{ steps.image.outputs.image-ref }}
+        run: |
+          set -euo pipefail
+          # `verify-image` consults the OCI registry for the
+          # attached SLSA attestation, validates the Sigstore
+          # signature against the public Rekor log, and checks
+          # the `source-uri` claim against this repo.
+          slsa-verifier verify-image \
+            "$IMAGE_REF" \
+            --source-uri "$SOURCE_URI" \
+            --print-provenance > slsa-provenance.json
+          echo "verification PASSED"
+
+      - name: Render summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## SLSA verifier (Phase K Wave 6 — Apone)"
+            echo
+            echo "- Image: \`${{ steps.image.outputs.image-ref }}\`"
+            echo "- Source URI: \`${{ env.SOURCE_URI }}\`"
+            echo "- Verifier outcome: \`${{ steps.verify.outcome }}\`"
+            echo
+            if [[ -s slsa-provenance.json ]]; then
+              echo "<details><summary>Verified predicate (first 1.5 KB)</summary>"
+              echo ""
+              echo '```json'
+              head -c 1500 slsa-provenance.json
+              echo
+              echo '```'
+              echo
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verified predicate
+        if: always() && hashFiles('slsa-provenance.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: slsa-provenance-verified-${{ github.event.pull_request.number }}
+          path: slsa-provenance.json
+          retention-days: 30
+
+      - name: Sticky PR comment
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: verify-slsa-on-deploy
+          message: |
+            ### 🔐 SLSA verifier (Phase K Wave 6 — Apone)
+
+            - Image: `${{ steps.image.outputs.image-ref }}`
+            - Source URI: `${{ env.SOURCE_URI }}`
+            - Outcome: **${{ steps.verify.outcome }}**
+
+            `deploy:prod` PRs MUST pass this gate. The `slsa-verifier` binary
+            here matches the binary the admission webhook will run in-cluster
+            (`docs/slsa-provenance.md` §7).

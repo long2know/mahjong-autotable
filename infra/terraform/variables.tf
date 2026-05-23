@@ -172,3 +172,20 @@ variable "github_oidc_subjects" {
     "repo:long2know/mahjong-autotable:ref:refs/tags/v*",
   ]
 }
+
+# ── Phase K Wave 6 — least-privilege ──────────────────────────────
+
+variable "passrole_target_roles" {
+  description = "List of IAM role ARNs the GitHub-Actions deploy role may PassRole onto. Empty (default) = no PassRole grant at all. Populate per-env when a deploy operation actually needs to pass a role (e.g. CodeDeploy / Lambda execution role)."
+  type        = list(string)
+  default     = []
+}
+
+variable "passrole_target_services" {
+  description = "AWS service principals the PassRole grant is restricted to via `iam:PassedToService`. Tightens the grant so the deploy role cannot pass a role to a random service it shouldn't (e.g. ec2.amazonaws.com when you only wanted lambda.amazonaws.com)."
+  type        = list(string)
+  default = [
+    "eks.amazonaws.com",
+    "ecs-tasks.amazonaws.com",
+  ]
+}

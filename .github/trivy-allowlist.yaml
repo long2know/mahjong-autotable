@@ -1,0 +1,46 @@
+# Trivy CVE allowlist — Phase K Wave 6 (Apone, DevOps).
+#
+# Container-scan workflow (`.github/workflows/container-scan.yml`)
+# blocks merges on HIGH+CRITICAL findings by default. Entries in
+# this file allow a SPECIFIC CVE through the gate with an explicit
+# justification + expiry date.
+#
+# ## Schema
+#
+#     allowed:
+#       - id: CVE-YYYY-NNNNN     # required — Trivy-recognised ID
+#         justification: …       # required — human-readable reason
+#         added: YYYY-MM-DD      # required — when this entry was added
+#         expires: YYYY-MM-DD    # required — MAX 30 days after `added`
+#         severity: CRITICAL|HIGH|MEDIUM|LOW   # optional — audit hint
+#         owner: <agent or @gh-handle>         # optional — who owns rotation
+#
+# ## Invariants (enforced by `allowlist-check` job)
+#
+#   * Every entry MUST have `id`, `justification`, `added`,
+#     `expires`.
+#   * `expires` MUST be a valid ISO date.
+#   * `expires` MUST be <= 30 days from today (W6 cap).
+#   * `expires` MUST NOT be in the past (workflow fails — forces
+#     rotation discipline; an expired entry blocks the merge gate
+#     until either rotated or removed).
+#
+# ## How to use
+#
+#   1. New finding requires triage. Determine if mitigation is
+#      in place (network isolation, version pin, etc.) or if a
+#      fix is genuinely unavailable.
+#   2. Add an entry below with the justification + 30-day expiry.
+#   3. Re-evaluate at expiry: either bump expires (forces re-review)
+#      or remove the entry (Trivy will gate against the CVE again).
+#
+# ## Anti-pattern
+#
+# Do NOT use this file as a permanent suppression list. Allowlists
+# are FOR TIME-BOXED EXCEPTIONS. If a CVE is genuinely a
+# false-positive against our deployment, file an issue upstream
+# (Trivy / vendor) and reference the issue in the justification.
+#
+# An empty allowlist (`allowed: []`) is a valid file and is the
+# default state. Wave 6 ships with the list empty.
+allowed: []
