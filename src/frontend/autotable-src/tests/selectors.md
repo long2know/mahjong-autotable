@@ -474,3 +474,27 @@ testids, which only locate the controls).
 The non-lobby surfaces (`#bot-difficulty`, `#settings-bot-strength`)
 add a Master option without a separate testid because each select
 exposes its `value` attribute directly.
+
+---
+
+### Phase J Wave 8 Playwright coverage — Vasquez
+
+The following e2e specs key off the Wave 8 testids above and live in
+`src/frontend/autotable-src/tests/e2e/`. Each spec is
+*reflection-defensive*: a missing `data-testid` is logged as a
+`soft-pass` annotation rather than a failure, so contract drift before
+Hicks's surface lands does not break the gate.
+
+| Spec                          | Surface under test                                        |
+|-------------------------------|-----------------------------------------------------------|
+| `signin-modal.spec.ts`        | header sign-in chip + modal (providers, dev-login, close) |
+| `magic-link.spec.ts`          | `?auth=<token>` landing (success / failure / continue)    |
+| `rule-presets.spec.ts`        | lobby dropdown + settings drawer rule-preset editor       |
+| `spectator-follow.spec.ts`    | `?seat=-1` floating follow-panel + keyboard shortcuts     |
+| `reduced-motion.spec.ts`      | `prefers-reduced-motion: reduce` → body class + CSS clamp |
+| `dark-mode.spec.ts`           | `prefers-color-scheme: dark` → body theme-dark + luma     |
+
+When you remove or rename a Wave 8 testid, search
+`src/frontend/autotable-src/tests/e2e/` for the literal string before
+landing the change — the soft-pass annotation will otherwise hide the
+regression from CI.
