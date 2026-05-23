@@ -1,5 +1,6 @@
 using Mahjong.Autotable.Api.Autotable;
 using Mahjong.Autotable.Api.Changsha;
+using Mahjong.Autotable.Api.Changsha.Patterns;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Data;
 using Mahjong.Autotable.Api.Persistence;
@@ -104,6 +105,21 @@ app.MapGet("/api/system/persistence", (IConfiguration configuration) =>
     return Results.Ok(new { provider });
 });
 
+// Phase J Wave 3 — canonical display ordering for WinPattern values (Hicks's UI).
+// Returns a flat JSON object keyed by the camelCase pattern wire-name (same strings
+// the SignalR winResult.allPatterns array uses) mapped to the integer canonical
+// order. Lower = display first. Sourced from ChangshaPatternOrdering.Order so the
+// frontend doesn't have to embed a parallel table.
+app.MapGet("/api/changsha/pattern-ordering", () =>
+{
+    var map = new Dictionary<string, int>();
+    foreach (var kvp in ChangshaPatternOrdering.Order)
+    {
+        map[WinPatternWireName(kvp.Key)] = kvp.Value;
+    }
+    return Results.Ok(map);
+});
+
 app.MapHub<ChangshaHub>("/hubs/changsha");
 
 // Autotable WS endpoint — speaks upstream NEW/JOIN/JOINED/UPDATE protocol
@@ -114,6 +130,25 @@ _ = app.Services.GetRequiredService<AutotableConnectionManager>();
 app.MapAutotableWs();
 
 app.Run();
+
+// Phase J Wave 3 — wire-name mapping mirrors
+// ChangshaToAutotableTranslator.WinPatternToWire and
+// ChangshaGameRuntime.WinPatternToWire so the /api/changsha/pattern-ordering
+// keys match the strings used in winResult.allPatterns across both transports.
+static string WinPatternWireName(WinPattern p) => p switch
+{
+    WinPattern.Standard => "standard",
+    WinPattern.SevenPairs => "sevenPairs",
+    WinPattern.AllPungs => "allPungs",
+    WinPattern.FullFlush => "fullFlush",
+    WinPattern.NineTerminals => "nineTerminals",
+    WinPattern.HeavenlyHand => "heavenlyHand",
+    WinPattern.EarthlyHand => "earthlyHand",
+    WinPattern.LastTileFromWall => "lastTileFromWall",
+    WinPattern.LastDiscardCatch => "lastDiscardCatch",
+    WinPattern.KongReplacementWin => "kongReplacementWin",
+    _ => p.ToString().ToLowerInvariant()
+};
 
 public partial class Program
 {
