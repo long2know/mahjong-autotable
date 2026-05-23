@@ -1198,3 +1198,92 @@ post-Vasquez sync: 384/0/0.
 - **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
   → Passed: 435, Failed: 0, Skipped: 0 (Bishop-scope filter
   excludes Apone's still-uncommitted MetricsEndpointTests).
+
+## Phase J Wave 6 — persistent player ids + leaderboard endpoint
+- **Branch:** `stlong/phase-j-wave-6-completion`.
+- **Brief:** Wave 5 left `PlayerId == ConnectionId`, so every
+  SignalR reconnect minted a fresh "player" and orphaned the
+  career stats from Wave 5. Wave 6 splits those two concepts via
+  a persistent opaque cookie and adds the `GET /api/leaderboard`
+  surface that Hicks needs for the lobby stats view.
+- **Decisions:**
+  1. Cookie name `mahjong_pid`; value = 32-char hex GUID
+     (`Guid.NewGuid().ToString("N")`); attributes HttpOnly,
+     Secure when `IsHttps`, SameSite=Lax, Max-Age=1 year, Path=/,
+     IsEssential. No JWT / signing key — the token IS the
+     identity; theft = anonymous impersonation (same threat
+     model as any session cookie).
+  2. `POST /api/identity` mints/refreshes idempotently, returns
+     the matching `PlayerProfile`, slides the cookie Max-Age
+     forward every call.
+  3. Runtime interface gained an explicit playerId/connectionId
+     split (5 methods updated). SeatConnections still maps
+     seat → connectionId (transport); `seat.PlayerId` and
+     `state.CreatorPlayerId` now reflect the persistent token.
+  4. ChangshaHub resolves the cookie in `OnConnectedAsync` and
+     stashes the playerId on `Context.Items["playerId"]`;
+     every RPC reads via `Context.GetPlayerId()`. The hub does
+     NOT write the cookie back from `OnConnectedAsync` because
+     the negotiate response is already flushed by then —
+     frontend must call POST /api/identity first to pin a real
+     cookie. Session-scoped fallback when no cookie is presented.
+  5. AutotableWsEndpoint resolves+writes the cookie BEFORE
+     `AcceptWebSocketAsync` so the upgrade response can carry
+     `Set-Cookie`. `AutotableConnection.PlayerId` was promoted
+     to `{ get; init; }` so the WS handler can inject the
+     resolved id at construction.
+  6. `EnsureRuntimeBoundAsync` now forwards a host playerId
+     through `CreateGameAsync`, populating
+     `state.CreatorPlayerId` on autotable-WS games. **Closes
+     Vasquez's Wave-5 blind spot #4** — autotable-WS games can
+     now be toggled public via the matchmaking service.
+  7. `GET /api/leaderboard` joins `PlayerStats` + `PlayerProfile`
+     in EF Core, projects WinRate SQL-side as
+     `GamesPlayed > 0 ? GamesWon / GamesPlayed : 0`, paginates.
+     Sorts: `gamesWon` (default), `totalScore`, `winRate`,
+     `longestStreak`, `highestScore`. Defaults `limit=50`,
+     `MaxLimit=100`, `minGames=5`.
+- **Touch-points:**
+    `src/.../Players/PlayerIdentityService.cs` (new — cookie
+    mint/read/write/validate),
+    `src/.../Players/PlayerIdentityController.cs` (new — POST
+    /api/identity),
+    `src/.../Players/PlayerIdentityExtensions.cs` (new —
+    `Context.GetPlayerId()` + `HttpContext.GetPlayerIdOrNull()`,
+    items-bag key constant `PlayerIdItemKey`),
+    `src/.../Leaderboard/LeaderboardService.cs` (new — join +
+    sort + page, with `LeaderboardSort` enum and `LeaderboardRow`
+    / `LeaderboardResponse` records),
+    `src/.../Leaderboard/LeaderboardController.cs` (new — GET
+    /api/leaderboard),
+    `src/.../Changsha/Runtime/ChangshaGameRuntime.cs` (interface
+    + 5 method implementations rewired for the playerId /
+    connectionId split — `CreateGameAsync`, `TakeSeatAsync`,
+    `ReconnectAsync`, `HandleDisconnectAsync`, `JoinRandomAsync`),
+    `src/.../Changsha/ChangshaHub.cs` (ctor adds
+    `PlayerIdentityService`; OnConnectedAsync resolves cookie;
+    every RPC uses `Context.GetPlayerId()` for identity and
+    keeps `Context.ConnectionId` for transport),
+    `src/.../Matchmaking/MatchmakingService.cs`
+    (`JoinRandomAsync` signature passthrough),
+    `src/.../Autotable/AutotableWsEndpoint.cs`
+    (`MapAutotableWs` cookie resolve+write before WS upgrade,
+    `HandleConnectionAsync(ws, query, playerId, ct)`,
+    `AutotableConnection.PlayerId { get; init; }`,
+    `EnsureRuntimeBoundAsync(relayGameId, hostPlayerId, ct)`,
+    `TryHandleSeatTakeAsync` + `ReleaseRuntimeSeatAsync` pass
+    both ids to runtime),
+    `src/.../Program.cs` (DI for `PlayerIdentityService` +
+    `LeaderboardService`; controllers auto-discover).
+- **Test signature sweep:** 9 test files updated for the
+  runtime signature changes (named arg `hostConnectionId:`
+  expanded to `hostPlayerId:` + `hostConnectionId:`; one
+  positional 3-arg `TakeSeatAsync` updated to 4-arg). No new
+  tests added (out-of-bounds per directive); existing 445/0/0
+  gate preserved.
+- **Memo:** `.squad/decisions/inbox/bishop-phase-j-wave-6.md` —
+  cookie format, endpoint contracts, runtime signature table,
+  hub + autotable changes, test-scaffolding pattern for
+  cookie-bearing clients, Vasquez blind-spot #4 reconciliation.
+- **Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx --nologo`
+  → Passed: 445, Failed: 0, Skipped: 0.
