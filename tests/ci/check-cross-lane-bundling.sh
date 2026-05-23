@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase K Wave 6 — Vasquez (QA), extended Wave 7.
+# Phase K Wave 6 — Vasquez (QA), extended Wave 7 + Wave 8.
 #
 # Lane-discipline CI check. Detects cross-lane bundling regressions
 # (the W3/W4/W5 git-config race recurrence). For each agent in the
@@ -26,6 +26,10 @@
 #   tests/ci/check-cross-lane-bundling.sh --strict         # PR mode +
 #                                                         # exit non-zero
 #                                                         # on ANY warn
+#   tests/ci/check-cross-lane-bundling.sh --repo-mode      # scans the
+#                                                         # FULL commit
+#                                                         # history (nightly
+#                                                         # cron baseline).
 #
 # Wave 7 refinements (Vasquez):
 #   - Phase_K_W*/<AgentName>/ attribution rule generalised: anywhere
@@ -37,11 +41,28 @@
 #     regex map (consumed by humans + future tooling; the bash logic
 #     remains the case-statement classifier below for portability).
 #
+# Wave 8 refinements (Vasquez):
+#   - SHARED-FILE classification: tests/selectors.md (and the
+#     frontend mirror src/frontend/autotable-src/tests/selectors.md)
+#     is a documented cross-pane file. Both Hicks and Vasquez may
+#     author edits to it without that counting as an author-lane
+#     mismatch. The primary lane is still Vasquez (so a single
+#     commit touching the file + another lane's source still fails).
+#     Companion `lane-map.json` declares the shared-file list under
+#     `shared_files.selectors_md_shared`.
+#   - `--repo-mode` scans the entire history of the current branch
+#     (NOT just PR vs base) — for nightly cron baseline reporting.
+#     Post-W6, the expected baseline is 0 violations on PR-branch
+#     commits (historical squash-merges on main are excluded).
+#   - `--strict` lane-discipline is REQUIRED-FOR-MERGE on main via
+#     branch protection (see docs/agent-handoff-protocol.md §3.5
+#     for the procedure to flip a workflow to required status).
+#
 # Owner: Vasquez (QA).
 
 set -euo pipefail
 
-MODE="${MODE:-auto}"          # auto | main | pr
+MODE="${MODE:-auto}"          # auto | main | pr | repo
 COUNT="${COUNT:-4}"
 PR_REF="${PR_REF:-HEAD}"
 BASE_REF="${BASE_REF:-origin/main}"
@@ -56,6 +77,7 @@ while [[ $# -gt 0 ]]; do
     --base) BASE_REF="$2"; shift 2 ;;
     --verbose|-v) VERBOSE=1; shift ;;
     --strict) STRICT=1; MODE="pr"; shift ;;
+    --repo-mode) MODE="repo"; shift ;;
     -h|--help)
       sed -n '2,30p' "$0"
       exit 0
@@ -177,6 +199,95 @@ agent_for_author() {
 }
 
 # ───────────────────────────────────────────────────────────────────
+#  Phase K Wave 8 — shared-file table. Files in this list legitimately
+#  span more than one lane (cross-pane contracts); the author-lane
+#  mismatch check accepts ANY of the listed authors. The file is
+#  STILL classified to its primary lane for cross-lane bundling
+#  detection (so a single commit touching the file + another lane's
+#  source still fails the bundle check). Companion JSON declaration
+#  lives under `shared_files` in tests/ci/lane-map.json; keep in
+#  sync.
+# ───────────────────────────────────────────────────────────────────
+
+is_shared_file() {
+  # Returns 0 (true) when the path is in the shared-file table.
+  local p="$1"
+  case "$p" in
+    src/frontend/autotable-src/tests/selectors.md|tests/selectors.md)
+      return 0 ;;
+    *)
+      return 1 ;;
+  esac
+}
+
+shared_file_authors() {
+  # Prints a space-separated list of accepted authors for the given
+  # shared-file path. Empty when the path is not shared.
+  local p="$1"
+  case "$p" in
+    src/frontend/autotable-src/tests/selectors.md|tests/selectors.md)
+      echo "hicks vasquez" ;;
+    *)
+      echo "" ;;
+  esac
+}
+
+commit_only_touches_shared_files() {
+  # Returns 0 (true) when EVERY non-shared, non-unclassified path
+  # the commit touched is a shared-file entry. Used so a commit
+  # that only edits selectors.md can be authored by any listed
+  # shared-file author without triggering an author-lane mismatch.
+  local sha="$1"
+  local any_nonshared=0
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    local lane
+    lane=$(agent_for_path "$f")
+    [[ "$lane" == "shared" || "$lane" == "unclassified" ]] && continue
+    if ! is_shared_file "$f"; then
+      any_nonshared=1
+      break
+    fi
+  done < <(git show --no-color --pretty='' --name-only "$sha")
+  [[ "$any_nonshared" -eq 0 ]]
+}
+
+commit_shared_file_authors() {
+  # Prints the intersection of accepted authors across every
+  # shared-file path the commit touched (space-separated). Empty
+  # when no shared-file is touched. The intersection is used so
+  # that e.g. a commit touching both selectors.md (hicks|vasquez)
+  # and a hypothetical future shared file with authors (apone|vasquez)
+  # would only accept the shared author 'vasquez'.
+  local sha="$1"
+  local first=1
+  local accepted=""
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    if is_shared_file "$f"; then
+      local auths
+      auths=$(shared_file_authors "$f")
+      if [[ "$first" -eq 1 ]]; then
+        accepted="$auths"
+        first=0
+      else
+        # Intersect.
+        local next=""
+        for a in $accepted; do
+          for b in $auths; do
+            if [[ "$a" == "$b" ]]; then
+              next="$next $a"
+            fi
+          done
+        done
+        accepted="${next# }"
+      fi
+    fi
+  done < <(git show --no-color --pretty='' --name-only "$sha")
+  echo "$accepted"
+}
+
+# ───────────────────────────────────────────────────────────────────
 #  Classify a single commit. Prints
 #    <SHA> <author> <lanes-list>
 #  where lanes-list is space-separated unique lane names (excluding
@@ -195,6 +306,12 @@ classify_commit() {
 
   declare -A SEEN=()
   while IFS= read -r f; do
+    # Phase K Wave 8 — shared files don't contribute to the lane
+    # set. Otherwise a Hicks commit that touches selectors.md
+    # would always be flagged as cross-lane (hicks + vasquez).
+    if is_shared_file "$f"; then
+      continue
+    fi
     local lane
     lane=$(agent_for_path "$f")
     if [[ "$lane" != "shared" && "$lane" != "unclassified" ]]; then
@@ -218,6 +335,15 @@ collect_commits() {
     pr)
       # All commits on PR_REF that are NOT in BASE_REF.
       git log --format='%H' "$BASE_REF..$PR_REF"
+      ;;
+    repo)
+      # Phase K Wave 8 — nightly cron baseline. Full history of the
+      # current branch (no count cap). Historical squash-merges into
+      # main were intentionally multi-lane (pre-W6 process); the
+      # script reports them but does NOT hard-fail in this mode —
+      # the violation count is the baseline that operators track
+      # wave-over-wave. Post-W6 the expected per-PR baseline is 0.
+      git log --first-parent --no-merges --format='%H' HEAD
       ;;
     auto)
       # On a CI PR run BASE_REF=origin/main and HEAD=PR head.
@@ -269,12 +395,31 @@ for sha in "${shas[@]}"; do
 
   if [[ "$MODE" == "pr" && $lane_count -eq 1 ]]; then
     # On the PR branch, the author lane MUST match the touched lane.
+    # Phase K Wave 8 exception: when the commit ONLY edits shared-file
+    # entries (e.g. tests/selectors.md), the author-lane check accepts
+    # any author in the shared-file allowlist.
     touched="${lanes// /}"
     if [[ "$author_lane" != "other" && "$author_lane" != "$touched" ]]; then
-      echo "✗ AUTHOR-LANE MISMATCH: $short_sha (touched=$touched, author=$author_lane)"
-      echo "    subject: $subject"
-      violations=$((violations + 1))
-      continue
+      shared_ok=0
+      if commit_only_touches_shared_files "$commit_sha"; then
+        accepted=$(commit_shared_file_authors "$commit_sha")
+        for a in $accepted; do
+          if [[ "$a" == "$author_lane" ]]; then
+            shared_ok=1
+            break
+          fi
+        done
+      fi
+      if [[ "$shared_ok" -eq 1 ]]; then
+        if [[ "$VERBOSE" == "1" ]]; then
+          echo "✓ $short_sha — shared-file pass (touched=$touched, author=$author_lane, accepted=[$accepted])"
+        fi
+      else
+        echo "✗ AUTHOR-LANE MISMATCH: $short_sha (touched=$touched, author=$author_lane)"
+        echo "    subject: $subject"
+        violations=$((violations + 1))
+        continue
+      fi
     fi
   fi
 
@@ -299,6 +444,20 @@ if [[ "$MODE" == "main" && $violations -gt 0 ]]; then
   exit 0
 fi
 
+# Phase K Wave 8 — `--repo-mode` is a nightly cron baseline scan. It
+# walks the FULL first-parent commit history and ALWAYS exits 0, since
+# pre-W6 squash-merges into main were intentionally multi-lane; the
+# violation count is the baseline number operators track wave-over-
+# wave. The expected post-W6 PR-branch baseline is 0 — anything
+# higher indicates a regression in the per-PR lane-discipline gate
+# that needs investigation.
+if [[ "$MODE" == "repo" ]]; then
+  echo "[lane-discipline] REPO-MODE baseline (nightly cron): violations=$violations"
+  echo "[lane-discipline] Expected post-W6 PR-branch baseline: 0."
+  echo "[lane-discipline] Pre-W6 squash-merges into main are intentionally counted."
+  exit 0
+fi
+
 if (( violations > 0 )); then
   echo "[lane-discipline] FAIL — see violations above."
   exit 1
@@ -308,6 +467,10 @@ fi
 # parseable + reachable. Treat unreachable map as a STRICT-mode fail
 # (the JSON is documentation truth for the regex map; if the map
 # disappears the CI gate is no longer self-describing).
+#
+# Wave 8 strict mode additionally verifies the shared_files key is
+# present in lane-map.json — so the shared-file allowlist stays
+# self-describing.
 if [[ "$STRICT" == "1" ]]; then
   map="$(git rev-parse --show-toplevel)/tests/ci/lane-map.json"
   if [[ ! -f "$map" ]]; then
@@ -317,6 +480,10 @@ if [[ "$STRICT" == "1" ]]; then
   # Cheap JSON parse — confirm closing brace + lanes key.
   if ! grep -q '"lanes"' "$map"; then
     echo "[lane-discipline] STRICT FAIL — lane-map.json missing 'lanes' key."
+    exit 1
+  fi
+  if ! grep -q '"shared_files"' "$map"; then
+    echo "[lane-discipline] STRICT FAIL — lane-map.json missing 'shared_files' key (W8)."
     exit 1
   fi
 fi

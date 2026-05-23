@@ -81,6 +81,89 @@ git add -A
 If you find yourself wanting `-A`, that is a signal to checkpoint
 (stash) other agents' work to a separate stash entry first.
 
+### 3.4. Shared-file pattern (selectors.md, etc.) — Phase K Wave 8
+
+Most files are owned by a single lane and the cross-lane CI gate
+(`tests/ci/check-cross-lane-bundling.sh`) hard-fails on any commit
+whose author identity disagrees with the lane mapping.
+
+A small set of files are intentionally **co-edited** — they form
+a shared contract between two or more lanes:
+
+- `src/frontend/autotable-src/tests/selectors.md` — the canonical
+  data-testid registry. Hicks writes the testid in the renderer;
+  Vasquez codifies it as a Playwright assertion. Both lanes must
+  edit the same file in lock-step.
+
+These files live in the lane-map's `shared_files` allowlist:
+
+```json
+{
+  "shared_files": {
+    "selectors_md_shared": {
+      "paths": ["src/frontend/autotable-src/tests/selectors.md"],
+      "authors": ["hicks", "vasquez"],
+      "primary": "vasquez"
+    }
+  }
+}
+```
+
+**Conventions for shared files**:
+
+1. Either listed author may touch a shared file in their commit.
+   The CI gate will NOT raise an author-lane mismatch when the
+   commit touches ONLY shared files (or shared files plus the
+   committing author's own lane).
+2. When a single PR mixes shared-file edits with another lane's
+   files (the non-author lane), the gate still fails — shared
+   files are a relaxation, not an exemption.
+3. The `primary` author is the documentation-of-record owner.
+   When a shared file ships a substantive structural rewrite,
+   that work is the primary's responsibility; small additions
+   may be either author's.
+
+To run a one-off cross-lane scan that ignores the strict-mode
+allowlist verification (useful for surveying historical commit
+attribution on long-lived branches), use `--repo-mode`:
+
+```bash
+./tests/ci/check-cross-lane-bundling.sh --repo-mode
+```
+
+`--repo-mode` walks every reachable commit on `HEAD` and prints
+a baseline report without failing. The expected post-W6 baseline
+is **0 violations**; legacy pre-W6 squash-merge violations
+(~48) are pre-existing and out of scope for the gate.
+
+### 3.5. Branch-protection procedure for the lane-discipline gate
+
+The lane-discipline workflow (`.github/workflows/lane-discipline.yml`)
+runs `check-cross-lane-bundling.sh --strict` on every PR. To make
+the workflow **required for merge** on `main`, the repository
+administrator (Stephen) must flip the branch protection rule:
+
+1. GitHub repo → **Settings → Branches → Branch protection rules**.
+2. Edit the rule for `main` (or create one if absent).
+3. Under **Require status checks to pass before merging**, add:
+   - `lane-discipline / cross-lane-bundling`
+   - (existing checks: build, test, smoke, etc.)
+4. Save.
+
+Once required, any PR with an AUTHOR-LANE MISMATCH or
+`shared_files`-key drift fails CI and the merge button is
+disabled until the offending commit is amended (or split).
+
+**Nightly cron pattern** (W9+): a scheduled workflow runs
+`--repo-mode` against `main` weekly and posts the baseline
+violation count to the squad ops channel. The expected baseline
+is 0; any non-zero count is investigated within 24h.
+
+> **Status note (W8):** This protocol exists in the lane-discipline
+> script but is **not yet wired** as a required check on `main`.
+> Stephen has the action; the workflow is already executing per-PR
+> in non-blocking mode so the squad can see the report.
+
 ### 4. Per-commit author identity verification
 
 After each commit, verify the author is YOU:

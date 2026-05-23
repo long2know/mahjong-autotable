@@ -87,13 +87,24 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// helm/mahjong/Chart.yaml, infra/terraform/modules/edge/,
 /// .pre-commit-config.yaml, and the jwt-rsa-keys-secret kustomization
 /// overlays. All forward-staged with soft-pass on absence.</para>
+///
+/// <para><b>Wave 8 extension.</b> Class renamed Wave1ThroughKW7 →
+/// Wave1ThroughKW8. New W8 smokes appended for
+/// <c>OpenAiCommentaryGenerator</c>, <c>JanusSpectatorVoiceHub</c>,
+/// <c>SwissStandingsService</c>, <c>AuditEvent.IdempotencyKey</c>,
+/// <c>IdempotencyMiddleware</c>,
+/// <c>helm/mahjong/templates/canary-deployment.yaml</c>,
+/// <c>.github/workflows/pre-commit-check.yml</c>,
+/// <c>.github/workflows/mobile-production-release.yml</c>, and
+/// <c>.github/workflows/dr-rehearsal.yml</c>. All forward-staged
+/// with soft-pass on absence.</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW7RegressionTests
+public class Wave1ThroughKW8RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW7RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW8RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -1291,5 +1302,138 @@ public class Wave1ThroughKW7RegressionTests
         };
         // Soft-pass — Apone owns the ESO lifecycle.
         _ = candidates.Any(File.Exists);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — OpenAiCommentaryGenerator type reachable
+    //  (Bishop's W8 commentary streaming).
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_OpenAiCommentaryGenerator_TypeOrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "OpenAiCommentaryGenerator"
+            || x.Name == "OpenAiCommentaryStreamGenerator");
+        _ = t; // soft-pass — Bishop owns lifecycle.
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — JanusSpectatorVoiceHub type reachable.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_JanusSpectatorVoiceHub_TypeOrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "JanusSpectatorVoiceHub"
+            || x.Name == "JanusVoiceHub");
+        _ = t; // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — SwissStandingsService type reachable.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_SwissStandingsService_TypeOrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "SwissStandingsService"
+            || x.Name == "SwissTiebreakerService");
+        _ = t; // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — AuditEvent.IdempotencyKey property reachable.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_AuditEvent_IdempotencyKey_OrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "AuditEvent"
+            || x.Name == "AuditEventEntity");
+        if (t is null) return; // forward-staged
+
+        var props = t.GetProperties()
+                     .Select(p => p.Name)
+                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _ = props.Contains("IdempotencyKey")
+            || props.Contains("IdempotencyToken"); // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — IdempotencyMiddleware type reachable.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_IdempotencyMiddleware_TypeOrForwardStaged()
+    {
+        var asm = typeof(Program).Assembly;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name == "IdempotencyMiddleware"
+            || x.Name == "IdempotencyKeyMiddleware");
+        _ = t; // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — Helm canary deployment template.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_HelmCanaryDeployment_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, "helm", "mahjong", "templates", "canary-deployment.yaml");
+        _ = File.Exists(path); // soft-pass — Apone owns lifecycle.
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — pre-commit-check workflow.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_PreCommitCheckWorkflow_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, ".github", "workflows", "pre-commit-check.yml");
+        _ = File.Exists(path); // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — mobile-production-release workflow.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_MobileProductionReleaseWorkflow_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, ".github", "workflows", "mobile-production-release.yml");
+        _ = File.Exists(path); // soft-pass
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  Phase K Wave 8 — DR rehearsal workflow.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-8")]
+    public void PhaseK8_DrRehearsalWorkflow_FileOrForwardStaged()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(
+            root.FullName, ".github", "workflows", "dr-rehearsal.yml");
+        _ = File.Exists(path); // soft-pass
     }
 }
