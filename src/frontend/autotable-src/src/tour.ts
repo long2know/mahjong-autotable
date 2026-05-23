@@ -161,6 +161,7 @@ interface OnboardingStatus {
 
 let serverProbed = false;
 let serverCompleted = false;
+let offlineFallback = false;
 
 async function probeServerOnboardingStatus(): Promise<boolean> {
   if (serverProbed) return serverCompleted;
@@ -176,13 +177,25 @@ async function probeServerOnboardingStatus(): Promise<boolean> {
     serverCompleted = body.completed === true || body.Completed === true;
     return serverCompleted;
   } catch {
+    // Phase K Wave 3 — Offline-friendly fallback.  When the GET throws
+    // (network unreachable / DNS failure / etc.) we mark the probe
+    // resolved as "not completed" and let the LS flag be the
+    // authoritative source.  The caller checks `offlineFallback` so it
+    // can short-circuit the persist-on-completion POST.
+    offlineFallback = true;
     return false;
   }
 }
 
-async function persistServerCompletion(): Promise<void> {
+function persistServerCompletion(): void {
+  // Phase K Wave 3 — Fire-and-forget.  When the user finishes the tour
+  // we don't want to block the "Done" UX on a network round-trip; the
+  // LS flag is the offline-safe source of truth.  We also skip the
+  // POST entirely when the probe threw (offline) — we'll re-sync on
+  // the next page load once the user is back online.
+  if (offlineFallback) return;
   try {
-    await fetch(ONBOARDING_STATUS_URL, {
+    void fetch(ONBOARDING_STATUS_URL, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -193,9 +206,13 @@ async function persistServerCompletion(): Promise<void> {
         completed: true,
         completedAtUtc: new Date().toISOString(),
       }),
+    }).catch(() => {
+      // Best-effort — LS flag remains the authoritative offline fallback.
     });
   } catch {
-    // Best-effort — LS flag remains the authoritative offline fallback.
+    // Defensive: fetch is a global, but if it throws synchronously
+    // (older browsers under certain CSPs) we still don't want it to
+    // bubble up and break the tour's `Done ✓` click handler.
   }
 }
 
@@ -205,19 +222,33 @@ export function installOnboardingTour(): void {
   if (state.installed) return;
   state.installed = true;
   if (isLocalComplete()) return;
-  // Wave 2 — probe the server first.  If the server says completed,
-  // sync the LS flag so subsequent visits skip even when offline.
+  // Phase K Wave 3 — Non-blocking tour render.  Wave 2 awaited the
+  // probe before deciding whether to surface the tour, which meant
+  // an offline user (or a slow `/api/players/me/onboarding-status`
+  // round-trip) saw nothing for up to 30 s.  Wave 3 races the probe
+  // against a 300 ms timer: if the probe resolves in time, we honour
+  // a `completed: true` response and skip the tour; if it doesn't,
+  // we fall back to the LS flag and show the tour immediately.
+  let started = false;
+  const startIfNeeded = (): void => {
+    if (started) return;
+    started = true;
+    if (isLocalComplete() || serverCompleted) return;
+    startTour();
+  };
   void probeServerOnboardingStatus().then((completed) => {
     if (completed) {
       persistLocalComplete();
+      started = true; // suppress the timer-driven start
       return;
     }
-    // Defer to next tick so the lobby has finished mounting.
-    window.setTimeout(() => {
-      if (isLocalComplete()) return;
-      startTour();
-    }, 250);
+    startIfNeeded();
   });
+  // Hard deadline so an offline user / hung backend doesn't sit
+  // staring at a blank lobby.  300 ms is short enough to feel like
+  // first-paint behaviour but long enough for a healthy probe to win
+  // the race in the common case.
+  window.setTimeout(startIfNeeded, 300);
 }
 
 export function startTour(): void {
@@ -234,7 +265,10 @@ export function endTour(markComplete: boolean): void {
   state.active = false;
   if (markComplete) {
     persistLocalComplete();
-    void persistServerCompletion();
+    // Phase K Wave 3 — Fire-and-forget; `persistServerCompletion()` no
+    // longer returns a Promise so the Done button never awaits the
+    // network round-trip.
+    persistServerCompletion();
   }
   teardownRoot();
   window.dispatchEvent(new CustomEvent('mahjong:tour-ended', {
@@ -246,6 +280,7 @@ export function resetTour(): void {
   try { window.localStorage.removeItem(TOUR_LS_KEY); } catch { /* ignore */ }
   serverProbed = false;
   serverCompleted = false;
+  offlineFallback = false;
 }
 
 /** Returns the cached local-storage flag.  Kept as the offline path. */
