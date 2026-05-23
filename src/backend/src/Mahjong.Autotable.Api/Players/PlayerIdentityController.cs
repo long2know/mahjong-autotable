@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Mahjong.Autotable.Api.Players;
 
@@ -31,6 +32,7 @@ namespace Mahjong.Autotable.Api.Players;
 /// </summary>
 [ApiController]
 [Route("api/identity")]
+[EnableRateLimiting(Mahjong.Autotable.Api.RateLimiting.RateLimitingExtensions.AnonymousPolicy)]
 public sealed class PlayerIdentityController : ControllerBase
 {
     private readonly PlayerIdentityService _identity;
