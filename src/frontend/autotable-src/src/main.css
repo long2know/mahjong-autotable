@@ -1155,27 +1155,98 @@
     gap: 16px;
     align-items: start;
 }
-.bracket-double-elim-grand-final {
+/* Phase K Wave 8 — Finals row spans both winners + losers columns
+ * at the bottom of the double-elim layout.  When the reset match is
+ * rendered, the row stacks the two cards vertically (winners-side
+ * first, then reset).  Mobile collapse uses the same `grid-template-
+ * columns: 1fr` rule already applied to the layout. */
+.bracket-double-elim-finals-row {
     grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+}
+.bracket-double-elim-grand-final {
     background: rgba(255, 209, 102, 0.12);
     border: 1px solid #ffd166;
     border-radius: 6px;
     padding: 10px 12px;
-    margin-top: 8px;
 }
-.bracket-double-elim-grand-final h5 {
+.bracket-double-elim-grand-final-reset {
+    background: rgba(229, 126, 78, 0.16);
+    border: 1px dashed #e57e4e;
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+.bracket-double-elim-grand-final h5,
+.bracket-double-elim-grand-final-reset h5 {
     margin: 0 0 8px;
     color: #ffd166;
     font-size: 0.95rem;
+}
+.bracket-double-elim-grand-final-reset h5 {
+    color: #f4a684;
 }
 .bracket-double-elim-column h5 {
     margin: 0 0 8px;
     color: #ffd166;
     font-size: 0.95rem;
 }
+/* Phase K Wave 8 — `bracket-live-update` is a hidden Playwright
+ * anchor.  It carries `data-update-id` (timestamp of the most recent
+ * `TournamentBracketUpdated` push) — a mutation-observer assertion
+ * waits for the attribute to change.  Visually absent. */
+.bracket-live-update {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    pointer-events: none;
+}
 .bracket-match-pending { color: #b8c5d1; }
 .bracket-match-complete { color: #e8f0ff; }
 .bracket-match-winner { color: #95e6a0; font-weight: 600; }
 @media (max-width: 720px) {
     .bracket-double-elim-layout { grid-template-columns: 1fr; }
+}
+
+/* ── Phase K Wave 8 — Commentary tile-ref highlight overlay ─────── */
+/* When a commentary chip dispatches `mahjong:highlight-tile`, this
+ * overlay flashes a yellow halo on top of the WebGL canvas for 2 s.
+ * The host `#main` element receives `data-highlight-tile-id` for
+ * Playwright; the overlay receives `data-highlight-active` and the
+ * same `data-highlight-tile-id`.  `prefers-reduced-motion: reduce`
+ * collapses the animation to a static highlight. */
+.tile-highlight-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 3;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(255, 215, 0, 0.30) 0%,
+        rgba(255, 215, 0, 0.12) 35%,
+        rgba(255, 215, 0, 0) 65%);
+    transition: opacity 120ms ease-out;
+}
+.tile-highlight-overlay[data-highlight-active="true"] {
+    opacity: 1;
+    animation: tile-highlight-pulse 2000ms ease-out forwards;
+}
+@keyframes tile-highlight-pulse {
+    0%   { opacity: 1; }
+    70%  { opacity: 0.85; }
+    100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tile-highlight-overlay[data-highlight-active="true"] {
+        animation: none;
+        opacity: 1;
+    }
 }

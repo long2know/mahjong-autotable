@@ -1,9 +1,12 @@
-# Frontend build tooling — Phase K Wave 7
+# Frontend build tooling — Phase K Wave 8
 
 Owner: Hicks (Frontend Engineer)
-Status: **Vite is the production bundler as of Phase K Wave 7.**
-Fallback (`build:parcel`) is preserved for one wave (W8) in case a
-deploy regression surfaces.
+Status: **Vite is the production bundler (since Phase K Wave 7).**
+Wave 8 keeps the `build:parcel` fallback in `package.json` for one
+more wave — no W7 deploy regressions surfaced, but the W8 changes
+(GLTFLoader chunk peel, SignalR dev proxy) are Vite-only and merit
+a second wave of confidence before pruning the fallback. See
+`docs/frontend-three-budget.md §4` for the W8 chunking changes.
 
 ## TL;DR
 
@@ -228,7 +231,7 @@ wave. The two known divergences if you fall back:
    silently honours them too — but if you ever need to revert
    you must also restore the `url:` prefixes. Don't.
 
-Plan to delete `build:parcel` from `package.json` at end of W8 if
+Plan to delete `build:parcel` from `package.json` at end of W9 if
 no regressions surface.
 
 ## Trend ledger
@@ -237,10 +240,65 @@ no regressions surface.
 Vasquez's W7 Playwright spec reads it and asserts
 `three-renderer-big` is monotonically decreasing wave-over-wave.
 
-| Wave | Bundler | three-renderer-big | three-renderer-small | Total renderer |
-|------|---------|-------------------|---------------------|----------------|
-| K5   | Parcel  | 724.7 kB          | 144.9 kB            | 869.6 kB       |
-| K6   | Parcel  | 739.72 kB         | 99.1 kB             | 838.8 kB       |
-| **K7** | **Vite** | **578.72 kB** ✅ | **69.35 kB** ✅     | **648.07 kB** ✅ |
+| Wave | Bundler | three-renderer-big | three-renderer-small | gltf-loader | Total renderer |
+|------|---------|-------------------|---------------------|-------------|----------------|
+| K5   | Parcel  | 724.7 kB          | 144.9 kB            | (in big)    | 869.6 kB       |
+| K6   | Parcel  | 739.72 kB         | 99.1 kB             | (in big)    | 838.8 kB       |
+| K7   | Vite    | 578.72 kB ✅      | 69.35 kB ✅         | (in big)    | 648.07 kB ✅   |
+| **K8** | **Vite** | **531.86 kB** ✅ | **71.00 kB**       | **44.22 kB** (new chunk) | **602.86 kB** ✅ |
 
 K7 → K6 delta: **-21.8% on the big chunk, -22.7% renderer total.**
+K8 → K7 delta: **-8.1% on the big chunk** via GLTFLoader chunk peel
+(see `docs/frontend-three-budget.md §4` for the full W8 experiment
+including the negative result on deep imports).
+
+## §3 — Dev-server SignalR + WebSocket proxy (Wave 8)
+
+Before W8, the dev workflow against Bishop's ASP.NET Core backend
+was clunky:
+
+- The Changsha SignalR hub needed a URL override
+  (`?hub=http://localhost:5000/hubs/changsha`) re-typed on every
+  page load (see `hub.ts` pre-W8).
+- The Voice hub had no override path — voice testing required a
+  full production build served from the same origin as the backend.
+- The commentary livestream WebSocket (`/autotable/ws`) was in the
+  same boat as voice.
+
+Wave 8 adds a `server.proxy` block to `vite.config.ts` that routes
+same-origin requests under `/hubs/*`, `/autotable/ws`, and `/api/*`
+from the Vite dev server (default port 5173) to Bishop's backend
+at `http://localhost:5000`. `ws: true` enables the HTTP→WebSocket
+upgrade dance so SignalR's `wss://` transport survives the hop.
+
+The backend host can be overridden via the `AUTOTABLE_BACKEND`
+env var:
+
+```bash
+# Default — points at http://localhost:5000:
+npm run dev
+
+# Override — point at a remote preview environment:
+AUTOTABLE_BACKEND=https://preview-7.autotable.internal npm run dev
+```
+
+`hub.ts:hubUrl()` was simplified to always return `/hubs/changsha`
+(same-origin) — the dev proxy makes this work without any URL
+gymnastics, and the production build co-locates hub + bundle at
+the same origin. The legacy `?hub=<url>` override is kept for
+contributors pointing at a remote backend without spinning up the
+proxy.
+
+## §4 — Wave 8: PWA icon manifest fix (incidental bundler change)
+
+Hidden bug found by the W8 Lighthouse audit: the manifest emitted
+by `copyStaticAssets` references the source-tree icon paths
+(`img/icon-NNN.auto.png`), but Vite's HTML processor moves all
+HTML-referenced icons to the build root with content-hashed names.
+The manifest icons all 404'd, breaking the `installable-manifest`
+Lighthouse audit (Wave 7 missed this — the audit wasn't re-run
+after the Parcel→Vite swap).
+
+Fix: `copyStaticAssets` now also copies the un-hashed PWA icons to
+`out/img/icon-NNN.auto.png`. See `docs/frontend-pwa-audit.md §1`
+for the audit progression (0.75 → 1.00).

@@ -32,6 +32,7 @@
 import { openReplayForGame } from './replay-launcher';
 import { setElHidden, showEl, hideEl } from './dom-utils';
 import { pickBracketRenderer, resolveFormatKey } from './bracket-renderer';
+import type { DoubleElimLayout } from './bracket-renderer';
 
 // ── Wire types ──────────────────────────────────────────────────────
 
@@ -96,6 +97,14 @@ interface TournamentDetail {
    * pre-Wave-4 detail payload doesn't carry it.
    */
   players?: BracketSlot[];
+  /**
+   * Phase K Wave 8 — Bishop's double-elim partition.  When present,
+   * the renderer uses the server-authored split for the
+   * winners/losers brackets + grand-final/reset-match.  Absent on
+   * single-elim / Swiss / round-robin formats and on mid-deploy
+   * responses that still ship the flat `matches[]` shape.
+   */
+  layout?: DoubleElimLayout | null;
   viewerRegistered?: boolean;
   viewerCanStart?: boolean;
 }
@@ -314,6 +323,13 @@ function normalizeDetail(raw: unknown): TournamentDetail | null {
 
   const matches = normalizeMatches(o.matches ?? o.bracket);
   const standings = normalizeStandings(o.standings ?? o.leaderboard);
+  // Phase K Wave 8 — Bishop's double-elim wire ships the partition
+  // directly: `{ winnersBracket, losersBracket, grandFinal: {
+  // match, resetMatch } }`.  Tolerate either spelling (`bracket`
+  // wraps `winnersBracket` in some Bishop drafts) and tolerate
+  // its absence (single-elim / Swiss responses don't ship it).
+  const layout = normalizeDoubleElimLayout(
+    o.layout ?? o.doubleElimLayout ?? o.bracketLayout ?? null);
   // Phase K Wave 4 — Sparse-mode seeding needs the registered player
   // list independent of round-1 match slots.  Tolerate a handful of
   // wire vocabularies (`players`, `registered`, `participants`) so we
@@ -326,10 +342,41 @@ function normalizeDetail(raw: unknown): TournamentDetail | null {
     matches,
     standings,
     players,
+    layout,
     viewerRegistered: typeof o.viewerRegistered === 'boolean'
       ? o.viewerRegistered : tournament.viewerRegistered,
     viewerCanStart: typeof o.viewerCanStart === 'boolean'
       ? o.viewerCanStart : tournament.viewerCanStart,
+  };
+}
+
+function normalizeDoubleElimLayout(raw: unknown): DoubleElimLayout | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const winners = normalizeMatches(o.winnersBracket ?? o.winners);
+  const losers = normalizeMatches(o.losersBracket ?? o.losers);
+  const grandRaw = (o.grandFinal ?? o.grand_final ?? null) as Record<string, unknown> | null;
+  let match: BracketMatch | null = null;
+  let resetMatch: BracketMatch | null = null;
+  if (grandRaw !== null && typeof grandRaw === 'object') {
+    const matchArr = normalizeMatches([grandRaw.match ?? grandRaw.first ?? grandRaw]);
+    if (matchArr.length > 0) match = matchArr[0];
+    const resetSource = grandRaw.resetMatch ?? grandRaw.reset ?? grandRaw.reset_match;
+    if (resetSource !== null && resetSource !== undefined) {
+      const resetArr = normalizeMatches([resetSource]);
+      if (resetArr.length > 0) resetMatch = resetArr[0];
+    }
+  }
+  if (winners.length === 0
+      && losers.length === 0
+      && match === null
+      && resetMatch === null) {
+    return null;
+  }
+  return {
+    winnersBracket: winners,
+    losersBracket: losers,
+    grandFinal: { match, resetMatch },
   };
 }
 
@@ -609,6 +656,10 @@ function rerenderBracket(): void {
     players: detail.players,
     tournamentId: detail.tournament.id,
     singleElimSvg: () => buildBracketSvg(detail),
+    // Phase K Wave 8 — Pass Bishop's server-authored partition
+    // through to the DoubleElimRenderer.  `null` when the wire
+    // ships only the flat `matches[]` (mid-deploy / legacy).
+    layout: detail.layout ?? null,
   });
   host.appendChild(rendered);
 
@@ -1608,6 +1659,12 @@ interface HubEventPayload {
 async function ensureHubSubscription(): Promise<void> {
   if (state.hubSubscribed) return;
   state.hubSubscribed = true; // optimistic — we only want one subscription
+  // Phase K Wave 8 — Vasquez's `bracket-live-update.spec.ts` drives a
+  // synthetic `TournamentBracketUpdated` via this window hook (the
+  // SignalR layer is mocked in the spec).  The hook is idempotent
+  // and safe to install before the subscription completes — the
+  // handler runs the same refresh path either way.
+  installPublishTournamentBracketUpdateHook();
   try {
     const { getHubConnection, onHubConnected } = await import('./hub');
     const wire = (conn: { on: (m: string, cb: (...args: unknown[]) => void) => void }): void => {
@@ -1626,6 +1683,14 @@ async function ensureHubSubscription(): Promise<void> {
       };
       conn.on('TournamentMatchCompleted', handler);
       conn.on('TournamentMatchCompletedV1', handler);
+      // Phase K Wave 8 — Bishop ships a finer-grained
+      // `TournamentBracketUpdated` push whenever ANY bracket cell
+      // mutates (seed shuffle, match dispatched, score reported,
+      // grand-final reset spawned).  The handler is identical to
+      // match-completed: refresh the active detail / list.  Both
+      // events coexist so consumers that only care about completes
+      // (e.g. notifications) keep their filter.
+      conn.on('TournamentBracketUpdated', handler);
     };
     const conn = await getHubConnection();
     wire(conn);
@@ -1633,6 +1698,24 @@ async function ensureHubSubscription(): Promise<void> {
   } catch {
     state.hubSubscribed = false; // allow retry on next activation
   }
+}
+
+let publishHookInstalled = false;
+function installPublishTournamentBracketUpdateHook(): void {
+  if (publishHookInstalled) return;
+  publishHookInstalled = true;
+  const w = window as unknown as {
+    __publishTournamentBracketUpdate?: (payload: unknown) => void;
+  };
+  w.__publishTournamentBracketUpdate = (payload: unknown): void => {
+    const p = (payload ?? {}) as HubEventPayload;
+    if (state.selected !== null
+        && (p.tournamentId === undefined || p.tournamentId === state.selected)) {
+      void refreshSelectedDetail();
+    } else {
+      void refreshList();
+    }
+  };
 }
 
 async function refreshSelectedDetail(): Promise<void> {

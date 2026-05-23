@@ -1,5 +1,5 @@
 import { ThingType, Place, Size } from "./types";
-import { Vector3, Vector2, Quaternion } from "three";
+import { Quaternion, Vector2, Vector3 } from "three";
 import { Thing } from "./thing";
 import { round3, SEAT_ROTATIONS } from "./utils";
 

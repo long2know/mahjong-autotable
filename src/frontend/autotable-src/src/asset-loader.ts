@@ -7,8 +7,8 @@ import tableJpg from '../img/table.jpg?url';
 import tilesLabelsPng from '../img/tiles-labels.auto.png?url';
 import glbModels from '../img/models.auto.glb?url';
 
-import { Texture, Mesh, TextureLoader, Material,
-   MeshStandardMaterial, MeshLambertMaterial, PlaneGeometry, RepeatWrapping, LinearSRGBColorSpace } from 'three';
+import { LinearSRGBColorSpace, Material, Mesh, MeshLambertMaterial, PlaneGeometry, RepeatWrapping, Texture, TextureLoader } from 'three';
+import type { MeshStandardMaterial } from 'three';
 import type { GLTF, GLTFLoader as GLTFLoaderType } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { World } from './world';
 import { Size } from './types';

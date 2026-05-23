@@ -1,5 +1,41 @@
-import { Group, Mesh, Vector3, MeshBasicMaterial, MeshLambertMaterial, Object3D, PlaneGeometry, InstancedMesh, BufferGeometry } from "three";
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { BufferAttribute, BufferGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshLambertMaterial, Object3D, PlaneGeometry, Vector3 } from "three";
+// Phase K Wave 8 — Hand-rolled subset of BufferGeometryUtils.mergeGeometries.
+// We only need the simple case used in `addStatic()`: merging N geometries
+// that share the same attribute layout (the tray prototype cloned, rotated,
+// and translated 24 times).  The full `mergeGeometries()` helper carries
+// ~30 kB of side modules (mergeAttributes, deepCloneAttribute,
+// interleaveAttributes, mergeVertices, etc.) that are not exercised — pulling
+// only what we need shaves ~10-15 kB off the heavy three-renderer chunk.
+//
+// Same contract as the upstream `mergeGeometries(geometries, false)` call:
+//   • All inputs share the same attribute name set + per-attribute itemSize.
+//   • All inputs are either all indexed or all non-indexed (we only emit
+//     the non-indexed path; the upstream tray geometry is non-indexed after
+//     the GLTFLoader pass).
+//   • Output is a fresh non-indexed BufferGeometry.
+function mergeSimpleGeometries(geometries: ReadonlyArray<BufferGeometry>): BufferGeometry {
+  if (geometries.length === 0) return new BufferGeometry();
+  const first = geometries[0];
+  const attrNames = Object.keys(first.attributes);
+  const result = new BufferGeometry();
+  for (const name of attrNames) {
+    const firstAttr = first.attributes[name];
+    const itemSize = firstAttr.itemSize;
+    const normalized = firstAttr.normalized;
+    let total = 0;
+    for (const g of geometries) total += g.attributes[name].array.length;
+    const ArrayCtor = firstAttr.array.constructor as { new (length: number): ArrayLike<number> & { set(arr: ArrayLike<number>, offset?: number): void } };
+    const merged = new ArrayCtor(total);
+    let offset = 0;
+    for (const g of geometries) {
+      const arr = g.attributes[name].array as ArrayLike<number>;
+      merged.set(arr, offset);
+      offset += arr.length;
+    }
+    result.setAttribute(name, new BufferAttribute(merged as unknown as ArrayLike<number> & ArrayBufferView as Float32Array, itemSize, normalized));
+  }
+  return result;
+}
 
 import { World } from "./world";
 import { Client } from "./client";
@@ -131,7 +167,7 @@ export class ObjectView {
         geometries.push(geometry);
       }
     }
-    tray.geometry = mergeGeometries(geometries);
+    tray.geometry = mergeSimpleGeometries(geometries);
     tray.position.set(0, 0, 0);
     this.mainGroup.add(tray);
     tray.updateMatrixWorld();

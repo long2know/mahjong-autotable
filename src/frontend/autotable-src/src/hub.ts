@@ -41,20 +41,22 @@ const connectListeners = new Set<(c: HubConnection) => void>();
 function hubUrl(): string {
   // SignalR negotiates a transport URL relative to the page origin.
   // The backend serves /hubs/changsha (see Program.cs:174) which is
-  // co-located with the static frontend bundle.  In dev (parcel
-  // serve, port 1234) the hub lives on the API host (port 5000-ish);
-  // the developer can override via `?hub=<url>` for that case.
+  // co-located with the static frontend bundle.
+  //
+  // Dev mode (`vite serve`, port 5173 by default): we now rely on
+  // the Vite dev-server proxy (see vite.config.ts `server.proxy`)
+  // to forward `/hubs/changsha` (HTTP + WebSocket) to the backend
+  // at http://localhost:5000.  Same-origin defaults work in dev
+  // and production without any URL gymnastics.  The legacy
+  // `?hub=<url>` override is kept for contributors who need to
+  // point at a remote backend (e.g. an in-cluster preview env).
   const params = new URLSearchParams(window.location.search);
   const override = params.get('hub');
   if (override !== null && override !== '') return override;
 
-  // @ts-ignore — Parcel inlines process.env.NODE_ENV
-  const env = typeof process !== 'undefined' ? process.env.NODE_ENV : 'production';
-  if (env !== 'production') {
-    return 'http://localhost:5000/hubs/changsha';
-  }
-  // Production: same origin, /hubs/changsha (the autotable bundle is
-  // mounted under /autotable/, but the hub is at the root).
+  // Same-origin in every mode now — the Vite dev proxy (W8) makes
+  // this work in `vite serve`, the production build co-locates
+  // hub + bundle at the same origin.
   return '/hubs/changsha';
 }
 

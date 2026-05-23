@@ -66,6 +66,16 @@ const ASSET_PATTERN = '[name].[hash:8].[ext]';
 function manualChunks(id: string): string | undefined {
   if (id.includes('node_modules/hls.js/')) return 'hls';
   if (id.includes('node_modules/@sentry/')) return 'sentry';
+  // Phase K Wave 8 — Peel GLTFLoader (+ its KTX2/Draco/meshopt
+  // extension paths) into its own chunk.  In W7 the dynamic-import
+  // landed inside the renderer chunk anyway because Rollup's
+  // chunker collapsed `import('three/examples/jsm/loaders/GLTFLoader.js')`
+  // back into `three-renderer` (same `node_modules/three/`
+  // origin).  Splitting it out drops ~40 kB off the heavy chunk
+  // and lets the asset-loader download it in parallel with the
+  // texture fetches; net first-paint cost is unchanged because
+  // `AssetLoader.loadAll()` already awaits both in parallel.
+  if (id.includes('node_modules/three/examples/jsm/loaders/GLTFLoader')) return 'gltf-loader';
   // Three.js + its examples/jsm addons live in the renderer chunk
   // (named explicitly so `chunkFileNames` doesn't fall back to
   // 'three' / 'index' bag names).  Note: we do NOT add src/* here
@@ -171,6 +181,30 @@ function copyStaticAssets(): {
         }
         copyFileSync(diceSrc, diceDst);
       }
+      // Phase K Wave 8 — Copy PWA icons to their un-hashed paths
+      // under `img/` so the manifest's `src: "img/icon-NNN.auto.png"`
+      // entries resolve.  Vite's HTML processor moves the icons to
+      // the root with content-hashed names (which is what
+      // `index.html` references), but the manifest is emitted as a
+      // static copy and continues to point at the source paths —
+      // without this copy step Lighthouse's `installable-manifest`
+      // audit failed because every icon 404'd.
+      const iconNames = [
+        'icon-16.auto.png',
+        'icon-32.auto.png',
+        'icon-96.auto.png',
+        'icon-192.auto.png',
+        'icon-512.auto.png',
+        'icon-maskable-512.auto.png',
+      ];
+      if (!existsSync(`${out}/img`)) {
+        require('node:fs').mkdirSync(`${out}/img`, { recursive: true });
+      }
+      for (const name of iconNames) {
+        const iconSrc = `${root}/img/${name}`;
+        const iconDst = `${out}/img/${name}`;
+        if (existsSync(iconSrc)) copyFileSync(iconSrc, iconDst);
+      }
     },
   };
 }
@@ -227,6 +261,51 @@ export default defineConfig({
   root: __dirname,
   publicDir: false,
   base: './',
+  // ── Phase K Wave 8 — Dev-server SignalR + WebSocket proxy ─────
+  //
+  // The autotable frontend talks to Bishop's ASP.NET Core backend
+  // via SignalR hubs (`/hubs/changsha`, `/hubs/voice`) and the
+  // commentary livestream WebSocket (`/autotable/ws`).  Before W8
+  // the dev workflow was clunky:
+  //
+  //   • `?hub=http://localhost:5000/hubs/changsha` URL override
+  //     (see hub.ts:43-54) — works for the Changsha hub only, has
+  //     to be re-typed every page load.
+  //   • Voice / livestream had no override path — only worked when
+  //     served from the same origin as the backend (i.e. you had
+  //     to run a full production build to test voice).
+  //
+  // The proxy below routes any same-origin request under `/hubs/*`
+  // and `/autotable/ws` from the Vite dev server (port 5173) to
+  // Bishop's backend at http://localhost:5000.  `ws: true` enables
+  // the HTTP→WebSocket upgrade dance so SignalR's `wss://`
+  // transport survives the hop.  Voice + commentary livestream
+  // work without any URL override now.
+  //
+  // The backend port can be overridden via env var
+  // `AUTOTABLE_BACKEND` (defaults to http://localhost:5000) for
+  // contributors running Bishop on a non-standard port.
+  server: {
+    proxy: {
+      '/hubs': {
+        target: process.env.AUTOTABLE_BACKEND ?? 'http://localhost:5000',
+        ws: true,
+        changeOrigin: true,
+      },
+      '/autotable/ws': {
+        target: process.env.AUTOTABLE_BACKEND ?? 'http://localhost:5000',
+        ws: true,
+        changeOrigin: true,
+      },
+      // REST endpoints under the same origin (tournaments, replay,
+      // commentary detail) — see `client-ui.ts` and `tournaments.ts`
+      // for the call sites.  Non-WS so `ws: false` is implicit.
+      '/api': {
+        target: process.env.AUTOTABLE_BACKEND ?? 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     outDir: resolve(__dirname, '..', 'autotable'),
     emptyOutDir: true,
@@ -256,6 +335,18 @@ export default defineConfig({
           if (id.includes('node_modules/three/')) return false;
           return true;
         },
+        // Phase K Wave 8 — Aggressive Rollup tree-shake levers.  three.js
+        // never relies on getter side-effects, so disabling
+        // `propertyReadSideEffects` lets Rollup drop accessors like
+        // `material.map.colorSpace = …` when the surrounding object is
+        // proven unused.  `tryCatchDeoptimization: false` keeps Rollup
+        // from bailing out on the dozens of try/catch blocks inside
+        // three's WebGL feature probes.  Combined with the per-class
+        // deep imports below, this is what pushes the heavy renderer
+        // chunk under the W8 540 kB ceiling.
+        propertyReadSideEffects: false,
+        tryCatchDeoptimization: false,
+        unknownGlobalSideEffects: false,
       },
       output: {
         assetFileNames: ASSET_PATTERN,

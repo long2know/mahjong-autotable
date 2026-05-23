@@ -1,5 +1,5 @@
 import { AssetLoader } from "./asset-loader";
-import { Mesh, CanvasTexture, Vector2, MeshLambertMaterial } from "three";
+import { CanvasTexture, Mesh, MeshLambertMaterial, Vector2 } from "three";
 import { Client } from "./client";
 import { DiceInfo } from "./types";
 

@@ -8,6 +8,12 @@ build/
 test-results/
 playwright-report/
 
+# Phase K Wave 8 — Lighthouse PWA audit output (regenerated on
+# demand via `npm exec lighthouse …` — see docs/frontend-pwa-audit.md
+# for the audit recipe + interpretation of the JSON).
+.lighthouse-pwa.json
+.lighthouse-pwa.report.html
+
 # NOTE: upstream's .gitignore ignored *.auto.* because Inkscape/Blender
 # regenerated them at `make files` time. We commit the prebuilt assets
 # under img/ so Parcel can build without Inkscape/Blender (Ripley pivot

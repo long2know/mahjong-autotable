@@ -52,14 +52,8 @@
 // are intentionally not ported — none were configured in the W6
 // codebase.
 
-import {
-  BackSide,
-  Mesh,
-  ShaderMaterial,
-  Color,
-  type BufferGeometry,
-} from 'three';
-
+import { BackSide, Color, Mesh, ShaderMaterial } from 'three';
+import type { BufferGeometry } from 'three';
 /** Hull-expansion factor as a fraction of the mesh's bounding-sphere radius. */
 const OUTLINE_THICKNESS = 0.022;
 

@@ -1,5 +1,4 @@
 import { Vector3 } from "three";
-
 import { Movement } from "./movement";
 import { Client } from "./client";
 import { readSpectatorFromUrl } from "./client-ui";
