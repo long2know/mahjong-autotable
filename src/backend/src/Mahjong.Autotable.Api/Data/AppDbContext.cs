@@ -34,6 +34,10 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<EmailMagicLinkToken> EmailMagicLinkTokens => Set<EmailMagicLinkToken>();
     public DbSet<PlayerAuthSession> PlayerAuthSessions => Set<PlayerAuthSession>();
 
+    // Phase J Wave 9 — Content-Security-Policy violation reports. Append-only.
+    // See Mahjong.Autotable.Api.Observability.CspReportEndpoint.
+    public DbSet<CspViolation> CspViolations => Set<CspViolation>();
+
     // Phase J Wave 9 — reconnect token rotation + audit, plus persisted
     // chat backlog. See ReconnectTokenService, ChatService, and the
     // GET /api/games/{gameId}/chat endpoint.
@@ -196,6 +200,30 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.Property(x => x.Body).HasMaxLength(512).IsRequired();
             entity.Property(x => x.Channel).HasMaxLength(160).IsRequired();
             entity.HasIndex(x => new { x.GameId, x.At });
+        });
+
+        // Phase J Wave 9 — CSP violation reports (Apone, DevOps). Append-only;
+        // index ReceivedAt for time-window queries from the operator dashboard.
+        // No FK to PlayerProfiles because reports often arrive from anonymous
+        // pre-cookie callers. RawJson holds the unparsed envelope as forensic
+        // backup; the parsed columns above just accelerate aggregation.
+        modelBuilder.Entity<CspViolation>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128);
+            entity.Property(x => x.DocumentUri).HasMaxLength(2048);
+            entity.Property(x => x.Referrer).HasMaxLength(2048);
+            entity.Property(x => x.ViolatedDirective).HasMaxLength(128);
+            entity.Property(x => x.EffectiveDirective).HasMaxLength(128);
+            entity.Property(x => x.OriginalPolicy).HasMaxLength(4096);
+            entity.Property(x => x.Disposition).HasMaxLength(16);
+            entity.Property(x => x.BlockedUri).HasMaxLength(2048);
+            entity.Property(x => x.SourceFile).HasMaxLength(2048);
+            entity.Property(x => x.ScriptSample).HasMaxLength(256);
+            entity.Property(x => x.UserAgent).HasMaxLength(512);
+            entity.Property(x => x.RawJson).IsRequired();
+            entity.HasIndex(x => x.ReceivedAt);
+            entity.HasIndex(x => x.EffectiveDirective);
         });
     }
 }
