@@ -19,8 +19,130 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-4-bringup` (not yet opened). Phase
-K Wave 4 not yet started.
+Working branch: `stlong/phase-k-wave-4-bringup`. Phase K Wave 4 in
+flight (DevOps lane shipping SLSA L3 provenance + ESO JWT-keys
+secret + Kyverno prod hard-pin + HSTS preload + gitleaks
+secrets-scan). Other lane deliverables outstanding.
+
+## [0.13.0] — Phase K Wave 4 — 2026-05-27 (PR pending)
+
+**Theme:** Supply-chain ring-4 (SLSA provenance) + zero-touch JWT
+key rotation (ESO) + Kyverno enforce hard-pin + HSTS preload +
+in-repo secrets scanning. Wave 4 closes the Wave-3 "future" list:
+SLSA in-toto predicates land as the fourth supply-chain ring on
+top of cosign signatures + verify gates + SBOM signing + Kyverno
+admission; the `Auth.JwtSigningKeys` array binding (W3 schema)
+now has its production ESO data plane; Kyverno prod gets a
+fail-safe second policy that cannot be downgraded by a misedit
+of the global default; HSTS preload header lands on the prod
+Ingress for the manual submission to https://hstspreload.org/;
+and `gitleaks` joins GitGuardian as the in-repo secrets-scan
+layer.
+
+### Added (Phase K Wave 4 — PR pending)
+- **SLSA Level 3 in-toto provenance for every published image.**
+    New `.github/workflows/slsa-provenance.yml` triggers on
+    push-to-main, `v*.*.*` tag pushes, and workflow_dispatch.
+    Resolves the manifest-list digest the same way `sign-image.yml`
+    does, then calls the official `slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0`
+    reusable workflow to produce an in-toto-shaped provenance
+    predicate signed via GitHub OIDC + Sigstore Fulcio, recorded
+    in Rekor, AND attached to the OCI registry as a sidecar
+    artefact. On tag pushes, the `attach-to-release` job
+    additionally uploads the bundle to the matching GitHub
+    Release as `provenance.intoto.jsonl`. Operator + auditor
+    verification runbook (`slsa-verifier` CLI usage, decoded
+    predicate shape, failure-mode triage, generator bump
+    procedure) at `docs/slsa-provenance.md`. (Apone)
+- **ESO `mahjong-jwt-keys` ExternalSecret for the W3 `Auth.JwtSigningKeys` array.**
+    New `infra/k8s/overlays/prod/jwt-keys-secret.yaml` —
+    SEPARATE `ExternalSecret` (distinct from the omnibus
+    `mahjong-autotable` secret) materialising three indexed env
+    vars (`auth__jwtsigningkeys__{0,1,2}`) from three
+    rotation-state-named SSM SecureString parameters
+    (`/mahjong/prod/auth/jwt/key-{active,previous,archive}`).
+    The 15-minute `refreshInterval` is tighter than the omnibus
+    1 h so emergency JWT rotations propagate within minutes. The
+    prod kustomization mounts the resulting Secret via
+    `envFrom: { secretRef: { name: mahjong-jwt-keys, optional: true } }`
+    so Bishop's W4/W5 code-side binding picks up the array
+    automatically once it lands. `docs/jwt-rotation.md` §1 +
+    §3 + §4 + §7 rewritten to reflect the
+    rotation-state-named SSM convention (the operator never has
+    to compute "which numeric index holds value X today?"). (Apone)
+- **Kyverno prod hard-pin `ClusterPolicy`.** New
+    `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml` adds a
+    SECOND cluster policy (`enforce-prod-mahjong-images`) scoped
+    exclusively to `mahjong-prod`, with
+    `validationFailureAction: Enforce` and the same canonical
+    `sign-image.yml` signer-identity regex as the Wave-3 default.
+    Acts as a fail-safe alongside the Wave-3 policy: a misedit of
+    the Wave-3 per-namespace override cannot accidentally let
+    unsigned images into prod. Multiple policies on the same
+    image just compose (both must verify before admission).
+    `docs/admission-policy.md` §5.3 (NEW) codifies the
+    end-to-end canary procedure (build unsigned image → deploy to
+    staging: ADMIT + warn → deploy to prod: REJECT). (Apone)
+- **HSTS preload header on prod Ingress.** New
+    `infra/k8s/overlays/prod/hsts-patch.yaml` sets
+    `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+    on the production origin via nginx-ingress
+    `configuration-snippet`. `force-ssl-redirect: true` and
+    `ssl-redirect: true` are also pinned here so a global
+    ConfigMap edit cannot weaken prod inadvertently. Manual
+    submission runbook at `docs/hsts-preload.md` (NEW) — the
+    chromium HSTS preload list is operator-driven, not
+    CI-automated; the doc covers prerequisites, the
+    2-week pre-submission dry-run, the
+    https://hstspreload.org/ form-submission flow, and the
+    post-submission monitoring + removal procedure. (Apone)
+- **`gitleaks` secrets-scanning workflow.** New
+    `.github/workflows/secrets-scan.yml` runs gitleaks on every
+    PR + push to `main` + nightly cron (03:00 UTC, offset from
+    container-scan's 04:00). HIGH-confidence findings fail the
+    gate; SARIF uploaded to GitHub Code Scanning under category
+    `gitleaks` (distinct from Trivy's `trivy-container-scan` and
+    `trivy-image`). Coexists with the README-recommended
+    GitGuardian app as defense-in-depth — two layers, two failure
+    modes, same `report and block` floor. Concurrency-grouped on
+    `secrets-scan-${{ github.ref }}` so PR refreshes cancel
+    in-flight prior runs. (Apone)
+- **`docs/slsa-provenance.md` + `docs/hsts-preload.md` (NEW).**
+    Operator + auditor runbooks for the two new external-touching
+    surfaces (`slsa-verifier` CLI usage; chromium HSTS preload
+    submission). (Apone)
+
+### Changed (Phase K Wave 4)
+- `infra/k8s/overlays/prod/kustomization.yaml`: now lists
+    `kyverno-enforce-patch.yaml` as a resource AND uses
+    `patches: [- target: Ingress, path: hsts-patch.yaml]` to apply
+    the HSTS strategic-merge AND adds a JSON-patch that appends
+    `secretRef: { name: mahjong-jwt-keys, optional: true }` to
+    the deployment's `envFrom` list. (Apone)
+- `docs/jwt-rotation.md` §1: rewritten to document the Wave-4
+    `mahjong-jwt-keys` ESO and the rotation-state-named SSM
+    parameters. §3 + §4 rotation runbook commands updated to use
+    `aws ssm put-parameter --name /mahjong/prod/auth/jwt/key-*`
+    instead of the prior index-shaped pattern. §5 emergency
+    rotation updated likewise. §7 migration table updated:
+    Apone W4 row marked complete; W6 row dropped (work landed
+    in W4). (Apone)
+- `docs/admission-policy.md`: new §5.3 covers the Wave-4
+    canary procedure (staging ADMIT-with-warn → prod REJECT).
+
+### Notes (Phase K Wave 4)
+- **Backend gate untouched.** Wave-4 DevOps scope is pure
+    workflow + infra + docs — no `src/**` edits. The
+    1152/0/0 backend baseline from Wave-3 is preserved.
+- **No `git add -A`.** Selective adds only:
+    `.github/workflows/{slsa-provenance,secrets-scan}.yml`,
+    `infra/k8s/overlays/prod/{jwt-keys-secret,kyverno-enforce-patch,hsts-patch,kustomization}.yaml`,
+    `docs/{slsa-provenance,hsts-preload,jwt-rotation,admission-policy}.md`,
+    `CHANGELOG.md`, `.squad/decisions/inbox/apone-phase-k-wave-4.md`,
+    `.squad/agents/apone/history.md`.
+- **Out-of-scope / DO NOT STAGE this wave:**
+    `.copilot/skills/error-recovery/`, `.github/workflows/squad-*.yml`,
+    `.tool-actionlint/`, `.work/`.
 
 ## [0.12.0] — Phase K Wave 3 — 2026-05-26 (PR #49)
 
@@ -549,7 +671,8 @@ Phases A through I shipped on `main` without semver tags. Highlights:
     `pwmarcz/autotable` engine, scoring & yaku catalogue, swap-call
     discipline, gang/chi/pong/ron implementations.
 
-[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/long2know/mahjong-autotable/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/long2know/mahjong-autotable/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/long2know/mahjong-autotable/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/long2know/mahjong-autotable/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/long2know/mahjong-autotable/compare/v0.9.0...v0.10.0
