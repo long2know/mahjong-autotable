@@ -530,6 +530,86 @@ semantics across `v3.x.y`. Bump to `@v4` when HashiCorp ships a
 breaking-major release; track via Dependabot's grouped
 github-actions update.
 
+### 6.6 Version bump planning — W14 (1.10.5 → 1.11.x)
+
+> Phase K Wave 13 — Apone (DevOps). Survey + bump-planning
+> notes for the Q4 2026 cadence-anchored CLI bump. No actual
+> bump lands this wave — the §6.2 quarterly cadence pins the
+> bump to W14. The notes below are the W14 owner's plan-ahead
+> input.
+
+#### 6.6.1 Candidate baselines
+
+The W14 target is the most recent 1.11.x patch as of the W14
+bring-up date (the "baseline = current minor's most recent
+patch" rule from §6.2). HashiCorp's release cadence puts the
+1.11 line in active development as of Nov 2026; W14 should
+pin whichever 1.11.x patch is at least 30 days old by the
+W14 bring-up date (avoid 1.11.0; prefer 1.11.2+).
+
+Inputs to track:
+
+* HashiCorp's CHANGELOG between `v1.10.5` and the W14 target
+  patch. The compare-URL pattern:
+  `https://github.com/hashicorp/terraform/compare/v1.10.5...v1.11.x`.
+* The 1.11 release notes for any DEPRECATIONS landing in the
+  next minor (1.12); 1.11 sometimes warns about features that
+  break in 1.12 — surfacing them lets us proactively migrate
+  before the W17+ bump.
+
+#### 6.6.2 Pre-emptive migration risks
+
+The 1.10 → 1.11 boundary has historically included:
+
+| Risk class                                  | What to look for                                                                                                                                                                                                                                                                                                                                                                                | Pre-bump check                                                                                                                                                                                                                                                                       |
+|---------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `required_version` floor                    | If 1.11 introduces a feature we want to USE (e.g. a new function), the `required_version = ">= 1.5.0"` floor on every module must bump. Currently W11 baseline is `>= 1.5.0`; the squad has NOT consumed a 1.10-specific feature, so the floor stays sticky.                                                                                                                                      | `grep -rE 'required_version' infra/terraform/` — confirm `>= 1.5.0` is the consistent floor; bump only if a 1.11 feature is consumed.                                                                                                                                                |
+| Provider compatibility                      | The AWS provider (`hashicorp/aws`) tracks Terraform CLI loosely. A new 1.11 CLI MAY require a `~> 5.x` provider floor that we haven't pinned. The W11 lock files pin AWS `~> 5.40`; check that 1.11.x accepts that floor.                                                                                                                                                                       | Run `terraform init` against each env stack on 1.11 in a throwaway dir; if the lock file is reported as stale, that's a provider re-init (separate bump from CLI).                                                                                                                  |
+| HCL syntax changes                          | The 1.10 → 1.11 boundary HAS NOT historically broken HCL syntax (only minor warning changes). Confirm via release notes — any "syntax change" warning is a blocker.                                                                                                                                                                                                                                | `terraform fmt -recursive -check infra/terraform/` on 1.11 — output must be identical to 1.10.5 output.                                                                                                                                                                              |
+| Plan-output diffing                          | Terraform CLI bumps occasionally change plan-output formatting (whitespace, color, JSON shape). The squad's `dr-rehearsal.yml` workflow snapshots `terraform plan -out` artifacts — if the JSON shape changes, the artifact comparison breaks.                                                                                                                                                  | `terraform show -json plan.out` on 1.11 vs 1.10.5 — diff the JSON; any non-cosmetic delta is a regression.                                                                                                                                                                          |
+| Backend lock file (`.terraform.lock.hcl`)   | A CLI-only bump should be lock-clean (per §6.4). 1.11 has historically respected this; verify per env stack.                                                                                                                                                                                                                                                                                    | `terraform init -backend=false` in each env stack on 1.11 — `Terraform has been successfully initialized` with no `provider plugin reinstallation needed` message.                                                                                                                  |
+| DR rehearsal workflow                       | `.github/workflows/dr-rehearsal.yml` pins `terraform_version: "1.10.5"` in its `setup-terraform` step. The bump PR MUST update that pin in the same commit.                                                                                                                                                                                                                                       | `grep terraform_version .github/workflows/*.yml` — single source of truth; one line to change.                                                                                                                                                                                       |
+| `moved` block semantics                     | Terraform 1.11 has refined `moved` blocks for cross-module refactors. The squad currently has NO `moved` blocks (verified); a future refactor that introduces them needs to re-test the 1.11 semantics.                                                                                                                                                                                          | `grep -r '^moved' infra/terraform/` — must be empty.                                                                                                                                                                                                                                |
+| `removed` block (1.11 new)                  | 1.11 introduces a `removed` block for resource-removal semantics. The squad's W14 bump should NOT introduce uses of this in the same PR — keep the CLI bump scoped to the CLI version.                                                                                                                                                                                                          | The bump PR's `git diff` must NOT include `removed` blocks.                                                                                                                                                                                                                          |
+
+#### 6.6.3 Recommended W14 target pin
+
+Pending W14 bring-up survey of HashiCorp's release page, the
+provisional recommendation is **`1.11.4`** (assuming the
+1.11.x line reaches at least 1.11.4 by W14 and no CVE patch
+forces an earlier or later number). The W14 owner is
+responsible for confirming the recommendation against the
+release page at W14 bring-up time; the §6.3 out-of-band CVE
+escape hatch supersedes this recommendation if HashiCorp
+ships a security patch between W13 and W14.
+
+#### 6.6.4 Bump-PR shape
+
+The W14 bump PR is mechanically:
+
+1. Update `terraform_version: "1.10.5"` → `terraform_version:
+   "1.11.x"` in EVERY workflow that uses
+   `hashicorp/setup-terraform@v3`. The current set (W11+W13):
+   * `.github/workflows/dr-rehearsal.yml`
+   * (W13 adds no new `setup-terraform` consumers.)
+2. Run `terraform fmt -recursive -check infra/terraform/` —
+   must be a no-op.
+3. Run `terraform init -backend=false` + `terraform plan` in
+   each env stack — must be a no-op.
+4. Note the version bump in the W14 retro under "Quarterly
+   cadence — TF CLI bump".
+
+No `.terraform.lock.hcl` changes expected (per §6.4); if a
+lock-file diff appears, that's a SEPARATE provider-version
+bump that doesn't belong in the same PR.
+
+#### 6.6.5 Bump-PR rollback
+
+If the W14 1.11.x bump regresses on a workflow run, revert the
+PR. The `terraform_version: "1.10.5"` baseline is the rollback
+target; the lock files don't move so the revert is
+provider-clean.
+
 ## 7. Cross-references
 
 * `infra/terraform/README.md` — primary-stack bootstrap runbook.

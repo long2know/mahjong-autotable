@@ -1,0 +1,174 @@
+# Phase K Wave 13 — Apone (DevOps).
+#
+# Cluster-scoped resource exclusion from the prod overlay's
+# NamespaceTransformer.
+#
+# Why this file exists (W13):
+#
+# The W12 `namespace-transformer.yaml` swapped the kustomization
+# top-level `namespace: mahjong-prod` directive for an explicit
+# `NamespaceTransformer` with `unsetOnly: true`. That fixed the
+# cross-namespace targeting for `argo-rollouts-*` manifests
+# (they keep their pre-declared `argo-rollouts` value) but it
+# did NOT close the W4 / W12 open item on CLUSTER-SCOPED
+# resources (W12 retro D7):
+#
+#   "ClusterPolicy namespace quirk persists W4 → W12. Cluster-
+#    scoped resources (Kyverno `ClusterPolicy`) shouldn't have
+#    a `metadata.namespace`, but kustomize's `namespace:`
+#    directive (and the W12 `NamespaceTransformer`) apply the
+#    namespace anyway. Open item for W13+: add a `fieldSpecs:`
+#    exclusion to the W12 `NamespaceTransformer` so cluster-
+#    scoped Kinds are skipped explicitly."
+#
+# Why fieldSpecs alone don't work:
+#
+# Empirical test (W13): kustomize v5.4.3's built-in
+# `NamespaceTransformer` IGNORES the `kind:` selector on
+# `fieldSpecs` entries — even with `kind: Deployment` as the
+# only fieldSpec, ALL namespaced AND cluster-scoped Kinds in
+# the resource set still receive `metadata.namespace`. This is
+# tracked upstream (kustomize ships a baked-in fast-path that
+# applies the namespace independently of fieldSpecs gvk
+# filters). Kustomize ALSO has a hard-coded list of "known
+# cluster-scoped" Kinds (ClusterRole, Namespace, CRD, ...) but
+# that list does NOT include third-party CRDs like Kyverno
+# `ClusterPolicy`. Result: the W12 transformer wraps
+# `ClusterPolicy` in `mahjong-prod` even though it shouldn't.
+#
+# The W13 workaround:
+#
+# This file ships a series of `PatchTransformer` entries that
+# run AFTER the W12 `NamespaceTransformer` (kustomize processes
+# `transformers:` in declaration order) and REMOVE
+# `metadata.namespace` from each cluster-scoped Kind that the
+# overlay (or its upstream chart consumers) emits. The
+# `PatchTransformer` is itself a built-in — no external plugin
+# required.
+#
+# Cluster-scoped Kinds enumerated below — every Kind the
+# overlay can emit OR transitively pull in via a base / patch.
+# To add a new cluster-scoped Kind to the exclusion list, add a
+# new `---`-separated `PatchTransformer` document at the end
+# of this file. KEEP THE LIST SORTED ALPHABETICALLY BY KIND.
+#
+# Verification (W13 baseline):
+#
+#   $ kustomize build infra/k8s/overlays/prod/ \
+#       | awk '/^kind:/{kind=$2} /^  namespace:/{print kind,$2}' \
+#       | sort -u
+#
+#   Before this file: `ClusterPolicy mahjong-prod` (BUG).
+#   After this file:  ClusterPolicy line absent from the diff
+#                     (the resource emits without `namespace:`).
+
+---
+# `ClusterPolicy` (Kyverno) — the W4 + W12 enforce policies live
+# at cluster scope. The overlay's `kyverno-enforce-patch.yaml`
+# is the local source; future Kyverno chart upgrades that ship
+# additional ClusterPolicy resources are auto-covered (this
+# patch targets every Kind=ClusterPolicy in the result set).
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: strip-namespace-cluster-policy
+target:
+  kind: ClusterPolicy
+patch: |-
+  - op: remove
+    path: /metadata/namespace
+
+---
+# `ClusterRole` — upstream RBAC. nginx-ingress + argo-rollouts +
+# eso + cert-manager + kyverno all ship ClusterRoles via their
+# Helm charts; the overlay itself doesn't generate one, but a
+# future overlay-local ClusterRole would be covered.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: strip-namespace-cluster-role
+target:
+  kind: ClusterRole
+patch: |-
+  - op: remove
+    path: /metadata/namespace
+
+---
+# `ClusterRoleBinding` — same provenance as ClusterRole.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: strip-namespace-cluster-role-binding
+target:
+  kind: ClusterRoleBinding
+patch: |-
+  - op: remove
+    path: /metadata/namespace
+
+---
+# `CustomResourceDefinition` — CRDs are cluster-scoped by
+# definition. ESO, argo-rollouts, kyverno, and cert-manager all
+# ship CRDs via their Helm chart releases; if any of those
+# charts are ever wired into this overlay via
+# `kustomize-helm-chart` or `helm.releases:` they'd land here.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: strip-namespace-crd
+target:
+  kind: CustomResourceDefinition
+patch: |-
+  - op: remove
+    path: /metadata/namespace
+
+---
+# `MutatingWebhookConfiguration` — cluster-scoped admission
+# controller config. Shipped by cert-manager + kyverno.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: strip-namespace-mutating-webhook
+target:
+  kind: MutatingWebhookConfiguration
+patch: |-
+  - op: remove
+    path: /metadata/namespace
+
+---
+# `PersistentVolume` — cluster-scoped. We don't currently
+# provision overlay-local PVs (storage is StorageClass-driven),
+# but the exclusion is cheap insurance.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: strip-namespace-persistent-volume
+target:
+  kind: PersistentVolume
+patch: |-
+  - op: remove
+    path: /metadata/namespace
+
+---
+# `StorageClass` — cluster-scoped.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: strip-namespace-storage-class
+target:
+  kind: StorageClass
+patch: |-
+  - op: remove
+    path: /metadata/namespace
+
+---
+# `ValidatingWebhookConfiguration` — counterpart to
+# MutatingWebhookConfiguration; same chart provenance.
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: strip-namespace-validating-webhook
+target:
+  kind: ValidatingWebhookConfiguration
+patch: |-
+  - op: remove
+    path: /metadata/namespace

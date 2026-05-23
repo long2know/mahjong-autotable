@@ -40,6 +40,16 @@ resources:
 
 transformers:
   - namespace-transformer.yaml
+  # Phase K Wave 13 — Apone (DevOps). Strip `metadata.namespace`
+  # from cluster-scoped Kinds AFTER the W12 NamespaceTransformer
+  # runs. Closes the W12 retro D7 open item (ClusterPolicy
+  # namespace quirk). See per-file header for the empirical
+  # rationale + the enumerated cluster-scoped Kinds. Order in
+  # `transformers:` matters — this MUST follow
+  # `namespace-transformer.yaml` so the strip runs against the
+  # post-namespace state. See also
+  # `docs/cluster-policy-namespace-exclusion.md`.
+  - cluster-scoped-fieldspecs.yaml
 
 patches:
   - target:

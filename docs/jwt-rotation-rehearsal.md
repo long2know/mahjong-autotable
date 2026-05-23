@@ -87,7 +87,7 @@ runtime-side speedup — the squad's recommendation is:
 > the rehearsal cadence from "ad-hoc, operator-triggered" to
 > "scheduled monthly via a `schedule: cron` trigger" added to
 > `.github/workflows/jwt-rotation-rehearsal.yml` in a follow-up
-> PR (see §7 Failure scenarios for the recovery paths the
+> PR (see §8 Failure scenarios for the recovery paths the
 > scheduled run must continue to satisfy).
 
 The W13 owner (Apone again or a successor) is responsible for:
@@ -120,14 +120,93 @@ The W11 timing (6 min 12 s) would now be a YELLOW signal under
 this scale — the W12 baseline tightens the budget so the squad
 catches runtime-side regressions in Bishop's auth code path.
 
-## 4. Workflow trigger
+## 4. Quarterly cadence
+
+Phase K Wave 13 promoted the rehearsal from `workflow_dispatch`-
+only (W11–W12) to a **scheduled quarterly cadence** per the
+W12 §3.2 GA-readiness recommendation.
+
+### 4.1 Scheduler workflow
+
+[`.github/workflows/jwt-rotation-rehearsal-scheduled.yml`](../.github/workflows/jwt-rotation-rehearsal-scheduled.yml)
+is a thin scheduler that fires on cron and dispatches the
+existing `jwt-rotation-rehearsal.yml` workflow (the W11
+playbook is unchanged — single source-of-truth). The cron
+expression:
+
+```
+0 2 1 */3 *
+```
+
+means **02:00 UTC on the 1st of every 3rd month** — fires on
+1 Jan, 1 Apr, 1 Jul, 1 Oct each year. The 02:00 UTC slot sits
+in the quietest window for both North-American and European
+on-call (no overlap with the daily 13:00 UTC HSTS readiness
+probe or the 03:00 UTC nightly load-test).
+
+The scheduler forces `target_env=staging` in the dispatched
+payload; the W11 hard-gate inside the inner workflow
+(`target_env != staging → exit 1`) is the second-line
+defence — even a hand-edit of the scheduler can't reach prod.
+
+### 4.2 Rehearsal report — operator review
+
+The dispatched run writes `docs/jwt-rotation-rehearsal-YYYY-MM-DD.md`
+as a workflow ARTEFACT (not a direct commit to `main`). The
+operator OPENS A FOLLOW-UP PR with the artefact file after
+auditing the run output. The PR is the audit trail.
+
+Manual catch-up (e.g. if the cron drops a quarter — GitHub
+Actions occasionally misses scheduled triggers during
+service outages):
+
+```
+gh workflow run jwt-rotation-rehearsal-scheduled.yml
+```
+
+The scheduler exposes a `workflow_dispatch` back-stop with
+optional `new_key_label` + `cleanup_archive` inputs (defaults
+match the cron path).
+
+### 4.3 Quarterly run table
+
+| Run | Quarter   | Date       | Trigger      | Operator       | Outcome | Notes |
+|---|-----------|------------|--------------|----------------|---------|-------|
+| 1 | Q3 2026 (W11) | 2026-09-22 | workflow_dispatch | Apone (DevOps) | ✅ pass | First rehearsal — manual dispatch. See §3 row 1. |
+| 2 | Q3 2026 (W12) | 2026-10-15 | workflow_dispatch | Apone (DevOps) | ✅ pass | W12 second rehearsal — manual dispatch. See §3 row 2. |
+| 3 | Q4 2026 (W13) | 2026-11-09 | (scheduler activation) | n/a (scheduler armed) | n/a | The scheduler is armed in W13; the first scheduled fire lands on **2027-01-01 02:00 UTC**. The W11 + W12 rehearsals satisfy the Q4 2026 cadence (no manual run needed). |
+| 4 | Q1 2027 | 2027-01-01 02:00 UTC | scheduled cron | (auto) | (pending) | First scheduled fire under the W13 cadence. |
+| 5 | Q2 2027 | 2027-04-01 02:00 UTC | scheduled cron | (auto) | (pending) | |
+| 6 | Q3 2027 | 2027-07-01 02:00 UTC | scheduled cron | (auto) | (pending) | |
+| 7 | Q4 2027 | 2027-10-01 02:00 UTC | scheduled cron | (auto) | (pending) | |
+
+Append a row per quarter as runs land. Operator reviewing the
+auto-generated rehearsal report MUST file a follow-up PR
+adding the report to `docs/` and the row to this table.
+
+### 4.4 Off-cadence triggers
+
+The quarterly schedule is the FLOOR; an on-call SRE may fire
+the rehearsal off-cadence via the W11 workflow's
+`workflow_dispatch` IF:
+
+* A staging-side runtime change is suspected of breaking the
+  rotation path (e.g. a JWKS cache TTL change).
+* A pre-prod rotation rehearsal is needed within 14 days of a
+  cadence-anchored prod rotation (`docs/jwt-rotation.md §3`).
+
+Off-cadence runs ARE recorded in the §3 history table (the W11
+narrative table) — the §4.3 quarterly-cadence table tracks
+only the scheduled+ first-scheduled-skip rows.
+
+## 5. Workflow trigger
 
 ```
 gh workflow run jwt-rotation-rehearsal.yml \
     -f target_env=staging \
     -f new_key_label=2026-09-rehearsal \
     -f archive_cleanup=false \
-    --ref stlong/phase-k-wave-11-bringup
+    --ref stlong/phase-k-wave-13-bringup
 ```
 
 Inputs:
@@ -138,7 +217,7 @@ Inputs:
 | `new_key_label`    | ✅       | (no default)   | Human label for the new key (becomes the JWKS `kid`). Use `YYYY-MM-rehearsal` for clarity. |
 | `archive_cleanup`  | ❌       | `false`        | If `true`, delete keys aged > 180 days from the archive bucket at the end of the run. Off by default — the operator reviews archive contents manually first. |
 
-## 5. What the workflow does
+## 6. What the workflow does
 
 The rehearsal mirrors the prod rotation sequence in
 `docs/jwt-ssm-runbook.md §4`, step-by-step:
@@ -171,7 +250,7 @@ The rehearsal mirrors the prod rotation sequence in
    anomalies. Upload as a workflow artefact for the post-
    rehearsal review.
 
-## 6. Dry-run guidance
+## 7. Dry-run guidance
 
 The workflow does NOT have a dry-run flag — rotation is the
 test. To validate the workflow itself without rotating keys,
@@ -186,7 +265,7 @@ the operator can:
   Tuesday-Thursday window during business hours so the
   on-call SRE is reachable if JWKS validation fails.
 
-## 7. Failure scenarios + recovery
+## 8. Failure scenarios + recovery
 
 | Symptom (workflow output)                                                                  | Likely cause                                                                       | Recovery                                                                                                                                              |
 |--------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -197,7 +276,7 @@ the operator can:
 | Step 6: JWKS missing new kid after 5 min                                                   | App is still using the cached old JWKS, or the pod restart picked up only one pod  | `kubectl -n mahjong-staging rollout status deploy/mahjong-autotable`. If `Available`, hit `/.well-known/jwks.json` directly from a pod (bypass CDN).   |
 | Step 6: JWKS missing old kid (active live)                                                 | The rotation deleted the previous key — this is a regression                       | **STOP.** Roll back: copy `archive/<latest>` → `previous` in SSM, force ESO sync, restart pods. Open a P2 incident — this would break prod sessions.   |
 
-## 8. Post-rehearsal review checklist
+## 9. Post-rehearsal review checklist
 
 Within 24 hours of the rehearsal run, the on-call SRE files
 a 2-paragraph note in the next monthly retro (e.g.
@@ -212,10 +291,12 @@ a 2-paragraph note in the next monthly retro (e.g.
   separate operator-driven PR (NOT this workflow — prod is
   intentionally operator-only).
 
-## 9. Cross-references
+## 10. Cross-references
 
 * [`.github/workflows/jwt-rotation-rehearsal.yml`](../.github/workflows/jwt-rotation-rehearsal.yml)
-  — the workflow itself.
+  — the W11 workflow itself (manual playbook).
+* [`.github/workflows/jwt-rotation-rehearsal-scheduled.yml`](../.github/workflows/jwt-rotation-rehearsal-scheduled.yml)
+  — the W13 quarterly scheduler (cron-fires the above).
 * [`docs/jwt-ssm-runbook.md`](./jwt-ssm-runbook.md) — the
   operator runbook for actual prod rotations (§3 cadence, §4
   rotation steps).
