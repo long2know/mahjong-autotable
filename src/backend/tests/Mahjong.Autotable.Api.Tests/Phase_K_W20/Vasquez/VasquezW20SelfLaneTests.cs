@@ -191,7 +191,8 @@ public sealed class VasquezW20SelfLaneTests
         var asm = typeof(VasquezW20SelfLaneTests).Assembly;
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW21RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW21RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW22RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 

@@ -38,9 +38,18 @@ public sealed class AponeW21ChangelogW21ContractTests
         var p = Path.Combine(root!.FullName, "mobile", "package.json");
         if (!File.Exists(p)) return;
         var text = File.ReadAllText(p);
+        // W22 forward-broadening (Vasquez): accept the historical
+        // W21 stamp 0.30.0 OR the W22 bump to 0.31.0 (Apone W22
+        // mobile-shell bump in 10907cd, paired with Bishop W22's
+        // backend csproj 0.30.0 → 0.31.0 bump in 5029650).  Same
+        // pattern as the W20 mobile-pin forward-broadening
+        // codified in §9.5 of docs/agent-handoff-protocol.md.
         var has = text.Contains("\"version\": \"0.30.0\"", StringComparison.Ordinal)
                    || text.Contains("\"version\":\"0.30.0\"", StringComparison.Ordinal)
-                   || text.Contains("0.30.0", StringComparison.Ordinal);
+                   || text.Contains("0.30.0", StringComparison.Ordinal)
+                   || text.Contains("\"version\": \"0.31.0\"", StringComparison.Ordinal)
+                   || text.Contains("\"version\":\"0.31.0\"", StringComparison.Ordinal)
+                   || text.Contains("0.31.0", StringComparison.Ordinal);
         Assert.True(has);
     }
 }
