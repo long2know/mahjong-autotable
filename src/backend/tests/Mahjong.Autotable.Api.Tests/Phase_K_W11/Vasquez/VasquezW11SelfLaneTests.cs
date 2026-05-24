@@ -385,7 +385,8 @@ public sealed class VasquezW11SelfLaneTests
         // W12 renames Wave1ThroughKW11RegressionTests → Wave1ThroughKW12RegressionTests.
         // W13 renames again to Wave1ThroughKW13RegressionTests.
         // W14 renames again to Wave1ThroughKW14RegressionTests.
-        // W15 → Wave1ThroughKW15RegressionTests; W16 → Wave1ThroughKW16RegressionTests.
+        // W15 → Wave1ThroughKW15RegressionTests; W16 → Wave1ThroughKW16RegressionTests;
+        // W17 → Wave1ThroughKW17RegressionTests.
         // Accept any of the six so the W11 self-lane test stays
         // green across each rename wave.
         var t = asm.GetTypes().FirstOrDefault(x =>
@@ -394,7 +395,8 @@ public sealed class VasquezW11SelfLaneTests
             || x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 }

@@ -204,11 +204,11 @@ public sealed class VasquezW16SelfLaneTests
     public void Wave1ThroughKW16RegressionTests_Class_Present()
     {
         var asm = typeof(VasquezW16SelfLaneTests).Assembly;
-        // W17 may rename again; this self-lane test stays restrictive
-        // at W16 because it ships in the W16 PR.  Future W17 prompt
-        // pattern is to broaden to KW16 || KW17.
+        // W17 renames KW16 → KW17; broaden to accept either so this
+        // W16 self-lane test stays green across the W17 rename wave.
         var t = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 
