@@ -44,12 +44,18 @@ public sealed class AponeW21ChangelogW21ContractTests
         // backend csproj 0.30.0 → 0.31.0 bump in 5029650).  Same
         // pattern as the W20 mobile-pin forward-broadening
         // codified in §9.5 of docs/agent-handoff-protocol.md.
+        // W23 forward-broadening (Vasquez): also accept 0.32.0
+        // (Apone W23 bump in dfb4ac0, paired with Bishop W23's
+        // backend csproj 0.31.0 → 0.32.0 bump in 490f7fa).
         var has = text.Contains("\"version\": \"0.30.0\"", StringComparison.Ordinal)
                    || text.Contains("\"version\":\"0.30.0\"", StringComparison.Ordinal)
                    || text.Contains("0.30.0", StringComparison.Ordinal)
                    || text.Contains("\"version\": \"0.31.0\"", StringComparison.Ordinal)
                    || text.Contains("\"version\":\"0.31.0\"", StringComparison.Ordinal)
-                   || text.Contains("0.31.0", StringComparison.Ordinal);
+                   || text.Contains("0.31.0", StringComparison.Ordinal)
+                   || text.Contains("\"version\": \"0.32.0\"", StringComparison.Ordinal)
+                   || text.Contains("\"version\":\"0.32.0\"", StringComparison.Ordinal)
+                   || text.Contains("0.32.0", StringComparison.Ordinal);
         Assert.True(has);
     }
 }

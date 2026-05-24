@@ -29,8 +29,12 @@ public sealed class BishopW22BackendCsprojVersionContractTests
         var text = File.ReadAllText(p);
         // Accept W22 stamp 0.31.0 OR any later 0.N.0 form (per
         // §10.4 mobile-pin forward-broadening precedent).
+        // W23 forward-broadening (Vasquez): also accept 0.32.0
+        // (Bishop W23 csproj bump in 490f7fa).
         var has = text.Contains("<Version>0.31.0</Version>", StringComparison.Ordinal)
-                   || text.Contains("0.31.0", StringComparison.Ordinal);
+                   || text.Contains("0.31.0", StringComparison.Ordinal)
+                   || text.Contains("<Version>0.32.0</Version>", StringComparison.Ordinal)
+                   || text.Contains("0.32.0", StringComparison.Ordinal);
         Assert.True(has);
     }
 }

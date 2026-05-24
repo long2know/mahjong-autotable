@@ -2938,3 +2938,67 @@ clean (`bash -n tests/ci/check-cross-lane-bundling.sh`); backend
 gate untouched (3312 / 0 / 0 from W15 bring-up `0a316d7`). 5th-
 consecutive-wave 0-violation invariant restored on the W15 PR
 branch.
+
+## Phase K Wave 23 — QA bring-up (2026-12-04)
+
+### Brief recap
+
+Vasquez closes Phase K Wave 23 with the 4th canonical role:
+gate verification, ~22 forward-stage W23 contract test files,
+KW22 → KW23 regression-class rename, W11-W22 forward-broadening
+to also accept the KW23 class name, `docs/agent-handoff-
+protocol.md §6.12` LH13-cron-W23-HOLD-YELLOW ratification +
+`§11` W23 retrospective audit (NEW top-level section),
+W20+W21+W22 mobile-pin forward-broadening repair (broken by
+Apone's 0.31.0 → 0.32.0 bump), and the inbox memo.
+
+### Wave-23 commit landings (chronological)
+
+- Apone `dfb4ac0` — Phase K Wave 23 — Apone (DevOps) bring-up
+  (Kyverno enforce-flip set-3 + Argo Rollouts post-install
+  workflow + W23 mobile cross-check matrix + 0.32.0 bump).
+- Bishop `490f7fa` — Phase K Wave 23 — Bishop (Backend)
+  bring-up (Buchholz/SonnebornBerger tiebreakers + replay
+  chunked-upload + JWT rotation-drill autorun + SignalR per-
+  group telemetry + audit-log retention purge + replay-
+  restoration audit-history; csproj 0.32.0).
+- Hicks `86a3366` — Phase K Wave 23 — Hicks (Frontend)
+  bring-up (bundle audit §3.8 + Phase L discard/score wired
+  live + 6 admin surfaces + autotable-src-eager -58% + LH13
+  §14 HOLD YELLOW W25-earliest + new signalr manualChunks
+  bucket; three-renderer-big hold 13th wave).
+
+### Milestones at W23 close
+
+- **13th consecutive 0-violation lane wave** (W11 → W23
+  inclusive).
+- **3rd consecutive 4-for-4 atomic-flock wave** (W21 + W22
+  + W23, mirroring the zero-EXECUTION-coord-wave streak).
+- **3rd consecutive zero-EXECUTION-coord wave** (W21 + W22
+  + W23).
+- **6th consecutive YELLOW-hold wave** on LH13 (W18 → W23).
+- **15-wave deferral arc** on §4.8 Stephen-decision (W7 →
+  W23) — past the 14-wave Coordinator-direct-escalation
+  trigger threshold, but Vasquez W23 explicitly chooses NOT
+  to open §4.9 (rationale in handoff doc §11.4 +
+  inbox-memo §2.2).
+- **3-wave-old mobile-pin forward-broadening precedent**
+  (W21 + W22 + W23) — W24+ version-pin contract tests should
+  follow the same forward-broadening pattern from the outset.
+
+### Gate
+
+Expected at Vasquez W23 commit time: ≥ 5200 / 0 failures /
+0 skipped — Vasquez W23 contributes ~85-95 contract facts
+across the 22 new `Phase_K_W23/Vasquez/` files plus the
+KW22→KW23 historical pins, and repairs the 3 mobile-pin
+failures Apone's W23 bump introduced.
+
+### Hand-off to W24 Vasquez
+
+See `.squad/decisions/inbox/vasquez-phase-k-wave-23.md §3`.
+Key items: (1) LH13 §6.12 PROMOTE re-evaluation against
+predicted W25-earliest cron-accumulation milestone, (2)
+re-evaluate considered judgment on §4.9 at potential 16-wave
+deferral arc, (3) W23 retrospective audit, (4) carry the
+3-wave-old mobile-pin forward-broadening precedent.

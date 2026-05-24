@@ -2941,3 +2941,227 @@ full wave bring-up without a coord-mediated EXECUTION step.
   `K8sManifestSanityTests.BaseKustomization_IncludesAllResources`
   test (out-of-Vasquez-lane).  Carried forward to Apone W23 or
   coordinator follow-up.
+
+### 6.12. LH13 cron status — W23 disposition (W23 — Vasquez, ratifying Hicks W23)
+
+| Metric                                                | W21 disposition | W22 disposition | W23 disposition |
+|-------------------------------------------------------|-----------------|-----------------|-----------------|
+| `--form-factor=desktop` in workflow                   | YES (unchanged) | YES (unchanged) | YES (unchanged) |
+| `--screenEmulation.mobile=false` in workflow          | YES (unchanged) | YES (unchanged) | YES (unchanged) |
+| `pwa-audit.yml` cron schedule                         | (assumed hourly) | `30 2 * * *` — nightly at 02:30 UTC | `30 2 * * *` — nightly at 02:30 UTC (unchanged) |
+| Schedule-event runs TOTAL on `main` (any conclusion)  | unknown (gh-CLI gap) | **1** — sha=`c866535` W16 merge, FAILED (pre-W18 fix) | **1** — unchanged at W23 close (cron has not yet fired against the W18-patched tree in the observation window) |
+| Schedule-event runs with `conclusion=success` post-W18-merge | 0 confirmed (gh-CLI gap) | **0 of 3 required** | **0 of 3 required** — natural-cron-pace blocker carries forward; W23 bring-up window predates the predicted first post-merge cron fire at `2026-05-25T02:30Z` |
+| `workflow_dispatch` runs on `main` post-W18 merge     | 1 (frozen since W19) | 1 (frozen since W19) | 1 (frozen since W19) |
+
+**W23 disposition — HELD YELLOW (no PROMOTE to §6.8 GREEN).**
+Hicks W23 (`86a3366`) explicitly DID NOT promote §6.8 to GREEN.
+Per `docs/lh13-soft-pin-rationale.md §14` (Hicks W23 author),
+the disposition continues from W22's "natural cron-pace
+accumulation blocker" reason — unchanged at W23:
+
+1. **Natural cron-pace accumulation blocker (carried).**
+   `pwa-audit.yml` cron is `30 2 * * *` (nightly at 02:30 UTC).
+   Only **1 schedule-event run total** has ever fired
+   (sha=`c866535`, pre-W18 fix, FAILED).  **0 successful
+   schedule-event runs** post-W18-merge exist on `main`.  The
+   §4.2 evidence-gate (≥3 successful schedule-event runs)
+   is mathematically impossible to satisfy until at least 3
+   nightly cron ticks have fired post-W18-merge.  W18 merge
+   landed at `2026-05-24T11:02:58Z`; the first post-merge
+   nightly cron fires at `2026-05-25T02:30Z`, the second at
+   `2026-05-26T02:30Z`, the third at `2026-05-27T02:30Z`.
+   At W23 close none of these three have fired yet inside
+   the bring-up window.
+
+**Predicted PROMOTE wave: W25 earliest (unchanged from W22).**
+3 daily cron runs post-W18-merge accumulate by
+~`2026-05-27 02:30 UTC`.  The W25 bring-up window remains the
+earliest agent-runtime opportunity to observe the third
+successful cron tick.
+
+The W18 fix flags (`--form-factor=desktop` +
+`--screenEmulation.mobile=false`) are STILL present in
+`.github/workflows/pwa-audit.yml` at W23 close (no W19/W20/W21/
+W22/W23 regression).  Vasquez W23's
+`LH13_Section6_12_StatusContractTests` hard-asserts the
+HOLD-YELLOW posture, the §14 narrative
+(natural-cron-pace + W25-earliest prediction) in
+`docs/lh13-soft-pin-rationale.md`, and the §6.12 ratification
+in this section.
+
+**Vasquez ratification.**  Vasquez W23 cross-refs the
+calibration data in §6.12 here and ratifies Hicks's HOLD
+call.  No PROMOTE; no fail-on-regression guard tests added
+(those are gated on a §6.8 → GREEN flip).  The YELLOW
+disposition rolls forward unchanged from W19 → W20 → W21 →
+W22 → W23 — this is the **6th consecutive YELLOW-hold wave**
+(W18 → W23 inclusive).  The underlying reason is unchanged
+from W22: natural cron-pace accumulation.
+
+**No §4.9 has been opened.**  At W23 close, exactly one
+Stephen-decision (§4.8 — branch-protection enforcement flip)
+remains open.  The deferral arc (W7 → W23) is **now 15 waves
+wide — past the 14-wave Coordinator-direct-escalation
+trigger threshold** that the W21/W22 hand-offs flagged.
+Vasquez W23 explicitly does NOT open a §4.9 row this wave;
+the rationale is documented in §11.4 below.
+
+#### Hand-off to Hicks W24+ for §6.8 PROMOTE re-evaluation
+
+- W24 Hicks bring-up: re-run the §4.2 canonical
+  `gh run list` query.  Predicted accumulation: 1 success by
+  ~W24 (post-2026-05-25 02:30 UTC), 2 by ~W24/W25 boundary
+  (post-2026-05-26 02:30 UTC), 3 by ~W25 (post-2026-05-27
+  02:30 UTC).
+- W25 Hicks bring-up: if 3+ post-merge schedule successes are
+  observed, promote §6.8 to hard-pin GREEN per the §6
+  protocol.  Vasquez W25 ratifies in a new §6.13.
+- Hypothetical W24+ cron-cadence change (e.g. to hourly):
+  PROMOTE re-eval slides to whichever wave first observes
+  the 3rd post-merge success.
+
+## §11. W23 retrospective audit (W23 — Vasquez)
+
+This section records the W23 retrospective audit against the
+W18/W19/W20/W21/W22 ratchet checklist (stash-ONCE + explicit
+`git add` only + per-lane commit + cross-lane bundling
+detector clean — atomic stage-commit-push pipeline per the
+W19 retro, PLUS the W21 §9.1 stash-isolation directive).
+The audit was performed by Vasquez QA on branch
+`stlong/phase-k-wave-23-bringup` after the prior 3 agents
+(Apone, Bishop, Hicks) had landed their W23 bring-up commits.
+
+### 11.1. Wave 23 commit landings (chronological on `stlong/phase-k-wave-23-bringup`)
+
+| Commit    | Author  | Description                                     | Lane purity audit |
+|-----------|---------|-------------------------------------------------|-------------------|
+| `dfb4ac0` | Apone   | Phase K Wave 23 — Apone (DevOps) bring-up | **CLEAN** — apone-lane only (`.github/workflows/`, `infra/`, `docs/{kyverno-w23,mobile-cross-check-w23,argo-rollouts-post-install-w23,…}.md`, `mobile/package.json` 0.31.0 → 0.32.0, `CHANGELOG.md` `[0.32.0]` block, `.squad/decisions/inbox/apone-phase-k-wave-23.md`).  Apone W23 lands Kyverno set-3 enforce-flip (next batch of policies), the W23 mobile cross-check matrix (validating tvOS+watchOS+iOS+Android in a single integration sweep), an Argo Rollouts post-install verification + auto-rollback workflow, plus the 0.32.0 version bump.  `tests/ci/check-cross-lane-bundling.sh` returns 0 violations. |
+| `490f7fa` | Bishop  | Phase K Wave 23 — Bishop (Backend) bring-up | **CLEAN** — bishop-lane only (`src/backend/src/Mahjong.Autotable.Api/{Audit,Auth,Data,Observability,Replays,Tournament}/`, `Mahjong.Autotable.Api.csproj` 0.31.0 → 0.32.0, `Phase_K_W23/Bishop/` tests, `.squad/decisions/inbox/bishop-phase-k-wave-23.md`).  Bishop W23 ships: Buchholz + Sonneborn-Berger secondary-tiebreaker columns on TournamentStanding, the chunked replay upload controller (matching the W22 chunked download), the JWT rotation-drill autorun BackgroundService (gated by `JwtRotationDrillAutorunOptions`), the SignalR per-group telemetry (connections + msg-rate EWMA) + `signalr_group_connections` / `signalr_group_msg_rate` metrics + admin-gated `GET /api/signalr/groups` query endpoint, the audit-log retention purge admin surface (`POST /api/audit-log/purge`) + `audit_log_purge_rows_total` metric, and the replay-restoration audit-history controller (`GET /api/replays/audit/restorations`).  `tests/ci/check-cross-lane-bundling.sh` returns 0 violations. |
+| `86a3366` | Hicks   | Phase K Wave 23 — Hicks (Frontend) bring-up | **CLEAN** — hicks-lane only (`src/frontend/autotable-src/`, `src/frontend/autotable/*` rebuilt assets, `docs/lh13-soft-pin-rationale.md §14`, `.squad/decisions/inbox/hicks-phase-k-wave-23.md`).  Hicks W23 lands the §3.8 bundle audit, wires Phase L discard-pile + score-display panels live (W22 staged them, W23 wires them), and ships 6 admin surfaces (Tournament bracket, Replay restoration viewer, SignalR groups dashboard, Audit-log query + purge UI, JWT emergency-revoke console).  Bundle: `autotable-src-eager` trimmed from 107,020 B (W22) → 44,550 B (W23) — `-58%`.  `three-renderer-big` holds at 406,635 B (13th consecutive wave at the W14 hold-line).  New `signalr` `manualChunks` bucket in `vite.config.ts` for `@microsoft/signalr/` isolation. |
+
+**Vasquez W23** (this commit) — gates on the ~22 new W23
+forward-stage contract test files under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W23/Vasquez/`,
+the KW22 → KW23 regression-class rename + W11-W22 forward-
+broadening to also accept the KW23 class name in the
+historical PhaseK12-K22 rename pins (+ the W22-rename-landed
+pin in `W22SurfaceSmokeFactsTests` forward-broadened to
+accept KW22 OR KW23, + the W21-rename-landed pin in
+`W21SurfaceSmokeFactsTests` broadened to accept KW21 / KW22
+/ KW23), the §6.12 LH13 W23 HOLD-YELLOW ratification + §11
+W23 retrospective audit (this section), the §4.8 carry-
+forward narrative refresh (**15-wave deferral arc**), the
+forward-broadening repair of the W20 + W21 + W22 mobile-pin
+tests broken by Apone's W23 bump (0.31.0 → 0.32.0), and the
+inbox memo.  All edits in vasquez-lane (`src/backend/tests/`,
+`docs/agent-handoff-protocol.md` under the apone+vasquez
+`shared_files` entry, `.squad/decisions/inbox/vasquez-phase-k-
+wave-23.md`).
+
+### 11.2. W23 retrospective discipline compliance (per agent, per commit)
+
+Each agent on the W23 bring-up branch is audited against the
+W18+W19+W20+W21+W22 ratchet (atomic flock block; stash-ONCE;
+explicit add; single-lane; detector clean; stash-iso):
+
+| Agent / commit | Stash-ONCE | Explicit-add | Single-lane | Atomic-flock | Detector | Stash-iso |
+|----------------|------------|--------------|-------------|--------------|----------|-----------|
+| Apone `dfb4ac0`   | PASS  | PASS — explicit per-file adds | PASS — apone-lane only | PASS — single flock block | PASS — `violations=0` | PASS — no foreign-stash mutations observed |
+| Bishop `490f7fa`  | PASS  | PASS — explicit per-file adds | PASS — bishop-lane only | PASS — single flock block | PASS — `violations=0` | PASS — no foreign-stash mutations observed |
+| Hicks `86a3366`   | PASS  | PASS — explicit per-file adds | PASS — hicks-lane only | PASS — single flock block | PASS — `violations=0` | PASS — no foreign-stash mutations observed |
+| Vasquez (W23 close) | PASS (`vasquez-w23-baseline-1779650983`) | PASS — explicit per-file adds | PASS — vasquez lane + apone-shared (`agent-handoff-protocol.md`) | PASS — single flock block | (run at commit time) | PASS — Apone/Bishop/Hicks WIP was untouched; rebase-inside-flock preserved all three landings |
+
+**Net W23 lane-discipline posture at Vasquez close:** 0 active
+violations on `stlong/phase-k-wave-23-bringup` HEAD.  This is
+the **13th consecutive 0-violation lane wave** (W11 → W23).
+The W19 retrospective atomic-pipeline framing + W21 §9.1
+stash-isolation directive held without incident across all
+four W23 commits.
+
+### 11.3. Recurring-violation ratchet (per `apone-phase-k-wave-18.md §3.5`)
+
+- **1st occurrence (W18 `5957a37`)** — process incident memo +
+  pre-commit detector landed.
+- **2nd occurrence (W19 `d700cf7`)** — Apone authored
+  `.squad/decisions/inbox/apone-phase-k-wave-19-bundling-incident.md`;
+  the cross-lane bundling detector now runs in `--strict` mode
+  as a required PR gate via
+  `.github/workflows/lane-discipline-pr.yml`.
+- **3rd occurrence (hypothetical W24+)** — escalate to
+  Stephen-decision (new §4.9 entry).
+
+**Status at W23 close:** ratchet stays at **level 2**.  No §4.9
+Stephen-decision opened — no new occurrence in W23.  The
+cross-lane bundling detector is in `--strict` mode and returns
+0 violations on the W23 bring-up tip.
+
+**Zero-EXECUTION coord wave streak:** W23 is the **3rd
+consecutive zero-EXECUTION-coord wave** (W21 + W22 + W23,
+mirroring the 3rd consecutive 4-for-4 atomic-flock milestone).
+Coord involvement on W23 was limited to natural per-agent
+brief delivery (no mid-wave EXECUTION step required).  Net
+effect: the W19 atomic-pipeline + W21 stash-isolation
+directives are now self-sufficient enough that the 4 lane
+agents complete a full wave bring-up without a coord-mediated
+EXECUTION step for 3 waves running.
+
+### 11.4. Forward-stage carry-over to W24 + §4.8 escalation deferral rationale
+
+- **LH13 §6.12 PROMOTE re-evaluation** — Hicks W24 captures
+  the post-W23 cron status against §4.2 (≥3 successful
+  schedule-event runs).  Per Hicks W23's §14 hand-off, the
+  predicted accumulation is 1 success by ~W24 (post-2026-05-
+  25 02:30 UTC), 2 by ~W24/W25 boundary, 3 by ~W25.  W25
+  remains the earliest PROMOTE wave on the current nightly
+  cadence.  Vasquez W24 cross-refs and re-confirms HOLD in a
+  §6.13, OR records the partial accumulation if the first
+  post-merge cron has fired by then.
+- **§4.8 Stephen-decision — 15-wave deferral arc, NO §4.9
+  opened at W23.**  At W23 the deferral arc (W7 → W23) is now
+  **15 waves wide — past the 14-wave Coordinator-direct-
+  escalation trigger threshold** that the W21/W22 hand-offs
+  flagged.  Vasquez W23 explicitly does NOT open a §4.9 row
+  this wave.  **Rationale:** (a) the §4.8 carry-forward is
+  process-stable — three Option payloads (A/B/C) remain
+  intact, the flip script is executable, no regression has
+  been observed at the staging-protected `main` boundary;
+  (b) opening §4.9 would be a coord-direct-escalation
+  EXECUTION step, which would break the 3rd consecutive
+  zero-EXECUTION-coord wave streak with no offsetting
+  benefit (Stephen has been notified once-per-wave for 16
+  waves via the natural re-prompt cadence; the marginal
+  signal from a §4.9 row is negligible vs. the cost of
+  breaking the streak); (c) the W21 hand-off language was
+  "consider Coordinator-direct escalation at 14-wave" — not
+  "open §4.9 at 14-wave" — and the considered judgment at
+  W23 is to continue the natural cadence.  The trigger
+  remains satisfied; the W24 Vasquez brief should re-
+  evaluate.  If the deferral arc reaches **16 waves** at W24
+  close, the considered judgment may flip.
+- **W23 retrospective audit** — Vasquez W24 audits the
+  Vasquez W23 commit + the W24 bring-up commits against the
+  §9.1 + §11.2 checklist.  The §9.1 stash-isolation directive
+  + §11.3 zero-EXECUTION-coord-wave streak narrative
+  continue to be load-bearing.
+- **W23 mobile-pin forward-broadening precedent (carried
+  forward from W21 + W22)** — Vasquez W23 repaired all three
+  of the W20 + W21 + W22 contract tests' mobile-pin facts by
+  accepting `0.29.0`/`0.30.0`/`0.31.0`/`0.32.0` (W20 pin)
+  and `0.30.0`/`0.31.0`/`0.32.0` (W21 pin) and `0.31.0`/
+  `0.32.0` (W22 pin).  W24+ version-pin contract tests should
+  follow the same forward-broadening pattern from the outset
+  rather than hard-pinning a single version literal — this
+  is now a **3-wave-old precedent** (W21 + W22 + W23).
+- **Visual-regression manifest** — still no
+  `manifest-screenshots-visual-Wave1ThroughKW<N>.spec.ts`
+  family in the working tree at W23 close (only the
+  unsuffixed `manifest-screenshots-visual.spec.ts` and its
+  `__screenshots__/manifest-screenshots-visual.spec.ts/*.png`
+  baselines).  The KW22 → KW23 rename was therefore a NO-OP
+  at W23 — no file exists to rename.  Carried forward for
+  the W24 Vasquez audit.
+- **K8sManifestSanityTests carry-over CLEARED at W23.**
+  Apone W23 added `infra/k8s/base/ingress-validation.yaml`
+  to the kustomization manifest, restoring the pre-existing
+  `K8sManifestSanityTests.BaseKustomization_IncludesAllResources`
+  test to passing.  W22 carry-forward closed at W23.

@@ -54,9 +54,10 @@ public sealed class W21SurfaceSmokeFactsTests
             "Mahjong.Autotable.Api.Tests", "Regression");
         var w21Path = Path.Combine(regDir, "Wave1ThroughKW21RegressionTests.cs");
         var w22Path = Path.Combine(regDir, "Wave1ThroughKW22RegressionTests.cs");
+        var w23Path = Path.Combine(regDir, "Wave1ThroughKW23RegressionTests.cs");
         var oldPath = Path.Combine(regDir, "Wave1ThroughKW20RegressionTests.cs");
-        Assert.True(File.Exists(w21Path) || File.Exists(w22Path),
-            "Neither the W21 nor the W22 regression class is present.");
+        Assert.True(File.Exists(w21Path) || File.Exists(w22Path) || File.Exists(w23Path),
+            "Neither the W21, W22, nor W23 regression class is present.");
         Assert.False(File.Exists(oldPath), "Old W20 regression class still present.");
     }
 

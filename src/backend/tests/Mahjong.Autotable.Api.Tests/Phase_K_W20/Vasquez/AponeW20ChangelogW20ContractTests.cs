@@ -49,6 +49,13 @@ public sealed class AponeW20ChangelogW20ContractTests
         // W22 forward-broadening (Vasquez): also accept 0.31.0
         // (Apone W22 bump in 10907cd, paired with Bishop's
         // backend csproj 0.30.0 → 0.31.0 bump in 5029650).
+        // W23 forward-broadening (Vasquez): also accept 0.32.0
+        // (Apone W23 bump in dfb4ac0, paired with Bishop W23's
+        // backend csproj 0.31.0 → 0.32.0 bump in 490f7fa).  Per
+        // §10.4 (W22 retro) mobile-pin forward-broadening
+        // precedent, the historical contract accepts EVERY value
+        // ≥ W20 baseline so the gate stays green across the
+        // natural per-wave cadence.
         var has = text.Contains("\"version\": \"0.29.0\"", StringComparison.Ordinal)
                    || text.Contains("\"version\":\"0.29.0\"", StringComparison.Ordinal)
                    || text.Contains("0.29.0", StringComparison.Ordinal)
@@ -57,7 +64,10 @@ public sealed class AponeW20ChangelogW20ContractTests
                    || text.Contains("0.30.0", StringComparison.Ordinal)
                    || text.Contains("\"version\": \"0.31.0\"", StringComparison.Ordinal)
                    || text.Contains("\"version\":\"0.31.0\"", StringComparison.Ordinal)
-                   || text.Contains("0.31.0", StringComparison.Ordinal);
+                   || text.Contains("0.31.0", StringComparison.Ordinal)
+                   || text.Contains("\"version\": \"0.32.0\"", StringComparison.Ordinal)
+                   || text.Contains("\"version\":\"0.32.0\"", StringComparison.Ordinal)
+                   || text.Contains("0.32.0", StringComparison.Ordinal);
         Assert.True(has);
     }
 }
