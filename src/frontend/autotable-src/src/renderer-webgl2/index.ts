@@ -231,35 +231,12 @@ export function createTexture(
   return tex;
 }
 
-/** A 4×4 column-major identity matrix. */
-export function identity4(): Float32Array {
-  const m = new Float32Array(16);
-  m[0] = 1; m[5] = 1; m[10] = 1; m[15] = 1;
-  return m;
-}
-
-/**
- * Right-handed perspective projection matrix in column-major
- * order — mirrors `three.PerspectiveCamera.updateProjectionMatrix()`
- * so the eventual Phase L migration can re-use the existing
- * camera state without a coordinate-space flip.
- */
-export function perspective4(
-  fovYRadians: number,
-  aspect: number,
-  near: number,
-  far: number,
-): Float32Array {
-  const f = 1 / Math.tan(fovYRadians / 2);
-  const nf = 1 / (near - far);
-  const m = new Float32Array(16);
-  m[0] = f / aspect;
-  m[5] = f;
-  m[10] = (far + near) * nf;
-  m[11] = -1;
-  m[14] = 2 * far * near * nf;
-  return m;
-}
+// Phase K Wave 16 — math helpers split out into `./math.ts` so the
+// tile-mesh + camera + this hello-world all share a single set of
+// 4×4 matrix utilities.  Re-exported for callers that already
+// depend on `identity4` / `perspective4` from this module.
+export { identity4, perspective4 } from './math';
+import { identity4, perspective4 } from './math';
 
 /**
  * W15 hello-world: render one textured quad into the supplied

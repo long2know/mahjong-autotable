@@ -19,8 +19,137 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-15-bringup`. Phase K Wave 15
+Working branch: `stlong/phase-k-wave-16-bringup`. Phase K Wave 16
 in flight. Other lane deliverables outstanding.
+
+## [0.25.0] — Phase K Wave 16 — 2027-01-15 (PR pending)
+
+**Theme:** Kyverno enforce-flip activated (W15 pre-wire →
+W16 cutover after 5-day observability grace) + HPA
+min-replicas bump landed (base 2 → 3 propagated to all
+overlays + helm baseline) + us-east-1 W16 plan capture +
+SLSA-3 partial hardening (six action SHA pins in
+`docker-build.yml`) + mobile bundle CI bootstrap (new
+`mobile-bundle-ci.yml` fast-feedback workflow + infra/
+mobile/ stub + operator runbook) + CHANGELOG 0.25.0 +
+package + csproj version pins. Apone's W16 lands the
+hand-off items the W15 pre-wires set up plus a fresh
+Phase-L mobile-CI groundwork lift; the cluster admission
+posture is now Enforce-mode for the prod-only
+`enforce-prod-default` ClusterPolicy on top of the
+existing W3 + W4 cosign-verify chain.
+
+### Apone — DevOps (W16 deliverables)
+
+- **Kyverno enforce flip — activated.** Uncommented the W15
+  `- kyverno-enforce-policies.yaml` line in
+  `infra/k8s/overlays/prod/kustomization.yaml`; the
+  `enforce-prod-default` ClusterPolicy now renders in the
+  prod overlay (51 additional lines vs the W15 baseline,
+  exclusively additive). Pre-conditions all GREEN after the
+  5-day observability grace window: zero deny events on the
+  W3 audit-mode policy, zero non-root violations in
+  `mahjong-prod`, staging rehearsal pass, squad sign-off.
+  New `docs/kyverno-audit-findings-w16.md` documents the
+  audit window + the per-policy verdict table + the
+  intentional "do NOT flip the cluster-wide W3 policy"
+  rationale (three reasons, per W15 §1 design intent). The
+  W15 rollout doc gets a new §10 with the cutover-day
+  evidence + the 14-day post-flip blast-radius watch hand-off
+  to W17.
+- **HPA min-replicas 2 → 3 base bump.** Bumped
+  `infra/k8s/base/hpa.yaml` `minReplicas: 2 → 3` to propagate
+  the floor to ALL overlays (base + staging + any future
+  overlay without an explicit override) — the prod overlay
+  already pinned 3 since W7 via the inline kustomization
+  patch. Companion bump in
+  `helm/mahjong/charts/mahjong-api/values.yaml`
+  `hpa.minReplicas: 2 → 3`. Extracted the W7-era inline
+  prod-overlay JSON-Patch ops to a standalone strategic-merge
+  patch at `infra/k8s/overlays/prod/hpa-patch.yaml` (NEW),
+  parallel to the W4 `kyverno-enforce-patch.yaml` + W13
+  `redis-envfrom-required-patch.yaml` precedent. Prod's
+  effective HPA settings (`minReplicas: 3`, `maxReplicas:
+  12`) are UNCHANGED post-W16; the layout shift is the
+  hygiene deliverable. Staging now correctly inherits
+  `minReplicas: 3` from base (was inheriting 2 pre-W16).
+- **us-east-1 W16 plan capture.** Re-ran the W14 dry-run
+  against the W16 source tip; zero drift confirmed
+  (`infra/terraform/{envs/prod,modules/edge,modules/redis}`
+  byte-identical to the W11 baseline). Plan capture at
+  `docs/us-east-1-w16-plan-output.txt` (NEW) documents the
+  `terraform init` + `terraform validate` + partial plan
+  output (1 resource adds cleanly without AWS creds —
+  `module.redis.random_password.auth_token`); AWS-side
+  resources require operator-supplied creds + tfvars. Updated
+  `docs/regional-eks-bringup.md` with new §3 "W16 apply
+  readiness" (renumbering §3 per-region checklist to §4):
+  four-row pre-condition gate, two CI-surface rows GREEN
+  (TF drift + Hicks renderer-bandwidth budget ≤ 22 KB), two
+  operator-side rows deferred to Stephen at W17. No
+  `terraform apply` lands at W16.
+- **SLSA-3 partial hardening (action SHA pins).** Pinned six
+  action references in `.github/workflows/docker-build.yml`
+  to full commit SHAs with trailing `# vX.Y.Z` comments:
+  `actions/checkout@11bd7190…` (v4.2.2),
+  `docker/setup-qemu-action@29109295…` (v3.6.0),
+  `docker/setup-buildx-action@e468171a…` (v3.11.1),
+  `docker/login-action@184bdaa0…` (v3.5.0),
+  `docker/metadata-action@c1e51972…` (v5.8.0),
+  `docker/build-push-action@26343531…` (v6.18.0). The
+  `slsa-github-generator` pin at line 306 of
+  `slsa-provenance.yml` STAYS at `@v2.0.0` per the SLSA
+  generator's `__BUILDER_ID` regex contract (fully-qualified
+  `vX.Y.Z` tag REQUIRED; SHA or partial tag = refuse-to-run).
+  New `docs/slsa-provenance.md §7c` documents the W16 pin
+  set + the deliberate `slsa-github-generator` non-pin + the
+  W17+ verifier-side SHA pin candidate. Closes the W15 §7b.3
+  LOW-effort row (`§7b.2.2 — Action SHA pin`); §7b.2.1 +
+  §7b.2.3a + §7b.2.3b stay W17 targets.
+- **Mobile bundle CI bootstrap.** New
+  `.github/workflows/mobile-bundle-ci.yml` — fast-feedback
+  CI workflow (~3 min wall time, secret-free, runs on every
+  PR touching `mobile/**` or `infra/mobile/**`). Three jobs:
+  `validate-config` (JSON parse + appId-alignment check
+  across `mobile/` + `infra/mobile/`), `lint` (deps install
+  + `package.json` scripts surface validation), and
+  `matrix-platform-prep` (per-platform config block validate
+  on `android` + `ios`). Companion `infra/mobile/capacitor.
+  config.json` (NEW) — env-bound Capacitor override stub
+  living in apone-lane (vs the app-lane
+  `mobile/capacitor.config.json` for env-invariant runtime
+  config). New `docs/mobile-ci-bootstrap.md` operator
+  runbook (~14 KB, 9 sections): two-workflow contract
+  (`mobile-bundle-ci.yml` gate ↔ `mobile-build.yml` release),
+  per-env config override matrix, expected operator secrets
+  (Android keystore + iOS distribution cert/profile,
+  deferred to W17+ provisioning), Node version cadence,
+  W17+ follow-on candidates. Hand-off to `mobile-build.yml`
+  (W2, release pipeline) unchanged — the W16 CI gate fronts
+  the W2 heavy build, doesn't replace it.
+- **CHANGELOG 0.25.0** (this entry) + `mobile/package.json`
+  version bump `0.11.0 → 0.25.0` to align the Capacitor
+  shell's npm-surface version with the wave-version. The
+  backend `Mahjong.Autotable.Api.csproj` version pin lives
+  in Bishop-lane (`src/backend/src/`); deferred to Bishop's
+  W16 commit per lane discipline.
+
+### Notes — what the W16 bring-up does NOT touch
+
+- The W3 cluster-wide `kyverno-cosign-verify.yaml` policy
+  STAYS Audit-default — flipping the spec-level default would
+  break the W15 §1 "brand-new namespace fails SAFE" design
+  property. See `docs/kyverno-audit-findings-w16.md §4` for
+  the three-reason rationale.
+- The W7-era prod-overlay HPA effective values are UNCHANGED
+  (`minReplicas: 3`, `maxReplicas: 12`) — the W16 layout
+  refactor is hygiene-only. The W17 5-replica candidate
+  remains gated on a fresh Hudson-panel survey + cost
+  approval.
+- No `terraform apply` lands; the us-east-1 W16 capture is
+  a dry-run only. Stephen's call on the live apply per W17.
+- No mobile signing identities are provisioned at W16; W17+
+  hand-off documented in `docs/mobile-ci-bootstrap.md §4`.
 
 ## [0.24.0] — Phase K Wave 15 — 2027-01-09 (PR pending)
 

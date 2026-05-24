@@ -45,6 +45,7 @@ public sealed class CommentaryController : ControllerBase
     private readonly Mahjong.Autotable.Api.Tables.IPlayerTableContext? _tableContext;
     private readonly CommentaryCostBudget? _budget;
     private readonly StubCommentaryGenerator? _stubGenerator;
+    private readonly CommentaryCostBudgetEnforcer? _enforcer;
 
     public CommentaryController(
         ICommentaryGenerator generator,
@@ -54,7 +55,8 @@ public sealed class CommentaryController : ControllerBase
         ICommentaryStore? store = null,
         Mahjong.Autotable.Api.Tables.IPlayerTableContext? tableContext = null,
         CommentaryCostBudget? budget = null,
-        StubCommentaryGenerator? stubGenerator = null)
+        StubCommentaryGenerator? stubGenerator = null,
+        CommentaryCostBudgetEnforcer? enforcer = null)
     {
         _generator = generator;
         _cookies = cookies;
@@ -64,6 +66,7 @@ public sealed class CommentaryController : ControllerBase
         _tableContext = tableContext;
         _budget = budget;
         _stubGenerator = stubGenerator;
+        _enforcer = enforcer;
     }
 
     [HttpPost]
@@ -78,6 +81,28 @@ public sealed class CommentaryController : ControllerBase
             {
                 error = "Admin role required to trigger commentary generation.",
             });
+
+        // Phase K Wave 16 — Bishop. Hard-cap enforcement. When
+        // the monthly cost budget is in the Exhausted state the
+        // enforcer short-circuits with HTTP 402 Payment
+        // Required. Admins may bypass via the
+        // X-Cost-Budget-Override: 1 header AND the
+        // Commentary:CostBudget:AdminOverride toggle (default
+        // true). Healthy + Warning states still pass through.
+        if (_enforcer is not null)
+        {
+            var isAdminOverride = HasOverrideHeader();
+            var verdict = _enforcer.Evaluate(
+                tenantId: null,
+                isAdmin: isAdminOverride,
+                utcNow: DateTime.UtcNow);
+            if (verdict.ShouldShortCircuit)
+            {
+                return StatusCode(
+                    CommentaryCostBudgetEnforcer.StatusOverBudget,
+                    verdict.ToWireEnvelope());
+            }
+        }
 
         try
         {
@@ -100,6 +125,24 @@ public sealed class CommentaryController : ControllerBase
                 gameId,
             });
         }
+    }
+
+    private bool HasOverrideHeader()
+    {
+        if (HttpContext is null || HttpContext.Request is null) return false;
+        if (!HttpContext.Request.Headers.TryGetValue("X-Cost-Budget-Override", out var values))
+        {
+            return false;
+        }
+        foreach (var v in values)
+        {
+            if (string.Equals(v, "1", StringComparison.Ordinal)
+                || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     [HttpGet]

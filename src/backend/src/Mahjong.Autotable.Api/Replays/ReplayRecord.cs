@@ -60,6 +60,20 @@ public sealed class ReplayRecord
     /// <c>CompletedAt + RetentionDays</c> at insert time.</summary>
     public DateTime ExpiresAt { get; set; }
 
+    /// <summary>
+    /// Phase K Wave 16 — Bishop. Optional tenant association
+    /// consumed by the per-tenant retention sweep. Null = no
+    /// tenant scope (the global default retention applies).
+    /// Non-null = the sweep consults
+    /// <see cref="IReplayRetentionPolicyStore"/> for the
+    /// matching row first and falls back to the global default
+    /// when no row is found. Stable across the row's lifetime —
+    /// the ingest endpoint stamps it from the
+    /// <c>X-Tenant-Id</c> header (or future tenant claim) when
+    /// present.
+    /// </summary>
+    public string? TenantId { get; set; }
+
     /// <summary>Compresses a JSON play-by-play payload for
     /// storage. The gzip wrapper uses default compression so
     /// CPU cost stays moderate at ingest time.</summary>

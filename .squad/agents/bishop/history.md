@@ -3179,3 +3179,109 @@ discipline.
 — per-deliverable design + W16 forward notes (validator
 hook-up, `DateTimeOffset` widening for global policy, Grafana
 dashboard for the new histogram).
+
+## Phase K Wave 16 — backend bring-up
+
+**Branch:** `stlong/phase-k-wave-16-bringup`.
+
+**Seven scoped deliverables, all landed:**
+
+1. **Per-tenant JWKS rotation validator + admin controller** —
+   `PerTenantJwksRotationValidator` with six verdict kinds
+   (`ToggleDisabled`, `NoPolicy`, `PolicyFresh`,
+   `WithinOverlapWindow`, `Stale`, `StoreMissing`).
+   `EnforceSigningAsync` throws
+   `PerTenantRotationStaleException` past the overlap
+   window. Per-row override
+   `PerTenantJwksRotationPolicy.OverlapWindowDays` with a
+   three-layer precedence chain (row → option → constant 7).
+   Paired admin CRUD at
+   `GET / POST / PUT / DELETE /api/admin/jwks-rotation/per-tenant`
+   with canonical 401 → 403 → 503 → 200/201/204 ladder.
+   Each write emits a `ReconnectAuditEntry` with kinds
+   `auth.jwks.per-tenant.{created|updated|deleted}`.
+   See `docs/per-tenant-jwks-rotation.md`.
+
+2. **`DateTimeOffset` widening on `JwtStagedRotationPolicy`** —
+   New `DateTimeOffset` overloads of `IsWithinOverlapWindow` +
+   `RemainingOverlapDays`; new properties
+   `RotationStartUtcOffset` + `OverlapWindowEndsAtOffset`.
+   The W12 `DateTime`-only members are preserved verbatim so
+   nothing built against W14 has to flip a single line.
+
+3. **Grafana dashboard JSON** — Seven-panel dashboard at
+   `Observability/dashboards/tournament-query-duration.json`
+   surfacing the W15 `tournament_query_duration_seconds`
+   histogram: p50 / p95 / p99 over 5m, request rate per
+   endpoint, per-endpoint p99 breakdown, 24h total query
+   count, multi-window burn-rate stat (5m / 30m / 1h).
+   Templating variables for `endpoint` + `page_size_bucket`.
+   Alert annotation `tournament-query-p99-over-500ms`
+   (fires after 10 min). Dashboard JSON copies to test output
+   via `CopyToOutputDirectory=PreserveNewest`.
+
+4. **Admin CRUD for per-tenant JWKS rotation policy** — See
+   item 1. Carved out as its own deliverable because the
+   controller owns its own auth + audit + validation contract
+   independent of the validator hot path.
+
+5. **SignalR sequence SLO document** —
+   `docs/signalr-sequence-slo.md` formalises **99.95% /
+   21.6 min/month** for the W6→W15 sequence-replay surface.
+   PromQL good-event ratio, paired fast-burn / slow-burn
+   alerts (Google SRE Workbook 2-window structure), on-call
+   runbook, and a wave-history table connecting the W14
+   `signalr_seq_*` metrics to the SLO.
+
+6. **Per-tenant replay retention policy** — new
+   `ReplayRetentionPolicies` table keyed by `TenantId`
+   carrying a per-tenant `RetentionDays`.
+   `IReplayRetentionPolicyStore` seam with InMemory + Ef
+   implementations. New
+   `IReplayStore.SweepWithPerTenantPolicyAsync` consulted by
+   the W15 hourly sweep when an `IReplayRetentionPolicyStore`
+   is registered; the W15 global-only sweep path is
+   preserved when no policy store is wired.
+   `ReplayRecord.TenantId` nullable column lets the sweep
+   route each row to its tenant policy with a fallback to
+   the global `Replays:RetentionDays`.
+
+7. **Commentary cost budget hard-gate (HTTP 402)** —
+   `CommentaryCostBudgetEnforcer` reads
+   `CommentaryCostBudget.Evaluate(...)`. `BudgetState.Exhausted`
+   verdicts return 402 Payment Required with reason
+   `commentary-cost-budget-exhausted`. Admin override via the
+   `X-Cost-Budget-Override: 1` header AND
+   `Commentary:CostBudget:AdminOverride = true` (default
+   true) bypasses the gate and emits an `AdminOverride`
+   verdict the dashboard can count separately. Healthy +
+   Warning pass through. Wired into
+   `CommentaryController.Trigger`.
+
+**Test gate:**
+`dotnet test src/backend/Mahjong.Autotable.slnx --nologo
+--no-build --filter "FullyQualifiedName~Phase_K_W16.Bishop"`
+→ **172 passed / 0 failed / 0 skipped**.
+
+**Lessons banked:**
+
+- **Side-channel validators are reviewable.** The W16
+  validator lands as a DI-resolved seam rather than threaded
+  through `JwtIssuingService`. Reviewers can audit the
+  verdict ladder + the exception type without a single line
+  of issuing-service churn.
+- **402 ≠ 429.** Token-cap excess (rate-limit) stays 429.
+  USD-cap excess (billing) flips to 402 per RFC 7231 §6.5.2.
+  Both gates exist on the controller; they apply
+  independently.
+- **Three-layer precedence for per-row overrides.** Row
+  override → option default → validator constant. The
+  validator's constant fallback means production stays
+  correct even when the operator forgets to populate the
+  options block on a fresh deployment.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-16.md`
+— per-deliverable design + W17 forward notes (issuing-service
+wiring, hard-delete `DeleteAsync` for the store seam, admin
+CRUD for `ReplayRetentionPolicy`, `X-Admin-Reason` header
+unification for the commentary override).

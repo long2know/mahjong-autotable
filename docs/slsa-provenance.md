@@ -618,6 +618,130 @@ Three reasons W15 surveys rather than executes:
 The W15 deliverable is **the gap document + W16+ plan**, not
 a code or infra change. The audit trail is this section.
 
+## 7c. SLSA-3 partial hardening — W16 (Phase K Wave 16 — Apone)
+
+> Phase K Wave 16 — Apone (DevOps). The W15 §7b plan
+> sequenced the SLSA-3 closeness items across W16 → W18. W16
+> lands the LOW-effort items from §7b.3: action SHA pinning
+> in `docker-build.yml` + an updated builder-pin survey.
+> Action: the docker build's SHA pins are immutable; supply-
+> chain tampering against an upstream action repo would
+> change the SHA and break the workflow until manually
+> upgraded.
+
+### 7c.1 Hard-pinned action SHAs in `docker-build.yml`
+
+Six actions were previously pinned by major-version tag
+(`@v3`, `@v4`, `@v5`, `@v6`). W16 pins each by full commit
+SHA with the human-readable version recorded as a trailing
+comment. The pins emitted from the W16 build-PR
+(`stlong/phase-k-wave-16-bringup`) are:
+
+| Action                                          | W15 pin (tag) | W16 pin (SHA, abbreviated) | Tag       |
+|-------------------------------------------------|---------------|-----------------------------|-----------|
+| `actions/checkout`                              | `@v4`         | `@11bd7190…`                | `v4.2.2`  |
+| `docker/setup-qemu-action`                      | `@v3`         | `@29109295…`                | `v3.6.0`  |
+| `docker/setup-buildx-action`                    | `@v3`         | `@e468171a…`                | `v3.11.1` |
+| `docker/login-action`                           | `@v3`         | `@184bdaa0…`                | `v3.5.0`  |
+| `docker/metadata-action`                        | `@v5`         | `@c1e51972…`                | `v5.8.0`  |
+| `docker/build-push-action`                      | `@v6`         | `@26343531…`                | `v6.18.0` |
+
+The full SHAs are inline in `.github/workflows/docker-build.yml`
+each step's `uses:` line. The trailing `# vX.Y.Z` comment is
+cosmetic; the SHA is the source of truth at runtime.
+
+Why this matters for SLSA-3:
+
+* Per §7b.2.2, the W15 builder-id pin is at the **workflow**
+  layer (`refs/tags/v2.x.y` against the SLSA generator). The
+  W16 SHA pinning is the **action** layer's equivalent — a
+  supply-chain attack against any of the six Docker / Actions
+  org repos would change the SHA, break the workflow build,
+  and surface as a CI failure rather than a silent
+  malicious-binary injection. Defense-in-depth alongside the
+  cosign + SLSA chain.
+* Per the [GitHub Aug-2025 changelog](https://github.blog/changelog/2025-08-15-github-actions-policy-now-supports-blocking-and-sha-pinning-actions/),
+  org-level Actions policy can ENFORCE SHA pinning. The W16
+  pin alignment makes the workflow compatible with that
+  policy without re-rolling.
+
+### 7c.2 slsa-github-generator pin survey — UNCHANGED at W16
+
+`.github/workflows/slsa-provenance.yml` references the SLSA
+reusable workflow at line 306:
+
+```yaml
+uses: slsa-framework/slsa-github-generator/.github/workflows/
+      generator_generic_slsa3.yml@v2.0.0
+```
+
+The pin is `@v2.0.0` — **a fully-qualified `vX.Y.Z` tag**, NOT
+`@v2`, `@v2.0`, or a commit SHA. This is **the required pin
+shape**: the SLSA generator's `__BUILDER_ID` constant uses a
+regex that demands a fully-qualified `vX.Y.Z` tag at the
+caller's `uses:` line, and refuses to run on any other pin
+shape. See the [SLSA generator README](https://github.com/slsa-framework/slsa-github-generator/blob/main/README.md)
+"Referencing the SLSA generators" section.
+
+⚠️ **DO NOT** flip the slsa-github-generator pin to a SHA at
+W16, W17, or W18. The generator will refuse to run, the
+slsa-provenance.yml job will fail, and the resulting image
+will not have provenance attached. The §7b.2.2 builder-SHA
+pin (the W15 candidate) lives in the VERIFIER's CEL
+expression (Kyverno `kyverno-cosign-verify.yaml` +
+`verify-slsa-on-deploy.yml`), NOT in the slsa-provenance.yml
+caller. The W18 deliverable per §7b.3 is the verifier-side
+SHA pin, NOT the caller-side pin.
+
+### 7c.3 W16 → W17 plan (per §7b.3)
+
+Remaining §7b.3 sequenced items:
+
+| W16 status | §7b.2 item                          | W17 target |
+|------------|--------------------------------------|------------|
+| ✅ landed   | §7b.2.2 — Action SHA pin             | N/A        |
+| ⏸ deferred | §7b.2.1 — Dedicated runner pool      | W17        |
+| ⏸ deferred | §7b.2.3a — Network egress allow-list | W17        |
+| ⏸ deferred | §7b.2.3b — Hermetic BuildKit         | W17        |
+| ⏸ deferred | §7b.2.3c — Materials enumeration     | W18        |
+| ⏸ deferred | Verifier-side builder SHA pin        | W17        |
+
+The W17 "verifier-side builder SHA pin" tracks the §7b.2.2
+W15 candidate (pinning the SLSA generator's commit SHA in
+the Kyverno + `verify-slsa-on-deploy.yml` CEL conjunctions).
+That's the §7b.2.2 conclusion the W15 survey landed; W16
+chose action-side SHA pinning first because it's lower-risk
+(action-pinning failure mode = workflow build error; verifier-
+side pin failure mode = admission denial of a legitimate
+build, which is a higher-impact rollback path).
+
+### 7c.4 What W16 hardening does NOT change
+
+* The provenance predicate shape is unchanged — Kyverno +
+  `verify-slsa-on-deploy.yml` verifiers continue to enforce
+  on the existing predicate. No predicate-side regression.
+* The cosign + SLSA chain remains end-to-end signed and
+  Rekor-anchored.
+* Build performance is unaffected — SHA pinning is a static
+  workflow-parse-time concern; no runtime impact.
+
+### 7c.5 Rollback shape
+
+If the W16 SHA pin needs to be reverted (e.g. an upstream
+action publishes a critical security fix that requires
+re-pinning to a newer SHA before the next monthly upgrade
+cycle):
+
+1. Identify the new SHA via `gh api repos/<owner>/<repo>/git/
+   refs/tags/<tag> --jq '.object.sha'`.
+2. Replace the SHA + trailing `# vX.Y.Z` comment in
+   `.github/workflows/docker-build.yml`.
+3. PR + CI green confirms the pin re-roll.
+
+This is the same procedure that lands at the next quarterly
+action-pin refresh cadence; W16 sets the W17+ owner up to
+re-pin without flag-day churn.
+
 ## 8. Cross-references
 
 * [`docs/image-signing.md`](image-signing.md) — Wave-1 cosign signing of the image manifest.

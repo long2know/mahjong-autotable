@@ -300,13 +300,106 @@ TF source changes); the apply itself moves to W17 (which
 also pairs naturally with the §6.2 Q1 2027 TF quarterly
 bump — apply once on the new CLI baseline).
 
-## 3. Per-region Cutover-Ready checklist
+## 3. W16 apply readiness
+
+> Phase K Wave 16 — Apone (DevOps). The W14 + W15 dry-runs
+> established that the terraform source has zero drift since
+> W11; the W16 capture confirms the dry-run still plans
+> cleanly against the W15 baseline and pins the apply
+> readiness gate against Hicks's renderer-bandwidth budget.
+
+### 3.1 W16 dry-run shape
+
+Per the W14 §2.1.1 dry-run command, an operator with valid AWS
+credentials + a populated `terraform.tfvars` (vpc_id pulled
+from the primary stack's outputs) produces a plan that matches
+the W14 §2.1.2 expected shape (`~20 to add, 0 to change, 0 to
+destroy` against a fresh state bucket).
+
+The W16 CI dry-run capture lives at
+[`docs/us-east-1-w16-plan-output.txt`](./us-east-1-w16-plan-output.txt)
+— it documents:
+
+* **§1 init success** against the W11 module set.
+* **§2 validate success** — the configuration parses + the
+  type constraints (including the W11 `vpc-…` regex on
+  `var.vpc_id`) pass.
+* **§3 partial plan** — the `module.redis.random_password.
+  auth_token[0]` resource plans cleanly without AWS access (1
+  resource added); AWS-side resources require valid creds.
+* **§4 expected errors** — STS-validation + tfvars-placeholder
+  errors that are operator-side, NOT source-side.
+* **§5 source-side drift** — zero between W11 and W16 against
+  `infra/terraform/{envs/prod,modules/edge,modules/redis}`.
+* **§6 renderer-bandwidth gate** — green at W16
+  (≤ 22 KB chunk, per Hicks's W16 bring-up).
+* **§7 W17 hand-off** — apply remains operator-side; W16 does
+  NOT cut the apply PR.
+
+### 3.2 Apply-readiness gate — GREEN at W16
+
+Four pre-conditions gate the live apply per the W16 task spec:
+
+| # | Pre-condition                                                                                   | Source                                            | Verdict at W16 |
+|---|--------------------------------------------------------------------------------------------------|----------------------------------------------------|----------------|
+| 1 | Terraform-side source: zero drift between W11/W14 baseline and W16 HEAD.                          | §5 of `us-east-1-w16-plan-output.txt`              | ✅              |
+| 2 | Hicks Phase L renderer chunk ≤ 22 KB by W16 (renderer-bandwidth budget).                          | `docs/frontend-three-budget.md` + Hicks W16 commit | ✅              |
+| 3 | `§3.1` per-region cluster Cutover-Ready checklist (separate doc section, operator-driven).        | `§3.3` below + Hicks lane                          | Operator-driven (NOT W16 CI surface) |
+| 4 | Squad sign-off — Stephen approves the apply PR.                                                   | W17 operator PR                                    | W17 — not gated this wave |
+
+Rows 1 + 2 are CI-surface green; rows 3 + 4 are operator-side
+gates that Stephen drives independent of W16.
+
+### 3.3 Per-region Cutover-Ready checklist (operator-driven)
+
+The `§3` per-region checklist (renamed from `§3.1` at W16; see
+§4 below) continues to be operator-driven. The W16 dry-run
+does NOT modify the checklist contract — it remains the
+authoritative gate set for the cutover-day apply.
+
+### 3.4 W16 → W17 apply hand-off
+
+If Stephen approves the apply PR cut at W17:
+
+1. The W17 operator re-runs the §2.1.1 dry-run against the
+   primary stack with FRESH AWS credentials.
+2. Compares the W17 plan to the W16 capture
+   (`docs/us-east-1-w16-plan-output.txt`); any source-side
+   drift between W16 and W17 must be reconciled BEFORE apply.
+3. Opens the operator-PR
+   (`stlong/phase-k-wave-17-prod-us-east-1-apply`).
+4. Archives the W17 plan per §2.1.4 conventions.
+
+If Stephen defers the apply past W17 (e.g. to pair with a Q2
+TF quarterly bump or a separate cluster-lifecycle gate from
+Hicks), the W16 capture remains valid until the next source-
+side change to `infra/terraform/envs/prod/`. Re-run the drift
+check at apply-day per §2.2.4.
+
+### 3.5 What the W16 dry-run does NOT change
+
+The W16 deliverable is a CI-driven DRY-RUN CAPTURE only:
+
+* **No `terraform apply` runs at W16.** The live cluster
+  state is untouched; existing prod traffic continues to
+  flow through the W11 primary stack's apex.
+* **No `regional_endpoints` modifications.** The W12 latency-
+  set wire stays at empty `regional_endpoints`; no traffic
+  shift occurs.
+* **No tfvars commits.** The capture used placeholder values
+  (`vpc-placeholder`) — operator-side tfvars stays
+  operator-side per the W11 .gitignore convention.
+
+## 4. Per-region Cutover-Ready checklist
 
 Each region runs the same readiness sequence. Mark items as
 they land. A region is "Cutover-Ready" when every item below
 shows ✅.
 
-### 3.1 `us-east-1` — Cutover-Ready checklist
+### 4.1 `us-east-1` — Cutover-Ready checklist
+
+(Renumbered from §3.1 at W16 — §3 is now reserved for the W16
+apply-readiness gate; the per-region checklist moves to §4.)
 
 - [ ] **Cluster TF state bucket** — `mahjong-tfstate-prod-use1`
       exists in `us-east-1`; DynamoDB lock table

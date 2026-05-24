@@ -1,0 +1,210 @@
+# Phase K Wave 16 — Apone (DevOps).
+#
+# Mobile bundle CI — fast-feedback build + lint matrix for the
+# Capacitor 6 mobile shell.
+#
+# Why this is SEPARATE from `mobile-build.yml`:
+#
+#   * `mobile-build.yml` (W2) is the RELEASE-focused workflow:
+#     builds unsigned `.aab` + `.app` artefacts on every main
+#     push, attaches them to a `mobile-<run_number>` GitHub
+#     prerelease. The job set runs end-to-end Android + iOS +
+#     web bundle and emits artefacts. Heavy (uses macOS runner
+#     for iOS, ~20 minutes wall-time end-to-end).
+#   * `mobile-bundle-ci.yml` (W16, this file) is the FAST-
+#     FEEDBACK CI workflow: lint + bundler config validate +
+#     `cap sync` dry-run only. No native build, no artefact
+#     emission, no macOS runner. Wall-time target: ~3 minutes.
+#     Runs on every PR that touches mobile/** or
+#     infra/mobile/** for quick "did the Capacitor config
+#     break?" feedback without paying the heavy iOS-runner
+#     cost on every PR.
+#
+# Hand-off to mobile-build.yml: when this workflow passes, the
+# main-branch push triggers mobile-build.yml's release pipeline
+# (which carries the heavy build + artefact emission). The two
+# workflows are complementary, NOT redundant — this is the gate;
+# mobile-build.yml is the release.
+#
+# Expected secrets (operator-provisioned in W17+):
+#   * `ANDROID_KEYSTORE_BASE64` — Play-Store-signing keystore,
+#     base64-encoded. Consumed by `mobile-build.yml`, NOT this
+#     workflow. W16 documents the expectation; provisioning is
+#     W17+ when the first signed prerelease lands.
+#   * `ANDROID_KEYSTORE_PASSWORD` + `ANDROID_KEY_ALIAS` +
+#     `ANDROID_KEY_PASSWORD` — companion secrets to the
+#     keystore.
+#   * `IOS_DISTRIBUTION_CERT_BASE64` + `IOS_PROVISIONING_PROFILE_BASE64` +
+#     `IOS_CERT_PASSWORD` — iOS App-Store-Connect signing
+#     bundle. Operator provisions in W17+.
+#
+# This workflow runs FINE without any secrets; the
+# `mobile-build.yml` companion has the secrets-gated branches.
+# W16 deliberately ships a secret-free CI surface so PRs from
+# forks work end-to-end without operator gating.
+
+name: mobile-bundle-ci
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "infra/mobile/**"
+      - ".github/workflows/mobile-bundle-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "mobile/**"
+      - "infra/mobile/**"
+      - ".github/workflows/mobile-bundle-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-bundle-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Node version aligned with src/frontend/autotable-src/.nvmrc (W11+).
+  # Updated in lock-step with the frontend bump cadence per the
+  # docs/mobile-ci-bootstrap.md §5 cadence.
+  NODE_VERSION: "20"
+
+jobs:
+  validate-config:
+    name: Validate Capacitor configs (app + infra)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Validate JSON shape (mobile/capacitor.config.json)
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('mobile/capacitor.config.json','utf8'))"
+          echo "mobile/capacitor.config.json parses cleanly."
+
+      - name: Validate JSON shape (infra/mobile/capacitor.config.json)
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('infra/mobile/capacitor.config.json','utf8'))"
+          echo "infra/mobile/capacitor.config.json parses cleanly."
+
+      - name: Validate appId convention
+        run: |
+          # Both configs MUST agree on appId. Drift would surface as
+          # two different application identifiers in the Android Play
+          # Store / Apple App Store — a release-day catastrophe. The
+          # docs/mobile-ci-bootstrap.md §2 contract pins both to
+          # `io.mahjong.autotable`.
+          app_id_app=$(node -p "require('./mobile/capacitor.config.json').appId")
+          app_id_infra=$(node -p "require('./infra/mobile/capacitor.config.json').appId")
+          if [ "$app_id_app" != "$app_id_infra" ]; then
+            echo "::error::appId drift detected — mobile=$app_id_app, infra=$app_id_infra"
+            exit 1
+          fi
+          echo "appId aligned: $app_id_app"
+
+  lint:
+    name: Lint mobile JSON + Capacitor surfaces
+    runs-on: ubuntu-latest
+    needs: validate-config
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile shell deps (--no-audit, --no-fund)
+        working-directory: mobile
+        run: npm install --no-audit --no-fund --ignore-scripts
+
+      - name: Validate package.json scripts surface
+        working-directory: mobile
+        run: |
+          # Sanity: every script the docs/mobile-ci-bootstrap.md §6
+          # operator runbook references MUST exist in package.json.
+          for script in sync build:android build:ios; do
+            if ! node -e "process.exit(require('./package.json').scripts['$script'] ? 0 : 1)"; then
+              echo "::error::missing required script in mobile/package.json: $script"
+              exit 1
+            fi
+          done
+          echo "All required scripts present."
+
+  matrix-platform-prep:
+    name: Platform prep matrix (android + ios)
+    runs-on: ubuntu-latest
+    needs: validate-config
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [android, ios]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Report target platform
+        run: |
+          echo "Platform: ${{ matrix.platform }}"
+          echo "::notice::W16 bootstrap — actual native compile for ${{ matrix.platform }} runs in mobile-build.yml. This matrix step validates the platform-specific Capacitor config slice loads."
+
+      - name: Validate platform-specific config block
+        run: |
+          node -e "
+            const cfg = require('./mobile/capacitor.config.json');
+            const block = cfg['${{ matrix.platform }}'];
+            if (!block || typeof block !== 'object') {
+              console.error('::error::Missing or invalid ${{ matrix.platform }} block in mobile/capacitor.config.json');
+              process.exit(1);
+            }
+            console.log('${{ matrix.platform }} block keys:', Object.keys(block).join(','));
+          "
+
+      - name: Summary
+        run: |
+          {
+            echo "### Mobile bundle CI — ${{ matrix.platform }}"
+            echo ""
+            echo "Capacitor config validated for platform: \`${{ matrix.platform }}\`"
+            echo ""
+            echo "Native artefact build runs in \`.github/workflows/mobile-build.yml\` on main."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  summary:
+    name: Bundle-CI summary
+    runs-on: ubuntu-latest
+    needs: [validate-config, lint, matrix-platform-prep]
+    if: always()
+    steps:
+      - name: Aggregate result
+        run: |
+          {
+            echo "### Mobile bundle CI — W16 summary"
+            echo ""
+            echo "| Job                  | Result                       |"
+            echo "|----------------------|-------------------------------|"
+            echo "| validate-config      | ${{ needs.validate-config.result }} |"
+            echo "| lint                 | ${{ needs.lint.result }}      |"
+            echo "| matrix-platform-prep | ${{ needs.matrix-platform-prep.result }} |"
+            echo ""
+            echo "See \`docs/mobile-ci-bootstrap.md\` for the W16 operator runbook."
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Re-emit non-zero exit if any prerequisite failed.
+          for r in "${{ needs.validate-config.result }}" "${{ needs.lint.result }}" "${{ needs.matrix-platform-prep.result }}"; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              echo "::error::prerequisite job failed: $r"
+              exit 1
+            fi
+          done

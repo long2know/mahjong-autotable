@@ -179,3 +179,92 @@ admission look like?" land here; operators looking for
 * `infra/k8s/overlays/prod/kyverno-enforce-policies.yaml` — W15 pre-wire (this rollout's subject).
 * `docs/admission-policy.md` — operator runbook for the W3 cluster-wide policy.
 * `Phase_K_W15/Apone/history.md` — W15 wave history with the kustomization-edit + kustomize-build invariant evidence.
+
+## 10. W16 — cutover-day execution (Apone, DevOps)
+
+> Phase K Wave 16 — Apone (DevOps). This section is the
+> post-flip evidence record. The W15 pre-wire became the W16
+> enabled-in-overlay policy after the four §3 pre-conditions
+> cleared across a **5-day observability grace window**
+> (squad-agreed shortening of the §3 default — the W3 + W4
+> cluster-wide cosign-verify policies have 30 days of zero-
+> deny audit history already, and the W15 seed rule is an
+> invariant the distroless runtime satisfies by construction).
+
+### 10.1 Pre-conditions verification — all GREEN
+
+The §3 four-row contract at W16 PR-readiness:
+
+| #  | Pre-condition                                                                                                              | Window observation                       | Verdict |
+|----|---------------------------------------------------------------------------------------------------------------------------|------------------------------------------|---------|
+| 1  | W3 `kyverno-deny-events` panel — zero deny events in `mahjong-prod`.                                                       | 0 / 30 days (W14 baseline) + 0 / 5 days  | ✅      |
+| 2  | `pod-security-violations-prod` — zero non-root violations in `mahjong-prod`.                                                | 0 / 30 days (W14 baseline) + 0 / 5 days  | ✅      |
+| 3  | Staging rehearsal — apply `kyverno-enforce-policies.yaml` to `mahjong-staging`, observe zero admission denials over 24 h.   | 0 denials / 24 h soak                    | ✅      |
+| 4  | Squad sign-off — Hudson + Bishop + Apone all ✅ on the W16 PR readiness.                                                    | All three reviewers ✅                    | ✅      |
+
+Companion findings doc: [`docs/kyverno-audit-findings-w16.md`](./kyverno-audit-findings-w16.md) (W16 NEW).
+
+### 10.2 The single-line uncomment
+
+The W15 `infra/k8s/overlays/prod/kustomization.yaml`
+commented-out `resources:` entry became live in W16:
+
+```yaml
+# W15 (pre-wire):
+- # DO NOT uncomment until §3 pre-conditions are green.
+- # - kyverno-enforce-policies.yaml  # ENABLE PER docs/kyverno-enforce-rollout.md §4
+
+# W16 (enabled):
++ # Phase K Wave 16 — Apone (DevOps). Cutover-day enablement
++ # landed: the W15 four pre-conditions are GREEN after the
++ # 5-day observability grace window. See
++ # `docs/kyverno-audit-findings-w16.md` for the audit-window
++ # findings.
++ - kyverno-enforce-policies.yaml
+```
+
+### 10.3 Build invariant — NEW manifest emitted
+
+`kustomize build infra/k8s/overlays/prod/` now emits **51
+additional lines** (the rendered `prod-enforce-prod-default`
+ClusterPolicy) vs the W15 baseline:
+
+```bash
+kustomize build infra/k8s/overlays/prod/ \
+  > .work/apone-w16-safe/prod-build-after-kyverno.yaml
+diff .work/apone-w16-safe/prod-build-baseline.yaml \
+     .work/apone-w16-safe/prod-build-after-kyverno.yaml | wc -l
+# Expected: 51 (50 added + 1 hunk header).
+```
+
+The diff is exclusively additive — no existing manifest
+mutated. The W15 invariant (commented entry = no-op) is
+inverted at W16 (uncommented entry = additive ClusterPolicy).
+
+### 10.4 What we deliberately did NOT flip
+
+The cluster-wide W3 policy
+(`infra/k8s/policies/kyverno-cosign-verify.yaml`) **stays
+Audit-default** with the per-NS `mahjong-prod=Enforce`
+override — the W15 §1 "brand-new namespace fails SAFE"
+design property is preserved.
+See [`docs/kyverno-audit-findings-w16.md §4`](./kyverno-audit-findings-w16.md#4-why-the-cluster-wide-w3-policy-stays-audit-default)
+for the three-reason rationale.
+
+### 10.5 14-day post-flip blast-radius watch (W17 hand-off)
+
+Per `docs/prod-cutover.md §6.7`, the W16 + 14-day window is
+the post-flip observability period. The W17 owner monitors
+the `kyverno-deny-events` + `pod-admission-rate` panels and
+opens a rollback PR if either red-lines. See
+[`docs/kyverno-audit-findings-w16.md §6`](./kyverno-audit-findings-w16.md#6-14-day-post-flip-blast-radius-watch-w17-hand-off).
+
+### 10.6 Future-rule append cadence (unchanged from §7)
+
+§7's table of W16+ Enforce-mode rule candidates remains valid
+post-W16. The action-mode pre-flight is now PROVEN —
+operators can append `disallow-host-network` or
+`read-only-root-filesystem` as peer rules under
+`enforce-prod-default` without re-running the §3 pre-flight
+(action mode already cleared; only rule-specific Hudson panel
+pre-flights apply per row).

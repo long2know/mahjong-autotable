@@ -58,7 +58,14 @@ hsts:
 
 hpa:
   enabled: true
-  minReplicas: 2
+  # Phase K Wave 16 — Apone (DevOps). Base `minReplicas` bumped
+  # 2 → 3 to mirror the `infra/k8s/base/hpa.yaml` W16 bump. The
+  # `helm/mahjong/values-prod.yaml` override already pinned 3
+  # since W7; the W16 base bump propagates the floor to staging +
+  # any helm consumer without an explicit override. See
+  # `docs/hpa-min-replicas-tuning.md` for the 30-day Hudson-panel
+  # survey rationale.
+  minReplicas: 3
   maxReplicas: 8
   cpuUtilization: 70
   memoryUtilization: 80

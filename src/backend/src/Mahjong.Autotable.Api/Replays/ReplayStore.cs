@@ -58,6 +58,33 @@ public interface IReplayStore
     /// </summary>
     Task<int> SweepByCompletedAtAsync(int retentionDays, DateTime utcNow, CancellationToken ct = default);
 
+    /// <summary>
+    /// Phase K Wave 16 — Bishop. Per-tenant aware sweep. For
+    /// every row in the store:
+    /// <list type="bullet">
+    ///   <item>When <see cref="ReplayRecord.TenantId"/> is set
+    ///         AND <paramref name="policyStore"/> has a matching
+    ///         policy with a strictly-positive
+    ///         <see cref="ReplayRetentionPolicy.RetentionDays"/>,
+    ///         the row is deleted when
+    ///         <c>CompletedAt &lt; utcNow - policy.RetentionDays</c>.</item>
+    ///   <item>Otherwise the row is deleted when
+    ///         <c>CompletedAt &lt; utcNow - fallbackDays</c>
+    ///         (the global default).</item>
+    /// </list>
+    /// Returns the total number of rows evicted across all
+    /// tenants. A policy upsert / delete takes effect on the
+    /// NEXT tick — the sweep re-reads the policy table at
+    /// every invocation so operators can dial retention mid-
+    /// flight without restarting the host. See
+    /// <c>docs/replay-by-id.md §4.1</c>.
+    /// </summary>
+    Task<int> SweepWithPerTenantPolicyAsync(
+        IReplayRetentionPolicyStore policyStore,
+        int fallbackDays,
+        DateTime utcNow,
+        CancellationToken ct = default);
+
     /// <summary>Total row count — surfaced so tests can assert
     /// the insert path landed.</summary>
     Task<int> CountAsync(CancellationToken ct = default);
@@ -146,6 +173,46 @@ public sealed class InMemoryReplayStore : IReplayStore
         return Task.FromResult(removed);
     }
 
+    public async Task<int> SweepWithPerTenantPolicyAsync(
+        IReplayRetentionPolicyStore policyStore,
+        int fallbackDays,
+        DateTime utcNow,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(policyStore);
+        var policies = await policyStore.ListAsync(ct).ConfigureAwait(false);
+        var map = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var p in policies)
+        {
+            if (!string.IsNullOrWhiteSpace(p.TenantId) && p.RetentionDays > 0)
+            {
+                map[p.TenantId] = p.RetentionDays;
+            }
+        }
+        var fallbackCutoff = fallbackDays > 0
+            ? utcNow.AddDays(-fallbackDays)
+            : (DateTime?)null;
+        var removed = 0;
+        foreach (var pair in _rows)
+        {
+            var row = pair.Value;
+            DateTime? cutoff;
+            if (!string.IsNullOrEmpty(row.TenantId) && map.TryGetValue(row.TenantId, out var days))
+            {
+                cutoff = utcNow.AddDays(-days);
+            }
+            else
+            {
+                cutoff = fallbackCutoff;
+            }
+            if (cutoff is { } c && row.CompletedAt < c && _rows.TryRemove(pair.Key, out _))
+            {
+                removed++;
+            }
+        }
+        return removed;
+    }
+
     public Task<int> CountAsync(CancellationToken ct = default) =>
         Task.FromResult(_rows.Count);
 
@@ -178,6 +245,7 @@ public sealed class InMemoryReplayStore : IReplayStore
                 TurnCount = r.TurnCount,
                 IngestedAt = r.IngestedAt,
                 ExpiresAt = r.ExpiresAt,
+                TenantId = r.TenantId,
                 // Metadata-only — clients fetch the payload via
                 // GET /api/replays/{replayId}.
                 CompressedPayload = Array.Empty<byte>(),
@@ -290,6 +358,86 @@ public sealed class EfReplayStore : IReplayStore
         }
     }
 
+    public async Task<int> SweepWithPerTenantPolicyAsync(
+        IReplayRetentionPolicyStore policyStore,
+        int fallbackDays,
+        DateTime utcNow,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(policyStore);
+        var policies = await policyStore.ListAsync(ct).ConfigureAwait(false);
+        var map = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var p in policies)
+        {
+            if (!string.IsNullOrWhiteSpace(p.TenantId) && p.RetentionDays > 0)
+            {
+                map[p.TenantId] = p.RetentionDays;
+            }
+        }
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var totalRemoved = 0;
+        // Per-tenant pass. We compute the cutoff in-process and
+        // issue one bulk-delete per tenant — the per-tenant
+        // tenant list is short (single-digit to low-hundreds in
+        // realistic deployments) so the loop's network round-
+        // trips stay bounded.
+        foreach (var (tenant, days) in map)
+        {
+            var cutoff = utcNow.AddDays(-days);
+            try
+            {
+                var t = tenant;
+                var c = cutoff;
+                totalRemoved += await db.Replays
+                    .Where(r => r.TenantId == t && r.CompletedAt < c)
+                    .ExecuteDeleteAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Per-tenant bulk-delete failed for tenant={Tenant}; falling back to per-row delete.",
+                    tenant);
+                var t = tenant;
+                var c = cutoff;
+                var rows = await db.Replays
+                    .Where(r => r.TenantId == t && r.CompletedAt < c)
+                    .ToListAsync(ct);
+                db.Replays.RemoveRange(rows);
+                await db.SaveChangesAsync(ct);
+                totalRemoved += rows.Count;
+            }
+        }
+        // Fallback pass — every row whose TenantId is null OR
+        // not in the policy map. Single bulk delete with a NOT
+        // IN clause against the policy map keys.
+        if (fallbackDays > 0)
+        {
+            var cutoff = utcNow.AddDays(-fallbackDays);
+            var tenantKeys = map.Keys.ToList();
+            try
+            {
+                totalRemoved += await db.Replays
+                    .Where(r => r.CompletedAt < cutoff)
+                    .Where(r => r.TenantId == null || !tenantKeys.Contains(r.TenantId))
+                    .ExecuteDeleteAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Fallback bulk-delete failed; per-row pass.");
+                var rows = await db.Replays
+                    .Where(r => r.CompletedAt < cutoff)
+                    .Where(r => r.TenantId == null || !tenantKeys.Contains(r.TenantId))
+                    .ToListAsync(ct);
+                db.Replays.RemoveRange(rows);
+                await db.SaveChangesAsync(ct);
+                totalRemoved += rows.Count;
+            }
+        }
+        return totalRemoved;
+    }
+
     public async Task<int> CountAsync(CancellationToken ct = default)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -332,6 +480,7 @@ public sealed class EfReplayStore : IReplayStore
                 TurnCount = r.TurnCount,
                 IngestedAt = r.IngestedAt,
                 ExpiresAt = r.ExpiresAt,
+                TenantId = r.TenantId,
                 CompressedPayload = Array.Empty<byte>(),
             })
             .ToListAsync(ct);
@@ -533,15 +682,18 @@ public sealed class ReplayStoreRetentionSweep : BackgroundService
     private readonly IReplayStore _store;
     private readonly ReplayOptions _options;
     private readonly ILogger<ReplayStoreRetentionSweep> _logger;
+    private readonly IReplayRetentionPolicyStore? _policyStore;
 
     public ReplayStoreRetentionSweep(
         IReplayStore store,
         ReplayOptions options,
-        ILogger<ReplayStoreRetentionSweep> logger)
+        ILogger<ReplayStoreRetentionSweep> logger,
+        IReplayRetentionPolicyStore? policyStore = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _policyStore = policyStore;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -551,9 +703,10 @@ public sealed class ReplayStoreRetentionSweep : BackgroundService
             : DefaultSweepIntervalMinutes;
         var interval = TimeSpan.FromMinutes(Math.Max(1, minutes));
         _logger.LogInformation(
-            "ReplayStoreRetentionSweep started (interval={Minutes}m, retention={Days}d).",
+            "ReplayStoreRetentionSweep started (interval={Minutes}m, retention={Days}d, perTenant={PerTenant}).",
             interval.TotalMinutes,
-            _options.RetentionDays);
+            _options.RetentionDays,
+            _policyStore is not null);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -578,18 +731,30 @@ public sealed class ReplayStoreRetentionSweep : BackgroundService
     }
 
     /// <summary>Single-sweep entry-point exposed so tests can
-    /// drive deletions deterministically.</summary>
+    /// drive deletions deterministically. When a per-tenant
+    /// policy store is wired (W16), the sweep consults it
+    /// before falling back to the global retention; otherwise
+    /// the W15 global-only path runs unchanged.</summary>
     internal async Task<int> RunOnceAsync(CancellationToken ct)
     {
         var retention = _options.RetentionDays > 0
             ? _options.RetentionDays
             : ReplayOptions.DefaultRetentionDays;
         var utcNow = DateTime.UtcNow;
-        var removed = await _store.SweepByCompletedAtAsync(retention, utcNow, ct);
+        int removed;
+        if (_policyStore is not null)
+        {
+            removed = await _store.SweepWithPerTenantPolicyAsync(
+                _policyStore, retention, utcNow, ct);
+        }
+        else
+        {
+            removed = await _store.SweepByCompletedAtAsync(retention, utcNow, ct);
+        }
         if (removed > 0)
         {
             _logger.LogInformation(
-                "ReplayStoreRetentionSweep removed {Count} record(s) older than {Days}d (cutoff={Cutoff:O}).",
+                "ReplayStoreRetentionSweep removed {Count} record(s) (fallbackRetention={Days}d, cutoff={Cutoff:O}).",
                 removed, retention, utcNow.AddDays(-retention));
         }
         return removed;
