@@ -713,6 +713,96 @@ commands in future wave memos. If the script is missing or
 non-executable when needed, the W14 escalation re-instates it
 from the W13 commit log before invoking.
 
+### 4.3. Branch-protection W14 fallback execution (W14 — Vasquez)
+
+**Status at W14 sign-off:** the §4.1 re-prompt has been standing
+for **seven consecutive waves** (W7 → W14). Stephen has not yet
+acknowledged or executed the screenshot walkthrough. Per the
+W14 escalation algorithm in §4.2, the coordinator now has a
+ready-to-invoke fallback path.
+
+**Vasquez W14 pre-flight (`--dry-run` validation):**
+
+The W13 script was re-validated at W14 sign-off via:
+
+```bash
+bash tests/ci/lane-discipline-flip-required.sh --dry-run
+```
+
+Captured output (also stored at
+`.work/vasquez-w14-safe/flip-script-dryrun.log`):
+
+```
+→ Reading current branch protection for long2know/mahjong-autotable:main…
+→ Mode: dry-run
+→ Have lane-discipline currently: no
+→ Resulting contexts:
+→ Dry-run: would execute:
+    gh api -X PATCH repos/long2know/mahjong-autotable/branches/main/protection/required_status_checks
+```
+
+The dry-run confirms: (a) the script reaches the API surface, (b)
+`lane-discipline / check` is NOT currently required, (c) the
+script computes the correct narrow PATCH (per §4.1's
+troubleshooting one-liner pattern). One **cosmetic bug** observed:
+the dry-run summary line omits the post-merge contexts list
+(the `MODE != "apply"` guard at script line ~133 skips the
+augmentation block in dry-run output). The bug does NOT affect
+live execution; it is documented here so the W15+ maintainer can
+fix the summary print without re-validating the script's API
+behavior.
+
+**1-line copy-paste command for Stephen (or the Coordinator):**
+
+```bash
+GH_TOKEN="<admin-scope-token>" bash tests/ci/lane-discipline-flip-required.sh
+```
+
+(Coordinator-direct variant per §4.2 escalation algorithm:)
+
+```bash
+GH_TOKEN="<admin-scope-token>" bash tests/ci/lane-discipline-flip-required.sh \
+  --coordinator-flag \
+  --reason "W14 escalation: §4.1 pending since Phase K Wave 4"
+```
+
+**Post-flip verification (idempotent):**
+
+After the live run, the script reads back the contexts list and
+exits 0 only when `lane-discipline / check` is observable. The
+operator should then run:
+
+```bash
+gh api repos/long2know/mahjong-autotable/branches/main/protection \
+  --jq '.required_status_checks.contexts'
+```
+
+and confirm `lane-discipline / check` appears in the array. The
+audit log at `docs/audits/branch-protection-flips.md` will carry
+the flip record (per §4.2 audit-trail clause).
+
+**Audit-trail expectations:**
+
+Every successful coordinator-direct flip appends one line to
+`docs/audits/branch-protection-flips.md` (file created on first
+run; subsequent runs append). Vasquez owns the format spec; the
+W14 entry, if executed, should carry: timestamp, caller identity
+(coordinator + reason), contexts list before/after, escalation
+level. Stephen-direct flips append the same line minus the
+`--reason` field.
+
+**W15 hand-off:**
+
+- If §4.1 is still pending at W15 sign-off, Vasquez writes the
+  W15 memo with `branch-protection ESCALATED` in the header and
+  re-validates the dry-run.
+- If the gate has been flipped (either by Stephen via §4.1 or by
+  the coordinator via §4.2/§4.3), the §4.1 block is re-titled
+  `(CLOSED at W<N> — <method>)`; §4.3 stays as a historical
+  record of the escalation pre-flight.
+- The §4.3 dry-run cadence is **once per wave** until §4.1 closes;
+  the captured log goes into `.work/vasquez-w<N>-safe/`.
+
 ### 5. Per-commit author identity verification
 
 After each commit, verify the author is YOU:

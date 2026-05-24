@@ -218,14 +218,37 @@ canonical `DbSerial` collection across all 23 (lower-risk uniform
 opt-in); the Reads/Writes refactor remains parked under Bishop's
 W14+ lane per §3.1.2.
 
-### 3.3. When NOT to use `[Collection("DbSerial")]`
+### 3.3. DbSerial migration completion (W14 — Vasquez)
+
+W14 closes out the DbSerial migration thread: the **2 remaining
+Bishop-lane W9 candidates** (`Phase_K_W9/Bishop/EfCommentaryUsageMeterTests.cs`
+and `Phase_K_W9/Bishop/IdempotencyStoreContractTests.cs`) remain a
+**hand-off blocker** — the `wave_subdir_overrides` rule in
+`tests/ci/lane-map.json` re-attributes anything under
+`Phase_K_W*/Bishop/` to Bishop. A Vasquez-authored commit cannot
+edit those two files without tripping the cross-lane bundling gate.
+
+The Vasquez W14 deliverable is therefore a **completion memo** at
+`Phase_K_W14/Vasquez/db-serial-migration-completion.md` documenting:
+
+- the full W12→W13→W14 chain (audit → 23-of-25 migration → cross-lane blocker);
+- the 5-run flake harness results (re-run at the W14 baseline);
+- the explicit Bishop W14+ hand-off for the remaining two attribute applications;
+- the **escalation path** if Bishop does not pick up the work in W15: Coordinator-direct application
+  via a Bishop-attributed commit per `docs/agent-handoff-protocol.md §4.3` (analogous to the
+  branch-protection runbook).
+
+The Reads/Writes split (W12 §2 proposal) remains parked under Bishop's
+W15+ lane — W14 maintains the canonical-`DbSerial`-only posture.
+
+### 3.4. When NOT to use `[Collection("DbSerial")]`
 
 Any test that DOESN'T touch EF Core / SQLite / the WAF singleton
 MUST stay outside the collection. Putting a pure reflection test
 into `DbSerial` is a regression: it serialises a fact that has
 no reason to be serial, slowing the suite for everyone.
 
-### 3.4. Future collections
+### 3.5. Future collections
 
 If a SECOND class of process-level contention emerges (e.g.
 Redis container shared across tests in CI), a new collection
@@ -442,7 +465,29 @@ it is required-for-merge on PRs that touch
 `src/frontend/autotable-src/public/screenshots/**` OR the
 visual-regression spec files.
 
-### 5.2. When to update the baseline
+### 5.2. Visual regression spec fix (W14 — Vasquez)
+
+W13 shipped `manifest-screenshots-visual.spec.ts` but a subtle
+ordering bug surfaced under the W14 audit: the spec called
+`page.setContent('<...><img src="/foo.png">...</...>)` without
+first navigating the page to a real origin. With Playwright's
+default `about:blank` start state, the relative `<img src="/foo.png">`
+URL resolves against `about:blank` (no origin) — the image never
+loads and the comparison silently degrades.
+
+**The fix** (W14): call `await page.goto('/')` BEFORE
+`page.setContent()`. The navigation gives the page a real origin
+(the `baseURL` from `playwright.config.ts`) so the subsequent
+relative-URL `<img>` resolves correctly. The fix is one line at
+the top of the `test(...)` body, plus a `forward-stage` annotation
+when the origin itself is unreachable.
+
+This pattern generalises: any spec that mixes `setContent` with
+relative-URL resources needs an explicit `page.goto()` first. The
+W14 `visual-regression-real-captures.spec.ts` spec does not need
+the workaround because it navigates to real routes directly.
+
+### 5.3. When to update the baseline
 
 The Hicks W12+ producer-side renames (new icons, new manifest
 schema, copy changes) MUST land in the same commit as the
@@ -467,7 +512,7 @@ change, the visual-regression failure is a **real** regression —
 do not blindly update the baseline. Open an issue and triage
 with Hicks before regenerating.
 
-### 5.3. Allowable diff budget
+### 5.4. Allowable diff budget
 
 | Surface | Baseline tolerance | Rationale |
 |---------|--------------------|-----------|
@@ -539,3 +584,14 @@ results) added; §3.2 (NOT to use) renumbered to §3.3; §3.3
 W13 CI gate (`.github/workflows/playwright-visual-regression.yml`
 shape + PR-comment + diff-artefact upload). Zero-skip streak
 bumped to W13 (27 waves).*
+
+*Phase K Wave 14 — Vasquez (QA). §3.3 (DbSerial migration
+**completion** — 2 Bishop-lane candidates remain a cross-lane
+hand-off; W12→W13→W14 chain memo at
+`Phase_K_W14/Vasquez/db-serial-migration-completion.md`) added;
+§3.3 (NOT to use) renumbered to §3.4; §3.4 (Future collections)
+renumbered to §3.5. §5.2 (Visual regression spec fix — `page.goto`
+before `page.setContent` so relative `<img>` URLs resolve against
+the baseURL origin) added; §5.2 (baseline update procedure)
+renumbered to §5.3; §5.3 (Allowable diff budget) renumbered to §5.4.
+Zero-skip streak bumped to W14 (28 waves).*

@@ -1,0 +1,3 @@
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:  3029, Skipped:     0, Total:  3029, Duration: 2 m 4 s - Mahjong.Autotable.Api.Tests.dll (net10.0)
