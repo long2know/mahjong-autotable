@@ -232,7 +232,7 @@ public sealed class W12SurfaceSmokeFactsTests
         // W13 renames Wave1ThroughKW12RegressionTests → Wave1ThroughKW13RegressionTests.
         // W14 renames again to Wave1ThroughKW14RegressionTests.
         // W15 → Wave1ThroughKW15RegressionTests; W16 → Wave1ThroughKW16RegressionTests;
-        // W17 → Wave1ThroughKW17RegressionTests.
+        // W17 → Wave1ThroughKW17RegressionTests; W18 → Wave1ThroughKW18RegressionTests.
         // Accept any of the five so this W12 smoke stays green across the renames.
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal)
@@ -240,7 +240,8 @@ public sealed class W12SurfaceSmokeFactsTests
             || x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 

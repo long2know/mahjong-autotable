@@ -155,6 +155,27 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// on absence (except the Vasquez-lane artefacts that ship in this
 /// same PR, which hard-assert).</para>
 ///
+/// <para><b>Wave 18 extension.</b> Class renamed Wave1ThroughKW17 →
+/// Wave1ThroughKW18. New W18 smokes appended for the W18 surfaces:
+/// the W18 forward-stage Bishop/Hicks/Apone contract surfaces under
+/// <c>Phase_K_W18/Vasquez/</c> (Bishop W18 DbSerial 29/29 completion
+/// applying <c>[Collection("DbSerial")]</c> to the four W16+W17 open
+/// candidates, per-tenant JWKS rotation audit cadence, replay-
+/// retention policy evaluator, SignalR-retention policy evaluator,
+/// JWT issue rate-limit metrics histogram, commentary cost-audit
+/// alignment, tournament query alert thresholds, Phase L renderer
+/// scene + picking v2, Phase L tile-mesh layout, Apone W18 LH13
+/// <c>--screenEmulation.mobile=false</c> root-cause fix in
+/// <c>.github/workflows/pwa-audit.yml</c>, infra W18 surfaces,
+/// SLSA-3 SHA-pin expansion continuation), the
+/// <c>docs/test-architecture.md §3.4c</c> W18 mile-marker (DbSerial
+/// COMPLETE — 29/29), the <c>docs/agent-handoff-protocol.md §6.7</c>
+/// LH13 post-fix status disposition, the W17 → W18 regression
+/// rename pin itself, and the W17 pin rewritten to _Historical. All
+/// forward-staged with soft-pass on absence (except the
+/// Vasquez-lane artefacts that ship in this same PR, which
+/// hard-assert).</para>
+///
 /// <para><b>Wave 17 extension.</b> Class renamed Wave1ThroughKW16 →
 /// Wave1ThroughKW17. New W17 smokes appended for the W17 surfaces:
 /// the W17 forward-stage Bishop/Hicks/Apone contract surfaces under
@@ -263,11 +284,11 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// PR, which hard-assert).</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW17RegressionTests
+public class Wave1ThroughKW18RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW17RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW18RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -1954,7 +1975,7 @@ public class Wave1ThroughKW17RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
     public void PhaseK10_DbSerialCollection_Present()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly;
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("DbSerialCollection", StringComparison.Ordinal)
             || x.Name.Equals("DbSerialCollectionDefinition", StringComparison.Ordinal));
@@ -1967,7 +1988,7 @@ public class Wave1ThroughKW17RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
     public void PhaseK11_FideC04SwissPairingService_Present()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly
             .GetReferencedAssemblies()
             .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
             .Where(a => a is not null)
@@ -1987,7 +2008,7 @@ public class Wave1ThroughKW17RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
     public void PhaseK11_TileReference_ToBinary_Present()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly
             .GetReferencedAssemblies()
             .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
             .Where(a => a is not null)
@@ -2319,10 +2340,10 @@ public class Wave1ThroughKW17RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
     public void PhaseK12_RegressionClassRenamed_KW11_To_KW12()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly;
         // The new class is present (this one).
         var t12 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t12);
         // The old class is GONE.
         var t11 = asm.GetTypes().FirstOrDefault(x =>
@@ -2526,10 +2547,10 @@ public class Wave1ThroughKW17RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-13")]
     public void PhaseK13_RegressionClassRenamed_KW12_To_KW13()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly;
         // The new class is present (this one).
         var t13 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t13);
         // The old class is GONE.
         var t12 = asm.GetTypes().FirstOrDefault(x =>
@@ -2712,10 +2733,10 @@ public class Wave1ThroughKW17RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-14")]
     public void PhaseK14_RegressionClassRenamed_KW13_To_KW14()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly;
         // The new class is present (this one).
         var t14 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t14);
         // The old class is GONE.
         var t13 = asm.GetTypes().FirstOrDefault(x =>
@@ -2978,7 +2999,7 @@ public class Wave1ThroughKW17RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
     public void PhaseK15_RegressionClassRenamed_KW14_To_KW15_Historical()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly;
         // The W14 class is GONE (was retired at W15 sign-off).
         var t14 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
@@ -3003,7 +3024,7 @@ public class Wave1ThroughKW17RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-16")]
     public void PhaseK16_RegressionClassRenamed_KW15_To_KW16_Historical()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly;
         // The old W15 class is GONE.
         var t15 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
@@ -3018,24 +3039,49 @@ public class Wave1ThroughKW17RegressionTests
     // ────────────────────────────────────────────────────────────
     //  Phase K Wave 17 — Wave1ThroughKW17 rename pin (Vasquez).
     //  Vasquez-lane artefact — hard-asserts (it ships in THIS PR).
+    //  W18: the W17 rename historical fact is rewritten to assert
+    //  the W17 *historical* line; this fact is renamed
+    //  PhaseK17_RegressionClassRenamed_KW16_To_KW17_Historical and
+    //  now checks that the W16 class is gone (it is — it was
+    //  retired at W17 sign-off) AND that the W17 class is also gone
+    //  (retired at W18 sign-off; see PhaseK18 fact below).
     // ────────────────────────────────────────────────────────────
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-17")]
-    public void PhaseK17_RegressionClassRenamed_KW16_To_KW17()
+    public void PhaseK17_RegressionClassRenamed_KW16_To_KW17_Historical()
     {
-        var asm = typeof(Wave1ThroughKW17RegressionTests).Assembly;
-        // The new class is present (this one).
-        var t17 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
-        Assert.NotNull(t17);
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly;
         // The old W16 class is GONE.
         var t16 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal));
         Assert.Null(t16);
+        // The W17 class is ALSO gone (was retired at W18 sign-off,
+        // see PhaseK18_RegressionClassRenamed_KW17_To_KW18 below).
+        var t17 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
+        Assert.Null(t17);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 18 — Wave1ThroughKW18 rename pin (Vasquez).
+    //  Vasquez-lane artefact — hard-asserts (it ships in THIS PR).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-18")]
+    public void PhaseK18_RegressionClassRenamed_KW17_To_KW18()
+    {
+        var asm = typeof(Wave1ThroughKW18RegressionTests).Assembly;
+        // The new class is present (this one).
+        var t18 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
+        Assert.NotNull(t18);
+        // The old W17 class is GONE.
+        var t17 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
+        Assert.Null(t17);
     }
 
     private static Assembly? ResolveApiAssembly()
     {
-        var refs = typeof(Wave1ThroughKW17RegressionTests).Assembly
+        var refs = typeof(Wave1ThroughKW18RegressionTests).Assembly
             .GetReferencedAssemblies();
         foreach (var name in refs)
         {

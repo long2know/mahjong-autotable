@@ -1,0 +1,21 @@
+→ Reading current branch protection for long2know/mahjong-autotable:main…
+→ gh api -X GET repos/long2know/mahjong-autotable/branches/main/protection
+→ HTTP 404 — Branch not protected (W18 re-confirmation; unchanged since W17)
+→ Mode: dry-run
+→ Have lane-discipline currently: no (branch protection ABSENT entirely)
+→ Resulting contexts: lane-discipline / check (would be REQUIRED on a brand-new protection record)
+→ NOTE — W18 cycle (Vasquez): the §4.5 W17 RECALIBRATION + §4.7 + §4.8
+→        Stephen-decision tree remain in force.  No §4.8 Option A/B/C choice
+→        has been received from Stephen between W17 sign-off and W18 bring-up.
+→        Per §4.7, neither the squad nor the Coordinator may invoke
+→        gh api -X PUT without Stephen's explicit selection.
+→        Recommendation HOLD: continue to surface §4.8 in each wave's handoff;
+→        no Coordinator-direct execution this wave.
+→ Dry-run: would execute (if Stephen had chosen an option):
+    gh api -X PUT repos/long2know/mahjong-autotable/branches/main/protection \
+      --input - <<'JSON'
+      { …decision-tree payload per §4.8 (3 options)… }
+      JSON
+→ §4.9 install record:  NOT YET FILED (no Stephen choice this cycle).
+→ Cadence: W19 picks up the same dry-run + §4.8 surface; convergence
+→          remains keyed on Stephen.

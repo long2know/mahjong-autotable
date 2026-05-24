@@ -2043,3 +2043,87 @@ baseline.  Cross-referenced by
 `Phase_K_W15/Vasquez/vasquez-phase-k-wave-15.md` Deliverable #7
 and by `VasquezW15SelfLaneTests.cs` (Lane-discipline maturity
 narrative present + allowlist timeline entries enumerated).*
+
+### 6.6. LH13 cron status disposition (W18 — Vasquez)
+
+W17 §6.7 in `docs/frontend-pwa-audit.md` PROMOTED the §6.6
+Coordinator-direct cron seed from optional fallback to PRIMARY
+next-step on the basis of the 7-wave deferral (W11 → W17
+inclusive).  W18 lands a complementary fix — **Apone W18 applies
+the LH13 `--screenEmulation.mobile=false` flag** to
+`.github/workflows/pwa-audit.yml`, pairing it with the
+already-present `--form-factor=desktop` and closing the LH13
+root-cause identified in W17 §6.7 (Lighthouse 13's emulation
+pipeline kept the mobile profile active even when the form-factor
+was nominally desktop, breaking the audit at the chrome flag
+parsing stage).
+
+#### Why §6.6 (handoff) exists separately from §6.7 (pwa-audit)
+
+`docs/frontend-pwa-audit.md §6.7` records the W17 LH13 cron
+*runbook* PROMOTE recommendation.  This §6.6 in
+`docs/agent-handoff-protocol.md` records the W18 LH13 cron
+*hand-off status* — i.e. which downstream agent picks up the
+calibration data once the fix demonstrates 3+ consecutive
+successful schedule-event runs.  The split mirrors the §4.x /
+§6.x escalation runbook pattern (Vasquez owns the W18 status
+recording; Hicks owns the downstream HARD-PIN once the
+calibration data converges).
+
+### 6.7. LH13 cron status — W18 disposition (W18 — Vasquez)
+
+| Metric                                                | W17 close   | W18 disposition |
+|-------------------------------------------------------|-------------|-----------------|
+| `--form-factor=desktop` in workflow                   | YES         | YES (unchanged) |
+| `--screenEmulation.mobile=false` in workflow          | NO          | **YES (W18 — Apone)** |
+| Schedule-event cron runs since prior wave              | 1           | TBD (post-W18) |
+| Schedule-event cron run conclusion                    | failure     | TBD (post-W18) |
+| Consecutive successful schedule-event runs            | 0 of 3      | TBD (post-W18) |
+| Coordinator-direct seed (§6.6 / §6.7 in pwa-audit)    | 0 invocations | 0 invocations (deferred to post-fix observation) |
+
+**W18 disposition — YELLOW.**  The fix landed in the W18 cycle
+but insufficient post-fix cron runs have accrued by Vasquez
+bring-up to call GREEN.  Per the W18 brief's threshold:
+
+- **GREEN** requires 3+ consecutive successful schedule-event
+  runs post-fix.  Not yet observed at W18 sign-off; the next
+  `schedule:` block is the W19 mid-cycle window.
+- **RED** is reserved for a *new* failure mode surfacing post-fix
+  (e.g. the workflow still fails with a different stderr).  No
+  new failure mode observed in the W18 dry-run; the Lighthouse
+  invocation now parses both flags cleanly.
+- **YELLOW** — fix landed, observation pending.  Hand calibration
+  data over to Hicks W19 for the §6.8 LH13 HARD-PIN once the
+  3+ run threshold accrues.
+
+#### Hand-off to Hicks (W19+) for §6.8 LH13 HARD-PIN
+
+Once the §6.7 disposition flips to GREEN (3+ consecutive
+successful schedule-event runs at the post-W18 Apone-fix
+baseline), the calibration data hands off to Hicks for the
+§6.8 LH13 HARD-PIN.  Per the W17 §6.7 framing in
+`docs/frontend-pwa-audit.md`, the hard-pin lands as a Hicks-lane
+edit to `docs/lh13-soft-pin-rationale.md §10` and a paired
+`docs/agent-handoff-protocol.md §6.8` recording (Hicks-author,
+Vasquez-cross-ref).  If the calibration does NOT converge at W19,
+Vasquez W19 escalates again under the §6.5 reservoir-RED rule
+(originally W15 §6.5; rolling forward through every wave that
+fails to converge).
+
+#### Cadence going forward (W18 → W19+)
+
+- W19 Hicks bring-up captures the post-fix cron status in
+  `docs/lh13-soft-pin-rationale.md §10`.  If 3+ successful
+  schedule-event runs have accrued, Hicks flips §6.8 to GREEN
+  (LH13 HARD-PIN).
+- W19 Vasquez bring-up records the calibration data in §6.7 and
+  updates the table above with the post-fix numbers.  If the
+  fix has NOT converged, Vasquez §6.7 flips YELLOW → RED and
+  cross-refs the pwa-audit §6.5 reservoir-RED escalation.
+- The §4.5 / §4.7 / §4.8 Stephen-decision tree for branch-
+  protection remains in force in parallel — no §4.9 install
+  recorded at W18 (Stephen has not yet selected an Option).
+  This §6.x track and the §4.x track are independent in scope
+  but share the reversibility-first disposition logic codified
+  in `vasquez-phase-k-wave-17.md`'s W17 §6.7 vs §4.5 comparison
+  table.
