@@ -4,6 +4,19 @@
 # Changsha-game churn (Hudson's load profile), memory grows with active
 # session count. Min 2 replicas matches the Deployment's baseline so a
 # single pod failure during rolling update can't drop us to 1 mid-deploy.
+#
+# Phase K Wave 16 — Apone (DevOps). Base `minReplicas` bumped 2 → 3
+# to land the W15 tuning-pre-flight recommendation across ALL
+# overlays (base, staging, prod). The prod-only overlay already
+# pinned `minReplicas: 3` via the inline kustomization patch since
+# Phase J Wave 7; the W16 base bump propagates the same floor to
+# staging + any future overlay so a fresh environment doesn't
+# inherit the W7-era under-pinned `2`. See
+# `docs/hpa-min-replicas-tuning.md` (W15) for the 30-day Hudson-
+# panel survey that justifies the floor; the prod overlay patch
+# now lives in `infra/k8s/overlays/prod/hpa-patch.yaml` (W16 NEW,
+# extracted from the W7 inline kustomization patch — the prod
+# overlay's effective `minReplicas` is unchanged at 3).
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -15,7 +28,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: mahjong-autotable
-  minReplicas: 2
+  minReplicas: 3
   maxReplicas: 8
   metrics:
     - type: Resource

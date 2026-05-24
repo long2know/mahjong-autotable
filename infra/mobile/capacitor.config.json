@@ -1,0 +1,37 @@
+{
+  "_comment_phase": "Phase K Wave 16 — Apone (DevOps).",
+  "_comment_purpose": "Infra-managed Capacitor configuration stub. Sits alongside the app-level mobile/capacitor.config.json (Phase K Wave 2 — the Capacitor shell's runtime config). This infra-side stub captures the ENVIRONMENT-bound knobs (server URLs, log levels, feature flags) that the W16 mobile-bundle-ci.yml workflow injects into the runtime bundle at CI time via the Capacitor 6 'configFile' override mechanism. See docs/mobile-ci-bootstrap.md §3 for the per-environment override matrix.",
+  "_comment_layout": "The infra/mobile/ directory is the apone-lane home for Capacitor / Cordova / native-shell wiring. The mobile/ directory is the app-lane home for the actual Capacitor runtime (proximate to package.json + the iOS/Android scaffolding). Splitting them lets Stephen's infra-side per-env overrides land WITHOUT touching the app-level capacitor.config.json (which a future Hicks-lane Phase L mobile-renderer wave will own end-to-end).",
+  "_comment_w16_status": "STUB — actual environment-bound values populated in W17+ when the mobile-bundle-ci.yml workflow is exercised against staging (staging-mobile.mahjong.example.com) and prod (mobile.mahjong.example.com). W16 lays the path-level groundwork; W17+ injects the real per-environment values via the docs/mobile-ci-bootstrap.md §4 secret matrix.",
+  "appId": "io.mahjong.autotable",
+  "appName": "Mahjong Autotable",
+  "webDir": "../../src/frontend/autotable",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://mobile.mahjong.example.com",
+    "androidScheme": "https",
+    "iosScheme": "https",
+    "allowNavigation": [
+      "mobile.mahjong.example.com",
+      "staging-mobile.mahjong.example.com"
+    ]
+  },
+  "ios": {
+    "contentInset": "always",
+    "scrollEnabled": true
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "_comment_plugins": "Per-plugin runtime config. W16 stub; W17+ wires the real plugin set as the mobile-bundle-ci.yml exercises against a live build.",
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "Preferences": {
+      "group": "io.mahjong.autotable.preferences"
+    }
+  }
+}

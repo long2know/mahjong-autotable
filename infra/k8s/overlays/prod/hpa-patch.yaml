@@ -1,0 +1,101 @@
+# Phase K Wave 16 — Apone (DevOps).
+#
+# Prod-overlay HPA patch — extracted from the W7-era inline
+# kustomization patch.
+#
+# # Why this file exists (W16 deliverable 2)
+#
+# Phase J Wave 7 wired the prod-overlay HPA tuning as an INLINE
+# JSON-Patch block inside `infra/k8s/overlays/prod/
+# kustomization.yaml`. The inline block carried two operations:
+#
+#   - op: replace
+#     path: /spec/minReplicas
+#     value: 3
+#   - op: replace
+#     path: /spec/maxReplicas
+#     value: 12
+#
+# Wave-15's `docs/hpa-min-replicas-tuning.md` (the 30-day
+# Hudson-panel survey) confirmed the prod floor at 3, and the
+# W16 hand-off explicitly named the extraction of the inline
+# patch into a dedicated file as a hygiene deliverable parallel
+# to the W4 `kyverno-enforce-patch.yaml` + W13 `redis-envfrom-
+# required-patch.yaml` precedent.
+#
+# # What's changing at W16 (and what's NOT)
+#
+# Changing:
+#
+#   * `infra/k8s/base/hpa.yaml` `minReplicas: 2 → 3` — the
+#     base-layer floor matches the prod inline patch since
+#     Phase J Wave 7; W16 propagates the same floor to staging
+#     and any future overlay.
+#   * `helm/mahjong/charts/mahjong-api/values.yaml` `hpa.
+#     minReplicas: 2 → 3` — the helm-baseline equivalent.
+#   * `infra/k8s/overlays/prod/kustomization.yaml` — the inline
+#     HPA patch's TWO `op: replace` operations are replaced with
+#     a single `- path: hpa-patch.yaml` reference pointing at
+#     this file. The PROD-overlay's effective HPA settings are
+#     UNCHANGED (`minReplicas: 3`, `maxReplicas: 12`); only the
+#     patch-file layout shifts from inline JSON-Patch ops to a
+#     standalone strategic-merge patch.
+#
+# NOT changing:
+#
+#   * The Deployment-side prod replica baseline (3) — the
+#     inline kustomization patch for the Deployment `replicas:
+#     3` STAYS inline (it's a single-line op coupled to the
+#     CPU/memory resources block; the W4 + W13 precedent only
+#     extracts standalone single-resource patches).
+#   * The HPA scaling behaviour (CPU 70 % util target, memory
+#     80 % util target, 60s scale-up stabilization, 300s scale-
+#     down stabilization). These are base-layer settings
+#     unchanged by this patch.
+#
+# # Patch shape — strategic merge, NOT JSON Patch
+#
+# The W7 inline patch used JSON Patch op-syntax
+# (`op: replace`, `path: …`). This standalone file uses
+# STRATEGIC MERGE PATCH syntax — same effective result, cleaner
+# read. The kustomization references it via `- path: hpa-patch.
+# yaml` with a `target:` block specifying the Kind+name (no
+# selector overlap concern — there's exactly one HPA in the
+# base named `mahjong-autotable`).
+#
+# # Verify
+#
+#   kustomize build infra/k8s/overlays/prod/ \
+#     | yq 'select(.kind == "HorizontalPodAutoscaler") |
+#           {minReplicas: .spec.minReplicas,
+#            maxReplicas: .spec.maxReplicas}'
+#
+# Expected (post-W16):
+#
+#   minReplicas: 3
+#   maxReplicas: 12
+#
+# Byte-identical to the W15 baseline for the HPA Kind — the W16
+# extraction is a layout-only refactor for that surface; the
+# `minReplicas: 2 → 3` value bump lives at the BASE layer (see
+# `infra/k8s/base/hpa.yaml` W16 header) and the prod overlay's
+# `3` value is unchanged. The rendered cluster state is
+# byte-identical to the W15 prod overlay's HPA section.
+#
+# # W17+ hand-off — `minReplicas: 5` candidate
+#
+# `docs/hpa-min-replicas-tuning.md` §6 documents a W16+
+# follow-on: the 5-replica floor for the Asian-peak window
+# (UTC 12:00–16:00). Activation is a single-line bump in this
+# file (`minReplicas: 3 → 5`) gated on a fresh Hudson-panel
+# survey + cost approval. Not landing at W16 — the W16
+# deliverable is the layout extraction + the base-layer 2 → 3
+# propagation. The 5-replica bump is the W17 candidate.
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mahjong-autotable
+spec:
+  minReplicas: 3
+  maxReplicas: 12

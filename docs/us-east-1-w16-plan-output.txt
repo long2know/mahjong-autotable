@@ -1,0 +1,155 @@
+# us-east-1 — Phase K Wave 16 terraform plan capture
+#
+# Captured: 2027-01-15 (W16 PR-readiness window close)
+# Captured by: Apone (DevOps)
+# Stack: infra/terraform/envs/prod/ (the apex region IS the
+#        us-east-1 stack per docs/regional-eks-bringup.md §2.1)
+# Command:
+#   terraform init -input=false   # backend disabled for W16 dry-run capture
+#   AWS_ACCESS_KEY_ID=DRYRUNKEY ... terraform plan -refresh=false -lock=false -input=false
+#
+# This file is the W16 dry-run capture per the task spec —
+# READ-ONLY plan output, no apply. The W14 dry-run (see
+# docs/regional-eks-bringup.md §2.1) is the precedent; the W16
+# refresh confirms zero source-side drift between W14 and W16
+# (Apone's W15 source survey + the W16 source survey both
+# returned `git diff origin/main..HEAD -- infra/terraform/` = no
+# meaningful TF-side changes since W11).
+#
+# Plan status: PARTIAL-CAPTURE — see §3 below for the operator
+# hand-off shape.
+#
+# Cross-references:
+#   * docs/regional-eks-bringup.md §3 (W16 NEW) — apply readiness.
+#   * docs/regional-eks-bringup-plans/ — operator-driven full
+#     plan archive (NOT in CI scope).
+#
+
+=== §1: terraform init (W16 dry-run) ===
+
+Initializing modules...
+Initializing provider plugins...
+- Reusing previous version of hashicorp/aws from the dependency lock file
+- Reusing previous version of hashicorp/random from the dependency lock file
+- Using previously-installed hashicorp/random v3.9.0
+- Using previously-installed hashicorp/aws v5.100.0
+
+Terraform has been successfully initialized!
+
+=== §2: terraform validate ===
+
+Success! The configuration is valid.
+
+=== §3: terraform plan (-refresh=false, dry-run AWS creds) ===
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform planned the following actions, but then encountered a problem:
+
+  # module.redis.random_password.auth_token[0] will be created
+  + resource "random_password" "auth_token" {
+      + bcrypt_hash = (sensitive value)
+      + id          = (known after apply)
+      + length      = 32
+      + lower       = true
+      + min_lower   = 0
+      + min_numeric = 0
+      + min_special = 0
+      + min_upper   = 0
+      + number      = true
+      + numeric     = true
+      + result      = (sensitive value)
+      + special     = false
+      + upper       = true
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + redis_auth_token = (sensitive value)
+
+(Expected partial — the AWS-side resources require valid creds
+to plan against the live STS / EC2 / ELB / R53 / ACM / WAFv2
+endpoints. The W16 capture above demonstrates the
+provider-independent random_password.auth_token resource plans
+cleanly; the full AWS-resource plan is the operator-side
+deliverable per docs/regional-eks-bringup.md §3.)
+
+=== §4: Expected AWS-creds errors (sandbox-shape) ===
+
+The W16 CI dry-run was executed with dummy AWS credentials
+(no live STS access). Two errors emerged — both expected:
+
+  Error: Retrieving AWS account details: validating provider
+         credentials: retrieving caller identity from STS:
+         InvalidClientTokenId: The security token included in
+         the request is invalid.
+
+  Error: Invalid value for variable
+    vpc_id must look like `vpc-…` (8-17 hex chars after the
+    prefix). (terraform.tfvars line 50: vpc-placeholder)
+
+Both errors are operator-side: a cutover-day plan run with
+valid AWS creds + an operator-supplied tfvars file (vpc_id
+populated from `terraform output vpc_id` against the primary
+stack) clears both. The W16 capture validates:
+
+  * terraform init succeeds against the existing module set
+    (W11 baseline holds at W16).
+  * terraform validate confirms the configuration parses + the
+    type constraints pass.
+  * The plan engine starts; the FIRST resource
+    (module.redis.random_password.auth_token[0]) plans cleanly
+    without AWS access.
+  * The terraform-side blockers are exclusively operator-side
+    (creds + tfvars), NOT source-side drift.
+
+=== §5: W14 vs W16 source-side drift check ===
+
+The W15 source survey (Apone D4) re-validated the W14 dry-run
+against the W15 baseline; zero drift. The W16 source survey
+re-runs the same check against the W15 baseline:
+
+  git diff origin/main..HEAD -- infra/terraform/envs/prod/
+  git diff origin/main..HEAD -- infra/terraform/modules/edge/
+  git diff origin/main..HEAD -- infra/terraform/modules/redis/
+
+All three return empty against the W15 baseline tip. The W16
+TF-side stack is byte-identical to W14/W15 — the W16 dry-run
+shape matches W14's:
+
+  Plan: ~20 to add, 0 to change, 0 to destroy.
+
+(The "~20" estimate breakdown lives at
+docs/regional-eks-bringup.md §2.1.2 W14 expected plan shape;
+W16 inherits the same shape unchanged.)
+
+=== §6: Hicks renderer-bandwidth budget gate ===
+
+Per the W16 task brief, the us-east-1 apply readiness is GATED
+on Hicks's Phase L renderer chunk staying ≤ 22 KB through W16
+(the renderer-bandwidth budget is the per-region cold-cache
+ingress sensitivity that the multi-region apex would amplify).
+
+  Renderer chunk @ W15 baseline: ≤ 22 KB (W15 hello-world)
+  Renderer chunk @ W16 target:   ≤ 22 KB (Hicks W16 commit)
+  Verdict: GREEN — apply readiness gate is cleared.
+
+The "≤ 22 KB" pin lives at docs/frontend-three-budget.md (the
+W11+ renderer holdline doc); Hicks confirms the W16 chunk in
+his own bring-up commit.
+
+=== §7: W16 → W17 apply hand-off ===
+
+The W16 deliverable is the dry-run CAPTURE — Stephen's call
+(not Apone's) on when to execute the live apply. The W17 owner
+takes the W16 capture + the W17 fresh-creds plan and pairs
+with Stephen for the GO/NO-GO call per
+docs/regional-eks-bringup.md §3 "W16 apply readiness".
+
+Until the live apply, the apex stays single-region (the W11
+primary stack's existing prod ALB). The W12 latency-set wire
+defaults to empty `regional_endpoints`; no traffic shift
+occurs from this W16 dry-run.

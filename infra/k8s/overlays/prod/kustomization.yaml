@@ -43,8 +43,17 @@ resources:
   # §4` and the §6.3 Gate-4 hardening-calendar slot is the
   # squad-level approval gate.
   #
-  # DO NOT uncomment until §3 pre-conditions are green.
-  # - kyverno-enforce-policies.yaml  # ENABLE PER docs/kyverno-enforce-rollout.md §4
+  # Phase K Wave 16 — Apone (DevOps). Cutover-day enablement
+  # landed: the W15 four pre-conditions (`docs/kyverno-enforce-
+  # rollout.md §3`) are all GREEN after the 5-day observability
+  # grace window. See `docs/kyverno-audit-findings-w16.md` for
+  # the audit-window findings + `docs/kyverno-enforce-rollout.md
+  # §10` for the cutover-day evidence. The `enforce-prod-default`
+  # ClusterPolicy is now part of the rendered overlay; admission
+  # decisions in `mahjong-prod` enforce the non-root invariant on
+  # Pod creation. Rollback path: `git revert <merge-commit>` per
+  # `docs/kyverno-enforce-rollout.md §6`.
+  - kyverno-enforce-policies.yaml
   # Phase K Wave 12 — Apone (DevOps). Wire in the W11 hand-off
   # manifests previously documented as out-of-band. See
   # `docs/prod-cutover.md §2` for the wire-up rationale.
@@ -93,13 +102,13 @@ patches:
   - target:
       kind: HorizontalPodAutoscaler
       name: mahjong-autotable
-    patch: |-
-      - op: replace
-        path: /spec/minReplicas
-        value: 3
-      - op: replace
-        path: /spec/maxReplicas
-        value: 12
+    # Phase K Wave 16 — Apone (DevOps). The W7-era inline JSON-
+    # Patch ops (minReplicas + maxReplicas) are now extracted to
+    # `hpa-patch.yaml` (strategic-merge). Rendered cluster state is
+    # byte-identical (minReplicas: 3, maxReplicas: 12). See
+    # `infra/k8s/overlays/prod/hpa-patch.yaml` per-file header for
+    # the W16 layout rationale + the W17 5-replica candidate.
+    path: hpa-patch.yaml
   - target:
       kind: Ingress
       name: mahjong-autotable
