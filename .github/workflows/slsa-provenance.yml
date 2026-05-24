@@ -371,18 +371,23 @@ jobs:
           fi
           echo "Attesting ${IMAGE}@${DIGEST} with ${predicate_path}"
 
-          # Apone — CI emergency fix. The generic SLSA generator emits
-          # a DSSE-wrapped in-toto Statement; cosign v2.4+ with
-          # `--type slsaprovenance1 --predicate <file>` strictly
-          # validates the file against the SLSA v1 predicate schema
-          # (requires `buildDefinition`), which a DSSE envelope does
-          # not satisfy at the file level. Unwrap the envelope first:
-          # base64-decode the `payload` field of the first DSSE line
-          # and extract its in-toto Statement's `predicate` object
-          # into a bare JSON file that cosign can consume. We feed
-          # cosign the bare predicate so cosign re-wraps it in its
-          # own envelope for the OCI sidecar (the original envelope
-          # is still uploaded as a separate artefact + lives in Rekor).
+          # Apone — CI emergency fix. The generic SLSA generator
+          # emits a DSSE-wrapped in-toto Statement whose predicate
+          # follows SLSA v0.2 (`buildType/builder/invocation/
+          # materials/metadata`). cosign v2.4+ with
+          # `--type slsaprovenance` validates against the SLSA v0.2
+          # schema (NOT v1.0 — that is `--type slsaprovenance1` and
+          # demands `buildDefinition/runDetails`).
+          #
+          # Unwrap the DSSE envelope first: base64-decode the
+          # `payload` field of the first DSSE line and extract the
+          # in-toto Statement's `predicate` object into a bare JSON
+          # file that cosign can consume. cosign re-wraps the bare
+          # predicate in its own envelope for the OCI sidecar; the
+          # original DSSE envelope is still uploaded as a separate
+          # workflow artefact and is in Rekor via the generator's
+          # own attest step, so the dual-publication shape that the
+          # Kyverno verifier matches against is preserved.
           bare_predicate="predicate/predicate.bare.json"
           SRC="${predicate_path}" DST="${bare_predicate}" python3 -c '
           import base64, json, os, sys
@@ -400,11 +405,12 @@ jobs:
               raise SystemExit(f"no predicate field in in-toto Statement at {src}")
           with open(dst, "w", encoding="utf-8") as f:
               json.dump(predicate, f)
-          print(f"Extracted bare predicate to {dst}; keys={sorted(predicate)}")
+          ptype = statement.get("predicateType", "<unknown>")
+          print(f"Extracted bare predicate to {dst}; predicateType={ptype}; keys={sorted(predicate)}")
           '
 
           cosign attest \
-              --type slsaprovenance1 \
+              --type slsaprovenance \
               --predicate "${bare_predicate}" \
               --yes \
               "${IMAGE}@${DIGEST}"
