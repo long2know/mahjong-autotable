@@ -620,6 +620,23 @@ public class ReconnectAuditEntry
     /// successful read. Detail format:
     /// <c>"kind={k}|actor={a}|page={p}|pageSize={n}|rows={n}"</c>.</summary>
     public const string KindAuditLogQueried = "audit.log.queried";
+
+    /// <summary>Phase K Wave 23 — Bishop. Audit Kind stamped by
+    /// <c>AuditLogPurgeController</c> when an admin purges audit-log
+    /// rows older than the supplied threshold. Detail format:
+    /// <c>"reason={r}|olderThanDays={n}|purged={n}|earliestRemaining={iso?}"</c>.</summary>
+    public const string KindAuditLogPurged = "audit.log.purged";
+
+    /// <summary>Phase K Wave 23 — Bishop. Audit Kind stamped by
+    /// <c>JwtRotationDrillAutorunService</c> on every cron-driven
+    /// drill tick (success OR failure). Detail format:
+    /// <c>"cron={c}|outcome={o}|tenants={n}|drillId={g}"</c>.</summary>
+    public const string KindJwtRotationDrillAutorun = "auth.jwt.rotation.drill.autorun";
+
+    /// <summary>Phase K Wave 23 — Bishop. Audit Kind stamped by
+    /// the W23 paginated restoration-audit query endpoint. Detail
+    /// format: <c>"actor={a}|since={iso?}|page={p}|pageSize={n}|rows={n}"</c>.</summary>
+    public const string KindReplayRestorationAuditQueried = "replays.restoration.audit.queried";
 }
 
 /// <summary>
@@ -1302,6 +1319,31 @@ public sealed class TournamentStanding
     /// dashboard so a withdrawn player's truncated participation
     /// is visible at a glance.</summary>
     public int GamesPlayed { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 23 — Bishop. Buchholz tiebreaker score. The
+    /// sum of every opponent's final match-point score over the
+    /// tournament. Higher means the player faced a tougher
+    /// field. Primary tiebreaker after raw <see cref="Points"/>
+    /// — two players tied on wins are resolved by the larger
+    /// Buchholz total.
+    ///
+    /// <para>Computed at finalize time by
+    /// <c>TournamentFinalizationController</c> and persisted on
+    /// the standings row so the <c>GET /api/tournaments/{id}/standings</c>
+    /// surface can return the value without re-walking the
+    /// match graph on every read.</para>
+    /// </summary>
+    public double Buchholz { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 23 — Bishop. Sonneborn-Berger tiebreaker
+    /// score. The sum of defeated opponents' final scores plus
+    /// half the sum of drawn opponents' final scores. Rewards
+    /// a player who beat the strong field. Secondary tiebreaker
+    /// applied after <see cref="Buchholz"/>.
+    /// </summary>
+    public double SonnebornBerger { get; set; }
 
     /// <summary>UTC instant the standings row was stamped.
     /// Identical across every standing row for the same

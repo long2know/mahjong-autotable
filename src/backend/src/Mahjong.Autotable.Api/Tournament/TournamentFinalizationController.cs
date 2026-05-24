@@ -111,6 +111,8 @@ public sealed class TournamentFinalizationController : ControllerBase
                     rank = s.Rank,
                     points = s.Points,
                     gamesPlayed = s.GamesPlayed,
+                    buchholz = s.Buchholz,
+                    sonnebornBerger = s.SonnebornBerger,
                 }).ToArray(),
                 adminReason,
             });
@@ -165,26 +167,49 @@ public sealed class TournamentFinalizationController : ControllerBase
             }
         }
 
-        // Competition ranking — same points → same rank; next
-        // tie-resolved player skips ahead by the tie cohort
-        // size.
+        // Phase K Wave 23 — Bishop. Buchholz + Sonneborn-Berger
+        // tiebreaker computation. Buchholz = Σ (each opponent's
+        // final wins). Sonneborn-Berger = Σ (defeated opponent
+        // wins) + 0.5 · Σ (drawn opponent wins). Higher Buchholz
+        // means the player faced a tougher field; higher SB
+        // means the player beat the strong field. Both are
+        // persisted on the standings row.
+        var buchholz = ComputeBuchholz(matches, playerGames.Keys, playerWins);
+        var sonneborn = ComputeSonnebornBerger(matches, playerGames.Keys, playerWins);
+
+        // Competition ranking with multi-key tiebreaker:
+        // primary = wins (Points), secondary = Buchholz,
+        // tertiary = Sonneborn-Berger, then PlayerId (ordinal)
+        // for deterministic settlement when every tiebreaker
+        // ties.
         var ordered = playerGames.Keys
             .OrderByDescending(p => playerWins.GetValueOrDefault(p, 0))
+            .ThenByDescending(p => buchholz.GetValueOrDefault(p, 0.0))
+            .ThenByDescending(p => sonneborn.GetValueOrDefault(p, 0.0))
             .ThenBy(p => p, StringComparer.Ordinal)
             .ToList();
         var finalizedAt = DateTime.UtcNow;
         int currentRank = 0;
         int seenCount = 0;
-        int? lastPoints = null;
+        // Tied-on-the-full-tiebreaker-stack share a rank — the
+        // W22 single-key competition-ranking guard is widened
+        // to a multi-key tuple here so a player tied on every
+        // observable tiebreaker shares the rank rather than
+        // arbitrarily resolving via PlayerId (PlayerId is the
+        // serialisation tie-breaker, not a ranking signal).
+        (int W, double B, double S)? lastKey = null;
         var standings = new List<TournamentStanding>(ordered.Count);
         foreach (var pid in ordered)
         {
             seenCount++;
             var pts = playerWins.GetValueOrDefault(pid, 0);
-            if (lastPoints is null || pts != lastPoints.Value)
+            var b = buchholz.GetValueOrDefault(pid, 0.0);
+            var s = sonneborn.GetValueOrDefault(pid, 0.0);
+            var key = (pts, b, s);
+            if (lastKey is null || !lastKey.Value.Equals(key))
             {
                 currentRank = seenCount;
-                lastPoints = pts;
+                lastKey = key;
             }
             standings.Add(new TournamentStanding
             {
@@ -194,6 +219,8 @@ public sealed class TournamentFinalizationController : ControllerBase
                 Rank = currentRank,
                 Points = pts,
                 GamesPlayed = playerGames.GetValueOrDefault(pid, 0),
+                Buchholz = b,
+                SonnebornBerger = s,
                 FinalizedAtUtc = finalizedAt,
             });
         }
@@ -235,6 +262,8 @@ public sealed class TournamentFinalizationController : ControllerBase
                 rank = s.Rank,
                 points = s.Points,
                 gamesPlayed = s.GamesPlayed,
+                buchholz = s.Buchholz,
+                sonnebornBerger = s.SonnebornBerger,
             }).ToArray(),
             adminReason,
         });
@@ -252,5 +281,101 @@ public sealed class TournamentFinalizationController : ControllerBase
         if (!string.IsNullOrWhiteSpace(m.Player2Id)) yield return m.Player2Id;
         if (!string.IsNullOrWhiteSpace(m.Player3Id)) yield return m.Player3Id!;
         if (!string.IsNullOrWhiteSpace(m.Player4Id)) yield return m.Player4Id!;
+    }
+
+    /// <summary>
+    /// Phase K Wave 23 — Bishop. Computes the Buchholz score
+    /// for every player. Buchholz(p) = Σ wins(o) where the
+    /// sum is taken over every opponent <c>o</c> who shared a
+    /// completed match with <c>p</c>. A multi-seat (round-robin)
+    /// match counts every seated peer as an opponent, so a
+    /// 4-player table contributes 3 opponents per seated player
+    /// (which matches FIDE's "Buchholz for round-robin"
+    /// definition).
+    ///
+    /// <para>Internal-static so the math can be pinned in
+    /// isolation by the W23 test suite without going through a
+    /// controller round-trip.</para>
+    /// </summary>
+    internal static Dictionary<string, double> ComputeBuchholz(
+        IEnumerable<TournamentMatch> matches,
+        IEnumerable<string> players,
+        IReadOnlyDictionary<string, int> playerWins)
+    {
+        ArgumentNullException.ThrowIfNull(matches);
+        ArgumentNullException.ThrowIfNull(players);
+        ArgumentNullException.ThrowIfNull(playerWins);
+
+        var result = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var p in players) result[p] = 0.0;
+
+        foreach (var m in matches)
+        {
+            var seats = EnumerateSeats(m).ToList();
+            foreach (var seat in seats)
+            {
+                foreach (var opponent in seats)
+                {
+                    if (string.Equals(opponent, seat, StringComparison.Ordinal)) continue;
+                    var w = playerWins.TryGetValue(opponent, out var wins) ? wins : 0;
+                    result[seat] = result.GetValueOrDefault(seat, 0.0) + w;
+                }
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Phase K Wave 23 — Bishop. Computes Sonneborn-Berger for
+    /// every player. SB(p) = Σ wins(o where p beat o) +
+    /// 0.5 · Σ wins(o where p drew o). A "draw" is a completed
+    /// match with no WinnerPlayerId (current schema doesn't
+    /// surface draws but the future-proofing is cheap). A
+    /// multi-seat match where the winner is one of the seats
+    /// counts as a "p beat o" relation for every other seated
+    /// player from the winner's perspective; the losers
+    /// contribute the winner's score weighted as half (so the
+    /// SB calculation degrades gracefully in 4-seat formats
+    /// where head-to-head doesn't apply cleanly).
+    /// </summary>
+    internal static Dictionary<string, double> ComputeSonnebornBerger(
+        IEnumerable<TournamentMatch> matches,
+        IEnumerable<string> players,
+        IReadOnlyDictionary<string, int> playerWins)
+    {
+        ArgumentNullException.ThrowIfNull(matches);
+        ArgumentNullException.ThrowIfNull(players);
+        ArgumentNullException.ThrowIfNull(playerWins);
+
+        var result = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var p in players) result[p] = 0.0;
+
+        foreach (var m in matches)
+        {
+            var seats = EnumerateSeats(m).ToList();
+            var winner = string.IsNullOrWhiteSpace(m.WinnerPlayerId) ? null : m.WinnerPlayerId;
+            foreach (var seat in seats)
+            {
+                foreach (var opponent in seats)
+                {
+                    if (string.Equals(opponent, seat, StringComparison.Ordinal)) continue;
+                    var w = playerWins.TryGetValue(opponent, out var wins) ? wins : 0;
+                    if (winner is null)
+                    {
+                        // Drawn (no winner recorded) — half weight
+                        // from both perspectives.
+                        result[seat] = result.GetValueOrDefault(seat, 0.0) + 0.5 * w;
+                    }
+                    else if (string.Equals(winner, seat, StringComparison.Ordinal))
+                    {
+                        // Seat won — full weight from the
+                        // opponent's wins.
+                        result[seat] = result.GetValueOrDefault(seat, 0.0) + w;
+                    }
+                    // Seat lost — contributes nothing.
+                }
+            }
+        }
+        return result;
     }
 }

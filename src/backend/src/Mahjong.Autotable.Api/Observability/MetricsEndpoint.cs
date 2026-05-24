@@ -260,6 +260,49 @@ public static class MetricsEndpoint
             sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Observability.SignalRManualPurgeMetrics.MetricName).AppendLine(" counter");
         }
 
+        // Phase K Wave 23 — Bishop. SignalR per-group telemetry —
+        // connection count gauge + EWMA messages-per-second gauge.
+        var signalrGroup = services.GetService<Mahjong.Autotable.Api.Observability.SignalRGroupMetrics>();
+        if (signalrGroup is not null)
+        {
+            signalrGroup.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Observability.SignalRGroupMetrics.ConnectionsMetricName)
+              .AppendLine(" Live SignalR connection count per hub group (collector not wired).");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Observability.SignalRGroupMetrics.ConnectionsMetricName).AppendLine(" gauge");
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Observability.SignalRGroupMetrics.RateMetricName)
+              .AppendLine(" EWMA-smoothed SignalR messages-per-second per hub group (collector not wired).");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Observability.SignalRGroupMetrics.RateMetricName).AppendLine(" gauge");
+        }
+
+        // Phase K Wave 23 — Bishop. JWT rotation-drill autorun counter.
+        var jwtDrill = services.GetService<Mahjong.Autotable.Api.Auth.JwtRotationDrillAutorunMetrics>();
+        if (jwtDrill is not null)
+        {
+            jwtDrill.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Auth.JwtRotationDrillAutorunMetrics.MetricName)
+              .AppendLine(" Total cron-driven JWT rotation-drill runs (collector not wired).");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Auth.JwtRotationDrillAutorunMetrics.MetricName).AppendLine(" counter");
+        }
+
+        // Phase K Wave 23 — Bishop. Audit-log retention purge counter.
+        var auditPurge = services.GetService<Mahjong.Autotable.Api.Audit.AuditLogPurgeMetrics>();
+        if (auditPurge is not null)
+        {
+            auditPurge.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Audit.AuditLogPurgeMetrics.MetricName)
+              .AppendLine(" Total audit-log rows purged by the W23 retention purge admin surface (collector not wired).");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Audit.AuditLogPurgeMetrics.MetricName).AppendLine(" counter");
+        }
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
     }
 

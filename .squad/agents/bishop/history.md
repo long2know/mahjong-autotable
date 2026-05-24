@@ -3285,3 +3285,119 @@ dashboard for the new histogram).
 wiring, hard-delete `DeleteAsync` for the store seam, admin
 CRUD for `ReplayRetentionPolicy`, `X-Admin-Reason` header
 unification for the commentary override).
+
+## Phase K Wave 23 — backend bring-up
+
+**Branch:** `stlong/phase-k-wave-23-bringup`.
+**Cadence:** Mahjong.Autotable.Api `<Version>` 0.31.0 → 0.32.0.
+
+**Seven scoped deliverables, all landed:**
+
+1. **Backend csproj cadence bump 0.31.0 → 0.32.0.** Single-line
+   edit + W22 forward-stage from substring equality to
+   `Version`-comparison `>=` (consistent with W21→W22
+   precedent).
+
+2. **Buchholz / Sonneborn-Berger tiebreakers + public standings
+   GET.** `TournamentStanding` entity gains `Buchholz` /
+   `SonnebornBerger` double columns; finalization wires the
+   pure-math helpers and persists the rows; new anonymous
+   rate-limited `GET /api/tournaments/{id}/standings` returns
+   the persisted rows. Multi-key ordering: W desc → B desc →
+   SB desc → PlayerId asc.
+
+3. **Replay chunked-UPLOAD admin surface.** Counterpart to
+   W22's chunked download.
+   `POST /api/replays/{id}/chunks/{seq}` (binary, replaces
+   seq-keyed buffer to support resume) +
+   `POST /api/replays/{id}/finalize` (optional
+   `X-Replay-Checksum` SHA-256 header verifies the assembled
+   payload). Per-chunk 4 MB, per-session 1024 chunks, aggregate
+   64 MB. Singleton `ReplayChunkUploadBuffer` is process-local.
+
+4. **JWT rotation-drill autorun.** `BackgroundService` that
+   periodically re-runs the W20 drill, invalidates the JWKS
+   cache, stamps `ReconnectAuditEntry.KindJwtRotationDrillAutorun`,
+   and increments the Prom counter
+   `jwt_rotation_drill_runs_total{outcome="…"}`. Schedule
+   grammar: `@hourly` / `@daily` / `@every-minute` / `<N>m` /
+   `<N>s`. Production-gated + schedule-gated.
+   `appsettings.json` gains the
+   `Auth:RotationDrill.AutorunCronSchedule` stanza.
+
+5. **SignalR per-group telemetry.** EWMA-smoothed rate
+   (alpha=0.2 default, alpha bounds `(0, 1]`) per hub group.
+   1-second tick service. New gauges
+   `signalr_group_connections{group}` +
+   `signalr_group_msg_rate{group}` rendered through
+   `MetricsEndpoint`. New admin-gated read
+   `GET /api/signalr/groups` returns the per-group breakdown.
+   **W22 DI fix:** the un-registered W22
+   `SignalRConnectionRegistry` is now wired into DI alongside
+   the new telemetry services.
+
+6. **Audit-log retention purge.**
+   `POST /api/audit-log/purge?olderThanDays=N` admin-only,
+   mandatory `X-Admin-Reason` header. Time-based bulk delete
+   of `ReconnectAuditEntry` rows. Day bounds `[1, 3650]`.
+   Meta-audit row (`audit-log-purged`) stamped in a separate
+   scope AFTER the purge so it is never caught by the same
+   call. Prom counter
+   `audit_log_purge_rows_total{outcome="purged|noop"}`.
+
+7. **Replay restoration audit history paginated query.**
+   `GET /api/replays/audit/restorations?since=&outcome=&page=&pageSize=`
+   admin-gated paginated query over the W21
+   `ReplayRestorationAttempt` table. Defaults
+   `page=1, pageSize=50, max=200`. Each query stamps a
+   `ReconnectAuditEntry.KindReplayRestorationAuditQueried`
+   meta-audit row.
+
+**Test gate:**
+`dotnet test src/backend/Mahjong.Autotable.slnx --nologo` →
+**5154 passed / 3 failed / 0 skipped** (up from W22's 5072
+total). Net **+82 Bishop tests** in
+`Phase_K_W23/Bishop/`. The 3 failures are 3 Apone-lane mobile
+`package.json` forward-stage tests (W20/W21/W22 Vasquez
+contract tests) that broke when Apone W23 bumped
+`mobile/package.json` 0.31.0 → 0.32.0; same pattern: Vasquez to
+broaden in their W23 lane. No Bishop-lane regressions; 0 build
+warnings; 0 lane-discipline violations.
+
+**Build:** 0 warnings, 0 errors.
+
+**Lessons / forward notes:**
+
+- **Per-group EWMA is a 4-line state machine.**
+  `ewma' = alpha · rate + (1 - alpha) · ewma`. alpha=0.2 is
+  already the smoothing factor; don't stack a moving window on
+  top.
+- **`MessageCount` must be a field, not a property,** for
+  `Interlocked.Increment(ref …)` to compile. Properties don't
+  satisfy the `ref` requirement.
+- **Cron grammar should be narrow.** A
+  self-rescheduling `BackgroundService` covers 95% of
+  operator needs; heavy cron support lives forward of this
+  wave behind a real scheduler.
+- **Production gates compose with schedule gates.** Both must
+  pass for the autorun loop to spin up. Operators set
+  `ASPNETCORE_ENVIRONMENT=Staging` on preview clusters and
+  expect the drill off by default.
+- **Meta-audit rows are written in a separate scope, AFTER the
+  destructive operation,** so they can never be swept by the
+  same call. Pattern carried forward from the W19 audit trail.
+- **Forward-staging the (N-1) csproj contract test** follows
+  W21→W22 precedent: bump to N, broaden N-1 from substring to
+  `Version`-comparison `>=`, keep the strict-`>` assertion in
+  the newest wave's own test.
+- **W22 left `SignalRConnectionRegistry` un-registered in DI**;
+  the W22 diagnostic controller worked in unit tests because
+  the tests instantiated it directly. W23 surfaces the gap
+  through DI-validated startup (the `RatingsLeaderboardEndpointTests`
+  service-validation probe caught it) and closes it with a
+  one-line `AddSingleton` registration.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-23.md`
+— per-deliverable design + W24 forward notes (chunk-upload
+buffer seam for Redis, standings rank index, time→kind purge
+extension, per-tenant standings filter).

@@ -436,6 +436,44 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.PerTenantJwksRotationValidator>();
 }
 
+// Phase K Wave 23 — Bishop. Optional cron-driven autorun of
+// the W20 JWT rotation drill. Disabled by default (empty
+// schedule); operators flip `Auth:RotationDrill:AutorunCronSchedule`
+// in staging to keep a continuous drill posture. The hosted
+// service refuses to schedule in production via IsProduction()
+// gate even if the schedule is set.
+{
+    var drillOpts = new Mahjong.Autotable.Api.Auth.JwtRotationDrillAutorunOptions();
+    builder.Configuration.GetSection(
+        Mahjong.Autotable.Api.Auth.JwtRotationDrillAutorunOptions.ConfigSection).Bind(drillOpts);
+    builder.Services.AddSingleton(drillOpts);
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtRotationDrillAutorunMetrics>();
+    builder.Services.AddHostedService<Mahjong.Autotable.Api.Auth.JwtRotationDrillAutorunService>();
+}
+
+// Phase K Wave 23 — Bishop. SignalR per-group telemetry —
+// group connection count + EWMA messages-per-second rate.
+// Backed by the W22 SignalRConnectionRegistry which the W22
+// diagnostic controller introduced but never wired into DI —
+// W23 closes that loose end so both the diagnostic surface and
+// the new telemetry surface resolve cleanly.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRConnectionRegistry>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRGroupTelemetry>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRGroupMetrics>();
+builder.Services.AddHostedService<Mahjong.Autotable.Api.Observability.SignalRGroupTelemetryTickService>();
+
+// Phase K Wave 23 — Bishop. Audit-log retention purge admin
+// surface. Service + metric registered alongside; the
+// controller resolves them via DI.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.AuditLogPurgeMetrics>();
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Audit.AuditLogPurgeService>();
+
+// Phase K Wave 23 — Bishop. Replay chunked-UPLOAD staging
+// buffer. Singleton (per-process) — the chunked-upload
+// controller writes here and finalize assembles + commits to
+// IReplayStore.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.ReplayChunkUploadBuffer>();
+
 // Phase K Wave 12 — Bishop. Per-client_id sliding-window rate limit
 // for the RFC 7662 token-introspection endpoint. The W11 surface
 // relied on the global AuthValidatePolicy bucket; W12 adds this
