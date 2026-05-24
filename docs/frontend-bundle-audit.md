@@ -215,6 +215,113 @@ campaign (332 KB) plus a small bonus, achievable in a single
 W16 wave touching one file.  W16 should prioritise §3.5
 unless a sibling lane already plans to land a DSN.
 
+## §4.1 — W16 delivered savings (Hicks)
+
+W16 executed §3.1 + §3.5 jointly via the `src/index.ts`
+lazy-mount refactor.  Result, measured from `dist-size.json`
+K16 row (raw bytes):
+
+| Chunk | W15 bytes | W16 bytes | Δ | Notes |
+|-------|----------:|----------:|--:|-------|
+| `autotable-src-eager` | 222,847 | 214,202 | **−8,645** | §3.1 + §3.5 surgery |
+| `action-router` (NEW)  |       0 |   8,209 | +8,209    | §3.1 — split out, lazy on `?action=*` |
+| `sentry-shim` (NEW)    |       0 |   2,304 | +2,304    | §3.5 — wrapper-only chunk, lazy on PROD/SENTRY_DEBUG |
+| `sentry` (SDK; tracked since W16) | (not tracked) | 342,614 | n/a | unchanged shape — still DSN-gated inside wrapper |
+| `renderer-webgl2`      |   6,237 |  19,017 | +12,780   | Phase L W2 tile-mesh graph (separate deliverable) |
+| `three-renderer-big`   | 406,635 | 406,635 | 0         | Hold-line (6th wave) |
+
+### Net cold-path delta (bare-`/` lobby load)
+
+| Path | Wave | Eager + immediately-fetched chunks (bytes) |
+|------|-----:|-------------------------------------------:|
+| Bare `/` (no DSN, no `?action=*`) | W15 | 222,847 |
+| Bare `/` (no DSN, no `?action=*`) | W16 | **214,202** |
+
+**Savings: 8,645 bytes** on the cold lobby path.  When the user
+later activates a `?action=*` PWA shortcut, the 8 KB
+`action-router` chunk is paid then — never on the bare-`/`
+visit.  When the user is on a PROD build WITH a DSN, the
+2.3 KB `sentry-shim` chunk + the 342 KB `sentry` SDK chunk
+are paid; without a DSN, both are skipped.
+
+### §3.5 actuality vs. the W15 estimate
+
+The W15 §3.5 estimate ("0 KB DSN / 342 KB no-DSN") assumed the
+entire 342 KB sentry chunk was eager.  Empirically, the W15
+sentry chunk was ALREADY lazy (DSN check inside `sentry.ts`
+gated the `await import('@sentry/browser')`).  The actual W16
+delivery is:
+
+* **Local dev / no-DSN preview**: −2.3 KB (sentry-shim wrapper
+  never loaded) + the 342 KB SDK chunk continues to not load
+  (no change from W15).  Practical "first-paint" delta: same
+  ~3 KB drop as the wrapper's eager-graph contribution.
+* **PROD with DSN**: 0 KB change on first paint (the wrapper
+  was already 3 KB inside the eager chunk; it's now a 2.3 KB
+  lazy chunk that fetches on boot).  Functionally identical.
+* **Local dev with `localStorage.SENTRY_DEBUG=1`**: same as PROD.
+
+This is below the W15 §3.5 headline.  The headline was the
+worst case (no-DSN deploy); the realistic deploys all match the
+~3 KB drop instead.  W17 should re-audit §3.5 in light of this
+finding — the next win likely needs a separate config-mode
+flag (`SENTRY_DEFER_INIT=1`) that defers even the DSN probe.
+
+## §4.2 — W17 + remaining candidates (sections renumbered to §3.6+)
+
+The W15 §3.2 / §3.3 / §3.4 sections remain on the W17 docket
+(see §4 roll-up).  Three NEW candidates surfaced during the W16
+surgery + Phase L tile-mesh work:
+
+### §3.6 — `i18n` lazy-load (W17 candidate, medium ROI)
+
+`src/index.ts` eagerly imports `./i18n` and invokes `installI18n()`
+at boot.  The eager call is required because the body[lang=…]
+attribute must be set BEFORE any DOM paint to avoid layout flash.
+However, the **table of resolved strings** for non-default locales
+is plausibly the bulk of the module weight; if the eager call
+only needs the default-locale fast-path, the resolved-string
+tables for ja / zh / etc. could lazy-import on demand (on a
+`lang` setting flip in the locale chooser).
+
+**Estimated savings: 8-15 KB** depending on how big the per-locale
+tables are.  Audit method: profile `i18n.ts` for static-import
+weight; if ≥ 50 % is locale tables, split them.
+
+### §3.7 — `game-bootstrap` autotable-src-eager re-fold (W17 candidate)
+
+W16 shrank `autotable-src-eager` by 8.6 KB but `game-bootstrap`
+remained at 174,561 B.  Audit suggestion: the W14 / W15
+`scheduleAuditTabLazyMount` / `scheduleHistoryLazyMount` /
+`scheduleOnboardingTour` patterns still live in `src/index.ts`
+(eager).  If those scheduler shells could move into the
+`game-bootstrap` chunk (which only loads when a query-string is
+present), the lobby cold path sheds the entire scheduler
+machinery.  Risk: the schedulers fire on the lobby DOM (audit
+tab, history modal, profile page) — the page is "lobby-only"
+when search === '', but the schedulers themselves attach to
+lobby-DOM listeners.  Moving them into game-bootstrap breaks
+the "open profile while lobby is empty" flow.
+
+**Estimated savings: 8-12 KB** if the breakage can be
+re-architected (move just the LISTENER attachment to eager and
+the LOAD path to a lazy module).  W17 audit recommended before
+implementation.
+
+### §3.8 — `sentry-shim` re-fold via `SENTRY_DEFER_INIT` config
+
+Per §4.1, the W16 §3.5 surgery delivered ~3 KB instead of the
+~100-342 KB headline.  A W17 follow-up is to add a per-deploy
+`SENTRY_DEFER_INIT` window flag (set by `<meta name="sentry-defer-init"
+content="1">` in the deploy-specific index.html template) that
+disables sentry init **entirely** — not even the DSN probe — so
+the wrapper chunk is never loaded.  Targets the "PROD with DSN
+but we want fast first-paint" cohort.
+
+**Estimated savings: 2.3 KB** (just the shim chunk; the SDK is
+already DSN-gated).  Low ROI, but a clean config knob for
+performance-sensitive deploys.
+
 ## §5 — Methodology notes
 
 * Sizes are raw `fs.statSync().size` bytes from
@@ -235,6 +342,7 @@ unless a sibling lane already plans to land a DSN.
 ## §6 — Hand-off
 
 W16 picks §3.1 (autotable-src-eager) + §3.5 (sentry gate).
-W17 picks §3.2 + §3.3 + §3.4.  This doc is updated wave-
-over-wave with the actual numbers + a "delivered savings"
-column once W16 lands.
+W17 picks §3.2 + §3.3 + §3.4, plus the W16-added §3.6 (i18n),
+§3.7 (game-bootstrap re-fold), and §3.8 (sentry-defer-init).
+This doc is updated wave-over-wave with the actual numbers + a
+"delivered savings" column (see §4.1) once each wave lands.

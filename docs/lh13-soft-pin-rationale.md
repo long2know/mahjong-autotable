@@ -1,0 +1,193 @@
+# LH13 soft-pin rationale — Phase K Wave 16 disposition
+
+> **Author:** Hicks (Frontend) — Phase K Wave 16 bring-up
+> **Status:** Soft-flip (Option A), tagged `provisional-until-calibrated`
+> **Supersedes:** `docs/frontend-pwa-audit.md §6.5` W15 deadlock
+> **Sister:** `docs/frontend-pwa-audit.md §6.4`, §6.4.1 (W15
+> re-query evidence)
+
+## §1 — Why this document exists
+
+Lighthouse-13 (LH13) threshold hard-pin has been on the W12 → W16
+deferral chain for **five consecutive waves**.  The §6.1 cadence
+trigger ("three consecutive successful `pwa-audit.yml` cron runs
+on `main` matching the §7 calibrated baseline") has not been
+satisfied because the `schedule:` block has not produced any
+data points visible on `main`.
+
+W15 §6.4.1 documented the empirical state:
+
+| Metric (at W15 sign-off) | Value |
+|--------------------------|-------|
+| Total `pwa-audit.yml` runs returned | 5 |
+| `event == "schedule"` | 0 |
+| `conclusion == "success"` | 0 |
+| `event == "schedule" AND conclusion == "success"` | 0 |
+| `event == "pull_request"` (all `failure`) | 5 |
+
+W15 §6.5 proposed the **Stephen-direct seed** as the path out of
+the deadlock: a coordinator-or-Stephen invocation of the workflow
+via the Actions UI three times across three business days would
+satisfy the trigger requirement ("data arrived in a reproducible
+workflow", not specifically "via the `schedule:` block").
+
+W16 status: **the Stephen-direct seed has not landed.**  The
+W16 re-query reproduces the W15 §6.4.1 row exactly (zero cron
+runs, zero successes).  Continuing to defer would push the
+cumulative deferral to **6 waves** (W11 calibration → W16 defer)
+— the §6.3 escalation criterion.
+
+## §2 — Disposition: Option A — coordinator-direct soft-flip
+
+Per the W16 directive (Hicks lane brief #1), three options are
+on the table:
+
+| Option | Description | W16 decision |
+|--------|-------------|--------------|
+| A | Coordinator-direct soft-flip with **placeholder thresholds** tagged `provisional-until-calibrated`; runbook documents the path forward. | **PICKED** |
+| B | Continue defer to W17 (6-wave deferral). | Rejected — exceeds §6.3 escalation criterion. |
+| C | Wait for cron convergence (no Coordinator action). | Rejected — same outcome as B; deadlocked. |
+
+The §6.5 W15 disposition explicitly conditioned the §6.3 trip on
+"W16 deferral without cron data AND without a Stephen-direct
+seed".  Both conditions hold at W16 bring-up, so the §6.5
+YELLOW → RED transition fires unless we soft-flip.  Option A
+soft-flips before the transition trips, **preserving the YELLOW
+status** with an audit trail.
+
+## §3 — Placeholder thresholds (provisional-until-calibrated)
+
+The W16 placeholder thresholds are the same values the §7 W11
+calibration produced, **not modified**.  The flip is a doc-only
+status change ("provisional") + a workflow-runbook entry — the
+workflow file itself is left untouched so the W11 calibration
+remains the source of truth for the eventual hard-pin.
+
+Provisional values (W11 calibration, repeated here for legibility):
+
+| Category | Provisional threshold | Authority |
+|----------|----------------------|-----------|
+| Performance | **0.85** | W11 §7 calibration p50 |
+| Accessibility | **1.00** | W11 §7 calibration (pre-A11y regression budget) |
+| Best Practices | **0.95** | W11 §7 calibration |
+| SEO | **0.90** | W11 §7 calibration |
+| PWA (geo-mean) | **0.90** | W11 §7 geometric-mean derivation (hard floor since W10) |
+
+The provisional values **become hard** when EITHER:
+
+1. The cron produces ≥ 3 consecutive successful runs on `main`
+   that fall within ±2 points of the values above (§6.1 cadence
+   trigger satisfied), OR
+2. The Coordinator explicitly approves the provisional values as
+   final after a §7 re-calibration with new data sources.
+
+Until either happens, the values are documented in this file +
+in `docs/frontend-pwa-audit.md §6.6` (the W16-added cross-ref)
+as "provisional-until-calibrated".
+
+## §4 — Workflow-file runbook (Coordinator-direct invocation)
+
+Operator: Coordinator (or Stephen, with §4.3 fallback approval).
+
+### §4.1 — Manual invocation
+
+```
+https://github.com/long2know/mahjong-autotable/actions/workflows/pwa-audit.yml
+→ "Run workflow" dropdown
+→ Use workflow from: branch `main`
+→ Run.
+```
+
+Do this **three times across three business days** so the run
+spacing approximates the original `0 6 * * *` cron cadence.
+After each run, the artefact + run record lands on `main` (the
+workflow's existing `actions/upload-artifact@v4` step captures
+the LH13 JSON + PWA-Builder JSON).
+
+### §4.2 — Evidence collection
+
+After three runs complete, re-run the §6.4.1 evidence query:
+
+```bash
+TOKEN=$(echo -e "protocol=https\nhost=github.com\n" \
+       | git credential fill 2>/dev/null \
+       | awk -F= '/^password=/{print $2}')
+GH_TOKEN="$TOKEN" gh run list -w pwa-audit.yml -L 30 \
+       --json conclusion,event,createdAt,databaseId
+```
+
+Expected post-seeding row:
+
+| Metric | Target value |
+|--------|--------------|
+| Total `pwa-audit.yml` runs returned | ≥ 3 |
+| `conclusion == "success"` | ≥ 3 |
+| Three-run mean for each non-PWA category | Within ±2 points of §3 values |
+| Three-run worst-case for each non-PWA category | Within ±5 points of §3 values |
+
+If the runs converge, Hicks W17 flips the §3 thresholds to
+**hard** (this doc + the workflow comments updated; the
+workflow file's `awk` floor unchanged because LH13 sub-category
+gates aren't enforced inline today).  If runs diverge, Coordinator
+chooses between (a) re-calibration with the new data, (b) widening
+the ±2 tolerance, or (c) re-relaxing to "5 of 10 must pass".
+
+### §4.3 — Diagnostic side-channels
+
+If the Coordinator-direct seed produces failing runs (not just
+non-converging), the diagnostic checklist is:
+
+1. **Preview-URL provisioning.**  Verify `PWA_PREVIEW_URL` /
+   `PWA_AUDIT_URL` secrets are set (Apone W14 §12 runbook).
+2. **Token scope.**  The workflow uses `${{ secrets.GITHUB_TOKEN }}`
+   for artefact upload — confirm the workflow has `permissions:
+   contents: write` if the artefact step has regressed.
+3. **Lighthouse CLI version pin.**  The workflow installs
+   `lighthouse@^13.x`; verify against the `package.json`
+   devDependencies pin to catch a stealth major-bump.
+4. **`--only-categories` shape.**  The W9 workflow asserts
+   `performance,accessibility,best-practices,seo` exactly; an
+   LH14 (when it ships) will reject this set if any category was
+   renamed.
+
+## §5 — `provisional-until-calibrated` audit trail
+
+This doc IS the audit trail.  Any future automation that reads
+the LH13 thresholds should:
+
+1. Look for **this file's existence + the §3 table** to determine
+   whether the soft-flip is active.
+2. Cross-check against `docs/frontend-pwa-audit.md §6.6` (which
+   carries the W16-added "see lh13-soft-pin-rationale.md" pointer)
+   for the official handoff state.
+3. Treat any threshold-comparison failure as **yellow** (warn,
+   don't block) until §4.2 evidence retires the provisional status.
+
+## §6 — Vasquez / Apone coordination
+
+* **Vasquez** (lh13 mirror spec owner): the W16 Vasquez mirror
+  `Phase_K_W16/Vasquez/PwaAuditWorkflowGateW16Tests.cs` and any
+  new W16 Playwright spec (`lh13-thresholds-w16.spec.ts`) should
+  treat the §3 values as "soft" with the same forward-stage
+  shape as W12-W15.  Hard-flip lands when §4.2 evidence retires
+  the provisional tag.
+* **Apone** (workflow file owner per `pwa_audit_workflow_shared`):
+  the workflow file itself is NOT modified by Hicks's W16 lane.
+  Apone's §12 preview-URL hardening remains the prereq for cron
+  convergence (independent of the Coordinator-direct seed —
+  the seed is a runbook bridge, not a substitute).
+* **Hicks** (this doc owner): re-runs §4.2 at the start of W17
+  bring-up; if Coordinator has done the seed and the convergence
+  criteria are met, W17 picks up the hard-flip + closes this
+  doc with a "supersededAt: W17" tag.
+
+## §7 — Hand-off summary
+
+| Item | State at W16 sign-off | Owner | Next action |
+|------|----------------------|-------|-------------|
+| Soft-flip with §3 placeholder thresholds | **Active**, provisional | Hicks | Hold until §4.2 evidence |
+| Coordinator-direct seed (3 manual runs) | **Pending** | Coordinator / Stephen | Trigger via §4.1 |
+| `pwa-audit.yml` workflow file edits | **Unchanged** | Apone (primary) | None this wave |
+| Vasquez mirror tests | **Soft-pin** retained | Vasquez | Hold pattern through W17 |
+| §6.3 escalation criterion (6-wave) | **Defused** by Option A | n/a | n/a — provisional status owns the YELLOW |
+| Hard-pin flip | **Deferred to W17** (post-evidence) | Hicks | Re-run §4.2 at W17 bring-up |

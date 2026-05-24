@@ -78,6 +78,20 @@ const KEY_PATTERNS = [
   // Phase K Wave 15 — Bishop W15 commentary cost forecast overlay
   // surfaced via `?action=cost-forecast&days=<n>`.  Admin-only.
   { key: 'admin-cost-forecast', re: /^admin-cost-forecast\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 16 — Hicks bundle-audit §3.1 + §3.5 split-outs.
+  // `action-router` lazy-loads only when `?action=*` is on the
+  // URL (was statically imported into autotable-src-eager in W15
+  // and earlier).  `sentry-shim` is the wrapper module gated on
+  // `import.meta.env.PROD || localStorage.SENTRY_DEBUG` — the
+  // 342 KB SDK chunk (`sentry`) is still emitted under the same
+  // name, but only the wrapper now reaches the eager graph on
+  // the dev cold path.  The `sentry-shim` pattern picks the
+  // SMALLEST sentry-named chunk (vite emits two: wrapper ~2 KB
+  // and SDK ~342 KB) so the wave-over-wave shim cost is visible
+  // even when the SDK chunk's hash flips.
+  { key: 'action-router',  re: /^action-router\.[0-9a-f]+\.js$/ },
+  { key: 'sentry-shim',    re: /^sentry\.[0-9a-f]+\.js$/, min: true },
+  { key: 'sentry',         re: /^sentry\.[0-9a-f]+\.js$/, max: true },
 ];
 
 function parseArgs() {
