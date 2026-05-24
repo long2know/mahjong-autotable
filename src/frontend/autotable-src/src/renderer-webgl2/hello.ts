@@ -50,6 +50,11 @@ import {
   populateWallWithDora,
   CANONICAL_WALL_TILE_COUNT,
 } from './wall-geometry';
+import {
+  startPickAnimation,
+  type PickAnimationHandle,
+} from './tile-pick-animation';
+import { attachTileDrag } from './tile-drag';
 
 const CONTAINER_ID = 'webgl2-hello-container';
 const TEXTURE_URL = '/img/tiles-labels.auto.png';
@@ -96,8 +101,9 @@ function ensureContainer(): { canvas: HTMLCanvasElement; status: HTMLElement } {
   return { canvas, status };
 }
 
-function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' {
+function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' | 'interactive' {
   const s = window.location.search;
+  if (/[?&]renderer=webgl2-interactive/.test(s)) return 'interactive';
   if (/[?&]renderer=webgl2-wall/.test(s)) return 'wall';
   if (/[?&]renderer=webgl2-scene/.test(s)) return 'scene';
   if (/[?&]renderer=webgl2-tile-mesh/.test(s)) return 'tile-mesh';
@@ -107,14 +113,16 @@ function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' {
 /**
  * Public entry point invoked by `src/index.ts` behind the
  * `?renderer=webgl2-hello` / `?renderer=webgl2-tile-mesh` /
- * `?renderer=webgl2-scene` / `?renderer=webgl2-wall` URL guards.
+ * `?renderer=webgl2-scene` / `?renderer=webgl2-wall` /
+ * `?renderer=webgl2-interactive` URL guards.
  */
 export async function mount(): Promise<void> {
   switch (mode()) {
-    case 'wall':      return mountWall();
-    case 'scene':     return mountScene();
-    case 'tile-mesh': return mountTileMesh();
-    default:          return mountHelloWorld();
+    case 'interactive': return mountInteractive();
+    case 'wall':        return mountWall();
+    case 'scene':       return mountScene();
+    case 'tile-mesh':   return mountTileMesh();
+    default:            return mountHelloWorld();
   }
 }
 
@@ -391,3 +399,151 @@ function installCameraModePicker(
   // container's flex children naturally.
   container.insertBefore(strip, canvas);
 }
+
+// Phase K Wave 20 — interactive smoke.  Builds on the W19 canonical
+// wall scene + adds the W20 tile-pick-animation (lift / drop tween)
+// and tile-drag drag-and-drop with hover outline highlight.  Click +
+// drag any tile to lift it; drop on empty space sets it back, drop
+// on another tile leaves both lifted (placeholder swap-or-merge UX
+// that the production renderer will refine).
+async function mountInteractive(): Promise<void> {
+  const { canvas, status } = ensureContainer();
+  status.textContent = 'Booting interactive (drag + lift) scene…';
+
+  let scene: Awaited<ReturnType<typeof createTileScene>>;
+  try {
+    scene = await createTileScene(canvas);
+  } catch (err) {
+    status.textContent = `WebGL2 scene init failed: ${(err as Error).message}`;
+    return;
+  }
+
+  populateWallWithDora(scene.mesh, /*seed=*/ 0x77313939);
+  scene.drawNow();
+
+  // Track per-instance tween + the "base" matrix (the matrix the
+  // tile occupied before the lift started, so a `drop` returns it).
+  const baseMatrices = new Map<number, Float32Array>();
+  const tweens = new Map<number, PickAnimationHandle>();
+  let hoveredIndex: number | null = null;
+  let dragSourceIndex: number | null = null;
+
+  function captureBase(idx: number): Float32Array {
+    const cached = baseMatrices.get(idx);
+    if (cached !== undefined) return cached;
+    const base = new Float32Array(scene.mesh.modelData.subarray(idx * 16, idx * 16 + 16));
+    baseMatrices.set(idx, base);
+    return base;
+  }
+
+  function tickTweens(): void {
+    if (tweens.size === 0) return;
+    const now = performance.now();
+    let stillRunning = false;
+    for (const [idx, tween] of tweens) {
+      const running = tween.step(now);
+      const tileId = scene.mesh.tileIdData[idx];
+      scene.setTileAt(idx, tween.out, tileId);
+      if (running) stillRunning = true;
+      else if (tween.kind === 'drop') tweens.delete(idx);
+    }
+    scene.requestRedraw();
+    if (stillRunning || tweens.size > 0) {
+      window.requestAnimationFrame(tickTweens);
+    }
+  }
+
+  function lift(idx: number): void {
+    const base = captureBase(idx);
+    tweens.set(idx, startPickAnimation(base, 'lift', performance.now()));
+    window.requestAnimationFrame(tickTweens);
+  }
+
+  function drop(idx: number): void {
+    const base = baseMatrices.get(idx);
+    if (base === undefined) return;
+    // Build a drop tween from the CURRENT (lifted) position back to
+    // base by re-using startPickAnimation with kind=`drop` against the
+    // base matrix.
+    tweens.set(idx, startPickAnimation(base, 'drop', performance.now()));
+    window.requestAnimationFrame(tickTweens);
+  }
+
+  function applyHoverHighlight(next: number | null): void {
+    // Hover highlight is a tiny y-bump (no rotation) so the user sees
+    // which tile is under the cursor without a separate outline pass.
+    // We don't tween the hover bump — instantaneous bump in / out so
+    // the W20 footprint stays under the 45 KB ceiling.
+    if (hoveredIndex !== null && hoveredIndex !== dragSourceIndex
+        && hoveredIndex !== next) {
+      // Restore previous hover tile.
+      const base = baseMatrices.get(hoveredIndex);
+      if (base !== undefined && !tweens.has(hoveredIndex)) {
+        const tileId = scene.mesh.tileIdData[hoveredIndex];
+        scene.setTileAt(hoveredIndex, base, tileId);
+        baseMatrices.delete(hoveredIndex);
+      }
+    }
+    hoveredIndex = next;
+    if (next !== null && next !== dragSourceIndex && !tweens.has(next)) {
+      const base = captureBase(next);
+      const bumped = new Float32Array(base);
+      bumped[13] += 0.08; // 1/9 of a lift — purely a hover cue
+      scene.setTileAt(next, bumped, scene.mesh.tileIdData[next]);
+      scene.requestRedraw();
+    }
+  }
+
+  attachTileDrag(canvas, scene.mesh, scene.camera, {
+    onHover: (idx) => { applyHoverHighlight(idx); },
+    onDragStart: (idx) => {
+      dragSourceIndex = idx;
+      lift(idx);
+      status.textContent = `Dragging tile #${idx} — drop on another tile or empty space.`;
+    },
+    onDragMove: (_src, hit, _floor) => {
+      // Show a hover bump on the candidate drop target (different
+      // tile from the source).
+      const candidate =
+        hit !== null && hit.instanceIndex !== dragSourceIndex
+          ? hit.instanceIndex
+          : null;
+      applyHoverHighlight(candidate);
+    },
+    onDragEnd: (source, target, floor) => {
+      dragSourceIndex = null;
+      // Drop the source back to its base; target gets a transient
+      // lift so the user sees the "swap-or-place" affordance.
+      drop(source);
+      if (target !== null) {
+        lift(target);
+        status.textContent =
+          `Dropped tile #${source} on tile #${target} `
+          + `(swap-or-merge affordance — Phase L W6 wires the actual swap).`;
+      } else if (floor !== null) {
+        status.textContent =
+          `Dropped tile #${source} at world `
+          + `(${floor[0].toFixed(2)}, ${floor[2].toFixed(2)}).`;
+      } else {
+        status.textContent = `Dropped tile #${source} off-table.`;
+      }
+    },
+    onDragCancel: (source) => {
+      dragSourceIndex = null;
+      drop(source);
+      status.textContent = `Drag cancelled — tile #${source} returned to wall.`;
+    },
+  });
+
+  // Camera-mode picker (re-use the W19 picker so the W20 smoke has
+  // every camera angle the production renderer will need).
+  installCameraModePicker(scene.camera, scene.canvas, scene.requestRedraw);
+
+  const atlasLabel = scene.atlas.fallback
+    ? `synthesized ${scene.atlas.width}×${scene.atlas.height} fallback atlas`
+    : `loaded ${scene.atlas.width}×${scene.atlas.height} canonical atlas`;
+  status.textContent =
+    `Interactive wall rendered — ${CANONICAL_WALL_TILE_COUNT} tiles, `
+    + `${atlasLabel}.  Hover = bump; drag = lift; drop = settle.`;
+}
+

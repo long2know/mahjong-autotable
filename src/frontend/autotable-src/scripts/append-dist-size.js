@@ -118,6 +118,26 @@ const KEY_PATTERNS = [
   { key: 'pwa',             re: /^pwa\.[0-9a-f]+\.js$/ },
   { key: 'reconnect',       re: /^reconnect\.[0-9a-f]+\.js$/ },
   { key: 'spectator-follow', re: /^spectator-follow\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 19 — Hicks bundle-audit §3.4 split-outs.
+  //
+  // `matchmaking` carries the public-games REST wrappers + the
+  // polling loop; gated on the Public-Games tab activation OR the
+  // make-public toggle in a live game.  ~7.7 KB minified.
+  //
+  // `rule-presets` carries the rule-preset editor surface; mounted
+  // on the next idle window after lobby first-paint via
+  // `requestIdleCallback`.  ~12.5 KB minified incl. EventEmitter.
+  { key: 'matchmaking',     re: /^matchmaking\.[0-9a-f]+\.js$/ },
+  { key: 'rule-presets',    re: /^rule-presets\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 20 — Hicks bundle-audit §3.5 split-out.
+  //
+  // `auth` carries the sign-in modal + linked-accounts renderer +
+  // header chip + provider wiring.  Previously eager; now lazy-
+  // mounted via `scheduleAuthUiLazyMount()` (lobby.ts) so the
+  // lobby cold path first-paint never blocks on the auth-UI
+  // graph.  Co-consumed by `rule-presets` (W19 lazy) for
+  // `getAuthState/onAuth`.  ~21 KB minified.
+  { key: 'auth',            re: /^auth\.[0-9a-f]+\.js$/ },
 ];
 
 function parseArgs() {

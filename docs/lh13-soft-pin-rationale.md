@@ -340,3 +340,97 @@ convergence read should be possible.  Flip becomes hard-pin once
 ≥3 consecutive successful schedule-event runs appear under the
 post-W18-merge `main` tree.  No earlier action required on this
 doc.
+
+## §11 — W20 bring-up status update (Hicks)
+
+Re-running the §4.2 evidence-gate check at W20 bring-up against
+the post-W18-merge baseline (commit `7832f49`, merged at W18
+sign-off + W19 bring-up timing window).  The §4.2 convergence
+criterion is "≥3 consecutive successful `schedule:`-event runs
+against the candidate workflow tree".
+
+**Cron scheduler status (W20 check, vs W19 sign-off):**
+
+| Metric | W19 sign-off | W20 bring-up |
+|--------|--------------|--------------|
+| Successful `schedule`-event runs on `main` post-W18-merge | 0 | **0 confirmed** ‡ |
+| `workflow_dispatch` runs on `main` post-W18-merge | 1 | 1 (frozen since W19) |
+| Total `pwa-audit.yml` successful runs (any event) on `main` post-W18-merge | 1 | 1 confirmed (no fresh data) |
+
+‡ **Evidence-collection blocker (W20).**  At W20 bring-up the
+`gh` CLI is not authenticated in the bring-up agent's shell:
+`gh auth status` returns "not logged into any GitHub hosts".
+The W20 Hicks agent therefore could NOT run the canonical query
+shown in §4.2:
+
+```
+gh run list --workflow=pwa-audit.yml --event=schedule \
+  --limit 20 --json status,conclusion,createdAt,headSha,databaseId
+```
+
+The §4.2 convergence criterion is binary on the count of
+successful schedule-event runs.  With the count unobservable
+from the bring-up shell, the conservative reading is "still 0
+of 3 confirmed".  A promote-to-GREEN read would require either
+(a) an authenticated `gh` session to enumerate the schedule
+events, or (b) a coordinator-driven probe documented in
+`docs/frontend-pwa-audit.md §6.x` (per the §4 audit trail).
+
+**Timing observation.**  The W18 merge to `main` (`7832f49`)
+and the W19 bring-up commit (`f5c3d90`) carry timestamps only
+~6 minutes apart in the recorded `dist-size.json` entries (W18:
+`2026-05-24T11:02:58Z`; W19: `2026-05-24T11:09:10Z`).  The W20
+bring-up landed at `2026-05-24T12:40:05Z` — ~97 minutes after
+the W18 merge.  At hourly cron cadence that is a ceiling of
+1 - 2 schedule ticks since the W18 patch reached `main`, well
+short of the §4.2 ≥3 requirement.  Even with optimistic
+assumptions about cron firing on the hour, the count cannot
+yet meet the criterion.
+
+**Decision: HOLD §6.8 YELLOW.  Do NOT promote to hard-pin GREEN.**
+
+Two distinct reasons compound to the same disposition:
+
+1. **Observational gap.**  The bring-up shell cannot enumerate
+   schedule-event run conclusions without an authenticated `gh`
+   session.  Per §4.2, the gate is binary on observation; an
+   unobserved sample is treated as a 0-count sample.
+
+2. **Sample-window size.**  The wall-clock distance between the
+   W18 merge (`7832f49`) and the W20 bring-up window is below
+   the minimum needed for 3 hourly cron ticks against the
+   patched workflow.  Even if the `gh` session were available,
+   the math forces a HOLD.
+
+**Specific YELLOW indicator (per §6.7).**  The §6.7 table
+continues to mark the LH13 row YELLOW at W20 — "patch landed on
+`main` post-W18; sample window opening but cannot be sized from
+the bring-up shell; HOLD until a coordinator-driven probe
+returns a confirmed ≥3-run sample".  This is the same
+intermediate state W19 carried; W20 confirms the HOLD without
+escalating to RED.
+
+**No regression to RED.**  The LH13 row stays YELLOW (not RED)
+because the W18 remediation IS on `main` and the
+`workflow_dispatch` smoke continues to return `success` (the
+workflow file itself is healthy).  RED would require evidence
+of a regression — none observed.
+
+**Re-check trigger.**  W21 Hicks bring-up re-runs §4.2 with
+either an authenticated `gh` session OR a coordinator-driven
+probe attached to `docs/frontend-pwa-audit.md §6.x`.  At W21
+the sample window will have widened to ~25 hours since the W18
+merge — well above the minimum cadence — so a fair convergence
+read should be possible.  Flip becomes hard-pin once a
+confirmed ≥3 consecutive `schedule`-event success sample
+appears under the post-W18-merge `main` tree.  No earlier
+action required on this doc.
+
+**No `docs/agent-handoff-protocol.md §6.8` PROMOTE update at
+W20.**  The W19 §6.8 hand-off (paragraph "Hand-off to Hicks W20
+for §6.8 PROMOTE re-evaluation") explicitly conditions the
+PROMOTE on a 3+ successful schedule-event sample.  With the
+HOLD disposition, no §6.8 row mutation is in scope for the W20
+Hicks lane.  The W20 Vasquez bring-up cross-refs this §11 and
+re-confirms the HOLD in the §6.8 row (per the W19 hand-off's
+"Vasquez cross-ref" clause).
