@@ -1,7 +1,7 @@
 # Session Log: Changsha v1 Playability Audit
 
-**Date:** 2026-05-13T15:33:59Z  
-**Topic:** Changsha v1 Playability Audit — 4-agent read-only fan-out before launching Phase 3 implementation wave  
+**Date:** 2026-05-13T15:33:59Z
+**Topic:** Changsha v1 Playability Audit — 4-agent read-only fan-out before launching Phase 3 implementation wave
 **Requested by:** Stephen Long
 
 ## Overview
@@ -15,7 +15,7 @@ Four specialized agents completed a parallel, read-only audit of Changsha v1 to 
 - **Key findings:** Three nuances flagged (banker rotation, kong priority, missed-win rule) that do not gate demo but block external release claims
 - **Output:** `.squad/decisions/inbox/vasquez-changsha-conformance-audit.md` (34.4 KB)
 
-### Bishop — Backend Code-Trace Audit  
+### Bishop — Backend Code-Trace Audit
 - **Verdict:** Conditional GO — full loop runs for single hand; three real bugs prevent 16-hand championship game claim
 - **Critical bugs:** Kong priority wrong, per-hand wall reuse (fairness bug), banker rotation direction inverted
 - **Output:** `.squad/decisions/inbox/bishop-changsha-backend-audit.md` (19.6 KB)

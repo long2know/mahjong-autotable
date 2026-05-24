@@ -1624,5 +1624,3 @@ termination of the 11-wave streak, not a regression.
   the headlines.
 
 **Phase K Wave 16 — DONE.**
-
-

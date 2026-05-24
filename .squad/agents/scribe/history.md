@@ -70,8 +70,8 @@
 
 ## Phase I Wave 1 Scribe Sweep — Special-context wins + UX polish (2026-05-22)
 
-**Timestamp:** 2026-05-22T21:15Z  
-**Branch:** `stlong/phase-i-wave-1-special-wins-ux` (cut from main @ same base as Wave 2)  
+**Timestamp:** 2026-05-22T21:15Z
+**Branch:** `stlong/phase-i-wave-1-special-wins-ux` (cut from main @ same base as Wave 2)
 **Contribution:** Merged 4-file Phase I Wave 1 inbox + 1 newly-written coordinator translator-gap memo into canonical `.squad/decisions.md` as a single `## Phase I Wave 1 — Special-context wins + UX polish` section with seven subsections. Wrote 1 new coordinator memo (`coordinator-phase-i-wave-1-translator-gap.md`, commit `85c5328`) documenting the SignalR ↔ bundle WS path divergence and the multi-phase carrier pattern applied to `HandResultEntry`. Merged 17 new tests across Vasquez's two suites (9 acceptance + 8 unit), delivering +17 net passes vs Phase H Wave 2 baseline (357 → 374).
 
 **Four-agent orchestration:**
@@ -88,7 +88,7 @@
 
 **Inbox files:** All 5 memos present and read (4 agent + 1 coordinator translator-gap new-write); not deleted (`.squad/decisions/inbox/` is gitignored — local-only primary sources per standing instruction).
 
-**Notable:** 
+**Notable:**
 - **Regression prevention:** Hicks's discovery that Phase H Wave 2 chip strip was dead code (PascalCase ↔ camelCase mismatch) surfaced a hidden wire-enum risk. Added to decision memo as regression-prevention rule: always test PascalCase ↔ camelCase keys when enums cross language boundaries (C# → TypeScript). Recommend Phase J adds translator contract test.
 - **Build command fix:** Hicks's correction to the parcel build command (removing non-existent `src/index.html`) is a critical invariant for future frontend rebuilds — easy to forget, easy to produce duplicate artifacts. Surfaced prominently in decisions.md build-invariants section.
 - **Translator divergence pattern:** Coordinator memo generalized the "carrier at boundaries" pattern from Phase H Wave 2 (`AllPatterns` through state-machine) to Phase I Wave 1 (detector/scorer outputs through translator to WS wire). Multi-phase detectors should document all carriers upfront to prevent future gaps.
@@ -111,8 +111,8 @@
 
 ## Phase I Wave 3 Scribe Sweep — Multi-game vertical slice + zero skips (2026-05-23)
 
-**Timestamp:** 2026-05-23 (date TBD)  
-**Branch:** `stlong/phase-i-wave-3-multigame-bot-strength` (all commits pushed)  
+**Timestamp:** 2026-05-23 (date TBD)
+**Branch:** `stlong/phase-i-wave-3-multigame-bot-strength` (all commits pushed)
 **Contribution:** Merged 3-file Phase I Wave 3 inbox into canonical `.squad/decisions.md` as a single `## Phase I Wave 3 — Multi-game vertical slice + zero skips` section covering Bishop's multi-game routing + Hicks's lobby Game ID UI + Vasquez's ten tests (9 new + 1 unskip). Documented **validation rules verbatim** (length 64, control chars, case-sensitive, fallback chain) + **Parcel `<input type="text">` stripping gotcha** + **per-game routing source priority** + **cross-lane assertion-flip protocol** + **whitespace-only quirk** for future waves. Phase I Wave 3 result: **393 / 0 / 0 tests** (was 383/0/1 at Phase I Wave 2 → +10 net passes + **first zero-skip wave this session**). Bundle rolled: JS `e6653bd3.js` → `49eb3789.js`, CSS `60fe83d8.css` → `af973ea2.css`; Bootstrap hash unchanged. All inbox files remain in place per standing instruction (`.squad/decisions/inbox/` is gitignored — local-only primary sources).
 
 **Four-agent coordination notes:**
@@ -161,8 +161,8 @@
 
 ## Phase J Wave 1 Scribe Sweep — Shanten claim gate + hot-seat swap (2026-05-25)
 
-**Timestamp:** 2026-05-25 (final sweep date)  
-**Branch:** `stlong/phase-j-wave-1-hardening` (all commits pushed; ready for PR)  
+**Timestamp:** 2026-05-25 (final sweep date)
+**Branch:** `stlong/phase-j-wave-1-hardening` (all commits pushed; ready for PR)
 **Contribution:** Merged 3-file Phase J Wave 1 inbox into canonical `.squad/decisions.md` as a single `## Phase J Wave 1 — Shanten claim gate + hot-seat swap + spectator camera lock` section covering Bishop's shanten-aware claim gate + wall-exhaustion fast-path deferral, Hicks's Move button + spectator camera lock, and Vasquez's 7 new test facts (4 claim evaluator + 3 hot-seat swap). Documented **Kong-over-Pung dead-code reality** (mathematically unreachable via realistic adjudicator output; reframed Fact 4 to Pung-vs-Chow instead), **Task 2 deferral rationale** (state machine already short-circuits on empty wall; adding runtime check would be inert), **autotable disconnect seat-release gap** (SignalR Hub only; Bundle UI works around by disabling current seat). Phase J Wave 1 result: **409 / 0 / 0 tests** (was 402/0/0 at Phase I Wave 4 → +7 net passes, zero-skip streak 3). Bundle rolled: JS `c93fbb44.js` → `214d524e.js`, CSS `3f21032c.css` → `884bb475.css`; Bootstrap hash unchanged. All inbox files remain in place per standing instruction (`.squad/decisions/inbox/` is gitignored — local-only primary sources).
 
 **Three-agent coordination notes:**
@@ -185,8 +185,8 @@
 
 ## Phase J Wave 2 Scribe Sweep — Disconnect cleanup + N-hand completion + UX (2026-05-25)
 
-**Timestamp:** 2026-05-25 (final sweep date)  
-**Branch:** `stlong/phase-j-wave-2-completion` (all commits pushed; ready for PR)  
+**Timestamp:** 2026-05-25 (final sweep date)
+**Branch:** `stlong/phase-j-wave-2-completion` (all commits pushed; ready for PR)
 **Contribution:** Merged 4-file Phase J Wave 2 inbox into canonical `.squad/decisions.md` as a single `## Phase J Wave 2 — Disconnect cleanup + N-hand game completion + UX completeness` section covering Bishop's autotable WS seat-release + N-hand game-completion contract (`MaxHands`, `GameComplete` phase, `IsGameComplete` flag, new `GameCompleted` event), Hicks's end-of-game summary modal + exponential-backoff reconnect banner + settings drawer (bot strength / hand count / auto-deal), Vasquez's 9 new test facts (3 disconnect seat-release + 3 game-completion + 3 self-draw WinContext), and Stephen's standing directive ("no pauses — continuous-wave operation"). Documented **HotSeatSwap test assertion flip** (pre-authorised by test owner; J-W2 is the wave that promotes seat-release to autotable path), **blind spots flagged** (`WinResult` lacks explicit IsSelfDraw/IsKongReplacement bools; GameComplete vs EndGame semantics; MaxHands=100 test workaround pattern recurring), **phase-J-W3 backlog** (Docker single-image, replay screen, sound, i18n, seed 40595, profiling, GameComplete/EndGame modal reconciliation). Phase J Wave 2 result: **418 / 0 / 0 tests** (was 409/0/0 at Phase J Wave 1 → +9 net passes, zero-skip streak 4). Bundle rolled: JS `214d524e.js` → `90818e21.js`, CSS `884bb475.css` → `60a1fda4.css`; Bootstrap hash unchanged. All inbox files remain in place per standing instruction (`.squad/decisions/inbox/` is gitignored — local-only primary sources).
 
 **Four-agent coordination notes:**
@@ -538,7 +538,7 @@
 
 ## Phase K Wave 8 Scribe Sweep — Audit enrichment + JWKS cache 304 + Swiss tiebreaker stack + Tournament bracket endpoint + SignalR `TournamentMatchHub` + livestream auth gate + LLM commentary streaming/rate-limit/monthly-cap + Janus SFU bring-up + three-renderer 531.86 KB (<540 KB strict target MET) + losers-bracket UI with reset-row + commentary tile-ref board-highlight + PWA Lighthouse 1.00 + Vite SignalR/WS dev proxy + staging edge cutover + CI pre-commit gate + kyverno path-confusion guard + Mobile Production track + Helm canary via Argo Rollouts + DR rehearsal workflow + lane-discipline `selectors_md_shared` + `--repo-mode` + 7 Playwright specs + KW7→KW8 regression rename — identity hardening holds across 3rd consecutive wave (2026-07-09)
 
-2026-07-09 — Phase K Wave 8 — Scribe sweep close. Folded the 4-file Phase K Wave 8 inbox (`bishop-` / `hicks-` / `apone-` / `vasquez-phase-k-wave-8.md`) into canonical `.squad/decisions.md` as a single `## Phase K — Wave 8 (...)` section appended after the Wave 7 entry. +674 lines added to decisions.md. NEW `docs/wave-summaries/phase-k-wave-8.md` created (new directory + file) — PR-body-length wave summary covering all four lanes for non-coordinator readers. NEW `.squad/decisions/inbox/scribe-phase-k-wave-8.md` (force-added since `.squad/decisions/inbox/` is gitignored). 
+2026-07-09 — Phase K Wave 8 — Scribe sweep close. Folded the 4-file Phase K Wave 8 inbox (`bishop-` / `hicks-` / `apone-` / `vasquez-phase-k-wave-8.md`) into canonical `.squad/decisions.md` as a single `## Phase K — Wave 8 (...)` section appended after the Wave 7 entry. +674 lines added to decisions.md. NEW `docs/wave-summaries/phase-k-wave-8.md` created (new directory + file) — PR-body-length wave summary covering all four lanes for non-coordinator readers. NEW `.squad/decisions/inbox/scribe-phase-k-wave-8.md` (force-added since `.squad/decisions/inbox/` is gitignored).
 
 **Timestamp:** 2026-07-09T (sweep close)
 **Branch:** `stlong/phase-k-wave-8-bringup` (cut from `main` @ `d875892` / Wave 7 squash-merge PR #53; 4 agent rollup commits ahead, 5 with this Scribe sweep commit)

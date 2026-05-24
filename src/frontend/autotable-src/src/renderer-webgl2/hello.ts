@@ -681,4 +681,3 @@ async function mountMeld(): Promise<void> {
     `Meld scene rendered — ${CANONICAL_WALL_TILE_COUNT} tiles, ${atlasLabel}.  `
     + `Pung / chi / kong claims fan into seat 0's meld row over ~1.5 s.`;
 }
-

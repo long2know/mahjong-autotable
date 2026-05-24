@@ -109,7 +109,7 @@ These are the four deep-dive audits completed 2026-05-13 in parallel to assess w
 
 **TL;DR (Bishop):** **Conditional GO.** The full Changsha v1 loop runs end-to-end for a single hand and persists snapshots. Three real conformance bugs and two design gaps must be fixed before we claim the v1 conformance checklist is satisfied. None are gating the autotable 3D demo for a single hand; all are gating a clean 16-hand championship game.
 
-**Critical bugs:** 
+**Critical bugs:**
 1. Kong priority is higher than Pung (wrong; should be equal, CCW-tie-break decides).
 2. Wall is identical every hand of a single game (fairness bug; should derive per-hand seed from base seed + hand number).
 3. Banker rotation direction contradicts spec example (spec says -1 mod 4, code does +1 mod 4).
@@ -141,7 +141,7 @@ The 3D viewport is theater — bridge moves Changsha state into the iframe as te
 
 *(Full audit report follows — 28.2 KB; see original file `hudson-changsha-coverage-audit.md` for detailed test matrix)*
 
-**TL;DR (Hudson):** Backend rules engine (108-tile wall, batch-of-4 deal, 258-pair detection, pung/kong/chow priority, four win patterns, two-tier scoring, banker rotation, deterministic seeded replay) is meaningfully *proven* by 73 green tests. Runtime hub layer (claim race resolution, reconnect rehydration, claim-window timeout) is *partially* proven — only happy-paths. **Modern React/Three.js frontend is entirely on faith — zero unit tests, zero integration tests.** 
+**TL;DR (Hudson):** Backend rules engine (108-tile wall, batch-of-4 deal, 258-pair detection, pung/kong/chow priority, four win patterns, two-tier scoring, banker rotation, deterministic seeded replay) is meaningfully *proven* by 73 green tests. Runtime hub layer (claim race resolution, reconnect rehydration, claim-window timeout) is *partially* proven — only happy-paths. **Modern React/Three.js frontend is entirely on faith — zero unit tests, zero integration tests.**
 
 **Frontend is the biggest hole in "playable Changsha v1"** — no vitest, no jest, no `*.test.ts` anywhere. The reducer and bridge are pure functions but entirely untested.
 
@@ -232,4 +232,3 @@ The 3D viewport is theater — bridge moves Changsha state into the iframe as te
 **By:** Hudson (Tester)
 **What:** 77 total tests (68 green, 2 red from documented Bishop bugs, 7 skipped for v2 deferrals). Backend rules engine (108-tile wall, batch-of-4 deal, 258-pair, pung/kong/chow priority, four win patterns, two-tier scoring, banker rotation, deterministic replay) proven by 73 green tests across 11 categories. Runtime hub layer (claim race resolution, reconnect rehydration, claim-window timeout) partially proven (happy-paths only). **Frontend entirely unproven — zero unit tests.**
 **Why:** Establishes test baseline and documents coverage gaps.
-

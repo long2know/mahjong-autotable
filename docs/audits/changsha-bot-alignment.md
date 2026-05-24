@@ -2,7 +2,7 @@
 
 ## Scope and method
 
-This audit reviews the current scaffold against a **Changsha-first playable goal with bot opponents**, using the current backend/frontend/docker artifacts as evidence.  
+This audit reviews the current scaffold against a **Changsha-first playable goal with bot opponents**, using the current backend/frontend/docker artifacts as evidence.
 No gameplay code changes are proposed here; this is architecture/rules alignment only.
 
 ## 1) Current-state architecture audit
@@ -24,7 +24,7 @@ No gameplay code changes are proposed here; this is architecture/rules alignment
 
 ### Audit conclusion
 
-The current codebase is a **deployment-ready scaffold**, not a gameplay engine.  
+The current codebase is a **deployment-ready scaffold**, not a gameplay engine.
 It has correct seams for rule-set selection and persistence provider flexibility, but no deterministic game-state machine, no action validation pipeline, no bot runtime, and no anti-cheat/authority boundaries.
 
 ## 2) Changsha-specific gameplay requirements to support next

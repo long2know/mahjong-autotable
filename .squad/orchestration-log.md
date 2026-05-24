@@ -51,7 +51,7 @@
    ┌────┴──────────────────┐
    │     PARALLEL FAN-OUT  │
    ├──────┬───────┬────────┤
-   ▼      ▼       ▼        
+   ▼      ▼       ▼
 Vasquez Hicks   Bishop      (background, all 3)
 ~25 min ~23 min ~38 min     ← Bishop the bottleneck (predicted in Ripley §6)
    │      │       │

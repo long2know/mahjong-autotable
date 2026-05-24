@@ -1,10 +1,10 @@
 # Orchestration Log: hudson-changsha-v2-tests
 
-**Agent:** Hudson  
-**Task:** Changsha v1 Phase 2 Test Coverage  
-**Started:** 2026-05-08  
-**Status:** Completed (with 2 blocking findings)  
-**Branch:** stlong/changsha-v1-phase2  
+**Agent:** Hudson
+**Task:** Changsha v1 Phase 2 Test Coverage
+**Started:** 2026-05-08
+**Status:** Completed (with 2 blocking findings)
+**Branch:** stlong/changsha-v1-phase2
 
 ## Deliverables
 

@@ -149,7 +149,7 @@ These are the four deep-dive audits completed 2026-05-13 in parallel to assess w
 
 **TL;DR (Bishop):** **Conditional GO.** The full Changsha v1 loop runs end-to-end for a single hand and persists snapshots. Three real conformance bugs and two design gaps must be fixed before we claim the v1 conformance checklist is satisfied. None are gating the autotable 3D demo for a single hand; all are gating a clean 16-hand championship game.
 
-**Critical bugs:** 
+**Critical bugs:**
 1. Kong priority is higher than Pung (wrong; should be equal, CCW-tie-break decides).
 2. Wall is identical every hand of a single game (fairness bug; should derive per-hand seed from base seed + hand number).
 3. Banker rotation direction contradicts spec example (spec says -1 mod 4, code does +1 mod 4).
@@ -181,7 +181,7 @@ The 3D viewport is theater — bridge moves Changsha state into the iframe as te
 
 *(Full audit report follows — 28.2 KB; see original file `hudson-changsha-coverage-audit.md` for detailed test matrix)*
 
-**TL;DR (Hudson):** Backend rules engine (108-tile wall, batch-of-4 deal, 258-pair detection, pung/kong/chow priority, four win patterns, two-tier scoring, banker rotation, deterministic seeded replay) is meaningfully *proven* by 73 green tests. Runtime hub layer (claim race resolution, reconnect rehydration, claim-window timeout) is *partially* proven — only happy-paths. **Modern React/Three.js frontend is entirely on faith — zero unit tests, zero integration tests.** 
+**TL;DR (Hudson):** Backend rules engine (108-tile wall, batch-of-4 deal, 258-pair detection, pung/kong/chow priority, four win patterns, two-tier scoring, banker rotation, deterministic seeded replay) is meaningfully *proven* by 73 green tests. Runtime hub layer (claim race resolution, reconnect rehydration, claim-window timeout) is *partially* proven — only happy-paths. **Modern React/Three.js frontend is entirely on faith — zero unit tests, zero integration tests.**
 
 **Frontend is the biggest hole in "playable Changsha v1"** — no vitest, no jest, no `*.test.ts` anywhere. The reducer and bridge are pure functions but entirely untested.
 
@@ -1946,8 +1946,8 @@ Unskipped two Phase G marker skips and shipped 10 new acceptance tests (4 bot ti
 
 ## Phase H Wave 2 — V2 Rules (2026-05-22)
 
-**Timestamp:** 2026-05-22T20:00Z  
-**Branch:** `stlong/phase-h-wave-2-v2-rules` (cut from main @ `8ec6cfa`)  
+**Timestamp:** 2026-05-22T20:00Z
+**Branch:** `stlong/phase-h-wave-2-v2-rules` (cut from main @ `8ec6cfa`)
 **Contribution:** Merged 4-file Phase H Wave 2 inbox into canonical `.squad/decisions.md` covering four agent lanes + one coordinator wiring fix discovered during test RED. Wrote 1 new coordinator memo documenting the `AllPatterns` carrier pattern. Merged 16 new tests + 6 unskips (17 net new passes vs Wave 1 baseline) with complete stacked-pattern scoring and robbing-kong acceptance coverage.
 
 ### V2 rules implementation (Bishop)
@@ -2052,8 +2052,8 @@ Unskipped two Phase G marker skips and shipped 10 new acceptance tests (4 bot ti
 
 ### Gate result
 
-**Baseline (Phase H Wave 1):** 340 passed / 0 failed / 7 skipped  
-**After Wave 2:** **357 passed / 0 failed / 1 skipped**  
+**Baseline (Phase H Wave 1):** 340 passed / 0 failed / 7 skipped
+**After Wave 2:** **357 passed / 0 failed / 1 skipped**
 **Delta:** +17 net passes; skip count dropped 7→1 (only `AutotableWsRelayTests.Update_IsIsolated_PerGameId` remains, unrelated WebSocket isolation deferred to Phase I).
 
 ### Phase I parking lot
@@ -2079,8 +2079,8 @@ Unskipped two Phase G marker skips and shipped 10 new acceptance tests (4 bot ti
 
 ## Phase I Wave 1 — Special-context wins + UX polish (2026-05-22)
 
-**Branch:** `stlong/phase-i-wave-1-special-wins-ux`  
-**Commits:** `afd59b9` (Bishop enum) → `7509685` (WinContext) → `b6a512e` (Vasquez acceptance) → `9e0439c` (state machine wiring) → `0117a30` (test fix) → `f91c95e` (Hicks UX) → `419ba7a` (WS wire) → `cd95b5b` (Vasquez unit tests) → `ae506fd`/`569f122`/`f8ae31a` (history docs) → `85c5328` (translator gap fix)  
+**Branch:** `stlong/phase-i-wave-1-special-wins-ux`
+**Commits:** `afd59b9` (Bishop enum) → `7509685` (WinContext) → `b6a512e` (Vasquez acceptance) → `9e0439c` (state machine wiring) → `0117a30` (test fix) → `f91c95e` (Hicks UX) → `419ba7a` (WS wire) → `cd95b5b` (Vasquez unit tests) → `ae506fd`/`569f122`/`f8ae31a` (history docs) → `85c5328` (translator gap fix)
 **Final test count:** 374 passed / 0 failed / 1 skipped (**+17 net** vs Phase H Wave 2 baseline of 357/0/1)
 
 ### Contextual Big Win patterns (Bishop)
@@ -2152,8 +2152,8 @@ Bishop's Phase H Wave 2 detector emits `winResult.allPatterns` + `winResult.isRo
 
 ### Gate result
 
-**Phase H Wave 2 baseline:** 357 passed / 0 failed / 1 skipped  
-**Phase I Wave 1 final:** 374 passed / 0 failed / 1 skipped  
+**Phase H Wave 2 baseline:** 357 passed / 0 failed / 1 skipped
+**Phase I Wave 1 final:** 374 passed / 0 failed / 1 skipped
 **Delta:** +17 net passes
 
 Breakdown:
@@ -2268,9 +2268,9 @@ Zero regressions in pre-Phase-I tests.
 
 ## Phase I Wave 3 — Multi-game vertical slice + zero skips (2026-05-23)
 
-**Timestamp:** 2026-05-23 (final sweep date TBD)  
-**Branch:** `stlong/phase-i-wave-3-multigame-bot-strength` (all commits pushed)  
-**Final test count:** **393 / 0 / 0** (was 383/0/1 at Phase I Wave 2 → +10 net + first zero-skip wave this session)  
+**Timestamp:** 2026-05-23 (final sweep date TBD)
+**Branch:** `stlong/phase-i-wave-3-multigame-bot-strength` (all commits pushed)
+**Final test count:** **393 / 0 / 0** (was 383/0/1 at Phase I Wave 2 → +10 net + first zero-skip wave this session)
 **Bundle hashes (Hicks):** JS `e6653bd3.js` → `49eb3789.js`; CSS `60fe83d8.css` → `af973ea2.css`; Bootstrap `df85b4c4.css` unchanged; old hashes pruned.
 
 ### Multi-game WS routing (Bishop)
@@ -2349,9 +2349,9 @@ Zero regressions in pre-Phase-I tests.
 
 ## Phase I Wave 4 — Proper shanten + spectator + strength tests (2026-05-24)
 
-**Timestamp:** 2026-05-24 (final sweep date)  
-**Branch:** `stlong/phase-i-wave-4-bot-strength-spectator` (all commits pushed)  
-**Final test count:** **402 / 0 / 0** (was 393/0/0 at Phase I Wave 3 → +9 net passes, zero-skip streak 2)  
+**Timestamp:** 2026-05-24 (final sweep date)
+**Branch:** `stlong/phase-i-wave-4-bot-strength-spectator` (all commits pushed)
+**Final test count:** **402 / 0 / 0** (was 393/0/0 at Phase I Wave 3 → +9 net passes, zero-skip streak 2)
 **Bundle hashes (Hicks):** JS `49eb3789.js` → `c93fbb44.js`; CSS `af973ea2.css` → `3f21032c.css`; Bootstrap `df85b4c4.css` unchanged.
 
 ### Proper shanten counter (Bishop)
@@ -2433,9 +2433,9 @@ Zero regressions in pre-Phase-I tests.
 
 ## Phase J Wave 1 — Shanten claim gate + hot-seat swap + spectator camera lock
 
-**Timestamp:** 2026-05-25 (final sweep date)  
-**Branch:** `stlong/phase-j-wave-1-hardening` (all commits pushed)  
-**Final test count:** **409 / 0 / 0** (was 402/0/0 at Phase I Wave 4 → +7 net passes, zero-skip streak 3)  
+**Timestamp:** 2026-05-25 (final sweep date)
+**Branch:** `stlong/phase-j-wave-1-hardening` (all commits pushed)
+**Final test count:** **409 / 0 / 0** (was 402/0/0 at Phase I Wave 4 → +7 net passes, zero-skip streak 3)
 **Bundle hashes (Hicks):** JS `c93fbb44.js` → `214d524e.js`; CSS `3f21032c.css` → `884bb475.css`; Bootstrap unchanged.
 
 ### Shanten claim acceptance gate (Bishop)
@@ -2499,17 +2499,17 @@ Zero regressions in pre-Phase-I tests.
 ## Standing Directives
 
 ### 2026-05-22 — Continuous-wave operation
-**By:** Stephen Long  
-**Rule:** Coordinator launches new waves immediately after merge without checking in. Team-size expansion pre-approved when scope demands it.  
+**By:** Stephen Long
+**Rule:** Coordinator launches new waves immediately after merge without checking in. Team-size expansion pre-approved when scope demands it.
 **Rationale:** Zero-skip streak (4+ consecutive waves) requires autonomous wave sequencing. No pauses between merge and next-wave kickoff.
 
 ---
 
 ## Phase J Wave 2 — Disconnect cleanup + N-hand game completion + UX completeness
 
-**Timestamp:** 2026-05-25 (final sweep date)  
-**Branch:** `stlong/phase-j-wave-2-completion` (all commits pushed)  
-**Final test count:** **418 / 0 / 0** (was 409/0/0 at Phase J Wave 1 → +9 net passes, zero-skip streak 4)  
+**Timestamp:** 2026-05-25 (final sweep date)
+**Branch:** `stlong/phase-j-wave-2-completion` (all commits pushed)
+**Final test count:** **418 / 0 / 0** (was 409/0/0 at Phase J Wave 1 → +9 net passes, zero-skip streak 4)
 **Bundle hashes (Hicks):** JS `214d524e.js` → `90818e21.js`; CSS `884bb475.css` → `60a1fda4.css`; Bootstrap unchanged.
 
 ### Wave goal

@@ -1062,4 +1062,3 @@ refresh cadence:
 This is the same procedure §7c.5 documented at W16 — the
 W18 pin expansion does NOT introduce a new failure mode or
 recovery shape.
-

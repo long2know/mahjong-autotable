@@ -1641,7 +1641,7 @@ violations=0` — THIRD CONSECUTIVE
 0-VIOLATION WAVE** sustained via the
 **canonical same-lane amendment pattern**
 (Vasquez's amend commit `33aaab2` added
-`bundle_health_workflow_shared` + 
+`bundle_health_workflow_shared` +
 `visual_regression_baselines_shared` to the
 lane-map + mirrored both in
 `check-cross-lane-bundling.sh`; restored

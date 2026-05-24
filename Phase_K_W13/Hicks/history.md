@@ -66,7 +66,7 @@ bringup branch immediately before W13 launch.
    / −9.4 %).** ~34 kB margin under the < 440 kB stretch
    target; ~39 kB margin under the < 445 kB acceptable
    target. Strip log: shaderchunk-strip 85 strings →
-   95,757 chars saved (W12 was 43 strings → 52,437); 
+   95,757 chars saved (W12 was 43 strings → 52,437);
    uniformslib-strip 14 entries → 2,260 chars saved (W12
    was 5 entries → 945).
 

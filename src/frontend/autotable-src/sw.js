@@ -159,4 +159,3 @@ async function networkFirst(req, cacheName) {
     });
   }
 }
-

@@ -651,5 +651,3 @@ this overlay needs.
 
 See §11 above. This section header is retained as an alias for
 external links that may have indexed the W10 numbering.
-
-

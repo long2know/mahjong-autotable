@@ -1,10 +1,10 @@
 # Orchestration Log: bishop-changsha-v2-runtime
 
-**Agent:** Bishop  
-**Task:** Changsha v1 Phase 2 Runtime Architecture  
-**Started:** 2026-05-06  
-**Status:** Completed  
-**Branch:** stlong/changsha-v1-phase2  
+**Agent:** Bishop
+**Task:** Changsha v1 Phase 2 Runtime Architecture
+**Started:** 2026-05-06
+**Status:** Completed
+**Branch:** stlong/changsha-v1-phase2
 
 ## Deliverables
 

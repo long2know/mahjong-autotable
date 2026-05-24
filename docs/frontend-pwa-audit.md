@@ -1934,5 +1934,3 @@ no-op against the new baselines (same root cause as W13).
 The W14 captures are positioned correctly for when the
 fixes do land; running the fixed spec against W14
 baselines should report a pixel-perfect match.
-
-
