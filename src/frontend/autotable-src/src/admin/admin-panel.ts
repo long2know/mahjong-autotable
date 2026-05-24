@@ -46,6 +46,21 @@ import { ROTATION_POLICY_BULK_SPEC } from './rotation-policy-bulk';
 import { ROTATION_POLICY_BULK_ACTIONS_SPEC } from './rotation-policy-bulk-actions';
 import { ROTATION_SCHEDULE_SPEC } from './rotation-schedule';
 import { JWT_ROTATION_DRILL_SPEC } from './jwt-rotation-drill';
+// Phase K Wave 23 — Hicks (Frontend).  Five new W23 core surfaces:
+//   • Replay upload monitor       (READ — replay-pipeline health)
+//   • JWT rotation-drill history  (READ — companions W20 trigger)
+//   • SignalR groups dashboard    (READ — connection populations)
+//   • Audit-log purge UI          (TRAPDOOR — hard-delete cliff)
+//   • Replay restoration history  (READ — player-initiated audit)
+// All five route into the admin-panel-core chunk by default
+// (anything not matched by the W22 tournaments-regex falls through
+// to the core chunk per `vite.config.ts:manualChunks`).  Bishop's
+// W23 server side ships the matching endpoints.
+import { REPLAY_UPLOAD_MONITOR_SPEC } from './replay-upload-monitor';
+import { JWT_ROTATION_DRILL_HISTORY_SPEC } from './jwt-rotation-drill-history';
+import { SIGNALR_GROUPS_DASHBOARD_SPEC } from './signalr-groups-dashboard';
+import { AUDIT_LOG_PURGE_UI_SPEC } from './audit-log-purge-ui';
+import { REPLAY_RESTORATION_HISTORY_SPEC } from './replay-restoration-history';
 
 interface AnySpec extends AdminSurfaceSpec<unknown, unknown> {}
 
@@ -68,6 +83,13 @@ const CORE_SURFACES: ReadonlyArray<AnySpec> = [
   ROTATION_POLICY_BULK_ACTIONS_SPEC as unknown as AnySpec,
   ROTATION_SCHEDULE_SPEC as unknown as AnySpec,
   JWT_ROTATION_DRILL_SPEC as unknown as AnySpec,
+  // Phase K Wave 23 — five new core surfaces.  See header for
+  // wire-contract details + Bishop W23 server endpoints.
+  REPLAY_UPLOAD_MONITOR_SPEC as unknown as AnySpec,
+  JWT_ROTATION_DRILL_HISTORY_SPEC as unknown as AnySpec,
+  SIGNALR_GROUPS_DASHBOARD_SPEC as unknown as AnySpec,
+  AUDIT_LOG_PURGE_UI_SPEC as unknown as AnySpec,
+  REPLAY_RESTORATION_HISTORY_SPEC as unknown as AnySpec,
 ];
 
 let SURFACES: ReadonlyArray<AnySpec> = CORE_SURFACES;

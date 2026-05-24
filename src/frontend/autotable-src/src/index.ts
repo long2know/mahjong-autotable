@@ -122,6 +122,107 @@ void schedulePwaLazyMount();
 // pays for the viewer.
 void scheduleSpectatorRouteLazyMount();
 
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  Three small lazy
+// modules that hook the browser interaction surfaces:
+//
+//   • `./keyboard-shortcuts`  — global `/`, `?`, `Ctrl+K`, `Esc`,
+//     `g`+`l`, `g`+`p`.  Loaded behind the first `keydown` event
+//     the page sees that matches the trigger-key prefix-set.
+//   • `./tooltip-engine`      — `data-tip` overlay scanner.  Loaded
+//     behind the first `pointerover` event against an element
+//     carrying `data-tip`.
+//   • `./zh-CN-fallback`      — `zh-CN` BCP-47 alias to `zh-Hans`.
+//     Loaded synchronously in a microtask when the navigator
+//     language matches the `zh-CN` family.
+//
+// Each of these is a tiny eager probe (≤200 B) that gates the
+// dynamic import; the heavy module ships only when its trigger
+// fires.  Together they shed ~3 KB off the eager bundle without
+// changing user-visible behaviour.
+
+void scheduleKeyboardShortcutsLazyMount();
+void scheduleTooltipEngineLazyMount();
+void scheduleZhCnFallbackLazyMount();
+
+function scheduleKeyboardShortcutsLazyMount(): void {
+  const TRIGGER_KEYS = new Set(['/', '?', 'Escape', 'g', 'G', 'k', 'K']);
+  let loaded = false;
+  const onProbe = (ev: KeyboardEvent): void => {
+    if (loaded) return;
+    // Only trigger on shortcut-relevant keys.  Plain alphanumerics
+    // (other than `g`/`k`) plus modifier-bearing combos pass through.
+    const isCtrlK = (ev.ctrlKey || ev.metaKey) && (ev.key === 'k' || ev.key === 'K');
+    if (!isCtrlK && !TRIGGER_KEYS.has(ev.key)) return;
+    loaded = true;
+    window.removeEventListener('keydown', onProbe, true);
+    void import('./keyboard-shortcuts').then((mod) => {
+      mod.installKeyboardShortcuts();
+      // Replay the triggering keystroke so the user's first
+      // press isn't lost.  Re-dispatching at the document target
+      // (not window) so the handler's editable-target check sees
+      // the correct event.target.
+      const replay = new KeyboardEvent('keydown', {
+        key: ev.key,
+        code: ev.code,
+        ctrlKey: ev.ctrlKey,
+        metaKey: ev.metaKey,
+        shiftKey: ev.shiftKey,
+        altKey: ev.altKey,
+        bubbles: true,
+        cancelable: true,
+      });
+      (ev.target instanceof EventTarget ? ev.target : document)
+        .dispatchEvent(replay);
+    }).catch(() => { /* fail-open — keyboard shortcuts simply absent */ });
+  };
+  window.addEventListener('keydown', onProbe, true);
+}
+
+function scheduleTooltipEngineLazyMount(): void {
+  let loaded = false;
+  const onProbe = (ev: PointerEvent): void => {
+    if (loaded) return;
+    if (!(ev.target instanceof Element)) return;
+    // Walk up to find a `data-tip` host (the engine itself does
+    // the same walk; we mirror it here so the probe doesn't
+    // mis-trigger on chrome that doesn't carry tooltips).
+    let el: Element | null = ev.target;
+    while (el !== null) {
+      if (el instanceof HTMLElement && el.dataset.tip !== undefined) break;
+      el = el.parentElement;
+    }
+    if (el === null) return;
+    loaded = true;
+    document.removeEventListener('pointerover', onProbe, true);
+    void import('./tooltip-engine').then((mod) => {
+      mod.installTooltipEngine();
+    }).catch(() => { /* fail-open — tooltips degrade to plain `title` if present */ });
+  };
+  document.addEventListener('pointerover', onProbe, true);
+}
+
+function scheduleZhCnFallbackLazyMount(): void {
+  // Sync probe — only kick the dynamic import when the navigator
+  // language family is `zh-CN`-related.  The probe is ~50 B in
+  // the eager bundle; everything else lives in the lazy chunk.
+  if (typeof navigator === 'undefined') return;
+  const lang = navigator.language ?? '';
+  const normalised = lang.toLowerCase().replace(/_/g, '-');
+  const isZhCnFamily = normalised === 'zh-cn'
+    || normalised === 'zh-sg'
+    || normalised === 'zh-my'
+    || normalised === 'zh-hans'
+    || normalised.startsWith('zh-hans-');
+  if (!isZhCnFamily) return;
+  // Microtask so the i18n module's own `installI18n()` runs first
+  // (it's eager); the alias then overrides the picked locale.
+  window.setTimeout(() => {
+    void import('./zh-CN-fallback').then((mod) => {
+      void mod.aliasNavigatorLanguageForI18n();
+    }).catch(() => { /* fail-open — fall back to whatever i18n picked */ });
+  }, 0);
+}
+
 async function scheduleAuditTabLazyMount(): Promise<void> {
   const btn = document.getElementById('replay-audit-tab') as HTMLButtonElement | null;
   if (btn === null) return;
@@ -336,12 +437,13 @@ void (async (): Promise<void> => {
   // scene-runtime + picking smoke, the W19 `?renderer=webgl2-wall`
   // canonical wall + camera-mode smoke, the W20
   // `?renderer=webgl2-interactive` drag-and-drop + lift-animation
-  // smoke, or the W21 `?renderer=webgl2-meld` claim-animation +
-  // meld-display smoke).  Dev/spike harness — never runs on the
-  // lobby cold path.  The dynamic import boundary forces vite to
-  // emit `renderer-webgl2.<hash>.js` as its own measurable chunk;
-  // see `docs/phase-l-renderer-implementation.md`.
-  if (/[?&]renderer=webgl2-(hello|tile-mesh|scene|wall|interactive|meld)/.test(window.location.search)) {
+  // smoke, the W21 `?renderer=webgl2-meld` claim-animation +
+  // meld-display smoke, or the W23 `?renderer=webgl2-discard-score`
+  // discard-pile + HUD wire-up smoke).  Dev/spike harness — never
+  // runs on the lobby cold path.  The dynamic import boundary
+  // forces vite to emit `renderer-webgl2.<hash>.js` as its own
+  // measurable chunk; see `docs/phase-l-renderer-implementation.md`.
+  if (/[?&]renderer=webgl2-(hello|tile-mesh|scene|wall|interactive|meld|discard-score)/.test(window.location.search)) {
     void import('./renderer-webgl2/hello').then((mod) => mod.mount());
   }
 

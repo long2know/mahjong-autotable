@@ -35,6 +35,14 @@ import { REPLAY_RESTORATION_AUDIT_SPEC } from './replay-restoration-audit';
 import { REPLAY_DOWNLOAD_CHUNKED_SPEC } from './replay-download-chunked';
 import { AUDIT_LOG_SEARCH_SPEC } from './audit-log-search';
 import { JWT_EMERGENCY_REVOKE_SPEC } from './jwt-emergency-revoke';
+// Phase K Wave 23 — Hicks (Frontend).  One new tournament surface:
+// Buchholz tie-breaker view (READ).  Companions the W19 swiss-
+// pairing audit + W20 pair-next-round + W21 apply-round surfaces;
+// W23 closes the Swiss-tournament audit loop with the standings-
+// table view directors use to confirm tie-break resolution before
+// publishing final results.  Routed to admin-panel-tournaments
+// chunk via the W23 update to `vite.config.ts:manualChunks`.
+import { TOURNAMENT_BUCHHOLZ_VIEW_SPEC } from './tournament-buchholz-view';
 
 interface AnySpec extends AdminSurfaceSpec<unknown, unknown> {}
 
@@ -52,6 +60,8 @@ export const TOURNAMENT_SURFACES: ReadonlyArray<AnySpec> = [
   SWISS_APPLY_ROUND_SPEC as unknown as AnySpec,
   TOURNAMENT_WITHDRAW_SPEC as unknown as AnySpec,
   TOURNAMENT_FINALIZE_SPEC as unknown as AnySpec,
+  // Phase K Wave 23 — Buchholz tie-breaker standings view.
+  TOURNAMENT_BUCHHOLZ_VIEW_SPEC as unknown as AnySpec,
   // SignalR operational surfaces.
   SIGNALR_PURGE_SPEC as unknown as AnySpec,
   SIGNALR_DIAGNOSTICS_SPEC as unknown as AnySpec,

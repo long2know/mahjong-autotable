@@ -74,6 +74,19 @@ import {
   startClaimAnimation,
   type ClaimAnimationHandle,
 } from './tile-claim-animation';
+// Phase K Wave 23 — discard-score smoke (Hicks W23).
+// Wire-up: the W22-staged `./discard-pile` + `./score-display`
+// modules are bound to the live scene via the new
+// `./discard-pile-controller` (state-binding controller).  The
+// `?renderer=webgl2-discard-score` URL guard mounts this smoke.
+import {
+  DISCARD_PILE_RESERVED_SLOTS,
+  createDiscardPileController,
+  createScoreDisplayController,
+  type DiscardPileController,
+  type ScoreDisplayController,
+} from './discard-pile-controller';
+import type { SeatIndex } from './meld-display';
 
 const CONTAINER_ID = 'webgl2-hello-container';
 const TEXTURE_URL = '/img/tiles-labels.auto.png';
@@ -120,8 +133,9 @@ function ensureContainer(): { canvas: HTMLCanvasElement; status: HTMLElement } {
   return { canvas, status };
 }
 
-function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' | 'interactive' | 'meld' {
+function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' | 'interactive' | 'meld' | 'discard-score' {
   const s = window.location.search;
+  if (/[?&]renderer=webgl2-discard-score/.test(s)) return 'discard-score';
   if (/[?&]renderer=webgl2-meld/.test(s)) return 'meld';
   if (/[?&]renderer=webgl2-interactive/.test(s)) return 'interactive';
   if (/[?&]renderer=webgl2-wall/.test(s)) return 'wall';
@@ -134,11 +148,12 @@ function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' | 'interactive' | 'mel
  * Public entry point invoked by `src/index.ts` behind the
  * `?renderer=webgl2-hello` / `?renderer=webgl2-tile-mesh` /
  * `?renderer=webgl2-scene` / `?renderer=webgl2-wall` /
- * `?renderer=webgl2-interactive` / `?renderer=webgl2-meld` URL
- * guards.
+ * `?renderer=webgl2-interactive` / `?renderer=webgl2-meld` /
+ * `?renderer=webgl2-discard-score` URL guards.
  */
 export async function mount(): Promise<void> {
   switch (mode()) {
+    case 'discard-score': return mountDiscardScore();
     case 'meld':        return mountMeld();
     case 'interactive': return mountInteractive();
     case 'wall':        return mountWall();
@@ -682,3 +697,110 @@ async function mountMeld(): Promise<void> {
     + `Pung / chi / kong claims fan into seat 0's meld row over ~1.5 s.`;
 }
 
+
+// Phase K Wave 23 — discard-pile + score-display wire-up smoke (Hicks).
+//
+// Builds on the canonical wall scene (W19), then mounts the W22-
+// staged discard-pile + score-display modules via the new W23
+// `./discard-pile-controller`.  The smoke fires one discard per
+// seat at ~250 ms intervals, riichi-flagged on seat 0's 6th
+// discard (so the riichi-rotation code path is exercised), and
+// drives the HUD canvas through the score-change + dora-indicator
+// + round-context APIs.  Surfaces every code path in the new
+// modules end-to-end so the Vasquez lane gets a visual capture
+// target for W23 visual-regression baselines.
+async function mountDiscardScore(): Promise<void> {
+  const { canvas, status } = ensureContainer();
+  status.textContent = 'Booting discard-pile + score-display scene…';
+
+  let scene: Awaited<ReturnType<typeof createTileScene>>;
+  try {
+    scene = await createTileScene(canvas);
+  } catch (err) {
+    status.textContent = `WebGL2 scene init failed: ${(err as Error).message}`;
+    return;
+  }
+
+  populateWallWithDora(scene.mesh, /*seed=*/ 0x515421);
+  scene.drawNow();
+
+  // Discard-pile controller — paint reserved slots into the mesh
+  // starting at instance index 160 (out of the W23 320-instance
+  // capacity; the 144 wall tiles consume 0..143 with headroom).
+  const discardSlotBase = 160;
+  const discardCtl: DiscardPileController = createDiscardPileController(
+    scene.mesh,
+    discardSlotBase,
+    scene.requestRedraw,
+  );
+
+  // Score-display controller — mount the HUD canvas overlay onto
+  // the container so the HUD sits above the WebGL canvas.
+  const container = document.getElementById(CONTAINER_ID);
+  if (container === null) {
+    status.textContent = 'Container missing — abort discard-score smoke';
+    return;
+  }
+  // Position the container so the HUD's inset:0 anchors against
+  // the canvas, not the viewport.
+  if (container.style.position === '' || container.style.position === 'static') {
+    container.style.position = 'relative';
+  }
+  const hudCtl: ScoreDisplayController = createScoreDisplayController(container);
+
+  // Initial HUD state — East round, hand 1, seat 0 = dealer.
+  hudCtl.setRound('E', 1, 0 as SeatIndex);
+  hudCtl.setDora([14, 22]);  // two dora indicators
+
+  // Drive the smoke: one discard per seat at ~250 ms intervals;
+  // seat 0's 6th tile is riichi-rotated so the riichi code path
+  // fires end-to-end.  Each discard also nudges seat 0's score
+  // down by 200 and the winners' scores up by ~67 each so the HUD
+  // re-renders on every event.
+  let tick = 0;
+  const totalTicks = 28;  // 7 full rounds × 4 seats
+  const discardInterval = window.setInterval(() => {
+    if (tick >= totalTicks) {
+      window.clearInterval(discardInterval);
+      // Final state: pop seat 1's last discard (mirrors a claim
+      // re-routing) so the pop path is exercised.
+      const popped = discardCtl.popDiscard(1 as SeatIndex);
+      if (popped !== null) {
+        status.textContent =
+          `Discard-score smoke complete — ${discardCtl.totalTileCount()} `
+          + `tiles across 4 piles after popping seat 1's tile #${popped.tileId}.  `
+          + `HUD: ${hudCtl.state.seats[0].points.toLocaleString()} / `
+          + `${hudCtl.state.seats[1].points.toLocaleString()} / `
+          + `${hudCtl.state.seats[2].points.toLocaleString()} / `
+          + `${hudCtl.state.seats[3].points.toLocaleString()}.`;
+      }
+      return;
+    }
+    const seat = (tick % 4) as SeatIndex;
+    const tileId = (tick * 7 + 3) % 34;  // pseudo-shuffle, all 34 tile-ids
+    const isRiichi = seat === 0 && tick === 20;  // seat 0's 6th discard
+    discardCtl.pushDiscard(seat, tileId, isRiichi);
+    // Score nudge — keeps the HUD repainting every tick.
+    hudCtl.setSeatScore(seat, {
+      points: hudCtl.state.seats[seat].points - 200,
+    });
+    hudCtl.setSeatScore(((seat + 1) % 4) as SeatIndex, {
+      points: hudCtl.state.seats[((seat + 1) % 4) as SeatIndex].points + 67,
+    });
+    hudCtl.setSeatScore(((seat + 2) % 4) as SeatIndex, {
+      points: hudCtl.state.seats[((seat + 2) % 4) as SeatIndex].points + 67,
+    });
+    hudCtl.setSeatScore(((seat + 3) % 4) as SeatIndex, {
+      points: hudCtl.state.seats[((seat + 3) % 4) as SeatIndex].points + 66,
+    });
+    if (isRiichi) {
+      status.textContent = `Tick ${tick + 1}/${totalTicks} — seat ${seat} riichi declared!`;
+    } else {
+      status.textContent =
+        `Tick ${tick + 1}/${totalTicks} — seat ${seat} discarded tile #${tileId}.`;
+    }
+    tick++;
+  }, 250);
+
+  installCameraModePicker(scene.camera, scene.canvas, scene.requestRedraw);
+}

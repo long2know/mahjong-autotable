@@ -19,8 +19,9 @@
 //     transform + atlas-tile-id attribute.
 //   • `TILE_INSTANCE_FS`      — fragment shader sampling the
 //     atlas (see `tile-atlas.ts`) by tile-id.
-//   • `MAX_INSTANCES`         — 200, covering 144 wall tiles +
-//     14 deal + 4 dora + 38 discard ceiling.
+//   • `MAX_INSTANCES`         — 320 (Phase K W23 bump from 200),
+//     covering 144 wall tiles + 14 deal + 4 dora + 120 discard
+//     (4 seats × 30) + 16 per-seat meld slots + headroom.
 //
 // What's NOT here (Phase L W3+):
 //   • Tile-pickup animation graph (W3).
@@ -239,7 +240,7 @@ void main() {
 // effectively static (a tile is dealt into a row + face id and
 // rarely changes mid-game).
 
-export const MAX_INSTANCES = 200;
+export const MAX_INSTANCES = 320;
 
 const FLOATS_PER_INSTANCE_MATRIX = 16;
 const BYTES_PER_FLOAT = 4;

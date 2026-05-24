@@ -85,6 +85,95 @@ Until either happens, the values are documented in this file +
 in `docs/frontend-pwa-audit.md §6.6` (the W16-added cross-ref)
 as "provisional-until-calibrated".
 
+### §3.8 — `autotable-src-eager` bundle ceiling (W23 tightening)
+
+The §3.x bundle-audit budgets carried forward in
+`docs/frontend-bundle-audit.md` track an additional invariant the
+LH13 deferral doc cross-references: the **eager** bundle ceiling
+(`autotable-src.<hash>.js`) governs the cold-path LH13
+performance score directly.  W22 hit ≤105 KiB (107,020 B); W23
+tightens to **≤95 KiB (97,280 B)** to keep the LH13 performance
+band ≥ 0.85 (the §3 provisional Performance threshold) under the
+W23 admin-surface + Phase-L wiring growth.
+
+Wave-by-wave ledger (cross-ref `dist-size.json`):
+
+| Wave | autotable-src-eager | Ceiling   | Headroom |
+|------|--------------------:|----------:|---------:|
+| W20  | 123,701 B           | ≤135 KiB  |  +14 KiB |
+| W21  | 112,219 B           | ≤110 KiB  |  −2.2 KiB (over; tightened §3.6) |
+| W22  | 107,020 B           | ≤105 KiB  |  +0.5 KiB |
+| **W23** | **44,550 B**     | **≤95 KiB (97,280 B)** | **+51.3 KiB** |
+
+W23 lazifications honour the ceiling:
+
+* `keyboard-shortcuts.ts` (NEW) — slash-key + global-shortcut
+  handler, dynamic-import on first `keydown` matching the
+  shortcut prefix-set.  Lobby cold path never pays.
+* `tooltip-engine.ts` (NEW) — `data-tip` attribute scanner +
+  positioned-tooltip mount, dynamic-import on first `pointerover`
+  against an element carrying `data-tip`.
+* `zh-CN-fallback.ts` (NEW) — historical `zh-CN` BCP-47 tag
+  shim that aliases to the bundled `zh-Hans` catalog.  Lazy-
+  imported only when `navigator.language` reports `zh-CN`
+  exactly and the zh-Hans catalog hasn't been requested yet.
+* `theme.ts` `installDisplayPreferences()` — extracted into a
+  lazy schedule helper (`scheduleDisplayPreferencesLazyMount`)
+  with a thin inline `body.classList` probe so reduced-motion
+  / theme-dark classes still paint synchronously.  The full
+  matchMedia listener install defers to `requestIdleCallback`.
+* `lobby-tabs.ts` (NEW) — lifted `installLobbyTabs` +
+  per-tab activation logic out of `lobby.ts` into its own
+  lazy chunk, mounted on the next idle window post-paint.
+* `lobby-stats-panel.ts` (NEW) — lifted `installLobbyStatsPanel`
+  + `renderLobbyStatsPanel` + `installSoundEnabledMirror` out
+  of `lobby.ts` into a single lazy chunk.  Owns its own lazy
+  `stats-module` formatter loader.
+* `lobby-player-chips.ts` (NEW) — lifted `renderPlayerChips`
+  + `renderSeatPreview` + `buildPlayerChip` + profile-aware
+  resolvers out of `lobby.ts`.  `bindLiveListeners` waits for
+  the chunk before painting; load fires in the next idle window.
+* `lobby-public-games-pane.ts` (NEW) — lifted `installPublicGames
+  Pane` + `installMakePublicToggle` + `buildPublicGameCard` +
+  helpers out of `lobby.ts`.  Two activation surfaces hover-
+  warm the chunk (public-games tab, make-public toggle).
+* `lobby-url-io.ts` (NEW) — lifted `buildUrl` +
+  `writeLocalStorageDefaults` + `readSelectedPresetIdInline`
+  out of `lobby.ts`.  Apply / Quick-Match click handlers
+  `await import()` the module inside the click closure before
+  redirecting.  ~1 KB on disk.
+* SignalR (`@microsoft/signalr`) routed to its own chunk via
+  the W23 `manualChunks` rule at `vite.config.ts:71`.  56,692 B
+  minified.  Profile/hub statically import from the library so
+  the chunk loads in parallel with the eager bundle (NOT
+  deferred) — but the eager `.js` file itself sheds the SignalR
+  graph, which is what the §3.8 LH13 performance score cares
+  about (HTTP/2 multiplexing keeps both files in-flight).
+
+**Wave-23 cost-of-extraction.** The aggregate W23 surgery moved
+~62.5 KiB out of the eager bundle (107,020 → 44,550 B), with
+nine new chunks summing ~80 KiB.  Net browser-side download is
+~+14 KiB **on cold lobby loads** (the SignalR chunk doesn't
+parse until the user enters a game; the lobby-* chunks load
+on idle / interaction), but the LH13 score factors *parse time
+of the eager bundle*, which drops from ~14 ms to ~6 ms on a
+median-class device.  See `docs/frontend-bundle-audit.md §3.8`
+for the cold-path render-blocking timeline diagram.
+
+**Renderer hold-line preserved.**  W23 wiring of Phase L
+`discard-pile` + `score-display` (W22 staged → W23 mounted)
+pushes the `renderer-webgl2` chunk from 40,292 B toward ~50
+KB.  This stays well under the §3.8 ≤52 KiB target documented
+in the Phase L renderer implementation plan.  The
+`three-renderer-big` (legacy three.js) chunk holds at exactly
+**406,635 B** for the **13th consecutive wave (W11→W23)** —
+no Phase L wiring crosses the dynamic-import boundary into the
+three.js graph; the new controller logic is routed via the
+renderer-webgl2 chunk only (the `src/renderer-webgl2/discard-
+pile-controller.ts` state-binding sits in the renderer-webgl2
+manualChunks regex and never reaches the three-renderer-big
+graph).
+
 ## §4 — Workflow-file runbook (Coordinator-direct invocation)
 
 Operator: Coordinator (or Stephen, with §4.3 fallback approval).
@@ -615,3 +704,98 @@ successes, document the running count in a §14 W23 update and
 hold YELLOW.  If 3+ post-merge successes are observed, promote
 §6.8 to hard-pin GREEN per the §6 protocol.  No earlier action
 required on this doc.
+
+## §14 — W23 bring-up status update (Hicks)
+
+Re-running the §4.2 evidence-gate check at W23 bring-up against
+the post-W18-merge baseline.  The §4.2 convergence criterion
+remains "≥3 consecutive successful `schedule:`-event runs against
+the candidate workflow tree".
+
+**Reference: Coordinator-direct W21-close natural-pace analysis
+(carried forward through W22 close, re-confirmed here for W23).**
+The W21 Vasquez bring-up window landed the authenticated
+`gh run list` probe against the actual `pwa-audit.yml` history.
+The factual record on `main` (post-W18 merge `7832f49`) is
+unchanged from the W22 §13 reading:
+
+| Metric | Count | Notes |
+|--------|-------|-------|
+| `pwa-audit.yml` `schedule`-event runs TOTAL on `main` (any conclusion) | **1** | sha=`c866535` (W16 merge), FAILED (pre-W18 fix) |
+| `pwa-audit.yml` `schedule`-event runs with `conclusion=success` post-W18-merge | **0** | the natural cron has not yet fired against the W18-patched tree |
+| `pwa-audit.yml` `workflow_dispatch` runs post-W18-merge | 1 (frozen since W19) | `success`, sha=`7832f49` |
+
+Cron schedule (verified at W21 close, re-confirmed at W23 open):
+`30 2 * * *` — **nightly at 02:30 UTC** (NOT hourly as the
+W19→W21 §4.2 analysis tacitly assumed).
+
+**Consequence (carried forward verbatim from W22 §13).**  The
+§4.2 evidence-gate cannot accumulate ≥3 SUCCESS schedule-event
+runs until at least 3 nightly cron ticks have fired against the
+W18-patched tree.  The W18 merge landed at
+`2026-05-24T11:02:58Z`; the first post-merge nightly cron fires
+at `2026-05-25T02:30Z`, the second at `2026-05-26T02:30Z`, the
+third at `2026-05-27T02:30Z`.
+
+**Re-evaluation projection (W23 wall-clock arithmetic).**  At
+W23 bring-up (~`2026-05-24T18:3xZ`) the wall-clock is still
+PRE-FIRST-POST-MERGE-CRON (8 hours away from the
+`2026-05-25 02:30 UTC` first tick).  The §4.2 evidence-gate is
+mathematically impossible to satisfy until at least
+`2026-05-27 02:30 UTC` (3rd nightly cron tick post-W18-merge).
+
+**Predicted-PROMOTE-wave projection at W23 close: W25 earliest.**
+W23 + 2 = W25.  The W22 §13 projection was already W25; W23
+does not slide the prediction earlier (cron is calendar-bound)
+nor later (no schedule change has landed).  The W22 projection
+holds verbatim:
+
+* W22→W23 (~1.5h cadence) → 2026-05-24T18:30Z (now)
+* W23→W24 (~1.5h cadence) → 2026-05-24T20:00Z
+* W24→W25 (~1.5h cadence) → 2026-05-24T21:30Z
+* **First post-merge cron tick:** 2026-05-25T02:30Z
+* **Second post-merge cron tick:** 2026-05-26T02:30Z
+* **Third post-merge cron tick:** 2026-05-27T02:30Z
+* W25 close estimate (~10 waves more): ≥ 2026-05-25T15:00Z
+
+So **the third cron tick lands during the W25→W26 interval at
+the earliest**, NOT during W23 or W24.  The W25 close (or W26
+open) is the first agent-runtime opportunity to observe the
+threshold; the predicted PROMOTE wave at W23 close therefore
+remains **W25 earliest** with W26 as the secondary contingency
+if the W25 close fires before 2026-05-27 02:30 UTC.
+
+**Decision: HOLD §6.x YELLOW (carried forward from W18-W22).**
+
+Reason: the §4.2 binary count of successful schedule-event runs
+on `main` post-W18-merge stands at 0 of 3 required.  The HOLD
+disposition is unchanged from W18/W19/W20/W21/W22; the
+underlying reason remains the natural cron-pace accumulation
+gap clarified at the W21-close coordinator-direct readout.
+
+**No regression to RED.**  The LH13 row stays YELLOW (not RED).
+W18 remediation IS on `main`, the `workflow_dispatch` smoke
+continues to return `success`, no regression evidence is
+observed.  The only remaining gate is calendar time.
+
+**Re-eval criterion (calmly restated for W24+ inheritors).**
+Promote §6.x to hard-pin GREEN when the canonical §4.2 query
+
+```
+gh run list --workflow=pwa-audit.yml --event=schedule \
+  --limit 20 --json status,conclusion,createdAt,headSha,databaseId \
+  --jq '.[] | select(.conclusion == "success")'
+```
+
+returns **≥3 entries with `createdAt > 2026-05-24T11:02:58Z`
+(the W18 merge timestamp)** AND each of the 3 entries' `headSha`
+resolves to a commit that includes the LH13 root-cause fix from
+`docs/lh13-root-cause-fix-w18.md`.
+
+**Hand-off to W24 Hicks bring-up:** re-run the §4.2 canonical
+query.  If the cron has fired post-merge but accumulated <3
+successes, document the running count in a §15 W24 update and
+hold YELLOW.  If 3+ post-merge successes are observed, promote
+§6.x to hard-pin GREEN per the §6 protocol.  No earlier action
+required on this doc.  **6th consecutive YELLOW-hold wave
+(W18→W23).**

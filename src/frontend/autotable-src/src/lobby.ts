@@ -45,12 +45,9 @@ import type { Client } from './client';
 // the same lazy hook (the public-games tab is the only activation
 // surface that needs the polling loop).
 import type * as MatchmakingModule from './matchmaking';
-import type { PublicGame } from './matchmaking';
 import {
   hydrateProfileFromCacheIfAvailable,
   onProfile,
-  getProfile,
-  type PlayerProfile,
 } from './profile';
 // Phase K Wave 21 — Hicks (bundle-audit §3.6).  `profile-drawer.ts`
 // (~6 KB raw / ~2 KB minified) is now lazy-loaded behind
@@ -61,14 +58,11 @@ import {
 // hover/focus/click, parallel to the W17 §3.2 lazy-mount of
 // `./profile-page` and `./settings-drawer`.
 import type * as ProfileDrawerModule from './profile-drawer';
-// Phase K Wave 19 — bundle audit §3.4 (Hicks).  `stats.ts` is a small
-// DOM formatter (~2 KB minified) that the lobby only needs *after*
-// Bishop's SignalR `ProfileLoaded` payload arrives — which happens
-// once the user has either entered a game OR completed onboarding.
-// We import the type eagerly (zero bytes) and dynamic-import the
-// formatter on first `renderLobbyStatsPanel()` call where a profile
-// is actually present.  Empty/loading state never pulls the chunk.
-import type * as StatsModule from './stats';
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  The W19 lazy
+// stats-formatter trigger has migrated to `./lobby-stats-panel.ts`
+// (now also lazy), so the `StatsModule` type import is no longer
+// needed in the eager bundle.  The W19 comment block above is
+// preserved as historical context.
 import {
   bootstrapIdentity,
   onIdentity,
@@ -110,13 +104,21 @@ import type * as AuthModule from './auth';
 // picker mounts on the next paint window without blocking lobby
 // first-paint.
 import type * as RulePresetsModule from './rule-presets';
-import { installDisplayPreferences } from './theme';
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  `theme.ts`
+// (`installDisplayPreferences`) is now lazy-loaded so the lobby
+// cold path no longer pulls the LS-loader + matchMedia plumbing.
+// We still apply a synchronous best-effort body-class on initLobby
+// so the chrome paints with the correct palette immediately (see
+// `scheduleDisplayPreferencesLazyMount` below); the full module
+// (which adds the matchMedia change-listener) lands on the next
+// microtask.
+import type * as ThemeModule from './theme';
 // Phase K Wave 18 — Hicks (bundle-audit §3.3).  `spectator-follow`
 // is now lazy-mounted behind a URL probe (`?seat=-1` or
 // `?spectate`) so non-spectator lobby visitors never pull the
 // follow-seat helper (~5 KB after minify).  <1 % of sessions
 // land on a spectator URL (W18 analytics).
-import { setElHidden, showEl, hideEl } from './dom-utils';
+import { setElHidden } from './dom-utils';
 //
 // The lobby is a small overlay panel anchored top-left of the autotable
 // page.  It lets the user pick the Phase F query params
@@ -165,7 +167,9 @@ type HandCount = 1 | 4 | 8 | 16 | 32;
 //             auto-deals once all four seats are bots).
 type SeatChoice = -1 | 0 | 1 | 2 | 3 | null;
 
-interface LobbyState {
+// Exported (`export interface`) so the W23 lazy `./lobby-url-io.ts`
+// chunk can use it via a type-only import (zero runtime cost).
+export interface LobbyState {
   variant: Variant;
   dealMode: DealMode;
   botCount: BotCount;
@@ -402,74 +406,12 @@ function resolveInitialState(): LobbyState {
   };
 }
 
-function writeLocalStorageDefaults(state: LobbyState): void {
-  try {
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-      variant: state.variant,
-      dealMode: state.dealMode,
-      botCount: state.botCount,
-      botDifficulty: state.botDifficulty,
-      seed: state.seed,
-      handCount: state.handCount,
-      seat: state.seat,
-    }));
-  } catch {
-    // localStorage may be disabled (privacy mode, quota); silently ignore
-    // because the URL-driven Apply still works.
-  }
-}
-
-function buildUrl(state: LobbyState): string {
-  const p = new URLSearchParams();
-  // Phase I Wave 3 — preserve any ?gameId= already on the page URL so
-  // a lobby Apply & Start doesn't silently switch the user back to the
-  // default game.  client-ui.ts is the source of truth for editing
-  // gameId; the lobby just passes it through.
-  const currentGameId = new URLSearchParams(window.location.search).get('gameId');
-  if (currentGameId !== null && currentGameId !== '') {
-    p.set('gameId', currentGameId);
-  }
-  p.set('variant', state.variant);
-  // dealMode is Changsha-only — Riichi variants ignore it.  Emit only
-  // when relevant so the URL stays tidy.
-  if (state.variant === 'changsha') {
-    p.set('dealMode', state.dealMode);
-  }
-  p.set('botCount', String(state.botCount));
-  // botDifficulty is irrelevant when there are no bots — skip it.
-  if (state.botCount > 0) {
-    p.set('botDifficulty', state.botDifficulty);
-  }
-  // Phase H Wave 1 — handCount is always emitted (every variant has a
-  // hand length); seed is emitted only when explicitly set, so the
-  // bare-URL case keeps the existing random-seed behaviour.
-  p.set('handCount', String(state.handCount));
-  if (state.seed !== null) {
-    p.set('seed', String(state.seed));
-  }
-  // Phase I Wave 4 — emit ?seat= only when the user made an explicit
-  // choice (-1 / 0..3).  A null seat (no preference) leaves the param
-  // off so the legacy server-picks-a-seat path keeps working unchanged.
-  if (state.seat !== null) {
-    p.set('seat', String(state.seat));
-  }
-  // Phase J Wave 8 — emit rulePreset=<id> when the user picked a
-  // non-default preset.  The backend ignores the param if Bishop's
-  // rule-preset endpoints aren't deployed yet (graceful degradation).
-  //
-  // Phase K Wave 19 — bundle audit §3.4.  Inline LS-read avoids
-  // pulling `rule-presets.ts` into the eager lobby chunk just for
-  // this read.  Mirrors `readSelectedId()` in rule-presets.ts: same
-  // key (`mahjong.rule-preset.selected.v1`), same default
-  // (`'classic-changsha'`), same try/catch guard.
-  try {
-    const presetId = readSelectedPresetIdInline();
-    if (presetId !== '' && presetId !== 'classic-changsha') {
-      p.set('rulePreset', presetId);
-    }
-  } catch { /* rule-presets module not initialised — skip */ }
-  return window.location.pathname + '?' + p.toString();
-}
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  `writeLocalStorage
+// Defaults` + `buildUrl` + `readSelectedPresetIdInline` have moved
+// to `./lobby-url-io.ts` so the ~1.5 KB of URL-param serialisation +
+// LS persistence ships as a lazy chunk.  Both apply-handlers
+// below await `loadLobbyUrlIo()` before redirecting; the click-
+// handler flow is unchanged from the user's perspective.
 
 // First-load policy: show the lobby when the user lands on a bare URL
 // (no query params at all).  Once the user has applied a setting the URL
@@ -694,13 +636,20 @@ export function initLobby(client?: Client): void {
       return;
     }
     const state = readPickers();
-    if (saveDefaultsInput !== null && saveDefaultsInput.checked) {
-      writeLocalStorageDefaults(state);
-    }
-    const url = buildUrl(state);
-    // replace() instead of assign() so the browser back-button doesn't
-    // bounce the user between game configurations.
-    window.location.replace(url);
+    // Phase K Wave 23 — Hicks (bundle-audit §3.8).  Lazy-load
+    // `./lobby-url-io` for the URL builder + LS persister.  The
+    // import + redirect happens within one user interaction —
+    // browsers will not flag this as a navigation interruption.
+    void (async () => {
+      const mod = await import('./lobby-url-io');
+      if (saveDefaultsInput !== null && saveDefaultsInput.checked) {
+        mod.writeLocalStorageDefaults(state);
+      }
+      const url = mod.buildUrl(state);
+      // replace() instead of assign() so the browser back-button doesn't
+      // bounce the user between game configurations.
+      window.location.replace(url);
+    })();
   });
 
   // Phase J Wave 4 — Quick Match handler.  Bypasses the per-picker
@@ -721,8 +670,12 @@ export function initLobby(client?: Client): void {
         handCount: current.handCount,
         seat: null,
       };
-      const url = buildUrl(quick);
-      window.location.replace(url);
+      // Phase K Wave 23 — same lazy-loaded URL builder.
+      void (async () => {
+        const mod = await import('./lobby-url-io');
+        const url = mod.buildUrl(quick);
+        window.location.replace(url);
+      })();
     });
   }
 
@@ -744,11 +697,12 @@ export function initLobby(client?: Client): void {
   // Phase J Wave 4 — install the renderers, then hand them to
   // attachLobbyClient (if a client is already attached) so the chip
   // strip + seat preview render against the live collections.
-  _renderPlayerChips = renderPlayerChips;
-  _renderSeatPreview = renderSeatPreview;
-  if (_attachedClient !== null) {
-    bindLiveListeners(_attachedClient);
-  }
+  //
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  The chip-strip +
+  // seat-preview renderers are now lazy.  `scheduleLobbyPlayerChips
+  // LazyMount` requests the chunk in the next idle window and
+  // calls `bindLiveListeners()` once the refs land.
+  scheduleLobbyPlayerChipsLazyMount();
 
   // Phase J Wave 5 — install the profile drawer + open-profile shortcut
   // button, then mount the lobby's new tab strip / public-games pane /
@@ -778,7 +732,12 @@ export function initLobby(client?: Client): void {
   // Phase J Wave 8 — install display-pref body classes (reduced-motion,
   // theme-dark / theme-light) before the auth UI / rule-presets pickers
   // render so the chrome paints with the correct palette immediately.
-  installDisplayPreferences();
+  //
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  Lazy-mounted: an
+  // inline best-effort sync probe paints the dark/light + reduced-
+  // motion classes from a single LS read; the full theme module
+  // (with the matchMedia change-listener) lands in a microtask.
+  scheduleDisplayPreferencesLazyMount();
   // Phase K Wave 20 — Hicks (bundle-audit §3.5).  `installAuthUi()`
   // is now lazy-mounted behind `scheduleAuthUiLazyMount()` (defined
   // at the bottom of this file).  Auth state subscribers (the
@@ -806,7 +765,12 @@ export function initLobby(client?: Client): void {
   // previous-session onboarding shows the default "Profile" text
   // until the hub round-trip eventually lands.
   hydrateProfileFromCacheIfAvailable();
-  installLobbyTabs();
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  `installLobbyTabs`
+  // is now lazy-loaded so the eager bundle sheds the ~80-LoC body
+  // + tab-activation switch.  Tab clicks are eagerly bound by the
+  // schedule helper's micro-stub; the full module lands on the
+  // next microtask after lobby first-paint.
+  scheduleLobbyTabsLazyMount();
   // Phase K Wave 19 — bundle audit §3.4: public-games pane + make-
   // public toggle are now lazy-mounted behind tab/toggle activation.
   // `matchmaking.ts` (~7.7 KB minified incl. polling loop + REST
@@ -816,7 +780,14 @@ export function initLobby(client?: Client): void {
   // LazyMount` at the bottom of this file.
   schedulePublicGamesPaneLazyMount();
   scheduleMakePublicToggleLazyMount();
-  installLobbyStatsPanel();
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  `installLobby
+  // StatsPanel` + `renderLobbyStatsPanel` are now lazy-loaded.
+  // The chunk lands in a microtask after first-paint; the empty
+  // host element is left blank in the interim (the SignalR
+  // profile arrives after ~1 RTT anyway, well after the chunk
+  // lands).  The same chunk also exports the W23-lazified
+  // `installSoundEnabledMirror`.
+  scheduleLobbyStatsPanelLazyMount();
 
   // Phase J Wave 6 — kick off the cookie-bound identity bootstrap +
   // mount the onboarding card + leaderboard surface.  bootstrapIdentity
@@ -855,9 +826,11 @@ export function initLobby(client?: Client): void {
   // payload at `autotable.phaseJ.v1.settings.*`; the Wave-6 directive
   // also wants a discoverable scalar key (`mahjong:soundEnabled`) so
   // tests and external integrations can flip / read the state without
-  // parsing JSON.  This mirror reads the current state at boot and
-  // writes the key on every change of the #settings-sound checkbox.
-  installSoundEnabledMirror();
+  // parsing JSON.
+  //
+  // Phase K Wave 23 — Hicks: lazy-mounted alongside the stats panel
+  // (same `./lobby-stats-panel` chunk).  Sched helper triggers the
+  // import on `?` or `lobby-stats-panel` host visibility.
 
   if (shouldShowOnLoad()) showPanel();
 }
@@ -897,178 +870,29 @@ function bindLiveListeners(client: Client): void {
   // Phase J Wave 5 — re-render chips + stats panel when the local
   // profile changes so the displayName + avatarColor override the
   // WS-broadcast nick / djb2 hue immediately.
+  //
+  // Phase K Wave 23 — `renderLobbyStatsPanel` is now lazy.  When the
+  // chunk hasn't landed yet, the call is a no-op; the panel paints
+  // on the next onProfile tick after the module arrives.  See
+  // `scheduleLobbyStatsPanelLazyMount()` below.
   onProfile(() => {
     renderAll();
-    renderLobbyStatsPanel();
+    if (_lobbyStatsPanelMod !== null) {
+      _lobbyStatsPanelMod.renderLobbyStatsPanel();
+    }
   });
   renderAll();
 }
 
 // Render the lobby's player chip strip from the live `seats` + `nicks`
-// collections.  Layout: one chip per occupied seat, plus a "Bot Δ"
-// placeholder per missing-but-bot-controlled seat (informational —
-// botCount is set per-game, not per-seat, so we use a heuristic of
-// "nick starts with 'Bot '" to detect bot seats).
-function renderPlayerChips(client: Client): void {
-  const strip = document.getElementById('lobby-players-strip');
-  const list = document.getElementById('lobby-players-list');
-  if (strip === null || list === null) return;
+// collections.  Phase K Wave 23 — Hicks (bundle-audit §3.8).
+// Extracted to `./lobby-player-chips.ts` so the ~3 KB of chip-
+// builder + profile-aware resolver code ships as a lazy chunk.
+// The lobby cold path goes through `scheduleLobbyPlayerChipsLazy
+// Mount` below, which loads the chunk in the next idle window
+// and assigns `_renderPlayerChips` / `_renderSeatPreview`.
 
-  const occupants: Array<{ playerId: string; nick: string; seat: number | null }> = [];
-  for (const [playerId, seatInfo] of client.seats.entries()) {
-    if (playerId === 'offline') continue;
-    const rawNick = client.nicks.get(playerId);
-    const nick = resolveDisplayName(
-      playerId, rawNick !== null && rawNick !== undefined ? rawNick : '(no nick)');
-    occupants.push({ playerId, nick, seat: seatInfo.seat });
-  }
-  occupants.sort((a, b) => {
-    const sa = a.seat === null ? 99 : a.seat;
-    const sb = b.seat === null ? 99 : b.seat;
-    return sa - sb;
-  });
 
-  list.replaceChildren();
-  for (let i = 0; i < occupants.length; i++) {
-    list.appendChild(buildPlayerChip(occupants[i], i));
-  }
-  setElHidden(strip, occupants.length === 0);
-}
-
-// Render the lobby's seat-preview grid from the live `seats` + `nicks`
-// collections.  One cell per wind (East/South/West/North); empty cells
-// show "Open" and bot-controlled cells show the bot's nick prefixed
-// with a 🤖.
-function renderSeatPreview(client: Client): void {
-  const preview = document.getElementById('lobby-seat-preview');
-  if (preview === null) return;
-
-  const occupantBySeat: Array<{ playerId: string; nick: string } | null> =
-    [null, null, null, null];
-  for (const [playerId, seatInfo] of client.seats.entries()) {
-    if (playerId === 'offline') continue;
-    if (seatInfo.seat === null) continue;
-    if (seatInfo.seat < 0 || seatInfo.seat > 3) continue;
-    const rawNick = client.nicks.get(playerId);
-    const nick = resolveDisplayName(
-      playerId, rawNick !== null && rawNick !== undefined ? rawNick : '(no nick)');
-    occupantBySeat[seatInfo.seat] = { playerId, nick };
-  }
-
-  for (let seat = 0; seat < 4; seat++) {
-    const cell = preview.querySelector<HTMLElement>(
-      `.lobby-seat-preview-cell[data-seat="${seat}"]`);
-    if (cell === null) continue;
-    const occupantEl = cell.querySelector<HTMLElement>(
-      '.lobby-seat-preview-occupant');
-    if (occupantEl === null) continue;
-    const occupant = occupantBySeat[seat];
-    cell.classList.toggle('lobby-seat-preview-empty', occupant === null);
-    cell.classList.toggle(
-      'lobby-seat-preview-bot', occupant !== null && isBotNick(occupant.nick));
-    if (occupant === null) {
-      occupantEl.textContent = 'Open';
-    } else {
-      occupantEl.textContent = isBotNick(occupant.nick)
-        ? `🤖 ${occupant.nick}`
-        : occupant.nick;
-    }
-  }
-  showEl(preview);
-}
-
-function buildPlayerChip(
-  occupant: { playerId: string; nick: string; seat: number | null },
-  index: number,
-): HTMLElement {
-  const chip = document.createElement('div');
-  chip.className = 'lobby-player-chip';
-  chip.setAttribute('role', 'listitem');
-  chip.setAttribute('data-testid', `lobby-player-chip-${index}`);
-  if (occupant.seat !== null) {
-    chip.setAttribute('data-seat', String(occupant.seat));
-  }
-  // Phase J Wave 5 — prefer the profile's displayName + avatarColor
-  // over the WS-broadcast nick / djb2 hue.  Only the *local* player's
-  // profile is available; remote chips fall back to nick + djb2 hash.
-  const displayName = resolveDisplayName(occupant.playerId, occupant.nick);
-  chip.style.setProperty(
-    '--chip-color',
-    resolveAvatarColor(occupant.playerId, occupant.nick));
-
-  const avatar = document.createElement('span');
-  avatar.className = 'lobby-player-chip-avatar';
-  avatar.textContent = initialsFromNick(displayName);
-
-  const nick = document.createElement('span');
-  nick.className = 'lobby-player-chip-nick';
-  nick.textContent = displayName;
-
-  const seatBadge = document.createElement('span');
-  seatBadge.className = 'lobby-player-chip-seat';
-  seatBadge.textContent = occupant.seat === null
-    ? '👁'
-    : String(occupant.seat);
-
-  chip.appendChild(avatar);
-  chip.appendChild(nick);
-  chip.appendChild(seatBadge);
-  return chip;
-}
-
-// Phase J Wave 5 — profile-aware display-name resolver.  Returns the
-// local player's profile.displayName when their connection-attached
-// profile is loaded; otherwise falls back to the WS-broadcast nick
-// (which itself is also populated from profile.displayName for the
-// local user via client.ts).  Remote players' display names arrive
-// only through the WS nicks broadcast — their profile is not exposed
-// to the local client (parallel identity).
-function resolveDisplayName(playerId: string, nick: string): string {
-  const profile = getProfile();
-  if (profile !== null && profile.playerId === playerId) {
-    return profile.displayName;
-  }
-  if (nick !== '(no nick)' && nick !== '') return nick;
-  return nick;
-}
-
-// Phase J Wave 5 — profile-aware avatar-colour resolver.  Same
-// precedence as resolveDisplayName: local profile wins, then the
-// djb2 hue fallback for remote players (and for the local player
-// before the profile arrives from SignalR).
-function resolveAvatarColor(playerId: string, _nick: string): string {
-  const profile = getProfile();
-  if (profile !== null && profile.playerId === playerId) {
-    return profile.avatarColor;
-  }
-  return chipColorForPlayer(playerId);
-}
-
-// djb2 hash of the player id → HSL hue for the chip background.
-// Lightness + saturation are clamped so every chip is legibly dark
-// enough to host white text without per-player tuning.
-function chipColorForPlayer(playerId: string): string {
-  let hash = 5381;
-  for (let i = 0; i < playerId.length; i++) {
-    hash = ((hash << 5) + hash) + playerId.charCodeAt(i);
-    hash &= 0xffffffff;
-  }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 55%, 38%)`;
-}
-
-function initialsFromNick(nick: string): string {
-  const trimmed = nick.trim();
-  if (trimmed === '') return '?';
-  const parts = trimmed.split(/\s+/);
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-}
-
-function isBotNick(nick: string | null | undefined): boolean {
-  // Mirror game-ui.ts's bot detection so both surfaces agree.
-  return !!nick && /^Bot\b/i.test(nick);
-}
 
 // ---------------------------------------------------------------------
 // Phase J Wave 5 — lobby tab strip.
@@ -1083,424 +907,35 @@ function isBotNick(nick: string | null | undefined): boolean {
 // endpoint isn't hammered while the user is on the My-Game tab.
 // ---------------------------------------------------------------------
 
-function installLobbyTabs(): void {
-  const myTab = document.getElementById(
-    'lobby-my-game-tab') as HTMLButtonElement | null;
-  const pubTab = document.getElementById(
-    'lobby-public-games-tab') as HTMLButtonElement | null;
-  const lbTab = document.getElementById(
-    'lobby-leaderboard-tab') as HTMLButtonElement | null;
-  // Phase J Wave 10 — Tournaments tab (graceful-degrade — backend is not
-  // yet merged; tournaments.ts feature-detects /api/tournaments and shows
-  // a "coming soon" placeholder on 404).
-  const tournTab = document.getElementById(
-    'lobby-tournaments-tab') as HTMLButtonElement | null;
-  const myPane = document.getElementById('lobby-tab-my-game');
-  const pubPane = document.getElementById('lobby-tab-public-games');
-  const lbPane = document.getElementById('lobby-tab-leaderboard');
-  const tournPane = document.getElementById('lobby-tab-tournaments');
-  if (myTab === null || pubTab === null
-      || myPane === null || pubPane === null) {
-    return;
-  }
-
-  const activate = (which: 'my' | 'public' | 'leaderboard' | 'tournaments'): void => {
-    const isMy = which === 'my';
-    const isPub = which === 'public';
-    const isLb = which === 'leaderboard';
-    const isTourn = which === 'tournaments';
-    myTab.classList.toggle('lobby-tab-active', isMy);
-    pubTab.classList.toggle('lobby-tab-active', isPub);
-    if (lbTab !== null) lbTab.classList.toggle('lobby-tab-active', isLb);
-    if (tournTab !== null) tournTab.classList.toggle('lobby-tab-active', isTourn);
-    myTab.setAttribute('aria-selected', isMy ? 'true' : 'false');
-    pubTab.setAttribute('aria-selected', isPub ? 'true' : 'false');
-    if (lbTab !== null) lbTab.setAttribute('aria-selected', isLb ? 'true' : 'false');
-    if (tournTab !== null) tournTab.setAttribute('aria-selected', isTourn ? 'true' : 'false');
-    setElHidden(myPane, !isMy);
-    setElHidden(pubPane, !isPub);
-    if (lbPane !== null) setElHidden(lbPane, !isLb);
-    if (tournPane !== null) setElHidden(tournPane, !isTourn);
-
-    // Per-tab polling discipline — Apone's rate-limit budget is the
-    // motivation here.  Each tab owns one timer; we tear the other
-    // tabs' timers down on activate.
-    //
-    // Phase K Wave 19 — bundle audit §3.4.  Matchmaking poll start/
-    // stop now go through `_matchmakingMod`.  On 'public' tab
-    // activate we load the module (idempotent) then start polling;
-    // on any other tab we only stop polling if the module has
-    // already been loaded (skipping the import when it hasn't been
-    // touched avoids paying the chunk just to call a no-op stopper,
-    // mirroring the leaderboard pattern).
-    if (isPub) {
-      void loadMatchmaking().then((mod) => {
-        if (!mod.isPolling()) mod.startPolling();
-      });
-    } else if (_matchmakingMod !== null) {
-      _matchmakingMod.stopPolling();
-    }
-    if (isLb) {
-      void loadLeaderboard().then((m) => m.startLeaderboardPolling());
-    } else if (_leaderboardMod !== null) {
-      // Only stop the loop when the module has already been loaded;
-      // skipping the import on tab-out avoids paying the chunk just
-      // to call a no-op stopper.
-      _leaderboardMod.stopLeaderboardPolling();
-    }
-  };
-
-  myTab.addEventListener('click', () => activate('my'));
-  pubTab.addEventListener('click', () => activate('public'));
-  if (lbTab !== null) {
-    lbTab.addEventListener('click', () => activate('leaderboard'));
-  }
-  if (tournTab !== null) {
-    tournTab.addEventListener('click', () => activate('tournaments'));
-  }
-  // Default: My Game pane visible.
-  activate('my');
-}
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  `installLobbyTabs`
+// extracted to `./lobby-tabs.ts`; lobby reaches it via the lazy
+// `scheduleLobbyTabsLazyMount()` helper below.
 
 // ---------------------------------------------------------------------
 // Phase J Wave 5 — public-games pane.
 //
-// Renders the cached PublicGame list from matchmaking.ts and wires
-// the Join Random button.  Re-renders on every onUpdate tick (≤5 s).
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  Extracted to
+// `./lobby-public-games-pane.ts` so the ~4 KB of public-games DOM
+// + RPC plumbing ships as a lazy `lobby-public-games-pane.<hash>.js`
+// chunk.  The W23 schedule helpers (below) gate the import on
+// public-games-tab hover / make-public-toggle hover so the eager
+// hot path never pays for code only some users hit.
 // ---------------------------------------------------------------------
-
-function installPublicGamesPane(mm: typeof MatchmakingModule): void {
-  const listEl = document.getElementById('lobby-public-games-list');
-  const emptyEl = document.getElementById('lobby-public-games-empty');
-  const errorEl = document.getElementById('lobby-public-games-error');
-  const joinRandomBtn = document.getElementById(
-    'lobby-join-random') as HTMLButtonElement | null;
-  if (listEl === null || emptyEl === null
-      || errorEl === null || joinRandomBtn === null) {
-    return;
-  }
-
-  const render = (): void => {
-    const games = mm.getCachedGames();
-    const err = mm.getLastError();
-    if (err !== null) {
-      showEl(errorEl);
-      errorEl.textContent = `Failed to load public games: ${err}`;
-    } else {
-      hideEl(errorEl);
-      errorEl.textContent = '';
-    }
-    listEl.replaceChildren();
-    if (games.length === 0) {
-      showEl(emptyEl);
-      return;
-    }
-    hideEl(emptyEl);
-    const cap = Math.min(games.length, 50);
-    for (let i = 0; i < cap; i++) {
-      listEl.appendChild(buildPublicGameCard(games[i], i, mm.navigateToGame));
-    }
-  };
-
-  mm.onUpdate(render);
-  // Initial render in case polling fired before the listener landed.
-  render();
-
-  joinRandomBtn.addEventListener('click', async () => {
-    joinRandomBtn.disabled = true;
-    const prevLabel = joinRandomBtn.textContent;
-    joinRandomBtn.textContent = 'Joining…';
-    try {
-      const variant = readUrlVariant();
-      const result = await mm.joinRandom(variant);
-      if (result !== null) {
-        mm.navigateToGame(result.gameId, result.seatIndex);
-      } else {
-        showEl(errorEl);
-        errorEl.textContent = 'No public games with free seats right now.';
-      }
-    } catch (e) {
-      showEl(errorEl);
-      const msg = e instanceof Error ? e.message : String(e);
-      errorEl.textContent = `Join Random failed: ${msg}`;
-    } finally {
-      joinRandomBtn.disabled = false;
-      joinRandomBtn.textContent = prevLabel ?? '🎲 Join Random';
-    }
-    // Force a refresh after the join attempt so the list reflects the
-    // new occupancy (or the absence of any games to join).
-    void mm.refresh();
-  });
-}
-
-function buildPublicGameCard(
-  game: PublicGame,
-  index: number,
-  navigate: (gameId: string, seatIndex?: number) => void,
-): HTMLElement {
-  const card = document.createElement('div');
-  card.className = 'public-game-card';
-  card.setAttribute('role', 'listitem');
-  card.setAttribute('data-testid', `lobby-public-game-${index}`);
-  card.setAttribute('data-game-id', game.gameId);
-  const full = game.seatedCount >= game.maxSeats;
-  if (full) card.classList.add('public-game-card-full');
-
-  const name = document.createElement('div');
-  name.className = 'public-game-card-name';
-  name.setAttribute('data-testid', `lobby-public-game-name-${index}`);
-  name.textContent = game.publicName !== null && game.publicName !== ''
-    ? game.publicName
-    : `${game.creatorDisplayName}'s game`;
-
-  const meta = document.createElement('div');
-  meta.className = 'public-game-card-meta';
-  const creator = document.createElement('span');
-  creator.className = 'public-game-card-meta-creator';
-  creator.setAttribute('data-testid', `lobby-public-game-host-${index}`);
-  creator.textContent = `Host: ${game.creatorDisplayName}`;
-  const seats = document.createElement('span');
-  seats.className = 'public-game-card-meta-seats';
-  seats.setAttribute('data-testid', `lobby-public-game-seats-${index}`);
-  if (full) seats.classList.add('seats-full');
-  seats.textContent = `${game.seatedCount} / ${game.maxSeats}`;
-  meta.appendChild(creator);
-  meta.appendChild(seats);
-  if (game.variant !== null && game.variant !== '') {
-    const variant = document.createElement('span');
-    variant.className = 'public-game-card-meta-variant';
-    variant.textContent = `Variant: ${game.variant}`;
-    meta.appendChild(variant);
-  }
-
-  const join = document.createElement('button');
-  join.type = 'button';
-  join.className = 'btn btn-primary btn-sm public-game-card-join';
-  join.setAttribute('data-testid', `lobby-public-game-join-${index}`);
-  join.textContent = full ? 'Full' : 'Join';
-  join.disabled = full;
-  join.addEventListener('click', () => {
-    if (full) return;
-    navigate(game.gameId);
-  });
-
-  card.appendChild(name);
-  card.appendChild(meta);
-  card.appendChild(join);
-  return card;
-}
-
-// Read the lobby's currently-selected variant so Join Random can pass
-// it through to the server.  Falls back to undefined (server accepts
-// any variant) when the picker can't be read.
-function readUrlVariant(): string | undefined {
-  const params = new URLSearchParams(window.location.search);
-  const v = params.get('variant');
-  return v !== null && v !== '' ? v : undefined;
-}
-
-// ---------------------------------------------------------------------
-// Phase J Wave 5 — Make-my-game-public toggle.
-//
-// Visible whenever the user is in a live game (gameId is read from
-// the URL).  Flipping the toggle invokes Bishop's SignalR
-// `SetGamePublic` RPC; the optional friendly name input is sent on
-// every toggle-on (omitted when blank).
-// ---------------------------------------------------------------------
-
-function installMakePublicToggle(mm: typeof MatchmakingModule): void {
-  const toggle = document.getElementById(
-    'lobby-make-public-toggle') as HTMLInputElement | null;
-  const nameInput = document.getElementById(
-    'lobby-make-public-name') as HTMLInputElement | null;
-  const statusEl = document.getElementById('lobby-make-public-status');
-  if (toggle === null || nameInput === null || statusEl === null) return;
-
-  const setStatus = (msg: string, isError: boolean): void => {
-    statusEl.textContent = msg;
-    statusEl.classList.toggle('lobby-make-public-status-error', isError);
-  };
-
-  const sync = async (): Promise<void> => {
-    const gameId = currentGameId();
-    if (gameId === null) {
-      setStatus('Not in a live game.', true);
-      toggle.checked = false;
-      toggle.disabled = true;
-      nameInput.disabled = true;
-      return;
-    }
-    toggle.disabled = true;
-    nameInput.disabled = !toggle.checked;
-    const publicName = toggle.checked && nameInput.value.trim() !== ''
-      ? nameInput.value.trim()
-      : undefined;
-    setStatus(toggle.checked ? 'Publishing…' : 'Unlisting…', false);
-    try {
-      const result = await mm.setGamePublic(
-        { gameId, isPublic: toggle.checked, publicName });
-      if (result.success) {
-        setStatus(
-          result.isPublic
-            ? (result.publicName !== null && result.publicName !== ''
-                ? `Listed as "${result.publicName}".`
-                : 'Listed in the public lobby.')
-            : 'Unlisted from the public lobby.',
-          false);
-      } else {
-        setStatus('Server rejected the change.', true);
-        toggle.checked = !toggle.checked;
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setStatus(`Failed: ${msg}`, true);
-      toggle.checked = !toggle.checked;
-    } finally {
-      toggle.disabled = false;
-      nameInput.disabled = !toggle.checked;
-    }
-  };
-
-  toggle.addEventListener('change', () => { void sync(); });
-  // Name changes only matter while the toggle is on; debounce-on-blur
-  // re-publishes so the new name lands without a UI ping-pong.
-  nameInput.addEventListener('blur', () => {
-    if (toggle.checked) void sync();
-  });
-
-  // Initial state — only enable if the URL has a game id; otherwise
-  // leave the controls disabled and the status descriptive.
-  if (currentGameId() === null) {
-    toggle.disabled = true;
-    nameInput.disabled = true;
-    setStatus('Start or join a game to publish it.', false);
-  } else {
-    nameInput.disabled = !toggle.checked;
-    setStatus('', false);
-  }
-}
-
-// Pull the active game id from the URL.  Mirrors the logic in
-// index.ts that bootstraps the Client/Game lifecycle.
-function currentGameId(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  const g = params.get('game');
-  if (g === null || g === '') return null;
-  return g;
-}
 
 // ---------------------------------------------------------------------
 // Phase J Wave 5 — lobby stats panel.
 //
-// Renders the local player's career stats from the profile cache.
-// Empty until the SignalR ProfileLoaded event fires; re-renders on
-// every onProfile tick (the bindLiveListeners wiring above already
-// calls renderLobbyStatsPanel() through renderAll).
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  `installLobby
+// StatsPanel` + `renderLobbyStatsPanel` are extracted to
+// `./lobby-stats-panel.ts` and lazy-mounted via the
+// `scheduleLobbyStatsPanelLazyMount()` helper below.  The
+// renderLobbyStatsPanel call inside `bindLiveListeners` now goes
+// through `_lobbyStatsPanelMod` (which is null until the chunk
+// lands; the panel paints on the first onProfile tick after that).
 // ---------------------------------------------------------------------
 
-function installLobbyStatsPanel(): void {
-  // Initial paint — onProfile listener (set up in bindLiveListeners)
-  // will refresh as updates arrive.
-  renderLobbyStatsPanel();
-  // Also subscribe directly in case the client isn't attached yet
-  // (initLobby runs before Game.start()).
-  onProfile(() => renderLobbyStatsPanel());
-}
-
-function renderLobbyStatsPanel(): void {
-  const host = document.getElementById('lobby-stats-panel');
-  if (host === null) return;
-  const profile: PlayerProfile | null = getProfile();
-  host.replaceChildren();
-  if (profile === null) {
-    const empty = document.createElement('div');
-    empty.className = 'lobby-stats-empty';
-    empty.textContent = 'Loading your stats…';
-    host.appendChild(empty);
-    return;
-  }
-  // Phase K Wave 19 — bundle audit §3.4: defer `formatStats` import to
-  // the first populated render.  Empty/loading state above never pulls
-  // the chunk.  Re-render in place once the formatter lands so the
-  // displayName heading swaps to the full stats panel inline.
-  void loadStatsModule().then((mod) => {
-    const fresh = getProfile();
-    if (fresh === null) return;
-    const currentHost = document.getElementById('lobby-stats-panel');
-    if (currentHost === null) return;
-    currentHost.replaceChildren();
-    const panel = mod.formatStats(fresh.stats);
-    const heading = document.createElement('div');
-    heading.className = 'lobby-stats-panel-subject';
-    heading.textContent = fresh.displayName;
-    currentHost.appendChild(heading);
-    currentHost.appendChild(panel);
-  });
-  // Provisional displayName heading shown while the formatter
-  // chunk is in flight — keeps the panel from looking inert.
-  const heading = document.createElement('div');
-  heading.className = 'lobby-stats-panel-subject';
-  heading.textContent = profile.displayName;
-  host.appendChild(heading);
-}
-
-// ---------------------------------------------------------------------
-// Phase J Wave 6 — sound-toggle localStorage mirror.
-//
-// The Wave-3 settings drawer persists the sound knob inside a
-// JSON-encoded payload at `autotable.phaseJ.v1.settings.*`.  Wave 6
-// adds a discoverable scalar key — `mahjong:soundEnabled` — so the
-// state can be flipped / read from the outside (Playwright specs,
-// browser DevTools, future cross-tab sync) without parsing JSON.
-//
-// The mirror is one-way (settings → key) with two sync points:
-//   • boot — derive the initial key value from the current state of
-//     the #settings-sound checkbox.  At boot the checkbox is hydrated
-//     from localStorage by game-ui.ts:setupSettingsDrawer() before
-//     the user can interact, so this captures the persisted state.
-//   • on `change` event — write the new value whenever the user
-//     flips the checkbox.
-// ---------------------------------------------------------------------
-
-const LS_KEY_SOUND_ENABLED = 'mahjong:soundEnabled';
-let soundMirrorInstalled = false;
-
-function installSoundEnabledMirror(): void {
-  if (soundMirrorInstalled) return;
-  const checkbox = document.getElementById(
-    'settings-sound') as HTMLInputElement | null;
-  if (checkbox === null) return;
-  soundMirrorInstalled = true;
-
-  const writeKey = (enabled: boolean): void => {
-    try {
-      window.localStorage.setItem(LS_KEY_SOUND_ENABLED, enabled ? 'true' : 'false');
-    } catch {
-      /* private mode / quota — skip */
-    }
-  };
-
-  // Initial mirror.  The checkbox's `checked` property is the source of
-  // truth — game-ui.ts seeds it from the JSON-encoded settings payload
-  // before the user can interact; if it hasn't hydrated yet the default
-  // is "on" (matches SETTINGS_DEFAULT.sound).
-  writeKey(checkbox.checked);
-
-  checkbox.addEventListener('change', () => writeKey(checkbox.checked));
-
-  // Also rewrite the key on programmatic changes (e.g. game-ui.ts
-  // toggling the checkbox from a settings-apply flow).  MutationObserver
-  // doesn't fire on .checked changes, so we install a one-shot
-  // re-mirror on every settings drawer click event as a safety net.
-  const drawerToggle = document.getElementById('settings-toggle');
-  if (drawerToggle !== null) {
-    drawerToggle.addEventListener('click', () => {
-      // After the drawer-toggle handler runs the checkbox state may
-      // have been re-hydrated; schedule the mirror for the next tick.
-      window.setTimeout(() => writeKey(checkbox.checked), 0);
-    });
-  }
-}
+// Phase K Wave 23 — see scheduleLobbyStatsPanelLazyMount below for
+// the rest of the W23 stats-panel + sound-mirror plumbing.
 
 // ---------------------------------------------------------------------
 // Phase K Wave 17 — bundle audit §3.2 (Hicks).
@@ -1748,16 +1183,14 @@ function scheduleProfileDrawerLazyMount(): void {
 // table.
 // ---------------------------------------------------------------------
 
-const RULE_PRESET_LS_KEY = 'mahjong.rule-preset.selected.v1';
-const RULE_PRESET_DEFAULT_ID = 'classic-changsha';
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  `readSelectedPreset
+// IdInline` + `RULE_PRESET_LS_KEY` / `RULE_PRESET_DEFAULT_ID`
+// constants moved to `./lobby-url-io.ts` (only `buildUrl` used
+// them).  rule-presets.ts owns its own canonical copy; both files
+// must agree on the LS key by inspection (no shared constants
+// module because pulling rule-presets.ts into the eager bundle is
+// what bundle-audit §3.4 / §3.8 are trying to avoid).
 
-function readSelectedPresetIdInline(): string {
-  try {
-    return window.localStorage.getItem(RULE_PRESET_LS_KEY) ?? RULE_PRESET_DEFAULT_ID;
-  } catch {
-    return RULE_PRESET_DEFAULT_ID;
-  }
-}
 
 let _matchmakingMod: typeof MatchmakingModule | null = null;
 let _matchmakingLoading: Promise<typeof MatchmakingModule> | null = null;
@@ -1772,6 +1205,25 @@ async function loadMatchmaking(): Promise<typeof MatchmakingModule> {
   return _matchmakingLoading;
 }
 
+// Phase K Wave 23 — public-games pane chunk handle (lazy).  Lives in
+// `./lobby-public-games-pane.ts`; only loaded when the user hovers
+// the public-games tab or interacts with the make-public toggle.
+let _publicGamesPaneMod:
+  typeof import('./lobby-public-games-pane') | null = null;
+let _publicGamesPaneLoading:
+  Promise<typeof import('./lobby-public-games-pane')> | null = null;
+
+function loadPublicGamesPane():
+  Promise<typeof import('./lobby-public-games-pane')> {
+  if (_publicGamesPaneMod !== null) return Promise.resolve(_publicGamesPaneMod);
+  if (_publicGamesPaneLoading !== null) return _publicGamesPaneLoading;
+  _publicGamesPaneLoading = import('./lobby-public-games-pane').then((m) => {
+    _publicGamesPaneMod = m;
+    return m;
+  });
+  return _publicGamesPaneLoading;
+}
+
 function schedulePublicGamesPaneLazyMount(): void {
   const pubTab = document.getElementById(
     'lobby-public-games-tab') as HTMLButtonElement | null;
@@ -1780,8 +1232,8 @@ function schedulePublicGamesPaneLazyMount(): void {
   const install = async (): Promise<void> => {
     if (installed) return;
     installed = true;
-    const mm = await loadMatchmaking();
-    installPublicGamesPane(mm);
+    const [mm, mod] = await Promise.all([loadMatchmaking(), loadPublicGamesPane()]);
+    mod.installPublicGamesPane(mm);
   };
   pubTab.addEventListener('mouseenter', () => { void install(); }, { once: true });
   pubTab.addEventListener('focus', () => { void install(); }, { once: true });
@@ -1798,8 +1250,8 @@ function scheduleMakePublicToggleLazyMount(): void {
   const install = async (replayChange: boolean): Promise<void> => {
     if (installed) return;
     installed = true;
-    const mm = await loadMatchmaking();
-    installMakePublicToggle(mm);
+    const [mm, mod] = await Promise.all([loadMatchmaking(), loadPublicGamesPane()]);
+    mod.installMakePublicToggle(mm);
     if (replayChange) {
       // The user clicked the toggle BEFORE the module was loaded; the
       // checked-state has already flipped (browser default), but the
@@ -1840,17 +1292,132 @@ function scheduleRulePresetsUiLazyMount(): void {
   }
 }
 
-let _statsMod: typeof StatsModule | null = null;
-let _statsLoading: Promise<typeof StatsModule> | null = null;
+// Phase K Wave 23 — Hicks (bundle-audit §3.8).  `loadStatsModule`
+// has migrated to `./lobby-stats-panel.ts` (which owns the
+// formatter trigger now that the panel render is also lazy).
+// The eager bundle no longer pays for the stats-loader closure
+// nor the `_statsMod`/`_statsLoading` module-level state.
 
-async function loadStatsModule(): Promise<typeof StatsModule> {
-  if (_statsMod !== null) return _statsMod;
-  if (_statsLoading !== null) return _statsLoading;
-  _statsLoading = import('./stats').then((m) => {
-    _statsMod = m;
-    return m;
-  });
-  return _statsLoading;
+// ── W23 lazy helpers (lobby-tabs + lobby-stats-panel + theme) ────────
+
+import type * as LobbyTabsModule from './lobby-tabs';
+import type * as LobbyStatsPanelModule from './lobby-stats-panel';
+
+let _lobbyTabsMod: typeof LobbyTabsModule | null = null;
+let _lobbyStatsPanelMod: typeof LobbyStatsPanelModule | null = null;
+let _themeMod: typeof ThemeModule | null = null;
+
+function scheduleLobbyTabsLazyMount(): void {
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  Lazy-mount the
+  // tab-strip installer.  The schedule helper triggers on the
+  // earliest of:  microtask after lobby first-paint, or any
+  // explicit click/hover/focus on the four lobby tab buttons (to
+  // avoid a perceptible flash if the microtask is starved by
+  // long-running auth-UI work).
+  if (_lobbyTabsMod !== null) return;
+  const tabs = [
+    'lobby-my-game-tab',
+    'lobby-public-games-tab',
+    'lobby-leaderboard-tab',
+    'lobby-tournaments-tab',
+  ];
+  const load = async (): Promise<void> => {
+    if (_lobbyTabsMod !== null) return;
+    try {
+      _lobbyTabsMod = await import('./lobby-tabs');
+      _lobbyTabsMod.installLobbyTabs({
+        loadMatchmaking: loadMatchmaking,
+        getMatchmakingModule: (): LobbyTabsModule.MatchmakingPollHandle | null =>
+          _matchmakingMod === null ? null : _matchmakingMod,
+        loadLeaderboard: loadLeaderboard,
+        getLeaderboardModule: (): LobbyTabsModule.LeaderboardPollHandle | null =>
+          _leaderboardMod === null ? null : _leaderboardMod,
+      });
+    } catch { /* fail-open — tabs degrade to default visible state */ }
+  };
+  // Prefer requestIdleCallback so the installer mounts in the next
+  // idle window; fall back to setTimeout for Safari.
+  const ric = (window as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(() => { void load(); }, { timeout: 800 });
+  } else {
+    window.setTimeout(() => { void load(); }, 0);
+  }
+  // Belt-and-braces: any pointer activity on a tab button triggers
+  // the load too, so we never miss the user's first click.
+  for (const id of tabs) {
+    const btn = document.getElementById(id);
+    if (btn === null) continue;
+    btn.addEventListener('mouseenter', () => { void load(); }, { once: true });
+    btn.addEventListener('focus', () => { void load(); }, { once: true });
+    btn.addEventListener('click', () => { void load(); }, { once: true });
+  }
+}
+
+function scheduleLobbyStatsPanelLazyMount(): void {
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  Lazy-mount the
+  // stats panel + sound-mirror.  Triggers on the next idle window
+  // (the chunk lands well before the SignalR ProfileLoaded payload
+  // arrives, so the panel still paints with profile data on the
+  // first onProfile tick).
+  if (_lobbyStatsPanelMod !== null) return;
+  const load = async (): Promise<void> => {
+    if (_lobbyStatsPanelMod !== null) return;
+    try {
+      _lobbyStatsPanelMod = await import('./lobby-stats-panel');
+      _lobbyStatsPanelMod.installLobbyStatsPanel();
+      _lobbyStatsPanelMod.installSoundEnabledMirror();
+    } catch { /* fail-open — panel stays empty until next initLobby */ }
+  };
+  const ric = (window as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(() => { void load(); }, { timeout: 1500 });
+  } else {
+    window.setTimeout(() => { void load(); }, 0);
+  }
+}
+
+function scheduleDisplayPreferencesLazyMount(): void {
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  Apply a best-
+  // effort synchronous body-class probe so the chrome paints with
+  // the correct theme palette immediately (no FOUC), then load
+  // the full `./theme` module (with the matchMedia change-
+  // listener) in a microtask.
+  if (_themeMod !== null) return;
+  // Inline sync paint — mirrors `./theme.ts:apply()` for the
+  // user-overridable cases.  Pure LS read + matchMedia probe; no
+  // module deps.
+  try {
+    const raw = window.localStorage.getItem('mahjong.display.v1');
+    let motion: 'auto' | 'reduced' | 'full' = 'auto';
+    let theme: 'auto' | 'light' | 'dark' = 'auto';
+    if (raw !== null) {
+      const j = JSON.parse(raw) as { motion?: string; theme?: string };
+      if (j.motion === 'reduced' || j.motion === 'full') motion = j.motion;
+      if (j.theme === 'light' || j.theme === 'dark') theme = j.theme;
+    }
+    const body = document.body;
+    if (body !== null) {
+      const osReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const reduced = motion === 'reduced' || (motion === 'auto' && osReduced);
+      const dark = theme === 'dark' || (theme === 'auto' && osDark);
+      const light = theme === 'light' || (theme === 'auto' && !osDark);
+      body.classList.toggle('reduced-motion', reduced);
+      body.classList.toggle('full-motion', motion === 'full');
+      body.classList.toggle('theme-dark', dark);
+      body.classList.toggle('theme-light', light);
+    }
+  } catch { /* swallow — full module will retry on land */ }
+  const load = async (): Promise<void> => {
+    if (_themeMod !== null) return;
+    try {
+      _themeMod = await import('./theme');
+      _themeMod.installDisplayPreferences();
+    } catch { /* fail-open — body classes already set above */ }
+  };
+  // Microtask is enough — the inline probe has already painted.
+  window.setTimeout(() => { void load(); }, 0);
 }
 
 // Phase K Wave 20 — bundle audit §3.5: auth-UI lazy mount.
@@ -1892,6 +1459,45 @@ function scheduleAuthUiLazyMount(): void {
   const ric = (window as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
   if (typeof ric === 'function') {
     ric(() => { void load(); }, { timeout: 1500 });
+  } else {
+    window.setTimeout(() => { void load(); }, 0);
+  }
+}
+
+// ── W23 lazy helpers (lobby-player-chips) ─────────────────────────────
+
+import type * as LobbyPlayerChipsModule from './lobby-player-chips';
+
+let _lobbyPlayerChipsMod: typeof LobbyPlayerChipsModule | null = null;
+
+function scheduleLobbyPlayerChipsLazyMount(): void {
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  Lazy-mount the
+  // chip-strip + seat-preview renderers.  These render the live
+  // `seats` + `nicks` collections, so we must load the chunk
+  // before the bind-live listeners can fire.  We do this in the
+  // next idle window (or microtask) so the lobby cold path doesn't
+  // pay for the ~3 KB on first paint.
+  if (_lobbyPlayerChipsMod !== null) return;
+  const load = async (): Promise<void> => {
+    if (_lobbyPlayerChipsMod !== null) return;
+    try {
+      _lobbyPlayerChipsMod = await import('./lobby-player-chips');
+      _renderPlayerChips = _lobbyPlayerChipsMod.renderPlayerChips;
+      _renderSeatPreview = _lobbyPlayerChipsMod.renderSeatPreview;
+      if (_attachedClient !== null) {
+        bindLiveListeners(_attachedClient);
+        // Force a paint now that the renderers are wired — the live
+        // listener bind no-ops if it ran before (idempotent), but
+        // the chip strip needs an explicit render-now since the
+        // seats/nicks tick may have fired before the chunk landed.
+        _lobbyPlayerChipsMod.renderPlayerChips(_attachedClient);
+        _lobbyPlayerChipsMod.renderSeatPreview(_attachedClient);
+      }
+    } catch { /* fail-open — chip strip stays empty if chunk fails */ }
+  };
+  const ric = (window as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(() => { void load(); }, { timeout: 1000 });
   } else {
     window.setTimeout(() => { void load(); }, 0);
   }

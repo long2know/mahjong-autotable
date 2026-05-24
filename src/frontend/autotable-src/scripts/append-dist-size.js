@@ -157,6 +157,30 @@ const KEY_PATTERNS = [
   // the eager bundle (still statically imported by lobby.ts).
   { key: 'identity-onboarding',        re: /^identity-onboarding\.[0-9a-f]+\.js$/ },
   { key: 'identity-avatar-migration',  re: /^identity-avatar-migration\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 23 — Hicks bundle-audit §3.8 split-outs.
+  //
+  // The W23 wave shed the autotable-src-eager bundle past the 95 KiB
+  // ceiling.  Major moves:
+  //   • SignalR (`@microsoft/signalr`) is now its own chunk via the
+  //     manualChunks rule in `vite.config.ts:71`.  Loads in parallel
+  //     with the eager bundle (still a static import; rollup just
+  //     emits a separate file for it).  ~56 KB minified.
+  //   • Lobby surface extracted into seven small lazy chunks:
+  //     `lobby-tabs`, `lobby-stats-panel`, `lobby-player-chips`,
+  //     `lobby-public-games-pane`, `lobby-url-io`, `theme`,
+  //     `keyboard-shortcuts`, `tooltip-engine`, `zh-CN-fallback`.
+  //   Each ships ≤ 5 KB; collectively shed ~6 KB minified off the
+  //   eager bundle.
+  { key: 'signalr',                  re: /^signalr\.[0-9a-f]+\.js$/ },
+  { key: 'lobby-tabs',               re: /^lobby-tabs\.[0-9a-f]+\.js$/ },
+  { key: 'lobby-stats-panel',        re: /^lobby-stats-panel\.[0-9a-f]+\.js$/ },
+  { key: 'lobby-player-chips',       re: /^lobby-player-chips\.[0-9a-f]+\.js$/ },
+  { key: 'lobby-public-games-pane',  re: /^lobby-public-games-pane\.[0-9a-f]+\.js$/ },
+  { key: 'lobby-url-io',             re: /^lobby-url-io\.[0-9a-f]+\.js$/ },
+  { key: 'theme',                    re: /^theme\.[0-9a-f]+\.js$/ },
+  { key: 'keyboard-shortcuts',       re: /^keyboard-shortcuts\.[0-9a-f]+\.js$/ },
+  { key: 'tooltip-engine',           re: /^tooltip-engine\.[0-9a-f]+\.js$/ },
+  { key: 'zh-CN-fallback',           re: /^zh-CN-fallback\.[0-9a-f]+\.js$/ },
 ];
 
 function parseArgs() {

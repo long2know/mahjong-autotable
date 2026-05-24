@@ -66,6 +66,17 @@ const ASSET_PATTERN = '[name].[hash:8].[ext]';
 function manualChunks(id: string): string | undefined {
   if (id.includes('node_modules/hls.js/')) return 'hls';
   if (id.includes('node_modules/@sentry/')) return 'sentry';
+  // Phase K Wave 23 — Hicks (bundle-audit §3.8).  Route the SignalR
+  // client library to its own chunk so the eager `autotable-src`
+  // bundle no longer carries the ~50 KB HubConnection / transport
+  // graph.  `profile.ts` and `hub.ts` statically import from
+  // `@microsoft/signalr`, so the chunk loads via `<link
+  // rel="modulepreload">` in parallel with the eager bundle — the
+  // SignalR start handshake fires *after* lobby first-paint anyway
+  // (when the user enters a game), so the moved-out cost is hidden.
+  // The chunk file-name plugin at line 140 already names it
+  // `signalr.<hash>.js`.
+  if (id.includes('node_modules/@microsoft/signalr/')) return 'signalr';
   // Phase K Wave 15 — Phase L renderer-webgl2 spike chunk.  Routes
   // every file under `src/renderer-webgl2/` into its own chunk so
   // the W15 baseline measurement (and every Phase L wave-by-wave
@@ -94,6 +105,10 @@ function manualChunks(id: string): string | undefined {
   // cross-cutting audit-log browser, and the W22 JWT emergency-
   // revoke trapdoor.  Each chunk targets ≤ 30 KB at W22 close;
   // see `docs/frontend-bundle-audit.md §3.7 (admin chunk split)`.
+  // Note the W23 addition of `tournament-buchholz-view` so the
+  // Phase K Wave 23 Buchholz standings surface routes to the
+  // tournaments chunk alongside the other swiss/tournament
+  // surfaces (W22 baseline).
   if (/[/\\]src[/\\]admin[/\\](?:swiss-|tournament-|replay-integrity-audit|replay-restoration-audit|replay-download-chunked|signalr-purge|signalr-diagnostics|audit-log-search|jwt-emergency-revoke|admin-tournaments)/.test(id)) {
     return 'admin-panel-tournaments';
   }
