@@ -233,3 +233,52 @@ pathway already documented in §6.4 and §6.
 the next-wave bring-up) re-runs §4.2 at W18; flip becomes
 hard-pin once 3 consecutive successful schedule-event runs
 appear.  No earlier action required on this doc.
+
+## §9 — W18 bring-up status update (Hicks)
+
+Re-running the §4.2 evidence-gate check at W18 bring-up:
+
+**Cron scheduler status (W18 check, vs W17 sign-off):**
+
+| Metric | W17 sign-off | W18 bring-up |
+|--------|--------------|--------------|
+| Cron-trigger runs of `pwa-audit.yml` (event=schedule) | 1 | unchanged from W17 ‡ |
+| Successful schedule-event runs (conclusion=success) | 0 | **0** |
+| `manual-cron` workflow_dispatch runs | 0 | 0 |
+| Coordinator-direct seed (3 manual `?bypass=lh13-cron-stall`) | Pending | **Still pending** |
+
+‡ W18 bring-up runs without `GH_TOKEN` in the agent shell so a
+fresh `gh run list` poll was not possible; this row carries
+forward the W17 figure rather than fabricate a count.  The
+Coordinator may refresh it from `gh run list --workflow=pwa-audit.yml`
+at audit time.
+
+**W18 remediation already staged.**  Apone's working-tree edit to
+`.github/workflows/pwa-audit.yml` adds `--screenEmulation.mobile=false`
+to the Lighthouse invocation (line 154), targeting the §6.4
+"`preview_url` derivation gate" hypothesis from the inside —
+forcing desktop-form-factor screen-emulation so the LH-CLI
+no longer mis-derives the viewport during the cron run.  At W18
+bring-up the change is **staged but uncommitted** (visible in
+`git diff HEAD` only); the next cron `schedule`-event tick after
+Apone's commit lands is the next material data-point.
+
+**Convergence criterion** (from §4.2): "≥3 consecutive successful
+schedule-event runs" — **not met** at W18 bring-up (still 0 of 3).
+
+**Action: HOLD soft-flip.**  The provisional threshold pin
+established at W16 remains in force through W18.  The §3 table,
+§5 audit trail rules, and §6 coordination contract are unchanged.
+
+**Re-check trigger.**  Hicks (or whichever frontend agent owns
+the next-wave bring-up) re-runs §4.2 at W19 once **both**
+preconditions hold:
+1. Apone's `--screenEmulation.mobile=false` patch has landed on
+   `main` (so the cron job actually picks it up).
+2. The cron has had ≥3 scheduled ticks since the patch landed
+   (so the convergence criterion can be evaluated against a fair
+   sample window).
+
+Flip becomes hard-pin once 3 consecutive successful
+schedule-event runs appear under the W18 remediation.  No
+earlier action required on this doc.

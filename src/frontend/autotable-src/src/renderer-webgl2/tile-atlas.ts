@@ -1,13 +1,13 @@
 // Phase K Wave 16 — WebGL2 tile-atlas loader (Hicks).
 //
-// Phase L W2 spike scaffolding (W16) + W17 production-grade loader.
-// The production renderer-webgl2 path needs a single atlas image that
-// packs every distinct tile face (34 mahjong faces × 3 face
-// categories — front / back / side) into a 3 × 34 grid so the
-// instanced tile mesh can sample by (faceId, tileId) in
-// `TILE_INSTANCE_FS` without branching.
+// Phase L W2 spike scaffolding (W16) + W17 production-grade loader +
+// W18 face-catalogue wiring.  The production renderer-webgl2 path
+// needs a single atlas image that packs every distinct tile face
+// (34 mahjong faces × 3 face categories — front / back / side) into
+// a 3 × 34 grid so the instanced tile mesh can sample by (faceId,
+// tileId) in `TILE_INSTANCE_FS` without branching.
 //
-// What's HERE (W16 + W17):
+// What's HERE (W16 + W17 + W18):
 //   • `loadTileAtlas()` — fetch + decode an HTMLImageElement from
 //     a URL (default: the production tile atlas asset path).
 //   • `createTileAtlasTexture()` — upload the loaded image into a
@@ -20,20 +20,24 @@
 //     fall back to the synth pattern, return a `TileAtlas` carrying
 //     both the GL texture and the grid metadata.
 //
-// W17 status:
-//   • The canonical asset (`img/tiles-atlas-webgl2.auto.png`,
-//     192 × 2176 px) is now generated offline by
-//     `scripts/generate-tile-atlas-webgl2.js` + committed to the
-//     repo + copied to `dist/img/...` by `vite.config.ts`.  The
-//     fallback path is the safety net for asset-pipeline misses
-//     (loader failures, dev rebuilds before the script runs).
+// W18 status:
+//   • The atlas image is now loaded via `Image` element + WebGL
+//     `texImage2D` at startup — the W17 PNG generator commits
+//     a 192 × 2176 px canonical asset that the W18 face-catalogue
+//     (`./tile-faces.ts`) maps to suit/value tuples.  Together
+//     these complete the Phase L "render 144 tiles with correct
+//     face textures" deliverable.
+//   • The shader (`tile-mesh.ts:TILE_INSTANCE_FS`) samples the
+//     atlas at `(faceCol + localUv) / (gridCols, gridRows)`,
+//     mirrored by the host-side `atlasUvForTile()` helper for
+//     callers that need raw UVs outside the shader path.
 //
-// What's NOT here (Phase L W4+):
-//   • Blender-rendered tile-face source (W4 — currently the front
+// What's NOT here (Phase L W5+):
+//   • Blender-rendered tile-face source (W5 — currently the front
 //     column shows a hue-shifted cell + bitmap-font tile-id label).
-//   • Mipmap generation tuned for the atlas (W4 — currently we let
+//   • Mipmap generation tuned for the atlas (W5 — currently we let
 //     `generateMipmap` do the default thing).
-//   • KTX2 / Basis compression (W5).
+//   • KTX2 / Basis compression (W6).
 
 export const TILE_ATLAS_GRID_COLS = 3;   // front / back / side
 export const TILE_ATLAS_GRID_ROWS = 34;  // 34 distinct mahjong faces

@@ -123,6 +123,11 @@ const SUPPORTED_ACTIONS = new Set([
   // Bishop's W15 `/api/commentary/cost/forecast` endpoint.  See
   // `docs/frontend-routing.md` §7 for the contract.
   'cost-forecast',
+  // Phase K Wave 18 — operator admin panel deep link surfacing
+  // Bishop's three W17 CRUD controllers (replay retention, JWKS
+  // rotation, SignalR retention) as a single tabbed UI.  Admin-
+  // only; see `docs/frontend-routing.md` §8 for the contract.
+  'admin-panel',
 ]);
 
 /**
@@ -773,6 +778,70 @@ async function gateAndMountCostForecast(daysRaw: string | null): Promise<void> {
 }
 
 /**
+ * Phase K Wave 18 — `?action=admin-panel` dispatch (Hicks).
+ *
+ * Operator admin surface for Bishop's three W17 CRUD controllers:
+ *   • POST/GET/PUT/DELETE /api/admin/replays/retention
+ *   • POST/GET/PUT/DELETE /api/admin/jwks-rotation/per-tenant
+ *   • POST/GET/PUT/DELETE /api/admin/signalr/retention
+ *
+ * Same gating posture as `admin-cost`: pre-flight `/api/auth/me`
+ * so unauthenticated users land at `/` (sign-in modal) instead of
+ * watching the panel flash an "Admins only" placeholder.  The
+ * admin-panel chunk handles 401 / 403 / 503 internally as well
+ * (double-layered gate so a stale probe response can't mask the
+ * server's authoritative role check).
+ */
+function dispatchAdminPanel(): void {
+  try {
+    const url = new URL(window.location.href);
+    url.pathname = '/admin/policies';
+    url.searchParams.delete('action');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash,
+    );
+  } catch { /* ignore */ }
+
+  void gateAndMountAdminPanel();
+}
+
+async function gateAndMountAdminPanel(): Promise<void> {
+  // Pre-flight: same admin probe as `?action=admin-cost`.  An
+  // unauthenticated user lands at `/` so `installAuthUi()` mounts
+  // the sign-in modal.  Non-admins flow through to the panel,
+  // which then renders the canonical "Admins only" placeholder.
+  let authed = false;
+  try {
+    const r = await fetch('/api/auth/me', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (r.ok) {
+      const body = await r.json() as { authenticated?: unknown; Authenticated?: unknown };
+      const flag = body.authenticated ?? body.Authenticated;
+      authed = flag === true;
+    }
+  } catch {
+    authed = true; // network blip — let the panel try, server is source of truth.
+  }
+  if (!authed) {
+    redirectToLobbyForSignIn();
+    return;
+  }
+
+  try {
+    const mod = await import('./admin/admin-panel');
+    await mod.openAdminPanel();
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn('[action-router] admin-panel chunk failed to load');
+  }
+}
+
+/**
  * Top-level entry point — call this once at boot before the game-
  * bootstrap import guard fires.  Returns `true` if a recognized
  * action was handled (caller should skip the game-bootstrap import);
@@ -807,6 +876,9 @@ export function handlePwaActionFromUrl(): boolean {
       return true;
     case 'cost-forecast':
       dispatchCostForecast();
+      return true;
+    case 'admin-panel':
+      dispatchAdminPanel();
       return true;
     default:
       return false;

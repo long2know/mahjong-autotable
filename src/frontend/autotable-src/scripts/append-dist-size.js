@@ -101,6 +101,23 @@ const KEY_PATTERNS = [
   { key: 'leaderboard',    re: /^leaderboard\.[0-9a-f]+\.js$/ },
   { key: 'settings-drawer', re: /^settings-drawer\.[0-9a-f]+\.js$/ },
   { key: 'profile-page',   re: /^profile-page\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 18 — Hicks bundle-audit §3.3 split-outs.
+  //
+  // `admin-panel` carries the W18 operator UI for Bishop's three
+  // W17 CRUD surfaces (replay retention, JWKS rotation, SignalR
+  // retention) as a single lazy chunk.  Loaded on
+  // `?action=admin-panel`; W18 ceiling ≤ 40 KB.
+  //
+  // `pwa`, `reconnect`, and `spectator-follow` are the §3.3
+  // bundle-audit lazifications: each was previously eager in
+  // autotable-src-eager and now ships as a small lazy chunk gated
+  // on a synchronous probe (`'serviceWorker' in navigator`,
+  // `?rejoin=` on URL, `?seat=-1`/spectator-class on body
+  // respectively).  Each chunk is well under 10 KB on disk.
+  { key: 'admin-panel',     re: /^admin-panel\.[0-9a-f]+\.js$/ },
+  { key: 'pwa',             re: /^pwa\.[0-9a-f]+\.js$/ },
+  { key: 'reconnect',       re: /^reconnect\.[0-9a-f]+\.js$/ },
+  { key: 'spectator-follow', re: /^spectator-follow\.[0-9a-f]+\.js$/ },
 ];
 
 function parseArgs() {

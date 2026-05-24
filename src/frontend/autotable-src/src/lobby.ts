@@ -78,7 +78,11 @@ import type * as ProfilePageModule from './profile-page';
 import { installAuthUi } from './auth';
 import { installRulePresetsUi, getSelectedPresetId } from './rule-presets';
 import { installDisplayPreferences } from './theme';
-import { installSpectatorFollow } from './spectator-follow';
+// Phase K Wave 18 — Hicks (bundle-audit §3.3).  `spectator-follow`
+// is now lazy-mounted behind a URL probe (`?seat=-1` or
+// `?spectate`) so non-spectator lobby visitors never pull the
+// follow-seat helper (~5 KB after minify).  <1 % of sessions
+// land on a spectator URL (W18 analytics).
 import { setElHidden, showEl, hideEl } from './dom-utils';
 //
 // The lobby is a small overlay panel anchored top-left of the autotable
@@ -737,7 +741,10 @@ export function initLobby(client?: Client): void {
   // the settings drawer; spectator follow-seat helper.
   installAuthUi();
   installRulePresetsUi();
-  installSpectatorFollow();
+  // Phase K Wave 18 — Hicks (bundle-audit §3.3): lazy-mounted on a
+  // URL probe.  Spectator-only surface; non-spectator lobby
+  // visitors shed the ~5 KB chunk entirely.
+  void scheduleSpectatorFollowLazyMount();
   // Phase J Wave 6 — seed profile.ts.current from the localStorage
   // cache so the lobby chip shows the previously-saved displayName
   // *before* the SignalR hub connects (which only happens once the
@@ -1453,6 +1460,28 @@ function scheduleLeaderboardLazyMount(): void {
   tab.addEventListener('mouseenter', () => { void load(); }, { once: true });
   tab.addEventListener('focus', () => { void load(); }, { once: true });
   tab.addEventListener('click', () => { void load(); }, { once: true });
+}
+
+// Phase K Wave 18 — Hicks (bundle-audit §3.3).  Spectator follow-
+// seat helper is only meaningful for spectators (URL ?seat=-1) or
+// the deep-link spectator route (?action=spectate / ?spectate).  We
+// probe the URL synchronously and only dynamic-import the module
+// when the gate matches.  Non-spectator lobby visitors shed the
+// ~5 KB chunk entirely.  The module installs the floating
+// "Spectator" panel + keyboard shortcuts + show-all-hands toggle.
+function scheduleSpectatorFollowLazyMount(): void {
+  let isSpectatorPath = false;
+  try {
+    const s = window.location.search;
+    isSpectatorPath = /[?&]seat=-1\b/.test(s) || /[?&](?:spectate|action=spectate)\b/.test(s);
+  } catch { /* offline-ish — treat as non-spectator */ }
+  if (!isSpectatorPath) return;
+  void (async (): Promise<void> => {
+    try {
+      const mod = await import('./spectator-follow');
+      mod.installSpectatorFollow();
+    } catch { /* fail-open — follow helper is best-effort */ }
+  })();
 }
 
 function scheduleSettingsDrawerLazyMount(): void {
