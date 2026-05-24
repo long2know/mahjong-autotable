@@ -1,0 +1,224 @@
+# Phase K Wave 21 — Apone (DevOps).
+#
+# Helm chart release pipeline — publishes the
+# `helm/mahjong` chart to GHCR as an OCI artefact when a
+# `helm-vX.Y.Z` tag is pushed.
+#
+# # Why a SEPARATE release pipeline (not extending release.yml)
+#
+# The existing `release.yml` workflow handles the container-
+# image release (docker build + sign + push to GHCR for
+# the `v*` tag pattern). Helm-chart releases follow a
+# DIFFERENT cadence + version namespace:
+#
+#   * Helm-chart versioning is independent of the
+#     application version (the W11 Chart.yaml may stay at
+#     0.5.0 while the application moves through 0.20 →
+#     0.30). Conflating the two would force a chart-version
+#     bump on every app release.
+#   * Helm-chart release artefacts are OCI manifests, not
+#     container images. The publish step is `helm push`
+#     to `oci://ghcr.io/long2know/charts/mahjong`, NOT
+#     `docker push`.
+#   * The audit-trail for chart releases is independent of
+#     the image release — a chart cosign signature lives
+#     alongside the OCI manifest at GHCR, separate from
+#     the W4 image-signing key chain.
+#
+# # Trigger — `helm-vX.Y.Z` tag pattern
+#
+# `helm-v` prefix disambiguates from the application's
+# `v*` tag pattern that `release.yml` consumes. A push
+# of `helm-v0.6.0` triggers this workflow; `v0.30.0`
+# triggers `release.yml` without overlap.
+#
+# Operator tagging procedure:
+#
+#   git tag -s helm-v0.6.0 -m "helm-chart 0.6.0 — W21"
+#   git push origin helm-v0.6.0
+#
+# # Validation chain — lint + template + push
+#
+#   1. `helm lint helm/mahjong` — schema + best-practice
+#      check.
+#   2. `helm template helm/mahjong --values helm/mahjong/
+#      values.yaml` — render guard (catches Go-template
+#      errors that `helm lint` doesn't surface).
+#   3. `helm template ... --values values-staging.yaml`
+#      + `--values values-prod.yaml` — per-env render.
+#   4. `helm package helm/mahjong --version <tag-derived>`
+#      — produce the `.tgz` artefact.
+#   5. `helm push <pkg>.tgz oci://ghcr.io/long2know/charts`
+#      — publish to GHCR OCI registry.
+#   6. `cosign sign --key ...` — sign the OCI manifest
+#      (uses the W4 cosign keypair already wired into the
+#      release pipeline secrets).
+#
+# # GHCR OCI registry shape
+#
+# The published chart lives at:
+#
+#   oci://ghcr.io/long2know/charts/mahjong:<chart-version>
+#
+# Operators consume via:
+#
+#   helm pull oci://ghcr.io/long2know/charts/mahjong --version 0.6.0
+#   helm install mahjong oci://ghcr.io/long2know/charts/mahjong --version 0.6.0
+#
+# See `docs/helm-release.md` for the operator runbook.
+
+name: helm-release
+
+on:
+  push:
+    tags:
+      - "helm-v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: helm-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  helm-release:
+    name: Validate + publish helm chart
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Derive chart version from tag
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF##*/}"
+          if [[ ! "$TAG" =~ ^helm-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' does not match helm-vX.Y.Z pattern" >&2
+            exit 1
+          fi
+          CHART_VERSION="${TAG#helm-v}"
+          echo "tag=$TAG"                    >> "$GITHUB_OUTPUT"
+          echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved chart_version=$CHART_VERSION from tag=$TAG"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: helm lint
+        run: |
+          set -euo pipefail
+          helm lint helm/mahjong
+
+      - name: helm template (default values)
+        run: |
+          set -euo pipefail
+          helm template mahjong helm/mahjong \
+            --values helm/mahjong/values.yaml \
+            > /dev/null
+
+      - name: helm template (staging values)
+        run: |
+          set -euo pipefail
+          helm template mahjong helm/mahjong \
+            --values helm/mahjong/values.yaml \
+            --values helm/mahjong/values-staging.yaml \
+            > /dev/null
+
+      - name: helm template (prod values)
+        run: |
+          set -euo pipefail
+          helm template mahjong helm/mahjong \
+            --values helm/mahjong/values.yaml \
+            --values helm/mahjong/values-prod.yaml \
+            > /dev/null
+
+      - name: helm package
+        id: package
+        run: |
+          set -euo pipefail
+          mkdir -p .work/helm-release
+          helm package helm/mahjong \
+            --version "${{ steps.version.outputs.chart_version }}" \
+            --destination .work/helm-release
+          PKG=$(ls -1 .work/helm-release/mahjong-*.tgz | head -n1)
+          echo "package=$PKG" >> "$GITHUB_OUTPUT"
+          ls -la "$PKG"
+
+      - name: Login to GHCR (OCI registry)
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      - name: helm push (OCI)
+        id: push
+        run: |
+          set -euo pipefail
+          helm push "${{ steps.package.outputs.package }}" \
+            oci://ghcr.io/long2know/charts 2>&1 | tee .work/helm-release/push.log
+          DIGEST=$(grep -oE 'Digest: sha256:[a-f0-9]{64}' .work/helm-release/push.log \
+            | head -n1 \
+            | awk '{print $2}')
+          if [ -z "$DIGEST" ]; then
+            echo "::error::could not parse helm push digest" >&2
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "chart_ref=oci://ghcr.io/long2know/charts/mahjong" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.4.1
+
+      - name: cosign sign (keyless, OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          CHART_REF: ${{ steps.push.outputs.chart_ref }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "ghcr.io/long2know/charts/mahjong@${DIGEST}"
+
+      - name: Verify cosign signature
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/long2know/mahjong-autotable/.github/workflows/helm-release.yml@refs/tags/helm-v.*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "ghcr.io/long2know/charts/mahjong@${DIGEST}"
+
+      - name: Summary
+        env:
+          CHART_VERSION: ${{ steps.version.outputs.chart_version }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "## Helm chart release"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Chart version | \`${CHART_VERSION}\` |"
+            echo "| OCI ref | \`oci://ghcr.io/long2know/charts/mahjong:${CHART_VERSION}\` |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| Signed | yes (keyless cosign / GitHub OIDC) |"
+            echo ""
+            echo "Consume with:"
+            echo ""
+            echo "\`\`\`bash"
+            echo "helm pull oci://ghcr.io/long2know/charts/mahjong --version ${CHART_VERSION}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

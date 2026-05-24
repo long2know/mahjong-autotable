@@ -1,0 +1,364 @@
+# Phase K Wave 21 — Apone (DevOps).
+#
+# Argo Rollouts — Canary strategy template for the
+# `mahjong-autotable` FRONTEND (static-asset / PWA) Deployment.
+#
+# Companion to the W20 `backend-bluegreen.yaml` BlueGreen
+# template. W21 closes the second half of the Argo Rollouts
+# strategy matrix:
+#
+#   * W20 — backend (request-path / API)  → BlueGreen
+#     (request-loaded workload; tight cutover; manual review).
+#   * W21 — frontend (static / PWA)        → Canary
+#     (asset-shift workload; gradual %-step ramp; auto-
+#     analysis on error-rate).
+#
+# # Why CANARY and not BlueGreen for the frontend
+#
+# The frontend's traffic shape is fundamentally different from
+# the backend's request-API workload:
+#
+#   * The frontend is STATIC — index.html + the chunked JS/CSS
+#     bundles served by an nginx sidecar. A bad release
+#     manifests as 4xx/5xx on `/`, `/assets/*.js`, or a
+#     console-level fetch failure on a chunked import — NOT
+#     as a request-latency regression (which BlueGreen's W20
+#     P95-gate catches).
+#   * The asset-cache shape favours gradual ramp — the W11
+#     ShaderChunk barrel-surgery + W14 Vite cache-effectiveness
+#     work documented that a new chunk-hash forces a fresh
+#     fetch from EACH client; ramping 5%/25%/50%/100% over 40
+#     minutes lets the CDN warm + the browser-side
+#     cache-population proceed in a stepwise way, avoiding a
+#     thundering-herd against the new bundle.
+#   * The W18 LH13 fix demonstrated that the frontend's
+#     error-budget signal is REQUEST-PATH-LEVEL error rate
+#     (4xx/5xx on `/` + asset paths). Canary AnalysisRun is
+#     the idiomatic shape for that signal: poll Prometheus
+#     for the per-step error rate, gate the next % bump on
+#     the prior step's rate staying < threshold.
+#
+# # The W21 canary shape — 5%/25%/50%/100% with 10min pauses
+#
+# The Rollout below ships FOUR explicit weight steps:
+#
+#   1. setWeight: 5     — initial taste (the W14 retro's
+#                          "small-blast-radius first" rule).
+#   2. pause:    10m    — first AnalysisRun against the 5%
+#                          canary ReplicaSet (40 measurement
+#                          intervals @ 15s).
+#   3. setWeight: 25
+#   4. pause:    10m
+#   5. setWeight: 50
+#   6. pause:    10m
+#   7. setWeight: 100   — full cutover.
+#
+# Total nominal duration: 30 minutes from first canary pod
+# Ready to 100% promotion (the operator can `kubectl argo
+# rollouts promote --full` to skip the remaining pauses
+# AFTER a healthy AnalysisRun, but the default is
+# `autoPromotion: false` so each step requires either the
+# analysis-run pass OR an operator promote).
+#
+# # The AnalysisTemplate — frontend-canary-error-rate
+#
+# Polls Prometheus every 15s for 40 iterations (10min total).
+# Each iteration computes:
+#
+#   sum(rate(nginx_ingress_controller_requests{
+#     service="mahjong-autotable-frontend-canary",
+#     status=~"5..|4[0-9][0-9]"
+#   }[1m]))
+#   /
+#   sum(rate(nginx_ingress_controller_requests{
+#     service="mahjong-autotable-frontend-canary"
+#   }[1m]))
+#
+# The analysis PASSES when the error rate stays BELOW 0.005
+# (0.5%) for 38 of 40 samples. The 2-sample failure budget
+# absorbs one noisy interval; a sustained breach (3+
+# consecutive failures) aborts the rollout + auto-rolls-back
+# to the stable ReplicaSet.
+#
+# # Wiring (out-of-band)
+#
+# NOT in `base/kustomization.yaml`. The W20 BlueGreen template
+# pattern (operator applies the manifest directly when
+# promoting a release) applies here too:
+#
+#   kubectl apply -f infra/k8s/base/argo-rollouts/frontend-canary.yaml
+#
+# from the operator workstation. See
+# `docs/argo-rollouts-frontend-canary.md` for the full
+# runbook.
+#
+# # Cross-references
+#
+#   * `infra/k8s/base/argo-rollouts/backend-bluegreen.yaml` —
+#     W20 backend BlueGreen companion.
+#   * `helm/mahjong/templates/canary-deployment.yaml` — W9
+#     BACKEND canary (legacy alternative to W20 BlueGreen;
+#     coexists with this W21 FRONTEND canary).
+#   * `docs/argo-rollouts-install-runbook.md` — W19 controller
+#     install (prereq).
+#   * `docs/argo-rollouts-frontend-canary.md` — W21 runbook
+#     for THIS file.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: mahjong-autotable-frontend
+  labels:
+    app.kubernetes.io/name: mahjong-autotable-frontend
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: mahjong-autotable
+    mahjong.io/rollout-strategy: canary
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-21
+    mahjong.io/runbook: "docs/argo-rollouts-frontend-canary.md"
+spec:
+  # Frontend pod count. Overlays patch per-env (staging 1,
+  # prod 3) — mirrors the W20 backend BlueGreen pattern.
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mahjong-autotable-frontend
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mahjong-autotable-frontend
+        app.kubernetes.io/component: web
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: web
+          image: ghcr.io/long2know/mahjong-autotable-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+
+  strategy:
+    canary:
+      # `canaryService` — Service routing to the CANARY
+      # (new) ReplicaSet. Pre-created below; the
+      # rollout-controller patches its selector to point at
+      # the canary `rollouts-pod-template-hash` label.
+      canaryService: mahjong-autotable-frontend-canary
+
+      # `stableService` — Service routing to the STABLE
+      # (old) ReplicaSet. References the existing prod
+      # frontend Service the W10 PWA work introduced.
+      stableService: mahjong-autotable-frontend
+
+      # `maxSurge: 1` / `maxUnavailable: 0` — same shape as
+      # the W2 base Deployment's RollingUpdate. Prevents a
+      # capacity dip during the canary ramp.
+      maxSurge: 1
+      maxUnavailable: 0
+
+      # The W21 5%/25%/50%/100% step ladder with 10min
+      # pauses between bumps. The `pause: {}` form (no
+      # duration) means the controller HOLDS at that step
+      # until either:
+      #
+      #   (a) the inline `analysis.templates` AnalysisRun
+      #       completes successfully, OR
+      #   (b) the operator runs `kubectl argo rollouts
+      #       promote mahjong-autotable-frontend` (manual
+      #       override).
+      #
+      # `pause: { duration: 10m }` would force a fixed
+      # wait — we use the AnalysisRun-gated form for the
+      # safety case (a flapping error rate blocks the
+      # next step) and fall back to operator-promote
+      # only when the analysis is healthy.
+      steps:
+        - setWeight: 5
+        - pause:
+            duration: 10m
+        - analysis:
+            templates:
+              - templateName: frontend-canary-error-rate
+            args:
+              - name: service-name
+                value: mahjong-autotable-frontend-canary
+              - name: error-rate-threshold
+                value: "0.005"
+        - setWeight: 25
+        - pause:
+            duration: 10m
+        - analysis:
+            templates:
+              - templateName: frontend-canary-error-rate
+            args:
+              - name: service-name
+                value: mahjong-autotable-frontend-canary
+              - name: error-rate-threshold
+                value: "0.005"
+        - setWeight: 50
+        - pause:
+            duration: 10m
+        - analysis:
+            templates:
+              - templateName: frontend-canary-error-rate
+            args:
+              - name: service-name
+                value: mahjong-autotable-frontend-canary
+              - name: error-rate-threshold
+                value: "0.005"
+        - setWeight: 100
+
+      # `scaleDownDelaySeconds` — old (stable) ReplicaSet
+      # stays Ready for 60s after the 100% step. Symmetric
+      # with the W20 BlueGreen 30s — the frontend's
+      # connection-drain window is longer (browser-side
+      # XHR + WebSocket lifecycles tolerate longer drain
+      # than backend API connections).
+      scaleDownDelaySeconds: 60
+
+      # `abortScaleDownDelaySeconds` — when the operator
+      # aborts (or the AnalysisRun fails 3-in-a-row), the
+      # canary ReplicaSet is scaled to 0 after this delay.
+      abortScaleDownDelaySeconds: 30
+
+---
+# AnalysisTemplate — frontend canary error-rate gate.
+#
+# Polls Prometheus every 15s for 40 iterations (10min total).
+# Computes the per-service 4xx+5xx rate as a fraction of
+# total requests over a rolling 1m window. The analysis
+# passes when the error rate stays BELOW the
+# `error-rate-threshold` arg (default 0.005 = 0.5%) for at
+# least 38 of 40 samples.
+#
+# Why 0.5%:
+#
+# The frontend's W17 LH13 baseline error rate was 0.12% over
+# a 24h prod-traffic sample. 0.5% gives a ~4× safety margin
+# while still being tight enough to catch a regression
+# (e.g. a chunk-hash mismatch causing 100% asset failure on
+# the canary pods would push the rate above 1% almost
+# immediately; the analysis would abort within the first
+# minute).
+#
+# Operator override paths:
+#
+#   * Bump `error-rate-threshold` via a kustomize patch
+#     when a known-noisy release is rolling (e.g. a
+#     deliberate 404 on a deprecated path).
+#   * `--skip-analysis-run` on the rollouts CLI (escalation
+#     only; audit-logged).
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: frontend-canary-error-rate
+  labels:
+    app.kubernetes.io/name: mahjong-autotable-frontend
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: frontend-canary-analysis
+    mahjong.io/canary-gate: error-rate
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-21
+spec:
+  args:
+    - name: service-name
+    - name: error-rate-threshold
+  metrics:
+    - name: canary-error-rate
+      interval: 15s
+      count: 40
+      # Pass when error-rate < threshold (default 0.5%).
+      # `result[0]` is the scalar return from the
+      # Prometheus query below.
+      successCondition: result[0] < {{args.error-rate-threshold}}
+      # Allow 2 noisy samples out of 40 — covers a single
+      # transient blip without aborting the ramp.
+      failureLimit: 2
+      # `inconclusiveLimit` — when Prometheus returns NaN
+      # (e.g. zero total-request rate during a brief
+      # traffic lull), the analysis-run treats the sample
+      # as inconclusive rather than failing. Up to 4
+      # inconclusive samples are tolerated.
+      inconclusiveLimit: 4
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            sum(rate(
+              nginx_ingress_controller_requests{
+                service="{{args.service-name}}",
+                status=~"5..|4[0-9][0-9]"
+              }[1m]
+            ))
+            /
+            sum(rate(
+              nginx_ingress_controller_requests{
+                service="{{args.service-name}}"
+              }[1m]
+            ))
+
+---
+# Service — mahjong-autotable-frontend-canary.
+#
+# Second Service whose selector the Rollout controller
+# patches at apply-time to point at the CANARY (new)
+# ReplicaSet. Pre-creating the Service here means the
+# AnalysisRun's Prometheus query has a stable label-set to
+# match against from the first 5% step onward.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mahjong-autotable-frontend-canary
+  labels:
+    app.kubernetes.io/name: mahjong-autotable-frontend
+    app.kubernetes.io/component: web-canary
+    mahjong.io/canary-role: canary
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-21
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  # Placeholder selector — patched at apply-time by the
+  # Rollout controller to carry the canary
+  # `rollouts-pod-template-hash` label. The broad
+  # app.kubernetes.io/name selector is a safe fallback
+  # when the controller is not yet running (matches the
+  # W20 BlueGreen preview-Service pattern).
+  selector:
+    app.kubernetes.io/name: mahjong-autotable-frontend

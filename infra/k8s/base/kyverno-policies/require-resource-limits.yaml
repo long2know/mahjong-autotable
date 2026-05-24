@@ -1,0 +1,177 @@
+# Phase K Wave 21 — Apone (DevOps).
+#
+# Kyverno ClusterPolicy that REQUIRES every Pod in
+# `mahjong-prod` to declare BOTH `resources.limits.cpu` AND
+# `resources.limits.memory` on every container. Audit-mode
+# at W21 with a 5-day grace window (enforce-flip in W22).
+#
+# # Why this matters
+#
+# Pods without resource limits are a CLUSTER-STABILITY
+# primitive risk:
+#
+#   * A pod without `limits.memory` can OOM the node — the
+#     kubelet's QoS-class evictor will start killing OTHER
+#     pods on the same node before it OOMs the offender.
+#     One mis-bounded sidecar can take out an entire node's
+#     workload.
+#   * A pod without `limits.cpu` competes for the node's
+#     CPU shares against every other unbounded pod under
+#     completely-fair-scheduler. P99 request latency on
+#     the W20 BlueGreen prepromotion-gate observed in
+#     pre-W21 staging traces tracked the
+#     `kube_pod_resource_limit{resource="cpu"}` cardinality
+#     1:1 — every new unbounded pod added a measurable
+#     P99 budget burn.
+#
+# Both shapes are operator-time misses (a `kubectl apply
+# -f deployment.yaml` lands without limits because the
+# author forgot the `resources:` block, OR copy-pasted a
+# helm-chart template that only sets `requests:`). A
+# Kyverno admission-time rule catches the miss before the
+# pod schedules.
+#
+# # Why audit-mode FIRST (5-day grace)
+#
+# Matches the W19 → W20 pre-wire → enforce pattern (closed
+# clean at W20 cutover). The W21 file lands in Audit mode
+# so:
+#
+#   * Existing prod workloads that lack limits surface as
+#     PolicyReports rather than admission denials. (Pre-W21
+#     verification: the W20 deployment.yaml + coturn pods
+#     both declare cpu+memory limits; this rule's audit
+#     window confirms the cluster-wide invariant.)
+#   * The 5-day grace window lets Hudson's
+#     `kyverno-deny-events` panel collect a clean signal
+#     before the enforce flip.
+#   * Rollback path is a single `git revert <merge-commit>`
+#     — no admission impact on existing pods.
+#
+# Enforce-flip cutover scheduled for W22 (mirrors W19→W20
+# enforce-flip cadence). The flip is a single
+# `validationFailureAction: Audit → Enforce` +
+# `failurePolicy: Ignore → Fail` edit (same shape as the
+# W20 commit on `disallow-lateral-movement.yaml`).
+#
+# # Wiring
+#
+# Out-of-band at W21 — NOT in `base/kustomization.yaml`.
+# Same rationale as the W19 companion `disallow-lateral-
+# movement` + `require-network-policy` ClusterPolicies
+# (Kyverno ClusterPolicies live at cluster scope, not in
+# any overlay namespace). Apply directly:
+#
+#   kubectl apply -f infra/k8s/base/kyverno-policies/require-resource-limits.yaml
+#
+# # Cross-references
+#
+#   * `infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml`
+#     — W19/W20 lateral-movement Kyverno rule (Enforce post-W20).
+#   * `infra/k8s/base/kyverno-policies/require-network-policy.yaml`
+#     — W19/W20 NetworkPolicy-presence rule (Enforce post-W20).
+#   * `infra/k8s/base/kyverno-policies/disallow-host-paths.yaml`
+#     — W21 companion (pod-level hostPath volumes denied).
+#   * `docs/kyverno-w21-additional-rules.md` — W21 operator runbook.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: "Require CPU + memory limits on every Pod container (W21, Audit)"
+    policies.kyverno.io/category: "Pod Security / Resource Hygiene"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod, Deployment, StatefulSet, DaemonSet"
+    policies.kyverno.io/description: >-
+      W21 audit-mode policy. Two sub-rules require every
+      container in a mahjong-prod Pod to declare BOTH
+      resources.limits.cpu AND resources.limits.memory. A
+      missing limit on either dimension surfaces as a
+      PolicyReport row. 5-day grace window precedes the
+      W22 enforce-flip — see
+      docs/kyverno-w21-additional-rules.md §4 for the
+      cutover plan.
+spec:
+  # W21 audit-mode launch — mirrors the W19 audit window
+  # discipline. The W22 cutover flips this to Enforce
+  # alongside `failurePolicy: Ignore → Fail`.
+  validationFailureAction: Audit
+  # `background: true` — sub-rules are pure validate;
+  # background scans against existing pods produce
+  # PolicyReports for any invariant drift. This is the
+  # primary signal source for the 5-day grace window.
+  background: true
+  webhookTimeoutSeconds: 30
+  # `failurePolicy: Ignore` — paired with audit-mode. A
+  # Kyverno webhook outage during W21 audit window MUST
+  # NOT spuriously surface as a PolicyReport
+  # (Ignore-on-failure is the correct audit-mode default,
+  # parallel to the W19 audit-mode shape).
+  failurePolicy: Ignore
+  rules:
+    - name: require-cpu-limit
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - mahjong-prod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - external-secrets
+                - argo-rollouts
+      validate:
+        message: >-
+          mahjong-prod Pods MUST declare resources.limits.cpu
+          on every container. Missing limits.cpu lets the
+          container compete unbounded for CFS shares and
+          burns the cluster-wide P99 latency budget. See
+          docs/kyverno-w21-additional-rules.md §1.1.
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                resources:
+                  limits:
+                    cpu: "?*"
+    - name: require-memory-limit
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - mahjong-prod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - external-secrets
+                - argo-rollouts
+      validate:
+        message: >-
+          mahjong-prod Pods MUST declare
+          resources.limits.memory on every container.
+          Missing limits.memory lets the container OOM the
+          node — the QoS-class evictor will kill OTHER pods
+          on the same node before terminating the
+          unbounded offender. See
+          docs/kyverno-w21-additional-rules.md §1.2.
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                resources:
+                  limits:
+                    memory: "?*"
