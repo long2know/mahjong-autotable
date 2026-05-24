@@ -2864,3 +2864,77 @@ the script header (mirrors the W10/W11 banners).
 JSON valid (`python3 -m json.tool tests/ci/lane-map.json`); bash
 clean (`bash -n tests/ci/check-cross-lane-bundling.sh`); backend
 gate untouched (2789 / 0 / 0 from W13 bring-up).
+
+## Phase K Wave 15 lane-map amendment — 2026-11-13
+
+### Problem
+
+Two W15 bring-up commits on `stlong/phase-k-wave-15-bringup`
+triggered cross-lane bundling violations on
+`--pr stlong/phase-k-wave-15-bringup --strict` even though both
+commits did the work each agent's W15 prompt explicitly tasked
+them with:
+
+1. **Apone `b88a5a4`** edited
+   `.github/workflows/lane-discipline-nightly.yml` (Vasquez-lane
+   via the regex `.github/workflows/lane-discipline(-[a-z]+)?\.yml`).
+   The W15 Apone prompt called out a heredoc bug fix in that
+   workflow — the file is in Apone's `.github/workflows/`
+   namespace but is QA-harness owned. Structurally identical to
+   the W10 `agent_handoff_protocol_md_shared` case.
+
+2. **Hicks `173bb41`** edited
+   `src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts`
+   and `src/frontend/autotable-src/tests/e2e/playwright.config.ts`
+   (Vasquez-lane via `src/frontend/autotable-src/tests/`). The
+   W15 Hicks prompt called out the Playwright
+   `snapshotPathTemplate` migration, which inherently touches
+   both files. Structurally parallel to W13's
+   `visual_regression_baselines_shared`.
+
+Pre-amend: `checked=4 violations=2 — FAIL`.
+
+### Resolution — 2 new `shared_files` entries
+
+- **`lane_discipline_nightly_yml_shared`** (parallel to W10
+  `agent_handoff_protocol_md_shared`): co-authored by apone +
+  vasquez, primary `vasquez` (QA-harness intent overrides the
+  `.github/workflows/` filesystem-location heuristic). Path:
+  `^\.github/workflows/lane-discipline-nightly\.yml$`.
+- **`playwright_visual_regression_shared`** (parallel to W13
+  `visual_regression_baselines_shared`): co-authored by hicks +
+  vasquez, primary `vasquez` (test-lane root owner). Two paths
+  in one entry:
+    * `^src/frontend/autotable-src/tests/e2e/playwright\.config\.ts$`
+    * `^src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual\.spec\.ts$`
+
+  Single registry entry covers both because the W15
+  snapshotPathTemplate migration is one logical change spanning
+  the spec + the Playwright config (both must move together for
+  snapshot baselines to keep resolving).
+
+Both patterns mirrored into `is_shared_file()` and
+`shared_file_authors()` in `tests/ci/check-cross-lane-bundling.sh`
+(W11 §5.9 registry policy: JSON declares, bash matches at
+runtime). `shared_files.description` extended to narrate the W15
+additions mirroring the W10/W11/W13 pattern.
+
+### Verification
+
+```
+[lane-discipline] checking 4 commit(s) in mode=pr
+
+✓ 0a316d7569 — lane=vasquez author=vasquez
+✓ e2986d2333 — lane=bishop  author=bishop
+✓ b88a5a4a00 — lane=apone   author=apone
+✓ 173bb418ff — lane=hicks   author=hicks
+
+[lane-discipline] checked=4 violations=0
+[lane-discipline] OK
+```
+
+JSON valid (`python3 -m json.tool tests/ci/lane-map.json`); bash
+clean (`bash -n tests/ci/check-cross-lane-bundling.sh`); backend
+gate untouched (3312 / 0 / 0 from W15 bring-up `0a316d7`). 5th-
+consecutive-wave 0-violation invariant restored on the W15 PR
+branch.

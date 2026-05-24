@@ -33,7 +33,7 @@
     ]
   },
   "shared_files": {
-    "description": "Phase K Wave 8 — Vasquez refinement (broadened in Waves 10 + 11 + 13). Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case. agent_handoff_protocol_md_shared (added in W10) recognises that docs/agent-handoff-protocol.md is co-authored by Vasquez (concurrent-agent safety + stash-discipline) and Apone (branch-protection runbook + lock-file relocation). shims_shared (added in W11) recognises that test shims in src/backend/tests/.../Shims/ are co-authored by any contract author so a forward-stage shim for a backend surface (Bishop) can land alongside Vasquez's contract harness without an author-lane mismatch. pwa_audit_workflow_shared (added in W11) recognises that PWA-related workflows (.github/workflows/pwa-audit.yml + .github/workflows/pwa-builder.yml) are co-authored by Hicks (frontend asset author) and Apone (workflow runtime owner) — primary is apone, who owns the .github/workflows/ namespace. bundle_health_workflow_shared (added in W13) recognises that .github/workflows/bundle-health.yml is co-authored by Hicks (per-PR bundle-size sticky comment, frontend bundle author) and Apone (workflow runtime owner) — primary is apone, parallel to pwa_audit_workflow_shared. visual_regression_baselines_shared (added in W13) recognises that Playwright visual-regression baseline PNGs under src/frontend/autotable-src/tests/e2e/__screenshots__/ are captured by Hicks (frontend asset author, via the W13 scripts/capture-visual-baselines.js side-channel) and consumed/owned by Vasquez (QA harness in src/frontend/autotable-src/tests/) — primary is vasquez, since the baselines live under the test-lane root.",
+    "description": "Phase K Wave 8 — Vasquez refinement (broadened in Waves 10 + 11 + 13 + 15). Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case. agent_handoff_protocol_md_shared (added in W10) recognises that docs/agent-handoff-protocol.md is co-authored by Vasquez (concurrent-agent safety + stash-discipline) and Apone (branch-protection runbook + lock-file relocation). shims_shared (added in W11) recognises that test shims in src/backend/tests/.../Shims/ are co-authored by any contract author so a forward-stage shim for a backend surface (Bishop) can land alongside Vasquez's contract harness without an author-lane mismatch. pwa_audit_workflow_shared (added in W11) recognises that PWA-related workflows (.github/workflows/pwa-audit.yml + .github/workflows/pwa-builder.yml) are co-authored by Hicks (frontend asset author) and Apone (workflow runtime owner) — primary is apone, who owns the .github/workflows/ namespace. bundle_health_workflow_shared (added in W13) recognises that .github/workflows/bundle-health.yml is co-authored by Hicks (per-PR bundle-size sticky comment, frontend bundle author) and Apone (workflow runtime owner) — primary is apone, parallel to pwa_audit_workflow_shared. visual_regression_baselines_shared (added in W13) recognises that Playwright visual-regression baseline PNGs under src/frontend/autotable-src/tests/e2e/__screenshots__/ are captured by Hicks (frontend asset author, via the W13 scripts/capture-visual-baselines.js side-channel) and consumed/owned by Vasquez (QA harness in src/frontend/autotable-src/tests/) — primary is vasquez, since the baselines live under the test-lane root. lane_discipline_nightly_yml_shared (added in W15) recognises that .github/workflows/lane-discipline-nightly.yml is co-authored by Apone (workflow runtime owner; W15 heredoc bug fix) and Vasquez (lane-discipline harness owner) — primary is vasquez, parallel to agent_handoff_protocol_md_shared. playwright_visual_regression_shared (added in W15) recognises that the Playwright visual-regression spec (src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts) and its companion playwright.config.ts are co-authored by Hicks (Playwright-runtime owner; W15 snapshotPathTemplate migration) and Vasquez (test-lane root owner) — primary is vasquez, since both files live under src/frontend/autotable-src/tests/.",
     "selectors_md_shared": {
       "paths": [
         "^src/frontend/autotable-src/tests/selectors\\.md$",
@@ -74,6 +74,21 @@
     "visual_regression_baselines_shared": {
       "paths": [
         "^src/frontend/autotable-src/tests/e2e/__screenshots__/.*\\.png$"
+      ],
+      "authors": ["hicks", "vasquez"],
+      "primary": "vasquez"
+    },
+    "lane_discipline_nightly_yml_shared": {
+      "paths": [
+        "^\\.github/workflows/lane-discipline-nightly\\.yml$"
+      ],
+      "authors": ["apone", "vasquez"],
+      "primary": "vasquez"
+    },
+    "playwright_visual_regression_shared": {
+      "paths": [
+        "^src/frontend/autotable-src/tests/e2e/playwright\\.config\\.ts$",
+        "^src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual\\.spec\\.ts$"
       ],
       "authors": ["hicks", "vasquez"],
       "primary": "vasquez"
