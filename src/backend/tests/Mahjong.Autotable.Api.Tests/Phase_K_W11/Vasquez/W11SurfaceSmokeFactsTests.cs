@@ -291,7 +291,8 @@ public sealed class W11SurfaceSmokeFactsTests
             x.Name.Equals("Wave1ThroughKW11RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 }

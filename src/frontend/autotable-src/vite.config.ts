@@ -66,6 +66,13 @@ const ASSET_PATTERN = '[name].[hash:8].[ext]';
 function manualChunks(id: string): string | undefined {
   if (id.includes('node_modules/hls.js/')) return 'hls';
   if (id.includes('node_modules/@sentry/')) return 'sentry';
+  // Phase K Wave 15 — Phase L renderer-webgl2 spike chunk.  Routes
+  // every file under `src/renderer-webgl2/` into its own chunk so
+  // the W15 baseline measurement (and every Phase L wave-by-wave
+  // expansion) lands in `dist-size.json` as a discrete number.
+  // The chunk only ships when `?renderer=webgl2-hello` is on the
+  // URL — `src/index.ts` guards the dynamic import.
+  if (/[/\\]src[/\\]renderer-webgl2[/\\]/.test(id)) return 'renderer-webgl2';
   // Phase K Wave 8 — Peel GLTFLoader (+ its KTX2/Draco/meshopt
   // extension paths) into its own chunk.  In W7 the dynamic-import
   // landed inside the renderer chunk anyway because Rollup's

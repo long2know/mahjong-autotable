@@ -241,14 +241,65 @@ The Vasquez W14 deliverable is therefore a **completion memo** at
 The Reads/Writes split (W12 §2 proposal) remains parked under Bishop's
 W15+ lane — W14 maintains the canonical-`DbSerial`-only posture.
 
-### 3.4. When NOT to use `[Collection("DbSerial")]`
+### 3.4. DbSerial migration final completion (W15 — Vasquez + Bishop)
+
+W15 closes the **last 2 candidates** flagged in W12 / W13 / W14:
+`Phase_K_W9/Bishop/EfCommentaryUsageMeterTests.cs` and
+`Phase_K_W9/Bishop/IdempotencyStoreContractTests.cs`. Per the W14
+memo (`Phase_K_W14/Vasquez/db-serial-migration-completion.md` §3),
+those two files live under `Phase_K_W9/Bishop/` and are attributed
+to Bishop by the `wave_subdir_overrides` rule in
+`tests/ci/lane-map.json`. A Vasquez-authored commit cannot apply
+`[Collection("DbSerial")]` to them without tripping the cross-lane
+bundling gate; the W15 wave brief assigns the application itself
+to **Bishop's lane**, with Vasquez running the post-merge validation.
+
+**W15 split of work:**
+
+- **Bishop W15:** applies `[Collection("DbSerial")]` to the two
+  Phase_K_W9/Bishop files. Author identity:
+  `Bishop (backend) <bishop@squad.mahjong>`.
+- **Vasquez W15:** runs the 5-run flake harness at the W15 baseline
+  (3-5 consecutive `dotnet test` invocations) and confirms the
+  migration is flake-neutral at the new gate. The Vasquez-authored
+  contract test
+  `Phase_K_W15/Vasquez/BishopW15DbSerialCompletionOnW9FilesTests.cs`
+  soft-pins the attribute presence on both files — soft-pass on
+  absence so the test ships even if Bishop's PR is still in flight,
+  flips to a hard-asserting green pass once Bishop's PR lands.
+
+**Cross-lane synchronisation:**
+
+The Vasquez W15 PR ships independently of the Bishop W15 PR. The
+soft-pin pattern means the test file:
+
+- **Pre-merge** of Bishop W15: the `[Collection("DbSerial")]`
+  attribute is absent — the test soft-passes (returns early on the
+  type-lookup miss).
+- **Post-merge** of Bishop W15: the attribute is present — the test
+  records a positive observation.
+
+**Why this matters:** the migration's flake-reduction property is a
+**defensive-depth** play (W12 audit observed zero flakes in the
+3-parallel harness even before the migration). The 5-run validation
+at W15 confirms zero regression at the new gate; the test file is
+the durable receipt that the migration completed.
+
+**Escalation path retired at W15:** the W14 memo's "if Bishop does
+not pick up the work in W15 → Coordinator-direct application per
+§4.3" branch is **no longer active** as of W15 close. Bishop's W15
+lane explicitly picks up the application; the escalation runbook
+remains in `docs/agent-handoff-protocol.md §4.3` for any future
+cross-lane blocker that survives multiple waves.
+
+### 3.5. When NOT to use `[Collection("DbSerial")]`
 
 Any test that DOESN'T touch EF Core / SQLite / the WAF singleton
 MUST stay outside the collection. Putting a pure reflection test
 into `DbSerial` is a regression: it serialises a fact that has
 no reason to be serial, slowing the suite for everyone.
 
-### 3.5. Future collections
+### 3.6. Future collections
 
 If a SECOND class of process-level contention emerges (e.g.
 Redis container shared across tests in CI), a new collection

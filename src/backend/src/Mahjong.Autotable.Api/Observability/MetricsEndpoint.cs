@@ -111,6 +111,23 @@ public static class MetricsEndpoint
         var seqStore = services.GetService<ISignalRSequenceStore>();
         AppendSignalRSequenceMetrics(sb, seqMetrics, seqStore);
 
+        // Phase K Wave 15 — Bishop. Tournament-scale query latency
+        // histogram, bucketed by endpoint + page_size_bucket. See
+        // docs/bracket-shape.md §6 "Page-size tuning".
+        var tournamentLatency = services.GetService<TournamentQueryLatencyMetrics>();
+        if (tournamentLatency is not null)
+        {
+            tournamentLatency.AppendPrometheus(sb);
+        }
+        else
+        {
+            // Zeroed schema preamble so dashboards see a stable shape
+            // even when the collector is not wired (test fixtures).
+            sb.Append("# HELP ").Append(TournamentQueryLatencyMetrics.MetricName)
+              .AppendLine(" Tournament-scale query endpoint latency in seconds. Collector not wired.");
+            sb.Append("# TYPE ").Append(TournamentQueryLatencyMetrics.MetricName).AppendLine(" histogram");
+        }
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
     }
 

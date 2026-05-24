@@ -232,3 +232,79 @@ Hard-asserted in
 * Model + month strings are populated from
   `Commentary:Model` + `DateTime.UtcNow` respectively.
 * `state` is one of `Healthy` / `Warning` / `Exhausted`.
+
+## §7 — Cost forecasting (Phase K Wave 15)
+
+The W14 `GET /api/commentary/cost/summary` returned a point-in-
+time spend snapshot. W15 adds a **forecast** endpoint that
+projects month-end spend by linearly extrapolating the month-to-
+date spend over the elapsed fraction of the calendar month.
+
+### §7.1 — Wire shape
+
+```
+GET /api/commentary/cost/forecast
+GET /api/commentary/cost/forecast?days=N        # pin the denominator
+```
+
+Response (admin only, 200):
+
+```json
+{
+  "projectedMonthEndCost": 87.3214,
+  "confidence": "medium",
+  "daysOfDataUsed": 7,
+  "projectionMethodology": "linear-extrapolation:days-elapsed",
+  "currentMonthCost": 20.4400,
+  "daysInMonth": 30,
+  "tokensPerDollar": 200000,
+  "model": "gpt-test-mini",
+  "month": "2026-02",
+  "at": "2026-02-07T15:00:00.123+00:00"
+}
+```
+
+### §7.2 — Methodology
+
+The projection is `(currentCost / elapsedDays) * daysInMonth`.
+`elapsedDays` defaults to the fractional days since
+`day = 1, hour = 0` of the current calendar month; an explicit
+`?days=N` query override pins the denominator (useful for what-if
+projections on a fresh budget cycle).
+
+Confidence buckets on `daysOfDataUsed`:
+
+| Days        | Confidence |
+| ----------- | ---------- |
+| `< 3`       | `low`      |
+| `3` – `9`   | `medium`   |
+| `>= 10`     | `high`     |
+
+The `projectionMethodology` field carries the literal string
+`"linear-extrapolation:days-elapsed"`. Future waves can land
+seasonal / weighted variants by emitting a different
+methodology string; consumers should branch on the literal value.
+
+### §7.3 — Auth precedence
+
+Same as the W14 summary endpoint:
+
+1. **No session** → 401 with `{ "error": "session-required" }`.
+2. **Non-admin** → 403 with `{ "error": "admin-required" }`.
+3. **Admin** → 200 with the envelope above.
+
+### §7.4 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W15/Bishop/CommentaryCostForecastEndpointTests.cs`:
+
+* Anonymous → 401; non-admin → 403; admin → 200.
+* All four documented fields are present on the envelope.
+* `projectionMethodology` echoes the documented literal.
+* Confidence buckets at the documented boundaries
+  (`< 3` low, `3–9` medium, `>= 10` high).
+* `?days=N` overrides the denominator; negative values fall back
+  to the computed elapsed days.
+* `projectedMonthEndCost` is a JSON number.
+* `month` echoes the current `YYYY-MM`.
+* `model` echoes the configured `Commentary:Model`.

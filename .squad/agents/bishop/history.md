@@ -3048,3 +3048,134 @@ outside Bishop's lane.
 
 **Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-14.md`
 — per-deliverable design + Phase L forward notes.
+
+## Phase K Wave 15 — backend bring-up
+
+**Branch:** `stlong/phase-k-wave-15-bringup`.
+
+**Seven scoped deliverables, all landed:**
+
+1. **Replay blob streaming endpoint** —
+   `GET /api/replays/{replayId}/blob` with RFC 7233 single-range
+   support (`bytes=A-B`, `bytes=A-`, `bytes=-N`). Multi-range and
+   malformed requests get 416. Pairs with the W12 metadata GET
+   to provide a resumable stream of the decompressed JSON
+   payload. See `docs/replay-streaming.md`.
+
+2. **Per-tenant JWKS rotation table** —
+   `PerTenantJwksRotationPolicies` keyed by `TenantId`,
+   `DateTimeOffset` rotation edges (the W14 `DateTime` path
+   stripped the offset for non-UTC operators).
+   `IPerTenantJwksRotationStore` with InMemory + Ef
+   implementations. Opt-in toggle
+   `JwksRotation:PerTenant:Enabled` (default false).
+   Migrations land in all three EF providers. Validator
+   integration is **deferred to W16** — W15 lands the table +
+   toggle + store seam only so the boundary review stays
+   narrow. See `docs/per-tenant-jwks.md`.
+
+3. **DbSerial completion on W9 Bishop tests** —
+   `[Collection("DbSerial")]` applied to
+   `EfCommentaryUsageMeterTests.cs` and
+   `IdempotencyStoreContractTests.cs`. Closes the W14 Vasquez
+   migration memo
+   (`Phase_K_W14/Vasquez/db-serial-migration-completion.md`).
+   `Phase_K_W15/Bishop/db-serial-completion.md` is the lane
+   closure memo for the entire DbSerial migration.
+
+4. **Tournament page-size latency histogram** —
+   `tournament_query_duration_seconds{endpoint,
+   page_size_bucket}`. Bucket labels: `bracket-records` /
+   `replay-list` / `spectator-audit-query` × `small` (≤25) /
+   `medium` (≤75) / `large` (≤100). Surfaced through the
+   existing `/metrics` endpoint. Each consumer optionally
+   resolves the collector from DI (`TournamentController`,
+   `ReplayController`, `SpectatorHandoffController`) and a null
+   collector is a no-op. See `docs/bracket-shape.md §6`.
+
+5. **Commentary cost forecasting endpoint** —
+   `GET /api/commentary/cost/forecast?days=<n>` admin-gated.
+   Linear extrapolation by days-elapsed in the current month;
+   confidence bucket (low / medium / high) on `daysOfDataUsed`.
+   See `docs/commentary-llm.md §7`.
+
+6. **Spectator handoff audit retention sweep** — hosted
+   `SpectatorHandoffAuditRetentionSweep` running every
+   `Spectator:Audit:SweepIntervalMinutes` (default 5). Deletes
+   `SpectatorHandoffAuditRecord` rows older than
+   `Spectator:Audit:RetentionDays`. See
+   `docs/spectator-handoff.md §5`.
+
+7. **Replay store retention sweep** — hosted
+   `ReplayStoreRetentionSweep` running every
+   `Replays:StoreSweepIntervalMinutes` (default 60). Evaluates
+   `CompletedAt < utcNow - RetentionDays` against the **current**
+   options each tick, so dialling retention down (or up) at
+   runtime takes effect on the next tick. Sits alongside the
+   W12 `ExpiresAt`-driven sweep without double-counting. See
+   `docs/replay-by-id.md §4`.
+
+**Test gate:**
+`dotnet test src/backend/Mahjong.Autotable.slnx --nologo
+--no-build --filter "FullyQualifiedName~Phase_K_W15.Bishop"` →
+**111 passed / 0 failed / 0 skipped**. Full backend gate:
+**3307 passed / 5 failed / 0 skipped** (up from W14's 3029
+total). The 5 failures are forward-staged Vasquez-lane markdown
+probes scheduled to land in the Vasquez W15 commit
+(`PwaAudit_DeferralChain_5Waves_Documented`,
+`VasquezW15_GateSnapshot_Present`,
+`LaneDiscipline_W11W14ZeroViolationStreak_Documented`, etc.) —
+Bishop cannot modify Vasquez-lane files per cross-lane
+discipline.
+
+**Build:** 0 warnings, 0 errors.
+
+**Lessons / forward notes:**
+
+- `DateTimeOffset` is preferable to `DateTime` for any
+  operator-scheduled rotation edge. Operators in non-UTC
+  timezones see the offset on dashboards and audit logs;
+  `DateTime` strips it. The global
+  `JwtStagedRotationPolicy` is still `DateTime` for wire
+  compatibility — widen in W16 alongside the validator hook-up.
+- A **second** retention sweep alongside an `ExpiresAt`-driven
+  one is valid when the latter computes the expiry once at
+  insert. The new sweep reads retention from current options
+  each tick; the two sweeps are orthogonal because once a row
+  is deleted it can't be picked up twice. Don't try to fold
+  them into one — the row-insert semantics differ.
+- **Optional DI for cross-cutting collectors** is the right
+  shape for metrics surfaces. Mark the constructor parameter
+  optional (`= null`), null-check on every observation. Test
+  fixtures that don't register the singleton don't have to
+  thread a no-op double through every consumer.
+- **Side-channel histograms render even with no samples** —
+  the `/metrics` endpoint must emit HELP + TYPE preambles when
+  the collector is absent, otherwise a Prometheus parser sees
+  a schema-unstable scrape from a process that simply hasn't
+  observed yet. The W14 SignalR fallback already does this;
+  the W15 tournament histogram mirrors it.
+- **xUnit 2.x `CollectionAttribute` exposes its name only via
+  `CustomAttributeData.ConstructorArguments[0]`** — there's no
+  public `.Name` property. Reflection-based contract tests
+  that check `[Collection("DbSerial")]` membership must go
+  through `Type.GetCustomAttributesData()`, not
+  `GetCustomAttribute<CollectionAttribute>().Name`.
+- **The Vasquez forward-stage marker `README.md` under
+  `Phase_K_W15/Bishop/` is tolerated** per W14 precedent. Per
+  `wave_subdir_overrides` in `tests/ci/lane-map.json` the
+  directory is Bishop-attributed so Bishop can land files
+  there, but the existing Vasquez README is not Bishop's to
+  modify. New Bishop artefacts go in different filenames
+  (`charter.md`, `history.md`, `bishop-w15-test-summary.md`,
+  `db-serial-completion.md`).
+- **Per-tenant security surfaces should ship in two waves** —
+  the table + opt-in toggle land first (this wave), the
+  validator wiring lands in a follow-up. Reviewers can audit
+  the data model in isolation without having to reason about
+  the validator hot path simultaneously.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-15.md`
+— per-deliverable design + W16 forward notes (validator
+hook-up, `DateTimeOffset` widening for global policy, Grafana
+dashboard for the new histogram).

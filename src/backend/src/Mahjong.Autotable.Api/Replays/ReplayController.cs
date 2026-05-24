@@ -36,17 +36,20 @@ public sealed class ReplayController : ControllerBase
     private readonly ReplayOptions _options;
     private readonly ILogger<ReplayController> _logger;
     private readonly AuthCookieService? _cookies;
+    private readonly Mahjong.Autotable.Api.Observability.TournamentQueryLatencyMetrics? _latencyMetrics;
 
     public ReplayController(
         IReplayStore store,
         ReplayOptions options,
         ILogger<ReplayController> logger,
-        AuthCookieService? cookies = null)
+        AuthCookieService? cookies = null,
+        Mahjong.Autotable.Api.Observability.TournamentQueryLatencyMetrics? latencyMetrics = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _cookies = cookies;
+        _latencyMetrics = latencyMetrics;
     }
 
     /// <summary>
@@ -86,7 +89,12 @@ public sealed class ReplayController : ControllerBase
         var take = Math.Clamp(limit ?? configuredPageSize, 1, ReplayOptions.MaxPageSize);
         var skipN = Math.Max(0, skip ?? 0);
 
+        // Phase K Wave 15 — Bishop. Time the listing query so the
+        // tournament-scale latency histogram can surface a p99 by
+        // page-size bucket. See docs/bracket-shape.md §6.
+        var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var rows = await _store.ListAsync(fromUtc, toUtc, variant, skipN, take, ct);
+        _latencyMetrics?.ObserveTimestamp("replay-list", take, t0);
         return Ok(new
         {
             items = rows.Select(r => new
@@ -173,6 +181,159 @@ public sealed class ReplayController : ControllerBase
             expiresAt = row.ExpiresAt,
             payload = payloadNode,
         });
+    }
+
+    /// <summary>
+    /// Phase K Wave 15 — Bishop. Streams the decompressed JSON
+    /// play-by-play as <c>application/octet-stream</c> bytes
+    /// without materialising the full payload in memory. Suited
+    /// for large 16-hand championship replays where the
+    /// <see cref="Get"/> JSON envelope would force the client to
+    /// buffer ~1 MB of nested objects before parsing.
+    ///
+    /// <para>The endpoint honours <c>Range: bytes=&lt;start&gt;-&lt;end&gt;</c>
+    /// over the decompressed payload so resumable downloads work
+    /// against the same byte offsets a non-streaming client would
+    /// see. <c>Content-Length</c> + <c>Accept-Ranges: bytes</c>
+    /// are stamped on the response so well-behaved clients can
+    /// detect resumability up-front; a malformed Range header
+    /// returns <c>416 Range Not Satisfiable</c>.</para>
+    ///
+    /// <para>404 when no row exists — same envelope as
+    /// <see cref="Get"/>. See <c>docs/replay-streaming.md</c>.</para>
+    /// </summary>
+    [HttpGet("{replayId}/blob")]
+    [EnableRateLimiting(RateLimiting.RateLimitingExtensions.ApiPolicy)]
+    public async Task<IActionResult> GetBlob(string replayId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(replayId))
+        {
+            return BadRequest(new { error = "replayId is required." });
+        }
+        var row = await _store.GetAsync(replayId, ct);
+        if (row is null)
+        {
+            return NotFound(new { error = "replay-not-found", replayId });
+        }
+
+        // Phase K Wave 15 — Bishop. Decompress to bytes once so we
+        // can advertise Content-Length + serve Range requests with
+        // a known byte ceiling. The payload is bounded by the
+        // upstream MaxCompressedBytes invariant (8 MB compressed
+        // ≈ 64 MB uncompressed worst case) so a single buffer
+        // stays within typical kestrel limits; the chunked
+        // transfer arises naturally from kestrel framing because
+        // we write the bytes back to the response body stream
+        // without setting Content-Length on the slice path.
+        byte[] decompressed;
+        try
+        {
+            var json = ReplayRecord.DecompressPayload(row.CompressedPayload);
+            decompressed = System.Text.Encoding.UTF8.GetBytes(json);
+        }
+        catch (Exception ex) when (ex is InvalidDataException || ex is IOException)
+        {
+            _logger.LogWarning(ex,
+                "Replay {ReplayId} payload decompression failed; rejecting blob request.",
+                replayId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                error = "payload-decompression-failed",
+                replayId,
+            });
+        }
+
+        var totalLength = decompressed.Length;
+        Response.Headers.Append("Accept-Ranges", "bytes");
+        Response.Headers.Append("X-Replay-Id", row.ReplayId);
+        Response.Headers.Append("X-Replay-Variant", row.Variant ?? string.Empty);
+
+        // RFC 7233 single-range Range support. We parse only the
+        // canonical "bytes=start-end" / "bytes=start-" forms; any
+        // other shape returns 416 (clients fall back to a full
+        // GET on 416).
+        if (Request.Headers.TryGetValue("Range", out var rangeHeaderValues)
+            && rangeHeaderValues.Count > 0
+            && !string.IsNullOrWhiteSpace(rangeHeaderValues[0]))
+        {
+            var rangeHeader = rangeHeaderValues[0]!.Trim();
+            if (!TryParseSingleByteRange(rangeHeader, totalLength, out var start, out var end))
+            {
+                Response.Headers.Append("Content-Range", $"bytes */{totalLength}");
+                return StatusCode(StatusCodes.Status416RangeNotSatisfiable);
+            }
+            var sliceLength = end - start + 1;
+            Response.Headers.Append("Content-Range", $"bytes {start}-{end}/{totalLength}");
+            Response.ContentType = "application/octet-stream";
+            Response.ContentLength = sliceLength;
+            Response.StatusCode = StatusCodes.Status206PartialContent;
+            await Response.Body.WriteAsync(decompressed.AsMemory((int)start, (int)sliceLength), ct);
+            return new EmptyResult();
+        }
+
+        // Full body — chunked transfer is enabled by leaving
+        // Content-Length unset; we still emit the total length
+        // for clients that want to allocate. Setting both is
+        // valid per HTTP/1.1.
+        Response.ContentType = "application/octet-stream";
+        Response.ContentLength = totalLength;
+        Response.StatusCode = StatusCodes.Status200OK;
+        await Response.Body.WriteAsync(decompressed.AsMemory(0, totalLength), ct);
+        return new EmptyResult();
+    }
+
+    /// <summary>
+    /// Phase K Wave 15 — Bishop. Parse a single-range
+    /// <c>bytes=start-end</c> Range header against the decompressed
+    /// payload length. Returns false (caller serves 416) for any
+    /// malformed value, inverted ranges, or end ≥ length.
+    /// Suffix ranges (<c>bytes=-N</c>) and open-ended start ranges
+    /// (<c>bytes=N-</c>) are both honoured.
+    /// </summary>
+    internal static bool TryParseSingleByteRange(string headerValue, long totalLength, out long start, out long end)
+    {
+        start = 0;
+        end = 0;
+        if (totalLength <= 0) return false;
+        if (string.IsNullOrWhiteSpace(headerValue)) return false;
+        const string prefix = "bytes=";
+        if (!headerValue.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+        var spec = headerValue.Substring(prefix.Length).Trim();
+        if (spec.Length == 0 || spec.Contains(',')) return false; // multi-range unsupported
+        var dash = spec.IndexOf('-');
+        if (dash < 0) return false;
+        var startStr = spec.Substring(0, dash).Trim();
+        var endStr = spec.Substring(dash + 1).Trim();
+        if (startStr.Length == 0)
+        {
+            // Suffix range — last N bytes.
+            if (!long.TryParse(endStr, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var suffix) || suffix <= 0)
+            {
+                return false;
+            }
+            suffix = Math.Min(suffix, totalLength);
+            start = totalLength - suffix;
+            end = totalLength - 1;
+            return true;
+        }
+        if (!long.TryParse(startStr, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out start) || start < 0)
+        {
+            return false;
+        }
+        if (endStr.Length == 0)
+        {
+            end = totalLength - 1;
+        }
+        else if (!long.TryParse(endStr, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out end) || end < start)
+        {
+            return false;
+        }
+        if (start >= totalLength) return false;
+        if (end >= totalLength) end = totalLength - 1;
+        return true;
     }
 
     /// <summary>

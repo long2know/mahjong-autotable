@@ -235,7 +235,8 @@ public sealed class W12SurfaceSmokeFactsTests
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 

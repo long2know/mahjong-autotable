@@ -2716,3 +2716,189 @@ backend mirror tests live under
 The W12-era `manifest-screenshots-visual.spec.ts` was fixed
 in this wave (page.goto before setContent) — see
 `docs/test-architecture.md §5.2`.*
+
+---
+
+## Phase K Wave 15 — Hicks (Frontend) footer
+
+W15 adds one new `?action=*` keyword + ships the foundation of
+the Phase L renderer-webgl2 spike + finishes the W14
+visual-regression alignment.  Selector inventories below.
+
+### `?action=cost-forecast&days=<n>` overlay (W15)
+
+The W15 admin-cost-forecast surface is wired by
+`src/admin-cost-forecast.ts` and dispatched by
+`src/action-router.ts:dispatchCostForecast()`.  Lazy chunk:
+`admin-cost-forecast.<hash>.js` (W15 baseline 6,108 B).
+
+| Selector | Owner | Surface |
+|----------|-------|---------|
+| `#admin-cost-forecast-overlay` | Hicks W15 | Root overlay element (role="dialog"). |
+| `[data-testid="admin-cost-forecast-overlay"]` | Hicks W15 | Stable test hook on the root. |
+| `[data-testid="admin-cost-forecast-card"]` | Hicks W15 | Happy-path summary card. |
+| `[data-testid="admin-cost-forecast-loading"]` | Hicks W15 | Pre-fetch loading state. |
+| `[data-testid="admin-cost-forecast-empty"]` | Hicks W15 | Placeholder card (400 / 403 / 404 / 5xx / network). |
+| `[data-testid="admin-cost-forecast-summary"]` | Hicks W15 | Three-line summary wrapper. |
+| `[data-testid="admin-cost-forecast-projected"]` | Hicks W15 | Projected month-end currency value (e.g. `$42.18`). |
+| `[data-testid="admin-cost-forecast-confidence"]` | Hicks W15 | Confidence percentage with `strong / moderate / weak` band class. |
+| `[data-testid="admin-cost-forecast-days"]` | Hicks W15 | Observed/window day pair (`<obs> / <window>`). |
+| `[data-testid="admin-cost-forecast-close"]` | Hicks W15 | Close button. |
+
+URL shape:
+* Pre-dispatch: `/?action=cost-forecast&days=<n>` (admin-only;
+  401 redirects to `/`).
+* Post-dispatch: `/admin/commentary-cost/forecast` (path
+  rewritten via `history.replaceState`; `action` + `days`
+  stripped from the query string).
+
+Default + clamp behaviour (in `admin-cost-forecast.ts:normaliseDays`):
+* Missing / non-numeric `days` → `30`.
+* `days < 1` → clamped to `1`.
+* `days > 90` → clamped to `90` (Bishop W15 envelope).
+
+Status-code surfaces:
+* `400` → "Invalid forecast window — pick a value between 1 and 90 days."
+* `401` → close overlay + `window.location.replace('/')`.
+* `403` → "Admins only — this surface is gated to admin accounts."
+* `404` → "Cost forecast not available."
+* `5xx` / network → "Cost forecast unavailable."
+
+### `?renderer=webgl2-hello` Phase L spike entry (W15)
+
+The W15 hand-rolled WebGL2 hello-world is gated behind
+`?renderer=webgl2-hello` so it never loads on the lobby cold
+path.  Source lives under `src/renderer-webgl2/`; chunk emits
+as `renderer-webgl2.<hash>.js` (W15 baseline 6,237 B).
+
+| Selector | Owner | Surface |
+|----------|-------|---------|
+| `#webgl2-hello-container` | Hicks W15 | Fixed-position root overlay (z-index 99999). |
+| `[data-testid="webgl2-hello-container"]` | Hicks W15 | Container test hook. |
+| `[data-testid="webgl2-hello-canvas"]` | Hicks W15 | 512×512 WebGL2 canvas where the textured quad lands. |
+| `[data-testid="webgl2-hello-status"]` | Hicks W15 | Status line below the canvas (loading / OK / error). |
+
+This is a DEV/SPIKE surface — not user-facing in production.
+A future Phase L W1 spec may add a `?renderer=webgl2-hello`
+smoke test that asserts the canvas paints something
+non-uniform (texture-on-quad) at the supplied viewport, but
+W15 deliberately ships ZERO Playwright spec coverage so the
+spike doesn't conflate the renderer work with the test
+suite.
+
+### Visual-regression spec migration (W15)
+
+`manifest-screenshots-visual.spec.ts` (originally W12) was
+fully aligned to Playwright snapshot best-practice in W15:
+
+* All `page.setContent()` calls REMOVED.  The spec now
+  `page.goto()`s directly to each manifest screenshot URL.
+* `playwright.config.ts` adds a `snapshotPathTemplate`
+  pinning baselines under
+  `__screenshots__/<spec-basename>/<arg>.png`.
+* Forward-stage tolerance is preserved for origin-unreachable
+  / no-manifest / empty-`screenshots[]` / asset-404 cases.
+
+See `docs/frontend-pwa-audit.md §7.2` for the convention +
+the §7.2.2 migration narrative.
+
+### Defensive wire-shape posture (W15 cost-forecast)
+
+`admin-cost-forecast.ts:parseForecast()` tolerates Bishop W15
+wire-shape drift:
+
+* `projectedMonthEndCostUsd` / `projectedCostUsd` /
+  `projectedCost` — all three aliases accepted as the same
+  semantic value.
+* `daysOfData` / `daysWithData` — both accepted.
+* `confidence` — both `0-100` integer AND `0-1` fractional
+  ranges auto-detected (matches the `percentUsed` convention
+  in `admin-cost.ts`).
+* `currency` — defaults to `"USD"` when absent.
+
+If Bishop's W15 endpoint emits a shape we don't recognise,
+the overlay renders the `cost-forecast-empty` placeholder
+rather than crashing.
+
+### LH13 hard-pin status (W15)
+
+Hicks W15 re-queried `gh run list -w pwa-audit.yml -L 30`
+and observed **0 scheduled runs / 0 successful runs** — same
+shape as W11/W12/W13/W14.  The five-wave cumulative deferral
+is documented in `docs/frontend-pwa-audit.md §6.4 + §6.4.1`.
+The §6.5 deadlock escalation (Stephen-direct manual trigger
+seed) remains the recommended W16 unblock.
+
+### Phase L renderer hello-world bundle math (W15)
+
+`docs/phase-l-renderer-implementation.md` is the new W15
+authoritative source for the Phase L bundle envelope.  W15
+baseline: `renderer-webgl2.<hash>.js = 6,237 B` (3 % of the
+180-220 KB Phase L envelope).  Three-renderer-big hold-line
+held at 406,635 B for the fifth wave running (W13 → W14 →
+W15).
+
+### Shared-file authorship pin
+
+`tests/selectors.md` remains a `shared_files.selectors_md_shared`
+entry in `tests/ci/lane-map.json` (authors: `hicks` +
+`vasquez`, primary: `vasquez`).  The W15 Hicks footer
+appended here covers only the W15 frontend surfaces; the
+W15 Vasquez QA footer (if any) is hers to land.
+
+---
+
+*Phase K Wave 15 — Hicks (Frontend). W15 footer appended
+with the `cost-forecast` action keyword + the
+`renderer-webgl2` Phase L spike + the manifest-screenshots-
+visual snapshotPathTemplate migration.  Pairs with the W15
+Hicks deliverables in `Phase_K_W15/Hicks/`.*
+
+---
+
+## Phase K Wave 15 — Vasquez (QA) footer
+
+Six new Playwright specs land in this wave under
+`src/frontend/autotable-src/tests/e2e/`. All chromium-only,
+all forward-stage tolerant via `testInfo.annotations.push({
+type: 'forward-stage', … })` when surfaces are still
+converging. Each spec pairs with a Vasquez backend mirror in
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W15/Vasquez/`.
+
+| # | Spec | Surface pinned |
+|---|------|----------------|
+| 1 | `replay-blob-streaming.spec.ts` | Bishop W15 replay blob `Range: bytes=…` chunked download — 206 Partial Content honoured, forward-stages when endpoint not yet reachable. Pairs with `BishopW15ReplayBlobStreamingTests.cs`. |
+| 2 | `cost-forecast-route.spec.ts` | Hicks W15 `?action=cost-forecast&days=<n>` admin-only overlay; renders without throwing or forward-stages. Pairs with `HicksW15CostForecastRouteTests.cs` + Bishop's `CommentaryCostForecast` projection. |
+| 3 | `phase-l-renderer-bundle.spec.ts` | Phase L hello-world spike: `dist-size.json` must include a `renderer-webgl2` entry inside the 180-220 KB envelope from `docs/phase-l-renderer-implementation.md`. Three-renderer-big hold-line (406,640 B) asserted by `HicksW15ThreeRendererHoldLineTests.cs`. |
+| 4 | `lh13-thresholds-w15.spec.ts` | LH13 W15 soft-pin at the W11 §7 calibration values — five-wave cumulative deferral (YELLOW per `docs/frontend-pwa-audit.md §6.4`); §6.5 deadlock escalation in flight. Forward-staged today; flips to hard-assert once cron converges. |
+| 5 | `snapshotPathTemplate.spec.ts` | Playwright config migration to the `snapshotPathTemplate` option (Hicks) so visual-regression captures land at deterministic per-browser paths. Pairs with `HicksW15SnapshotPathTemplateTests.cs`. |
+| 6 | `bundle-audit-candidates.spec.ts` | Bundle-audit candidate inventory (Hicks + Apone) — audit doc must list ≥3 candidates. Pairs with `HicksW15BundleAuditCandidatesTests.cs`. |
+
+### LH13 5-wave cumulative deferral (W15)
+
+The LH13 hard-pin is now in its fifth consecutive deferral wave
+(W11 → W15). Per `docs/frontend-pwa-audit.md §6.4` the cumulative
+deferral is flagged **YELLOW**; a sixth deferral wave (W16) flips it
+to **RED** and triggers Coordinator escalation. The §6.5 deadlock-
+escalation recommendation (Stephen-direct manual `pwa-audit.yml`
+trigger × 3) is in flight as of this wave.
+
+### Shared-file authorship pin
+
+`tests/selectors.md` is a `shared_files.selectors_md_shared`
+entry in `tests/ci/lane-map.json` (authors: `hicks` +
+`vasquez`, primary: `vasquez`). The W15 Vasquez footer
+appended here pairs with the W15 Hicks footer above and is
+covered by the same shared-file lane-discipline rule. The
+W14 footer (above) inventories the prior wave's six specs and
+remains in place for traceability.
+
+---
+
+*Phase K Wave 15 — Vasquez (QA). Six Playwright specs land
+under `tests/e2e/` and are inventoried above. The matching
+backend mirror tests live under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W15/Vasquez/`.
+The KW14→KW15 regression class rename and the LH13 5-wave
+YELLOW flag land in this wave; see
+`Phase_K_W15/Vasquez/vasquez-phase-k-wave-15.md`.*

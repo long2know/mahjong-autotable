@@ -110,6 +110,26 @@
 #     `shared_files.bundle_health_workflow_shared` +
 #     `shared_files.visual_regression_baselines_shared`.
 #
+# Wave 15 refinements (Vasquez):
+#   - SHARED-FILE table BROADENED further (parallel to W10 + W13):
+#     * `.github/workflows/lane-discipline-nightly.yml` is Apone's
+#       W15 heredoc-bug-fix to the nightly lane-discipline runner.
+#       Co-authored by apone + vasquez (workflow runtime owner +
+#       QA-harness owner); primary stays at `vasquez` (QA-harness
+#       intent overrides filesystem-location heuristic — direct
+#       parallel to `agent_handoff_protocol_md_shared`).
+#     * `src/frontend/autotable-src/tests/e2e/playwright.config.ts`
+#       and `src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts`
+#       are Hicks's W15 Playwright `snapshotPathTemplate` migration
+#       deliverable. Co-authored by hicks + vasquez (Playwright-
+#       runtime owner + test-lane root owner); primary stays at
+#       `vasquez` since both files live under
+#       src/frontend/autotable-src/tests/. Direct parallel to
+#       `visual_regression_baselines_shared`.
+#   - Companion `lane-map.json` carries new
+#     `shared_files.lane_discipline_nightly_yml_shared` +
+#     `shared_files.playwright_visual_regression_shared`.
+#
 # Owner: Vasquez (QA).
 
 set -euo pipefail
@@ -286,6 +306,17 @@ is_shared_file() {
   #     (via the W13 scripts/capture-visual-baselines.js side-
   #     channel) inside Vasquez's test-lane root. Co-authored by
   #     hicks + vasquez.
+  # W15 broadening (Vasquez):
+  #   * .github/workflows/lane-discipline-nightly.yml — Apone-authored
+  #     heredoc bug fix to the nightly lane-discipline runner; lives in
+  #     Apone's .github/workflows/ namespace but is Vasquez's QA
+  #     harness. Co-authored by apone + vasquez; primary stays at
+  #     `vasquez` (parallel to agent_handoff_protocol_md_shared).
+  #   * src/frontend/autotable-src/tests/e2e/playwright.config.ts +
+  #     src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts
+  #     — Hicks-authored Playwright snapshotPathTemplate migration
+  #     (W15 deliverable) inside Vasquez's test-lane root. Co-authored
+  #     by hicks + vasquez; primary stays at `vasquez`.
   local p="$1"
   case "$p" in
     src/frontend/autotable-src/tests/selectors.md|tests/selectors.md)
@@ -299,6 +330,10 @@ is_shared_file() {
     .github/workflows/bundle-health.yml)
       return 0 ;;
     src/frontend/autotable-src/tests/e2e/__screenshots__/*)
+      return 0 ;;
+    .github/workflows/lane-discipline-nightly.yml)
+      return 0 ;;
+    src/frontend/autotable-src/tests/e2e/playwright.config.ts|src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts)
       return 0 ;;
     *)
       return 1 ;;
@@ -321,6 +356,10 @@ shared_file_authors() {
     .github/workflows/bundle-health.yml)
       echo "hicks apone" ;;
     src/frontend/autotable-src/tests/e2e/__screenshots__/*)
+      echo "hicks vasquez" ;;
+    .github/workflows/lane-discipline-nightly.yml)
+      echo "apone vasquez" ;;
+    src/frontend/autotable-src/tests/e2e/playwright.config.ts|src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts)
       echo "hicks vasquez" ;;
     *)
       echo "" ;;

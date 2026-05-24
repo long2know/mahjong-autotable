@@ -147,6 +147,7 @@ revisited.
 | `bracket` (W14) | — | Reads `tournamentId=<guid>` co-param, fetches `/api/tournaments/{id}/brackets` (Bishop W14), lazy-mounts the bracket-listing overlay. On 404 / 5xx / missing co-param → in-overlay "No brackets" placeholder. See §3.2. | `/tournament/<id>/brackets` (path rewritten on success) / `/` (path bare on co-param miss) |
 | `replays` (W14) | — | Fetches `/api/replays` (Bishop W14 metadata-only listing), lazy-mounts the replays-listing overlay; rows link to `?action=replay&replayId=<id>`. See §3.3. | `/replays` (path rewritten) |
 | `admin-cost` (W14) | — | Pre-flights `/api/auth/me` (no session → redirect to `/`), fetches `/api/commentary/cost/summary` (Bishop W14, admin-only), lazy-mounts the cost overlay (summary card + byModel table). On 403 → in-overlay "Admins only" placeholder. See §3.4. | `/admin/commentary-cost` (path rewritten) / `/` (path bare on no-session) |
+| `cost-forecast` (W15) | — | Pre-flights `/api/auth/me` (no session → redirect to `/`), reads `days=<n>` co-param (default 30, clamped `[1, 90]`), fetches `/api/commentary/cost/forecast?days=<n>` (Bishop W15, admin-only), lazy-mounts the forecast overlay (projected month-end + confidence + days-of-data card). On 400 → "Invalid window"; on 403 → "Admins only". See §7.1. | `/admin/commentary-cost/forecast` (path rewritten) / `/` (path bare on no-session) |
 
 ### §3.1 — `?action=spectate&gameId=<guid>` flow (W13)
 
@@ -535,6 +536,88 @@ Adding any of these requires the §4 two-PR contract.
 > §3.4). None of these were reserved in §7 — they were carved
 > directly during the W14 charter, which is fine because each
 > ships its own dedicated lazy chunk + overlay surface.
+>
+> W15 added `cost-forecast` (admin-gated, with `days` co-param;
+> §7.1 below) against Bishop's W15 forecast endpoint.  Carved
+> directly during the W15 charter alongside admin-cost's W14
+> path so the two surfaces share their admin-probe gating
+> recipe.
+
+### §7.1 — `?action=cost-forecast&days=<n>` flow (W15)
+
+The W15 wave adds a sister keyword to W14's `admin-cost` that
+wires Bishop's `GET /api/commentary/cost/forecast?days=<n>`
+endpoint.  The router posture is identical to `admin-cost`
+(admin pre-flight + lazy overlay mount); only the wire shape
+and the on-overlay summary differ.
+
+Wire sequence:
+
+1. Boot-sequence calls `handlePwaActionFromUrl()` which calls
+   `parseActionFromUrl()`.
+2. Parser detects `?action=cost-forecast` and (optionally) a
+   `days=<n>` co-param.
+3. `dispatchCostForecast()`:
+   a. Reads `days` from the URL.
+   b. Rewrites the URL to `/admin/commentary-cost/forecast`
+      via `history.replaceState`, stripping BOTH `action` and
+      `days` from the query string so a mid-flight refresh
+      doesn't re-fire the shortcut.
+   c. Pre-flights `/api/auth/me`:
+      * On no-session → redirect to `/` so `installAuthUi()`
+        mounts the sign-in modal (matches `admin-cost`).
+      * On any session (authenticated or admin-flag absent) →
+        proceed to step (d).  The Bishop-side endpoint is the
+        source of truth for the 403 vs 200 outcome.
+   d. Lazy-imports `./admin-cost-forecast` (a sub-7 KB chunk
+      separate from the W14 `admin-cost` chunk so the two
+      surfaces never collide in the dynamic-import graph).
+   e. Calls `mod.normaliseDays(rawDays)` to clamp the
+      window to `[1, 90]` (Bishop's W15 envelope) with a
+      default of 30 days.  Out-of-band values are reshaped
+      client-side so the request never fires with `?days=0`
+      or `?days=300` (which Bishop's W15 endpoint 400s).
+   f. Calls `mod.openCommentaryCostForecastPanel(days)`,
+      which fetches `/api/commentary/cost/forecast?days=<n>`
+      and mounts a summary card with three signals:
+      * **Projected month-end cost** (`fmtCurrency(projectedCostUsd)`).
+      * **Confidence** as a percentage (`fmtPct`) with the
+        same `strong / moderate / weak` colour bands as
+        `admin-cost`'s `percentUsed` thresholds.
+      * **Days of data / window** (`<observed> / <requested>`).
+
+Status-code handling (handled inside `admin-cost-forecast.ts`):
+
+| HTTP status | Surface |
+|-------------|---------|
+| 200 | Summary card (projected + confidence + days). |
+| 400 | "Invalid forecast window — pick a value between 1 and 90 days." placeholder. |
+| 401 | Closes overlay + `window.location.replace('/')` to surface the sign-in modal. |
+| 403 | "Admins only" placeholder (matches `admin-cost`'s 403 surface). |
+| 404 | "Cost forecast not available." placeholder. |
+| 5xx / network | "Cost forecast unavailable." placeholder. |
+
+Defensive wire-shape posture (same as `admin-cost`):
+
+* Top-level fields tolerate aliases — `projectedCostUsd` /
+  `projectedCost` for `projectedMonthEndCostUsd`;
+  `daysWithData` for `daysOfData`.
+* `confidence` tolerates both `0-100` integer and `0-1`
+  fractional ranges (auto-detected the same way
+  `admin-cost.ts` handles `percentUsed`).
+* `currency` defaults to `"USD"` when absent.
+
+Selector inventory (per `tests/selectors.md`):
+
+* `#admin-cost-forecast-overlay` — root.
+* `[data-testid="admin-cost-forecast-card"]` — happy-path card.
+* `[data-testid="admin-cost-forecast-loading"]` — pre-fetch state.
+* `[data-testid="admin-cost-forecast-empty"]` — placeholder card.
+* `[data-testid="admin-cost-forecast-projected"]` — projected
+  month-end cost value.
+* `[data-testid="admin-cost-forecast-confidence"]` — confidence pct.
+* `[data-testid="admin-cost-forecast-days"]` — observed/window days.
+* `[data-testid="admin-cost-forecast-close"]` — close button.
 
 ## §8 — Failure modes
 

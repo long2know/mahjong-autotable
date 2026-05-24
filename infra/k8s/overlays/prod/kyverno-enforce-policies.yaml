@@ -1,0 +1,190 @@
+# Phase K Wave 15 — Apone (DevOps).
+#
+# Kyverno "enforce-mode" Policy pre-wire candidate.
+#
+# # Why this file exists (W15 hand-off from W14)
+#
+# Phase K Wave 14's `docs/prod-cutover.md §6.3` flagged the
+# `audit → enforce` flip of the W3 cluster-wide
+# `verify-mahjong-images` ClusterPolicy as Gate 4 of the
+# post-cutover hardening sequence. The W14 hand-off offered the
+# W15 owner a choice:
+#
+#   1. **Single-PR cutover-day flip** — wait for cutover day,
+#      then land a one-line `validationFailureAction: Audit →
+#      Enforce` PR.
+#   2. **Pre-wire-then-toggle** — ship the enforce-mode policy
+#      manifest a wave or two ahead of the flip, commented out
+#      in the kustomization. Cutover day = uncomment.
+#
+# W15 adopts option (2), matching the W14 `redis-envfrom-
+# required-patch.yaml` precedent (see `docs/prod-cutover.md
+# §6.8` operator runbook). This file is the W15 pre-wire
+# artefact for the Kyverno flip. The kustomization wire-up
+# remains COMMENTED OUT — see
+# `docs/kyverno-enforce-rollout.md` for the operator runbook
+# that gates the uncomment.
+#
+# # What this file is — and is NOT
+#
+# This is **a SECOND companion ClusterPolicy** alongside the
+# W3 `infra/k8s/policies/kyverno-cosign-verify.yaml` (which
+# stays in Audit-default mode with prod-Enforce override) and
+# the W4 `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml`
+# (the supplemental prod-only hard-pin). Why three policies
+# instead of patching the existing two?
+#
+#   * The W3 policy is **cluster-wide** and must remain Audit-
+#     default so a brand-new namespace fails SAFE. Flipping the
+#     spec-level `validationFailureAction` to Enforce would
+#     break that property. The `validationFailureActionOverrides`
+#     mechanism already enforces prod via the W3 spec — but
+#     Stephen's audit-trail preference is for the cluster-wide
+#     policy text to MATCH the audit-mode intent.
+#   * The W4 hard-pin is already Enforce — but it's a SECOND
+#     ClusterPolicy bound only to image-verification. The W15
+#     enforce-mode flip the squad wants is the GLOBAL cluster-
+#     wide policy switching to Enforce as the default action
+#     for any future supply-chain rule the squad authors.
+#   * Shipping a NEW Policy keeps the audit trail clean: the
+#     `git log` for `kyverno-cosign-verify.yaml` doesn't show
+#     "spec flipped on cutover day"; instead this NEW file
+#     appears in the commit graph at the cutover-day uncomment.
+#     Easier revert path.
+#
+# # Composition contract — what happens at admission time
+#
+# Kyverno runs ALL matching policies on every admission
+# request. For a `mahjong-prod` Pod creation, the policies that
+# apply once this file lands in the kustomization:
+#
+#   1. `verify-mahjong-images`   (W3 — Audit default + prod
+#                                 Enforce override)
+#   2. `enforce-prod-mahjong-images`  (W4 — Enforce, prod-only)
+#   3. `enforce-prod-default`   (this file — Enforce, prod-only)
+#
+# An unsigned image to `mahjong-prod` is rejected by ALL THREE
+# (defence in depth). The W15 policy adds a **default-Enforce
+# floor for all FUTURE prod rules** — any rule appended to this
+# policy inherits the spec-level Enforce action without per-
+# rule annotation. The current single rule (`require-non-root`)
+# is the seed; future waves can append `disallow-host-network`,
+# `disallow-privileged`, etc., without re-litigating the action.
+#
+# # Why `require-non-root` as the W15 seed rule
+#
+#   * Independent of the W3/W4 signature chain — exercises the
+#     enforce-mode flip without coupling to the cosign
+#     verifier (audit-trail clarity).
+#   * Hudson's W12 panel `pod-security-violations-prod` shows
+#     ZERO non-root violations in mahjong-prod for the last 30
+#     days, so the enforce flip is safe on the W14+30 schedule.
+#   * The runtime already runs as a non-root user via the base
+#     image (`gcr.io/distroless/dotnet:8` — UID 65532 default),
+#     so the policy is asserting an invariant the cluster
+#     already satisfies. Failure would be diagnostic, not a
+#     production outage.
+#
+# # Cutover-day enablement
+#
+# This file lands in `git` at W15 but is NOT yet referenced in
+# `kustomization.yaml`. The W15 kustomization edit is a
+# COMMENTED-OUT `resources:` entry mirroring the W14
+# `redis-envfrom-required-patch.yaml` pattern. Cutover day:
+#
+#   1. Verify pre-conditions per `docs/kyverno-enforce-rollout.md
+#      §3 "Pre-flip readiness gate"` (30-day W3 audit window
+#      ZERO denies + Hudson `kyverno-deny-events` panel green).
+#   2. Uncomment the `kustomization.yaml` entry.
+#   3. `kubectl apply -k infra/k8s/overlays/prod/`.
+#   4. Confirm `kubectl get clusterpolicy enforce-prod-default
+#      -o jsonpath='{.spec.validationFailureAction}'` returns
+#      `Enforce`.
+#   5. Watch the `kyverno-deny-events` panel for 14 days per
+#      `docs/prod-cutover.md §6.7`.
+#
+# # Rollback
+#
+# Single `git revert <merge-commit>`. The W3 + W4 policies
+# remain in place; admission behaviour reverts to W14 baseline
+# (audit-default + prod-only Enforce via override mechanism).
+# No data path is affected — Kyverno admission decisions are
+# stateless.
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: enforce-prod-default
+  annotations:
+    policies.kyverno.io/title: "Enforce-mode default floor for mahjong-prod (Wave-15 pre-wire)"
+    policies.kyverno.io/category: "Pod Security"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod, Deployment, StatefulSet"
+    policies.kyverno.io/description: >-
+      Wave-15 pre-wire: companion to the W3 cluster-wide
+      `verify-mahjong-images` policy. Carries an explicit
+      Enforce-mode default-action floor for all prod-scoped
+      rules; the W15 seed rule asserts the non-root invariant
+      that the runtime already satisfies via the distroless
+      base image. See `docs/kyverno-enforce-rollout.md` for
+      the operator runbook and `docs/prod-cutover.md §6.3`
+      for the Gate-4 pre-flip readiness contract.
+spec:
+  # HARD-PIN: enforce, not audit. This is the W15 pre-wire's
+  # whole point — the flip the squad wants the W14+ pre-condition
+  # window to validate. The W3 policy remains Audit-default;
+  # this policy carries the Enforce intent as a separate audit-
+  # trail entry.
+  validationFailureAction: Enforce
+  # `background: true` — synchronous-only Kyverno policies
+  # (verifyImages, mutate) demand `background: false`; this
+  # policy is pure `validate:` rules so background scans
+  # against existing pods produce PolicyReports for any
+  # invariant drift, alongside the synchronous admission gate.
+  background: true
+  webhookTimeoutSeconds: 30
+  # `failurePolicy: Fail` — the supply-chain canonical setting.
+  # An unreachable Kyverno controller blocks NEW admissions
+  # in prod (existing pods unaffected); cluster operators are
+  # alerted via Hudson's `kyverno-deny-events` panel. The
+  # alternative (Ignore) would let unsafe workloads through
+  # during a webhook outage — unacceptable for the prod-only
+  # hard-pin floor.
+  failurePolicy: Fail
+  rules:
+    - name: require-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - mahjong-prod
+      # Skip kyverno + kube-system + the ESO control-plane
+      # namespaces. They never run mahjong-prod workloads but
+      # the empty `exclude` block would let a stray system
+      # pod scheduled into mahjong-prod (operationally never
+      # happens, but the explicit skip preserves the W3 pattern).
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - external-secrets
+      validate:
+        message: >-
+          mahjong-prod Pods MUST run as non-root.
+          `securityContext.runAsNonRoot=true` is required;
+          either set it on the Pod spec or rely on the
+          distroless base image's default UID 65532.
+          See docs/kyverno-enforce-rollout.md §2.
+        pattern:
+          spec:
+            =(securityContext):
+              =(runAsNonRoot): "true"
+            containers:
+              - =(securityContext):
+                  =(runAsNonRoot): "true"

@@ -321,4 +321,98 @@ public sealed class SpectatorHandoffAuditOptions
     /// <c>docs/spectator-handoff.md §4</c>.
     /// </summary>
     public int PageSize { get; set; } = DefaultPageSize;
+
+    /// <summary>
+    /// Phase K Wave 15 — Bishop. Retention sweep cadence (minutes)
+    /// for <see cref="SpectatorHandoffAuditRetentionSweep"/>.
+    /// Default 5 minutes — short enough that a leaked token's
+    /// audit row is gone within a 30-minute incident window once
+    /// retention is dialled down. Values &lt; 1 fall back to 1
+    /// minute (tests pin a short cadence).
+    /// </summary>
+    public int SweepIntervalMinutes { get; set; } = 5;
+}
+
+/// <summary>
+/// Phase K Wave 15 — Bishop. Background sweep that deletes
+/// <see cref="SpectatorHandoffAuditRecord"/> rows older than
+/// the configured retention window
+/// (<see cref="SpectatorHandoffAuditOptions.RetentionDays"/>).
+/// Runs every <see cref="SpectatorHandoffAuditOptions.SweepIntervalMinutes"/>
+/// (default 5 minutes) so leaked audit rows are short-lived even
+/// when retention is dialled down mid-incident.
+///
+/// <para>Registered as a hosted service only when
+/// <c>Spectator:Audit:StorageImpl="Ef"</c> — the in-memory store
+/// has no on-disk footprint to sweep across restarts. See
+/// <c>docs/spectator-handoff.md §5 "Retention sweep"</c>.</para>
+/// </summary>
+public sealed class SpectatorHandoffAuditRetentionSweep : Microsoft.Extensions.Hosting.BackgroundService
+{
+    public const int DefaultSweepIntervalMinutes = 5;
+
+    private readonly ISpectatorHandoffAuditStore _store;
+    private readonly SpectatorHandoffAuditOptions _options;
+    private readonly ILogger<SpectatorHandoffAuditRetentionSweep> _logger;
+
+    public SpectatorHandoffAuditRetentionSweep(
+        ISpectatorHandoffAuditStore store,
+        SpectatorHandoffAuditOptions options,
+        ILogger<SpectatorHandoffAuditRetentionSweep> logger)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var minutes = _options.SweepIntervalMinutes > 0
+            ? _options.SweepIntervalMinutes
+            : DefaultSweepIntervalMinutes;
+        var interval = TimeSpan.FromMinutes(Math.Max(1, minutes));
+        _logger.LogInformation(
+            "SpectatorHandoffAuditRetentionSweep started (interval={Minutes}m, retention={Days}d).",
+            interval.TotalMinutes,
+            _options.RetentionDays);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(interval, stoppingToken);
+                await RunOnceAsync(stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "SpectatorHandoffAuditRetentionSweep failed (non-fatal); next tick in {Minutes}m.",
+                    interval.TotalMinutes);
+            }
+        }
+
+        _logger.LogInformation("SpectatorHandoffAuditRetentionSweep stopped.");
+    }
+
+    /// <summary>Single-sweep entry-point exposed so tests can
+    /// drive deletions deterministically.</summary>
+    internal async Task<int> RunOnceAsync(CancellationToken ct)
+    {
+        var retention = _options.RetentionDays > 0
+            ? _options.RetentionDays
+            : SpectatorHandoffAuditOptions.DefaultRetentionDays;
+        var cutoff = DateTime.UtcNow.AddDays(-retention);
+        var removed = await _store.SweepExpiredAsync(cutoff, ct);
+        if (removed > 0)
+        {
+            _logger.LogInformation(
+                "SpectatorHandoffAuditRetentionSweep removed {Count} row(s) older than {Days}d (cutoff={Cutoff:O}).",
+                removed, retention, cutoff);
+        }
+        return removed;
+    }
 }

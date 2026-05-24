@@ -181,3 +181,46 @@ Hard-asserted in
 * `gameId` filter narrows to a single game.
 * Bad timestamp → 400.
 * `limit` above 200 clamps to 200; below 1 clamps to 1.
+
+## §5 — Retention sweep (Phase K Wave 15)
+
+The W13 audit table relied on a manual purge pipeline. W15 adds
+a `SpectatorHandoffAuditRetentionSweep` background service that
+runs every `SweepIntervalMinutes` (default 5) and deletes rows
+whose `IssuedAt` is older than the
+`Spectator:Audit:RetentionDays` window.
+
+### §5.1 — Cadence
+
+| Key                                       | Default | Notes                                      |
+| ----------------------------------------- | ------- | ------------------------------------------ |
+| `Spectator:Audit:SweepIntervalMinutes`    | `5`     | Short cadence — a leaked token's audit row vanishes inside a 30-min incident window once retention is dialled down |
+| `Spectator:Audit:RetentionDays`           | `30`    | Window evaluated **each tick** against the current options (operator can dial down without restart) |
+
+The sweep is **only** wired in the Ef storage path; the in-memory
+store is ephemeral and reset on process restart.
+
+### §5.2 — Surface
+
+```csharp
+public sealed class SpectatorHandoffAuditRetentionSweep : BackgroundService
+{
+    public const int DefaultSweepIntervalMinutes = 5;
+    internal Task<int> RunOnceAsync(CancellationToken ct);
+}
+```
+
+Tests drive the sweep deterministically via `RunOnceAsync`.
+
+### §5.3 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W15/Bishop/SpectatorHandoffAuditRetentionSweepTests.cs`:
+
+* `RunOnceAsync` drops rows older than retention.
+* `RunOnceAsync` keeps rows inside the retention window.
+* Empty store → no-op (zero rows removed).
+* `RetentionDays = 0` falls back to `DefaultRetentionDays`.
+* `SweepIntervalMinutes` default is 5.
+* `DefaultSweepIntervalMinutes` constant is 5.
+* Ctor null-checks options / store / logger.

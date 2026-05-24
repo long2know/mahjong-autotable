@@ -122,6 +122,13 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRecord> SpectatorHandoffAuditRecords =>
         Set<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRecord>();
 
+    // Phase K Wave 15 — Bishop. Per-tenant JWKS rotation policy
+    // rows. Backs EfPerTenantJwksRotationStore; the toggle
+    // JwksRotation:PerTenant:Enabled (default false) gates the
+    // wiring. See Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy.
+    public DbSet<Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy> PerTenantJwksRotationPolicies =>
+        Set<Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -590,6 +597,21 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.HasIndex(x => new { x.GameId, x.IssuedAt });
             entity.HasIndex(x => x.UserId);
             entity.HasIndex(x => x.IssuedAt);
+        });
+
+        // Phase K Wave 15 — Bishop. Per-tenant JWKS rotation policy.
+        // TenantId is the PK + natural lookup key; both rotation
+        // edges use DateTimeOffset so a non-UTC operator clock
+        // round-trips correctly through persistence (the W14
+        // global policy used DateTime, which stripped offsets).
+        modelBuilder.Entity<Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy>(entity =>
+        {
+            entity.HasKey(x => x.TenantId);
+            entity.Property(x => x.TenantId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.ActiveKid).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.PreviousKid).HasMaxLength(128).IsRequired();
+            entity.HasIndex(x => x.RotationStartUtc);
+            entity.HasIndex(x => x.RotationCompleteUtc);
         });
     }
 }

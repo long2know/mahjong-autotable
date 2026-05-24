@@ -51,19 +51,22 @@ public sealed class SpectatorHandoffController : ControllerBase
     private readonly ILogger<SpectatorHandoffController> _logger;
     private readonly ISpectatorHandoffAuditStore? _audit;
     private readonly IOptionsMonitor<SpectatorHandoffAuditOptions>? _auditOptions;
+    private readonly Mahjong.Autotable.Api.Observability.TournamentQueryLatencyMetrics? _latencyMetrics;
 
     public SpectatorHandoffController(
         AuthCookieService cookies,
         JwtIssuingService issuer,
         ILogger<SpectatorHandoffController> logger,
         ISpectatorHandoffAuditStore? audit = null,
-        IOptionsMonitor<SpectatorHandoffAuditOptions>? auditOptions = null)
+        IOptionsMonitor<SpectatorHandoffAuditOptions>? auditOptions = null,
+        Mahjong.Autotable.Api.Observability.TournamentQueryLatencyMetrics? latencyMetrics = null)
     {
         _cookies = cookies;
         _issuer = issuer;
         _logger = logger;
         _audit = audit;
         _auditOptions = auditOptions;
+        _latencyMetrics = latencyMetrics;
     }
 
     [HttpPost("handoff")]
@@ -212,7 +215,14 @@ public sealed class SpectatorHandoffController : ControllerBase
         var take = Math.Clamp(limit ?? configuredPageSize, 1, SpectatorHandoffAuditOptions.MaxPageSize);
         var skipN = Math.Max(0, skip ?? 0);
 
+        // Phase K Wave 15 — Bishop. Time the query so the
+        // tournament-scale latency histogram can surface a p99 by
+        // page-size bucket. The metric is side-channel — when the
+        // collector is null (test fixtures that don't wire it) the
+        // recording is a no-op.
+        var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var rows = await _audit.QueryAsync(gameId, fromUtc, toUtc, skipN, take, ct);
+        _latencyMetrics?.ObserveTimestamp("spectator-audit-query", take, t0);
         return Ok(new
         {
             items = rows.Select(r => new

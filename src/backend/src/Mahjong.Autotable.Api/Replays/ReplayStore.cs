@@ -37,6 +37,27 @@ public interface IReplayStore
     /// evicted.</summary>
     Task<int> SweepExpiredAsync(DateTime utcNow, CancellationToken ct = default);
 
+    /// <summary>
+    /// Phase K Wave 15 — Bishop. Sweep rows whose
+    /// <see cref="ReplayRecord.CompletedAt"/> is strictly older
+    /// than <paramref name="utcNow"/> minus <paramref name="retentionDays"/>.
+    /// The W12 sweep used <see cref="ReplayRecord.ExpiresAt"/>
+    /// (computed once at insert time) — a runtime change to
+    /// <c>Replays:RetentionDays</c> would not retro-apply to
+    /// rows already in the store. The W15 sweep evaluates the
+    /// retention window against the current configured retention
+    /// at each tick, so the operator can dial retention down
+    /// (or up) and the next sweep honours the new window.
+    ///
+    /// <para>The two sweeps are intentionally orthogonal — both
+    /// can run alongside each other without double-counting (the
+    /// second pass over a row already deleted by the first is a
+    /// no-op). The <see cref="ReplayStoreRetentionSweep"/> hosted
+    /// service drives this path; see
+    /// <c>docs/replay-by-id.md §4 "Retention sweep"</c>.</para>
+    /// </summary>
+    Task<int> SweepByCompletedAtAsync(int retentionDays, DateTime utcNow, CancellationToken ct = default);
+
     /// <summary>Total row count — surfaced so tests can assert
     /// the insert path landed.</summary>
     Task<int> CountAsync(CancellationToken ct = default);
@@ -103,6 +124,21 @@ public sealed class InMemoryReplayStore : IReplayStore
         foreach (var pair in _rows)
         {
             if (pair.Value.ExpiresAt < utcNow && _rows.TryRemove(pair.Key, out _))
+            {
+                removed++;
+            }
+        }
+        return Task.FromResult(removed);
+    }
+
+    public Task<int> SweepByCompletedAtAsync(int retentionDays, DateTime utcNow, CancellationToken ct = default)
+    {
+        if (retentionDays <= 0) return Task.FromResult(0);
+        var cutoff = utcNow.AddDays(-retentionDays);
+        var removed = 0;
+        foreach (var pair in _rows)
+        {
+            if (pair.Value.CompletedAt < cutoff && _rows.TryRemove(pair.Key, out _))
             {
                 removed++;
             }
@@ -222,6 +258,31 @@ public sealed class EfReplayStore : IReplayStore
                 "Replay bulk-delete failed; falling back to per-row delete.");
             var rows = await db.Replays
                 .Where(r => r.ExpiresAt < utcNow)
+                .ToListAsync(ct);
+            db.Replays.RemoveRange(rows);
+            await db.SaveChangesAsync(ct);
+            return rows.Count;
+        }
+    }
+
+    public async Task<int> SweepByCompletedAtAsync(int retentionDays, DateTime utcNow, CancellationToken ct = default)
+    {
+        if (retentionDays <= 0) return 0;
+        var cutoff = utcNow.AddDays(-retentionDays);
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        try
+        {
+            return await db.Replays
+                .Where(r => r.CompletedAt < cutoff)
+                .ExecuteDeleteAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Replay completed-at bulk-delete failed; falling back to per-row delete.");
+            var rows = await db.Replays
+                .Where(r => r.CompletedAt < cutoff)
                 .ToListAsync(ct);
             db.Replays.RemoveRange(rows);
             await db.SaveChangesAsync(ct);
@@ -364,6 +425,18 @@ public sealed class ReplayOptions
     /// 0 / negative → use <see cref="DefaultPageSize"/>.
     /// </summary>
     public int PageSize { get; set; } = DefaultPageSize;
+
+    /// <summary>
+    /// Phase K Wave 15 — Bishop. Hourly retention sweep cadence
+    /// (minutes) for <see cref="ReplayStoreRetentionSweep"/>. The
+    /// W12 sweep ran daily against <c>ExpiresAt</c>; the W15
+    /// sweep runs at this cadence against
+    /// <c>CompletedAt &lt; now - RetentionDays</c> so changes to
+    /// <see cref="RetentionDays"/> retro-apply on the next tick.
+    /// Default 60 minutes. Values &lt; 1 fall back to 1 minute
+    /// (tests pin a short cadence).
+    /// </summary>
+    public int StoreSweepIntervalMinutes { get; set; } = 60;
 }
 
 /// <summary>
@@ -430,6 +503,94 @@ public sealed class ReplayRetentionSweepService : BackgroundService
             _logger.LogInformation(
                 "ReplayRetentionSweep removed {Count} expired record(s) older than {Cutoff:O}.",
                 removed, cutoff);
+        }
+        return removed;
+    }
+}
+
+/// <summary>
+/// Phase K Wave 15 — Bishop. Hourly retention sweep that
+/// evaluates the current configured <c>Replays:RetentionDays</c>
+/// against each row's <see cref="ReplayRecord.CompletedAt"/>.
+/// Complements the W12 <see cref="ReplayRetentionSweepService"/>
+/// (daily, <see cref="ReplayRecord.ExpiresAt"/>-based) by giving
+/// the operator a live knob — a runtime change to
+/// <c>Replays:RetentionDays</c> takes effect on the next hourly
+/// tick instead of only on rows ingested after the change.
+///
+/// <para>The two sweeps coexist: both delete the same row at
+/// most once. The W15 sweep is registered only when
+/// <c>Replays:StorageImpl="Ef"</c> — the in-memory store has no
+/// on-disk footprint and the W12 service is sufficient.</para>
+///
+/// <para>Toggle: <see cref="ReplayOptions.StoreSweepIntervalMinutes"/>
+/// (default 60). See <c>docs/replay-by-id.md §4</c>.</para>
+/// </summary>
+public sealed class ReplayStoreRetentionSweep : BackgroundService
+{
+    public const int DefaultSweepIntervalMinutes = 60;
+
+    private readonly IReplayStore _store;
+    private readonly ReplayOptions _options;
+    private readonly ILogger<ReplayStoreRetentionSweep> _logger;
+
+    public ReplayStoreRetentionSweep(
+        IReplayStore store,
+        ReplayOptions options,
+        ILogger<ReplayStoreRetentionSweep> logger)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var minutes = _options.StoreSweepIntervalMinutes > 0
+            ? _options.StoreSweepIntervalMinutes
+            : DefaultSweepIntervalMinutes;
+        var interval = TimeSpan.FromMinutes(Math.Max(1, minutes));
+        _logger.LogInformation(
+            "ReplayStoreRetentionSweep started (interval={Minutes}m, retention={Days}d).",
+            interval.TotalMinutes,
+            _options.RetentionDays);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(interval, stoppingToken);
+                await RunOnceAsync(stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "ReplayStoreRetentionSweep failed (non-fatal); next tick in {Minutes}m.",
+                    interval.TotalMinutes);
+            }
+        }
+
+        _logger.LogInformation("ReplayStoreRetentionSweep stopped.");
+    }
+
+    /// <summary>Single-sweep entry-point exposed so tests can
+    /// drive deletions deterministically.</summary>
+    internal async Task<int> RunOnceAsync(CancellationToken ct)
+    {
+        var retention = _options.RetentionDays > 0
+            ? _options.RetentionDays
+            : ReplayOptions.DefaultRetentionDays;
+        var utcNow = DateTime.UtcNow;
+        var removed = await _store.SweepByCompletedAtAsync(retention, utcNow, ct);
+        if (removed > 0)
+        {
+            _logger.LogInformation(
+                "ReplayStoreRetentionSweep removed {Count} record(s) older than {Days}d (cutoff={Cutoff:O}).",
+                removed, retention, utcNow.AddDays(-retention));
         }
         return removed;
     }
