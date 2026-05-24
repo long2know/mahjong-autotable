@@ -184,3 +184,66 @@ Hard-asserted in
 * Bad timestamp → 400.
 * `limit` clamps to 100 / 1.
 * `payloadSize` is dropped (always 0 in the listing wire).
+
+## §4 — Retention sweep (Phase K Wave 15)
+
+The W12 `ReplayRetentionSweepService` evicts rows whose
+`ExpiresAt` is past — computed once at insert time. That means
+a runtime change to `Replays:RetentionDays` does **not**
+retro-apply to rows already in the store: dialling retention
+from 30 days down to 7 leaves the existing 30-day rows in place
+until they hit their original expiry.
+
+W15 adds a second sweep —
+`ReplayStoreRetentionSweep` — that evaluates the **current**
+retention window against `CompletedAt` at every tick. The
+operator can dial retention down (or up) and the next tick
+honours the new window.
+
+### §4.1 — Cadence
+
+| Key                                  | Default | Notes                                      |
+| ------------------------------------ | ------- | ------------------------------------------ |
+| `Replays:StoreSweepIntervalMinutes`  | `60`    | Hourly cadence — drives the W15 sweep      |
+| `Replays:RetentionDays`              | `30`    | Window evaluated each tick — runtime dial honoured |
+
+The two sweeps are intentionally orthogonal — both can run
+alongside each other; the second pass over a row already
+deleted by the first is a no-op. The W15 sweep is only wired in
+the Ef storage path (the in-memory store has no on-disk
+footprint).
+
+### §4.2 — Surface
+
+```csharp
+public interface IReplayStore
+{
+    // ... W12 surface ...
+
+    /// <summary>Sweep rows whose CompletedAt is strictly older
+    /// than utcNow minus retentionDays.</summary>
+    Task<int> SweepByCompletedAtAsync(int retentionDays, DateTime utcNow, CancellationToken ct = default);
+}
+
+public sealed class ReplayStoreRetentionSweep : BackgroundService
+{
+    public const int DefaultSweepIntervalMinutes = 60;
+    internal Task<int> RunOnceAsync(CancellationToken ct);
+}
+```
+
+### §4.3 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W15/Bishop/ReplayStoreRetentionSweepTests.cs`:
+
+* `SweepByCompletedAtAsync` drops rows whose `CompletedAt` is
+  older than the cutoff and keeps rows inside the window.
+* `retentionDays <= 0` short-circuits to zero removals.
+* Empty store → no-op.
+* `RunOnceAsync` uses the configured retention.
+* `RunOnceAsync` honours operator dial-down on the next tick.
+* `Options.StoreSweepIntervalMinutes` default is 60.
+* `Options.RetentionDays = 0` falls back to
+  `ReplayOptions.DefaultRetentionDays`.
+* Ctor null-checks store / options / logger.

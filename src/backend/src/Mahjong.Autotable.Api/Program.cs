@@ -340,11 +340,26 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorHandoffTo
 // docs/spectator-handoff.md §3.
 builder.Services.Configure<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditOptions>(
     builder.Configuration.GetSection("Spectator:Audit"));
+{
+    // Phase K Wave 15 — Bishop. Bind a singleton options instance
+    // so the W15 retention sweep hosted service can resolve it
+    // without going through IOptions<T>. The IConfigureOptions
+    // path above continues to drive future IOptions<T> consumers.
+    var spectatorAuditOptions = new Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditOptions();
+    builder.Configuration.GetSection("Spectator:Audit").Bind(spectatorAuditOptions);
+    builder.Services.AddSingleton(spectatorAuditOptions);
+}
 var spectatorAuditImpl = builder.Configuration["Spectator:Audit:StorageImpl"];
 if (string.Equals(spectatorAuditImpl, "Ef", StringComparison.OrdinalIgnoreCase))
 {
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.ISpectatorHandoffAuditStore,
         Mahjong.Autotable.Api.Spectator.EfSpectatorHandoffAuditStore>();
+    // Phase K Wave 15 — Bishop. 5-minute retention sweep against
+    // IssuedAt < now - RetentionDays. Registered only for the EF
+    // impl; the in-memory store has no on-disk footprint.
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRetentionSweep>();
+    builder.Services.AddHostedService(sp =>
+        sp.GetRequiredService<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRetentionSweep>());
 }
 else
 {
@@ -357,6 +372,30 @@ else
 // docs/jwt-rotation.md §13.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy>(
     _ => new Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy(authOptions));
+
+// Phase K Wave 15 — Bishop. Per-tenant JWKS rotation surface. Off
+// by default; opt-in for multi-tenant deployments via
+// `JwksRotation:PerTenant:Enabled=true`. Storage impl follows the
+// same toggle pattern as other W12+ surfaces: InMemory default,
+// Ef for prod multi-tenant. See docs/per-tenant-jwks.md.
+{
+    var perTenantOpts = new Mahjong.Autotable.Api.Auth.PerTenantJwksRotationOptions();
+    builder.Configuration.GetSection("JwksRotation:PerTenant").Bind(perTenantOpts);
+    builder.Services.AddSingleton(perTenantOpts);
+    if (perTenantOpts.Enabled)
+    {
+        if (string.Equals(perTenantOpts.StorageImpl, "Ef", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IPerTenantJwksRotationStore,
+                Mahjong.Autotable.Api.Auth.EfPerTenantJwksRotationStore>();
+        }
+        else
+        {
+            builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IPerTenantJwksRotationStore,
+                Mahjong.Autotable.Api.Auth.InMemoryPerTenantJwksRotationStore>();
+        }
+    }
+}
 
 // Phase K Wave 12 — Bishop. Per-client_id sliding-window rate limit
 // for the RFC 7662 token-introspection endpoint. The W11 surface
@@ -861,6 +900,15 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.ReplayRetentionSweepService>();
         builder.Services.AddHostedService(sp =>
             sp.GetRequiredService<Mahjong.Autotable.Api.Replays.ReplayRetentionSweepService>());
+        // Phase K Wave 15 — Bishop. Hourly retention sweep against
+        // CompletedAt < now - RetentionDays. Complements the W12
+        // daily ExpiresAt-based sweep above by giving the operator
+        // a live retention knob. Registered only for the EF impl;
+        // the in-memory store has no on-disk footprint and the W12
+        // sweep is sufficient.
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.ReplayStoreRetentionSweep>();
+        builder.Services.AddHostedService(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Replays.ReplayStoreRetentionSweep>());
     }
     else
     {
@@ -952,6 +1000,14 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
     builder.Services.AddHostedService(sp =>
         sp.GetRequiredService<Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep>());
 }
+
+// Phase K Wave 15 — Bishop. Tournament-scale query latency
+// histogram, bucketed by endpoint + page_size_bucket. Surfaced
+// on the existing Prometheus endpoint as
+// `tournament_query_duration_seconds`. Registered unconditionally
+// so test fixtures can resolve the collector even when no
+// queries have been observed yet. See docs/bracket-shape.md §6.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.TournamentQueryLatencyMetrics>();
 
 // Phase K Wave 8 — Bishop. Centralised "is player on this table?"
 // gate. Backs the livestream playlist auth check + future surfaces.

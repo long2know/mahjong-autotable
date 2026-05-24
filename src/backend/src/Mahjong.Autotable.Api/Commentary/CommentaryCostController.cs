@@ -123,4 +123,108 @@ public sealed class CommentaryCostController : ControllerBase
             byModel,
         });
     }
+
+    /// <summary>
+    /// Phase K Wave 15 — Bishop. Admin-only forecast endpoint.
+    /// Projects the current month-end commentary cost by linearly
+    /// extrapolating the month-to-date spend over the elapsed
+    /// fraction of the calendar month. The wire shape is:
+    ///
+    /// <code>
+    /// {
+    ///   "projectedMonthEndCost": &lt;decimal&gt;,
+    ///   "confidence":            "low" | "medium" | "high",
+    ///   "daysOfDataUsed":        &lt;int&gt;,
+    ///   "projectionMethodology": "linear-extrapolation:days-elapsed"
+    /// }
+    /// </code>
+    ///
+    /// <para>The optional <c>days</c> query parameter pins the
+    /// "days of data used" denominator. When omitted, the
+    /// endpoint computes the days from the start of the calendar
+    /// month — the same anchor used by the
+    /// <see cref="ICommentaryUsageMeter.MonthlyTokens"/> counter.
+    /// Confidence is bucketed on <c>daysOfDataUsed</c>:
+    /// &lt; 3 = low, 3-9 = medium, ≥ 10 = high.</para>
+    ///
+    /// <para>Auth precedence:
+    ///   401 (no session) → 403 (non-admin) → 200.</para>
+    ///
+    /// <para>See <c>docs/commentary-llm.md §7 "Cost forecasting"</c>.</para>
+    /// </summary>
+    [HttpGet("cost/forecast")]
+    public async Task<IActionResult> Forecast(
+        [FromQuery(Name = "days")] int? days = null,
+        CancellationToken ct = default)
+    {
+        var session = await _cookies.ResolveAsync(HttpContext, ct);
+        if (session is null)
+        {
+            return Unauthorized(new { error = "session-required" });
+        }
+        if (!string.Equals(session.Role, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "admin-required",
+            });
+        }
+
+        var now = DateTime.UtcNow;
+        var model = _options?.CurrentValue.Model ?? "unknown";
+        var month = $"{now.Year:D4}-{now.Month:D2}";
+
+        decimal currentCost = 0m;
+        long tokensPerDollar = 0;
+        if (_budget is not null)
+        {
+            try
+            {
+                var eval = _budget.Evaluate(now);
+                currentCost = eval.MonthlyUsd;
+                tokensPerDollar = eval.TokensPerDollar;
+            }
+            catch
+            {
+                // Defensive: zero-extrapolate on transient store
+                // failure (same posture as Summary).
+            }
+        }
+
+        // Phase K Wave 15 — Bishop. Days-elapsed denominator. The
+        // month-to-date counter resets on day 1 at 00:00:00 UTC,
+        // so the elapsed fraction is `(day - 1) + hours/24`.
+        // Clamped to a minimum of 1 day so day-1 forecasts don't
+        // divide by zero — confidence will report "low" anyway.
+        var daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
+        var elapsedDays = (now.Day - 1) + (now.Hour / 24.0) + (now.Minute / 1440.0);
+        var daysOfDataUsed = days is { } d && d > 0 ? d : Math.Max(1, (int)Math.Floor(elapsedDays));
+        var elapsedForProjection = days is { } dd && dd > 0 ? dd : Math.Max(elapsedDays, 1.0 / 24.0);
+
+        var projection = elapsedForProjection > 0
+            ? (decimal)((double)currentCost / elapsedForProjection * daysInMonth)
+            : currentCost;
+        projection = decimal.Round(projection, 4);
+
+        var confidence = daysOfDataUsed switch
+        {
+            < 3 => "low",
+            < 10 => "medium",
+            _ => "high",
+        };
+
+        return Ok(new
+        {
+            projectedMonthEndCost = projection,
+            confidence,
+            daysOfDataUsed,
+            projectionMethodology = "linear-extrapolation:days-elapsed",
+            currentMonthCost = decimal.Round(currentCost, 4),
+            daysInMonth,
+            tokensPerDollar,
+            model,
+            month,
+            at = DateTimeOffset.UtcNow,
+        });
+    }
 }

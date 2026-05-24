@@ -235,3 +235,50 @@ Hard-asserted in
 * W13 bracket rows surface in `(RoundNumber, MatchSlot)` order.
 * `skip` + `limit` slice correctly.
 * `limit` clamps to 200 / 1.
+
+
+## §6 — Page-size tuning (Phase K Wave 15)
+
+The W14 paginated bracket / replay / spectator-audit endpoints
+each landed configurable page sizes but no latency observability.
+Operators couldn't see whether a 100-row page took 10× longer
+than a 25-row page until production users reported it. W15 adds a
+Prometheus histogram bucketed by **effective page size**.
+
+### §6.1 — Metric
+
+`tournament_query_duration_seconds{endpoint, page_size_bucket}`
+
+* **Type:** histogram
+* **Buckets (seconds):** `0.005, 0.010, 0.025, 0.050, 0.100,
+  0.250, 0.500, 1.0, 2.5, 5.0, 10.0, +Inf`
+* **Labels:**
+  * `endpoint` — one of `bracket-records`, `replay-list`,
+    `spectator-audit-query`.
+  * `page_size_bucket` — one of `small` (≤25), `medium` (26–75),
+    `large` (76–100).
+
+The three-value page-size collapse keeps the wire cardinality at
+`3 endpoints × 3 page-size buckets × 11 latency buckets = 99` —
+small enough that Prometheus retention does not bloat at the
+shard.
+
+### §6.2 — Surfaced through
+
+The same `/metrics` Prometheus endpoint as the W14
+SignalR-sequence + W13 commentary-cost metrics. The collector
+is wired unconditionally so dashboards see a stable HELP / TYPE
+preamble even before the first query observes a latency.
+
+### §6.3 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W15/Bishop/TournamentQueryLatencyMetricsTests.cs`:
+
+* `BucketLabel(25)` → `small`; `BucketLabel(26)` → `medium`;
+  `BucketLabel(76)` → `large`.
+* Out-of-range page sizes clamp to `large`.
+* `ObserveDuration` increments the count for the labelled series.
+* `AppendPrometheus` emits HELP / TYPE preambles + `_bucket`
+  (incl. `+Inf`) / `_sum` / `_count` series.
+* Empty endpoint label collapses to `unknown`.

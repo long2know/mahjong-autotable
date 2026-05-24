@@ -29,7 +29,19 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W9.Bishop;
 ///   <item>The Redis wrapper writes through to the EF store.</item>
 ///   <item>The Redis wrapper exposes the connection string.</item>
 /// </list>
+///
+/// <para>Phase K Wave 15 — Bishop. <c>[Collection("DbSerial")]</c>
+/// applied to close the W12-W14 DbSerial migration thread tracked
+/// by Vasquez's <c>Phase_K_W14/Vasquez/db-serial-migration-completion.md</c>
+/// (the file lives under <c>Phase_K_W9/Bishop/</c> per the
+/// lane-map overrides, so only a Bishop-attributed commit could
+/// land it). The SQLite fixture creates a per-test temp-file
+/// database; serialising the collection prevents two W9-vintage
+/// Bishop tests from racing on the same in-memory EF model cache
+/// on cold-start. See
+/// <c>Phase_K_W15/Bishop/db-serial-completion.md</c>.</para>
 /// </summary>
+[Collection("DbSerial")]
 public sealed class IdempotencyStoreContractTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

@@ -33,17 +33,20 @@ public sealed class TournamentController : ControllerBase
     private readonly AuthCookieService _cookies;
     private readonly IBracketStore? _bracketStore;
     private readonly BracketQueryOptions? _bracketQueryOptions;
+    private readonly Mahjong.Autotable.Api.Observability.TournamentQueryLatencyMetrics? _latencyMetrics;
 
     public TournamentController(
         IServiceScopeFactory scopeFactory,
         AuthCookieService cookies,
         IBracketStore? bracketStore = null,
-        BracketQueryOptions? bracketQueryOptions = null)
+        BracketQueryOptions? bracketQueryOptions = null,
+        Mahjong.Autotable.Api.Observability.TournamentQueryLatencyMetrics? latencyMetrics = null)
     {
         _scopeFactory = scopeFactory;
         _cookies = cookies;
         _bracketStore = bracketStore;
         _bracketQueryOptions = bracketQueryOptions;
+        _latencyMetrics = latencyMetrics;
     }
 
     /// <summary>
@@ -82,8 +85,13 @@ public sealed class TournamentController : ControllerBase
         var take = Math.Clamp(limit ?? configuredPageSize, 1, BracketQueryOptions.MaxPageSize);
         var skipN = Math.Max(0, skip ?? 0);
 
+        // Phase K Wave 15 — Bishop. Time the query so the
+        // tournament-scale latency histogram can surface a p99 by
+        // page-size bucket. See docs/bracket-shape.md §6.
+        var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var rows = await _bracketStore.ListAsync(id, ct);
         var pageRows = rows.Skip(skipN).Take(take).ToArray();
+        _latencyMetrics?.ObserveTimestamp("bracket-records", take, t0);
         return Ok(new
         {
             tournamentId = id,
