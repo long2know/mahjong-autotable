@@ -735,6 +735,50 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (ruleset == MahjongRuleset.ChineseOfficial && visibleCounts.Count > 0 && sevenPairsPairCount < 6)
+        {
+            var pairCount = handCounts.Count(entry => entry.Value >= 2 && !entry.Key.IsFlower);
+            if (pairCount >= 2)
+            {
+                var nearDeadPairCandidates = candidates
+                    .Where(candidate =>
+                    {
+                        handCounts.TryGetValue(candidate.Tile, out var handCount);
+                        if (handCount != 2)
+                        {
+                            return false;
+                        }
+
+                        ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
+                        visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
+                        return 4 - ownedCount - visibleCount == 1;
+                    })
+                    .ToList();
+
+                if (nearDeadPairCandidates.Count > 0)
+                {
+                    var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestOverallOutCopies = candidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var bestNearDeadOuts = nearDeadPairCandidates.Max(candidate => candidate.WinningDrawOuts);
+                    var bestNearDeadOutCopies = nearDeadPairCandidates
+                        .Where(candidate => candidate.WinningDrawOuts == bestNearDeadOuts)
+                        .Max(candidate => candidate.WinningDrawOutCopies);
+
+                    var withinOutsTolerance = bestNearDeadOuts >= bestOverallOuts - NearDeadPairOutsTolerance;
+                    var withinCopyTolerance = bestNearDeadOuts < bestOverallOuts
+                        || bestNearDeadOutCopies >= bestOverallOutCopies - NearDeadPairOutsTolerance;
+
+                    if (withinOutsTolerance && withinCopyTolerance)
+                    {
+                        candidates = nearDeadPairCandidates;
+                    }
+                }
+            }
+        }
+
         if (visibleCounts.Count > 0)
         {
             var deadHonorSingletonCandidates = candidates
