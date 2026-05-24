@@ -82,20 +82,22 @@ kind: ClusterPolicy
 metadata:
   name: require-network-policy
   annotations:
-    policies.kyverno.io/title: "Require at least one NetworkPolicy per workload namespace (W19, Audit)"
+    policies.kyverno.io/title: "Require at least one NetworkPolicy per workload namespace (W20, Enforce)"
     policies.kyverno.io/category: "Network"
     policies.kyverno.io/severity: "high"
     policies.kyverno.io/subject: "Namespace"
     policies.kyverno.io/description: >-
-      W19 audit-mode policy. Fires on Namespace creation +
+      W20 enforce-mode policy. Fires on Namespace creation +
       background scan; requires AT LEAST ONE NetworkPolicy
-      to exist in the namespace. Lands in Audit mode for a
-      5-day grace before the Wave-20 Enforce flip.
+      to exist in the namespace. Flipped from Audit (W19)
+      to Enforce on the W20 cutover after a 5-day clean
+      grace window. See docs/kyverno-w19-additional-rules.md
+      §4 for evidence + cutover-day verification log.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   webhookTimeoutSeconds: 30
-  failurePolicy: Ignore
+  failurePolicy: Fail
   rules:
     - name: namespace-has-network-policy
       match:

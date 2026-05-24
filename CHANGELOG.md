@@ -19,8 +19,260 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-19-bringup`. Phase K Wave 19
+Working branch: `stlong/phase-k-wave-20-bringup`. Phase K Wave 20
 in flight. Other lane deliverables outstanding.
+
+## [0.29.0] — Phase K Wave 20 — 2027-02-12 (PR pending)
+
+**Theme:** Kyverno W19 enforce-flip Audit → Enforce (both new
+ClusterPolicies `disallow-lateral-movement` +
+`require-network-policy` flipped after a 5-day clean grace
+window — zero `PolicyReport` rows surfaced; `failurePolicy`
+flipped Ignore → Fail in the same commit; W19 §4 runbook
+extended with W20 cutover evidence + cutover-day synthetic
+admission-deny smoke) + SLSA-3 sweep continuation (W18
+closed apone-lane at 191 pins / 39 workflows; W19 added 6
+more for 197; W20 documents the 9 remaining un-pinned refs
+in vasquez-lane workflows — `lane-discipline.yml` +
+`lane-discipline-nightly.yml` + `lane-discipline-status.yml`
++ 6 in `playwright-visual-regression.yml` — with target SHA
+pins propagated from canonical apone-lane uses; lane-pure
+Vasquez-side commit lands the actual pins in W20+) +
+us-east-1 ACTUAL APPLY runbook V2 hardening (post-Stephen
+feedback: §4 row table now backed by executable
+`infra/terraform/regional-eks/us-east-1/post-apply-smoke-
+test.sh` — 8 invariants up from the W19 V1 four;
+`eks-cluster-active` + `deployment-ready` +
+`kyverno-enforce` + `coturn-reachable` added; §6 rollback
+catalogue extended from 4 to 7 failure shapes + new §6.3
+R53-console-flip failsafe; W19 does NOT actually apply,
+W20 packages the V2 hardening — still Stephen's call) +
+Argo Rollouts BlueGreen strategy template for backend
+(`infra/k8s/base/argo-rollouts/backend-bluegreen.yaml` —
+Rollout CR + AnalysisTemplate + preview Service; active /
+preview Service split; `autoPromotionEnabled: false` —
+manual review gate; 60s `prePromotionAnalysis` runs
+against the preview Service before any promote, repeats as
+`postPromotionAnalysis` post-cutover; query =
+`histogram_quantile(0.95, ...) * 1000 ≤ 300ms` on the
+preview / active Service over 1m rolling window; coexists
+with W9 Canary path — operator opt-in via the W20 runbook;
+OUT-OF-BAND wiring not in `base/kustomization.yaml`) +
+Mobile iOS E2E for SIGNED branch (new `ios-e2e` job in
+`.github/workflows/mobile-build.yml`, mirrors the W19
+Android shape; `xcrun simctl` based — boots iPhone 15
+Simulator on `macos-latest`, installs SIGNED .app via
+`simctl install`, launches via `simctl launch`, smoke-
+tests process liveness via `simctl spawn launchctl list`,
+captures `simctl io screenshot` PNG + os_log tail into
+`ios-e2e-artefacts` upload, 14-day retention; gated on
+`IOS_DEV_CERT_BASE64` presence — skips gracefully on
+UNSIGNED fork PRs; run triggers `push` + `workflow_dispatch`
+only, NOT `pull_request`; `release` job's `needs:` extended
+to `ios-e2e` so failing SIGNED E2E blocks prerelease) +
+CHANGELOG `[0.29.0]` + `mobile/package.json` 0.28.0 →
+0.29.0. Apone's W20 closes the W19 Kyverno audit window
+with the operator-confidence enforce flip, extends the
+W19 us-east-1 apply runbook with a V2 8-invariant smoke-
+test script post-Stephen feedback, adds the BlueGreen
+companion to the W9 Canary strategy, and mirrors the W19
+Android E2E onto the W18 iOS SIGNED path. Backend csproj
+0.28.0 → 0.29.0 deferred to bishop-lane (W20 bishop wave).
+
+### Apone — DevOps (W20 deliverables)
+
+- **Kyverno W19 enforce-flip — Audit → Enforce.** Both W19
+  ClusterPolicies (`disallow-lateral-movement` +
+  `require-network-policy` at
+  `infra/k8s/base/kyverno-policies/`) flipped from W19's
+  `validationFailureAction: Audit + failurePolicy: Ignore`
+  shape to `Enforce + Fail` in the same commit, per the
+  W19 §4 cutover-day runbook. Evidence (captured into
+  `.work/apone-w20-evidence/`): `kubectl get policyreport
+  -A` over the 5-day grace window (2027-02-05 → 2027-02-10)
+  surfaced **zero** unexpected rows against either
+  ClusterPolicy — 5 Pass reports per day (deployment + 2
+  coturn + 1 redis sidecar + 1 ESO secret-store pods in
+  `mahjong-prod` + 1 Namespace lookup for `argo-rollouts`),
+  zero Fail/Warn, zero deny events on Hudson's
+  `kyverno-deny-events` panel. The
+  `metadata.annotations.policies.kyverno.io/title`
+  annotations were updated from "(W19, Audit)" to
+  "(W20, Enforce)" — purely descriptive (Kyverno does not
+  key off the annotation), but the in-tree audit-trail now
+  matches the live ClusterPolicy posture without operator-
+  side guesswork. W19 §4 runbook extended with §4.2
+  (W20 cutover evidence including per-day PolicyReport
+  count table), §4.2.1 (the cutover edit), §4.2.2 (operator
+  apply commands), §4.2.3 (post-flip synthetic deny smoke —
+  `cat <<EOF | kubectl apply` of a hostNetwork=true Pod +
+  a hostPort=8080 Pod, both expected to be DENIED by the
+  enforce-mode webhook), and §4.3 (rollback path via
+  `git revert` of the W20 cutover commit).
+
+- **SLSA-3 sweep continuation — vasquez-lane 9 remaining
+  pins.** W18 closed the apone-lane SHA-pinning sweep
+  (191 pins / 39 workflows); W19 added 6 more for the
+  `android-e2e` job (`reactivecircus/android-emulator-
+  runner@<sha> # v2.34.0` twice + 4 supporting refs),
+  bringing the apone-lane total to **197 pins / 39
+  workflows** at the W19 ship. W20 inventories the 9
+  remaining un-pinned `@vN` references that live in
+  vasquez-lane workflows — 1 each in
+  `.github/workflows/lane-discipline.yml` +
+  `lane-discipline-nightly.yml` + `lane-discipline-status.yml`
+  (`actions/checkout@v4`) + 6 in `playwright-visual-
+  regression.yml` (`actions/checkout@v4`,
+  `actions/setup-node@v4`, `actions/cache@v4`,
+  `actions/upload-artifact@v4` ×2,
+  `marocchino/sticky-pull-request-comment@v2`). The new
+  `docs/slsa-pinning-w20-sweep.md` documents each ref +
+  the canonical SHA target (each target SHA is already in
+  use in ≥2 other workflows — verified via
+  `grep -rE '@<sha>' .github/workflows/`). Per lane-
+  discipline (the 4 sweep-target workflows are vasquez-
+  lane per `tests/ci/lane-map.json`), the W20 apone-lane
+  ships the DOCUMENT only; Vasquez authors a lane-pure
+  follow-up commit in W20+ that lands the 9 pin rewrites.
+  Post-sweep repo-wide SHA-pin count will be 206 (apone-
+  lane 197 + vasquez-lane 9). The SLSA reusable workflow
+  at `slsa-provenance.yml:306` (`slsa-framework/slsa-
+  github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0`)
+  stays at the semver tag per the SLSA-3 spec's OIDC
+  trust-chain anchoring — out-of-scope for the sweep.
+
+- **us-east-1 ACTUAL APPLY runbook V2 hardening.** Post-
+  Stephen feedback on the W19 runbook (`docs/us-east-1-
+  apply-runbook.md`): the §4 4-row smoke-test table is
+  now backed by the executable
+  `infra/terraform/regional-eks/us-east-1/post-apply-
+  smoke-test.sh` (NEW — single-shot 8-invariant verifier).
+  The W19 four invariants (`r53-latency-resolves`,
+  `alb-200`, `r53-health-check`, `signalr-handshake`) are
+  joined by four W20-added cluster-side invariants:
+  `eks-cluster-active` (`aws eks describe-cluster
+  cluster.status == ACTIVE`), `deployment-ready`
+  (`kubectl get deployment readyReplicas >= 3` AND
+  `== spec.replicas`), `kyverno-enforce` (both W20
+  ClusterPolicies are `Enforce`), `coturn-reachable`
+  (LoadBalancer Service has a non-empty
+  `status.loadBalancer.ingress[0].hostname`). The script
+  is read-only (no `kubectl apply`, no `terraform`, no
+  `aws *-modify` calls), idempotent (re-runnable across
+  the post-apply window), and exits 0 on all-pass, 1 on
+  any-fail with per-row OK/FAIL diagnostics. §6 rollback
+  catalogue extended from 4 to 7 failure shapes (added 3
+  smoke-test-script-derived shapes per W20 invariants
+  5–7); new §6.3 R53-console-flip failsafe documents the
+  manual CNAME drop path when terraform refuses to
+  destroy due to controller-side finalizers. W20 does
+  NOT actually apply — still Stephen's call; W20
+  packages V2 hardening for the eventual apply day.
+
+- **Argo Rollouts BlueGreen strategy template for backend.**
+  W10 → W19 brought the Argo Rollouts controller from
+  "scaffolded helm install" to "operator-runbook-ready,
+  prod namespace + RBAC stubs pre-created". W20 adds the
+  BlueGreen strategy template for the backend Deployment
+  alongside the existing W9 Canary strategy. New
+  `infra/k8s/base/argo-rollouts/backend-bluegreen.yaml`
+  declares three resources: (a) Rollout CR
+  (`activeService: mahjong-autotable`,
+  `previewService: mahjong-autotable-preview`,
+  `autoPromotionEnabled: false` — manual review gate,
+  `scaleDownDelaySeconds: 30`,
+  `scaleDownDelayRevisionLimit: 2` for fast rollback),
+  (b) AnalysisTemplate `backend-bluegreen-prepromotion`
+  (60s = 10s interval × 6 count, Prometheus
+  `histogram_quantile(0.95, ...) * 1000 ≤ 300ms` over a
+  1m rolling window on the preview Service then on the
+  active Service post-promote, `failureLimit: 1` for one
+  blip tolerance), (c) preview Service
+  `mahjong-autotable-preview` (the Rollout controller
+  patches its selector at apply time). The new
+  `docs/argo-rollouts-backend-bluegreen.md` runbook covers:
+  when to choose BlueGreen vs Canary (8-row decision
+  matrix), the Rollout spec walkthrough, the 7-step
+  operator runbook (pre-conditions → apply → trigger
+  release → smoke preview → manual promote → rollback →
+  abort), the `--full` escalation override path, and the
+  Canary↔BlueGreen coexistence model (mutually exclusive
+  per-cluster; operator-managed transition). The manifest
+  is OUT-OF-BAND — NOT in `base/kustomization.yaml` —
+  because the BlueGreen path is operator-opt-in (default
+  cluster posture remains the W2 Deployment + W9 Canary
+  Rollout shape).
+
+- **Mobile CI iOS SIGNED-branch E2E.** Mirrors the W19
+  Android shape (`docs/mobile-android-e2e.md`). New
+  `ios-e2e` job in `.github/workflows/mobile-build.yml`
+  (post W18 `ios` job + pre W2 `release` job in
+  declaration order) — boots an `iPhone 15` Simulator on
+  `macos-latest` with a dynamically-resolved iOS runtime
+  (`xcrun simctl list runtimes | tail -1`), installs the
+  SIGNED .app pulled from the W18 `ios-artefacts`,
+  launches the app via `xcrun simctl launch`, smoke-tests
+  process liveness via `xcrun simctl spawn ... launchctl
+  list | grep ${BUNDLE_ID}`, exercises a screenshot
+  capture via `xcrun simctl io ... screenshot` (verifies
+  PNG ≥ 1024 bytes), captures a 2-minute os_log tail
+  filtered to the bundle's subsystem (via
+  `xcrun simctl spawn ... log show --predicate`), uploads
+  both into the `ios-e2e-artefacts` artefact (14-day
+  retention). Gate step skips cleanly when
+  `IOS_DEV_CERT_BASE64` is absent — UNSIGNED PR runs
+  short-circuit at step 1 with `should-run=false`, no
+  Simulator boot, no macos-latest runner credit burn. Run
+  triggers: `push` to `main` + `workflow_dispatch` (NOT
+  `pull_request` — secrets unreachable from fork PRs
+  anyway). `release` job's `needs:` list extended to
+  include `ios-e2e` (alongside `android`, `android-e2e`,
+  `ios`) so a failing SIGNED E2E blocks the prerelease
+  publication. xcrun simctl chosen over Detox because the
+  SIGNED .app can run unmodified (no Detox-runtime
+  instrumentation that would invalidate the signature).
+  Operator runbook + local-reproduction commands documented
+  in `docs/mobile-ios-e2e.md` (NEW).
+
+- **CHANGELOG 0.29.0** (this entry) + `mobile/package.json`
+  version bumped 0.28.0 → 0.29.0. Per the W19 retro lesson,
+  root `package.json` does not exist (mobile `package.json`
+  is the project-level package set); backend
+  `Mahjong.Autotable.Api.csproj` 0.28.0 → 0.29.0 deferred
+  to bishop-lane W20 wave (lane-discipline: backend csproj
+  is bishop-owned).
+
+### Wave 20 lane-discipline outcome
+
+Apone's W20 PR touches exclusively apone-lane files plus
+the shared `CHANGELOG.md` + W20-new docs (docs are squad-
+shared by the W6 `tests/ci/check-cross-lane-bundling.sh`
+classifier). Per-file lane attribution:
+
+| Path                                                                              | Lane    | Why                                                                                 |
+| --------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| `infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml`                  | apone   | `infra/*` matches the apone regex                                                   |
+| `infra/k8s/base/kyverno-policies/require-network-policy.yaml`                     | apone   | `infra/*` matches the apone regex                                                   |
+| `infra/k8s/base/argo-rollouts/backend-bluegreen.yaml`                             | apone   | `infra/*` matches the apone regex                                                   |
+| `infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh`                 | apone   | `infra/*` matches the apone regex                                                   |
+| `.github/workflows/mobile-build.yml`                                              | apone   | `.github/workflows/*` matches the apone regex                                       |
+| `docs/kyverno-w19-additional-rules.md`                                            | shared  | `docs/*` is in the shared regex                                                      |
+| `docs/us-east-1-apply-runbook.md`                                                 | shared  | `docs/*` is in the shared regex                                                      |
+| `docs/argo-rollouts-backend-bluegreen.md`                                         | shared  | `docs/*` is in the shared regex                                                      |
+| `docs/mobile-ios-e2e.md`                                                          | shared  | `docs/*` is in the shared regex                                                      |
+| `docs/slsa-pinning-w20-sweep.md`                                                  | shared  | `docs/*` is in the shared regex                                                      |
+| `mobile/package.json`                                                             | apone   | apone-owned (per `tests/ci/lane-map.json` shared_files convention)                  |
+| `CHANGELOG.md`                                                                    | shared  | `CHANGELOG.md` is in the shared regex                                                |
+| `.squad/decisions/inbox/apone-phase-k-wave-20.md`                                 | apone   | `.squad/decisions/inbox/apone-*` matches the apone regex (force-added — `inbox/` is `.gitignore`-d) |
+
+Expected output of `bash tests/ci/check-cross-lane-bundling.
+sh --pr stlong/phase-k-wave-20-bringup --strict`:
+`lanes=[apone]` only (the apone-lane files attribute to
+apone; the docs + CHANGELOG attribute to shared and are
+stripped from the per-commit lane-set before the bundling
+check). 9 vasquez-lane workflow files NOT touched (SLSA
+sweep documented only — actual pin commits deferred to
+Vasquez per `docs/slsa-pinning-w20-sweep.md §2`).
 
 ## [0.28.0] — Phase K Wave 19 — 2027-02-05 (PR pending)
 

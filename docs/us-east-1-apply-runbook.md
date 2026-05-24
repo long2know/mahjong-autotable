@@ -1,6 +1,11 @@
-# us-east-1 ACTUAL APPLY runbook (W19)
+# us-east-1 ACTUAL APPLY runbook (W19 → W20 V2)
 
-> Phase K Wave 19 — Apone (DevOps).
+> Phase K Wave 19 — Apone (DevOps). **V2 hardening landed at
+> Phase K Wave 20** (post-Stephen feedback): the §4 row table
+> is now backed by the executable
+> [`infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh`](../infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh)
+> (W20 NEW) and the §6 rollback section now covers the full
+> failure-shape catalogue (5 shapes, was 4 at W19).
 > Audience: Stephen (operator) and on-call SRE assisting the
 > W19 `terraform apply` of the regional EKS stack in
 > `us-east-1`. Companion to
@@ -154,17 +159,51 @@ W19 HEAD).
 ## 4. Post-apply smoke tests
 
 The preflight.yaml `smokeTests[*]` list carries the exact
-shell commands. Run all four in order; record the output in
-the apply PR description.
+shell commands. **W20 V2 hardening:** these are now wrapped
+by the executable
+[`infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh`](../infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh)
+script — one invocation runs all 8 invariants (the original
+W19 V1 four + four W20-added cluster-side invariants) and
+exits non-zero if any fail.
+
+### 4.0 Run the W20 smoke-test script
+
+```bash
+# Single-shot. Exits 0 = all 8 invariants passed; 1 = at
+# least one failed (per-row OK/FAIL printed); 2 = bad
+# invocation. Re-runnable; idempotent; read-only (no
+# kubectl apply / terraform / aws modify calls).
+bash infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh
+
+# Tunables (env vars, optional):
+#   APEX=mahjong.example.com               # the R53 apex
+#   REGIONAL_APEX=us-east-1.mahjong.example.com  # regional CNAME
+#   EXPECTED_REGION=us-east-1
+#   HEALTH_CHECK_REF=mahjong-prod-us-east-1
+#   EKS_CLUSTER_NAME=mahjong-prod-us-east-1
+APEX=mahjong.example.com bash infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh
+```
+
+### 4.1 The 8 invariants (W20 V2)
 
 | # | Smoke test                | Verify                                                                | Pass criterion             |
 | - | ------------------------- | --------------------------------------------------------------------- | -------------------------- |
 | 1 | `r53-latency-resolves`    | `dig +short mahjong.example.com @8.8.8.8`                             | `*.elb.us-east-1...` CNAME |
 | 2 | `alb-200`                 | `curl -sS -o /dev/null -w "%{http_code}" https://us-east-1.mahjong.example.com/healthz` | `200`                     |
 | 3 | `r53-health-check`        | `aws route53 get-health-check-status ...`                             | `Success` × N              |
-| 4 | `signalr-handshake`       | `curl -sS -X POST https://mahjong.example.com/hubs/changsha/negotiate?negotiateVersion=1 \| jq .availableTransports[0].transport` | `"WebSockets"` |
+| 4 | `signalr-handshake`       | `curl -sS -X POST .../hubs/changsha/negotiate \| jq .availableTransports[0].transport` | `"WebSockets"` |
+| 5 | `eks-cluster-active`      | `aws eks describe-cluster --region us-east-1 ... --query cluster.status` | `ACTIVE`                |
+| 6 | `deployment-ready`        | `kubectl -n mahjong-prod get deployment prod-mahjong-autotable -o jsonpath='{.status.readyReplicas}'` | `>= 3` AND `= .spec.replicas` |
+| 7 | `kyverno-enforce`         | `kubectl get clusterpolicy disallow-lateral-movement -o jsonpath='{.spec.validationFailureAction}'` | `Enforce` (W20 flip) |
+| 8 | `coturn-reachable`        | `kubectl -n mahjong-prod get svc prod-mahjong-autotable-coturn -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'` | non-empty           |
 
-Optional follow-up (within 5 minutes of apply):
+Rows 1–4 are the W19 V1 catalogue; rows 5–8 are the W20 V2
+additions Stephen requested post-W19 (the W19 runbook only
+checked the front-of-cluster shape; the V2 set covers the
+control-plane + workload-readiness + admission-policy
+posture too).
+
+### 4.2 Optional follow-up (within 5 minutes of apply)
 
 * `docs/edge-region-probes.md §4` runbook — full per-region
   probe sweep. The W14 §7 cross-reference outlines the resolver
@@ -185,10 +224,11 @@ Optional follow-up (within 5 minutes of apply):
 | 6  | Close the rollback PR (no longer needed once apply is GREEN).                                | Stephen     |
 | 7  | Schedule Hudson's `regional-latency-apex` 7-day soak review.                                 | Apone (W20) |
 
-## 6. Rollback procedure
+## 6. Rollback procedure (W20 V2)
 
-If the apply fails partway, OR if the §4 smoke tests fail,
-recover via the drafted rollback PR (preflight.yaml row 8).
+If the apply fails partway, OR if the §4 smoke-test script
+exits non-zero, recover via the drafted rollback PR
+(preflight.yaml row 8).
 
 ### 6.1 Recognise the failure shapes
 
@@ -199,6 +239,9 @@ recover via the drafted rollback PR (preflight.yaml row 8).
 | Apply completes but ALB returns 5xx                  | Cluster not yet healthy / ESO not ready   | §6.2 if persists > 5 min. |
 | Apply completes but SignalR handshake fails          | Ingress-class or cookie affinity broken   | §6.2. |
 | Apply tries to DESTROY a resource (Row 4 plan-replay flagged) | State drift between W18 capture and W19 apply | HARD STOP — abort before the apply. |
+| Smoke-test script invariant 5 (`eks-cluster-active`) reports non-ACTIVE | EKS control-plane stuck on bootstrap; ENI-attach race | §6.2 if persists > 10 min (eks-cluster bring-up is typically 8–10 min). |
+| Smoke-test script invariant 6 (`deployment-ready`) reports ready < 3 | Image-pull failure / ESO secret not yet materialised / HPA mis-target | Triage with `kubectl -n mahjong-prod describe deployment` before §6.2. If ESO is the cause, wait 5 min for the `mahjong-prod-omnibus` ExternalSecret refresh. |
+| Smoke-test script invariant 7 (`kyverno-enforce`) reports a non-Enforce ClusterPolicy | W20 enforce-flip didn't propagate, OR the cluster pre-dates W20 | Re-apply `infra/k8s/base/kyverno-policies/*.yaml`. If still wrong, the cluster needs a Kyverno controller restart. |
 
 ### 6.2 Rollback steps
 
@@ -223,9 +266,32 @@ aws route53 list-health-checks \
     --query 'HealthChecks[?CallerReference==`mahjong-prod-us-east-1`]'
 # Expect: empty (the rollback PR drops the health-check).
 
-# 5. File a W19 retro note documenting the failure shape +
+# 5. Re-run the smoke-test script with EXPECTED_REGION
+#    pointing at the surviving region — confirm the cluster
+#    is healthy AFTER the rollback.
+EXPECTED_REGION=us-west-2 REGIONAL_APEX=us-west-2.mahjong.example.com \
+    bash infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh
+
+# 6. File a W19 retro note documenting the failure shape +
 #    the deferral to Wave-20+.
 ```
+
+### 6.3 Rollback failsafe (W20 V2 addition)
+
+If the §6.2 sequence itself fails (terraform refuses to
+destroy because of a cluster-side controller still holding
+a finalizer, or the ALB lingers in `Deleting` state past the
+60s TTL), the operator can issue a MANUAL CNAME flip via
+the R53 console to drop the `us-east-1` latency record
+before terraform finishes cleaning up the AWS-side state.
+The CNAME flip is observable within 60s (TTL); the terraform-
+side cleanup can then proceed at the controller's pace
+without blocking user traffic.
+
+The R53 console-side flip is documented at
+`docs/regional-eks-bringup.md §6.2` (operator-only —
+requires R53 console write access scoped to the
+`mahjong.example.com` hosted-zone).
 
 ## 7. Cross-references
 
@@ -239,6 +305,8 @@ aws route53 list-health-checks \
 - [`infra/terraform/regional-eks/us-east-1/preflight.yaml`](../infra/terraform/regional-eks/us-east-1/preflight.yaml)
   — structured pre-flight checklist (the YAML this runbook
   walks through one row at a time).
+- [`infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh`](../infra/terraform/regional-eks/us-east-1/post-apply-smoke-test.sh)
+  — **W20 V2** post-apply 8-invariant verifier (§4 automation).
 - [`docs/edge-region-probes.md`](./edge-region-probes.md) — per-
   region probe runbook for the post-apply smoke sweep.
 - [`docs/terraform.md`](./terraform.md) §5 — W7 EDGE module

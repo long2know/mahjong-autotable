@@ -112,33 +112,39 @@ kind: ClusterPolicy
 metadata:
   name: disallow-lateral-movement
   annotations:
-    policies.kyverno.io/title: "Disallow lateral-movement primitives in mahjong-prod (W19, Audit)"
+    policies.kyverno.io/title: "Disallow lateral-movement primitives in mahjong-prod (W20, Enforce)"
     policies.kyverno.io/category: "Pod Security / Network"
     policies.kyverno.io/severity: "high"
     policies.kyverno.io/subject: "Pod, Deployment, StatefulSet, DaemonSet"
     policies.kyverno.io/description: >-
-      W19 audit-mode policy. Two sub-rules deny pod-to-pod
+      W20 enforce-mode policy. Two sub-rules deny pod-to-pod
       NetworkPolicy bypass primitives: spec.hostNetwork=true
-      AND containers[*].ports[*].hostPort=<any>. Lands in
-      Audit mode for a 5-day grace before the Wave-20
-      Enforce flip. See docs/kyverno-w19-additional-rules.md.
+      AND containers[*].ports[*].hostPort=<any>. Flipped from
+      Audit (W19) to Enforce on the W20 cutover after a
+      5-day clean grace window (zero PolicyReports). See
+      docs/kyverno-w19-additional-rules.md §4 for the
+      enforce-flip evidence + cutover-day verification log.
 spec:
-  # AUDIT mode for the 5-day grace window. Flip to Enforce
-  # via a one-line edit per docs/kyverno-w19-additional-
-  # rules.md §4 once the kyverno-deny-events panel is clean.
-  validationFailureAction: Audit
+  # W20 cutover (Phase K Wave 20 — Apone): Audit → Enforce.
+  # The W19 5-day grace window closed clean — zero
+  # PolicyReports surfaced against either sub-rule across
+  # the cluster's running pods. Cutover-day verification +
+  # `kubectl get policyreport -A` evidence captured in
+  # docs/kyverno-w19-additional-rules.md §4.
+  validationFailureAction: Enforce
   # `background: true` — both sub-rules are pure validate;
   # background scans against existing pods produce
   # PolicyReports for any invariant drift. This is the
   # primary signal source for the 5-day grace window.
   background: true
   webhookTimeoutSeconds: 30
-  # `failurePolicy: Ignore` — AUDIT-mode rules must NEVER
-  # block admission on a webhook outage. The W16 enforce-
-  # prod-default uses Fail (correct for Enforce mode);
-  # W19 uses Ignore until the Wave-20 flip flips this to
-  # Fail alongside the action flip.
-  failurePolicy: Ignore
+  # `failurePolicy: Fail` — paired with the W20 Enforce
+  # flip. A Kyverno webhook outage now blocks new admissions
+  # (correct for Enforce mode: pod-to-pod bypass-primitive
+  # denies MUST be enforced even when the webhook is
+  # transiently unavailable). The W16 enforce-prod-default
+  # uses the same Fail shape.
+  failurePolicy: Fail
   rules:
     - name: disallow-host-network
       match:

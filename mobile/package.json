@@ -1,6 +1,6 @@
 {
   "name": "mahjong-autotable-mobile",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "private": true,
   "description": "Capacitor 6 mobile shell that wraps the mahjong-autotable PWA. See README.md for the operator runbook.",
   "scripts": {

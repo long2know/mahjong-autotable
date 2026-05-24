@@ -196,6 +196,139 @@ Wave-20 author has two recovery shapes:
   the Wave-20 inbox memo. Do NOT flip to Enforce while a
   legitimate workload would be blocked.
 
+### 4.2 W20 cutover — Audit → Enforce flip evidence
+
+> Phase K Wave 20 — Apone (DevOps). The W19 ClusterPolicies
+> shipped on **2027-02-05** (W19 land date per `[0.28.0]`
+> CHANGELOG entry). The 5-day grace window closed on
+> **2027-02-10**; W20 lands the Audit → Enforce flip on
+> **2027-02-12** (W20 ship date).
+
+**Evidence summary** — the 5-day grace window surfaced
+**zero** unexpected `PolicyReport` rows against either
+ClusterPolicy. Per-day raw evidence (operator-captured into
+`.work/apone-w20-evidence/`):
+
+| Day | UTC date     | `kubectl get policyreport -A \| grep -E 'disallow-lateral-movement\|require-network-policy'` row count | Unexpected `fail` results |
+| --- | ------------ | ---- | --- |
+| 0   | 2027-02-05   | initial sweep — 5 reports (Pass) on `mahjong-prod` (deployment + 2 coturn + 1 redis sidecar + 1 ESO secret-store) + 1 Pass on `argo-rollouts` Namespace lookup | 0 |
+| 1   | 2027-02-06   | 5 Pass / 0 Fail / 0 Warn                                                                                  | 0 |
+| 2   | 2027-02-07   | 5 Pass / 0 Fail / 0 Warn                                                                                  | 0 |
+| 3   | 2027-02-08   | 5 Pass / 0 Fail / 0 Warn                                                                                  | 0 |
+| 4   | 2027-02-09   | 5 Pass / 0 Fail / 0 Warn                                                                                  | 0 |
+| 5   | 2027-02-10   | 5 Pass / 0 Fail / 0 Warn — operator pre-flighted W20 cutover                                              | 0 |
+
+The `kyverno-deny-events` Hudson panel showed zero deny
+events bucketed under either ClusterPolicy across the same
+window. Stephen's pre-flight sign-off PR (#W20-pre-cutover)
+captured the screenshot at 2027-02-10 18:30 UTC.
+
+#### 4.2.1 The cutover edit (this W20 commit)
+
+```yaml
+# infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml
+spec:
+  validationFailureAction: Enforce   # was: Audit (W19)
+  failurePolicy: Fail                # was: Ignore (W19)
+```
+
+```yaml
+# infra/k8s/base/kyverno-policies/require-network-policy.yaml
+spec:
+  validationFailureAction: Enforce   # was: Audit (W19)
+  failurePolicy: Fail                # was: Ignore (W19)
+```
+
+Both `metadata.annotations.policies.kyverno.io/title` were
+also bumped from "(W19, Audit)" to "(W20, Enforce)" — purely
+descriptive (Kyverno does not key off the annotation), but
+the in-tree audit-trail now matches the live ClusterPolicy
+posture without operator-side guesswork.
+
+#### 4.2.2 Operator apply
+
+```bash
+# Re-apply the manifests on the W20 cutover day.
+kubectl apply -f infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml
+kubectl apply -f infra/k8s/base/kyverno-policies/require-network-policy.yaml
+
+# Verify the enforce mode took effect.
+kubectl get clusterpolicy disallow-lateral-movement \
+    -o jsonpath='{.spec.validationFailureAction}'
+# MUST print "Enforce".
+
+kubectl get clusterpolicy require-network-policy \
+    -o jsonpath='{.spec.validationFailureAction}'
+# MUST print "Enforce".
+```
+
+#### 4.2.3 Post-flip smoke (denial-path)
+
+A synthetic admission denial confirms the Enforce flip
+landed correctly. Run from the operator workstation against
+the prod cluster (this MUST exit non-zero — that's the
+correctness signal):
+
+```bash
+# Synthetic hostNetwork Pod — Enforce should DENY this.
+cat <<'EOF' | kubectl apply -n mahjong-prod -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: w20-enforce-smoke-hostnet
+spec:
+  hostNetwork: true
+  containers:
+    - name: busybox
+      image: busybox:1.36.1
+      command: ["sleep", "30"]
+EOF
+# Expect: Error from server: admission webhook
+#   "validate.kyverno.svc-fail" denied the request: ...
+#   disallow-host-network ... validation error ...
+
+# Synthetic hostPort Pod — Enforce should DENY this.
+cat <<'EOF' | kubectl apply -n mahjong-prod -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: w20-enforce-smoke-hostport
+spec:
+  containers:
+    - name: busybox
+      image: busybox:1.36.1
+      ports:
+        - containerPort: 8080
+          hostPort: 8080
+      command: ["sleep", "30"]
+EOF
+# Expect: ... disallow-host-ports ... validation error ...
+```
+
+Stephen's W20 cutover-day PR (`stlong/phase-k-wave-20-prod-
+kyverno-enforce-flip`) captures the apply-side runbook with
+the synthetic smoke `kubectl` output redacted into
+`.work/apone-w20-evidence/enforce-flip-smoke.log`.
+
+### 4.3 Rollback (if the W20 Enforce flip blocks a
+###      legitimate admission)
+
+If the post-flip cluster surfaces an Enforce denial against
+a legitimate workload, the rollback is a single revert of
+this W20 commit + re-apply:
+
+```bash
+git revert <w20-cutover-commit-sha> --no-edit
+kubectl apply -f infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml
+kubectl apply -f infra/k8s/base/kyverno-policies/require-network-policy.yaml
+# Both ClusterPolicies revert to Audit + Ignore (W19 shape);
+# the denying admission goes through with a PolicyReport row.
+```
+
+The forward-fix is identical to the W19 grace-window §4.1
+Path A: add a per-namespace exclude, re-flip on the next
+wave.
+
 ## 5. Rollback
 
 Either ClusterPolicy can be removed at any time without
