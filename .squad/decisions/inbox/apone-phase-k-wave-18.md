@@ -337,4 +337,41 @@ W19 hand-off priorities (for the next Apone wave-author):
    procurement, App Store Connect API key, etc.) into
    `docs/mobile-ios-signing.md`.
 
+## 13. Commit-time addendum — landed shape diverges from §8/§9
+
+The W18 commit chain finally landed as:
+
+  d317a92  Phase K Wave 18 — Apone (DevOps) bring-up      (43 files, lane=apone, author=apone)
+  b039a84  Phase K Wave 18 — Hicks (Frontend) bring-up    (47 files, lane=hicks,  author=hicks)
+
+Two divergences from the §8/§9 pre-commit plan:
+
+a) **csproj `<Version>` field DEFERRED to bishop.** §9 acknowledged
+   the cross-lane risk; the lane-discipline check confirmed
+   `lanes=[apone bishop]` on the first apone commit, so the §9
+   fallback was triggered. The
+   `src/backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj`
+   edit (`<Version>0.27.0</Version>`) is **NOT** in the W18
+   landed chain — Bishop must add it as a separate
+   bishop-author commit in their W18 close-out. This preserves
+   the new csproj `<Version>` cadence precedent but defers
+   ownership to the correct lane on the first wave it appears.
+
+b) **Hicks's frontend work recovered into a proper
+   hicks-author commit.** A concurrent-agent index race
+   produced an interim commit (the now-orphaned `2cff0f23a7`)
+   whose content was Hicks's frontend work but author was
+   apone. The commit was rebuilt with author=hicks via
+   `cherry-pick + commit --author` after a hard reset of the
+   branch. The chain was then force-pushed with
+   `--force-with-lease=<old-tip-SHA>` for safety. Hicks's
+   landed commit on origin is `b039a84`.
+
+W19 action item ADDED: confirm Bishop lands the csproj
+`<Version>0.27.0` field early in the W19 wave; if not, the
+W19 wave should pick it up as part of the version-triple
+bump for 0.28.0 (with both 0.27.0 and 0.28.0 in a single
+edit, since 0.27.0 will then be implicitly skipped on the
+backend surface).
+
 End of W18 inbox memo.
