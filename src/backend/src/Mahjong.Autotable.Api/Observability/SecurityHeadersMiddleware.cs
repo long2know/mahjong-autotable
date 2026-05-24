@@ -169,7 +169,7 @@ public sealed class SecurityHeadersMiddleware
         "img-src 'self' data: blob:; " +
         "media-src 'self'; " +
         "font-src 'self' data:; " +
-        "connect-src 'self' ws: wss:; " +
+        "connect-src 'self' ws: wss: blob:; " +
         "worker-src 'self' blob:; " +
         "frame-ancestors 'none'; " +
         "object-src 'none'; " +
@@ -188,7 +188,7 @@ public sealed class SecurityHeadersMiddleware
         "img-src 'self' data: blob:; " +
         "media-src 'self'; " +
         "font-src 'self' data:; " +
-        "connect-src 'self' ws: wss:; " +
+        "connect-src 'self' ws: wss: blob:; " +
         "worker-src 'self' blob:; " +
         "frame-ancestors 'none'; " +
         "object-src 'none'; " +

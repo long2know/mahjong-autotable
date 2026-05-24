@@ -130,10 +130,15 @@ export class AssetLoader {
   processMaterial(material: Material): Material {
     const standard = material as MeshStandardMaterial;
     const map = standard.map;
-    if (map !== null) {
+    if (map !== null && map !== undefined) {
       map.colorSpace = LinearSRGBColorSpace;
       map.anisotropy = 4;
+      return new MeshLambertMaterial({map});
     }
-    return new MeshLambertMaterial({map});
+    // Phase K — playability fix: when the stripped MeshStandardMaterial
+    // doesn't expose `map` (Phase L slim three.js shed the property),
+    // build an untextured Lambert so the renderer doesn't choke on a
+    // null `.image` lookup later in the WebGL upload path.
+    return new MeshLambertMaterial();
   }
 }

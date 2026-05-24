@@ -28,11 +28,21 @@ export class Center {
     this.ctx = this.canvas.getContext('2d')!;
 
     const material = this.mesh.material as MeshLambertMaterial;
-    const image = material.map!.image as HTMLImageElement;
-
-    this.canvas.width = image.width;
-    this.canvas.height = image.height;
-    this.ctx.drawImage(image, 0, 0);
+    // Phase K — playability fix.  When the slim three.js can't surface
+    // the GLB's embedded center texture (Phase L `MeshStandardMaterial`
+    // map property strip), fall back to a blank 512×512 canvas so the
+    // center overlay still draws (scores, nicks, dealer, dice) instead
+    // of crashing the renderer with "Cannot read properties of null".
+    const map = material.map;
+    if (map !== null && map !== undefined && map.image !== null && map.image !== undefined) {
+      const image = map.image as HTMLImageElement;
+      this.canvas.width = image.width;
+      this.canvas.height = image.height;
+      this.ctx.drawImage(image, 0, 0);
+    } else {
+      this.canvas.width = 512;
+      this.canvas.height = 512;
+    }
 
     this.texture = new CanvasTexture(this.canvas);
     this.texture.flipY = false;
