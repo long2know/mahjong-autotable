@@ -1,0 +1,90 @@
+
+Running 1 test using 1 worker
+
+=== STEP 1: load /autotable/ ===
+=== STEP 1b: dismiss tour + onboarding ===
+STEP 1b clicked #onboarding-skip
+=== STEP 2: lobby detection ===
+STEP 2 lobby-quick-match count: 1, visible: true
+STEP 2 loading-el visible: true text="Loading..."
+=== STEP 3: Changsha rule preset ===
+STEP 3 rule-preset-select NOT FOUND (no DB-seeded presets surfaced)
+=== STEP 4: Quick Match click ===
+STEP 4 clicked lobby-quick-match
+[network:fail] 404 GET http://127.0.0.1:8088/autotable/api/changsha/pattern-ordering
+[browser:error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[network:reqfail] FAILED GET http://127.0.0.1:8088/autotable/api/changsha/pattern-ordering -- net::ERR_ABORTED
+[browser:error] Connecting to 'blob:http://127.0.0.1:8088/009ca27d-0ee9-4e7a-b78f-98888c891f67' violates the following Content Security Policy directive: "connect-src 'self' ws: wss:". The action has been blocked.
+[browser:error] Fetch API cannot load blob:http://127.0.0.1:8088/009ca27d-0ee9-4e7a-b78f-98888c891f67. Refused to connect because it violates the document's Content Security Policy.
+[browser:error] Connecting to 'blob:http://127.0.0.1:8088/a16e6e81-9486-4f03-bfbc-456593627cae' violates the following Content Security Policy directive: "connect-src 'self' ws: wss:". The action has been blocked.
+[browser:error] Fetch API cannot load blob:http://127.0.0.1:8088/a16e6e81-9486-4f03-bfbc-456593627cae. Refused to connect because it violates the document's Content Security Policy.
+[browser:error] Connecting to 'blob:http://127.0.0.1:8088/fd1e26fc-c64d-4af6-8af3-938791584b82' violates the following Content Security Policy directive: "connect-src 'self' ws: wss:". The action has been blocked.
+[browser:error] Fetch API cannot load blob:http://127.0.0.1:8088/fd1e26fc-c64d-4af6-8af3-938791584b82. Refused to connect because it violates the document's Content Security Policy.
+[browser:warning] THREE.Material: 'color' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'metalness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'roughness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'emissive' is not a property of THREE.MeshStandardMaterial.
+[browser:error] Connecting to 'blob:http://127.0.0.1:8088/a443d394-c4f6-430c-af56-3627081e896a' violates the following Content Security Policy directive: "connect-src 'self' ws: wss:". The action has been blocked.
+[browser:error] Fetch API cannot load blob:http://127.0.0.1:8088/a443d394-c4f6-430c-af56-3627081e896a. Refused to connect because it violates the document's Content Security Policy.
+[browser:error] THREE.GLTFLoader: Couldn't load texture blob:http://127.0.0.1:8088/009ca27d-0ee9-4e7a-b78f-98888c891f67
+[browser:error] THREE.GLTFLoader: Couldn't load texture blob:http://127.0.0.1:8088/a16e6e81-9486-4f03-bfbc-456593627cae
+[browser:error] THREE.GLTFLoader: Couldn't load texture blob:http://127.0.0.1:8088/fd1e26fc-c64d-4af6-8af3-938791584b82
+[browser:error] THREE.GLTFLoader: Couldn't load texture blob:http://127.0.0.1:8088/a443d394-c4f6-430c-af56-3627081e896a
+[browser:warning] THREE.Material: 'color' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'metalness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'roughness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'emissive' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'color' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'metalness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'roughness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'emissive' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'color' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'metalness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'roughness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'emissive' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'color' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'metalness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'roughness' is not a property of THREE.MeshStandardMaterial.
+[browser:warning] THREE.Material: 'emissive' is not a property of THREE.MeshStandardMaterial.
+[browser:error] TypeError: Cannot set properties of undefined (setting 'colorSpace')
+    at Ae.processMaterial (http://127.0.0.1:8088/autotable/three-renderer.9c8e77c2.js:2:37775)
+    at Ae.processMesh (http://127.0.0.1:8088/autotable/three-renderer.9c8e77c2.js:2:37682)
+    at http://127.0.0.1:8088/autotable/three-renderer.9c8e77c2.js:2:37429
+    at http://127.0.0.1:8088/autotable/gltf-loader.01115b14.js:1:2340
+    at http://127.0.0.1:8088/autotable/gltf-loader.01115b14.js:1:25663
+=== STEP 5: Take Seat ===
+STEP 5 take-seat total=4 visible=0
+=== STEP 6: canvas / three.js scene ===
+STEP 6 canvas count: 1
+=== STEP 7: Deal ===
+STEP 7 deal visible=true enabled=true
+STEP 7 clicked #deal
+=== STEP 7b: legacy Connect button ===
+STEP 7b clicked #connect
+=== STEP 8: visible button labels ===
+STEP 8 visible buttons (16):
+  - Deal (id=deal cls=btn btn-warning btn-sm w-100 btn-progress-main)
+  - Setup (id=toggle-setup cls=btn btn-dark btn-sm dropdown-toggle collapsed)
+  - Dealer (id=toggle-dealer cls=btn btn-secondary btn-sm w-100)
+  - Honba: 0 (id=toggle-honba cls=btn btn-secondary btn-sm w-100 ml-2 riichi-only)
+  - 碰 Pung (id=claim-pung cls=btn btn-dark btn-sm mr-1 w-100)
+  - 吃 Chow (id=claim-chow cls=btn btn-dark btn-sm mr-1 w-100)
+  - 杠 Kong (id=claim-kong cls=btn btn-dark btn-sm mr-1 w-100)
+  - 胡 Hu (id=claim-hu cls=btn btn-warning btn-sm w-100)
+  - 跳过 Pass (id=claim-pass cls=btn btn-secondary btn-sm w-100)
+  - Connect (id=connect cls=btn btn-warning btn-sm w-100 server-disconnected mr-2)
+  - Nick (id= cls=btn btn-secondary btn-sm btn-block dropdown-toggle)
+  - Leave seat (id=leave-seat cls=btn btn-dark btn-sm mr-2 w-100)
+  - More (id= cls=btn btn-dark btn-sm btn-block dropdown-toggle)
+  - ☰
+        Lobby (id=lobby-toggle cls=)
+  - ⚙ (id=settings-toggle cls=)
+  - ⚙
+        Settings (id=settings-button cls=)
+=== STEP 9: tile / hand surfaces ===
+STEP 9 tile-* testids: 0, hand-* testids: 0, seat-* testids: 4
+=== STEP 10: final state ===
+=== Findings written to playtest-artifacts/findings.json ===
+  ✓  1 [chromium] › tests/e2e/playtest-changsha.spec.ts:45:7 › Changsha Mahjong — playable end-to-end walkthrough › step-by-step gameplay (15.0s)
+
+  1 passed (15.7s)
