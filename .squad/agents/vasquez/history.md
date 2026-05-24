@@ -2807,3 +2807,60 @@ Target: ≥ **2500 / 0 / 0**. Hit **2537 / 0 / 0** (+134 vs W11).
    rename in W13.
 6. **6 Playwright specs soft-pin → hard-pin** once producer
    side lands.
+
+## Phase K Wave 13 — lane-map amendment (2026-10-30)
+
+**Branch:** `stlong/phase-k-wave-13-bringup`
+**Memo:** `.squad/decisions/inbox/vasquez-w13-lane-map-amend.md`
+**Scope:** targeted `shared_files` broadening — NO other QA-lane
+changes in this commit; full W13 QA bring-up follows separately.
+
+### Problem
+
+Hicks's W13 commit `7ccd2fe` introduced two new file kinds NOT in
+the W11 `shared_files` registry, producing `checked=4 violations=1`
+on `--pr stlong/phase-k-wave-13-bringup --strict`:
+
+1. `.github/workflows/bundle-health.yml` — new bundle-size sticky-
+   comment workflow. Hicks-authored, lives in Apone's workflow
+   namespace.
+2. `src/frontend/autotable-src/tests/e2e/__screenshots__/manifest-screenshots-visual.spec.ts/*.png`
+   — Playwright visual-regression baselines captured by Hicks via
+   the W13 `scripts/capture-visual-baselines.js` side-channel,
+   inside Vasquez's test-lane root.
+
+### Resolution — 2 new `shared_files` entries
+
+- **`bundle_health_workflow_shared`** (parallel to W11
+  `pwa_audit_workflow_shared`): co-authored by hicks + apone,
+  primary apone. Path: `^\.github/workflows/bundle-health\.yml$`.
+- **`visual_regression_baselines_shared`**: co-authored by hicks
+  + vasquez, primary vasquez. Path:
+  `^src/frontend/autotable-src/tests/e2e/__screenshots__/.*\.png$`
+  — directory-wildcarded so future visual specs are covered
+  without further registry edits.
+
+Both patterns mirrored into `is_shared_file()` and
+`shared_file_authors()` in `tests/ci/check-cross-lane-bundling.sh`
+(W11 §5.9 registry policy: JSON declares, bash matches at runtime).
+`shared_files.description` extended to narrate the W13 additions
+mirroring the W10/W11 pattern. Wave 13 narrative banner added to
+the script header (mirrors the W10/W11 banners).
+
+### Verification
+
+```
+[lane-discipline] checking 4 commit(s) in mode=pr
+
+✓ 45dc823b41 — lane=bishop author=bishop
+✓ efae89798b — lane=vasquez author=vasquez
+✓ 6b1e71f8f1 — lane=apone author=apone
+✓ 7ccd2fea5e — lane=hicks author=hicks
+
+[lane-discipline] checked=4 violations=0
+[lane-discipline] OK
+```
+
+JSON valid (`python3 -m json.tool tests/ci/lane-map.json`); bash
+clean (`bash -n tests/ci/check-cross-lane-bundling.sh`); backend
+gate untouched (2789 / 0 / 0 from W13 bring-up).
