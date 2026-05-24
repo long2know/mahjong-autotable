@@ -41,4 +41,15 @@
     <InternalsVisibleTo Include="Mahjong.Autotable.Api.Tests" />
   </ItemGroup>
 
+  <!-- Phase K Wave 16 — Bishop. Ship the Grafana dashboard JSON
+       under Observability/dashboards/ so operators can import it
+       directly from the published artifact and the contract test
+       suite can assert on it without a fragile project-relative
+       path. -->
+  <ItemGroup>
+    <None Update="Observability\dashboards\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

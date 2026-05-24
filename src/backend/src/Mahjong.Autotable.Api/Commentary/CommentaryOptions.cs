@@ -109,6 +109,17 @@ public sealed class CommentaryOptions
         /// the monthly cap. Default 0.8 (80%). When crossed, the
         /// surface emits a SignalR + audit warning event.</summary>
         public double WarnThreshold { get; set; } = 0.8;
+
+        /// <summary>
+        /// Phase K Wave 16 — Bishop. When <c>true</c>, an
+        /// authenticated admin session may bypass the hard-cap
+        /// 402 gate via the <c>X-Cost-Budget-Override: 1</c>
+        /// header. The flag is checked in
+        /// <see cref="CommentaryCostBudgetEnforcer"/>; default
+        /// <c>true</c> so operator-driven cleanup commentary
+        /// keeps working out of the box.
+        /// </summary>
+        public bool AdminOverride { get; set; } = true;
     }
 
 

@@ -65,6 +65,32 @@ public sealed class JwtStagedRotationPolicy
             ? start.AddDays(_overlapDays)
             : null;
 
+    /// <summary>
+    /// Phase K Wave 16 — Bishop. <see cref="DateTimeOffset"/>
+    /// flavour of <see cref="RotationStartUtc"/>. Returns the
+    /// rotation-start instant with a UTC offset so call sites
+    /// using <c>DateTimeOffset</c> for time-zone-safe math (e.g.
+    /// the multi-tenant rotation pipeline) don't have to round-
+    /// trip through <see cref="DateTime"/>. Null when no
+    /// rotation is in progress.
+    /// </summary>
+    public DateTimeOffset? RotationStartUtcOffset =>
+        _rotationStartUtc is { } start
+            ? new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Utc))
+            : null;
+
+    /// <summary>
+    /// Phase K Wave 16 — Bishop. <see cref="DateTimeOffset"/>
+    /// flavour of <see cref="OverlapWindowEndsAtUtc"/>. Useful
+    /// for surfaces that already speak <c>DateTimeOffset</c>
+    /// (the per-tenant rotation policy uses
+    /// <c>DateTimeOffset</c> for its complete-utc column).
+    /// </summary>
+    public DateTimeOffset? OverlapWindowEndsAtOffset =>
+        OverlapWindowEndsAtUtc is { } end
+            ? new DateTimeOffset(DateTime.SpecifyKind(end, DateTimeKind.Utc))
+            : null;
+
     /// <summary>True when <paramref name="utcNow"/> falls
     /// inside the staged rotation overlap window.</summary>
     public bool IsWithinOverlapWindow(DateTime utcNow)
@@ -73,6 +99,15 @@ public sealed class JwtStagedRotationPolicy
         var end = start.AddDays(_overlapDays);
         return utcNow >= start && utcNow <= end;
     }
+
+    /// <summary>
+    /// Phase K Wave 16 — Bishop. <see cref="DateTimeOffset"/>
+    /// overload of <see cref="IsWithinOverlapWindow(DateTime)"/>.
+    /// Normalises the input to UTC before delegating so callers
+    /// can supply any offset.
+    /// </summary>
+    public bool IsWithinOverlapWindow(DateTimeOffset utcNow) =>
+        IsWithinOverlapWindow(utcNow.UtcDateTime);
 
     /// <summary>Days remaining in the current overlap window.
     /// Returns 0 when no rotation is in progress or the window
@@ -86,4 +121,13 @@ public sealed class JwtStagedRotationPolicy
         if (remaining < 0) return 0;
         return (int)Math.Ceiling(remaining);
     }
+
+    /// <summary>
+    /// Phase K Wave 16 — Bishop. <see cref="DateTimeOffset"/>
+    /// overload of <see cref="RemainingOverlapDays(DateTime)"/>.
+    /// Delegates to the <see cref="DateTime"/> impl after
+    /// normalising to UTC.
+    /// </summary>
+    public int RemainingOverlapDays(DateTimeOffset utcNow) =>
+        RemainingOverlapDays(utcNow.UtcDateTime);
 }

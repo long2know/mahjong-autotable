@@ -129,6 +129,15 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy> PerTenantJwksRotationPolicies =>
         Set<Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy>();
 
+    // Phase K Wave 16 — Bishop. Per-tenant replay retention
+    // policy rows. Backs EfReplayRetentionPolicyStore. The
+    // ReplayStoreRetentionSweep consults this table once per
+    // tick to pick a per-tenant retention window before falling
+    // back to the global Replays:RetentionDays default.
+    // See Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy.
+    public DbSet<Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy> ReplayRetentionPolicies =>
+        Set<Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -610,8 +619,35 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.Property(x => x.TenantId).HasMaxLength(128).IsRequired();
             entity.Property(x => x.ActiveKid).HasMaxLength(128).IsRequired();
             entity.Property(x => x.PreviousKid).HasMaxLength(128).IsRequired();
+            // Phase K Wave 16 — Bishop. Per-tenant overlap-window
+            // override (days). Defaults to 0; the validator falls
+            // back to PerTenantJwksRotationOptions.DefaultOverlapDays
+            // when the row value is non-positive.
+            entity.Property(x => x.OverlapWindowDays).HasDefaultValue(0);
             entity.HasIndex(x => x.RotationStartUtc);
             entity.HasIndex(x => x.RotationCompleteUtc);
+        });
+
+        // Phase K Wave 16 — Bishop. Per-tenant replay retention
+        // policy. TenantId is the PK; the
+        // ReplayStoreRetentionSweep reads the table once per tick
+        // to look up each row's retention window before falling
+        // back to the global Replays:RetentionDays default.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy>(entity =>
+        {
+            entity.HasKey(x => x.TenantId);
+            entity.Property(x => x.TenantId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.RetentionDays).IsRequired();
+        });
+
+        // Phase K Wave 16 — Bishop. Optional tenant column on the
+        // replay table. Indexed because the per-tenant sweep
+        // filters by TenantId once per tenant policy row; an
+        // unindexed scan would be O(N) per tenant per tick.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Replays.ReplayRecord>(entity =>
+        {
+            entity.Property(x => x.TenantId).HasMaxLength(128);
+            entity.HasIndex(x => x.TenantId);
         });
     }
 }

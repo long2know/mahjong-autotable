@@ -70,6 +70,21 @@ public sealed class PerTenantJwksRotationPolicy
     /// Bumped on every upsert through <see cref="IPerTenantJwksRotationStore"/>.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// Phase K Wave 16 — Bishop. Per-row overlap-window grace
+    /// period (days) AFTER <see cref="RotationCompleteUtc"/>.
+    /// During the window, tokens signed under this policy still
+    /// validate; past the window the policy is treated as STALE
+    /// by <see cref="PerTenantJwksRotationValidator"/> and
+    /// signing is gated. Zero / negative = fall back to the
+    /// configuration-level
+    /// <see cref="PerTenantJwksRotationOptions.DefaultOverlapDays"/>.
+    /// Surfaced as a per-tenant override so a high-traffic
+    /// tenant can buy a longer grace window than the default
+    /// without forcing the global default to widen.
+    /// </summary>
+    public int OverlapWindowDays { get; set; } = 0;
+
     /// <summary>True when <paramref name="utcNow"/> falls inside
     /// the per-tenant rotation overlap window. The check uses
     /// <see cref="DateTimeOffset"/> comparisons so a non-UTC
@@ -139,6 +154,7 @@ public sealed class InMemoryPerTenantJwksRotationStore : IPerTenantJwksRotationS
             existing.RotationCompleteUtc = policy.RotationCompleteUtc;
             existing.ActiveKid = policy.ActiveKid;
             existing.PreviousKid = policy.PreviousKid;
+            existing.OverlapWindowDays = policy.OverlapWindowDays;
             existing.UpdatedAt = policy.UpdatedAt;
             return existing;
         });
@@ -210,6 +226,7 @@ public sealed class EfPerTenantJwksRotationStore : IPerTenantJwksRotationStore
             existing.RotationCompleteUtc = policy.RotationCompleteUtc;
             existing.ActiveKid = policy.ActiveKid;
             existing.PreviousKid = policy.PreviousKid;
+            existing.OverlapWindowDays = policy.OverlapWindowDays;
             existing.UpdatedAt = DateTime.UtcNow;
             policy = existing;
         }
@@ -267,4 +284,17 @@ public sealed class PerTenantJwksRotationOptions
     /// <c>"Ef"</c> persists to the database.
     /// </summary>
     public string StorageImpl { get; set; } = "InMemory";
+
+    /// <summary>
+    /// Phase K Wave 16 — Bishop. Default overlap-window grace
+    /// period (days) applied AFTER each policy row's
+    /// <see cref="PerTenantJwksRotationPolicy.RotationCompleteUtc"/>
+    /// when the row does not pin its own
+    /// <see cref="PerTenantJwksRotationPolicy.OverlapWindowDays"/>.
+    /// During this window tokens still sign; past the window
+    /// the validator gates signing for the affected tenant.
+    /// Zero / negative falls back to
+    /// <see cref="PerTenantJwksRotationValidator.DefaultOverlapDays"/>.
+    /// </summary>
+    public int DefaultOverlapDays { get; set; } = PerTenantJwksRotationValidator.DefaultOverlapDays;
 }

@@ -378,6 +378,12 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy
 // `JwksRotation:PerTenant:Enabled=true`. Storage impl follows the
 // same toggle pattern as other W12+ surfaces: InMemory default,
 // Ef for prod multi-tenant. See docs/per-tenant-jwks.md.
+//
+// Phase K Wave 16 — Bishop. The validator (PerTenantJwksRotationValidator)
+// is wired alongside the store so call sites can hard-assert
+// freshness via EnforceSigningAsync. Off-toggle = validator
+// registers but reports ValidatorEnabled=false so call-sites
+// noop cleanly. See docs/per-tenant-jwks-rotation.md.
 {
     var perTenantOpts = new Mahjong.Autotable.Api.Auth.PerTenantJwksRotationOptions();
     builder.Configuration.GetSection("JwksRotation:PerTenant").Bind(perTenantOpts);
@@ -395,6 +401,10 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy
                 Mahjong.Autotable.Api.Auth.InMemoryPerTenantJwksRotationStore>();
         }
     }
+    // Phase K Wave 16 — Bishop. Validator is always registered;
+    // the constructor resolves the optional store and surfaces
+    // ValidatorEnabled = (toggle && store != null).
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.PerTenantJwksRotationValidator>();
 }
 
 // Phase K Wave 12 — Bishop. Per-client_id sliding-window rate limit
@@ -778,6 +788,13 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.StubCommentaryGen
 // unit-tests can construct the budget without DI.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.CommentaryCostBroadcaster>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.CommentaryCostBudget>();
+// Phase K Wave 16 — Bishop. Hard-cap enforcer for the
+// commentary cost budget. Reads BudgetState from
+// CommentaryCostBudget and returns a verdict the
+// CommentaryController maps to HTTP 402 Payment Required. Admin
+// override: X-Cost-Budget-Override: 1 header + admin session.
+// See docs/commentary-llm.md §4.2.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.CommentaryCostBudgetEnforcer>();
 
 // Phase K Wave 11 — Bishop. Per-record CommentaryRecord storage
 // seam. The W7-W9 surface kept records in memory inside the
@@ -909,11 +926,25 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.ReplayStoreRetentionSweep>();
         builder.Services.AddHostedService(sp =>
             sp.GetRequiredService<Mahjong.Autotable.Api.Replays.ReplayStoreRetentionSweep>());
+        // Phase K Wave 16 — Bishop. Per-tenant retention policy
+        // store. Registered alongside the EF replay store so the
+        // sweep above can resolve it as an optional dependency
+        // and apply per-tenant retention windows before falling
+        // back to the global default. See
+        // docs/replay-by-id.md §4.1.
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.IReplayRetentionPolicyStore,
+            Mahjong.Autotable.Api.Replays.EfReplayRetentionPolicyStore>();
     }
     else
     {
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.IReplayStore,
             Mahjong.Autotable.Api.Replays.InMemoryReplayStore>();
+        // Phase K Wave 16 — Bishop. In-memory companion to the
+        // EF-store branch above. Single-replica dev workflows
+        // keep the per-tenant override path testable without
+        // standing up a real database.
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.IReplayRetentionPolicyStore,
+            Mahjong.Autotable.Api.Replays.InMemoryReplayRetentionPolicyStore>();
     }
 }
 
