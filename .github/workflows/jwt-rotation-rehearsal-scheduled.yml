@@ -1,0 +1,171 @@
+# Phase K Wave 13 — Apone (DevOps).
+#
+# JWT rotation rehearsal — SCHEDULED quarterly cadence.
+#
+# Wave 12 closed the second `workflow_dispatch` rehearsal
+# (`docs/jwt-rotation-rehearsal.md §3`) and recommended the
+# rehearsal harness be promoted from "ad-hoc operator-triggered"
+# to a scheduled cadence (`§3.2 GA-readiness recommendation`).
+# Wave 13 fulfils that recommendation:
+#
+#   * A `schedule:` cron block fires the rehearsal QUARTERLY
+#     against STAGING, one rehearsal per quarter, ≈ one week
+#     before each quarterly prod rotation window. Cron expression
+#     `0 2 1 */3 *` = 02:00 UTC on the 1st of every 3rd month
+#     (Jan, Apr, Jul, Oct). UTC 02:00 sits in the quietest
+#     window for both North-American + European on-call so a
+#     workflow-level failure surfaces during a window where the
+#     on-call SRE can investigate without paging.
+#
+#   * The scheduled run delegates to the SAME playbook as the
+#     manual workflow — this file is a THIN scheduler that
+#     invokes `jwt-rotation-rehearsal.yml` via the
+#     `workflow_run` reusable-workflow pattern. Re-implementing
+#     the playbook here would duplicate ≈ 400 lines of YAML and
+#     fork the rehearsal harness; the W12 retro D7 "out-of-band
+#     → in-band lifecycle" convention says ONE source-of-truth,
+#     not two.
+#
+#   * The rehearsal report file
+#     (`docs/jwt-rotation-rehearsal-YYYY-MM-DD.md`) is written
+#     by the inner workflow exactly as it does for manual
+#     dispatch. The follow-up PR is opened by the inner workflow
+#     when run interactively; for the scheduled path the report
+#     is uploaded as an artefact ONLY (the operator merges the
+#     report file via a follow-up PR after auditing the run).
+#
+# Out of scope (W13):
+#
+#   * The inner `jwt-rotation-rehearsal.yml` workflow is NOT
+#     modified. It already supports invocation via
+#     `workflow_dispatch` — the GH API call below uses the same
+#     surface programmatically.
+#
+#   * Production is NOT touched. The inner workflow's
+#     `target_env=staging` hard-gate (W11) remains the only
+#     escape valve; this scheduler forces `target_env=staging`
+#     in the dispatched payload.
+#
+# Cadence:
+#
+#   * `schedule:` `0 2 1 */3 *` — quarterly (1st of Jan / Apr /
+#     Jul / Oct, 02:00 UTC).
+#   * `workflow_dispatch:` — manual back-stop in case the cron
+#     misses (Actions occasionally drops scheduled triggers
+#     during outages); the operator can fire this scheduler
+#     manually to re-arm the quarterly run.
+#
+# Identity:
+#
+#   * No AWS / IAM surface on this scheduler — the only API
+#     call is to `actions/dispatch` on the inner workflow,
+#     which requires `actions: write` on `GITHUB_TOKEN`. The
+#     inner workflow assumes its own OIDC role; the W6 trust
+#     policy already covers that subject.
+
+name: jwt-rotation-rehearsal-scheduled
+
+on:
+  schedule:
+    # `0 2 1 */3 *` = 02:00 UTC on the 1st of every 3rd month.
+    # Fires on 1 Jan, 1 Apr, 1 Jul, 1 Oct each year. This is
+    # the quarterly cadence pinned in
+    # `docs/jwt-rotation-rehearsal.md §4`.
+    - cron: "0 2 1 */3 *"
+  workflow_dispatch:
+    inputs:
+      new_key_label:
+        description: "Optional override for the kid label. Default is auto-generated as `YYYY-MM-scheduled`."
+        required: false
+        default: ""
+      cleanup_archive:
+        description: "Forward to inner workflow. Default false (keep 3 keys live)."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+  # `actions: write` lets us POST to the inner workflow's
+  # dispatch endpoint. No other repo-level surface is required —
+  # the inner workflow handles its own OIDC / AWS / k8s creds.
+  actions: write
+  # `pull-requests: write` is not strictly required here; the
+  # inner workflow handles the PR if/when it opens one. Left
+  # off to keep this scheduler minimum-privilege.
+
+# Only one scheduled rehearsal at a time. A second concurrent
+# dispatch would race the inner workflow's
+# `concurrency: jwt-rotation-rehearsal-staging` group; cancel-
+# in-progress=false matches the inner workflow's contract.
+concurrency:
+  group: jwt-rotation-rehearsal-scheduled
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch quarterly rehearsal against staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve scheduled key label
+        id: label
+        env:
+          INPUT_LABEL: ${{ inputs.new_key_label }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_LABEL}" ]; then
+            label="${INPUT_LABEL}"
+          else
+            label="$(date -u +%Y-%m)-scheduled"
+          fi
+          echo "label=${label}" >> "$GITHUB_OUTPUT"
+          echo "Resolved kid label: ${label}"
+
+      - name: Dispatch jwt-rotation-rehearsal.yml against staging
+        id: dispatch
+        uses: actions/github-script@v7
+        env:
+          KEY_LABEL: ${{ steps.label.outputs.label }}
+          CLEANUP: ${{ inputs.cleanup_archive || 'false' }}
+        with:
+          script: |
+            const { KEY_LABEL, CLEANUP } = process.env;
+            const ref = context.ref || `refs/heads/${context.payload.repository.default_branch}`;
+            const refName = ref.replace(/^refs\/heads\//, '');
+            core.info(`Dispatching jwt-rotation-rehearsal.yml on ref=${refName} label=${KEY_LABEL} cleanup=${CLEANUP}`);
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'jwt-rotation-rehearsal.yml',
+              ref: refName,
+              inputs: {
+                target_env: 'staging',
+                new_key_label: KEY_LABEL,
+                cleanup_archive: CLEANUP,
+                dry_run: 'false',
+              },
+            });
+            core.info('Dispatched.');
+
+      - name: Step summary
+        if: always()
+        env:
+          KEY_LABEL: ${{ steps.label.outputs.label }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## JWT rotation rehearsal — quarterly scheduler"
+            echo ""
+            echo "- Cadence: \`0 2 1 */3 *\` (Jan / Apr / Jul / Oct, 02:00 UTC)"
+            echo "- Target env: \`staging\` (hard-gated downstream)"
+            echo "- Key label: \`${KEY_LABEL}\`"
+            echo "- Inner workflow: [\`jwt-rotation-rehearsal.yml\`](../actions/workflows/jwt-rotation-rehearsal.yml)"
+            echo ""
+            echo "The dispatched run will write \`docs/jwt-rotation-rehearsal-YYYY-MM-DD.md\` as a workflow artefact + step-summary. The operator opens a follow-up PR with the report after the run is reviewed."
+            echo ""
+            echo "Procedure: [\`docs/jwt-rotation-rehearsal.md §4 Quarterly cadence\`](../blob/main/docs/jwt-rotation-rehearsal.md)."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -41,6 +41,7 @@ namespace Mahjong.Autotable.Api.Tests.Players;
 /// wiring is independently covered by
 /// <see cref="MatchmakingLobbyEndpointTests"/> via the lobby endpoint.)</para>
 /// </summary>
+[Collection("DbSerial")]
 public class PlayerStatsAggregationTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

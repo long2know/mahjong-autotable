@@ -30,6 +30,7 @@ namespace Mahjong.Autotable.Api.Tests.Persistence;
 /// reflects through the tests automatically, and a member added/removed
 /// without a paired test pass surfaces here.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class DbProviderSwitchingTests
 {
     /// <summary>

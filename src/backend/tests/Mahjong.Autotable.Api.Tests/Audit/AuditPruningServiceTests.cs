@@ -19,6 +19,7 @@ namespace Mahjong.Autotable.Api.Tests.Audit;
 /// <c>ReconnectAuditEntries</c> + <c>CspViolations</c>, runs one
 /// prune pass, and asserts on the remaining row set.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class AuditPruningServiceTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

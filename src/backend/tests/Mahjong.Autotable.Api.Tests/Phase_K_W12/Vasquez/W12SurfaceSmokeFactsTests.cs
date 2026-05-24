@@ -229,8 +229,11 @@ public sealed class W12SurfaceSmokeFactsTests
     public void Smoke_Wave1ThroughKW12RegressionClass_Present()
     {
         var asm = typeof(W12SurfaceSmokeFactsTests).Assembly;
+        // W13 renames Wave1ThroughKW12RegressionTests → Wave1ThroughKW13RegressionTests.
+        // Accept either so this W12 smoke stays green across the rename.
         var t = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 

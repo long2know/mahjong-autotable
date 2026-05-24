@@ -896,3 +896,228 @@ A more aggressive Phase L candidate (deferred): hand-roll
 W6 estimate (–200 to –300 kB total) still stands but the
 engineering cost remains very high — defer until the Phase K
 series closes.
+
+## §9 — Wave 13: PMREMGenerator deeper strip (tonemapping + PBR-extras + map-feature chains)
+
+The W12 hand-off identified three remaining surgery targets:
+`opaque_fragment` / `colorspace_fragment` / `tonemapping_*`,
+remaining `UniformsLib` PBR features, and the `lights_*`
+chunks for unused materials. W13 closes the first and third
+buckets, plus an additional sweep across every map-feature
+`_pars_fragment` (alphamap / alphatest / alphahash / aomap /
+lightmap / emissivemap / bumpmap / normalmap / specularmap /
+metalnessmap / roughnessmap / displacementmap / fog /
+dithering / premultiplied-alpha / clearcoat / iridescence /
+transmission) — all guarded by `#ifdef USE_<MACRO>` that the
+autotable scene never `#define`s.
+
+The W12 hand-off note about `opaque_fragment` proved
+unsafe: that chunk's body contains the **unconditional**
+`gl_FragColor = vec4( outgoingLight, diffuseColor.a );`
+assignment that produces the final render output. Stripping
+it would yield a working compile but a black canvas.
+`colorspace_fragment` was also held back — it's an
+unguarded one-liner that reassigns `gl_FragColor` through
+`linearToOutputTexel()`; safe in the `LinearSRGBColorSpace`
+default but fragile under any future color-space change.
+
+### What W13 strips (additions on top of W12's 11-entry list)
+
+The `SHADER_CHUNKS_TO_EMPTY` list grows from 11 → 53
+entries (+42). The new entries:
+
+| Bucket                        | Chunks                                                                                                          | Approx body (B) |
+|-------------------------------|-----------------------------------------------------------------------------------------------------------------|-----------------|
+| Tone-mapping                  | `tonemapping_pars_fragment`, `tonemapping_fragment`                                                              | ~4 100 + 100    |
+| Phong lighting (W9 stub)      | `lights_phong_fragment`, `lights_phong_pars_fragment`                                                            | ~300 + 1 250    |
+| Toon lighting (W9 stub)       | `lights_toon_fragment`, `lights_toon_pars_fragment`                                                              | ~250 + 1 050    |
+| Physical lighting (W9 stub)   | `lights_physical_fragment`, `lights_physical_pars_fragment`                                                       | ~3 000 + 5 200  |
+| Transmission (PBR extra)      | `transmission_fragment`, `transmission_pars_fragment`                                                             | ~1 100 + 6 200  |
+| Iridescence (PBR extra)       | `iridescence_fragment`, `iridescence_pars_fragment`                                                               | ~2 100 + 200    |
+| Clearcoat (PBR extra)         | `clearcoat_pars_fragment`, `clearcoat_normal_fragment_begin`, `clearcoat_normal_fragment_maps`                    | ~600 total      |
+| Map-feature chains (15 chunks)| alphamap / alphatest / alphahash / aomap / lightmap / emissivemap / bumpmap / normalmap / specularmap_pars /     | ~50–1 500 each  |
+|                               |   metalnessmap / roughnessmap / displacementmap (`_fragment` + `_pars_*` pairs as available)                     |                 |
+| Fog                           | `fog_fragment`, `fog_pars_fragment`, `fog_vertex`, `fog_pars_vertex`                                              | ~400 total      |
+| Dithering + premultiplied     | `dithering_fragment`, `dithering_pars_fragment`, `premultiplied_alpha_fragment`                                   | ~500 total      |
+
+`specularmap_fragment` is intentionally KEPT (sets
+`specularStrength = 1.0` for `lights_lambert_fragment`'s
+downstream read).
+
+The `UNIFORMS_LIB_KEYS_TO_EMPTY` list grows from 5 → 14
+entries (+9): `specularmap`, `envmap`, `aomap`, `lightmap`,
+`bumpmap`, `normalmap`, `displacementmap`, `emissivemap`,
+`fog`. Each holds the JS-side uniform values consumed by
+`USE_<MACRO>`-guarded shader code; emptying yields `{}` and
+the GLSL preprocessor strips the consumers at compile time
+(no `material.<map>` set → no macro → no reference).
+
+`UniformsLib.common` + `UniformsLib.lights` stay live —
+`common` holds the universally-consumed `diffuse` /
+`opacity` / `map` / `uv` uniforms, `lights` holds the
+ambient + directional-light uniforms the autotable scene
+actually attaches.
+
+### Measured savings (K13 build)
+
+| Source pass                                   | Before → After          | Δ                  |
+|-----------------------------------------------|-------------------------|--------------------|
+| `[module-strip]` (W9 + W10 carried fwd)      | 603,380 → 544,127       | −59,253            |
+| `[shaderchunk-strip]` (W11 + W12 + **W13**)  | 544,127 → 448,370       | **−95,757 (W13 +43,320 vs. W12)** |
+| `[uniformslib-strip]` (W12 + **W13**)        | 448,370 → 446,110       | **−2,260 (W13 +1,315 vs. W12)**   |
+| `[material-strip]` (W9 carried fwd)          | 1,401,287 → 1,342,346   | −58,941            |
+| Renderer chunk emitted                       | —                       | **406,635 B (≈ 397.10 kiB / 406.64 kB)** |
+
+`dist-size.json:history[wave=K13]` records the new chunk
+sizes. Vasquez's `three-renderer-480-hard.spec.ts` (W10),
+`three-renderer-475-soft.spec.ts` (W11), and any
+W13 follow-on guards all pass with very healthy margins.
+
+### Risk + back-out
+
+Identical structure to W11 + W12: each chunk's empty body
+is safe **only** because the autotable scene never sets the
+corresponding `USE_*` macro. The new chunks expand the
+list of conditions that could trip a future regression:
+
+| Trigger                                                          | Symptom                                                                                   | Roll-back                                                                                                              |
+|------------------------------------------------------------------|-------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| `renderer.toneMapping = THREE.ACESFilmicToneMapping`             | Tone-mapping no-ops (renders linear); no console error.                                   | Remove `tonemapping_*` from `SHADER_CHUNKS_TO_EMPTY`.                                                                  |
+| `new MeshPhongMaterial(...)` un-stubbed + actually instantiated  | Console errors from missing `BlinnPhongMaterial`/`RE_Direct_BlinnPhong` declarations.     | Remove `lights_phong_*` from the list AND un-stub `MeshPhongMaterial` in W9's `STUB_MATERIALS`.                        |
+| `new MeshToonMaterial(...)`                                      | Same as Phong, for the toon shader chain.                                                  | Remove `lights_toon_*` + W9 un-stub.                                                                                   |
+| `new MeshPhysicalMaterial(...)` un-stubbed                        | Console errors from missing `PhysicalMaterial`/`RE_*_Physical` declarations.               | Remove `lights_physical_*` + W9 un-stub.                                                                               |
+| `material.transmission > 0` / `iridescence > 0` / `clearcoat > 0` | Silent render glitch — feature does nothing.                                              | Remove `transmission_*` / `iridescence_*` / `clearcoat_*` from the list.                                               |
+| `material.alphaMap` / `aoMap` / `bumpMap` / etc. set              | Silent render glitch — map sample yields default value; map's contribution disappears.    | Remove the offending `<feature>_fragment` / `<feature>_pars_fragment` from the list.                                   |
+| `scene.fog = new THREE.Fog(...)`                                  | Fog uniforms unbound; depth gradient missing. Console may warn from uniform binding.       | Remove `fog_*` chunks from the list AND `fog` from `UNIFORMS_LIB_KEYS_TO_EMPTY`.                                       |
+
+The unstripped baseline lives at W12's 448.65 kB; disable
+the W13 entries first (cheap) and only un-stub the W9
+material classes if the W13 strip alone doesn't fix the
+regression.
+
+### Trend ledger update
+
+| Wave | Big chunk | Target | Result |
+|------|-----------|--------|--------|
+| W7   | 578.72 kB | <550 kB | ✅      |
+| W8   | 531.86 kB | <540 kB | ✅      |
+| W9   | 507.47 kB | <510 kB | ✅      |
+| W10  | 497.44 kB | <500 kB ✅ / <480 kB ⚠️ | partial |
+| W11  | 466.40 kB | <475 kB | ✅ (stretch met with ~9 kB margin) |
+| W12  | 448.65 kB | <450 kB stretch / <460 kB acceptable | ✅ (stretch met with ~1.4 kB margin) |
+| W13  | **406.64 kB** | **<440 kB stretch / <445 kB acceptable** | ✅ (stretch met with ~34 kB margin) |
+
+Monotonic-decrease invariant holds for an 8th consecutive
+wave (Vasquez's W7 trend gate). Cumulative drop from W6
+baseline: **739.72 kB → 406.64 kB (−45.0 %)** over seven
+waves.
+
+### Hand-off to W14
+
+W13 over-delivered (−42 kB vs the ~5-8 kB stretch
+estimate). The chunk now sits comfortably in the <410 kB
+band, well below the <440 kB W13 stretch.
+
+Remaining strip candidates, all <5 kB individually:
+
+- **`UniformsLib` PBR-extras** — `clearcoat`, `iridescence`,
+  `sheen`, `transmission`, `anisotropy`, `dispersion`. The
+  W13 audit found these are NOT top-level keys of
+  `UniformsLib` (they live inside `UniformsLib.physical`
+  via `ShaderLib.physical.uniforms`, which is W11-stripped
+  via the `meshphysical_*` shader-string strip). Aggregate
+  saving is therefore zero — the budget is fully captured by
+  the existing surgery.
+- **`logdepthbuf_*`** — `logdepthbuf_pars_fragment` +
+  `logdepthbuf_fragment` + `_pars_vertex` + `_vertex`. The
+  autotable doesn't enable `renderer.capabilities.logarithmicDepthBuffer`,
+  so the body sits inside `#ifdef USE_LOGDEPTHBUF`. ~600 B
+  total — modest but easy.
+- **`clipping_planes_*`** — autotable doesn't use clipping
+  planes. ~400 B total.
+- **`normal_*`** chunks (`normal_pars_*`, `normal_fragment_*`)
+  — these are KEPT in W13 because `lights_lambert_fragment`
+  references `geometryNormal`. Could partially trim but the
+  surface area is small (~400 B per chunk) and the risk
+  is non-trivial.
+
+Combined the W14 candidates above could shave another 1-2 kB.
+The next round-number ceiling is **<400 kB**. Reaching it
+will likely require the Phase L hand-roll spike (the W6
+estimate at −200 to −300 kB still stands; a single Phase L
+wave should clear <400 kB and approach <300 kB).
+
+A more aggressive Phase L candidate (deferred): hand-roll
+`three/src/*` imports + a custom `WebGLRenderer` wrapper.
+Defer until the Phase K series closes.
+
+## §10 — Wave 13: bundle-health CI workflow
+
+W13 ships `.github/workflows/bundle-health.yml` — a per-PR
+auto-report that builds the frontend, parses the latest
+`dist-size.json` row, and posts a sticky PR comment with
+the `three-renderer-big` size + delta vs the W12 baseline
+(448,648 B).
+
+### Trigger matrix
+
+| Trigger                              | Behaviour                                                                                          |
+|--------------------------------------|----------------------------------------------------------------------------------------------------|
+| `pull_request` (frontend-touched)    | Builds, computes delta, posts sticky comment.  Hard-fails only when >500 kB.                       |
+| `workflow_dispatch`                  | Manual run.  Same logic; no PR comment (no PR number).                                              |
+
+### Pass / warn / fail rules
+
+| Verdict | Condition                                                                                       | Reviewer action                              |
+|---------|-------------------------------------------------------------------------------------------------|----------------------------------------------|
+| `pass`  | Current ≤ W12 baseline + 1 % AND current ≤ 445 kB.                                              | None — within budget.                        |
+| `warn`  | Current > W12 baseline × 1.02 (>2 % growth) OR current > 445 kB acceptable band.                 | Soft warning — confirm the change is intentional. Not a merge blocker. |
+| `fail`  | Current > 500 kB (W10 retired ceiling).                                                          | Hard-fail — investigate before merging.      |
+
+### Implementation notes
+
+The workflow tags its `dist-size.json` row with
+`WAVE_NAME=PR-${PR_NUMBER}` so per-PR runs don't mutate the
+canonical `K13` / `K14` / … history rows on `main`. The
+`append-dist-size.js` script is idempotent on the wave key
+(updates an existing row in-place; appends a new one
+otherwise), so the PR row gets re-written on each PR push
+without growing the history unboundedly. After the PR
+merges, the per-PR row stays in `main`'s `dist-size.json`
+until the next `K<N>` build replaces the tail.
+
+### PR-comment shape (example)
+
+> ## ✅ Bundle health — **PASS**
+>
+> **three-renderer-big** (heavy renderer chunk) for this PR:
+>
+> | Metric            | Value            |
+> |-------------------|------------------|
+> | Current size      | 406.64 KB (406,635 B) |
+> | W12 baseline      | 438.13 KB         |
+> | Delta vs W12      | −41.03 KB (−9.36 %) |
+> | W13 stretch       | <440.00 KB        |
+> | W13 acceptable    | <445.00 KB        |
+
+Sticky marker `<!-- bundle-health-report -->`; re-runs
+edit the existing comment in place (peter-evans
+`create-or-update-comment@v4` with `body-includes`).
+
+### Risk + back-out
+
+- **Build failures on the workflow runner** — the workflow
+  reuses the W10 vite-disk-cache + `npm ci` pattern;
+  failures are surface-level (network / npm registry / disk
+  full). Roll back by reverting the workflow YAML.
+- **False-positive `warn`** — the 2 % growth tolerance is
+  intentionally tight; W13 routinely shrinks the chunk by
+  several kB per wave, so even small feature additions can
+  trip the warn threshold. The W13 contract treats warn as
+  soft (not a merge blocker); reviewers can ignore if
+  growth is documented in the PR description.
+- **Hard-fail at >500 kB** — picked because the W10
+  ceiling was 500 kB; any modern PR exceeding it is almost
+  certainly an accidental regression (e.g. a misconfigured
+  manualChunks split). Adjust by editing
+  `HARD_FAIL = 500 * 1024` in the workflow's Node script.

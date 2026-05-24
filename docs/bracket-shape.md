@@ -88,3 +88,67 @@ Hard-asserted in
 * `RecordResultAsync` stamps the winner + completion time (both stores).
 * `RecordResultAsync` replayed twice is idempotent (no row duplication).
 * `ListAsync` orders rows by `(RoundNumber, MatchSlot)`.
+
+## §4 — Tournament service integration (Phase K Wave 13)
+
+Wave 13 wires `TournamentService` into the store seam introduced in
+W12. The integration lives entirely behind an optional ctor
+parameter — the store stays an opt-in dependency so the existing test
+matrix continues to compile against a service constructed without it.
+
+### §4.1 — Slot derivation without a schema change
+
+`TournamentMatch` carries `Round` but no `MatchSlot` column. Rather
+than land a fourth migration, the slot index is tracked **locally**
+inside the bracket-emitting paths:
+
+* `StartAsync` builds the first-round pairings sequentially and
+  emits `BracketRecord` rows by walking the pairing list with a
+  parallel slot counter (0-indexed).
+* `AdvanceMatchAsync` / `ForfeitMatchAsync` re-derive the completed
+  match's slot by matching `(SeedA, SeedB)` against the existing
+  bracket rows in the same round. The match goes in as
+  `Status = "completed"` (advance) or `"forfeit"`.
+* The new next-round pairings emitted by `MaybeAdvanceRoundAsync` are
+  appended to the slot tail — the helper looks up the current
+  max-slot for the next round and increments from there. A bye
+  carries the canonical seed literal `__bye__` exported from
+  `TournamentService.BracketByeSeed`.
+
+### §4.2 — Bye semantics
+
+A first-round bye seats one playerId against `__bye__`; the
+matching `BracketRecord` is emitted with
+`Status = "bye"` and a populated `CompletedAt` so the row participates
+in the bracket-shape API at parity with a played match.
+
+### §4.3 — Idempotency
+
+The W13 call-sites rely on the W12 upsert contract — replaying a
+`StartAsync` (e.g. on a process restart) re-emits the same first-round
+rows with the same `(TournamentId, RoundNumber, MatchSlot)` natural
+key; the upsert overwrites in place rather than duplicating. The
+result-stamping path (`RecordResultAsync`) is likewise replayable.
+
+### §4.4 — Configuration
+
+No new configuration in W13. The store implementation is selected
+via the existing `Tournament:BracketStoreImpl` key documented above.
+The ctor injection is wired in `Program.cs`; when the key is
+`"None"` (or the IoC container resolves nothing) the service
+operates exactly as in W12 — bracket rows are not emitted.
+
+### §4.5 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W13/Bishop/BracketStoreIntegrationTests.cs`:
+
+* `StartAsync` upserts a `BracketRecord` per first-round pairing.
+* First-round byes carry `Status = "bye"` + `SeedB = "__bye__"`.
+* `AdvanceMatchAsync` stamps the corresponding row with
+  `Status = "completed"`, `WinnerSeed`, and `CompletedAt`.
+* `ForfeitMatchAsync` stamps the row with `Status = "forfeit"`.
+* New next-round pairings emitted by an advance/forfeit are
+  upserted into the store at the correct slot tail.
+* Constructing `TournamentService` without a store leaves the
+  service functional (no NRE on advance/forfeit).

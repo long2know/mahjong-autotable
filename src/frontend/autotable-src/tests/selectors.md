@@ -2402,3 +2402,168 @@ introspect rate-limit, manifest screenshots visual, spectator
 handoff token). Pairs with Hicks's W12 producer-side footer
 above and with the backend mirror tests under
 `Phase_K_W12/Vasquez/`.*
+
+
+## Phase K Wave 13 — Hicks footer (frontend producer side)
+
+This W13 footer documents the new selectors and producer-side
+contracts added by Hicks in Wave 13. Per `shared_files`
+policy, Hicks owns the producer side of these selectors;
+Vasquez owns the consumer-side spec inventory in the W13
+Vasquez footer (appended separately).
+
+### `?action=spectate&gameId=<guid>` deep link (new W13)
+
+The W11 `?action=spectate` shortcut (lobby-tab activation)
+gains a W13 co-parameter form that bypasses the lobby and
+drops the viewer straight into a named table:
+
+\`\`\`
+/?action=spectate&gameId=<guid>
+\`\`\`
+
+Producer-side surface added in `src/action-router.ts`:
+
+| Symbol | Kind | Purpose |
+|--------|------|---------|
+| `dispatchSpectateWithGameId(gameId)` | function | W13 entry point; calls `fetchHandoffAndOpenSpectator`. |
+| `fetchHandoffAndOpenSpectator(gameId)` | function | POSTs `/api/spectator/handoff`; on 200 navigates to `/spectate/<id>?token=<jwt>#/spectate/<id>` and calls `openSpectatorLivestream({tableId})`; on 401 redirects to `/`; on 404/error fires a toast. |
+| `redirectToLobbyForSignIn()` | function | Forces a navigation to `/` so `installAuthUi()` mounts the sign-in modal at boot. |
+| `showGameNotFoundToast()` | function | Transient toast surface for the 404 / network-error path. |
+
+Vasquez W13 producer-side expectation: a Playwright spec
+under `tests/e2e/` named
+`deep-link-action-spectate-gameid.spec.ts` that pins:
+
+- The URL shape (`?action=spectate&gameId=<guid>`)
+- The `/api/spectator/handoff` endpoint contract (intercept
+  + mock response with `{token, expiresAt, scope, ttlSeconds}`)
+- The URL-rewrite to `/spectate/<id>?token=<jwt>#/spectate/<id>`
+  post-dispatch
+- The 401 → `/` redirect path
+- The 404 / network → toast path
+
+The W11 `?action=spectate` bare-keyword behaviour (lobby-tab
+activation) is unchanged; the W13 spec should pin both code
+paths via two scenarios.
+
+### Three-renderer K13 dist-size pin (new)
+
+`dist-size.json:history[wave=K13]` records the W13 build
+sizes. The pinned budget for Vasquez W13 QA gates:
+
+| Bundle | W12 (K12) | W13 (K13) | W13 budget |
+|--------|-----------|-----------|------------|
+| `three-renderer-big` | 448,648 B | **406,635 B** | **< 440 KB stretch** ✅ (~34 KB margin) |
+
+Vasquez W13 producer-side expectation: a Playwright spec
+`three-renderer-440-stretch.spec.ts` (parallel to W12
+`three-renderer-450-stretch.spec.ts`) that fetches
+`dist-size.json` and asserts the K13 row meets the new
+budget. The W10 hard-cap spec
+(`three-renderer-480-hard.spec.ts`) and W11 soft-pin
+(`three-renderer-475-soft.spec.ts`) and W12 stretch
+(`three-renderer-450-stretch.spec.ts`) all keep passing
+trivially (406 < 440 < 450 < 475 < 480).
+
+### ShaderChunk + UniformsLib strips (W13 extends W12)
+
+W13 extends the W12 `stripUnusedShaderChunks` plugin from 11
+to 53 chunks (adds `tonemapping_*`, `lights_phong_*`,
+`lights_toon_*`, `lights_physical_*`, `transmission_*`,
+`iridescence_*`, `clearcoat_*` partials,
+`dithering_*`, `premultiplied_alpha_fragment`, every
+map-feature `_fragment` / `_pars_fragment` chain
+(alphamap/alphahash/alphatest/aomap/lightmap/emissivemap/
+bumpmap/normalmap/specularmap-pars-only/metalnessmap/
+roughnessmap/displacementmap), `fog_*`). The
+`stripUnusedUniformsLib` plugin extends from 5 to 14
+entries (adds `specularmap`, `envmap`, `aomap`, `lightmap`,
+`bumpmap`, `normalmap`, `displacementmap`, `emissivemap`,
+`fog`). Implementation lives in `vite.config.ts`. Per the
+W11 pattern: producer-side strip changes do NOT have a
+spec-level pin — only the resulting `three-renderer-big`
+size does. The `three-renderer-440-stretch.spec.ts` covers
+it.
+
+### Visual-regression baselines (new W13)
+
+W13 captures the three manifest screenshot baselines for
+Vasquez W12 spec at the user-specified Jest-style location:
+
+\`\`\`
+tests/e2e/__screenshots__/manifest-screenshots-visual.spec.ts/
+- main-game.png
+- spectator-commentary.png
+- tournament-dashboard.png
+\`\`\`
+
+Each is 1280x720 PNG, ~25-40 kB, captured by the new
+`scripts/capture-visual-baselines.js` Playwright-runtime
+side-channel script (workaround for the W12 spec
+setContent-without-goto bug documented in
+`docs/frontend-pwa-audit.md §11`).
+
+Vasquez W14 follow-up (out-of-lane for W13 Hicks): fix the
+spec to add `page.goto(BASE_URL)` before `setContent()` and
+add `snapshotPathTemplate` to `playwright.config.ts` so the
+spec reads from the Jest-style location the W13 baselines
+were captured at.
+
+### bundle-health CI workflow (new W13)
+
+W13 ships `.github/workflows/bundle-health.yml` — a per-PR
+auto-report that builds the frontend, parses
+`dist-size.json`, posts a sticky PR comment with the
+`three-renderer-big` size + delta vs the W12 baseline
+(448,648 B), and hard-fails only on >500 KB. Sticky-marker
+selector: `<!-- bundle-health-report -->`. The workflow
+tags its `dist-size.json` row with `WAVE_NAME=PR-<n>` so
+per-PR runs do not mutate the canonical `K13` / `K14` / ...
+rows. Per the W11 pattern: workflow shippings do NOT have a
+spec-level pin — they are CI-only. The workflow file is the
+contract.
+
+---
+
+*Phase K Wave 13 — Hicks (Frontend). W13 footer appended
+with the `?action=spectate&gameId` co-parameter contract,
+the K13 three-renderer dist-size pin, the deeper
+shader-chunk + UniformsLib strip, the visual-regression
+baselines, and the bundle-health.yml CI workflow. Pairs
+with the W13 Vasquez QA footer (appended later by Vasquez
+in her own commit).*
+
+---
+
+## Phase K Wave 13 — Vasquez (QA) footer
+
+Six new Playwright specs land in this wave under
+`src/frontend/autotable-src/tests/e2e/`. All chromium-only,
+all forward-stage tolerant via `testInfo.annotations.push({
+type: 'forward-stage', … })` when surfaces are still
+converging.
+
+| # | Spec | Surface pinned |
+|---|------|----------------|
+| 1 | `spectate-deep-link.spec.ts` | Hicks W13 spectate deep-link action router (`?action=spectate`, `/spectate?room=…`, `/spectate/{room}`); HTML retains the room id on the URL. |
+| 2 | `shader-chunk-440-stretch.spec.ts` | Tighter stretch goal vs. the W12 450-byte spec; tracks the shader chunk towards ≤ 440 B without hard-failing (until the goal is met). |
+| 3 | `lh13-thresholds-hard-pinned.spec.ts` | LH13 **hard-pin** at the W11 §7 calibration values (perf 0.85 / a11y 0.80 / best-practices 0.90 / seo 0.80) — the W12 soft-pin replacement per `docs/frontend-pwa-audit.md` §6.2. |
+| 4 | `bracket-tournament-integration.spec.ts` | Bishop W13 `TournamentService.AdvanceMatchAsync` + `EfBracketStore` integration surface; admin tournaments shell renders bracket / tournament / advance / match noun. |
+| 5 | `commentary-cost-warning-toast.spec.ts` | Bishop W13 `CommentaryCostAdminHub` SignalR + frontend warning toast (`[data-testid="commentary-cost-toast"]`, `.toast.commentary-cost`, `[role="status"]`). |
+| 6 | `bundle-health-pr-comment.spec.ts` | Hicks W13 bundle-health.yml CI surface — preview `bundle-health.json` / `dist-size.json` / `.bundle-health/report.json` are observable when the workflow is wired. |
+
+### Shared-file authorship pin
+
+`tests/selectors.md` is a `shared_files.selectors_md_shared`
+entry in `tests/ci/lane-map.json` (authors: `hicks` +
+`vasquez`, primary: `vasquez`). The W13 Vasquez footer
+appended here pairs with the W13 Hicks footer above and is
+covered by the same shared-file lane-discipline rule.
+
+---
+
+*Phase K Wave 13 — Vasquez (QA). Six Playwright specs land
+under `tests/e2e/` and are inventoried above. The matching
+backend mirror tests live under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W13/Vasquez/`.*

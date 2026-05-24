@@ -27,6 +27,7 @@ namespace Mahjong.Autotable.Api.Tests.Auth;
 /// <see cref="AppDbContext.Model"/>. A missing entity (Wave 9 surface not
 /// yet shipped) soft-passes.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class ReconnectAuditTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

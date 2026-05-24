@@ -93,6 +93,23 @@
 #     `shared_files.shims_shared` + `shared_files.pwa_audit_workflow_shared`.
 #   - See `docs/agent-handoff-protocol.md §5.9` for the registry policy.
 #
+# Wave 13 refinements (Vasquez):
+#   - SHARED-FILE table BROADENED further (parallel to W11):
+#     * `.github/workflows/bundle-health.yml` is Hicks's W13 bundle-
+#       size sticky-comment CI workflow. Co-authored by hicks +
+#       apone (frontend bundle author + workflow runtime owner);
+#       primary stays at `apone` since the file lives under
+#       .github/workflows/. Direct parallel to pwa_audit_workflow_shared.
+#     * `src/frontend/autotable-src/tests/e2e/__screenshots__/*.png`
+#       are Playwright visual-regression baselines captured by Hicks
+#       (via the W13 `scripts/capture-visual-baselines.js` Playwright-
+#       runtime side-channel) but live in Vasquez's test-lane root.
+#       Co-authored by hicks + vasquez; primary stays at `vasquez`
+#       since the baselines live under src/frontend/autotable-src/tests/.
+#   - Companion `lane-map.json` carries new
+#     `shared_files.bundle_health_workflow_shared` +
+#     `shared_files.visual_regression_baselines_shared`.
+#
 # Owner: Vasquez (QA).
 
 set -euo pipefail
@@ -166,7 +183,8 @@ agent_for_path() {
     .squad/decisions/inbox/vasquez-*|\
     .github/workflows/lane-discipline.yml|\
     .github/workflows/lane-discipline-nightly.yml|\
-    .github/workflows/lane-discipline-status.yml)
+    .github/workflows/lane-discipline-status.yml|\
+    .github/workflows/playwright-visual-regression.yml)
       echo "vasquez" ;;
     # Bishop — backend migrations + appsettings (auth lane spillover)
     src/backend/Migrations/*|\
@@ -258,6 +276,16 @@ is_shared_file() {
   #     forward-stage scaffolding for cross-pane contracts.
   #   * .github/workflows/pwa-audit.yml + pwa-builder.yml — co-
   #     authored by hicks + apone (PWA assets vs workflow runtime).
+  # W13 broadening (Vasquez):
+  #   * .github/workflows/bundle-health.yml — Hicks-authored
+  #     bundle-size sticky-comment workflow; parallel to
+  #     pwa_audit_workflow_shared. Co-authored by hicks + apone
+  #     (frontend bundle author + workflow runtime owner).
+  #   * src/frontend/autotable-src/tests/e2e/__screenshots__/*.png —
+  #     Playwright visual-regression baselines captured by Hicks
+  #     (via the W13 scripts/capture-visual-baselines.js side-
+  #     channel) inside Vasquez's test-lane root. Co-authored by
+  #     hicks + vasquez.
   local p="$1"
   case "$p" in
     src/frontend/autotable-src/tests/selectors.md|tests/selectors.md)
@@ -267,6 +295,10 @@ is_shared_file() {
     src/backend/tests/Mahjong.Autotable.Api.Tests/Shims/*)
       return 0 ;;
     .github/workflows/pwa-audit.yml|.github/workflows/pwa-builder.yml)
+      return 0 ;;
+    .github/workflows/bundle-health.yml)
+      return 0 ;;
+    src/frontend/autotable-src/tests/e2e/__screenshots__/*)
       return 0 ;;
     *)
       return 1 ;;
@@ -286,6 +318,10 @@ shared_file_authors() {
       echo "bishop vasquez hicks apone" ;;
     .github/workflows/pwa-audit.yml|.github/workflows/pwa-builder.yml)
       echo "hicks apone" ;;
+    .github/workflows/bundle-health.yml)
+      echo "hicks apone" ;;
+    src/frontend/autotable-src/tests/e2e/__screenshots__/*)
+      echo "hicks vasquez" ;;
     *)
       echo "" ;;
   esac

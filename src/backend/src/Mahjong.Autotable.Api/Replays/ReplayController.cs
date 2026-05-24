@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Mahjong.Autotable.Api.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -34,15 +35,18 @@ public sealed class ReplayController : ControllerBase
     private readonly IReplayStore _store;
     private readonly ReplayOptions _options;
     private readonly ILogger<ReplayController> _logger;
+    private readonly AuthCookieService? _cookies;
 
     public ReplayController(
         IReplayStore store,
         ReplayOptions options,
-        ILogger<ReplayController> logger)
+        ILogger<ReplayController> logger,
+        AuthCookieService? cookies = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _cookies = cookies;
     }
 
     /// <summary>
@@ -97,11 +101,45 @@ public sealed class ReplayController : ControllerBase
     /// Insert a new replay record. The server mints
     /// <c>replayId</c> + <c>ingestedAt</c> + <c>expiresAt</c>
     /// and gzip-compresses the payload before persistence.
+    ///
+    /// <para>Phase K Wave 13 — Bishop. POST is admin-gated by
+    /// default (<see cref="ReplayOptions.RequireAdminForPost"/>);
+    /// anonymous → 401, non-admin → 403. Development fixtures
+    /// can disable the gate via
+    /// <c>Replays:RequireAdminForPost = false</c>.</para>
     /// </summary>
     [HttpPost]
     [EnableRateLimiting(RateLimiting.RateLimitingExtensions.ApiPolicy)]
     public async Task<IActionResult> Post([FromBody] PostReplayBody? body, CancellationToken ct = default)
     {
+        // Phase K Wave 13 — Bishop. Admin gate. When the toggle is
+        // disabled (dev convenience) we skip both the session resolve
+        // + the role check so anonymous callers get the W12 behaviour.
+        if (_options.RequireAdminForPost)
+        {
+            if (_cookies is null)
+            {
+                // Defence in depth — if the cookie service isn't wired
+                // we cannot evaluate the admin claim, so the gate is
+                // closed rather than fail-open. In practice the cookie
+                // service is registered as a singleton in Program.cs
+                // before any controller resolves.
+                return Unauthorized(new { error = "session-required" });
+            }
+            var session = await _cookies.ResolveAsync(HttpContext, ct);
+            if (session is null)
+            {
+                return Unauthorized(new { error = "session-required" });
+            }
+            if (!string.Equals(session.Role, "admin", StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    error = "admin-required",
+                });
+            }
+        }
+
         if (body is null)
         {
             return BadRequest(new { error = "body is required." });

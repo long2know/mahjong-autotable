@@ -6,7 +6,7 @@
     "bishop":  "^(src/backend/src/|src/backend/Migrations/|Phase_K_W\\d+/Bishop/|appsettings.*\\.json|\\.squad/agents/bishop/|\\.squad/decisions/inbox/bishop-)",
     "hicks":   "^(src/frontend/|Phase_K_W\\d+/Hicks/|\\.squad/agents/hicks/|\\.squad/decisions/inbox/hicks-)",
     "apone":   "^(\\.github/workflows/|infra/|docs/(slsa|hsts|turn|admission|oauth|jwt-rotation|kubernetes|terraform|secrets|mobile|retro|helm|signer|ghcr|production)\\.md|Dockerfile|helm/|CHANGELOG\\.md|\\.squad/agents/apone/|\\.squad/decisions/inbox/apone-)",
-    "vasquez": "^(src/backend/tests/|src/frontend/autotable-src/tests/|tests/ci/|docs/test-|docs/contracts/|\\.github/workflows/lane-discipline(-[a-z]+)?\\.yml|\\.squad/agents/vasquez/|\\.squad/decisions/inbox/vasquez-)"
+    "vasquez": "^(src/backend/tests/|src/frontend/autotable-src/tests/|tests/ci/|docs/test-|docs/contracts/|\\.github/workflows/lane-discipline(-[a-z]+)?\\.yml|\\.github/workflows/playwright-visual-regression\\.yml|\\.squad/agents/vasquez/|\\.squad/decisions/inbox/vasquez-)"
   },
   "wave_subdir_overrides": {
     "description": "Files under src/backend/tests/*/Phase_K_W*/<AgentName>/ and Phase_K_W*/<AgentName>/ (anywhere) are attributed to <AgentName>, not Vasquez. This lets each agent author contract-style tests under their own subdirectory inside Vasquez's broader test lane. AgentName must match one of the lanes above (case-sensitive PascalCase: Bishop / Hicks / Apone / Vasquez).",
@@ -33,7 +33,7 @@
     ]
   },
   "shared_files": {
-    "description": "Phase K Wave 8 — Vasquez refinement (broadened in Waves 10 + 11). Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case. agent_handoff_protocol_md_shared (added in W10) recognises that docs/agent-handoff-protocol.md is co-authored by Vasquez (concurrent-agent safety + stash-discipline) and Apone (branch-protection runbook + lock-file relocation). shims_shared (added in W11) recognises that test shims in src/backend/tests/.../Shims/ are co-authored by any contract author so a forward-stage shim for a backend surface (Bishop) can land alongside Vasquez's contract harness without an author-lane mismatch. pwa_audit_workflow_shared (added in W11) recognises that PWA-related workflows (.github/workflows/pwa-audit.yml + .github/workflows/pwa-builder.yml) are co-authored by Hicks (frontend asset author) and Apone (workflow runtime owner) — primary is apone, who owns the .github/workflows/ namespace.",
+    "description": "Phase K Wave 8 — Vasquez refinement (broadened in Waves 10 + 11 + 13). Specific files that legitimately span more than one lane (cross-pane contracts) and whose author may be ANY listed agent without that counting as an author-lane mismatch. The file is still classified to its PRIMARY owner (for cross-lane bundling detection — a SINGLE commit still must not span more than one lane), but the author-identity check accepts any of the listed authors. selectors_md_shared is the W7→W8 hand-off case. agent_handoff_protocol_md_shared (added in W10) recognises that docs/agent-handoff-protocol.md is co-authored by Vasquez (concurrent-agent safety + stash-discipline) and Apone (branch-protection runbook + lock-file relocation). shims_shared (added in W11) recognises that test shims in src/backend/tests/.../Shims/ are co-authored by any contract author so a forward-stage shim for a backend surface (Bishop) can land alongside Vasquez's contract harness without an author-lane mismatch. pwa_audit_workflow_shared (added in W11) recognises that PWA-related workflows (.github/workflows/pwa-audit.yml + .github/workflows/pwa-builder.yml) are co-authored by Hicks (frontend asset author) and Apone (workflow runtime owner) — primary is apone, who owns the .github/workflows/ namespace. bundle_health_workflow_shared (added in W13) recognises that .github/workflows/bundle-health.yml is co-authored by Hicks (per-PR bundle-size sticky comment, frontend bundle author) and Apone (workflow runtime owner) — primary is apone, parallel to pwa_audit_workflow_shared. visual_regression_baselines_shared (added in W13) recognises that Playwright visual-regression baseline PNGs under src/frontend/autotable-src/tests/e2e/__screenshots__/ are captured by Hicks (frontend asset author, via the W13 scripts/capture-visual-baselines.js side-channel) and consumed/owned by Vasquez (QA harness in src/frontend/autotable-src/tests/) — primary is vasquez, since the baselines live under the test-lane root.",
     "selectors_md_shared": {
       "paths": [
         "^src/frontend/autotable-src/tests/selectors\\.md$",
@@ -63,6 +63,20 @@
       ],
       "authors": ["hicks", "apone"],
       "primary": "apone"
+    },
+    "bundle_health_workflow_shared": {
+      "paths": [
+        "^\\.github/workflows/bundle-health\\.yml$"
+      ],
+      "authors": ["hicks", "apone"],
+      "primary": "apone"
+    },
+    "visual_regression_baselines_shared": {
+      "paths": [
+        "^src/frontend/autotable-src/tests/e2e/__screenshots__/.*\\.png$"
+      ],
+      "authors": ["hicks", "vasquez"],
+      "primary": "vasquez"
     }
   },
   "authors": {

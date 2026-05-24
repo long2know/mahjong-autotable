@@ -143,6 +143,64 @@ revisited.
 | `spectate` | — | Activate `#lobby-public-games-tab`. | `/spectate` (path rewritten, no reload) |
 | `tournament` | `tournaments` | Activate `#lobby-tournaments-tab`. | `/tournament/list` (path rewritten, no reload) |
 | `replay` (W12) | — | Reads `replayId=<guid>` co-param, fetches `/api/replays/{replayId}` (Bishop W12), feeds the payload to the replay viewer. On error → "Replay not found" toast. | `/replay/<replayId>` (path rewritten on success) / `/` (path bare on failure) |
+| `spectate` + `gameId` (W13) | — | When `?action=spectate&gameId=<guid>` is present, POSTs `/api/spectator/handoff` (Bishop W12) with `{gameId}` (cookie-auth) → on 200 mints a spectator JWT and bootstraps the spectator livestream for the requested table. On 401 → redirect to `/` so `installAuthUi()` can mount the sign-in modal. On 404/error → "Game not found" toast. | `/spectate/<gameId>?token=<jwt>#/spectate/<gameId>` (path rewritten with hash so the W6 `installSpectatorRoute()` hashchange listener fires) / `/` (path bare on auth failure) |
+
+### §3.1 — `?action=spectate&gameId=<guid>` flow (W13)
+
+The W13 wave extends the W11 `spectate` keyword with a
+single-shot deep link that bypasses the public-games lobby
+and drops the viewer straight into a named table.
+
+Wire sequence:
+
+1. Boot-sequence calls `handlePwaActionFromUrl()` which calls
+   `parseActionFromUrl()`.
+2. The parser detects `?action=spectate&gameId=<guid>` and
+   returns `{ action: "spectate", gameId }`.
+3. `dispatchSpectate()` branches on `gameId` — if present it
+   delegates to `dispatchSpectateWithGameId(gameId)`; if
+   absent, falls through to the W11 lobby-tab behaviour.
+4. `dispatchSpectateWithGameId()` calls
+   `fetchHandoffAndOpenSpectator(gameId)`:
+   - **POST** `/api/spectator/handoff` body
+     `{ "gameId": "<guid>" }`, credentials-included so the
+     existing session cookie authenticates the call.
+   - **200** → `{ token, expiresAt, scope: "spectator:<gameId>", ttlSeconds }`.
+     The router rewrites the URL to
+     `/spectate/<gameId>?token=<jwt>#/spectate/<gameId>` via
+     `history.replaceState` (hash component triggers the W6
+     `installSpectatorRoute()` hashchange listener) AND
+     directly invokes `openSpectatorLivestream({ tableId: gameId })`
+     because `replaceState` with a combined path+hash does
+     not emit a `hashchange` event.
+   - **401** → `redirectToLobbyForSignIn()` rewrites the URL
+     to `/` and reloads so `installAuthUi()` (auth.ts) can
+     mount the sign-in modal at boot. We do NOT preserve the
+     original `?action=spectate&gameId=*` for post-login
+     resumption (the JWT contract is short-lived; users
+     should re-click the link after authenticating).
+   - **404 / 500 / network** → `showGameNotFoundToast()`
+     fires a transient "Game not found" toast and rewrites
+     the URL to `/spectate` so the user lands at the
+     public-games lobby instead of staring at a broken deep
+     link.
+5. The URL param is stripped via `clearActionParam()` after
+   dispatch so refresh doesn't re-fire the handoff.
+
+Failure surface (and where it lives in the codebase):
+
+| HTTP status | Client behaviour                       | Code path                             |
+|-------------|----------------------------------------|---------------------------------------|
+| 200         | Bootstrap livestream + rewrite URL.    | `fetchHandoffAndOpenSpectator()`      |
+| 401         | Redirect to `/` for sign-in.           | `redirectToLobbyForSignIn()`          |
+| 404         | "Game not found" toast.                 | `showGameNotFoundToast()`             |
+| 5xx / fetch | Same toast as 404 (intentionally lumped — the user has the same recovery in both cases). | `showGameNotFoundToast()`             |
+
+Contract owner: **Bishop** (server-side
+`SpectatorHandoffController`, W12). The W13 client matches
+the W12 wire shape exactly; any future change to the JWT
+scope shape or `ttlSeconds` semantics needs a Bishop+Hicks
+co-bump.
 
 
 Any keyword not in this table returns `null` from

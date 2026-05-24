@@ -114,6 +114,14 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<Mahjong.Autotable.Api.Observability.SignalRSequenceEntry> SignalRSequenceEntries =>
         Set<Mahjong.Autotable.Api.Observability.SignalRSequenceEntry>();
 
+    // Phase K Wave 13 — Bishop. Durable audit trail for spectator
+    // handoff JWT mints. Backs EfSpectatorHandoffAuditStore;
+    // toggled via Spectator:Audit:StorageImpl ("InMemory" default
+    // tests / "Ef" prod). See
+    // Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRecord.
+    public DbSet<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRecord> SpectatorHandoffAuditRecords =>
+        Set<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -562,6 +570,26 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.HasIndex(x => new { x.HubName, x.ConnectionId, x.Sequence }).IsUnique();
             entity.HasIndex(x => new { x.HubName, x.ConnectionId });
             entity.HasIndex(x => x.ExpiresAt);
+        });
+
+        // Phase K Wave 13 — Bishop. Spectator handoff audit trail.
+        // The (GameId, IssuedAt) composite index backs the
+        // dominant read path (per-game listing, most-recent-first);
+        // (UserId) supports the per-caller audit query; (IssuedAt)
+        // backs the retention sweep. TokenJti is the natural
+        // unique key so a replayed mint can't double-stamp.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRecord>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.TokenJti).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Scope).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.ClientIp).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.UserAgent).HasMaxLength(256).IsRequired();
+            entity.HasIndex(x => x.TokenJti).IsUnique();
+            entity.HasIndex(x => new { x.GameId, x.IssuedAt });
+            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.IssuedAt);
         });
     }
 }

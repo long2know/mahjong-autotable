@@ -1,0 +1,145 @@
+# Phase K Wave 13 — Apone (DevOps).
+#
+# Post-cutover hardening patch: flip the prod Redis envFrom
+# secretRef from `optional: true` to `optional: false`.
+#
+# Status: PR-READY, NOT applied this wave.
+#
+# Why this patch exists (W13):
+#
+# W12 wired the prod Redis ESO ExternalSecret into the prod
+# kustomization (`infra/k8s/overlays/prod/kustomization.yaml`
+# Deployment patch — see file end). The W12 mount carries
+# `optional: true` on the secretRef so the deployment can boot
+# even when ESO has not yet hydrated the `mahjong-redis-prod`
+# Secret from AWS Secrets Manager. This was deliberate — during
+# the cutover window the IAM trust, the ESO ClusterSecretStore,
+# and the SSM parameter chain are all moving parts; the runtime
+# falling back to in-memory idempotency is preferable to a hard
+# crashloop.
+#
+# Post-cutover the safety net is the WRONG default. If ESO
+# breaks (IAM trust expires, SSM param is mis-typed, the
+# ClusterSecretStore is unhealthy) and the deployment quietly
+# falls through to the in-memory provider, idempotency
+# guarantees silently degrade to single-pod-scope — a
+# double-submit across pods would hit the database twice. The
+# Bishop W10 second-line uniqueness constraints catch the
+# specific case, but the silent degradation is a Class-2
+# regression we don't want in steady state.
+#
+# This patch flips `optional: true → false` so a missing
+# `mahjong-redis-prod` Secret fails-CLOSED at pod start —
+# kubelet emits `CreateContainerConfigError` and the readiness
+# probe never goes green. The on-call sees the crashloop in the
+# `prod-mahjong-autotable` Deployment within minutes (Hudson's
+# `kube-pod-not-ready` alert at 5 min); a much faster + louder
+# signal than silent idempotency degradation.
+#
+# When to apply this patch (per `docs/prod-cutover.md §6
+# "Post-cutover hardening"`):
+#
+#   1. The prod EKS cluster is steady-state — Hudson's
+#      `kube-pod-not-ready` SLO has been 100 % for 14 days.
+#   2. ESO `aws-secrets-manager-prod` ClusterSecretStore is
+#      monitored — Hudson's `eso-sync-failures-prod` panel
+#      shows 0 errors for 14 days.
+#   3. The `mahjong-redis-prod` ExternalSecret has been in
+#      `SecretSynced=True` for 14 days continuously.
+#   4. A staging-environment rehearsal has flipped + reverted
+#      the same flag against the staging overlay with no
+#      ill effects (use a wave-scoped PR for the rehearsal).
+#
+# Once all four pre-conditions are met, the operator OPENS a
+# wave-scoped PR (`stlong/phase-k-wave-NN-redis-envfrom-required`)
+# that applies this patch to the prod overlay's
+# `kustomization.yaml` Deployment patch. The PR is a 1-line
+# diff (`optional: true → optional: false`). Reviewers gate on
+# the four pre-conditions above + a fresh `kustomize build
+# infra/k8s/overlays/prod/` diff confirming the change is
+# isolated to the envFrom block.
+#
+# How to apply (operator runbook):
+#
+#   1. Copy this file into a new patch slot in
+#      `infra/k8s/overlays/prod/kustomization.yaml` under
+#      `patches:`. The target is the existing W12 Redis
+#      envFrom Deployment patch (look for the comment
+#      "Phase K Wave 12 — Apone (DevOps). Mount the prod Redis
+#      connection-string Secret"). Replace the inline `patch:`
+#      block with `path: redis-envfrom-required-patch.yaml`
+#      OR keep both and let kustomize apply them in order.
+#
+#   2. `kustomize build infra/k8s/overlays/prod/ | grep -A 10
+#      "name: prod-mahjong-autotable" | head -40` should show
+#      the secretRef block with `optional: false` instead of
+#      `optional: true`.
+#
+#   3. `kubectl -n mahjong-prod apply -k infra/k8s/overlays/prod/`
+#      — verify the Deployment rolls out cleanly. Watch:
+#      `kubectl -n mahjong-prod get pods -w`. Any
+#      CreateContainerConfigError indicates the Secret is NOT
+#      present and the flip is exposing a pre-existing ESO
+#      issue — ROLL BACK by reverting the PR.
+#
+# Rollback:
+#
+#   If the post-flip rollout surfaces a problem, revert the PR.
+#   The `optional: true` baseline restores the W12 fall-through.
+#
+# Pre-existing alternative path — fail-CLOSED via the wider
+# omnibus secret:
+#
+#   If the operator prefers to keep `optional: true` on the
+#   dedicated secret AND fail-CLOSED via the omnibus
+#   `mahjong-autotable` secret (which IS `optional: false`
+#   already and is the W4 omnibus pin), the runtime would
+#   pick up the connection string from
+#   `Idempotency__Redis__ConnectionString` in the omnibus
+#   secret. This works iff the omnibus secret is kept
+#   in-sync — which is itself an out-of-band manual operation.
+#   The dedicated-secret-with-`optional: false` path is more
+#   auditable + more aligned with the W4 ESO separation-of-
+#   concerns convention; the omnibus fall-through is the
+#   pre-W12 legacy path.
+
+# This is a JSON6902 patch document. Apply via
+# `kustomization.yaml` `patches:` entry:
+#
+#   patches:
+#     - target:
+#         kind: Deployment
+#         name: mahjong-autotable
+#       path: redis-envfrom-required-patch.yaml
+#
+# The patch FAILS the build if the W12 envFrom mount has been
+# removed or moved — that's the contract: applying this patch
+# is intentional and idempotent against the W12 layout.
+#
+# Index pin (W12 baseline):
+#
+# The W12 prod-overlay base + kustomization-level adds compose
+# the envFrom array in this order:
+#
+#   /envFrom/0 → configMapRef: mahjong-autotable          (base)
+#   /envFrom/1 → secretRef:    mahjong-autotable           (base)
+#   /envFrom/2 → secretRef:    mahjong-jwt-keys     (W4 add)
+#   /envFrom/3 → secretRef:    mahjong-jwt-rsa-keys (W7 add)
+#   /envFrom/4 → secretRef:    mahjong-redis-prod   (W12 add)  ← THIS
+#
+# The `/4/secretRef/optional` path below targets the Redis
+# entry by index. If a future wave inserts an additional
+# `envFrom` entry BEFORE the Redis one (e.g. a new secret type),
+# the index pin shifts and this patch lands on the wrong entry
+# — a `kustomize build` post-apply review (per the operator
+# runbook §3 above) is the regression gate.
+#
+# Future-proofing (W14+ consideration): once a kustomize
+# release ships JSON-Patch path-by-name (PR
+# kubernetes-sigs/kustomize#3625), migrate this patch to
+# match `secretRef.name=mahjong-redis-prod` instead of indexed
+# `/4`. Until then the index pin is the auditable form.
+
+- op: replace
+  path: /spec/template/spec/containers/0/envFrom/4/secretRef/optional
+  value: false

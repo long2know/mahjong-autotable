@@ -55,6 +55,7 @@ namespace Mahjong.Autotable.Api.Tests.Changsha;
 /// (Phase J Wave 2 contract probe) but extended to the full set of terminal
 /// phases.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class GameCompletionLifecycleTests(ITestOutputHelper output)
 {
     private const int MaxStepsPerHand = 4000;

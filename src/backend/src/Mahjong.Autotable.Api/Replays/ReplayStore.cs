@@ -233,6 +233,17 @@ public sealed class ReplayOptions
     /// small enough that a hostile client can't pin a worker
     /// thread on a multi-MB upload.</summary>
     public int MaxCompressedBytes { get; set; } = 8 * 1024 * 1024;
+
+    /// <summary>
+    /// Phase K Wave 13 — Bishop. When <c>true</c> (default),
+    /// <c>POST /api/replays</c> requires an authenticated session
+    /// with the <c>admin</c> role. Anonymous callers get HTTP 401,
+    /// non-admin sessions get HTTP 403. Development fixtures can
+    /// flip this to <c>false</c> to keep the W12 open-POST behaviour
+    /// for fast iteration. See <c>docs/replay-by-id.md</c> §POST
+    /// admin gating.
+    /// </summary>
+    public bool RequireAdminForPost { get; set; } = true;
 }
 
 /// <summary>

@@ -1,0 +1,12 @@
+# Phase K Wave 13 — Vasquez closing gate snapshot
+# Branch: stlong/phase-k-wave-13-bringup
+# Command: dotnet test src/backend/Mahjong.Autotable.slnx --nologo
+# Date: 2026-10-30
+
+Test run for /data/source/mahjong-autotable/src/backend/tests/Mahjong.Autotable.Api.Tests/bin/Debug/net10.0/Mahjong.Autotable.Api.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:  2789, Skipped:     0, Total:  2789, Duration: 1 m 54 s - Mahjong.Autotable.Api.Tests.dll (net10.0)
+
+# Gate result: 2789 / 0 / 0  (Δ from W12 baseline 2610 = +179)
+# Zero-skip streak preserved (now 28 waves)

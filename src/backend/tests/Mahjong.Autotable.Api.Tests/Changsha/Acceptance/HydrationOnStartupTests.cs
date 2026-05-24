@@ -37,6 +37,7 @@ namespace Mahjong.Autotable.Api.Tests.Changsha.Acceptance;
 /// harness override of <c>false</c> from <c>ChangshaHubTestHarness</c> is
 /// flipped on per-test.
 /// </summary>
+[Collection("DbSerial")]
 public class HydrationOnStartupTests
 {
     // Production-side serializer options: System.Text.Json default

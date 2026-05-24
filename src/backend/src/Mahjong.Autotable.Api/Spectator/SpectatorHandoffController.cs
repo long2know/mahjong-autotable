@@ -47,15 +47,18 @@ public sealed class SpectatorHandoffController : ControllerBase
     private readonly AuthCookieService _cookies;
     private readonly JwtIssuingService _issuer;
     private readonly ILogger<SpectatorHandoffController> _logger;
+    private readonly ISpectatorHandoffAuditStore? _audit;
 
     public SpectatorHandoffController(
         AuthCookieService cookies,
         JwtIssuingService issuer,
-        ILogger<SpectatorHandoffController> logger)
+        ILogger<SpectatorHandoffController> logger,
+        ISpectatorHandoffAuditStore? audit = null)
     {
         _cookies = cookies;
         _issuer = issuer;
         _logger = logger;
+        _audit = audit;
     }
 
     [HttpPost("handoff")]
@@ -72,16 +75,59 @@ public sealed class SpectatorHandoffController : ControllerBase
             return Unauthorized(new { error = "session-required" });
         }
         var scope = $"{ScopePrefix}{body.GameId:D}";
+        // Phase K Wave 13 — Bishop. Generate a deterministic jti
+        // so the audit row + the JWT carry the same identifier.
+        // The claim lands inside the existing "claims" envelope
+        // (matches the rest of the issuer's payload shape).
+        var jti = Guid.NewGuid().ToString("D");
         var claims = new Dictionary<string, object?>
         {
             ["scope"] = scope,
             ["game_id"] = body.GameId.ToString("D"),
+            ["jti"] = jti,
         };
         var result = await _issuer.IssueAsync(
             session.PlayerId,
             claims,
             DefaultTokenLifetime,
             ct);
+        // Phase K Wave 13 — Bishop. Write the audit row after the
+        // mint succeeds so we don't stamp a row for a token that
+        // never reached the issuer. The store is optional —
+        // legacy callers that haven't wired the store still get
+        // a working handoff (with a logged warning).
+        if (_audit is null)
+        {
+            _logger.LogDebug(
+                "Spectator handoff audit store not registered; skipping audit row for jti={Jti}.",
+                jti);
+        }
+        else
+        {
+            try
+            {
+                var ua = HttpContext.Request.Headers.UserAgent.ToString();
+                if (ua.Length > 256) ua = ua[..256];
+                var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+                if (ip.Length > 64) ip = ip[..64];
+                await _audit.InsertAsync(new SpectatorHandoffAuditRecord
+                {
+                    UserId = session.PlayerId,
+                    GameId = body.GameId,
+                    TokenJti = jti,
+                    IssuedAt = DateTime.UtcNow,
+                    Scope = scope,
+                    ClientIp = ip,
+                    UserAgent = ua,
+                }, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Spectator handoff audit insert failed for jti={Jti}; mint succeeded.",
+                    jti);
+            }
+        }
         return Ok(new
         {
             token = result.Token,

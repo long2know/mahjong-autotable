@@ -43,6 +43,7 @@ namespace Mahjong.Autotable.Api.Tests.Leaderboard;
 /// us prescribe exact <c>GamesPlayed</c> / <c>GamesWon</c> values without
 /// simulating any gameplay flow.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class LeaderboardEndpointTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

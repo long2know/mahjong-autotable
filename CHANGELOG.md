@@ -19,8 +19,171 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-12-bringup`. Phase K Wave 12
+Working branch: `stlong/phase-k-wave-13-bringup`. Phase K Wave 13
 in flight. Other lane deliverables outstanding.
+
+## [0.22.0] — Phase K Wave 13 — 2026-11-XX (PR pending)
+
+**Theme:** Quarterly automation + cluster-policy namespace
+exclusion + post-cutover hardening preparation. Regional EKS
+cluster bring-up readiness docs (`docs/regional-eks-bringup.md`
+NEW — per-region Cutover-Ready checklists for us-east-1, us-west-2,
+eu-west-1, ap-southeast-1; cross-region invariants; apply order)
+unblock the W14+ regional cluster cutover sequence on top of the
+W12 multi-region edge surface. JWT rotation rehearsal quarterly
+cadence — `.github/workflows/jwt-rotation-rehearsal-scheduled.yml`
+NEW thin scheduler (cron `0 2 1 */3 *`) dispatches the existing
+W11 rehearsal workflow with `target_env=staging` forced;
+`docs/jwt-rotation-rehearsal.md` extended with new §4 "Quarterly
+cadence" + downstream renumber §4→§10. ClusterPolicy namespace
+exclusion closes the W12 retro D7 open item via
+`infra/k8s/overlays/prod/cluster-scoped-fieldspecs.yaml` NEW
+(eight `PatchTransformer` documents — one per cluster-scoped
+Kind — each stripping `/metadata/namespace` AFTER the
+NamespaceTransformer runs); the kustomize v5.4.3 NamespaceTransformer
+`fieldSpecs.kind:` filter is IGNORED (empirically reproduced;
+documented as a workaround driver in
+`docs/cluster-policy-namespace-exclusion.md` NEW). Monthly Redis
+load-test reminder — `.github/workflows/redis-load-test-reminder.yml`
+NEW (cron `0 14 1 * *` opens a same-month-idempotent reminder
+issue with the W12 SLO baseline; 7-day stale-close); new §4.6 in
+`docs/redis-cluster.md` covers cadence + operator
+responsibilities + "why reminder not auto-applier" rationale.
+PR-ready Redis envFrom `optional: false` flip patch
+(`infra/k8s/overlays/prod/redis-envfrom-required-patch.yaml` NEW;
+NOT wired into `kustomization.yaml` this wave — artefact for
+W14+ apply once cutover steady-state pre-conditions hold) +
+`docs/prod-cutover.md §6` "Post-cutover hardening" NEW section
+covering six W14–W16 tightening gates. Terraform CLI W14 bump
+survey (`docs/terraform.md §6.6` NEW — candidate baselines,
+seven-class migration-risks table, recommended pin `1.11.4`
+provisional, bump-PR shape + rollback). Retro 2026-11 closes
+the wave.
+
+### Added (Phase K Wave 13 — PR pending)
+
+- **`.github/workflows/jwt-rotation-rehearsal-scheduled.yml` —
+  quarterly scheduler.** Thin scheduler — `schedule:` block fires
+  `0 2 1 */3 *` (02:00 UTC on the 1st of every 3rd month: Jan,
+  Apr, Jul, Oct) + a `workflow_dispatch` back-stop. Uses
+  `actions/github-script@v7`'s `createWorkflowDispatch` to
+  dispatch the existing W11 `jwt-rotation-rehearsal.yml` with
+  `target_env=staging` forced in the dispatched payload. The
+  inner W11 workflow is UNCHANGED — the W11 hard-gate inside the
+  inner workflow remains the second-line defence. First scheduled
+  fire: 2027-01-01 02:00 UTC.
+- **`.github/workflows/redis-load-test-reminder.yml` — monthly
+  reminder + stale-close.** Two jobs: `open-reminder` (cron
+  `0 14 1 * *` + `workflow_dispatch`) opens an issue titled
+  `Monthly Redis load-test reminder — YYYY-MM` carrying the W12
+  SLO baseline (1000 RPS, p99 lookup < 5 ms, p99 write < 8 ms,
+  error rate < 0.1 %), step-by-step apply commands, stale-close
+  convention, cross-references; same-month re-fires no-op against
+  the existing issue. `stale-close` paginates open issues with the
+  workflow's label set (`ops,redis,load-test,reminder`); comments
+  + closes any > 7 days old with `state_reason=not_planned`.
+- **`infra/k8s/overlays/prod/cluster-scoped-fieldspecs.yaml` —
+  cluster-scoped-Kind namespace stripper.** Eight `PatchTransformer`
+  documents — one per cluster-scoped Kind (`ClusterPolicy`,
+  `ClusterRole`, `ClusterRoleBinding`,
+  `CustomResourceDefinition`, `MutatingWebhookConfiguration`,
+  `PersistentVolume`, `StorageClass`,
+  `ValidatingWebhookConfiguration`); each `op: remove`'s
+  `/metadata/namespace`. Wired into
+  `infra/k8s/overlays/prod/kustomization.yaml`'s `transformers:`
+  list AFTER `namespace-transformer.yaml` (order matters; the
+  strip MUST follow the stamp). File header documents the
+  kustomize v5.4.3 `NamespaceTransformer` `fieldSpecs.kind:`
+  filter bug + minimal repro that drove the design choice.
+- **`infra/k8s/overlays/prod/redis-envfrom-required-patch.yaml`
+  — PR-ready Redis envFrom required flip.** JSON6902 patch —
+  `op: replace` on
+  `/spec/template/spec/containers/0/envFrom/4/secretRef/optional`
+  with value `false`. NOT wired into `kustomization.yaml` —
+  PR-ready artefact for W14+ apply once the four pre-conditions
+  in `docs/prod-cutover.md §6.2` hold (prod steady-state ≥ 7
+  days, ESO secret rotation succeeded ≥ 2x, no open Sev-1/Sev-2
+  referencing Redis in past 7 days, Hudson on-call window
+  confirmed). File header documents the envFrom index mapping
+  (0=configMap, 1=mahjong-autotable, 2=mahjong-jwt-keys,
+  3=mahjong-jwt-rsa-keys, 4=mahjong-redis-prod) so the W14
+  operator can audit before applying.
+- **`docs/regional-eks-bringup.md` — per-region cluster bring-up
+  readiness.** Eight sections — why-this-doc-exists, region
+  inventory (four regions: us-east-1 primary apex, us-west-2
+  secondary, eu-west-1 trans-atlantic, ap-southeast-1 SEA/DR-
+  cold), per-region Cutover-Ready checklists (seven gates per
+  region: TF state bucket per region, EKS cluster ACTIVE verified
+  via `aws eks describe-cluster`, ACM cert per region, R53 health-
+  check association, ESO target per region, ALB DNS published,
+  probe sweep clean), cross-region invariants (DR data-replication
+  direction, single-Redis baseline for W13, JWKS region-agnostic,
+  image-SHA consistency, health-check IP allow-list), apply order
+  (W14 us-east-1 first → us-west-2; W15 eu-west-1; W15+
+  ap-southeast-1), failure-recovery, W14+ hand-offs, cross-
+  references.
+- **`docs/cluster-policy-namespace-exclusion.md` — W12 retro D7
+  closure rationale.** Eight sections — bug history, why the W12
+  NamespaceTransformer caused it (with §2.1 empirical reproduction
+  showing fieldSpecs `kind:` filter ignored in kustomize v5.4.3),
+  the W13 fix design, `kustomization.yaml` wire-up (order
+  MATTERS), verification (before vs after `kustomize build`
+  Kind/ns diff), cross-namespace invariant preserved, future-
+  proofing (W14 stretch pre-commit lint script), cross-references
+  including the upstream kustomize issue tracker.
+- **`docs/jwt-rotation-rehearsal.md §4` — quarterly cadence.**
+  Four sub-sections: §4.1 scheduler workflow + cron rationale,
+  §4.2 rehearsal-report operator-review path, §4.3 quarterly run
+  table (W11+W12 historical rows + scheduler-activation row at
+  W13 + Q1–Q4 2027 placeholder rows), §4.4 off-cadence trigger
+  rules. §4–§9 of the W11/W12 doc renumbered down to §5–§10;
+  cross-refs inside the file updated. Cross-reference added in
+  §10 to the new scheduler workflow.
+- **`docs/redis-cluster.md §4.6` — monthly load-test reminder
+  cadence.** Three sub-sub-sections: §4.6.1 cadence table, §4.6.2
+  operator responsibilities (apply-day pairing with Hudson burn-
+  rate window), §4.6.3 why a reminder not an auto-applier (prod-
+  impact blast-radius, Hudson coordination, audit-trail
+  preference for issue comments over workflow logs).
+- **`docs/prod-cutover.md §6` — post-cutover hardening.** Seven
+  sub-sections: §6.1 tightening calendar table with six gates
+  W14–W16, §6.2 gate 1 Redis envFrom (referencing the new patch
+  artefact + four pre-conditions for apply), §6.3 gate 4 Kyverno
+  enforce mode, §6.4 gate 5 HPA min-replicas bump, §6.5 gate 6
+  CSP enforce mode, §6.6 per-gate rollback, §6.7 per-gate
+  observability table mapping each gate to a Hudson dashboard
+  panel. Table of contents updated.
+- **`docs/terraform.md §6.6` — W14 CLI bump survey.** Five
+  sub-sub-sections: candidate baselines + HashiCorp release-page
+  tracking inputs, pre-emptive migration risks table (seven risk
+  classes: required_version floor, provider compat, HCL syntax,
+  plan-output diffing, lock-file behaviour, DR rehearsal workflow
+  pin, moved-blocks + the new `removed` block in 1.11), recommended
+  W14 target pin `1.11.4` provisional, bump-PR shape, bump-PR
+  rollback. No actual CLI bump this wave.
+- **`docs/retro-2026-11.md` — monthly retro.** Six sections
+  matching the W12 retro pattern: what shipped (W13 deliverables
+  + cross-lane handoffs + gates), what worked well (cron-
+  scheduler-delegate pattern, kustomize fieldSpecs empirical
+  reproduction, PR-ready patch artefacts, per-region readiness
+  template, single-issue-per-month idempotent reminder), what
+  didn't work / open items (kustomize fieldSpecs filter ignored
+  in v5.4.3, per-section-number coordination across docs is
+  fragile, Hudson absence widened DevOps scope unexpectedly,
+  envFrom patch index-pin fragile pending upstream
+  kustomize#3625), lessons learned, what's coming in W14, cross-
+  references.
+
+### Changed (Phase K Wave 13 — PR pending)
+
+- **`infra/k8s/overlays/prod/kustomization.yaml`** —
+  `transformers:` list extended to reference the new
+  `cluster-scoped-fieldspecs.yaml` AFTER `namespace-transformer.yaml`
+  (the strip MUST follow the stamp; the order is documented as
+  the canonical convention in
+  `docs/cluster-policy-namespace-exclusion.md §4`). No other
+  changes to the file — the W12 base wire-up is preserved
+  verbatim.
 
 ## [0.21.0] — Phase K Wave 12 — 2026-10-XX (PR pending)
 

@@ -242,6 +242,73 @@ the run. After tear-down, the metrics persist in Prometheus for
 the retention window (90 d) — sufficient to compare a current
 re-baseline against the prior one without re-running.
 
+### 4.6 Monthly cadence — reminder workflow
+
+> Phase K Wave 13 — Apone (DevOps). Closes the W12 retro D5
+> open item ("Redis load-test cadence is operator-triggered in
+> W12; W13+ should automate via a Hudson-lane reminder
+> workflow"). Hudson absent in W13; DevOps owns the workflow.
+>
+> Cross-reference — the workflow itself:
+> [`.github/workflows/redis-load-test-reminder.yml`](../.github/workflows/redis-load-test-reminder.yml).
+
+#### 4.6.1 Cadence
+
+| Trigger              | Schedule                | Action                                  |
+|----------------------|-------------------------|-----------------------------------------|
+| Scheduled (cron)     | `0 14 1 * *` (1st of every month, 14:00 UTC) | Open a `Monthly Redis load-test reminder — YYYY-MM` issue |
+| `workflow_dispatch`  | manual                  | Same as scheduled, with optional skip flags |
+| Auto-stale-close     | 7 days after issue open | Comment + close the reminder issue if the operator hasn't closed it manually |
+
+The reminder issue includes the W12 SLO baseline (1000 RPS
+sustained / p99 lookup < 5 ms / p99 write < 8 ms), the
+step-by-step apply commands, and a pointer to
+[`infra/load-tests/redis-load-test.yml`](../infra/load-tests/redis-load-test.yml).
+
+#### 4.6.2 Operator responsibilities
+
+1. **Acknowledge the reminder within 7 days.** Apply the k6
+   Job per the steps in the issue body. The Job blocks on the
+   k6 `thresholds:` clause — a fail-CLOSED behaviour means the
+   reminder closes itself if the load-test passes (operator
+   pastes the per-run summary into the next monthly retro
+   under "Redis load-test baseline").
+
+2. **Auto-stale-close means action was missed.** If the
+   workflow auto-closes a reminder with the
+   `not_planned` state-reason, the operator MUST call out
+   the miss in the next monthly retro under "What didn't
+   work / open items" so the squad has a paper trail.
+
+3. **Off-cadence runs are allowed.** The reminder is the
+   FLOOR; the operator may apply the k6 Job off-cadence (e.g.
+   after a Redis engine bump per §6, after the prod cluster
+   gets multi-AZ failover-tested, etc.). Off-cadence runs
+   still get a one-line summary in the monthly retro.
+
+#### 4.6.3 Why a reminder, not an auto-applier
+
+The W13 workflow OPENS AN ISSUE — it does NOT apply the k6
+Job itself. Rationale:
+
+* **Prod-impact.** The W12 load-test profile is 1000 RPS for
+  5 min; that's real traffic on the prod Redis cluster. An
+  unattended workflow firing it could collide with a canary
+  window, a deploy, or a customer-traffic spike. The cost +
+  blast-radius warrant a human-in-the-loop.
+* **Coordination.** The operator running the load-test needs
+  to time it against Hudson's burn-rate windows (per the W12
+  retro D6 "cutover gates should be executable, not
+  narrative" — the gate runs CLOSED but the schedule is
+  operator-discretion).
+* **Auditability.** The reminder issue's comment thread is
+  the per-run audit trail; an auto-applier would surface
+  results only in workflow logs (90-day retention).
+
+A future wave MAY promote the workflow to "fire the Job
+against the staging Redis on cron" (lower blast-radius) —
+tracked as a W14+ stretch item.
+
 ## 5. Customer-managed KMS key (optional)
 
 The module defaults to the AWS-managed `alias/aws/elasticache`

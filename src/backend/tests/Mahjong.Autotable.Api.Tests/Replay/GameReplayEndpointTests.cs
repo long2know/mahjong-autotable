@@ -47,6 +47,7 @@ namespace Mahjong.Autotable.Api.Tests.Replay;
 /// is registered, the test fails with a clear "endpoint not registered"
 /// message.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class GameReplayEndpointTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

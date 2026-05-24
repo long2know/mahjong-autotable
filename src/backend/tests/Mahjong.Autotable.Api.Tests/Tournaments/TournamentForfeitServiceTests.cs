@@ -15,6 +15,7 @@ namespace Mahjong.Autotable.Api.Tests.Tournaments;
 /// timer; <see cref="TournamentForfeitService.SweepOnceAsync"/> is the
 /// unit-of-work and is driven explicitly with hand-loaded state.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class TournamentForfeitServiceTests
 {
     [Fact]

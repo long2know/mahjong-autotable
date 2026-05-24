@@ -19,6 +19,7 @@
 3. [Cutover-Ready checklist](#3-cutover-ready-checklist)
 4. [Argo Rollouts dashboard cross-namespace pattern](#4-argo-rollouts-dashboard-cross-namespace-pattern)
 5. [Rollback playbook](#5-rollback-playbook)
+6. [Post-cutover hardening](#6-post-cutover-hardening)
 
 ---
 
@@ -448,6 +449,103 @@ R53 propagation is ≤ 60 s once the apex record is rewritten (TTL
 60 in the W7 module). The CloudFront fronting (when enabled) adds
 edge-cache invalidation latency — track via
 `docs/cdn-cache-strategy.md §5`.
+
+---
+
+## 6. Post-cutover hardening
+
+> Phase K Wave 13 — Apone (DevOps). This section captures the
+> staged-tighten gates that fire AFTER the prod EKS cluster
+> reaches steady-state. Each gate is intentionally NOT in the §3
+> Cutover-Ready checklist — flipping them prematurely (during
+> the cutover window itself) negates the cutover-safe defaults.
+
+### 6.1 Tightening calendar
+
+The hardening gates land in this order, with the 14-day waits
+described per gate. Each gate is a wave-scoped PR; mark items
+as they land.
+
+| # | Gate                                                       | Pre-conditions                                                                                                                                  | Wave (target) |
+|---|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| 1 | Flip Redis envFrom `optional: true → false`                | (a) Hudson `kube-pod-not-ready` 100 % for 14 d; (b) Hudson `eso-sync-failures-prod` 0 errors for 14 d; (c) `mahjong-redis-prod` ExternalSecret `SecretSynced=True` for 14 d; (d) staging rehearsal of the flip + revert. | W14 + 14 d |
+| 2 | Flip JWT keys envFrom `optional: true → false` (W4)        | Same as gate 1, applied to the `mahjong-jwt-keys` Secret + ExternalSecret.                                                                       | W14 + 28 d   |
+| 3 | Flip JWT RSA keys envFrom `optional: true → false` (W7)    | Same as gate 1, applied to the `mahjong-jwt-rsa-keys` Secret + ExternalSecret. Gate 2 + Gate 3 can land together.                                | W14 + 28 d   |
+| 4 | Lock the Kyverno `verify-mahjong-images` policy to `enforce` (out of `audit`) | The W12 cosign-signed image admission has been operative for 30 d with 0 deny events outside test pushes; the W14 ECR mirror per region (per `docs/regional-eks-bringup.md §4`) is steady. | W15 |
+| 5 | Promote `prod-mahjong-autotable` HPA min-replicas 3 → 5    | Hudson `kube-pod-pending` 100 % for 30 d (no scale-up stalls from quota); Hudson `cpu-saturation-prod` < 60 % p99 for 30 d.                       | W15 + 14 d   |
+| 6 | Lock CSP to `report-only=false` (W4 surface)               | Hudson's `csp-violations-prod` per-day count is 0 for 30 d (no false positives from third-party scripts or new browser intrinsics).             | W16          |
+
+### 6.2 Gate 1 — Redis envFrom `optional: false`
+
+The W13 prep deliverable is the PR-ready patch file
+[`infra/k8s/overlays/prod/redis-envfrom-required-patch.yaml`](../infra/k8s/overlays/prod/redis-envfrom-required-patch.yaml).
+See that file's header for the apply procedure, the pre-flight
+gates, and the rollback path.
+
+Why this gate is the FIRST: the Redis envFrom is the newest
+ESO-backed mount (W12); flipping it first means the W14 SRE
+gets to validate the fail-CLOSED behaviour on a Secret that
+was JUST landed (recent operator memory > older muscle memory).
+The W4 + W7 JWT secret flips (gates 2 + 3) follow because the
+ESO infra is the same and we want to bias toward earlier wins.
+
+### 6.3 Gate 4 — Kyverno enforce mode
+
+The W12 Kyverno overlay (`kyverno-enforce-patch.yaml`) is in
+`enforce` mode but the upstream `verify-mahjong-images`
+ClusterPolicy is in `audit` mode. Gate 4 flips the upstream
+to `enforce`, removing the W12 second-line defence as a
+single-point-of-failure (the W12 ClusterPolicy continues to
+enforce regardless of the upstream's mode — the gate is about
+unifying behaviour, not relaxing it).
+
+Pre-flight: a 30-day audit window with no deny events outside
+test pushes confirms the cosign signing chain is reliable.
+
+### 6.4 Gate 5 — HPA min-replicas bump
+
+The W12 prod overlay pins HPA min-replicas at 3 (sticky-session
+floor recommended by Hudson). Gate 5 bumps to 5, which improves
+the burst-resilience window during a single pod evict (3 → 2
+replicas leaves ≈ 50 % capacity; 5 → 4 leaves ≈ 80 %). Pre-flight
+windows confirm there's no quota pressure that would cause the
++2 replicas to stall in Pending state.
+
+### 6.5 Gate 6 — CSP enforce mode
+
+The W4 Content-Security-Policy header on the prod Ingress is in
+`report-only` mode (violations are logged to a Hudson dashboard
+but NOT blocked). Gate 6 flips to enforce. The 30-day pre-flight
+gives time for false-positive sources (browser intrinsics that
+violate the policy spuriously, third-party scripts that move
+their CDN domains) to be allow-listed.
+
+### 6.6 Per-gate rollback
+
+Each gate is a single-PR change. Rollback is `git revert <pr>`
++ `kubectl apply -k infra/k8s/overlays/prod/`. The cutover-
+safe defaults (gate 1's `optional: true`, gate 6's
+`report-only`, etc.) MUST remain in the git history as the
+revert target — DO NOT squash-merge the hardening PRs; merge-
+commit so the revert path is one click.
+
+### 6.7 Per-gate observability
+
+Each gate has a Hudson dashboard panel that tracks the post-
+flip blast radius for 14 d. If the panel goes red, the gate is
+reverted per §6.6. The panel mapping:
+
+| Gate                        | Hudson panel                                  |
+|-----------------------------|-----------------------------------------------|
+| 1 — Redis envFrom required  | `kube-pod-not-ready` + `eso-sync-failures`    |
+| 2 — JWT HS256 envFrom req.  | `kube-pod-not-ready` + `auth-failure-rate`    |
+| 3 — JWT RS256 envFrom req.  | `kube-pod-not-ready` + `auth-failure-rate`    |
+| 4 — Kyverno enforce         | `kyverno-deny-events` + `pod-admission-rate`  |
+| 5 — HPA min-replicas 5      | `kube-pod-pending` + `cpu-saturation-prod`    |
+| 6 — CSP enforce             | `csp-violations-prod` + `js-error-rate-prod`  |
+
+Hudson owns the panels; DevOps owns the apply PRs; the squad
+gates each PR on a green panel screenshot in the PR description.
 
 ---
 

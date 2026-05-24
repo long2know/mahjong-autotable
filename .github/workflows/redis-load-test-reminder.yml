@@ -1,0 +1,269 @@
+# Phase K Wave 13 — Apone (DevOps). Hudson absent in W13 — Apone
+# owns this workflow per the W12 §4 hand-off (originally tagged
+# Hudson-lane, picked up by DevOps for W13).
+#
+# Monthly reminder issue for the Redis load-test cadence.
+#
+# Wave 12 (`infra/load-tests/redis-load-test.yml`) shipped a k6
+# manifest that re-baselined the prod Redis shape against an SLO-
+# bound load profile (1000 RPS sustained for 5 min, p99 lookup
+# < 5 ms, p99 write < 8 ms). The W12 cadence is "operator-
+# triggered" — narrative, not automated. The W12 retro D5 called
+# this out as the next gap.
+#
+# This workflow CLOSES that gap with the lightest possible
+# touch — it does NOT run the load-test itself (a prod-targeted
+# load-test is a high-impact operation that must remain operator-
+# initiated; firing it from a cron would tangle with prod
+# canary windows + cost). Instead, it opens an ISSUE on the 1st
+# of every month titled `Monthly Redis load-test reminder —
+# YYYY-MM` with:
+#
+#   1. A pointer to `infra/load-tests/redis-load-test.yml`.
+#   2. The W12 baseline (1000 RPS sustained, p99 lookup < 5 ms,
+#      p99 write < 8 ms).
+#   3. Step-by-step `kubectl apply -f …` + watch + cleanup
+#      commands.
+#   4. The follow-up cadence: an auto-stale closer fires 7 days
+#      after the reminder issue is opened. If the operator
+#      hasn't closed the issue manually by then (after running
+#      the load-test + filing the per-run summary in the next
+#      retro), the workflow stale-closes the issue WITH a
+#      comment so the audit trail records the miss.
+#
+# Cadence:
+#
+#   * `schedule:` `0 14 1 * *` — 14:00 UTC on the 1st of every
+#     month. 14:00 UTC = 09:00 EST = 10:00 EDT = mid-morning
+#     for the US operators who own the load-test runbook. The
+#     timing avoids the pre-09:00 EST quiet window where a
+#     stuck reminder won't surface until the on-call returns.
+#
+#   * `workflow_dispatch:` — on-demand fire (e.g. manual
+#     catch-up if a month was skipped, or to re-test the
+#     issue-creation path during dev).
+#
+# Lane:
+#
+#   * Apone-lane workflow. The W12 retro D5 originally tagged
+#     this Hudson-lane (observability/cadence); W13 ownership
+#     moved to DevOps when Hudson was rolled out of the W13
+#     scope. The narrative + cadence convention remains in
+#     `docs/redis-cluster.md`; the workflow YAML is mechanical.
+
+name: redis-load-test-reminder
+
+on:
+  schedule:
+    # 14:00 UTC on the 1st of every month. Picks an hour that
+    # doesn't collide with other Apone-lane cron triggers:
+    #   * hsts-readiness-check: 13:00 UTC daily.
+    #   * jwt-rotation-rehearsal-scheduled: 02:00 UTC quarterly.
+    #   * load-test-nightly: 03:00 UTC daily (nightly k6 against
+    #     staging; unrelated to this monthly prod-baseline path).
+    - cron: "0 14 1 * *"
+  workflow_dispatch:
+    inputs:
+      open_issue:
+        description: "Open a fresh monthly reminder issue (default true)."
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      stale_close:
+        description: "Auto-stale-close reminder issues older than 7 days (default true)."
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+  # Open + comment on + close the monthly reminder issues.
+  issues: write
+
+# Only one reminder run at a time — the cron + a manual
+# workflow_dispatch firing in the same hour would race on issue
+# creation + stale-close.
+concurrency:
+  group: redis-load-test-reminder
+  cancel-in-progress: false
+
+env:
+  # Label set applied to every reminder issue. Used by the
+  # stale-close job to find candidate issues without depending
+  # on the title format alone.
+  REMINDER_LABEL: "ops,redis,load-test,reminder"
+  # The stale-close window — 7 days from issue creation.
+  # Matches the convention in
+  # `docs/redis-cluster.md §4.6 "Monthly cadence — reminder
+  # workflow"`.
+  STALE_DAYS: "7"
+
+jobs:
+  open-reminder:
+    name: Open monthly reminder issue
+    if: ${{ github.event_name == 'schedule' || inputs.open_issue != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compute month tag
+        id: tag
+        run: |
+          set -euo pipefail
+          MONTH=$(date -u +%Y-%m)
+          TITLE="Monthly Redis load-test reminder — ${MONTH}"
+          echo "month=${MONTH}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+          echo "Month tag: ${MONTH}"
+          echo "Issue title: ${TITLE}"
+
+      - name: Open / update the monthly reminder issue
+        uses: actions/github-script@v7
+        env:
+          MONTH: ${{ steps.tag.outputs.month }}
+          ISSUE_TITLE: ${{ steps.tag.outputs.title }}
+          REMINDER_LABEL: ${{ env.REMINDER_LABEL }}
+        with:
+          script: |
+            const { MONTH, ISSUE_TITLE, REMINDER_LABEL } = process.env;
+            const labels = REMINDER_LABEL.split(',').map(s => s.trim()).filter(Boolean);
+
+            // If a same-month reminder already exists (idempotent
+            // re-run), no-op. The dispatch fires once per month
+            // by cron; a manual re-fire shouldn't open duplicates.
+            const search = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue in:title "${ISSUE_TITLE}"`,
+            });
+            const existing = search.data.items.find(i => i.title === ISSUE_TITLE);
+
+            const body = [
+              `📅 **Monthly Redis load-test reminder — ${MONTH}**`,
+              ``,
+              `Phase K Wave 12 baselined the prod Redis shape via [`infra/load-tests/redis-load-test.yml`](../blob/main/infra/load-tests/redis-load-test.yml). The cadence pinned in [`docs/redis-cluster.md` §4.6 "Monthly cadence — reminder workflow"](../blob/main/docs/redis-cluster.md) is **one operator-initiated run per month against the prod shape**, recorded in the corresponding monthly retro.`,
+              ``,
+              `## W12 baseline (current SLO floor)`,
+              ``,
+              `| Metric | Target | W12 observed |`,
+              `|---|---|---|`,
+              `| Sustained RPS | 1000 | 1000 ✅ |`,
+              `| Duration | 5 min | 5 min ✅ |`,
+              `| p99 GET latency | < 5 ms | 4.1 ms ✅ |`,
+              `| p99 SET latency | < 8 ms | 6.7 ms ✅ |`,
+              `| Error rate | < 0.1 % | 0.02 % ✅ |`,
+              ``,
+              `A run is healthy when all five thresholds clear. The k6 \`thresholds:\` block already FAILS the Job on breach — operator review is for variance trend (e.g. p99 creeping toward the ceiling month over month).`,
+              ``,
+              `## Steps to run`,
+              ``,
+              `1. Confirm the prod Redis cluster is healthy: \`kubectl -n mahjong-prod get externalsecret mahjong-redis-prod\` returns \`SecretSynced=True\`.`,
+              `2. Apply the k6 Job (uses the W12 ConfigMap baseline):`,
+              `   \`\`\`bash`,
+              `   kubectl -n load-test apply -f infra/load-tests/redis-load-test.yml`,
+              `   \`\`\``,
+              `3. Tail the run: \`kubectl -n load-test logs -f job/redis-load-test\`. Wait for completion (≈ 6 min including warm-up).`,
+              `4. Capture the k6 summary block + paste into the per-month retro under "Redis load-test baseline".`,
+              `5. Clean up: \`kubectl -n load-test delete job redis-load-test\` (the Job is non-restart; re-applying is idempotent).`,
+              `6. Close this issue with a one-line comment containing the per-run RPS / p99 / error-rate observed.`,
+              ``,
+              `## Stale-close convention`,
+              ``,
+              `If this issue is open ≥ 7 days, the workflow auto-stale-closes it with a comment noting the miss. The audit trail shows which months were missed; the next monthly retro should call out missed cadence under "What didn't work / open items".`,
+              ``,
+              `## Cross-references`,
+              ``,
+              `* [\`docs/redis-cluster.md\` §4 "Load-test methodology"](../blob/main/docs/redis-cluster.md) — load-test methodology + k6 manifest reference.`,
+              `* [\`docs/redis-cluster.md\` §4.6 "Monthly cadence — reminder workflow"](../blob/main/docs/redis-cluster.md) — this workflow's cadence pin.`,
+              `* [\`infra/load-tests/redis-load-test.yml\`](../blob/main/infra/load-tests/redis-load-test.yml) — the k6 Job manifest itself.`,
+              `* [\`.github/workflows/redis-load-test-reminder.yml\`](../blob/main/.github/workflows/redis-load-test-reminder.yml) — this workflow.`,
+            ].join('\n');
+
+            if (existing) {
+              core.info(`Reminder issue already open for ${MONTH} (#${existing.number}); idempotent no-op.`);
+              return;
+            }
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: ISSUE_TITLE,
+              body,
+              labels,
+            });
+            core.info(`Opened monthly reminder issue #${created.data.number}`);
+
+  stale-close:
+    name: Auto-stale-close reminder issues older than 7 days
+    if: ${{ github.event_name == 'schedule' || inputs.stale_close != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Find + close stale reminder issues
+        uses: actions/github-script@v7
+        env:
+          STALE_DAYS: ${{ env.STALE_DAYS }}
+          REMINDER_LABEL: ${{ env.REMINDER_LABEL }}
+        with:
+          script: |
+            const { STALE_DAYS, REMINDER_LABEL } = process.env;
+            const days = parseInt(STALE_DAYS, 10);
+            const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+            const labels = REMINDER_LABEL.split(',').map(s => s.trim()).filter(Boolean);
+
+            // Page through open issues with the reminder labels.
+            // We restrict to the workflow-applied label set so an
+            // operator-renamed / re-labelled issue is left alone.
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: labels.join(','),
+              per_page: 100,
+            });
+
+            let closed = 0;
+            for (const issue of issues) {
+              if (issue.pull_request) continue;
+              const created = new Date(issue.created_at);
+              if (created > cutoff) continue;
+              // Skip non-reminder issues — defensive check; the
+              // label query should already exclude them.
+              if (!issue.title.startsWith('Monthly Redis load-test reminder')) continue;
+
+              const ageDays = Math.floor((Date.now() - created.getTime()) / (24 * 60 * 60 * 1000));
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `⏰ Auto-stale-close: this reminder is **${ageDays} days old** (cutoff: ${days} days). Closing per the convention in [\`docs/redis-cluster.md\` §4.6 "Monthly cadence — reminder workflow"](../blob/main/docs/redis-cluster.md). If the load-test was completed but the issue was forgotten, please paste the per-run summary into the corresponding monthly retro under "Redis load-test baseline" and call out the missed cadence in the next retro's "What didn't work" section.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'not_planned',
+              });
+              core.info(`Stale-closed #${issue.number} (age=${ageDays}d)`);
+              closed += 1;
+            }
+            core.info(`Stale-closed ${closed} reminder issue(s).`);
+
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            echo "## Redis load-test reminder — monthly cadence"
+            echo ""
+            echo "- Cron: \`0 14 1 * *\` (14:00 UTC, 1st of every month)"
+            echo "- Stale-close window: ${STALE_DAYS} days"
+            echo "- Label set: \`${REMINDER_LABEL}\`"
+            echo ""
+            echo "Convention: [\`docs/redis-cluster.md\` §4.6 \"Monthly cadence — reminder workflow\"](../blob/main/docs/redis-cluster.md)."
+          } >> "$GITHUB_STEP_SUMMARY"

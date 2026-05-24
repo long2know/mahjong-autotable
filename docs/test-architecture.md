@@ -175,14 +175,57 @@ xUnit doesn't model SQL reader/writer-lock semantics directly
 half-organisational and half-mechanical — the W13 cron will
 promote false-negatives back into `DbSerialWrites` as needed.
 
-### 3.2. When NOT to use `[Collection("DbSerial")]`
+### 3.2. DbSerial migration outcomes (W13)
+
+W13 actually applied `[Collection("DbSerial")]` to **23 of the 25
+W12-audited candidates** (the 2 remaining Bishop-lane W9 candidates
+are a W14 hand-off — see below). The migration is documented at
+`Phase_K_W13/Vasquez/db-serial-migration-applied.md`.
+
+**5-run flake-detection results (W13):**
+
+| Run         | Failed | Passed | Skipped | Total  | Duration |
+|-------------|--------|--------|---------|--------|----------|
+| W13 run 1   | 0      | 2610   | 0       | 2610   | 1m17s   |
+| W13 run 2   | 0      | 2610   | 0       | 2610   | 1m18s   |
+| W13 run 3   | 0      | 2610   | 0       | 2610   | 1m18s   |
+| W13 run 4   | 0      | 2610   | 0       | 2610   | 1m17s   |
+| W13 run 5   | 0      | 2610   | 0       | 2610   | 1m14s   |
+
+Net flake delta: **0 → 0**. The migration is a defensive-depth
+play (the W12 audit at the 2403/0/0 baseline observed zero flakes
+in the 3-parallel harness; W13 confirms zero flakes after opt-in
+across 5 consecutive single-threaded runs). The classes are now
+serialised against each other (and against the future
+`Phase_K_W9/Bishop/EfCommentaryUsageMeterTests` / `IdempotencyStoreContractTests`
+once Bishop's W14 opt-in lands), foreclosing the W9-retro flake
+class without exhibiting it today.
+
+**W14 hand-off (Bishop):** the two Phase_K_W9/Bishop files
+(`EfCommentaryUsageMeterTests.cs`, `IdempotencyStoreContractTests.cs`)
+were identified as **highest priority** for opt-in in the W12 audit
+(§1 row 14). They were NOT migrated by W13 because the
+`wave_subdir_overrides` rule in `tests/ci/lane-map.json`
+re-attributes files under `Phase_K_W*/Bishop/` to Bishop's lane —
+modifying them in a Vasquez-authored commit would trip the
+cross-lane bundling gate. Bishop's W14 commit adds the attribute.
+
+**Reads/Writes split (W14+):** the W12 audit §2 proposed splitting
+4 read-only classes (`Phase_K_W5/TestShimSanityTests`,
+`Replay/{ChangshaGameReplayV2Tests,GameReplayEndpointTests,ReplayV2NormaliserTests}`)
+into a `[Collection("DbSerialReads")]` group. W13 applied the
+canonical `DbSerial` collection across all 23 (lower-risk uniform
+opt-in); the Reads/Writes refactor remains parked under Bishop's
+W14+ lane per §3.1.2.
+
+### 3.3. When NOT to use `[Collection("DbSerial")]`
 
 Any test that DOESN'T touch EF Core / SQLite / the WAF singleton
 MUST stay outside the collection. Putting a pure reflection test
 into `DbSerial` is a regression: it serialises a fact that has
 no reason to be serial, slowing the suite for everyone.
 
-### 3.3. Future collections
+### 3.4. Future collections
 
 If a SECOND class of process-level contention emerges (e.g.
 Redis container shared across tests in CI), a new collection
@@ -351,7 +394,7 @@ three real PNG captures under `src/frontend/autotable-src/public/screenshots/`
 gating for these paths under
 `src/frontend/autotable-src/tests/e2e/manifest-screenshots-visual.spec.ts`.
 
-### 5.1. The 2% pixel-level threshold
+### 5.1. The 2% pixel-level threshold (and W13 CI gate)
 
 The spec asserts that each manifest screenshot, when fetched
 from the running preview server, matches its committed baseline
@@ -371,6 +414,33 @@ The baseline images live alongside the spec under
 Hicks's `capture-screenshots.js` (W11) is the canonical
 *producer* of the manifest PNGs; Vasquez's spec is the
 *consumer-side gate*.
+
+**W13 CI gate — `.github/workflows/playwright-visual-regression.yml`:**
+
+W12 documented the methodology and shipped the reference spec.
+W13 wires the methodology into CI via a dedicated workflow that:
+
+1. Triggers on `pull_request` against `main` (skipped automatically
+   when the PR is in `draft` state — visual-regression noise on
+   draft PRs would distract reviewers).
+2. Builds the frontend with `npm run build:vite` and starts
+   `vite preview` on `127.0.0.1:4173`.
+3. Runs `playwright test --grep "visual"` (the chromium-only
+   project) against the running preview.
+4. On failure, uploads the Playwright HTML report AND the raw
+   pixel-diff PNGs (`*-diff.png`, `*-actual.png`) as workflow
+   artefacts so the reviewer can compare baseline vs actual
+   without re-running locally.
+5. Comments on the PR with a sticky marker
+   `<!-- playwright-visual-regression -->` listing each failed
+   spec + a link to the diff artefact.
+
+Hicks's W13 lane runs `playwright test --update-snapshots` once
+per producer-side change to refresh the baselines (see §5.2).
+Vasquez's W13 CI workflow is the *consumer-side enforcement* —
+it is required-for-merge on PRs that touch
+`src/frontend/autotable-src/public/screenshots/**` OR the
+visual-regression spec files.
 
 ### 5.2. When to update the baseline
 
@@ -461,3 +531,11 @@ methodology) + §3.1.2 (Reads/Writes split proposal) + §4.4a
 (W12 closed gaps) + §5 (visual regression) added. §5 (Gates)
 renumbered to §6; §6 (Concurrent-agent safety) renumbered to
 §7. Zero-skip streak bumped to W12 (26 waves).*
+
+*Phase K Wave 13 — Vasquez (QA). §3.2 (DbSerial migration
+outcomes — 23 of 25 candidates opted in, 5-run flake-detection
+results) added; §3.2 (NOT to use) renumbered to §3.3; §3.3
+(Future collections) renumbered to §3.4. §5.1 extended with the
+W13 CI gate (`.github/workflows/playwright-visual-regression.yml`
+shape + PR-comment + diff-artefact upload). Zero-skip streak
+bumped to W13 (27 waves).*

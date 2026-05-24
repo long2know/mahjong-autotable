@@ -107,3 +107,62 @@ Hard-asserted in
 * `Evaluate` returns `Healthy` when `MonthlyCapUsd = 0` regardless of usage.
 * `MonthlyUsd = MonthlyTokens / TokensPerDollar`.
 * `BudgetState` enum carries `Healthy`, `Warning`, `Exhausted`.
+
+## §5 — Realtime warnings (Phase K Wave 13)
+
+### §5.1 — SignalR admin channel
+
+W13 lands a SignalR side-channel so operator dashboards can surface
+budget transitions in real time rather than tailing the log stream
+for the one-shot per-month warning.
+
+* **Hub**: `CommentaryCostAdminHub` — mapped at
+  `/hubs/admin/commentary-cost`.
+* **Group**: `commentary:cost:admin` — every admin client joins the
+  same broadcast group via `JoinAdminChannel()`.
+* **Auth**: admin-gated upstream by the cookie resolver on the
+  negotiate request (matches the gating on every other
+  `/hubs/admin/*` route).
+
+### §5.2 — Envelopes
+
+| Event                       | Trigger                                            |
+| --------------------------- | -------------------------------------------------- |
+| `CommentaryCostWarning`     | First `Evaluate()` flip to `Warning` per month     |
+| `CommentaryCostCapReached`  | First `Evaluate()` flip to `Exhausted` per month   |
+
+Both envelopes carry `{ monthlyUsd, capUsd, warnThresholdUsd, model, monthKey }`
+so the dashboard can render the absolute + relative usage without
+re-querying the meter.
+
+### §5.3 — Wiring
+
+`CommentaryCostBudget.Evaluate` invokes the broadcaster from inside
+the existing `Interlocked.CompareExchange` one-shot gates that fence
+the warning + cap log lines. The broadcast is **fire-and-forget**
+behind a `FireBroadcast` helper that observes the returned task's
+exception (so the unobserved-task finalizer never sees it) — the
+hot evaluation path never awaits the SignalR roundtrip.
+
+The broadcaster is registered as a singleton in `Program.cs` so the
+hub context is reused across requests. A missing broadcaster (e.g.
+when SignalR is disabled in a test fixture) is a hard no-op — the
+`Evaluate` call still logs and switches to the stub.
+
+### §5.4 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W13/Bishop/CommentaryCostBroadcastTests.cs`:
+
+* The hub exposes `JoinAdminChannel` / `LeaveAdminChannel` methods.
+* `CommentaryCostAdminHub.AdminGroup == "commentary:cost:admin"`.
+* `WarningEvent == "CommentaryCostWarning"`,
+  `CapReachedEvent == "CommentaryCostCapReached"`.
+* The broadcaster invokes the hub group exactly once per evaluation
+  transition (matches the one-shot log gate).
+* The broadcaster swallows exceptions so a degraded hub never
+  breaks the cost evaluation path.
+* `Evaluate()` wires through to the broadcaster on the first
+  `Warning` / `Exhausted` flip within a calendar month.
+* Subsequent flips inside the same month are suppressed at the
+  source (re-uses the W12 log-suppression gate).

@@ -1080,3 +1080,89 @@ helm lint helm/mahjong/
 ### 5. Apone-lane scope discipline (per W6 invariant)
 
 This wave touched ONLY DevOps-lane paths: `infra/terraform/modules/edge/{r53-regional-records,variables,outputs,main}.tf`, `infra/terraform/envs/prod/{variables,main}.tf`, `infra/load-tests/redis-load-test.yml`, `infra/k8s/overlays/prod/{kustomization,namespace-transformer,argo-rollouts-network-policy}.yaml`, `infra/k8s/overlays/prod/{redis-connection-string-secret,argo-rollouts-ingress-auth}.yaml` (header-only edits), `docs/{prod-cutover,redis-cluster,argo-rollouts-setup,jwt-rotation-rehearsal,edge-region-probes,retro-2026-10}.md`, `CHANGELOG.md`, `.squad/agents/apone/history.md`, `.squad/decisions/inbox/apone-phase-k-wave-12.md`, `Phase_K_W12/Apone/{charter,history}.md`. NO `src/**`, NO `tests/**`, NO mobile source code, NO Helm chart touches, NO workflow changes. Pre-push `git status --short` verification confirms zero out-of-lane staging (explicit-path `git add`, never `git add -A`).
+
+
+## Phase K Wave 13 — DevOps bring-up (2026-11-XX)
+
+Branch: `stlong/phase-k-wave-13-bringup`. Bringup-on commit (W12 close): `147d227` (PR #58 — gate 2610/0/0).
+
+### 1. What I shipped
+
+1. **Regional EKS cluster bring-up readiness docs.** `docs/regional-eks-bringup.md` (NEW). Eight sections: §1 why-this-doc-exists (W12 retro D5 carry-over — the multi-region EDGE surface from W12 is half the multi-region path; regional clusters being ACTIVE + running the prod overlay is the other half). §2 region inventory (four target regions: us-east-1 primary apex, us-west-2 secondary, eu-west-1 trans-atlantic, ap-southeast-1 SEA/DR-cold). §3 per-region Cutover-Ready checklists (seven gates per region: TF state bucket per region, EKS cluster ACTIVE verified via `aws eks describe-cluster --name mahjong-prod-<region> --region <region> --query cluster.status`, ACM cert per region, R53 health-check association, ESO target per region, ALB DNS published, probe sweep clean — eu-west-1 adds a GDPR-review pre-flight; ap-southeast-1 relaxes the probe p99 threshold to 200 ms). §4 cross-region invariants (DR data-replication direction, single-Redis baseline for W13, JWKS region-agnostic, image-SHA consistency, health-check IP allow-list). §5 apply order (W14 us-east-1 first → us-west-2; W15 eu-west-1; W15+ ap-southeast-1). §6 failure scenarios + recovery. §7 W14+ hand-offs. §8 cross-references. No code change this wave; the doc is the readiness artefact for the W14+ apply (Hicks's W13+ regional cluster work is the upstream blocker).
+
+2. **JWT rotation rehearsal quarterly cadence.** `.github/workflows/jwt-rotation-rehearsal-scheduled.yml` (NEW). Thin scheduler — `schedule:` block fires `0 2 1 */3 *` (02:00 UTC on the 1st of every 3rd month: Jan, Apr, Jul, Oct) + a `workflow_dispatch` back-stop. Dispatches the existing W11 `jwt-rotation-rehearsal.yml` via `actions/github-script@v7`'s `createWorkflowDispatch` call; `target_env=staging` forced in the dispatched payload — the W11 hard-gate inside the inner workflow remains the second-line defence. The inner workflow is UNCHANGED. `docs/jwt-rotation-rehearsal.md` extended with NEW §4 "Quarterly cadence" (four sub-sections: §4.1 scheduler workflow + cron rationale, §4.2 rehearsal-report operator-review path, §4.3 quarterly run table with W11+W12 historical rows + scheduler-activation row at W13 + Q1–Q4 2027 placeholder rows, §4.4 off-cadence-trigger rules). Renumbering pushed §4–§9 of the W11/W12 doc down to §5–§10; cross-refs inside the file updated. Cross-reference added in §10 to the new scheduler workflow. First scheduled fire: 2027-01-01 02:00 UTC.
+
+3. **ClusterPolicy namespace exclusion via PatchTransformer enumeration (W12 retro D7 closure).** `infra/k8s/overlays/prod/cluster-scoped-fieldspecs.yaml` (NEW; the filename mirrors the original W12-retro design intent of "Kind-filtered fieldSpecs", even though the W13 fix flipped to PatchTransformers — the companion doc §3 explains why). Eight `PatchTransformer` documents — one per cluster-scoped Kind (`ClusterPolicy`, `ClusterRole`, `ClusterRoleBinding`, `CustomResourceDefinition`, `MutatingWebhookConfiguration`, `PersistentVolume`, `StorageClass`, `ValidatingWebhookConfiguration`); each `op: remove`'s `/metadata/namespace`. Wired into `infra/k8s/overlays/prod/kustomization.yaml`'s `transformers:` list AFTER `namespace-transformer.yaml` (order MATTERS — the strip MUST follow the stamp; reverse-ordered, `op: remove` fails with "missing value"). File header documents the kustomize v5.4.3 `NamespaceTransformer` `fieldSpecs.kind:` filter bug + minimal repro. `docs/cluster-policy-namespace-exclusion.md` (NEW) — eight-section narrative covering bug history, why W12 NamespaceTransformer caused it (with §2.1 capturing the v5.4.3 empirical repro showing fieldSpecs `kind:` filter is silently ignored), the W13 fix design, `kustomization.yaml` wire-up (order MATTERS), verification (before-vs-after `kustomize build` Kind/ns diff), cross-namespace invariant preserved, future-proofing (W14 stretch pre-commit lint script), cross-references including the upstream kustomize issue tracker.
+
+4. **Monthly Redis load-test reminder workflow.** `.github/workflows/redis-load-test-reminder.yml` (NEW). Two jobs: `open-reminder` (cron `0 14 1 * *` — 14:00 UTC on the 1st of every month + `workflow_dispatch`) opens an issue titled `Monthly Redis load-test reminder — YYYY-MM` carrying the W12 SLO baseline (1000 RPS, p99 lookup < 5 ms, p99 write < 8 ms, error rate < 0.1 %), step-by-step apply commands, stale-close convention, cross-references. Idempotent — a same-month re-fire matches the existing issue by title and no-ops. `stale-close` paginates open issues with the workflow's label set (`ops,redis,load-test,reminder`); comments + closes any > 7 days old with `state_reason=not_planned`. `docs/redis-cluster.md` — NEW §4.6 "Monthly cadence — reminder workflow" sub-section (three sub-sub-sections: §4.6.1 cadence table, §4.6.2 operator responsibilities, §4.6.3 why a reminder not an auto-applier — captures the three rationales: prod-impact blast-radius, operator coordination with Hudson burn-rate windows, audit-trail preference for issue comments over workflow logs). Hudson absent in W13; DevOps absorbed this deliverable per the W12 retro D5 hand-off (originally Hudson-tagged).
+
+5. **PR-ready Redis envFrom `optional: false` flip patch + post-cutover hardening narrative.** `infra/k8s/overlays/prod/redis-envfrom-required-patch.yaml` (NEW). JSON6902 patch — `op: replace` on `/spec/template/spec/containers/0/envFrom/4/secretRef/optional` with value `false`. Index 4 verified empirically against the current built deployment (envFrom = [configMapRef, mahjong-autotable, mahjong-jwt-keys, mahjong-jwt-rsa-keys, mahjong-redis-prod]); file header documents the index mapping so the W14 operator can audit before applying. File NOT wired into `kustomization.yaml` — PR-ready artefact for W14+ apply only when the four pre-conditions in `docs/prod-cutover.md §6.2` hold ((a) prod steady-state ≥ 7 days; (b) ESO secret rotation succeeded ≥ 2x; (c) no open Sev-1/Sev-2 referencing Redis in past 7 days; (d) Hudson on-call window confirmed). `docs/prod-cutover.md` — NEW §6 "Post-cutover hardening" section (seven sub-sections: §6.1 tightening calendar table with six gates W14–W16, §6.2 gate 1 detail referencing the patch file, §6.3 gate 4 Kyverno enforce mode, §6.4 gate 5 HPA min-replicas bump, §6.5 gate 6 CSP enforce mode, §6.6 per-gate rollback, §6.7 per-gate observability table mapping each gate to a Hudson dashboard panel). Table of contents updated.
+
+6. **Terraform CLI W14 bump survey.** `docs/terraform.md` — NEW §6.6 "Version bump planning — W14 (1.10.5 → 1.11.x)" sub-section (five sub-sub-sections: candidate baselines + HashiCorp release-page tracking inputs, pre-emptive migration risks table covering seven risk classes (required_version floor, provider compat, HCL syntax, plan-output diffing, lock-file behaviour, DR rehearsal workflow pin, moved-blocks + the new `removed` block in 1.11), recommended W14 target pin `1.11.4` provisional, bump-PR shape, bump-PR rollback). No actual bump this wave — the §6.2 quarterly cadence pins the bump to W14.
+
+7. **CHANGELOG + retro + memo + wave-history.** `CHANGELOG.md` `[0.22.0]` Phase K Wave 13 entry added above `[0.21.0]`; `[Unreleased]` working branch flipped to `stlong/phase-k-wave-13-bringup`. Theme paragraph + "Added" + "Changed" subsections covering the seven W13 deliverables. `docs/retro-2026-11.md` (NEW) — six sections matching W12 retro pattern; tags the kustomize fieldSpecs `kind:` filter ignored behaviour as the learnt-the-hard-way moment. `Phase_K_W13/Apone/charter.md` + `Phase_K_W13/Apone/history.md`. `.squad/decisions/inbox/apone-phase-k-wave-13.md` (NEW) — W13 memo with seven decisions matching the seven deliverables. This entry appended to the persistent record.
+
+### 2. Verification gates
+
+```
+# Path setup.
+export PATH="$PWD/.work/apone-w11-tools:$PATH"
+
+# Terraform fmt + validate across all 5 modules/envs.
+terraform fmt -recursive -check infra/terraform/   # → clean
+for d in infra/terraform/envs/{prod,staging,dr-us-west-2} infra/terraform/modules/{redis,github-oidc}; do
+  (cd $d && terraform validate -no-color) | head -3
+done
+# → "Success! The configuration is valid." x5
+
+# Kustomize build sweep — ClusterPolicy strip assertion.
+kustomize build infra/k8s/overlays/prod/    >/dev/null   # → clean
+kustomize build infra/k8s/overlays/staging/ >/dev/null   # → clean
+kustomize build infra/k8s/overlays/prod/ \
+  | awk '/^kind:/{kind=$2} /^  namespace:/{print kind,$2}' \
+  | sort -u | grep -i clusterpolicy || echo "ClusterPolicy: no namespace (correct)"
+# → ClusterPolicy: no namespace (correct)
+
+# actionlint — only the two NEW workflow files this wave (pre-existing
+# lane-discipline-nightly.yml:87 parse issue is W5-era, out of W13 scope).
+actionlint .github/workflows/jwt-rotation-rehearsal-scheduled.yml \
+           .github/workflows/redis-load-test-reminder.yml
+# → clean.
+
+helm lint helm/mahjong/
+# → clean (1 INFO icon-recommended; 0 chart(s) failed).
+```
+
+### 3. Decisions worth carrying forward
+
+- **kustomize v5.4.3 `NamespaceTransformer` `fieldSpecs.kind:` filter is silently IGNORED.** Empirically verified with a 5-resource minimal repro — even `fieldSpecs: [{kind: Deployment, path: metadata/namespace, create: true}]` as the only entry still stamps ALL Kinds including ClusterPolicy with the namespace. Documented in `docs/cluster-policy-namespace-exclusion.md §2.1`. The W13 canonical workaround is the downstream `PatchTransformer` enumeration pattern (one `op: remove` per cluster-scoped Kind, ordered AFTER the NamespaceTransformer). Re-evaluate when kustomize v6 ships.
+
+- **Thin scheduler delegates compose better than monolithic scheduled workflows.** The W13 JWT rotation scheduler and Redis load-test reminder both follow the pattern — `schedule:` + `workflow_dispatch`; the actual work either dispatches an existing inner workflow (`actions/github-script@v7` + `createWorkflowDispatch`) or opens an issue. Zero new operational logic; the inner workflows / manual procedures remain the source of truth. Easy to reason about; easy to back out (delete the scheduler, nothing else affected). Pattern worth applying to any future periodic surface.
+
+- **`workflow_dispatch` back-stop on every scheduled workflow.** Both W13 workflows include the back-stop alongside `schedule:`. Use cases: catch-up after a failed cron fire, post-merge smoke-test of the scheduler itself, off-cadence drills (e.g. post-incident rehearsal). Convention worth pinning across the squad.
+
+- **Empirical reproduction beats specification reading for kustomize transformers.** Before committing to a transformer-config design, build a 5-resource minimal repro. The W13 ClusterPolicy fix design pivot was driven by a 90-second repro that contradicted the kustomize spec; the spec is aspirational, the binary is canonical. Pattern transfers to any kustomize behaviour that's not obvious from the documentation.
+
+- **PR-ready-not-wired beats premature apply for cutover-window hardening.** The W13 Redis envFrom required-flip patch lands as a complete file with header-documented apply procedure, four pre-conditions, rollback, and index-pin caveat — but is NOT referenced in `kustomization.yaml`. Gives the W14+ owner a fully-baked artefact without forcing the apply on the W13 timeline. Reduces apply-too-early risk and avoids re-deriving the patch under time pressure.
+
+- **Per-Kind stripper enumeration beats opaque filter logic.** The W13 fix enumerates eight cluster-scoped Kinds in separate `PatchTransformer` docs. Verbose but each entry is obvious in code review (Kind X → strip namespace) and adding a new Kind is a 9-line copy-paste patch. Far easier to maintain than a single filter-config with an obscure inclusion/exclusion rule.
+
+- **Section-number coordination across docs is fragile.** The W13 task spec pinned `redis-cluster.md §5` and `terraform.md §3` as add-section locations; both pins didn't match the actual current numbering (§5 was already "Customer-managed KMS key"; §3 was already "GitHub-OIDC role"). W13 placed the additions at semantically-correct sections (§4.6 and §6.6 respectively) to avoid breaking dozens of cross-refs in CHANGELOG, prod-cutover.md, decisions inboxes, retros, and kustomization comments. Convention: verify current section numbering before accepting a task-spec section pin; flag divergences in the wave history note for downstream auditability.
+
+- **`redis-envfrom-required-patch.yaml` index-pin is fragile pending upstream kustomize#3625.** The JSON6902 patch uses array index `4` to target the Redis secret envFrom entry. If a future wave re-orders the envFrom list (e.g. adds a new secret at index 2), the patch will silently target the wrong secret. File header documents the current index mapping but the patch itself can't enforce it. W14+ apply MUST first verify the built deployment's envFrom matches the header's index mapping. Watch upstream kustomize#3625 (path-by-name JSON-Patch) and migrate when it ships.
+
+- **Lane-tagged hand-offs don't automatically survive agent-absence.** The W12 retro D5 hand-off tagged the redis-load-test reminder workflow as Hudson-lane. With Hudson absent in W13, DevOps absorbed it (correct outcome — it's an ops-cadence workflow that fits naturally in the DevOps lane). The implicit assumption that lane-tagged hand-offs survive agent-absence is something to track. Convention: if a hand-off is tagged for an absent agent, the receiving agent should escalate via the decisions inbox before absorbing the work.
+
+### 4. Handoffs into Wave 14
+
+- **Regional cluster apply (us-east-1 first → us-west-2)** (Hicks + Apone, cross-lane lead) — once Hicks's regional cluster work reaches ACTIVE for us-east-1, run the W13 `docs/regional-eks-bringup.md §3.1` Cutover-Ready checklist; populate the prod env stack `regional_endpoints = ["us-east-1", "us-west-2"]` tfvar. Hicks owns cluster provisioning; Apone owns the readiness-gate verification + tfvar population.
+- **Terraform CLI bump 1.10.5 → 1.11.x** (Apone) — per the W13 `docs/terraform.md §6.6` plan. Confirm the recommended `1.11.4` provisional pin is still the right call on the W14 bring-up day (HashiCorp may have shipped 1.11.5+ by then). Execute the bump-PR shape documented in §6.6.4.
+- **Post-cutover hardening gate 1 (Redis envFrom required)** (Apone) — apply the W13 PR-ready patch (`infra/k8s/overlays/prod/redis-envfrom-required-patch.yaml`) ONLY if the four `docs/prod-cutover.md §6.2` pre-conditions hold. Otherwise carry forward to W15+. Audit the envFrom array index against the file header before applying.
+- **First scheduled JWT rotation rehearsal fire monitoring** (Apone, W17+ likely) — first cron fire at 2027-01-01 02:00 UTC. Confirm the dispatched payload reaches the W11 inner workflow as designed; append the rehearsal report to `docs/`.
+- **W14 ClusterPolicy stripper Kind enumeration check** (Apone) — if a future helm chart upgrade introduces a new cluster-scoped Kind (e.g. a new CRD), add a new `PatchTransformer` document at the end of `infra/k8s/overlays/prod/cluster-scoped-fieldspecs.yaml` (the file's header has the convention).
+- **Hudson W14 return (if applicable)** — re-validate that Hudson's W12 dashboards (`redis-load-test`, `eso-sync-failures-prod`, `kube-pod-not-ready`) still render against the prod cluster; re-take ownership of the redis-load-test reminder workflow if appropriate.
+- **Lane-discipline-nightly.yml line-87 parse issue** (any agent, W14+ backlog) — W5-era heredoc YAML parsing; out of W13 scope. Not blocking; actionlint can't lint that file but the workflow runs correctly.
+
+### 5. Apone-lane scope discipline (per W6 invariant)
+
+This wave touched ONLY DevOps-lane paths: `.github/workflows/{jwt-rotation-rehearsal-scheduled,redis-load-test-reminder}.yml` (NEW), `infra/k8s/overlays/prod/{cluster-scoped-fieldspecs,redis-envfrom-required-patch}.yaml` (NEW), `infra/k8s/overlays/prod/kustomization.yaml` (modified — `transformers:` extension only), `docs/{regional-eks-bringup,cluster-policy-namespace-exclusion,retro-2026-11}.md` (NEW), `docs/{jwt-rotation-rehearsal,redis-cluster,prod-cutover,terraform}.md` (modified — additive sections + renumber), `CHANGELOG.md`, `.squad/agents/apone/history.md`, `.squad/decisions/inbox/apone-phase-k-wave-13.md` (NEW), `Phase_K_W13/Apone/{charter,history}.md` (NEW). NO `src/**`, NO `tests/**`, NO mobile source code, NO Helm chart touches, NO Terraform code changes. Pre-push `git status --short` verification confirms zero out-of-lane staging (explicit-path `git add`, never `git add -A`).

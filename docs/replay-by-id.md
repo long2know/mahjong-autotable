@@ -72,3 +72,38 @@ Hard-asserted in
 * `InsertAsync` pins `ExpiresAt = CompletedAt + RetentionDays`.
 * `SweepExpiredAsync` drops rows older than the cutoff (both
   stores).
+
+
+## Admin gating on POST (Phase K Wave 13)
+
+The W12 surface accepted `POST /api/replays` from any authenticated
+caller. W13 narrows that gate so only callers with the admin role can
+mint new replay rows. Read paths (`GET /api/replays/{replayId}`)
+remain open to any authenticated caller — the gate is asymmetric on
+purpose so spectator + post-match flows keep working without an
+admin handshake.
+
+### Configuration
+
+| Key                              | Default | Notes                                |
+| -------------------------------- | ------- | ------------------------------------ |
+| `Replays:RequireAdminForPost`    | `true`  | Set `false` to revert to W12 behaviour |
+
+### Failure shape
+
+* Anonymous caller → HTTP 401.
+* Authenticated non-admin caller → HTTP 403 with a structured
+  `code = "replay.post.admin_required"` envelope.
+* Admin caller → unchanged W12 mint flow.
+
+### Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W13/Bishop/ReplayPostAdminGateTests.cs`:
+
+* `ReplayOptions.RequireAdminForPost` defaults to `true`.
+* POST without auth returns 401.
+* POST with a non-admin principal returns 403.
+* POST with an admin principal completes the mint as in W12.
+* Toggling `RequireAdminForPost = false` reverts to W12 behaviour
+  (any authenticated caller can POST).

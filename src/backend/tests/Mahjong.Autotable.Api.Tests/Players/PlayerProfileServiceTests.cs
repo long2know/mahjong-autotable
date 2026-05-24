@@ -46,6 +46,7 @@ namespace Mahjong.Autotable.Api.Tests.Players;
 /// than a fixed value so adding a colour to the palette doesn't break the
 /// suite.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class PlayerProfileServiceTests : IAsyncLifetime
 {
     private WebApplicationFactory<Program>? _factory;

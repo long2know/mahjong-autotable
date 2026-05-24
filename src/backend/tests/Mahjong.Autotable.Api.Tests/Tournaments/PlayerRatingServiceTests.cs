@@ -15,6 +15,7 @@ namespace Mahjong.Autotable.Api.Tests.Tournaments;
 /// <c>ComputeDelta</c>, and the live <c>RecordMatchOutcomeAsync</c>
 /// path against an in-process SQLite database.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class PlayerRatingServiceTests
 {
     [Fact]

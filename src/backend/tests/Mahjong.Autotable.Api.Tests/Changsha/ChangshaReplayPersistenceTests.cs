@@ -30,6 +30,7 @@ namespace Mahjong.Autotable.Api.Tests.Changsha;
 /// the game id, with non-empty <c>EventsJson</c> deserialising to a
 /// non-empty events array.</para>
 /// </summary>
+[Collection("DbSerial")]
 public class ChangshaReplayPersistenceTests(ITestOutputHelper output)
 {
     [Fact, Trait("Category", "ChangshaHubE2E"), Trait("Wave", "Phase-J-7")]
