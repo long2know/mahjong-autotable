@@ -390,6 +390,74 @@ The W16 deliverable is a CI-driven DRY-RUN CAPTURE only:
   (`vpc-placeholder`) — operator-side tfvars stays
   operator-side per the W11 .gitignore convention.
 
+### 3.6 W17 apply-readiness gate update — PARTIAL-GREEN (HOLD)
+
+> Phase K Wave 17 — Apone (DevOps). The W17 source survey
+> re-confirms zero drift since W11/W16; the renderer-
+> bandwidth gate is RE-PAIRED against the W17 two-row
+> contract.
+
+The W17 task brief refined the §3.2 gate Row 2 from
+"renderer chunk ≤ 22 KB" (W16 single-row) to a
+**two-row** contract:
+
+| # | Row                              | Pre-condition                                | W17 measurement                      | Verdict at W17 |
+|---|----------------------------------|----------------------------------------------|---------------------------------------|----------------|
+| 1 | TF-side source                   | Zero drift between W11/W14/W15/W16 and W17 HEAD. | §5 of `us-east-1-w17-plan-output.txt` — all four `git diff` + `git log` checks empty. | ✅ GREEN |
+| 2 | `renderer-webgl2` chunk          | ≤ 40 KB (W17 ceiling; was ≤ 22 KB at W16).  | ~19 KB from `src/frontend/autotable-src/dist-size.json` (K16 current entry). | ✅ GREEN (21 KB headroom). |
+| 3 | `autotable-src-eager` chunk      | ≤ 200 KB (NEW row at W17).                  | ~209 KB from `dist-size.json` K16 current entry. | ⚠️ AMBER (9 KB over ceiling). |
+| 4 | Per-region cluster Cutover-Ready | Per `§4` operator-driven checklist.          | Operator-driven (NOT W17 CI surface). | Operator-driven |
+| 5 | Squad sign-off                   | Stephen approves the apply PR.               | W18+ operator PR.                     | W18+ — not gated this wave |
+
+**Combined verdict:** PARTIAL-GREEN. Row 3's AMBER blocks the
+live-apply GO call at W17. The W17 wave HOLDS the W16 dry-run
+posture and PUNTS the live-apply decision to W18 pending
+Hicks's eager-bundle split closing Row 3 to GREEN.
+
+The W17 dry-run capture lives at
+[`docs/us-east-1-w17-plan-output.txt`](./us-east-1-w17-plan-output.txt)
+— it is byte-for-byte the W16 capture's §1–§5 shape plus the
+W17 two-row gate verdict at §6.
+
+### 3.7 W17 → W18 apply hand-off
+
+Two paths depending on Hicks's W17 close-out shape:
+
+**Path A — `autotable-src-eager` lands ≤ 200 KB by W17 PR-readiness:**
+
+1. W17 wave-author (Apone) re-runs the §3.6 gate survey
+   against the post-Hicks-close tip; if all four rows
+   GREEN, this section's verdict flips to FULL-GREEN.
+2. The W18 operator opens the apply PR
+   (`stlong/phase-k-wave-18-prod-us-east-1-apply`).
+3. Stephen runs the §2.1.1 dry-run with fresh AWS creds +
+   an operator-supplied `terraform.tfvars`.
+4. Archives the W18 plan per §2.1.4 conventions.
+
+**Path B — Row 3 stays AMBER through W18 PR-readiness:**
+
+1. W18 wave-author re-runs the §3.6 gate survey + opens a
+   W19 hand-off in `docs/us-east-1-w18-plan-output.txt`.
+2. The live apply punt continues until the eager-bundle
+   split closes Row 3.
+3. The W14 → W17 zero-drift terraform discipline holds —
+   the capture is re-validatable at any W18+ PR-readiness
+   without source-side churn.
+
+### 3.8 What the W17 dry-run does NOT change
+
+Same shape as §3.5 — the W17 deliverable is a CI-driven
+DRY-RUN CAPTURE + a §3.6 gate-row refresh ONLY:
+
+* **No `terraform apply` runs at W17.** Cluster + traffic
+  posture unchanged from W16.
+* **No `regional_endpoints` modifications.** Empty stays
+  empty; no traffic shift.
+* **No tfvars commits.** Placeholder values used; operator
+  tfvars stays operator-side.
+* **No source-side TF edits.** §3.6 Row 1 GREEN reflects the
+  zero-drift discipline carried forward to W17.
+
 ## 4. Per-region Cutover-Ready checklist
 
 Each region runs the same readiness sequence. Mark items as

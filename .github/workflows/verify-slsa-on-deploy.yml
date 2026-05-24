@@ -78,7 +78,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # Use the PR head, not the merge ref — we verify what
           # WILL be deployed, not the speculative merge commit.
@@ -185,7 +185,7 @@ jobs:
 
       - name: Upload verified predicate
         if: always() && hashFiles('slsa-provenance.json') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: slsa-provenance-verified-${{ github.event.pull_request.number }}
           path: slsa-provenance.json
@@ -193,7 +193,7 @@ jobs:
 
       - name: Sticky PR comment
         if: always()
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@331f8f5b4215f0445d3c07b4967662a32a2d3e31 # v2.9.0
         with:
           header: verify-slsa-on-deploy
           message: |

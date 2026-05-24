@@ -268,3 +268,68 @@ operators can append `disallow-host-network` or
 `enforce-prod-default` without re-running the §3 pre-flight
 (action mode already cleared; only rule-specific Hudson panel
 pre-flights apply per row).
+
+## 11. W17 — 7-day post-flip retrospective (Apone, DevOps)
+
+> Phase K Wave 17 — Apone (DevOps). This section is the
+> retrospective record for the **first 7 days** of the
+> 14-day post-flip blast-radius watch window §10.5 handed off.
+> The W18 wave completes the back half; the W17 surface here
+> is intentionally a "the lights stayed green" record so the
+> chain stays auditable at PR-review time without diving into
+> Hudson directly.
+
+### 11.1 7-day window verdict — GREEN across all four Hudson panels
+
+Full deny-event + admission-rate + evaluation-latency tables
+live at [`docs/kyverno-enforce-w17-observability.md`](./kyverno-enforce-w17-observability.md). The
+TL;DR row from §2 of that doc:
+
+| § | Panel                                          | 7-day observation                     | Verdict |
+|---|------------------------------------------------|---------------------------------------|---------|
+| 1 | `kyverno-deny-events` (enforce, `mahjong-prod`) | 0 deny events                         | ✅ GREEN |
+| 2 | `kyverno-deny-events` (W3 audit, cluster-wide) | 0 deny events                         | ✅ GREEN |
+| 3 | `pod-admission-rate-prod`                      | 412 / 7 d; +3 % vs W15 baseline       | ✅ GREEN |
+| 4 | `kyverno-policy-evaluation-latency-p99`        | 9 ms p99 (+1 ms vs W14)               | ✅ GREEN |
+
+### 11.2 Rollback decision — HOLD
+
+Both rollback thresholds (hard rollback @ ≥ 1 legit deny;
+partial rollback @ ≥ 10 denies for any single rule) **did
+NOT trigger** across the 7-day window. The W17 wave HOLDS
+Enforce mode on `enforce-prod-default` and leaves the
+cluster-wide W3 policy in Audit-default per the
+[`docs/kyverno-audit-findings-w16.md §4`](./kyverno-audit-findings-w16.md#4-why-the-cluster-wide-w3-policy-stays-audit-default)
+three-reason rationale.
+
+### 11.3 W18 hand-off — remaining 7 days
+
+Per [`docs/kyverno-enforce-w17-observability.md §6`](./kyverno-enforce-w17-observability.md#6-w17--w18-hand-off-remaining-7-days-of-the-14-day-watch):
+
+* Re-run the §2 four-panel survey across 2027-01-22 →
+  2027-01-29. Captured at `docs/kyverno-enforce-w18-observability.md`
+  (W18 NEW).
+* If the W18 7-day window stays GREEN, the 14-day
+  blast-radius watch closes and Enforce mode becomes the
+  steady-state posture. Future-rule promotion candidates
+  (§7) re-open the candidate-soak cadence on a per-rule
+  basis.
+* If any rule trips the threshold during W18, the
+  [§6 rollback PR procedure](#6-rollback-procedure) lands at
+  W18 PR-readiness with the per-rule deny evidence attached.
+
+### 11.4 What W17 deliberately does NOT touch
+
+* No policy code change — `enforce-prod-default` stays
+  byte-identical to its W16 cutover-day shape.
+* No new ClusterPolicy promotion — `disallow-host-network`
+  + `read-only-root-filesystem` remain W18+ candidates per §7.
+* No change to the W3 cluster-wide policy's Audit-default
+  posture — the W16 §10.4 three-reason rationale stands.
+* No `infra/k8s/overlays/prod/kustomization.yaml` mutation
+  — the W17 lift is observational + retrospective, not
+  declarative.
+
+The W17 work in this repo is the [`docs/kyverno-enforce-w17-observability.md`](./kyverno-enforce-w17-observability.md)
+authoring + this retrospective section. Both are
+documentation-only; the K8s posture is unchanged W16 → W17.

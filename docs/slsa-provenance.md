@@ -750,3 +750,146 @@ re-pin without flag-day churn.
 * [`.github/workflows/verify-slsa-on-deploy.yml`](../.github/workflows/verify-slsa-on-deploy.yml) — Wave-6 pre-merge gate.
 * [SLSA v1.0 provenance spec](https://slsa.dev/spec/v1.0/provenance) — upstream predicate schema.
 * [slsa-verifier README](https://github.com/slsa-framework/slsa-verifier) — verifier CLI usage.
+
+## 9. SLSA-3 broader workflow SHA pinning — W17 (Phase K Wave 17 — Apone)
+
+> Phase K Wave 17 — Apone (DevOps). The W16 §7c.1 wave
+> pinned six action SHAs in `.github/workflows/docker-build.yml`
+> as the first low-effort §7b.2.2 deliverable. W17 broadens
+> the same pinning posture across the SECURITY-CRITICAL
+> workflow set: image build + scan + sign + verify + provenance
+> + mirror + multi-arch + mobile-release. The §7c.2 slsa-
+> github-generator non-pin rationale stays intact at W17 (the
+> reusable workflow's regex constraint on the caller's `uses:`
+> shape is unchanged W16 → W17).
+
+### 9.1 Workflows pinned at W17
+
+Nine `.github/workflows/*.yml` files received action-SHA pins
+at W17. The pin count per workflow file at W17 PR-readiness:
+
+| Workflow                              | W17 pin count | Wave introduced | Notes                                                          |
+|---------------------------------------|---------------|-----------------|----------------------------------------------------------------|
+| `docker-build.yml`                    | 6 (W16)       | W16             | UNCHANGED at W17.                                              |
+| `mobile-bundle-ci.yml`                | 2 (W16)       | W16             | UNCHANGED at W17.                                              |
+| `mobile-build.yml`                    | 15 (W17 NEW)  | W17             | Companion to Android signing groundwork — see `docs/mobile-android-signing.md`. |
+| `sbom.yml`                            | 7 (W17 NEW)   | W17             | SBOM emission + Trivy gating chain.                            |
+| `sign-image.yml`                      | 2 (W17 NEW)   | W17             | Cosign signing of the W4 + W6 image-attest chain.              |
+| `verify-signature.yml`                | 2 (W17 NEW)   | W17             | Reusable verifier (caller-side cosign verify).                 |
+| `verify-slsa-on-deploy.yml`           | 3 (W17 NEW)   | W17             | Pre-merge SLSA verifier gate.                                  |
+| `container-scan.yml`                  | 7 (W17 NEW)   | W17             | Trivy + allowlist + Sticky-comment.                            |
+| `mirror-ghcr-to-ecr.yml`              | 6 (W17 NEW)   | W17             | Crane + cosign multi-registry copy.                            |
+| `multi-arch-runtime.yml`              | 5 (W17 NEW)   | W17             | Per-arch container runtime smoke + sticky comment.             |
+| `multi-arch-smoke.yml`                | 3 (W17 NEW)   | W17             | Pre-merge multi-arch image-pull smoke.                         |
+
+**W17 net new SHA pins: +50** (target was +15). The
+expanded scope reflects the §7b.3 sequencing — every
+security-critical surface in the release pipeline is now
+SHA-pinned for the §7b.2.2 supply-chain hardening property.
+
+### 9.2 SHA reference table — actions pinned at W17
+
+The following SHAs are pinned at W17. The trailing `# vX.Y.Z`
+comment is cosmetic; the SHA is the source of truth at
+workflow runtime. Annotated-tag references were dereferenced
+to commit SHAs via `gh api repos/<owner>/<repo>/git/tags/<tag>`.
+
+| Action                                       | SHA (40 hex chars)                              | Tag        |
+|----------------------------------------------|-------------------------------------------------|------------|
+| `actions/checkout`                           | `11bd71901bbe5b1630ceea73d27597364c9af683`      | `v4.2.2`   |
+| `actions/setup-node`                         | `49933ea5288caeca8642d1e84afbd3f7d6820020`      | `v4.4.0`   |
+| `actions/setup-java`                         | `7a6d8a8234af8eb26422e24e3006232cccaa061b`      | `v4.6.0`   |
+| `actions/upload-artifact`                    | `b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882`      | `v4.4.3`   |
+| `actions/download-artifact`                  | `fa0a91b85d4f404e444e00e005971372dc801d16`      | `v4.1.8`   |
+| `actions/github-script`                      | `60a0d83039c74a4aee543508d2ffcb1c3799cdea`      | `v7.0.1`   |
+| `docker/login-action`                        | `184bdaa0721073962dff0199f1fb9940f07167d1`      | `v3.5.0`   |
+| `docker/setup-buildx-action`                 | `e468171a9de216ec08956ac3ada2f0791b6bd435`      | `v3.11.1`  |
+| `docker/setup-qemu-action`                   | `29109295f81e9208d7d86ff1c6c12d2833863392`      | `v3.6.0`   |
+| `docker/build-push-action`                   | `263435318d21b8e681c14492fe198d362a7d2c83`      | `v6.18.0`  |
+| `sigstore/cosign-installer`                  | `dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da`      | `v3.7.0`   |
+| `anchore/sbom-action`                        | `fc46e51fd3cb168ffb36c6d1915723c47db58abb`      | `v0.17.7`  |
+| `github/codeql-action/upload-sarif`          | `f09c1c0a94de965c15400f5634aa42fac8fb8f88`      | `v3.27.5`  |
+| `marocchino/sticky-pull-request-comment`     | `331f8f5b4215f0445d3c07b4967662a32a2d3e31`      | `v2.9.0`   |
+| `aws-actions/configure-aws-credentials`      | `e3dd6a429d7300a6a4c196c26e071d42e0343502`      | `v4.0.2`   |
+| `aws-actions/amazon-ecr-login`               | `062b18b96a7aff071d4dc91bc00c4c1a7945b076`      | `v2.0.1`   |
+| `imjasonh/setup-crane`                       | `31b88efe9de28ae0ffa220711af4b60be9435f6e`      | `v0.4`     |
+
+Every SHA above was resolved via the **public unauthenticated
+GitHub API** (`api.github.com/repos/<owner>/<repo>/git/refs/tags/<tag>`)
+and, where the ref's `object.type` was `tag` (i.e. an
+annotated tag), dereferenced through `git/tags/<sha>` to the
+commit SHA. The W17 pin-resolution script lives at
+`.work/apone-w17-tools/pin-shas-final.txt` (gitignored — the
+table here is the authoritative source-of-truth).
+
+### 9.3 §7b.3 W17 status — sequence update
+
+| §7b.2 item                          | W16 status | W17 status                                       | Next wave |
+|--------------------------------------|------------|--------------------------------------------------|-----------|
+| §7b.2.2 — Action SHA pin (narrow)    | ✅ W16     | ✅ Expanded — 6 → 56 pins across 11 workflows.   | Quarterly refresh — W21+ cadence |
+| §7b.2.2 — Verifier-side builder SHA pin | ⏸ W17  | ⏸ DEFERRED to W18                                | W18 — paired with Kyverno CEL update |
+| §7b.2.1 — Dedicated runner pool     | ⏸ W17     | ⏸ DEFERRED to W18                                | W18 design memo |
+| §7b.2.3a — Network egress allow-list | ⏸ W17    | ⏸ DEFERRED to W18                                | W18 design memo |
+| §7b.2.3b — Hermetic BuildKit        | ⏸ W17     | ⏸ DEFERRED to W18                                | W18 design memo |
+| §7b.2.3c — Materials enumeration    | ⏸ W18     | ⏸ DEFERRED to W18 (unchanged W16 plan)           | W18 |
+
+W17 chose to deepen the §7b.2.2 W16 scope (action-SHA pin)
+rather than open new §7b.2 surfaces — the action-pinning is
+mechanical, has well-understood failure modes (workflow-parse
+errors at PR time), and benefits from a single wave's
+contiguous attention to avoid pin-drift between workflow
+edits. The §7b.2.1 + §7b.2.3a + §7b.2.3b items remain W18
+targets per the W15 + W16 sequencing.
+
+### 9.4 What W17 hardening does NOT change
+
+* The `.github/workflows/slsa-provenance.yml` caller-side
+  pin `@v2.0.0` is UNCHANGED at W17 — the §7c.2 ⚠️ warning
+  applies through W17 + W18 + W19. The verifier-side pin
+  (§7c.3 W18 row) is the next change to the SLSA chain, NOT
+  the caller-side pin.
+* The cosign + SLSA chain remains end-to-end signed and
+  Rekor-anchored.
+* Build performance is unaffected — pin expansion is a
+  static workflow-parse-time concern; no runtime cost.
+* The pinned SHAs are NOT rolled forward as a side-effect of
+  W17 — they reflect the latest stable upstream releases as
+  of the W17 PR-readiness window. Quarterly refresh per §7c.5
+  carries the next bump.
+
+### 9.5 Lane-discipline note
+
+The W17 wave scope pinned actions across nine workflow files.
+Three workflow files were INTENTIONALLY left un-pinned at W17:
+
+* `.github/workflows/lane-discipline.yml` — vasquez-lane per
+  `tests/ci/lane-map.json`. Pinning is a vasquez-lane W17+
+  candidate.
+* `.github/workflows/lane-discipline-nightly.yml` — shared
+  (apone+vasquez per W15 `shared_files`), primary=vasquez.
+  Defer to vasquez ownership for the pin landing.
+* `.github/workflows/playwright-visual-regression.yml` —
+  vasquez-lane per `tests/ci/lane-map.json` regex. Defer.
+
+Lane-discipline respected; the W17 commit's selective-add
+set does NOT include any of the three above. Vasquez can
+land the SHA pins on the lane-discipline workflows in a
+parallel W17+ commit without conflict.
+
+### 9.6 Rollback shape (unchanged from §7c.5)
+
+If any W17 SHA pin needs reverting before the quarterly
+refresh cadence:
+
+1. Identify the new SHA via `gh api repos/<owner>/<repo>/git/
+   refs/tags/<tag> --jq '.object.sha'`, dereferencing
+   annotated tags through `git/tags/<sha>` as W17's
+   resolution script does.
+2. Replace the SHA + trailing `# vX.Y.Z` comment in the
+   affected workflow.
+3. PR + CI green confirms the pin re-roll.
+
+This is the same procedure §7c.5 documented at W16 — the
+W17 pin expansion does NOT introduce a new failure mode or
+recovery shape.
+
