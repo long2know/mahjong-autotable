@@ -35,15 +35,21 @@ import {
 import { acquireTileAtlas } from './tile-atlas';
 import { TILE_FACE_COUNT, tileFace } from './tile-faces';
 import {
+  applyCameraMode,
   attachMouseControls,
   attachTouchControls,
   createOrbitCamera,
   viewProjMatrix,
+  type CameraMode,
 } from './camera';
 import { compileProgram, createWebgl2Context } from './index';
 import { identity4, scaleMatrix4, translateMatrix4 } from './math';
 import { createTileScene } from './scene';
 import { buildPickRay, pickTile } from './picking';
+import {
+  populateWallWithDora,
+  CANONICAL_WALL_TILE_COUNT,
+} from './wall-geometry';
 
 const CONTAINER_ID = 'webgl2-hello-container';
 const TEXTURE_URL = '/img/tiles-labels.auto.png';
@@ -90,8 +96,9 @@ function ensureContainer(): { canvas: HTMLCanvasElement; status: HTMLElement } {
   return { canvas, status };
 }
 
-function mode(): 'hello' | 'tile-mesh' | 'scene' {
+function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' {
   const s = window.location.search;
+  if (/[?&]renderer=webgl2-wall/.test(s)) return 'wall';
   if (/[?&]renderer=webgl2-scene/.test(s)) return 'scene';
   if (/[?&]renderer=webgl2-tile-mesh/.test(s)) return 'tile-mesh';
   return 'hello';
@@ -100,10 +107,11 @@ function mode(): 'hello' | 'tile-mesh' | 'scene' {
 /**
  * Public entry point invoked by `src/index.ts` behind the
  * `?renderer=webgl2-hello` / `?renderer=webgl2-tile-mesh` /
- * `?renderer=webgl2-scene` URL guards.
+ * `?renderer=webgl2-scene` / `?renderer=webgl2-wall` URL guards.
  */
 export async function mount(): Promise<void> {
   switch (mode()) {
+    case 'wall':      return mountWall();
     case 'scene':     return mountScene();
     case 'tile-mesh': return mountTileMesh();
     default:          return mountHelloWorld();
@@ -289,4 +297,97 @@ async function mountScene(): Promise<void> {
     `WebGL2 scene runtime rendered (${scene.mesh.instanceCount} instances across `
     + `${TILE_FACE_COUNT} tile faces, ${atlasLabel}). `
     + 'Drag = orbit; right-drag = pan; wheel = zoom; click = pick tile.';
+}
+
+// Phase K Wave 19 — canonical Changsha wall smoke.  Lays the full
+// 4 × 18 × 2 wall using `populateWallWithDora()` and exposes the
+// three W19 camera modes (orbital / isometric-flat / perspective
+// three-quarter) via a small button row above the canvas.  This is
+// the visual-parity baseline the W19 e2e spec captures against.
+async function mountWall(): Promise<void> {
+  const { canvas, status } = ensureContainer();
+  status.textContent = 'Booting canonical wall scene…';
+
+  // We don't pre-bump the mesh capacity here — the W16 TileMesh ships
+  // with MAX_INSTANCES = 200 which is comfortably above the 144 wall
+  // tiles (+ 1 dora) we need for the W19 smoke.
+  let scene: Awaited<ReturnType<typeof createTileScene>>;
+  try {
+    scene = await createTileScene(canvas);
+  } catch (err) {
+    status.textContent = `WebGL2 scene init failed: ${(err as Error).message}`;
+    return;
+  }
+
+  populateWallWithDora(scene.mesh, /*seed=*/ 0x77313939);
+  scene.drawNow();
+
+  // Camera-mode picker — a 3-button strip above the status line.  We
+  // host it in the existing container so the test selector
+  // (`[data-testid="webgl2-wall-camera-<mode>"]`) is stable.
+  installCameraModePicker(scene.camera, scene.canvas, scene.requestRedraw);
+
+  // Click-on-tile shows the face label, matching the W17 scene smoke.
+  canvas.addEventListener('click', (ev: MouseEvent) => {
+    if (ev.button !== 0 || ev.shiftKey) return;
+    const vp = viewProjMatrix(scene.camera, canvas);
+    const ray = buildPickRay(canvas, ev.clientX, ev.clientY, vp);
+    const hit = pickTile(scene.mesh, ray);
+    if (hit === null) {
+      status.textContent = `No wall tile at (${ev.clientX}, ${ev.clientY}).`;
+      return;
+    }
+    const pickedTileId = scene.mesh.tileIdData[hit.instanceIndex];
+    const face = tileFace(pickedTileId);
+    const faceLabel = face ? `${face.label} (${face.suit}-${face.value})` : `id ${pickedTileId}`;
+    status.textContent =
+      `Wall tile #${hit.instanceIndex} [${faceLabel}] — `
+      + `mode=${scene.camera.mode}.`;
+  });
+
+  const atlasLabel = scene.atlas.fallback
+    ? `synthesized ${scene.atlas.width}×${scene.atlas.height} fallback atlas`
+    : `loaded ${scene.atlas.width}×${scene.atlas.height} canonical atlas`;
+  status.textContent =
+    `Canonical wall rendered — ${CANONICAL_WALL_TILE_COUNT} tiles `
+    + `(4 × 18 × 2 + dora), ${atlasLabel}.  `
+    + 'Camera modes above; drag = orbit; wheel = zoom; click = pick.';
+}
+
+function installCameraModePicker(
+  camera: Parameters<typeof applyCameraMode>[0],
+  canvas: HTMLCanvasElement,
+  requestRedraw: () => void,
+): void {
+  const container = canvas.parentElement;
+  if (container === null) return;
+  let existing = container.querySelector<HTMLElement>('.webgl2-wall-camera-picker');
+  if (existing !== null) existing.remove();
+  const strip = document.createElement('div');
+  strip.className = 'webgl2-wall-camera-picker';
+  strip.setAttribute('data-testid', 'webgl2-wall-camera-picker');
+  strip.style.cssText =
+    'display:flex;gap:8px;margin:8px 0;justify-content:center;';
+  const modes: Array<{ id: CameraMode; label: string }> = [
+    { id: 'orbital', label: 'Orbital' },
+    { id: 'isometric-flat', label: 'Iso flat' },
+    { id: 'perspective-three-quarter', label: '¾ persp' },
+  ];
+  for (const m of modes) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = m.label;
+    b.setAttribute('data-testid', `webgl2-wall-camera-${m.id}`);
+    b.style.cssText =
+      'padding:6px 12px;background:#1a2733;color:#eaeaea;'
+      + 'border:1px solid #2a3a4a;border-radius:4px;cursor:pointer;';
+    b.addEventListener('click', () => {
+      applyCameraMode(camera, m.id);
+      requestRedraw();
+    });
+    strip.appendChild(b);
+  }
+  // Insert above the canvas so the picker sits between the
+  // container's flex children naturally.
+  container.insertBefore(strip, canvas);
 }

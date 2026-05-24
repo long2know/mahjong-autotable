@@ -282,3 +282,61 @@ preconditions hold:
 Flip becomes hard-pin once 3 consecutive successful
 schedule-event runs appear under the W18 remediation.  No
 earlier action required on this doc.
+
+## §10 — W19 bring-up status update (Hicks)
+
+Re-running the §4.2 evidence-gate check at W19 bring-up against the
+W18-merged baseline.  The post-W18-merge cron tree is the relevant
+sample window: §4.2's "≥3 consecutive successful schedule-event
+runs" must be observed under whatever the `main` branch of
+`pwa-audit.yml` looks like after Apone's W18 patches landed.
+
+**Cron scheduler status (W19 check, vs W18 sign-off):**
+
+| Metric | W18 sign-off | W19 bring-up |
+|--------|--------------|--------------|
+| Successful schedule-event runs on `main` post-W18-merge | 0 | **0** ‡ |
+| `workflow_dispatch` runs on `main` post-W18-merge | 0 | **1** (SHA `7832f498`, 10:46:31Z, conclusion=success) |
+| Total `pwa-audit.yml` successful runs (any event) on `main` post-W18-merge | 0 | 1 |
+| W18-branch `pwa-audit.yml` successful runs (pre-merge, on `stlong/phase-k-wave-18-bringup`) | 2 | 2 (frozen) |
+
+‡ The single post-W18-merge success is a `workflow_dispatch`
+event, not a `schedule` event.  §4.2's convergence criterion is
+explicit that the count must be against `event=schedule` runs —
+manual triggers prove the workflow file is healthy but do not
+substitute for a real cron tick at the GitHub-Actions scheduler.
+
+**Apone's W18 remediation has landed on `main`.**  The
+`--screenEmulation.mobile=false` patch (and the rest of the W18
+LH-CLI hardening) is now in the `main` `pwa-audit.yml` file at
+HEAD `7832f498`.  The cron must now have ≥3 consecutive
+schedule-event ticks against this patched workflow to satisfy
+§4.2.  At W19 bring-up the cron has had **0** schedule-event
+ticks (or those ticks have not yet produced a `success`
+conclusion against the patched workflow) — the sample window is
+not yet open.
+
+**Convergence criterion** (from §4.2): "≥3 consecutive successful
+schedule-event runs" — **not met** at W19 bring-up (still 0 of 3
+against the post-W18-merge `main` tree).
+
+**Action: HOLD soft-flip.**  The provisional threshold pin
+established at W16 remains in force through W19.  The §3 table,
+§5 audit trail rules, and §6 coordination contract are unchanged.
+Hicks does **not** promote §6.8 to hard-pin in W19.
+
+**Specific YELLOW indicator (per §6.7).**  The §6.7 table marks
+the LH13 row YELLOW at W19 — "patch landed on `main`; sample
+window opening; observe the next ≥3 schedule-event ticks".  This
+is the prescribed intermediate state between the W17/W18 RED
+("patch not yet on `main`") and the eventual GREEN ("≥3
+consecutive scheduled successes observed").
+
+**Re-check trigger.**  Hicks (or whichever frontend agent owns
+the next-wave bring-up) re-runs §4.2 at W20 — the sample window
+will have widened by another ~14 schedule-event ticks (cron is
+hourly per the workflow's `schedule:` block) so a fair
+convergence read should be possible.  Flip becomes hard-pin once
+≥3 consecutive successful schedule-event runs appear under the
+post-W18-merge `main` tree.  No earlier action required on this
+doc.

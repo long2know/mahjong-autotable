@@ -1,7 +1,7 @@
 {
   "$schema": "./scripts/dist-size.schema.json",
   "$description": "Source-of-truth chunk-size ledger for the autotable bundle, wave-over-wave. Vasquez's W7 Playwright spec asserts that `three-renderer-big` is monotonically decreasing across waves (regression = hard fail). The build pipeline (vite.config.ts → scripts/append-dist-size.js) appends a new wave entry on every `npm run build:vite`. Wave names use `K{N}` (Phase K Wave N).",
-  "current": "K18",
+  "current": "K19",
   "history": [
     {
       "wave": "K6",
@@ -308,9 +308,9 @@
     {
       "wave": "K18",
       "bundler": "vite",
-      "recordedAt": "2026-05-24T08:24:13.353Z",
+      "recordedAt": "2026-05-24T11:02:58.777Z",
       "chunks": {
-        "autotable-src-eager": 156577,
+        "autotable-src-eager": 156582,
         "game-bootstrap": 174619,
         "scene-shell": 2437,
         "scene-effects": 59223,
@@ -329,7 +329,7 @@
         "bracket-listing": 6544,
         "replays-listing": 4723,
         "admin-cost": 5966,
-        "renderer-webgl2": 25666,
+        "renderer-webgl2": 30174,
         "admin-cost-forecast": 6108,
         "action-router": 8953,
         "sentry-shim": 2304,
@@ -337,10 +337,49 @@
         "leaderboard": 11349,
         "settings-drawer": 17770,
         "profile-page": 9464,
-        "admin-panel": 18411,
+        "admin-panel": 26701,
         "pwa": 2320,
         "reconnect": 3067,
         "spectator-follow": 3535
+      }
+    },
+    {
+      "wave": "K19",
+      "bundler": "vite",
+      "recordedAt": "2026-05-24T11:09:10.265Z",
+      "chunks": {
+        "autotable-src-eager": 144192,
+        "game-bootstrap": 174644,
+        "scene-shell": 2464,
+        "scene-effects": 59251,
+        "three-renderer-big": 406635,
+        "three-renderer-small": 75507,
+        "gltf-loader": 44223,
+        "stats-module": 3227,
+        "commentary-panel": 8269,
+        "spectator-livestream": 5288,
+        "hls": 286514,
+        "tournaments": 41159,
+        "chat": 12306,
+        "voice": 9382,
+        "audit": 7523,
+        "history": 12397,
+        "tour": 10454,
+        "bracket-listing": 6544,
+        "replays-listing": 4723,
+        "admin-cost": 5966,
+        "renderer-webgl2": 30174,
+        "admin-cost-forecast": 6108,
+        "action-router": 8953,
+        "sentry-shim": 2304,
+        "sentry": 342614,
+        "leaderboard": 11349,
+        "settings-drawer": 17826,
+        "profile-page": 9464,
+        "admin-panel": 26701,
+        "pwa": 2320,
+        "reconnect": 3067,
+        "spectator-follow": 3563
       }
     }
   ]

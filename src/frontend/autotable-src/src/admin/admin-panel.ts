@@ -32,19 +32,29 @@ import {
 import { REPLAY_RETENTION_SPEC } from './replay-retention';
 import { JWKS_ROTATION_SPEC } from './jwks-rotation';
 import { SIGNALR_RETENTION_SPEC } from './signalr-retention';
+import { ROTATION_POLICY_BULK_SPEC } from './rotation-policy-bulk';
+import { REPLAY_INTEGRITY_AUDIT_SPEC } from './replay-integrity-audit';
+import { SWISS_PAIRING_AUDIT_SPEC } from './swiss-pairing-audit';
 
 interface AnySpec extends AdminSurfaceSpec<unknown, unknown> {}
 
-// Type cast: the three concrete specs are heterogeneous over their
-// row / body types but uniform over the API used by this entry.  We
+// Type cast: the concrete specs are heterogeneous over their row /
+// body types but uniform over the API used by this entry.  We
 // erase the generics at the registry level and re-cast at the call
 // sites that matter (row parsing returns `unknown`, which the
 // per-surface `parseRow` narrows internally — the shared runtime
 // never has to know the concrete row type).
+//
+// Phase K Wave 19 — three Bishop W19 surfaces added at the tail of
+// the registry: rotation-policy bulk-update, replay-store integrity
+// audit, and tournament Swiss pairing audit log.
 const SURFACES: ReadonlyArray<AnySpec> = [
   REPLAY_RETENTION_SPEC as unknown as AnySpec,
   JWKS_ROTATION_SPEC as unknown as AnySpec,
   SIGNALR_RETENTION_SPEC as unknown as AnySpec,
+  ROTATION_POLICY_BULK_SPEC as unknown as AnySpec,
+  REPLAY_INTEGRITY_AUDIT_SPEC as unknown as AnySpec,
+  SWISS_PAIRING_AUDIT_SPEC as unknown as AnySpec,
 ];
 
 let activeSurfaceIndex = 0;
@@ -142,6 +152,16 @@ function renderSurfaceLoading(spec: AnySpec): string {
 }
 
 function renderSurfaceFrame(spec: AnySpec, innerHtml: string): string {
+  // Phase K Wave 19 — read-only surfaces (e.g. Swiss pairing audit
+  // log) omit the Create toolbar button when `spec.fields` is empty.
+  // The Edit/Delete row buttons in `renderAdminListHtml` are not
+  // emitted for read-only specs either (gated below).
+  const isReadOnly = spec.fields.length === 0;
+  const createBtn = isReadOnly ? '' : `
+        <button type="button"
+                class="admin-panel-btn admin-panel-btn-primary"
+                data-testid="admin-panel-${spec.id}-create"
+                data-action="create">+ Create</button>`;
   return `
     <article class="admin-panel-surface"
              data-testid="admin-panel-surface-${spec.id}">
@@ -149,11 +169,7 @@ function renderSurfaceFrame(spec: AnySpec, innerHtml: string): string {
         <h2>${escapeHtml(spec.title)}</h2>
         <p class="admin-panel-description">${escapeHtml(spec.description)}</p>
       </header>
-      <div class="admin-panel-toolbar">
-        <button type="button"
-                class="admin-panel-btn admin-panel-btn-primary"
-                data-testid="admin-panel-${spec.id}-create"
-                data-action="create">+ Create</button>
+      <div class="admin-panel-toolbar">${createBtn}
         <button type="button"
                 class="admin-panel-btn"
                 data-testid="admin-panel-${spec.id}-refresh"

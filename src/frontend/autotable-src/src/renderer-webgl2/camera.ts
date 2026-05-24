@@ -58,6 +58,17 @@ export interface OrbitCamera {
   /** Soft clamp for the elevation angle (avoid flipping at poles). */
   minElevation: number;
   maxElevation: number;
+  // Phase K Wave 19 — camera modes (Hicks).  Each field defaults to
+  // the W16 pinhole-orbital behaviour so callers that ignore these
+  // fields continue to work unchanged.
+  /** Active mode preset (see `CameraMode`). */
+  mode: CameraMode;
+  /** Projection style — pinhole (W16) or orthographic (W19). */
+  projection: CameraProjection;
+  /** Vertical FOV in radians (perspective projection only). */
+  fovYRadians: number;
+  /** Orthographic projection extent (half-height in scene units). */
+  orthoSize: number;
 }
 
 export const DEFAULT_ORBIT_STATE: Readonly<OrbitState> = Object.freeze({
@@ -66,6 +77,115 @@ export const DEFAULT_ORBIT_STATE: Readonly<OrbitState> = Object.freeze({
   elevation: Math.PI / 3.5, // ~50° above the table
   target: [0, 0, -3] as [number, number, number],
 });
+
+// Phase K Wave 19 — camera presets (Hicks).
+//
+// W19 adds three named camera modes that swap the orbital state +
+// projection style without disturbing the existing W16 OrbitCamera
+// API.  Consumers call `applyCameraMode(cam, mode)` to snap to a
+// preset; the orbit / pan / zoom drag handlers continue to drive
+// the same `cam.state` so the camera stays interactive from any
+// mode.  An "isometric flat" mode swaps the projection function
+// from the W16 pinhole to a parallel orthographic projection — the
+// scene runtime branches on `cam.projection` in W19+.
+
+/** Camera presets shipping in W19. */
+export type CameraMode = 'orbital' | 'isometric-flat' | 'perspective-three-quarter';
+
+/** Projection style (W19+).  W16's pinhole stays the default. */
+export type CameraProjection = 'perspective' | 'orthographic';
+
+/** Preset states for the W19 camera modes. */
+export const CAMERA_MODE_PRESETS: Readonly<Record<CameraMode, Readonly<{
+  state: OrbitState;
+  projection: CameraProjection;
+  fovYRadians: number;
+  orthoSize: number;
+}>>> = Object.freeze({
+  'orbital': Object.freeze({
+    state: {
+      radius: 18.0,
+      azimuth: Math.PI / 2,
+      elevation: Math.PI / 3.5,
+      target: [0, 0, -3] as [number, number, number],
+    },
+    projection: 'perspective' as CameraProjection,
+    fovYRadians: Math.PI / 4,
+    orthoSize: 12,
+  }),
+  // Isometric flat — look straight down at +30° azimuth so the
+  // walls render at the canonical 30°/60°/30° iso projection angles.
+  // Projection is orthographic so parallel wall edges stay parallel.
+  'isometric-flat': Object.freeze({
+    state: {
+      radius: 22.0,
+      azimuth: Math.PI / 4,    // 45° to break the wall alignment
+      elevation: Math.atan(Math.SQRT2 / Math.sqrt(3)), // ≈ 0.6155 (true iso)
+      target: [0, 0, 0] as [number, number, number],
+    },
+    projection: 'orthographic' as CameraProjection,
+    fovYRadians: Math.PI / 4,
+    orthoSize: 13,
+  }),
+  // Perspective ¾-view — slightly elevated, looking at one corner
+  // so two walls are visible.  Mirrors the legacy three-renderer's
+  // default OrbitControls camera position.
+  'perspective-three-quarter': Object.freeze({
+    state: {
+      radius: 16.0,
+      azimuth: Math.PI * 0.35,
+      elevation: Math.PI / 4.8,
+      target: [0, 0, -2] as [number, number, number],
+    },
+    projection: 'perspective' as CameraProjection,
+    fovYRadians: Math.PI / 4.5,
+    orthoSize: 12,
+  }),
+});
+
+/** Apply a named camera mode preset to the supplied camera. */
+export function applyCameraMode(cam: OrbitCamera, mode: CameraMode): void {
+  const preset = CAMERA_MODE_PRESETS[mode];
+  cam.state.radius = preset.state.radius;
+  cam.state.azimuth = preset.state.azimuth;
+  cam.state.elevation = preset.state.elevation;
+  cam.state.target = [
+    preset.state.target[0],
+    preset.state.target[1],
+    preset.state.target[2],
+  ];
+  cam.projection = preset.projection;
+  cam.fovYRadians = preset.fovYRadians;
+  cam.orthoSize = preset.orthoSize;
+  cam.mode = mode;
+}
+
+/**
+ * Build a column-major orthographic projection matrix.  Used by the
+ * isometric-flat camera mode.  The view volume is centred on the
+ * origin in NDC and spans `[-orthoSize×aspect, +orthoSize×aspect] ×
+ * [-orthoSize, +orthoSize] × [near, far]`.
+ */
+export function orthographic4(
+  orthoSize: number,
+  aspect: number,
+  near: number,
+  far: number,
+): Float32Array {
+  const left = -orthoSize * aspect;
+  const right = orthoSize * aspect;
+  const bottom = -orthoSize;
+  const top = orthoSize;
+  const m = new Float32Array(16);
+  m[0] = 2 / (right - left);
+  m[5] = 2 / (top - bottom);
+  m[10] = -2 / (far - near);
+  m[12] = -(right + left) / (right - left);
+  m[13] = -(top + bottom) / (top - bottom);
+  m[14] = -(far + near) / (far - near);
+  m[15] = 1;
+  return m;
+}
 
 export function createOrbitCamera(initial?: Partial<OrbitState>): OrbitCamera {
   return {
@@ -82,6 +202,12 @@ export function createOrbitCamera(initial?: Partial<OrbitState>): OrbitCamera {
     maxRadius: 60.0,
     minElevation: 0.1,
     maxElevation: Math.PI / 2 - 0.05,
+    // Phase K Wave 19 — default to the W16 orbital-perspective mode
+    // so existing callers keep working without touching these fields.
+    mode: 'orbital',
+    projection: 'perspective',
+    fovYRadians: Math.PI / 4,
+    orthoSize: 12,
   };
 }
 
@@ -141,17 +267,23 @@ export function viewMatrix(cam: OrbitCamera): Float32Array {
 }
 
 /**
- * Pinhole projection matrix (column-major).  Wraps `perspective4`
- * so consumers don't need a separate import for the trivial case.
+ * Pinhole or orthographic projection matrix (column-major).  W19+ —
+ * branches on `cam.projection` to switch between the W16 perspective
+ * and the W19 orthographic isometric-flat preset.  Callers that pass
+ * undefined `fovYRadians` / `near` / `far` get the camera-state
+ * defaults (orbital preset uses Math.PI/4 fovY).
  */
 export function projectionMatrix(
+  cam: OrbitCamera,
   canvas: HTMLCanvasElement,
-  fovYRadians = Math.PI / 4,
   near = 0.1,
   far = 200,
 ): Float32Array {
   const aspect = canvas.width / Math.max(1, canvas.height);
-  return perspective4(fovYRadians, aspect, near, far);
+  if (cam.projection === 'orthographic') {
+    return orthographic4(cam.orthoSize, aspect, near, far);
+  }
+  return perspective4(cam.fovYRadians, aspect, near, far);
 }
 
 /** view × projection composed for the tile-mesh shader. */
@@ -159,7 +291,7 @@ export function viewProjMatrix(
   cam: OrbitCamera,
   canvas: HTMLCanvasElement,
 ): Float32Array {
-  return multiplyMatrix4(projectionMatrix(canvas), viewMatrix(cam));
+  return multiplyMatrix4(projectionMatrix(cam, canvas), viewMatrix(cam));
 }
 
 // ── Mouse / touch input plumbing ──────────────────────────────────
