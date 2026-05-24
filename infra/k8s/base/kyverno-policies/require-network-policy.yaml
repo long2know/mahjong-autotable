@@ -1,0 +1,143 @@
+# Phase K Wave 19 — Apone (DevOps).
+#
+# Kyverno ClusterPolicy that REQUIRES every workload-bearing
+# namespace to have at least one NetworkPolicy resource
+# present. Without this, a freshly-provisioned namespace
+# defaults to "allow any" pod-to-pod traffic — a
+# misconfiguration the W19 audit-mode rule surfaces as a
+# PolicyReport.
+#
+# # Why this matters
+#
+# Kubernetes NetworkPolicy is OPT-IN. The default-deny posture
+# we want at the cluster edge ("no Pod talks to any other Pod
+# unless a NetworkPolicy explicitly allows it") only kicks in
+# the moment a namespace has AT LEAST ONE NetworkPolicy. A
+# namespace with zero NetworkPolicies is wide-open.
+#
+# Two operator-friendly shapes are valid for this rule:
+#
+#   (a) A namespace ships an explicit default-deny + per-
+#       Service allowlist (the
+#       `infra/k8s/overlays/prod/argo-rollouts-network-policy.
+#       yaml` pattern). The "at least one NetworkPolicy"
+#       count is satisfied by EITHER the default-deny OR any
+#       per-Service allow rule.
+#
+#   (b) A namespace ships a single permissive "allow-all"
+#       NetworkPolicy (anti-pattern, but legal). This rule
+#       does NOT validate the SEMANTICS of the policy — only
+#       that AT LEAST ONE exists.
+#
+# Semantic validation is out of scope for the W19 rule. The
+# next-wave deliverable could add a `generate:` rule that
+# auto-provisions a default-deny if zero NetworkPolicies are
+# found — out of scope for W19 (mention as a Wave-20+
+# candidate).
+#
+# # The Kyverno mechanism — `validate.deny.conditions`
+#
+# Kyverno's `Namespace`-kind validation with a
+# `context.apiCall` lookup is the canonical idiom for this
+# shape. The lookup counts NetworkPolicies in the inbound
+# Namespace object's name; the validation fails if the count
+# is zero. See Kyverno docs §"Looking up Kubernetes resources
+# at admission time".
+#
+# # Why audit-mode FIRST (5-day grace)
+#
+# Same rationale as the W19 companion `disallow-lateral-
+# movement` ClusterPolicy. The cluster-current state may have
+# one or more legacy namespaces (e.g. `default`, `kube-public`)
+# without a NetworkPolicy. The 5-day grace window lets
+# Hudson's `kyverno-deny-events` panel show whether the
+# enforce-flip would block a legitimate workload landing in a
+# bare namespace. Pre-W19 verification: `kubectl get
+# networkpolicies -A` shows NetworkPolicies in `mahjong-prod`
+# + `argo-rollouts`; bare namespaces (`default`,
+# `external-secrets`) are excluded via the rule's `exclude`
+# block.
+#
+# # Wiring
+#
+# Out-of-band at W19 — NOT in `base/kustomization.yaml`.
+# Same rationale as the W19 companion `disallow-lateral-
+# movement` ClusterPolicy. Apply directly:
+#
+#   kubectl apply -f infra/k8s/base/kyverno-policies/require-network-policy.yaml
+#
+# # Cross-references
+#
+#   * `infra/k8s/policies/kyverno-cosign-verify.yaml` — W3 cluster-wide
+#     cosign verifier (Audit default + prod Enforce).
+#   * `infra/k8s/overlays/prod/argo-rollouts-network-policy.yaml` —
+#     W12 default-deny + ingress + egress allowlist (companion
+#     pattern this rule validates the presence of).
+#   * `infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml` —
+#     W19 companion ClusterPolicy (hostNetwork + hostPort denies).
+#   * `docs/kyverno-w19-additional-rules.md` — W19 operator
+#     runbook.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-network-policy
+  annotations:
+    policies.kyverno.io/title: "Require at least one NetworkPolicy per workload namespace (W19, Audit)"
+    policies.kyverno.io/category: "Network"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Namespace"
+    policies.kyverno.io/description: >-
+      W19 audit-mode policy. Fires on Namespace creation +
+      background scan; requires AT LEAST ONE NetworkPolicy
+      to exist in the namespace. Lands in Audit mode for a
+      5-day grace before the Wave-20 Enforce flip.
+spec:
+  validationFailureAction: Audit
+  background: true
+  webhookTimeoutSeconds: 30
+  failurePolicy: Ignore
+  rules:
+    - name: namespace-has-network-policy
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              names:
+                # System namespaces — Kyverno bootstrap loops
+                # would deadlock if we required NetworkPolicies
+                # in kube-system before the CNI is up.
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - default
+                # ESO + argo-rollouts ship their own
+                # NetworkPolicies via the W12 deliverables —
+                # exclude them while the W19 audit window
+                # validates the prod target namespace.
+                - external-secrets
+      # `context.apiCall` looks up NetworkPolicies inside the
+      # inbound Namespace's `.metadata.name`. The JMESPath
+      # query `items | length(@)` counts the policies; the
+      # `deny.conditions` block fires when the count is zero.
+      context:
+        - name: networkpolicies
+          apiCall:
+            urlPath: "/apis/networking.k8s.io/v1/namespaces/{{ request.object.metadata.name }}/networkpolicies"
+            jmesPath: "items | length(@)"
+      validate:
+        message: >-
+          Namespace "{{ request.object.metadata.name }}" has
+          zero NetworkPolicy resources. At least one
+          NetworkPolicy MUST exist before workloads land
+          there. See docs/kyverno-w19-additional-rules.md §2.
+        deny:
+          conditions:
+            all:
+              - key: "{{ networkpolicies }}"
+                operator: Equals
+                value: 0

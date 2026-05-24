@@ -1,0 +1,68 @@
+# Phase K Wave 19 — Apone (DevOps).
+#
+# Argo Rollouts controller PRE-INSTALL prereqs — the
+# `argo-rollouts` namespace.
+#
+# The W10 `docs/argo-rollouts-setup.md` runbook documented the
+# helm install path; W19 ships the cluster-state prerequisites
+# the helm install consumes (`--create-namespace` would handle
+# the bare namespace, but the squad wants the namespace to
+# pre-exist with the SAME labels the W12
+# `argo-rollouts-network-policy.yaml` consumes for namespace-
+# selectors). Pre-creating the namespace from this manifest
+# keeps the label set canonical + idempotent.
+#
+# # Why a stub manifest (not a documentation-only note)
+#
+# The W10 helm install's `--create-namespace` flag creates a
+# bare namespace with no labels beyond the helm-managed ones.
+# But the W12 NetworkPolicy uses namespaceSelector with the
+# label `kubernetes.io/metadata.name: argo-rollouts` (set
+# automatically by the Kubernetes API server since 1.21) + a
+# squad-owned label `mahjong-autotable.io/managed-by: apone`
+# that lets the W19 Kyverno require-network-policy rule
+# distinguish operator-managed namespaces from a fresh
+# bootstrap. Pre-creating the namespace with both labels
+# closes that gap.
+#
+# # Apply order
+#
+#   1. kubectl apply -f infra/k8s/base/argo-rollouts-prereqs/namespace.yaml
+#   2. kubectl apply -f infra/k8s/base/argo-rollouts-prereqs/rbac.yaml
+#   3. helm install argo-rollouts argo/argo-rollouts \
+#          --namespace argo-rollouts \
+#          --version 2.37.7 \
+#          ...
+#
+# See `docs/argo-rollouts-install-runbook.md` for the full
+# operator runbook.
+#
+# # NOT IN kustomization
+#
+# Out-of-band — this is a cluster-bootstrap prereq, not part
+# of the rendered `kustomize build infra/k8s/overlays/prod/`
+# graph. The bootstrap operator applies these files directly.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argo-rollouts
+  labels:
+    # Standard label the W12 NetworkPolicy + W19 require-
+    # network-policy Kyverno rule consume.
+    kubernetes.io/metadata.name: argo-rollouts
+    # Squad-owned label — distinguishes operator-managed
+    # namespaces from bare bootstrap namespaces in any future
+    # cross-namespace policy.
+    mahjong-autotable.io/managed-by: apone
+    # Pod-security standards baseline floor (Kubernetes 1.25+
+    # built-in admission). The argo-rollouts controller +
+    # dashboard pods conform to the PSS baseline; setting the
+    # `enforce` label here gates the namespace at the API
+    # server admission layer (independent of Kyverno).
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    mahjong-autotable.io/created-at-wave: "K19"
+    mahjong-autotable.io/install-runbook: "docs/argo-rollouts-install-runbook.md"

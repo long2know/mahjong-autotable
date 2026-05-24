@@ -397,7 +397,8 @@ public sealed class VasquezW11SelfLaneTests
             || x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW19RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 }

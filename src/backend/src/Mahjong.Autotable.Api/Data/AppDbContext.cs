@@ -148,6 +148,16 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<Mahjong.Autotable.Api.Observability.SignalRRetentionPolicy> SignalRRetentionPolicies =>
         Set<Mahjong.Autotable.Api.Observability.SignalRRetentionPolicy>();
 
+    // Phase K Wave 19 — Bishop. Per-tournament Swiss pairing
+    // audit log. Append-only — the FIDE C.04 pairing engine
+    // stamps one row per (tournament, round, board) decision so
+    // an operator chasing a pairing dispute can read the
+    // algorithmic verdict without re-running the engine. Backs
+    // the GET /api/admin/tournaments/{id}/swiss-pairing-audit
+    // endpoint. See Mahjong.Autotable.Api.Data.Entities.SwissPairingAuditEntry.
+    public DbSet<SwissPairingAuditEntry> SwissPairingAuditEntries =>
+        Set<SwissPairingAuditEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -678,6 +688,25 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         {
             entity.Property(x => x.TenantId).HasMaxLength(128);
             entity.HasIndex(x => x.TenantId);
+        });
+
+        // Phase K Wave 19 — Bishop. Per-tournament Swiss pairing
+        // audit log. The natural key is (TournamentId, Round,
+        // Board) — a single rerun of the pairing engine MUST NOT
+        // double-stamp a board, so we declare a unique composite
+        // index on that triple. CreatedAtUtc is indexed for the
+        // trail-by-time admin view.
+        modelBuilder.Entity<SwissPairingAuditEntry>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.White).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Black).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Tiebreaker)
+                .HasMaxLength(SwissPairingAuditEntry.MaxTiebreakerLength)
+                .IsRequired();
+            entity.HasIndex(x => new { x.TournamentId, x.Round, x.Board }).IsUnique();
+            entity.HasIndex(x => x.CreatedAtUtc);
+            entity.HasIndex(x => x.TournamentId);
         });
     }
 }

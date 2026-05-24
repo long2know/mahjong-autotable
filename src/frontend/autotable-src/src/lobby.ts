@@ -34,19 +34,18 @@
 //     + avatarColor over the WS-broadcast nick / djb2 hue fallback.
 
 import type { Client } from './client';
-import {
-  startPolling as startMatchmakingPolling,
-  stopPolling as stopMatchmakingPolling,
-  isPolling as isMatchmakingPolling,
-  getCachedGames,
-  getLastError as getMatchmakingError,
-  onUpdate as onMatchmakingUpdate,
-  refresh as refreshMatchmaking,
-  joinRandom,
-  setGamePublic,
-  navigateToGame,
-  type PublicGame,
-} from './matchmaking';
+// Phase K Wave 19 — Hicks (bundle-audit §3.4).  `matchmaking` (~7.7 KB
+// minified) is now lazy-loaded behind `loadMatchmaking()` /
+// `schedulePublicGamesPaneLazyMount()` / `scheduleMakePublicToggleLazy
+// Mount()`.  The lobby cold path only pulls the chunk when the user
+// first activates the Public-Games tab OR touches the make-public
+// toggle in a live game.  All matchmaking call sites in lobby.ts now
+// go through the closure-stashed `_matchmakingMod` reference; tab-
+// activate transitions delegate poll start/stop to that module via
+// the same lazy hook (the public-games tab is the only activation
+// surface that needs the polling loop).
+import type * as MatchmakingModule from './matchmaking';
+import type { PublicGame } from './matchmaking';
 import {
   installProfileDrawer,
   installProfileToggle,
@@ -55,7 +54,14 @@ import {
   getProfile,
   type PlayerProfile,
 } from './profile';
-import { formatStats } from './stats';
+// Phase K Wave 19 — bundle audit §3.4 (Hicks).  `stats.ts` is a small
+// DOM formatter (~2 KB minified) that the lobby only needs *after*
+// Bishop's SignalR `ProfileLoaded` payload arrives — which happens
+// once the user has either entered a game OR completed onboarding.
+// We import the type eagerly (zero bytes) and dynamic-import the
+// formatter on first `renderLobbyStatsPanel()` call where a profile
+// is actually present.  Empty/loading state never pulls the chunk.
+import type * as StatsModule from './stats';
 import {
   bootstrapIdentity,
   installOnboardingCard,
@@ -76,7 +82,16 @@ import {
 import type * as LeaderboardModule from './leaderboard';
 import type * as ProfilePageModule from './profile-page';
 import { installAuthUi } from './auth';
-import { installRulePresetsUi, getSelectedPresetId } from './rule-presets';
+// Phase K Wave 19 — Hicks (bundle-audit §3.4).  `rule-presets`
+// (~12.5 KB minified incl. EventEmitter) is now lazy-loaded behind
+// `scheduleRulePresetsUiLazyMount()` (defined at the bottom of this
+// file).  The lobby's eager bootstrap inlines a tiny LS-read for the
+// selected preset id so the URL builder can still emit `?rulePreset=`
+// without dragging in the editor surface; the actual `installRule
+// PresetsUi()` call is deferred to `requestIdleCallback` so the
+// picker mounts on the next paint window without blocking lobby
+// first-paint.
+import type * as RulePresetsModule from './rule-presets';
 import { installDisplayPreferences } from './theme';
 // Phase K Wave 18 — Hicks (bundle-audit §3.3).  `spectator-follow`
 // is now lazy-mounted behind a URL probe (`?seat=-1` or
@@ -423,8 +438,14 @@ function buildUrl(state: LobbyState): string {
   // Phase J Wave 8 — emit rulePreset=<id> when the user picked a
   // non-default preset.  The backend ignores the param if Bishop's
   // rule-preset endpoints aren't deployed yet (graceful degradation).
+  //
+  // Phase K Wave 19 — bundle audit §3.4.  Inline LS-read avoids
+  // pulling `rule-presets.ts` into the eager lobby chunk just for
+  // this read.  Mirrors `readSelectedId()` in rule-presets.ts: same
+  // key (`mahjong.rule-preset.selected.v1`), same default
+  // (`'classic-changsha'`), same try/catch guard.
   try {
-    const presetId = getSelectedPresetId();
+    const presetId = readSelectedPresetIdInline();
     if (presetId !== '' && presetId !== 'classic-changsha') {
       p.set('rulePreset', presetId);
     }
@@ -740,7 +761,13 @@ export function initLobby(client?: Client): void {
   // profile drawer; rule preset picker in the lobby + editor tab in
   // the settings drawer; spectator follow-seat helper.
   installAuthUi();
-  installRulePresetsUi();
+  // Phase K Wave 19 — bundle audit §3.4: rule-presets editor surface
+  // (~12.5 KB minified) is deferred to the next idle window so the
+  // lobby first-paint never blocks on it.  The picker's <select> is
+  // present in the static HTML so the user sees the chrome
+  // immediately; `installRulePresetsUi()` populates the options +
+  // wires the change handler when the chunk lands.
+  scheduleRulePresetsUiLazyMount();
   // Phase K Wave 18 — Hicks (bundle-audit §3.3): lazy-mounted on a
   // URL probe.  Spectator-only surface; non-spectator lobby
   // visitors shed the ~5 KB chunk entirely.
@@ -753,8 +780,15 @@ export function initLobby(client?: Client): void {
   // until the hub round-trip eventually lands.
   hydrateProfileFromCacheIfAvailable();
   installLobbyTabs();
-  installPublicGamesPane();
-  installMakePublicToggle();
+  // Phase K Wave 19 — bundle audit §3.4: public-games pane + make-
+  // public toggle are now lazy-mounted behind tab/toggle activation.
+  // `matchmaking.ts` (~7.7 KB minified incl. polling loop + REST
+  // wrappers) is only pulled when the user activates the Public-
+  // Games tab OR touches the make-public toggle.  See
+  // `schedulePublicGamesPaneLazyMount` / `scheduleMakePublicToggle
+  // LazyMount` at the bottom of this file.
+  schedulePublicGamesPaneLazyMount();
+  scheduleMakePublicToggleLazyMount();
   installLobbyStatsPanel();
 
   // Phase J Wave 6 — kick off the cookie-bound identity bootstrap +
@@ -1054,10 +1088,20 @@ function installLobbyTabs(): void {
     // Per-tab polling discipline — Apone's rate-limit budget is the
     // motivation here.  Each tab owns one timer; we tear the other
     // tabs' timers down on activate.
+    //
+    // Phase K Wave 19 — bundle audit §3.4.  Matchmaking poll start/
+    // stop now go through `_matchmakingMod`.  On 'public' tab
+    // activate we load the module (idempotent) then start polling;
+    // on any other tab we only stop polling if the module has
+    // already been loaded (skipping the import when it hasn't been
+    // touched avoids paying the chunk just to call a no-op stopper,
+    // mirroring the leaderboard pattern).
     if (isPub) {
-      if (!isMatchmakingPolling()) startMatchmakingPolling();
-    } else {
-      stopMatchmakingPolling();
+      void loadMatchmaking().then((mod) => {
+        if (!mod.isPolling()) mod.startPolling();
+      });
+    } else if (_matchmakingMod !== null) {
+      _matchmakingMod.stopPolling();
     }
     if (isLb) {
       void loadLeaderboard().then((m) => m.startLeaderboardPolling());
@@ -1088,7 +1132,7 @@ function installLobbyTabs(): void {
 // the Join Random button.  Re-renders on every onUpdate tick (≤5 s).
 // ---------------------------------------------------------------------
 
-function installPublicGamesPane(): void {
+function installPublicGamesPane(mm: typeof MatchmakingModule): void {
   const listEl = document.getElementById('lobby-public-games-list');
   const emptyEl = document.getElementById('lobby-public-games-empty');
   const errorEl = document.getElementById('lobby-public-games-error');
@@ -1100,8 +1144,8 @@ function installPublicGamesPane(): void {
   }
 
   const render = (): void => {
-    const games = getCachedGames();
-    const err = getMatchmakingError();
+    const games = mm.getCachedGames();
+    const err = mm.getLastError();
     if (err !== null) {
       showEl(errorEl);
       errorEl.textContent = `Failed to load public games: ${err}`;
@@ -1117,11 +1161,11 @@ function installPublicGamesPane(): void {
     hideEl(emptyEl);
     const cap = Math.min(games.length, 50);
     for (let i = 0; i < cap; i++) {
-      listEl.appendChild(buildPublicGameCard(games[i], i));
+      listEl.appendChild(buildPublicGameCard(games[i], i, mm.navigateToGame));
     }
   };
 
-  onMatchmakingUpdate(render);
+  mm.onUpdate(render);
   // Initial render in case polling fired before the listener landed.
   render();
 
@@ -1131,9 +1175,9 @@ function installPublicGamesPane(): void {
     joinRandomBtn.textContent = 'Joining…';
     try {
       const variant = readUrlVariant();
-      const result = await joinRandom(variant);
+      const result = await mm.joinRandom(variant);
       if (result !== null) {
-        navigateToGame(result.gameId, result.seatIndex);
+        mm.navigateToGame(result.gameId, result.seatIndex);
       } else {
         showEl(errorEl);
         errorEl.textContent = 'No public games with free seats right now.';
@@ -1148,11 +1192,15 @@ function installPublicGamesPane(): void {
     }
     // Force a refresh after the join attempt so the list reflects the
     // new occupancy (or the absence of any games to join).
-    void refreshMatchmaking();
+    void mm.refresh();
   });
 }
 
-function buildPublicGameCard(game: PublicGame, index: number): HTMLElement {
+function buildPublicGameCard(
+  game: PublicGame,
+  index: number,
+  navigate: (gameId: string, seatIndex?: number) => void,
+): HTMLElement {
   const card = document.createElement('div');
   card.className = 'public-game-card';
   card.setAttribute('role', 'listitem');
@@ -1196,7 +1244,7 @@ function buildPublicGameCard(game: PublicGame, index: number): HTMLElement {
   join.disabled = full;
   join.addEventListener('click', () => {
     if (full) return;
-    navigateToGame(game.gameId);
+    navigate(game.gameId);
   });
 
   card.appendChild(name);
@@ -1223,7 +1271,7 @@ function readUrlVariant(): string | undefined {
 // every toggle-on (omitted when blank).
 // ---------------------------------------------------------------------
 
-function installMakePublicToggle(): void {
+function installMakePublicToggle(mm: typeof MatchmakingModule): void {
   const toggle = document.getElementById(
     'lobby-make-public-toggle') as HTMLInputElement | null;
   const nameInput = document.getElementById(
@@ -1252,7 +1300,7 @@ function installMakePublicToggle(): void {
       : undefined;
     setStatus(toggle.checked ? 'Publishing…' : 'Unlisting…', false);
     try {
-      const result = await setGamePublic(
+      const result = await mm.setGamePublic(
         { gameId, isPublic: toggle.checked, publicName });
       if (result.success) {
         setStatus(
@@ -1334,14 +1382,29 @@ function renderLobbyStatsPanel(): void {
     host.appendChild(empty);
     return;
   }
-  const panel = formatStats(profile.stats);
-  // Wrap with a heading so the lobby stats section makes it clear who
-  // these numbers belong to (matches Bishop's profile.displayName).
+  // Phase K Wave 19 — bundle audit §3.4: defer `formatStats` import to
+  // the first populated render.  Empty/loading state above never pulls
+  // the chunk.  Re-render in place once the formatter lands so the
+  // displayName heading swaps to the full stats panel inline.
+  void loadStatsModule().then((mod) => {
+    const fresh = getProfile();
+    if (fresh === null) return;
+    const currentHost = document.getElementById('lobby-stats-panel');
+    if (currentHost === null) return;
+    currentHost.replaceChildren();
+    const panel = mod.formatStats(fresh.stats);
+    const heading = document.createElement('div');
+    heading.className = 'lobby-stats-panel-subject';
+    heading.textContent = fresh.displayName;
+    currentHost.appendChild(heading);
+    currentHost.appendChild(panel);
+  });
+  // Provisional displayName heading shown while the formatter
+  // chunk is in flight — keeps the panel from looking inert.
   const heading = document.createElement('div');
   heading.className = 'lobby-stats-panel-subject';
   heading.textContent = profile.displayName;
   host.appendChild(heading);
-  host.appendChild(panel);
 }
 
 // ---------------------------------------------------------------------
@@ -1557,4 +1620,141 @@ function scheduleProfilePageLazyMount(): void {
 
   // Avoid an unused-variable warning when the chip is missing.
   void chipPreOpen;
+}
+
+// ---------------------------------------------------------------------
+// Phase K Wave 19 — bundle audit §3.4 (Hicks).
+//
+// `matchmaking.ts` and `rule-presets.ts` are now lazy-loaded so the
+// lobby cold path never pulls them in.
+//
+//   • matchmaking (~7.7 KB minified) — only loaded when the user
+//     activates the Public-Games tab OR touches the make-public
+//     toggle.  Both surfaces are wired by `schedulePublicGamesPane
+//     LazyMount` / `scheduleMakePublicToggleLazyMount` below; once
+//     either fires, the module is cached on `_matchmakingMod` for
+//     the rest of the session.  The tab-activate handler in
+//     `installLobbyTabs.activate` consults `_matchmakingMod` directly
+//     (start polling on first 'public' activate; stop polling on
+//     other-tab activate ONLY IF the module is already loaded —
+//     skipping the import for a no-op stopper).
+//
+//   • rule-presets (~12.5 KB minified incl. its EventEmitter
+//     dependency) — only loaded inside a `requestIdleCallback`
+//     after lobby first-paint.  The picker `<select>` is in the
+//     static HTML; the module populates options + wires the change
+//     handler when the chunk lands.  The URL-builder's
+//     `getSelectedPresetId` call is replaced by an inline LS read
+//     so the URL still emits `?rulePreset=` for non-default
+//     selections without dragging in the editor surface.
+//
+// W18 delivered eager = 156,577 B (+11.5 KB over the §6.3 ceiling
+// of 145,000 B).  These two lazifications shed ~20 KB combined —
+// see `docs/lh13-soft-pin-rationale.md` §10 for the W19 outcome
+// table.
+// ---------------------------------------------------------------------
+
+const RULE_PRESET_LS_KEY = 'mahjong.rule-preset.selected.v1';
+const RULE_PRESET_DEFAULT_ID = 'classic-changsha';
+
+function readSelectedPresetIdInline(): string {
+  try {
+    return window.localStorage.getItem(RULE_PRESET_LS_KEY) ?? RULE_PRESET_DEFAULT_ID;
+  } catch {
+    return RULE_PRESET_DEFAULT_ID;
+  }
+}
+
+let _matchmakingMod: typeof MatchmakingModule | null = null;
+let _matchmakingLoading: Promise<typeof MatchmakingModule> | null = null;
+
+async function loadMatchmaking(): Promise<typeof MatchmakingModule> {
+  if (_matchmakingMod !== null) return _matchmakingMod;
+  if (_matchmakingLoading !== null) return _matchmakingLoading;
+  _matchmakingLoading = import('./matchmaking').then((m) => {
+    _matchmakingMod = m;
+    return m;
+  });
+  return _matchmakingLoading;
+}
+
+function schedulePublicGamesPaneLazyMount(): void {
+  const pubTab = document.getElementById(
+    'lobby-public-games-tab') as HTMLButtonElement | null;
+  if (pubTab === null) return;
+  let installed = false;
+  const install = async (): Promise<void> => {
+    if (installed) return;
+    installed = true;
+    const mm = await loadMatchmaking();
+    installPublicGamesPane(mm);
+  };
+  pubTab.addEventListener('mouseenter', () => { void install(); }, { once: true });
+  pubTab.addEventListener('focus', () => { void install(); }, { once: true });
+  pubTab.addEventListener('click', () => { void install(); }, { once: true });
+}
+
+function scheduleMakePublicToggleLazyMount(): void {
+  const toggle = document.getElementById(
+    'lobby-make-public-toggle') as HTMLInputElement | null;
+  const nameInput = document.getElementById(
+    'lobby-make-public-name') as HTMLInputElement | null;
+  if (toggle === null || nameInput === null) return;
+  let installed = false;
+  const install = async (replayChange: boolean): Promise<void> => {
+    if (installed) return;
+    installed = true;
+    const mm = await loadMatchmaking();
+    installMakePublicToggle(mm);
+    if (replayChange) {
+      // The user clicked the toggle BEFORE the module was loaded; the
+      // checked-state has already flipped (browser default), but the
+      // change listener installed by `installMakePublicToggle` did not
+      // fire.  Dispatch a synthetic change event so the make-public
+      // RPC is invoked exactly once on first activation.
+      toggle.dispatchEvent(new Event('change'));
+    }
+  };
+  // Activation surfaces — any hover/focus on the toggle or the name
+  // input warms the module; an actual change-click also replays the
+  // change event after install so the user's first click is honoured.
+  toggle.addEventListener('mouseenter', () => { void install(false); }, { once: true });
+  toggle.addEventListener('focus', () => { void install(false); }, { once: true });
+  toggle.addEventListener('change', () => { void install(true); }, { once: true });
+  nameInput.addEventListener('focus', () => { void install(false); }, { once: true });
+}
+
+let _rulePresetsMod: typeof RulePresetsModule | null = null;
+
+function scheduleRulePresetsUiLazyMount(): void {
+  if (_rulePresetsMod !== null) return;
+  const load = async (): Promise<void> => {
+    if (_rulePresetsMod !== null) return;
+    try {
+      _rulePresetsMod = await import('./rule-presets');
+      _rulePresetsMod.installRulePresetsUi();
+    } catch { /* fail-open — picker stays inert if the chunk can't load */ }
+  };
+  // Prefer `requestIdleCallback` so the picker mounts in the next
+  // idle window; fall back to a microtask-ish timeout for browsers
+  // that lack the API (Safari).
+  const ric = (window as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(() => { void load(); }, { timeout: 1500 });
+  } else {
+    window.setTimeout(() => { void load(); }, 0);
+  }
+}
+
+let _statsMod: typeof StatsModule | null = null;
+let _statsLoading: Promise<typeof StatsModule> | null = null;
+
+async function loadStatsModule(): Promise<typeof StatsModule> {
+  if (_statsMod !== null) return _statsMod;
+  if (_statsLoading !== null) return _statsLoading;
+  _statsLoading = import('./stats').then((m) => {
+    _statsMod = m;
+    return m;
+  });
+  return _statsLoading;
 }

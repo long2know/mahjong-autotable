@@ -53,15 +53,18 @@ public sealed class SignalRRetentionPolicyEvaluator
     private readonly SignalRRetentionCeilingOptions _options;
     private readonly ISignalRRetentionPolicyStore? _store;
     private readonly SignalRRetentionPolicyCappedMetrics _metrics;
+    private readonly SignalRRetentionLifecycleMetrics? _lifecycleMetrics;
 
     public SignalRRetentionPolicyEvaluator(
         SignalRRetentionCeilingOptions options,
         SignalRRetentionPolicyCappedMetrics metrics,
-        ISignalRRetentionPolicyStore? store = null)
+        ISignalRRetentionPolicyStore? store = null,
+        SignalRRetentionLifecycleMetrics? lifecycleMetrics = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _store = store;
+        _lifecycleMetrics = lifecycleMetrics;
     }
 
     /// <summary>The effective ceiling (minutes). 0 / negative
@@ -129,6 +132,7 @@ public sealed class SignalRRetentionPolicyEvaluator
         if (requested > ceiling && !overrideApplied)
         {
             _metrics.RecordCapped(tenantId, requested, ceiling);
+            _lifecycleMetrics?.RecordCapTriggered(tenantId);
             return new SignalRRetentionEvaluation(
                 EffectiveMinutes: ceiling,
                 RequestedMinutes: requested,
@@ -137,6 +141,7 @@ public sealed class SignalRRetentionPolicyEvaluator
                 OverrideApplied: false,
                 PolicyPresent: policy is not null);
         }
+        _lifecycleMetrics?.RecordApplied(tenantId);
         return new SignalRRetentionEvaluation(
             EffectiveMinutes: requested,
             RequestedMinutes: requested,
@@ -165,6 +170,7 @@ public sealed class SignalRRetentionPolicyEvaluator
         if (requested > ceiling && !overrideApplied)
         {
             _metrics.RecordCapped(tenantId, requested, ceiling);
+            _lifecycleMetrics?.RecordCapTriggered(tenantId);
             return new SignalRRetentionEvaluation(
                 EffectiveMinutes: ceiling,
                 RequestedMinutes: requested,
@@ -173,6 +179,7 @@ public sealed class SignalRRetentionPolicyEvaluator
                 OverrideApplied: false,
                 PolicyPresent: policy is not null);
         }
+        _lifecycleMetrics?.RecordApplied(tenantId);
         return new SignalRRetentionEvaluation(
             EffectiveMinutes: requested,
             RequestedMinutes: requested,

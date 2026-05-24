@@ -1,0 +1,311 @@
+# Phase K Wave 19 — Apone (DevOps).
+#
+# us-east-1 ACTUAL APPLY pre-flight checklist.
+#
+# This YAML is the operator-side pre-flight verification
+# manifest for the W19 `terraform apply` of the regional EKS
+# stack in `us-east-1`. The W11 → W18 zero-drift terraform
+# discipline put the source in PR-ready shape; W18 flipped the
+# §3.9 gate to FULL-GREEN; W19 packages everything Stephen
+# needs to actually run `terraform apply` from his workstation.
+#
+# This file is NOT consumed by terraform directly. It is a
+# structured operator checklist the W19 apply-runbook
+# (`docs/us-east-1-apply-runbook.md`) walks through one row at
+# a time. Each `verify:` block is a shell command the operator
+# runs; each `expect:` block is what a passing result looks
+# like. The operator marks each row complete in their wave-
+# scoped PR description before the apply.
+#
+# Format follows the W4 / W14 cutover checklist conventions
+# (see `docs/prod-cutover.md §6`) — YAML for human-readable
+# diff during PR review, no schema enforcement.
+#
+# # Why this lives at infra/terraform/regional-eks/us-east-1/
+#
+# Stephen requested a per-region home for the W19 apply package
+# (per the W18 → W19 hand-off — §3.10 of regional-eks-bringup.md
+# implied a per-region PR pattern, but the artefact directory
+# didn't exist yet). The directory layout reserves space for:
+#
+#   * `preflight.yaml`        — this file (W19).
+#   * `apply-window.md`       — future hand-off if the wave
+#                                splits the runbook by phase.
+#   * `post-apply-smoke.yaml` — future hand-off for the
+#                                post-apply smoke-test capture.
+#   * `rollback.md`           — future hand-off for the
+#                                full rollback procedure if
+#                                the apply fails partway.
+#
+# At W19, only `preflight.yaml` lands; the rest live inline
+# in `docs/us-east-1-apply-runbook.md` until a subsequent
+# wave splits them out.
+#
+# # Cross-references
+#
+#   * `docs/us-east-1-apply-runbook.md` — W19 operator
+#     runbook (the prose that consumes this YAML).
+#   * `docs/regional-eks-bringup.md` §3.12 — W19 apply-
+#     runbook reference.
+#   * `docs/us-east-1-w18-plan-output.txt` — W18 plan
+#     capture (the dry-run shape the apply will run
+#     against, modulo operator-provided tfvars).
+#   * `docs/regional-eks-bringup.md §4.1` — per-region
+#     Cutover-Ready checklist (the OPERATOR-DRIVEN
+#     pre-condition that gates this pre-flight; this
+#     YAML covers the CI / source-side pre-conditions
+#     ONLY).
+
+apiVersion: mahjong-autotable.io/v1
+kind: PreflightChecklist
+metadata:
+  name: us-east-1-w19-apply-preflight
+  labels:
+    phase: K
+    wave: W19
+    region: us-east-1
+    artefact: terraform-apply-readiness
+
+spec:
+  region: us-east-1
+  terraformWorkspace: prod
+  expectedPlanShape: docs/us-east-1-w18-plan-output.txt
+  applyWaveBranch: stlong/phase-k-wave-19-prod-us-east-1-apply
+
+  # ────────────────────────────────────────────────────────
+  # Row 1 — Source drift
+  # ────────────────────────────────────────────────────────
+  preconditions:
+    - id: source-drift
+      title: "Zero TF source drift since the W18 plan capture"
+      severity: blocking
+      owner: apone
+      verify: |
+        git diff --quiet origin/main -- \
+            infra/terraform/envs/prod/ \
+            infra/terraform/modules/ \
+          && echo "OK: no drift"
+      expect: "OK: no drift"
+      rationale: |
+        The W18 plan capture (us-east-1-w18-plan-output.txt §5)
+        validated four `git diff` / `git log` checks. W19 re-
+        runs the equivalent against current HEAD as the gating
+        pre-condition. ANY drift requires a fresh W19 plan
+        capture before the apply.
+
+    # ────────────────────────────────────────────────────
+    # Row 2 — AWS credentials + state-bucket ACL
+    # ────────────────────────────────────────────────────
+    - id: aws-creds
+      title: "Operator AWS credentials are valid + scoped"
+      severity: blocking
+      owner: stephen
+      verify: |
+        aws sts get-caller-identity --query 'Arn' --output text
+      expect: |
+        arn:aws:iam::<prod-account-id>:user/<stephen-iam-user>
+        or
+        arn:aws:sts::<prod-account-id>:assumed-role/<terraform-apply-role>/<session>
+      rationale: |
+        terraform apply runs with Stephen's operator
+        credentials. Wrong-account credentials would attempt
+        to materialise resources in the wrong AWS account and
+        fail with permission errors that look like state
+        corruption.
+
+    - id: tf-state-bucket
+      title: "Terraform state-bucket + lock-table READY"
+      severity: blocking
+      owner: stephen
+      verify: |
+        aws s3api head-bucket --bucket mahjong-tfstate-prod-use1 \
+            --region us-east-1
+        aws dynamodb describe-table \
+            --table-name mahjong-tflock-prod-use1 \
+            --region us-east-1 \
+            --query 'Table.TableStatus' \
+            --output text
+      expect: |
+        (head-bucket returns 200, no output)
+        DynamoDB Table.TableStatus: ACTIVE
+      rationale: |
+        The W11 backend-config pins state to
+        s3://mahjong-tfstate-prod-use1/prod/terraform.tfstate
+        with DynamoDB lock table mahjong-tflock-prod-use1.
+        Apply will fail noisily if either is missing — verify
+        BEFORE the apply window opens.
+
+    # ────────────────────────────────────────────────────
+    # Row 3 — Operator tfvars present + sane
+    # ────────────────────────────────────────────────────
+    - id: operator-tfvars
+      title: "Operator tfvars file present and validates"
+      severity: blocking
+      owner: stephen
+      verify: |
+        test -f infra/terraform/envs/prod/terraform.tfvars
+        cd infra/terraform/envs/prod && terraform validate
+      expect: |
+        (test exits 0)
+        Success! The configuration is valid.
+      rationale: |
+        The W11 → W18 plan captures used placeholder values;
+        the W19 live apply requires real operator tfvars.
+        Stephen supplies tfvars OUT-OF-REPO (gitignored at
+        envs/prod/terraform.tfvars); apply will fail if
+        missing.
+
+    # ────────────────────────────────────────────────────
+    # Row 4 — Plan replay matches W18 expectation modulo
+    #         tfvars-driven endpoint additions
+    # ────────────────────────────────────────────────────
+    - id: plan-replay
+      title: "Fresh terraform plan matches W18 capture (modulo tfvars)"
+      severity: blocking
+      owner: stephen
+      verify: |
+        cd infra/terraform/envs/prod
+        terraform init -reconfigure
+        terraform plan -out=w19-apply.tfplan \
+            | tee w19-apply.plan-output.txt
+      expect: |
+        Plan: N to add, 0 to change, 0 to destroy
+        (where N matches the W18 baseline + 1 per regional
+        endpoint Stephen is adding in the tfvars)
+      rationale: |
+        Plan output should match the W18 capture's shape;
+        deviations imply state drift between W18 capture and
+        the apply window (e.g. an operator drift-fix landed
+        out-of-band). ANY destroy in the plan is a HARD STOP.
+
+    # ────────────────────────────────────────────────────
+    # Row 5 — Per-region Cutover-Ready checklist (W11/W14
+    #         §4.1 of regional-eks-bringup.md)
+    # ────────────────────────────────────────────────────
+    - id: cutover-ready-checklist
+      title: "Per-region Cutover-Ready checklist 100% green"
+      severity: blocking
+      owner: stephen
+      verify: |
+        # The §4.1 checklist (regional-eks-bringup.md) covers:
+        #   1. Cluster TF state bucket (Row 3 above already
+        #      validates).
+        #   2. EKS cluster provisioned (Hicks lane).
+        #   3. ACM cert per region — ISSUED state.
+        #   4. R53 health-check Healthy.
+        #   5. ESO target per region — READY=True.
+        #   6. ALB DNS published.
+        #   7. Regional probe sweep clean (p99 < 100 ms).
+        bash docs/scripts/cutover-ready-us-east-1.sh
+      expect: |
+        All 7 rows: GREEN.
+        (the helper script is operator-side; Stephen runs it
+        from his workstation with the prod kubeconfig +
+        AWS_PROFILE=mahjong-prod)
+      rationale: |
+        The W11/W14 §4.1 per-region checklist is OPERATOR-
+        DRIVEN (not CI) — Stephen must walk through it
+        manually before opening the apply PR. The §4.1
+        checklist must be 100% green before the W19 apply
+        runs.
+
+    # ────────────────────────────────────────────────────
+    # Row 6 — Cutover-day apply window
+    # ────────────────────────────────────────────────────
+    - id: apply-window
+      title: "Apply window opens at a low-traffic UTC slot"
+      severity: warning
+      owner: stephen
+      verify: |
+        # Recommended window: 09:00–11:00 UTC (off-peak for
+        # all regions except SEA; SEA users see a 1-2 min
+        # propagation delay but no outage).
+        date -u
+      expect: |
+        09:00 UTC ≤ now < 11:00 UTC
+      rationale: |
+        terraform apply against EKS + R53 latency-policy
+        takes ≤ 60 s for the DNS propagation, but the apply
+        also touches IAM bindings + EKS aws-auth — a 5-10 min
+        apply window. Off-peak UTC minimises the SignalR
+        sticky-session cookie reset blast radius on any
+        ingress-class touch.
+
+    # ────────────────────────────────────────────────────
+    # Row 7 — Rollback PR ready
+    # ────────────────────────────────────────────────────
+    - id: rollback-pr
+      title: "Rollback PR drafted (closed-but-ready)"
+      severity: blocking
+      owner: apone
+      verify: |
+        # The rollback PR removes us-east-1 from
+        # regional_endpoints AND drops the EKS cluster TF
+        # state import (state-only revert; the cluster
+        # resource itself is Hicks-lane and lives in a
+        # separate state).
+        gh pr list --state open --search \
+            "head:stlong/phase-k-wave-19-prod-us-east-1-rollback" \
+            --json number,title
+      expect: |
+        At least one open PR titled "Rollback: us-east-1
+        W19 apply" with the regional_endpoints removal +
+        the rollback procedure linked.
+      rationale: |
+        If the apply fails partway, the recovery shape is a
+        wave-scoped PR removing us-east-1 from
+        regional_endpoints + a terraform apply on that
+        branch (propagation ≤ 60 s per the W7 EDGE module's
+        R53 TTL). The PR is drafted BEFORE the apply window
+        so the rollback is mechanical.
+
+  # ────────────────────────────────────────────────────────
+  # Post-apply smoke tests (referenced by the runbook §4)
+  # ────────────────────────────────────────────────────────
+  smokeTests:
+    - id: r53-latency-resolves
+      title: "Latency apex resolves to us-east-1 from a US-East probe"
+      verify: |
+        dig +short mahjong.example.com @8.8.8.8
+      expect: |
+        Resolves to a *.elb.us-east-1.amazonaws.com CNAME or
+        the ALB's A-record set.
+    - id: alb-200
+      title: "ALB returns 200 on /healthz"
+      verify: |
+        curl -sS -o /dev/null -w "%{http_code}\n" \
+            https://us-east-1.mahjong.example.com/healthz
+      expect: "200"
+    - id: r53-health-check
+      title: "R53 health-check for us-east-1 reports Success"
+      verify: |
+        aws route53 get-health-check-status \
+            --health-check-id "$(aws route53 list-health-checks \
+                --query 'HealthChecks[?CallerReference==`mahjong-prod-us-east-1`].Id' \
+                --output text)" \
+            --query 'HealthCheckObservations[*].StatusReport.Status' \
+            --output text
+      expect: "Success Success Success ..."
+    - id: signalr-handshake
+      title: "SignalR /hubs/changsha handshake via the apex"
+      verify: |
+        # negotiate POST returns 200 + a JSON body with
+        # connectionToken + availableTransports[].transport
+        # of "WebSockets".
+        curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Requested-With: XMLHttpRequest" \
+            https://mahjong.example.com/hubs/changsha/negotiate?negotiateVersion=1 \
+            | jq '.availableTransports[0].transport'
+      expect: '"WebSockets"'
+
+  rollback:
+    summary: |
+      Recovery from a failed apply runs the operator's
+      drafted rollback PR (preconditions.rollback-pr above).
+    steps:
+      - "Merge the rollback PR (regional_endpoints drops us-east-1)."
+      - "git checkout stlong/phase-k-wave-19-prod-us-east-1-rollback"
+      - "cd infra/terraform/envs/prod && terraform apply"
+      - "Verify: dig +short mahjong.example.com routes AWAY from us-east-1."
+      - "Open a W19 retro note documenting the failure shape."

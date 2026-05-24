@@ -267,16 +267,22 @@ export function renderAdminListHtml<TRow, TBody>(
   spec: AdminSurfaceSpec<TRow, TBody>,
   rows: TRow[],
 ): string {
+  // Phase K Wave 19 — read-only surfaces (spec.fields.length === 0)
+  // suppress the per-row Edit / Delete affordances; the table emits
+  // only data columns + the column header set (no Actions column).
+  const isReadOnly = spec.fields.length === 0;
   if (rows.length === 0) {
     return `
       <div class="admin-panel-list" data-testid="admin-panel-${spec.id}-list">
-        <p class="admin-panel-empty">No policies recorded.  Use
-        <strong>Create</strong> to add one.</p>
+        <p class="admin-panel-empty">${isReadOnly
+          ? 'No audit rows recorded yet.'
+          : 'No policies recorded.  Use <strong>Create</strong> to add one.'}</p>
       </div>`;
   }
   const head = spec.columns.map(
     (c) => `<th scope="col">${escapeHtml(c.label)}</th>`,
   ).join('');
+  const actionsHead = isReadOnly ? '' : '<th scope="col">Actions</th>';
   const body = rows.map((row) => {
     const key = spec.rowKey(row);
     const cells = spec.columns.map((c) => {
@@ -284,10 +290,7 @@ export function renderAdminListHtml<TRow, TBody>(
       const inner = typeof v === 'string' ? escapeHtml(v) : v.__html;
       return `<td>${inner}</td>`;
     }).join('');
-    return `
-      <tr data-testid="admin-panel-${spec.id}-row"
-          data-tenant-id="${escapeHtml(key)}">
-        ${cells}
+    const actionCells = isReadOnly ? '' : `
         <td>
           <button type="button"
                   class="admin-panel-btn"
@@ -299,13 +302,17 @@ export function renderAdminListHtml<TRow, TBody>(
                   data-testid="admin-panel-${spec.id}-delete"
                   data-tenant-id="${escapeHtml(key)}"
                   data-action="delete">Delete</button>
-        </td>
+        </td>`;
+    return `
+      <tr data-testid="admin-panel-${spec.id}-row"
+          data-tenant-id="${escapeHtml(key)}">
+        ${cells}${actionCells}
       </tr>`;
   }).join('');
   return `
     <div class="admin-panel-list" data-testid="admin-panel-${spec.id}-list">
       <table class="admin-panel-table">
-        <thead><tr>${head}<th scope="col">Actions</th></tr></thead>
+        <thead><tr>${head}${actionsHead}</tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;

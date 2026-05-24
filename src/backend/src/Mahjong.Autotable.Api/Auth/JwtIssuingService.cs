@@ -56,19 +56,22 @@ public sealed class JwtIssuingService
     private readonly ILogger<JwtIssuingService> _logger;
     private readonly PerTenantJwksRotationValidator? _perTenantValidator;
     private readonly JwtIssueBlockedMetrics? _blockedMetrics;
+    private readonly JwtDurationMetrics? _durationMetrics;
 
     public JwtIssuingService(
         JwtSigningKeyProvider keys,
         IServiceScopeFactory scopeFactory,
         ILogger<JwtIssuingService> logger,
         PerTenantJwksRotationValidator? perTenantValidator = null,
-        JwtIssueBlockedMetrics? blockedMetrics = null)
+        JwtIssueBlockedMetrics? blockedMetrics = null,
+        JwtDurationMetrics? durationMetrics = null)
     {
         _keys = keys;
         _scopeFactory = scopeFactory;
         _logger = logger;
         _perTenantValidator = perTenantValidator;
         _blockedMetrics = blockedMetrics;
+        _durationMetrics = durationMetrics;
     }
 
     /// <summary>
@@ -165,6 +168,19 @@ public sealed class JwtIssuingService
         if (string.IsNullOrWhiteSpace(subject))
             throw new ArgumentException("subject must not be empty.", nameof(subject));
 
+        // Phase K Wave 19 — Bishop. Record issue duration on the
+        // per-tenant histogram. Tenant id is lifted from the
+        // passed-in claim bag (the per-tenant path stamps it
+        // there) so the same single-tenant pipeline can record
+        // both per-tenant + global samples. Falls back to the
+        // _global bucket when the bag has no tenant claim.
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        var tenantForMetric = JwtDurationMetrics.GlobalTenantLabel;
+        if (claims is not null && claims.TryGetValue("tenant", out var t) && t is string ts && !string.IsNullOrWhiteSpace(ts))
+        {
+            tenantForMetric = ts;
+        }
+
         var ttl = lifetime ?? TimeSpan.FromSeconds(DefaultTokenLifetimeSeconds);
         var now = DateTimeOffset.UtcNow;
         var exp = now + ttl;
@@ -225,6 +241,10 @@ public sealed class JwtIssuingService
         var token = $"{signingInput}.{signature}";
 
         await WriteAuditAsync(subject, kid, auditIndex, ct);
+
+        _durationMetrics?.RecordIssue(
+            tenantForMetric,
+            System.Diagnostics.Stopwatch.GetElapsedTime(startedAt));
 
         return new JwtIssueResult(token, exp.UtcDateTime, kid);
     }

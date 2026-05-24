@@ -920,6 +920,51 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.ToTable("ReconnectTokens");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.SwissPairingAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Black")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("Board")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Tiebreaker")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("TournamentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("White")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("TournamentId");
+
+                    b.HasIndex("TournamentId", "Round", "Board")
+                        .IsUnique();
+
+                    b.ToTable("SwissPairingAuditEntries");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.Tournament", b =>
                 {
                     b.Property<Guid>("Id")
