@@ -38,16 +38,13 @@ export class MouseTracker {
   }
 
   getMouse(playerNum: number, now: number): Vector3 | null {
-    // Debugging
-    // if (playerNum === 3) {
-    //   const waypoints = this.players[1].waypoints;
-    //   if (waypoints.length === 0) {
-    //     return null;
-    //   }
-    //   return waypoints[waypoints.length-1].pos;
-    // }
+    // Defensive: spectator/out-of-range seats may pass playerNum < 0 or >= 4.
+    const player = this.players[playerNum];
+    if (!player) {
+      return null;
+    }
 
-    const waypoints = this.players[playerNum].waypoints;
+    const waypoints = player.waypoints;
     if (waypoints.length === 0) {
       return null;
     }
@@ -67,7 +64,11 @@ export class MouseTracker {
   }
 
   getHeld(playerNum: number): Vector3 | null {
-    return this.players[playerNum].held;
+    const player = this.players[playerNum];
+    if (!player) {
+      return null;
+    }
+    return player.held;
   }
 
   private onUpdate(): void {
