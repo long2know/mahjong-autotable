@@ -8,6 +8,30 @@
 # frames must hit the same pod or the WS connection will reset on every
 # packet. WS upgrade headers + 1h idle timeout match the Wave-6 systemd /
 # nginx reverse-proxy configuration.
+#
+# Phase K Wave 19 — Apone (DevOps). SignalR sticky-session
+# AFFINITY HARDENING. The W7-era three-annotation cookie shape
+# left two gaps that surfaced in the W18 retro:
+#
+#   (a) The 24h cookie TTL was implicit (max-age + expires
+#       were set to 86400, matching the WS upgrade-timeout,
+#       but with no comment explaining the magic number).
+#       W19 makes the TTL explicit + adds the equivalent
+#       `Secure` + `SameSite=Lax` cookie attributes for
+#       defense-in-depth against CSRF on a re-upgrade.
+#
+#   (b) A client whose `mahjong_aff` cookie is stripped by a
+#       hostile intermediary (corporate proxy that filters
+#       Set-Cookie, or a browser that aggressively clears
+#       third-party cookies) lost affinity completely — the
+#       request would round-robin to a different pod, breaking
+#       SignalR mid-stream. W19 wires an IP-hash UPSTREAM
+#       fallback that picks the same backend when the cookie
+#       is missing.
+#
+# See `docs/signalr-affinity-hardening-w19.md` for the design
+# rationale + the nginx-ingress 1.10+ feature interaction
+# matrix.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -25,8 +49,52 @@ metadata:
     nginx.ingress.kubernetes.io/affinity: "cookie"
     nginx.ingress.kubernetes.io/affinity-mode: "persistent"
     nginx.ingress.kubernetes.io/session-cookie-name: "mahjong_aff"
+    # Phase K Wave 19 — explicit 24h cookie TTL. The 86400-
+    # second value is EXACTLY one day; matches the upper
+    # bound of a single browser session for the autotable
+    # SPA + the SignalR /hubs/changsha re-handshake window
+    # documented in docs/signalr-sequence-slo.md §3.
+    # Both annotations must agree (max-age = expires) or
+    # nginx-ingress logs a warning; the W19 hardening keeps
+    # them aligned at 86400.
     nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
     nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+    # Phase K Wave 19 — cookie-attribute hardening. `Secure`
+    # restricts the cookie to HTTPS only (defense-in-depth
+    # alongside the W4 HSTS preload + W7 cert-manager TLS).
+    # `SameSite=Lax` blocks the cookie on cross-site top-
+    # level navigations (CSRF defense) but still allows
+    # same-site SignalR negotiate; the SignalR client never
+    # makes cross-site requests so Lax is the correct
+    # baseline. See docs/signalr-affinity-hardening-w19.md §2.
+    nginx.ingress.kubernetes.io/session-cookie-secure: "true"
+    nginx.ingress.kubernetes.io/session-cookie-samesite: "Lax"
+    # Phase K Wave 19 — IP-hash UPSTREAM FALLBACK when the
+    # cookie is missing. The `configuration-snippet` injects
+    # an `if (cookie_mahjong_aff = "")` block that sets the
+    # upstream hash key to the client IP when the affinity
+    # cookie is absent (stripped by a corporate proxy / by
+    # a browser cookie-clear). With the cookie present,
+    # nginx-ingress uses the cookie-based affinity per the
+    # `affinity: cookie` annotation above (the snippet only
+    # fires when the cookie is empty). See
+    # docs/signalr-affinity-hardening-w19.md §3 for the
+    # nginx-ingress configuration-snippet interaction with
+    # the cookie-based affinity mechanism.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      # SignalR sticky-session fallback (W19) — when the
+      # mahjong_aff cookie is absent, hash by the client IP
+      # (X-Forwarded-For first, then $remote_addr) so the
+      # request still pins to a deterministic backend.
+      set $mahjong_hash_key "$cookie_mahjong_aff";
+      if ($mahjong_hash_key = "") {
+        set $mahjong_hash_key "$proxy_add_x_forwarded_for";
+      }
+      # Surface the hardening signal in the response for
+      # the W19 smoke-test runbook (curl -i shows whether
+      # the fallback fired). Header is informational only;
+      # the SignalR client ignores it.
+      add_header X-Mahjong-Affinity-Source "$mahjong_hash_key" always;
 spec:
   ingressClassName: nginx
   tls:

@@ -522,6 +522,36 @@ driven DRY-RUN CAPTURE + a §3.9 gate flip ONLY:
   zero-drift discipline carried forward to W18 (now SEVEN
   consecutive waves: W11/W14/W15/W16/W17/W18).
 
+### 3.12 W19 apply-runbook reference
+
+W18 closed with §3.10 saying "the W19 operator opens the
+apply PR" but did not ship the operator-side artefacts that
+make the apply mechanical. W19 fills that gap:
+
+* [`docs/us-east-1-apply-runbook.md`](./us-east-1-apply-runbook.md)
+  — step-by-step apply procedure (pre-flight verification,
+  apply window, post-apply smoke tests, rollback procedure).
+  Walks through the §1 pre-flight checklist row-by-row and
+  documents the §6 rollback steps the drafted rollback PR
+  unlocks.
+
+* [`infra/terraform/regional-eks/us-east-1/preflight.yaml`](../infra/terraform/regional-eks/us-east-1/preflight.yaml)
+  — structured pre-flight checklist (eight blocking +
+  warning rows: source-drift, aws-creds, tf-state-bucket,
+  operator-tfvars, plan-replay, cutover-ready-checklist,
+  apply-window, rollback-pr). The runbook walks through
+  each row in declaration order.
+
+The §3.10 W18 → W19 hand-off text remains canonical for the
+"Stephen opens the apply PR" framing; the W19 runbook + the
+W19 pre-flight YAML give Stephen the operator-side runbook
++ structured checklist his apply PR description references.
+
+W19 itself does NOT run `terraform apply` — that remains
+Stephen's call. The W19 deliverable is the runbook + the
+pre-flight artefact; the live apply happens on Stephen's
+schedule from his workstation.
+
 
 ## 4. Per-region Cutover-Ready checklist
 

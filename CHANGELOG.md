@@ -19,8 +19,181 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-18-bringup`. Phase K Wave 18
+Working branch: `stlong/phase-k-wave-19-bringup`. Phase K Wave 19
 in flight. Other lane deliverables outstanding.
+
+## [0.28.0] — Phase K Wave 19 — 2027-02-05 (PR pending)
+
+**Theme:** Mobile CI E2E for the Android SIGNED branch
+(`reactivecircus/android-emulator-runner` job gated on
+`ANDROID_KEYSTORE_BASE64` — installs the SIGNED APK on a
+boot-cached emulator, launches the app, smoke-tests process
+liveness + screenshot capture; UNSIGNED branches skip
+gracefully) + us-east-1 ACTUAL APPLY readiness package
+(operator-side runbook + structured pre-flight YAML; W19
+does NOT run `terraform apply` — that remains Stephen's
+call, but the W19 artefacts make the apply mechanical:
+8-row pre-flight checklist with rollback PR pre-drafted) +
+Kyverno ADDITIONAL RULES — lateral-movement (hostNetwork +
+hostPort denies) + require-network-policy (every workload
+namespace MUST have at least one NetworkPolicy; both ship
+Audit-mode for a 5-day grace before the Wave-20 Enforce flip,
+mirroring the W15 → W16 pattern) + SignalR sticky-session
+affinity HARDENING (explicit 24h cookie TTL + `Secure` +
+`SameSite=Lax` cookie attributes + IP-hash UPSTREAM fallback
+via nginx-ingress `configuration-snippet` when the
+`mahjong_aff` cookie is missing) + Argo Rollouts controller
+INSTALL runbook (Stephen's call, but the W19 runbook +
+pre-install namespace + RBAC stubs make the install
+mechanical) + CHANGELOG `[0.28.0]` + `mobile/package.json`
+0.27.0 → 0.28.0. Apone's W19 closes the W18 us-east-1 FULL-
+GREEN gate with the operator runbook Stephen needs to
+actually apply, adds two NetworkPolicy-bypass-class Kyverno
+rules, and packages the Argo Rollouts controller install
+Stephen hasn't yet performed.
+
+### Apone — DevOps (W19 deliverables)
+
+- **Mobile CI Android SIGNED-branch E2E.** New `android-e2e`
+  job in `.github/workflows/mobile-build.yml` (post W17
+  `android` + pre W18 `ios`) — boots an Android 34 x86_64
+  emulator via `reactivecircus/android-emulator-runner@v2.34.0`
+  on `ubuntu-latest-8-cores` with KVM acceleration, installs
+  the SIGNED APK pulled from the W17 `android-artefacts`,
+  launches the app via `adb shell monkey -p ... -c
+  android.intent.category.LAUNCHER 1`, smoke-tests process
+  liveness via `adb shell pidof`, exercises a single
+  KEYCODE_BACK navigation, captures a `screencap -p`
+  PNG (+ `logcat -d -t 200` tail) into the `android-e2e-
+  artefacts` upload (14-day retention). Gate step skips
+  cleanly when `ANDROID_KEYSTORE_BASE64` is absent — UNSIGNED
+  PR runs short-circuit at step 1 with `should-run=false`,
+  no emulator boot, no 8-core credit burn. AVD home cached
+  via `actions/cache@v4` with key
+  `avd-api-34-default-x86_64-v1`; cache miss runs a warm-boot
+  snapshot creation step. Run triggers: `push` to `main` +
+  `workflow_dispatch` (NOT `pull_request` — secrets unreachable
+  from fork PRs anyway). `release` job's `needs:` list
+  extended to include `android-e2e` so a failing SIGNED E2E
+  blocks the prerelease publication. Operator runbook +
+  local-reproduction commands documented in
+  `docs/mobile-android-e2e.md` (NEW).
+
+- **us-east-1 ACTUAL APPLY readiness package.** New
+  `docs/us-east-1-apply-runbook.md` packages the operator-
+  side `terraform apply` procedure Stephen has been deferring
+  since W14: 8-row pre-flight checklist
+  (source-drift / aws-creds / tf-state-bucket / operator-
+  tfvars / plan-replay / cutover-ready-checklist / apply-
+  window / rollback-pr); recommended 09:00-11:00 UTC apply
+  window; post-apply DNS propagation + smoke-test sequence
+  (R53 latency apex resolution, ALB /healthz, R53 health-
+  check Success, SignalR `/hubs/changsha/negotiate`); full
+  rollback procedure via the operator's drafted rollback
+  PR. Companion structured YAML at
+  `infra/terraform/regional-eks/us-east-1/preflight.yaml`
+  (NEW — first artefact in the new per-region directory the
+  W18 hand-off implied but didn't create) carries each
+  row's exact `verify:` shell command + `expect:` output +
+  `rationale:` prose so the operator can paste-and-execute
+  without flipping between the YAML and the runbook.
+  `docs/regional-eks-bringup.md` updated with §3.12 cross-
+  referencing the runbook + the YAML (§3.10's W19-opens-the-
+  apply-PR hand-off remains canonical; §3.12 names the
+  artefacts that make the apply mechanical). W19 does NOT
+  run `terraform apply` — that remains Stephen's call.
+
+- **Kyverno additional rules — lateral-movement + require-
+  network-policy.** Two NEW ClusterPolicies at
+  `infra/k8s/base/kyverno-policies/`:
+  (1) `disallow-lateral-movement.yaml` with two sub-rules
+  denying pod-to-pod NetworkPolicy bypass primitives:
+  `disallow-host-network` (Pods in `mahjong-prod` MUST NOT
+  set `spec.hostNetwork=true`) + `disallow-host-ports`
+  (Pods in `mahjong-prod` MUST NOT define
+  `containers[*].ports[*].hostPort`); (2)
+  `require-network-policy.yaml` with a Namespace-kind
+  validation that uses Kyverno's `context.apiCall` to count
+  NetworkPolicies in the inbound Namespace and `deny` when
+  the count is zero. Both policies land in `Audit` mode
+  with `failurePolicy: Ignore` for the 5-day grace window
+  before the Wave-20 cutover flips BOTH the action AND
+  the failurePolicy to `Enforce` / `Fail` in a single
+  commit. Out-of-band — NOT in `base/kustomization.yaml`
+  (ClusterPolicies are cluster-scoped, not overlay-scoped;
+  bootstrap operator applies directly). Operator runbook
+  + cutover-day procedure + the 5-day grace day-by-day
+  schedule documented in `docs/kyverno-w19-additional-
+  rules.md` (NEW). Pre-W19 cluster verification confirmed
+  `kubectl -n mahjong-prod get pods -o yaml | grep
+  'hostNetwork\|hostPort'` returns nothing (no legitimate
+  workload uses either primitive).
+
+- **SignalR sticky-session affinity hardening.** The W7-era
+  three-annotation cookie shape on
+  `infra/k8s/base/ingress.yaml` left two gaps the W18 retro
+  flagged: (a) the 24h TTL was IMPLICIT (86400 magic
+  number, no comment), (b) a client whose `mahjong_aff`
+  cookie was stripped lost affinity completely. W19 closes
+  both gaps via: explicit 24h cookie TTL with in-file
+  comment pinning to the
+  `docs/signalr-sequence-slo.md §3` re-handshake window;
+  NEW `session-cookie-secure: "true"` + `session-cookie-
+  samesite: "Lax"` annotations (defense-in-depth alongside
+  W4 HSTS preload + W7 cert-manager TLS); NEW
+  `configuration-snippet` injecting an `if ($mahjong_hash_key
+  = "")` block that sets the upstream hash key to
+  `$proxy_add_x_forwarded_for` when the affinity cookie is
+  absent (cookie-present requests continue to use nginx-
+  ingress cookie-based affinity; cookie-stripped clients
+  pin via IP-hash on the first request, then receive a
+  fresh `mahjong_aff` cookie on the response). Smoke test
+  via `kustomize build` + `kubectl apply --dry-run=server`
+  documented in `docs/signalr-affinity-hardening-w19.md`
+  (NEW) §5. `kustomize build` exit 0 for both prod and
+  staging overlays.
+
+- **Argo Rollouts controller INSTALL runbook.** Stephen has
+  not yet installed Argo Rollouts in prod (the W9 canary
+  AnalysisTemplate gates have been inert since they
+  landed). W19 packages the prod-side install runbook +
+  pre-install artefacts: `docs/argo-rollouts-install-
+  runbook.md` (NEW) mirrors the W10 staging shape with
+  prod-specific flags (`dashboard.enabled=false` —
+  prod uses the W11 auth-aware ingress only when the
+  operator opts in), a 6-row pre-condition gate, a
+  step-by-step helm install (`argo/argo-rollouts@2.37.7`
+  pinned), and a §5 rollback procedure. Pre-install
+  manifests at `infra/k8s/base/argo-rollouts-prereqs/`:
+  `namespace.yaml` (NEW — pre-creates the `argo-rollouts`
+  namespace with the W12 NetworkPolicy + W19 require-
+  network-policy Kyverno rule labels + PSS-baseline
+  enforce label) + `rbac.yaml` (NEW — a squad-owned
+  `mahjong-autotable-canary-promoter` ClusterRole for
+  operator/bot writes + a namespace-scoped `mahjong-
+  autotable-rollouts-reader` Role for on-call inspection).
+  Both RBAC objects are inert without bindings; the
+  install runbook §2.4 documents the operator-side
+  `kubectl create [cluster]rolebinding ...` to bind them
+  at install time. Out-of-band — NOT in
+  `base/kustomization.yaml`; bootstrap operator applies
+  directly per `docs/argo-rollouts-install-runbook.md §2.1`.
+  W19 does NOT run `helm install` — that remains Stephen's
+  call.
+
+- **CHANGELOG `[0.28.0]` + version pin.** Bumped
+  `CHANGELOG.md` with the W19 deliverable summary above;
+  `mobile/package.json` version bumped 0.27.0 → 0.28.0.
+  Backend csproj `<Version>` is BISHOP-lane per the W18
+  §13 commit-time addendum + the W18 retro action item — if
+  Bishop W19 has not yet landed `<Version>0.27.0</Version>`,
+  Bishop W19 should land `<Version>0.28.0</Version>` in a
+  separate bishop-author commit (skip 0.27.0 on the backend
+  surface since the wave never coincided with a csproj
+  edit). The cross-lane convention reaffirmed at W18 holds:
+  CHANGELOG + `mobile/package.json` = apone-lane (release
+  coordination + the mobile shell version), backend
+  `<Version>` csproj = bishop-lane.
 
 ## [0.27.0] — Phase K Wave 18 — 2027-01-29 (PR pending)
 

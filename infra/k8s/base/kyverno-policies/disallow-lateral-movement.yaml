@@ -1,0 +1,200 @@
+# Phase K Wave 19 — Apone (DevOps).
+#
+# Kyverno ClusterPolicy that PREVENTS pod-to-pod lateral movement
+# in the `mahjong-prod` namespace by failing admission on Pod
+# specs that try to bypass the NetworkPolicy mesh. This is a
+# W19 ADDITIONAL RULE (companion to the W15/W16 `enforce-prod-
+# default` policy which carries `require-non-root` + capability-
+# drops). The W19 file lives at the new
+# `infra/k8s/base/kyverno-policies/` path Stephen requested for
+# additional Kyverno rules that aren't yet ready to merge with
+# the W15 `enforce-prod-default` ClusterPolicy.
+#
+# # Why a SEPARATE ClusterPolicy (not a new rule on
+# # `enforce-prod-default`)
+#
+#   * W19 audit-mode launch — flipping
+#     `enforce-prod-default.validationFailureAction` to Audit just
+#     for the new rule would un-Enforce the W16-landed
+#     non-root rule. Keeping the new rules in a SEPARATE
+#     ClusterPolicy preserves the W16 enforce-mode posture and
+#     lets the W19 rules run audit-mode independently.
+#   * Cleaner audit-trail — the `git log` for
+#     `enforce-prod-default` doesn't show "rule added in
+#     audit-mode" wiggle. The W19 rules live in their own
+#     file; flipping them to Enforce later is a single
+#     `validationFailureAction: Audit → Enforce` edit.
+#   * Independent failurePolicy — the W15 enforce-prod-default
+#     carries `failurePolicy: Fail` (a webhook outage blocks
+#     new admissions). For W19 AUDIT-MODE rules, `Ignore` is
+#     correct (audit-mode means we never DENY; a webhook
+#     outage should not produce spurious PolicyReports).
+#
+# # What this rule asserts
+#
+# Two sub-rules:
+#
+#   (1) `disallow-host-network` — a Pod in `mahjong-prod` MUST
+#       NOT set `spec.hostNetwork: true`. `hostNetwork` puts
+#       the Pod on the host's network stack, bypassing CNI +
+#       NetworkPolicy completely. A compromised
+#       hostNetwork-Pod can reach any host the node can reach
+#       — including the EKS control-plane endpoint, the
+#       cluster CoreDNS, and (if exposed) cluster-internal
+#       admin APIs.
+#
+#   (2) `disallow-host-ports` — a Pod in `mahjong-prod` MUST
+#       NOT define `containers[*].ports[*].hostPort`. A hostPort
+#       publishes the container port on the node's IP, which
+#       (a) is reachable from other nodes via the node's
+#       primary IP (bypasses Service / NetworkPolicy), and
+#       (b) lets a compromised workload steer traffic away
+#       from the Service mesh by binding a well-known port.
+#
+# Both shapes are LATERAL-MOVEMENT primitives — they let a
+# pod skip the NetworkPolicy mesh that the W19 `require-
+# network-policy` rule enforces. Denying them at admission
+# closes the bypass.
+#
+# # Why audit-mode FIRST (5-day grace)
+#
+# Matches the W15 → W16 pre-wire → enforce pattern. The W19
+# file lands in Audit mode so:
+#
+#   * Existing prod workloads that happen to set hostNetwork
+#     or hostPort surface as PolicyReports rather than
+#     admission denials. (Verified prior to W19 land:
+#     `kubectl -n mahjong-prod get pods -o yaml | grep
+#     'hostNetwork\|hostPort'` returns nothing.)
+#   * The 5-day grace window lets Hudson's
+#     `kyverno-deny-events` panel collect a clean signal
+#     before the enforce flip.
+#   * Rollback path is a single `git revert <merge-commit>` —
+#     no admission impact on existing pods.
+#
+# Enforce-flip cutover lives in `docs/kyverno-w19-additional-
+# rules.md §4` (Wave-20 candidate; mirrors W15 → W16 cutover
+# day procedure).
+#
+# # Wiring
+#
+# Out-of-band at W19 — NOT in `base/kustomization.yaml`. The
+# file is a cluster-scoped ClusterPolicy; wiring into base/
+# would push it into both `staging` and `prod` overlays, but
+# Kyverno ClusterPolicies live at cluster scope (not in any
+# overlay namespace), so the idiomatic apply is:
+#
+#   kubectl apply -f infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml
+#
+# from the operator workstation. Mirrors the W3
+# `infra/k8s/policies/kyverno-cosign-verify.yaml` deployment
+# pattern. See `docs/kyverno-w19-additional-rules.md §2` for
+# the apply runbook.
+#
+# # Cross-references
+#
+#   * `infra/k8s/policies/kyverno-cosign-verify.yaml` — W3
+#     cluster-wide cosign verifier (Audit-default, prod-
+#     Enforce override).
+#   * `infra/k8s/overlays/prod/kyverno-enforce-patch.yaml` —
+#     W4 supplemental prod-only hard-pin for image
+#     verification.
+#   * `infra/k8s/overlays/prod/kyverno-enforce-policies.yaml`
+#     — W15/W16 `enforce-prod-default` non-root rule
+#     (currently Enforce in prod).
+#   * `infra/k8s/base/kyverno-policies/require-network-policy.yaml`
+#     — W19 companion (every namespace MUST have at least
+#     one NetworkPolicy).
+#   * `docs/kyverno-w19-additional-rules.md` — W19 operator
+#     runbook.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-lateral-movement
+  annotations:
+    policies.kyverno.io/title: "Disallow lateral-movement primitives in mahjong-prod (W19, Audit)"
+    policies.kyverno.io/category: "Pod Security / Network"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod, Deployment, StatefulSet, DaemonSet"
+    policies.kyverno.io/description: >-
+      W19 audit-mode policy. Two sub-rules deny pod-to-pod
+      NetworkPolicy bypass primitives: spec.hostNetwork=true
+      AND containers[*].ports[*].hostPort=<any>. Lands in
+      Audit mode for a 5-day grace before the Wave-20
+      Enforce flip. See docs/kyverno-w19-additional-rules.md.
+spec:
+  # AUDIT mode for the 5-day grace window. Flip to Enforce
+  # via a one-line edit per docs/kyverno-w19-additional-
+  # rules.md §4 once the kyverno-deny-events panel is clean.
+  validationFailureAction: Audit
+  # `background: true` — both sub-rules are pure validate;
+  # background scans against existing pods produce
+  # PolicyReports for any invariant drift. This is the
+  # primary signal source for the 5-day grace window.
+  background: true
+  webhookTimeoutSeconds: 30
+  # `failurePolicy: Ignore` — AUDIT-mode rules must NEVER
+  # block admission on a webhook outage. The W16 enforce-
+  # prod-default uses Fail (correct for Enforce mode);
+  # W19 uses Ignore until the Wave-20 flip flips this to
+  # Fail alongside the action flip.
+  failurePolicy: Ignore
+  rules:
+    - name: disallow-host-network
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - mahjong-prod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - external-secrets
+                - argo-rollouts
+      validate:
+        message: >-
+          mahjong-prod Pods MUST NOT set spec.hostNetwork=true.
+          hostNetwork bypasses the CNI + NetworkPolicy mesh
+          and is a lateral-movement primitive. See
+          docs/kyverno-w19-additional-rules.md §1.1.
+        pattern:
+          spec:
+            =(hostNetwork): "false"
+    - name: disallow-host-ports
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - mahjong-prod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - external-secrets
+                - argo-rollouts
+      validate:
+        message: >-
+          mahjong-prod Pods MUST NOT define
+          containers[*].ports[*].hostPort. hostPort publishes
+          the container on the node's IP, bypassing Service
+          and NetworkPolicy. See docs/kyverno-w19-additional-
+          rules.md §1.2.
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                =(ports):
+                  - X(hostPort): null

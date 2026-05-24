@@ -1,0 +1,105 @@
+# Phase K Wave 19 — Apone (DevOps).
+#
+# Argo Rollouts controller PRE-INSTALL prereqs — supplementary
+# RBAC stubs the W10 helm install consumes.
+#
+# The W10 helm chart (`argoproj/argo-rollouts@2.37.7`) installs
+# its own ServiceAccount + ClusterRole + ClusterRoleBinding for
+# the controller's cluster-wide RBAC. W19 adds TWO additional
+# RBAC stubs that the helm install does NOT cover:
+#
+#   1. A `mahjong-autotable-canary-promoter` ClusterRole that
+#      the squad's bot (Apone's `kubectl argo rollouts promote`
+#      automation, when the squad adds it) consumes to promote
+#      / abort / restart canaries. The ClusterRole is bound
+#      only when the squad operator-side automation requests
+#      it; the RoleBinding is out-of-band per-user / per-bot
+#      and lives in the operator workstation's kubeconfig
+#      bootstrap. Pre-creating the ClusterRole means the
+#      operator's RoleBinding can reference a stable name
+#      without race conditions during the helm install.
+#
+#   2. A `mahjong-autotable-rollouts-reader` Role (namespace-
+#      scoped to `argo-rollouts`) that grants READ access to
+#      Rollout CRD instances + AnalysisRun history. This is
+#      the role the squad's existing on-call dashboard
+#      access uses to inspect canary progress without write
+#      access.
+#
+# Both RBAC objects are inert without a RoleBinding pointing
+# at them; the helm install does not bind them. They are
+# pre-declared at squad scope so the operator-side bootstrap
+# can land bindings at install time without race-condition
+# windows.
+#
+# # NOT IN kustomization
+#
+# Same out-of-band pattern as the namespace.yaml companion in
+# this directory. The bootstrap operator applies these files
+# directly per `docs/argo-rollouts-install-runbook.md §2`.
+
+# ────────────────────────────────────────────────────────────
+# (1) Canary promoter ClusterRole — operator + bot writes
+# ────────────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mahjong-autotable-canary-promoter
+  labels:
+    mahjong-autotable.io/managed-by: apone
+    mahjong-autotable.io/role-class: argo-rollouts-promoter
+  annotations:
+    mahjong-autotable.io/created-at-wave: "K19"
+    mahjong-autotable.io/install-runbook: "docs/argo-rollouts-install-runbook.md"
+rules:
+  # Read + promote + abort + restart on the Rollout CRD itself.
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  # Sub-resource: promote / abort / restart actions go through
+  # `rollouts/status` for the Rollout phase write.
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts/status"]
+    verbs: ["get", "patch", "update"]
+  # AnalysisRun history — needed for the operator-side
+  # post-mortem on a failed canary (which gate fired?).
+  - apiGroups: ["argoproj.io"]
+    resources: ["analysisruns", "analysisruns/status"]
+    verbs: ["get", "list", "watch"]
+  # AnalysisTemplate read — operator inspects the gate
+  # definition without write access.
+  - apiGroups: ["argoproj.io"]
+    resources: ["analysistemplates", "clusteranalysistemplates"]
+    verbs: ["get", "list", "watch"]
+---
+# ────────────────────────────────────────────────────────────
+# (2) Rollouts reader Role — on-call dashboard inspect only
+# ────────────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mahjong-autotable-rollouts-reader
+  namespace: argo-rollouts
+  labels:
+    mahjong-autotable.io/managed-by: apone
+    mahjong-autotable.io/role-class: argo-rollouts-reader
+  annotations:
+    mahjong-autotable.io/created-at-wave: "K19"
+    mahjong-autotable.io/install-runbook: "docs/argo-rollouts-install-runbook.md"
+rules:
+  # Read access to the Rollout CRD + history.
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - "rollouts"
+      - "rollouts/status"
+      - "analysisruns"
+      - "analysisruns/status"
+      - "analysistemplates"
+      - "clusteranalysistemplates"
+    verbs: ["get", "list", "watch"]
+  # The dashboard pod proxies through Services + Pods; the
+  # reader needs to see those at the namespace scope for
+  # log-tail visibility.
+  - apiGroups: [""]
+    resources: ["services", "pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
