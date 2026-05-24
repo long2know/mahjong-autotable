@@ -33,6 +33,7 @@ import {
   uploadTileInstances,
 } from './tile-mesh';
 import { acquireTileAtlas } from './tile-atlas';
+import { TILE_FACE_COUNT, tileFace } from './tile-faces';
 import {
   attachMouseControls,
   attachTouchControls,
@@ -196,7 +197,8 @@ async function mountTileMesh(): Promise<void> {
 
   draw();
   status.textContent =
-    `WebGL2 tile-mesh rendered (${mesh.instanceCount} instances, ${atlasLabel}). `
+    `WebGL2 tile-mesh rendered (${mesh.instanceCount} instances across `
+    + `${TILE_FACE_COUNT} tile faces, ${atlasLabel}). `
     + 'Drag = orbit; right-drag = pan; wheel = zoom.';
 
   attachMouseControls(canvas, cam, draw);
@@ -272,8 +274,11 @@ async function mountScene(): Promise<void> {
     const bumped = new Float32Array(pickedMatrix);
     bumped[13] += 0.75; // lift along +y
     scene.setTileAt(pickedIndex, bumped, scene.mesh.tileIdData[pickedIndex]);
+    const pickedTileId = scene.mesh.tileIdData[pickedIndex];
+    const face = tileFace(pickedTileId);
+    const faceLabel = face ? `${face.label} (${face.suit}-${face.value})` : `id ${pickedTileId}`;
     status.textContent =
-      `Picked tile #${pickedIndex} at world (${hit.point[0].toFixed(2)}, `
+      `Picked tile #${pickedIndex} [${faceLabel}] at world (${hit.point[0].toFixed(2)}, `
       + `${hit.point[1].toFixed(2)}, ${hit.point[2].toFixed(2)}).`;
   });
 
@@ -281,6 +286,7 @@ async function mountScene(): Promise<void> {
     ? `synthesized ${scene.atlas.width}×${scene.atlas.height} fallback atlas`
     : `loaded ${scene.atlas.width}×${scene.atlas.height} canonical atlas`;
   status.textContent =
-    `WebGL2 scene runtime rendered (${scene.mesh.instanceCount} instances, ${atlasLabel}). `
+    `WebGL2 scene runtime rendered (${scene.mesh.instanceCount} instances across `
+    + `${TILE_FACE_COUNT} tile faces, ${atlasLabel}). `
     + 'Drag = orbit; right-drag = pan; wheel = zoom; click = pick tile.';
 }

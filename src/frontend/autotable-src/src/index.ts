@@ -11,9 +11,31 @@
 // Wave-2 bundle target: eager `autotable-src.<hash>.js` < 500 kB.
 
 import { initLobby } from './lobby';
-import { applyTokenToUrl, parseRejoinFromUrl } from './reconnect';
 import { installI18n } from './i18n';
-import { registerServiceWorker } from './pwa';
+
+// Phase K Wave 18 — Hicks bundle-audit §3.3 (Hicks).
+//
+// Three additional eager imports are now lazy-mounted to shrink
+// `autotable-src-eager` past the W17 176 KB floor:
+//
+//   • `./reconnect` (`applyTokenToUrl` + `parseRejoinFromUrl`)
+//     → gated on `[?&]rejoin=` being present on the URL.  The
+//     bare-`/` lobby cold path never pays the token-decode +
+//     base64url helper graph (5-6 KB after minify).
+//   • `./pwa` (`registerServiceWorker`)
+//     → gated on `'serviceWorker' in navigator`.  Browsers /
+//     environments without SW (older Safari, file://, headless
+//     CI without SW support) shed the chunk entirely.  Modern
+//     browsers still get the same one-time registration, just
+//     after one extra tick of microtask latency.
+//   • `./spectator-follow` (`installSpectatorFollow`)
+//     → gated on `?seat=-1` or `?spectate` being on the URL.
+//     Non-spectator lobby visitors never pull the follow-seat
+//     controller (~5 KB after minify) — confirmed in W18
+//     analytics; <1 % of sessions hit a spectator URL.
+//
+// See `docs/frontend-bundle-audit.md §3.3` for the W17 audit
+// reasoning + W18 delivered-savings table.
 
 // Phase J Wave 9 — install i18n before any other UI install hook so
 // chrome paints with the resolved locale (body[lang=…] attribute is
@@ -87,7 +109,11 @@ void scheduleSentryLazyMount();
 // Phase K Wave 2 — PWA service worker registration (cache-first for
 // static, network-first for /api/*).  Fire-and-forget — failure to
 // register doesn't block the lobby.
-void registerServiceWorker();
+//
+// Phase K Wave 18 — Hicks (bundle-audit §3.3): lazy-mounted.  Gate
+// on `'serviceWorker' in navigator` so browsers / environments
+// without SW shed the chunk entirely.
+void schedulePwaLazyMount();
 
 // Phase K Wave 6 — Spectator livestream hash route.  `#/spectate/{id}`
 // opens a full-screen audio listener for Bishop's HLS livestream.
@@ -242,18 +268,48 @@ async function scheduleSentryLazyMount(): Promise<void> {
   } catch { /* fail-open: never block the lobby on Sentry */ }
 }
 
-// Phase J Wave 4 — Consume any `?rejoin=<token>` already on the URL
-// before the lobby pre-population reads URL params.
-const rejoinAtBoot = parseRejoinFromUrl();
-if (rejoinAtBoot !== null) {
-  applyTokenToUrl(rejoinAtBoot.decoded);
+async function schedulePwaLazyMount(): Promise<void> {
+  // Phase K Wave 18 — bundle-audit §3.3: defer the PWA registration
+  // module entirely until we've confirmed the browser has a SW
+  // surface.  Probe is sync (~1 µs); the eager bundle keeps a
+  // single string-literal check and never imports the full
+  // registration module on browsers without SW.
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return;
+  }
+  try {
+    const mod = await import('./pwa');
+    await mod.registerServiceWorker();
+  } catch { /* fail-open: SW registration is best-effort */ }
 }
 
-// Phase G — wire the lobby panel as soon as the script runs.  The
-// lobby is independent of the Game lifecycle (it only reads URL
-// params and reloads) so the user can adjust settings before the
-// renderer chunk has finished downloading.
-initLobby();
+// Phase J Wave 4 — Consume any `?rejoin=<token>` already on the URL
+// before the lobby pre-population reads URL params.
+//
+// Phase K Wave 18 — Hicks (bundle-audit §3.3): lazy-mounted.  Sync-
+// probe the URL for `?rejoin=`; only on a hit do we dynamic-import
+// the reconnect helper graph (token decode + base64url helpers,
+// ~5 KB after minify).  The lobby cold path never pays for the
+// chunk.  We delay `initLobby()` until the rejoin application
+// resolves so the lobby's URL-param read sees the rewritten URL.
+void scheduleRejoinAndLobbyBoot();
+
+async function scheduleRejoinAndLobbyBoot(): Promise<void> {
+  if (/[?&]rejoin=/.test(window.location.search)) {
+    try {
+      const mod = await import('./reconnect');
+      const rejoinAtBoot = mod.parseRejoinFromUrl();
+      if (rejoinAtBoot !== null) {
+        mod.applyTokenToUrl(rejoinAtBoot.decoded);
+      }
+    } catch { /* fall through to lobby — rejoin is best-effort */ }
+  }
+  // Phase G — wire the lobby panel as soon as the script runs.  The
+  // lobby is independent of the Game lifecycle (it only reads URL
+  // params and reloads) so the user can adjust settings before the
+  // renderer chunk has finished downloading.
+  initLobby();
+}
 
 // Phase K Wave 11 — PWA shortcut `?action=*` deep-link routing.
 // Must run BEFORE the game-bootstrap import guard below, since the

@@ -19,8 +19,127 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-17-bringup`. Phase K Wave 17
+Working branch: `stlong/phase-k-wave-18-bringup`. Phase K Wave 18
 in flight. Other lane deliverables outstanding.
+
+## [0.27.0] — Phase K Wave 18 — 2027-01-29 (PR pending)
+
+**Theme:** Lighthouse 13 `--form-factor=desktop` runtime-error
+ROOT-CAUSE FIX (one-line workflow edit clears the W17 strict-
+mode validation error; calibration data lands on next 3 cron
+runs) + HPA off-peak cron-override IMPLEMENTATION (W17-designed
+CronJob + kubectl patch hpa pattern; UTC 23:00-07:00 off-peak
+→ minReplicas=1, 07:00-23:00 on-peak → minReplicas=3) +
+us-east-1 W18 apply-readiness gate FULL-GREEN (W17 Row 3
+AMBER cleared by Hicks's W17 close-out at 177 KB; live apply
+now Stephen's call) + SLSA-3 SHA pin SWEEP COMPLETE for apone
+lane (W17's 56 pins → +130 W18 pins = 191 total across 39
+workflow files; 9 remaining unpinned are all vasquez lane) +
+Mobile iOS signing groundwork (env block + keychain-decode +
+SIGNED/UNSIGNED xcodebuild branches gated on the four IOS_*
+secrets, mirroring W17 Android pattern) + CHANGELOG 0.27.0 +
+mobile package version pin + backend `<Version>` pin. Apone's
+W18 closes the LH13 calibration loop the W17 ship opened,
+flips the us-east-1 gate from W17 PARTIAL-GREEN to FULL-
+GREEN, and finishes the §7b.2.2 supply-chain hardening sweep
+across the apone-owned workflow lane.
+
+### Apone — DevOps (W18 deliverables)
+
+- **LH13 `--form-factor=desktop` runtime-error root-cause
+  fix.** New `docs/lh13-root-cause-fix-w18.md` documents the
+  W17 coordinator-found Lighthouse 13 strict-mode validation
+  error ("Screen emulation mobile setting (true) does not
+  match formFactor setting (desktop)") and the one-line
+  workflow fix in `.github/workflows/pwa-audit.yml` line 154
+  (NEW `--screenEmulation.mobile=false` flag adjacent to the
+  existing `--form-factor=desktop`). LH13 dropped the implicit
+  flip the LH12 → LH13 bump removed; the explicit flag pair
+  satisfies the strict-mode gate. Verification protocol: 2x
+  manual `gh workflow run pwa-audit.yml` invocations post-
+  merge confirm the runtime no longer errors; 3 post-W18 cron
+  runs fill the §6 calibration table for the W19 hard-pin
+  decision. `actionlint` exit 0.
+- **HPA off-peak cron-override IMPLEMENTATION.** New
+  `infra/k8s/base/hpa-cron-override.yaml` carries two daily
+  CronJobs (`hpa-min-replicas-off-peak` @ 23:00 UTC,
+  `hpa-min-replicas-on-peak` @ 07:00 UTC) plus a dedicated
+  `hpa-cron-patcher` ServiceAccount + Role (resource-name-
+  pinned `patch`/`get` verbs only) + RoleBinding. The off-
+  peak fire patches `minReplicas: 3 → 1`; the on-peak fire
+  patches `1 → 3`. `maxReplicas: 12` is unchanged at both
+  windows. Rationale + the Option B (CronJob) vs Option A
+  (KEDA) selection lives in `docs/hpa-cron-override.md`
+  (NEW) per the W17 retro design. Wired in via
+  `infra/k8s/base/kustomization.yaml` (LoadRestrictor blocks
+  an overlay-side `../../base/<file>` ref; base inclusion is
+  the idiomatic kustomize path); a documentation note in
+  `infra/k8s/overlays/prod/kustomization.yaml` records the
+  inheritance. `kustomize build` exit 0 for both prod and
+  staging overlays.
+- **us-east-1 W18 plan capture — FULL-GREEN apply-readiness
+  gate.** `docs/us-east-1-w18-plan-output.txt` (NEW) carries
+  the W18 dry-run capture (byte-for-byte the W16 + W17
+  `§1–§5` shape plus the W18 GREEN gate verdict at §6).
+  W17 Row 3 AMBER (`autotable-src-eager` 209 KB > 200 KB)
+  is CLEARED at W18 — Hicks's W17 close-out landed the eager
+  bundle at ~177 KB (K17 history entry in
+  `src/frontend/autotable-src/dist-size.json`); `renderer-
+  webgl2` chunk at ~24.7 KB (vs 40 KB ceiling, ~15 KB
+  headroom). Combined gate verdict: FULL-GREEN / APPLY-READY.
+  Live apply remains Stephen's call (not Apone's) — W18
+  ships the GO-GATE-CLEARED signal. New §3.9 + §3.10 + §3.11
+  appended to `docs/regional-eks-bringup.md`. `terraform
+  validate` exit 0 against the W11/W14/W15/W16/W17/W18 zero-
+  drift TF stack (seven consecutive waves of source-side
+  discipline).
+- **SLSA-3 SHA pin SWEEP COMPLETE — apone lane.** The W17
+  56-pin baseline grows by +130 pins at W18, completing
+  the §7b.2.2 hardening sweep across the apone-owned
+  workflow lane. Total: **191 SHA pins across 39 workflow
+  files**. The W18 pin-apply script
+  (`.work/apone-w18-tools/pin-apply.py`) swept 30 apone-lane
+  workflows; the 4 vasquez-lane workflows
+  (`lane-discipline.yml`, `lane-discipline-nightly.yml`,
+  `lane-discipline-status.yml`, `playwright-visual-regression.
+  yml`) are intentionally left unpinned per the §9.5 lane-
+  discipline note from W17. Eight NEW action SHAs resolved
+  via the public-unauthenticated GitHub API: `actions/cache@
+  v4.2.0`, `actions/setup-dotnet@v4.1.0`, `actions/setup-
+  python@v5.3.0`, `hashicorp/setup-terraform@v3.1.2`,
+  `dawidd6/action-send-mail@v3.12.0`, `gitleaks/gitleaks-
+  action@v2.3.7`, `peter-evans/create-or-update-comment@
+  v4.0.0`, `ruby/setup-ruby@v1.310.0`, plus the latent
+  `aquasecurity/trivy-action@0.28.0` non-pinned form. New
+  §10 appended to `docs/slsa-provenance.md` documents the
+  per-workflow pin count + the W18 NEW SHA table + the
+  W19+ sequence update. `actionlint` exit 0.
+- **Mobile iOS signing groundwork.** Mirrors the W17 Android
+  pattern: four `IOS_*` env vars wire into `.github/workflows/
+  mobile-build.yml`'s iOS job (`IOS_DEV_CERT_BASE64`,
+  `IOS_DEV_CERT_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`,
+  `IOS_KEYCHAIN_PASSWORD`); a `Decode iOS signing identity`
+  step gates on all four being present and decodes the
+  cert + profile into a temporary keychain locked with the
+  fourth secret; the SIGNED-RELEASE `xcodebuild` branch
+  runs (CODE_SIGN_STYLE=Manual) when present, the UNSIGNED-
+  RELEASE branch (CODE_SIGNING_ALLOWED=NO) runs when absent
+  (preserves the W2 → W17 behaviour for PRs from forks).
+  An `if: always()` keychain teardown step deletes the
+  temporary keychain at job teardown (defence against runner
+  state reuse). Apple Developer Program enrolment runbook +
+  cert/profile/secret provisioning procedure documented in
+  `docs/mobile-ios-signing.md` (NEW). `actionlint` exit 0.
+- **CHANGELOG 0.27.0 + version pin.** Bumped `CHANGELOG.md`
+  with the W18 entries; root `package.json` does not exist
+  (mobile `package.json` is the project-level package set);
+  `mobile/package.json` version bumped 0.26.0 → 0.27.0;
+  backend `<Version>` added to
+  `src/backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.
+  Api.csproj` pinned at 0.27.0 (the project did not
+  previously carry an explicit `<Version>` PropertyGroup
+  field — W18 is the first wave to land the property so the
+  CHANGELOG / version-tag triple stays in lockstep).
 
 ## [0.26.0] — Phase K Wave 17 — 2027-01-22 (PR pending)
 

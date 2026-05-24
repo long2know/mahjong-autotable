@@ -253,8 +253,11 @@ public sealed class VasquezW17SelfLaneTests
     public void Wave1ThroughKW17RegressionTests_Class_Present()
     {
         var asm = typeof(VasquezW17SelfLaneTests).Assembly;
+        // W18 renames KW17 → KW18; accept either so the W17
+        // self-lane test stays green across the W18 rename wave.
         var t = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 

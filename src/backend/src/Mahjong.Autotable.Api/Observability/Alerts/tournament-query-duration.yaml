@@ -68,3 +68,80 @@ groups:
             non-paging warning rail — investigate before it escalates to the
             p99 PAGE alert.
           runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#p95-ticket"
+
+      # Phase K Wave 18 — Bishop. Bracket-query histogram is the
+      # second axis of the tournament-query latency dashboard (the
+      # W14 surface emits both endpoints but only the bracket-query
+      # endpoint exercises the heavy bracket-store joins). p99 > 1s
+      # over 5 minutes wakes the on-call.
+      - alert: BracketQueryDurationP99HighPage
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, endpoint) (
+              rate(bracket_query_duration_seconds_bucket[5m])
+            )
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: page
+          team: bishop
+          wave: phase-k-w18
+        annotations:
+          summary: "Bracket query p99 > 1s for {{ $labels.endpoint }}"
+          description: |
+            The {{ $labels.endpoint }} bracket-store endpoint is rendering
+            tournament-bracket queries with p99 latency above 1 second for
+            5 minutes. The bracket-store join path is the most expensive
+            tournament read; cross-check the database CPU + the
+            tournament_query_duration alert.
+          runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#bracket-p99-page"
+
+      # Phase K Wave 18 — Bishop. Per-stage Swiss-pairing alert.
+      # Swiss pairings are an O(R*N^2) computation; p99 > 1s
+      # implies the pairing dataset has grown beyond the W14
+      # bracket-store envelope or the pairing algorithm has
+      # regressed.
+      - alert: SwissPairingDurationP99HighPage
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, stage) (
+              rate(swiss_pairing_duration_seconds_bucket[5m])
+            )
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: page
+          team: bishop
+          wave: phase-k-w18
+        annotations:
+          summary: "Swiss pairing p99 > 1s for stage {{ $labels.stage }}"
+          description: |
+            Swiss pairing for stage {{ $labels.stage }} is taking longer
+            than 1 second at p99 for 5 minutes. The pairing computation
+            is O(R*N^2) — investigate whether the dataset has grown
+            beyond the W14 bracket-store envelope or whether the
+            pairing algorithm has regressed.
+          runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#swiss-pairing-p99"
+
+      # Phase K Wave 18 — Bishop. Heartbeat alert — fires when
+      # the tournament_query endpoints see ZERO traffic for 10
+      # minutes. Catches a silent scrape pipeline outage (the p99
+      # alerts can't fire if the histogram has no observations).
+      - alert: TournamentQueryNoTrafficHeartbeat
+        expr: |
+          sum(rate(tournament_query_duration_seconds_count[10m])) == 0
+        for: 10m
+        labels:
+          severity: ticket
+          team: bishop
+          wave: phase-k-w18
+        annotations:
+          summary: "Tournament query endpoint silent for 10 minutes"
+          description: |
+            No tournament_query_duration observations have been recorded
+            for 10 minutes. Either the scraper has fallen over, the
+            tournament_query endpoints are not being called, or the
+            metric exporter is misconfigured. Cross-check the
+            up{job="mahjong-autotable"} series before assuming a
+            tournament-load drop.
+          runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#heartbeat"

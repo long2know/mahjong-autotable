@@ -1,0 +1,286 @@
+# Phase K Wave 18 — Apone (DevOps).
+#
+# Off-peak HPA `minReplicas` override (cron-scheduled).
+#
+# # Why this file exists (W18 deliverable 2)
+#
+# Wave 16 extracted the prod-overlay HPA tuning into
+# `infra/k8s/overlays/prod/hpa-patch.yaml` (the W16 strategic-
+# merge hygiene refactor). Wave 17's 7-day HPA retrospective
+# (`docs/hpa-tuning-w17-retrospective.md`) acknowledged the
+# off-peak over-provisioning trigger:
+#
+#   * Daytime (UTC 07:00-23:00) — `minReplicas: 3` floor is
+#     sized for sticky-session resilience to a single pod
+#     evict during peak Asian/EU game churn (Hudson's load
+#     profile).
+#   * Off-peak (UTC 23:00-07:00) — connection count drops to
+#     near-zero (US-night / Asia-pre-dawn window). The
+#     `minReplicas: 3` floor over-provisions by ~67% during
+#     this 8-hour window with no resilience benefit (no
+#     in-flight games to evict).
+#
+# The W17 retro DESIGNED a cron-scheduled `minReplicas`
+# override: drop 3 → 1 during the off-peak window, hold at 3
+# during the on-peak window. W18 IMPLEMENTS the design.
+#
+# # Implementation choice — Kubernetes CronJob (not KEDA)
+#
+# The W17 design enumerated three candidate implementations:
+#
+#   * Option A — KEDA ScaledObject with a `cron` scaler.
+#     Pros: KEDA is the canonical "schedule-as-code" K8s
+#     primitive; the `cron` scaler emits a metric the HPA
+#     consumes natively. Cons: introduces a NEW cluster-scoped
+#     dependency (KEDA operator) — the prod cluster does NOT
+#     run KEDA today; the operator install + RBAC + CRD set
+#     is a multi-resource surface that exceeds the W18 scope.
+#   * Option B — Kubernetes CronJob that runs `kubectl patch
+#     hpa` on the schedule. Pros: ZERO new cluster-scoped
+#     dependencies; the prod cluster already supports
+#     CronJob (batch/v1). The patch shape is a single JSON-
+#     Patch `op: replace /spec/minReplicas`. Cons: requires
+#     a dedicated ServiceAccount + Role + RoleBinding for the
+#     `patch hpa` verb scoped to the prod namespace.
+#   * Option C — `kubectl scale --replicas` on the Deployment.
+#     Rejected: bypasses the HPA entirely; the HPA's auto-
+#     scale loop would immediately fight the manual scale,
+#     creating an oscillation hazard.
+#
+# W18 picks **Option B (CronJob + kubectl patch hpa)**. The
+# ZERO-new-dependency property is the decisive factor — the
+# prod cluster's surface stays at the W16 + W17 set; the W18
+# delta is two CronJobs + one ServiceAccount/Role/RoleBinding
+# triplet under `infra/k8s/base/`. KEDA stays a W19+
+# candidate if the off-peak window's complexity expands
+# (e.g., per-region overrides or holiday-calendar exceptions
+# — both out of W18 scope).
+#
+# # Schedule shape
+#
+#   * Off-peak window — UTC 23:00 to 07:00 (8 hours).
+#     `hpa-min-replicas-off-peak` CronJob fires at 23:00 UTC
+#     daily, patches `minReplicas: 3 → 1`.
+#   * On-peak window — UTC 07:00 to 23:00 (16 hours).
+#     `hpa-min-replicas-on-peak` CronJob fires at 07:00 UTC
+#     daily, patches `minReplicas: 1 → 3`.
+#
+# Time-zone choice: UTC. The W7 + W15 + W17 HPA tuning all
+# use UTC for the Hudson-panel load profiles; the cron
+# schedule MUST match the load-profile timezone or the
+# off-peak window misaligns with the actual off-peak traffic.
+#
+# # Rendered cluster state
+#
+# At rest (no CronJob has fired), the HPA carries the W16
+# patch's `minReplicas: 3`. Within ~60 seconds of the 23:00
+# UTC fire, the HPA's `minReplicas` reads 1. Within ~60
+# seconds of the 07:00 UTC fire, it reads 3 again.
+#
+# The HPA's `maxReplicas: 12` is UNCHANGED at all times — the
+# off-peak override only relaxes the floor; the ceiling is
+# unchanged so a sudden off-peak traffic spike (e.g., a viral
+# tournament) still gets the same maximum scale-out headroom.
+#
+# # Failure modes + safety
+#
+#   * CronJob failure (e.g., kubectl error) — the HPA stays
+#     at whatever `minReplicas` was last set; auto-scale
+#     continues to work. The CronJob's
+#     `backoffLimit: 2` + alerting via existing Hudson panel
+#     `cronjob-failures-prod` catches the failure on the
+#     NEXT 12-hour window edge.
+#   * Schedule miss (cluster unavailable) — the next fire
+#     reconciles. Worst case: an 8-hour off-peak window runs
+#     with `minReplicas: 3` (over-provisioned) or a 16-hour
+#     on-peak window runs with `minReplicas: 1` (under-
+#     provisioned). The under-provisioned case is the dangerous
+#     one; the Hudson `cpu-utilization-prod` + `replica-count-
+#     prod` panels page on sustained under-provision.
+#   * Kustomize rollback — `git revert <merge-commit>`
+#     removes BOTH CronJobs + the RBAC triplet; the HPA
+#     reverts to its W16 + W17 static `minReplicas: 3` floor.
+#     No data migration; no state drift.
+#
+# # Verify
+#
+#   kustomize build infra/k8s/overlays/prod/ \
+#     | yq 'select(.kind == "CronJob") | .metadata.name'
+#
+# Expected (post-W18):
+#
+#   prod-hpa-min-replicas-off-peak
+#   prod-hpa-min-replicas-on-peak
+#
+# And:
+#
+#   kubectl -n mahjong-prod get hpa mahjong-autotable -o yaml \
+#     | yq .spec.minReplicas
+#
+# Returns 3 during on-peak, 1 during off-peak.
+#
+# # Cross-references
+#
+#   * docs/hpa-cron-override.md — full operator runbook
+#     (W18 NEW; companion to this file).
+#   * docs/hpa-tuning-w17-retrospective.md — W17 retro that
+#     designed this override.
+#   * docs/hpa-min-replicas-tuning.md — W15 30-day Hudson-
+#     panel survey that justified the static `minReplicas: 3`
+#     floor.
+#   * infra/k8s/overlays/prod/hpa-patch.yaml — W16 prod-
+#     overlay HPA patch (the static `minReplicas: 3` floor
+#     this CronJob temporarily relaxes).
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hpa-cron-patcher
+  labels:
+    app.kubernetes.io/name: hpa-cron-patcher
+    app.kubernetes.io/component: hpa-override
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hpa-cron-patcher
+  labels:
+    app.kubernetes.io/name: hpa-cron-patcher
+    app.kubernetes.io/component: hpa-override
+rules:
+  # Minimum scope: patch ONLY the named HPA, GET for pre-patch
+  # diagnostics. NO `delete`/`create`/`update` — patch-only
+  # closes the blast radius if the SA token leaks.
+  - apiGroups:
+      - autoscaling
+    resources:
+      - horizontalpodautoscalers
+    resourceNames:
+      - mahjong-autotable
+    verbs:
+      - get
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hpa-cron-patcher
+  labels:
+    app.kubernetes.io/name: hpa-cron-patcher
+    app.kubernetes.io/component: hpa-override
+subjects:
+  - kind: ServiceAccount
+    name: hpa-cron-patcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hpa-cron-patcher
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hpa-min-replicas-off-peak
+  labels:
+    app.kubernetes.io/name: hpa-min-replicas-off-peak
+    app.kubernetes.io/component: hpa-override
+spec:
+  # 23:00 UTC daily — off-peak window opens.
+  schedule: "0 23 * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: hpa-min-replicas-off-peak
+        spec:
+          serviceAccountName: hpa-cron-patcher
+          restartPolicy: OnFailure
+          containers:
+            - name: kubectl
+              image: bitnami/kubectl:1.31
+              imagePullPolicy: IfNotPresent
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "128Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1001
+                capabilities:
+                  drop: ["ALL"]
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  kubectl patch hpa mahjong-autotable \
+                    --type=json \
+                    --patch='[{"op":"replace","path":"/spec/minReplicas","value":1}]'
+                  echo "off-peak HPA override applied: minReplicas=1 (UTC 23:00-07:00 window)"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hpa-min-replicas-on-peak
+  labels:
+    app.kubernetes.io/name: hpa-min-replicas-on-peak
+    app.kubernetes.io/component: hpa-override
+spec:
+  # 07:00 UTC daily — on-peak window opens (off-peak closes).
+  schedule: "0 7 * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: hpa-min-replicas-on-peak
+        spec:
+          serviceAccountName: hpa-cron-patcher
+          restartPolicy: OnFailure
+          containers:
+            - name: kubectl
+              image: bitnami/kubectl:1.31
+              imagePullPolicy: IfNotPresent
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "128Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1001
+                capabilities:
+                  drop: ["ALL"]
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  kubectl patch hpa mahjong-autotable \
+                    --type=json \
+                    --patch='[{"op":"replace","path":"/spec/minReplicas","value":3}]'
+                  echo "on-peak HPA override applied: minReplicas=3 (UTC 07:00-23:00 window)"

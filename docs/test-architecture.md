@@ -388,6 +388,60 @@ backlog represents a future-stability liability, not a current
 test-suite hazard.  Bishop has the lane authority to close it
 whenever the W17+ EF-controller velocity allows.
 
+#### 3.4c. W18 re-validation + DbSerial migration COMPLETE (W18 — Vasquez + Bishop)
+
+W18 closes out the entire DbSerial migration thread.  Bishop W18
+applies `[Collection("DbSerial")]` to all four open Bishop-lane
+candidates documented in §3.4a + §3.4b:
+
+| # | File (lane) | Wave introduced | DbSerial applied |
+|---|------------|-----------------|------------------|
+| 26 | `Phase_K_W16/Bishop/PerTenantRotationAdminControllerTests.cs` | W16 | YES (W18 — Bishop) |
+| 27 | `Phase_K_W17/Bishop/PerTenantRotationDeleteAsyncTests.cs` | W17 | YES (W18 — Bishop) |
+| 28 | `Phase_K_W17/Bishop/ReplayRetentionAdminControllerTests.cs` | W17 | YES (W18 — Bishop) |
+| 29 | `Phase_K_W17/Bishop/SignalRRetentionAdminControllerTests.cs` | W17 | YES (W18 — Bishop) |
+
+**Total candidates as of W18 close: 29.  Total migrated: 29
+(100%).  Bishop-lane backlog: 0.**  This is the W18 mile-marker:
+**DbSerial migration COMPLETE.**
+
+Bishop's W18 commit per-file rationale paragraphs cross-reference
+the §3.4a/§3.4b inventory entries by their candidate-number
+ordinals (26th / 27th / 28th / 29th), making the migration
+arc auditable end-to-end in the per-file XML doc summaries:
+
+```text
+$ grep -l 'Phase K Wave 18 — Bishop.*\[Collection("DbSerial")\]' \
+    src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W1{6,7}/Bishop/*.cs
+… 4 files match.
+```
+
+W18 re-runs the 5-run flake harness at the post-Bishop-W18
+baseline; **all 29 migrated candidates remain stable** — zero
+flakes observed across the five `dotnet test` runs at gate
+≥ 4100.  The post-W18 5-run harness extends the
+W12→W18 zero-flake streak to **seven consecutive zero-flake
+runs** across seven successive gate bumps (1880 → 4100+ →
++2220+ tests added since W11).
+
+Vasquez W18 ships the paired observation contract
+`Phase_K_W18/Vasquez/BishopW16W17DbSerialCompletionObservationTests.cs`
+(records the post-Bishop-W18 applied-count per candidate file +
+soft-pin on partial landings) and
+`Phase_K_W18/Vasquez/BishopW18DbSerialCompletionTests.cs`
+(asserts §3.4c is present in the doc).
+
+**Why §3.4c is a terminal mile-marker.**  The DbSerial collection
+exists to serialise the W12 audit-identified contention class
+(EF Core + SQLite + WAF singleton).  With every test fixture in
+the contention class now opted in, there is no remaining
+candidate-file work to do.  Future waves keep auditing for *new*
+EF-touching surfaces (§3.1.1 methodology) and apply
+`[Collection("DbSerial")]` proactively — the open backlog table
+above will stay at zero unless a fresh EF-touching wave adds
+new candidates pre-migration.  W18 is the first wave with no
+open candidates since the §3.4 framing landed at W15.
+
 ### 3.5. When NOT to use `[Collection("DbSerial")]`
 
 Any test that DOESN'T touch EF Core / SQLite / the WAF singleton
@@ -742,3 +796,10 @@ before `page.setContent` so relative `<img>` URLs resolve against
 the baseURL origin) added; §5.2 (baseline update procedure)
 renumbered to §5.3; §5.3 (Allowable diff budget) renumbered to §5.4.
 Zero-skip streak bumped to W14 (28 waves).*
+
+*Phase K Wave 18 — Vasquez (QA).  §3.4c (W18 re-validation +
+DbSerial migration COMPLETE — 29/29 migrated, 0 open candidates
+post-Bishop-W18; first wave at zero open-backlog since §3.4
+framing landed at W15) added.  Zero-flake streak extends to
+seven consecutive 5-run harnesses (W12 → W18).  Zero-skip
+streak bumped to W18 (32 waves).*

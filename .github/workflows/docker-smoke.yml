@@ -29,12 +29,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # The smoke script is the canonical surface — same script Vasquez runs
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
       # locally, same one Apone runs as part of the Wave-3 release rehearsal.
       # We capture stdout + stderr to a file so the upload-artifact step has
       # something to attach when the step fails.
@@ -143,7 +140,7 @@ jobs:
 
       - name: Upload smoke artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: docker-smoke-failure-${{ github.run_id }}
           path: smoke-logs/

@@ -1,7 +1,7 @@
 {
   "$schema": "./scripts/dist-size.schema.json",
   "$description": "Source-of-truth chunk-size ledger for the autotable bundle, wave-over-wave. Vasquez's W7 Playwright spec asserts that `three-renderer-big` is monotonically decreasing across waves (regression = hard fail). The build pipeline (vite.config.ts → scripts/append-dist-size.js) appends a new wave entry on every `npm run build:vite`. Wave names use `K{N}` (Phase K Wave N).",
-  "current": "K17",
+  "current": "K18",
   "history": [
     {
       "wave": "K6",
@@ -274,7 +274,7 @@
     {
       "wave": "K17",
       "bundler": "vite",
-      "recordedAt": "2026-05-24T06:24:54.980Z",
+      "recordedAt": "2026-05-24T08:17:10.392Z",
       "chunks": {
         "autotable-src-eager": 176907,
         "game-bootstrap": 174561,
@@ -303,6 +303,44 @@
         "leaderboard": 11349,
         "settings-drawer": 17770,
         "profile-page": 9464
+      }
+    },
+    {
+      "wave": "K18",
+      "bundler": "vite",
+      "recordedAt": "2026-05-24T08:24:13.353Z",
+      "chunks": {
+        "autotable-src-eager": 156577,
+        "game-bootstrap": 174619,
+        "scene-shell": 2437,
+        "scene-effects": 59223,
+        "three-renderer-big": 406635,
+        "three-renderer-small": 75479,
+        "gltf-loader": 44223,
+        "commentary-panel": 8269,
+        "spectator-livestream": 5288,
+        "hls": 286514,
+        "tournaments": 41159,
+        "chat": 12306,
+        "voice": 9382,
+        "audit": 7523,
+        "history": 12397,
+        "tour": 10454,
+        "bracket-listing": 6544,
+        "replays-listing": 4723,
+        "admin-cost": 5966,
+        "renderer-webgl2": 25666,
+        "admin-cost-forecast": 6108,
+        "action-router": 8953,
+        "sentry-shim": 2304,
+        "sentry": 342614,
+        "leaderboard": 11349,
+        "settings-drawer": 17770,
+        "profile-page": 9464,
+        "admin-panel": 18411,
+        "pwa": 2320,
+        "reconnect": 3067,
+        "spectator-follow": 3535
       }
     }
   ]

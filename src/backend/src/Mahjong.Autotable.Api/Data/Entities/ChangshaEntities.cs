@@ -481,6 +481,25 @@ public class ReconnectAuditEntry
     /// <summary>Phase K Wave 17 — Bishop. Audit Kind for an
     /// admin-driven delete of a per-tenant SignalR retention row.</summary>
     public const string KindSignalRRetentionDeleted = "signalr.retention.deleted";
+
+    /// <summary>Phase K Wave 18 — Bishop. Audit Kind stamped by
+    /// the W18 <c>SignalRRetentionCeilingAdminController</c> on a
+    /// successful grant / revoke of an above-ceiling override for
+    /// a tenant. Detail format:
+    /// <c>"tenant={tenant}|action={grant|revoke}|reason={X-Admin-Reason}"</c>.</summary>
+    public const string KindSignalRRetentionCeilingOverride = "signalr.retention.ceiling.override";
+
+    /// <summary>Phase K Wave 18 — Bishop. Audit Kind stamped by
+    /// the W18 <c>PerTenantRotationPolicyListController</c> on a
+    /// successful LIST. Detail format:
+    /// <c>"prefix={tenant-prefix}|skip={n}|take={n}|rows={n}"</c>.</summary>
+    public const string KindAuthJwksPerTenantListed = "auth.jwks.per-tenant.listed";
+
+    /// <summary>Phase K Wave 18 — Bishop. Audit Kind stamped by
+    /// the W18 <c>CommentaryCostBudgetExportController</c> on a
+    /// successful CSV export. Detail format:
+    /// <c>"from={YYYY-MM}|to={YYYY-MM}|tenant={tenant}|rows={count}"</c>.</summary>
+    public const string KindCommentaryCostBudgetExport = "commentary.cost-budget.export";
 }
 
 /// <summary>

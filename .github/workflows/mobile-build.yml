@@ -204,6 +204,18 @@ jobs:
     needs: build-frontend-bundle
     runs-on: macos-latest
     timeout-minutes: 45
+    # Phase K Wave 18 — Apone (DevOps). iOS signing groundwork
+    # mirrors the W17 Android pattern. The four `IOS_*` secrets
+    # are operator-provisioned per `docs/mobile-ios-signing.md`
+    # (Apple Developer enrolment runbook). CI soft-fails to
+    # UNSIGNED .app when secrets are absent — preserves the
+    # W2 → W17 behaviour for PRs from forks and for main-pushes
+    # before Stephen lands the iOS distribution identity.
+    env:
+      IOS_DEV_CERT_BASE64: ${{ secrets.IOS_DEV_CERT_BASE64 }}
+      IOS_DEV_CERT_PASSWORD: ${{ secrets.IOS_DEV_CERT_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -227,7 +239,86 @@ jobs:
           npx cap add ios || echo "ios platform may already exist"
           npx cap sync ios
 
+      # Phase K Wave 18 — Apone (DevOps). Decode the operator's
+      # Apple Developer distribution cert + provisioning profile
+      # from base64 secrets (when present) into a temporary
+      # keychain the xcodebuild signing flow consumes. The
+      # keychain is created with a random per-job lock password,
+      # added to the user's keychain search list, set as default,
+      # and unlocked for the build's duration. The keychain file
+      # itself lives under ${RUNNER_TEMP} so it is cleaned by
+      # GitHub at job teardown; we deliberately do NOT print
+      # the cert SHA / profile UUID — that would leak a finger-
+      # print of the operator's signing identity into job logs.
+      # See `docs/mobile-ios-signing.md §3` for the secret-
+      # provisioning runbook.
+      - name: Decode iOS signing identity (when secrets present)
+        id: ios-keychain
+        run: |
+          set -euo pipefail
+          if [ -n "${IOS_DEV_CERT_BASE64:-}" ] \
+             && [ -n "${IOS_DEV_CERT_PASSWORD:-}" ] \
+             && [ -n "${IOS_PROVISIONING_PROFILE_BASE64:-}" ] \
+             && [ -n "${IOS_KEYCHAIN_PASSWORD:-}" ]; then
+            CERT_PATH="${RUNNER_TEMP}/mahjong-autotable.p12"
+            PROFILE_PATH="${RUNNER_TEMP}/mahjong-autotable.mobileprovision"
+            KEYCHAIN_PATH="${RUNNER_TEMP}/mahjong-autotable-signing.keychain-db"
+
+            echo "$IOS_DEV_CERT_BASE64" | base64 --decode > "$CERT_PATH"
+            chmod 0600 "$CERT_PATH"
+            echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+            chmod 0600 "$PROFILE_PATH"
+
+            security create-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security import "$CERT_PATH" \
+              -P "$IOS_DEV_CERT_PASSWORD" \
+              -A -t cert -f pkcs12 \
+              -k "$KEYCHAIN_PATH"
+            security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | sed -e s/\"//g)
+            security set-key-partition-list \
+              -S apple-tool:,apple: -k "$IOS_KEYCHAIN_PASSWORD" \
+              "$KEYCHAIN_PATH" > /dev/null
+
+            PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+            mkdir -p "$PROFILES_DIR"
+            cp "$PROFILE_PATH" "$PROFILES_DIR/mahjong-autotable.mobileprovision"
+
+            echo "keychain-present=true" >> "$GITHUB_OUTPUT"
+            echo "keychain-path=${KEYCHAIN_PATH}" >> "$GITHUB_OUTPUT"
+            echo "::notice::iOS keychain decoded — SIGNED-RELEASE path will run"
+          else
+            echo "keychain-present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::One or more IOS_* secrets absent — UNSIGNED-RELEASE path will run (W17 behaviour)"
+          fi
+
+      # SIGNED-RELEASE — gated on the four IOS_* secrets being
+      # provisioned (the .p12 base64 + its password + the
+      # provisioning profile base64 + the keychain lock password).
+      # The signing identity + profile are auto-detected from the
+      # temporary keychain populated in the previous step.
+      - name: xcodebuild Release (SIGNED)
+        if: steps.ios-keychain.outputs.keychain-present == 'true'
+        working-directory: mobile/ios/App
+        run: |
+          set -euo pipefail
+          pod install --repo-update
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            ONLY_ACTIVE_ARCH=NO
+
+      # UNSIGNED-RELEASE — legacy path preserved for PRs from
+      # forks and for any main-push before Stephen lands the iOS
+      # signing identity. Byte-identical to the W2 + W17 build
+      # invocation.
       - name: xcodebuild Release (UNSIGNED)
+        if: steps.ios-keychain.outputs.keychain-present != 'true'
         working-directory: mobile/ios/App
         run: |
           set -euo pipefail
@@ -245,6 +336,21 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=NO
+
+      # Phase K Wave 18 — Apone (DevOps). Delete the temporary
+      # signing keychain at job teardown — this runs `if: always()`
+      # so a build failure does NOT leak the cert into the runner's
+      # next reused job (macOS runner state lifetime is per-job, but
+      # the explicit delete is defensive). The provisioning profile
+      # under $HOME/Library/MobileDevice/Provisioning Profiles is
+      # cleaned by GitHub at job teardown alongside $RUNNER_TEMP.
+      - name: Tear down iOS keychain
+        if: always() && steps.ios-keychain.outputs.keychain-present == 'true'
+        run: |
+          set +e
+          security delete-keychain "${{ steps.ios-keychain.outputs.keychain-path }}" || true
+          rm -f "${RUNNER_TEMP}/mahjong-autotable.p12" || true
+          rm -f "${RUNNER_TEMP}/mahjong-autotable.mobileprovision" || true
 
       - name: Upload iOS artefacts
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3

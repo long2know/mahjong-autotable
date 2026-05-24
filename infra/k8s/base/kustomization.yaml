@@ -18,6 +18,20 @@ resources:
   - service.yaml
   - ingress.yaml
   - hpa.yaml
+  # Phase K Wave 18 — Apone (DevOps). Off-peak HPA `minReplicas`
+  # override (cron-scheduled). Listed in base/ rather than only
+  # the prod overlay because kustomize's LoadRestrictor blocks
+  # an overlay from `resources:`-loading a file outside its own
+  # tree; placing the file under base/ + adding it here is the
+  # idiomatic kustomize path. Staging inherits the same off-peak
+  # optimization (staging's `base/hpa.yaml` floor is also 3 per
+  # W16 — the off-peak relax to 1 is benign there too). See the
+  # per-file header for the W17 retro design rationale + the
+  # Option B (CronJob + kubectl patch hpa) choice + UTC schedule
+  # shape (23:00-07:00 off-peak → minReplicas=1, 07:00-23:00
+  # on-peak → minReplicas=3). Operator runbook in
+  # `docs/hpa-cron-override.md`.
+  - hpa-cron-override.yaml
   # Phase J Wave 9 — pre-rollout migration Job. `kubectl apply -k` will
   # create the Job each sync; Argo CD / Flux operators sequence it via
   # the `argocd.argoproj.io/sync-wave: -1` annotation in

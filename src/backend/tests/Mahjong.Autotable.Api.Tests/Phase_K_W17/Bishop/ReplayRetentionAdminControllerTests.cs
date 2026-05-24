@@ -15,6 +15,7 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W17.Bishop;
 /// <see cref="ReplayRetentionAdminController"/>. SQLite-backed
 /// AppDbContext exercises the audit-write side effect end-to-end.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class ReplayRetentionAdminControllerTests : IDisposable
 {
     private static readonly string _scratchDir =

@@ -73,6 +73,16 @@ function manualChunks(id: string): string | undefined {
   // The chunk only ships when `?renderer=webgl2-hello` is on the
   // URL — `src/index.ts` guards the dynamic import.
   if (/[/\\]src[/\\]renderer-webgl2[/\\]/.test(id)) return 'renderer-webgl2';
+  // Phase K Wave 18 — Hicks (Frontend).  Admin operator panel
+  // chunk.  Routes every file under `src/admin/` into a single
+  // `admin-panel.<hash>.js` so the W18 list+form pair for
+  // Bishop's three W17 CRUD surfaces (replay retention, JWKS
+  // rotation, SignalR retention) ships as ONE measurable chunk.
+  // Loaded lazily by `action-router.ts:dispatchAdminPanel()` on
+  // `?action=admin-panel`; the lobby cold path never pays for
+  // the chunk.  W18 ceiling: ≤ 40 KB.  See
+  // `docs/frontend-bundle-audit.md §3.4 (admin chunk budget)`.
+  if (/[/\\]src[/\\]admin[/\\]/.test(id)) return 'admin-panel';
   // Phase K Wave 8 — Peel GLTFLoader (+ its KTX2/Draco/meshopt
   // extension paths) into its own chunk.  In W7 the dynamic-import
   // landed inside the renderer chunk anyway because Rollup's

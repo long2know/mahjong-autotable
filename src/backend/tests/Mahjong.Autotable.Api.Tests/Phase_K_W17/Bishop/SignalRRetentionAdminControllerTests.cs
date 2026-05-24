@@ -16,6 +16,7 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W17.Bishop;
 /// replay-retention admin tests exactly so the two surfaces
 /// stay aligned.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class SignalRRetentionAdminControllerTests : IDisposable
 {
     private static readonly string _scratchDir =
