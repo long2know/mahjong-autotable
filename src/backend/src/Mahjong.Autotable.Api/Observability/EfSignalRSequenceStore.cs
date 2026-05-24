@@ -65,6 +65,19 @@ public sealed class SignalRSequenceEntry
     /// path can rehydrate the original message without a
     /// round-trip to the runtime.</summary>
     public string PayloadJson { get; set; } = "{}";
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Optional tenant identifier
+    /// stamped at append time. Empty / null when the row was
+    /// written before the per-tenant retention surface landed
+    /// (W17 onward, the broadcaster threads the tenant claim
+    /// into the row so the sweep can route per-tenant). The
+    /// sweep groups rows by <see cref="TenantId"/> + consults
+    /// <see cref="ISignalRRetentionPolicyStore.GetAsync"/> to
+    /// pick each tenant's retention window; rows with an empty
+    /// tenant id keep the legacy global window.
+    /// </summary>
+    public string TenantId { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -100,6 +113,24 @@ public interface ISignalRSequenceStore
     /// <summary>Sweep expired rows. Returns the count
     /// evicted.</summary>
     Task<int> SweepExpiredAsync(DateTime utcNow, CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Per-tenant sweep entry-point.
+    /// The caller resolves the per-tenant policy (via
+    /// <see cref="ISignalRRetentionPolicyStore.GetAsync"/>) +
+    /// the global default before invoking; this method recomputes
+    /// <c>ExpiresAt = CreatedAt + tenantTtlMinutes</c> at sweep
+    /// time so a runtime upsert of a shorter retention takes
+    /// effect on the next tick without re-stamping every row.
+    /// Rows with empty <see cref="SignalRSequenceEntry.TenantId"/>
+    /// fall through to the global predicate
+    /// (<c>ExpiresAt &lt; utcNow</c>). Returns the count evicted.
+    /// </summary>
+    Task<int> SweepExpiredWithPerTenantPolicyAsync(
+        DateTime utcNow,
+        ISignalRRetentionPolicyStore policyStore,
+        int globalFallbackMinutes,
+        CancellationToken ct = default);
 
     /// <summary>Total row count — surfaced for tests.</summary>
     Task<int> CountAsync(CancellationToken ct = default);
@@ -174,6 +205,64 @@ public sealed class InMemorySignalRSequenceStore : ISignalRSequenceStore
             }
         }
         return Task.FromResult(removed);
+    }
+
+    public async Task<int> SweepExpiredWithPerTenantPolicyAsync(
+        DateTime utcNow,
+        ISignalRRetentionPolicyStore policyStore,
+        int globalFallbackMinutes,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(policyStore);
+        if (globalFallbackMinutes <= 0)
+            globalFallbackMinutes = SignalRSequenceStoreOptions.DefaultRetentionMinutes;
+
+        // Snapshot tenant ids first so a runtime upsert during
+        // the sweep doesn't cause a TOCTOU race.
+        var distinctTenants = _entries.Values
+            .SelectMany(b => b)
+            .Select(e => e.TenantId ?? string.Empty)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var ttlByTenant = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var tenant in distinctTenants)
+        {
+            if (string.IsNullOrEmpty(tenant))
+            {
+                ttlByTenant[string.Empty] = globalFallbackMinutes;
+                continue;
+            }
+            var policy = await policyStore.GetAsync(tenant, ct).ConfigureAwait(false);
+            ttlByTenant[tenant] = policy is { RetentionMinutes: > 0 }
+                ? policy.RetentionMinutes
+                : globalFallbackMinutes;
+        }
+
+        var removed = 0;
+        foreach (var pair in _entries)
+        {
+            var survivors = pair.Value
+                .Where(e =>
+                {
+                    var ttl = ttlByTenant.TryGetValue(e.TenantId ?? string.Empty, out var t)
+                        ? t
+                        : globalFallbackMinutes;
+                    var staleAfter = e.CreatedAt.AddMinutes(ttl);
+                    return staleAfter >= utcNow;
+                })
+                .ToList();
+            removed += pair.Value.Count - survivors.Count;
+            if (survivors.Count == 0)
+            {
+                _entries.TryRemove(pair.Key, out _);
+            }
+            else
+            {
+                _entries[pair.Key] = new ConcurrentBag<SignalRSequenceEntry>(survivors);
+            }
+        }
+        return removed;
     }
 
     public Task<int> CountAsync(CancellationToken ct = default) =>
@@ -267,6 +356,91 @@ public sealed class EfSignalRSequenceStore : ISignalRSequenceStore
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         return await db.SignalRSequenceEntries.CountAsync(ct);
+    }
+
+    public async Task<int> SweepExpiredWithPerTenantPolicyAsync(
+        DateTime utcNow,
+        ISignalRRetentionPolicyStore policyStore,
+        int globalFallbackMinutes,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(policyStore);
+        if (globalFallbackMinutes <= 0)
+            globalFallbackMinutes = SignalRSequenceStoreOptions.DefaultRetentionMinutes;
+
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // First pass: tenant-less rows fall back to the
+        // existing column predicate so we keep the bulk
+        // ExecuteDelete fast-path for the common case.
+        var fallbackDeleted = 0;
+        try
+        {
+            fallbackDeleted = await db.SignalRSequenceEntries
+                .Where(e => (e.TenantId == null || e.TenantId == string.Empty)
+                          && e.ExpiresAt < utcNow)
+                .ExecuteDeleteAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "SignalRSequence per-tenant bulk-delete (fallback lane) failed; continuing.");
+        }
+
+        // Second pass: per-tenant. List distinct tenants from
+        // the DB, resolve TTLs via the policy store, then issue
+        // one ExecuteDelete per tenant. This keeps each delete
+        // sargable on the indexed (TenantId, ExpiresAt) pair
+        // even when the policy is shorter than the row's
+        // stamped ExpiresAt.
+        List<string> tenants;
+        try
+        {
+            tenants = await db.SignalRSequenceEntries
+                .AsNoTracking()
+                .Where(e => e.TenantId != null && e.TenantId != string.Empty)
+                .Select(e => e.TenantId)
+                .Distinct()
+                .ToListAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "SignalRSequence per-tenant tenant enumeration failed; skipping per-tenant sweep this tick.");
+            return fallbackDeleted;
+        }
+
+        var perTenantDeleted = 0;
+        foreach (var tenant in tenants)
+        {
+            ct.ThrowIfCancellationRequested();
+            var policy = await policyStore.GetAsync(tenant, ct).ConfigureAwait(false);
+            var ttl = policy is { RetentionMinutes: > 0 }
+                ? policy.RetentionMinutes
+                : globalFallbackMinutes;
+            // Equivalent to CreatedAt + ttl < utcNow.
+            var oldestAllowedCreatedAt = utcNow.AddMinutes(-ttl);
+            try
+            {
+                perTenantDeleted += await db.SignalRSequenceEntries
+                    .Where(e => e.TenantId == tenant && e.CreatedAt < oldestAllowedCreatedAt)
+                    .ExecuteDeleteAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "SignalRSequence per-tenant delete failed for tenant={TenantId}; falling back to per-row.",
+                    tenant);
+                var rows = await db.SignalRSequenceEntries
+                    .Where(e => e.TenantId == tenant && e.CreatedAt < oldestAllowedCreatedAt)
+                    .ToListAsync(ct);
+                db.SignalRSequenceEntries.RemoveRange(rows);
+                await db.SaveChangesAsync(ct);
+                perTenantDeleted += rows.Count;
+            }
+        }
+        return fallbackDeleted + perTenantDeleted;
     }
 }
 

@@ -3,34 +3,48 @@ using System.ComponentModel.DataAnnotations.Schema;
 using Mahjong.Autotable.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace Mahjong.Autotable.Api.Replays;
+namespace Mahjong.Autotable.Api.Observability;
 
 /// <summary>
-/// Phase K Wave 16 — Bishop. Per-tenant replay retention policy
-/// row. The W12 + W15
-/// <see cref="ReplayOptions.RetentionDays"/> knob is a single
-/// global window — operators running a multi-tenant cluster
-/// need per-tenant overrides (a free-tier tenant may keep 7 days
-/// while an enterprise tenant pays for 365). W16 lands the
-/// durable per-tenant row keyed by a stable tenant identifier
-/// + wires the value into the
-/// <see cref="ReplayStoreRetentionSweep"/> hosted service so a
-/// runtime upsert takes effect on the next tick.
+/// Phase K Wave 17 — Bishop. Per-tenant SignalR sequence
+/// retention policy row. The W12 + W13 + W14 surfaces shipped
+/// a single GLOBAL retention window
+/// (<see cref="SignalRSequenceStoreOptions.RetentionMinutes"/>);
+/// W17 lands the per-tenant override so operators running a
+/// multi-tenant cluster can give a paying customer a longer
+/// replay window than the free-tier default without touching
+/// the global knob.
 ///
-/// <para>The W15 hourly sweep walks <c>CompletedAt &lt; now -
-/// RetentionDays</c>; W16 widens that to consult the per-tenant
-/// row first and fall back to <see cref="ReplayOptions.RetentionDays"/>
-/// when no row matches. The store seam
-/// (<see cref="IReplayRetentionPolicyStore"/>) is intentionally
-/// narrow: upsert, lookup, list, delete. Operator UX lives
-/// upstream — this row is consumed by the sweep, not directly
-/// by an admin endpoint (W16 leaves the admin surface to a
-/// future wave to keep the diff scoped).</para>
+/// <para>The W13 <see cref="SignalRSequenceRetentionSweep"/>
+/// already walks <c>ExpiresAt &lt; now</c>; the W17 sweep widens
+/// to consult <see cref="ISignalRRetentionPolicyStore.GetAsync"/>
+/// for every distinct tenant before the global default applies.
+/// The store seam is intentionally narrow: upsert, lookup, list,
+/// delete. Operator UX (admin CRUD controller) is wired in
+/// <c>SignalRRetentionAdminController</c>.</para>
 ///
-/// <para>See <c>docs/replay-by-id.md §4.1 "Per-tenant retention"</c>.</para>
+/// <para>The default per-tenant TTL is <c>24 hours</c> (the
+/// 1440-minute spec called out by W17). Zero / negative is
+/// treated as "policy absent" by the sweep — the global
+/// default applies.</para>
+///
+/// <para>See <c>docs/realtime-resilience.md §7</c>.</para>
 /// </summary>
-public sealed class ReplayRetentionPolicy
+public sealed class SignalRRetentionPolicy
 {
+    /// <summary>Default per-tenant retention window in minutes
+    /// (24 hours). Operators tune this per-tenant; the global
+    /// default
+    /// <see cref="SignalRSequenceStoreOptions.RetentionMinutes"/>
+    /// remains in force when no per-tenant row matches.</summary>
+    public const int DefaultRetentionMinutes = 24 * 60;
+
+    /// <summary>Upper bound on per-tenant retention. Sixty days
+    /// of sequence rows is well beyond the longest reconnect
+    /// window the platform has seen; pinning a max keeps a
+    /// runaway upsert from costing the operator the database.</summary>
+    public const int MaxRetentionMinutes = 60 * 24 * 60;
+
     /// <summary>Stable tenant identifier. Maps to the
     /// <c>tenant</c> claim on multi-tenant JWTs (mirrors
     /// <see cref="Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy.TenantId"/>).
@@ -38,11 +52,11 @@ public sealed class ReplayRetentionPolicy
     /// by tenant id from inside the sweep.</summary>
     public string TenantId { get; set; } = string.Empty;
 
-    /// <summary>Per-tenant retention window in days. Must be
-    /// strictly positive — zero / negative is treated as
-    /// "policy absent" by the sweep so the global default
-    /// applies.</summary>
-    public int RetentionDays { get; set; }
+    /// <summary>Per-tenant retention window in minutes. Default
+    /// <see cref="DefaultRetentionMinutes"/>. Must be strictly
+    /// positive — zero / negative is treated as "policy absent"
+    /// by the sweep so the global default applies.</summary>
+    public int RetentionMinutes { get; set; } = DefaultRetentionMinutes;
 
     /// <summary>UTC timestamp when the row was first written.
     /// Surfaced for audit / dashboard rendering.</summary>
@@ -52,11 +66,8 @@ public sealed class ReplayRetentionPolicy
     /// Bumped on every upsert through the store.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>
-    /// Phase K Wave 17 — Bishop. <see cref="DateTimeOffset"/>
-    /// projection of <see cref="CreatedAt"/>. Mirrors the W17
-    /// widening on <see cref="Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy.CreatedAtOffset"/>.
-    /// </summary>
+    /// <summary><see cref="DateTimeOffset"/> projection of
+    /// <see cref="CreatedAt"/>.</summary>
     [NotMapped]
     public DateTimeOffset CreatedAtOffset
     {
@@ -64,8 +75,8 @@ public sealed class ReplayRetentionPolicy
         set => CreatedAt = value.UtcDateTime;
     }
 
-    /// <summary>Phase K Wave 17 — Bishop. <see cref="DateTimeOffset"/>
-    /// projection of <see cref="UpdatedAt"/>.</summary>
+    /// <summary><see cref="DateTimeOffset"/> projection of
+    /// <see cref="UpdatedAt"/>.</summary>
     [NotMapped]
     public DateTimeOffset UpdatedAtOffset
     {
@@ -75,29 +86,30 @@ public sealed class ReplayRetentionPolicy
 }
 
 /// <summary>
-/// Phase K Wave 16 — Bishop. Persistence seam for the
-/// per-tenant replay retention policy table. Upsert + lookup +
+/// Phase K Wave 17 — Bishop. Persistence seam for the
+/// per-tenant SignalR retention policy table. Upsert + lookup +
 /// list + delete; the sweep consumes <see cref="GetAsync"/>
-/// once per tick to decide each tenant's window.
+/// once per distinct tenant per tick to decide each tenant's
+/// window.
 /// </summary>
-public interface IReplayRetentionPolicyStore
+public interface ISignalRRetentionPolicyStore
 {
     /// <summary>Upsert a per-tenant retention row keyed by
-    /// <see cref="ReplayRetentionPolicy.TenantId"/>.</summary>
-    Task<ReplayRetentionPolicy> UpsertAsync(
-        ReplayRetentionPolicy policy,
+    /// <see cref="SignalRRetentionPolicy.TenantId"/>.</summary>
+    Task<SignalRRetentionPolicy> UpsertAsync(
+        SignalRRetentionPolicy policy,
         CancellationToken ct = default);
 
     /// <summary>Single-row lookup by tenant id. Returns
     /// <c>null</c> when no policy exists — the sweep falls
     /// back to the global default.</summary>
-    Task<ReplayRetentionPolicy?> GetAsync(
+    Task<SignalRRetentionPolicy?> GetAsync(
         string tenantId,
         CancellationToken ct = default);
 
     /// <summary>List every policy row, ordered by tenant id.
     /// Surfaced for audit / ops dashboard rendering.</summary>
-    Task<IReadOnlyList<ReplayRetentionPolicy>> ListAsync(
+    Task<IReadOnlyList<SignalRRetentionPolicy>> ListAsync(
         CancellationToken ct = default);
 
     /// <summary>Delete a policy row. Returns the number of
@@ -109,17 +121,17 @@ public interface IReplayRetentionPolicyStore
 }
 
 /// <summary>
-/// Phase K Wave 16 — Bishop. In-memory implementation. Mirrors
+/// Phase K Wave 17 — Bishop. In-memory implementation. Mirrors
 /// the EF impl shape so the same contract test suite passes
 /// against both bindings.
 /// </summary>
-public sealed class InMemoryReplayRetentionPolicyStore : IReplayRetentionPolicyStore
+public sealed class InMemorySignalRRetentionPolicyStore : ISignalRRetentionPolicyStore
 {
-    private readonly ConcurrentDictionary<string, ReplayRetentionPolicy> _rows =
+    private readonly ConcurrentDictionary<string, SignalRRetentionPolicy> _rows =
         new(StringComparer.Ordinal);
 
-    public Task<ReplayRetentionPolicy> UpsertAsync(
-        ReplayRetentionPolicy policy,
+    public Task<SignalRRetentionPolicy> UpsertAsync(
+        SignalRRetentionPolicy policy,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(policy);
@@ -130,22 +142,22 @@ public sealed class InMemoryReplayRetentionPolicyStore : IReplayRetentionPolicyS
         policy.UpdatedAt = DateTime.UtcNow;
         _rows.AddOrUpdate(policy.TenantId, policy, (_, existing) =>
         {
-            existing.RetentionDays = policy.RetentionDays;
+            existing.RetentionMinutes = policy.RetentionMinutes;
             existing.UpdatedAt = policy.UpdatedAt;
             return existing;
         });
         return Task.FromResult(_rows[policy.TenantId]);
     }
 
-    public Task<ReplayRetentionPolicy?> GetAsync(string tenantId, CancellationToken ct = default)
+    public Task<SignalRRetentionPolicy?> GetAsync(string tenantId, CancellationToken ct = default)
     {
-        if (string.IsNullOrEmpty(tenantId)) return Task.FromResult<ReplayRetentionPolicy?>(null);
+        if (string.IsNullOrEmpty(tenantId)) return Task.FromResult<SignalRRetentionPolicy?>(null);
         return Task.FromResult(_rows.TryGetValue(tenantId, out var v) ? v : null);
     }
 
-    public Task<IReadOnlyList<ReplayRetentionPolicy>> ListAsync(CancellationToken ct = default)
+    public Task<IReadOnlyList<SignalRRetentionPolicy>> ListAsync(CancellationToken ct = default)
     {
-        IReadOnlyList<ReplayRetentionPolicy> rows = _rows.Values
+        IReadOnlyList<SignalRRetentionPolicy> rows = _rows.Values
             .OrderBy(r => r.TenantId, StringComparer.Ordinal)
             .ToList();
         return Task.FromResult(rows);
@@ -162,24 +174,24 @@ public sealed class InMemoryReplayRetentionPolicyStore : IReplayRetentionPolicyS
 }
 
 /// <summary>
-/// Phase K Wave 16 — Bishop. EF-backed implementation. Persists
-/// to <c>ReplayRetentionPolicies</c> keyed by tenant id.
+/// Phase K Wave 17 — Bishop. EF-backed implementation. Persists
+/// to <c>SignalRRetentionPolicies</c> keyed by tenant id.
 /// </summary>
-public sealed class EfReplayRetentionPolicyStore : IReplayRetentionPolicyStore
+public sealed class EfSignalRRetentionPolicyStore : ISignalRRetentionPolicyStore
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<EfReplayRetentionPolicyStore> _logger;
+    private readonly ILogger<EfSignalRRetentionPolicyStore> _logger;
 
-    public EfReplayRetentionPolicyStore(
+    public EfSignalRRetentionPolicyStore(
         IServiceScopeFactory scopeFactory,
-        ILogger<EfReplayRetentionPolicyStore> logger)
+        ILogger<EfSignalRRetentionPolicyStore> logger)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<ReplayRetentionPolicy> UpsertAsync(
-        ReplayRetentionPolicy policy,
+    public async Task<SignalRRetentionPolicy> UpsertAsync(
+        SignalRRetentionPolicy policy,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(policy);
@@ -189,17 +201,17 @@ public sealed class EfReplayRetentionPolicyStore : IReplayRetentionPolicyStore
         }
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var existing = await db.ReplayRetentionPolicies
+        var existing = await db.SignalRRetentionPolicies
             .FirstOrDefaultAsync(p => p.TenantId == policy.TenantId, ct);
         if (existing is null)
         {
             policy.CreatedAt = DateTime.UtcNow;
             policy.UpdatedAt = policy.CreatedAt;
-            db.ReplayRetentionPolicies.Add(policy);
+            db.SignalRRetentionPolicies.Add(policy);
         }
         else
         {
-            existing.RetentionDays = policy.RetentionDays;
+            existing.RetentionMinutes = policy.RetentionMinutes;
             existing.UpdatedAt = DateTime.UtcNow;
             policy = existing;
         }
@@ -207,21 +219,21 @@ public sealed class EfReplayRetentionPolicyStore : IReplayRetentionPolicyStore
         return policy;
     }
 
-    public async Task<ReplayRetentionPolicy?> GetAsync(string tenantId, CancellationToken ct = default)
+    public async Task<SignalRRetentionPolicy?> GetAsync(string tenantId, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(tenantId)) return null;
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await db.ReplayRetentionPolicies
+        return await db.SignalRRetentionPolicies
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.TenantId == tenantId, ct);
     }
 
-    public async Task<IReadOnlyList<ReplayRetentionPolicy>> ListAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<SignalRRetentionPolicy>> ListAsync(CancellationToken ct = default)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await db.ReplayRetentionPolicies
+        return await db.SignalRRetentionPolicies
             .AsNoTracking()
             .OrderBy(p => p.TenantId)
             .ToListAsync(ct);
@@ -232,7 +244,7 @@ public sealed class EfReplayRetentionPolicyStore : IReplayRetentionPolicyStore
         if (string.IsNullOrEmpty(tenantId)) return 0;
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await db.ReplayRetentionPolicies
+        return await db.SignalRRetentionPolicies
             .Where(p => p.TenantId == tenantId)
             .ExecuteDeleteAsync(ct);
     }
@@ -241,6 +253,6 @@ public sealed class EfReplayRetentionPolicyStore : IReplayRetentionPolicyStore
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await db.ReplayRetentionPolicies.CountAsync(ct);
+        return await db.SignalRRetentionPolicies.CountAsync(ct);
     }
 }
