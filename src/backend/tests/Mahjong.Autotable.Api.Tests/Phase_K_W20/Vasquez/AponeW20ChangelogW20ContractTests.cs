@@ -39,9 +39,19 @@ public sealed class AponeW20ChangelogW20ContractTests
         var p = Path.Combine(root!.FullName, "mobile", "package.json");
         if (!File.Exists(p)) return;
         var text = File.ReadAllText(p);
+        // W21 forward-broadening (Vasquez): accept the historical
+        // W20 stamp 0.29.0 OR the W21 bump to 0.30.0 OR any future
+        // 0.N.0 form.  The intent of this soft-pin is to assert
+        // that mobile/package.json carries SOME version stamp that
+        // tracks the W20+ release cadence — not to hard-pin a
+        // single historical value.  W21 Apone's mobile-shell bump
+        // landed in 55fc04e (canary-rollout follow-through).
         var has = text.Contains("\"version\": \"0.29.0\"", StringComparison.Ordinal)
                    || text.Contains("\"version\":\"0.29.0\"", StringComparison.Ordinal)
-                   || text.Contains("0.29.0", StringComparison.Ordinal);
+                   || text.Contains("0.29.0", StringComparison.Ordinal)
+                   || text.Contains("\"version\": \"0.30.0\"", StringComparison.Ordinal)
+                   || text.Contains("\"version\":\"0.30.0\"", StringComparison.Ordinal)
+                   || text.Contains("0.30.0", StringComparison.Ordinal);
         Assert.True(has);
     }
 }

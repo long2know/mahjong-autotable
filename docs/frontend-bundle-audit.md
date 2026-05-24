@@ -269,6 +269,92 @@ flag (`SENTRY_DEFER_INIT=1`) that defers even the DSN probe.
 
 ## §4.2 — W17 + remaining candidates (sections renumbered to §3.6+)
 
+## §4.3 — W21 delivered savings (Hicks)
+
+W21 executed two surgeries jointly to land the §3.6 W21 bring-up
+target.  Result, measured from `dist-size.json` K21 row (raw bytes):
+
+| Chunk | W20 bytes | W21 bytes | Δ | Notes |
+|-------|----------:|----------:|--:|-------|
+| `autotable-src-eager` | 123,701 | **112,219** | **−11,482** | §3.6 profile-drawer extraction + i18n zh-* catalog lazification |
+| `profile-drawer` (NEW) | 0 | 3,871 | +3,871 | §3.6 — split from `./profile`, lazy on `lobby-open-profile` chip hover/focus/click |
+| `zh-Hans` (NEW JSON chunk) | 0 | 4,437 | +4,437 | §3.6 — zh-Hans i18n catalog, lazy on resolved active locale (auto-detect or `setLanguage()` flip) |
+| `zh-Hant` (NEW JSON chunk) | 0 | 4,434 | +4,434 | §3.6 — zh-Hant i18n catalog, lazy on resolved active locale |
+| `renderer-webgl2` | 35,258 | 40,292 | +5,034 | Phase L W21 tile-claim-animation + meld-display (separate W21 deliverable, not §3.6) |
+| `admin-panel` | 35,161 | 48,984 | +13,823 | W21 +5 W21 admin surfaces (separate W21 deliverable, not §3.6) |
+| `three-renderer-big` | 406,635 | 406,635 | 0 | Hold-line (11th wave) |
+
+### Net cold-path delta (bare-`/` lobby load) — W20 → W21
+
+| Path | Wave | Eager + immediately-fetched chunks (bytes) |
+|------|-----:|-------------------------------------------:|
+| Bare `/` (no DSN, no `?action=*`, en locale) | W20 | 123,701 |
+| Bare `/` (no DSN, no `?action=*`, en locale) | W21 | **112,219** |
+
+**Savings: 11,482 bytes** on the cold lobby path (en-locale users).
+For zh-* locale users, the resolved-locale catalog (~4.4 KB) loads
+asynchronously after first paint; until the chunk lands, `t()`
+falls back to the English catalog (the documented fallback path).
+Practical impact: ~10-30 ms of English strings at lobby cold-start
+for zh-* users; localized strings appear once the JSON chunk
+arrives (typically within the same RTT as the eager bundle thanks
+to HTTP/2 server-push hints emitted by Vite's modulepreload list).
+
+### §3.6 — profile-drawer surgery rationale
+
+The Wave-5 profile drawer (`installProfileDrawer` + `installProfileToggle`)
+shipped eagerly from `./profile` because the lobby's `initLobby()`
+called both at boot to wire the side-drawer UI.  Three observations
+made it a clean lazification target at W21:
+
+1. **Modern path bypass.**  W17 §3.2 introduced `./profile-page`
+   which intercepts the `lobby-open-profile` chip click in CAPTURE
+   phase.  On modern paths the drawer's chip handler is dormant —
+   `profile-page` wins the click and renders the modern full-screen
+   profile UI.  The drawer's DOM listeners (close, save, name input,
+   color picker, presets, custom color) are only reached if a
+   third-party flow calls `openProfileDrawer()` programmatically.
+2. **Self-contained DOM graph.**  Aside from data-layer hooks
+   (`getProfile`, `onProfile`, `setDisplayName`, `setAvatarColor`,
+   etc., all kept in `./profile`), the drawer is pure DOM
+   installation.  No cross-module dependencies on the install
+   path; clean dynamic-import boundary.
+3. **Same activation surface as `./profile-page`.**  Both modules
+   load on the `lobby-open-profile` chip hover/focus/click, so
+   the lazy-mount infrastructure is a straight copy of
+   `scheduleProfilePageLazyMount` from W17.
+
+W21 split `./profile-drawer.ts` (~3.9 KB minified) out of
+`./profile.ts`, added `flushPendingDisplayName()` as a thin
+data-layer flush helper the drawer's Save button calls, and
+wired `scheduleProfileDrawerLazyMount()` from `./lobby` to mount
+on the chip's first activation event.
+
+### §3.6 — i18n zh-* catalog lazification rationale
+
+The W17 §3.6 audit estimated the i18n catalogs at "8-15 KB" — at
+W21 the bundled JSON measured 14,656 B raw (en: 4,895 B; zh-Hans:
+4,882 B; zh-Hant: 4,879 B).  W21 left `en` bundled (it's the
+fallback path inside `t()`) and split the two zh-* catalogs into
+their own chunks via dynamic `import('./i18n/zh-Hans.json')` /
+`import('./i18n/zh-Hant.json')`.
+
+The synchronous `t()` API is preserved unchanged: when an
+unloaded zh-* locale is active, `t()` falls back to the English
+catalog (the documented fallback).  `installI18n()` and
+`setLanguage()` both kick off `ensureCatalog(activeLocale)`
+which loads the chunk and re-emits the locale-change event so
+listeners can re-render.  `mergeServerCatalog()` was hardened
+to await the base catalog before applying server-supplied
+pattern patches.
+
+W21 actually delivered 8,871 B of i18n savings on the eager
+chunk (within the W17 §3.6 estimate of 8-15 KB), at the cost
+of two new ~4.4 KB chunks that load asynchronously and only
+for zh-* users.
+
+
+
 The W15 §3.2 / §3.3 / §3.4 sections remain on the W17 docket
 (see §4 roll-up).  Three NEW candidates surfaced during the W16
 surgery + Phase L tile-mesh work:

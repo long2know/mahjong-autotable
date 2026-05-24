@@ -52,7 +52,6 @@ import {
   invokeHub,
   onHubConnected,
 } from './hub';
-import { showEl, hideEl } from './dom-utils';
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -446,201 +445,27 @@ export async function refreshProfile(): Promise<PlayerProfile | null> {
 
 // ── UI install helpers ─────────────────────────────────────────────
 //
-// The drawer + lobby's profile shortcut button live in index.html;
-// these helpers do the runtime wiring (event listeners + per-event
-// re-render).  Kept in profile.ts so the data layer + its primary
-// surface ship together.
+// Phase K Wave 21 — Hicks (bundle-audit §3.6).  The full drawer +
+// chip-toggle wiring has been extracted to `./profile-drawer.ts` so
+// the lobby cold-path eager bundle no longer pays for the drawer's
+// DOM-installation graph (~6 KB raw).  This module retains the
+// data layer + a single `flushPendingDisplayName()` helper the
+// drawer's Save button calls to flush the in-flight debounce.
 
-function initialsFromName(name: string): string {
-  const trimmed = name.trim();
-  if (trimmed === '') return '?';
-  const parts = trimmed.split(/\s+/);
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-}
-
-let drawerInstalled = false;
-let savedNoteTimer: number | null = null;
-
-export function installProfileDrawer(): void {
-  if (drawerInstalled) return;
-  const drawer = document.getElementById('profile-drawer');
-  if (drawer === null) return;
-  drawerInstalled = true;
-
-  const closeBtn = document.getElementById('profile-drawer-close') as HTMLButtonElement | null;
-  const nameInput = document.getElementById('profile-display-name-input') as HTMLInputElement | null;
-  const nameError = document.getElementById('profile-display-name-error');
-  const presetsHost = document.getElementById('profile-avatar-presets');
-  const customColor = document.getElementById('profile-avatar-color-custom') as HTMLInputElement | null;
-  const previewAvatar = document.getElementById('profile-preview-avatar');
-  const previewName = document.getElementById('profile-preview-name');
-  const saveBtn = document.getElementById('profile-save') as HTMLButtonElement | null;
-  const resetBtn = document.getElementById('profile-reset') as HTMLButtonElement | null;
-  const savedNote = document.getElementById('profile-saved-note');
-
-  if (presetsHost !== null) {
-    presetsHost.replaceChildren();
-    AVATAR_COLOR_PRESETS.forEach((hex, idx) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'profile-avatar-preset';
-      btn.style.backgroundColor = hex;
-      btn.setAttribute('data-color', hex);
-      btn.setAttribute('data-testid', `profile-avatar-color-preset-${idx}`);
-      btn.setAttribute('role', 'radio');
-      btn.setAttribute('aria-checked', 'false');
-      btn.setAttribute('aria-label', `Preset colour ${idx + 1}: ${hex}`);
-      btn.title = hex;
-      btn.addEventListener('click', () => {
-        const { error } = setAvatarColor(hex);
-        if (error === null) flashSaved(savedNote);
-      });
-      presetsHost.appendChild(btn);
-    });
+/**
+ * Flush any pending debounced `setDisplayName` write — used by the
+ * lazy-loaded `./profile-drawer` Save button so the displayName
+ * round-trip lands immediately rather than waiting for the
+ * `DISPLAY_NAME_DEBOUNCE_MS` timer.  No-op when nothing is pending.
+ */
+export function flushPendingDisplayName(): void {
+  if (displayNameTimer !== null) {
+    window.clearTimeout(displayNameTimer);
+    displayNameTimer = null;
+    const flush = pendingDisplayName;
+    pendingDisplayName = null;
+    if (flush !== null) void sendUpdateProfile({ displayName: flush });
   }
-
-  if (closeBtn !== null) {
-    closeBtn.addEventListener('click', () => closeProfileDrawer());
-  }
-
-  if (nameInput !== null) {
-    nameInput.addEventListener('input', () => {
-      const raw = nameInput.value;
-      const { value, error } = validateDisplayName(raw);
-      if (nameError !== null) {
-        nameError.textContent = error ?? '';
-      }
-      nameInput.classList.toggle('profile-input-invalid', error !== null);
-      if (error === null && value !== null && current !== null && value !== current.displayName) {
-        const res = setDisplayName(value);
-        if (res.error === null) flashSaved(savedNote);
-      }
-    });
-  }
-
-  if (customColor !== null) {
-    customColor.addEventListener('input', () => {
-      const hex = customColor.value;
-      if (!validateAvatarColor(hex)) return;
-      const { error } = setAvatarColor(hex);
-      if (error === null) flashSaved(savedNote);
-    });
-  }
-
-  if (saveBtn !== null) {
-    saveBtn.addEventListener('click', () => {
-      if (nameInput !== null) {
-        const { value, error } = validateDisplayName(nameInput.value);
-        if (error === null && value !== null) {
-          setDisplayName(value);
-          if (displayNameTimer !== null) {
-            window.clearTimeout(displayNameTimer);
-            displayNameTimer = null;
-            const flush = pendingDisplayName;
-            pendingDisplayName = null;
-            if (flush !== null) void sendUpdateProfile({ displayName: flush });
-          }
-        }
-      }
-      flashSaved(savedNote);
-    });
-  }
-
-  if (resetBtn !== null) {
-    resetBtn.addEventListener('click', () => {
-      resetProfile();
-      flashSaved(savedNote);
-    });
-  }
-
-  onProfile((p) => {
-    if (nameInput !== null && document.activeElement !== nameInput) {
-      nameInput.value = p.displayName;
-      nameInput.classList.remove('profile-input-invalid');
-      if (nameError !== null) nameError.textContent = '';
-    }
-    if (customColor !== null && document.activeElement !== customColor) {
-      customColor.value = expandHex(p.avatarColor);
-    }
-    if (previewAvatar !== null) {
-      const el = previewAvatar as HTMLElement;
-      el.style.backgroundColor = p.avatarColor;
-      el.textContent = initialsFromName(p.displayName);
-    }
-    if (previewName !== null) {
-      previewName.textContent = p.displayName === '' ? 'Guest' : p.displayName;
-    }
-    if (presetsHost !== null) {
-      for (const btn of presetsHost.querySelectorAll<HTMLButtonElement>('.profile-avatar-preset')) {
-        const matches = btn.getAttribute('data-color')?.toLowerCase() === p.avatarColor.toLowerCase();
-        btn.classList.toggle('profile-avatar-preset-selected', matches);
-        btn.setAttribute('aria-checked', matches ? 'true' : 'false');
-      }
-    }
-  });
-}
-
-function flashSaved(node: HTMLElement | null): void {
-  if (node === null) return;
-  showEl(node);
-  node.textContent = 'Saved ✓';
-  if (savedNoteTimer !== null) window.clearTimeout(savedNoteTimer);
-  savedNoteTimer = window.setTimeout(() => {
-    savedNoteTimer = null;
-    hideEl(node);
-  }, 1400);
-}
-
-function expandHex(hex: string): string {
-  if (/^#[0-9a-fA-F]{3}$/.test(hex)) {
-    const r = hex.charAt(1);
-    const g = hex.charAt(2);
-    const b = hex.charAt(3);
-    return `#${r}${r}${g}${g}${b}${b}`;
-  }
-  return hex;
-}
-
-export function openProfileDrawer(): void {
-  const drawer = document.getElementById('profile-drawer');
-  if (drawer === null) return;
-  drawer.classList.add('profile-drawer-open');
-  drawer.setAttribute('aria-hidden', 'false');
-  const nameInput = document.getElementById('profile-display-name-input') as HTMLInputElement | null;
-  if (nameInput !== null) {
-    window.setTimeout(() => nameInput.focus(), 220);
-  }
-}
-
-export function closeProfileDrawer(): void {
-  const drawer = document.getElementById('profile-drawer');
-  if (drawer === null) return;
-  drawer.classList.remove('profile-drawer-open');
-  drawer.setAttribute('aria-hidden', 'true');
-}
-
-/** Wire the lobby's small "Profile" shortcut button (chip + label). */
-export function installProfileToggle(): void {
-  const btn = document.getElementById('lobby-open-profile') as HTMLButtonElement | null;
-  if (btn === null) return;
-  btn.addEventListener('click', (e) => {
-    e.preventDefault();
-    openProfileDrawer();
-  });
-
-  const avatar = document.getElementById('lobby-open-profile-avatar');
-  const label = document.getElementById('lobby-open-profile-label');
-  onProfile((p) => {
-    if (avatar !== null) {
-      const el = avatar as HTMLElement;
-      el.style.backgroundColor = p.avatarColor;
-      el.textContent = initialsFromName(p.displayName);
-    }
-    if (label !== null) {
-      label.textContent = p.displayName === '' ? 'Profile' : p.displayName;
-    }
-  });
 }
 
 // ── Re-export init helpers used by lobby/client ────────────────────
@@ -657,4 +482,18 @@ export function initProfileHubBindings(): void {
     // duplicates).
     installProfileLoadedListener();
   });
+}
+
+// Private helper used by sendUpdateProfile to canonicalize 3-char hex
+// shortcuts before they hit Bishop's wire (which only accepts #RRGGBB).
+// The full drawer-side `expandHex` ships in `./profile-drawer.ts` so this
+// duplicate stays tightly scoped to the data layer's one call site.
+function expandHex(hex: string): string {
+  if (/^#[0-9a-fA-F]{3}$/.test(hex)) {
+    const r = hex.charAt(1);
+    const g = hex.charAt(2);
+    const b = hex.charAt(3);
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return hex;
 }

@@ -434,3 +434,88 @@ HOLD disposition, no §6.8 row mutation is in scope for the W20
 Hicks lane.  The W20 Vasquez bring-up cross-refs this §11 and
 re-confirms the HOLD in the §6.8 row (per the W19 hand-off's
 "Vasquez cross-ref" clause).
+
+## §12 — W21 bring-up status update (Hicks)
+
+Re-running the §4.2 evidence-gate check at W21 bring-up against
+the post-W18-merge baseline.  The §4.2 convergence criterion
+remains "≥3 consecutive successful `schedule:`-event runs against
+the candidate workflow tree".
+
+**Cron scheduler status (W21 check, vs W20 sign-off):**
+
+| Metric | W20 sign-off | W21 bring-up |
+|--------|--------------|--------------|
+| Successful `schedule`-event runs on `main` post-W18-merge | 0 confirmed | **0 confirmed** ‡ |
+| `workflow_dispatch` runs on `main` post-W18-merge | 1 (frozen) | 1 (frozen since W19) |
+| Total `pwa-audit.yml` successful runs (any event) on `main` post-W18-merge | 1 confirmed | 1 confirmed (no fresh data) |
+
+‡ **Evidence-collection blocker (W21).**  Same blocker as W20.
+At W21 bring-up the `gh` CLI is still not authenticated in the
+bring-up agent's shell — `gh auth status` returns "not logged
+into any GitHub hosts".  The W21 Hicks agent therefore could
+NOT run the canonical query shown in §4.2 (identical to W20):
+
+```
+gh run list --workflow=pwa-audit.yml --event=schedule \
+  --limit 20 --json status,conclusion,createdAt,headSha,databaseId
+```
+
+The §4.2 convergence criterion is binary on the count of
+successful schedule-event runs.  With the count unobservable
+from the bring-up shell at W21 (as at W20), the conservative
+reading remains "still 0 of 3 confirmed".
+
+**Timing observation.**  The W18 merge to `main` (`7832f49`)
+landed in the W18 sign-off window.  By W21 bring-up the
+wall-clock distance has widened well past the 3-hour minimum
+needed for 3 hourly cron ticks against the patched workflow —
+so the §4.2 sample-window-size sub-condition is now plausibly
+satisfied (unlike at W20).  HOWEVER, the count is still
+unobserved from this bring-up shell, so the binary gate
+continues to read 0.
+
+**Decision: HOLD §6.8 YELLOW.  Do NOT promote to hard-pin GREEN.**
+
+Sole reason at W21 (down from two compounded reasons at W20):
+
+1. **Observational gap.**  The bring-up shell cannot enumerate
+   schedule-event run conclusions without an authenticated `gh`
+   session.  Per §4.2, the gate is binary on observation; an
+   unobserved sample is treated as a 0-count sample.  This is
+   the SAME blocker that forced the W20 HOLD; W21 inherits it
+   unchanged.
+
+The W20 secondary reason ("sample-window-size mathematically
+insufficient") no longer applies at W21 — enough wall-clock
+time has elapsed.  But the observation channel remains closed,
+so the disposition is unchanged.
+
+**Specific YELLOW indicator (per §6.7).**  The §6.7 table
+continues to mark the LH13 row YELLOW at W21 — same wording as
+W20: "patch landed on `main` post-W18; sample window opening
+but cannot be sized from the bring-up shell; HOLD until a
+coordinator-driven probe returns a confirmed ≥3-run sample".
+
+**No regression to RED.**  The LH13 row stays YELLOW (not RED)
+for the same reason it stayed YELLOW at W20: the W18 remediation
+IS on `main`, the `workflow_dispatch` smoke continues to return
+`success`, and no regression evidence is observed.
+
+**Re-check trigger.**  W22 Hicks bring-up re-runs §4.2.  If the
+`gh`-auth gap is unresolved at W22 again, recommend escalating
+the §6.x coordinator-driven probe path (per the W19 hand-off)
+rather than continuing to inherit the YELLOW reading
+indefinitely.  At W22 the elapsed wall-clock since the W18
+merge will have widened to >2 days — well past any conceivable
+sample-window threshold — so a confirmed ≥3-run sample is
+overwhelmingly likely to exist on the actual `pwa-audit.yml`
+run history; the bottleneck is purely the bring-up shell's
+inability to read it.
+
+**No `docs/agent-handoff-protocol.md §6.8` PROMOTE update at
+W21.**  Identical reasoning to W20: with HOLD disposition, no
+§6.8 row mutation is in scope for the W21 Hicks lane.  The
+W21 Vasquez bring-up may cross-ref this §12 and re-confirm the
+HOLD in the §6.8 row (per the W19 hand-off's "Vasquez cross-ref"
+clause, carried forward through W20 and now W21).

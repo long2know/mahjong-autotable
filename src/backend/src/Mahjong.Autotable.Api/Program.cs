@@ -327,6 +327,13 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssueBlockedMetrics>
 // an optional dep so the per-tenant latency is observable on the
 // MetricsEndpoint. See docs/realtime-resilience.md §10.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtDurationMetrics>();
+// Phase K Wave 21 — Bishop. JWT validator anomaly counter.
+// Records clock-skew, invalid-issuer, expired-too-soon
+// outcomes per (tenant, reason) so operators can graph
+// anomalous validation bursts on a single Grafana panel.
+// The validator takes this as an optional dep — legacy
+// tests that wire only the issuer still work.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidatorAnomalyMetrics>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 // Phase K Wave 14 — Bishop. JWKS overlap-window enforcement. The
 // validator now takes the staged rotation policy so it can reject
@@ -339,11 +346,17 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 // Phase K Wave 19 — Bishop. The DI factory now also threads the
 // JwtDurationMetrics collector through the W19 overload so the
 // validator-check histogram records every call.
+//
+// Phase K Wave 21 — Bishop. The DI factory also threads the
+// JwtValidatorAnomalyMetrics collector through the W21
+// overload so anomalous validations stamp the counter.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>(sp =>
     new Mahjong.Autotable.Api.Auth.JwtValidationService(
         sp.GetRequiredService<Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider>(),
         sp.GetService<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy>(),
-        sp.GetService<Mahjong.Autotable.Api.Auth.JwtDurationMetrics>()));
+        sp.GetService<Mahjong.Autotable.Api.Auth.JwtDurationMetrics>(),
+        sp.GetService<Mahjong.Autotable.Api.Auth.JwtValidatorAnomalyMetrics>(),
+        null));
 // Phase K Wave 12 — Bishop. Spectator handoff validator pairs with
 // the controller in Spectator/SpectatorHandoffController.cs. Scoped
 // `spectator:{gameId}` JWTs are minted by the controller and verified
@@ -564,6 +577,29 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.ISwissPairingServ
 // scope per request via IServiceScopeFactory. See
 // docs/swiss-pairing.md (W20 live-pairing addendum).
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.SwissPairingService>();
+
+// Phase K Wave 21 — Bishop. Swiss apply-round service. Closes
+// the loop on the W20 preview path: turns the W20-proposed
+// pairings (one SwissPairingAuditEntry per board) into
+// TournamentMatch rows. Idempotent — re-call with the same
+// (tournamentId, round) returns the existing matches.
+// Surface: POST /api/admin/tournaments/{id}/swiss-apply-round.
+// See docs/swiss-pairing.md §9 (W21 apply addendum).
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.SwissApplyRoundService>();
+
+// Phase K Wave 21 — Bishop. Scheduled rotation executor +
+// metric collector. The executor polls the
+// RotationSchedules table once per minute and runs any
+// schedule whose cron matches the current UTC minute. Emits
+// jwt_scheduled_rotation_total{tenant,status} per evaluation.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtScheduledRotationMetrics>();
+builder.Services.AddHostedService<Mahjong.Autotable.Api.Auth.RotationScheduledExecutorService>();
+
+// Phase K Wave 21 — Bishop. SignalR manual-purge counter.
+// The Deliverable 7 admin surface increments this counter
+// per row deleted so operators can graph operator-initiated
+// purges separately from the W17 retention sweep.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRManualPurgeMetrics>();
 
 // Phase K Wave 8 — Bishop. Bracket snapshot service. Composes the
 // generator's slot layout with the live TournamentMatch rows so the

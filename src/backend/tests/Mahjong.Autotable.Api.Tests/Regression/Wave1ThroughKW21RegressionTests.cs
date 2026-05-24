@@ -155,6 +155,48 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// on absence (except the Vasquez-lane artefacts that ship in this
 /// same PR, which hard-assert).</para>
 ///
+/// <para><b>Wave 21 extension.</b> Class renamed Wave1ThroughKW20 →
+/// Wave1ThroughKW21. New W21 smokes appended for the W21 surfaces:
+/// the W21 forward-stage Bishop/Hicks/Apone contract surfaces under
+/// <c>Phase_K_W21/Vasquez/</c> (Bishop W21 backend csproj 0.29.0 →
+/// 0.30.0 bump, SwissApplyRoundService projecting W20 audit rows into
+/// TournamentMatch rows + idempotent admin endpoint, scheduled JWKS
+/// rotation entity + admin controller + cron matcher + background
+/// executor with <c>jwt_scheduled_rotation_total</c> counter,
+/// ReplayRestorationAttempt audit log + admin GET endpoint,
+/// JwtValidatorAnomalyMetrics <c>jwt_validator_anomaly_total</c>
+/// counter with clock-skew / invalid-issuer / expired-too-soon
+/// reason labels, TournamentWithdrawPlayerController setting
+/// Seed=-1 sentinel + dropping in-flight matches,
+/// SignalRRetentionManualPurgeController with cutoff +
+/// optional-tenant-scope bulk-delete + <c>signalr_manual_purge_total</c>
+/// counter; Hicks W21 LH13 §6.9 evidence-gate re-evaluation HOLD
+/// YELLOW (sole reason: gh-CLI unauthenticated; sample-window-size
+/// reason no longer applies at W21), Phase L renderer-webgl2 W6
+/// tile-claim-animation + meld-display modules wired via
+/// <c>?renderer=webgl2-meld</c> URL guard, bundle audit §3.6 surgery
+/// (profile-drawer extraction + i18n zh-Hans/zh-Hant catalogs
+/// lazified — autotable-src-eager 123,701 → 112,219 B; 5,541 B
+/// head-room under 115 KB ceiling), three-renderer-big hold at
+/// 406,635 B (11th consecutive wave at hold-line), 5 new Admin
+/// UI W21 operator surfaces (swiss-apply-round / rotation-schedule
+/// / tournament-withdraw / signalr-purge / replay-restoration-
+/// audit); Apone W21 Argo Rollouts frontend Canary strategy
+/// template (4 weight steps 5/25/50/100 with AnalysisRun-gated
+/// 10-min pauses, frontend-canary-error-rate Prometheus poll over
+/// 40 iterations), 2 new Kyverno Audit-mode ClusterPolicies
+/// (require-resource-limits + disallow-host-paths) for the W22
+/// enforce-flip, mobile/package.json + CHANGELOG 0.30.0 stamps),
+/// the <c>docs/agent-handoff-protocol.md §6.10</c> LH13 W21 status
+/// (Hicks held YELLOW — 13-wave deferral arc on §4.8 unchanged;
+/// symbolic crossing of the "year of bring-ups" threshold), the
+/// §9 W21 stash-isolation directive (NEW — codifies the Apone W20
+/// mid-task reset lesson: never touch other agents' working tree
+/// state mid-wave), the W20 → W21 regression rename pin itself,
+/// and the W20 pin rewritten to _Historical. All forward-staged
+/// with soft-pass on absence (except the Vasquez-lane artefacts
+/// that ship in this same PR, which hard-assert).</para>
+///
 /// <para><b>Wave 20 extension.</b> Class renamed Wave1ThroughKW19 →
 /// Wave1ThroughKW20. New W20 smokes appended for the W20 surfaces:
 /// the W20 forward-stage Bishop/Hicks/Apone contract surfaces under
@@ -352,11 +394,11 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// PR, which hard-assert).</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW20RegressionTests
+public class Wave1ThroughKW21RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW20RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW21RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -2043,7 +2085,7 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
     public void PhaseK10_DbSerialCollection_Present()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("DbSerialCollection", StringComparison.Ordinal)
             || x.Name.Equals("DbSerialCollectionDefinition", StringComparison.Ordinal));
@@ -2056,7 +2098,7 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
     public void PhaseK11_FideC04SwissPairingService_Present()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly
             .GetReferencedAssemblies()
             .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
             .Where(a => a is not null)
@@ -2076,7 +2118,7 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
     public void PhaseK11_TileReference_ToBinary_Present()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly
             .GetReferencedAssemblies()
             .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
             .Where(a => a is not null)
@@ -2408,11 +2450,15 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
     public void PhaseK12_RegressionClassRenamed_KW11_To_KW12()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
-        // The new class is present (this one).
-        var t12 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
-        Assert.NotNull(t12);
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
+        // The new class is present (this one).  W21 forward-broadening
+        // (Vasquez): accept either the W20 OR the W21 class name so this
+        // historical W12 rename pin keeps passing across the KW20→KW21
+        // sed-rewrite (and beyond, into W22+).
+        var tCurrent = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW21RegressionTests", StringComparison.Ordinal));
+        Assert.NotNull(tCurrent);
         // The old class is GONE.
         var t11 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW11RegressionTests", StringComparison.Ordinal));
@@ -2615,11 +2661,13 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-13")]
     public void PhaseK13_RegressionClassRenamed_KW12_To_KW13()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
-        // The new class is present (this one).
-        var t13 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
-        Assert.NotNull(t13);
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
+        // The new class is present (this one).  W21 forward-broadening
+        // (Vasquez): accept either the W20 OR the W21 class name.
+        var tCurrent = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW21RegressionTests", StringComparison.Ordinal));
+        Assert.NotNull(tCurrent);
         // The old class is GONE.
         var t12 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal));
@@ -2801,11 +2849,13 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-14")]
     public void PhaseK14_RegressionClassRenamed_KW13_To_KW14()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
-        // The new class is present (this one).
-        var t14 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
-        Assert.NotNull(t14);
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
+        // The new class is present (this one).  W21 forward-broadening
+        // (Vasquez): accept either the W20 OR the W21 class name.
+        var tCurrent = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW21RegressionTests", StringComparison.Ordinal));
+        Assert.NotNull(tCurrent);
         // The old class is GONE.
         var t13 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal));
@@ -3067,7 +3117,7 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
     public void PhaseK15_RegressionClassRenamed_KW14_To_KW15_Historical()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
         // The W14 class is GONE (was retired at W15 sign-off).
         var t14 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
@@ -3092,7 +3142,7 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-16")]
     public void PhaseK16_RegressionClassRenamed_KW15_To_KW16_Historical()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
         // The old W15 class is GONE.
         var t15 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
@@ -3117,7 +3167,7 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-17")]
     public void PhaseK17_RegressionClassRenamed_KW16_To_KW17_Historical()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
         // The old W16 class is GONE.
         var t16 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal));
@@ -3143,7 +3193,7 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-18")]
     public void PhaseK18_RegressionClassRenamed_KW17_To_KW18_Historical()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
         // The old W17 class is GONE.
         var t17 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal));
@@ -3168,7 +3218,7 @@ public class Wave1ThroughKW20RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-19")]
     public void PhaseK19_RegressionClassRenamed_KW18_To_KW19_Historical()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
         // The old W18 class is GONE.
         var t18 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
@@ -3183,24 +3233,49 @@ public class Wave1ThroughKW20RegressionTests
     // ────────────────────────────────────────────────────────────
     //  Phase K Wave 20 — Wave1ThroughKW20 rename pin (Vasquez).
     //  Vasquez-lane artefact — hard-asserts (it ships in THIS PR).
+    //  W21: the W20 rename historical fact is rewritten to assert
+    //  the W19 *historical* AND the W20 *historical* lines; this
+    //  fact is renamed PhaseK20_RegressionClassRenamed_KW19_To_KW20_Historical
+    //  and now checks that BOTH the W19 AND the W20 class names are
+    //  gone (W20 was retired at W21 sign-off; see PhaseK21 fact
+    //  below).  History hardens forward.
     // ────────────────────────────────────────────────────────────
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-20")]
-    public void PhaseK20_RegressionClassRenamed_KW19_To_KW20()
+    public void PhaseK20_RegressionClassRenamed_KW19_To_KW20_Historical()
     {
-        var asm = typeof(Wave1ThroughKW20RegressionTests).Assembly;
-        // The new class is present (this one).
-        var t20 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
-        Assert.NotNull(t20);
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
         // The old W19 class is GONE.
         var t19 = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW19RegressionTests", StringComparison.Ordinal));
         Assert.Null(t19);
+        // The W20 class is ALSO gone (was retired at W21 sign-off,
+        // see PhaseK21_RegressionClassRenamed_KW20_To_KW21 below).
+        var t20 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
+        Assert.Null(t20);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 21 — Wave1ThroughKW21 rename pin (Vasquez).
+    //  Vasquez-lane artefact — hard-asserts (it ships in THIS PR).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-21")]
+    public void PhaseK21_RegressionClassRenamed_KW20_To_KW21()
+    {
+        var asm = typeof(Wave1ThroughKW21RegressionTests).Assembly;
+        // The new class is present (this one).
+        var t21 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW21RegressionTests", StringComparison.Ordinal));
+        Assert.NotNull(t21);
+        // The old W20 class is GONE.
+        var t20 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
+        Assert.Null(t20);
     }
 
     private static Assembly? ResolveApiAssembly()
     {
-        var refs = typeof(Wave1ThroughKW20RegressionTests).Assembly
+        var refs = typeof(Wave1ThroughKW21RegressionTests).Assembly
             .GetReferencedAssemblies();
         foreach (var name in refs)
         {

@@ -19,8 +19,55 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-20-bringup`. Phase K Wave 20
+Working branch: `stlong/phase-k-wave-21-bringup`. Phase K Wave 21
 in flight. Other lane deliverables outstanding.
+
+## [0.30.0] — Phase K Wave 21 — 2027-02-19 (PR pending)
+
+**Theme:** Argo Rollouts strategy-matrix completion (W20 BlueGreen
+for backend → W21 Canary for frontend; 5%/25%/50%/100% step
+ladder with 10min AnalysisRun-gated pauses; error-rate gate at
+0.5% against `nginx_ingress_controller_requests` over 1m rolling
+window; coexists with W9 backend Canary + W20 backend BlueGreen
+— every workload now has at least one strategy template wired by
+W21) + Kyverno W21 audit-mode rule pair landing (5-day grace
+window → W22 enforce-flip; `require-resource-limits` deny-on-
+missing `resources.limits.cpu` OR `resources.limits.memory` on
+every container in `mahjong-prod` — CFS-share unbounded ⇒ P99
+budget burn + node-OOM evictor risk; `disallow-host-paths` deny
+on `spec.volumes[*].hostPath` — CIS-1.6 §5.7.4 / SC-3 / SOC-2
+container-escape primitive; both lift `validationFailureAction:
+Audit` + `failurePolicy: Ignore` for the W21 launch shape) +
+us-east-1 ACTUAL APPLY auto-rollback safety net (W20 V2 8-
+invariant smoke-test from `post-apply-smoke-test.sh` now wired
+as a `null_resource` provisioner that fires `terraform destroy
+-auto-approve` within 5min on smoke failure; opt-in via
+`var.enable_auto_rollback = true`; dry-run via
+`var.auto_rollback_dry_run = true` for staging-tier validation
+BEFORE prod opt-in; defaults `false` so existing apply paths
+are unchanged) + Helm chart release pipeline (NEW
+`.github/workflows/helm-release.yml` triggers on `helm-v*.*.*`
+tags; `helm lint` + `helm template` against default + staging
++ prod values; `helm package` + `helm push oci://ghcr.io/
+long2know/charts`; keyless cosign sign via GitHub OIDC; in-job
+`cosign verify` against the OIDC certificate-identity-regexp;
+W21 splits chart release cadence from app release cadence —
+parallel to `release.yml` not extending it) + SignalR
+observability hardening (NEW `infra/k8s/overlays/prod/
+prometheus-rules-signalr.yaml` PrometheusRule with recording
+rule `signalr:churn_rate_5m` derived from W11
+`signalr_connections_active` gauge via `clamp_min(-delta(...
+[5m])/5, 0)`; 2 alerts `SignalrChurnHigh` warning at >10/min
+sustained 5m + `SignalrChurnCritical` page at >30/min sustained
+3m — ~7× / ~20× the W11 baseline of 1.5/min; both carry
+`team: apone` for W16 Alertmanager routing) + CHANGELOG
+`[0.30.0]` + `mobile/package.json` 0.29.0 → 0.30.0 + W21 inbox
+memo. Wave-count-tracks-version: W21 → 0.30.0 (W20=0.29.0;
+W11=0.20.0 anchor). Bishop-lane csproj bump deferred. Stash-
+discipline preserved: zero `git stash pop` before commit; W19
+retro pattern honoured; W20 Hicks-stash-recovery lesson
+respected (Apone reset wiped Hicks's tree at W20 — never
+again).
 
 ## [0.29.0] — Phase K Wave 20 — 2027-02-12 (PR pending)
 

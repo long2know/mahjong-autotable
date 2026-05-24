@@ -11,9 +11,18 @@
     "errorBudgetMinutesPerMonth": 21.6,
     "notes": "Per-tenant histograms emitted by JwtDurationMetrics. Labels: tenant. Bucket bounds: 250us, 500us, 1ms, 2.5ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 1s, 5s, +Inf. The issuing service stamps on every IssueAsync / IssueForTenantAsync; the validator stamps on every Validate."
   },
+  "_phaseKWave21Bishop": {
+    "owner": "Bishop (Backend)",
+    "wave": "Phase-K-Wave-21",
+    "metrics": [
+      "jwt_validator_anomaly_total",
+      "jwt_scheduled_rotation_total"
+    ],
+    "notes": "W21 anomaly counter (labels: tenant, reason) and scheduled-rotation counter (labels: tenant, status). Panels 9 + 10 expose them filterable by the tenant dashboard variable."
+  },
   "uid": "bishop-jwt-validator-metrics",
   "title": "JWT Issue / Validator Duration",
-  "tags": ["bishop", "phase-k", "wave-19", "jwt", "auth", "latency", "slo"],
+  "tags": ["bishop", "phase-k", "wave-19", "wave-21", "jwt", "auth", "latency", "anomaly", "slo"],
   "timezone": "utc",
   "schemaVersion": 38,
   "version": 1,
@@ -204,6 +213,42 @@
         {
           "expr": "sum by (tenant) (rate(jwt_issue_duration_seconds_count{tenant=~\"$tenant\"}[5m]))",
           "legendFormat": "{{tenant}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Validator anomalies by reason (5m)",
+      "description": "Phase K Wave 21 — Bishop. rate(jwt_validator_anomaly_total[5m]) grouped by reason. Reasons: clock-skew, invalid-issuer, expired-too-soon. Filterable by tenant via the dashboard variable.",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(jwt_validator_anomaly_total{tenant=~\"$tenant\"}[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Scheduled rotations by status (5m)",
+      "description": "Phase K Wave 21 — Bishop. rate(jwt_scheduled_rotation_total[5m]) grouped by status. Statuses: success, error, skipped. Filterable by tenant via the dashboard variable.",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(jwt_scheduled_rotation_total{tenant=~\"$tenant\"}[5m]))",
+          "legendFormat": "{{status}}",
           "refId": "A"
         }
       ]

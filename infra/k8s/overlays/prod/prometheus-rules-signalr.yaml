@@ -1,0 +1,211 @@
+# Phase K Wave 21 — Apone (DevOps).
+#
+# SignalR observability hardening (W21) — connection
+# histogram + churn-rate alerts.
+#
+# # Why this is a SEPARATE PrometheusRule manifest
+#
+# The W11 sequence-SLO observability surface (documented in
+# `docs/signalr-sequence-slo.md`) introduced `signalr_*`
+# metric emission from the backend; the W16 SignalR SLO
+# document promised 99.95% availability over a rolling
+# 30-day window. W21 closes the operator-facing gap:
+#
+#   * Active-connection visibility — `signalr_connections_
+#     active{tenant=...}` already exists as a Counter
+#     instrument on the backend (W11 §3.4) but no
+#     PrometheusRule + alert wraps it.
+#   * Churn-rate alerting — sudden mass-disconnects flag
+#     either an upstream ingress flap (per-tenant) OR a
+#     cluster-edge degradation (cross-tenant). Today these
+#     events surface only after the W16 30-day error-
+#     budget burn alert fires — too late.
+#
+# W21 lands a single PrometheusRule manifest:
+#
+#   1. A RECORDING rule `signalr:churn_rate_5m` derives the
+#      per-tenant 5-minute connection-loss rate from the
+#      existing `signalr_connections_active` gauge.
+#   2. Two ALERT rules — `SignalrChurnHigh` (warning) and
+#      `SignalrChurnCritical` (page) — fire on the recording
+#      rule with the team=apone label so the W16 routing
+#      rules send the alert to the on-call DevOps engineer.
+#
+# # Why a RECORDING rule for the churn rate
+#
+# Computing the churn rate inline in two alert rules would
+# duplicate the expression + double the Prometheus
+# evaluation cost. The W11 pattern (see
+# `infra/k8s/overlays/prod/prometheus-rules-signalr.yaml`
+# if it exists — at W21 it doesn't, so this is a NEW
+# manifest) is to derive a recording rule once + reference
+# it from each alert. This also gives Grafana a stable
+# series name for the W21 dashboard tile.
+#
+# # Alert thresholds — >10/min P95 (warning), >30/min P95 (critical)
+#
+# The W11 baseline observed `signalr_connections_active`
+# stable at ~1500 connections cluster-wide with a normal
+# churn of ~1.5 disconnections per minute (background
+# tab-close + JWT-refresh reconnects). 10/min is ~7×
+# baseline; 30/min is ~20× baseline (cluster-wide outage
+# territory). P95 (over 5-minute window) absorbs single-
+# burst noise.
+#
+# Note on the deliverable spec: the task asks for
+# ">10/min P95" + ">30/min P95". The W21 implementation
+# translates "P95" → the 5-minute average rate (the
+# closest Prometheus-native operator over the recording
+# rule's window). A true `histogram_quantile()`-based
+# P95 would require a histogram source metric (the
+# upstream `signalr_connections_active` is a gauge); the
+# 5-minute rolling-average is the idiomatic Prometheus
+# shape for "sustained-breach-not-instant-spike" which is
+# the alert's design intent.
+#
+# # Why `team: apone` label
+#
+# Matches the W16 alert-routing convention. The Alertmanager
+# routing tree (managed in the `prometheus-alertmanager-
+# config` ConfigMap, NOT in this repo) routes
+# `team=apone` alerts to the DevOps PagerDuty service +
+# the `#alerts-apone` Slack channel. Other teams use
+# `team=bishop` (backend) / `team=hicks` (frontend) /
+# `team=vasquez` (QA).
+#
+# # Wiring
+#
+# Lands in the prod overlay's namespace (`mahjong-prod`)
+# so the PrometheusRule is scoped + RBAC-isolated.
+# kube-prometheus-stack's PrometheusRule selector picks up
+# the `prometheus: kube-prometheus` label set below.
+#
+# Out-of-band — NOT in `base/kustomization.yaml`. The
+# prod-only overlay applies this via `kubectl apply -f` in
+# the operator runbook (`docs/signalr-observability-w21.md`
+# §3). Mirrors the W11 `prometheus-rules-coturn.yaml`
+# wiring pattern.
+#
+# # Cross-references
+#
+#   * `docs/signalr-sequence-slo.md` — W16 sequence-replay
+#     SLO contract.
+#   * `docs/signalr-affinity-hardening-w19.md` — W19
+#     sticky-session cookie + IP-hash fallback.
+#   * `docs/signalr-observability-w21.md` — W21 operator
+#     runbook (THIS manifest's runbook).
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: signalr-observability
+  namespace: mahjong-prod
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: signalr-observability
+    app.kubernetes.io/part-of: mahjong-autotable
+    # The prometheus-operator's PrometheusRule selector
+    # picks up rules carrying this label set. Matches the
+    # W11 prometheus-rules-coturn convention.
+    prometheus: kube-prometheus
+    role: alert-rules
+    team: apone
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-21
+    mahjong.io/runbook: "docs/signalr-observability-w21.md"
+spec:
+  groups:
+    - name: signalr.connections
+      interval: 30s
+      rules:
+        # Recording rule — surface a stable per-tenant
+        # active-connection series. Alias of the upstream
+        # gauge so Grafana / Alertmanager can reference
+        # `signalr:connections_active:gauge` without
+        # tracking the upstream metric-name's future renames.
+        - record: signalr:connections_active:gauge
+          expr: |
+            max by (tenant) (signalr_connections_active)
+
+        # Recording rule — 5-minute churn rate. Uses the
+        # `delta()` operator over the gauge to capture
+        # NET-DOWN movement (positive = disconnects
+        # exceeded reconnects in the window). Divide by 5
+        # to convert "loss in 5min" → "loss per minute".
+        # `clamp_min(...,0)` because a connection-growth
+        # window legitimately yields a negative delta — we
+        # only alert on net loss.
+        - record: signalr:churn_rate_5m
+          expr: |
+            clamp_min(
+              -delta(signalr_connections_active[5m]) / 5,
+              0
+            )
+
+    - name: signalr.churn.alerts
+      interval: 30s
+      rules:
+        # WARNING — sustained per-minute churn over 10
+        # disconnects/min for 5 consecutive minutes
+        # (P95-equivalent in the 5min rolling average
+        # shape). At 10/min the operator should
+        # investigate but is not paged.
+        - alert: SignalrChurnHigh
+          expr: |
+            signalr:churn_rate_5m > 10
+          for: 5m
+          labels:
+            severity: warning
+            team: apone
+            service: signalr
+            sli: connection_churn
+          annotations:
+            summary: >-
+              SignalR churn HIGH — {{ $labels.tenant }}
+              losing >10 connections/minute (P95 5m rolling)
+            description: >-
+              SignalR `signalr:churn_rate_5m` for tenant
+              `{{ $labels.tenant }}` has exceeded 10 net
+              disconnects per minute for 5+ consecutive
+              minutes (current value: {{ $value | printf
+              "%.2f" }} disconnects/min). This is ~7× the
+              W11 baseline of 1.5/min. Likely causes:
+              ingress-affinity cookie loss (W19), upstream
+              pod restart, or per-tenant client-side
+              connectivity flap. Investigate via the
+              docs/signalr-observability-w21.md §5 runbook.
+            runbook_url: "docs/signalr-observability-w21.md#5-investigation-runbook"
+
+        # CRITICAL — sustained per-minute churn over 30
+        # disconnects/min for 3 consecutive minutes.
+        # Cluster-wide event territory. Pages the on-call
+        # DevOps engineer via the W16 Alertmanager
+        # team=apone route.
+        - alert: SignalrChurnCritical
+          expr: |
+            signalr:churn_rate_5m > 30
+          for: 3m
+          labels:
+            severity: critical
+            team: apone
+            service: signalr
+            sli: connection_churn
+            pager: pagerduty
+          annotations:
+            summary: >-
+              SignalR churn CRITICAL — {{ $labels.tenant }}
+              losing >30 connections/minute (P95 5m rolling)
+            description: >-
+              SignalR `signalr:churn_rate_5m` for tenant
+              `{{ $labels.tenant }}` has exceeded 30 net
+              disconnects per minute for 3+ consecutive
+              minutes (current value: {{ $value | printf
+              "%.2f" }} disconnects/min). This is ~20× the
+              W11 baseline of 1.5/min — cluster-wide event
+              territory. Page the on-call DevOps engineer.
+              The W16 SLO error-budget burns FAST at this
+              rate (a 5-minute sustained 30/min churn
+              consumes ~3 minutes of the 30-day budget).
+              See docs/signalr-observability-w21.md §5.2
+              for the page-grade response playbook.
+            runbook_url: "docs/signalr-observability-w21.md#52-critical-response-playbook"

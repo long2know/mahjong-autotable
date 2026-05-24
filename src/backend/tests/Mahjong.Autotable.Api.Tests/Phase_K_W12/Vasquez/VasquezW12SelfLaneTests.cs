@@ -234,7 +234,8 @@ public sealed class VasquezW12SelfLaneTests
             || x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW19RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW21RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t12or13);
         // The W11 class must be gone.
         var t11 = asm.GetTypes().FirstOrDefault(x =>

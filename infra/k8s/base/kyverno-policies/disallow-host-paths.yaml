@@ -1,0 +1,142 @@
+# Phase K Wave 21 — Apone (DevOps).
+#
+# Kyverno ClusterPolicy that DENIES pod-level `hostPath`
+# volumes in the `mahjong-prod` namespace. Companion to the
+# W21 `require-resource-limits.yaml` Audit-mode rule.
+#
+# # Why this matters
+#
+# `hostPath` volumes mount a directory from the worker
+# node's filesystem into the pod. They are a classical
+# container-escape + lateral-movement primitive:
+#
+#   * A compromised pod with a hostPath-mounted `/var/run/
+#     docker.sock` can launch sibling containers on the
+#     same node with root privileges.
+#   * A hostPath-mounted `/etc/kubernetes/admin.conf`
+#     exposes the cluster's kubeconfig (CKE bootstrap
+#     debug shape — never legitimate in prod).
+#   * Even a "read-only" hostPath mount of `/proc` or
+#     `/sys` leaks node-level kernel state the pod has no
+#     legitimate need for.
+#
+# Best-practice: the SC-3 / SOC-2 / CIS-1.6 Kubernetes
+# benchmarks all flag hostPath as a deny-by-default
+# primitive (CIS 5.7.4). Our W15/W16/W19 Kyverno coverage
+# was missing this — the W15 `enforce-prod-default`
+# carries non-root + drop-capability rules, the W19
+# additions carry hostNetwork + hostPort, but NEITHER
+# covers `hostPath` volumes directly. W21 closes the gap.
+#
+# # The shape of the rule
+#
+# A single sub-rule (`deny-host-path-volumes`) denies any
+# Pod-spec in `mahjong-prod` that declares
+# `spec.volumes[*].hostPath`. The Kyverno pattern uses the
+# `X(...)` (negation) operator to assert that NO volume
+# in the array has a `hostPath` key set — semantically:
+# "for all volumes, `.hostPath` must NOT exist."
+#
+# This is the canonical Kyverno idiom for "deny if the
+# field is present, regardless of value" (see Kyverno docs
+# §"Pattern operators — X(...)" — also used in the W19
+# `disallow-lateral-movement.yaml disallow-host-ports`
+# rule).
+#
+# # Why audit-mode FIRST (5-day grace)
+#
+# Matches the W21 companion `require-resource-limits.yaml`
+# rule. The 5-day grace window lets Hudson's
+# `kyverno-deny-events` panel collect a clean signal
+# before the W22 enforce flip.
+#
+# Pre-W21 verification:
+#
+#   $ kubectl -n mahjong-prod get pods -o json \
+#       | jq '.items[].spec.volumes[]? | select(.hostPath)' \
+#       --raw-output
+#   <no output>
+#
+# Zero hostPath volumes in the current prod workload —
+# the W22 enforce flip will land clean. (The coturn pods
+# use emptyDir + Secret volumes; the migrate Job uses
+# only configMap + Secret; no hostPath anywhere.)
+#
+# # Operator-namespace exclusions
+#
+# The same exclusion set as the W19/W21 companion rules
+# applies — `kube-system` + `kube-public` +
+# `kube-node-lease` legitimately use hostPath for the
+# CNI daemonset's `/etc/cni/net.d` mount + the kubelet's
+# `/var/lib/kubelet` mount + similar. `kyverno`, `external-
+# secrets`, and `argo-rollouts` are excluded as well —
+# matches the W19/W20 enforce-mode policies.
+#
+# # Wiring
+#
+# Out-of-band at W21 — NOT in `base/kustomization.yaml`.
+# Same rationale as the W19/W21 companion rules.
+#
+#   kubectl apply -f infra/k8s/base/kyverno-policies/disallow-host-paths.yaml
+#
+# # Cross-references
+#
+#   * `infra/k8s/base/kyverno-policies/require-resource-limits.yaml`
+#     — W21 companion (CPU + memory limits required).
+#   * `infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml`
+#     — W19/W20 hostNetwork + hostPort deny (Enforce post-W20).
+#   * `infra/k8s/base/kyverno-policies/require-network-policy.yaml`
+#     — W19/W20 NetworkPolicy-presence rule (Enforce post-W20).
+#   * `docs/kyverno-w21-additional-rules.md` — W21 operator runbook.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-paths
+  annotations:
+    policies.kyverno.io/title: "Disallow hostPath volumes in mahjong-prod Pods (W21, Audit)"
+    policies.kyverno.io/category: "Pod Security / Container Escape"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod, Deployment, StatefulSet, DaemonSet"
+    policies.kyverno.io/description: >-
+      W21 audit-mode policy. Denies any Pod-spec in
+      mahjong-prod that declares spec.volumes[*].hostPath.
+      hostPath is a classical container-escape + lateral-
+      movement primitive flagged by CIS-1.6 §5.7.4 +
+      SC-3 / SOC-2. 5-day grace window precedes the W22
+      enforce-flip — see docs/kyverno-w21-additional-rules.md §4.
+spec:
+  validationFailureAction: Audit
+  background: true
+  webhookTimeoutSeconds: 30
+  failurePolicy: Ignore
+  rules:
+    - name: deny-host-path-volumes
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - mahjong-prod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - external-secrets
+                - argo-rollouts
+      validate:
+        message: >-
+          mahjong-prod Pods MUST NOT declare hostPath
+          volumes. hostPath is a container-escape +
+          lateral-movement primitive flagged by CIS-1.6
+          §5.7.4 + SC-3 / SOC-2. Use emptyDir, configMap,
+          Secret, or PersistentVolumeClaim instead. See
+          docs/kyverno-w21-additional-rules.md §1.3.
+        pattern:
+          spec:
+            =(volumes):
+              - X(hostPath): null

@@ -212,6 +212,54 @@ public static class MetricsEndpoint
               .AppendLine();
         }
 
+        // Phase K Wave 21 — Bishop. JWT validator anomaly counter.
+        // Emits jwt_validator_anomaly_total{tenant,reason} per
+        // anomalous validation outcome. Falls back to a HELP +
+        // TYPE preamble when the collector is not wired so the
+        // schema is visible at every scrape.
+        var jwtAnomaly = services.GetService<Mahjong.Autotable.Api.Auth.JwtValidatorAnomalyMetrics>();
+        if (jwtAnomaly is not null)
+        {
+            jwtAnomaly.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Auth.JwtValidatorAnomalyMetrics.MetricName)
+              .AppendLine(" Total anomalous JWT validation outcomes (collector not wired).");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Auth.JwtValidatorAnomalyMetrics.MetricName).AppendLine(" counter");
+        }
+
+        // Phase K Wave 21 — Bishop. Scheduled rotation counter.
+        // Emits jwt_scheduled_rotation_total{tenant,status} per
+        // executor tick evaluation. Falls back to HELP + TYPE
+        // when collector not wired.
+        var jwtScheduled = services.GetService<Mahjong.Autotable.Api.Auth.JwtScheduledRotationMetrics>();
+        if (jwtScheduled is not null)
+        {
+            jwtScheduled.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Auth.JwtScheduledRotationMetrics.MetricName)
+              .AppendLine(" Total scheduled JWKS rotations executed (collector not wired).");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Auth.JwtScheduledRotationMetrics.MetricName).AppendLine(" counter");
+        }
+
+        // Phase K Wave 21 — Bishop. SignalR manual-purge counter.
+        // Emits signalr_manual_purge_total{tenant} per admin
+        // purge call.
+        var signalrPurge = services.GetService<Mahjong.Autotable.Api.Observability.SignalRManualPurgeMetrics>();
+        if (signalrPurge is not null)
+        {
+            signalrPurge.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Observability.SignalRManualPurgeMetrics.MetricName)
+              .AppendLine(" Total SignalR sequence rows purged by the W21 manual-purge admin surface (collector not wired).");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Observability.SignalRManualPurgeMetrics.MetricName).AppendLine(" counter");
+        }
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
     }
 

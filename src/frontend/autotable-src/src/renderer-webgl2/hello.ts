@@ -55,6 +55,25 @@ import {
   type PickAnimationHandle,
 } from './tile-pick-animation';
 import { attachTileDrag } from './tile-drag';
+// Phase K Wave 21 — claim animation + meld-display smoke (Hicks).
+// The renderer-webgl2 manualChunks rule routes anything under
+// `src/renderer-webgl2/` into the same chunk regardless of import
+// path, but tree-shaking would drop the W21 modules if no path
+// referenced them.  Importing here keeps them in the graph + lets
+// `?renderer=webgl2-meld` exercise the new code paths end-to-end.
+import {
+  appendMeld,
+  createMeldDisplay,
+  nextMeldOriginXZ,
+  type MeldDisplayState,
+  type MeldGroup,
+} from './meld-display';
+import {
+  claimDurationMs,
+  meldSlotMatrix,
+  startClaimAnimation,
+  type ClaimAnimationHandle,
+} from './tile-claim-animation';
 
 const CONTAINER_ID = 'webgl2-hello-container';
 const TEXTURE_URL = '/img/tiles-labels.auto.png';
@@ -101,8 +120,9 @@ function ensureContainer(): { canvas: HTMLCanvasElement; status: HTMLElement } {
   return { canvas, status };
 }
 
-function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' | 'interactive' {
+function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' | 'interactive' | 'meld' {
   const s = window.location.search;
+  if (/[?&]renderer=webgl2-meld/.test(s)) return 'meld';
   if (/[?&]renderer=webgl2-interactive/.test(s)) return 'interactive';
   if (/[?&]renderer=webgl2-wall/.test(s)) return 'wall';
   if (/[?&]renderer=webgl2-scene/.test(s)) return 'scene';
@@ -114,10 +134,12 @@ function mode(): 'hello' | 'tile-mesh' | 'scene' | 'wall' | 'interactive' {
  * Public entry point invoked by `src/index.ts` behind the
  * `?renderer=webgl2-hello` / `?renderer=webgl2-tile-mesh` /
  * `?renderer=webgl2-scene` / `?renderer=webgl2-wall` /
- * `?renderer=webgl2-interactive` URL guards.
+ * `?renderer=webgl2-interactive` / `?renderer=webgl2-meld` URL
+ * guards.
  */
 export async function mount(): Promise<void> {
   switch (mode()) {
+    case 'meld':        return mountMeld();
     case 'interactive': return mountInteractive();
     case 'wall':        return mountWall();
     case 'scene':       return mountScene();
@@ -545,5 +567,118 @@ async function mountInteractive(): Promise<void> {
   status.textContent =
     `Interactive wall rendered — ${CANONICAL_WALL_TILE_COUNT} tiles, `
     + `${atlasLabel}.  Hover = bump; drag = lift; drop = settle.`;
+}
+
+// Phase K Wave 21 — meld / claim-animation smoke (Hicks).
+//
+// Builds on the canonical wall scene, then drives the new W21
+// `tile-claim-animation` + `meld-display` modules: declares one
+// pung, one chi, and one kong against seat 0's meld row, animating
+// each claim with a fan-in tween into the row's next slot.  This
+// surfaces every code path in the two new modules end-to-end so the
+// Vasquez lane gets a visual capture target for W21 visual-
+// regression baselines.
+async function mountMeld(): Promise<void> {
+  const { canvas, status } = ensureContainer();
+  status.textContent = 'Booting meld (claim animation + meld display) scene…';
+
+  let scene: Awaited<ReturnType<typeof createTileScene>>;
+  try {
+    scene = await createTileScene(canvas);
+  } catch (err) {
+    status.textContent = `WebGL2 scene init failed: ${(err as Error).message}`;
+    return;
+  }
+
+  populateWallWithDora(scene.mesh, /*seed=*/ 0x515421);
+  scene.drawNow();
+
+  // Self-seat meld row.  Phase L W7+ will own one row per seat.
+  const display: MeldDisplayState = createMeldDisplay(0);
+  // Track per-instance claim tweens so the rAF tick can drive them.
+  const claims: ClaimAnimationHandle[] = [];
+
+  function tickClaims(): void {
+    if (claims.length === 0) return;
+    const now = performance.now();
+    let anyStillRunning = false;
+    for (const claim of claims) {
+      if (claim.step(now)) anyStillRunning = true;
+    }
+    scene.requestRedraw();
+    if (anyStillRunning) {
+      window.requestAnimationFrame(tickClaims);
+    }
+  }
+
+  // Stage a meld group: append to the display, build source +
+  // target matrices, fire the claim animation.  Source matrices
+  // are pulled from the live wall (so the tiles visibly leave the
+  // wall as the claim fires); targets are the meld-slot matrices
+  // for the new group's anchor.
+  function stageClaim(group: MeldGroup, baseStart: number): void {
+    // First compute the meld-row anchor BEFORE appending so the
+    // animation's target matches where appendMeld() will place the
+    // tiles.
+    const origin = nextMeldOriginXZ(display);
+    const { matrices } = appendMeld(display, group);
+    // Last `group.tiles.length` matrices in the display are the
+    // freshly-appended group's resolved target poses.
+    const tileCount = group.tiles.length;
+    const targets: Float32Array[] = [];
+    const sources: Float32Array[] = [];
+    for (let t = 0; t < tileCount; t++) {
+      const targetIdx = matrices.length - tileCount + t;
+      targets.push(new Float32Array(matrices[targetIdx]));
+      // Source: pick a wall tile starting at instance index baseStart+t.
+      const wallIdx = baseStart + t;
+      sources.push(
+        new Float32Array(scene.mesh.modelData.subarray(wallIdx * 16, wallIdx * 16 + 16)),
+      );
+    }
+    const handle = startClaimAnimation(group.kind, sources, targets, performance.now());
+    claims.push(handle);
+    // Wire the handle to a redraw — every `step()` mutates
+    // handle.tiles[i].out; we copy those out matrices into the
+    // wall instances each frame for the duration of the tween.
+    const baseStartIdx = baseStart;
+    const tween = handle;
+    const tileIds = group.tiles;
+    const animate = (): void => {
+      const now = performance.now();
+      const still = tween.step(now);
+      for (let t = 0; t < tween.tiles.length; t++) {
+        scene.setTileAt(baseStartIdx + t, tween.tiles[t].out, tileIds[t]);
+      }
+      scene.requestRedraw();
+      if (still) window.requestAnimationFrame(animate);
+    };
+    window.requestAnimationFrame(animate);
+    // Force a redraw at the meld-slot anchor in case the rAF tick
+    // is throttled.  Slot anchor is a debugging helper used by the
+    // Phase L W7 scene-runtime to seed neighbouring meld rows.
+    void meldSlotMatrix(0, 0, origin);
+  }
+
+  // Stage three claims with a small wall-clock gap so each renders
+  // independently.  Source-tile indices are arbitrary (0..2, 3..5,
+  // 6..9) — the smoke is purely visual.
+  stageClaim({ kind: 'pung', tiles: [1, 1, 1], claimedFromSeat: 2 }, 0);
+  window.setTimeout(() => {
+    stageClaim({ kind: 'chi', tiles: [10, 11, 12], claimedFromSeat: 3 }, 3);
+  }, claimDurationMs('pung') + 80);
+  window.setTimeout(() => {
+    stageClaim({ kind: 'kong', tiles: [25, 25, 25, 25], claimedFromSeat: 1 }, 6);
+  }, claimDurationMs('pung') + claimDurationMs('chi') + 200);
+
+  window.requestAnimationFrame(tickClaims);
+  installCameraModePicker(scene.camera, scene.canvas, scene.requestRedraw);
+
+  const atlasLabel = scene.atlas.fallback
+    ? `synthesized ${scene.atlas.width}×${scene.atlas.height} fallback atlas`
+    : `loaded ${scene.atlas.width}×${scene.atlas.height} canonical atlas`;
+  status.textContent =
+    `Meld scene rendered — ${CANONICAL_WALL_TILE_COUNT} tiles, ${atlasLabel}.  `
+    + `Pung / chi / kong claims fan into seat 0's meld row over ~1.5 s.`;
 }
 

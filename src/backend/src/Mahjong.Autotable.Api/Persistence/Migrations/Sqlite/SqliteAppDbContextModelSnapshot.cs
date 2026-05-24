@@ -59,6 +59,43 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.ToTable("PerTenantJwksRotationPolicies");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Auth.RotationScheduleEntity", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CronExpression")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastRunAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("TenantId");
+
+                    b.HasIndex("Enabled");
+
+                    b.HasIndex("UpdatedAtUtc");
+
+                    b.ToTable("RotationSchedules");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.ChangshaGame", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1283,6 +1320,44 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Sqlite
                     b.HasIndex("GameId", "CompletedAt");
 
                     b.ToTable("Replays");
+                });
+
+            modelBuilder.Entity("Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AttemptedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DetailMessage")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OperatorId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReplayId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptedAtUtc");
+
+                    b.HasIndex("ReplayId", "AttemptedAtUtc");
+
+                    b.ToTable("ReplayRestorationAttempts");
                 });
 
             modelBuilder.Entity("Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy", b =>

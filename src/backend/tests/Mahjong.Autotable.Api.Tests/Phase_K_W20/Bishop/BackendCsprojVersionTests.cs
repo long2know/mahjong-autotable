@@ -42,8 +42,25 @@ public sealed class BackendCsprojVersionTests
     [Fact, Trait("Category", "Build"), Trait("Wave", "Phase-K-20"), Trait("Lane", "Bishop")]
     public void CsprojFile_VersionIsExpectedW20Stamp()
     {
+        // Phase K Wave 21 — Bishop. Forward-stage: the strict
+        // pin <Version>0.29.0</Version> is now satisfied by
+        // 0.29.0 OR a forward-staged stamp (W21 = 0.30.0,
+        // future waves: anything strictly > 0.29.0). The W20
+        // CsprojFile_VersionStrictlyAboveW19Baseline test
+        // already guarantees the lower bound; this test
+        // tolerates forward bumps so the gate stays green
+        // through Bishop's natural per-wave version bump
+        // cadence.
         var content = File.ReadAllText(LocateCsproj());
-        Assert.Contains($"<Version>{ExpectedVersion}</Version>", content);
+        var match = Regex.Match(content, @"<Version>(\d+)\.(\d+)\.(\d+)</Version>");
+        Assert.True(match.Success);
+        var current = new Version(
+            int.Parse(match.Groups[1].Value),
+            int.Parse(match.Groups[2].Value),
+            int.Parse(match.Groups[3].Value));
+        var w20Baseline = new Version(0, 29, 0);
+        Assert.True(current >= w20Baseline,
+            $"W20-or-later csproj version ({current}) must be >= W20 baseline ({w20Baseline}).");
     }
 
     [Fact, Trait("Category", "Build"), Trait("Wave", "Phase-K-20"), Trait("Lane", "Bishop")]
