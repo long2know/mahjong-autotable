@@ -71,7 +71,6 @@ import type * as ProfileDrawerModule from './profile-drawer';
 import type * as StatsModule from './stats';
 import {
   bootstrapIdentity,
-  installOnboardingCard,
   onIdentity,
   refreshOnboardingVisibility,
 } from './identity';
@@ -826,7 +825,17 @@ export function initLobby(client?: Client): void {
   // first-visit hint from the bootstrap result; we also refresh the
   // visibility once the identity arrives in case the identity lands
   // after the lobby is mounted.
-  installOnboardingCard();
+  //
+  // Phase K Wave 22 — Hicks bundle-audit §3.7.  The installer
+  // (~7 KB minified, with the Continue → SignalR UpdateProfile path
+  // + 8-swatch preset grid) lives in the lazy `identity-onboarding`
+  // chunk.  `refreshOnboardingVisibility` is kept eager because it
+  // is a tiny show/hide helper that the lobby also calls on every
+  // identity event.  Returning users (LS_KEY_ONBOARDED present) see
+  // `shouldShowOnboarding === false`, so we short-circuit BEFORE
+  // pulling the chunk to keep the cold path of returning users
+  // truly free of the install code.
+  void scheduleOnboardingLazyMount();
   // Phase K Wave 17 — bundle audit §3.2 (Hicks).  leaderboard.ts
   // (~27 KB raw) is lazy-loaded on the first activation of the
   // `lobby-leaderboard-tab` button; tab-activate transitions in
@@ -1551,6 +1560,27 @@ function scheduleLeaderboardLazyMount(): void {
   tab.addEventListener('mouseenter', () => { void load(); }, { once: true });
   tab.addEventListener('focus', () => { void load(); }, { once: true });
   tab.addEventListener('click', () => { void load(); }, { once: true });
+}
+
+// Phase K Wave 22 — Hicks bundle-audit §3.7.  The onboarding card
+// installer (~7 KB minified) lives in the lazy `identity-onboarding`
+// chunk.  Returning users have `LS_KEY_ONBOARDED === 'true'` so
+// `shouldShowOnboarding()` short-circuits to false BEFORE the
+// dynamic-import — those users never pay for the chunk.  First-
+// visit users (LS flag absent) lazy-load the installer immediately,
+// which mounts the card if the markup is present.
+async function scheduleOnboardingLazyMount(): Promise<void> {
+  let needed = true;
+  try {
+    needed = window.localStorage.getItem(
+      'mahjong.identity.onboarded.v1') !== 'true';
+  } catch { /* private mode — assume needed, fail-open */ }
+  if (!needed) return;
+  if (document.getElementById('onboarding-card') === null) return;
+  try {
+    const mod = await import('./identity-onboarding');
+    mod.installOnboardingCard();
+  } catch { /* fail-open: never block lobby boot on onboarding */ }
 }
 
 // Phase K Wave 18 — Hicks (bundle-audit §3.3).  Spectator follow-

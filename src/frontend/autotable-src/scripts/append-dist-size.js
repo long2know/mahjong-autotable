@@ -103,10 +103,18 @@ const KEY_PATTERNS = [
   { key: 'profile-page',   re: /^profile-page\.[0-9a-f]+\.js$/ },
   // Phase K Wave 18 — Hicks bundle-audit §3.3 split-outs.
   //
-  // `admin-panel` carries the W18 operator UI for Bishop's three
+  // `admin-panel` carried the W18 operator UI for Bishop's three
   // W17 CRUD surfaces (replay retention, JWKS rotation, SignalR
   // retention) as a single lazy chunk.  Loaded on
   // `?action=admin-panel`; W18 ceiling ≤ 40 KB.
+  //
+  // Phase K Wave 22 — Hicks bundle-audit §3.7 split: `admin-panel`
+  // is now TWO chunks at W22, `admin-panel-core` + `admin-panel-
+  // tournaments`.  The legacy `admin-panel` key is kept as a
+  // historical alias (matches `admin-panel-core.<hash>.js`
+  // OR `admin-panel-tournaments.<hash>.js` depending on which
+  // emerges from manualChunks; we record both as discrete keys
+  // and let the legacy key remain absent post-W22).
   //
   // `pwa`, `reconnect`, and `spectator-follow` are the §3.3
   // bundle-audit lazifications: each was previously eager in
@@ -114,7 +122,9 @@ const KEY_PATTERNS = [
   // on a synchronous probe (`'serviceWorker' in navigator`,
   // `?rejoin=` on URL, `?seat=-1`/spectator-class on body
   // respectively).  Each chunk is well under 10 KB on disk.
-  { key: 'admin-panel',     re: /^admin-panel\.[0-9a-f]+\.js$/ },
+  { key: 'admin-panel',              re: /^admin-panel\.[0-9a-f]+\.js$/ },
+  { key: 'admin-panel-core',         re: /^admin-panel-core\.[0-9a-f]+\.js$/ },
+  { key: 'admin-panel-tournaments',  re: /^admin-panel-tournaments\.[0-9a-f]+\.js$/ },
   { key: 'pwa',             re: /^pwa\.[0-9a-f]+\.js$/ },
   { key: 'reconnect',       re: /^reconnect\.[0-9a-f]+\.js$/ },
   { key: 'spectator-follow', re: /^spectator-follow\.[0-9a-f]+\.js$/ },
@@ -138,6 +148,15 @@ const KEY_PATTERNS = [
   // graph.  Co-consumed by `rule-presets` (W19 lazy) for
   // `getAuthState/onAuth`.  ~21 KB minified.
   { key: 'auth',            re: /^auth\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 22 — Hicks bundle-audit §3.7 onboarding/migration
+  // extraction.  Both modules used to live inside `identity.ts`
+  // (and therefore inside `autotable-src-eager`).  Splitting them
+  // into their own lazy chunks let the eager bundle drop from
+  // 112,219 B (W21) to ~107 KB (W22).  Each chunk is tiny on disk
+  // because the shared profile/hub/dom-utils dependencies stay in
+  // the eager bundle (still statically imported by lobby.ts).
+  { key: 'identity-onboarding',        re: /^identity-onboarding\.[0-9a-f]+\.js$/ },
+  { key: 'identity-avatar-migration',  re: /^identity-avatar-migration\.[0-9a-f]+\.js$/ },
 ];
 
 function parseArgs() {

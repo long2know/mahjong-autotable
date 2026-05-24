@@ -1,21 +1,31 @@
 // Phase K Wave 18 — Hicks (Frontend).
 //
 // Operator admin panel — single entry point that tabs across the
-// three W17 Bishop CRUD surfaces (replay retention, JWKS rotation,
-// SignalR retention).  Lazy-loaded behind `?action=admin-panel`
-// (see `action-router.ts:dispatchAdminPanel()`).
+// Bishop CRUD/ops surfaces.  Lazy-loaded behind `?action=admin-
+// panel` (see `action-router.ts:dispatchAdminPanel()`).
 //
 // Wire contract: see `admin-shared.ts` for the auth ladder, the
 // `X-Admin-Reason` header convention, and the `AdminSurfaceSpec`
 // descriptor shape.  Each surface module ships a const
 // `*_SPEC` that this entry consumes uniformly.
 //
-// Bundle math: vite.config.ts:manualChunks routes everything under
-// `src/admin/` into a single `admin-panel.<hash>.js` chunk, with a
-// W18 ceiling of ≤ 40 KB.  As more admin surfaces accumulate
-// (Phase L cost-dashboard, audit drill-downs, etc.) the chunk
-// grows linearly — Hicks W19+ can split if/when the chunk
-// approaches the ceiling.
+// Bundle math: vite.config.ts:manualChunks splits everything under
+// `src/admin/` into two chunks at W22 (was one at W18-W21):
+//
+//   • `admin-panel-core` — admin-panel.ts entry + admin-shared.ts
+//     scaffolding + W18 baseline-CRUD surfaces (replay retention,
+//     JWKS rotation, SignalR retention, rotation-policy family,
+//     JWT rotation drill).  Always loaded with the entry.
+//   • `admin-panel-tournaments` — all swiss/tournament surfaces
+//     plus W19+ audit logs, SignalR ops, replay-chunked download,
+//     cross-cutting audit-log browser, JWT emergency-revoke.
+//     Lazy-loaded via `loadTournamentSpecs()` below the first
+//     time the user activates a tab whose owner lives in this
+//     chunk (or eagerly during render shell if the tournament
+//     tab is the initial activation target).
+//
+// Each chunk targets ≤ 30 KB at W22 close.  See
+// `docs/frontend-bundle-audit.md §3.7` for the audit reasoning.
 
 import {
   type AdminSurfaceSpec,
@@ -33,16 +43,9 @@ import { REPLAY_RETENTION_SPEC } from './replay-retention';
 import { JWKS_ROTATION_SPEC } from './jwks-rotation';
 import { SIGNALR_RETENTION_SPEC } from './signalr-retention';
 import { ROTATION_POLICY_BULK_SPEC } from './rotation-policy-bulk';
-import { REPLAY_INTEGRITY_AUDIT_SPEC } from './replay-integrity-audit';
-import { SWISS_PAIRING_AUDIT_SPEC } from './swiss-pairing-audit';
-import { SWISS_PAIR_NEXT_ROUND_SPEC } from './swiss-pair-next-round';
 import { ROTATION_POLICY_BULK_ACTIONS_SPEC } from './rotation-policy-bulk-actions';
-import { JWT_ROTATION_DRILL_SPEC } from './jwt-rotation-drill';
-import { SWISS_APPLY_ROUND_SPEC } from './swiss-apply-round';
 import { ROTATION_SCHEDULE_SPEC } from './rotation-schedule';
-import { TOURNAMENT_WITHDRAW_SPEC } from './tournament-withdraw';
-import { SIGNALR_PURGE_SPEC } from './signalr-purge';
-import { REPLAY_RESTORATION_AUDIT_SPEC } from './replay-restoration-audit';
+import { JWT_ROTATION_DRILL_SPEC } from './jwt-rotation-drill';
 
 interface AnySpec extends AdminSurfaceSpec<unknown, unknown> {}
 
@@ -53,36 +56,49 @@ interface AnySpec extends AdminSurfaceSpec<unknown, unknown> {}
 // per-surface `parseRow` narrows internally — the shared runtime
 // never has to know the concrete row type).
 //
-// Phase K Wave 19 — three Bishop W19 surfaces added at the tail of
-// the registry: rotation-policy bulk-update, replay-store integrity
-// audit, and tournament Swiss pairing audit log.
-//
-// Phase K Wave 20 — three Bishop W20 surfaces added at the tail of
-// the registry: Swiss pair-next-round trigger, rotation-policy
-// bulk-actions (delete + enable/disable), and JWT-keys rotation
-// drill.  Admin-panel chunk W20 ceiling: ≤ 38 KB.
-//
-// Phase K Wave 21 — five Bishop W21 surfaces appended at the tail
-// of the registry: Swiss apply-round, per-tenant rotation schedule,
-// tournament withdraw-player, SignalR retention-purge, and the
-// read-only replay restoration-audit log.  Admin-panel chunk W21
-// ceiling: ≤ 48 KB.
-const SURFACES: ReadonlyArray<AnySpec> = [
+// Phase K Wave 22 — chunk-split.  CORE_SURFACES is everything that
+// statically lands in the `admin-panel-core` chunk; the tournament
+// + audit + ops surfaces are lazy-loaded via `loadTournamentSpecs`
+// into the `admin-panel-tournaments` chunk on the first activation.
+const CORE_SURFACES: ReadonlyArray<AnySpec> = [
   REPLAY_RETENTION_SPEC as unknown as AnySpec,
   JWKS_ROTATION_SPEC as unknown as AnySpec,
   SIGNALR_RETENTION_SPEC as unknown as AnySpec,
   ROTATION_POLICY_BULK_SPEC as unknown as AnySpec,
-  REPLAY_INTEGRITY_AUDIT_SPEC as unknown as AnySpec,
-  SWISS_PAIRING_AUDIT_SPEC as unknown as AnySpec,
-  SWISS_PAIR_NEXT_ROUND_SPEC as unknown as AnySpec,
   ROTATION_POLICY_BULK_ACTIONS_SPEC as unknown as AnySpec,
-  JWT_ROTATION_DRILL_SPEC as unknown as AnySpec,
-  SWISS_APPLY_ROUND_SPEC as unknown as AnySpec,
   ROTATION_SCHEDULE_SPEC as unknown as AnySpec,
-  TOURNAMENT_WITHDRAW_SPEC as unknown as AnySpec,
-  SIGNALR_PURGE_SPEC as unknown as AnySpec,
-  REPLAY_RESTORATION_AUDIT_SPEC as unknown as AnySpec,
+  JWT_ROTATION_DRILL_SPEC as unknown as AnySpec,
 ];
+
+let SURFACES: ReadonlyArray<AnySpec> = CORE_SURFACES;
+let tournamentSpecsLoaded = false;
+let tournamentSpecsPromise: Promise<ReadonlyArray<AnySpec>> | null = null;
+
+/**
+ * Lazy-load the `admin-panel-tournaments` chunk and merge its
+ * specs into the `SURFACES` registry.  Idempotent — concurrent
+ * callers share the same in-flight promise; subsequent calls
+ * resolve to the cached `SURFACES` array.
+ */
+async function loadTournamentSpecs(): Promise<ReadonlyArray<AnySpec>> {
+  if (tournamentSpecsLoaded) return SURFACES;
+  if (tournamentSpecsPromise !== null) return tournamentSpecsPromise;
+  tournamentSpecsPromise = (async (): Promise<ReadonlyArray<AnySpec>> => {
+    try {
+      const mod = await import('./admin-tournaments');
+      SURFACES = [...CORE_SURFACES, ...mod.TOURNAMENT_SURFACES];
+      tournamentSpecsLoaded = true;
+      return SURFACES;
+    } catch {
+      // Chunk-load failure: degrade to CORE_SURFACES only so the
+      // entry surfaces still render.  The dispatcher swallows the
+      // exception so the operator at least sees the core tabs.
+      tournamentSpecsLoaded = true;
+      return SURFACES;
+    }
+  })();
+  return tournamentSpecsPromise;
+}
 
 let activeSurfaceIndex = 0;
 
@@ -90,22 +106,28 @@ let activeSurfaceIndex = 0;
  * Public mount: invoked by `action-router.ts:dispatchAdminPanel`
  * after the pre-flight admin probe passes.  Idempotent — calling
  * twice rebuilds the overlay rather than stacking it.
+ *
+ * W22 — kicks off the lazy `admin-panel-tournaments` chunk fetch
+ * in the background so the tournament tabs become available
+ * shortly after the overlay paints; the core tabs are clickable
+ * immediately.
  */
 export async function openAdminPanel(): Promise<void> {
   const overlay = mountAdminOverlay();
   overlay.innerHTML = renderShellHtml();
   attachShellHandlers(overlay);
   await loadActiveSurface(overlay);
+  // Fire-and-forget the tournament chunk load so the tab strip
+  // grows once the chunk lands; re-render the shell to surface
+  // the new tabs.
+  void loadTournamentSpecs().then(() => {
+    if (!tournamentSpecsLoaded) return;
+    const nav = overlay.querySelector('.admin-panel-tabs') as HTMLElement | null;
+    if (nav !== null) nav.outerHTML = renderTabStripHtml();
+  });
 }
 
 function renderShellHtml(): string {
-  const tabs = SURFACES.map((s, i) => `
-    <button type="button"
-            class="admin-panel-tab${i === activeSurfaceIndex ? ' admin-panel-tab-active' : ''}"
-            data-testid="admin-panel-tab-${s.id}"
-            data-surface-index="${i}">
-      ${escapeHtml(s.title)}
-    </button>`).join('');
   return `
     <div class="admin-panel-shell" data-testid="admin-panel-shell">
       <header class="admin-panel-header">
@@ -115,13 +137,24 @@ function renderShellHtml(): string {
                 data-testid="admin-panel-close"
                 aria-label="Close admin panel">×</button>
       </header>
-      <nav class="admin-panel-tabs" role="tablist">
-        ${tabs}
-      </nav>
+      ${renderTabStripHtml()}
       <section class="admin-panel-body" data-testid="admin-panel-body">
         <p>Loading…</p>
       </section>
     </div>`;
+}
+
+function renderTabStripHtml(): string {
+  const tabs = SURFACES.map((s, i) => `
+    <button type="button"
+            class="admin-panel-tab${i === activeSurfaceIndex ? ' admin-panel-tab-active' : ''}"
+            data-testid="admin-panel-tab-${s.id}"
+            data-surface-index="${i}">
+      ${escapeHtml(s.title)}
+    </button>`).join('');
+  return `<nav class="admin-panel-tabs" role="tablist">
+        ${tabs}
+      </nav>`;
 }
 
 function attachShellHandlers(overlay: HTMLElement): void {

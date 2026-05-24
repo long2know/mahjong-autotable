@@ -51,18 +51,9 @@
 
 import { EventEmitter } from 'events';
 
-import { getHubConnection, invokeHub } from './hub';
 import {
   AVATAR_COLOR_PRESETS,
-  DISPLAY_NAME_MAX,
-  DISPLAY_NAME_MIN,
-  getProfile,
-  initProfileHubBindings,
-  onProfile,
-  setAvatarColor as setProfileAvatarColor,
-  setDisplayName as setProfileDisplayName,
   validateAvatarColor,
-  validateDisplayName,
 } from './profile';
 import { showEl, hideEl } from './dom-utils';
 
@@ -277,8 +268,13 @@ export function getCookieAtBoot(): string | null {
 // asking for their preferred display name + avatar colour.  The card
 // is dismissed when the user clicks Continue or Skip.  On subsequent
 // visits the card is suppressed via the LS_KEY_ONBOARDED flag.
-
-let onboardingInstalled = false;
+//
+// Phase K Wave 22 — Hicks bundle-audit §3.7.  The card-install path
+// (`installOnboardingCard`, ~7 KB minified) lives in the lazy
+// `identity-onboarding` chunk; the only eager surface left is this
+// decision predicate + a tiny show/hide helper.  Lobby.ts dynamic-
+// imports the installer.  Skipping the install for returning users
+// keeps the chunk off the cold path entirely.
 
 /**
  * Decide whether the onboarding card should be shown for this visit.
@@ -301,383 +297,47 @@ export function shouldShowOnboarding(): boolean {
 }
 
 /**
- * Mount the onboarding card.  Idempotent — bails out if the markup
- * isn't present or if it's already wired.  When `shouldShowOnboarding`
- * returns false the card stays hidden.
- *
- * Bishop's `UpdateProfile` SignalR RPC is the canonical writer for
- * displayName + avatarColor — we route the Continue button through
- * there so the cookie-bound identity stays in sync with the
- * connection-id profile that drives the rest of the UI.
- */
-export function installOnboardingCard(): void {
-  if (onboardingInstalled) return;
-  const card = document.getElementById('onboarding-card');
-  if (card === null) return;
-  onboardingInstalled = true;
-
-  const nameInput = document.getElementById(
-    'onboarding-display-name-input') as HTMLInputElement | null;
-  const nameError = document.getElementById('onboarding-display-name-error');
-  const presetsHost = document.getElementById('onboarding-avatar-presets');
-  const customColor = document.getElementById(
-    'onboarding-avatar-color-custom') as HTMLInputElement | null;
-  const previewAvatar = document.getElementById('onboarding-preview-avatar');
-  const continueBtn = document.getElementById(
-    'onboarding-continue') as HTMLButtonElement | null;
-  const skipBtn = document.getElementById(
-    'onboarding-skip') as HTMLButtonElement | null;
-
-  let selectedColor: string =
-    current !== null ? current.avatarColor : AVATAR_COLOR_PRESETS[5];
-
-  const refreshPreview = (): void => {
-    if (previewAvatar !== null) {
-      (previewAvatar as HTMLElement).style.backgroundColor = selectedColor;
-      const name = nameInput?.value.trim() ?? '';
-      previewAvatar.textContent = onboardingInitial(name);
-    }
-    if (presetsHost !== null) {
-      for (const btn of presetsHost.querySelectorAll<HTMLButtonElement>(
-        '.onboarding-avatar-preset')) {
-        const matches = btn.getAttribute('data-color')?.toLowerCase()
-          === selectedColor.toLowerCase();
-        btn.classList.toggle('onboarding-avatar-preset-selected', matches);
-        btn.setAttribute('aria-checked', matches ? 'true' : 'false');
-      }
-    }
-    if (customColor !== null && document.activeElement !== customColor) {
-      customColor.value = selectedColor;
-    }
-  };
-
-  if (presetsHost !== null) {
-    presetsHost.replaceChildren();
-    AVATAR_COLOR_PRESETS.forEach((hex, idx) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'onboarding-avatar-preset';
-      btn.style.backgroundColor = hex;
-      btn.setAttribute('data-color', hex);
-      btn.setAttribute('data-testid', `onboarding-avatar-color-preset-${idx}`);
-      btn.setAttribute('role', 'radio');
-      btn.setAttribute('aria-checked', 'false');
-      btn.setAttribute('aria-label', `Preset colour ${idx + 1}`);
-      btn.title = hex;
-      btn.addEventListener('click', () => {
-        selectedColor = hex;
-        refreshPreview();
-      });
-      presetsHost.appendChild(btn);
-    });
-  }
-
-  if (customColor !== null) {
-    customColor.addEventListener('input', () => {
-      if (!validateAvatarColor(customColor.value)) return;
-      selectedColor = customColor.value.toLowerCase();
-      refreshPreview();
-    });
-  }
-
-  if (nameInput !== null) {
-    nameInput.setAttribute('minlength', String(DISPLAY_NAME_MIN));
-    nameInput.setAttribute('maxlength', String(DISPLAY_NAME_MAX));
-    nameInput.addEventListener('input', () => {
-      const { error } = validateDisplayName(nameInput.value);
-      if (nameError !== null) nameError.textContent = error ?? '';
-      nameInput.classList.toggle('onboarding-input-invalid', error !== null);
-      refreshPreview();
-    });
-  }
-
-  if (continueBtn !== null) {
-    continueBtn.addEventListener('click', () => {
-      const rawName = nameInput?.value ?? '';
-      const { value, error } = validateDisplayName(rawName);
-      if (error !== null || value === null) {
-        if (nameError !== null) nameError.textContent = error ?? 'Enter a name.';
-        nameInput?.focus();
-        return;
-      }
-      const expanded = expandHexColor(selectedColor).toUpperCase();
-      if (current !== null) {
-        setCurrent({ ...current, displayName: value, avatarColor: selectedColor });
-      }
-      // Bridge to the Wave-5 profile.ts cache so the lobby chip +
-      // any other `onProfile` subscriber re-render with the chosen
-      // name and colour immediately.  We have to install the
-      // SignalR hub bindings + force a connect first, because
-      // `profile.ts` only wires its `ProfileLoaded` listener once
-      // the hub is up, and `setDisplayName` / `setAvatarColor` are
-      // no-ops while its local `current` is still null.
-      void applyProfileFromOnboarding(value, selectedColor, expanded);
-      markOnboardingComplete();
-      dismissOnboardingCard();
-    });
-  }
-
-  if (skipBtn !== null) {
-    skipBtn.addEventListener('click', () => {
-      markOnboardingComplete();
-      dismissOnboardingCard();
-    });
-  }
-
-  // Populate the input with whatever default name the backend gave us
-  // so Continue with no edits still ends up with a sensible name.
-  if (current !== null && nameInput !== null && nameInput.value === '') {
-    nameInput.value = current.displayName;
-  }
-  refreshPreview();
-
-  onIdentity((id) => {
-    if (nameInput !== null && document.activeElement !== nameInput
-        && nameInput.value === '') {
-      nameInput.value = id.displayName;
-    }
-    if (current === null || !id.isFirstVisit) {
-      // Identity arrived after the card was installed — only show
-      // the card if first-visit and not previously onboarded.
-    }
-    refreshPreview();
-  });
-
-  // Visibility: shown only when shouldShowOnboarding() returns true.
-  if (shouldShowOnboarding()) {
-    showOnboardingCard();
-  } else {
-    hideOnboardingCard();
-  }
-}
-
-function showOnboardingCard(): void {
-  const card = document.getElementById('onboarding-card');
-  if (card === null) return;
-  showEl(card);
-  card.setAttribute('aria-hidden', 'false');
-}
-
-function hideOnboardingCard(): void {
-  const card = document.getElementById('onboarding-card');
-  if (card === null) return;
-  hideEl(card);
-  card.setAttribute('aria-hidden', 'true');
-}
-
-function dismissOnboardingCard(): void {
-  hideOnboardingCard();
-}
-
-function onboardingInitial(name: string): string {
-  const trimmed = name.trim();
-  if (trimmed === '') return '?';
-  const parts = trimmed.split(/\s+/);
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-}
-
-function expandHexColor(hex: string): string {
-  if (/^#[0-9a-fA-F]{3}$/.test(hex)) {
-    const r = hex.charAt(1);
-    const g = hex.charAt(2);
-    const b = hex.charAt(3);
-    return `#${r}${r}${g}${g}${b}${b}`;
-  }
-  return hex;
-}
-
-/**
- * Push the onboarding-form values into the Wave-5 profile cache so
- * the lobby's profile chip + the move-log nick map re-render with
- * the chosen name/colour.  Steps:
- *
- *   1.  Install the `ProfileLoaded` listener (profile.ts only wires
- *       this once the hub is up).
- *   2.  Force a hub connection — the server's `OnConnectedAsync`
- *       fires a `ProfileLoaded` event with the *default* name, which
- *       seeds profile.ts's local cache so `setDisplayName` /
- *       `setAvatarColor` aren't no-ops.
- *   3.  Poll briefly for the seed event to land (it travels over
- *       the same SignalR WebSocket as the connect, so we usually
- *       see it within a single tick).
- *   4.  Apply the onboarding values through the profile module's
- *       public setters; their optimistic local-update path fires
- *       `onProfile` listeners immediately, and the debounced
- *       `UpdateProfile` invoke commits to the server.
- *   5.  As a defensive belt-and-braces measure (e.g. if SignalR is
- *       unreachable in tests), invoke `UpdateProfile` directly so
- *       the server still gets the new name even when profile.ts
- *       falls through.
- */
-async function applyProfileFromOnboarding(
-  displayName: string,
-  selectedColor: string,
-  expandedColor: string,
-): Promise<void> {
-  try {
-    initProfileHubBindings();
-    await getHubConnection();
-  } catch {
-    // Hub unreachable — fall through to the direct invoke below;
-    // the local identity cache is still updated by the caller.
-  }
-  const deadline = Date.now() + 2000;
-  while (getProfile() === null && Date.now() < deadline) {
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-  }
-  const nameResult = setProfileDisplayName(displayName);
-  const colorResult = setProfileAvatarColor(selectedColor);
-  if (nameResult.error !== null || colorResult.error !== null) {
-    // profile.ts hadn't loaded — push the values to the hub
-    // ourselves so the server-side record still picks them up.
-    try {
-      await invokeHub('UpdateProfile', displayName, expandedColor);
-    } catch {
-      /* swallow — the local identity cache is the source of truth
-         until the hub is reachable */
-    }
-  }
-}
-
-/**
  * Re-evaluate visibility (called by lobby after installOnboardingCard
  * + after bootstrapIdentity resolves, in case the identity arrived
  * *after* the lobby mounted).
  */
 export function refreshOnboardingVisibility(): void {
-  if (shouldShowOnboarding()) showOnboardingCard();
-  else hideOnboardingCard();
-}
-
-// ─── Phase J Wave 10 — Avatar migration modal ─────────────────────────
-//
-// Pre-Wave-10 the bootstrap profile shipped with `avatarColor = '#808080'`
-// for users who never customised it.  Since seats are colour-coded by
-// avatar in the public-games strip + the lobby chips, a sea of grey
-// avatars is a real readability problem.  This modal forces those
-// users to pick one of the 8 palette colours; it cannot be dismissed
-// without making a choice (no Skip button, no backdrop click).
-//
-// The legacy hex `#808080` is the sentinel for "not yet customised".
-// Anyone whose persisted avatarColor matches (case-insensitive) is
-// shown the modal once their profile loads.  Picking + confirming
-// persists via the existing setAvatarColor() Hub RPC.
-
-const LEGACY_AVATAR_COLOR = '#808080';
-
-// Vasquez's Wave-10 testid contract uses friendly colour names
-// (e.g. `avatar-migration-pick-emerald`) rather than hex strings.
-// Keep this array index-aligned with profile.ts AVATAR_COLOR_PRESETS.
-const AVATAR_MIGRATION_NAMES: ReadonlyArray<string> = [
-  'red',
-  'orange',
-  'yellow',
-  'emerald',
-  'teal',
-  'blue',
-  'purple',
-  'slate',
-];
-
-let migrationModalInstalled = false;
-let migrationSelected: string | null = null;
-
-function isLegacyAvatarColor(color: string | null | undefined): boolean {
-  if (color === null || color === undefined) return false;
-  return color.toLowerCase() === LEGACY_AVATAR_COLOR;
-}
-
-function renderMigrationGrid(): void {
-  const grid = document.getElementById('migrate-avatar-grid');
-  const confirmBtn = document.getElementById('migrate-avatar-confirm') as HTMLButtonElement | null;
-  if (grid === null) return;
-  grid.replaceChildren();
-  migrationSelected = null;
-  if (confirmBtn !== null) confirmBtn.disabled = true;
-  AVATAR_COLOR_PRESETS.forEach((hex, i) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'migrate-avatar-swatch';
-    btn.style.backgroundColor = hex;
-    btn.setAttribute('data-color', hex);
-    const name = AVATAR_MIGRATION_NAMES[i] ?? `preset-${i}`;
-    btn.setAttribute('data-testid', `avatar-migration-pick-${name}`);
-    btn.setAttribute('role', 'radio');
-    btn.setAttribute('aria-checked', 'false');
-    btn.setAttribute('aria-label', `Avatar colour ${name}`);
-    btn.title = `${name} (${hex})`;
-    btn.addEventListener('click', () => {
-      migrationSelected = hex;
-      for (const sw of grid.querySelectorAll<HTMLButtonElement>('.migrate-avatar-swatch')) {
-        const matches = sw.getAttribute('data-color')?.toLowerCase() === hex.toLowerCase();
-        sw.classList.toggle('migrate-avatar-swatch-selected', matches);
-        sw.setAttribute('aria-checked', matches ? 'true' : 'false');
-      }
-      if (confirmBtn !== null) confirmBtn.disabled = false;
-    });
-    grid.appendChild(btn);
-  });
-}
-
-function showMigrationModal(): void {
-  const modal = document.getElementById('migrate-avatar-modal');
-  if (modal === null) return;
-  renderMigrationGrid();
-  showEl(modal);
-  modal.setAttribute('aria-hidden', 'false');
-}
-
-function hideMigrationModal(): void {
-  const modal = document.getElementById('migrate-avatar-modal');
-  if (modal === null) return;
-  hideEl(modal);
-  modal.setAttribute('aria-hidden', 'true');
-}
-
-export function installAvatarMigrationModalIfNeeded(): void {
-  if (migrationModalInstalled) return;
-  const modal = document.getElementById('migrate-avatar-modal');
-  const confirmBtn = document.getElementById('migrate-avatar-confirm') as HTMLButtonElement | null;
-  const dismissBtn = document.getElementById('migrate-avatar-dismiss') as HTMLButtonElement | null;
-  if (modal === null || confirmBtn === null) return;
-  migrationModalInstalled = true;
-
-  confirmBtn.addEventListener('click', () => {
-    if (migrationSelected === null) return;
-    if (!validateAvatarColor(migrationSelected)) return;
-    confirmBtn.disabled = true;
-    const result = setProfileAvatarColor(migrationSelected);
-    if (result.error !== null) {
-      // Re-enable so the user can retry.
-      confirmBtn.disabled = false;
-      return;
-    }
-    hideMigrationModal();
-  });
-
-  // Wave 10 — dismiss button per Vasquez's `avatar-migration-dismiss`
-  // contract.  Lets the user defer the choice; the modal will re-show
-  // on the next profile load while avatarColor remains the legacy
-  // sentinel (so the prompt is recurring, not blocking).
-  if (dismissBtn !== null) {
-    dismissBtn.addEventListener('click', () => {
-      hideMigrationModal();
-    });
+  const card = document.getElementById('onboarding-card');
+  if (card === null) return;
+  if (shouldShowOnboarding()) {
+    showEl(card);
+    card.setAttribute('aria-hidden', 'false');
+  } else {
+    hideEl(card);
+    card.setAttribute('aria-hidden', 'true');
   }
+}
 
-  const evaluate = (): void => {
-    const profile = getProfile();
-    if (profile === null) return;
-    if (isLegacyAvatarColor(profile.avatarColor)) {
-      showMigrationModal();
-    } else {
-      hideMigrationModal();
-    }
-  };
+// ── Lazy-module hooks (Phase K Wave 22) ─────────────────────────────
+//
+// `identity-onboarding.ts` (the lazy installer chunk) needs to mutate
+// the `current` Identity + commit the LS_KEY_ONBOARDED flag, both of
+// which are private to this module.  Rather than promote `current` /
+// `setCurrent` / `markOnboardingComplete` to the eager public API,
+// we expose two narrow shim functions that the lazy module calls
+// and nothing else does.
 
-  // Listen for profile updates from the Hub.  The initial profile may
-  // arrive before or after this install runs; evaluate() handles both.
-  onProfile(evaluate);
-  evaluate();
+/**
+ * Apply onboarding-form values (displayName + avatarColor) to the
+ * cached Identity, mirroring the original inline assignment in the
+ * pre-Wave-22 installOnboardingCard.  No-op when the Identity hasn't
+ * loaded yet (the lazy path always installs after bootstrapIdentity).
+ */
+export function applyOnboardingProfile(
+  displayName: string,
+  avatarColor: string,
+): void {
+  if (current === null) return;
+  if (!validateAvatarColor(avatarColor)) return;
+  setCurrent({ ...current, displayName, avatarColor });
+}
+
+/** Wave-22 lazy-module shim — commit the LS_KEY_ONBOARDED flag. */
+export function markOnboardingCompleteExported(): void {
+  markOnboardingComplete();
 }

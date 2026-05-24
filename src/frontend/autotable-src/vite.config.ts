@@ -82,7 +82,22 @@ function manualChunks(id: string): string | undefined {
   // `?action=admin-panel`; the lobby cold path never pays for
   // the chunk.  W18 ceiling: ≤ 40 KB.  See
   // `docs/frontend-bundle-audit.md §3.4 (admin chunk budget)`.
-  if (/[/\\]src[/\\]admin[/\\]/.test(id)) return 'admin-panel';
+  //
+  // Phase K Wave 22 — Hicks (Frontend).  Split the W18 chunk in
+  // half: the `admin-panel-core` chunk carries the entry +
+  // shared scaffolding + W18 baseline-CRUD policy surfaces
+  // (replay retention, JWKS rotation, SignalR retention,
+  // rotation-policy family, JWT rotation drill).  The
+  // `admin-panel-tournaments` chunk carries every swiss/
+  // tournament surface plus W19+ audit-log surfaces, SignalR
+  // operational triggers, replay-chunked-download, the W22
+  // cross-cutting audit-log browser, and the W22 JWT emergency-
+  // revoke trapdoor.  Each chunk targets ≤ 30 KB at W22 close;
+  // see `docs/frontend-bundle-audit.md §3.7 (admin chunk split)`.
+  if (/[/\\]src[/\\]admin[/\\](?:swiss-|tournament-|replay-integrity-audit|replay-restoration-audit|replay-download-chunked|signalr-purge|signalr-diagnostics|audit-log-search|jwt-emergency-revoke|admin-tournaments)/.test(id)) {
+    return 'admin-panel-tournaments';
+  }
+  if (/[/\\]src[/\\]admin[/\\]/.test(id)) return 'admin-panel-core';
   // Phase K Wave 8 — Peel GLTFLoader (+ its KTX2/Draco/meshopt
   // extension paths) into its own chunk.  In W7 the dynamic-import
   // landed inside the renderer chunk anyway because Rollup's
