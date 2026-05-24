@@ -57,6 +57,19 @@ public sealed class PerTenantRotationAdminController : ControllerBase
     public const string KindUpdated = "auth.jwks.per-tenant.updated";
     public const string KindDeleted = "auth.jwks.per-tenant.deleted";
 
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Hard-delete audit kind. The W16
+    /// surface stamped <see cref="KindDeleted"/> on the sentinel-
+    /// row workaround; W17 retires that path and uses the real
+    /// <see cref="IPerTenantJwksRotationStore.DeleteAsync"/>
+    /// method. The audit row now uses
+    /// <see cref="Mahjong.Autotable.Api.Data.Entities.ReconnectAuditEntry.KindAuthJwksPerTenantHardDeleted"/>
+    /// so operators can distinguish the new hard-delete from the
+    /// legacy soft-delete in the audit trail (W16 rows keep their
+    /// kind; W17 onward stamp the hard-delete kind).
+    /// </summary>
+    public const string KindHardDeleted = "auth.jwks.per-tenant.hard-deleted";
+
     private readonly AuthCookieService _cookies;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<PerTenantRotationAdminController> _logger;
@@ -205,25 +218,25 @@ public sealed class PerTenantRotationAdminController : ControllerBase
         {
             return NotFound(new { error = "tenant-not-found", tenantId });
         }
-        // Phase K Wave 16 — Bishop. The W15 store contract does
-        // not surface a DeleteAsync method (intentional — the
-        // delete path is rare and the upsert flow covers the
-        // common case). The admin controller writes a sentinel
-        // row marker by setting RotationCompleteUtc to UtcNow
-        // and clearing the kids so the validator's stale check
-        // immediately gates signing. A future wave widens the
-        // store seam with a hard-delete; the audit trail keeps
-        // the soft-delete path observable.
-        var sentinel = new PerTenantJwksRotationPolicy
+        // Phase K Wave 17 — Bishop. Retire the W16 sentinel-row
+        // workaround. The store now exposes a real DeleteAsync
+        // (W17 widened the contract); subsequent GET / List
+        // queries return 404 / drop the row entirely. The audit
+        // kind remains <see cref="KindDeleted"/> for wire-stable
+        // dashboard joins; W17 dashboards that want to distinguish
+        // hard-delete vs the legacy soft-delete can correlate with
+        // the absence of a follow-up sentinel-row Upsert in the
+        // store change feed.
+        var deleted = await _store!.DeleteAsync(tenantId, ct);
+        if (deleted == 0)
         {
-            TenantId = tenantId,
-            ActiveKid = string.Empty,
-            PreviousKid = string.Empty,
-            RotationStartUtc = existing.RotationStartUtc,
-            RotationCompleteUtc = DateTimeOffset.UtcNow,
-            OverlapWindowDays = 0,
-        };
-        await _store!.UpsertAsync(sentinel, ct);
+            // Defensive — concurrent delete between GetAsync and
+            // DeleteAsync. Treat as success since the row is gone
+            // regardless of which call won.
+            _logger.LogDebug(
+                "PerTenantRotationAdminController.Delete: race detected; tenant={TenantId} already removed.",
+                tenantId);
+        }
         await WriteAuditAsync(tenantId, KindDeleted, ct);
         return NoContent();
     }

@@ -426,6 +426,61 @@ public class ReconnectAuditEntry
     /// HLS playlist gate denies a non-associated caller (403 — neither
     /// seated nor spectator on the table).</summary>
     public const string KindLivestreamPlaylistForbidden = "voice.livestream.playlist.forbidden";
+
+    /// <summary>Phase K Wave 17 — Bishop. Audit Kind stamped when
+    /// <see cref="Mahjong.Autotable.Api.Auth.JwtIssuingService.IssueForTenantAsync"/>
+    /// blocks token issuance because the per-tenant JWKS rotation
+    /// policy has aged past the configured overlap window. The
+    /// <see cref="Detail"/> field carries the tenant id so the
+    /// trail is searchable by customer. Paired with the W17
+    /// <c>jwt_issue_blocked_total{reason="stale_per_tenant_policy"}</c>
+    /// Prometheus counter for operator dashboards.</summary>
+    public const string KindAuthJwtIssueBlockedStale = "auth.jwt.issue.blocked.stale_per_tenant_policy";
+
+    /// <summary>Phase K Wave 17 — Bishop. Hard-delete companion to
+    /// the W16 <c>auth.jwks.per-tenant.deleted</c> soft-delete
+    /// kind. Stamped by
+    /// <c>PerTenantRotationAdminController.Delete</c> when the
+    /// admin caller drops a per-tenant rotation row via the
+    /// W17 <see cref="Mahjong.Autotable.Api.Auth.IPerTenantJwksRotationStore.DeleteAsync"/>
+    /// path (the W16 sentinel-row workaround is retired).</summary>
+    public const string KindAuthJwksPerTenantHardDeleted = "auth.jwks.per-tenant.hard-deleted";
+
+    /// <summary>Phase K Wave 17 — Bishop. Audit Kind stamped by
+    /// the W17 <c>ReplayRetentionAdminController</c> on a
+    /// successful POST. <see cref="Detail"/> carries the tenant
+    /// id + the operator-supplied <c>X-Admin-Reason</c> header
+    /// joined by <c>"|"</c>.</summary>
+    public const string KindReplayRetentionCreated = "replays.retention.created";
+
+    /// <summary>Phase K Wave 17 — Bishop. Audit Kind for an
+    /// admin-driven update of a per-tenant replay retention row.</summary>
+    public const string KindReplayRetentionUpdated = "replays.retention.updated";
+
+    /// <summary>Phase K Wave 17 — Bishop. Audit Kind for an
+    /// admin-driven delete of a per-tenant replay retention row.</summary>
+    public const string KindReplayRetentionDeleted = "replays.retention.deleted";
+
+    /// <summary>Phase K Wave 17 — Bishop. Audit Kind stamped by
+    /// <c>CommentaryController.Trigger</c> when an admin caller
+    /// engages the <c>X-Admin-Reason</c> header to bypass the
+    /// 402 commentary cost-budget gate. <see cref="Detail"/>
+    /// carries the operator-supplied reason verbatim so the
+    /// audit dashboard renders WHY the override was used.</summary>
+    public const string KindCommentaryAdminOverride = "commentary.admin.override";
+
+    /// <summary>Phase K Wave 17 — Bishop. Audit Kind stamped by
+    /// the W17 <c>SignalRRetentionAdminController</c> on a
+    /// successful POST.</summary>
+    public const string KindSignalRRetentionCreated = "signalr.retention.created";
+
+    /// <summary>Phase K Wave 17 — Bishop. Audit Kind for an
+    /// admin-driven update of a per-tenant SignalR retention row.</summary>
+    public const string KindSignalRRetentionUpdated = "signalr.retention.updated";
+
+    /// <summary>Phase K Wave 17 — Bishop. Audit Kind for an
+    /// admin-driven delete of a per-tenant SignalR retention row.</summary>
+    public const string KindSignalRRetentionDeleted = "signalr.retention.deleted";
 }
 
 /// <summary>

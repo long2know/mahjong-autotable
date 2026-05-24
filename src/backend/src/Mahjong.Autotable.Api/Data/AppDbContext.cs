@@ -138,6 +138,16 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy> ReplayRetentionPolicies =>
         Set<Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy>();
 
+    // Phase K Wave 17 — Bishop. Per-tenant SignalR-sequence
+    // retention policy rows. Backs EfSignalRRetentionPolicyStore.
+    // The SignalRSequenceRetentionSweep consults this table once
+    // per distinct tenant per tick to pick a per-tenant
+    // retention window before falling back to the global
+    // SignalR:Sequences:RetentionMinutes default.
+    // See Mahjong.Autotable.Api.Observability.SignalRRetentionPolicy.
+    public DbSet<Mahjong.Autotable.Api.Observability.SignalRRetentionPolicy> SignalRRetentionPolicies =>
+        Set<Mahjong.Autotable.Api.Observability.SignalRRetentionPolicy>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -583,9 +593,16 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.Property(x => x.GroupName).HasMaxLength(128).IsRequired();
             entity.Property(x => x.Method).HasMaxLength(64).IsRequired();
             entity.Property(x => x.PayloadJson).IsRequired();
+            // Phase K Wave 17 — Bishop. Optional per-row tenant
+            // stamp. Indexed because the per-tenant sweep
+            // filters by TenantId once per distinct tenant per
+            // tick; an unindexed scan would be O(N) per tenant
+            // per tick.
+            entity.Property(x => x.TenantId).HasMaxLength(128).HasDefaultValue(string.Empty);
             entity.HasIndex(x => new { x.HubName, x.ConnectionId, x.Sequence }).IsUnique();
             entity.HasIndex(x => new { x.HubName, x.ConnectionId });
             entity.HasIndex(x => x.ExpiresAt);
+            entity.HasIndex(x => x.TenantId);
         });
 
         // Phase K Wave 13 — Bishop. Spectator handoff audit trail.
@@ -638,6 +655,19 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.HasKey(x => x.TenantId);
             entity.Property(x => x.TenantId).HasMaxLength(128).IsRequired();
             entity.Property(x => x.RetentionDays).IsRequired();
+        });
+
+        // Phase K Wave 17 — Bishop. Per-tenant SignalR-sequence
+        // retention policy. TenantId is the PK; the
+        // SignalRSequenceRetentionSweep reads the table once per
+        // distinct tenant per tick to pick a per-tenant
+        // retention window before falling back to the global
+        // SignalR:Sequences:RetentionMinutes default.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Observability.SignalRRetentionPolicy>(entity =>
+        {
+            entity.HasKey(x => x.TenantId);
+            entity.Property(x => x.TenantId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.RetentionMinutes).IsRequired();
         });
 
         // Phase K Wave 16 — Bishop. Optional tenant column on the

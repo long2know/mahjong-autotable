@@ -188,6 +188,24 @@ function copyStaticAssets(): {
         }
         copyFileSync(diceSrc, diceDst);
       }
+      // Phase K Wave 17 — Phase L canonical tile atlas (Hicks).
+      // `renderer-webgl2/tile-atlas.ts:TILE_ATLAS_URL_DEFAULT` points
+      // at `/img/tiles-atlas-webgl2.auto.png` (3 × 34 cell grid,
+      // 192 × 2176 px).  W17 generates the asset offline via
+      // `scripts/generate-tile-atlas-webgl2.js` + commits it to
+      // `img/`; this copy step lands it at the canonical URL the
+      // runtime loader fetches.  Without the copy, the loader falls
+      // back to the in-shader synthesized cell pattern (W16
+      // behaviour preserved).  Re-run the generator script to
+      // refresh the committed PNG when the cell palette changes.
+      const tileAtlasSrc = `${root}/img/tiles-atlas-webgl2.auto.png`;
+      const tileAtlasDst = `${out}/img/tiles-atlas-webgl2.auto.png`;
+      if (existsSync(tileAtlasSrc)) {
+        if (!existsSync(`${out}/img`)) {
+          require('node:fs').mkdirSync(`${out}/img`, { recursive: true });
+        }
+        copyFileSync(tileAtlasSrc, tileAtlasDst);
+      }
       // Phase K Wave 8 — Copy PWA icons to their un-hashed paths
       // under `img/` so the manifest's `src: "img/icon-NNN.auto.png"`
       // entries resolve.  Vite's HTML processor moves the icons to

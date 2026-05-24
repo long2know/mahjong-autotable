@@ -35,6 +35,17 @@ namespace Mahjong.Autotable.Api.Auth;
 /// <c>alg</c> + <c>kid</c> fields are stamped from the chosen
 /// algorithm + active key so the matching validator can pick the
 /// right verifier without an external catalog.</para>
+///
+/// <para>Phase K Wave 17 — Bishop. <see cref="IssueForTenantAsync"/>
+/// resolves the per-tenant JWKS rotation policy via
+/// <see cref="PerTenantJwksRotationValidator.EnforceSigningAsync"/>
+/// BEFORE invoking the underlying sign pipeline. A stale policy
+/// throws <see cref="PerTenantRotationStaleException"/> and stamps
+/// the <see cref="JwtIssueBlockedMetrics"/> counter so operators
+/// can graph the volume of blocked tokens. When the validator is
+/// not registered (e.g. <c>JwksRotation:PerTenant:Enabled=false</c>),
+/// <see cref="IssueForTenantAsync"/> degrades to the single-tenant
+/// <see cref="IssueAsync"/> path so callers don't have to branch.</para>
 /// </summary>
 public sealed class JwtIssuingService
 {
@@ -43,15 +54,100 @@ public sealed class JwtIssuingService
     private readonly JwtSigningKeyProvider _keys;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<JwtIssuingService> _logger;
+    private readonly PerTenantJwksRotationValidator? _perTenantValidator;
+    private readonly JwtIssueBlockedMetrics? _blockedMetrics;
 
     public JwtIssuingService(
         JwtSigningKeyProvider keys,
         IServiceScopeFactory scopeFactory,
-        ILogger<JwtIssuingService> logger)
+        ILogger<JwtIssuingService> logger,
+        PerTenantJwksRotationValidator? perTenantValidator = null,
+        JwtIssueBlockedMetrics? blockedMetrics = null)
     {
         _keys = keys;
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _perTenantValidator = perTenantValidator;
+        _blockedMetrics = blockedMetrics;
+    }
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Per-tenant token-issue path that
+    /// enforces the per-tenant JWKS rotation policy before
+    /// signing. When the validator is disabled or no store is
+    /// registered, falls back to the single-tenant
+    /// <see cref="IssueAsync"/> path. When the validator blocks
+    /// signing, increments
+    /// <see cref="JwtIssueBlockedMetrics.RecordBlocked"/> with the
+    /// canonical reason and rethrows the verdict exception.
+    /// </summary>
+    public async Task<JwtIssueResult> IssueForTenantAsync(
+        string tenantId,
+        string subject,
+        IReadOnlyDictionary<string, object?>? claims = null,
+        TimeSpan? lifetime = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+            throw new ArgumentException("subject must not be empty.", nameof(subject));
+
+        // Validator may be null (toggle off in DI) — in that case
+        // the per-tenant gate is a clean no-op and we delegate to
+        // the single-tenant path. A registered-but-disabled
+        // validator (ValidatorEnabled == false) takes the same
+        // short-circuit so the toggle is a true global off-switch.
+        if (_perTenantValidator is null || !_perTenantValidator.ValidatorEnabled)
+        {
+            return await IssueAsync(subject, claims, lifetime, ct).ConfigureAwait(false);
+        }
+
+        // Resolve the verdict ONCE so we can stamp the
+        // appropriate metric label before throwing — the
+        // validator's EnforceSigningAsync wraps the verdict in
+        // an exception we'd otherwise have to unpack twice.
+        var verdict = await _perTenantValidator
+            .EvaluateAsync(tenantId ?? string.Empty, DateTimeOffset.UtcNow, ct)
+            .ConfigureAwait(false);
+        if (!verdict.Allowed)
+        {
+            var metricReason = verdict.Kind switch
+            {
+                PerTenantRotationVerdictKind.Stale =>
+                    JwtIssueBlockedMetrics.ReasonStalePerTenantPolicy,
+                PerTenantRotationVerdictKind.StoreMissing =>
+                    JwtIssueBlockedMetrics.ReasonPerTenantStoreMissing,
+                _ => verdict.Reason ?? JwtIssueBlockedMetrics.ReasonStalePerTenantPolicy,
+            };
+            _blockedMetrics?.RecordBlocked(metricReason);
+            await WriteBlockedAuditAsync(subject, tenantId ?? string.Empty, metricReason, ct).ConfigureAwait(false);
+            _logger.LogWarning(
+                "JwtIssuingService BLOCKED token issue for tenant={TenantId}, kind={Kind}, reason={Reason}.",
+                tenantId, verdict.Kind, verdict.Reason);
+            throw new PerTenantRotationStaleException(
+                tenantId ?? string.Empty,
+                verdict.Reason ?? PerTenantJwksRotationValidator.ErrorPolicyStale,
+                verdict.Policy,
+                verdict.StaleAfter);
+        }
+
+        // Verdict is allowed (ToggleDisabled / NoPolicy /
+        // PolicyFresh / WithinOverlapWindow) — proceed with the
+        // single-tenant signing path. We thread the tenant id
+        // into the audit detail via a per-tenant claim so the
+        // audit trail records which tenant the token was issued
+        // for.
+        IReadOnlyDictionary<string, object?>? mergedClaims = claims;
+        if (!string.IsNullOrWhiteSpace(tenantId))
+        {
+            var merged = new Dictionary<string, object?>(StringComparer.Ordinal);
+            if (claims is not null)
+            {
+                foreach (var kv in claims) merged[kv.Key] = kv.Value;
+            }
+            merged["tenant"] = tenantId;
+            mergedClaims = merged;
+        }
+        return await IssueAsync(subject, mergedClaims, lifetime, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -168,6 +264,37 @@ public sealed class JwtIssuingService
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "JWT mint audit write failed for subject={Subject}", subject);
+        }
+    }
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Audit-row writer for the per-tenant
+    /// blocked-issue path. Stamps
+    /// <see cref="ReconnectAuditEntry.KindAuthJwtIssueBlockedStale"/>
+    /// with <see cref="ReconnectAuditEntry.Detail"/> set to
+    /// <c>"{tenantId}|{reason}"</c>. Failures are swallowed (best-
+    /// effort — the metric counter is the durable signal; the
+    /// audit row is a debugging convenience).
+    /// </summary>
+    private async Task WriteBlockedAuditAsync(string subject, string tenantId, string reason, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.ReconnectAuditEntries.Add(new ReconnectAuditEntry
+            {
+                Id = Guid.NewGuid(),
+                PlayerId = subject,
+                At = DateTime.UtcNow,
+                Kind = ReconnectAuditEntry.KindAuthJwtIssueBlockedStale,
+                Detail = $"{tenantId}|{reason}",
+            });
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "JWT block audit write failed for subject={Subject}, tenant={TenantId}", subject, tenantId);
         }
     }
 

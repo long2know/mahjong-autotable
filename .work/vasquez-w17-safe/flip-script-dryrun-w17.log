@@ -1,0 +1,22 @@
+→ Reading current branch protection for long2know/mahjong-autotable:main…
+→ gh api -X GET repos/long2know/mahjong-autotable/branches/main/protection
+→ HTTP 404 — Branch not protected
+→ Mode: dry-run
+→ Have lane-discipline currently: no (branch protection ABSENT entirely)
+→ Resulting contexts: lane-discipline / check (would be REQUIRED on a brand-new protection record)
+→ NOTE — W17 RECALIBRATION: this is no longer the "add lane-discipline as
+→        required-check to an existing branch protection" case. The W14/W15/W16
+→        dry-run framing assumed partial protection existed and the flip was
+→        a single-line addition to the required_status_checks.contexts array.
+→        At W17 bring-up the Coordinator confirmed via gh api that main has
+→        ZERO branch protection (HTTP 404). Installing protection from
+→        scratch is a categorically larger change (selects PR-required Y/N,
+→        review-dismissal policy, signed-commit Y/N, enforce_admins Y/N,
+→        restrictions Y/N) — see §4.7 + §4.8 in docs/agent-handoff-protocol.md.
+→ Dry-run: would execute:
+    gh api -X PUT repos/long2know/mahjong-autotable/branches/main/protection \
+      --input - <<'JSON'
+      { …decision-tree payload per §4.8 (3 options)… }
+      JSON
+→ Recommendation: HOLD Coordinator-direct execution; present Stephen-decision
+→        package per §4.8. Downgrade from W16 PRIMARY recommendation.

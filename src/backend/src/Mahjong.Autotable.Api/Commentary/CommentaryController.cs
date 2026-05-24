@@ -89,13 +89,49 @@ public sealed class CommentaryController : ControllerBase
         // X-Cost-Budget-Override: 1 header AND the
         // Commentary:CostBudget:AdminOverride toggle (default
         // true). Healthy + Warning states still pass through.
+        //
+        // Phase K Wave 17 — Bishop. The override path now ALSO
+        // accepts the canonical <c>X-Admin-Reason</c> header
+        // (unified with the W17 replay-retention + signalr-
+        // retention admin surfaces). When BOTH headers are
+        // present the request is accepted; when ONLY
+        // X-Admin-Reason is present the request is accepted and
+        // the reason is captured on the
+        // <see cref="ReconnectAuditEntry.KindCommentaryAdminOverride"/>
+        // audit row. When only X-Cost-Budget-Override is present
+        // the W16 path is preserved (audit row uses
+        // "legacy-x-cost-budget-override" as the captured reason
+        // so dashboards can spot the legacy bucket and migrate
+        // operators off it). An explicit X-Admin-Reason header
+        // with EMPTY / whitespace value short-circuits with 400
+        // so operators don't accidentally silently override.
         if (_enforcer is not null)
         {
-            var isAdminOverride = HasOverrideHeader();
+            var (overrideEngaged, adminReason, badEmptyReason) = ResolveAdminOverride();
+            if (badEmptyReason)
+            {
+                return BadRequest(new
+                {
+                    error = "admin-reason-empty",
+                    detail = $"The {CommentaryAdminReasonHeader} header was supplied but is empty / whitespace.",
+                });
+            }
             var verdict = _enforcer.Evaluate(
                 tenantId: null,
-                isAdmin: isAdminOverride,
+                isAdmin: overrideEngaged,
                 utcNow: DateTime.UtcNow);
+            if (verdict.IsAdminOverride)
+            {
+                // Stamp an audit row capturing WHY the operator
+                // engaged the override. This is the single
+                // signal the W17 audit dashboard renders for the
+                // "admin bypassed budget" bucket.
+                await WriteAdminOverrideAuditAsync(
+                    session.PlayerId,
+                    gameId,
+                    adminReason ?? "legacy-x-cost-budget-override",
+                    ct);
+            }
             if (verdict.ShouldShortCircuit)
             {
                 return StatusCode(
@@ -143,6 +179,96 @@ public sealed class CommentaryController : ControllerBase
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Wire-stable header name for the
+    /// unified admin-override surface. Mirrors the W17
+    /// <see cref="Mahjong.Autotable.Api.Replays.ReplayRetentionAdminController.AdminReasonHeader"/>
+    /// + the W17 SignalR-retention admin controller so a single
+    /// audit dashboard renders all three surfaces' overrides
+    /// under one header convention.
+    /// </summary>
+    public const string CommentaryAdminReasonHeader = "X-Admin-Reason";
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Resolves the unified admin-
+    /// override headers. Returns a triple:
+    /// <list type="bullet">
+    ///   <item><c>overrideEngaged</c> — true when the request
+    ///         should be treated as admin-override (either
+    ///         X-Admin-Reason populated with a non-empty value
+    ///         OR the legacy X-Cost-Budget-Override: 1 path).</item>
+    ///   <item><c>reason</c> — the X-Admin-Reason value (trimmed)
+    ///         or null when only the legacy header was supplied.</item>
+    ///   <item><c>badEmptyReason</c> — true when X-Admin-Reason
+    ///         was supplied but is empty / whitespace-only. The
+    ///         caller short-circuits with HTTP 400 in this case
+    ///         so operators don't silently engage the override.</item>
+    /// </list>
+    /// </summary>
+    private (bool overrideEngaged, string? reason, bool badEmptyReason) ResolveAdminOverride()
+    {
+        if (HttpContext is null || HttpContext.Request is null)
+            return (false, null, false);
+
+        string? adminReason = null;
+        if (HttpContext.Request.Headers.TryGetValue(CommentaryAdminReasonHeader, out var reasonValues))
+        {
+            foreach (var v in reasonValues)
+            {
+                if (!string.IsNullOrWhiteSpace(v))
+                {
+                    adminReason = v.ToString().Trim();
+                    break;
+                }
+            }
+            if (adminReason is null)
+            {
+                // Header explicitly supplied but empty — fail
+                // closed so operators don't accidentally engage
+                // the override by sending an empty value.
+                return (false, null, true);
+            }
+        }
+
+        var legacy = HasOverrideHeader();
+        var engaged = adminReason is not null || legacy;
+        return (engaged, adminReason, false);
+    }
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Writes the
+    /// <see cref="ReconnectAuditEntry.KindCommentaryAdminOverride"/>
+    /// audit row when the override engages so the audit
+    /// dashboard renders WHO bypassed the budget cap, WHEN, and
+    /// WHY (the operator-supplied reason verbatim). Failures are
+    /// swallowed — the row is a debugging convenience, not a
+    /// hard prerequisite for the override.
+    /// </summary>
+    private async Task WriteAdminOverrideAuditAsync(
+        string playerId, Guid gameId, string reason, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.ReconnectAuditEntries.Add(new ReconnectAuditEntry
+            {
+                Id = Guid.NewGuid(),
+                PlayerId = playerId,
+                At = DateTime.UtcNow,
+                Kind = ReconnectAuditEntry.KindCommentaryAdminOverride,
+                Detail = $"{gameId:N}|{reason}",
+            });
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Commentary admin-override audit write failed for player={PlayerId}, gameId={GameId}.",
+                playerId, gameId);
+        }
     }
 
     [HttpGet]

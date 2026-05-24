@@ -316,6 +316,12 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
     rotationValidator.Validate();
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IRotationCadenceValidator>(rotationValidator);
 }
+// Phase K Wave 17 — Bishop. JWT-issue blocked-path metrics. The
+// JwtIssuingService takes this as an optional dep so the
+// IssueForTenantAsync block-path stamps jwt_issue_blocked_total
+// {reason=stale_per_tenant_policy|per_tenant_store_missing}. The
+// MetricsEndpoint renders the snapshot at /metrics.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssueBlockedMetrics>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 // Phase K Wave 14 — Bishop. JWKS overlap-window enforcement. The
 // validator now takes the staged rotation policy so it can reject
@@ -1027,6 +1033,24 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
     // even when no SignalR traffic has been observed yet. See
     // docs/realtime-resilience.md §8.
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRSequenceMetrics>();
+    // Phase K Wave 17 — Bishop. Per-tenant SignalR-sequence
+    // retention policy store. Registered alongside the sequence
+    // store so the W13 retention sweep can resolve it as an
+    // optional dependency + apply per-tenant retention windows
+    // before falling back to the global default. Impl follows
+    // the same toggle as the sequence store so the EF branch
+    // ships the EF backing + the InMemory branch ships the
+    // in-process companion. See docs/realtime-resilience.md §7.
+    if (string.Equals(impl, "Ef", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.ISignalRRetentionPolicyStore,
+            Mahjong.Autotable.Api.Observability.EfSignalRRetentionPolicyStore>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.ISignalRRetentionPolicyStore,
+            Mahjong.Autotable.Api.Observability.InMemorySignalRRetentionPolicyStore>();
+    }
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep>();
     builder.Services.AddHostedService(sp =>
         sp.GetRequiredService<Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep>());

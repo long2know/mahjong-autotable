@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations.Schema;
 using Mahjong.Autotable.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,6 +51,27 @@ public sealed class ReplayRetentionPolicy
     /// <summary>UTC timestamp when the row was last mutated.
     /// Bumped on every upsert through the store.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. <see cref="DateTimeOffset"/>
+    /// projection of <see cref="CreatedAt"/>. Mirrors the W17
+    /// widening on <see cref="Mahjong.Autotable.Api.Auth.PerTenantJwksRotationPolicy.CreatedAtOffset"/>.
+    /// </summary>
+    [NotMapped]
+    public DateTimeOffset CreatedAtOffset
+    {
+        get => new(DateTime.SpecifyKind(CreatedAt, DateTimeKind.Utc), TimeSpan.Zero);
+        set => CreatedAt = value.UtcDateTime;
+    }
+
+    /// <summary>Phase K Wave 17 — Bishop. <see cref="DateTimeOffset"/>
+    /// projection of <see cref="UpdatedAt"/>.</summary>
+    [NotMapped]
+    public DateTimeOffset UpdatedAtOffset
+    {
+        get => new(DateTime.SpecifyKind(UpdatedAt, DateTimeKind.Utc), TimeSpan.Zero);
+        set => UpdatedAt = value.UtcDateTime;
+    }
 }
 
 /// <summary>

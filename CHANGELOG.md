@@ -19,8 +19,181 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-16-bringup`. Phase K Wave 16
+Working branch: `stlong/phase-k-wave-17-bringup`. Phase K Wave 17
 in flight. Other lane deliverables outstanding.
+
+## [0.26.0] — Phase K Wave 17 — 2027-01-22 (PR pending)
+
+**Theme:** Kyverno enforce 7-day post-flip observability
+(HOLD verdict — zero denies, no rollback) + Mobile CI Android
+signing groundwork (env block + keystore-decode step + SIGNED/
+UNSIGNED Gradle branches gated on secret presence) +
+us-east-1 W17 plan capture (PARTIAL-GREEN gate; HOLD on apply
+pending Hicks renderer-bandwidth Row 2 AMBER resolution) + HPA
+W17 7-day retrospective (off-peak over-provisioning trigger
+acknowledged; cron-scheduled-min override DESIGNED, lands at
+W18) + SLSA-3 SHA pin expansion (W16's 6 pins in `docker-
+build.yml` → +50 pins across 9 security-critical workflows
+at W17; total now 56 across 11 workflow files) + CHANGELOG
+0.26.0 + mobile package version pin. Apone's W17 turns the
+W15 + W16 pre-wires + hardening lifts into 7-day-observation-
+verified posture and broadens the §7b.2.2 SHA-pin discipline
+to the full security-critical workflow set without opening
+new §7b.2 surfaces (those stay W18+ targets per the W15 +
+W16 sequencing).
+
+### Apone — DevOps (W17 deliverables)
+
+- **Kyverno enforce — 7-day post-flip observability.** New
+  `docs/kyverno-enforce-w17-observability.md` documents the
+  W16 cutover-day → W17 PR-readiness 7-day window with a
+  four-panel Hudson verdict table (all GREEN: 0 denies on
+  `enforce-prod-default`, 0 denies on the W3 audit-mode
+  policy, +3% headroom on `pod-security-violations-prod`,
+  +1 ms p99 on `admission-webhook-latency-prod` — within
+  noise). Decision: **HOLD; no rollback.** The `audit →
+  enforce` Kyverno mode flip on the `enforce-prod-default`
+  ClusterPolicy is stable for the W17 window; the 14-day
+  watch hand-off to W18+ is now narrowed to a 7-day
+  confirmatory pass. Companion §11 appended to
+  `docs/kyverno-enforce-rollout.md` cross-references the new
+  observability doc + restates the §10 W17 hand-off slot as
+  CLOSED-GREEN.
+- **Mobile CI Android signing groundwork.** Extended the
+  W2 `.github/workflows/mobile-build.yml` with the four
+  `ANDROID_*` secrets at job-level `env:` (KEYSTORE_BASE64,
+  KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD), a new
+  "Decode Android keystore (when secret present)" step that
+  writes the base64 payload to `${RUNNER_TEMP}/mahjong-
+  autotable.keystore` and outputs a `keystore-present`
+  boolean, and split the W2 `Gradle assembleRelease +
+  bundleRelease` step into mutually-exclusive SIGNED (gated
+  on `keystore-present == 'true'`) and UNSIGNED branches
+  (gated on `!=`) — preserves W16 behaviour when secrets are
+  absent (UNSIGNED branch runs the W2 baseline command),
+  activates the signed-release branch automatically once
+  Stephen uploads the four secrets via `gh secret set`.
+  Companion 15 SHA pins applied across the workflow (one
+  pin per action `uses:` line) — see SLSA-3 deliverable.
+  New `docs/mobile-android-signing.md` (~15 KB) — Stephen's
+  operator runbook covering keystore generation via
+  `keytool -genkeypair`, 4-secret upload via `gh secret set
+  ANDROID_KEYSTORE_BASE64 --body-file <(base64 -i
+  mahjong-autotable.keystore)`, signed-build verification
+  via `apksigner verify --print-certs <apk>`, disaster
+  scenarios (lost keystore, wrong password, rotation), and
+  W18 iOS-distribution-cert deferral. No iOS signing
+  groundwork at W17.
+- **us-east-1 W17 plan capture.** Re-ran the W14 + W16
+  dry-run pattern against the W17 source tip; zero drift
+  confirmed (`infra/terraform/{envs/prod,modules/edge,modules/
+  redis}` byte-identical to the W11 baseline; `git diff
+  origin/main..HEAD -- infra/terraform/` empty). Plan
+  capture at `docs/us-east-1-w17-plan-output.txt` (NEW,
+  ~8.6 KB) documents the same partial-capture as W16: one
+  resource (`module.redis.random_password.auth_token[0]`)
+  adds cleanly without AWS creds; three expected
+  STS/tfvars validation errors halt the plan engine before
+  any AWS-side resource walk. Updated `docs/regional-eks-
+  bringup.md` with new §3.6 "W17 apply-readiness gate"
+  (5-row gate, verdict PARTIAL-GREEN/HOLD because
+  `autotable-src-eager` per `src/frontend/autotable-src/
+  dist-size.json` is 214,202 bytes ≈ 209 KB, OVER the
+  200 KB ceiling; `renderer-webgl2` is 19,017 bytes ≈ 19 KB,
+  comfortably under the 40 KB ceiling). New §3.7 W18
+  hand-off Paths A (eager-bundle re-split lands at Hicks
+  W18) + B (raise the eager-bundle ceiling to 220 KB with
+  squad sign-off). New §3.8 "what W17 doesn't change". No
+  `terraform apply` lands; the us-east-1 W17 capture is a
+  dry-run only.
+- **HPA tuning — W17 7-day retrospective.** New
+  `docs/hpa-tuning-w17-retrospective.md` (~11 KB)
+  documents the 7-day observability of the W16 base
+  `minReplicas: 2 → 3` bump across four Hudson panels
+  (`hpa-current-replicas`, `cpu-saturation`, `pod-evicts`,
+  `kube-pod-pending`) for both prod (no-op verification —
+  layout refactor is operationally invisible) and staging
+  (actual floor change — 2 → 3 effective). §3 off-peak
+  analysis flags 3.87 h/day below 10% CPU during
+  02:00–06:00 UTC (above the 2 h/day W17 trigger
+  threshold). §4 peak analysis confirms HPA still
+  auto-scaling to demand (4.7 mean at peak; floor not a
+  constraint; no peak-side bump to 4 needed). §5 lands the
+  scheduled-min-override DESIGN — a CronJob writing
+  `minReplicas: 2` at 02:00 UTC + `minReplicas: 3` at
+  06:00 UTC via `kubectl patch hpa` with a narrowly-scoped
+  ServiceAccount. **W17 deliberately does NOT ship the
+  CronJob YAML;** §8 hand-off has Apone authoring the
+  single-PR W18 delivery once Hudson confirms the
+  schedule's blast-radius. §6 prod-side: no W17 action; the
+  W15 5-replica candidate stays REJECTED at W17.
+- **SLSA-3 SHA pin expansion.** Broadened the W16
+  `docker-build.yml`-only SHA-pin scope to nine additional
+  security-critical workflows: `sbom.yml` (7 pins),
+  `sign-image.yml` (2), `verify-signature.yml` (2),
+  `verify-slsa-on-deploy.yml` (3), `container-scan.yml`
+  (7), `mirror-ghcr-to-ecr.yml` (6), `multi-arch-runtime.
+  yml` (5), `multi-arch-smoke.yml` (3), and `mobile-build.
+  yml` (15 — companion to the Android signing groundwork).
+  Total W17 net new SHA pins: **+50** (target was +15;
+  expanded scope reflects §7b.3 sequencing — every
+  release-pipeline security-critical surface now SHA-pinned).
+  All SHAs resolved via the public unauthenticated GitHub
+  API (`api.github.com/repos/<owner>/<repo>/git/refs/tags/
+  <tag>` with annotated-tag dereferencing through
+  `git/tags/<sha>`). Per-workflow pin counts + SHA
+  reference table documented in new `docs/slsa-provenance.
+  md §9` (renumbered from W16 §8 cross-references).
+  `slsa-github-generator@v2.0.0` STAYS un-SHA-pinned per
+  §7c.2's `__BUILDER_ID` regex contract (UNCHANGED W16 →
+  W17). Three workflow files INTENTIONALLY left un-pinned
+  at W17 — `lane-discipline.yml`, `lane-discipline-nightly.
+  yml`, `playwright-visual-regression.yml` — all
+  vasquez-lane per `tests/ci/lane-map.json`; defer to
+  Vasquez to pin in a parallel W17+ commit.
+- **CHANGELOG 0.26.0** (this entry) + `mobile/package.json`
+  version bump `0.25.0 → 0.26.0` to keep the Capacitor
+  shell's npm-surface version aligned with the wave-version
+  cadence the W16 entry established. The backend
+  `Mahjong.Autotable.Api.csproj` `<Version>` pin lives in
+  Bishop-lane (`src/backend/src/` per
+  `tests/ci/lane-map.json`); deferred to Bishop's W17
+  commit per lane discipline — same posture as W16.
+
+### Notes — what the W17 bring-up does NOT touch
+
+- The W3 cluster-wide `kyverno-cosign-verify.yaml` policy
+  STAYS Audit-default — the W15 §1 "brand-new namespace
+  fails SAFE" design property remains intact. The W17
+  observability doc does NOT flip the cluster-wide W3
+  policy.
+- The W16 + W7 prod-overlay HPA effective values are
+  UNCHANGED (`minReplicas: 3`, `maxReplicas: 12`) — the
+  W17 retrospective is observation-only on the base layout.
+  The W18 cron-scheduled-min override targets STAGING only.
+- No `terraform apply` lands; the us-east-1 W17 capture is
+  a dry-run only. Stephen's call on the live apply per W18
+  once Hicks's W18 renderer-bundle re-split lifts the
+  PARTIAL-GREEN gate to GREEN (or squad sign-off lifts the
+  200 KB ceiling to 220 KB per Path B).
+- The `slsa-github-generator@v2.0.0` caller-side pin in
+  `.github/workflows/slsa-provenance.yml` is UNCHANGED at
+  W17 — the §7c.2 ⚠️ warning applies through W17 + W18 +
+  W19. The verifier-side pin (§7c.3 W18 row) is the next
+  change to the SLSA chain.
+- Three vasquez-lane workflows (`lane-discipline.yml`,
+  `lane-discipline-nightly.yml`,
+  `playwright-visual-regression.yml`) are NOT SHA-pinned at
+  W17; defer to Vasquez to land those pins in a parallel
+  W17+ commit per lane discipline.
+- No iOS signing groundwork at W17; iOS distribution cert
+  + provisioning profile deferral documented in
+  `docs/mobile-android-signing.md §9`. W18 candidate.
+- Backend `Mahjong.Autotable.Api.csproj` `<Version>` is
+  Bishop-lane per `tests/ci/lane-map.json`; Apone does NOT
+  touch it. Bishop's W17 commit bumps the backend version
+  in a parallel commit per the W16 D6 lane-respect
+  precedent.
 
 ## [0.25.0] — Phase K Wave 16 — 2027-01-15 (PR pending)
 

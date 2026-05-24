@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations.Schema;
 using Mahjong.Autotable.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -71,6 +72,36 @@ public sealed class PerTenantJwksRotationPolicy
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>
+    /// Phase K Wave 17 — Bishop. <see cref="DateTimeOffset"/>
+    /// projection of <see cref="CreatedAt"/>. The persisted
+    /// column is still <c>DateTime</c> (Utc) — the projection
+    /// stamps <see cref="TimeSpan.Zero"/> offset on read so
+    /// downstream surfaces that prefer
+    /// <see cref="DateTimeOffset"/> (e.g. the W16/W17 admin
+    /// controller wire shape) don't round-trip through
+    /// <c>DateTime</c>. The setter writes back through the
+    /// underlying <see cref="CreatedAt"/> column so EF persists
+    /// it transparently. <see cref="NotMappedAttribute"/> keeps
+    /// EF from creating a duplicate column.
+    /// </summary>
+    [NotMapped]
+    public DateTimeOffset CreatedAtOffset
+    {
+        get => new(DateTime.SpecifyKind(CreatedAt, DateTimeKind.Utc), TimeSpan.Zero);
+        set => CreatedAt = value.UtcDateTime;
+    }
+
+    /// <summary>Phase K Wave 17 — Bishop. <see cref="DateTimeOffset"/>
+    /// projection of <see cref="UpdatedAt"/>. See
+    /// <see cref="CreatedAtOffset"/> for the rationale.</summary>
+    [NotMapped]
+    public DateTimeOffset UpdatedAtOffset
+    {
+        get => new(DateTime.SpecifyKind(UpdatedAt, DateTimeKind.Utc), TimeSpan.Zero);
+        set => UpdatedAt = value.UtcDateTime;
+    }
+
+    /// <summary>
     /// Phase K Wave 16 — Bishop. Per-row overlap-window grace
     /// period (days) AFTER <see cref="RotationCompleteUtc"/>.
     /// During the window, tokens signed under this policy still
@@ -125,6 +156,19 @@ public interface IPerTenantJwksRotationStore
 
     /// <summary>Total row count — surfaced for tests.</summary>
     Task<int> CountAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase K Wave 17 — Bishop. Hard-delete a per-tenant
+    /// rotation row by tenant id. Returns the number of rows
+    /// deleted (0 when no row matched, 1 on success). The W16
+    /// admin controller used an upsert-of-sentinel-row workaround
+    /// because the W15 contract didn't expose this method; W17
+    /// retires the workaround. Subsequent
+    /// <see cref="GetAsync"/> calls return null and the validator
+    /// treats the tenant as NoPolicy (falls back to the global
+    /// rotation window).
+    /// </summary>
+    Task<int> DeleteAsync(string tenantId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -177,6 +221,12 @@ public sealed class InMemoryPerTenantJwksRotationStore : IPerTenantJwksRotationS
 
     public Task<int> CountAsync(CancellationToken ct = default) =>
         Task.FromResult(_rows.Count);
+
+    public Task<int> DeleteAsync(string tenantId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(tenantId)) return Task.FromResult(0);
+        return Task.FromResult(_rows.TryRemove(tenantId, out _) ? 1 : 0);
+    }
 }
 
 /// <summary>
@@ -259,6 +309,16 @@ public sealed class EfPerTenantJwksRotationStore : IPerTenantJwksRotationStore
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         return await db.PerTenantJwksRotationPolicies.CountAsync(ct);
+    }
+
+    public async Task<int> DeleteAsync(string tenantId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(tenantId)) return 0;
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.PerTenantJwksRotationPolicies
+            .Where(p => p.TenantId == tenantId)
+            .ExecuteDeleteAsync(ct);
     }
 }
 

@@ -128,6 +128,24 @@ public static class MetricsEndpoint
             sb.Append("# TYPE ").Append(TournamentQueryLatencyMetrics.MetricName).AppendLine(" histogram");
         }
 
+        // Phase K Wave 17 — Bishop. JWT-issue blocked-path metrics.
+        // Renders the jwt_issue_blocked_total{reason=...} counter so
+        // a per-tenant rotation drift trips a dashboard alert on
+        // operator dashboards. Falls back to zeroed envelope when
+        // the collector is not wired so dashboards see a stable
+        // schema. See docs/realtime-resilience.md §9.
+        var jwtIssueBlocked = services.GetService<Mahjong.Autotable.Api.Auth.JwtIssueBlockedMetrics>();
+        if (jwtIssueBlocked is not null)
+        {
+            jwtIssueBlocked.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Auth.JwtIssueBlockedMetrics.MetricName)
+              .AppendLine(" JWT issue requests blocked by the per-tenant validator. Collector not wired.");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Auth.JwtIssueBlockedMetrics.MetricName).AppendLine(" counter");
+        }
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
     }
 

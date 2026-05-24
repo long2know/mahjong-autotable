@@ -864,6 +864,133 @@ been deferred for **7 waves** and the data-dependency itself
 becomes the project blocker, not the cron path.  This is the
 RED fallback held in reserve at W16 §6.5.
 
+### §6.7 — LH13 cron status update + W17 escalation (W17 — Vasquez, NEW)
+
+> **Status at W17 bring-up:** Hicks's W17 §8 in
+> `docs/lh13-soft-pin-rationale.md` confirms **1 cron run fired
+> between W16 sign-off and W17 bring-up** (cron IS alive) but
+> conclusion was **failure**.  Convergence criterion (≥ 3
+> consecutive successful schedule-event runs) still **0 of 3**.
+> The §6.6 Coordinator-direct seed has NOT been executed in any
+> wave from W16 → W17.  The §6.1 cadence is now **7-wave
+> deferred** (W11 → W17 inclusive).
+
+#### Why §6.7 exists separately from §6.6
+
+`§6.6` codified the Coordinator-direct cron invocation runbook
+at W16.  `§6.7` records the W17 cron-status check + makes the
+explicit observation that the §6.6 runbook has not been invoked
+in the W16 → W17 inter-wave gap, **even though Hicks's §8
+re-check confirms the cron scheduler itself is now provably
+alive** (the W17 cron-fired-but-failed run is the proof).  The
+remaining failure surface is **post-launch** (workflow body
+fails before artefacts can land), not **pre-launch** (the
+scheduler was never firing) — this narrows §6.6's payload
+significantly.
+
+#### W17 status capture
+
+```text
+Hicks's W17 §8 evidence-gate result (lh13-soft-pin-rationale.md):
+
+| Metric                                              | W16 sign-off | W17 bring-up |
+|-----------------------------------------------------|--------------|--------------|
+| Cron-trigger runs of pwa-audit.yml (event=schedule) | 0            | 1            |
+| Successful schedule-event runs (conclusion=success) | 0            | 0            |
+| manual-cron workflow_dispatch runs                  | 0            | 0            |
+| Coordinator-direct seed (§6.6 invocation count)     | 0            | 0            |
+```
+
+Vasquez W17 environment cannot independently rerun
+`gh run list --workflow=pwa-audit.yml` (the GH_TOKEN bridge that
+worked for the W14 dry-run does not extend to `gh run list`;
+W17 environment returned the same `not logged in` shape as W15
++ W16).  The §8 evidence above is the authoritative W17 data
+point; Vasquez's §6.7 captures it without re-querying.
+
+#### W17 recommendation — Coordinator-direct cron seed PROMOTES to PRIMARY
+
+> **Coordinator-direct invocation of the §6.6 runbook is now
+> the W17 PRIMARY path.**  The W14/W15/W16 deferral chain
+> + the W16 §6.6 codification + Hicks's W17 §8 cron-is-alive
+> confirmation collectively retire every objection that previously
+> argued for waiting on Stephen-direct seeding:
+
+1. **Cron is alive** (W17 confirmation) — the W14 concern that
+   "we don't even know the scheduler fires" is empirically
+   resolved.  The remaining failure mode is *inside* the
+   workflow body, which is exactly what the §6.6 manual seed
+   was designed to expose.
+2. **Workflow shape is dispatchable** (W16 §6.6 pre-flight) —
+   `gh workflow view pwa-audit.yml` confirms `workflow_dispatch:`
+   in the `on:` block; the GH_TOKEN bridge has `workflow` scope.
+3. **Seven-wave deferral exceeds §6.3 escalation criterion** —
+   §6.3 named "6-wave deferral" as the trip-wire; W17 is now
+   the 7th wave.  The Option A soft-flip (W16) was the
+   acknowledgement of the trip, not the closure.
+4. **The §6.6 invocations are non-destructive** — workflow
+   triggers that read the site and post artefacts; they
+   cannot affect production state.  The W16 §6.6
+   "Why this is safe to execute without Stephen approval"
+   block still applies verbatim at W17.
+
+The exact W17 invocation (copy-paste from §6.6, three times
+across three business days):
+
+```bash
+gh workflow run pwa-audit.yml \
+  --repo long2know/mahjong-autotable \
+  --ref main \
+  --field reason="W17 §6.7 PRIMARY Coordinator-direct seed (1/3)"
+
+# Day 2 + Day 3 follow the §6.6 schedule shape, just renamed (2/3) + (3/3).
+```
+
+#### Cross-reference to §4.5 W17 RECALIBRATION
+
+Note that §6.7 PROMOTING the Coordinator-direct cron seed to
+PRIMARY is **categorically different** from the §4.5 W17
+RECALIBRATION DOWNGRADING the Coordinator-direct
+branch-protection flip from PRIMARY.  The two surfaces have
+different reversibility profiles:
+
+| Surface | Reversibility | Affects all contributors? | W17 disposition |
+|---------|---------------|----------------------------|------------------|
+| Branch-protection install (§4.5) | Hard — DELETE cannot restore prior state because prior state is null | Yes — top-of-repo banner + PR-gate semantics | Coordinator-direct **DOWNGRADED** (see §4.5 W17 RECALIBRATION); Stephen-decision required (§4.8) |
+| Cron seeding (§6.6 / §6.7) | Trivial — workflow runs are append-only history; failed runs are auto-displayed and self-documenting | No — only affects pwa-audit.yml workflow history | Coordinator-direct **PROMOTED to PRIMARY** (see §6.7 above); no Stephen action required |
+
+The reversibility difference is what makes the two opposite
+W17 directives consistent: the cron seed is **safe to execute**
+because reversal is trivial; the branch-protection install is
+**unsafe to execute without Stephen** because reversal is hard.
+Both directives ship together in the W17 Vasquez bring-up.
+
+#### Hand-off note for W18
+
+- If the §6.7 PRIMARY recommendation is executed at the W17 PR
+  review (Coordinator-direct cron seed × 3), Hicks's W18 lane
+  picks up the §4.2 evidence-gate retirement + the
+  `provisional-until-calibrated` tag removal in
+  `lh13-soft-pin-rationale.md §3`.
+- If §6.7 is NOT executed by W18 sign-off, Vasquez's W18
+  memo escalates again to **§6.8 — 8-wave deferral RED
+  transition** (the original W15 §6.5 yellow → red trip
+  criterion finally fires).  The §6.5 "RED held in reserve"
+  posture becomes "RED active" + the
+  `lh13-soft-pin-rationale.md §3` provisional tag REMAINS;
+  the §6.1 cadence is recorded as "indefinitely deferred"
+  pending §6.8 resolution.
+
+#### Why §6.7 ships in Vasquez W17 rather than Hicks W17
+
+Hicks's W17 §8 in `lh13-soft-pin-rationale.md` reports the
+cron-status observation + the HOLD soft-flip decision.  The
+PROMOTE-to-PRIMARY recommendation belongs to Vasquez's lane
+under the §4.x / §6.x escalation runbook pattern (Vasquez owns
+the escalation cadence; Hicks owns the workflow + soft-pin
+content).  Splitting the two by lane preserves the W16
+convention.
+
 ## §7 — Wave 11: LH13 baseline calibration
 
 W10 shipped LH13 with conservative thresholds carried over

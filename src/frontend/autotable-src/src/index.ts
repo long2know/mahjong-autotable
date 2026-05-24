@@ -276,11 +276,12 @@ void (async (): Promise<void> => {
   // Phase K Wave 15 — Phase L renderer hello-world spike.  Loads the
   // hand-rolled WebGL2 hello-world ONLY when the URL has
   // `?renderer=webgl2-hello` (or the W16 `?renderer=webgl2-tile-mesh`
-  // tile-mesh smoke).  Dev/spike harness — never runs on the lobby
-  // cold path.  The dynamic import boundary forces vite to emit
-  // `renderer-webgl2.<hash>.js` as its own measurable chunk; see
-  // `docs/phase-l-renderer-implementation.md`.
-  if (/[?&]renderer=webgl2-(hello|tile-mesh)/.test(window.location.search)) {
+  // tile-mesh smoke, or the W17 `?renderer=webgl2-scene` full
+  // scene-runtime + picking smoke).  Dev/spike harness — never runs
+  // on the lobby cold path.  The dynamic import boundary forces vite
+  // to emit `renderer-webgl2.<hash>.js` as its own measurable chunk;
+  // see `docs/phase-l-renderer-implementation.md`.
+  if (/[?&]renderer=webgl2-(hello|tile-mesh|scene)/.test(window.location.search)) {
     void import('./renderer-webgl2/hello').then((mod) => mod.mount());
   }
 

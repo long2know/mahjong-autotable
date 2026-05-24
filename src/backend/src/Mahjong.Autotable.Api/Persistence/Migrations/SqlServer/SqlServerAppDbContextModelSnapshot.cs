@@ -36,6 +36,11 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("OverlapWindowDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("PreviousKid")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -1060,6 +1065,26 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.ToTable("TournamentRegistrations");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Observability.SignalRRetentionPolicy", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RetentionMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("SignalRRetentionPolicies");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Observability.SignalRSequenceEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1099,9 +1124,18 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.Property<long>("Sequence")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasDefaultValue("");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("HubName", "ConnectionId");
 
@@ -1192,6 +1226,10 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.Property<DateTime>("IngestedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
                     b.Property<int>("TurnCount")
                         .HasColumnType("int");
 
@@ -1204,9 +1242,31 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
 
                     b.HasIndex("ExpiresAt");
 
+                    b.HasIndex("TenantId");
+
                     b.HasIndex("GameId", "CompletedAt");
 
                     b.ToTable("Replays");
+                });
+
+            modelBuilder.Entity("Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RetentionDays")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("ReplayRetentionPolicies");
                 });
 
             modelBuilder.Entity("Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRecord", b =>

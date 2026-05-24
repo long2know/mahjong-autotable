@@ -1,0 +1,70 @@
+# Phase K Wave 17 — Bishop. Tournament-scale query duration
+# alerting rules. The W15 surface landed the
+# `tournament_query_duration_seconds` histogram (bucketed by
+# endpoint + page_size_bucket); W17 lands the canonical alert
+# rules that page operators when p99 latency degrades.
+#
+# Two thresholds, two severities:
+#   - PAGE  on p99 > 500ms sustained 5min  — operator wake-up.
+#   - TICKET on p95 > 250ms sustained 15min — non-paging followup.
+#
+# Loaded by the Prometheus operator from
+# `infra/prometheus/alerts/` in the apone-owned infra repo; this
+# file is the authoritative source-of-truth in bishop's lane so
+# the contract tests (TournamentAlertsContractTests) can pin the
+# shape + thresholds in CI. The apone-owned copy is generated
+# from this file as part of the W18 fold.
+#
+# Schema follows the canonical Prometheus
+# `groups: - name: ...; rules: - alert: ...; expr: ...; for: ...;
+# labels: severity: ...; annotations: ...` envelope so the
+# operator dashboard renders the alert + runbook link without
+# additional shape-massaging.
+#
+# Runbook: docs/tournament-query-duration-runbook.md
+
+groups:
+  - name: tournament-query-duration
+    interval: 30s
+    rules:
+      - alert: TournamentQueryDurationP99HighPage
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, endpoint) (
+              rate(tournament_query_duration_seconds_bucket[5m])
+            )
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: page
+          team: bishop
+          wave: phase-k-w17
+        annotations:
+          summary: "Tournament query p99 > 500ms for {{ $labels.endpoint }}"
+          description: |
+            The {{ $labels.endpoint }} endpoint is rendering tournament-scale
+            queries with p99 latency above 500ms for 5 minutes. Either the
+            bracket store is saturated or the page-size bucket has grown
+            beyond the W14 tuning envelope.
+          runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#p99-page"
+
+      - alert: TournamentQueryDurationP95HighTicket
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, endpoint) (
+              rate(tournament_query_duration_seconds_bucket[15m])
+            )
+          ) > 0.25
+        for: 15m
+        labels:
+          severity: ticket
+          team: bishop
+          wave: phase-k-w17
+        annotations:
+          summary: "Tournament query p95 > 250ms for {{ $labels.endpoint }}"
+          description: |
+            The {{ $labels.endpoint }} endpoint is rendering tournament-scale
+            queries with p95 latency above 250ms for 15 minutes. This is the
+            non-paging warning rail — investigate before it escalates to the
+            p99 PAGE alert.
+          runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#p95-ticket"

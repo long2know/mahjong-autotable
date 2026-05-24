@@ -51,10 +51,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: "npm"
@@ -68,7 +68,7 @@ jobs:
           npm run build
 
       - name: Upload bundle artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: web-bundle
           path: src/frontend/autotable/
@@ -79,24 +79,38 @@ jobs:
     needs: build-frontend-bundle
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Phase K Wave 17 — Apone (DevOps). Android signing groundwork.
+    # The secret-presence test below toggles the build between
+    # SIGNED-RELEASE and UNSIGNED-RELEASE paths. The four
+    # ANDROID_* secrets are operator-provisioned per
+    # `docs/mobile-android-signing.md`; PRs from forks (and any
+    # main-push before Stephen lands the keystore) take the
+    # legacy UNSIGNED-RELEASE path, exactly as W2 + W16. The
+    # signed path is purely additive — when the secrets are
+    # absent, the workflow's behaviour is byte-identical to W16.
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Download web bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: web-bundle
           path: src/frontend/autotable/
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@7a6d8a8234af8eb26422e24e3006232cccaa061b # v4.6.0
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
 
@@ -108,7 +122,62 @@ jobs:
           npx cap add android || echo "android platform may already exist"
           npx cap sync android
 
+      # Phase K Wave 17 — Apone (DevOps). Decode keystore from
+      # base64 secret (when present) into a runner-local file the
+      # Gradle signing config can consume. The keystore is
+      # written to ${RUNNER_TEMP} so it never lands in the
+      # repo working-tree, and the file is deleted by GitHub at
+      # job teardown when ${RUNNER_TEMP} is cleaned. We deliberately
+      # do NOT print the keystore size / SHA — that would leak a
+      # fingerprint of the operator's signing identity into the
+      # job logs.
+      - name: Decode Android keystore (when secret present)
+        id: keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ env.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            KEYSTORE_PATH="${RUNNER_TEMP}/mahjong-autotable.keystore"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+            chmod 0600 "$KEYSTORE_PATH"
+            echo "keystore-present=true" >> "$GITHUB_OUTPUT"
+            echo "keystore-path=${KEYSTORE_PATH}" >> "$GITHUB_OUTPUT"
+            echo "::notice::Android keystore decoded — SIGNED-RELEASE path will run"
+          else
+            echo "keystore-present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ANDROID_KEYSTORE_BASE64 absent — UNSIGNED-RELEASE path will run (W16 behaviour)"
+          fi
+
+      # SIGNED-RELEASE — gated on the four ANDROID_* secrets being
+      # provisioned (the keystore base64 + its password + the key
+      # alias + the key password). `assembleRelease` produces the
+      # APK; `bundleRelease` produces the AAB the Play Store
+      # consumes. Both artefacts are signed with the operator-
+      # supplied identity per `docs/mobile-android-signing.md §3`.
+      - name: Gradle assembleRelease + bundleRelease (SIGNED)
+        if: steps.keystore.outputs.keystore-present == 'true'
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ steps.keystore.outputs.keystore-path }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ env.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew assembleRelease bundleRelease \
+            "-Pandroid.injected.signing.store.file=${ANDROID_KEYSTORE_PATH}" \
+            "-Pandroid.injected.signing.store.password=${ANDROID_KEYSTORE_PASSWORD}" \
+            "-Pandroid.injected.signing.key.alias=${ANDROID_KEY_ALIAS}" \
+            "-Pandroid.injected.signing.key.password=${ANDROID_KEY_PASSWORD}" \
+            -x lint
+
+      # UNSIGNED-RELEASE — legacy path preserved for PRs from forks
+      # and for any main-push before Stephen lands the keystore.
+      # Byte-identical to the W2 + W16 build invocation.
       - name: Gradle assembleRelease + bundleRelease (UNSIGNED)
+        if: steps.keystore.outputs.keystore-present != 'true'
         working-directory: mobile/android
         run: |
           set -euo pipefail
@@ -121,7 +190,7 @@ jobs:
             -x lint
 
       - name: Upload Android artefacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: android-artefacts
           path: |
@@ -137,16 +206,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Download web bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: web-bundle
           path: src/frontend/autotable/
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
 
@@ -178,7 +247,7 @@ jobs:
             ONLY_ACTIVE_ARCH=NO
 
       - name: Upload iOS artefacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: ios-artefacts
           path: mobile/ios/App/build/Build/Products/Release-iphoneos/App.app
@@ -193,16 +262,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Download Android artefacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: android-artefacts
           path: artefacts/android/
 
       - name: Download iOS artefacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: ios-artefacts
           path: artefacts/ios/
