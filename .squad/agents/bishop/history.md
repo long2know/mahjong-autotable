@@ -2950,3 +2950,101 @@ sibling-lane work (Vasquez / Hicks / Apone) on the same branch.
 
 **Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-13.md`
 — per-deliverable design + Wave 14 forward notes.
+
+---
+
+## Phase K — Wave 14 (2026-05-23)
+
+**Branch:** `stlong/phase-k-wave-14-bringup` (base
+`f0b8e4a`). Seven scoped deliverables landed, all surgical
+additions to the existing W12+W13 surfaces:
+
+1. **Spectator handoff audit query API** —
+   `GET /api/spectator/handoff/audit` admin-gated paginated read
+   over the W13 audit table. Filters: `gameId`, `from`/`to`
+   (UTC), `skip`, `limit`. New
+   `ISpectatorHandoffAuditStore.QueryAsync` on both impls; new
+   `Spectator:Audit:PageSize` knob (50 default, 200 max).
+2. **Commentary cost dashboard endpoint** —
+   `GET /api/commentary/cost/summary` admin-gated JSON wire
+   covering current-month spend, budget cap, state, and
+   `byModel` array (single entry today; widened in Phase L).
+3. **Bracket query endpoint** —
+   `GET /api/tournaments/{id}/brackets` anonymous paginated read
+   directly off the W12 + W13 bracket store. New
+   `BracketQueryOptions.PageSize` knob (50 default, 200 max);
+   503 fallback when the store is unwired.
+4. **Replay listing endpoint** — `GET /api/replays` anonymous
+   paginated metadata-only listing. `IReplayStore.ListAsync`
+   added to interface + both impls (metadata projection drops
+   `CompressedPayload`). Filters: `from`/`to`, `variant`,
+   `skip`, `limit`. New `Replays:PageSize` knob (25 default,
+   100 max).
+5. **JWKS overlap-window enforcement** —
+   `JwtValidationService` now rejects previous-active-key tokens
+   with `iat >= RotationStartUtc` during the staged rotation
+   window. New `ErrorRollbackRejected = "rollback-rejected"`
+   reason; optional rotation-policy ctor overload preserves
+   the legacy single-arg ctor.
+6. **SignalR sequence Prometheus metrics** — new
+   `SignalRSequenceMetrics` singleton emits three metrics:
+   `signalr_seq_replay_from_ack_total{hub, result}` (counter),
+   `signalr_seq_store_rows_active` (gauge),
+   `signalr_seq_retention_sweep_deleted_total` (counter).
+   Retention sweep stamps deletions through the collector;
+   `MetricsEndpoint` falls back to a zeroed envelope when the
+   collector is absent so the schema stays stable.
+7. **`docs/phase-l-bringup.md`** — Phase L pre-work surface doc.
+   Four pillars (tournament-grade hardening, spectator
+   improvements, mobile, AI tuning); 8-wave + L9 wrap
+   sequencing; cross-references to the W14 docs.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx
+--nologo` → **3027 passed, 2 failed (Vasquez-lane, pre-existing),
+0 skipped, 3029 total**. Up from W13's 2789. 89 new W14 Bishop
+facts; the remaining +149 came from sibling-lane work on the
+same branch. The 2 failures
+(`HicksW14LH13HardPinFinalTests.PwaAuditDoc_Section6_3_W14_Decision_HardAssert`,
+`PwaAuditWorkflowGateW14Tests.FrontendPwaAuditDoc_W14_Section6_3_HardAssert`)
+assert content in Vasquez-owned `docs/frontend-pwa-audit.md` —
+outside Bishop's lane.
+
+**Build:** 0 warnings, 0 errors.
+
+**Lessons / forward notes:**
+
+- Page-size knob convention pinned: `DefaultPageSize` const +
+  `MaxPageSize` const + bindable `PageSize` int on options.
+  Clamp via `Math.Clamp(limit ?? configured, 1, MaxPageSize)`.
+  Used identically by the four new paginated endpoints — copy
+  this shape in W15 / Phase L when adding more listing surfaces.
+- Admin-gating precedence (consistent across W14 endpoints):
+  401 (no session) → 403 (non-admin) → 503 (store unwired) →
+  400 (bad input) → 200. The 503 step is the defence-in-depth
+  catch — never return an empty array for a missing store.
+- The W14 rollback-rejection check is **gated** on the
+  rotation policy being inside its overlap window — never
+  always-on. Reason: a misconfigured node without
+  `RotationStartUtc` would otherwise treat every previous-key
+  token as a rollback. Keep new validator checks scoped to the
+  operationally-known window when the failure mode requires
+  context.
+- The Prometheus metrics endpoint **always** emits HELP + TYPE
+  preambles, even when no samples exist. A Prometheus parser
+  sees the same shape from a process that never touched the
+  metric. The W14 `AppendSignalRSequenceMetrics` fallback
+  (when no collector wired) replicates this — schema stability
+  trumps sample availability.
+- The replay-listing wire drops `CompressedPayload` to keep
+  browse cadence cheap; clients fetch the actual payload via
+  the single-row GET. This split mirrors the standard "list
+  metadata / fetch payload" pattern; resist re-adding the
+  payload to the listing wire even if a UI asks for it (the
+  bandwidth math doesn't work past 100 rows).
+- The `_factory.Services.GetRequiredService<TStore>()` pattern
+  for seeding contract tests is preferable to going through the
+  HTTP layer for setup — fewer round trips, deterministic
+  state, no auth dance for the seeding step.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-14.md`
+— per-deliverable design + Phase L forward notes.

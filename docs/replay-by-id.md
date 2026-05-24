@@ -107,3 +107,80 @@ Hard-asserted in
 * POST with an admin principal completes the mint as in W12.
 * Toggling `RequireAdminForPost = false` reverts to W12 behaviour
   (any authenticated caller can POST).
+
+## §3 — Replay listing API (Phase K Wave 14)
+
+W12 shipped the single-replay GET; W14 adds the paginated
+metadata listing for the replay browser. The payload is
+intentionally dropped from the wire — the listing endpoint is
+optimised for browse cadence and stays cheap even when the
+result set spans tens of thousands of rows.
+
+### §3.1 — Endpoint
+
+```
+GET /api/replays
+    ?from={iso8601-utc?}
+    &to={iso8601-utc?}
+    &variant={changsha|expanded|…?}
+    &skip={int?}
+    &limit={int?}
+```
+
+* **Auth**: anonymous-allowed (same posture as the single-row
+  GET; lobby UI surfaces replay history without forcing a
+  session).
+* **Filters**: every query parameter is optional. `from` / `to`
+  apply against `CompletedAt`. `variant` is exact-match on the
+  W12 `Variant` column.
+* **Ordering**: `CompletedAt` descending (most-recent first).
+* **Page-size**: clamped to `[1, ReplayOptions.MaxPageSize]`
+  (100). Default is `Replays:PageSize` (25).
+
+### §3.2 — Response
+
+```json
+{
+  "items": [
+    {
+      "replayId": "r-Ab12Cd-",
+      "gameId": "…",
+      "completedAt": "…",
+      "variant": "changsha-v1",
+      "turnCount": 124,
+      "payloadSize": 0,
+      "ingestedAt": "…",
+      "expiresAt": "…"
+    }
+  ],
+  "count": 25,
+  "skip": 0,
+  "limit": 25,
+  "pageSize": 25,
+  "filters": { "from": null, "to": null, "variant": null }
+}
+```
+
+`payloadSize` reports 0 in the listing wire — the heavy
+`CompressedPayload` column is dropped at the projection. Clients
+that need the actual payload size should hit the single-row GET
+which returns the full envelope.
+
+### §3.3 — Configuration
+
+| Key                  | Default | Notes                                          |
+| -------------------- | ------- | ---------------------------------------------- |
+| `Replays:PageSize`   | 25      | Server-side default; clamped to `[1, 100]`     |
+
+### §3.4 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W14/Bishop/ReplayListingEndpointTests.cs`:
+
+* Anonymous gets a 200 with the canonical envelope.
+* Empty result → `items.Length == 0`, `count == 0`.
+* `from` / `to` filter the row set by `CompletedAt`.
+* `variant` filters by exact match.
+* Bad timestamp → 400.
+* `limit` clamps to 100 / 1.
+* `payloadSize` is dropped (always 0 in the listing wire).

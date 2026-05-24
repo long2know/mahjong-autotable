@@ -646,3 +646,97 @@ Hard-asserted in `tests/Mahjong.Autotable.Api.Tests/Phase_K_W12/Bishop/JwtStaged
 * `OverlapWindowEndsAtUtc == RotationStartUtc + OverlapDays` when both are set.
 * `IsWithinOverlapWindow` is true in `[start, start + OverlapDays]` and false outside.
 * `RemainingOverlapDays` counts down from `OverlapDays` to 0 across the window.
+
+## 14. Overlap-window enforcement (Phase K Wave 14)
+
+The §13 staged rotation policy makes the **30-day overlap window**
+explicit; W14 adds the runtime enforcement so the policy stops
+being purely informational.
+
+### Behaviour
+
+During the overlap window
+(`JwtStagedRotationPolicy.IsWithinOverlapWindow(utcNow) == true`):
+
+* `JwtValidationService.Validate` continues to accept every entry
+  in `JwtSigningKeyProvider.AllKeys` / `AllRsaKeys` — both the
+  active key (index 0, new signer) AND the previous-active key
+  (index 1, demoted signer). Tokens minted before rotation start
+  continue to verify under the previous key.
+* `JwtIssuingService.IssueAsync` continues to mint with index 0
+  only — no change from W4 / W6.
+* **W14 addition**: any token whose `iat` claim is **at or after**
+  `RotationStartUtc` AND whose signature matches a non-active key
+  (any index > 0) is rejected with the new
+  `JwtValidationService.ErrorRollbackRejected` reason
+  (`"rollback-rejected"`). This is a rollback-attack defence —
+  the issuer switched to the new key at `RotationStartUtc`, so a
+  matching previous-key signature on a freshly-issued token is
+  either a rollback attack or a buggy minter that ignored the
+  rotation start.
+
+Outside the overlap window the check is a no-op; the W14 surface
+adds zero overhead when `RotationStartUtc` is unset.
+
+### Wire envelope
+
+`POST /api/auth/validate` surfaces the new reason verbatim:
+
+```json
+{ "valid": false, "error": "rollback-rejected" }
+```
+
+Operator dashboards alerting on a non-zero rate of this error
+should treat it as a security incident.
+
+### Operator playbook (extends §4)
+
+1. **Pre-rotation:** populate
+   `Authentication:JwtRsaKeys[1]` with the upcoming-new key
+   *before* setting `RotationStartUtc`. This lets the
+   pre-rotation pods accept tokens from the new key once the
+   roll begins.
+2. **Begin rotation:** swap `JwtRsaKeys[0]` ↔ `JwtRsaKeys[1]`
+   so the new key becomes the active signer, and stamp
+   `Authentication:RotationStartUtc` with the current UTC
+   timestamp. Roll the pods.
+3. **During overlap:** validation continues to accept tokens
+   from BOTH keys; issuance uses the new active. The W14 check
+   rejects any token signed with the previous-active key but
+   carrying a post-rotation-start `iat` (rollback defence).
+4. **Close the window:** after `OverlapWindowEndsAtUtc` has
+   passed, remove `JwtRsaKeys[1]` and clear `RotationStartUtc`.
+
+### Why not always-enforce
+
+We could enforce the previous-key rejection even outside the
+overlap window — every pre-rotation token has `iat`
+< rotation start, so the predicate is naturally false. But:
+
+* Keeping the check gated on the policy avoids the
+  cross-deployment risk where a misconfigured node treats a
+  legitimate previous-key token (no rotation in progress, no
+  `RotationStartUtc` configured) as a rollback. The W14 check is
+  strictly additive within a known rotation window.
+* The constructor that omits the policy (legacy single-arg
+  ctor) keeps existing test harnesses working without
+  modification — the W14 enforcement is opt-in by DI wiring.
+
+### Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W14/Bishop/JwksOverlapEnforcementTests.cs`:
+
+* `JwtValidationService.ErrorRollbackRejected == "rollback-rejected"`.
+* Outside the overlap window, a previous-key token with a
+  pre-rotation `iat` validates as normal.
+* Outside the overlap window, a previous-key token with a
+  post-rotation `iat` still validates (W14 enforcement is
+  gated on the policy being inside the window).
+* Inside the overlap window, a previous-key token with `iat <
+  RotationStartUtc` validates as normal.
+* Inside the overlap window, a previous-key token with `iat >=
+  RotationStartUtc` returns `ErrorRollbackRejected`.
+* The active key (index 0) always validates regardless of
+  rotation state.
+* The single-arg ctor (no policy) skips the check entirely.

@@ -97,3 +97,87 @@ Hard-asserted in
 * Controller writes an audit row on a successful mint.
 * Controller does NOT write an audit row when the mint fails.
 * Controller swallows audit-store failures (token still returned).
+
+## §4 — Audit query API (Phase K Wave 14)
+
+The W13 audit trail persists every mint into
+`SpectatorHandoffAuditRecords`; W14 adds the admin-facing query
+endpoint that surfaces the rows for the security console.
+
+### §4.1 — Endpoint
+
+```
+GET /api/spectator/handoff/audit
+    ?gameId={guid?}
+    &from={iso8601-utc?}
+    &to={iso8601-utc?}
+    &skip={int?}
+    &limit={int?}
+```
+
+* **Auth**: admin-only. Anonymous → HTTP 401; non-admin session →
+  HTTP 403 with `{ "error": "admin-required" }`.
+* **Filters**: every query parameter is optional. `gameId` pins
+  the per-game listing; `from` / `to` apply against `IssuedAt`.
+  Bad timestamp values return HTTP 400.
+* **Ordering**: `IssuedAt` descending (most-recent first).
+* **Page-size**: clamped to `[1, Spectator:Audit:MaxPageSize]`.
+  Default is `Spectator:Audit:PageSize` (50). Hard upper bound is
+  200; larger client `limit` values are silently clamped.
+
+### §4.2 — Response
+
+```json
+{
+  "items": [
+    {
+      "id": "…",
+      "userId": "…",
+      "gameId": "…",
+      "tokenJti": "…",
+      "issuedAt": "…",
+      "scope": "spectator:…",
+      "clientIp": "…",
+      "userAgent": "…"
+    }
+  ],
+  "count": 12,
+  "skip": 0,
+  "limit": 50,
+  "pageSize": 50
+}
+```
+
+The token itself is **not** included — the audit row is for
+forensic review, not token re-issuance. The `tokenJti` field is
+the natural unique key from the W13 audit row and pairs with the
+revocation table (forward-work).
+
+### §4.3 — Store-unavailable shape
+
+When the audit store is not wired (defence-in-depth — the
+container always registers one of the two impls, but the
+controller takes the dependency as optional so test fixtures stay
+flexible), the endpoint returns HTTP 503 with
+`{ "error": "audit-store-unavailable" }` rather than an empty
+list. This makes a real mis-configuration loud instead of silent.
+
+### §4.4 — Configuration
+
+| Key                              | Default | Notes                                          |
+| -------------------------------- | ------- | ---------------------------------------------- |
+| `Spectator:Audit:PageSize`       | 50      | Server-side default; clamped to `[1, 200]`     |
+
+### §4.5 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W14/Bishop/SpectatorAuditQueryEndpointTests.cs`:
+
+* Anonymous → 401.
+* Non-admin → 403.
+* Admin gets the paged audit shape with `items` / `count` /
+  `skip` / `limit` / `pageSize` fields.
+* `from` / `to` filter the row set by `IssuedAt`.
+* `gameId` filter narrows to a single game.
+* Bad timestamp → 400.
+* `limit` above 200 clamps to 200; below 1 clamps to 1.

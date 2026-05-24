@@ -58,6 +58,153 @@ the lowest measured RTT to the resolver. The per-region health
 check (W12 `aws_route53_health_check.regional`) is what fences
 off an unhealthy region from the apex.
 
+### 2.1 `us-east-1` plan readiness (W14 dry-run)
+
+> Phase K Wave 14 — Apone (DevOps). The W13 readiness checklist
+> (`§3.1`) is the BLOCKING surface for the operator-side cluster
+> provisioning. Independently of that, the W14 dry-run exercises
+> the terraform-side plan against the existing
+> `infra/terraform/envs/prod/` stack (the primary stack IS the
+> us-east-1 stack — the apex region's TF state bucket
+> `mahjong-tfstate-prod` doubles as the primary `mahjong-tfstate-prod-use1`
+> bucket per the §2 inventory). No `terraform apply` lands this
+> wave; Stephen's call after the plan is reviewed.
+
+#### 2.1.1 Plan command (operator)
+
+The dry-run command sequence:
+
+```bash
+cd infra/terraform/envs/prod/
+# Pre-create the state bucket + lock table per `docs/terraform.md §2.1`
+# if not already done (`mahjong-tfstate-prod` + `mahjong-tflock-prod`).
+cp backend.example.hcl backend.hcl       # operator-edited
+cp terraform.tfvars.example terraform.tfvars
+# EDIT terraform.tfvars per the operator-specific markers
+# (alb_dns_name, existing_hosted_zone_id, etc.).
+terraform init -backend-config=backend.hcl
+terraform plan -out=us-east-1.tfplan
+terraform show -json us-east-1.tfplan > us-east-1.tfplan.json
+```
+
+The `terraform plan` MUST succeed (no errors) and MUST report
+"X to add, 0 to change, 0 to destroy" against a fresh state.
+Against an already-applied state (cluster already provisioned
+by an earlier wave), the plan MUST be a no-op (`0 to add, 0 to
+change, 0 to destroy`) — any drift surfaces a manual change
+that needs reconciliation BEFORE the W14 apply.
+
+#### 2.1.2 W14 expected plan shape
+
+The W14 dry-run against a FRESH `mahjong-tfstate-prod-use1`
+state expects the following resource creation (consolidated
+from `infra/terraform/envs/prod/main.tf` + the
+`modules/edge` + `modules/redis` instantiations):
+
+| Resource class                          | Count (approx) | Notes |
+|------------------------------------------|----------------|-------|
+| `aws_acm_certificate.regional`           | 1              | `mahjong.example.com` issued in `us-east-1` (per-region ACM cert; matches `§3.1` checklist item 3). |
+| `aws_acm_certificate_validation.regional` | 1             | DNS-validated against the operator-owned hosted zone. |
+| `aws_wafv2_web_acl.regional`             | 1              | BLOCK mode (`waf_rate_limit_per_5min = 1000` per `terraform.tfvars.example`). W11 cutover from staging-soak count-only. |
+| `aws_wafv2_web_acl_association`          | 1              | Attaches the WAF ACL to the regional ALB DNS supplied via `var.alb_dns_name`. |
+| `aws_route53_record.apex_alias`          | 1              | ALIAS `mahjong.example.com → alb_dns_name` (or apex CloudFront when `cloudfront_enabled=true`). |
+| `aws_route53_health_check.regional`      | 0 (W14 baseline) | The map is empty until `regional_endpoints` is populated per `§3.1` checklist completion. |
+| `aws_s3_bucket.logs`                     | 1              | WAF + ALB log bucket; 90-day retention per `var.logs_retention_days = 90`. |
+| `aws_s3_bucket_lifecycle_configuration`  | 1              | Tied to the logs bucket. |
+| `aws_elasticache_subnet_group.redis`     | 1              | Redis subnet group; reads `private_subnet_ids` from the primary stack outputs. |
+| `aws_elasticache_replication_group.redis` | 1             | `cache.r6g.large` x 2 nodes (multi-AZ), TLS + AUTH, 7-day snapshot retention per `docs/redis-cluster.md §3` prod sizing. |
+| `aws_security_group.redis`               | 1              | Egress-from-pods-to-redis ACL (W10 module pin). |
+| `aws_secretsmanager_secret.*`            | 2              | Redis AUTH token + dedicated prod connection-string secrets (W12 ESO sources). |
+| `aws_secretsmanager_secret_version.*`    | 2              | Initial versions of the above (random-generated token). |
+| `aws_iam_role.*` + policy attachments    | 4–6            | ESO trust + read scopes, ALB controller scope. Inherited from the primary stack outputs. |
+
+Approximate total: **~20 resources** added against a fresh
+state. The exact count varies by operator-supplied tfvars
+(`additional_subject_alt_names` length, `cloudfront_enabled`
+toggle); a `terraform plan -no-color | grep -c '^  # '` against
+the dry-run output gives the precise count.
+
+#### 2.1.3 Scrutiny checklist (per the W14 hand-off)
+
+The W14 operator MUST scrutinise the plan output for each of
+the §3.1 cutover-ready gates that maps to a TF resource:
+
+* **EKS cluster creation.** _Out-of-scope for this stack_ —
+  the `infra/terraform/envs/prod/` env stack DOES NOT
+  provision EKS. The cluster itself is provisioned by the
+  primary stack at `infra/terraform/` (W5+ `eks.tf` —
+  `aws_eks_cluster.main` + node groups). The W13 cutover-
+  ready checklist gate `§3.1` item 2 (EKS cluster ACTIVE) is
+  exercised against the PRIMARY stack's `terraform apply`,
+  not this dry-run. Confirm cluster state separately via
+  `aws eks describe-cluster --name mahjong-prod --region
+  us-east-1` (the W14 cluster naming convention — see W13
+  `§3.1` row 2; per-region clusters MAY be named
+  `mahjong-prod-use1` if the apex region is renamed in W15+).
+* **VPC + subnets per AZ.** Sourced from the primary stack's
+  outputs (`vpc_id`, `private_subnet_ids`) via tfvars. The
+  W14 dry-run does NOT recreate the VPC; verify the tfvars
+  values match the primary stack's `terraform output`.
+* **ACM cert.** Single `aws_acm_certificate.regional` per
+  region — confirm the resource block in the plan output
+  shows `domain_name = mahjong.example.com` + the operator-
+  supplied SANs. The DNS validation records appear in the
+  plan as a `aws_route53_record.acm_validation` (one per
+  domain).
+* **R53 health check association.** EMPTY in the W14 baseline
+  (the `aws_route53_health_check.regional` map is empty
+  until `regional_endpoints` is non-empty per `§3.1` final
+  step). The W14 dry-run MUST show 0 health checks; a non-
+  zero count means the operator has pre-populated
+  `regional_endpoints` ahead of the §3.1 sequence — that's
+  out-of-order and should be reverted before apply.
+* **ESO ExternalSecret targets.** _Out-of-scope for this
+  stack_ — the ExternalSecret K8s resources are provisioned
+  by the `infra/k8s/overlays/prod/` kustomize overlay, not
+  this terraform stack. The terraform stack DOES provision
+  the Secrets Manager secret arns + the IAM trust scoping
+  to `arn:aws:secretsmanager:us-east-1:*:secret:mahjong/prod/*`.
+  The ESO side reads those arns at K8s-apply time. Verify
+  the trust scope ARN matches the W13 §3.1 expected
+  ClusterSecretStore target.
+
+#### 2.1.4 Plan-output retention
+
+The W14 operator MUST archive the `us-east-1.tfplan` +
+`us-east-1.tfplan.json` artefacts under
+`docs/regional-eks-bringup-plans/us-east-1-YYYY-MM-DD.tfplan.json`
+(gitignored binary; the JSON is the audit trail) for the W15
+post-apply diff comparison. The `terraform.lock.hcl` from the
+init step (per `docs/terraform.md §6.4`) is the second audit
+artefact — confirm it matches the W14 `1.11.4`-baseline lock.
+
+#### 2.1.5 Apply gating
+
+`terraform apply` is **NOT** part of this dry-run. The W14
+deliverable is the reviewed plan + the scrutiny checklist
+walkthrough. The actual apply lands at Stephen's call once:
+
+1. The §3.1 checklist for `us-east-1` shows ✅ on every line.
+2. The W14 PR (this one) is merged so the plan-readiness
+   doc lives on `main`.
+3. The primary stack at `infra/terraform/` is already
+   applied (cluster ACTIVE per §3.1 item 2).
+4. The §2.1.4 plan-output archive is committed to the
+   `docs/regional-eks-bringup-plans/` path.
+
+A standalone apply PR (`stlong/phase-k-wave-NN-prod-us-east-1-apply`)
+runs `terraform apply -auto-approve us-east-1.tfplan` against
+the archived plan and pastes the apply output as the PR
+description.
+
+#### 2.1.6 Rollback (post-apply only)
+
+If the apply surfaces a regression, the per-resource
+`terraform destroy -target=...` path is the controlled
+rollback. Full `terraform destroy` is NOT recommended — the
+state bucket + lock table outlive the resource graph and
+should be retained for the W15 retry.
+
 ## 3. Per-region Cutover-Ready checklist
 
 Each region runs the same readiness sequence. Mark items as

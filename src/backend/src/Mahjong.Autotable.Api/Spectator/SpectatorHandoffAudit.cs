@@ -96,6 +96,25 @@ public interface ISpectatorHandoffAuditStore
 
     /// <summary>Total row count — surfaced for tests.</summary>
     Task<int> CountAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Paginated query backing
+    /// <c>GET /api/spectator/handoff/audit</c>. Filters by
+    /// <paramref name="gameId"/> when supplied (else returns rows
+    /// across every game) plus an optional <paramref name="fromUtc"/>
+    /// / <paramref name="toUtc"/> window applied against
+    /// <see cref="SpectatorHandoffAuditRecord.IssuedAt"/>. Results
+    /// are ordered <c>IssuedAt</c> descending (most-recent first);
+    /// <paramref name="skip"/> + <paramref name="take"/> pin the
+    /// page. See <c>docs/spectator-handoff.md §4</c>.
+    /// </summary>
+    Task<IReadOnlyList<SpectatorHandoffAuditRecord>> QueryAsync(
+        Guid? gameId,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        int skip,
+        int take,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -139,6 +158,26 @@ public sealed class InMemorySpectatorHandoffAuditStore : ISpectatorHandoffAuditS
 
     public Task<int> CountAsync(CancellationToken ct = default) =>
         Task.FromResult(_rows.Count);
+
+    public Task<IReadOnlyList<SpectatorHandoffAuditRecord>> QueryAsync(
+        Guid? gameId,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        int skip,
+        int take,
+        CancellationToken ct = default)
+    {
+        IEnumerable<SpectatorHandoffAuditRecord> q = _rows.Values;
+        if (gameId is { } g) q = q.Where(r => r.GameId == g);
+        if (fromUtc is { } f) q = q.Where(r => r.IssuedAt >= f);
+        if (toUtc is { } t) q = q.Where(r => r.IssuedAt <= t);
+        IReadOnlyList<SpectatorHandoffAuditRecord> rows = q
+            .OrderByDescending(r => r.IssuedAt)
+            .Skip(Math.Max(0, skip))
+            .Take(Math.Max(0, take))
+            .ToList();
+        return Task.FromResult(rows);
+    }
 }
 
 /// <summary>
@@ -215,6 +254,27 @@ public sealed class EfSpectatorHandoffAuditStore : ISpectatorHandoffAuditStore
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         return await db.SpectatorHandoffAuditRecords.CountAsync(ct);
     }
+
+    public async Task<IReadOnlyList<SpectatorHandoffAuditRecord>> QueryAsync(
+        Guid? gameId,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        int skip,
+        int take,
+        CancellationToken ct = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        IQueryable<SpectatorHandoffAuditRecord> q = db.SpectatorHandoffAuditRecords.AsNoTracking();
+        if (gameId is { } g) q = q.Where(r => r.GameId == g);
+        if (fromUtc is { } f) q = q.Where(r => r.IssuedAt >= f);
+        if (toUtc is { } t) q = q.Where(r => r.IssuedAt <= t);
+        return await q
+            .OrderByDescending(r => r.IssuedAt)
+            .Skip(Math.Max(0, skip))
+            .Take(Math.Max(0, take))
+            .ToListAsync(ct);
+    }
 }
 
 /// <summary>
@@ -238,4 +298,27 @@ public sealed class SpectatorHandoffAuditOptions
     /// are dropped by the sweeper. 0 = use the default
     /// (<see cref="DefaultRetentionDays"/>).</summary>
     public int RetentionDays { get; set; } = DefaultRetentionDays;
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Default page size for the admin
+    /// audit query endpoint
+    /// (<c>GET /api/spectator/handoff/audit</c>).
+    /// </summary>
+    public const int DefaultPageSize = 50;
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Maximum page size clients can
+    /// request via the <c>limit</c> query parameter. Larger
+    /// values are silently clamped.
+    /// </summary>
+    public const int MaxPageSize = 200;
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Default page size for the audit
+    /// query endpoint. Bound from <c>Spectator:Audit:PageSize</c>.
+    /// Values ≤ 0 fall back to <see cref="DefaultPageSize"/>; values
+    /// above <see cref="MaxPageSize"/> are clamped down. See
+    /// <c>docs/spectator-handoff.md §4</c>.
+    /// </summary>
+    public int PageSize { get; set; } = DefaultPageSize;
 }

@@ -538,6 +538,53 @@ soft-pin in both the workflow file and the mirror tests
 preserves the safety margin (a threshold-bump regression still
 trips the soft-pin's `_ = …` evaluation).
 
+### §6.3 — LH13 hard-pin sync (W14 — Vasquez / Hicks coordination)
+
+W14 status: the cumulative cron deferral now spans **four
+consecutive waves** (W11 calibration → W12 defer → W13 defer →
+W14 defer). The Vasquez W14 audit flags this as a **YELLOW** signal
+in the cadence-trigger checklist, not red — the soft-pin remains
+intact in both the workflow file (`pwa-audit.yml`) and the mirror
+tests, so a real threshold-bump regression still trips the
+`_ = parsed_threshold == expected_threshold;` evaluation.
+
+The W14 deliverable extends Vasquez's mirror coverage rather than
+flipping to hard-assert:
+
+- A NEW `Phase_K_W14/Vasquez/PwaAuditWorkflowGateW14Tests.cs`
+  contract test mirrors §6.3 in the test suite (probes the same
+  threshold values + the deferral status in §6.3 itself, so a
+  doc-text drift surfaces alongside a workflow-shape drift).
+- A NEW Playwright spec `lh13-thresholds-hard-pinned-final.spec.ts`
+  is the *consumer-side* hard-pin gate: when the cron eventually
+  converges and the workflow flips to hard-assert, this spec also
+  flips from forward-staged annotate to `expect(matched).toBeGreaterThanOrEqual(1)`.
+
+**Cadence trigger status at W14 sign-off:**
+
+- [ ] Three consecutive `pwa-audit.yml` cron runs land on `main`
+      with no manual override → **Status: cumulative 4-wave
+      deferral; cron data points still below the §6.1 trigger.**
+- [ ] The 3-run mean for each non-PWA category is within ±2 points
+      of the §7 table → **Status: insufficient data.**
+- [ ] The 3-run worst-case is within ±5 points of the §7 table
+      → **Status: insufficient data.**
+- [x] If any of the above fail, re-calibrate per §7 methodology
+      before flipping to hard-pin → **W14 keeps the soft-pin in
+      BOTH the workflow file AND the mirror tests; W15 picks up
+      the flip if the cron converges. Vasquez + Hicks coordinate
+      the flip via paired commits (Hicks edits workflow, Vasquez
+      flips mirror tests in the same wave).**
+
+**Yellow-flag escalation criteria (W15+):**
+
+If the cumulative deferral reaches **6 waves** (W11 → W16) without
+cron convergence, escalate to Coordinator. Possible root causes:
+the cron is failing silently; the LH13 thresholds need
+re-calibration (production reality has drifted from the W11
+baseline); the §6.1 trigger needs relaxation. The Coordinator
+chooses the disposition.
+
 ## §7 — Wave 11: LH13 baseline calibration
 
 W10 shipped LH13 with conservative thresholds carried over
@@ -965,3 +1012,399 @@ were captured against the K13 build, so the spec should
 report a pixel-perfect match. If it does not, the delta is
 a true positive (visual regression introduced between W13
 capture and the W14 spec re-run).
+
+## §12 — Wave 14: PWA Builder preview URL provisioning
+
+> Phase K Wave 14 — workflow hardening authored by Apone
+> (DevOps); doc landed in Hicks's `frontend-pwa-audit.md`
+> per the W10 precedent that PWA workflow runtime details
+> live in this doc even when Apone authors them.
+
+### §12.1 — Background
+
+The W11 `.github/workflows/pwa-builder.yml` workflow runs the
+PWA Builder analyse CLI against a public preview URL and
+gates PRs on a 75-point-per-platform readiness floor. The
+preview URL feeds in via one of two paths:
+
+1. `workflow_dispatch` input `preview_url` — operator-driven
+   one-shot URL (highest precedence).
+2. `secrets.PWA_PREVIEW_URL` — repo secret feeding the
+   scheduled cron + the pull_request trigger.
+
+The W11 baseline behaviour when NEITHER input was provided
+was: emit a `::warning::` log line, set `steps.url.outputs.url`
+to empty, and skip downstream steps via the `if: steps.url.outputs.url
+!= ''` gate. This was functionally a graceful skip — but it
+left two operator-visible gaps:
+
+* The skipped run looked GREEN with no obvious explanation
+  in the PR review surface.
+* The `$GITHUB_STEP_SUMMARY` was empty so an SRE reviewing a
+  scheduled-run failure inbox couldn't tell whether the
+  run did nothing because the URL was missing OR because the
+  PWA Builder CLI itself broke.
+
+### §12.2 — W14 hardening (workflow-side)
+
+W14 lands three changes to `.github/workflows/pwa-builder.yml`:
+
+1. **Provenance-tagged URL resolution.** The `Resolve preview
+   URL` step now emits both `outputs.url` AND
+   `outputs.source` (`workflow_dispatch input` /
+   `secrets.PWA_PREVIEW_URL` / `none`). Downstream steps and
+   the step-summary cite the source so reviewers can tell at
+   a glance whether the score came from a manual override or
+   the canonical secret.
+
+2. **`$GITHUB_STEP_SUMMARY` always populated.** Whether the
+   URL is provisioned or skipped, the step-summary now
+   carries a four-line block:
+
+   ```
+   ## PWA Builder readiness — run state
+
+   * Preview URL: `<url-or-not-provisioned>`
+   * Source: <workflow_dispatch input | secrets.PWA_PREVIEW_URL | none>
+   * Status: <analyse + gate downstream | ⏭ Skipped — see ...>
+   ```
+
+   A scheduled-run inbox can now distinguish "skipped because
+   no URL" from "ran and gated" without opening the run log.
+
+3. **PR comment on skip.** When a `pull_request`-event run
+   has NO preview URL, a single explanatory comment is
+   posted under the same `<!-- pwa-builder-report -->`
+   marker as the success-path comment. The comment lists the
+   two ways to provision the URL (set the repo secret or
+   re-run with `workflow_dispatch --field preview_url=<url>`)
+   and links back to this §12. A later push that DOES
+   provision a URL OVERWRITES the skip note with the real
+   readiness card under the same marker — no comment churn.
+
+The success-path PR comment also gained a prominent preview-
+URL hyperlink + source field (above the scores table) so the
+clickable preview is the first thing a reviewer sees, not
+just the third-party report-card link.
+
+### §12.3 — Preview URL provisioning (operator runbook)
+
+Three provisioning paths, in order of operator preference:
+
+1. **`secrets.PWA_PREVIEW_URL` (canonical, scheduled-run
+   driver).** Set once at the repo level via
+   `gh secret set PWA_PREVIEW_URL --body 'https://preview.mahjong.example.com'`.
+   The value SHOULD be a stable preview URL that tracks
+   `main` (e.g. a Cloudflare Pages branch deploy that
+   follows `main`, OR a GH Pages publish from the docs
+   workflow). The W14 hardening lets repo owners leave the
+   secret unset on bring-up branches without breaking the
+   schedule; once a stable preview is wired, set the secret
+   to flip the schedule into active readiness scoring.
+
+2. **`workflow_dispatch` input (one-shot, PR rehearsal).**
+   When a PR previews a frontend change to a deploy preview
+   (e.g. a Vercel or Cloudflare Pages branch URL), the PR
+   author can rehearse readiness against that preview before
+   merge:
+   ```bash
+   gh workflow run pwa-builder \
+       --ref <pr-branch> \
+       --field preview_url=https://preview-PR-NNN.mahjong-autotable.workers.dev
+   ```
+   The dispatch run respects the same 75-point gate; the
+   provenance-tagged step summary shows `source:
+   workflow_dispatch input` so the PR reviewer knows the
+   score came from the manual override rather than the repo
+   secret.
+
+3. **None (forks / fresh branches).** Leave both unset; the
+   W14 hardening posts an explanatory PR comment + step
+   summary noting the skip. The skip is NOT a failure —
+   forks routinely lack repo-secret access by design (GitHub
+   Actions security model).
+
+### §12.4 — Fork PR handling
+
+The W11 baseline job-level `if:` filter restricts
+`pull_request`-event runs to PRs from the same-repo head:
+
+```yaml
+github.event_name == 'pull_request' &&
+  github.event.pull_request.head.repo.full_name == github.repository
+```
+
+This is the W11 W4-secrets-leak guard (forks can't read repo
+secrets per GitHub's security model). The W14 hardening
+INTERACTS with this filter as follows:
+
+* Fork PRs → entire job skipped at the `if:` gate (no skip
+  comment posted because the job never runs).
+* Same-repo PRs without the secret → job runs, posts skip
+  comment, step-summary populated.
+* Same-repo PRs with the secret → job runs, posts readiness
+  card, step-summary populated.
+
+Fork-PR authors who want PWA Builder readiness on their PR
+must wait for a same-repo maintainer to retrigger the
+workflow via `workflow_dispatch` with an explicit preview
+URL (per §12.3 path 2).
+
+### §12.5 — Schedule sweep cleanliness
+
+The W14 hardening preserves the W11 schedule sweep behaviour:
+the nightly cron at `30 3 * * *` UTC runs against the
+canonical preview URL (when the secret is set) and reports
+readiness drift in the workflow-run artefact + step summary
+WITHOUT gating any PR. The nightly run's failure is
+operator-visible via the GitHub Actions UI but does not block
+merges (it's a `secrets.PWA_PREVIEW_URL`-side regression
+signal, not a PR signal).
+
+When the canonical preview URL is NOT provisioned, the
+nightly run terminates cleanly (step summary records the
+skip) — no spurious notifications.
+
+### §12.6 — Hand-off to W15
+
+W14 closes the W11 preview-URL hand-off (per §5 carry-over
+notes). The remaining open item from §5 was "PWA Builder CLI
+integration once a preview URL is public" — the integration
+ITSELF was closed in W11 §6; W14 closes the operator-facing
+provisioning gap. Future waves should treat §12 as the
+canonical operator runbook for preview URL provisioning;
+hand-offs concerning the PWA Builder workflow itself fall
+back to §4 (W10 W11 origin) and §12 (W14 hardening).
+
+## §13 — Wave 14: LH13 hard-pin status (deferred to W15)
+
+> Successor to §10 (W13 deferral notice) and §6.2 (W13
+> coordination handshake). Re-run by Hicks during W14
+> bring-up to attempt the hard-pin, gated again by data
+> availability.
+
+### §13.1 — W14 attempt — outcome
+
+The W14 charter listed the LH13 hard-pin retry as item 1.
+Hicks ran the W13 hand-off recipe (`gh run list -w
+pwa-audit.yml -L 30 --json conclusion,event,createdAt`)
+against the live API and counted the cron data points.
+
+Result on the W14 bring-up branch
+(`stlong/phase-k-wave-14-bringup`, off `f0b8e4a`):
+
+| Metric | Value |
+|--------|-------|
+| Total `pwa-audit.yml` runs returned | 4 |
+| Of which `event == "schedule"` | 0 |
+| Of which `conclusion == "success"` | 0 |
+| Of which `event == "schedule" AND conclusion == "success"` | 0 |
+| Of which `event == "pull_request"` | 4 (all `failure`) |
+
+The W13 deferral gate is `>=3 successful cron runs`. With
+ZERO scheduled runs and ZERO successful runs of any trigger
+type, the W14 attempt cannot land a calibrated p95 either.
+
+### §13.2 — Root cause
+
+The cron schedule in `.github/workflows/pwa-audit.yml`
+runs nightly, but the workflow has been gated all wave on
+the W14 §12 preview-URL provisioning fix. Until §12 lands
+the `PWA_PREVIEW_URL` secret (or the W14 §12.2 step-summary
+hardening produces the canonical preview URL), the
+scheduled runs will skip cleanly with no Lighthouse score
+emission — and hence no calibration data points.
+
+In other words: §13 is dependency-blocked on §12.5 / §12.6
+producing nightly successful runs first. Once the W14
+preview-URL provisioning closes that dependency, the
+nightly cron should start emitting LH13 score arrays within
+a week.
+
+### §13.3 — Deferral to W15
+
+Hicks defers the LH13 hard-pin a second time. The W15
+attempt should:
+
+1. Re-run `gh run list -w pwa-audit.yml -L 30 --json
+   conclusion,event,createdAt` against the W14 base.
+2. Filter for `event == "schedule" && conclusion == "success"`
+   rows.
+3. If count >= 3: pull JSON report artifacts via `gh run
+   download`, compute p95 + p99 per category, and update
+   `pwa-audit.yml` `assertions:` block with the p95 floor
+   (or rounded-down p95).
+4. If count < 3: defer to W16 + escalate to Vasquez +
+   Apone (the W14 §12 provisioning fix did not produce
+   nightly success — re-verify the preview URL is
+   reachable on the runner).
+
+Vasquez (threshold owner of record per W11 §6.1) and Apone
+(workflow author of record per W11 §6) are notified via the
+W14 inbox memo.
+
+### §13.4 — Token provisioning note (W14 reproduction recipe)
+
+The `gh` CLI in the W14 bring-up environment did not have
+the implicit `GH_TOKEN` envvar wired (matching W13's
+finding). Hicks used the fallback path documented at
+§6.2:
+
+```bash
+TOKEN=$(echo -e "protocol=https\nhost=github.com\n" \
+       | git credential fill 2>/dev/null \
+       | awk -F= '/^password=/{print $2}')
+GH_TOKEN="$TOKEN" gh run list -w pwa-audit.yml -L 30 \
+       --json conclusion,event,createdAt,databaseId
+```
+
+This works in any environment with a configured git
+credential helper (gnome-keyring, libsecret, file-backed)
+populated with a GitHub PAT. The PAT length should be 40
+characters (classic) or longer (fine-grained). If
+`git credential fill` returns an empty password, escalate
+to the credential-helper owner; the W14 / W15 LH13
+attempt cannot run without it.
+
+## §14 — Wave 14: Real lobby-surface captures (replaces §11 placeholders)
+
+> Successor to §11 (W13 placeholder captures). The W13
+> captures pre-dated the W11 lobby-surface availability on
+> the bring-up branch; they were placeholder 320×240 PNGs.
+> W14 captures the actual live lobby surfaces at the
+> Lighthouse standard 1280×720 viewport.
+
+### §14.1 — Why real captures matter (and why W13 deferred)
+
+W13 wired the capture script (`scripts/capture-visual-
+baselines.js`) against the manifest icon set rather than
+live lobby surfaces because the bring-up branch had not yet
+mounted the spectator / tournament / commentary tabs in the
+lobby panel. The W13 PNGs were sized 320×240 and showed
+the icon assets — useful as visual-regression smoke targets
+but not as actual surface baselines.
+
+W14 unblocks this because:
+
+1. The lobby tabs are wired (W11+) and visible when the
+   panel is forced open via `.lobby-open` class.
+2. The W11 tour overlay can be suppressed via
+   `localStorage.setItem('mahjong.tour.completed.v1', 'true')`
+   to keep it from intercepting clicks.
+3. The W12 magic-link landing + sign-in modal can be hidden
+   via `display: none` (they auto-mount on every page load
+   but are not relevant to lobby-surface captures).
+
+### §14.2 — `scripts/capture-real-surfaces.js`
+
+The W14 script lives at
+`src/frontend/autotable-src/scripts/capture-real-surfaces.js`
+and runs against a vite preview server (default port 4173).
+It captures three surfaces:
+
+| Surface PNG | Surface description | Capture recipe |
+|-------------|---------------------|----------------|
+| `main-game.png` | The default lobby view (table seat picker + start-game button). | Navigate to `/`, suppress overlays, screenshot full viewport. |
+| `spectator-commentary.png` | The public-games tab (W11 §8). | Navigate to `/`, force `#lobby-panel.lobby-open`, click `#lobby-public-games-tab`, screenshot. |
+| `tournament-dashboard.png` | The tournaments tab (W11 §8). | Navigate to `/`, force `#lobby-panel.lobby-open`, click `#lobby-tournaments-tab`, screenshot. |
+
+The script writes PNGs at the path Vasquez's W14 spec
+`manifest-screenshots-visual.spec.ts` reads from (per the
+W13 §11.5 hand-off):
+
+```
+src/frontend/autotable-src/tests/e2e/__screenshots__/
+  manifest-screenshots-visual.spec.ts/
+    {main-game,spectator-commentary,tournament-dashboard}.png
+```
+
+### §14.3 — Overlay suppression sequence
+
+Lobby surfaces require an explicit suppression sequence
+because the W11 + W12 onboarding overlays mount at boot
+and intercept clicks even when they are visually behind
+other elements:
+
+1. **Pre-boot localStorage seed** via Playwright
+   `context.addInitScript()`:
+   ```js
+   localStorage.setItem('mahjong.tour.completed.v1', 'true');
+   ```
+   This suppresses the W11 tour overlay before it can mount.
+2. **Post-boot DOM suppression** via `page.evaluate()`:
+   ```js
+   document.querySelectorAll(
+     '#magic-link-landing, #signin-modal, #signin-modal-backdrop, ' +
+     '#tour-overlay'
+   ).forEach(el => el.style.display = 'none');
+   ```
+   This handles overlays that mount post-boot (the magic-
+   link landing especially auto-mounts on every page load).
+3. **Force lobby panel open** via classname injection:
+   ```js
+   document.querySelector('#lobby-panel')?.classList.add('lobby-open');
+   ```
+   The panel defaults to `display: none`; the W11 hamburger
+   toggle adds `.lobby-open`.
+4. **Click the target tab** via Playwright `page.click()` on
+   the explicit selector (`#lobby-public-games-tab` etc).
+   The click handler swaps the active pane.
+5. **Wait for tab activation** by polling
+   `tab.classList.contains('lobby-tab-active')` before the
+   screenshot fires.
+
+### §14.4 — Reproduction recipe
+
+To re-capture the W14 baselines (e.g. after a deliberate
+visual change lands):
+
+```bash
+cd src/frontend/autotable-src
+npm run build:vite
+npx vite preview --strictPort &  # default port 4173
+PREVIEW=http://localhost:4173 \
+  node scripts/capture-real-surfaces.js
+# PNGs land at the spec __screenshots__ path
+# (overwrite-on-success; the script does NOT diff)
+```
+
+If port 4173 is already in use, the existing preview server
+can be reused — `--strictPort` will fail loudly if not. The
+W14 environment had a long-running preview server (PID
+577813); the script auto-detects a live server on the
+configured port via a `HEAD` probe.
+
+### §14.5 — Verification (W14 baseline checksums)
+
+| Surface | MD5 (W14 capture) | Bytes | Viewport |
+|---------|-------------------|-------|----------|
+| `main-game.png` | distinct | 97,771 | 1280×720 |
+| `spectator-commentary.png` | distinct | 105,819 | 1280×720 |
+| `tournament-dashboard.png` | distinct | 82,173 | 1280×720 |
+
+Three distinct hashes confirm the surface-swap actually
+fired (W14 iteration #1 saw all three hashes identical
+because the tab clicks were intercepted by the W11 tour
+overlay — see §14.3 step 1).
+
+### §14.6 — Hand-off to W15 (Vasquez)
+
+W14 lands the real captures at the path Vasquez's W14 spec
+expects. The two W13 §11.5 hand-off items remain open and
+are still in Vasquez W14 lane (not Hicks's):
+
+1. **setContent bug fix** in `manifest-screenshots-
+   visual.spec.ts` — prefix per-station block with
+   `await page.goto(BASE_URL)`.
+2. **`snapshotPathTemplate` config** in
+   `playwright.config.ts` so the spec
+   `toHaveScreenshot()` reads from the same path the W14
+   capture script writes to.
+
+Until these two fixes land, the W14 spec will still silent-
+no-op against the new baselines (same root cause as W13).
+The W14 captures are positioned correctly for when the
+fixes do land; running the fixed spec against W14
+baselines should report a pixel-perfect match.
+
+

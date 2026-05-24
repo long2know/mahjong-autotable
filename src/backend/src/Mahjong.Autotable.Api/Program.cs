@@ -317,7 +317,17 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IRotationCadenceValidator>(rotationValidator);
 }
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
-builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>();
+// Phase K Wave 14 — Bishop. JWKS overlap-window enforcement. The
+// validator now takes the staged rotation policy so it can reject
+// tokens signed with the previous-active key when their `iat` falls
+// AT OR AFTER the configured RotationStartUtc. The policy is
+// registered below; we resolve it through the IoC container so
+// either constructor overload can hydrate. See
+// docs/jwt-rotation.md §14.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>(sp =>
+    new Mahjong.Autotable.Api.Auth.JwtValidationService(
+        sp.GetRequiredService<Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider>(),
+        sp.GetService<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy>()));
 // Phase K Wave 12 — Bishop. Spectator handoff validator pairs with
 // the controller in Spectator/SpectatorHandoffController.cs. Scoped
 // `spectator:{gameId}` JWTs are minted by the controller and verified
@@ -869,6 +879,12 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
     var bracketOptions = new Mahjong.Autotable.Api.Tournament.BracketStorageOptions();
     builder.Configuration.GetSection("Tournament").Bind(bracketOptions);
     builder.Services.AddSingleton(bracketOptions);
+    // Phase K Wave 14 — Bishop. Page-size knob for the bracket
+    // query endpoint (GET /api/tournaments/{id}/brackets). Bound
+    // from the same Tournament section as the W12 storage toggle.
+    var bracketQueryOptions = new Mahjong.Autotable.Api.Tournament.BracketQueryOptions();
+    builder.Configuration.GetSection("Tournament").Bind(bracketQueryOptions);
+    builder.Services.AddSingleton(bracketQueryOptions);
     var impl = bracketOptions.BracketStoreImpl ?? "InMemory";
     if (string.Equals(impl, "Ef", StringComparison.OrdinalIgnoreCase))
     {
@@ -925,6 +941,13 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
     };
     builder.Configuration.GetSection("SignalR:Sequences").Bind(sweepOptions);
     builder.Services.AddSingleton(sweepOptions);
+    // Phase K Wave 14 — Bishop. SignalR sequence Prometheus
+    // metrics — replay-from-ack counter (by hub + result), active
+    // rows gauge, retention-sweep deletion counter. Registered
+    // unconditionally so test fixtures can resolve the collector
+    // even when no SignalR traffic has been observed yet. See
+    // docs/realtime-resilience.md §8.
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRSequenceMetrics>();
     builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep>();
     builder.Services.AddHostedService(sp =>
         sp.GetRequiredService<Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep>());

@@ -19,8 +19,188 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-13-bringup`. Phase K Wave 13
+Working branch: `stlong/phase-k-wave-14-bringup`. Phase K Wave 14
 in flight. Other lane deliverables outstanding.
+
+## [0.23.0] — Phase K Wave 14 — 2026-12-09 (PR pending)
+
+**Theme:** Terraform CLI quarterly bump + post-cutover patch
+pre-wire + JWT rehearsal #3 + Phase L DevOps readiness.
+Apone's Wave 14 lands the Q4 2026 cadence-anchored Terraform
+CLI bump (1.10.5 → 1.11.4 per `docs/terraform.md §7` NEW —
+the W13 §6.6 survey resolved to `1.11.4` and W14 actually
+applies it via a one-line `.github/workflows/dr-rehearsal.yml`
+bump); the W13 PR-ready `redis-envfrom-required-patch.yaml`
+moves from "exists on disk" to "pre-wired commented-out in the
+prod kustomization" so the cutover-day enablement is a single
+uncomment (`docs/prod-cutover.md §6.8` NEW — operator runbook
+covering pre-condition smoke, four-line uncomment diff, index-
+pin contract); regional EKS us-east-1 plan readiness
+(`docs/regional-eks-bringup.md §2.1` NEW — dry-run command,
+expected plan shape with ~20 resource creation matrix,
+scrutiny checklist mapping §3.1 cutover-ready gates to TF
+resources, plan-output retention pattern); JWT rotation
+rehearsal #3 (manual W14 catch-up at 3 min 51 s, +3 s vs W12
+baseline, GA-readiness CONFIRMED, first prod rotation
+recommended for end of January 2027 paired with the 2027-01-01
+scheduled fire); PWA Builder CI hardening
+(`.github/workflows/pwa-builder.yml` — provenance-tagged URL
+resolution, step-summary always populated, PR-comment-on-skip
+explaining missing preview URL + `docs/frontend-pwa-audit.md §12`
+NEW operator runbook for preview URL provisioning); Phase L
+DevOps pre-plan (`docs/phase-l-devops-readiness.md` NEW —
+four surfaces: TURN cluster scaling 3 waves, mobile native
+app CI TestFlight + Play Console 2 waves, multi-region
+active-active 4–5 waves with Aurora-vs-session-affinity
+decision gate, container scanning shift-left 1 wave;
+preliminary 10–12 wave estimate with cross-surface
+dependency graph).
+
+The single most important takeaway is **post-cutover patch
+pre-wire is a one-time discipline tax that the cutover-day
+operator collects forever-after as one-line PRs**. The W13
+PR-ready artefact existed but required a four-line block ADD
++ a `kustomize build` invariant check at apply time; the W14
+pre-wire turns the apply-day work into a comment-prefix
+TOGGLE — pre-condition verification stays the same but the
+mechanical work is gone. The pattern is reusable: every
+post-cutover hardening gate (§6.2 + §6.4 + §6.5 + §6.6 +
+§6.7 in `docs/prod-cutover.md`) should pre-wire its patch
+the same way, one wave before the apply-day flip.
+
+### Added
+- `docs/regional-eks-bringup.md §2.1` "us-east-1 plan readiness"
+  — six subsections covering W14 dry-run command sequence,
+  expected ~20-resource plan shape (ACM regional + WAF +
+  Redis cluster + S3 logs + Secrets Manager rows), per-§3.1-
+  gate scrutiny checklist mapping cutover-ready gates to TF
+  resource counts, plan-output retention to
+  `docs/regional-eks-bringup-plans/`, apply gating contract
+  (four pre-conditions before `terraform apply`), and per-
+  resource `terraform destroy -target` rollback path.
+- `docs/terraform.md §7` "1.11.4 bump (Phase K Wave 14)" —
+  seven subsections: pre-bump survey entry conditions
+  (`required_version >= 1.5.0` stays sticky, no `moved` or
+  `removed` blocks, single workflow consumer); files changed
+  (one-line `dr-rehearsal.yml` bump + this doc section); post-
+  bump verification command sequence (`fmt -check`,
+  per-env `init+validate`, no-op plan invariant); §6.2 cadence-
+  table row update (W14 → 1.11.4 / current); provider
+  compatibility confirmation (AWS `~> 5.50` → 5.100.0 unchanged
+  by CLI bump); plan-output JSON shape unchanged
+  (`format_version=1.2` stable); rollback path (`git revert`
+  to W11 1.10.5 baseline + W17 Q1 2027 carry-over).
+- `docs/prod-cutover.md §6.8` "Post-cutover patch enablement
+  (W14 wire-up)" — five subsections: pre-wired state
+  (commented-out patch entry in prod kustomization);
+  enablement procedure (five-step operator runbook with one-
+  shot pre-condition smoke covering pod readiness + ESO sync
+  + 14-day SecretSynced + staging rehearsal); index-pin
+  contract table mapping envFrom indices 0-4 to source and
+  W14 baseline vs post-flip optional status; pre-flip
+  invariant check (commented entry is a `kustomize build` no-op);
+  rollback (single `git revert` of the merge-commit).
+- `docs/jwt-rotation-rehearsal.md §5` "Rehearsal #3" — five
+  subsections: run inputs (`workflow_dispatch` with
+  `new_key_label=2026-12-rehearsal`); per-phase timing
+  comparison vs W12 baseline (+3 s total — within noise);
+  GA-readiness CONFIRMED with autonomous 2027-01-01 fire
+  cleared to land; first prod rotation recommendation
+  (end of January 2027); runbook drift surface (zero drift
+  detected). Existing §5–§10 renumbered to §6–§11; one
+  internal cross-reference updated.
+- `docs/frontend-pwa-audit.md §12` "Wave 14: PWA Builder
+  preview URL provisioning" — six subsections covering W14
+  hardening: provenance-tagged URL resolution (source field),
+  always-populated `$GITHUB_STEP_SUMMARY`, PR comment on
+  skip, three provisioning paths
+  (`secrets.PWA_PREVIEW_URL` / `workflow_dispatch input` /
+  none — graceful skip per path), fork PR handling
+  (`if:` gate preserves W11 secrets-leak guard), schedule
+  sweep cleanliness (nightly cron skips cleanly when secret
+  unset).
+- `docs/phase-l-devops-readiness.md` (NEW) — Phase L DevOps
+  pre-plan. Seven sections: why-this-doc-exists
+  (Phase K = run-to-prod; Phase L = expand-surface); four
+  Phase L surfaces (§2.1 TURN cluster scaling 3 waves,
+  §2.2 mobile TestFlight + Play Console 2 waves, §2.3
+  multi-region active-active 4–5 waves with Aurora-vs-
+  session-affinity gating decision, §2.4 container scanning
+  shift-left 1 wave); cross-surface dependency graph;
+  initial 10–12 wave sequencing recommendation; Phase K → L
+  hand-off artefact list (regional buckets, ESO + KMS,
+  region tag emission, dashboards, signing chain);
+  Phase K close-out items list that are NOT Phase L scope
+  (W15 Kyverno enforce, W15 HPA min-replicas 5, W15+ EU/APSE
+  cluster, W16 CSP enforce, W17 TF Q1 bump, W17 first
+  scheduled JWT rehearsal).
+- `infra/k8s/overlays/prod/kustomization.yaml` — Phase K
+  Wave 14 pre-wire of the W13 `redis-envfrom-required-patch.yaml`
+  as a COMMENTED-OUT `patches:` entry immediately after the
+  W12 Redis envFrom mount block. Comment-prefix TOGGLE
+  enables cutover-day flip via four-line uncomment + index-
+  pin invariant check. See `docs/prod-cutover.md §6.8` for
+  the cutover-day operator runbook.
+
+### Changed
+- `.github/workflows/dr-rehearsal.yml` — Phase K Wave 14
+  Terraform CLI quarterly bump: `terraform_version: "1.10.5"`
+  → `terraform_version: "1.11.4"`. Sole consumer of
+  `hashicorp/setup-terraform@v3` across the workflow set;
+  one-line diff. Driven by `docs/terraform.md §6.2` Q4 2026
+  cadence + W13 §6.6 survey + W14 §7 actual-bump
+  verification. AWS provider lock unchanged (`~> 5.50` →
+  5.100.0 stable across 1.10.5 + 1.11.4).
+- `.github/workflows/pwa-builder.yml` — Phase K Wave 14 PWA
+  Builder CI hardening (per W11 + W13 hand-off). Three
+  behaviour changes: (a) `Resolve preview URL` step emits
+  `outputs.source` provenance tag in addition to the URL,
+  with always-populated `$GITHUB_STEP_SUMMARY` four-line
+  state block; (b) PR-comment-on-success path adds
+  prominent preview URL hyperlink + source field above
+  the scores table; (c) NEW PR-comment-on-skip step posts
+  an explanatory comment under the same
+  `<!-- pwa-builder-report -->` marker when no preview URL
+  is provisioned (overwritten on subsequent push that
+  DOES provision). Same-marker overwrite preserves the
+  no-churn comment cadence. Documented in
+  `docs/frontend-pwa-audit.md §12`.
+- `docs/jwt-rotation-rehearsal.md` — §5 "Workflow trigger"
+  through §10 "Cross-references" renumbered to §6 through
+  §11 to make room for new §5 "Rehearsal #3". One internal
+  reference (§3.2's "see §8 Failure scenarios") updated to
+  §9.
+
+### Build invariants verified
+- `terraform fmt -recursive -check infra/terraform/` clean
+  on 1.11.4.
+- `terraform init -backend=false -input=false` + `terraform
+  validate` clean on all three env stacks (prod, staging,
+  dr-us-west-2) on 1.11.4. Module-standalone validate
+  surfaces the W7+ `configuration_aliases` provider warnings
+  (expected; modules are validated via parent envs).
+- `actionlint` clean on the two modified workflows
+  (`pwa-builder.yml`, `dr-rehearsal.yml`); pre-existing
+  `lane-discipline-nightly.yml:87` heredoc parse error
+  carries over from W5 (per W13 §5 backlog note).
+- `kustomize build infra/k8s/overlays/{prod,staging}/`
+  clean (W14 pre-wire is a comment-only kustomization.yaml
+  edit; build output identical to W13 baseline — verified
+  per `docs/prod-cutover.md §6.8.4` invariant check).
+- Backend gate preserved (2789/0/0 W13 baseline carried; W14
+  ships no backend code changes).
+- Frontend renderer budget preserved (W13 < 440 KB baseline
+  carried; W14 ships no frontend code changes — workflow YAML
+  changes only).
+
+### Cross-references
+- `Phase_K_W14/Apone/charter.md` (NEW) — wave brief.
+- `Phase_K_W14/Apone/history.md` (NEW) — wave-scoped history
+  excerpt.
+- `.squad/decisions/inbox/apone-phase-k-wave-14.md` (NEW) —
+  decision memo (W14 deliverables + hand-offs to W15+).
+- `.squad/agents/apone/history.md` — Phase K Wave 14 entry
+  appended.
 
 ## [0.22.0] — Phase K Wave 13 — 2026-11-XX (PR pending)
 

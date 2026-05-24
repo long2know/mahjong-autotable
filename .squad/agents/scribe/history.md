@@ -1062,3 +1062,263 @@
 **Open questions for Phase K Wave 14:** Spectator handoff audit replay endpoint (Bishop); commentary cost Grafana dashboard panel (Bishop + Apone); Redis introspect rate limiter prod-env testing (Bishop); `TournamentMatch.MatchSlot` column + W14 migration (Bishop); replay storage `InMemory` → `Ef` default flip (Bishop); `CommentaryCostBroadcaster` backpressure-aware variant (Bishop); LH13 hard-pin retry conditional on `GH_TOKEN` + ≥ 4 cron data points (Hicks); tablet-viewport visual-regression baselines (Hicks); Phase L hand-roll WebGL renderer spike < 300 KB (Hicks); `tonemapping_*` + `encodings_pars_fragment` + `packing` + UniformsLib second-pass strip (Hicks); `?action=tournament&tournamentId` deep-link (Hicks); bundle-health PR-comment rolling-trend hardening (Hicks); us-east-1 EKS apply (Apone; Stephen-blocked); TF 1.10.5 → 1.11.4 bump apply (Apone); Redis envFrom flip wire-up (Apone); JWT rehearsal #3 first scheduled-cadence run (Apone); CHANGELOG `[0.23.0]` + retro 2026-12 (Apone); Argo Rollouts install (Apone; Stephen-blocked); 2 remaining DbSerial candidates after Bishop W14 lands (Vasquez); LH13 mirror SOFT → HARD flip (Vasquez); visual-regression spec `page.goto` fix (Vasquez); KW13 → KW14 regression rename (Vasquez); branch-protection W14 fallback execution (Vasquez → Stephen); `metrics_dashboard_shared` pre-emptive lane-map amendment (Vasquez); tablet-viewport matrix extension (Vasquez). Functional gates locked in: **2789/0/0**; zero-skip streak **28**; `MaxParallelThreads=2` retired; **identity-race hardening + lane-discipline strict mode shipped + held across 8th consecutive wave — W3/W4/W5 cross-lane content bundling trend stays broken at W13; `.work/squad-git-lock` 4th consecutive fully-adopted wave; lane-discipline strict-mode `checked=5 violations=0` — THIRD CONSECUTIVE 0-VIOLATION WAVE sustained via canonical same-lane amendment pattern (8 consecutive waves with zero coordinator-direct interventions)**.
 
 **Branch ready for PR against `main`.** All four agents' Phase K Wave 13 work + Vasquez same-lane lane-map amendment + Scribe sweep captured in canonical decisions.md + new `docs/wave-summaries/phase-k-wave-13.md`. Standing directives reaffirmed (opus-only, no-pauses, race-safe identity binding, `flock` mutex at `.work/`, selective `git add` with `-f` for gitignored inbox memos, three-renderer hard-asserted under 440 KB stretch BEAT by ~34 KB with W14 ~10-15 KB next-target lever owned by Hicks `tonemapping_*` + `encodings_pars_fragment` + `packing` + UniformsLib second-pass strip, OpenAI commentary fail-open mandatory, Janus SFU fail-open with readiness 3-level circuit-breaker [W10] + mountpoint-eviction SignalR metric tie-in [W11] + mountpoint admission control [W12] + `commentary_cost_dollars_total` Prometheus counter [W13], CI pre-commit gate parity mandatory, `tableId ≡ gameId` W9 identity decision still held at W13, three independent canary gates with NO aggregation logic, mobile hotfix uses separate 2-reviewer environment with three durable audit-trail markers, `scripts/check_invariants.py` is the cross-file invariant extension point, `git fetch + rebase` INSIDE the flock critical section, **every cutover-plan section MUST include a `git grep <old-path>` step before declaring complete**, **CHANGELOG version-arithmetic check goes in every changelog-bump pattern**, **`[Collection("DbSerial")]` is canonical for SQLite-heavy contract tests with W12 25-class audit + W13 23-of-25 application + 3-parallel 50-iteration flake-detection methodology**, **`maxmemory-policy=allkeys-lru` is canonical for the idempotency cache**, **`TileReference(string TileId, string Suit, int Rank)` is the canonical commentary tile-ref shape with W11 4-byte binary codec + W12 reserved-byte allocation**, **FIDE C.04 backtracking is sole owner of Swiss pairing — DutchSwissPairingService retired W12**, **`signalr_envelope_age_seconds` histogram is the canonical p99 envelope-age surface; W13 `SignalRSequenceRetentionSweep` is always-on hosted service with `Math.Max(1, configured)` floor on `SignalR:Sequences:SweepIntervalMinutes`**, **`EfCommentaryStore` is the canonical commentary persistence surface; W13 adds `commentary_cost_dollars_total` Prometheus counter + `CommentaryCostAdminHub` real-time observable + `CommentaryCostBroadcaster` fire-and-forget with `FireBroadcast` helper observing returned-task exception**, **RFC 7662 §2.2 transport-vs-token error invariant**, **`[JsonDerivedType]` polymorphism discriminator for `CommentaryRecord` subtypes**, **Janus mountpoint admission control via `MaxConcurrentMountpoints=128` cap**, **W13 `BracketByeSeed = "__bye__"` sentinel for odd-seed-count tournament rounds; W14 add-`MatchSlot`-column forward-note**, **W13 fire-and-forget broadcast convention with `FireBroadcast` helper observing returned-task exception**, **W13 Redis sorted-set sliding-window rate-limiter pipeline `ZREMRANGEBYSCORE → ZCARD → ZADD + EXPIRE` single-batch RTT; fallback to W12 in-memory limiter on `RedisException`**, **W13 audit-always contract for signed JWTs (spectator handoff sets precedent; future signed-JWT mints follow audit-before-respond with HTTP-500-on-audit-failure)**, **W13 `Replays:RequireAdminForPost=true` default**, **W13 deeper shader-strip convention: `SHADER_CHUNKS_TO_EMPTY` extended to ALL unused-by-the-autotable shader families; `stripUnusedUniformsLib()` extended to 14 keys**, **W13 `?action=spectate&gameId` deep-link routing belongs to `action-router.ts` with direct `openSpectatorLivestream` call (NOT lazy-import — spectator chunk already bundled); `history.replaceState` path+hash quirk documented `docs/frontend-action-router.md §6`**, **W13 `scripts/capture-visual-baselines.js` side-channel is canonical baseline-capture path bypassing `page.setContent`/`about:blank` 404 latent bug**, **W13 quarterly JWT rotation rehearsal cadence (NOT monthly) — rationale: exercises 24-hour Redis JWKS cache miss path**, **W13 kustomize v5.4.3 fieldSpecs `kind:` filter IGNORED bug + inverse `PatchTransformer` removal workaround documented `docs/cluster-policy-namespace-exclusion.md`**, **W13 "PR-ready not-wired" pattern for Apone deliverables depending on Stephen-side infrastructure**, **W13 monthly load-test reminder cadence for one-shot performance benchmarks**, **W13 `tests/ci/lane-discipline-flip-required.sh` W14 fallback execution script (`--dry-run`/`--apply`/`--rollback`/`--coordinator-flag` modes)**, **`bundle_health_workflow_shared` (apone+hicks) + `visual_regression_baselines_shared` (vasquez+hicks) join `shims_shared` + `pwa_audit_workflow_shared` + `bracket_shared` as canonical lane-map shared-files entries — lane-discipline `checked=5 violations=0` THIRD CONSECUTIVE 0-VIOLATION WAVE**, **W13 canonical lane-discipline pattern: same-lane amendment beats coordinator-direct intervention every time — 8 consecutive waves with zero coordinator-direct interventions**, **§5.10 of `agent-handoff-protocol.md` is the canonical per-invocation identity binding template**, **§6.1 is the `flock` cutover ledger**). W13 per-invocation race-safe identity binding confirmed working at the git-author level (5/5 commits this wave with correct authors — 4 agent rollups + 1 Vasquez same-lane amend). Zero-skip streak at **28 consecutive waves** (J.1 → J.10 + K.1 → K.13). Test gate **2789 / 0 / 0** at close (2610 → 2789 / **+179**). Bundle-size headline: **three-renderer big chunk 448.65 → 406.64 KB (−9.4%); 8-wave cumulative −45.0%; <440 KB stretch BEAT by ~34 KB; LARGEST single-wave delta in 6 waves** ✅ via Hicks's deeper PMREMGenerator + UniformsLib strip (`SHADER_CHUNKS_TO_EMPTY` 11 → 53 entries + UniformsLib keys 5 → 14). TournamentService bracket-store wiring + `CommentaryCostAdminHub` + `commentary_cost_dollars_total` Prometheus counter + `RedisOAuthIntrospectRateLimiter` + `SpectatorHandoffAuditRecord` + replay POST admin gate + `SignalRSequenceRetentionSweep` always-on + `?action=spectate&gameId` deep-link routing all shipped. **Eighth consecutive wave with zero identity drift + zero coordinator fix-up commits** (W6 needed `abf7624`; W7 + W8 + W9 + W10 + W11 + W12 + W13 land clean). Lock-file cutover `.work/squad-git-lock` at the **4th consecutive fully-adopted wave**. Vasquez's lane-map broadening (`bundle_health_workflow_shared` apone+hicks + `visual_regression_baselines_shared` vasquez+hicks) + bash matcher mirror delivers the **THIRD CONSECUTIVE 0-VIOLATION LANE-DISCIPLINE WAVE** at W13 via the **canonical same-lane amendment pattern** (NOT a coordinator-direct intervention — 8 consecutive waves with zero coordinator-direct interventions).
+
+---
+
+## Phase K Wave 14 Scribe Sweep — 3029/0/0 final-gate fold + Phase L pre-work trifecta narrative + bundle hold-line documented
+
+Date: 2026-12-XX
+Branch: `stlong/phase-k-wave-14-bringup`
+Base: `main` @ `f0b8e4a`
+Head pre-Scribe: `537594e` (Vasquez Final-Gate QA)
+
+### Wave-14 sweep narrative
+
+Phase K Wave 14 lands as the first wave of Phase K to emit
+**cross-lane Phase L pre-work trifecta** —
+`docs/phase-l-devops-readiness.md` (Apone, 411 lines, 4 surfaces) +
+`docs/phase-l-bringup.md` (Bishop, 199 lines, 4 pillars) +
+`docs/phase-l-renderer-spike.md` (Hicks, 14 KB, Go-decision on
+WebGL2 hand-roll) — seeding the Phase L narrative before Phase K
+terminates. Apone's 10-12 wave estimate harmonises with Bishop's
+8-wave + L9 wrap (range absorbs compliance + observability +
+tooling waves).
+
+W14 closes at **3029/0/0** (+240 over W13 baseline 2789); **29-wave
+zero-skip streak preserved** (J.1-J.10 + K.1-K.14); **lane-discipline
+strict-mode `checked=4 violations=0` — 4th consecutive 0-violation
+wave (W11+W12+W13+W14); FIRST since W11 first 0-violation wave with
+NO same-lane amendment commit needed.** W12 + W13 both needed
+Vasquez same-lane amendments to `lane-map.yml`; W14 had no trigger.
+**Identity hardening 9th consecutive clean wave; concurrency mutex
+5th consecutive fully-adopted wave; coordinator-direct interventions
+ZERO for 9 consecutive waves (W6 → W14).**
+
+The wave's headline backend deliverable is **Bishop's 7-endpoint
+admin-observability surface family** — `GET /api/spectator/handoff/audit`
++ `GET /api/commentary/cost/summary` + `GET /api/tournaments/{id}/brackets`
++ `GET /api/replays` + JWKS `rollback-rejected` security primitive
++ `SignalRSequenceMetrics` Prometheus 3-counter family + `docs/phase-l-bringup.md`.
+**Pagination shape uniformity** establishes `{items, count, skip,
+limit, pageSize}` as the canonical W14 envelope across spectator-audit /
+bracket-query / replay-listing with defaults 50/50/25 and maxes
+200/200/100. **Auth-precedence ladder `401 → 403 → 503 → 400 → 200`**
+becomes canonical at `/api/spectator/handoff/audit`. **JWKS
+overlap-window `rollback-rejected`** introduces a new security primitive
+preventing tokens signed by retired keys from being accepted during a
+rotation window when `iat >= RotationStartUtc` (boundary inclusive
+defensively). **`byModel[]` array shape in `/api/commentary/cost/summary`
+envelope** establishes forward-stable schema convention (arrays not maps
+for multi-tenant / multi-provider widening).
+
+Frontend ships 5 deliverables + 1 deferral. **Three-renderer-big
+intentional hold-line at 406,635 B = +0 W14** breaks the 8-wave
+monotonic-decrease ledger by design to free Hicks's renderer-lane
+bandwidth for the `docs/phase-l-renderer-spike.md` Go-decision
+documenting the WebGL2 hand-roll decision with rejected-alternatives
+ledger (PixiJS / Babylon.js / bare-WebGL1 / three.module-fork).
+3 new deep-link surfaces (`?action=bracket&tournamentId` / `?action=replays`
+/ `?action=admin-cost`) extend the W13 action-router co-parameter
+pattern. **Real visual-regression captures** (1280×720 PNGs via
+Playwright runtime API against vite preview :4173 with W11/W12 overlay
+suppression) replace W13 placeholder 320×240 manifest-icon PNGs.
+**LH13 hard-pin DEFERRED to W15** on cumulative 4-wave deferral
+(W11+W12+W13+W14); dependency-blocked on Apone W14 §12 PWA Builder
+preview-URL provisioning landing first; **W17 = 6-wave escalation
+threshold** per Vasquez mirror sync.
+
+DevOps ships 7 deliverables anchored by **us-east-1 EKS plan-readiness**
+(apply blocked on Stephen-provisioned IRSA OIDC), **TF 1.10.5 → 1.11.4
+bump applied** with clean `terraform fmt` + `init+validate`,
+**Redis envFrom PR-ready commented-out pre-wire** (W14 evolution of
+the W13 "PR-ready not-wired" pattern — the committed-but-disabled
+4-line block makes the W15 wire-up a 30-second-reviewable diff),
+**JWT rehearsal #3 GA-confirmed** (timing 3:51 vs W12 3:48; +3 s within
+noise; first real prod rotation recommended for end-of-January 2027
+paired with Q1 2027 rehearsal), **PWA Builder hardening** with
+provenance tag + step-summary + success comment hyperlink + skip-path
+PR comment idempotency, **`docs/phase-l-devops-readiness.md`** 411-line
+4-surface plan (TURN scaling / mobile native CI / multi-region
+active-active with session-affinity-over-Aurora-Global recommendation /
+container scan shift-left), and **CHANGELOG `[0.23.0]` + `docs/retro-2026-12.md`**.
+
+QA closes the wave with **DbSerial migration completion memo** (2
+remaining W9 Bishop-lane candidates identified with explicit escalation
+path Bishop W15 → Vasquez W15 re-prompt → W16 Coordinator-direct via
+§4.3), **LH13 mirror sync** (4-wave deferral marker; `PwaAuditWorkflowGateW14Tests.cs`
+NEW 8 facts), **visual-regression spec fix** (`page.goto('/')` BEFORE
+`page.setContent(…)` — permanently resolves the W12 `about:blank`
+relative-URL 404 latent bug together with Hicks's runtime-API capture
+path), **branch-protection W14 fallback runbook** at
+`docs/agent-handoff-protocol.md §4.3` with 1-line `gh api -X PATCH`
+copy-paste, **14 forward-stage W14 contract test files** (~104 facts)
+under `Phase_K_W14/Vasquez/`, `Wave1ThroughKW13RegressionTests` →
+`Wave1ThroughKW14RegressionTests` via `git mv` with 14 W14 smokes (10
+soft-pin + 4 hard-assert self-lane), and **6 Playwright specs**
+(chromium-only forward-stage tolerant).
+
+### Wave-14 commits
+
+| SHA       | Lane    | Files | +Lines | −Lines |
+|-----------|---------|-------|--------|--------|
+| `c823e1c` | Apone   | 15    | 2843   | 18     |
+| `02e2330` | Hicks   | 33    | 3096   | 28     |
+| `ec4a3c6` | Bishop  | 27    | 3348   | 4      |
+| `537594e` | Vasquez | 35    | 3419   | 26     |
+
+All 4 commits carry `Co-authored-by: Copilot <…>` trailer. **First
+wave since W11 first 0-violation wave with NO Vasquez same-lane
+amendment commit.**
+
+### Scribe observations
+
+1. **W14 establishes "PR-ready commented-out pre-wire" as the
+   canonical W13-evolution forward-stage shape.** Apone D3 Redis
+   envFrom in `kustomization.yaml` is the canonical example —
+   committed-but-disabled state with a 4-line block such that the W15
+   wire-up commit is a 30-second-reviewable diff. The W13 "patch on
+   disk but not in `kustomization.yaml`" predecessor required
+   cross-file diffing to verify the wire-up.
+
+2. **Bishop's 7-endpoint surface family establishes 3 simultaneous
+   conventions:** pagination shape uniformity (`{items, count, skip,
+   limit, pageSize}` with 50/50/25 default + 200/200/100 max),
+   auth-precedence ladder (`401 → 403 → 503 → 400 → 200` with 503
+   inserted between 403 and 400 for store-unavailability distinct from
+   bad-input), and forward-stable array-not-map schemas (`byModel[]`
+   single-entry array for multi-provider widening).
+
+3. **JWKS `rollback-rejected` introduces a new security primitive
+   class.** Boundary `iat == RotationStartUtc` rejected defensively
+   closes a replay-of-just-rotated-token race window. Error code
+   exported as `JwtValidationService.ErrorRollbackRejected = "rollback-rejected"`
+   public const extends W13 audit-always `audit-failed` precedent —
+   security-rejection error codes are kebab-case constants exported
+   from the validating service.
+
+4. **`SignalRSequenceMetrics` Prometheus 3-counter family extends the
+   W13 `commentary_cost_dollars_total` labelled-counter precedent.**
+   Result-label constants `hit` / `miss` / `expired` exported as
+   `public const string` from the metric-owning singleton for
+   assertion stability and `grep`-discoverability.
+
+5. **W14 three-renderer-big intentional hold-line at 406,635 B = +0
+   is a NEW class of bundle-ledger event.** First non-decreasing
+   wave since W7; breaks 8-wave monotonic ledger by design to free
+   Hicks's renderer-lane bandwidth for Phase L renderer-spike Go-decision
+   pre-work. **Convention established:** intentional non-decrease wave
+   is a deliberate signal (must be documented with
+   forward-bandwidth-redirection rationale), not a regression. W6 → W14
+   cumulative −44.9 % preserved.
+
+6. **W14 is the first wave to emit Phase L pre-work artifacts across
+   3 lanes simultaneously.** `phase-l-devops-readiness.md` (Apone) +
+   `phase-l-bringup.md` (Bishop) + `phase-l-renderer-spike.md` (Hicks)
+   together seed the Phase L narrative. Convention: next-phase pre-work
+   lands as cross-lane artifact set 1-2 waves before phase boundary.
+   W15 likely sees Apone's Phase L L1 design memo pulling these into
+   a unified plan.
+
+7. **JWT rehearsal #3 GA-confirmation requires 3 rehearsal runs within
+   timing-noise band.** W11 5:42 → W12 3:48 (large improvement) → W14
+   3:51 (+3 s; noise band). First real prod rotation recommended for
+   end-of-January 2027 paired with Q1 2027 rehearsal — establishes
+   **quarterly cadence as canonical** for production JWT rotation
+   operations.
+
+8. **Vasquez visual-regression spec fix + Hicks runtime-API capture
+   path together permanently resolve the W12-introduced `about:blank`
+   relative-URL 404 latent bug.** Two complementary mitigations:
+   `page.goto('/')` BEFORE `page.setContent(…)` for specs needing
+   relative-URL HTML (Vasquez), and Playwright runtime API
+   side-channel avoiding `page.setContent` entirely (Hicks). Both
+   documented at `docs/test-architecture.md §5.2` and
+   `docs/frontend-pwa-audit.md §14` respectively.
+
+9. **DbSerial migration closes the W12 25-class audit at 23-of-25 +
+   2-tracked = 25/25 accountable.** 2 remaining W9 Bishop-lane
+   candidates identified with **3-step escalation ladder** (Bishop
+   W15 → Vasquez W15 re-prompt → W16 Coordinator-direct via §4.3).
+   Convention: multi-wave migration completion memo identifies
+   trailing files with explicit escalation path.
+
+10. **First-since-W11 0-violation no-amendment wave at W14 confirms
+    that the W11 shared-files (`shims_shared` + `pwa_audit_workflow_shared`)
+    + W13 shared-by-pipeline-artifact (`bundle_health_workflow_shared`
+    + `visual_regression_baselines_shared`) lane-map entries together
+    close known false-positive bundling patterns.** 9 consecutive
+    waves with zero coordinator-direct interventions (W6 → W14)
+    extends the canonical "same-lane amendment beats coordinator-direct"
+    convention.
+
+### W15 handoffs
+
+- **Bishop W15:** Replay blob streaming endpoint (companion to W14
+  metadata-only); per-tenant JWKS rotation (`DateTimeOffset` switch);
+  DbSerial attribute application on 2 remaining W9 test files;
+  `TournamentMatch.MatchSlot` column + 3-provider migration;
+  tournament-scale page-size tuning; `CommentaryCostBroadcaster`
+  backpressure-aware variant; replay storage default flip
+  `InMemory → Ef`.
+- **Hicks W15:** LH13 third retry (conditional on PWA_PREVIEW_URL +
+  GH_TOKEN + ≥ 3 cron successes); `setContent → snapshotPathTemplate`
+  migration; Phase L renderer spike implementation kickoff;
+  second-pass shader strip candidates; tablet-viewport baselines
+  (768×1024); `?action=tournament&tournamentId` deep-link extension;
+  bundle-health PR-comment rolling-trend hardening.
+- **Apone W15:** Kyverno enforce pre-wire candidate; HPA min-replicas
+  bump pre-flight; `lane-discipline-nightly.yml:87` heredoc fix;
+  us-east-1 actual `terraform apply` (Stephen-blocked); Phase L L1
+  design memo `docs/phase-l-l1-design.md`; first real prod JWT
+  rotation end-of-January 2027; CHANGELOG `[0.24.0]` +
+  `docs/retro-2027-01.md`.
+- **Vasquez W15:** DbSerial Bishop-lane 2-file attribute application
+  (AFTER Bishop W15 ships); LH13 cron convergence wait (5-wave
+  deferral marker); `docs/agent-handoff-protocol.md §4.3` escalation
+  status update; `Wave1ThroughKW14 → Wave1ThroughKW15` rename;
+  forward-stage contract tests for all 3 lanes' W15 surfaces.
+- **Lane-discipline cross-cutting W15:** maintain 0-violation streak
+  (target 5 consecutive); maintain zero coordinator-direct streak
+  (target 10 consecutive); candidate `phase_l_pre_work_shared`
+  pre-emptive lane-map entry.
+
+### Stephen action items carried into January 2027
+
+1. **Branch-protection flip** — Stephen re-prompt #9 unresolved at
+   W14; W15 fallback runbook `docs/agent-handoff-protocol.md §4.3`
+   ready; 1-line `gh api -X PATCH` copy-paste; if W15 silent,
+   Vasquez recommends Coordinator-direct as last resort.
+2. **`GH_TOKEN`** for LH13 cron query — 4-wave deferral; W15 = 5-wave;
+   W17 = 6-wave Coordinator-direct threshold.
+3. **`PWA_PREVIEW_URL`** secret — Hicks LH13 W15 hard-pin unlock
+   dependency.
+4. **Secrets provisioning:** Sentry DSN (W9 unresolved); OpenAI API
+   key (W10; 4-wave EfCommentaryStore prod dogfood block); Janus
+   credentials (W11 stub); Redis prod credentials (W11 ESO; W14
+   commented-out pre-wire blocked on this).
+5. **Argo Rollouts install** in prod cluster — Apone W11/W12/W13/W14
+   prep all ready; W15 install unlocks Rollouts cutover.
+6. **Prod Redis TF apply** — Apone W11/W12/W13/W14 prep all ready;
+   W15 apply unlocks prod cutover.
+7. **us-east-1 IRSA OIDC provider** — NEW; W14 §2.1 plan-readiness
+   assumes ACTIVE.
+8. **First real prod JWT rotation end-of-January 2027** — NEW; W14
+   GA-confirmed; paired with Q1 2027 rehearsal.
+
+### Close
+
+Phase K Wave 14 closes at **3029/0/0** (+240); **29-wave zero-skip
+streak**; **`checked=4 violations=0`** (4th consecutive 0-violation
+wave; FIRST since W11 first 0-violation wave with NO same-lane
+amendment commit needed); **identity hardening 9th consecutive clean
+wave**; **concurrency mutex 5th consecutive fully-adopted wave**;
+**coordinator-direct interventions ZERO for 9 consecutive waves**
+(W6 → W14). **First wave to emit Phase L pre-work cross-lane trifecta.**
+**Three-renderer-big hold-line at 406,635 B = +0** breaks 8-wave
+monotonic ledger by design to free Hicks's renderer-lane bandwidth
+for Phase L spike. **JWT rehearsal #3 GA-confirmed** with first real
+prod rotation recommended end-of-January 2027. **DbSerial migration
+closed at 25/25 accountable.** **W15 forward queue:** ~28 items across
+4 lanes; Phase L L1 design memo (Apone) is the headline.
+
+Phase K Wave 14 — DONE.

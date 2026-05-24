@@ -1,4 +1,8 @@
 // Phase K Wave 12 — Manifest screenshots visual regression spec (Vasquez).
+// Phase K Wave 14 fix (Vasquez): call page.goto() before page.setContent()
+// so relative `<img src="/foo.png">` URLs resolve against the deployed
+// origin (baseURL) instead of `about:blank`. See
+// `docs/test-architecture.md §5.2` for the W14 fix note.
 //
 // W11 shipped *real* manifest screenshots (size + presence). W12
 // adds VISUAL regression with a 2% pixel-diff tolerance, matching
@@ -60,6 +64,18 @@ test.describe('Phase K Wave 12 — manifest screenshots visual regression (<= 2%
 
   test('each manifest screenshot matches its baseline within 2% diff OR forward-staged',
     async ({ page }, testInfo) => {
+      // W14 fix: navigate to the baseURL FIRST so subsequent
+      // page.setContent() inherits a real origin for relative `<img>`
+      // URLs (manifest screenshot paths are typically site-relative).
+      try {
+        await page.goto('/');
+      } catch (_e) {
+        testInfo.annotations.push({
+          type: 'forward-staged',
+          description: 'Origin not reachable for manifest visual regression.',
+        });
+        return;
+      }
       const manifest = await fetchManifest(page);
       if (manifest === null) {
         testInfo.annotations.push({

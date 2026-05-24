@@ -144,6 +144,9 @@ revisited.
 | `tournament` | `tournaments` | Activate `#lobby-tournaments-tab`. | `/tournament/list` (path rewritten, no reload) |
 | `replay` (W12) | — | Reads `replayId=<guid>` co-param, fetches `/api/replays/{replayId}` (Bishop W12), feeds the payload to the replay viewer. On error → "Replay not found" toast. | `/replay/<replayId>` (path rewritten on success) / `/` (path bare on failure) |
 | `spectate` + `gameId` (W13) | — | When `?action=spectate&gameId=<guid>` is present, POSTs `/api/spectator/handoff` (Bishop W12) with `{gameId}` (cookie-auth) → on 200 mints a spectator JWT and bootstraps the spectator livestream for the requested table. On 401 → redirect to `/` so `installAuthUi()` can mount the sign-in modal. On 404/error → "Game not found" toast. | `/spectate/<gameId>?token=<jwt>#/spectate/<gameId>` (path rewritten with hash so the W6 `installSpectatorRoute()` hashchange listener fires) / `/` (path bare on auth failure) |
+| `bracket` (W14) | — | Reads `tournamentId=<guid>` co-param, fetches `/api/tournaments/{id}/brackets` (Bishop W14), lazy-mounts the bracket-listing overlay. On 404 / 5xx / missing co-param → in-overlay "No brackets" placeholder. See §3.2. | `/tournament/<id>/brackets` (path rewritten on success) / `/` (path bare on co-param miss) |
+| `replays` (W14) | — | Fetches `/api/replays` (Bishop W14 metadata-only listing), lazy-mounts the replays-listing overlay; rows link to `?action=replay&replayId=<id>`. See §3.3. | `/replays` (path rewritten) |
+| `admin-cost` (W14) | — | Pre-flights `/api/auth/me` (no session → redirect to `/`), fetches `/api/commentary/cost/summary` (Bishop W14, admin-only), lazy-mounts the cost overlay (summary card + byModel table). On 403 → in-overlay "Admins only" placeholder. See §3.4. | `/admin/commentary-cost` (path rewritten) / `/` (path bare on no-session) |
 
 ### §3.1 — `?action=spectate&gameId=<guid>` flow (W13)
 
@@ -201,6 +204,192 @@ Contract owner: **Bishop** (server-side
 the W12 wire shape exactly; any future change to the JWT
 scope shape or `ttlSeconds` semantics needs a Bishop+Hicks
 co-bump.
+
+### §3.2 — `?action=bracket&tournamentId=<guid>` flow (W14)
+
+The W14 wave wires a deep-link to Bishop's bracket-listing
+endpoint. The wire shape is:
+
+```
+/?action=bracket&tournamentId=<guid>
+```
+
+`tournamentId` MUST appear alongside `action=bracket`; the
+router reads it from the same `URLSearchParams` instance
+after identifying the action. Missing / empty / whitespace-
+only `tournamentId` is treated as a fetch miss (same
+"Tournament not found" toast as a 404). The URL contract:
+
+1. `parseActionFromUrl()` returns `"bracket"`.
+2. `handlePwaActionFromUrl()` switches to the `bracket` case.
+3. `dispatchBracket()`:
+   a. Reads `tournamentId` from the URL.
+   b. Strips BOTH `action` and `tournamentId` from the URL,
+      rewriting the path to `/tournament/<id>/brackets` so the
+      address bar reflects the canonical bracket-snapshot URL.
+   c. Lazy-imports `./bracket-listing` (a sub-7 kB W14 chunk,
+      no three.js dependency — the bracket overlay is purely
+      DOM-rendered).
+   d. Calls `openBracketListing(tournamentId)` which fetches
+      `GET /api/tournaments/{id}/brackets` (Bishop W14
+      listing endpoint).
+   e. On success: renders the rounds-grid overlay (one column
+      per round; per-round match cards with winner highlight
+      + status badge).
+   f. On 404 / 5xx / network error / JSON parse failure: the
+      overlay stays mounted and renders an in-overlay
+      "No brackets found" / "Brackets unavailable" placeholder
+      with a close button.
+
+Wire shape Bishop emits (defensively parsed by the renderer
+— see `src/bracket-listing.ts` for the full tolerance matrix):
+
+```jsonc
+// 200 OK
+{
+  "brackets": [
+    {
+      "id":           "match-guid",
+      "roundNumber":  1,
+      "matchIndex":   0,
+      "seedA":        1,
+      "seedB":        8,
+      "playerA":      "Alice"  /* or { displayName: "..." } */,
+      "playerB":      "Bob",
+      "winnerSeed":   1,           /* or null when pending */
+      "status":       "completed", /* | "in-progress" | "pending" */
+      "bracketSide":  "winners"    /* | "losers" */
+    }
+    /* ... */
+  ]
+}
+```
+
+A bare top-level array `[ BracketRecord, ... ]` is also
+tolerated (in case Bishop simplifies the wire shape post-
+W14); the renderer pulls the array from `body.brackets`,
+`body.records`, or `body` itself in that order.
+
+Selector contract (Vasquez): the overlay emits the testids
+`bracket-listing-overlay`, `bracket-listing-card`,
+`bracket-listing-grid`, `bracket-listing-round-{n}`,
+`bracket-listing-match`, `bracket-listing-player-a`,
+`bracket-listing-player-b`, `bracket-listing-status`,
+`bracket-listing-close`.
+
+### §3.3 — `?action=replays` flow (W14)
+
+The W14 wave wires a no-co-param deep-link to Bishop's
+metadata-only replay listing endpoint:
+
+```
+/?action=replays
+```
+
+No co-param needed (the listing is a single-shot fetch).
+Dispatch:
+
+1. `parseActionFromUrl()` returns `"replays"`.
+2. `handlePwaActionFromUrl()` switches to the `replays` case.
+3. `dispatchReplays()`:
+   a. Strips `action` and rewrites the path to `/replays`.
+   b. Lazy-imports `./replays-listing` (a sub-5 kB W14 chunk).
+   c. Calls `openReplaysListing()` which fetches
+      `GET /api/replays` (Bishop W14 listing endpoint).
+   d. On success: renders a table of recent replays
+      (completedAt + variant + turnCount columns; each row
+      links to `?action=replay&replayId=<id>`, the W12
+      deep-link the action-router already handles).
+   e. On 404 / 5xx / network error / empty array: renders an
+      in-overlay placeholder.
+
+Wire shape Bishop emits (defensively parsed):
+
+```jsonc
+// 200 OK
+{
+  "replays": [
+    {
+      "replayId":    "replay-guid",
+      "completedAt": "2026-05-24T01:00:00Z",
+      "variant":     "changsha",
+      "turnCount":   142
+    }
+    /* ... */
+  ]
+}
+```
+
+Bare top-level array tolerated; per-row aliases tolerated
+(`id` for `replayId`, `completedAtUtc` for `completedAt`).
+
+Selector contract: `replays-listing-overlay`,
+`replays-listing-card`, `replays-listing-table`,
+`replays-listing-row`, `replays-listing-open`,
+`replays-listing-close`.
+
+### §3.4 — `?action=admin-cost` flow (W14)
+
+Admin-only deep-link to Bishop's commentary cost summary:
+
+```
+/?action=admin-cost
+```
+
+Two-step gate: client-side admin probe via `/api/auth/me`
+(unauthenticated → redirect to `/` for the sign-in modal),
+then the backend's own 403 covers the actual admin role
+check. Dispatch:
+
+1. `parseActionFromUrl()` returns `"admin-cost"`.
+2. `handlePwaActionFromUrl()` switches to the `admin-cost` case.
+3. `dispatchAdminCost()`:
+   a. Strips `action` and rewrites the path to
+      `/admin/commentary-cost`.
+   b. Fetches `/api/auth/me` first — if `authenticated` is
+      not `true`, calls `redirectToLobbyForSignIn()` (mirrors
+      the W13 spectator-handoff 401 path).
+   c. Lazy-imports `./admin-cost` (a sub-6 kB W14 chunk).
+   d. Calls `openCommentaryCostPanel()` which fetches
+      `GET /api/commentary/cost/summary` (Bishop W14
+      admin-only endpoint).
+   e. On 200: renders the summary card
+      ("$X.XX / $Y.YY (Z%)") + the per-model cost table.
+   f. On 401: closes the overlay and redirects to `/`
+      (defensive backstop — the pre-flight should have caught
+      this).
+   g. On 403: in-overlay "Admins only" placeholder (the
+      surface still mounts so a non-admin who lands on the
+      URL sees a clear no-go message rather than bouncing
+      back to the lobby with no context).
+   h. On 404 / 5xx / network error: in-overlay
+      "Cost summary unavailable" placeholder.
+
+Wire shape Bishop emits (defensively parsed):
+
+```jsonc
+// 200 OK
+{
+  "currentMonthCost": 47.83,
+  "budgetCapUsd":     100.00,
+  "percentUsed":      47.83,        /* 0-100; 0-1 fractions tolerated */
+  "byModel": [
+    { "model": "gpt-4o-mini", "costUsd": 32.10, "callCount": 1281 },
+    { "model": "gpt-4o",      "costUsd": 15.73, "callCount":  102 }
+  ]
+}
+```
+
+Rows are sorted descending by `costUsd` before render so the
+top-spend model surfaces first.
+
+Selector contract: `admin-cost-overlay`, `admin-cost-card`,
+`admin-cost-summary`, `admin-cost-current`, `admin-cost-cap`,
+`admin-cost-percent`, `admin-cost-table`,
+`admin-cost-model-row`, `admin-cost-close`. The `pct`
+element emits one of `admin-cost-pct-ok` /
+`admin-cost-pct-warn` / `admin-cost-pct-critical` based on
+% used (<80 / 80-94 / ≥95).
 
 
 Any keyword not in this table returns `null` from
@@ -339,6 +528,13 @@ Adding any of these requires the §4 two-PR contract.
 > W12 cashed in the `replay` reservation — see §3 + §2 for the
 > co-parameter contract (`?action=replay&replayId=<guid>` →
 > `/api/replays/{replayId}` → `/replay/{replayId}`).
+>
+> W14 added three new keywords backed by Bishop's W14 listing
+> endpoints: `bracket` (with `tournamentId` co-param; §3.2),
+> `replays` (no co-param; §3.3), and `admin-cost` (admin-gated;
+> §3.4). None of these were reserved in §7 — they were carved
+> directly during the W14 charter, which is fine because each
+> ships its own dedicated lazy chunk + overlay surface.
 
 ## §8 — Failure modes
 

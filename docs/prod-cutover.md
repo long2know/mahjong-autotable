@@ -547,6 +547,153 @@ reverted per §6.6. The panel mapping:
 Hudson owns the panels; DevOps owns the apply PRs; the squad
 gates each PR on a green panel screenshot in the PR description.
 
+### 6.8 Post-cutover patch enablement (W14 wire-up)
+
+> Phase K Wave 14 — Apone (DevOps). W13 shipped the PR-ready
+> patch file `redis-envfrom-required-patch.yaml`; W14 PRE-WIRES
+> it into the prod kustomization as a COMMENTED-OUT `patches:`
+> entry so the cutover-day enablement is a single-line
+> uncomment instead of a multi-line block add. The patch
+> still does NOT apply this wave — Stephen uncomments after
+> the §6.2 pre-conditions are green.
+
+#### 6.8.1 Pre-wired state (what landed in W14)
+
+`infra/k8s/overlays/prod/kustomization.yaml` now contains
+(immediately after the W12 Redis envFrom patch block):
+
+```yaml
+  # - path: redis-envfrom-required-patch.yaml  # ENABLE AT PROD CUTOVER per docs/prod-cutover.md §6.8
+  #   target:
+  #     kind: Deployment
+  #     name: mahjong-autotable
+```
+
+A `kustomize build infra/k8s/overlays/prod/` with the entry
+COMMENTED produces output IDENTICAL to the W13 baseline (the
+W14 wire-up is a comment-only change to the file's YAML
+content; kustomize parses the commented entry as a no-op).
+Verify with the §6.8.4 invariant check below.
+
+#### 6.8.2 Enablement procedure (cutover day)
+
+The four `§6.2` Gate 1 pre-conditions MUST be green before
+following this procedure:
+
+1. Verify pre-conditions one final time (one-shot smoke
+   covering all four):
+   ```bash
+   # Pod readiness (a)
+   kubectl --context=mahjong-prod -n mahjong-prod \
+     get pods -l app.kubernetes.io/name=mahjong-autotable \
+     -o jsonpath='{range .items[*]}{.metadata.name} {.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+   # All rows MUST be "<podname> True".
+
+   # ESO sync errors (b)
+   kubectl --context=mahjong-prod -n external-secrets \
+     get externalsecret -A -o jsonpath='{range .items[*]}{.metadata.name} {.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+   # All rows MUST be "<name> True". No "False" or "Unknown".
+
+   # mahjong-redis-prod 14-day SecretSynced=True (c)
+   kubectl --context=mahjong-prod -n mahjong-prod \
+     get externalsecret mahjong-redis-prod -o yaml | \
+     yq '.status.conditions[] | select(.type=="SecretSynced") | .lastTransitionTime'
+   # MUST be >= 14 days before the cutover-day date.
+
+   # Staging rehearsal (d) — verify the staging-overlay PR
+   # cycle has landed and reverted cleanly. The staging-side
+   # is a separate PR; cross-reference its merge SHA.
+   ```
+
+2. OPEN the wave-scoped PR
+   `stlong/phase-k-wave-NN-redis-envfrom-required` (NN = the
+   wave that owns the cutover-day flip). The PR's only diff
+   is the FOUR-LINE uncomment in `kustomization.yaml`:
+   ```diff
+   -  # - path: redis-envfrom-required-patch.yaml  # ENABLE AT PROD CUTOVER per docs/prod-cutover.md §6.8
+   -  #   target:
+   -  #     kind: Deployment
+   -  #     name: mahjong-autotable
+   +  - path: redis-envfrom-required-patch.yaml  # ENABLED per docs/prod-cutover.md §6.8 (cutover-day flip)
+   +    target:
+   +      kind: Deployment
+   +      name: mahjong-autotable
+   ```
+
+3. Verify the build delta is the EXPECTED single-line change:
+   ```bash
+   git diff origin/main -- infra/k8s/overlays/prod/kustomization.yaml
+   kustomize build infra/k8s/overlays/prod/ | \
+     grep -A 4 'name: mahjong-redis-prod' | head -8
+   # Output MUST show:
+   #     name: mahjong-redis-prod
+   #     optional: false        <- NEW (W14 baseline: optional: true)
+   ```
+
+4. PR reviewers gate on §6.2 pre-conditions green + the
+   one-line diff above. Merge as a MERGE-COMMIT (NOT squash)
+   so §6.6 rollback is `git revert <merge-sha>`.
+
+5. After merge, the rollout follows `kubectl apply -k
+   infra/k8s/overlays/prod/` via the operator's standard
+   apply path (the W12 wire-up is in-band — no separate
+   helm sync needed). Watch the rollout:
+   ```bash
+   kubectl --context=mahjong-prod -n mahjong-prod \
+     rollout status deploy/prod-mahjong-autotable -w
+   ```
+   Any `CreateContainerConfigError` indicates the
+   `mahjong-redis-prod` Secret is NOT present — ROLL BACK per
+   §6.6 (`git revert` the merge-commit + re-apply).
+
+#### 6.8.3 Index-pin contract — W14 baseline
+
+The `redis-envfrom-required-patch.yaml` file pins the JSON-
+Patch path to `/spec/template/spec/containers/0/envFrom/4/secretRef/optional`.
+The `/4` index targets the W12 Redis envFrom entry given the
+W14 envFrom array layout:
+
+| Index | Source | Wave | Optional? (W14) | Optional? (post-flip) |
+|-------|--------|------|------------------|------------------------|
+| 0 | configMapRef: `mahjong-autotable` | base | n/a | n/a |
+| 1 | secretRef: `mahjong-autotable` | base | false | false (omnibus — fail-CLOSED) |
+| 2 | secretRef: `mahjong-jwt-keys` | W4 | true | true (§6 Gate 2 separate) |
+| 3 | secretRef: `mahjong-jwt-rsa-keys` | W7 | true | true (§6 Gate 3 separate) |
+| 4 | secretRef: `mahjong-redis-prod` | W12 | true | **false (Gate 1)** |
+
+The Gate 1 flip targets index 4 ONLY. If a future wave
+inserts an envFrom entry BEFORE index 4, the patch file's
+`/4` path pin shifts and a same-PR update to the patch file
+is REQUIRED (per the patch file's own header — "future-
+proofing" comment). The W14 baseline is the contract.
+
+#### 6.8.4 Pre-flip invariant (W14 close)
+
+Confirm at W14 close that the commented entry is a no-op
+against the build output:
+
+```bash
+kustomize build infra/k8s/overlays/prod/ > /tmp/w14-build.yaml
+git stash             # hide the W14 changes
+kustomize build infra/k8s/overlays/prod/ > /tmp/w13-build.yaml
+diff /tmp/w14-build.yaml /tmp/w13-build.yaml
+# EXPECTED: empty diff (the commented-out patches: entry is
+# parsed as a no-op by kustomize v5.4.3).
+git stash pop         # restore the W14 changes
+```
+
+A non-empty diff at W14 close means the W14 wire-up
+accidentally landed an active patch — REVERT the W14 commit
+and re-do the wire-up with the comment-prefix `# ` correctly
+applied to ALL four lines of the patches: entry.
+
+#### 6.8.5 Rollback (post-uncomment)
+
+The §6.6 generic rollback applies: `git revert <merge-sha>` +
+`kubectl apply -k infra/k8s/overlays/prod/`. The W14 baseline
+(commented entry) restores the W12 fall-through (`optional:
+true`) immediately on apply.
+
 ---
 
 ## Cross-references

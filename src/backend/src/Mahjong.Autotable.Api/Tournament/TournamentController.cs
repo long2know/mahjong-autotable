@@ -31,11 +31,80 @@ public sealed class TournamentController : ControllerBase
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly AuthCookieService _cookies;
+    private readonly IBracketStore? _bracketStore;
+    private readonly BracketQueryOptions? _bracketQueryOptions;
 
-    public TournamentController(IServiceScopeFactory scopeFactory, AuthCookieService cookies)
+    public TournamentController(
+        IServiceScopeFactory scopeFactory,
+        AuthCookieService cookies,
+        IBracketStore? bracketStore = null,
+        BracketQueryOptions? bracketQueryOptions = null)
     {
         _scopeFactory = scopeFactory;
         _cookies = cookies;
+        _bracketStore = bracketStore;
+        _bracketQueryOptions = bracketQueryOptions;
+    }
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Paginated query over the durable
+    /// bracket store landed in W12 + wired through
+    /// <see cref="TournamentService"/> in W13. Returns every
+    /// <see cref="BracketRecord"/> for the supplied tournament in
+    /// <c>(RoundNumber, MatchSlot)</c> order. The page is pinned by
+    /// the <c>skip</c> + <c>limit</c> query parameters; the
+    /// server-side page-size default is configurable via
+    /// <c>Tournament:BracketPageSize</c>.
+    ///
+    /// <para>Anonymous-allowed — bracket listings are public, the
+    /// same posture as <see cref="Bracket"/>. See
+    /// <c>docs/bracket-shape.md §5 "Bracket query API"</c>.</para>
+    /// </summary>
+    [HttpGet("{id:guid}/brackets")]
+    public async Task<IActionResult> BracketRecords(
+        [FromRoute] Guid id,
+        [FromQuery(Name = "skip")] int? skip,
+        [FromQuery(Name = "limit")] int? limit,
+        CancellationToken ct = default)
+    {
+        if (_bracketStore is null)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                error = "bracket-store-unavailable",
+            });
+        }
+
+        var configuredPageSize = _bracketQueryOptions?.PageSize ?? BracketQueryOptions.DefaultPageSize;
+        if (configuredPageSize <= 0) configuredPageSize = BracketQueryOptions.DefaultPageSize;
+        if (configuredPageSize > BracketQueryOptions.MaxPageSize)
+            configuredPageSize = BracketQueryOptions.MaxPageSize;
+        var take = Math.Clamp(limit ?? configuredPageSize, 1, BracketQueryOptions.MaxPageSize);
+        var skipN = Math.Max(0, skip ?? 0);
+
+        var rows = await _bracketStore.ListAsync(id, ct);
+        var pageRows = rows.Skip(skipN).Take(take).ToArray();
+        return Ok(new
+        {
+            tournamentId = id,
+            totalCount = rows.Count,
+            count = pageRows.Length,
+            skip = skipN,
+            limit = take,
+            pageSize = configuredPageSize,
+            items = pageRows.Select(r => new
+            {
+                id = r.Id,
+                tournamentId = r.TournamentId,
+                roundNumber = r.RoundNumber,
+                matchSlot = r.MatchSlot,
+                seedA = r.SeedA,
+                seedB = r.SeedB,
+                winnerSeed = r.WinnerSeed,
+                status = r.Status,
+                completedAt = r.CompletedAt,
+            }).ToArray(),
+        });
     }
 
     [HttpGet]

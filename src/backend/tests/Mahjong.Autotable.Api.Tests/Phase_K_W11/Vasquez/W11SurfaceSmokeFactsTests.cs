@@ -284,13 +284,14 @@ public sealed class W11SurfaceSmokeFactsTests
     {
         var asm = typeof(W11SurfaceSmokeFactsTests).Assembly;
         // W12 renames to Wave1ThroughKW12RegressionTests; W13
-        // renames to Wave1ThroughKW13RegressionTests. Accept any
-        // of the three names so this smoke stays green across
-        // each rename wave.
+        // renames to Wave1ThroughKW13RegressionTests; W14 renames
+        // to Wave1ThroughKW14RegressionTests. Accept any of the four
+        // names so this smoke stays green across each rename wave.
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW11RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW12RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW13RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 }

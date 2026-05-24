@@ -40,6 +40,27 @@ public interface IReplayStore
     /// <summary>Total row count — surfaced so tests can assert
     /// the insert path landed.</summary>
     Task<int> CountAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Paginated metadata-only listing
+    /// backing <c>GET /api/replays</c>. Filters by completed-at
+    /// range (<paramref name="fromUtc"/> / <paramref name="toUtc"/>
+    /// applied against <see cref="ReplayRecord.CompletedAt"/>) and
+    /// optional <paramref name="variant"/>. Returns
+    /// <see cref="ReplayRecord"/> shells with the compressed
+    /// payload column zeroed — the wire surface drops the heavy
+    /// payload (clients pull it via
+    /// <c>GET /api/replays/{replayId}</c>). Results are ordered
+    /// <c>CompletedAt</c> descending (most-recent first).
+    /// See <c>docs/replay-by-id.md §3</c>.
+    /// </summary>
+    Task<IReadOnlyList<ReplayRecord>> ListAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        string? variant,
+        int skip,
+        int take,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -91,6 +112,43 @@ public sealed class InMemoryReplayStore : IReplayStore
 
     public Task<int> CountAsync(CancellationToken ct = default) =>
         Task.FromResult(_rows.Count);
+
+    public Task<IReadOnlyList<ReplayRecord>> ListAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        string? variant,
+        int skip,
+        int take,
+        CancellationToken ct = default)
+    {
+        IEnumerable<ReplayRecord> q = _rows.Values;
+        if (fromUtc is { } f) q = q.Where(r => r.CompletedAt >= f);
+        if (toUtc is { } t) q = q.Where(r => r.CompletedAt <= t);
+        if (!string.IsNullOrWhiteSpace(variant))
+        {
+            var v = variant.Trim();
+            q = q.Where(r => string.Equals(r.Variant, v, StringComparison.OrdinalIgnoreCase));
+        }
+        IReadOnlyList<ReplayRecord> rows = q
+            .OrderByDescending(r => r.CompletedAt)
+            .Skip(Math.Max(0, skip))
+            .Take(Math.Max(0, take))
+            .Select(r => new ReplayRecord
+            {
+                ReplayId = r.ReplayId,
+                GameId = r.GameId,
+                CompletedAt = r.CompletedAt,
+                Variant = r.Variant,
+                TurnCount = r.TurnCount,
+                IngestedAt = r.IngestedAt,
+                ExpiresAt = r.ExpiresAt,
+                // Metadata-only — clients fetch the payload via
+                // GET /api/replays/{replayId}.
+                CompressedPayload = Array.Empty<byte>(),
+            })
+            .ToList();
+        return Task.FromResult(rows);
+    }
 }
 
 /// <summary>
@@ -177,6 +235,46 @@ public sealed class EfReplayStore : IReplayStore
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         return await db.Replays.CountAsync(ct);
     }
+
+    public async Task<IReadOnlyList<ReplayRecord>> ListAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        string? variant,
+        int skip,
+        int take,
+        CancellationToken ct = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        IQueryable<ReplayRecord> q = db.Replays.AsNoTracking();
+        if (fromUtc is { } f) q = q.Where(r => r.CompletedAt >= f);
+        if (toUtc is { } t) q = q.Where(r => r.CompletedAt <= t);
+        if (!string.IsNullOrWhiteSpace(variant))
+        {
+            var v = variant.Trim();
+            q = q.Where(r => r.Variant == v);
+        }
+        // Metadata-only projection — the heavy CompressedPayload
+        // column is intentionally dropped from the wire so the
+        // listing endpoint stays cheap even when the result set
+        // spans tens of thousands of rows.
+        return await q
+            .OrderByDescending(r => r.CompletedAt)
+            .Skip(Math.Max(0, skip))
+            .Take(Math.Max(0, take))
+            .Select(r => new ReplayRecord
+            {
+                ReplayId = r.ReplayId,
+                GameId = r.GameId,
+                CompletedAt = r.CompletedAt,
+                Variant = r.Variant,
+                TurnCount = r.TurnCount,
+                IngestedAt = r.IngestedAt,
+                ExpiresAt = r.ExpiresAt,
+                CompressedPayload = Array.Empty<byte>(),
+            })
+            .ToListAsync(ct);
+    }
 }
 
 /// <summary>
@@ -244,6 +342,28 @@ public sealed class ReplayOptions
     /// admin gating.
     /// </summary>
     public bool RequireAdminForPost { get; set; } = true;
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Default page size for the
+    /// metadata-only listing endpoint
+    /// (<c>GET /api/replays</c>). Bound from
+    /// <c>Replays:PageSize</c>. See
+    /// <c>docs/replay-by-id.md §3</c>.
+    /// </summary>
+    public const int DefaultPageSize = 25;
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Hard upper bound on the listing
+    /// page size — larger client-supplied <c>limit</c> values are
+    /// silently clamped.
+    /// </summary>
+    public const int MaxPageSize = 100;
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Server-side default page size.
+    /// 0 / negative → use <see cref="DefaultPageSize"/>.
+    /// </summary>
+    public int PageSize { get; set; } = DefaultPageSize;
 }
 
 /// <summary>

@@ -2567,3 +2567,152 @@ covered by the same shared-file lane-discipline rule.
 under `tests/e2e/` and are inventoried above. The matching
 backend mirror tests live under
 `src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W13/Vasquez/`.*
+
+---
+
+## Phase K Wave 14 — Hicks (Frontend) footer
+
+W14 wires three new deep-link action keywords backed by
+Bishop's W14 listing endpoints. Each surface ships its own
+lazy chunk + DOM overlay; selectors are documented here so
+Vasquez's W14+ specs can wire stable testids before the
+overlays land on `main`.
+
+### W14 action keywords contract
+
+| Keyword | Co-param | Endpoint | Surface module |
+|---------|----------|----------|----------------|
+| `bracket` | `tournamentId=<guid>` | `GET /api/tournaments/{id}/brackets` | `src/bracket-listing.ts` |
+| `replays` | — | `GET /api/replays` | `src/replays-listing.ts` |
+| `admin-cost` | — | `GET /api/commentary/cost/summary` (admin-gated; pre-flighted via `GET /api/auth/me`) | `src/admin-cost.ts` |
+
+Full router contract: `docs/frontend-routing.md` §3 table +
+§3.2 (`bracket`), §3.3 (`replays`), §3.4 (`admin-cost`).
+
+### W14 selector inventory
+
+#### `bracket-listing` (W14, Hicks)
+
+| Selector | Element | Notes |
+|----------|---------|-------|
+| `data-testid="bracket-listing-overlay"` | Root fixed-position overlay div | Mounted to `document.body` on dispatch; click outside closes. |
+| `data-testid="bracket-listing-card"` | Inner card panel | Sits inside the overlay; carries the title + close button + grid. |
+| `data-testid="bracket-listing-close"` | Close button | Top-right; also triggered by ESC. |
+| `data-testid="bracket-listing-grid"` | Rounds grid container | CSS-grid layout; one column per round. |
+| `data-testid="bracket-listing-round-{n}"` | Per-round column | `{n}` is 1-indexed `roundNumber`. |
+| `data-testid="bracket-listing-match"` | Per-match card | One per `BracketRecord`. |
+| `data-testid="bracket-listing-player-a"` | Player A name / seed | Receives `.bracket-listing-winner` class when `winnerSeed === seedA`. |
+| `data-testid="bracket-listing-player-b"` | Player B name / seed | Receives `.bracket-listing-winner` class when `winnerSeed === seedB`. |
+| `data-testid="bracket-listing-status"` | Status badge | Renders `completed` / `in-progress` / `pending` text + class. |
+| `data-testid="bracket-listing-empty"` | Empty-state placeholder | Renders when `brackets` array is empty / null / parse-failure. |
+| `data-testid="bracket-listing-loading"` | Loading-state placeholder | Shown until the fetch resolves. |
+
+#### `replays-listing` (W14, Hicks)
+
+| Selector | Element | Notes |
+|----------|---------|-------|
+| `data-testid="replays-listing-overlay"` | Root overlay div | Same mounting pattern as bracket-listing. |
+| `data-testid="replays-listing-card"` | Inner card panel | Title + close + table. |
+| `data-testid="replays-listing-close"` | Close button | Top-right + ESC. |
+| `data-testid="replays-listing-table"` | Table element | `<table>`, sorted by `completedAt` desc. |
+| `data-testid="replays-listing-row"` | Per-replay row | One per `ReplayMeta`. |
+| `data-testid="replays-listing-open"` | Open-replay link | `<a>` with `href="?action=replay&replayId=<id>"`. |
+| `data-testid="replays-listing-empty"` | Empty-state | Renders when `replays` array is empty / null / parse-failure. |
+| `data-testid="replays-listing-loading"` | Loading-state | Shown until the fetch resolves. |
+
+#### `admin-cost` (W14, Hicks)
+
+| Selector | Element | Notes |
+|----------|---------|-------|
+| `data-testid="admin-cost-overlay"` | Root overlay div | |
+| `data-testid="admin-cost-card"` | Inner card panel | Summary + table. |
+| `data-testid="admin-cost-close"` | Close button | |
+| `data-testid="admin-cost-summary"` | Summary card container | Wraps current / cap / percent. |
+| `data-testid="admin-cost-current"` | Current-month-cost value | Formatted as `$XX.XX`. |
+| `data-testid="admin-cost-cap"` | Budget cap value | Formatted as `$XX.XX`. |
+| `data-testid="admin-cost-percent"` | Percent-used value | Emits one of `admin-cost-pct-ok` / `admin-cost-pct-warn` / `admin-cost-pct-critical` class based on `<80` / `80-94` / `>=95`. |
+| `data-testid="admin-cost-table"` | Per-model table | Sorted by `costUsd` desc. |
+| `data-testid="admin-cost-model-row"` | Per-model row | One per `byModel` entry. |
+| `data-testid="admin-cost-empty"` | Empty-state placeholder | Renders when `byModel` is empty / 403 / parse-failure. The 403 path renders the "Admins only" copy. |
+| `data-testid="admin-cost-loading"` | Loading-state | Shown until the fetch resolves. |
+
+### Defensive wire-shape posture (W14)
+
+All three W14 overlays parse Bishop's wire shape
+defensively (per `docs/frontend-routing.md` §3.2-§3.4):
+
+* Top-level shape tolerated as either `{ brackets|replays|byModel: [...] }` OR a bare `[...]`.
+* Per-row aliases tolerated (e.g. `id` for `replayId`,
+  `completedAtUtc` for `completedAt`).
+* `percentUsed` tolerates both `0-100` integer and `0-1`
+  fractional ranges.
+* Player names tolerate both bare strings and
+  `{ displayName: '...' }` objects.
+
+If Bishop's W14 endpoints emit a shape we don't recognise,
+the overlays render the `*-empty` placeholder rather than
+crashing. Vasquez's W14+ specs should assert this graceful-
+drift behaviour explicitly.
+
+### Shared-file authorship pin
+
+`tests/selectors.md` remains a `shared_files.selectors_md_shared`
+entry in `tests/ci/lane-map.json` (authors: `hicks` +
+`vasquez`, primary: `vasquez`). The W14 Hicks footer
+appended here covers only the W14 frontend surfaces; the
+W14 Vasquez QA footer (if any) is hers to land.
+
+---
+
+*Phase K Wave 14 — Hicks (Frontend). W14 footer appended
+with the three new action keywords (`bracket` / `replays` /
+`admin-cost`) + their selector inventories. Pairs with the
+W14 Hicks deliverables in `Phase_K_W14/Hicks/`.*
+
+---
+
+## Phase K Wave 14 — Vasquez (QA) footer
+
+Six new Playwright specs land in this wave under
+`src/frontend/autotable-src/tests/e2e/`. All chromium-only,
+all forward-stage tolerant via `testInfo.annotations.push({
+type: 'forward-stage', … })` when surfaces are still
+converging. Each spec pairs with a Vasquez backend mirror in
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W14/Vasquez/`.
+
+| # | Spec | Surface pinned |
+|---|------|----------------|
+| 1 | `bracket-ui-route.spec.ts` | Hicks W14 `?action=bracket&tournamentId=…` deep-link route; renders without throwing or forward-stages when not yet wired. Pairs with `HicksW14BracketUiRouteTests.cs`. |
+| 2 | `replay-listing-route.spec.ts` | Hicks W14 `?action=replays` deep-link route; renders without throwing or forward-stages. Pairs with `HicksW14ReplayListingUiTests.cs`. |
+| 3 | `commentary-cost-admin-panel.spec.ts` | Hicks W14 `?action=admin-cost` admin-only panel route; pairs with `HicksW14CommentaryCostAdminPanelTests.cs` + the Bishop `CommentaryCostController`. |
+| 4 | `visual-regression-real-captures.spec.ts` | Real-capture visual regression at the 2% pixel-diff tolerance across canonical app routes; first runs record baselines, missing origins annotate. Extends `manifest-screenshots-visual.spec.ts` with live-origin captures. |
+| 5 | `lh13-thresholds-hard-pinned-final.spec.ts` | LH13 FINAL hard-pin at the W11 §7 calibration values — the consumer-side hard-pin gate per `docs/frontend-pwa-audit.md §6.3`. Forward-staged today; flips to hard-assert once the cron converges. |
+| 6 | `jwks-overlap-rollback-rejected.spec.ts` | JWKS rotation overlap-window protection: a rollback POST during overlap must return 4xx/5xx. Pairs with `BishopW14JwksOverlapRollbackTests.cs`. |
+
+### Visual-regression spec fix (W14)
+
+`manifest-screenshots-visual.spec.ts` (originally landed in W12)
+got a W14 fix: `await page.goto('/')` is now called BEFORE
+`page.setContent()` so the relative `<img src="/foo.png">` URLs
+inside the content resolve against the baseURL origin instead of
+`about:blank`. See `docs/test-architecture.md §5.2` for the
+methodology note. The spec retains its forward-stage tolerant
+posture (origin-unreachable annotates and passes).
+
+### Shared-file authorship pin
+
+`tests/selectors.md` is a `shared_files.selectors_md_shared`
+entry in `tests/ci/lane-map.json` (authors: `hicks` +
+`vasquez`, primary: `vasquez`). The W14 Vasquez footer
+appended here pairs with the W14 Hicks footer above and is
+covered by the same shared-file lane-discipline rule.
+
+---
+
+*Phase K Wave 14 — Vasquez (QA). Six Playwright specs land
+under `tests/e2e/` and are inventoried above. The matching
+backend mirror tests live under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W14/Vasquez/`.
+The W12-era `manifest-screenshots-visual.spec.ts` was fixed
+in this wave (page.goto before setContent) — see
+`docs/test-architecture.md §5.2`.*

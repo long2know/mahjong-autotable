@@ -64,6 +64,11 @@ const KEY_PATTERNS = [
   { key: 'audit',          re: /^audit\.[0-9a-f]+\.js$/ },
   { key: 'history',        re: /^history\.[0-9a-f]+\.js$/ },
   { key: 'tour',           re: /^tour\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 14 — new lazy overlays for the W14 action keywords.
+  // Each is a sub-10 kB chunk loaded on demand by `action-router.ts`.
+  { key: 'bracket-listing', re: /^bracket-listing\.[0-9a-f]+\.js$/ },
+  { key: 'replays-listing', re: /^replays-listing\.[0-9a-f]+\.js$/ },
+  { key: 'admin-cost',      re: /^admin-cost\.[0-9a-f]+\.js$/ },
 ];
 
 function parseArgs() {

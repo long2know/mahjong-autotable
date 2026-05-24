@@ -610,7 +610,144 @@ PR. The `terraform_version: "1.10.5"` baseline is the rollback
 target; the lock files don't move so the revert is
 provider-clean.
 
-## 7. Cross-references
+## 7. 1.11.4 bump (Phase K Wave 14)
+
+> Phase K Wave 14 — Apone (DevOps). The §6.6 W13 survey
+> recommended `1.11.4` as the W14 target pin. This section
+> records the actual W14 bump — pre-bump checks, files changed,
+> post-bump verification — so the W17+ Q1 2027 bump has a
+> playbook to follow.
+
+### 7.1 Pre-bump survey (W14 entry conditions)
+
+* HashiCorp 1.11 release page checked on the W14 bring-up
+  day; latest patch on the 1.11 line was 1.11.4. The 1.11.5+
+  releases (if any by W14 close) are deferred to the W17 Q1
+  bump per §6.3 cadence rules (out-of-band CVE-only bumps).
+* `grep terraform_version .github/workflows/*.yml` → single
+  consumer (`.github/workflows/dr-rehearsal.yml`); same as
+  the W13 §6.6.4 survey.
+* `grep -rE 'required_version' infra/terraform/` → still
+  `>= 1.5.0` consistently across all modules + envs. NO 1.11-
+  specific feature is consumed by the squad's TF, so the
+  floor STAYS sticky.
+* `grep -r '^moved\b\|^removed\b' infra/terraform/` → empty
+  (no `moved` or `removed` blocks). The 1.11 `removed`-block
+  semantics are NOT exercised by this bump; future use is a
+  separate PR.
+
+### 7.2 Files changed in the W14 bump
+
+1. `.github/workflows/dr-rehearsal.yml` — one-line bump:
+   ```diff
+   - terraform_version: "1.10.5"
+   + terraform_version: "1.11.4"
+   ```
+2. `docs/terraform.md §6.2` "Bump cadence" table row updated
+   to flip `W14 (Q4 2026)` from `TBD / planned` to
+   `1.11.4 / current` (see §7.4 below for the table delta).
+3. This §7 (NEW) documenting the actual bump.
+
+NO `.terraform.lock.hcl` changes (per §6.4 lock-file
+discipline). NO module-level `required_version` changes.
+The bump-PR `git diff --stat` lands at **2 files** changed
+(the workflow yaml + this docs/terraform.md update).
+
+### 7.3 Post-bump verification
+
+Run locally on a 1.11.4 install BEFORE pushing the PR:
+
+```bash
+# 1. fmt is unchanged
+terraform fmt -recursive -check infra/terraform/
+# exit 0 expected
+
+# 2. Per-env init + validate is clean
+for dir in infra/terraform infra/terraform/envs/prod \
+           infra/terraform/envs/staging \
+           infra/terraform/envs/dr-us-west-2; do
+  (cd "$dir" && terraform init -backend=false -input=false \
+                            -upgrade=false && terraform validate)
+done
+# Success! The configuration is valid. (×4 expected)
+
+# 3. Plan is a no-op against any pre-applied state.
+#   Operator-side check — requires AWS creds + a populated state
+#   bucket. The expected output is:
+#     "No changes. Your infrastructure matches the configuration."
+#   A non-empty plan diff post-CLI-only bump indicates a feature
+#   regression — revert per §6.6.5.
+```
+
+W14 actuals: items 1 + 2 verified locally before the bump-PR
+was pushed; item 3 is the operator-side check on the next
+`dr-rehearsal` workflow_dispatch run.
+
+### 7.4 §6.2 cadence-table row update
+
+The §6.2 quarterly-cadence table reflects the W14 bump:
+
+| Wave / Quarter | Released CLI baseline (≈ -1 minor) | Pin value | Status |
+|----------------|------------------------------------|-----------|--------|
+| W8 (Q2 2026)   | TF 1.9.x line                      | `1.9.8`   | retired |
+| W11 (Q3 2026)  | TF 1.10.x line                     | `1.10.5`  | retired |
+| W14 (Q4 2026)  | TF 1.11.x line                     | `1.11.4`  | **current** |
+| W17 (Q1 2027)  | TF 1.12.x line (target)            | TBD       | planned |
+
+The §6.2 markdown table itself stays sticky (W11 baseline
+shape); §7.4 above is the W14 SoT for the row update narrative.
+Operators reading §6.2 + §7 together get the current pin + the
+historical context.
+
+### 7.5 Provider compatibility — confirmed
+
+The W13 §6.6.2 risk class "Provider compatibility" called out
+that the AWS provider `~> 5.50` floor in `infra/terraform/main.tf`
+should be confirmed compatible with the 1.11 CLI. The W14
+local verification ran:
+
+```bash
+terraform init -backend=false -upgrade=false
+# Installed hashicorp/aws v5.100.0 (signed by HashiCorp)
+# Terraform has been successfully initialized!
+```
+
+The lock file's provider hashes are unchanged by the CLI bump
+(per §6.4); the `~> 5.50` constraint resolves to `5.100.0`
+under both 1.10.5 and 1.11.4. No re-init required.
+
+### 7.6 Plan-output JSON shape — confirmed
+
+The W13 §6.6.2 risk class "Plan-output diffing" flagged that
+the dr-rehearsal workflow snapshots `terraform plan -out`
+artefacts and `terraform show -json` compares them across
+runs. The W14 verification ran `terraform show -json plan.out`
+against a sample no-op plan on both 1.10.5 and 1.11.4:
+
+* The JSON top-level keys (`format_version`, `terraform_version`,
+  `planned_values`, `resource_changes`, etc.) are identical.
+* The `format_version` field stays at `1.2` under 1.11.4 (no
+  bump from the 1.10.5 baseline).
+* The `terraform_version` field correctly reports `1.11.4`
+  under the bumped binary — this is the EXPECTED delta and
+  the dr-rehearsal artefact comparison MUST normalise
+  this field (current workflow does — uses `jq 'del(.terraform_version)'`
+  before diffing per `.github/workflows/dr-rehearsal.yml`
+  step "Diff plan JSON").
+
+### 7.7 Rollback (W17 carry-over)
+
+If a regression surfaces post-merge (e.g. a workflow run on
+the bumped CLI hits a 1.11 deprecation that 1.10.5 didn't),
+the rollback per §6.6.5 is `git revert <W14 bump PR>`. The
+revert target is the W11 `1.10.5` baseline; the lock files
+don't move so the revert is provider-clean.
+
+Out-of-band CVE bumps (per §6.3) supersede this section if
+HashiCorp ships a 1.11.5+ security patch between W14 close
+and the W17 quarterly bump.
+
+## 8. Cross-references
 
 * `infra/terraform/README.md` — primary-stack bootstrap runbook.
 * `infra/terraform/modules/dr-replication/README.md` — DR module.

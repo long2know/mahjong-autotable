@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.Security.Claims;
 using Mahjong.Autotable.Api.Auth;
 using Mahjong.Autotable.Api.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 
 namespace Mahjong.Autotable.Api.Spectator;
 
@@ -48,17 +50,20 @@ public sealed class SpectatorHandoffController : ControllerBase
     private readonly JwtIssuingService _issuer;
     private readonly ILogger<SpectatorHandoffController> _logger;
     private readonly ISpectatorHandoffAuditStore? _audit;
+    private readonly IOptionsMonitor<SpectatorHandoffAuditOptions>? _auditOptions;
 
     public SpectatorHandoffController(
         AuthCookieService cookies,
         JwtIssuingService issuer,
         ILogger<SpectatorHandoffController> logger,
-        ISpectatorHandoffAuditStore? audit = null)
+        ISpectatorHandoffAuditStore? audit = null,
+        IOptionsMonitor<SpectatorHandoffAuditOptions>? auditOptions = null)
     {
         _cookies = cookies;
         _issuer = issuer;
         _logger = logger;
         _audit = audit;
+        _auditOptions = auditOptions;
     }
 
     [HttpPost("handoff")]
@@ -141,6 +146,105 @@ public sealed class SpectatorHandoffController : ControllerBase
     public sealed class HandoffBody
     {
         public Guid GameId { get; set; }
+    }
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Admin-only paginated query over the
+    /// W13 audit trail. The endpoint pins three filters: an optional
+    /// <c>gameId</c>, an optional UTC time range
+    /// (<c>from</c>/<c>to</c>) and the standard <c>skip</c>/<c>limit</c>
+    /// pair. Results carry the audited columns (no token material) so
+    /// the security review can reconstruct issuance history without
+    /// re-fetching the token store. See
+    /// <c>docs/spectator-handoff.md §4 "Audit query API"</c>.
+    /// </summary>
+    [HttpGet("handoff/audit")]
+    [EnableRateLimiting(RateLimitingExtensions.ApiPolicy)]
+    public async Task<IActionResult> QueryAudit(
+        [FromQuery(Name = "gameId")] Guid? gameId,
+        [FromQuery(Name = "from")] string? from,
+        [FromQuery(Name = "to")] string? to,
+        [FromQuery(Name = "skip")] int? skip,
+        [FromQuery(Name = "limit")] int? limit,
+        CancellationToken ct = default)
+    {
+        // Phase K Wave 14 — Bishop. HTTP precedence:
+        //   401 (no session) → 403 (non-admin) → 503 (store unwired) → 200.
+        var session = await _cookies.ResolveAsync(HttpContext, ct);
+        if (session is null)
+        {
+            return Unauthorized(new { error = "session-required" });
+        }
+        if (!string.Equals(session.Role, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "admin-required",
+            });
+        }
+        if (_audit is null)
+        {
+            // Defence in depth — without a store wired the endpoint
+            // cannot fulfil the query, so we surface 503 rather than
+            // returning an empty array (which could mask a real
+            // mis-configuration).
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                error = "audit-store-unavailable",
+            });
+        }
+
+        DateTime? fromUtc = ParseUtc(from);
+        if (!string.IsNullOrWhiteSpace(from) && fromUtc is null)
+        {
+            return BadRequest(new { error = "from must be an ISO 8601 UTC timestamp." });
+        }
+        DateTime? toUtc = ParseUtc(to);
+        if (!string.IsNullOrWhiteSpace(to) && toUtc is null)
+        {
+            return BadRequest(new { error = "to must be an ISO 8601 UTC timestamp." });
+        }
+
+        var configuredPageSize = _auditOptions?.CurrentValue.PageSize ?? SpectatorHandoffAuditOptions.DefaultPageSize;
+        if (configuredPageSize <= 0) configuredPageSize = SpectatorHandoffAuditOptions.DefaultPageSize;
+        if (configuredPageSize > SpectatorHandoffAuditOptions.MaxPageSize)
+            configuredPageSize = SpectatorHandoffAuditOptions.MaxPageSize;
+        var take = Math.Clamp(limit ?? configuredPageSize, 1, SpectatorHandoffAuditOptions.MaxPageSize);
+        var skipN = Math.Max(0, skip ?? 0);
+
+        var rows = await _audit.QueryAsync(gameId, fromUtc, toUtc, skipN, take, ct);
+        return Ok(new
+        {
+            items = rows.Select(r => new
+            {
+                id = r.Id,
+                userId = r.UserId,
+                gameId = r.GameId,
+                tokenJti = r.TokenJti,
+                issuedAt = r.IssuedAt,
+                scope = r.Scope,
+                clientIp = r.ClientIp,
+                userAgent = r.UserAgent,
+            }).ToArray(),
+            count = rows.Count,
+            skip = skipN,
+            limit = take,
+            pageSize = configuredPageSize,
+        });
+    }
+
+    private static DateTime? ParseUtc(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!DateTime.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed))
+        {
+            return null;
+        }
+        return DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
     }
 }
 

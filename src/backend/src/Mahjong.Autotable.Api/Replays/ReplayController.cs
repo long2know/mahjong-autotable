@@ -50,6 +50,84 @@ public sealed class ReplayController : ControllerBase
     }
 
     /// <summary>
+    /// Phase K Wave 14 — Bishop. Metadata-only listing endpoint
+    /// backing the replay browser. Filters by completed-at range
+    /// (<c>from</c>/<c>to</c>) and optional <c>variant</c>; page
+    /// pinned by <c>skip</c>/<c>limit</c>. The heavy payload is
+    /// intentionally dropped from the wire — clients pull a single
+    /// replay's payload via <c>GET /api/replays/{replayId}</c>.
+    /// See <c>docs/replay-by-id.md §3</c>.
+    /// </summary>
+    [HttpGet]
+    [EnableRateLimiting(RateLimiting.RateLimitingExtensions.ApiPolicy)]
+    public async Task<IActionResult> List(
+        [FromQuery(Name = "from")] string? from = null,
+        [FromQuery(Name = "to")] string? to = null,
+        [FromQuery(Name = "variant")] string? variant = null,
+        [FromQuery(Name = "skip")] int? skip = null,
+        [FromQuery(Name = "limit")] int? limit = null,
+        CancellationToken ct = default)
+    {
+        DateTime? fromUtc = ParseUtc(from);
+        if (!string.IsNullOrWhiteSpace(from) && fromUtc is null)
+        {
+            return BadRequest(new { error = "from must be an ISO 8601 UTC timestamp." });
+        }
+        DateTime? toUtc = ParseUtc(to);
+        if (!string.IsNullOrWhiteSpace(to) && toUtc is null)
+        {
+            return BadRequest(new { error = "to must be an ISO 8601 UTC timestamp." });
+        }
+        var configuredPageSize = _options.PageSize <= 0
+            ? ReplayOptions.DefaultPageSize
+            : _options.PageSize;
+        if (configuredPageSize > ReplayOptions.MaxPageSize)
+            configuredPageSize = ReplayOptions.MaxPageSize;
+        var take = Math.Clamp(limit ?? configuredPageSize, 1, ReplayOptions.MaxPageSize);
+        var skipN = Math.Max(0, skip ?? 0);
+
+        var rows = await _store.ListAsync(fromUtc, toUtc, variant, skipN, take, ct);
+        return Ok(new
+        {
+            items = rows.Select(r => new
+            {
+                replayId = r.ReplayId,
+                gameId = r.GameId,
+                completedAt = r.CompletedAt,
+                variant = r.Variant,
+                turnCount = r.TurnCount,
+                payloadSize = r.CompressedPayload?.Length ?? 0,
+                ingestedAt = r.IngestedAt,
+                expiresAt = r.ExpiresAt,
+            }).ToArray(),
+            count = rows.Count,
+            skip = skipN,
+            limit = take,
+            pageSize = configuredPageSize,
+            filters = new
+            {
+                from = fromUtc,
+                to = toUtc,
+                variant = string.IsNullOrWhiteSpace(variant) ? null : variant.Trim(),
+            },
+        });
+    }
+
+    private static DateTime? ParseUtc(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!DateTime.TryParse(
+                value,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var parsed))
+        {
+            return null;
+        }
+        return DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+    }
+
+    /// <summary>
     /// Fetch a single replay by id. Returns the metadata
     /// envelope plus the decompressed JSON play-by-play. 404
     /// when no row exists.

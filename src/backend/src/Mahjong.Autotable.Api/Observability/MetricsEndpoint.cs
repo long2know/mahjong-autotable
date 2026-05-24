@@ -102,7 +102,66 @@ public static class MetricsEndpoint
         var commentaryOptions = services.GetService<IOptionsMonitor<CommentaryOptions>>();
         AppendCommentaryCostMetric(sb, costBudget, commentaryOptions, DateTime.UtcNow);
 
+        // Phase K Wave 14 — Bishop. SignalR sequence store metrics —
+        // replay-from-ack counter (by hub + result), active rows
+        // gauge, retention-sweep deletion counter. The gauge samples
+        // the live store row count once per scrape so the dashboard
+        // does not need a separate query.
+        var seqMetrics = services.GetService<SignalRSequenceMetrics>();
+        var seqStore = services.GetService<ISignalRSequenceStore>();
+        AppendSignalRSequenceMetrics(sb, seqMetrics, seqStore);
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
+    }
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Emits the three SignalR sequence
+    /// metrics in Prometheus exposition format. HELP + TYPE
+    /// preambles are emitted unconditionally — when no metrics
+    /// service is wired the renderer falls back to a zeroed
+    /// envelope so dashboards see a stable schema.
+    /// </summary>
+    internal static void AppendSignalRSequenceMetrics(
+        StringBuilder sb,
+        SignalRSequenceMetrics? metrics,
+        ISignalRSequenceStore? store)
+    {
+        var rowCount = 0L;
+        if (store is not null)
+        {
+            try
+            {
+                rowCount = store.CountAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                rowCount = 0;
+            }
+        }
+        // Always render — the W14 collector is the source of truth
+        // for the metric schema. When no collector is registered we
+        // emit an empty (preamble-only) counter + a zero gauge so
+        // the Prometheus parser still sees a stable shape.
+        if (metrics is null)
+        {
+            sb.Append("# HELP ").Append(SignalRSequenceMetrics.MetricReplayFromAckTotal)
+              .AppendLine(" Total SignalR replay-from-ack queries resolved against the durable sequence store. Labelled by `hub` and `result` (`hit` / `miss` / `expired`).");
+            sb.Append("# TYPE ").Append(SignalRSequenceMetrics.MetricReplayFromAckTotal).AppendLine(" counter");
+
+            sb.Append("# HELP ").Append(SignalRSequenceMetrics.MetricStoreRowsActive)
+              .AppendLine(" Currently retained SignalR sequence rows across every (hub, connection) tracked by the durable store.");
+            sb.Append("# TYPE ").Append(SignalRSequenceMetrics.MetricStoreRowsActive).AppendLine(" gauge");
+            sb.Append(SignalRSequenceMetrics.MetricStoreRowsActive).Append(' ')
+              .AppendLine(Math.Max(0, rowCount).ToString(CultureInfo.InvariantCulture));
+
+            sb.Append("# HELP ").Append(SignalRSequenceMetrics.MetricRetentionSweepDeletedTotal)
+              .AppendLine(" Total SignalR sequence rows deleted by the retention sweep since the process started.");
+            sb.Append("# TYPE ").Append(SignalRSequenceMetrics.MetricRetentionSweepDeletedTotal).AppendLine(" counter");
+            sb.Append(SignalRSequenceMetrics.MetricRetentionSweepDeletedTotal).Append(' ')
+              .AppendLine("0");
+            return;
+        }
+        metrics.AppendPrometheus(sb, rowCount);
     }
 
     /// <summary>

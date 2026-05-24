@@ -286,3 +286,26 @@ public sealed class BracketStorageOptions
     /// <see cref="EfBracketStore"/> (default for prod).</summary>
     public string BracketStoreImpl { get; set; } = "InMemory";
 }
+
+/// <summary>
+/// Phase K Wave 14 — Bishop. Configuration knob for the
+/// admin-facing bracket query endpoint
+/// (<c>GET /api/tournaments/{id}/brackets</c>). Bound from the
+/// <c>Tournament</c> section so the page-size sits alongside the
+/// W12 bracket storage toggle. See
+/// <c>docs/bracket-shape.md §5</c>.
+/// </summary>
+public sealed class BracketQueryOptions
+{
+    /// <summary>Default page size when the caller omits the
+    /// <c>limit</c> query parameter.</summary>
+    public const int DefaultPageSize = 50;
+
+    /// <summary>Hard upper bound — larger <c>limit</c> values
+    /// are silently clamped.</summary>
+    public const int MaxPageSize = 200;
+
+    /// <summary>Server-side default page size. 0 / negative
+    /// → use <see cref="DefaultPageSize"/>.</summary>
+    public int PageSize { get; set; } = DefaultPageSize;
+}
