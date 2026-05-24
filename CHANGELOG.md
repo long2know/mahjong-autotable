@@ -19,8 +19,88 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-22-bringup`. Phase K Wave 22
+Working branch: `stlong/phase-k-wave-23-bringup`. Phase K Wave 23
 in flight. Other lane deliverables outstanding.
+
+## [0.32.0] — Phase K Wave 23 — 2027-03-05 (PR pending)
+
+**Theme:** Kyverno audit-mode launch 4th batch (NEW
+`infra/k8s/base/kyverno-policies/require-readonly-rootfs.yaml`
++ NEW `infra/k8s/base/kyverno-policies/require-runas-non-root.yaml`
+both launched in `validationFailureAction: Audit` mode with
+`failurePolicy: Ignore`, 5-WAVE grace window — extended from
+the W19/W21 5-day grace because the coverage shape applies to
+EVERY container in EVERY mahjong-prod Pod, and the composition
+risk surface against the existing W15/W16/W19/W21/W22 enforce-
+mode rules warrants a longer audit-window before the W28
+earliest enforce-flip; W23 rules close two gaps: (a)
+readOnlyRootFilesystem is a CIS 5.7.4 + NSA/CISA Pod Security
+baseline invariant the existing stack does NOT carry; (b) the
+W15 `=(runAsNonRoot): true` conditional-anchor only enforces
+the value when the field is PRESENT, so W23
+`require-runas-non-root` enforces field presence to guard
+against future base-image swaps to root-default images; both
+files documented in NEW `docs/kyverno-w23-additional-rules.md`
+covering the 5-wave audit-window snapshot procedure, expected
+outcomes per-wave checkpoint table, W28 enforce-flip cutover
+diff, rollback path, and W19-lineage cadence summary) + SLSA-3
+drift-detection first-run retro (NEW `docs/slsa-drift-retro.md`
+covering the W22-shipped `slsa-drift-detection.yml` first
+Monday-07:00-UTC cron run with the analysis runbook for when
+the first run completes — expected drift indicators by shape
+[semver tag / major-only / branch / latest / pre-release],
+expected baseline drift count of 0-9 [matches W20 sweep
+ledger's 9 vasquez-lane carry], structured remediation flow
+classifying each hit into vasquez-carry / new-regression /
+new-carve-out, drift-rewrite procedure with gh-api SHA lookup +
+actionlint gate + workflow_dispatch local validation, and
+W24+ hand-off for first-run capture once cron fires) + Mobile
+platform cross-check sanity workflow (NEW
+`.github/workflows/mobile-platform-cross-check.yml` firing on
+`workflow_run` after `mobile-build` + `workflow_dispatch` with
+explicit `run_id` input; downloads all 4 mobile-build artefacts
+[android, ios, tvos, watchos], asserts each leg produced at
+least one file in a configurable size band [1B floor, 500MiB
+ceiling — generous upper bound absorbs future real-build
+growth without false positives, strict lower bound catches the
+silent regression where a leg drops its artefact entirely],
+fails the run with a structured `$GITHUB_STEP_SUMMARY` listing
+MISSING + OUT_OF_BAND legs; closes the W22 silent-regression
+window where `if-no-files-found: warn` in `mobile-build.yml`
+lets a leg drop its artefact without failing the build) +
+us-east-1 V3 post-rollback drift reconciliation runbook (NEW
+`docs/us-east-1-v3-runbook.md` extending the W20 V2 rollback
+section with a structured post-rollback reconciliation path —
+8 drift surfaces catalogued [EKS aws-auth ConfigMap, R53
+latency, ESO mahjong-jwt-rsa-keys, Kyverno ClusterPolicies,
+Kyverno PolicyReports, Argo Rollouts AnalysisRun, coturn DH
+params, Hudson metric backfill] each with persistence shape +
+reconciliation owner; §3 reconciliation steps in execution
+order including SSM param audit, Kyverno CRD ghost-object
+reconciliation loop for the W23 9-policy baseline, Argo
+Rollouts AnalysisRun cleanup coordinated with Hicks, coturn
+Secret rebuild via the W6 ExternalSecret, Hudson panel-gap
+annotation for >1hr outages; 2 NEW V3-specific pre-flight
+rows extending V2's 8-row checklist; 2 NEW V3-specific failure
+shapes [SSM destroyed, Kyverno CRD ghost] catalogued with
+remediation; V4 candidates include folding the §3 reconciliation
+steps into the W21 `null_resource` provisioner) + Argo Rollouts
+post-install verification runbook (NEW
+`docs/argo-rollouts-post-install-verification.md` — 10-row
+checklist between W19 install completion + first production
+rollout: controller pod health, CRDs registered, admission
+webhook registered, W11 ingress applied, W12 NetworkPolicy
+applied, RBAC bindings landed, W9 AnalysisTemplate gates
+admitted, BlueGreen + Canary dry-render, Hudson panels return
+data, no-op rollout exercises controller without real traffic;
+each row carries verify command + expected output + failure
+shapes; §5 remediation paths map 1:1 to §3 failure rows;
+§4 sign-off documented as a comment on the W19 install PR;
+§6 audit-trail anchors via the no-op rollout's
+`verification-noop` annotation timestamp). All 6 deliverables
+land under apone-lane paths; `mobile/package.json` version
+field bumped `0.31.0 → 0.32.0` mirroring the CHANGELOG header
+cadence.
 
 ## [0.31.0] — Phase K Wave 22 — 2027-02-26 (PR pending)
 

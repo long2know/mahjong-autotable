@@ -1,0 +1,189 @@
+# Phase K Wave 23 — Apone (DevOps).
+#
+# Kyverno ClusterPolicy that REQUIRES every Pod in
+# `mahjong-prod` to declare
+# `securityContext.readOnlyRootFilesystem: true` on every
+# container. Audit-mode at W23 with a 5-wave grace window
+# (enforce-flip earliest W28 per the W19-lineage two-wave
+# cadence; longer grace appropriate here because rootfs
+# write-coupling is a common app-bootstrap shape we want
+# to flush from prod before the flip).
+#
+# # Why this matters
+#
+# A writable container root filesystem is a privilege-
+# escalation primitive:
+#
+#   * A compromised process can drop a binary into the
+#     image's `/usr/local/bin` and re-exec a backdoored
+#     sidecar on the next pod-restart loop (the W21
+#     `disallow-host-paths` rule closes the
+#     /var/run/docker.sock escape; this rule closes the
+#     in-container persistence escape).
+#   * Distroless base images (e.g.
+#     `gcr.io/distroless/dotnet:8` — the W15
+#     `enforce-prod-default` non-root-runner anchor)
+#     intentionally ship NO shell + NO package manager.
+#     `readOnlyRootFilesystem: true` makes that intent
+#     binding — a compromise that drops `wget` + `sh`
+#     into `/usr/bin` can't persist past the pod's
+#     working-set memory.
+#   * CIS Kubernetes Benchmark 5.7.4 + NSA/CISA
+#     Kubernetes Hardening Guidance §"Pod Security"
+#     both list rootfs read-only as a baseline POD
+#     hardening invariant. Our W15/W16/W19/W21/W22
+#     Kyverno coverage covers non-root, capability
+#     drops, network primitives, hostPath, and
+#     resource limits — but NOT rootfs read-only.
+#     W23 closes the gap.
+#
+# # Why a SEPARATE ClusterPolicy (not a new rule on
+# # `enforce-prod-default`)
+#
+# Mirrors the W19/W21 audit-mode launch pattern:
+#
+#   * Flipping `enforce-prod-default.validation
+#     FailureAction` to Audit just to launch a new
+#     rule would un-Enforce the W16-landed non-root
+#     rule. Audit-mode launches MUST live in a
+#     separate ClusterPolicy.
+#   * Cleaner audit trail — the W23 audit-window
+#     evidence sits next to the W23 rule rather than
+#     interleaved with W16/W19 history on
+#     `enforce-prod-default`.
+#   * Independent `failurePolicy: Ignore` during the
+#     audit window — a webhook outage during audit
+#     mode MUST NOT block admissions (audit-mode
+#     means we never DENY).
+#
+# # Pod-bootstrap escape hatches
+#
+# Some legitimate workloads need writable `/tmp` or
+# writable cache directories. The `volumeMounts` +
+# `emptyDir` shape is the operator escape hatch:
+#
+#   volumeMounts:
+#     - name: tmp
+#       mountPath: /tmp
+#     - name: cache
+#       mountPath: /var/cache/app
+#   volumes:
+#     - name: tmp
+#       emptyDir: {}
+#     - name: cache
+#       emptyDir: {}
+#
+# `readOnlyRootFilesystem: true` PLUS per-path
+# `emptyDir` mounts is the canonical "tightest"
+# Pod-Security shape. The audit-window's job is to
+# catch any prod workload that hasn't yet adopted
+# this pattern.
+#
+# # Why audit-mode FIRST (5-wave grace)
+#
+# Matches the W19 → W20 and W21 → W22 pre-wire → enforce
+# pattern, but with EXTENDED grace because:
+#
+#   * Existing prod workloads that wrote to rootfs
+#     surface as PolicyReports rather than admission
+#     denials — operator can pivot to `emptyDir`
+#     mounts on the affected paths over multiple
+#     waves rather than a compressed 5-day window.
+#   * The 5-wave grace gives the cluster a longer
+#     audit-trail snapshot to confirm zero false-
+#     positives before the flip.
+#   * Rollback path is a single `git revert <merge-
+#     commit>` — no admission impact on existing pods.
+#
+# Enforce-flip cutover earliest W28 (per the W19-lineage
+# cadence; W21→W22 ran on a 5-day grace, W23→W28 runs on
+# a 5-wave grace for the broader-coverage rule).
+#
+# # Wiring
+#
+# Out-of-band at W23 — NOT in `base/kustomization.yaml`.
+# Same rationale as the W19/W21 audit-mode launches
+# (Kyverno ClusterPolicies live at cluster scope, not in
+# any overlay namespace). Apply directly:
+#
+#   kubectl apply -f infra/k8s/base/kyverno-policies/require-readonly-rootfs.yaml
+#
+# # Cross-references
+#
+#   * `infra/k8s/base/kyverno-policies/disallow-host-paths.yaml`
+#     — W21/W22 hostPath-volumes deny (Enforce post-W22).
+#   * `infra/k8s/base/kyverno-policies/require-resource-limits.yaml`
+#     — W21/W22 resource-limits requirement (Enforce post-W22).
+#   * `infra/k8s/base/kyverno-policies/require-runas-non-root.yaml`
+#     — W23 companion audit-mode rule (runAsNonRoot explicit).
+#   * `docs/kyverno-w23-additional-rules.md` — W23 operator runbook.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-readonly-rootfs
+  annotations:
+    policies.kyverno.io/title: "Require readOnlyRootFilesystem on every Pod container (W23, Audit)"
+    policies.kyverno.io/category: "Pod Security / Hardening"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod, Deployment, StatefulSet, DaemonSet"
+    policies.kyverno.io/description: >-
+      W23 AUDIT-MODE launch. Requires every container in a
+      mahjong-prod Pod to declare
+      securityContext.readOnlyRootFilesystem: true. Pairs
+      with the W23 companion require-runas-non-root rule.
+      Audit window of 5 waves (W23 → W28 earliest enforce-
+      flip) lets operators pivot any rootfs-write-coupled
+      workload to the emptyDir-mounts escape hatch.
+spec:
+  # W23 audit-mode launch — mirrors W19/W21 audit-window
+  # discipline. The W28 cutover flips this to Enforce
+  # alongside `failurePolicy: Ignore → Fail`.
+  validationFailureAction: Audit
+  # `background: true` — pure validate rule; background
+  # scans against existing pods produce PolicyReports
+  # for any invariant drift. Same shape as W21 audit-mode.
+  background: true
+  webhookTimeoutSeconds: 30
+  # `failurePolicy: Ignore` — W23 audit-mode launch must
+  # NOT block admissions on webhook outage. Flips to
+  # `Fail` at the W28 enforce-flip (parallel to the
+  # W19→W20 and W21→W22 enforce-flip commits).
+  failurePolicy: Ignore
+  rules:
+    - name: require-readonly-rootfs
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - mahjong-prod
+      # Skip control-plane + Kyverno + ESO + argo-rollouts
+      # namespaces — they never run mahjong-prod workloads
+      # but the explicit skip preserves the W15/W19/W21
+      # pattern.
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - external-secrets
+                - argo-rollouts
+      validate:
+        message: >-
+          mahjong-prod Pods MUST declare
+          securityContext.readOnlyRootFilesystem: true
+          on every container. A writable container root
+          filesystem is a persistence + privilege-escalation
+          primitive; use `emptyDir` volume mounts for any
+          writable scratch paths (`/tmp`, app caches).
+          See docs/kyverno-w23-additional-rules.md §1.1.
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                securityContext:
+                  readOnlyRootFilesystem: true

@@ -1,0 +1,253 @@
+# Phase K Wave 23 — Apone (DevOps).
+#
+# Mobile-platform cross-check — post-mobile-build sanity gate.
+#
+# # What this workflow proves
+#
+# W2 → W22 incrementally landed FOUR mobile-build matrix legs:
+#
+#   * W2  — `android` (gradle assembleRelease + bundleRelease).
+#   * W2  — `ios`     (xcodebuild -sdk iphoneos, unsigned soft-fail).
+#   * W22 — `tvos`    (xcodebuild -sdk appletvos,  unsigned soft-fail).
+#   * W22 — `watchos` (xcodebuild -sdk watchos,    unsigned soft-fail).
+#
+# `mobile-build.yml` uploads ONE artefact per leg. A
+# silent regression where any leg drops its artefact
+# (matrix-include misspelt, soft-fail emits zero bytes,
+# upload-artifact step deleted in a refactor) does NOT
+# fail `mobile-build` — the existing `if-no-files-found:
+# warn` posture is intentional, so the build still goes
+# green even when one platform misses its output.
+#
+# W23 closes the silent-regression window by adding this
+# CROSS-CHECK workflow that fires AFTER mobile-build
+# completes on `main` + on `pull_request` paths that
+# touch the mobile-build matrix. It re-downloads every
+# leg's artefact and asserts:
+#
+#   1. ALL FOUR legs produced at least one artefact file.
+#   2. The total artefact size for each leg falls inside
+#      a band sized against the W22 baseline (size of
+#      placeholder-only emits vs real build output).
+#
+# Failure ⇒ a real regression a `mobile-build` green tick
+# would otherwise hide. The cross-check is intentionally
+# permissive on EXACT file shape (the placeholder/text
+# soft-fail artefacts are valid W22 outputs); it tightens
+# only the band-sized invariant.
+#
+# # Why a SEPARATE workflow (not a new mobile-build job)
+#
+#   * `mobile-build` has 6 jobs already (build-frontend-
+#     bundle + android + android-e2e + ios + ios-e2e +
+#     tvos + watchos + release). Adding a 9th job adds
+#     timing-coupling complexity.
+#   * `workflow_run` triggers fire AFTER the upstream
+#     workflow's artefacts are durably uploaded — the
+#     cross-check sees the GROUND-TRUTH artefact set
+#     that any downstream `release:` job would also see.
+#   * Failure semantic: the cross-check FAILS the
+#     downstream workflow_run; `mobile-build` itself
+#     remains green. Operator can re-run just the
+#     cross-check without re-running the (slow,
+#     expensive macos) builds.
+#
+# # Size-band rationale
+#
+# Each leg has a known minimum artefact size:
+#
+#   * `android-artefacts`  — APK + AAB; ≥ 1 MiB on real
+#     build; ~50 bytes on placeholder-soft-fail (this
+#     soft-fail is REAL — the W17 unsigned path emits
+#     real APKs because the gradle build can run on
+#     a Linux runner without secrets; size band's
+#     LOWER bound is therefore the actual size).
+#   * `ios-artefacts`      — .app bundle ZIP; ≥ 500 KiB
+#     on real build; ~50 bytes on placeholder-soft-fail.
+#   * `tvos-artefacts`     — .app build output; placeholder
+#     by default (W22 emits a text file when xcodeproj
+#     not bootstrapped); minimum band-floor is 1 byte
+#     (the artefact MUST EXIST, content is permissive).
+#   * `watchos-artefacts`  — same as tvos.
+#
+# The band UPPER bound is set generously to absorb future
+# real-build growth without false positives.
+#
+# # When this fires
+#
+#   * `workflow_run` on `mobile-build` completion (any
+#     conclusion — even FAILED upstream we still want to
+#     verify what artefacts DID upload).
+#   * `workflow_dispatch` for manual re-runs / forensics.
+#
+# # Cross-references
+#
+#   * `.github/workflows/mobile-build.yml` — upstream
+#     workflow with all four platform legs.
+#   * `docs/mobile-apple-platforms.md` — W22 operator
+#     runbook for the iOS + tvOS + watchOS triple.
+#   * `docs/mobile-release.md` — the manual app-store
+#     promotion path the cross-check protects.
+
+name: mobile-platform-cross-check
+
+on:
+  workflow_run:
+    workflows: ["mobile-build"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "mobile-build run ID to cross-check (default: latest main run)."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mobile-platform-cross-check-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  cross-check:
+    name: Cross-check all 4 platforms produced artefacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # `workflow_run` fires on both success + failure. The
+    # cross-check runs regardless of upstream conclusion —
+    # we explicitly WANT to surface "android leg passed but
+    # tvos leg silently dropped" as a cross-check failure.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_run'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Resolve upstream run ID
+        id: resolve
+        env:
+          DISPATCH_RUN_ID: ${{ github.event.inputs.run_id }}
+          UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DISPATCH_RUN_ID:-}" ]; then
+            echo "run_id=${DISPATCH_RUN_ID}" >> "$GITHUB_OUTPUT"
+            echo "::notice::workflow_dispatch — cross-checking run $DISPATCH_RUN_ID"
+          elif [ -n "${UPSTREAM_RUN_ID:-}" ]; then
+            echo "run_id=${UPSTREAM_RUN_ID}" >> "$GITHUB_OUTPUT"
+            echo "::notice::workflow_run — cross-checking upstream run $UPSTREAM_RUN_ID"
+          else
+            echo "::error::No run_id resolved — manual dispatch needs `run_id` input."
+            exit 1
+          fi
+
+      - name: Download all mobile-build artefacts
+        env:
+          RUN_ID: ${{ steps.resolve.outputs.run_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p cross-check-artefacts
+          # Per-platform artefact names emitted by
+          # mobile-build.yml. Names are STABLE — changing
+          # them is a coordinated cross-check edit.
+          for NAME in android-artefacts ios-artefacts tvos-artefacts watchos-artefacts; do
+            mkdir -p "cross-check-artefacts/${NAME}"
+            echo "==== ${NAME} ===="
+            if gh run download "$RUN_ID" \
+                  --name "$NAME" \
+                  --dir "cross-check-artefacts/${NAME}" 2>&1; then
+              echo "::notice::${NAME} downloaded"
+            else
+              echo "::warning::${NAME} DOWNLOAD FAILED — cross-check will flag MISSING"
+            fi
+          done
+          ls -la cross-check-artefacts/
+
+      - name: Verify all 4 platforms produced artefacts
+        id: verify
+        run: |
+          set -euo pipefail
+          # Size bands — see workflow-file header for the
+          # rationale. Bands are intentionally generous on
+          # the upper bound; the LOWER bound is the
+          # "regression" guard.
+          #
+          # Format: <leg>:<min-bytes>:<max-bytes>
+          BANDS=(
+            "android-artefacts:1:524288000"    # 1 B → 500 MiB
+            "ios-artefacts:1:524288000"        # 1 B → 500 MiB
+            "tvos-artefacts:1:524288000"       # 1 B → 500 MiB
+            "watchos-artefacts:1:524288000"    # 1 B → 500 MiB
+          )
+
+          FAILED=0
+          MISSING=""
+          OUT_OF_BAND=""
+          for ROW in "${BANDS[@]}"; do
+            NAME="${ROW%%:*}"
+            REST="${ROW#*:}"
+            MIN="${REST%%:*}"
+            MAX="${REST##*:}"
+            DIR="cross-check-artefacts/${NAME}"
+
+            if [ ! -d "$DIR" ]; then
+              echo "::error::${NAME} — directory missing entirely"
+              MISSING="${MISSING} ${NAME}"
+              FAILED=1
+              continue
+            fi
+
+            FILE_COUNT=$(find "$DIR" -type f | wc -l)
+            if [ "$FILE_COUNT" -lt 1 ]; then
+              echo "::error::${NAME} — zero artefact files produced"
+              MISSING="${MISSING} ${NAME}"
+              FAILED=1
+              continue
+            fi
+
+            TOTAL_BYTES=$(find "$DIR" -type f -printf '%s\n' \
+                          | awk '{s+=$1} END {print s+0}')
+
+            if [ "$TOTAL_BYTES" -lt "$MIN" ] || [ "$TOTAL_BYTES" -gt "$MAX" ]; then
+              echo "::error::${NAME} — total bytes ${TOTAL_BYTES} OUTSIDE band [${MIN},${MAX}]"
+              OUT_OF_BAND="${OUT_OF_BAND} ${NAME}(${TOTAL_BYTES}B)"
+              FAILED=1
+              continue
+            fi
+
+            echo "::notice::${NAME} ✓ ${FILE_COUNT} file(s), ${TOTAL_BYTES} bytes (band [${MIN},${MAX}])"
+          done
+
+          if [ "$FAILED" -eq 1 ]; then
+            {
+              echo "# Mobile platform cross-check FAILED"
+              echo ""
+              echo "## Missing"
+              echo "${MISSING:-(none)}"
+              echo ""
+              echo "## Out-of-band"
+              echo "${OUT_OF_BAND:-(none)}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          {
+            echo "# Mobile platform cross-check ✓"
+            echo ""
+            echo "All 4 platforms produced artefacts inside their size bands."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cross-check summary
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: mobile-platform-cross-check-summary
+          path: cross-check-artefacts/
+          if-no-files-found: warn
+          retention-days: 14

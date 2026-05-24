@@ -1,0 +1,167 @@
+# Phase K Wave 23 — Apone (DevOps).
+#
+# Kyverno ClusterPolicy that REQUIRES every Pod in
+# `mahjong-prod` to declare
+# `securityContext.runAsNonRoot: true` EXPLICITLY at the
+# Pod-spec OR container level. Audit-mode at W23 with a
+# 5-wave grace window (enforce-flip earliest W28).
+#
+# # Why this matters — and why it isn't redundant with
+# # the W15 `enforce-prod-default.require-non-root` rule
+#
+# The W15-landed `enforce-prod-default.require-non-root`
+# rule already enforces non-root via a `=(securityContext)
+# / =(runAsNonRoot)` pattern. That pattern uses the
+# Kyverno `=()` "conditional anchor" operator — it
+# enforces the invariant ONLY WHEN the field is PRESENT.
+# If the operator omits `securityContext.runAsNonRoot`
+# entirely, the W15 rule does NOT fire; the runtime then
+# falls back to the base image's default UID. For our
+# `gcr.io/distroless/dotnet:8` baseline (UID 65532), this
+# is operationally safe — but it's an INVISIBLE invariant.
+# A future base-image swap to a root-default image
+# (e.g. an Alpine sidecar) would silently regress to root
+# execution without firing the W15 rule.
+#
+# W23's `require-runas-non-root` rule closes this gap:
+# the field MUST be present + `true`. Composition contract:
+#
+#   * W15 enforces `runAsNonRoot: true` WHEN the field is
+#     present.
+#   * W23 enforces the field PRESENCE.
+#
+# Together they assert the invariant unconditionally.
+#
+# # CIS / NSA benchmark alignment
+#
+# CIS Kubernetes Benchmark 5.7.1 ("Minimize the admission
+# of pods which run as root") + NSA/CISA Kubernetes
+# Hardening Guidance §"Pod Security / runAsNonRoot" both
+# require explicit non-root declaration. The W23 rule
+# moves us from "implicitly safe" (via distroless default
+# UID) to "explicitly safe" (via admission-time hard-pin).
+#
+# # Why a SEPARATE ClusterPolicy (not a new rule on
+# # `enforce-prod-default`)
+#
+# Mirrors the W19/W21 audit-mode launch pattern:
+#
+#   * Flipping `enforce-prod-default.validation
+#     FailureAction` to Audit to launch the W23 rule
+#     would un-Enforce the W16-landed non-root rule.
+#     Audit-mode launches MUST live in a separate
+#     ClusterPolicy.
+#   * Cleaner audit trail — the W23 audit-window
+#     evidence sits next to the W23 rule.
+#   * Independent `failurePolicy: Ignore` during the
+#     audit window — same rationale as W23
+#     `require-readonly-rootfs.yaml`.
+#
+# # Pod-spec vs container-level shape
+#
+# Kyverno accepts the field at EITHER the
+# `spec.securityContext.runAsNonRoot` (Pod-level
+# default) or `spec.containers[*].securityContext.
+# runAsNonRoot` (per-container override) level. The W23
+# pattern accepts the Pod-level form; per-container
+# overrides are allowed but at least the Pod-level
+# default MUST be `true` for the simplest passing shape.
+# Operators with multi-container Pods that need
+# per-container variation should set the Pod-level
+# default to `true` and override at the container level
+# where needed (a privileged sidecar that legitimately
+# needs root is a separate decision that should land in
+# `docs/security-exceptions.md`).
+#
+# # Why audit-mode FIRST (5-wave grace)
+#
+# Matches the W19 → W20 and W21 → W22 pre-wire → enforce
+# pattern, with EXTENDED grace (5 waves) because:
+#
+#   * Existing prod workloads that omit
+#     `runAsNonRoot` surface as PolicyReports — not
+#     denials — so the cluster operator has multiple
+#     waves to land explicit declarations.
+#   * The W23+ audit-trail snapshot confirms zero
+#     false-positives before the flip.
+#   * Rollback path is a single `git revert <merge-
+#     commit>` — no admission impact on existing pods.
+#
+# Enforce-flip cutover earliest W28 (per the W19-lineage
+# cadence; mirrors `require-readonly-rootfs.yaml`).
+#
+# # Wiring
+#
+# Out-of-band at W23 — NOT in `base/kustomization.yaml`.
+# Same rationale as the W19/W21 audit-mode launches.
+# Apply directly:
+#
+#   kubectl apply -f infra/k8s/base/kyverno-policies/require-runas-non-root.yaml
+#
+# # Cross-references
+#
+#   * `infra/k8s/overlays/prod/kyverno-enforce-policies.yaml`
+#     — W15/W16 enforce-prod-default + W16 conditional-
+#     anchor non-root rule (the rule this W23 file
+#     reinforces).
+#   * `infra/k8s/base/kyverno-policies/require-readonly-rootfs.yaml`
+#     — W23 companion audit-mode rule (rootfs read-only).
+#   * `docs/kyverno-w23-additional-rules.md` — W23 operator runbook.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-runas-non-root
+  annotations:
+    policies.kyverno.io/title: "Require runAsNonRoot=true at Pod-spec level (W23, Audit)"
+    policies.kyverno.io/category: "Pod Security / Hardening"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Pod, Deployment, StatefulSet, DaemonSet"
+    policies.kyverno.io/description: >-
+      W23 AUDIT-MODE launch. Requires every mahjong-prod
+      Pod to EXPLICITLY declare
+      securityContext.runAsNonRoot: true at the Pod-spec
+      level. Closes the W15-rule gap where the existing
+      `=(runAsNonRoot): true` conditional-anchor pattern
+      only enforces when the field is PRESENT. W23
+      hardens to require field presence; the W15 rule
+      continues to enforce the value when present.
+      Audit window of 5 waves (W23 → W28 earliest
+      enforce-flip).
+spec:
+  validationFailureAction: Audit
+  background: true
+  webhookTimeoutSeconds: 30
+  failurePolicy: Ignore
+  rules:
+    - name: require-runas-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - mahjong-prod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - external-secrets
+                - argo-rollouts
+      validate:
+        message: >-
+          mahjong-prod Pods MUST EXPLICITLY declare
+          securityContext.runAsNonRoot: true at the
+          Pod-spec level. The W15 rule enforces the
+          value when present; W23 enforces field
+          presence so a future base-image swap to a
+          root-default image surfaces as an admission
+          denial rather than silently regressing.
+          See docs/kyverno-w23-additional-rules.md §1.2.
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
