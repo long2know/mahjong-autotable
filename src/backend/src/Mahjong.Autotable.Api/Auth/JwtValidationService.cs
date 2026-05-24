@@ -73,12 +73,16 @@ public sealed class JwtValidationService
     private readonly JwtSigningKeyProvider _keys;
     private readonly JwtStagedRotationPolicy? _rotation;
     private readonly JwtDurationMetrics? _durationMetrics;
+    private readonly JwtValidatorAnomalyMetrics? _anomalyMetrics;
+    private readonly string? _expectedIssuer;
 
     public JwtValidationService(JwtSigningKeyProvider keys)
     {
         _keys = keys;
         _rotation = null;
         _durationMetrics = null;
+        _anomalyMetrics = null;
+        _expectedIssuer = null;
     }
 
     /// <summary>
@@ -94,6 +98,8 @@ public sealed class JwtValidationService
         _keys = keys;
         _rotation = rotation;
         _durationMetrics = null;
+        _anomalyMetrics = null;
+        _expectedIssuer = null;
     }
 
     /// <summary>
@@ -116,6 +122,31 @@ public sealed class JwtValidationService
         _keys = keys;
         _rotation = rotation;
         _durationMetrics = durationMetrics;
+        _anomalyMetrics = null;
+        _expectedIssuer = null;
+    }
+
+    /// <summary>
+    /// Phase K Wave 21 — Bishop. Overload that adds the
+    /// <see cref="JwtValidatorAnomalyMetrics"/> collector +
+    /// optional expected-issuer string. The validator stamps
+    /// <c>jwt_validator_anomaly_total{tenant,reason}</c> on
+    /// each anomalous validation outcome (clock-skew,
+    /// invalid-issuer, expired-too-soon). Older constructors
+    /// remain for legacy call sites.
+    /// </summary>
+    public JwtValidationService(
+        JwtSigningKeyProvider keys,
+        JwtStagedRotationPolicy? rotation,
+        JwtDurationMetrics? durationMetrics,
+        JwtValidatorAnomalyMetrics? anomalyMetrics,
+        string? expectedIssuer)
+    {
+        _keys = keys;
+        _rotation = rotation;
+        _durationMetrics = durationMetrics;
+        _anomalyMetrics = anomalyMetrics;
+        _expectedIssuer = expectedIssuer;
     }
 
     /// <summary>
@@ -267,6 +298,18 @@ public sealed class JwtValidationService
             && expEl.TryGetInt64(out var exp)
             && exp < now)
         {
+            // Phase K Wave 21 — Bishop. Sub-second-stale tokens
+            // record `expired-too-soon` so the anomaly counter
+            // captures the burst-edge case (vs. the regular
+            // long-stale expiry that operators ignore). The
+            // tolerance is 5 minutes — anything more recent is
+            // surfaced as an anomaly.
+            if (_anomalyMetrics is not null && (now - exp) <= 300)
+            {
+                _anomalyMetrics.Record(
+                    ExtractTenant(payload),
+                    JwtValidatorAnomalyMetrics.ReasonExpiredTooSoon);
+            }
             return JwtValidationResult.Failure(ErrorExpired);
         }
         if (payload.TryGetValue("iat", out var iatEl)
@@ -275,7 +318,38 @@ public sealed class JwtValidationService
             && iat > now + 60)
         {
             // 60 second tolerance for clock skew.
+            // Phase K Wave 21 — Bishop. Premature tokens record
+            // the `clock-skew` anomaly.
+            _anomalyMetrics?.Record(
+                ExtractTenant(payload),
+                JwtValidatorAnomalyMetrics.ReasonClockSkew);
             return JwtValidationResult.Failure(ErrorPremature);
+        }
+
+        // Phase K Wave 21 — Bishop. Issuer check. When the
+        // validator was configured with an expected issuer, the
+        // token's `iss` claim must match. A mismatch records
+        // the `invalid-issuer` anomaly and returns
+        // bad-signature (the operator's issuer surface is
+        // narrow enough that a wrong issuer is the same security
+        // risk as a forged signature). The check is opt-in —
+        // legacy call sites that constructed the validator
+        // without an issuer skip it entirely.
+        if (!string.IsNullOrEmpty(_expectedIssuer))
+        {
+            string? issClaim = null;
+            if (payload.TryGetValue("iss", out var issEl)
+                && issEl.ValueKind == JsonValueKind.String)
+            {
+                issClaim = issEl.GetString();
+            }
+            if (!string.Equals(issClaim, _expectedIssuer, StringComparison.Ordinal))
+            {
+                _anomalyMetrics?.Record(
+                    ExtractTenant(payload),
+                    JwtValidatorAnomalyMetrics.ReasonInvalidIssuer);
+                return JwtValidationResult.Failure(ErrorBadSignature);
+            }
         }
 
         // Phase K Wave 14 — Bishop. Overlap-window enforcement. If
@@ -406,6 +480,33 @@ public sealed class JwtValidationService
             case 1: throw new FormatException("Invalid base64url segment length.");
         }
         return Convert.FromBase64String(s);
+    }
+
+    /// <summary>
+    /// Phase K Wave 21 — Bishop. Best-effort extraction of the
+    /// <c>tenant</c> claim from a decoded JWT payload. Used by
+    /// the anomaly-counter recording paths so the per-tenant
+    /// label is consistent with the W19 duration histogram. Falls
+    /// back to <see cref="JwtValidatorAnomalyMetrics.UnknownTenantBucket"/>
+    /// when the claim is missing or non-string.
+    /// </summary>
+    private static string ExtractTenant(Dictionary<string, JsonElement> payload)
+    {
+        if (payload.TryGetValue("claims", out var claimsEl)
+            && claimsEl.ValueKind == JsonValueKind.Object
+            && claimsEl.TryGetProperty("tenant", out var tenantEl)
+            && tenantEl.ValueKind == JsonValueKind.String)
+        {
+            var raw = tenantEl.GetString();
+            if (!string.IsNullOrWhiteSpace(raw)) return raw;
+        }
+        if (payload.TryGetValue("tenant", out var topTenantEl)
+            && topTenantEl.ValueKind == JsonValueKind.String)
+        {
+            var raw = topTenantEl.GetString();
+            if (!string.IsNullOrWhiteSpace(raw)) return raw;
+        }
+        return JwtValidatorAnomalyMetrics.UnknownTenantBucket;
     }
 }
 

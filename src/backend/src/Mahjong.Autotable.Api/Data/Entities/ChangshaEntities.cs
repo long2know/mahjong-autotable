@@ -552,6 +552,43 @@ public class ReconnectAuditEntry
     /// format:
     /// <c>"reason={r}|drillId={g}|env={e}|tenants={n}"</c>.</summary>
     public const string KindJwtKeyRotationDrill = "auth.jwt.key-rotation-drill";
+
+    /// <summary>Phase K Wave 21 — Bishop. Audit Kind stamped by
+    /// the W21 <c>SwissApplyRoundService</c> when an admin
+    /// materialises the W20-proposed pairings into
+    /// <c>TournamentMatch</c> rows. Detail format:
+    /// <c>"tournamentId={id}|round={r}|boards={n}"</c>.</summary>
+    public const string KindTournamentSwissRoundApplied = "tournament.swiss-pairing.applied";
+
+    /// <summary>Phase K Wave 21 — Bishop. Audit Kind stamped per
+    /// tenant by <c>RotationScheduleAdminController</c> when an
+    /// admin creates or updates a scheduled rotation policy.
+    /// Detail format: <c>"reason={r}|tenantId={t}|cron={c}"</c>.</summary>
+    public const string KindAuthJwksRotationScheduled = "auth.jwks.rotation.scheduled";
+
+    /// <summary>Phase K Wave 21 — Bishop. Audit Kind stamped by
+    /// <c>RotationScheduledExecutorService</c> when the background
+    /// poller successfully executes a scheduled rotation. Detail
+    /// format: <c>"tenantId={t}|scheduleId={g}|cron={c}|status={s}"</c>.</summary>
+    public const string KindAuthJwksRotationScheduledExecuted = "auth.jwks.rotation.scheduled.executed";
+
+    /// <summary>Phase K Wave 21 — Bishop. Audit Kind stamped by
+    /// <c>TournamentWithdrawPlayerController</c> when an admin
+    /// withdraws a player from a tournament mid-event. Detail
+    /// format: <c>"reason={r}|tournamentId={tid}|playerId={pid}|withdrawnFromRound={n}"</c>.</summary>
+    public const string KindTournamentPlayerWithdrawn = "tournament.player.withdrawn";
+
+    /// <summary>Phase K Wave 21 — Bishop. Audit Kind stamped by
+    /// <c>ReplayRestorationAuditController</c> at every replay
+    /// restoration attempt (read or write). Detail format:
+    /// <c>"replayId={id}|outcome={o}|operator={op}"</c>.</summary>
+    public const string KindReplayRestorationAttempt = "replays.restoration.attempt";
+
+    /// <summary>Phase K Wave 21 — Bishop. Audit Kind stamped by
+    /// <c>SignalRRetentionManualPurgeController</c> when an admin
+    /// runs a manual purge of SignalR sequence rows. Detail
+    /// format: <c>"reason={r}|tenant={t}|before={iso}|purged={n}"</c>.</summary>
+    public const string KindSignalRManualPurge = "signalr.retention.manual-purge";
 }
 
 /// <summary>

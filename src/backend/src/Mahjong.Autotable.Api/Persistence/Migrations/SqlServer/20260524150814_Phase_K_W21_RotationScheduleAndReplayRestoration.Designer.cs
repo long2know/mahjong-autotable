@@ -4,6 +4,7 @@ using Mahjong.Autotable.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
 {
     [DbContext(typeof(SqlServerAppDbContext))]
-    partial class SqlServerAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260524150814_Phase_K_W21_RotationScheduleAndReplayRestoration")]
+    partial class Phase_K_W21_RotationScheduleAndReplayRestoration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

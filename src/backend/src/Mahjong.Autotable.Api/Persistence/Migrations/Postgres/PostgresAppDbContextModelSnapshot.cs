@@ -64,6 +64,43 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.ToTable("PerTenantJwksRotationPolicies");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Auth.RotationScheduleEntity", b =>
+                {
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CronExpression")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastRunAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId");
+
+                    b.HasIndex("Enabled");
+
+                    b.HasIndex("UpdatedAtUtc");
+
+                    b.ToTable("RotationSchedules");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Data.Entities.ChangshaGame", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1292,6 +1329,44 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.Postgres
                     b.HasIndex("GameId", "CompletedAt");
 
                     b.ToTable("Replays");
+                });
+
+            modelBuilder.Entity("Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AttemptedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DetailMessage")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("OperatorId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ReplayId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptedAtUtc");
+
+                    b.HasIndex("ReplayId", "AttemptedAtUtc");
+
+                    b.ToTable("ReplayRestorationAttempts");
                 });
 
             modelBuilder.Entity("Mahjong.Autotable.Api.Replays.ReplayRetentionPolicy", b =>

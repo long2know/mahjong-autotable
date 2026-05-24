@@ -158,6 +158,24 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<SwissPairingAuditEntry> SwissPairingAuditEntries =>
         Set<SwissPairingAuditEntry>();
 
+    // Phase K Wave 21 — Bishop. Per-tenant scheduled JWKS
+    // rotation cadence. Driven by the
+    // RotationScheduledExecutorService background poller.
+    // Surface: POST /api/admin/per-tenant-jwks-rotation-policies/{id}/schedule.
+    // See Mahjong.Autotable.Api.Auth.RotationScheduleEntity.
+    public DbSet<Mahjong.Autotable.Api.Auth.RotationScheduleEntity> RotationSchedules =>
+        Set<Mahjong.Autotable.Api.Auth.RotationScheduleEntity>();
+
+    // Phase K Wave 21 — Bishop. Per-replay restoration attempt
+    // audit log. Append-only — every read or write of a
+    // restored replay row stamps one entry so an operator
+    // chasing a "did this replay get tampered with?" question
+    // can replay the last-N attempts. Backs the GET
+    // /api/admin/replays/{id}/restoration-audit endpoint. See
+    // Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt.
+    public DbSet<Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt> ReplayRestorationAttempts =>
+        Set<Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -707,6 +725,44 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             entity.HasIndex(x => new { x.TournamentId, x.Round, x.Board }).IsUnique();
             entity.HasIndex(x => x.CreatedAtUtc);
             entity.HasIndex(x => x.TournamentId);
+        });
+
+        // Phase K Wave 21 — Bishop. Per-tenant scheduled JWKS
+        // rotation cadence. TenantId is the natural key (one
+        // schedule per tenant); UpdatedAtUtc is indexed for the
+        // operator dashboard's "recently changed" view.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Auth.RotationScheduleEntity>(entity =>
+        {
+            entity.HasKey(x => x.TenantId);
+            entity.Property(x => x.TenantId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.CronExpression)
+                .HasMaxLength(Mahjong.Autotable.Api.Auth.RotationScheduleEntity.MaxCronLength)
+                .IsRequired();
+            entity.Property(x => x.Notes)
+                .HasMaxLength(Mahjong.Autotable.Api.Auth.RotationScheduleEntity.MaxNotesLength);
+            entity.HasIndex(x => x.UpdatedAtUtc);
+            entity.HasIndex(x => x.Enabled);
+        });
+
+        // Phase K Wave 21 — Bishop. Replay restoration attempt
+        // audit log. Append-only — the GET
+        // /api/admin/replays/{id}/restoration-audit endpoint
+        // reads the last 10 rows for the supplied replay id.
+        // (ReplayId, AttemptedAtUtc DESC) is the dominant read
+        // path; the secondary index on AttemptedAtUtc supports
+        // the global trail-by-time view.
+        modelBuilder.Entity<Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ReplayId).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.OperatorId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Outcome)
+                .HasMaxLength(Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt.MaxOutcomeLength)
+                .IsRequired();
+            entity.Property(x => x.DetailMessage)
+                .HasMaxLength(Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt.MaxDetailLength);
+            entity.HasIndex(x => new { x.ReplayId, x.AttemptedAtUtc });
+            entity.HasIndex(x => x.AttemptedAtUtc);
         });
     }
 }
