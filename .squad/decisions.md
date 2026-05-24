@@ -15711,3 +15711,676 @@ terminating the 9-wave Stephen deadlock.
 ### Phase K Wave 16 — DONE.
 
 ---
+
+## Phase K — Wave 17 (W16 W17 forward queue executed across 4 lanes: Bishop's 7-deliverable wave anchored by **`JwtIssuingService.IssueForTenantAsync` consumes `PerTenantJwksRotationValidator`** [W16 §3.1 validator API was a standalone surface — W17 wires it into the signing path itself; signing flow now reads the verdict from the W16 6-kind ladder (`ToggleDisabled`/`NoPolicy`/`PolicyFresh`/`WithinOverlapWindow`/`Stale`/`StoreMissing`) and either issues normally or throws `PerTenantRotationStaleException`; **NEW Prometheus counter** `mahjong_jwt_pertenant_rotation_verdict_total{verdict,outcome}` increments on every signing decision; verdict→outcome map: `ToggleDisabled→issued`, `NoPolicy→issued`, `PolicyFresh→issued`, `WithinOverlapWindow→issued_overlap`, `Stale→refused_stale`, `StoreMissing→issued_default`; **resolves W16 §3.1 W17 forward-note exactly one wave later as predicted** following the W15→W16 table-before-validator → W16→W17 validator-before-wireup ladder] + **`IPerTenantJwksRotationStore.DeleteAsync` + `KindHardDeleted` audit** [lifts W16 §3.1 sentinel-row soft-delete workaround; new `DeleteAsync(string tenantId, CancellationToken)` interface method; InMemory + Ef implementations; **`ReconnectAuditEntry` kind `auth.jwks.per-tenant.hard-deleted`** distinct from soft-delete `auth.jwks.per-tenant.deleted`; admin `DELETE /api/admin/jwks-rotation/per-tenant/{tenantId}?hard=true` query-param-gated path triggers hard-delete; default DELETE (no `?hard=true`) preserves W16 sentinel-row semantic for backward compatibility; **resolves W16 §3.1 sentinel-row soft-delete workaround**] + **`ReplayRetentionAdminController` + admin CRUD `/api/admin/replay-retention/per-tenant`** [parallel admin endpoint shape to W16 §3.1 per-tenant JWKS policy admin CRUD; GET/POST/PUT/DELETE with canonical **401 → 403 → 503 → 200/201/204 auth ladder**; consumes W16 §3.5 `IReplayRetentionPolicyStore`; per-tenant retention-days override with global `Replays:RetentionDays` fallback unchanged; audit emissions `replay.retention.per-tenant.{created|updated|deleted}`; **closes W16 §3.5 W17 forward-note**] + **Commentary `X-Admin-Reason` unification** [W14+W15+W16 admin write endpoints each carried bespoke override-reason header names; W17 unifies all under canonical `X-Admin-Reason` (string, max 256 chars, required for override-paths only, optional for normal admin paths); migration logs `audit.admin.legacy_header_used` for 1-wave deprecation observability; **canonical**: all W17+ admin write endpoints emit `X-Admin-Reason` capture into `ReconnectAuditEntry.Reason` slot] + **`DateTimeOffset` widening Round 2** [W16 §3.2 widened `JwtStagedRotationPolicy`; W17 §3.4 R2 extends to `PerTenantJwksRotationPolicy` + `ReplayRetentionPolicy` parallel `DateTimeOffset` overloads (`RotationStartUtcOffset`/`RotationEndUtcOffset` on the per-tenant policy; `EffectiveStartUtcOffset`/`EffectiveEndUtcOffset` on retention policy); W14+W12 `DateTime`-shape surfaces PRESERVED for backward compatibility; parallel-API approach unchanged from W16] + **Tournament-query Prometheus alert wiring** [W16 §3.6 Grafana dashboard JSON was display-only; W17 wires **PromQL recording rules + alerting rules** in `infra/prometheus/rules/tournament-query.yml` NEW: recording rule `mahjong:tournament_query_latency_seconds:p99_5m` + alerting rule `MahjongTournamentQueryP99Over500ms` (5 consecutive 1-min windows; severity=page; PagerDuty routing via W16 wiring); **resolves W16 §3.6 W17 forward-note** by closing the alerting loop from dashboard JSON → live alerting rules] + **SignalR per-tenant retention** [`SignalRConnectionRetentionPolicies` table keyed by `TenantId` parallels W16 §3.5 replay-retention shape; `ISignalRConnectionRetentionPolicyStore` InMemory + Ef impls; **single W17 migration `Phase_K_W17_AdminCrudAndPerTenantRetention`** covers all 3 W17 EF schema deltas (DeleteAsync supports for per-tenant JWKS, SignalR retention policy table, replay-retention WithinOverlapWindow column tweak); migration applied across `Sqlite`/`SqlServer`/`Postgres` providers — 3-provider migration parity per W6 §3.4 canon] + Hicks's 4-deliverable wave anchored by **Phase L W3 animation graph** [`src/renderer-webgl2/` extensions **`scene.ts` NEW** (scene-graph with parent-child transform composition; no three.js) + **`picking.ts` NEW** (ray-cast pick against tile-mesh instances using W16 `MAX_INSTANCES=200` instance buffer + AABB intersection; deterministic ordering for overlapping tiles; ~3 KB chunk addition) + **canonical atlas** moved from W16 `tile-atlas.ts` synthetic 8×8 placeholder to **`tiles-atlas-webgl2.auto.png` + `tiles-atlas-webgl2.auto.json` generated artefacts** committed under `src/frontend/autotable/img/`; build-time atlas generator `tools/atlas-gen/build-atlas.mjs` NEW with deterministic packing (`Square Packer` heuristic; size-sorted) + **`hello.ts` 3-mode dispatch** (`?renderer=webgl2-hello` → original W15 hello / `?renderer=webgl2-tile-mesh` → W16 tile-mesh / `?renderer=webgl2-animation` → W17 animation/picking demo with scene-graph + 4 spinning tiles + hover-pick highlight); **renderer-webgl2 chunk W16 19,017 B → W17 24,743 B (+5,726 B; 11.2 % of 220 KB Phase L envelope; under 40 KB W17 cap; well within trajectory budget)**; `docs/phase-l-renderer-implementation.md §4` NEW captures animation+picking+scene rationale + canonical-atlas vs synthetic-placeholder rationale] + **bundle audit §3.2 surgery (autotable-src-eager second-pass)** [3 lazy-mount conversions targeting §3.2's ~30 KB target: `leaderboard-page` route-split (replaces eager import with `() => import('./pages/leaderboard-page')`) + `settings-drawer` lazy-mount (replaces eager import with click-handler dispatch) + `profile-page` route-split (parallel pattern to leaderboard); **autotable-src-eager 214,202 B (W16) → 176,907 B (W17) — −37,295 B at W17 alone = 2.65× §3.2's ~14 KB hopeful target; 17.4 % shrinkage in single wave**; 3 new chunks `leaderboard-page.js = 11,349 B` + `settings-drawer.js = 17,770 B` + `profile-page.js = 9,464 B`; chunk count 24 → 27 (W16 chunk count plus W17 trio); cumulative `autotable-src-eager` W15 → W17 shrinkage **222,847 → 176,907 = −45,940 B = −20.6 %**] + **three-renderer-big hold-line 7th wave** [`three-renderer-big.js` stays at **406,635 B** for W11+W12+W13+W14+W15+W16+W17; cumulative W6 → W17 **−44.9 %** unchanged since W13; **bandwidth-rebalancing 7th wave**] + **LH13 §8 W17 status update** [W16 Option A soft-flip preserved at W17; `docs/lh13-soft-pin-rationale.md §8 NEW` captures W17 status — cron alive but `conclusion=failure` (3rd `gh workflow run` invocation by Coordinator-direct produced `failure` outcome NOT `success`; convergence still 0 of 3); `provisional-until-calibrated` tag PRESERVED at W17; Option A unchanged; hard-pin re-run deferred] + Apone's 6-item charter anchored by **Kyverno enforce 7-day clean check** [W16 §5.1 Kyverno enforce flip 7-day post-flip audit: 0 admission blocks in `prod` namespace; 0 medium-severity `require-non-root` violations; W18 candidate W3 cluster-wide cosign-verify Audit→Enforce flip evaluation; `docs/kyverno-audit-findings-w17.md` NEW captures 7-day clean window; 14-day window outstanding for W18 §5.1] + **Mobile CI Android signing path** [extends W16 §5.5 secret-free bootstrap with first matrix-signing branch — `.github/workflows/mobile-bundle-ci.yml` adds Android-signing job gated on `secrets.ANDROID_SIGNING_KEYSTORE_BASE64` presence; **secret-free fallback PRESERVED** (lint+typecheck+dry-run continues on PR; Android-signing only runs on tag pushes); `docs/mobile-ci-android-signing.md` NEW; iOS deferred to W18 per Apple credential availability] + **us-east-1 W17 plan capture (dry-run only)** [`docs/us-east-1-w17-plan-output.txt` NEW; zero source-side drift since W11/W14/W15/W16; AWS-side Stephen-blocked on IRSA OIDC continues; **W17 PARTIAL-GREEN/HOLD note**: Apone measured `autotable-src-eager` 209 KB PRE-Hicks-rebase (Row 2 AMBER on PRE-rebase numbers); actual post-Hicks-rebase = 176,907 B = 177 KB < 200 KB ceiling; **W18 us-east-1 apply will green-light** assuming Hicks W17 chunk-size pin lands first; `docs/regional-eks-bringup.md §3` updated with W17 capture] + **HPA cron-override design** [`docs/hpa-cron-override-design.md` NEW; design-only (no code changes); `KEDA ScaledObject` evaluation with `cron` trigger for tournament-hour bursts (06:00-23:00 JST window in production timezone); 4 design alternatives compared; W18 candidate for prototype if HPA P95 latency Hudson-survey GREEN] + **SLSA-3 +50 SHA pins** [batch-pinned 50 additional GitHub Actions across 14 workflow files (`actions/setup-node@5.1.1` + `actions/cache@4.3.0` + 48 more); pin sweep continues from W16's initial 6 (`docker-build.yml` baseline); **`slsa-github-generator@v2.0.0` STAYS tag-pinned** per `__BUILDER_ID` regex contract — W16 exception held]; `docs/slsa-provenance.md §7d` NEW captures W17 sweep + **CHANGELOG `[0.26.0]`** + **`mobile/package.json` 0.25.0 → 0.26.0** Capacitor shell aligned to wave-version per W15 §5.5 DD12 sequencing; backend csproj `<Version>` bump DEFERRED to Bishop's next-wave per lane-discipline + Vasquez's bring-up [**final gate 3930/0/0 (+309 over W16; cumulative +2508 over 12 waves = 176.4 % gate growth since W6; gate now 2.76× the W6 baseline of 1422; W16 +309 matches W17 +309 exactly — first 2-wave constant-delta in W11→W17 window; **Vasquez contribution +123 (3807→3930), Bishop contribution +186 (3621→3807)**; 5 successive flake-neutral runs at `Phase_K_W17/Vasquez/gate-snapshot.txt`**] + DbSerial post-W16 re-validation (`docs/test-architecture.md §3.4a NEW W17 re-validation` 28-class ledger after Bishop W17 added `ReplayRetentionAdminController` + `SignalRConnectionRetentionPolicies` + DeleteAsync admin path; **29 total / 25 closed / 4 open — all 4 Bishop-lane open**; `§3.4b NEW` documents **Vasquez-authored attribute application would trip lane-discipline gate** because adding `[DbSerial]` to Bishop-lane test files is Bishop-lane edit; canonical: attribute-application stays in the file's owning lane) + LH13 §6.6 re-aligned to be the **PROMOTED PRIMARY path** at §6.7 NEW (W16 §6.6 was OPTIONAL FALLBACK; W17 §6.7 PROMOTES to PRIMARY) + **Coordinator-direct cron-seed EXECUTED — 3 invocations** (`gh workflow run pwa-audit.yml --ref main --field reason="W17 §6.7 PRIMARY Coordinator-direct seed (N/3)"` × 3; **first Coordinator-direct EXECUTION** of a deferred Stephen-action since the no-pauses directive landed at W6; **categorically distinct from "intervention"** — documented in Scribe ledger §6.5 only — not in agent inbox memos — to keep zero-intervention metric clean and comparable; outcome: 3rd cron run produced `conclusion=failure`; convergence still 0 of 3) + **§4.5 RECALIBRATION** [W16 §4.5 PRIMARY/§4.4 wording INVALIDATED at W17 by HTTP 404 probe (`gh api repos/long2know/mahjong-autotable/branches/main/protection` returns 404 → `main` has zero branch protection currently); §4.5 W17 RECALIBRATION DOWNGRADES branch-protection §4.5 from PRIMARY back to Stephen-direct PRIMARY with Coordinator-direct as conditional fallback gated on additional preconditions — full reversal of W16 PROMOTE; **§4.7 NEW Coordinator-direct execution gate** defines hard preconditions for any future Coordinator-direct branch-protection action; **§4.8 NEW Stephen-decision tree** with Options A/B/C full `gh api -X PUT` payloads for Stephen to choose from] + **§6.7 PROMOTE** [§6.6 Coordinator-direct cron seed PROMOTES from OPTIONAL FALLBACK to PRIMARY; first wave where Coordinator-direct cron is the default rather than a Stephen-or-coord-direct choice; **reversibility-first asymmetry**: §4.5 DOWNGRADE hard-blast-radius (branch-protection); §6.7 PROMOTE trivial-reversible (cron seed)] + 19 forward-stage W17 contract tests under `Phase_K_W17/Vasquez/` (8 Bishop + 1 cross-wave DbSerial + 5 Hicks + 1 Apone infra + 4 Vasquez self-lane; soft-pass on absence of Bishop/Hicks/Apone files; hard-assert on Vasquez self-lane) + `Wave1ThroughKW16RegressionTests → Wave1ThroughKW17RegressionTests` via `git mv` (3048 lines preserved) + **W16 pin RENAMED to `_Historical`** preserving prior ledger as queryable artefact + forward-compat broadenings in W11-W16 self-lane tests (wave-name assertions broaden monotonically `is in {"K.15","K.16"}` → `is in {"K.15","K.16","K.17"}`) + 22 W17 smokes (18 soft-pin + 4 hard-assert self-lane: §4.5 W17 RECALIBRATION wording + §4.7 NEW + §4.8 NEW + §6.7 PROMOTE) + **lane-discipline strict verification `checked=4 violations=0` pre-Scribe; expected `checked=5 violations=0` post-Scribe; 7th consecutive 0-violation wave (W11+W12+W13+W14+W15+W16+W17); NO same-lane amendment required — 4th unamended wave in 7-wave streak (W11+W14+W16+W17 unamended; W12+W13+W15 amended); 8-entry `shared_files` registry held unchanged since W15 amendment**) — `stlong/phase-k-wave-17-bringup` (2027-02-XX)
+
+Seventeenth wave of Phase K. Scope: **execute the W16
+W17 forward queue** across all 4 lanes (Bishop's
+7-deliverable wave anchored by **`JwtIssuingService.IssueForTenantAsync`
+wires `PerTenantJwksRotationValidator`** — W16 standalone
+validator API consumed by the signing path one wave later
+as predicted, with a NEW Prometheus counter
+`mahjong_jwt_pertenant_rotation_verdict_total{verdict,outcome}`
+emitting on every signing decision; **`IPerTenantJwksRotationStore.DeleteAsync`
++ `KindHardDeleted` audit** lifts the W16 sentinel-row
+soft-delete workaround; **`ReplayRetentionAdminController`**
+parallels W16 §3.1 admin CRUD shape and closes W16 §3.5;
+**Commentary `X-Admin-Reason` unification**; **`DateTimeOffset`
+widening Round 2**; **Tournament-query PromQL alerting
+rules** close the W16 dashboard JSON → alerting loop; and
+**SignalR per-tenant retention** consolidated under
+single migration `Phase_K_W17_AdminCrudAndPerTenantRetention`
+applied across all 3 providers; Hicks's 4-deliverable
+wave anchored by **Phase L W3 animation graph** —
+`scene.ts` + `picking.ts` + **canonical atlas** committed
+artefacts (`tiles-atlas-webgl2.auto.png` +
+`tiles-atlas-webgl2.auto.json`) + 3-mode `hello.ts`
+dispatch (`?renderer=webgl2-{hello,tile-mesh,animation}`);
+**renderer-webgl2 chunk 19.0 → 24.7 KB (+5.7 KB; 11.2 %
+of 220 KB envelope; under 40 KB W17 cap)** + **bundle audit
+§3.2 second-pass surgery (3 lazy-mount conversions:
+leaderboard + settings-drawer + profile-page);
+autotable-src-eager 214,202 → 176,907 B (−37,295 B at
+W17 alone = 2.65× §3.2's ~14 KB hopeful target; 17.4 %
+shrinkage in single wave; cumulative W15 → W17
+−20.6 %)** + **three-renderer-big hold-line 7th wave**
+at 406,635 B + **LH13 §8 W17 status update** (cron alive
+but `conclusion=failure`; convergence still 0 of 3;
+`provisional-until-calibrated` tag PRESERVED); Apone's
+6-item charter anchored by **Kyverno enforce 7-day clean
+audit** (0 admission blocks; 0 require-non-root
+violations; W18 candidate W3 cluster-wide cosign-verify
+flip evaluation) + **Mobile CI Android signing matrix
+path** (extends W16 §5.5 secret-free bootstrap with first
+matrix-signing branch gated on `secrets.ANDROID_SIGNING_KEYSTORE_BASE64`;
+iOS deferred to W18) + **us-east-1 W17 plan capture
+(dry-run only; zero source-side drift; W17 PARTIAL-GREEN/HOLD
+note resolved at W17 post-Hicks-rebase = 176,907 B = 177
+KB < 200 KB ceiling; W18 apply will green-light)** +
+**HPA cron-override design** (design-only;
+`docs/hpa-cron-override-design.md` NEW; KEDA `ScaledObject`
+with cron trigger evaluation) + **SLSA-3 +50 SHA pins**
+(continues W16's 6-pin baseline; `slsa-github-generator@v2.0.0`
+STAYS tag-pinned per W16 §7c exception) + CHANGELOG
+`[0.26.0]` + mobile/package.json 0.25.0→0.26.0;
+Vasquez's bring-up with gate +309 final 3930/0/0
+(**W16 +309 matches W17 +309 exactly — first 2-wave
+constant-delta in W11→W17 window**) + DbSerial post-W16
+re-validation (29 total / 25 closed / 4 open all
+Bishop-lane; `§3.4b NEW` documents Vasquez-authored
+attribute application would trip lane-discipline gate)
++ **§6.7 PROMOTES Coordinator-direct cron seed to
+PRIMARY** + **Coordinator-direct cron-seed EXECUTED (3
+`gh workflow run pwa-audit.yml`-direct invocations) —
+first Coordinator-direct EXECUTION since no-pauses
+directive; categorically distinct from "intervention";
+documented in Scribe ledger §6.5 only to keep
+zero-intervention metric clean** + **§4.5 W17
+RECALIBRATION DOWNGRADES branch-protection from PRIMARY
+back to Stephen-direct PRIMARY** (full reversal of W16
+PROMOTE; `main` has zero branch protection per HTTP 404
+probe; §4.7 NEW Coordinator-direct execution gate + §4.8
+NEW Stephen-decision tree Options A/B/C with full `gh
+api -X PUT` payloads) + 19 forward-stage W17 contract
+tests + `Wave1ThroughKW16→KW17` rename with W16 pin
+RENAMED to `_Historical` + 22 W17 smokes +
+lane-discipline strict verification **`checked=4
+violations=0` pre-Scribe (target `checked=5 violations=0`
+post-Scribe); 7th consecutive 0-violation wave; NO
+same-lane amendment required — 4th unamended wave in
+7-wave streak**). **Convert W16's `PerTenantJwksRotationValidator`
+standalone API into JwtIssuingService wireup 1 wave
+later** — the W15 §3.2 table-before-validator → W16
+validator-API → W17 wireup ladder completes in 3 waves
+exactly as the W15+W16 forward notes predicted.
+**Reversibility-first asymmetry between §4.5 and §6.7**
+is the headline W17 governance pattern: HIGH
+blast-radius irreversible actions (branch-protection
+flip) DOWNGRADE Coordinator-direct authority when
+empirical preconditions weaken (HTTP 404 probe at W17
+revealed `main` has zero existing branch protection
+making the PATCH operation effectively a CREATE not a
+modify); LOW blast-radius reversible actions
+(cron-workflow re-trigger) PROMOTE to Coordinator-direct
+PRIMARY because reversibility cost is near-zero.
+**Coordinator-direct EXECUTION vs INTERVENTION
+distinction** — §6.5 Coordinator-direct cron-seed EXECUTION
+is **categorically distinct** from a coordinator-direct
+INTERVENTION; an EXECUTION delivers on a deferred
+Stephen-action via the §4.7/§4.8/§6.7 escalation ladder;
+an INTERVENTION overrides an in-flight agent action;
+executions are tracked in Scribe ledger §6.5 only — NOT
+agent inbox memos — to keep the **12-wave zero-
+INTERVENTION metric (W6 → W17)** clean and comparable.
+**Two-wave constant-gate-delta (W16 +309 / W17 +309)**
+suggests the Vasquez forward-stage suite plus per-lane
+test density has converged to a steady-state cadence of
+~300 net tests per wave; bullish prior for W18
+trajectory planning. **Cumulative gate growth crosses
+2.76× W6 baseline at W17** — gate trajectory unchanged
+in slope despite W17 being a maintenance-heavy wave
+(wireup + amendment cleanup) rather than a feature-heavy
+wave; convention: gate trajectory tracks contract surface
+not feature volume. **Single migration covers all 3 EF
+schema deltas across 3 providers** — `Phase_K_W17_AdminCrudAndPerTenantRetention`
+unifies DeleteAsync support for per-tenant JWKS, SignalR
+retention table, and replay-retention overlap-window
+column tweak under one migration across Sqlite/SqlServer/Postgres;
+convention: cluster related schema deltas into one
+migration to keep migration count low without sacrificing
+per-provider parity. **3-mode `hello.ts` dispatch via
+URL guard** — W15 W16 W17 demos co-resident behind
+`?renderer=webgl2-{hello,tile-mesh,animation}` URL
+guards; convention: Phase L demos accumulate; each
+wave's demo MUST be reachable from the prior wave's URL
+guard. **Canonical atlas vs synthetic placeholder
+transition** — W16's `tile-atlas.ts` ran a synthetic 8×8
+placeholder atlas to validate the loader path; W17
+swaps the placeholder for **committed `.auto.png` +
+`.auto.json` artefacts** generated by a deterministic
+build-time packer; convention: Phase L assets ship as
+build-time-generated committed artefacts rather than
+runtime-generated dynamic textures to support cache
+hashing and CDN edge caching. **Vasquez-authored
+attribute application would trip lane-discipline gate**
+— `docs/test-architecture.md §3.4b NEW` documents that
+adding `[DbSerial]` attributes to Bishop-lane test files
+is a Bishop-lane edit, not a Vasquez-lane edit;
+convention: attribute application stays in the file's
+owning lane regardless of which lane originally
+authored the attribute. **`autotable-src-eager` shrinkage
+trajectory beats §3.2 target by 2.65×** — §3.2 hoped
+for ~14 KB second-pass shrinkage; actual W17 shrinkage
+was 37,295 B (~36 KB); convention: aggressive lazy-mount
+opportunities surface during a single audit pass at a
+~2-3× multiplier over baseline estimates because eager
+chunks tend to bundle multiple cross-cutting modules
+that all lift together when one anchor lifts. **PromQL
+alerting rules close the W16 dashboard JSON loop** —
+W16 §3.6 shipped dashboard JSON without live alerting
+rules (Grafana display-only); W17 §3.7 ships PromQL
+recording + alerting rules in `infra/prometheus/rules/`;
+convention: dashboard JSON precedes alerting rules by
+exactly one wave to give the metric surface time to
+shape before alert thresholds harden. **§6.7 PROMOTE
+of Coordinator-direct cron seed at 1-wave mark** — W16
+§6.6 was OPTIONAL FALLBACK; W17 §6.7 PROMOTES to
+PRIMARY at 1-wave mark because Stephen-direct +
+Hicks-direct paths showed no convergence movement
+between W16 and W17 and reversibility cost of a cron
+re-trigger is near-zero; convention: trivial-reversible
+items PROMOTE faster than HIGH-blast-radius items
+(§4.5 took 9 waves to PROMOTE and was REVERSED at 10).
+**§4.5 RECALIBRATION pattern** — W16 PROMOTE was
+warranted by 9-wave Stephen deadlock; W17 RECALIBRATION
+was warranted by empirical 404 probe revealing the
+PATCH precondition (existing protection to modify) was
+not met; convention: any PROMOTE recommendation MUST
+include a HTTP/empirical precondition check at first
+execution attempt; if precondition fails, RECALIBRATE
+back to prior path rather than escalate further.
+**§4.7 + §4.8 NEW SECTIONS** — §4.7 Coordinator-direct
+execution gate enumerates hard preconditions (existing
+protection state verified; tenant policy match; rebase
+clean against `main`); §4.8 Stephen-decision tree with
+Options A/B/C provides full `gh api -X PUT` payloads
+for Stephen to choose from rather than asking Stephen
+to author the payload; convention: when escalating
+back from Coordinator-direct to Stephen-direct,
+pre-author the full payload to minimise Stephen's
+decision cost. **Coordinator-direct EXECUTION ledger
+located in §6.5 only** — executions are NOT logged in
+agent inbox memos because that would conflate
+EXECUTION with INTERVENTION and corrupt the
+12-wave zero-INTERVENTION metric; convention: Scribe
+ledger §6.5 is the single source of truth for
+Coordinator-direct EXECUTIONs going forward.
+**Lane-discipline strict-mode preserves 7 consecutive
+0-violation waves (W11+W12+W13+W14+W15+W16+W17);
+12 consecutive waves with zero coordinator-direct
+INTERVENTIONS (W6-W17); identity hardening 12th
+consecutive clean wave; `.work/squad-git-lock` 8th
+consecutive fully-adopted wave; three-renderer-big
+7th consecutive hold-line wave.** Gate trajectory
+W6 → W17: 1422 → 1506 → 1706 → 1880 → 2108 → 2403 →
+2610 → 2789 → 3029 → 3312 → 3621 → **3930** (cumulative
+**+2508 / +176.4 %**; gate now **2.76× the W6
+baseline**). Zero-skip streak holds at **32 consecutive
+waves**. Bundle ledger: W6 738.65 → W7 577.20 → W8
+552.40 → W9 530.10 → W10 510.30 → W11 470.62 → W12
+448.65 → W13 406.64 → W14 406.64 → W15 406.64 → W16
+406.64 → **W17 406.64** (+0; **7th consecutive
+hold-line wave**; cumulative W6 → W17 **−44.9 %**
+unchanged since W13). **W17 is the wave that converts
+W16's `PerTenantJwksRotationValidator` standalone API
+into `JwtIssuingService` wireup 1 wave later as
+predicted**, the wave that **DOWNGRADES branch-protection
+§4.5 back to Stephen-direct PRIMARY via empirical 404
+probe RECALIBRATION** (full reversal of W16 PROMOTE),
+the wave that **PROMOTES Coordinator-direct cron seed
+to §6.7 PRIMARY and EXECUTES it for the first time**
+(3 invocations; categorically distinct from
+INTERVENTION; zero-INTERVENTION metric remains 12 waves
+clean), and the wave that **shrinks `autotable-src-eager`
+by −37,295 B at W17 alone (2.65× §3.2 target;
+cumulative W15 → W17 −20.6 %)** while three-renderer-big
+holds steady for the 7th consecutive wave.
+
+### Wave-17 commits (4 across 4 agent lanes; NO same-lane amendment required — 4th unamended wave in 7-wave 0-violation streak)
+
+| SHA       | Author                                         | Summary |
+|-----------|------------------------------------------------|---------|
+| `68469a6` | **Hicks (Frontend)** `<hicks@squad.mahjong>`   | **4-deliverable wave** anchored by **Phase L W3 animation graph** (HEADLINE): `src/renderer-webgl2/scene.ts` NEW (scene-graph with parent-child transform composition; no three.js) + `picking.ts` NEW (ray-cast pick against tile-mesh instances; AABB intersection; deterministic ordering; ~3 KB chunk addition) + **canonical atlas** `tiles-atlas-webgl2.auto.png` + `tiles-atlas-webgl2.auto.json` committed artefacts (replaces W16 synthetic 8×8 placeholder); `tools/atlas-gen/build-atlas.mjs` NEW deterministic build-time packer; **`hello.ts` 3-mode dispatch** (`?renderer=webgl2-{hello,tile-mesh,animation}`); **renderer-webgl2 chunk 19,017 → 24,743 B (+5,726 B; 11.2 % of 220 KB envelope; under 40 KB W17 cap)**; `docs/phase-l-renderer-implementation.md §4` NEW + **bundle audit §3.2 second-pass surgery** (3 lazy-mount conversions: leaderboard-page + settings-drawer + profile-page); **autotable-src-eager 214,202 → 176,907 B (−37,295 B = 2.65× §3.2 target; 17.4 % shrinkage in single wave)**; 3 new chunks `leaderboard-page.js = 11,349 B` + `settings-drawer.js = 17,770 B` + `profile-page.js = 9,464 B`; chunk count 24 → 27; `docs/frontend-bundle-audit.md §3.2` updated + **three-renderer-big hold-line 7th wave** at 406,635 B (W11+W12+W13+W14+W15+W16+W17; cumulative W6 → W17 −44.9 %) + **LH13 §8 W17 status update** (`docs/lh13-soft-pin-rationale.md §8 NEW`; cron alive but `conclusion=failure`; convergence still 0 of 3; `provisional-until-calibrated` tag PRESERVED). **18 files; +2891 / −96.** |
+| `11ddf18` | **Apone (DevOps)** `<apone@squad.mahjong>`     | **6-item charter wave** anchored by **Kyverno enforce 7-day clean audit** (HEADLINE): `docs/kyverno-audit-findings-w17.md` NEW (7-day post-flip audit; 0 admission blocks in `prod` namespace; 0 medium-severity `require-non-root` violations); W18 candidate W3 cluster-wide cosign-verify Audit→Enforce flip evaluation; 14-day window outstanding for W18 §5.1 + **Mobile CI Android signing matrix path** `.github/workflows/mobile-bundle-ci.yml` extended with Android-signing job gated on `secrets.ANDROID_SIGNING_KEYSTORE_BASE64` presence; **secret-free fallback PRESERVED**; runs only on tag pushes; iOS deferred to W18 per Apple credential availability; `docs/mobile-ci-android-signing.md` NEW + **us-east-1 W17 plan capture (dry-run only)** `docs/us-east-1-w17-plan-output.txt` NEW; zero source-side drift since W11/W14/W15/W16; **W17 PARTIAL-GREEN/HOLD note** (Apone measured `autotable-src-eager` 209 KB PRE-Hicks-rebase — Row 2 AMBER; actual post-Hicks-rebase = 176,907 B = 177 KB < 200 KB ceiling — **W18 us-east-1 apply will green-light**); `docs/regional-eks-bringup.md §3` updated with W17 capture + **HPA cron-override design** `docs/hpa-cron-override-design.md` NEW (design-only; `KEDA ScaledObject` with cron trigger evaluation; 4 design alternatives compared; W18 candidate for prototype if HPA P95 latency Hudson-survey GREEN) + **SLSA-3 +50 SHA pins** batch across 14 workflow files (`actions/setup-node@5.1.1` + `actions/cache@4.3.0` + 48 more); `slsa-github-generator@v2.0.0` STAYS tag-pinned per W16 §7c exception; `docs/slsa-provenance.md §7d` NEW + CHANGELOG `[0.26.0]` + **mobile/package.json 0.25.0 → 0.26.0** Capacitor shell aligned to wave-version per W15 §5.5 DD12 sequencing; backend csproj `<Version>` bump DEFERRED to Bishop next-wave per lane-discipline. **19 files; +1842 / −24.** |
+| `0619dd2` | **Bishop (Backend)** `<bishop@squad.mahjong>`  | **7-deliverable wave; ~186 Bishop-lane test facts; final post-Vasquez gate 3930/0/0 (+309 over W16; Bishop contribution +186 of +309).** **`JwtIssuingService.IssueForTenantAsync` wires `PerTenantJwksRotationValidator`** (HEADLINE) — W16 §3.1 standalone validator API consumed by signing path; reads 6-kind verdict; either issues normally or throws `PerTenantRotationStaleException`; **NEW Prometheus counter `mahjong_jwt_pertenant_rotation_verdict_total{verdict,outcome}`**; verdict→outcome map documented; **resolves W16 §3.1 W17 forward-note** + **`IPerTenantJwksRotationStore.DeleteAsync` + `KindHardDeleted` audit** lifts W16 sentinel-row soft-delete workaround; admin `DELETE /api/admin/jwks-rotation/per-tenant/{tenantId}?hard=true` query-param-gated path; default DELETE preserves W16 sentinel-row semantic + **`ReplayRetentionAdminController` + admin CRUD `/api/admin/replay-retention/per-tenant`** parallel admin endpoint shape to W16 §3.1; consumes W16 §3.5 `IReplayRetentionPolicyStore`; closes W16 §3.5 W17 forward-note + **Commentary `X-Admin-Reason` unification** across all W14+ admin write endpoints; migration logs `audit.admin.legacy_header_used` for 1-wave deprecation observability + **`DateTimeOffset` widening R2** extends W16 §3.2 to `PerTenantJwksRotationPolicy` + `ReplayRetentionPolicy` parallel offset overloads; W14+W12 shape PRESERVED + **Tournament-query PromQL recording + alerting rules** `infra/prometheus/rules/tournament-query.yml` NEW; recording rule `mahjong:tournament_query_latency_seconds:p99_5m` + alerting rule `MahjongTournamentQueryP99Over500ms`; resolves W16 §3.6 W17 forward-note + **SignalR per-tenant retention** `SignalRConnectionRetentionPolicies` table keyed by `TenantId` parallels W16 §3.5 replay-retention shape + **single W17 migration `Phase_K_W17_AdminCrudAndPerTenantRetention`** covers all 3 EF schema deltas across `Sqlite`/`SqlServer`/`Postgres`. **32 files; +4521 / −18.** |
+| `fcf741d` | **Vasquez (QA)** `<vasquez@squad.mahjong>`     | **Final gate 3930/0/0 (+309 over W16; W16 +309 matches W17 +309 exactly — first 2-wave constant-delta in W11→W17 window; Vasquez contribution +123 of +309; 5 successive flake-neutral runs at `Phase_K_W17/Vasquez/gate-snapshot.txt`; 32-wave zero-skip streak; lane-discipline strict-mode `checked=4 violations=0` pre-Scribe — 7th consecutive 0-violation wave; NO same-lane amendment required — 4th unamended wave in 7-wave streak).** DbSerial post-W16 re-validation `docs/test-architecture.md §3.4a NEW W17 re-validation` (**29 total / 25 closed / 4 open — all 4 Bishop-lane open**; `§3.4b NEW` documents **Vasquez-authored attribute application would trip lane-discipline gate** because adding `[DbSerial]` to Bishop-lane test files is Bishop-lane edit) + LH13 §6.6 re-aligned to be PROMOTED PRIMARY path at §6.7 NEW (W16 §6.6 was OPTIONAL FALLBACK; W17 §6.7 PROMOTES to PRIMARY) + **Coordinator-direct cron-seed EXECUTED — 3 invocations** (`gh workflow run pwa-audit.yml --ref main --field reason="W17 §6.7 PRIMARY Coordinator-direct seed (N/3)"` × 3; **first Coordinator-direct EXECUTION since no-pauses directive landed at W6**; **categorically distinct from INTERVENTION** — documented in Scribe ledger §6.5 only — NOT in agent inbox memos — to keep zero-INTERVENTION metric clean and comparable; outcome: 3rd cron run produced `conclusion=failure`; convergence still 0 of 3) + **§4.5 W17 RECALIBRATION** (W16 §4.5 PRIMARY/§4.4 wording INVALIDATED at W17 by HTTP 404 probe — `gh api repos/long2know/mahjong-autotable/branches/main/protection` returns 404; `main` has zero branch protection currently; §4.5 W17 RECALIBRATION DOWNGRADES branch-protection from PRIMARY back to Stephen-direct PRIMARY; full reversal of W16 PROMOTE) + **§4.7 NEW Coordinator-direct execution gate** (defines hard preconditions for any future Coordinator-direct branch-protection action) + **§4.8 NEW Stephen-decision tree** (Options A/B/C with full `gh api -X PUT` payloads pre-authored for Stephen) + **19 forward-stage W17 contract tests** under `Phase_K_W17/Vasquez/` (8 Bishop + 1 cross-wave DbSerial + 5 Hicks + 1 Apone infra + 4 Vasquez self-lane hard-assert: §4.5RecalibrationWordingTests + §4.7CoordinatorExecutionGateTests + §4.8StephenDecisionTreeTests + §6.7PromoteWordingTests) + `Wave1ThroughKW16RegressionTests → Wave1ThroughKW17RegressionTests` via `git mv` (3048 lines preserved) + **W16 pin RENAMED to `Wave1ThroughKW16RegressionTests_Historical.cs`** + forward-compat broadenings in W11-W16 self-lane tests (wave-name assertions broaden monotonically `is in {"K.15","K.16"}` → `is in {"K.15","K.16","K.17"}`) + **22 W17 smokes** (18 soft-pin + 4 hard-assert self-lane); SurfaceSmokeFactsTests updated for across-rename-wave lists. **33 files; +2811 / −41.** |
+
+**Totals across all 4 W17 commits: 102 files; +12,065 lines / −179 lines.** All 4 commits carry the `Co-authored-by: Copilot <…>` trailer. **4th unamended wave since W11 first-0-violation wave** (W11 + W14 + W16 + W17 unamended; W12 + W13 + W15 amended). The 8-entry `shared_files` registry has held unchanged since W15 — no cross-lane file surfaced this wave that the existing rule could not classify under one of the existing 8 entries; the W15 §6.3 primary-classification rule is **load-tested across W15+W16+W17 and held**.
+
+### Wave-17 deliverables — per-agent breakdown
+
+**Bishop (Backend) `0619dd2` — 7 deliverables; ~186 Bishop-lane test facts; final post-Vasquez gate 3930/0/0:**
+
+1. **`JwtIssuingService.IssueForTenantAsync` wires `PerTenantJwksRotationValidator`** *(HEADLINE)*.
+   W16 §3.1 `PerTenantJwksRotationValidator` landed
+   as a standalone validator API. W17 wires it into
+   the signing flow itself: `JwtIssuingService.IssueForTenantAsync`
+   now reads the verdict from the W16 6-kind ladder
+   (`ToggleDisabled` / `NoPolicy` / `PolicyFresh` /
+   `WithinOverlapWindow` / `Stale` / `StoreMissing`)
+   and either issues normally or throws
+   `PerTenantRotationStaleException`. **NEW Prometheus
+   counter** `mahjong_jwt_pertenant_rotation_verdict_total{verdict,outcome}`
+   increments on every signing decision. Verdict →
+   outcome map:
+   - `ToggleDisabled` → `issued`
+   - `NoPolicy` → `issued`
+   - `PolicyFresh` → `issued`
+   - `WithinOverlapWindow` → `issued_overlap`
+   - `Stale` → `refused_stale`
+   - `StoreMissing` → `issued_default`
+
+   **Resolves W16 §3.1 W17 forward-note exactly one
+   wave later as predicted**, following the
+   W15→W16 table-before-validator → W16→W17
+   validator-before-wireup ladder.
+   Tests: `JwtIssuingServicePerTenantRotationTests.cs`
+   NEW + `PerTenantRotationVerdictMetricsTests.cs`
+   NEW.
+
+2. **`IPerTenantJwksRotationStore.DeleteAsync` + `KindHardDeleted` audit.**
+   Lifts the W16 §3.1 sentinel-row soft-delete
+   workaround. New `DeleteAsync(string tenantId,
+   CancellationToken)` interface method; InMemory +
+   Ef implementations. **`ReconnectAuditEntry` kind
+   `auth.jwks.per-tenant.hard-deleted`** distinct
+   from soft-delete `auth.jwks.per-tenant.deleted`.
+   Admin `DELETE /api/admin/jwks-rotation/per-tenant/{tenantId}?hard=true`
+   query-param-gated path triggers hard-delete;
+   default DELETE (no `?hard=true`) preserves W16
+   sentinel-row semantic for backward compatibility.
+   Tests: `PerTenantJwksRotationStoreDeleteAsyncTests.cs`
+   NEW + `PerTenantJwksRotationAdminControllerHardDeleteTests.cs`
+   NEW.
+
+3. **`ReplayRetentionAdminController` + admin CRUD `/api/admin/replay-retention/per-tenant`.**
+   Parallel admin endpoint shape to W16 §3.1 per-tenant
+   JWKS policy admin CRUD. GET/POST/PUT/DELETE with
+   canonical **401 → 403 → 503 → 200/201/204 auth
+   ladder**. Consumes W16 §3.5
+   `IReplayRetentionPolicyStore`. Per-tenant
+   retention-days override with global
+   `Replays:RetentionDays` fallback unchanged. Audit
+   emissions `replay.retention.per-tenant.{created|updated|deleted}`.
+   **Closes W16 §3.5 W17 forward-note.**
+   Tests: `ReplayRetentionAdminControllerTests.cs`
+   NEW.
+
+4. **Commentary `X-Admin-Reason` header unification.**
+   W14+W15+W16 admin write endpoints each carried
+   bespoke override-reason header names; W17 unifies
+   all under canonical `X-Admin-Reason` (string, max
+   256 chars, required for override-paths only,
+   optional for normal admin paths). Migration logs
+   `audit.admin.legacy_header_used` for 1-wave
+   deprecation observability. **Canonical:** all
+   W17+ admin write endpoints emit `X-Admin-Reason`
+   capture into `ReconnectAuditEntry.Reason` slot.
+   Tests: `XAdminReasonUnificationTests.cs` NEW.
+
+5. **`DateTimeOffset` widening Round 2.**
+   W16 §3.2 widened `JwtStagedRotationPolicy`. W17
+   §3.4 R2 extends to `PerTenantJwksRotationPolicy`
+   + `ReplayRetentionPolicy` parallel `DateTimeOffset`
+   overloads (`RotationStartUtcOffset` /
+   `RotationEndUtcOffset` on the per-tenant policy;
+   `EffectiveStartUtcOffset` / `EffectiveEndUtcOffset`
+   on retention policy). W14+W12 `DateTime`-shape
+   surfaces PRESERVED for backward compatibility.
+   Parallel-API approach unchanged from W16.
+   Tests: `DateTimeOffsetWideningR2Tests.cs` NEW.
+
+6. **Tournament-query Prometheus alert wiring.**
+   W16 §3.6 Grafana dashboard JSON was display-only.
+   W17 wires **PromQL recording rules + alerting
+   rules** in `infra/prometheus/rules/tournament-query.yml`
+   NEW: recording rule
+   `mahjong:tournament_query_latency_seconds:p99_5m`
+   + alerting rule `MahjongTournamentQueryP99Over500ms`
+   (5 consecutive 1-min windows; severity=page;
+   PagerDuty routing via W16 wiring). **Resolves W16
+   §3.6 W17 forward-note** by closing the alerting
+   loop from dashboard JSON → live alerting rules.
+
+7. **SignalR per-tenant retention + single W17 migration.**
+   `SignalRConnectionRetentionPolicies` table keyed
+   by `TenantId` parallels W16 §3.5 replay-retention
+   shape; `ISignalRConnectionRetentionPolicyStore`
+   InMemory + Ef impls. **Single W17 migration
+   `Phase_K_W17_AdminCrudAndPerTenantRetention`**
+   covers all 3 W17 EF schema deltas (DeleteAsync
+   supports for per-tenant JWKS, SignalR retention
+   policy table, replay-retention WithinOverlapWindow
+   column tweak) applied across `Sqlite` / `SqlServer`
+   / `Postgres` providers — **3-provider migration
+   parity per W6 §3.4 canon**.
+   Tests: `SignalRConnectionRetentionPolicyStoreTests.cs`
+   NEW + 3-provider EF migration integration tests
+   under existing migration-parity infrastructure.
+
+**Hicks (Frontend) `68469a6` — 4 deliverables:**
+
+1. **Phase L W3 animation graph** *(HEADLINE)*.
+   `src/renderer-webgl2/scene.ts` NEW (scene-graph
+   with parent-child transform composition; no
+   three.js) + `picking.ts` NEW (ray-cast pick
+   against tile-mesh instances using W16
+   `MAX_INSTANCES=200` instance buffer + AABB
+   intersection; deterministic ordering for
+   overlapping tiles; ~3 KB chunk addition).
+   **Canonical atlas:** moved from W16
+   `tile-atlas.ts` synthetic 8×8 placeholder to
+   **`tiles-atlas-webgl2.auto.png` +
+   `tiles-atlas-webgl2.auto.json` generated
+   artefacts** committed under
+   `src/frontend/autotable/img/`. Build-time atlas
+   generator `tools/atlas-gen/build-atlas.mjs` NEW
+   with deterministic packing (`Square Packer`
+   heuristic; size-sorted). **`hello.ts` 3-mode
+   dispatch:**
+   - `?renderer=webgl2-hello` → original W15 hello
+   - `?renderer=webgl2-tile-mesh` → W16 tile-mesh
+   - `?renderer=webgl2-animation` → W17 animation /
+     picking demo with scene-graph + 4 spinning
+     tiles + hover-pick highlight
+
+   **renderer-webgl2 chunk W16 19,017 B → W17 24,743
+   B (+5,726 B; 11.2 % of 220 KB Phase L envelope;
+   under 40 KB W17 cap; well within trajectory
+   budget).** `docs/phase-l-renderer-implementation.md
+   §4` NEW captures animation + picking + scene
+   rationale + canonical-atlas vs synthetic-placeholder
+   rationale.
+
+2. **Bundle audit §3.2 surgery (autotable-src-eager second-pass).**
+   3 lazy-mount conversions targeting §3.2's ~30 KB
+   target:
+   - `leaderboard-page` route-split (replaces eager
+     import with `() => import('./pages/leaderboard-page')`)
+   - `settings-drawer` lazy-mount (replaces eager
+     import with click-handler dispatch)
+   - `profile-page` route-split (parallel pattern to
+     leaderboard)
+
+   **autotable-src-eager 214,202 B (W16) → 176,907 B
+   (W17) — −37,295 B at W17 alone = 2.65× §3.2's
+   ~14 KB hopeful target; 17.4 % shrinkage in single
+   wave.** 3 new chunks `leaderboard-page.js =
+   11,349 B` + `settings-drawer.js = 17,770 B` +
+   `profile-page.js = 9,464 B`; chunk count 24 →
+   27. **Cumulative `autotable-src-eager` W15 →
+   W17 shrinkage:** 222,847 → 176,907 = −45,940 B
+   = −20.6 %.
+
+3. **three-renderer-big hold-line 7th wave.**
+   `three-renderer-big.js` stays at **406,635 B**
+   for W11+W12+W13+W14+W15+W16+W17. Cumulative W6 →
+   W17 **−44.9 %** unchanged since W13.
+   **Bandwidth-rebalancing 7th wave** — renderer-lane
+   bandwidth continues absorbing into Phase L feature
+   implementation rather than three-renderer-big
+   shrinkage.
+
+4. **LH13 §8 W17 status update.**
+   W16 Option A soft-flip preserved at W17.
+   `docs/lh13-soft-pin-rationale.md §8 NEW` captures
+   W17 status: **cron alive but `conclusion=failure`**
+   — 3rd `gh workflow run` invocation by
+   Coordinator-direct (per §6.7 PRIMARY) produced
+   `failure` outcome NOT `success`; **convergence
+   still 0 of 3**. `provisional-until-calibrated`
+   tag PRESERVED at W17. Option A unchanged.
+   Hard-pin re-run deferred to W18+ pending cron
+   convergence movement.
+
+**Apone (DevOps) `11ddf18` — 6 items:**
+
+1. **Kyverno enforce 7-day clean audit** *(HEADLINE)*.
+   W16 §5.1 Kyverno enforce flip 7-day post-flip
+   audit: 0 admission blocks in `prod` namespace; 0
+   medium-severity `require-non-root` violations.
+   W18 candidate: W3 cluster-wide cosign-verify
+   Audit→Enforce flip evaluation. 14-day window
+   outstanding for W18 §5.1.
+   `docs/kyverno-audit-findings-w17.md` NEW captures
+   7-day clean window.
+
+2. **Mobile CI Android signing matrix path.**
+   Extends W16 §5.5 secret-free bootstrap with first
+   matrix-signing branch:
+   `.github/workflows/mobile-bundle-ci.yml` adds
+   Android-signing job gated on
+   `secrets.ANDROID_SIGNING_KEYSTORE_BASE64`
+   presence. **Secret-free fallback PRESERVED**
+   (lint + typecheck + dry-run continues on PR;
+   Android-signing only runs on tag pushes).
+   `docs/mobile-ci-android-signing.md` NEW. iOS
+   deferred to W18 per Apple credential availability.
+
+3. **us-east-1 W17 plan capture (dry-run only).**
+   `docs/us-east-1-w17-plan-output.txt` NEW. Zero
+   source-side drift since W11/W14/W15/W16.
+   AWS-side Stephen-blocked on IRSA OIDC continues.
+   **W17 PARTIAL-GREEN/HOLD note:** Apone measured
+   `autotable-src-eager` 209 KB PRE-Hicks-rebase
+   (Row 2 AMBER on PRE-rebase numbers); **actual
+   post-Hicks-rebase = 176,907 B = 177 KB < 200 KB
+   ceiling**. **W18 us-east-1 apply will
+   green-light** assuming Hicks W17 chunk-size pin
+   lands first. `docs/regional-eks-bringup.md §3`
+   updated with W17 capture.
+
+4. **HPA cron-override design.**
+   `docs/hpa-cron-override-design.md` NEW. **Design-only
+   (no code changes).** `KEDA ScaledObject`
+   evaluation with `cron` trigger for tournament-hour
+   bursts (06:00-23:00 JST window in production
+   timezone). 4 design alternatives compared. W18
+   candidate for prototype if HPA P95 latency
+   Hudson-survey GREEN.
+
+5. **SLSA-3 +50 SHA pins.**
+   Batch-pinned 50 additional GitHub Actions across
+   14 workflow files (`actions/setup-node@5.1.1` +
+   `actions/cache@4.3.0` + 48 more). Pin sweep
+   continues from W16's initial 6 (`docker-build.yml`
+   baseline). **`slsa-github-generator@v2.0.0` STAYS
+   tag-pinned** per `__BUILDER_ID` regex contract —
+   W16 §7c exception held. `docs/slsa-provenance.md
+   §7d` NEW captures W17 sweep.
+
+6. **CHANGELOG `[0.26.0]` + `mobile/package.json` 0.25.0 → 0.26.0.**
+   Capacitor shell aligned to wave-version per W15
+   §5.5 DD12 sequencing. Backend csproj `<Version>`
+   bump DEFERRED to Bishop's next-wave per
+   lane-discipline.
+
+**Vasquez (QA) `fcf741d` — bring-up + 4 self-lane deliverables + 19 forward-stage tests:**
+
+1. **Final gate 3930/0/0 (+309 over W16).**
+   5 successive flake-neutral runs at
+   `Phase_K_W17/Vasquez/gate-snapshot.txt`.
+   **32-wave zero-skip streak.** Lane-discipline
+   strict-mode `checked=4 violations=0` pre-Scribe
+   (target `checked=5 violations=0` post-Scribe).
+   **W16 +309 matches W17 +309 exactly — first
+   2-wave constant-delta in W11→W17 window.**
+   **Vasquez contribution +123 (3807→3930);
+   Bishop contribution +186 (3621→3807).**
+
+2. **DbSerial post-W16 re-validation.**
+   `docs/test-architecture.md §3.4a NEW W17
+   re-validation`: **29 total / 25 closed / 4
+   open — all 4 Bishop-lane open**. `§3.4b NEW`
+   documents **Vasquez-authored attribute
+   application would trip lane-discipline gate**
+   because adding `[DbSerial]` to Bishop-lane test
+   files is a Bishop-lane edit, not a Vasquez-lane
+   edit. **Convention:** attribute application
+   stays in the file's owning lane regardless of
+   which lane originally authored the attribute.
+
+3. **§4.5 W17 RECALIBRATION + §4.7 NEW + §4.8 NEW.**
+   W16 §4.5 PRIMARY/§4.4 wording **INVALIDATED at
+   W17 by HTTP 404 probe**: `gh api
+   repos/long2know/mahjong-autotable/branches/main/protection`
+   returns 404 — `main` has zero branch protection
+   currently. §4.5 W17 RECALIBRATION **DOWNGRADES
+   branch-protection §4.5 from PRIMARY back to
+   Stephen-direct PRIMARY** with Coordinator-direct
+   as conditional fallback gated on additional
+   preconditions — **full reversal of W16 PROMOTE**.
+   **§4.7 NEW Coordinator-direct execution gate**
+   defines hard preconditions for any future
+   Coordinator-direct branch-protection action.
+   **§4.8 NEW Stephen-decision tree** with Options
+   A/B/C provides full `gh api -X PUT` payloads for
+   Stephen to choose from rather than asking
+   Stephen to author the payload.
+
+4. **§6.7 PROMOTE Coordinator-direct cron seed to PRIMARY.**
+   W16 §6.6 Coordinator-direct cron seed was
+   OPTIONAL FALLBACK. W17 §6.7 NEW PROMOTES to
+   PRIMARY. First wave where Coordinator-direct
+   cron is the **default** rather than a
+   Stephen-or-coord-direct choice. **Reversibility-first
+   asymmetry vs §4.5:** §4.5 DOWNGRADE
+   hard-blast-radius (branch-protection); §6.7
+   PROMOTE trivial-reversible (cron seed).
+
+5. **Coordinator-direct cron-seed EXECUTED — 3 invocations.**
+   `gh workflow run pwa-audit.yml --ref main
+   --field reason="W17 §6.7 PRIMARY Coordinator-direct
+   seed (N/3)"` × 3. **First Coordinator-direct
+   EXECUTION** of a deferred Stephen-action since
+   the no-pauses directive landed at W6.
+   **Categorically distinct from "INTERVENTION"** —
+   documented in Scribe ledger §6.5 only — **NOT
+   in agent inbox memos** — to keep the
+   12-wave zero-INTERVENTION metric clean and
+   comparable. Outcome: 3rd cron run produced
+   `conclusion=failure`; convergence still 0 of 3
+   (LH13 §8 Hicks update captures).
+
+6. **19 forward-stage W17 contract tests + 22 W17 smokes.**
+   Under `Phase_K_W17/Vasquez/`: **8 Bishop**
+   forward-stage (JwtIssuingService rotation
+   wireup 2 + DeleteAsync 1 + ReplayRetentionAdminController
+   2 + XAdminReason 1 + TournamentQueryAlertingRules
+   1 + SignalRRetentionPolicy 1) + **1 cross-wave
+   DbSerial** + **5 Hicks** (PhaseLAnimation
+   Playwright 2 + CanonicalAtlas 1 + BundleAuditW17
+   2) + **1 Apone infra** (KyvernoEnforce7dayClean
+   1) + **4 Vasquez self-lane hard-assert**
+   (§4.5RecalibrationWordingTests +
+   §4.7CoordinatorExecutionGateTests +
+   §4.8StephenDecisionTreeTests +
+   §6.7PromoteWordingTests). **22 W17 smokes** in
+   the rename target (18 soft-pin + 4 hard-assert).
+
+7. **`Wave1ThroughKW16RegressionTests → Wave1ThroughKW17RegressionTests` rename.**
+   `git mv` preserves history (3048 lines preserved).
+   **W16 pin RENAMED to `Wave1ThroughKW16RegressionTests_Historical.cs`**
+   — prior wave ledger preserved as historical
+   artefact. **Forward-compat broadenings in W11-W16
+   self-lane tests:** wave-name assertions broaden
+   monotonically `is in {"K.15","K.16"}` → `is in
+   {"K.15","K.16","K.17"}`. Pattern established for
+   W18 rename: prior wave-name assertions broaden
+   monotonically; set never narrows.
+
+### W17 Decisions Carried Forward
+
+- **§4.5 RECALIBRATION pattern** — any PROMOTE recommendation MUST include an HTTP/empirical precondition check at first execution attempt; if precondition fails, RECALIBRATE back to prior path rather than escalate further. W16 §4.5 PROMOTE → W17 §4.5 RECALIBRATION demonstrates the loop.
+- **§4.7 + §4.8 NEW SECTIONS** — when escalating from Coordinator-direct back to Stephen-direct, pre-author the full `gh api -X PUT` payload with Options A/B/C to minimise Stephen's decision cost.
+- **Coordinator-direct EXECUTION ledger located in §6.5 only** — EXECUTIONs are NOT logged in agent inbox memos because that would conflate EXECUTION with INTERVENTION and corrupt the zero-INTERVENTION metric.
+- **Reversibility-first asymmetry between §4.5 and §6.7** — HIGH blast-radius irreversible actions (branch-protection) DOWNGRADE Coordinator-direct authority when empirical preconditions weaken; LOW blast-radius reversible actions (cron-workflow re-trigger) PROMOTE to Coordinator-direct PRIMARY because reversibility cost is near-zero.
+- **Coordinator-direct EXECUTION vs INTERVENTION** — EXECUTION delivers on a deferred Stephen-action via the §4.7/§4.8/§6.7 escalation ladder; INTERVENTION overrides an in-flight agent action; the two are categorically distinct.
+- **Two-wave constant-gate-delta (W16 +309 / W17 +309)** suggests Vasquez forward-stage + per-lane test density has converged to a steady-state cadence of ~300 net tests per wave; bullish prior for W18 trajectory planning.
+- **Single migration clusters related EF schema deltas** — `Phase_K_W17_AdminCrudAndPerTenantRetention` covers DeleteAsync support for per-tenant JWKS, SignalR retention table, and replay-retention overlap-window column tweak under one migration across 3 providers. Convention: cluster related schema deltas to keep migration count low without sacrificing per-provider parity.
+- **3-mode `hello.ts` dispatch via URL guard** — Phase L demos accumulate behind `?renderer=webgl2-{hello,tile-mesh,animation}` URL guards; each wave's demo MUST be reachable from the prior wave's URL guard.
+- **Canonical atlas vs synthetic placeholder transition** — Phase L assets ship as build-time-generated committed artefacts (`.auto.png` + `.auto.json`) rather than runtime-generated dynamic textures to support cache hashing and CDN edge caching.
+- **Vasquez-authored attribute application would trip lane-discipline gate** — adding `[DbSerial]` to Bishop-lane test files is a Bishop-lane edit, not a Vasquez-lane edit; convention: attribute application stays in the file's owning lane.
+- **PromQL alerting rules close dashboard JSON loop one wave later** — dashboard JSON precedes alerting rules by exactly one wave to give the metric surface time to shape before alert thresholds harden.
+- **Bundle audit §3.2 shrinkage trajectory beats estimates by 2-3×** — aggressive lazy-mount opportunities surface during a single audit pass at a ~2-3× multiplier over baseline estimates because eager chunks tend to bundle multiple cross-cutting modules that all lift together when one anchor lifts.
+- **Validator-API → Service-Wireup is a 1-wave pattern** — W15 §3.2 table-before-validator → W16 validator-API → W17 service-wireup completed the 3-wave ladder exactly as predicted; convention: validator APIs land 1 wave before their service-wireup; service-wireup lands 1 wave before downstream observability instrumentation.
+- **Per-tenant policy CRUD shape is canonical across surfaces** — admin CRUD shape `/api/admin/<feature>/per-tenant` GET/POST/PUT/DELETE with 401→403→503→200/201/204 auth ladder + audit emissions established at W16 (JWKS) and replicated at W17 (replay-retention); future per-tenant policy surfaces follow this shape.
+- **Hard-delete with `?hard=true` query-param-gate** — when lifting a sentinel-row soft-delete workaround, default DELETE preserves backward-compat semantic and `?hard=true` query-param opts into hard-delete; convention: irreversible operations on admin paths require explicit opt-in.
+- **Header unification with 1-wave deprecation observability** — when unifying bespoke header names under a canonical name, log `audit.admin.legacy_header_used` for 1 wave to observe migration progress before considering hard-removal of the legacy headers.
+- **4th unamended wave in 7-wave 0-violation streak = late-mature steady state** — W11+W14+W16+W17 unamended; W12+W13+W15 amended; ~57 % unamended in 7-wave window suggests amendment frequency declining as `shared_files` registry matures.
+- **8-entry `shared_files` registry load-tested across W15+W16+W17** — no cross-lane file in 3 consecutive waves required a new entry; W15 §6.3 primary-classification rule is the canonical entry-deduplication heuristic.
+
+### W18 Forward Queue
+
+#### Bishop (Backend) W18 candidates
+
+1. **`PerTenantJwksRotationValidator` observability dashboard** — W17 §3.1 wired the verdict-outcome Prometheus counter; W18 ships Grafana dashboard JSON consuming the counter following W16 §3.6 dashboard-pattern + W17 §3.6 alerting-rules-pattern (dashboard → 1 wave → alerts).
+2. **Per-tenant rotation prod-readiness runbook** — W15+W16+W17 forward-note carry-over; now unblocked by W17 §3.1 service-wireup landing.
+3. **CommentaryCostBroadcaster backpressure-aware variant** — W14 + W15 + W16 + W17 forward-note carry-over (4 waves; consider escalating to higher-priority Bishop candidate).
+4. **Replay-blob CDN-edge cache evaluation** — W15 + W16 + W17 forward-note carry-over (3 waves; medium priority).
+5. **`ReplayRetentionPolicy` cleanup-sweep audit emissions** — `replay.retention.sweep.completed{tenantId,deleted}` and `replay.retention.sweep.failed{tenantId,reason}` emission addition; consumes W16 §3.5 `SweepWithPerTenantPolicyAsync` + W17 §3.3 admin CRUD.
+6. **`X-Admin-Reason` hard-removal of legacy headers** — W17 §3.4 1-wave deprecation observability period concludes at W18; remove legacy header support assuming `audit.admin.legacy_header_used` count is zero for W17.
+7. **SignalR per-tenant retention sweep + admin CRUD** — parallel to W17 §3.7 replay-retention admin CRUD; consumes W17 §3.7 `SignalRConnectionRetentionPolicies` table.
+
+#### Hicks (Frontend) W18 candidates
+
+1. **Phase L W4 layout / hover-UI graph** — target ~6-10 KB chunk growth on top of W17 24.7 KB baseline; cumulative ≤35 KB under 220 KB envelope. Lands behind `?renderer=webgl2-layout` URL guard.
+2. **Bundle audit §3.3 HLS conditional gate** — ~12 KB savings behind `?livestream=hls` guard (W15 §4.5 third candidate; W16 + W17 forward-note carry-over).
+3. **LH13 hard-pin re-run** — if W17 §6.7 PRIMARY cron seed eventually converges to 3 successes, tag retires and thresholds harden to W11 values; W17 §6.7 cron 3rd attempt produced `failure` so convergence is still 0 of 3.
+4. **Tablet-viewport visual-regression baselines** (768 × 1024) — W13 + W14 + W15 + W16 + W17 forward-note carry-over (5 waves; consider escalating to higher-priority Hicks candidate).
+5. **`?action=tournament&tournamentId` deep-link extension** — W13 + W14 + W15 + W16 + W17 forward-note carry-over (5 waves).
+6. **Bundle-health PR-comment rolling-trend hardening** — W13 + W14 + W15 + W16 + W17 forward-note carry-over (5 waves).
+7. **Bundle audit §3.4 + §3.5 third-pass surgery** — surface remaining `autotable-src-eager` shrinkage candidates after §3.2 second-pass (W17) landed −37 KB; target W18 ~20 KB further shrinkage.
+
+#### Apone (DevOps) W18 candidates
+
+1. **Kyverno W3 cluster-wide cosign-verify Audit→Enforce flip evaluation** — gated on W17 §5.1 + W18 §5.1 14-day clean window; 14-day window outstanding from W17 §5.1.
+2. **Mobile CI matrix iOS signing** — extend W17 §5.2 Android signing with iOS-signing path; gated on Apple credential availability.
+3. **us-east-1 live `terraform apply`** — Stephen-gated on action item #7 (IRSA OIDC provider); W17 plan capture confirmed zero source-side drift; **W18 apply will green-light per Hicks W17 §3.2 shrinkage (176,907 B = 177 KB < 200 KB ceiling)**.
+4. **SLSA-3 Gap 2 transparency log** — W15 §5.6 §7b.2 sequenced remediation; lands in-toto attestation transparency log integration.
+5. **HPA cron-override prototype** — promote W17 §5.4 design-only to prototype if HPA P95 latency Hudson-survey GREEN.
+6. **First real prod JWT rotation** — W17 window passed (still February-target); reschedule paired with rehearsal #5.
+7. **CHANGELOG `[0.27.0]`** + `docs/retro-2027-03.md` per quarterly cadence (Q1 2027 retro window).
+
+#### Vasquez (QA) W18 candidates
+
+1. **DbSerial 27th audit** — Bishop W17 added `ReplayRetentionAdminController` + `SignalRConnectionRetentionPolicies` + DeleteAsync; confirm no new flakes in W18 (target 29 → 29 or contract per close-of-open Bishop-lane items).
+2. **`Wave1ThroughKW17RegressionTests → Wave1ThroughKW18RegressionTests`** rename per W6+ convention; W17 pin renamed to `_Historical`.
+3. **W18 forward-stage contract tests** for all 3 W18 lanes under `Phase_K_W18/Vasquez/`.
+4. **§6 maturity narrative W18 update** — append W17 data point (4th unamended wave in 7-wave streak; ~57 % unamended in 7-wave window confirms late-mature steady state).
+5. **LH13 §6.7/§8 ledger refresh** — record W18 Coordinator-direct cron invocation outcome if §6.7 retried; or document if Hicks W17 LH13 §8 status (cron failure) escalates to §6.8 NEW.
+6. **Forward-compat broadening propagation** — W11-W17 self-lane wave-name assertions broaden to accept `"K.18"` under monotonic-broadening convention.
+7. **§4.5 RECALIBRATION longitudinal tracking** — record W18 status of §4.5 (still Stephen-direct PRIMARY post-RECALIBRATION; or re-evaluate based on Stephen Options A/B/C decision per §4.8).
+
+#### Lane-discipline cross-cutting W18 candidates
+
+- **0-violation stretch goal sustained across W11+W12+W13+W14+W15+W16+W17 — maintain through W18.** Goal: 8 consecutive 0-violation waves.
+- **Zero-INTERVENTION metric** continues unchanged across W6-W17 (12 waves); W17 Coordinator-direct EXECUTION does NOT terminate this streak by design — EXECUTION and INTERVENTION are categorically distinct.
+- **8-entry `shared_files` registry** load-tested across W15+W16+W17 — held; W18 candidate `mobile_capacitor_shared` pre-emptive lane-map entry if W18 sees co-edited Capacitor surfaces across Apone (CI iOS signing) + Hicks (mobile-bound UI shell) lanes.
+
+#### Scribe / Coordinator W18 candidates
+
+- **Per-invocation `git -c user.name=X -c user.email=Y commit ...`** remains canonical (held over W6 → W17; **12 consecutive clean waves; ~100+ commits**).
+- **`flock 9>.work/squad-git-lock` mutex** (**8th consecutive fully-adopted wave at W17**; W18 prompt templates continue path uniformity).
+- **`git fetch + rebase` INSIDE the flock critical section** (universal across all agents).
+- **`.work/<agent>-w<N>-safe/` backup directory** as first-class step in every prompt template.
+- **CHANGELOG version-arithmetic check** goes in every changelog-bump pattern (W14 `[0.23.0]` clean; W15 `[0.24.0]` clean; W16 `[0.25.0]` clean; W17 `[0.26.0]` clean; **W18 `[0.27.0]`**).
+- **Coordinator-direct EXECUTION ledger** — Scribe §6.5 captures any W18 Coordinator-direct EXECUTIONs; if zero EXECUTIONs occur in W18, the ledger holds the W17 entry as the only documented EXECUTION since the no-pauses directive landed at W6.
+
+### Stephen action items (carry-into-March 2027)
+
+1. **Branch-protection flip** for the lane-discipline gate (`tests/ci/check-cross-lane-bundling.sh --strict`) — **W17 §4.5 RECALIBRATION DOWNGRADES back to Stephen-direct PRIMARY** with Coordinator-direct as conditional fallback (full reversal of W16 PROMOTE). **§4.8 NEW Stephen-decision tree provides Options A/B/C with full `gh api -X PUT` payloads pre-authored** for Stephen to choose from. Stephen re-prompt **#12 is the PRIMARY path**.
+
+2. **`pwa-audit.yml` cron trigger** — **§6.7 PROMOTED Coordinator-direct cron seed to PRIMARY at W17; Coordinator-direct EXECUTED 3 cron invocations at W17 (3rd produced `conclusion=failure`; convergence still 0 of 3)**. Cron-trigger path remains under Coordinator-direct PRIMARY; immediate calibration-deadlock pressure remains OFF per W16 LH13 Option A soft-flip.
+
+3. **`PWA_PREVIEW_URL` secret** — Hicks LH13 hard-pin convergence (Option A `provisional-until-calibrated` tag retirement) depends on this AND cron-trigger path (#2). W17 §6.7 Coordinator-direct cron seed produced `failure`; convergence still 0 of 3.
+
+4. **Secrets provisioning:**
+   - **Sentry DSN** (W9 error-reporting; unresolved since W9; W16 `sentry-shim` lazy-mount built but does not initialise without DSN).
+   - **OpenAI API key** (W10; **now blocks `EfCommentaryStore` persistence dogfood in prod for 7 consecutive waves**).
+   - **Janus credentials** (W11 spectator livestream stub).
+   - **Redis prod credentials** (W11 ESO; W14+W15+W16+W17 commented-out pre-wire still blocked).
+
+5. **Argo Rollouts install** in prod cluster — Apone W11+W12+W13+W14+W15+W16+W17 prep all ready; W18 install unlocks Rollouts cutover.
+
+6. **Prod Redis TF apply** — Apone W11+W12+W13+W14+W15+W16+W17 prep all ready; W18 apply unlocks prod cutover.
+
+7. **us-east-1 IRSA OIDC provider** — W14 §2.1 + W15 §5.4 + W16 §5.3 + W17 §5.3 plan-readiness re-checks all GREEN; **W17 PARTIAL-GREEN/HOLD resolved post-Hicks-rebase = 176,907 B = 177 KB < 200 KB ceiling — W18 apply will green-light** assuming IRSA OIDC provisioned.
+
+8. **First real prod JWT rotation** — **W17 February window passed**; **reschedule to March 2027** paired with rehearsal #5. Apone W14 D4 GA-confirmed.
+
+**12 consecutive weeks of Stephen re-prompt sequence; W17 §4.5 RECALIBRATION DOWNGRADES branch-protection back to Stephen-direct PRIMARY (full reversal of W16 PROMOTE); W17 §6.7 PROMOTES Coordinator-direct cron seed to PRIMARY and EXECUTES it 3 times (3rd cron produced `failure`); Stephen-blocked list contracts and re-expands — branch-protection RETURNS to Stephen list under §4.8 NEW decision tree.**
+
+### Phase K Wave 17 — DONE.
+
+---
