@@ -361,7 +361,7 @@ public sealed class SecurityHeadersMiddleware
     /// <summary>
     /// Phase J Wave 10 — strips <c>'unsafe-inline'</c> from the
     /// <c>style-src</c> directive of a CSP string while leaving every
-    /// other directive (including <c>script-src</c> nonces / 
+    /// other directive (including <c>script-src</c> nonces /
     /// <c>'wasm-unsafe-eval'</c>) untouched. Internal-public for unit
     /// testing. If the policy has no <c>style-src</c> directive, returns
     /// the input unchanged (default-src fallback applies).

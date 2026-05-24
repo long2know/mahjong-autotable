@@ -20,4 +20,3 @@ public sealed class SqliteAppDbContext(DbContextOptions<SqliteAppDbContext> opti
     : AppDbContext(options)
 {
 }
-

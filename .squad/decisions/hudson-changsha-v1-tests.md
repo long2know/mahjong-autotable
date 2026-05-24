@@ -1,7 +1,7 @@
 # Hudson Decision: Changsha v1 Test Suite Delivery
 
-**Date:** 2026-05-08  
-**Author:** Hudson (Tester)  
+**Date:** 2026-05-08
+**Author:** Hudson (Tester)
 **Context:** Implementation wave for Changsha v1 — converted P0 catalog scenarios into xUnit tests
 
 ## Summary
@@ -35,7 +35,7 @@ Delivered comprehensive xUnit test suite for Changsha Mahjong v1 scope with **77
   - IScoringService
   - ChangshaGameStateMachine
   - IChangshaBot
-  
+
 - **3 tests** — Skipped, deferred to v2 (out of v1 scope):
   - `BlessingOfHeaven_DealerWinsOnInitialDeal_ValidatesAsBigWin` (instant wins)
   - `RobbingTheKong_WinByClaimingAddedKongTile_ValidatesAsBigWin` (kong robbing)

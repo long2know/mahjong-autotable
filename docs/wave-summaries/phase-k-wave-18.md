@@ -739,4 +739,3 @@ W18 closes the 13th consecutive identity-hardening clean wave (W6 → W18).
 **Scribe sweep close:** this summary, the `.squad/decisions.md` W18 fold, the `.squad/agents/scribe/history.md` W18 entry, and the `.squad/decisions/inbox/scribe-phase-k-wave-18-sweep.md` inbox memo land as a single Scribe-identity commit under `flock` mutex. Selective `git add` only — never `git add -A`; `.squad/decisions/inbox/` force-added with `git add -f` (directory is gitignored — precedent set at W17).
 
 — Scribe (Archive) <scribe@squad.mahjong>
-

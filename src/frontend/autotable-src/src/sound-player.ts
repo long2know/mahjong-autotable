@@ -8,7 +8,7 @@ class Channel {
   private gainer: GainNode;
   playing: boolean = false;
 
-  constructor(audioContext: AudioContext, urls: string[]) {    
+  constructor(audioContext: AudioContext, urls: string[]) {
     this.gainer = audioContext.createGain();
     this.panner = audioContext.createStereoPanner();
     this.elements = {};

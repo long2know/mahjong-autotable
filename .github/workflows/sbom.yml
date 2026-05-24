@@ -129,7 +129,7 @@ jobs:
       # build goes RED and the PR is blocked until the finding is
       # remediated (or explicitly suppressed via .trivyignore).
       - name: Trivy image scan (CRITICAL,HIGH gate)
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # 0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           format: table
@@ -144,7 +144,7 @@ jobs:
       # findings record once the PR is unblocked.
       - name: Trivy SARIF output (no gate)
         if: always()
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # 0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           format: sarif

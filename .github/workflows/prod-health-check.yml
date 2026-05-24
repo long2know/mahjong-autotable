@@ -84,10 +84,19 @@
 name: prod-health-check
 
 on:
-  schedule:
-    # Every 5 minutes. Drift is fine — synthetic probes don't
-    # need second-precision.
-    - cron: "*/5 * * * *"
+  # Apone — CI emergency fix (post-W22 merge). The scheduled
+  # probe is DISABLED until the us-east-1 / global production
+  # endpoint (api.mahjong-autotable.com) is actually applied by
+  # Stephen — the 15-wave deferral arc means the host doesn't
+  # resolve yet, so the */5min cron was paging the operator with
+  # `body.out: No such file or directory` failure emails every
+  # cycle. Re-enable the `schedule:` block once the global edge
+  # is provisioned + at least one regional `PROD_BASE_URL_*` var
+  # is set to a routable host. Until then the workflow is only
+  # callable via `workflow_dispatch` for manual smoke tests.
+  #
+  # schedule:
+  #   - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       regions:

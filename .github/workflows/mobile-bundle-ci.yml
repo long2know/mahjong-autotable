@@ -119,12 +119,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      # Apone — CI emergency fix: mobile/package-lock.json does not
+      # exist in the tree (mobile shell uses `npm install`, not
+      # `npm ci`), so `cache-dependency-path` resolved to nothing and
+      # `actions/setup-node` aborted with "Some specified paths were
+      # not resolved". Drop the cache wiring until the operator
+      # commits a lockfile.
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: mobile/package-lock.json
 
       - name: Install mobile shell deps (--no-audit, --no-fund)
         working-directory: mobile

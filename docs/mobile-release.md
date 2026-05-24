@@ -234,7 +234,7 @@ repo):
   → External Groups → create group → add testers by email →
   enable "automatic notifications for new builds". The
   group name passed in `ios_external_groups` must match exactly.
-* **Play Closed Testing tracks** — Play Console → Testing → 
+* **Play Closed Testing tracks** — Play Console → Testing →
   Closed testing → manage testers (Google Group or email list).
 
 ## 5. TestFlight beta-tester management

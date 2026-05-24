@@ -3,7 +3,7 @@ namespace Mahjong.Autotable.Api.Changsha;
 /// <summary>
 /// Pure-functional event-sourced state machine for Changsha Mahjong.
 /// Transitions: (state, command) → (newState, events[])
-/// 
+///
 /// States per Vasquez §7:
 ///   SEATING → ROLLING_DICE → DEALING → AWAITING_DISCARD → AWAITING_CLAIM →
 ///   SCORING → END_HAND → ROTATING_BANKER → (back to ROLLING_DICE or END_GAME)

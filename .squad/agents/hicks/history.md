@@ -1482,7 +1482,7 @@ Six events — draw / discard / claim / win / washout / gameComplete — wired t
 
 **Canonical pattern ordering (`src/game-ui.ts` + `src/move-log.ts`)**
 
-`PATTERN_DISPLAY_ORDER` hardcoded list matches Bishop's `ChangshaPatternOrdering` table 1:1 (slot 1 HeavenlyHand → slot 13 SingleWait, with reserved slots 6, 7, 10, 12-13 for patterns not yet implemented). Unknown patterns sort alphabetically after the listed ones. `comparePatterns()` / `sortPatterns()` exported and applied to (a) result-modal chip strip via `renderResultPatternChips`, (b) move-log Hu-row patterns via `.sort(comparePatterns)`. 
+`PATTERN_DISPLAY_ORDER` hardcoded list matches Bishop's `ChangshaPatternOrdering` table 1:1 (slot 1 HeavenlyHand → slot 13 SingleWait, with reserved slots 6, 7, 10, 12-13 for patterns not yet implemented). Unknown patterns sort alphabetically after the listed ones. `comparePatterns()` / `sortPatterns()` exported and applied to (a) result-modal chip strip via `renderResultPatternChips`, (b) move-log Hu-row patterns via `.sort(comparePatterns)`.
 
 **Live wire upgrade** — `loadPatternOrderingFromApi()` fires a one-shot `fetch('api/changsha/pattern-ordering')` from `src/index.ts` at boot. On success, `setPatternDisplayOrder()` overwrites the in-process map with Bishop's canonical table. On failure (404 / offline / parse), the hardcoded list keeps rendering correctly. Result: a future Wave that adds a new pattern to Bishop's table is picked up on next page-load without a frontend code change.
 

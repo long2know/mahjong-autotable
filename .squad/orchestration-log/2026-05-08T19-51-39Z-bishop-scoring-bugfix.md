@@ -1,10 +1,10 @@
 # Orchestration Log: bishop-scoring-bugfix
 
-**Agent:** Bishop  
-**Task:** Scoring Service Bug Fixes (Phase 2 Tail)  
-**Started:** 2026-05-08  
-**Status:** Completed  
-**Branch:** stlong/changsha-v1-phase2  
+**Agent:** Bishop
+**Task:** Scoring Service Bug Fixes (Phase 2 Tail)
+**Started:** 2026-05-08
+**Status:** Completed
+**Branch:** stlong/changsha-v1-phase2
 
 ## Deliverables
 

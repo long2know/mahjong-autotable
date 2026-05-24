@@ -2,7 +2,7 @@
 #
 # Mahjong Autotable — single-image deployment.
 #
-# Stage 1 — frontend bundle (Node 20 Alpine + Parcel)
+# Stage 1 — frontend bundle (Node 20 Alpine + Vite, Phase K Wave 7 swap)
 # Stage 2 — backend build (.NET 10 SDK)
 # Stage 3 — runtime (.NET 10 ASP.NET) hosting the published API + bundled
 #           autotable assets. SQLite database lives on a /data volume.
@@ -22,21 +22,17 @@ COPY src/frontend/autotable-src/package.json src/frontend/autotable-src/package-
 RUN --mount=type=cache,id=mahjong-npm,target=/root/.npm \
     npm ci --no-audit --no-fund --prefer-offline
 
-# Copy the rest of the bundle source and produce the static assets at /out/autotable.
-# `--public-url .` keeps every emitted asset URL relative so the bundle works
-# when served under /autotable/ (build invariant documented in decisions.md).
-# Phase J Wave 8: enable Parcel's content-addressed cache via a cache mount.
-# `--cache-dir` writes to a stable path; BuildKit reuses it across builds so
-# incremental rebuilds (CI on a small source change) skip the transformer
-# pass entirely. The cache is content-keyed so we don't need to invalidate
-# manually.
+# Copy the rest of the bundle source and produce the static assets.
+# Phase K Wave 7 swapped Parcel → Vite (see vite.config.ts header). Vite
+# writes to `../autotable` relative to the project root, so we land assets
+# at /src/frontend/autotable. The Stage 3 COPY pulls from there.
+# BuildKit cache mount on Vite's `node_modules/.vite` keeps incremental
+# rebuilds (CI on a small source change) cheap. The cache is content-
+# keyed so we don't need to invalidate manually.
 COPY src/frontend/autotable-src/ ./
-RUN --mount=type=cache,id=mahjong-parcel,target=/src/frontend/autotable-src/.parcel-cache \
-    npx parcel build index.html \
-    --dist-dir /out/autotable \
-    --public-url . \
-    --no-source-maps \
-    --cache-dir /src/frontend/autotable-src/.parcel-cache
+RUN --mount=type=cache,id=mahjong-vite,target=/src/frontend/autotable-src/node_modules/.vite \
+    npm run build \
+    && test -f /src/frontend/autotable/index.html
 
 ############################
 # Stage 2 — backend build  #
@@ -84,10 +80,12 @@ COPY --from=backend-build /out/api/ ./
 # Program.cs resolves the autotable bundle at:
 #   Path.GetFullPath(Path.Combine(ContentRootPath, "../../../frontend/autotable"))
 # With WORKDIR=/app the path collapses to /frontend/autotable, so we drop the
-# Parcel output exactly there. Keeping the source-tree layout means the .glb /
+# Vite output exactly there. Keeping the source-tree layout means the .glb /
 # .gltf MIME-type extensions registered in Program.cs are exercised on every
-# request — no backend change required.
-COPY --from=frontend-build /out/autotable/ /frontend/autotable/
+# request — no backend change required. Phase K Wave 7 swapped the bundler
+# to Vite which writes assets to /src/frontend/autotable (relative to the
+# project root); the source path tracks that change.
+COPY --from=frontend-build /src/frontend/autotable/ /frontend/autotable/
 
 # Phase J Wave 7 — Apone (container hardening). Run as a fixed non-root
 # UID/GID so the runtime image is safe to schedule on Kubernetes clusters
