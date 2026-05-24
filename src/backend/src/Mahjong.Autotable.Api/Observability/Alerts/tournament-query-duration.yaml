@@ -145,3 +145,52 @@ groups:
             up{job="mahjong-autotable"} series before assuming a
             tournament-load drop.
           runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#heartbeat"
+
+      # Phase K Wave 20 — Bishop. Two-tier Swiss-pairing P95 alerts.
+      # The W18 surface added the P99 page rail; W20 lands the P95
+      # paired ticket/page rails so a sustained pairing slowdown is
+      # caught BEFORE p99 trips. Together with the W18 P99 rule the
+      # operator now has a three-rail Swiss alert envelope:
+      # P95 > 5s ticket, P95 > 15s page, P99 > 1s page.
+      - alert: SwissPairingDurationHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, stage) (
+              rate(swiss_pairing_duration_seconds_bucket[5m])
+            )
+          ) > 5
+        for: 5m
+        labels:
+          severity: ticket
+          team: bishop
+          wave: phase-k-w20
+        annotations:
+          summary: "Swiss pairing p95 > 5s for stage {{ $labels.stage }}"
+          description: |
+            Swiss pairing for stage {{ $labels.stage }} is taking longer than
+            5 seconds at p95 for 5 minutes. This is the W20 non-paging
+            ticket rail — investigate the pairing dataset size and the
+            scoring tiebreaker selection before it escalates to the
+            SwissPairingDurationCritical page rail.
+          runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#swiss-pairing-p95-high"
+
+      - alert: SwissPairingDurationCritical
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, stage) (
+              rate(swiss_pairing_duration_seconds_bucket[5m])
+            )
+          ) > 15
+        for: 5m
+        labels:
+          severity: page
+          team: bishop
+          wave: phase-k-w20
+        annotations:
+          summary: "Swiss pairing p95 > 15s for stage {{ $labels.stage }}"
+          description: |
+            Swiss pairing for stage {{ $labels.stage }} is taking longer than
+            15 seconds at p95 for 5 minutes. The pairing computation has
+            either regressed (algorithm) or the dataset has grown well
+            beyond the W14 bracket-store envelope. PAGE the on-call.
+          runbook_url: "https://github.com/long2know/mahjong-autotable/blob/main/docs/tournament-query-duration-runbook.md#swiss-pairing-p95-critical"

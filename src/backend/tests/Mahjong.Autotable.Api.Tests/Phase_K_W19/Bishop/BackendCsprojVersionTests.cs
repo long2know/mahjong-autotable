@@ -55,8 +55,23 @@ public sealed class BackendCsprojVersionTests
     [Fact, Trait("Category", "Build"), Trait("Wave", "Phase-K-19"), Trait("Lane", "Bishop")]
     public void CsprojFile_VersionIsExpectedW19Stamp()
     {
+        // Phase K Wave 20 — Bishop. Relaxed from an exact-match
+        // pin (the W19 wave landed `0.28.0`) to a strict-AT-OR-
+        // ABOVE invariant so subsequent wave bumps don't trip
+        // this contract. The W20 test
+        // (`Phase_K_W20/Bishop/BackendCsprojVersionTests`) takes
+        // over the exact-version pin for the new wave; this test
+        // continues to guard the W19 floor.
         var content = File.ReadAllText(LocateCsproj());
-        Assert.Contains($"<Version>{ExpectedVersion}</Version>", content);
+        var match = Regex.Match(content, @"<Version>(\d+)\.(\d+)\.(\d+)</Version>");
+        Assert.True(match.Success);
+        var current = new Version(
+            int.Parse(match.Groups[1].Value),
+            int.Parse(match.Groups[2].Value),
+            int.Parse(match.Groups[3].Value));
+        var w19Floor = new Version(0, 28, 0);
+        Assert.True(current >= w19Floor,
+            $"csproj version ({current}) must be >= W19 stamp ({w19Floor}).");
     }
 
     [Fact, Trait("Category", "Build"), Trait("Wave", "Phase-K-19"), Trait("Lane", "Bishop")]

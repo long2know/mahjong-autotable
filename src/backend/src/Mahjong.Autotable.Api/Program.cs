@@ -556,6 +556,15 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.SwissStandingsSer
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.ISwissPairingService,
     Mahjong.Autotable.Api.Tournament.FideC04SwissPairingService>();
 
+// Phase K Wave 20 — Bishop. Live Swiss pairing service. Wraps
+// the W11 FIDE C.04.1 binding above so the W20 admin endpoint
+// (POST /api/admin/tournaments/{id}/swiss-pair-next-round) can
+// compute + persist + audit the next round in a single call.
+// Singleton lifetime — the service opens its own DbContext
+// scope per request via IServiceScopeFactory. See
+// docs/swiss-pairing.md (W20 live-pairing addendum).
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Tournament.SwissPairingService>();
+
 // Phase K Wave 8 — Bishop. Bracket snapshot service. Composes the
 // generator's slot layout with the live TournamentMatch rows so the
 // UI gets a single envelope for the bracket tree. Scoped via
@@ -962,6 +971,17 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.IReplayRetentionPolicyStore,
             Mahjong.Autotable.Api.Replays.InMemoryReplayRetentionPolicyStore>();
     }
+
+    // Phase K Wave 20 — Bishop. Per-tenant replay auto-expiry
+    // counter + handler. Registered for BOTH storage branches so
+    // the per-tenant breakdown sweep is exercised in single-
+    // replica dev too. The metric is rendered by MetricsEndpoint;
+    // the handler runs as a hosted service. See
+    // docs/replay-by-id.md §4.2 (W20).
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.ReplayExpiryMetrics>();
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Replays.ReplayStoreExpiryHandler>();
+    builder.Services.AddHostedService(sp =>
+        sp.GetRequiredService<Mahjong.Autotable.Api.Replays.ReplayStoreExpiryHandler>());
 }
 
 // Phase K Wave 12 — Bishop. Tournament bracket persistence. The W6-W10

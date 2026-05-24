@@ -4,17 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Phase K Wave 19 — Bishop (Backend). Cadence-setting first
-         backend csproj Version. W18 Apone deferred the bump because
-         it was cross-lane; W19 lands the first canonical <Version>
-         element in the backend lane and bumps to W19 cadence in the
-         same edit (0.27.0 → 0.28.0). The corresponding contract test
-         lives at tests/Phase_K_W19/Bishop/BackendCsprojVersionTests.cs
-         and pins both the presence of the element and the "X.Y.Z"
-         shape so future waves can advance the value without breaking
-         the contract. See docs/agent-handoff-protocol.md §VERSION-
-         BUMP for the cadence policy. -->
-    <Version>0.28.0</Version>
+    <!-- Phase K Wave 20 — Bishop (Backend). W20 cadence bump.
+         W19 landed the canonical <Version> element + first
+         strict-> baseline contract; W20 advances 0.28.0 → 0.29.0
+         and the W20 contract test
+         (tests/Phase_K_W20/Bishop/BackendCsprojVersionTests.cs)
+         pins both the new stamp and the strict-> 0.28.0 invariant
+         so a future rebase that drops the bump fails loudly in CI.
+         See docs/agent-handoff-protocol.md §VERSION-BUMP. -->
+    <Version>0.29.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
