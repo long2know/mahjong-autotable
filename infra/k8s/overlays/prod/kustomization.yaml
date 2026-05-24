@@ -26,6 +26,25 @@ resources:
   # the same image set just compose (both must verify before
   # admission). See per-file header for rationale.
   - kyverno-enforce-patch.yaml
+  # Phase K Wave 15 — Apone (DevOps). Kyverno enforce-mode
+  # companion policy PRE-WIRE. The new manifest
+  # (`kyverno-enforce-policies.yaml`) carries an Enforce-mode
+  # default-action floor for all prod-scoped rules — the W15
+  # seed rule asserts the non-root invariant the distroless
+  # runtime already satisfies. This resources: entry is
+  # PRE-WIRED but COMMENTED OUT — cutover-day enablement is a
+  # one-line uncomment. See
+  # `docs/kyverno-enforce-rollout.md §3` for the four pre-
+  # conditions (30-day W3 audit window ZERO denies + Hudson
+  # `kyverno-deny-events` panel green + Hudson
+  # `pod-security-violations-prod` panel zero + staging
+  # rehearsal) that MUST hold before uncommenting; cutover-day
+  # operator procedure lives in `docs/kyverno-enforce-rollout.md
+  # §4` and the §6.3 Gate-4 hardening-calendar slot is the
+  # squad-level approval gate.
+  #
+  # DO NOT uncomment until §3 pre-conditions are green.
+  # - kyverno-enforce-policies.yaml  # ENABLE PER docs/kyverno-enforce-rollout.md §4
   # Phase K Wave 12 — Apone (DevOps). Wire in the W11 hand-off
   # manifests previously documented as out-of-band. See
   # `docs/prod-cutover.md §2` for the wire-up rationale.

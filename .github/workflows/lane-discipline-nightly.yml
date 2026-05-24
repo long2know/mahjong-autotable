@@ -66,6 +66,14 @@ jobs:
         if: ${{ always() }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Phase K Wave 15 — Apone (DevOps). Pipe the scan
+          # step outputs in via `env:` so the `run:` body
+          # never interleaves a `${{ }}` GitHub Actions
+          # expression with a bash heredoc — see the W5
+          # heredoc collision fixed in this step and
+          # documented at docs/agent-handoff-protocol.md §5.10.
+          SCAN_ECODE: ${{ steps.scan.outputs.ecode }}
+          SCAN_OUTPUT: ${{ steps.scan.outputs.output }}
         run: |
           # Locate the tracking issue (idempotent — search by title).
           TITLE="[lane-discipline-nightly] baseline"
@@ -83,16 +91,34 @@ jobs:
           fi
           if [ -n "$ISSUE_NUMBER" ]; then
             DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            BODY="$(cat <<EOF
-[lane-discipline-nightly] **$DATE** UTC
+            # Phase K Wave 15 — Apone (DevOps). Heredoc tag is
+            # single-quoted (`<<'EOF'`) so neither shell
+            # variable expansion nor command substitution
+            # fires inside the body — the previous unquoted
+            # form (W5-era) collided with the YAML block
+            # scalar's column-0 indent rule (actionlint:
+            # "could not parse as YAML: yaml: line 87"). The
+            # body is now indented at the YAML block scalar
+            # base (10 cols) AND uses bash placeholder
+            # substitution (`${BODY//__X__/$X}`) against the
+            # env-piped values so neither the GH Actions
+            # expression layer nor the bash expansion layer
+            # touch the raw scan output. See
+            # docs/agent-handoff-protocol.md §5.10 for the
+            # convention.
+            BODY="$(cat <<'EOF'
+          [lane-discipline-nightly] **__DATE__** UTC
 
-Exit code: \`${{ steps.scan.outputs.ecode }}\`
-Expected post-W6 baseline: 0 violations.
+          Exit code: `__ECODE__`
+          Expected post-W6 baseline: 0 violations.
 
-\`\`\`
-${{ steps.scan.outputs.output }}
-\`\`\`
-EOF
-)"
+          ```
+          __OUTPUT__
+          ```
+          EOF
+          )"
+            BODY="${BODY//__DATE__/$DATE}"
+            BODY="${BODY//__ECODE__/$SCAN_ECODE}"
+            BODY="${BODY//__OUTPUT__/$SCAN_OUTPUT}"
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"
           fi

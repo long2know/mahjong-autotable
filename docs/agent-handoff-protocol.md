@@ -1245,3 +1245,169 @@ brief while giving the governance question a deeper home.
 
 ---
 
+### 5.10. Workflow heredoc convention (W15 — Apone)
+
+> **Status.** Phase K Wave 15 — Apone (DevOps). Consolidates the
+> lesson learned from the W5-era `lane-discipline-nightly.yml:87`
+> heredoc / YAML-block-scalar collision into a portable
+> convention any agent authoring or editing a workflow `run:`
+> block should follow.
+
+#### The W5 bug + W15 fix
+
+The W5 `lane-discipline-nightly.yml` step "Post baseline report
+to tracking issue" embedded a bash heredoc inside a YAML
+`run: |` literal block scalar:
+
+```yaml
+        run: |
+          ...
+          BODY="$(cat <<EOF
+[lane-discipline-nightly] **$DATE** UTC
+...
+EOF
+)"
+```
+
+`actionlint` raised:
+
+```
+.github/workflows/lane-discipline-nightly.yml:87:0:
+  could not parse as YAML: yaml: line 87: did not find expected
+  alphabetic or numeric character [syntax-check]
+```
+
+The reason: the YAML literal block scalar `|` keeps lines as
+long as their indent is **≥ the block scalar's base indent**.
+The heredoc body at column 0 *broke out* of the block scalar
+and was interpreted as a YAML flow sequence (`[lane-discipline-
+nightly]` at the top level), producing the parse error. The
+closing `EOF` at column 0 compounded the issue.
+
+W15 ships the fix. Two combined moves:
+
+* **Indent the heredoc body to the YAML block scalar's base
+  column** (so YAML still treats the body as continuation of
+  the literal block).
+* **Single-quote the heredoc tag (`<<'EOF'`)** so neither
+  bash variable expansion (`$VAR`) nor command substitution
+  (`$(cmd)`) fires inside the body. Combine with placeholder
+  substitution (`${BODY//__X__/$X}`) to interpolate at-runtime
+  values AFTER the heredoc closes.
+
+The result is a working pair: YAML parses the literal block
+cleanly, bash sees the heredoc terminator at column 0 (after
+YAML strips the base indent), and the body is treated as
+inert text by both layers until the explicit substitution
+runs.
+
+#### The convention (six rules)
+
+1. **Never let a `run:` line start at column 0.** YAML block
+   scalars break out on a less-indented line; even an empty
+   line is fine if explicit, but a content line at column 0
+   is the W5 bug.
+
+2. **Pipe `${{ steps.<id>.outputs.<name> }}` through `env:`
+   rather than embedding in `run:`.** Direct embedding
+   interleaves the GH Actions expression layer with bash
+   parsing (and actionlint flags potential injection paths).
+   The `env:` indirection is the canonical actionlint-clean
+   shape.
+
+3. **For multi-line bodies passed to external CLIs**, prefer
+   one of these three patterns (ranked by simplicity):
+
+   * **`--body-file -` with piped stdin.** `printf` + `gh
+     issue comment --body-file -` avoids the heredoc entirely.
+     Cleanest when the target CLI supports stdin body input.
+   * **Heredoc with `<<'EOF'` + placeholder substitution.**
+     Use when stdin isn't available. Heredoc body lines and
+     the closing `EOF` MUST sit at the YAML block scalar base
+     indent.
+   * **`printf` + intermediate variable.** Use for short
+     bodies where the heredoc shape adds more lines than it
+     saves.
+
+4. **Always single-quote the heredoc tag** when the body
+   contains GH Actions `${{ }}` expressions, backticks, or
+   bash variables you do NOT want expanded. The unquoted form
+   (`<<EOF`) is acceptable ONLY when every `$VAR` and `` ` ``
+   inside the body is intentional and the body contains no
+   user-controlled content.
+
+5. **For values that need at-runtime substitution**, declare
+   placeholder tokens (`__DATE__`, `__ECODE__`, etc.) inside
+   the single-quoted heredoc body and substitute via
+   `BODY="${BODY//__TOKEN__/$VALUE}"` after the heredoc
+   closes. This keeps the GH Actions layer + the bash layer
+   from interleaving.
+
+6. **Verify with `actionlint`** after editing. The W5 bug
+   was silent at PR review because the workflow only fires
+   on cron; actionlint catches the YAML parse error in CI.
+   The repo-local `actionlint .github/workflows/<file>.yml`
+   invocation is the minimum smoke.
+
+#### Canonical W15 example (lane-discipline-nightly.yml)
+
+The W15 commit lands the convention-conformant shape:
+
+```yaml
+      - name: Post baseline report to tracking issue
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCAN_ECODE: ${{ steps.scan.outputs.ecode }}
+          SCAN_OUTPUT: ${{ steps.scan.outputs.output }}
+        run: |
+          if [ -n "$ISSUE_NUMBER" ]; then
+            DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            BODY="$(cat <<'EOF'
+          [lane-discipline-nightly] **__DATE__** UTC
+
+          Exit code: `__ECODE__`
+          Expected post-W6 baseline: 0 violations.
+
+          ```
+          __OUTPUT__
+          ```
+          EOF
+          )"
+            BODY="${BODY//__DATE__/$DATE}"
+            BODY="${BODY//__ECODE__/$SCAN_ECODE}"
+            BODY="${BODY//__OUTPUT__/$SCAN_OUTPUT}"
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi
+```
+
+Every rule above is exercised: §5.10.2 (env-piped outputs),
+§5.10.3 (heredoc-with-substitution pattern), §5.10.4 (single-
+quoted EOF), §5.10.5 (placeholder substitution), §5.10.6
+(actionlint clean — verified at W15 commit time).
+
+#### Why this lives in §5
+
+`§5.4` covers lane discipline; this section covers a specific
+**author-side** safety convention for workflow `run:` blocks
+— it's an extension to §5.8's pre-commit safety checklist
+specifically for workflow authors. Future agents authoring or
+editing a `.github/workflows/*.yml` `run:` block follow the
+six rules; reviewers cite this section in PR comments when a
+heredoc pattern surfaces.
+
+#### Audit-trail discipline
+
+After fixing a §5.10 violation:
+
+* Run `actionlint <file>` and confirm exit 0 — paste the
+  output into the PR description.
+* If the workflow has a self-test path (e.g. extracted-script
+  invocation locally), exercise the heredoc + substitution
+  path and capture the rendered body in the PR description.
+* Cite §5.10 in the commit message so future grep finds the
+  precedent.
+
+---
+
+

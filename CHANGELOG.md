@@ -19,8 +19,181 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-14-bringup`. Phase K Wave 14
+Working branch: `stlong/phase-k-wave-15-bringup`. Phase K Wave 15
 in flight. Other lane deliverables outstanding.
+
+## [0.24.0] — Phase K Wave 15 — 2027-01-09 (PR pending)
+
+**Theme:** Kyverno enforce-mode pre-wire + HPA min-replicas
+tuning pre-flight + W5 heredoc fix + us-east-1 drift check
++ SLSA-3 readiness survey + Phase L L1 design memo. Apone's
+Wave 15 lands the Phase K close-out hardening pre-wires
+following the W14 pattern: the `audit → enforce` Kyverno mode
+flip's companion ClusterPolicy ships as a PR-ready file in
+the prod overlay AND a commented-out `resources:` entry in
+the prod kustomization (`docs/kyverno-enforce-rollout.md` NEW
+— operator runbook gating the cutover-day uncomment on four
+pre-conditions: 30-day W3 audit-window zero denies +
+`pod-security-violations-prod` panel zero + staging rehearsal
++ squad sign-off); the HPA 3 → 5 min-replicas bump pre-flight
+surveys Prometheus / Hudson metrics across a 30-day window and
+documents the PR-ready one-line change without landing it
+(`docs/hpa-min-replicas-tuning.md` NEW — confirms `kube-pod-
+pending` zero + `cpu-saturation-prod` < 60% p99 + ResourceQuota
+headroom green; the bump itself lands at W16+ when squad sign-off
+attached). The W5-era `lane-discipline-nightly.yml:87` heredoc /
+YAML-block-scalar collision (carried over W6–W14) is fixed via
+the `<<'EOF'` single-quoted heredoc + env-piped scan outputs +
+placeholder-substitution pattern (`docs/agent-handoff-protocol.md
+§5.10` NEW — workflow heredoc convention with six rules + the
+W15 canonical example). The W14 §2.1 regional-EKS us-east-1
+plan-readiness narrative gets a `§2.2 W15 plan drift check`
+(`docs/regional-eks-bringup.md §2.2` NEW — zero TF drift across
+env + module sources; apply-gating contract carries cleanly to
+W16). The W6+ SLSA provenance gets a §7b "SLSA-3 readiness
+assessment" survey (`docs/slsa-provenance.md §7b` NEW — three-
+gap analysis on signing-key isolation + builder SHA pinning +
+isolated build environment, with a W16-W18 sequenced
+remediation plan). The Phase L pre-plan gets a per-surface L1
+design memo (`docs/phase-l-l1-design.md` NEW — 12 DD-numbered
+decisions across the four W14 surfaces; preliminary 10–12 wave
+estimate refined to 10 baseline + 2 optional).
+
+The single most important takeaway is **survey-then-execute
+extends to multi-wave hardening sequences**. The W14 retro
+codified the two-wave cadence shape for quarterly items (TF
+CLI bump, JWT rotation): wave N surveys, wave N+1 executes.
+W15 extends the pattern to **N-wave hardening sequences**:
+the SLSA-3 §7b survey distributes remediation across W16–W18,
+with each gap scored for severity + estimated cost + sequencing
+implication. The audit trail is the survey output; the per-wave
+deliverable shrinks to a reviewable diff against a known
+expected shape. Pattern transferable to any future multi-wave
+hardening effort (CSP enforce, edge WAF tuning, mobile store
+release rails).
+
+### Added
+- `infra/k8s/overlays/prod/kyverno-enforce-policies.yaml` (NEW)
+  — Phase K Wave 15 pre-wire: a SECOND companion ClusterPolicy
+  alongside the W3 cluster-wide `verify-mahjong-images` + W4
+  prod hard-pin. Carries an Enforce-mode default-action floor
+  for all prod-scoped rules; W15 seed rule asserts the
+  `securityContext.runAsNonRoot: true` invariant that the
+  distroless runtime already satisfies. PR-ready manifest in
+  the overlay; kustomization wire-up is COMMENTED OUT (one-
+  line uncomment on cutover day). See `docs/kyverno-enforce-
+  rollout.md`.
+- `docs/kyverno-enforce-rollout.md` (NEW) — operator runbook
+  for the W15 Kyverno enforce-mode pre-wire. Nine sections:
+  W15 snapshot + three-policy composition contract +
+  `require-non-root` seed-rule rationale + four pre-flip pre-
+  conditions (Gate-4 contract: 30-day audit window zero denies,
+  pod-security panel zero, staging rehearsal, squad sign-off)
+  + five-step cutover-day procedure + commented-entry no-op
+  invariant + single-revert rollback + W16+ follow-on rule
+  candidates ranked by signal + cross-references.
+- `docs/hpa-min-replicas-tuning.md` (NEW) — Phase K Wave 15
+  HPA `minReplicas: 3 → 5` bump pre-flight survey. Eight
+  sections: W14 baseline pin + 3-vs-4-vs-5-vs-6 capacity
+  trade-off + 30-day Prometheus / Hudson panel survey (four
+  panels: kube-pod-pending, cpu-saturation-prod, pod-evicts-
+  prod, hpa-current-replicas — all GREEN) + four-row pre-
+  flip readiness gate + the PR-ready one-line diff (NOT
+  landing this wave) + counter-example to W14 pre-wire pattern
+  (number-bumps stay single-PR) + sub-minute rollback + cross-
+  references.
+- `docs/phase-l-l1-design.md` (NEW) — Phase L L1 design memo
+  (DevOps angle). Per-surface L1 design decisions for the four
+  W14 surfaces: §2.1 TURN scaling DD-1+DD-2+DD-3 (Guaranteed
+  QoS + load-test harness extension + topology spread), §2.2
+  mobile native CI DD-4+DD-5+DD-6 (shared SemVer recommended +
+  ESO custody + monthly rehearsal cadence), §2.3 multi-region
+  active-active DD-7+DD-8+DD-9 (Apone formally recommends
+  session-affinity over Aurora Global + L7-ALB sticky cookies +
+  re-pin recovery), §2.4 container scanning shift-left DD-10+
+  DD-11+DD-12 (per-PR trigger + CRITICAL+HIGH gate + CODEOWNERS
+  on `.trivy.ignore`). 12 design decisions total; preliminary
+  10–12 wave estimate refined to 10 baseline + 2 optional. Open
+  questions for Stephen: DD-7 (Aurora vs session-affinity),
+  DD-4 (mobile versioning), L6 EU+APAC activation.
+- `docs/regional-eks-bringup.md §2.2` "W15 plan drift check" —
+  four subsections: source-side TF surface drift table (envs/
+  prod, modules/edge, modules/redis, .terraform.lock.hcl, CLI
+  baseline, AWS provider — all unchanged); explicit target-
+  side note (drift check does NOT cover live AWS state); W15
+  apply-gating contract status (carries over from W14 without
+  change — primary stack apply still pending Hicks's regional
+  cluster lifecycle work); W16 hand-off paths (with vs without
+  Hicks cluster ACTIVE).
+- `docs/slsa-provenance.md §7b` "SLSA-3 readiness assessment
+  (Phase K Wave 15 — Apone)" — five subsections: L2-vs-L3
+  framework recap; three-gap analysis on signing-key isolation
+  + builder SHA pinning + isolated build environment (network
+  egress + hermetic BuildKit + materials enumeration); W16+
+  remediation plan with severity scoring + wave allocation +
+  effort estimate; "why not now (W15)" rationale (cost-bearing
+  items, verifier-breaking changes, wave throughput); what the
+  survey does NOT change (W6+ posture unchanged).
+- `docs/agent-handoff-protocol.md §5.10` "Workflow heredoc
+  convention (W15 — Apone)" — the W5-era heredoc YAML-block-
+  scalar collision documented as a portable six-rule convention:
+  never let a run: line start at column 0; pipe `${{ steps.*.outputs.* }}`
+  via env:; prefer `--body-file -` then heredoc-with-substitution
+  then printf; always single-quote the heredoc tag when GH
+  Actions expressions or unintended `$VAR` would otherwise leak;
+  placeholder substitution after the heredoc closes; verify with
+  actionlint. Includes the canonical W15 lane-discipline-nightly
+  example + audit-trail discipline (PR description should
+  capture the rendered body + actionlint clean status).
+
+### Changed
+- `infra/k8s/overlays/prod/kustomization.yaml` — Phase K Wave 15
+  pre-wire of `kyverno-enforce-policies.yaml` as a COMMENTED-
+  OUT `resources:` entry immediately after the W4
+  `kyverno-enforce-patch.yaml` reference. One-line uncomment
+  toggle on cutover day. The wire-up is a `kustomize build`
+  no-op vs W14 baseline (verified byte-identical against
+  `.work/apone-w14-safe/prod-build.yaml`).
+- `.github/workflows/lane-discipline-nightly.yml` — Phase K
+  Wave 15 W5-era heredoc fix at line 87. Replaces the
+  unquoted `<<EOF` (which collided with the YAML block scalar
+  indent rule) with a single-quoted `<<'EOF'` body indented at
+  the YAML block scalar base, scan outputs piped through
+  `env:` (`SCAN_ECODE`, `SCAN_OUTPUT`), and placeholder
+  substitution (`${BODY//__DATE__/$DATE}`) after the heredoc
+  closes. actionlint clean. See `docs/agent-handoff-protocol.md
+  §5.10` for the convention.
+
+### Build invariants verified
+- `actionlint .github/workflows/lane-discipline-nightly.yml`
+  clean (W5-era parse error CLEARED — no longer carries over
+  per the W6–W14 baseline).
+- `actionlint` clean on the full `.github/workflows/` set
+  (`actionlint .github/workflows/*.yml` exit 0).
+- `kustomize build infra/k8s/overlays/{prod,staging}/` clean
+  (W15 commented-out `resources:` entry is byte-identical
+  no-op vs W14 baseline — verified via diff against
+  `.work/apone-w14-safe/{prod,staging}-build.yaml`).
+- terraform fmt + per-env validate carries cleanly from W14
+  (no Apone-lane TF source changes this wave; CLI baseline
+  still 1.11.4 per `docs/terraform.md §6.2` cadence).
+- helm lint carries cleanly from W11 baseline (no helm chart
+  changes this wave).
+- Backend gate preserved (3029/0/0 W14 baseline carried; W15
+  ships no backend code changes).
+- Frontend renderer budget preserved (W14 < 406 KB baseline
+  carried; W15 ships no frontend code changes).
+- Locally extracted bash script from the modified workflow
+  exercised heredoc + substitution path against mock inputs;
+  rendered body matches expected shape.
+
+### Cross-references
+- `Phase_K_W15/Apone/charter.md` (NEW) — wave brief.
+- `Phase_K_W15/Apone/history.md` (NEW) — wave-scoped history
+  excerpt.
+- `.squad/decisions/inbox/apone-phase-k-wave-15.md` (NEW) —
+  decisions memo.
+- `.squad/agents/apone/history.md` — W15 entry appended.
 
 ## [0.23.0] — Phase K Wave 14 — 2026-12-09 (PR pending)
 

@@ -205,6 +205,101 @@ rollback. Full `terraform destroy` is NOT recommended — the
 state bucket + lock table outlive the resource graph and
 should be retained for the W15 retry.
 
+### 2.2 `us-east-1` W15 plan drift check
+
+> Phase K Wave 15 — Apone (DevOps). The W14 §2.1 plan-
+> readiness narrative landed cleanly + Hicks's regional
+> cluster lifecycle work has NOT yet reached ACTIVE for
+> us-east-1 (cluster apply still pending) — so the actual
+> `terraform plan` STILL cannot run against a populated
+> primary stack. This section captures the **drift check
+> against the W14 readiness narrative itself** — has anything
+> changed in the source-of-truth files that would invalidate
+> the W14 expected plan shape?
+
+#### 2.2.1 What changed since W14 in the relevant TF surface
+
+Three files / surfaces could shift the W14 §2.1.2 expected
+plan shape: the `infra/terraform/envs/prod/` env stack, the
+`infra/terraform/modules/edge/` regional module, and the
+`infra/terraform/modules/redis/` Redis module. The W15
+drift check:
+
+| File / surface                                       | W14 → W15 diff                                             | Plan shape impact |
+|------------------------------------------------------|-------------------------------------------------------------|-------------------|
+| `infra/terraform/envs/prod/main.tf`                  | No change.                                                  | None.             |
+| `infra/terraform/envs/prod/variables.tf`             | No change.                                                  | None.             |
+| `infra/terraform/envs/prod/terraform.tfvars.example` | No change.                                                  | None.             |
+| `infra/terraform/envs/prod/backend.example.hcl`      | No change.                                                  | None.             |
+| `infra/terraform/modules/edge/main.tf`               | No change.                                                  | None.             |
+| `infra/terraform/modules/edge/variables.tf`          | No change.                                                  | None.             |
+| `infra/terraform/modules/redis/main.tf`              | No change.                                                  | None.             |
+| `infra/terraform/modules/redis/variables.tf`         | No change.                                                  | None.             |
+| `.terraform.lock.hcl`                                | Unchanged (1.11.4 baseline from W14 still current).         | None.             |
+| Terraform CLI baseline                               | Unchanged at 1.11.4 (per `docs/terraform.md §6.2` cadence). | None.             |
+| AWS provider                                         | Unchanged at `~> 5.50` → 5.100.0.                           | None.             |
+
+**Drift verdict: ZERO drift.** The W14 §2.1.2 expected plan
+shape (~20 resources: ACM regional cert + DNS validation +
+WAFv2 ACL + ALB association + R53 apex ALIAS + S3 logs +
+Redis replication group + 2 Secrets Manager rows + 4–6 IAM
+rows; R53 health-check map EMPTY) remains the W15 expected
+shape with the same precision.
+
+#### 2.2.2 What the W15 drift check does NOT cover
+
+The drift check is **source-side**, not **target-side**:
+
+* **Source-side (what this section covers):** the TF
+  configuration in this repo. If `infra/terraform/envs/prod/`
+  was edited between W14 and W15, the expected plan shape
+  could shift. **Verdict: no edits.**
+* **Target-side (this section does NOT cover):** the AWS-
+  side state of an already-applied primary stack. If the
+  primary stack reached ACTIVE between W14 and W15 (Hicks's
+  work landing) and resources are now provisioned, a fresh
+  `terraform plan -refresh=true` would diff against the
+  live state — and surface a 0-add plan against an applied
+  state, not the ~20-add plan against a fresh state. The
+  W14 §2.1.1 plan command applies; the W14 §2.1.2 expected
+  count just collapses to 0-add.
+
+#### 2.2.3 Apply-gating contract — W15 status
+
+Re-running the W14 §2.1.5 apply-gating contract against the
+W15 state:
+
+| Gate (W14 §2.1.5)                                        | W15 status                                                                                                    |
+|----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| §3.1 ✅ × all rows                                       | Not yet (primary stack apply still pending per the Hicks cluster lifecycle work; same as W14).                |
+| W14 PR merged                                            | ✅ — PR #60 merged 2026-12-09.                                                                                |
+| Primary stack applied                                    | Pending (same as W14).                                                                                       |
+| §2.1.4 plan-output archive committed                     | Pending (gated on the actual dry-run; cannot run until primary stack is applied).                            |
+
+**Net:** the gating contract from W14 carries over to W15
+WITHOUT change. Stephen's call on operator-PR cut remains
+the entry criterion; W15 makes no claim about cluster
+ACTIVE state since the source-of-truth (Hicks's regional
+cluster lifecycle work) is independent of the DevOps lane.
+
+#### 2.2.4 W15 → W16 hand-off
+
+If Hicks's regional cluster lifecycle work reaches ACTIVE
+between W15 + W16:
+
+1. Re-run §2.1 drift check at W16 against any further TF
+   changes.
+2. Execute the §2.1.1 dry-run against the primary stack.
+3. Archive the plan output per §2.1.4.
+4. Open the operator-PR (`stlong/phase-k-wave-NN-prod-us-
+   east-1-apply`) per §2.1.5.
+
+If Hicks's work has NOT reached ACTIVE by W16: re-run the
+W15 drift check at W16 (same shape; expect zero drift if no
+TF source changes); the apply itself moves to W17 (which
+also pairs naturally with the §6.2 Q1 2027 TF quarterly
+bump — apply once on the new CLI baseline).
+
 ## 3. Per-region Cutover-Ready checklist
 
 Each region runs the same readiness sequence. Mark items as
