@@ -375,7 +375,22 @@ const STUB_MATERIALS: Record<string, string[]> = {
   // could omit them and let Rollup drop them, but Rollup is
   // proven unable to (see preamble), so we stub them.
   MeshPhongMaterial: [],
-  MeshStandardMaterial: [],
+  // Phase K — playability fix.  The GLB tile-pack exports its
+  // meshes with `MeshStandardMaterial` and an embedded base-colour
+  // texture.  Without `this.map = null` in the stub body,
+  // `setValues({map: texture})` silently no-ops (Material.setValues
+  // skips keys absent from `this`) and the asset-loader's
+  // material.map ends up undefined, crashing downstream consumers
+  // (e.g. Center constructor's material.map!.image access).  The
+  // other physical properties get stubbed for the same reason —
+  // GLB loaders set them through setValues too.
+  MeshStandardMaterial: [
+    "this.map = null",
+    "this.color = { r: 1, g: 1, b: 1 }",
+    "this.metalness = 0",
+    "this.roughness = 1",
+    "this.emissive = { r: 0, g: 0, b: 0 }",
+  ],
   MeshPhysicalMaterial: [],
   MeshToonMaterial: [],
   MeshNormalMaterial: [],

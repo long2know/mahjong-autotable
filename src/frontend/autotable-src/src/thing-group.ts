@@ -205,11 +205,13 @@ export class TileThingGroup extends InstancedThingGroup {
   getUvChunk(): string {
     return `
 #include <uv_vertex>
+#ifdef USE_MAP
 if (vMapUv.x <= ${TILE_DU} && vMapUv.y <= ${TILE_DV}) {
   vMapUv += offset.xy;
 } else if (vMapUv.y >= ${4*TILE_DV}) {
   vMapUv.y += offset.z;
 }
+#endif
 `;
   }
 
@@ -252,7 +254,9 @@ export class StickThingGroup extends InstancedThingGroup {
   getUvChunk(): string {
     return `
 #include <uv_vertex>
+#ifdef USE_MAP
 vMapUv += offset.xy;
+#endif
 `;
   }
 

@@ -3771,6 +3771,21 @@ body.theme-light .chat-composer {
     pointer-events: auto;
 }
 .tour-overlay[hidden] { display: none; }
+/* Phase K — playability fix: when an overlay/modal is hidden via
+ * aria-hidden="true" but stays in the DOM (sign-in modal, magic-link
+ * landing, onboarding tour), make sure it cannot intercept pointer
+ * events from the lobby/seat/deal controls underneath. */
+.tour-overlay[aria-hidden="true"],
+#tour-overlay[aria-hidden="true"],
+#magic-link-landing[aria-hidden="true"],
+.magic-link-landing[aria-hidden="true"],
+#signin-modal[aria-hidden="true"],
+.signin-modal[aria-hidden="true"],
+#signin-modal-backdrop[aria-hidden="true"] {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+}
 .tour-overlay-svg {
     position: absolute;
     inset: 0;

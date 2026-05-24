@@ -76,7 +76,7 @@ export function sortPatterns(patterns: ReadonlyArray<string>): string[] {
 
 export async function loadPatternOrderingFromApi(): Promise<void> {
   try {
-    const res = await fetch('api/changsha/pattern-ordering', {
+    const res = await fetch('/api/changsha/pattern-ordering', {
       credentials: 'same-origin',
     });
     if (!res.ok) return;

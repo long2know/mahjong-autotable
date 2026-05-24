@@ -1,0 +1,58 @@
+{
+  "url": "http://127.0.0.1:8088/autotable/",
+  "loadingVisible": true,
+  "loadingText": "Loading...",
+  "lobbyVisible": true,
+  "lobbyQuickMatchCount": 1,
+  "rulePresetSelectCount": 1,
+  "rulePresetOptions": [
+    "Classic Changsha",
+    "Classic Changsha"
+  ],
+  "changshaOptionFound": true,
+  "connectButtonCount": 0,
+  "takeSeatCount": 4,
+  "takeSeatVisible": 0,
+  "canvasCount": 2,
+  "dealButtonCount": 1,
+  "dealAfterClickResult": "visible=true enabled=true click=ok",
+  "buttonLabels": [
+    "Take seat (id= cls=take-seat btn btn-primary)",
+    "Take seat (id= cls=take-seat btn btn-primary)",
+    "Take seat (id= cls=take-seat btn btn-primary)",
+    "Take seat (id= cls=take-seat btn btn-primary)",
+    "Deal (id=deal cls=btn btn-warning btn-sm w-100 btn-progress-main)",
+    "4p, no red (id=setup-desc cls=btn btn-sm btn-outline-secondary text-white w-100 mr-2)",
+    "Setup (id=toggle-setup cls=btn btn-dark btn-sm dropdown-toggle collapsed)",
+    "Dealer (id=toggle-dealer cls=btn btn-secondary btn-sm w-100)",
+    "碰 Pung (id=claim-pung cls=btn btn-dark btn-sm mr-1 w-100)",
+    "吃 Chow (id=claim-chow cls=btn btn-dark btn-sm mr-1 w-100)",
+    "杠 Kong (id=claim-kong cls=btn btn-dark btn-sm mr-1 w-100)",
+    "胡 Hu (id=claim-hu cls=btn btn-warning btn-sm w-100)",
+    "跳过 Pass (id=claim-pass cls=btn btn-secondary btn-sm w-100)",
+    "Disconnect (id=disconnect cls=btn btn-secondary btn-sm w-100 server-connected mr-2)",
+    "Nick (id= cls=btn btn-secondary btn-sm btn-block dropdown-toggle)",
+    "Leave seat (id=leave-seat cls=btn btn-dark btn-sm mr-2 w-100)",
+    "More (id= cls=btn btn-dark btn-sm btn-block dropdown-toggle)",
+    "× (id= cls=move-log-clear)",
+    "☰\n        Lobby (id=lobby-toggle cls=)",
+    "⚙ (id=settings-toggle cls=)",
+    "⚙\n        Settings (id=settings-button cls=)",
+    "🎙️ Mute (id= cls=voice-mic-toggle voice-mic-muted voice-mic-disabled)"
+  ],
+  "tileTestids": 1,
+  "handTestids": 0,
+  "seatProjectionTestids": 4,
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8088/api/games/changsha-default",
+    "FAILED GET http://127.0.0.1:8088/api/games/changsha-default -- net::ERR_ABORTED",
+    "404 GET http://127.0.0.1:8088/api/games/changsha-default/settings",
+    "FAILED GET http://127.0.0.1:8088/api/games/changsha-default/settings -- net::ERR_ABORTED"
+  ]
+}

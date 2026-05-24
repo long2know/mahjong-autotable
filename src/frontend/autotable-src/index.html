@@ -1159,6 +1159,23 @@
                 <label><input type="radio" name="lobby-deal-mode" value="auto"> Auto (instant deal)</label>
             </fieldset>
 
+            <!-- Phase K Wave 24 — playability fix.  The Changsha rule-preset
+                 picker surfaces the DB-seeded ChangshaRulePresets rows so a
+                 user can pick a ruleset before Quick Match.  Populated by
+                 `rule-presets.ts:renderLobbySelect()` after `/api/rule-presets`
+                 returns; left empty here so the renderer can replace it. -->
+            <fieldset class="lobby-fieldset" id="lobby-rule-preset-fieldset">
+                <legend>Rule preset <small class="lobby-hint">(Changsha)</small></legend>
+                <select class="dark-select form-control form-control-sm"
+                        id="lobby-rule-preset-select"
+                        data-testid="lobby-rule-preset-select"
+                        aria-label="Changsha rule preset"></select>
+                <small class="lobby-hint">
+                    <a href="#" id="lobby-create-preset-link"
+                       data-testid="lobby-create-preset-link">Create / edit presets…</a>
+                </small>
+            </fieldset>
+
             <fieldset class="lobby-fieldset" id="lobby-bot-count-fieldset">
                 <legend>Bots</legend>
                 <label><input type="radio" name="lobby-bot-count" value="0"> 0 bots</label>
