@@ -30,6 +30,34 @@
 // tab fallback so the PWA shortcut still works as a "pick a game to
 // watch" launcher when no specific game is targeted.
 //
+// Phase K Wave 14 adds three new keywords that wire deep-link
+// surfaces against Bishop's W14 listing endpoints:
+//
+//   `/?action=bracket&tournamentId=<guid>`
+//     → GET /api/tournaments/{tournamentId}/brackets
+//     → on 200: lazy-imports `./bracket-listing` and mounts the
+//       bracket-listing overlay (simple HTML grid of rounds /
+//       matches; winner highlight + per-match status badges)
+//     → on 404 / 5xx / network: "No brackets found" placeholder
+//       inside the overlay
+//
+//   `/?action=replays`
+//     → GET /api/replays  (metadata-only listing)
+//     → on 200: lazy-imports `./replays-listing` and mounts the
+//       replays-listing overlay (table of completedAt + variant +
+//       turnCount + link to `?action=replay&replayId=<id>`)
+//     → on 404 / 5xx / network: "Replays unavailable" placeholder
+//
+//   `/?action=admin-cost`
+//     → admin pre-flight via /api/auth/me (mirrors audit.ts probe)
+//     → on no-session → redirect to `/` so the sign-in modal mounts
+//     → GET /api/commentary/cost/summary (admin-only on the backend)
+//     → on 200: lazy-imports `./admin-cost` and mounts the cost
+//       overlay (summary card "$X.XX / $Y.YY (Z%)" + byModel table)
+//     → on 401 → redirect to `/` (sign-in modal at boot)
+//     → on 403 → "Admins only" placeholder inside the overlay
+//     → on 404 / 5xx → "Cost summary unavailable" placeholder
+//
 // Bishop's W12 backend lane ships `GET /api/replays/{replayId}` (the
 // new id-addressable replay endpoint, alongside the existing
 // `GET /api/games/{gameId}/replay`).  This router intercepts the
@@ -70,6 +98,10 @@
 
 const SUPPORTED_ACTIONS = new Set([
   'new-game', 'spectate', 'tournament', 'tournaments', 'replay',
+  // Phase K Wave 14 — new deep-link surfaces against Bishop's W14
+  // listing endpoints.  See top-of-file comment + §4/§5/§6 of
+  // `docs/frontend-routing.md` for the contract.
+  'bracket', 'replays', 'admin-cost',
 ]);
 
 /**
@@ -483,6 +515,167 @@ async function showReplayNotFoundToast(): Promise<void> {
 }
 
 /**
+ * Phase K Wave 14 — `?action=bracket&tournamentId=<guid>` dispatch.
+ *
+ * Strips the action + tournamentId from the URL, rewrites the path
+ * to `/tournament/<id>/brackets`, and lazy-imports the bracket-
+ * listing overlay which fetches `GET /api/tournaments/{id}/brackets`
+ * and renders the rounds-grid.  Missing / malformed `tournamentId`
+ * → "Tournament not found" toast.  The overlay handles its own
+ * 404 / 5xx error states internally.
+ */
+function dispatchBracket(): void {
+  const params = new URLSearchParams(window.location.search);
+  const rawId = (params.get('tournamentId') ?? '').trim();
+  if (rawId === '') {
+    clearActionParam();
+    void showTournamentNotFoundToast();
+    return;
+  }
+  const tournamentId = rawId;
+  try {
+    const url = new URL(window.location.href);
+    url.pathname = `/tournament/${encodeURIComponent(tournamentId)}/brackets`;
+    url.searchParams.delete('action');
+    url.searchParams.delete('tournamentId');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash,
+    );
+  } catch { /* legacy browsers — best effort */ }
+
+  void mountBracketListing(tournamentId);
+}
+
+async function mountBracketListing(tournamentId: string): Promise<void> {
+  try {
+    const mod = await import('./bracket-listing');
+    await mod.openBracketListing(tournamentId);
+  } catch {
+    await showTournamentNotFoundToast();
+  }
+}
+
+async function showTournamentNotFoundToast(): Promise<void> {
+  try {
+    const { showToast } = await import('./toast');
+    showToast('Tournament not found', 'error');
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn('[action-router] tournament not found, toast unavailable');
+  }
+}
+
+/**
+ * Phase K Wave 14 — `?action=replays` dispatch.
+ *
+ * No co-params — Bishop's `GET /api/replays` is the metadata-only
+ * listing endpoint.  Lazy-imports `./replays-listing` and mounts
+ * the overlay; the overlay handles 404 / 5xx / empty-list states
+ * internally.  Rows link back to `?action=replay&replayId=<id>`,
+ * the W12 deep-link.
+ */
+function dispatchReplays(): void {
+  try {
+    const url = new URL(window.location.href);
+    url.pathname = '/replays';
+    url.searchParams.delete('action');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash,
+    );
+  } catch { /* ignore */ }
+
+  void mountReplaysListing();
+}
+
+async function mountReplaysListing(): Promise<void> {
+  try {
+    const mod = await import('./replays-listing');
+    await mod.openReplaysListing();
+  } catch {
+    // Fail silently — the overlay couldn't load.  A future wave can
+    // surface a generic "Replays unavailable" toast here; W14 keeps
+    // the cold path silent (overlay would have shown the error UX
+    // if the chunk had loaded).
+    // eslint-disable-next-line no-console
+    console.warn('[action-router] replays-listing chunk failed to load');
+  }
+}
+
+/**
+ * Phase K Wave 14 — `?action=admin-cost` dispatch.
+ *
+ * Admin-only client.  Two-step gate:
+ *
+ *   1. Pre-flight `/api/auth/me` to check the session is authenticated.
+ *      Mirrors the `audit.ts` admin probe.  On unauthenticated → redirect
+ *      to `/` so `installAuthUi()` mounts the sign-in modal at boot.
+ *   2. Lazy-import `./admin-cost` and mount the overlay, which fetches
+ *      `GET /api/commentary/cost/summary`.  The overlay also handles
+ *      401 (defensive redirect) and 403 (admins-only placeholder)
+ *      internally so the gating is double-layered.
+ *
+ * We don't hard-check `role === 'admin'` here — the backend is the
+ * source of truth via the 403 response.  The client-side probe only
+ * gates the unauthenticated case so non-signed-in users are routed
+ * to the sign-in modal instead of seeing the overlay flash up with
+ * a "Admins only" placeholder.
+ */
+function dispatchAdminCost(): void {
+  try {
+    const url = new URL(window.location.href);
+    url.pathname = '/admin/commentary-cost';
+    url.searchParams.delete('action');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash,
+    );
+  } catch { /* ignore */ }
+
+  void gateAndMountAdminCost();
+}
+
+async function gateAndMountAdminCost(): Promise<void> {
+  // Pre-flight: is there a session at all?  An unauthenticated user
+  // hitting `?action=admin-cost` should land at the sign-in modal,
+  // not at the cost overlay flashing "Admins only".
+  let authed = false;
+  try {
+    const r = await fetch('/api/auth/me', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (r.ok) {
+      const body = await r.json() as { authenticated?: unknown; Authenticated?: unknown };
+      const flag = body.authenticated ?? body.Authenticated;
+      authed = flag === true;
+    }
+  } catch {
+    // Network error on the probe — let the overlay path try; the
+    // server might still 401 the cost endpoint, in which case the
+    // overlay's 401 branch will redirect to `/`.
+    authed = true;
+  }
+  if (!authed) {
+    redirectToLobbyForSignIn();
+    return;
+  }
+
+  try {
+    const mod = await import('./admin-cost');
+    await mod.openCommentaryCostPanel();
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn('[action-router] admin-cost chunk failed to load');
+  }
+}
+
+/**
  * Top-level entry point — call this once at boot before the game-
  * bootstrap import guard fires.  Returns `true` if a recognized
  * action was handled (caller should skip the game-bootstrap import);
@@ -505,6 +698,15 @@ export function handlePwaActionFromUrl(): boolean {
       return true;
     case 'replay':
       dispatchReplay();
+      return true;
+    case 'bracket':
+      dispatchBracket();
+      return true;
+    case 'replays':
+      dispatchReplays();
+      return true;
+    case 'admin-cost':
+      dispatchAdminCost();
       return true;
     default:
       return false;

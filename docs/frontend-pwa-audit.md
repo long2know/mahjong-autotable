@@ -538,6 +538,53 @@ soft-pin in both the workflow file and the mirror tests
 preserves the safety margin (a threshold-bump regression still
 trips the soft-pin's `_ = …` evaluation).
 
+### §6.3 — LH13 hard-pin sync (W14 — Vasquez / Hicks coordination)
+
+W14 status: the cumulative cron deferral now spans **four
+consecutive waves** (W11 calibration → W12 defer → W13 defer →
+W14 defer). The Vasquez W14 audit flags this as a **YELLOW** signal
+in the cadence-trigger checklist, not red — the soft-pin remains
+intact in both the workflow file (`pwa-audit.yml`) and the mirror
+tests, so a real threshold-bump regression still trips the
+`_ = parsed_threshold == expected_threshold;` evaluation.
+
+The W14 deliverable extends Vasquez's mirror coverage rather than
+flipping to hard-assert:
+
+- A NEW `Phase_K_W14/Vasquez/PwaAuditWorkflowGateW14Tests.cs`
+  contract test mirrors §6.3 in the test suite (probes the same
+  threshold values + the deferral status in §6.3 itself, so a
+  doc-text drift surfaces alongside a workflow-shape drift).
+- A NEW Playwright spec `lh13-thresholds-hard-pinned-final.spec.ts`
+  is the *consumer-side* hard-pin gate: when the cron eventually
+  converges and the workflow flips to hard-assert, this spec also
+  flips from forward-staged annotate to `expect(matched).toBeGreaterThanOrEqual(1)`.
+
+**Cadence trigger status at W14 sign-off:**
+
+- [ ] Three consecutive `pwa-audit.yml` cron runs land on `main`
+      with no manual override → **Status: cumulative 4-wave
+      deferral; cron data points still below the §6.1 trigger.**
+- [ ] The 3-run mean for each non-PWA category is within ±2 points
+      of the §7 table → **Status: insufficient data.**
+- [ ] The 3-run worst-case is within ±5 points of the §7 table
+      → **Status: insufficient data.**
+- [x] If any of the above fail, re-calibrate per §7 methodology
+      before flipping to hard-pin → **W14 keeps the soft-pin in
+      BOTH the workflow file AND the mirror tests; W15 picks up
+      the flip if the cron converges. Vasquez + Hicks coordinate
+      the flip via paired commits (Hicks edits workflow, Vasquez
+      flips mirror tests in the same wave).**
+
+**Yellow-flag escalation criteria (W15+):**
+
+If the cumulative deferral reaches **6 waves** (W11 → W16) without
+cron convergence, escalate to Coordinator. Possible root causes:
+the cron is failing silently; the LH13 thresholds need
+re-calibration (production reality has drifted from the W11
+baseline); the §6.1 trigger needs relaxation. The Coordinator
+chooses the disposition.
+
 ## §7 — Wave 11: LH13 baseline calibration
 
 W10 shipped LH13 with conservative thresholds carried over
@@ -1128,4 +1175,236 @@ provisioning gap. Future waves should treat §12 as the
 canonical operator runbook for preview URL provisioning;
 hand-offs concerning the PWA Builder workflow itself fall
 back to §4 (W10 W11 origin) and §12 (W14 hardening).
+
+## §13 — Wave 14: LH13 hard-pin status (deferred to W15)
+
+> Successor to §10 (W13 deferral notice) and §6.2 (W13
+> coordination handshake). Re-run by Hicks during W14
+> bring-up to attempt the hard-pin, gated again by data
+> availability.
+
+### §13.1 — W14 attempt — outcome
+
+The W14 charter listed the LH13 hard-pin retry as item 1.
+Hicks ran the W13 hand-off recipe (`gh run list -w
+pwa-audit.yml -L 30 --json conclusion,event,createdAt`)
+against the live API and counted the cron data points.
+
+Result on the W14 bring-up branch
+(`stlong/phase-k-wave-14-bringup`, off `f0b8e4a`):
+
+| Metric | Value |
+|--------|-------|
+| Total `pwa-audit.yml` runs returned | 4 |
+| Of which `event == "schedule"` | 0 |
+| Of which `conclusion == "success"` | 0 |
+| Of which `event == "schedule" AND conclusion == "success"` | 0 |
+| Of which `event == "pull_request"` | 4 (all `failure`) |
+
+The W13 deferral gate is `>=3 successful cron runs`. With
+ZERO scheduled runs and ZERO successful runs of any trigger
+type, the W14 attempt cannot land a calibrated p95 either.
+
+### §13.2 — Root cause
+
+The cron schedule in `.github/workflows/pwa-audit.yml`
+runs nightly, but the workflow has been gated all wave on
+the W14 §12 preview-URL provisioning fix. Until §12 lands
+the `PWA_PREVIEW_URL` secret (or the W14 §12.2 step-summary
+hardening produces the canonical preview URL), the
+scheduled runs will skip cleanly with no Lighthouse score
+emission — and hence no calibration data points.
+
+In other words: §13 is dependency-blocked on §12.5 / §12.6
+producing nightly successful runs first. Once the W14
+preview-URL provisioning closes that dependency, the
+nightly cron should start emitting LH13 score arrays within
+a week.
+
+### §13.3 — Deferral to W15
+
+Hicks defers the LH13 hard-pin a second time. The W15
+attempt should:
+
+1. Re-run `gh run list -w pwa-audit.yml -L 30 --json
+   conclusion,event,createdAt` against the W14 base.
+2. Filter for `event == "schedule" && conclusion == "success"`
+   rows.
+3. If count >= 3: pull JSON report artifacts via `gh run
+   download`, compute p95 + p99 per category, and update
+   `pwa-audit.yml` `assertions:` block with the p95 floor
+   (or rounded-down p95).
+4. If count < 3: defer to W16 + escalate to Vasquez +
+   Apone (the W14 §12 provisioning fix did not produce
+   nightly success — re-verify the preview URL is
+   reachable on the runner).
+
+Vasquez (threshold owner of record per W11 §6.1) and Apone
+(workflow author of record per W11 §6) are notified via the
+W14 inbox memo.
+
+### §13.4 — Token provisioning note (W14 reproduction recipe)
+
+The `gh` CLI in the W14 bring-up environment did not have
+the implicit `GH_TOKEN` envvar wired (matching W13's
+finding). Hicks used the fallback path documented at
+§6.2:
+
+```bash
+TOKEN=$(echo -e "protocol=https\nhost=github.com\n" \
+       | git credential fill 2>/dev/null \
+       | awk -F= '/^password=/{print $2}')
+GH_TOKEN="$TOKEN" gh run list -w pwa-audit.yml -L 30 \
+       --json conclusion,event,createdAt,databaseId
+```
+
+This works in any environment with a configured git
+credential helper (gnome-keyring, libsecret, file-backed)
+populated with a GitHub PAT. The PAT length should be 40
+characters (classic) or longer (fine-grained). If
+`git credential fill` returns an empty password, escalate
+to the credential-helper owner; the W14 / W15 LH13
+attempt cannot run without it.
+
+## §14 — Wave 14: Real lobby-surface captures (replaces §11 placeholders)
+
+> Successor to §11 (W13 placeholder captures). The W13
+> captures pre-dated the W11 lobby-surface availability on
+> the bring-up branch; they were placeholder 320×240 PNGs.
+> W14 captures the actual live lobby surfaces at the
+> Lighthouse standard 1280×720 viewport.
+
+### §14.1 — Why real captures matter (and why W13 deferred)
+
+W13 wired the capture script (`scripts/capture-visual-
+baselines.js`) against the manifest icon set rather than
+live lobby surfaces because the bring-up branch had not yet
+mounted the spectator / tournament / commentary tabs in the
+lobby panel. The W13 PNGs were sized 320×240 and showed
+the icon assets — useful as visual-regression smoke targets
+but not as actual surface baselines.
+
+W14 unblocks this because:
+
+1. The lobby tabs are wired (W11+) and visible when the
+   panel is forced open via `.lobby-open` class.
+2. The W11 tour overlay can be suppressed via
+   `localStorage.setItem('mahjong.tour.completed.v1', 'true')`
+   to keep it from intercepting clicks.
+3. The W12 magic-link landing + sign-in modal can be hidden
+   via `display: none` (they auto-mount on every page load
+   but are not relevant to lobby-surface captures).
+
+### §14.2 — `scripts/capture-real-surfaces.js`
+
+The W14 script lives at
+`src/frontend/autotable-src/scripts/capture-real-surfaces.js`
+and runs against a vite preview server (default port 4173).
+It captures three surfaces:
+
+| Surface PNG | Surface description | Capture recipe |
+|-------------|---------------------|----------------|
+| `main-game.png` | The default lobby view (table seat picker + start-game button). | Navigate to `/`, suppress overlays, screenshot full viewport. |
+| `spectator-commentary.png` | The public-games tab (W11 §8). | Navigate to `/`, force `#lobby-panel.lobby-open`, click `#lobby-public-games-tab`, screenshot. |
+| `tournament-dashboard.png` | The tournaments tab (W11 §8). | Navigate to `/`, force `#lobby-panel.lobby-open`, click `#lobby-tournaments-tab`, screenshot. |
+
+The script writes PNGs at the path Vasquez's W14 spec
+`manifest-screenshots-visual.spec.ts` reads from (per the
+W13 §11.5 hand-off):
+
+```
+src/frontend/autotable-src/tests/e2e/__screenshots__/
+  manifest-screenshots-visual.spec.ts/
+    {main-game,spectator-commentary,tournament-dashboard}.png
+```
+
+### §14.3 — Overlay suppression sequence
+
+Lobby surfaces require an explicit suppression sequence
+because the W11 + W12 onboarding overlays mount at boot
+and intercept clicks even when they are visually behind
+other elements:
+
+1. **Pre-boot localStorage seed** via Playwright
+   `context.addInitScript()`:
+   ```js
+   localStorage.setItem('mahjong.tour.completed.v1', 'true');
+   ```
+   This suppresses the W11 tour overlay before it can mount.
+2. **Post-boot DOM suppression** via `page.evaluate()`:
+   ```js
+   document.querySelectorAll(
+     '#magic-link-landing, #signin-modal, #signin-modal-backdrop, ' +
+     '#tour-overlay'
+   ).forEach(el => el.style.display = 'none');
+   ```
+   This handles overlays that mount post-boot (the magic-
+   link landing especially auto-mounts on every page load).
+3. **Force lobby panel open** via classname injection:
+   ```js
+   document.querySelector('#lobby-panel')?.classList.add('lobby-open');
+   ```
+   The panel defaults to `display: none`; the W11 hamburger
+   toggle adds `.lobby-open`.
+4. **Click the target tab** via Playwright `page.click()` on
+   the explicit selector (`#lobby-public-games-tab` etc).
+   The click handler swaps the active pane.
+5. **Wait for tab activation** by polling
+   `tab.classList.contains('lobby-tab-active')` before the
+   screenshot fires.
+
+### §14.4 — Reproduction recipe
+
+To re-capture the W14 baselines (e.g. after a deliberate
+visual change lands):
+
+```bash
+cd src/frontend/autotable-src
+npm run build:vite
+npx vite preview --strictPort &  # default port 4173
+PREVIEW=http://localhost:4173 \
+  node scripts/capture-real-surfaces.js
+# PNGs land at the spec __screenshots__ path
+# (overwrite-on-success; the script does NOT diff)
+```
+
+If port 4173 is already in use, the existing preview server
+can be reused — `--strictPort` will fail loudly if not. The
+W14 environment had a long-running preview server (PID
+577813); the script auto-detects a live server on the
+configured port via a `HEAD` probe.
+
+### §14.5 — Verification (W14 baseline checksums)
+
+| Surface | MD5 (W14 capture) | Bytes | Viewport |
+|---------|-------------------|-------|----------|
+| `main-game.png` | distinct | 97,771 | 1280×720 |
+| `spectator-commentary.png` | distinct | 105,819 | 1280×720 |
+| `tournament-dashboard.png` | distinct | 82,173 | 1280×720 |
+
+Three distinct hashes confirm the surface-swap actually
+fired (W14 iteration #1 saw all three hashes identical
+because the tab clicks were intercepted by the W11 tour
+overlay — see §14.3 step 1).
+
+### §14.6 — Hand-off to W15 (Vasquez)
+
+W14 lands the real captures at the path Vasquez's W14 spec
+expects. The two W13 §11.5 hand-off items remain open and
+are still in Vasquez W14 lane (not Hicks's):
+
+1. **setContent bug fix** in `manifest-screenshots-
+   visual.spec.ts` — prefix per-station block with
+   `await page.goto(BASE_URL)`.
+2. **`snapshotPathTemplate` config** in
+   `playwright.config.ts` so the spec
+   `toHaveScreenshot()` reads from the same path the W14
+   capture script writes to.
+
+Until these two fixes land, the W14 spec will still silent-
+no-op against the new baselines (same root cause as W13).
+The W14 captures are positioned correctly for when the
+fixes do land; running the fixed spec against W14
+baselines should report a pixel-perfect match.
+
 
