@@ -351,6 +351,42 @@ public class SpectatorModeTests : IAsyncLifetime
     }
 
     // ────────────────────────────────────────────────────────────────────
+    //  7. Phase K (bot-autoplay) — botCount=4 alone (no seat=) auto-promotes
+    //     to spectator so the all-bots-watch URL self-plays without needing
+    //     the user to remember to add `seat=-1`.
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Phase-K-BotAutoplay"), Trait("Wave", "Phase-K-BotAutoplay")]
+    public async Task BotCount4_NoSeatParam_PromotesToSpectatorAndAutoDeals()
+    {
+        // No `seat=` query parameter; just `botCount=4`. The Phase K promote
+        // rule in AutotableWsEndpoint.cs should flip the connection to
+        // spectator and trigger TryAutoDealForSpectatorAsync exactly like
+        // an explicit `?seat=-1&botCount=4` connection.
+        await using var session = await OpenWithoutSeatAsync(gameId: "AUTODEAL-PROMOTE", botCount: 4);
+        await session.SendJoinAsync("AUTODEAL-PROMOTE");
+
+        _ = await session.ReadEnvelopeAsync(); // JOINED
+        _ = await session.ReadEnvelopeAsync(); // UPDATE (full snapshot)
+
+        var manager = _factory!.Services.GetRequiredService<AutotableConnectionManager>();
+        var runtime = _factory.Services.GetRequiredService<IChangshaGameRuntime>();
+
+        var bound = await WaitForAsync(() =>
+        {
+            var rid = manager.GetRuntimeGameIdBoundTo("AUTODEAL-PROMOTE");
+            if (string.IsNullOrEmpty(rid)) return false;
+            if (!runtime.TryGetSnapshot(rid, out var s) || s is null) return false;
+            return s.Phase != ChangshaPhase.Seating;
+        }, timeoutMs: 3000);
+
+        Assert.True(bound,
+            "?botCount=4 (no seat=) should auto-promote to spectator and trigger " +
+            "the auto-deal flow. Bishop's Phase K promote rule in " +
+            "AutotableWsEndpoint.cs:202+ is missing or broken.");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
     //  Helpers
     // ────────────────────────────────────────────────────────────────────
 
@@ -360,6 +396,16 @@ public class SpectatorModeTests : IAsyncLifetime
         var wsClient = server.CreateWebSocketClient();
         var path = $"autotable/ws?seat={seat}&gameId={Uri.EscapeDataString(gameId)}";
         if (botCount.HasValue) path += $"&botCount={botCount.Value}";
+        var uri = new Uri(server.BaseAddress, path);
+        var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);
+        return new WsSession(ws);
+    }
+
+    private async Task<WsSession> OpenWithoutSeatAsync(string gameId, int botCount)
+    {
+        var server = _factory!.Server;
+        var wsClient = server.CreateWebSocketClient();
+        var path = $"autotable/ws?gameId={Uri.EscapeDataString(gameId)}&botCount={botCount}";
         var uri = new Uri(server.BaseAddress, path);
         var ws = await wsClient.ConnectAsync(uri, CancellationToken.None);
         return new WsSession(ws);
