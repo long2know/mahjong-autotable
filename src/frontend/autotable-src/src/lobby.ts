@@ -62,13 +62,19 @@ import {
   onIdentity,
   refreshOnboardingVisibility,
 } from './identity';
-import {
-  installLeaderboardSurface,
-  startLeaderboardPolling,
-  stopLeaderboardPolling,
-} from './leaderboard';
-import { installSettingsDrawerV2 } from './settings-drawer';
-import { installProfilePage } from './profile-page';
+// Phase K Wave 17 — bundle audit §3.2 (Hicks).  Three former eager
+// imports — leaderboard, settings-drawer, profile-page — are now lazy-
+// loaded behind `scheduleLeaderboardLazyMount` / `scheduleSettings
+// DrawerLazyMount` / `scheduleProfilePageLazyMount` (defined at the
+// bottom of this file).  Each module is loaded only when its
+// activation surface (tab click, gear-icon click, or profile-chip
+// click) is first reached.  Module references are stashed in a
+// closure so tab-activate transitions and the cross-module
+// `mahjong:open-profile-page` custom event can drive the lazy
+// modules without re-importing them.  See `docs/frontend-bundle-
+// audit.md §3.2` for the W17 delivered-savings table.
+import type * as LeaderboardModule from './leaderboard';
+import type * as ProfilePageModule from './profile-page';
 import { installAuthUi } from './auth';
 import { installRulePresetsUi, getSelectedPresetId } from './rule-presets';
 import { installDisplayPreferences } from './theme';
@@ -712,8 +718,16 @@ export function initLobby(client?: Client): void {
   // the Wave-2 per-game settings panel) and the player profile page
   // overlay.  Both are idempotent and intercept clicks before the
   // legacy Wave-5 drawer handler.
-  installSettingsDrawerV2();
-  installProfilePage();
+  //
+  // Phase K Wave 17 — bundle audit §3.2 (Hicks).  Both surfaces are
+  // now lazy-mounted: settings-drawer.ts (~35 KB raw) loads on the
+  // first `settings-button` hover/focus/click, and profile-page.ts
+  // (~21 KB raw) loads on the first `lobby-open-profile` chip
+  // hover/focus/click or `mahjong:open-profile-page` custom event
+  // dispatch.  Lobby cold path never pays for either until the user
+  // reaches the activation surface.
+  scheduleSettingsDrawerLazyMount();
+  scheduleProfilePageLazyMount();
   // Phase J Wave 8 — install display-pref body classes (reduced-motion,
   // theme-dark / theme-light) before the auth UI / rule-presets pickers
   // render so the chrome paints with the correct palette immediately.
@@ -744,7 +758,13 @@ export function initLobby(client?: Client): void {
   // visibility once the identity arrives in case the identity lands
   // after the lobby is mounted.
   installOnboardingCard();
-  installLeaderboardSurface();
+  // Phase K Wave 17 — bundle audit §3.2 (Hicks).  leaderboard.ts
+  // (~27 KB raw) is lazy-loaded on the first activation of the
+  // `lobby-leaderboard-tab` button; tab-activate transitions in
+  // `installLobbyTabs` delegate poll start/stop to the same lazy
+  // module via `loadLeaderboard()`.  Lobby cold path no longer
+  // pays for the leaderboard surface or its 30 s poll loop.
+  scheduleLeaderboardLazyMount();
   void bootstrapIdentity().then(() => {
     refreshOnboardingVisibility();
   });
@@ -1033,9 +1053,12 @@ function installLobbyTabs(): void {
       stopMatchmakingPolling();
     }
     if (isLb) {
-      startLeaderboardPolling();
-    } else {
-      stopLeaderboardPolling();
+      void loadLeaderboard().then((m) => m.startLeaderboardPolling());
+    } else if (_leaderboardMod !== null) {
+      // Only stop the loop when the module has already been loaded;
+      // skipping the import on tab-out avoids paying the chunk just
+      // to call a no-op stopper.
+      _leaderboardMod.stopLeaderboardPolling();
     }
   };
 
@@ -1370,4 +1393,139 @@ function installSoundEnabledMirror(): void {
       window.setTimeout(() => writeKey(checkbox.checked), 0);
     });
   }
+}
+
+// ---------------------------------------------------------------------
+// Phase K Wave 17 — bundle audit §3.2 (Hicks).
+//
+// Three former eager imports now lazy-mount behind interaction-surface
+// triggers.  The pattern mirrors W16's §3.1 / §3.5 schedule-helpers in
+// `index.ts` (audit / tournaments / history / tour / spectator /
+// avatar-migration / sentry / action-router):  each helper installs a
+// minimal listener set on the activation element + does the dynamic
+// `import()` exactly once on first activation, then calls the
+// module's `install…` entry to wire its full handlers.
+//
+// Module-handle cache survives across `initLobby()` re-invocations so
+// the activate-tab transition (which can fire many times) doesn't
+// re-import on every switch.  The cache also lets the tab transition
+// `stop…Polling` call run only when the module has already loaded —
+// no point importing the chunk just to call a no-op stopper.
+// ---------------------------------------------------------------------
+
+let _leaderboardMod: typeof LeaderboardModule | null = null;
+let _profilePageMod: typeof ProfilePageModule | null = null;
+let _profilePageEventQueue: CustomEvent[] = [];
+
+async function loadLeaderboard(): Promise<typeof LeaderboardModule> {
+  if (_leaderboardMod === null) {
+    _leaderboardMod = await import('./leaderboard');
+  }
+  return _leaderboardMod;
+}
+
+async function loadProfilePage(): Promise<typeof ProfilePageModule> {
+  if (_profilePageMod === null) {
+    _profilePageMod = await import('./profile-page');
+    _profilePageMod.installProfilePage();
+    // Drain any open-profile-page events that arrived before the
+    // module finished importing.  This handles the rare race where a
+    // leaderboard "View" click fires before profile-page.ts has had
+    // time to register its own listener.
+    for (const ev of _profilePageEventQueue) {
+      window.dispatchEvent(ev);
+    }
+    _profilePageEventQueue = [];
+  }
+  return _profilePageMod;
+}
+
+function scheduleLeaderboardLazyMount(): void {
+  const tab = document.getElementById('lobby-leaderboard-tab');
+  if (tab === null) return;
+  let loaded = false;
+  const load = async (): Promise<void> => {
+    if (loaded) return;
+    loaded = true;
+    const mod = await loadLeaderboard();
+    mod.installLeaderboardSurface();
+  };
+  tab.addEventListener('mouseenter', () => { void load(); }, { once: true });
+  tab.addEventListener('focus', () => { void load(); }, { once: true });
+  tab.addEventListener('click', () => { void load(); }, { once: true });
+}
+
+function scheduleSettingsDrawerLazyMount(): void {
+  const btn = document.getElementById('settings-button');
+  if (btn === null) return;
+  let loaded = false;
+  // First-click pre-warm: the module's own click handler is attached
+  // inside `installSettingsDrawerV2()`, so the very first click only
+  // triggers the load.  We re-fire `openDrawer()` post-import so the
+  // user's first click also opens the drawer (no double-tap).
+  const load = async (opts: { openOnLoad: boolean } = { openOnLoad: false }): Promise<void> => {
+    if (loaded) return;
+    loaded = true;
+    const mod = await import('./settings-drawer');
+    mod.installSettingsDrawerV2();
+    if (opts.openOnLoad) {
+      // The module's openDrawer/closeDrawer are file-private; we get
+      // the same effect by dispatching a synthetic click after install.
+      const reBtn = document.getElementById('settings-button') as HTMLButtonElement | null;
+      // Use the drawer's open class to detect whether the install's
+      // own listener already opened it (e.g. fast user double-fired
+      // click → install's listener captured the second one).
+      const drawer = document.getElementById('settings-drawer-v2');
+      const alreadyOpen = drawer?.classList.contains('settings-drawer-v2-open') ?? false;
+      if (!alreadyOpen && reBtn !== null) reBtn.click();
+    }
+  };
+  btn.addEventListener('mouseenter', () => { void load(); }, { once: true });
+  btn.addEventListener('focus', () => { void load(); }, { once: true });
+  btn.addEventListener('click', () => { void load({ openOnLoad: true }); }, { once: true });
+}
+
+function scheduleProfilePageLazyMount(): void {
+  const chip = document.getElementById('lobby-open-profile');
+  // Eager event listener (~30 LoC of eager bytes) so leaderboard
+  // "View" clicks queue up correctly even before the profile chip is
+  // hovered.  Capture-phase mirrors the original installProfilePage()
+  // capture-phase chip listener so we suppress the legacy Wave-5
+  // drawer handler the same way.
+  let chipPreOpen = false;
+  const handleChip = (e: Event): void => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    chipPreOpen = true;
+    void loadProfilePage().then((mod) => {
+      // Re-call openProfilePage() if the install path didn't already
+      // open it (install's own chip listener fires only on subsequent
+      // clicks since we used `{ once: true }` here).
+      mod.openProfilePage();
+    });
+  };
+  if (chip !== null) {
+    chip.addEventListener('click', handleChip, { capture: true, once: true });
+    chip.addEventListener('mouseenter', () => { void loadProfilePage(); }, { once: true });
+    chip.addEventListener('focus', () => { void loadProfilePage(); }, { once: true });
+  }
+
+  // Cross-module open event (raised by leaderboard rows + replay
+  // viewer).  Queue any events that arrive before the module loads;
+  // `loadProfilePage()` drains the queue post-install.
+  window.addEventListener('mahjong:open-profile-page', ((e: Event) => {
+    if (_profilePageMod !== null) {
+      // Module already loaded — its own handler will run; nothing to do.
+      return;
+    }
+    const ce = e as CustomEvent;
+    // Clone the event so the dispatch loop receives an event with
+    // identical detail (the original is consumed by the listener
+    // chain).
+    _profilePageEventQueue.push(new CustomEvent(ce.type, { detail: ce.detail }));
+    void loadProfilePage();
+  }) as EventListener);
+
+  // Avoid an unused-variable warning when the chip is missing.
+  void chipPreOpen;
 }

@@ -92,6 +92,15 @@ const KEY_PATTERNS = [
   { key: 'action-router',  re: /^action-router\.[0-9a-f]+\.js$/ },
   { key: 'sentry-shim',    re: /^sentry\.[0-9a-f]+\.js$/, min: true },
   { key: 'sentry',         re: /^sentry\.[0-9a-f]+\.js$/, max: true },
+  // Phase K Wave 17 — Hicks bundle-audit §3.2 split-outs.  Three
+  // former eager modules (lobby-mounted at initLobby() time) are
+  // now lazy-loaded behind their UI activation surface.  Each
+  // entry's chunk is named after the source module so the manual-
+  // chunks rollup config doesn't need touching.  See
+  // `docs/frontend-bundle-audit.md §3.2`.
+  { key: 'leaderboard',    re: /^leaderboard\.[0-9a-f]+\.js$/ },
+  { key: 'settings-drawer', re: /^settings-drawer\.[0-9a-f]+\.js$/ },
+  { key: 'profile-page',   re: /^profile-page\.[0-9a-f]+\.js$/ },
 ];
 
 function parseArgs() {

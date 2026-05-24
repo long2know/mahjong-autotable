@@ -1,31 +1,39 @@
-// Phase K Wave 16 — WebGL2 tile-atlas loader stub (Hicks).
+// Phase K Wave 16 — WebGL2 tile-atlas loader (Hicks).
 //
-// Phase L W2 spike scaffolding.  The production renderer-webgl2
-// path needs a single atlas image that packs every distinct tile
-// face (34 mahjong faces × 3 face categories — front / back / side)
-// into a 3 × 34 grid so the instanced tile mesh can sample by
-// (faceId, tileId) in `TILE_INSTANCE_FS` without branching.
+// Phase L W2 spike scaffolding (W16) + W17 production-grade loader.
+// The production renderer-webgl2 path needs a single atlas image that
+// packs every distinct tile face (34 mahjong faces × 3 face
+// categories — front / back / side) into a 3 × 34 grid so the
+// instanced tile mesh can sample by (faceId, tileId) in
+// `TILE_INSTANCE_FS` without branching.
 //
-// W16 ships the LOADER scaffold + a small fallback so the smoke
-// render works without the canonical atlas asset on disk.  The
-// real atlas image (3 × 34 cell grid, 64 × 96 cells = 192 × 3,264
-// canvas at 1:1) lands in Phase L W3 alongside the actual texture-
-// painter pipeline.
-//
-// What's HERE in W16:
+// What's HERE (W16 + W17):
 //   • `loadTileAtlas()` — fetch + decode an HTMLImageElement from
 //     a URL (default: the production tile atlas asset path).
 //   • `createTileAtlasTexture()` — upload the loaded image into a
 //     WebGL2 texture with the canonical filter / wrap params.
 //   • `buildFallbackAtlas()` — synthesize a 3 × 34 cell test pattern
-//     into an offscreen canvas so the W16 smoke render produces a
-//     visible image even without the atlas asset on disk.
+//     into an offscreen canvas so the smoke render produces a visible
+//     image even when the canonical asset is missing on disk (e.g.
+//     during dev when a wave skips the generator step).
+//   • `acquireTileAtlas()` — end-to-end: try the canonical URL,
+//     fall back to the synth pattern, return a `TileAtlas` carrying
+//     both the GL texture and the grid metadata.
 //
-// What's NOT here (Phase L W3+):
-//   • Real atlas asset generation (Blender + Python script in W3).
-//   • Mipmap generation tuned for the atlas (W3 — currently we let
+// W17 status:
+//   • The canonical asset (`img/tiles-atlas-webgl2.auto.png`,
+//     192 × 2176 px) is now generated offline by
+//     `scripts/generate-tile-atlas-webgl2.js` + committed to the
+//     repo + copied to `dist/img/...` by `vite.config.ts`.  The
+//     fallback path is the safety net for asset-pipeline misses
+//     (loader failures, dev rebuilds before the script runs).
+//
+// What's NOT here (Phase L W4+):
+//   • Blender-rendered tile-face source (W4 — currently the front
+//     column shows a hue-shifted cell + bitmap-font tile-id label).
+//   • Mipmap generation tuned for the atlas (W4 — currently we let
 //     `generateMipmap` do the default thing).
-//   • KTX2 / Basis compression (W4).
+//   • KTX2 / Basis compression (W5).
 
 export const TILE_ATLAS_GRID_COLS = 3;   // front / back / side
 export const TILE_ATLAS_GRID_ROWS = 34;  // 34 distinct mahjong faces

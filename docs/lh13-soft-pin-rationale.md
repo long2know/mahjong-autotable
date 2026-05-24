@@ -191,3 +191,45 @@ the LH13 thresholds should:
 | Vasquez mirror tests | **Soft-pin** retained | Vasquez | Hold pattern through W17 |
 | §6.3 escalation criterion (6-wave) | **Defused** by Option A | n/a | n/a — provisional status owns the YELLOW |
 | Hard-pin flip | **Deferred to W17** (post-evidence) | Hicks | Re-run §4.2 at W17 bring-up |
+
+## §8 — W17 bring-up status update (Hicks)
+
+Re-running the §4.2 evidence-gate check at W17 bring-up:
+
+**Cron scheduler status (W17 check, vs W16 sign-off):**
+
+| Metric | W16 sign-off | W17 bring-up |
+|--------|--------------|--------------|
+| Cron-trigger runs of `pwa-audit.yml` (event=schedule) | 0 | **1** |
+| Successful schedule-event runs (conclusion=success) | 0 | **0** |
+| `manual-cron` workflow_dispatch runs | 0 | 0 |
+| Coordinator-direct seed (3 manual `?bypass=lh13-cron-stall`) | Pending | **Still pending** |
+
+**Interpretation.** The cron scheduler IS alive — a `schedule`-event
+run did fire between W16 sign-off and W17 bring-up.  That run's
+**conclusion was `failure`** (no successful schedule-event runs
+remain on the books).  This is consistent with §6.4's
+"`preview_url` derivation gate" hypothesis: the cron run can
+launch, but the workflow body still fails before it can post
+artefacts under the preview-URL hardening Apone has scheduled
+for W17+.
+
+**Convergence criterion** (from §4.2): "≥3 consecutive successful
+schedule-event runs" — **not met** at W17 bring-up (still 0 of 3).
+
+**Action: HOLD soft-flip.**  The provisional threshold pin
+established at W16 remains in force.  The §3 table, §5 audit
+trail rules, and §6 coordination contract are unchanged for W17.
+
+**Forward signal.**  The first cron `schedule`-event run is
+material because it confirms the scheduler is alive and the
+workflow grammar parses — the next remediation cycle (likely
+W18) only needs to fix the *post-launch* failure mode rather
+than re-prove that cron-trigger fires at all.  This narrows the
+remaining failure surface to the Apone preview-URL hardening
+pathway already documented in §6.4 and §6.
+
+**Re-check trigger.**  Hicks (or whichever frontend agent owns
+the next-wave bring-up) re-runs §4.2 at W18; flip becomes
+hard-pin once 3 consecutive successful schedule-event runs
+appear.  No earlier action required on this doc.
