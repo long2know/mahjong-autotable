@@ -585,6 +585,140 @@ re-calibration (production reality has drifted from the W11
 baseline); the §6.1 trigger needs relaxation. The Coordinator
 chooses the disposition.
 
+### §6.4 — LH13 hard-pin sync (W15 — Vasquez / Hicks coordination)
+
+W15 status: the cumulative cron deferral now spans **five
+consecutive waves** (W11 calibration → W12 defer → W13 defer →
+W14 defer → W15 defer). The Vasquez W15 audit flags this as a
+**YELLOW** signal in the cadence-trigger checklist, **one wave
+away from the §6.3 6-wave Coordinator-consultation trigger**.
+
+The W15 deliverable extends the Vasquez mirror coverage rather
+than flipping to hard-assert:
+
+- A NEW `Phase_K_W15/Vasquez/PwaAuditWorkflowGateW15Tests.cs`
+  contract test mirrors §6.4 in the test suite (probes the same
+  threshold values + the deferral status in §6.4 itself, so a
+  doc-text drift surfaces alongside a workflow-shape drift).
+- A NEW Playwright spec `lh13-thresholds-w15.spec.ts` is the
+  *consumer-side* W15-baseline pin: when the cron eventually
+  converges and the workflow flips to hard-assert, this spec also
+  flips from forward-staged annotate to
+  `expect(matched).toBeGreaterThanOrEqual(1)`.
+
+**Cadence trigger status at W15 sign-off:**
+
+- [ ] Three consecutive `pwa-audit.yml` cron runs land on `main`
+      with no manual override → **Status: cumulative 5-wave
+      deferral; cron data points still below the §6.1 trigger.**
+- [ ] The 3-run mean for each non-PWA category is within ±2 points
+      of the §7 table → **Status: insufficient data.**
+- [ ] The 3-run worst-case is within ±5 points of the §7 table
+      → **Status: insufficient data.**
+- [x] If any of the above fail, re-calibrate per §7 methodology
+      before flipping to hard-pin → **W15 keeps the soft-pin in
+      BOTH the workflow file AND the mirror tests; W16 picks up
+      the flip if the cron converges. Vasquez + Hicks coordinate
+      the flip via paired commits (Hicks edits workflow, Vasquez
+      flips mirror tests in the same wave).**
+
+#### §6.4.1 — W15 re-query evidence (Hicks W15)
+
+Hicks re-ran the §6.1 evidence query during W15 bring-up.  The
+recipe is the W14 §13.4 fallback (the `gh` CLI in the W15
+environment did not have the implicit `GH_TOKEN` envvar wired):
+
+```bash
+TOKEN=$(echo -e "protocol=https\nhost=github.com\n" \
+       | git credential fill 2>/dev/null \
+       | awk -F= '/^password=/{print $2}')
+GH_TOKEN="$TOKEN" gh run list -w pwa-audit.yml -L 30 \
+       --json conclusion,event,createdAt
+```
+
+| Metric | Value at W15 bring-up |
+|--------|-----------------------|
+| Total `pwa-audit.yml` runs returned | 5 |
+| Of which `event == "schedule"` | 0 |
+| Of which `conclusion == "success"` | 0 |
+| Of which `event == "schedule" AND conclusion == "success"` | 0 |
+| Of which `event == "pull_request"` | 5 (all `failure`) |
+| Earliest run timestamp | `2026-05-23T20:04:35Z` |
+| Latest run timestamp | `2026-05-24T02:51:27Z` |
+
+The shape matches the W14 §13.1 row exactly: zero scheduled
+runs, zero successes, only PR-triggered runs (all failing on
+the W14 §12 provisioning gap that has not produced nightly
+green runs).  W15 re-confirms the §6.5 calibration-deadlock
+diagnosis: **the cron schedule is not producing data on
+`main`**.  Sub-causes (1) silent job-failure and (2)
+mis-configured cron expression are both still in play —
+neither was empirically narrowed during W15.
+
+**W15 disposition:** defer per §6.4.  Vasquez & Apone are
+notified via the W15 inbox memo + the matching `Phase_K_W15/
+Hicks/history.md` row.  W16 picks up the §6.5
+Stephen-direct seed if the cron has not converged by then.
+
+### §6.5 — Calibration deadlock escalation (W15 — Vasquez)
+
+The W11-W15 deferral chain is functionally a **5-wave calibration
+deadlock**: the §6.1 cadence trigger requires three consecutive
+nightly cron runs to converge with the §7 baseline, but the
+nightly `pwa-audit.yml` cron has produced **zero data points**
+visible on `main` in any of the past five waves. This section
+documents the deadlock + recommends a one-time manual seeding.
+
+**Suspected root cause(s):**
+
+1. The cron schedule is correct but the *job itself* is failing
+   silently — preview-URL provisioning skip, missing GH_TOKEN
+   scope, or PWA-Builder API regression. The W14 §12 (Apone)
+   runbook addresses provisioning; the W13 §6.2 (Hicks) workflow
+   ships the `GH_TOKEN` path.
+2. The cron schedule is correct, the job succeeds, but the
+   reports are never landing on `main` because the workflow is
+   running in a side-channel mode (e.g., PR-only triggers, or a
+   workflow_dispatch-gated path). The §3.1 audit-recipe lists the
+   expected artefact landing pattern.
+3. The cron schedule itself is mis-configured (e.g., `on.schedule`
+   block references a stale cron expression after the W11 split
+   from `pwa-builder.yml`).
+
+**Recommended W15 unblock (Stephen-direct action):**
+
+The cron path is fragile and the data dependency is real. The
+fastest path to seed three data points is for **Stephen** (or the
+Coordinator with §4.3 fallback) to manually trigger
+`pwa-audit.yml` via the Actions UI three times across three
+business days:
+
+```
+https://github.com/long2know/mahjong-autotable/actions/workflows/pwa-audit.yml
+→ "Run workflow" dropdown → branch: main → Run.
+```
+
+After three triggers land on `main` (cron-equivalent data points
+are acceptable for §6.1 — the trigger requirement is "data
+arrived in a reproducible workflow", not specifically "via the
+schedule:` block"), W16 picks up the hard-pin flip per §6.4.
+
+**If Stephen does not trigger by W16 sign-off:** the §6.3
+escalation criterion (6-wave deferral) trips. The W16 Vasquez
+memo escalates to Coordinator with a one-line root-cause survey
+recommendation (audit the workflow's actual cron firing history
+via `gh run list --workflow=pwa-audit.yml --limit 60`). The
+Coordinator chooses between (a) re-attempting the manual seed,
+(b) re-calibrating §7 with whatever historical data is available,
+or (c) relaxing the §6.1 trigger to "data within last 30 days,
+regardless of source".
+
+**Yellow → Red transition criterion:** if the W16 deferral lands
+without cron data AND without a Stephen-direct seed, the
+calibration status flips from YELLOW to RED. The §6.4 mirror
+tests stay forward-staged (no functional change) but the §6.5
+status block updates the YELLOW counter to 6.
+
 ## §7 — Wave 11: LH13 baseline calibration
 
 W10 shipped LH13 with conservative thresholds carried over
@@ -681,6 +815,128 @@ the spec-suggested `0.95` floor for `accessibility` / `seo` /
 two of those three categories have measured ceilings below
 the W10 floor, which would silently hard-fail every PR if the
 gate were ever exercised. The W11 calibration unblocks that.
+
+### §7.2 — `snapshotPathTemplate` convention (Hicks W15)
+
+> Cross-references the LH13 calibration story above: the
+> visual-regression baselines underpin the `pwa-audit.yml`
+> + `bundle-health.yml` cron the LH13 thresholds rely on, so
+> a stable baseline-path convention is part of the same
+> "data converges over time" investment §7 makes.
+
+Phase K Wave 15 standardises the Playwright snapshot baseline
+tree for every visual-regression spec the autotable ships.  The
+convention is encoded in `playwright.config.ts` as a
+`snapshotPathTemplate` value:
+
+```ts
+// src/frontend/autotable-src/tests/e2e/playwright.config.ts
+export default defineConfig({
+  // …
+  snapshotPathTemplate: '{testFileDir}/__screenshots__/{testFileName}/{arg}{ext}',
+  // …
+});
+```
+
+Token reference (see
+<https://playwright.dev/docs/api/class-testconfig#test-config-snapshot-path-template>):
+
+| Token | Resolves to | Example |
+|-------|-------------|---------|
+| `{testFileDir}` | Directory containing the spec | `tests/e2e` |
+| `{testFileName}` | Spec file basename | `manifest-screenshots-visual.spec.ts` |
+| `{arg}` | First positional arg of `toHaveScreenshot()` | `main-game` (extension stripped) |
+| `{ext}` | Trailing dot + extension | `.png` |
+
+Resolved layout for the W12-era spec:
+
+```
+tests/e2e/__screenshots__/
+└─ manifest-screenshots-visual.spec.ts/
+   ├─ main-game.png
+   ├─ spectator-commentary.png
+   └─ tournament-dashboard.png
+```
+
+#### §7.2.1 — Why this template
+
+* **`{projectName}` / `{platform}` deliberately omitted.** Every
+  visual-regression spec in the suite skips non-chromium
+  projects via `testInfo.project.name` guards (per the §5
+  determinism rule).  Pinning the baselines under
+  `__screenshots__/<spec>/<arg>.png` keeps the tree readable
+  and stops the CI / local divergence (`linux` vs `darwin`
+  sub-dirs) that the default template would emit.
+* **First positional arg as the filename.** Each
+  `toHaveScreenshot()` call already supplies a stable slug
+  (e.g. `main-game.png`); reusing that slug as the on-disk
+  filename means the W14 capture script
+  (`scripts/capture-real-surfaces.js`) and the spec's
+  `expect(page).toHaveScreenshot(name, …)` line agree on the
+  exact same path with zero glue code.
+* **Spec basename in the path.** Two specs may legitimately
+  want a baseline at the same slug (e.g.
+  `manifest-screenshots-visual.spec.ts/main-game.png` is the
+  manifest-screenshot regression; Vasquez's W14
+  `visual-regression-real-captures.spec.ts/home.png` is the
+  live-origin capture).  The spec-basename segment keeps the
+  two trees from colliding.
+
+#### §7.2.2 — Migration: W14 `setContent` → W15 `page.goto`
+
+The W12 `manifest-screenshots-visual.spec.ts` used
+`page.setContent('<img src="…">')` to embed each manifest
+screenshot URL inside a black-background blank page so the
+visual comparison surface was deterministic.  Vasquez's W14
+fix prefixed `page.goto('/')` so the relative `<img>` URL
+inherited a real origin.
+
+W15 fully aligns with Playwright snapshot best-practice by
+**removing all `setContent` calls**: the spec navigates
+directly to each manifest screenshot URL via
+`page.goto(<asset-url>)` and lets the browser render the
+image at its natural viewport.  Two consequences:
+
+1. The hand-rolled `<img>.complete` polling is replaced by
+   `page.waitForLoadState('networkidle')`.
+2. The `toHaveScreenshot(<slug>.png, …)` assertion lands
+   against the SAME `{arg}` path the `snapshotPathTemplate`
+   convention resolves to — no `/${slug}` glue code needed.
+
+The W14 baselines under
+`__screenshots__/manifest-screenshots-visual.spec.ts/` are
+the lobby-surface captures emitted by
+`scripts/capture-real-surfaces.js`.  The W15 spec's first
+comparison run treats those baselines as the authoritative
+truth; any future drift triggers the standard pixel-diff
+flow at the 2 % tolerance.  Re-capturing requires the
+explicit `--update-snapshots` flag (Playwright never
+auto-overwrites once a baseline is present, by design).
+
+#### §7.2.3 — Hand-off (W16+)
+
+* **Every new visual-regression spec MUST use the implicit
+  `snapshotPathTemplate`.**  Concretely: `toHaveScreenshot()`
+  is called with the bare filename (`'foo.png'`), never with
+  a hand-rolled path.  Playwright will resolve the full path
+  via the config.
+* **Re-capture flow.** When a deliberate visual change lands,
+  rebuild + re-capture via:
+  ```bash
+  cd src/frontend/autotable-src
+  npm run build:vite
+  nohup npx vite preview --host 127.0.0.1 --port 4173 \
+    --strictPort --outDir ../autotable > vite-preview.log 2>&1 &
+  E2E_BASE_URL=http://127.0.0.1:4173/ \
+    node scripts/capture-real-surfaces.js
+  ```
+  The script writes directly to the `snapshotPathTemplate`
+  layout (W14 already did this; W15 makes the spec read from
+  the same paths without extra config).
+* **Adding a new spec.** Drop the file under
+  `tests/e2e/`; baselines land under
+  `tests/e2e/__screenshots__/<spec-basename>/`.  No
+  per-spec `snapshotDir:` override is needed.
 
 ## §8 — Wave 11: Real screenshot captures
 

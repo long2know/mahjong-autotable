@@ -58,6 +58,23 @@
 //     → on 403 → "Admins only" placeholder inside the overlay
 //     → on 404 / 5xx → "Cost summary unavailable" placeholder
 //
+// Phase K Wave 15 adds a sister keyword to `admin-cost` for the
+// Bishop W15 forecast endpoint:
+//
+//   `/?action=cost-forecast&days=<n>`
+//     → admin pre-flight via /api/auth/me (shared with admin-cost)
+//     → on no-session → redirect to `/` so the sign-in modal mounts
+//     → GET /api/commentary/cost/forecast?days=<n>  (admin-only)
+//     → on 200: lazy-imports `./admin-cost-forecast` and mounts the
+//       forecast overlay (projected month-end + confidence +
+//       days-of-data card; sub-3 kB chunk)
+//     → on 400 → "Invalid forecast window" placeholder
+//     → on 401 → redirect to `/`
+//     → on 403 → "Admins only" placeholder
+//     → on 404 / 5xx → "Cost forecast unavailable" placeholder
+//     • `days` defaults to 30 when missing / fat-fingered; clamped
+//       to `[1, 90]` to stay within Bishop's documented envelope.
+//
 // Bishop's W12 backend lane ships `GET /api/replays/{replayId}` (the
 // new id-addressable replay endpoint, alongside the existing
 // `GET /api/games/{gameId}/replay`).  This router intercepts the
@@ -102,6 +119,10 @@ const SUPPORTED_ACTIONS = new Set([
   // listing endpoints.  See top-of-file comment + §4/§5/§6 of
   // `docs/frontend-routing.md` for the contract.
   'bracket', 'replays', 'admin-cost',
+  // Phase K Wave 15 — admin cost forecast deep link against
+  // Bishop's W15 `/api/commentary/cost/forecast` endpoint.  See
+  // `docs/frontend-routing.md` §7 for the contract.
+  'cost-forecast',
 ]);
 
 /**
@@ -676,6 +697,82 @@ async function gateAndMountAdminCost(): Promise<void> {
 }
 
 /**
+ * Phase K Wave 15 — `?action=cost-forecast&days=<n>` dispatch.
+ *
+ * Sister surface to `?action=admin-cost` for Bishop's W15
+ * `GET /api/commentary/cost/forecast?days=<n>` endpoint.  Same
+ * gating posture as admin-cost: pre-flight `/api/auth/me` so
+ * unauthenticated users land at the sign-in modal instead of
+ * seeing a "Admins only" overlay flash, then lazy-import the
+ * `./admin-cost-forecast` chunk which handles 401 / 403 / 400 /
+ * 404 / 5xx + the happy path internally.
+ *
+ * Reads `days=<n>` from the same URL.  Missing / fat-fingered →
+ * the chunk's `normaliseDays()` clamps to `[1, 90]` with a default
+ * of 30, so the request never fires with an invalid window (which
+ * the Bishop W15 backend would 400 anyway, but the client-side
+ * clamp avoids an unnecessary round-trip).
+ */
+function dispatchCostForecast(): void {
+  let daysRaw: string | null = null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    daysRaw = params.get('days');
+  } catch { /* ignore */ }
+
+  try {
+    const url = new URL(window.location.href);
+    url.pathname = '/admin/commentary-cost/forecast';
+    url.searchParams.delete('action');
+    url.searchParams.delete('days');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      url.pathname + (url.searchParams.toString() === '' ? '' : `?${url.searchParams.toString()}`) + url.hash,
+    );
+  } catch { /* ignore */ }
+
+  void gateAndMountCostForecast(daysRaw);
+}
+
+async function gateAndMountCostForecast(daysRaw: string | null): Promise<void> {
+  // Pre-flight: same admin probe as `?action=admin-cost`.  An
+  // unauthenticated user lands at `/` so `installAuthUi()` mounts
+  // the sign-in modal.
+  let authed = false;
+  try {
+    const r = await fetch('/api/auth/me', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (r.ok) {
+      const body = await r.json() as { authenticated?: unknown; Authenticated?: unknown };
+      const flag = body.authenticated ?? body.Authenticated;
+      authed = flag === true;
+    }
+  } catch {
+    // Network error on the probe — let the overlay path try; the
+    // backend may still 401 the forecast endpoint, in which case the
+    // overlay's 401 branch will redirect to `/`.
+    authed = true;
+  }
+  if (!authed) {
+    redirectToLobbyForSignIn();
+    return;
+  }
+
+  try {
+    const mod = await import('./admin-cost-forecast');
+    const days = mod.normaliseDays(daysRaw);
+    await mod.openCommentaryCostForecastPanel(days);
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn('[action-router] admin-cost-forecast chunk failed to load');
+  }
+}
+
+/**
  * Top-level entry point — call this once at boot before the game-
  * bootstrap import guard fires.  Returns `true` if a recognized
  * action was handled (caller should skip the game-bootstrap import);
@@ -707,6 +804,9 @@ export function handlePwaActionFromUrl(): boolean {
       return true;
     case 'admin-cost':
       dispatchAdminCost();
+      return true;
+    case 'cost-forecast':
+      dispatchCostForecast();
       return true;
     default:
       return false;

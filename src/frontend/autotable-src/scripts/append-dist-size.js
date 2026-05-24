@@ -69,6 +69,15 @@ const KEY_PATTERNS = [
   { key: 'bracket-listing', re: /^bracket-listing\.[0-9a-f]+\.js$/ },
   { key: 'replays-listing', re: /^replays-listing\.[0-9a-f]+\.js$/ },
   { key: 'admin-cost',      re: /^admin-cost\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 15 — Phase L renderer hello-world spike chunk
+  // (Hicks W15).  Carries the hand-rolled WebGL2 scaffold under
+  // `src/renderer-webgl2/`.  Only ships when `?renderer=webgl2-hello`
+  // is on the URL.  Baseline number is the W15 "hello world cost";
+  // see `docs/phase-l-renderer-implementation.md`.
+  { key: 'renderer-webgl2', re: /^renderer-webgl2\.[0-9a-f]+\.js$/ },
+  // Phase K Wave 15 — Bishop W15 commentary cost forecast overlay
+  // surfaced via `?action=cost-forecast&days=<n>`.  Admin-only.
+  { key: 'admin-cost-forecast', re: /^admin-cost-forecast\.[0-9a-f]+\.js$/ },
 ];
 
 function parseArgs() {

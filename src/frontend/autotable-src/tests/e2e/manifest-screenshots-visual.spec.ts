@@ -1,24 +1,43 @@
-// Phase K Wave 12 — Manifest screenshots visual regression spec (Vasquez).
-// Phase K Wave 14 fix (Vasquez): call page.goto() before page.setContent()
-// so relative `<img src="/foo.png">` URLs resolve against the deployed
-// origin (baseURL) instead of `about:blank`. See
-// `docs/test-architecture.md §5.2` for the W14 fix note.
+// Phase K Wave 12 — Manifest screenshots visual regression spec.
 //
-// W11 shipped *real* manifest screenshots (size + presence). W12
-// adds VISUAL regression with a 2% pixel-diff tolerance, matching
-// the new `docs/test-architecture.md §5 Visual Regression`
-// methodology (Playwright `toHaveScreenshot({maxDiffPixelRatio:
-// 0.02})`).
+// W12 — original spec authored by Vasquez.  Iterated the manifest
+// `screenshots[]` and used `page.setContent()` to embed each entry
+// as an `<img>` inside a blank page before snapshotting.
 //
-// Forward-stage tolerant:
-//   - If no manifest is reachable, annotate and pass.
-//   - If no baseline exists yet, the first run *records* the
-//     baseline (Playwright's standard behavior) and we annotate.
+// W14 — Vasquez landed a partial fix (`page.goto('/')` before
+// `setContent`) so the relative `<img src>` URLs resolved against
+// the deployed origin instead of `about:blank`.  See
+// `docs/test-architecture.md §5.2`.
+//
+// W15 — Hicks completes the Playwright snapshot best-practice
+// alignment (charter item 2):
+//
+//   1. All `page.setContent()` calls are removed.  Instead the
+//      spec navigates the browser DIRECTLY to each manifest
+//      screenshot URL via `page.goto(<asset-url>)` and lets the
+//      browser render the image at its natural viewport.
+//      `await page.waitForLoadState('networkidle')` replaces the
+//      hand-rolled `<img>.complete` polling — fewer moving parts.
+//   2. The new `snapshotPathTemplate` in `playwright.config.ts`
+//      pins baselines under
+//      `tests/e2e/__screenshots__/<spec>/<arg>.png`.  Each
+//      manifest screenshot's slug becomes the baseline filename
+//      (e.g. `screenshots/main-game.png` → `main-game.png`).
+//      Documented in `docs/frontend-pwa-audit.md §7.2`.
+//   3. Forward-stage tolerance preserved across:
+//        - origin unreachable
+//        - no manifest at canonical paths
+//        - empty `screenshots[]`
+//        - asset-URL navigation fails (404 / network)
+//        - baseline missing (Playwright auto-records on first run)
+//
+// W11 shipped *real* manifest screenshots (size + presence).  This
+// spec adds visual regression with a 2 % pixel-diff tolerance per
+// `docs/test-architecture.md §5`.  Real LIVE captures of the
+// rendered lobby surfaces live in
+// `visual-regression-real-captures.spec.ts` (Vasquez W14).
 //
 // See `tests/selectors.md` § Phase K Wave 12 → manifest-screenshots-visual.
-// See `docs/test-architecture.md §5` for the 2% policy + the
-// pre-flight checklist (deterministic viewport, fonts loaded,
-// animations frozen).
 
 import { test, expect, type Page } from '@playwright/test';
 
@@ -56,6 +75,11 @@ function slug(src: string | undefined): string {
   return src.split('/').pop()!.replace(/\.[a-z]+$/i, '').replace(/[^a-z0-9-]/gi, '-');
 }
 
+function resolveAssetPath(src: string): string {
+  if (src.startsWith('http://') || src.startsWith('https://')) return src;
+  return src.startsWith('/') ? src : `/${src}`;
+}
+
 test.describe('Phase K Wave 12 — manifest screenshots visual regression (<= 2% diff)', () => {
   test.beforeEach(async ({}, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium',
@@ -64,11 +88,13 @@ test.describe('Phase K Wave 12 — manifest screenshots visual regression (<= 2%
 
   test('each manifest screenshot matches its baseline within 2% diff OR forward-staged',
     async ({ page }, testInfo) => {
-      // W14 fix: navigate to the baseURL FIRST so subsequent
-      // page.setContent() inherits a real origin for relative `<img>`
-      // URLs (manifest screenshot paths are typically site-relative).
+      // Step 1 — reach a real origin so the manifest fetch resolves.
+      // W15: keep the bare-origin probe so the manifest fetch below
+      // has a deployed `baseURL` to resolve against.  The subsequent
+      // per-asset `page.goto()` replaces the W14 `setContent` step
+      // entirely.
       try {
-        await page.goto('/');
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
       } catch (_e) {
         testInfo.annotations.push({
           type: 'forward-staged',
@@ -93,57 +119,62 @@ test.describe('Phase K Wave 12 — manifest screenshots visual regression (<= 2%
         return;
       }
 
-      // Pre-flight per §5: pin viewport, freeze animations, ensure
-      // fonts loaded. The viewport is set via playwright.config.ts
-      // but we explicitly disable animations + transitions here.
-      await page.addStyleTag({
-        content: `
-          *, *::before, *::after {
-            animation-duration: 0s !important;
-            animation-delay: 0s !important;
-            transition-duration: 0s !important;
-            transition-delay: 0s !important;
-          }
-        `,
-      });
-      // Wait for fonts so kerning doesn't drift across runs.
-      await page.evaluate(async () => {
-        if (document.fonts && document.fonts.ready) {
-          await document.fonts.ready;
-        }
-      });
-
       let comparedCount = 0;
       for (const shot of shots) {
         if (!shot.src) continue;
-        const url = shot.src.startsWith('/') || shot.src.startsWith('http')
-          ? shot.src
-          : `/${shot.src}`;
-        // Render the screenshot URL as an image inside a blank page so
-        // we get a deterministic comparison surface.
-        await page.setContent(
-          `<!doctype html><html><body style="margin:0;background:#000;">
-             <img src="${url}" style="display:block;max-width:100%;height:auto;" />
-           </body></html>`,
-        );
-        // Wait for the image to load.
+        const url = resolveAssetPath(shot.src);
+
+        // W15 — Navigate DIRECTLY to the asset URL.  The browser
+        // renders the image at the viewport pinned by
+        // `playwright.config.ts:devices['Desktop Chrome']`; no
+        // setContent / no inline HTML / no hand-rolled load probe.
+        let resp;
         try {
-          await page.waitForFunction(
-            () => {
-              const img = document.querySelector('img');
-              return !!img && (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0;
-            },
-            { timeout: 5000 },
-          );
+          resp = await page.goto(url, { waitUntil: 'load' });
         } catch (_e) {
           testInfo.annotations.push({
             type: 'forward-staged',
-            description: `Screenshot "${url}" did not load on the deployed origin.`,
+            description: `Screenshot asset "${url}" navigation failed on the deployed origin.`,
           });
           continue;
         }
+        if (resp === null || !resp.ok()) {
+          testInfo.annotations.push({
+            type: 'forward-staged',
+            description: `Screenshot asset "${url}" returned ${resp?.status() ?? 'no-response'}.`,
+          });
+          continue;
+        }
+        try {
+          await page.waitForLoadState('networkidle', { timeout: 4000 });
+        } catch (_e) {
+          // Static asset; networkidle is best-effort.  Proceed.
+        }
+
+        // Pre-flight per §5: freeze any decorative animations the
+        // browser default chrome might run on the image-rendering
+        // page (e.g. broken-image icon shimmer).
+        await page.addStyleTag({
+          content: `
+            *, *::before, *::after {
+              animation-duration: 0s !important;
+              animation-delay: 0s !important;
+              transition-duration: 0s !important;
+              transition-delay: 0s !important;
+            }
+          `,
+        });
+        // Wait for fonts so any browser-chrome text doesn't drift.
+        await page.evaluate(async () => {
+          if (document.fonts && document.fonts.ready) {
+            await document.fonts.ready;
+          }
+        });
 
         try {
+          // The first positional arg becomes `{arg}` in
+          // `snapshotPathTemplate`; baseline lands at
+          // `tests/e2e/__screenshots__/manifest-screenshots-visual.spec.ts/<slug>.png`.
           await expect(page).toHaveScreenshot(
             `${slug(shot.src)}.png`,
             { maxDiffPixelRatio: MAX_DIFF_PIXEL_RATIO },
@@ -168,7 +199,7 @@ test.describe('Phase K Wave 12 — manifest screenshots visual regression (<= 2%
       if (comparedCount === 0) {
         testInfo.annotations.push({
           type: 'forward-staged',
-          description: 'No baselines to compare yet; W13 will see the comparison.',
+          description: 'No baselines compared this run; either all forward-staged or all newly recorded.',
         });
       }
     });
