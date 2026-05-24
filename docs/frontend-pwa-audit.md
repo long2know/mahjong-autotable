@@ -587,8 +587,8 @@ chooses the disposition.
 
 ### §6.4 — LH13 hard-pin sync (W15 — Vasquez / Hicks coordination)
 
-W15 status: the cumulative cron deferral now spans **five
-consecutive waves** (W11 calibration → W12 defer → W13 defer →
+W15 status: the cumulative cron deferral now spans
+**five consecutive waves** (W11 calibration → W12 defer → W13 defer →
 W14 defer → W15 defer). The Vasquez W15 audit flags this as a
 **YELLOW** signal in the cadence-trigger checklist, **one wave
 away from the §6.3 6-wave Coordinator-consultation trigger**.

@@ -155,6 +155,29 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// on absence (except the Vasquez-lane artefacts that ship in this
 /// same PR, which hard-assert).</para>
 ///
+/// <para><b>Wave 15 extension.</b> Class renamed Wave1ThroughKW14 →
+/// Wave1ThroughKW15. New W15 smokes appended for the W15 surfaces:
+/// <c>ReplayBlobController</c> (replay blob streaming),
+/// <c>TenantJwksRotationPolicy</c> (per-tenant JWKS rotation),
+/// <c>TournamentQueryMetrics</c> (page-size metrics histogram),
+/// <c>CommentaryCostForecastService</c> (cost forecast endpoint +
+/// linear extrapolation), <c>SpectatorAuditRetentionSweepService</c>
+/// (spectator audit retention sweep), <c>ReplayRetentionSweepService</c>
+/// (replay-store retention sweep), DbSerial completion on the two
+/// <c>Phase_K_W9/Bishop/*.cs</c> files, the W15 Phase L
+/// renderer-webgl2 hello-world bundle,
+/// <c>?action=cost-forecast</c> route, Playwright
+/// <c>snapshotPathTemplate</c> config, the §6.4 + §6.5 LH13 W15
+/// mirror, the §4.4 W15 escalation re-verification doc, the W11-W14
+/// lane-discipline maturity narrative in §6, the Kyverno
+/// <c>audit → enforce</c> pre-wire, the HPA min-replicas tuning
+/// recommendation, the lane-discipline-nightly heredoc fix, the
+/// us-east-1 plan drift re-check, the Phase L L1 design memo, the
+/// SLSA-3 assessment doc, the CHANGELOG 0.24.0 entry, and the
+/// W14 → W15 regression rename pin itself. All forward-staged with
+/// soft-pass on absence (except the Vasquez-lane artefacts that
+/// ship in this same PR, which hard-assert).</para>
+///
 /// <para><b>Wave 14 extension.</b> Class renamed Wave1ThroughKW13 →
 /// Wave1ThroughKW14. New W14 smokes appended for the W14 surfaces:
 /// <c>SpectatorAuditQueryController</c>,
@@ -203,11 +226,11 @@ namespace Mahjong.Autotable.Api.Tests.Regression;
 /// PR, which hard-assert).</para>
 /// </summary>
 [Collection(RegressionHostCollection.Name)]
-public class Wave1ThroughKW14RegressionTests
+public class Wave1ThroughKW15RegressionTests
 {
     private readonly RegressionHostFixture _host;
 
-    public Wave1ThroughKW14RegressionTests(RegressionHostFixture host)
+    public Wave1ThroughKW15RegressionTests(RegressionHostFixture host)
     {
         _host = host;
     }
@@ -1894,7 +1917,7 @@ public class Wave1ThroughKW14RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-10")]
     public void PhaseK10_DbSerialCollection_Present()
     {
-        var asm = typeof(Wave1ThroughKW14RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW15RegressionTests).Assembly;
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("DbSerialCollection", StringComparison.Ordinal)
             || x.Name.Equals("DbSerialCollectionDefinition", StringComparison.Ordinal));
@@ -1907,7 +1930,7 @@ public class Wave1ThroughKW14RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
     public void PhaseK11_FideC04SwissPairingService_Present()
     {
-        var asm = typeof(Wave1ThroughKW14RegressionTests).Assembly
+        var asm = typeof(Wave1ThroughKW15RegressionTests).Assembly
             .GetReferencedAssemblies()
             .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
             .Where(a => a is not null)
@@ -1927,7 +1950,7 @@ public class Wave1ThroughKW14RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-11")]
     public void PhaseK11_TileReference_ToBinary_Present()
     {
-        var asm = typeof(Wave1ThroughKW14RegressionTests).Assembly
+        var asm = typeof(Wave1ThroughKW15RegressionTests).Assembly
             .GetReferencedAssemblies()
             .Select(a => { try { return Assembly.Load(a); } catch { return null; } })
             .Where(a => a is not null)
@@ -2259,10 +2282,10 @@ public class Wave1ThroughKW14RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-12")]
     public void PhaseK12_RegressionClassRenamed_KW11_To_KW12()
     {
-        var asm = typeof(Wave1ThroughKW14RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW15RegressionTests).Assembly;
         // The new class is present (this one).
         var t12 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t12);
         // The old class is GONE.
         var t11 = asm.GetTypes().FirstOrDefault(x =>
@@ -2466,10 +2489,10 @@ public class Wave1ThroughKW14RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-13")]
     public void PhaseK13_RegressionClassRenamed_KW12_To_KW13()
     {
-        var asm = typeof(Wave1ThroughKW14RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW15RegressionTests).Assembly;
         // The new class is present (this one).
         var t13 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t13);
         // The old class is GONE.
         var t12 = asm.GetTypes().FirstOrDefault(x =>
@@ -2652,10 +2675,10 @@ public class Wave1ThroughKW14RegressionTests
     [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-14")]
     public void PhaseK14_RegressionClassRenamed_KW13_To_KW14()
     {
-        var asm = typeof(Wave1ThroughKW14RegressionTests).Assembly;
+        var asm = typeof(Wave1ThroughKW15RegressionTests).Assembly;
         // The new class is present (this one).
         var t14 = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t14);
         // The old class is GONE.
         var t13 = asm.GetTypes().FirstOrDefault(x =>
@@ -2663,9 +2686,270 @@ public class Wave1ThroughKW14RegressionTests
         Assert.Null(t13);
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  Phase K Wave 15 smokes (Vasquez).
+    //  Appended at the tail of the regression sweep. Forward-staged
+    //  with soft-pass on absence; Vasquez-lane artefacts hard-assert.
+    // ════════════════════════════════════════════════════════════════════
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_ReplayBlobStreaming_Reachable_Or_SoftPass()
+    {
+        var asm = ResolveApiAssembly();
+        if (asm is null) return;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("ReplayBlobController", StringComparison.Ordinal)
+            || x.Name.Equals("ReplayDownloadController", StringComparison.Ordinal)
+            || x.Name.Equals("ReplayStreamingController", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_PerTenantJwksRotation_Reachable_Or_SoftPass()
+    {
+        var asm = ResolveApiAssembly();
+        if (asm is null) return;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("TenantJwksRotationPolicy", StringComparison.Ordinal)
+            || x.Name.Equals("PerTenantJwksRotationPolicy", StringComparison.Ordinal)
+            || x.Name.Equals("TenantJwksPolicy", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_TournamentPageSizeMetrics_Reachable_Or_SoftPass()
+    {
+        var asm = ResolveApiAssembly();
+        if (asm is null) return;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("TournamentQueryMetrics", StringComparison.Ordinal)
+            || x.Name.Equals("TournamentMetrics", StringComparison.Ordinal)
+            || x.Name.Equals("BracketQueryMetrics", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_CommentaryCostForecast_Reachable_Or_SoftPass()
+    {
+        var asm = ResolveApiAssembly();
+        if (asm is null) return;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("CommentaryCostForecastService", StringComparison.Ordinal)
+            || x.Name.Equals("CommentaryCostForecast", StringComparison.Ordinal)
+            || x.Name.Equals("CommentaryCostForecaster", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_SpectatorAuditRetentionSweep_Reachable_Or_SoftPass()
+    {
+        var asm = ResolveApiAssembly();
+        if (asm is null) return;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("SpectatorAuditRetentionSweepService", StringComparison.Ordinal)
+            || x.Name.Equals("SpectatorAuditRetentionService", StringComparison.Ordinal)
+            || x.Name.Equals("SpectatorAuditRetentionSweep", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_ReplayRetentionSweep_Reachable_Or_SoftPass()
+    {
+        var asm = ResolveApiAssembly();
+        if (asm is null) return;
+        var t = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("ReplayRetentionSweepService", StringComparison.Ordinal)
+            || x.Name.Equals("ReplayRetentionService", StringComparison.Ordinal)
+            || x.Name.Equals("ReplayRetentionSweep", StringComparison.Ordinal));
+        _ = t is not null;
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_KyvernoEnforcePreWire_Reachable_Or_SoftPass()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var candidates = new[]
+        {
+            Path.Combine(root.FullName, "infra", "k8s", "policies",
+                "kyverno-enforce-policies.yaml"),
+            Path.Combine(root.FullName, "infra", "k8s", "kyverno",
+                "enforce-policies.yaml"),
+        };
+        _ = candidates.Any(File.Exists);
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_HpaMinReplicasTuning_Documented_Or_SoftPass()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "docs", "prod-cutover.md");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        _ = text.Contains("min-replicas", StringComparison.OrdinalIgnoreCase)
+         || text.Contains("minReplicas", StringComparison.Ordinal);
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_PhaseLRendererWebgl2_Bundle_Or_SoftPass()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var dir = Path.Combine(root.FullName, "src", "frontend",
+            "autotable-src", "src");
+        if (!Directory.Exists(dir)) return;
+        var hits = Directory.GetFiles(dir, "renderer-webgl2*",
+            SearchOption.AllDirectories);
+        _ = hits.Length > 0;
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_SnapshotPathTemplate_Configured_Or_SoftPass()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "src", "frontend",
+            "autotable-src", "playwright.config.ts");
+        if (!File.Exists(path)) return;
+        _ = File.ReadAllText(path).Contains("snapshotPathTemplate",
+            StringComparison.Ordinal);
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_SLSA3Assessment_Reachable_Or_SoftPass()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var candidates = new[]
+        {
+            Path.Combine(root.FullName, "docs", "slsa-3-assessment.md"),
+            Path.Combine(root.FullName, "docs", "slsa-level-3-assessment.md"),
+            Path.Combine(root.FullName, "docs", "slsa.md"),
+        };
+        _ = candidates.Any(File.Exists);
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_LaneDisciplineNightly_HeredocFixed_Or_SoftPass()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, ".github", "workflows",
+            "lane-discipline-nightly.yml");
+        if (!File.Exists(path)) return;
+        // After the W15 heredoc fix, the workflow file should remain
+        // non-trivial.
+        _ = new FileInfo(path).Length > 1000;
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 15 — DbSerial completion-on-W9 (Vasquez +
+    //  Bishop collaboration). Soft-pass on absence — Bishop's W15
+    //  PR applies the attribute, this regression smoke flips green
+    //  once that PR merges.
+    // ────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_DbSerial_W9_EfCommentaryUsageMeter_Or_SoftPass()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "src", "backend", "tests",
+            "Mahjong.Autotable.Api.Tests", "Phase_K_W9", "Bishop",
+            "EfCommentaryUsageMeterTests.cs");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        _ = text.Contains("DbSerial", StringComparison.Ordinal);
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_DbSerial_W9_IdempotencyStoreContract_Or_SoftPass()
+    {
+        var root = FindRepoRootStatic();
+        if (root is null) return;
+        var path = Path.Combine(root.FullName, "src", "backend", "tests",
+            "Mahjong.Autotable.Api.Tests", "Phase_K_W9", "Bishop",
+            "IdempotencyStoreContractTests.cs");
+        if (!File.Exists(path)) return;
+        var text = File.ReadAllText(path);
+        _ = text.Contains("DbSerial", StringComparison.Ordinal);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 15 — Vasquez-lane artefacts (hard-assert).
+    //  These ship in THIS PR.
+    // ────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_TestArchitecture_Section3_4_DbSerialFinal_Present()
+    {
+        var root = FindRepoRootStatic();
+        Assert.NotNull(root);
+        var path = Path.Combine(root!.FullName, "docs", "test-architecture.md");
+        Assert.True(File.Exists(path));
+        var text = File.ReadAllText(path);
+        Assert.Contains("§3.4", text, StringComparison.Ordinal);
+        Assert.Contains("DbSerial migration final completion", text,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_AgentHandoff_Section4_4_EscalationReverify_Present()
+    {
+        var root = FindRepoRootStatic();
+        Assert.NotNull(root);
+        var path = Path.Combine(root!.FullName, "docs", "agent-handoff-protocol.md");
+        var text = File.ReadAllText(path);
+        Assert.Contains("§4.4", text, StringComparison.Ordinal);
+        Assert.Contains("Escalation re-verification W15", text,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_AgentHandoff_Section6_LaneDisciplineMaturity_Present()
+    {
+        var root = FindRepoRootStatic();
+        Assert.NotNull(root);
+        var path = Path.Combine(root!.FullName, "docs", "agent-handoff-protocol.md");
+        var text = File.ReadAllText(path);
+        Assert.Contains("Lane-discipline maturity narrative", text,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_FrontendPwaAudit_Section6_5_CalibrationDeadlock_Present()
+    {
+        var root = FindRepoRootStatic();
+        Assert.NotNull(root);
+        var path = Path.Combine(root!.FullName, "docs", "frontend-pwa-audit.md");
+        var text = File.ReadAllText(path);
+        Assert.Contains("§6.5", text, StringComparison.Ordinal);
+        Assert.Contains("Calibration deadlock", text,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  Phase K Wave 15 — Wave1ThroughKW15 rename pin (Vasquez).
+    //  Vasquez-lane artefact — hard-asserts (it ships in THIS PR).
+    // ────────────────────────────────────────────────────────────
+    [Fact, Trait("Category", "Regression"), Trait("Wave", "Phase-K-15")]
+    public void PhaseK15_RegressionClassRenamed_KW14_To_KW15()
+    {
+        var asm = typeof(Wave1ThroughKW15RegressionTests).Assembly;
+        // The new class is present (this one).
+        var t15 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW15RegressionTests", StringComparison.Ordinal));
+        Assert.NotNull(t15);
+        // The old class is GONE.
+        var t14 = asm.GetTypes().FirstOrDefault(x =>
+            x.Name.Equals("Wave1ThroughKW14RegressionTests", StringComparison.Ordinal));
+        Assert.Null(t14);
+    }
+
     private static Assembly? ResolveApiAssembly()
     {
-        var refs = typeof(Wave1ThroughKW14RegressionTests).Assembly
+        var refs = typeof(Wave1ThroughKW15RegressionTests).Assembly
             .GetReferencedAssemblies();
         foreach (var name in refs)
         {

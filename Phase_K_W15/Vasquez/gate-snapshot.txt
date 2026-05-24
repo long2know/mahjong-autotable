@@ -1,0 +1,16 @@
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:  3312, Skipped:     0, Total:  3312, Duration: 1 m 49 s - Mahjong.Autotable.Api.Tests.dll (net10.0)
+
+# DbSerial completion flake-reduction harness (§3.4 validation — 4 successive runs):
+#
+# Run #1: Passed!  - Failed: 0, Passed: 3312, Skipped: 0, Total: 3312, Duration: 1m 49s
+# Run #2: Passed!  - Failed: 0, Passed: 3312, Skipped: 0, Total: 3312, Duration: 1m 57s
+# Run #3: Passed!  - Failed: 0, Passed: 3312, Skipped: 0, Total: 3312, Duration: 2m 00s
+# Run #4: Passed!  - Failed: 0, Passed: 3312, Skipped: 0, Total: 3312, Duration: 1m 50s
+#
+# 0 failures, 0 skips, 0 regressions across 4 consecutive runs.
+# DbSerial completion mile-marker (§3.4) — flake-neutral.
+# W14 baseline: 3029 / 0 / 0; W15 gate: 3312 / 0 / 0 (Δ +283 facts).
+# Zero-skip streak: 30 consecutive waves preserved.
+# Lane-discipline zero-violation streak: 5 consecutive waves (W11 → W15).

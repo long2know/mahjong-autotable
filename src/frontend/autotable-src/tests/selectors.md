@@ -2853,3 +2853,52 @@ with the `cost-forecast` action keyword + the
 `renderer-webgl2` Phase L spike + the manifest-screenshots-
 visual snapshotPathTemplate migration.  Pairs with the W15
 Hicks deliverables in `Phase_K_W15/Hicks/`.*
+
+---
+
+## Phase K Wave 15 — Vasquez (QA) footer
+
+Six new Playwright specs land in this wave under
+`src/frontend/autotable-src/tests/e2e/`. All chromium-only,
+all forward-stage tolerant via `testInfo.annotations.push({
+type: 'forward-stage', … })` when surfaces are still
+converging. Each spec pairs with a Vasquez backend mirror in
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W15/Vasquez/`.
+
+| # | Spec | Surface pinned |
+|---|------|----------------|
+| 1 | `replay-blob-streaming.spec.ts` | Bishop W15 replay blob `Range: bytes=…` chunked download — 206 Partial Content honoured, forward-stages when endpoint not yet reachable. Pairs with `BishopW15ReplayBlobStreamingTests.cs`. |
+| 2 | `cost-forecast-route.spec.ts` | Hicks W15 `?action=cost-forecast&days=<n>` admin-only overlay; renders without throwing or forward-stages. Pairs with `HicksW15CostForecastRouteTests.cs` + Bishop's `CommentaryCostForecast` projection. |
+| 3 | `phase-l-renderer-bundle.spec.ts` | Phase L hello-world spike: `dist-size.json` must include a `renderer-webgl2` entry inside the 180-220 KB envelope from `docs/phase-l-renderer-implementation.md`. Three-renderer-big hold-line (406,640 B) asserted by `HicksW15ThreeRendererHoldLineTests.cs`. |
+| 4 | `lh13-thresholds-w15.spec.ts` | LH13 W15 soft-pin at the W11 §7 calibration values — five-wave cumulative deferral (YELLOW per `docs/frontend-pwa-audit.md §6.4`); §6.5 deadlock escalation in flight. Forward-staged today; flips to hard-assert once cron converges. |
+| 5 | `snapshotPathTemplate.spec.ts` | Playwright config migration to the `snapshotPathTemplate` option (Hicks) so visual-regression captures land at deterministic per-browser paths. Pairs with `HicksW15SnapshotPathTemplateTests.cs`. |
+| 6 | `bundle-audit-candidates.spec.ts` | Bundle-audit candidate inventory (Hicks + Apone) — audit doc must list ≥3 candidates. Pairs with `HicksW15BundleAuditCandidatesTests.cs`. |
+
+### LH13 5-wave cumulative deferral (W15)
+
+The LH13 hard-pin is now in its fifth consecutive deferral wave
+(W11 → W15). Per `docs/frontend-pwa-audit.md §6.4` the cumulative
+deferral is flagged **YELLOW**; a sixth deferral wave (W16) flips it
+to **RED** and triggers Coordinator escalation. The §6.5 deadlock-
+escalation recommendation (Stephen-direct manual `pwa-audit.yml`
+trigger × 3) is in flight as of this wave.
+
+### Shared-file authorship pin
+
+`tests/selectors.md` is a `shared_files.selectors_md_shared`
+entry in `tests/ci/lane-map.json` (authors: `hicks` +
+`vasquez`, primary: `vasquez`). The W15 Vasquez footer
+appended here pairs with the W15 Hicks footer above and is
+covered by the same shared-file lane-discipline rule. The
+W14 footer (above) inventories the prior wave's six specs and
+remains in place for traceability.
+
+---
+
+*Phase K Wave 15 — Vasquez (QA). Six Playwright specs land
+under `tests/e2e/` and are inventoried above. The matching
+backend mirror tests live under
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Phase_K_W15/Vasquez/`.
+The KW14→KW15 regression class rename and the LH13 5-wave
+YELLOW flag land in this wave; see
+`Phase_K_W15/Vasquez/vasquez-phase-k-wave-15.md`.*

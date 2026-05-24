@@ -803,6 +803,70 @@ level. Stephen-direct flips append the same line minus the
 - The §4.3 dry-run cadence is **once per wave** until §4.1 closes;
   the captured log goes into `.work/vasquez-w<N>-safe/`.
 
+### 4.4. Escalation re-verification W15 (W15 — Vasquez)
+
+> **Status at W15 sign-off:** the §4.1 re-prompt has now been
+> standing for **eight consecutive waves** (W7 → W15 inclusive).
+> The §4.3 fallback runbook was published at W14 with a fresh
+> dry-run; W15 re-verifies the dry-run, captures the log to
+> `.work/vasquez-w15-safe/flip-script-dryrun-w15.log`, and
+> renews the **Coordinator-direct invocation recommendation
+> NOW** rather than deferring another wave.
+
+#### Why §4.4 exists separately from §4.3
+
+`§4.3` is the *runbook* for the fallback (what to execute when
+Stephen hasn't flipped the gate by the §4.2 escalation deadline).
+`§4.4` is the *re-verification cadence* for that runbook: each
+wave that §4.1 remains pending, Vasquez re-runs the dry-run, files
+a fresh log under `.work/vasquez-w<N>-safe/`, and re-states the
+Coordinator-direct recommendation in the wave memo so the
+escalation pre-conditions stay audited and traceable.
+
+#### W15 re-verification capture
+
+```
+.work/vasquez-w15-safe/flip-script-dryrun-w15.log
+```
+
+The W15 dry-run produced the same shape as the W14 capture (HTTP
+200 from `gh api`; `Have lane-discipline currently: no`; dry-run
+PATCH command printed but not executed). The cosmetic `MODE !=
+"apply"` line-number drift (line ~133 of
+`tests/ci/lane-discipline-flip-required.sh`) is documented in §4.3
+and remains a DevOps-lane (Apone) fix.
+
+#### W15 recommendation
+
+> **Coordinator-direct invocation NOW.** The §4.1 re-prompt has
+> exhausted its useful range (eight waves with no Stephen flip).
+> Per the §4.2 escalation algorithm the Coordinator-direct path
+> is unblocked; the 1-line copy-paste below is identical to the
+> §4.3 form (re-stated here for traceability so future agents
+> grepping `§4.4` find the command without chasing the link).
+
+```bash
+gh workflow run lane-discipline-flip-required.yml \
+  --ref main \
+  --field mode=apply \
+  --field coordinator-flag=true \
+  --field reason="W15 escalation: §4.1 pending since Phase K Wave 4"
+```
+
+After the flip lands (whether via Stephen or via the Coordinator-
+direct path above), the §4.1 block is re-titled
+`(CLOSED at W<N> — <method>)`; §4.3 + §4.4 stay as a
+historical record of the escalation pre-flight + the per-wave
+re-verification.
+
+- The §4.4 re-verification cadence is **once per wave** until
+  §4.1 closes.
+- W16 picks up the cadence: re-run the dry-run, capture to
+  `.work/vasquez-w16-safe/flip-script-dryrun-w16.log`, re-state
+  the Coordinator-direct recommendation in the W16 memo.
+- If §4.1 closes at W16 or later, §4.4 retires with a
+  `(CLOSED at W<N>)` annotation.
+
 ### 5. Per-commit author identity verification
 
 After each commit, verify the author is YOU:
@@ -1410,4 +1474,128 @@ After fixing a §5.10 violation:
 
 ---
 
+## 6. Lane-discipline maturity narrative (W15 — Vasquez)
 
+> **Why this section exists.** By the end of W14 the squad had
+> accumulated **four consecutive waves with zero lane-discipline
+> violations** (W11 → W14 inclusive).  This is the first such
+> streak in the project — earlier waves (W3 → W10) saw at least
+> one violation per wave, usually a shared-file cross-lane edit
+> that required an amendment.  Future agents reading this doc
+> need to know *how* the squad arrived at the W11→W14
+> zero-violation streak so the discipline survives the next
+> turnover.  This section canonises the W11→W14 streak as the
+> W15+ baseline and documents the amendment-discovery pattern,
+> the primary-classification rule, and the allowlist evolution
+> timeline.
+
+### 6.1. Maturity arc (W3 → W14) — §6.1
+
+| Wave  | Lane-discipline violations | Notes                                            |
+|-------|----------------------------|--------------------------------------------------|
+| W3    | 3                          | First wave with hard discipline; amendments common. |
+| W4    | 2                          | First-pass amendments standardised.              |
+| W5    | 2                          | `shared_files` concept introduced.               |
+| W6    | 1                          | Selectors.md cross-edit pattern surfaces.        |
+| W7    | 1                          | §4.1 branch-protection re-prompt opened.         |
+| W8    | 1                          | `selectors_md_shared` allowlist entry lands.     |
+| W9    | 0                          | First zero-violation wave (cause: W8 allowlist). |
+| W10   | 1                          | `agent_handoff_protocol_md_shared` allowlist amendment. |
+| W11   | 0                          | **Zero-violation streak begins.**                |
+| W12   | 0                          | 2nd consecutive zero-violation wave.             |
+| W13   | 0                          | 3rd consecutive zero-violation wave.             |
+| W14   | 0                          | 4th consecutive zero-violation wave.             |
+
+W11–W14 form the first **four-wave consecutive zero-violation
+streak** (a 4-wave zero-violation streak) in the project.  W15 extends the streak to **five
+consecutive waves**; the W15 wave memo annotates this in the
+"Lane-discipline zero-violation streak" section.
+
+### 6.2. Amendment-discovery pattern
+
+The pattern that produced the W11→W14 zero-violation streak is
+reactive, not preventive — every shared-file cross-lane edit
+that hit the gate produced **an amendment to
+`tests/ci/lane-map.json`** rather than a fix on the file itself:
+
+1. Agent A edits shared file `X` (e.g. `selectors.md`).
+2. Agent B's wave inherits the cross-edit; lane-discipline gate flags it.
+3. Squad investigation reveals that BOTH A and B are legitimate
+   authors of `X` (e.g. selectors.md is a frontend/QA collaboration).
+4. Vasquez files a `shared_files` allowlist entry:
+   ```json
+   { "id": "selectors_md_shared",
+     "paths": ["src/frontend/autotable-src/tests/selectors.md"],
+     "authors": ["hicks", "vasquez"],
+     "primary": "vasquez" }
+   ```
+5. Future waves carry the cross-edit without violation.
+
+This pattern is **what the W11–W14 zero-violation streak codifies**:
+the shared-file friction points are now allowlisted, so future
+co-authored edits on those files no longer trip the gate.
+
+### 6.3. Primary classification rule
+
+Each `shared_files` entry names ONE `primary` author.  The
+primary is **the agent who carries the file's editorial
+direction**, even though multiple agents can land edits.  The
+classification rule resolves ambiguity:
+
+- For shared docs (`selectors.md`, `agent-handoff-protocol.md`):
+  the primary is the QA agent (`vasquez`) — these docs are
+  authoritative test / process surfaces that QA owns end-to-end
+  even when other agents contribute content.
+- For shared workflows (`pwa-audit-workflow`, `bundle-health-workflow`):
+  the primary is the DevOps / Apone agent — these are CI surfaces
+  that DevOps owns end-to-end.
+- For shared visual-regression / shims surfaces: the primary
+  follows the surface's editorial owner (Vasquez for tests-side,
+  Apone for workflows-side).
+
+### 6.4. Allowlist evolution timeline — §6.4
+
+The `tests/ci/lane-map.json` `shared_files` allowlist has grown
+incrementally as friction points surfaced.  Each entry is
+named with its first-landing wave:
+
+| Wave  | Entry id                              | Primary | Authors            |
+|-------|----------------------------------------|---------|--------------------|
+| W8    | `selectors_md_shared`                  | vasquez | hicks + vasquez    |
+| W10   | `agent_handoff_protocol_md_shared`     | vasquez | vasquez + apone    |
+| W11   | `shims_shared`                          | vasquez | vasquez + hicks    |
+| W11   | `pwa_audit_workflow_shared`            | apone   | apone + vasquez    |
+| W13   | `bundle_health_workflow_shared`        | apone   | apone + hicks      |
+| W13   | `visual_regression_baselines_shared`   | vasquez | vasquez + hicks    |
+
+The W11–W14 zero-violation streak is **not** the absence of
+shared-file edits — it's the absence of shared-file edits that
+*are not already allowlisted*.  The W13 amendment (the
+bundle-health + visual-regression entries) was the last
+amendment needed before the streak began; W11→W14 carry only
+"already-known" cross-edits.
+
+### 6.5. Discipline going forward (W15+)
+
+Three rules carry the zero-violation streak past W15:
+
+1. **Before editing any shared file, check the allowlist.**
+   If the file isn't already in `shared_files` AND you're not
+   the only author touching it this wave, file an amendment
+   PR *first* — don't co-edit and discover the violation post-hoc.
+2. **Primary authorship is editorial, not gating.**  A non-primary
+   author can still land edits on a shared file (per the
+   allowlist) — primary just means editorial direction.
+3. **W15+ amendments still need a wave memo entry.**  Any new
+   `shared_files` entry filed at W15+ MUST be named in the wave
+   memo of the filing agent, so the maturity arc table above
+   can be extended faithfully across future waves.
+
+---
+
+*Phase K Wave 15 — Vasquez (QA).  This §6 narrative is the W15
+canonisation of the W11→W14 zero-violation streak as the W15+
+baseline.  Cross-referenced by
+`Phase_K_W15/Vasquez/vasquez-phase-k-wave-15.md` Deliverable #7
+and by `VasquezW15SelfLaneTests.cs` (Lane-discipline maturity
+narrative present + allowlist timeline entries enumerated).*
