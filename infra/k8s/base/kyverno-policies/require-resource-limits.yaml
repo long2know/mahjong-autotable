@@ -78,36 +78,40 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
   annotations:
-    policies.kyverno.io/title: "Require CPU + memory limits on every Pod container (W21, Audit)"
+    policies.kyverno.io/title: "Require CPU + memory limits on every Pod container (W22, Enforce)"
     policies.kyverno.io/category: "Pod Security / Resource Hygiene"
     policies.kyverno.io/severity: "high"
     policies.kyverno.io/subject: "Pod, Deployment, StatefulSet, DaemonSet"
     policies.kyverno.io/description: >-
-      W21 audit-mode policy. Two sub-rules require every
-      container in a mahjong-prod Pod to declare BOTH
-      resources.limits.cpu AND resources.limits.memory. A
-      missing limit on either dimension surfaces as a
-      PolicyReport row. 5-day grace window precedes the
-      W22 enforce-flip — see
-      docs/kyverno-w21-additional-rules.md §4 for the
-      cutover plan.
+      W22 ENFORCE-MODE policy (was W21 Audit-mode). Two
+      sub-rules require every container in a mahjong-prod
+      Pod to declare BOTH resources.limits.cpu AND
+      resources.limits.memory. The W22 cutover flipped
+      validationFailureAction Audit → Enforce +
+      failurePolicy Ignore → Fail after a clean 5-day
+      grace window with zero PolicyReport rows surfaced
+      against existing prod workloads. See
+      docs/kyverno-w22-additional-rules.md §3 for the
+      cutover-day evidence + rollback path.
 spec:
   # W21 audit-mode launch — mirrors the W19 audit window
   # discipline. The W22 cutover flips this to Enforce
   # alongside `failurePolicy: Ignore → Fail`.
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   # `background: true` — sub-rules are pure validate;
-  # background scans against existing pods produce
-  # PolicyReports for any invariant drift. This is the
-  # primary signal source for the 5-day grace window.
+  # background scans against existing pods continue to
+  # produce PolicyReports for any invariant drift. Same
+  # shape as W21 audit-mode (background scans operate
+  # independently of validationFailureAction).
   background: true
   webhookTimeoutSeconds: 30
-  # `failurePolicy: Ignore` — paired with audit-mode. A
-  # Kyverno webhook outage during W21 audit window MUST
-  # NOT spuriously surface as a PolicyReport
-  # (Ignore-on-failure is the correct audit-mode default,
-  # parallel to the W19 audit-mode shape).
-  failurePolicy: Ignore
+  # `failurePolicy: Fail` — W22 enforce-flip paired with
+  # Enforce action. A Kyverno webhook outage during the
+  # enforce window MUST surface as an admission denial
+  # (fail-closed). Parallel to the W20 enforce-flip on
+  # disallow-lateral-movement.yaml + require-network-
+  # policy.yaml.
+  failurePolicy: Fail
   rules:
     - name: require-cpu-limit
       match:

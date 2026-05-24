@@ -19,8 +19,77 @@ rebuild are tracked here.
 
 ## [Unreleased]
 
-Working branch: `stlong/phase-k-wave-21-bringup`. Phase K Wave 21
+Working branch: `stlong/phase-k-wave-22-bringup`. Phase K Wave 22
 in flight. Other lane deliverables outstanding.
+
+## [0.31.0] — Phase K Wave 22 — 2027-02-26 (PR pending)
+
+**Theme:** Kyverno enforce-flip 3rd batch (W21 audit-mode pair
+→ W22 Enforce + Fail; `require-resource-limits` +
+`disallow-host-paths` flipped after a clean 5-day grace
+window — zero `PolicyReport` rows across the W21→W22 audit
+snapshots; `failurePolicy` flipped Ignore → Fail in the same
+commit; W22 cutover-day evidence captured in
+`docs/kyverno-w22-additional-rules.md §3`; the W19→W20 +
+W21→W22 cadence is now the documented two-wave audit→enforce
+discipline) + SLSA-3 sustaining surface (NEW
+`.github/workflows/slsa-drift-detection.yml` weekly Monday
+07:00 UTC cron that walks `.github/workflows/*.yml`, flags
+any `uses: <action>@<ref>` whose ref is NOT a 40-char hex
+SHA outside the documented allow-list — opens / updates a
+`slsa-drift` tracking issue when the scheduled run finds
+drift; SLSA reusable workflow tag-pin shape is the only
+documented carve-out per
+[slsa.dev/spec/v1.0/requirements#build-isolated](https://slsa.dev/spec/v1.0/requirements#build-isolated);
+operator runbook in NEW `docs/slsa-drift-detection.md`) +
+SignalR sticky-session shared-cookie validation contract
+(NEW `infra/k8s/base/ingress-validation.yaml` Kyverno
+ClusterPolicy with FIVE invariant sub-rules that REJECT any
+mahjong-prod Ingress whose annotations diverge from the W19
+sticky-session contract — `affinity: cookie` +
+`affinity-mode: persistent` + `session-cookie-name:
+mahjong_aff` + `session-cookie-max-age: 86400` +
+`configuration-snippet: ?*` IP-hash fallback present; W22
+launch in Audit mode + 5-day grace window → W23 enforce-flip
+planned; pre-W22 verification confirms the current ingress
+satisfies all five sub-rules; documented in NEW
+`docs/signalr-affinity-validation-w22.md`) + Mobile Apple-
+platforms parity expansion (NEW `tvos-build` + `watchos-build`
+jobs in `.github/workflows/mobile-build.yml` mirroring the W2
+iOS pattern — `macos-latest` + `xcodebuild -configuration
+Release -sdk appletvos | watchos` + `CODE_SIGNING_ALLOWED=NO`
+soft-fail when `IOS_*` secrets are absent; both jobs reuse
+the W18 iOS keychain decode secret shape so one Apple
+Developer enrolment covers iOS + tvOS + watchOS; placeholder
+artefacts on missing Capacitor iOS shell so the matrix
+expansion lands clean at W22 without blocking the existing
+iOS + Android pipeline; release job's `needs:` list
+intentionally unchanged at W22 — W23 wires tvOS + watchOS
+into the prerelease; documented in NEW
+`docs/mobile-apple-platforms.md`) + us-east-1 auto-rollback
+dry-run trigger workflow (NEW
+`.github/workflows/us-east-1-auto-rollback.yml` with three
+triggers: `pull_request` (paths-filtered, DRY-RUN), weekly
+Sunday 02:00 UTC `schedule` (DRY-RUN drift canary), and
+`workflow_dispatch` with explicit
+`actually_rollback_on_failure` opt-in input;
+`validate` + `dry-run-plan` + `auto-rollback-trigger` job
+graph; `terraform plan -target=null_resource.us_east_1_
+auto_rollback` captures the expected W21 provisioner
+diff; PR comment posts the plan output inline; opt-in
+runbook covering the §3.1→§3.2→§3.3 staging-tier dry-run
+→ prod opt-in sequence in NEW
+`docs/us-east-1-auto-rollback-runbook.md`) + CHANGELOG
+`[0.31.0]` + `mobile/package.json` 0.30.0 → 0.31.0 + W22
+inbox memo. Wave-count-tracks-version: W22 → 0.31.0 (W21=
+0.30.0; W11=0.20.0 anchor). Root `package.json` does not
+exist in this repo so no root-level bump; the version
+anchor stays at `mobile/package.json` + CHANGELOG header.
+Bishop-lane csproj bump deferred. Stash-discipline
+preserved: zero `git stash pop` before commit; §9 STASH-
+ISOLATION respected (W20 Hicks-tree-wipe lesson honoured);
+file-by-file `git add` only — no `git add -A` / `git add
+-u` / directory adds. Lane-pure W22 commit.
 
 ## [0.30.0] — Phase K Wave 21 — 2027-02-19 (PR pending)
 

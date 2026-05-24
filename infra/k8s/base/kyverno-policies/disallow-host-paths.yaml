@@ -93,22 +93,26 @@ kind: ClusterPolicy
 metadata:
   name: disallow-host-paths
   annotations:
-    policies.kyverno.io/title: "Disallow hostPath volumes in mahjong-prod Pods (W21, Audit)"
+    policies.kyverno.io/title: "Disallow hostPath volumes in mahjong-prod Pods (W22, Enforce)"
     policies.kyverno.io/category: "Pod Security / Container Escape"
     policies.kyverno.io/severity: "high"
     policies.kyverno.io/subject: "Pod, Deployment, StatefulSet, DaemonSet"
     policies.kyverno.io/description: >-
-      W21 audit-mode policy. Denies any Pod-spec in
-      mahjong-prod that declares spec.volumes[*].hostPath.
-      hostPath is a classical container-escape + lateral-
-      movement primitive flagged by CIS-1.6 §5.7.4 +
-      SC-3 / SOC-2. 5-day grace window precedes the W22
-      enforce-flip — see docs/kyverno-w21-additional-rules.md §4.
+      W22 ENFORCE-MODE policy (was W21 Audit-mode). Denies
+      any Pod-spec in mahjong-prod that declares
+      spec.volumes[*].hostPath. hostPath is a classical
+      container-escape + lateral-movement primitive
+      flagged by CIS-1.6 §5.7.4 + SC-3 / SOC-2. The W22
+      cutover flipped validationFailureAction Audit →
+      Enforce + failurePolicy Ignore → Fail after a clean
+      5-day grace window. See
+      docs/kyverno-w22-additional-rules.md §3 for the
+      cutover-day evidence + rollback path.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   webhookTimeoutSeconds: 30
-  failurePolicy: Ignore
+  failurePolicy: Fail
   rules:
     - name: deny-host-path-volumes
       match:

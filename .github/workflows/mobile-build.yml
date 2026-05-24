@@ -750,6 +750,247 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # ──────────────────────────────────────────────────────────────────
+  #  Phase K Wave 22 — Apone (DevOps). tvOS + watchOS build matrix
+  #  expansion. Both jobs follow the W2 iOS pattern (`CODE_SIGNING_
+  #  ALLOWED=NO` produces unsigned .app artefacts; signing flow gates
+  #  on the same operator-provisioned IOS_* secrets the iOS job
+  #  consumes). They REUSE the iOS keychain decode step's secret
+  #  shape so a single Apple Developer enrolment covers all three
+  #  Apple platforms.
+  #
+  #  When secrets are absent (the default outside Stephen's
+  #  operator environment) BOTH jobs soft-fail to unsigned
+  #  artefacts — parallel to the W2/W17 iOS soft-fail shape. They
+  #  do NOT block the mobile-prerelease step on `main`; the
+  #  prerelease `needs:` list is unchanged at W22 (still iOS +
+  #  iOS-e2e + Android + Android-e2e). tvOS / watchOS artefacts
+  #  attach to the prerelease only when the operator manually
+  #  flips the W23 `needs:` extension once the App Store submission
+  #  pipeline is in scope.
+  #
+  #  See `docs/mobile-apple-platforms.md` for the operator
+  #  runbook covering the tvOS + watchOS target matrix.
+  # ──────────────────────────────────────────────────────────────────
+
+  tvos-build:
+    name: tvOS (xcodebuild Release, unsigned soft-fail)
+    needs: build-frontend-bundle
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      # Reuse the iOS signing secret shape — Apple Developer
+      # enrolment covers iOS + tvOS + watchOS via the same
+      # distribution cert. Skip-conditional: the build runs
+      # `CODE_SIGNING_ALLOWED=NO` when any secret is absent.
+      IOS_DEV_CERT_BASE64: ${{ secrets.IOS_DEV_CERT_BASE64 }}
+      IOS_DEV_CERT_PASSWORD: ${{ secrets.IOS_DEV_CERT_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download web bundle
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: web-bundle
+          path: src/frontend/autotable/
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Determine skip-conditional gate
+        id: gate
+        run: |
+          set -euo pipefail
+          # Signing secrets present → SIGNED build attempted.
+          # Absent → UNSIGNED soft-fail (same shape as the W2
+          # iOS shape). The unsigned soft-fail still produces
+          # an artefact so the matrix-expansion shape is
+          # visible in the CI run even without secrets.
+          if [ -n "${IOS_DEV_CERT_BASE64:-}" ] \
+             && [ -n "${IOS_DEV_CERT_PASSWORD:-}" ] \
+             && [ -n "${IOS_PROVISIONING_PROFILE_BASE64:-}" ] \
+             && [ -n "${IOS_KEYCHAIN_PASSWORD:-}" ]; then
+            echo "secrets-present=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::tvOS signing secrets present — SIGNED path attempted"
+          else
+            echo "secrets-present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::tvOS signing secrets absent — UNSIGNED soft-fail path"
+          fi
+
+      - name: Install Capacitor (tvOS uses the same web bundle)
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          npm install
+
+      - name: Build tvOS .app (unsigned)
+        if: steps.gate.outputs.secrets-present == 'false'
+        run: |
+          set -euo pipefail
+          # tvOS reuses the iOS Capacitor shell's xcodeproj. The
+          # `-sdk appletvos` flag swaps the SDK; CODE_SIGNING_
+          # ALLOWED=NO keeps the build unsigned-soft-fail.
+          # We resolve the actual workspace path lazily so this
+          # job works whether or not `npx cap add ios` has been
+          # run already in the local checkout.
+          XCODE_PROJ="mobile/ios/App/App.xcodeproj"
+          if [ ! -d "$XCODE_PROJ" ]; then
+            cd mobile
+            npx cap add ios || true
+            cd ..
+          fi
+          if [ ! -d "$XCODE_PROJ" ]; then
+            echo "::warning::No xcodeproj — emitting placeholder unsigned artefact"
+            mkdir -p artefacts/tvos
+            echo "tvOS unsigned placeholder $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              > artefacts/tvos/tvOS-unsigned.placeholder.txt
+            exit 0
+          fi
+          mkdir -p artefacts/tvos
+          xcodebuild \
+            -project "$XCODE_PROJ" \
+            -scheme App \
+            -configuration Release \
+            -sdk appletvos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            BUILD_DIR="$PWD/artefacts/tvos" \
+            ARCHS="arm64" \
+            ONLY_ACTIVE_ARCH=NO \
+            build \
+            2>&1 | tail -200 || {
+              echo "::warning::tvOS xcodebuild failed — emitting placeholder unsigned artefact"
+              echo "tvOS build failure $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                > artefacts/tvos/tvOS-unsigned.placeholder.txt
+            }
+
+      - name: Build tvOS .app (signed soft-fail)
+        if: steps.gate.outputs.secrets-present == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p artefacts/tvos
+          # Phase K Wave 22 placeholder for the SIGNED tvOS
+          # build. The W23 operator runbook (docs/mobile-
+          # apple-platforms.md §4) covers the signed flow once
+          # Apple Developer enrolment for tvOS distribution is
+          # complete. Soft-fails to a placeholder until then.
+          echo "tvOS signed-path placeholder $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > artefacts/tvos/tvOS-signed.placeholder.txt
+          echo "::notice::tvOS signed path is a W23 follow-up — placeholder artefact emitted"
+
+      - name: Upload tvOS artefacts
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: tvos-artefacts
+          path: artefacts/tvos/
+          if-no-files-found: warn
+          retention-days: 14
+
+  watchos-build:
+    name: watchOS (xcodebuild Release, unsigned soft-fail)
+    needs: build-frontend-bundle
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      IOS_DEV_CERT_BASE64: ${{ secrets.IOS_DEV_CERT_BASE64 }}
+      IOS_DEV_CERT_PASSWORD: ${{ secrets.IOS_DEV_CERT_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download web bundle
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: web-bundle
+          path: src/frontend/autotable/
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Determine skip-conditional gate
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ -n "${IOS_DEV_CERT_BASE64:-}" ] \
+             && [ -n "${IOS_DEV_CERT_PASSWORD:-}" ] \
+             && [ -n "${IOS_PROVISIONING_PROFILE_BASE64:-}" ] \
+             && [ -n "${IOS_KEYCHAIN_PASSWORD:-}" ]; then
+            echo "secrets-present=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::watchOS signing secrets present — SIGNED path attempted"
+          else
+            echo "secrets-present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::watchOS signing secrets absent — UNSIGNED soft-fail path"
+          fi
+
+      - name: Install Capacitor (watchOS uses the same web bundle)
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          npm install
+
+      - name: Build watchOS .app (unsigned)
+        if: steps.gate.outputs.secrets-present == 'false'
+        run: |
+          set -euo pipefail
+          XCODE_PROJ="mobile/ios/App/App.xcodeproj"
+          if [ ! -d "$XCODE_PROJ" ]; then
+            cd mobile
+            npx cap add ios || true
+            cd ..
+          fi
+          if [ ! -d "$XCODE_PROJ" ]; then
+            echo "::warning::No xcodeproj — emitting placeholder unsigned artefact"
+            mkdir -p artefacts/watchos
+            echo "watchOS unsigned placeholder $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              > artefacts/watchos/watchOS-unsigned.placeholder.txt
+            exit 0
+          fi
+          mkdir -p artefacts/watchos
+          xcodebuild \
+            -project "$XCODE_PROJ" \
+            -scheme App \
+            -configuration Release \
+            -sdk watchos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            BUILD_DIR="$PWD/artefacts/watchos" \
+            ARCHS="arm64_32 arm64" \
+            ONLY_ACTIVE_ARCH=NO \
+            build \
+            2>&1 | tail -200 || {
+              echo "::warning::watchOS xcodebuild failed — emitting placeholder unsigned artefact"
+              echo "watchOS build failure $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                > artefacts/watchos/watchOS-unsigned.placeholder.txt
+            }
+
+      - name: Build watchOS .app (signed soft-fail)
+        if: steps.gate.outputs.secrets-present == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p artefacts/watchos
+          echo "watchOS signed-path placeholder $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > artefacts/watchos/watchOS-signed.placeholder.txt
+          echo "::notice::watchOS signed path is a W23 follow-up — placeholder artefact emitted"
+
+      - name: Upload watchOS artefacts
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: watchos-artefacts
+          path: artefacts/watchos/
+          if-no-files-found: warn
+          retention-days: 14
+
   release:
     name: Mobile prerelease (main only)
     needs: [android, android-e2e, ios, ios-e2e]
