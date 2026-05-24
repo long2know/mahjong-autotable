@@ -166,3 +166,69 @@ Hard-asserted in
   `Warning` / `Exhausted` flip within a calendar month.
 * Subsequent flips inside the same month are suppressed at the
   source (re-uses the W12 log-suppression gate).
+
+## §6 — Cost dashboard endpoint (Phase K Wave 14)
+
+The W12 cost-budget evaluator + W13 Prometheus counter + SignalR
+admin hub give Prometheus-savvy operators a full picture of LLM
+spend. W14 adds a REST endpoint so dashboards that don't speak
+Prometheus (operator console, Slack `/cost` slash command, ad-hoc
+curl) can fetch the current snapshot.
+
+### §6.1 — Endpoint
+
+```
+GET /api/commentary/cost/summary
+```
+
+* **Auth**: admin-only. Anonymous → 401; non-admin → 403.
+* **Method**: GET. No body, no query parameters.
+
+### §6.2 — Response
+
+```json
+{
+  "currentMonthCost": 12.45,
+  "budgetCapUsd": 100.00,
+  "percentUsed": 12.45,
+  "monthlyTokens": 2490000,
+  "tokensPerDollar": 200000,
+  "state": "Healthy",
+  "model": "gpt-4o-mini",
+  "month": "2026-05",
+  "at": "2026-05-23T12:34:56Z",
+  "byModel": [
+    { "model": "gpt-4o-mini", "cost": 12.45, "monthlyTokens": 2490000 }
+  ]
+}
+```
+
+* `state` mirrors the `BudgetState` enum
+  (`Healthy` / `Warning` / `Exhausted`) so dashboards can colour
+  the banner without re-deriving the threshold.
+* `byModel` is currently a single-element array — the W4 + W12
+  meter tracks a single active model. Phase L widens the shape;
+  the field is in W14 so the response schema is forward-stable.
+* All decimal values are rounded to 4 dp; `percentUsed` to 2 dp.
+
+### §6.3 — Failure modes
+
+* When the cost-budget service is not wired (defensive: a
+  cut-down test fixture), the endpoint returns the zeroed
+  envelope rather than 500. This matches the metrics endpoint's
+  fail-safe shape — a missing budget never breaks the dashboard.
+* A transient store failure inside `CommentaryCostBudget.Evaluate`
+  is caught and the same zeroed envelope is returned.
+
+### §6.4 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W14/Bishop/CommentaryCostSummaryEndpointTests.cs`:
+
+* Anonymous → 401.
+* Non-admin → 403.
+* Admin gets the canonical envelope with all eight top-level
+  fields + a single-element `byModel` array.
+* Model + month strings are populated from
+  `Commentary:Model` + `DateTime.UtcNow` respectively.
+* `state` is one of `Healthy` / `Warning` / `Exhausted`.

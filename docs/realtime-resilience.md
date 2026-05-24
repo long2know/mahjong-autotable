@@ -379,3 +379,90 @@ Hard-asserted in
 * Each tick invokes `SweepExpiredAsync` with `DateTime.UtcNow`.
 * A negative / zero configured interval is clamped to the floor.
 * A swallowed `SweepExpiredAsync` exception does not stop the loop.
+
+## §8 — Metrics (Phase K Wave 14)
+
+The W12 EF sequence store + W13 always-on retention sweep give
+operators durable + bounded storage; W14 surfaces the three
+Prometheus metrics that close the observability loop.
+
+### §8.1 — Metric shapes
+
+| Metric                                            | Type    | Labels             | Notes                                                           |
+| ------------------------------------------------- | ------- | ------------------ | --------------------------------------------------------------- |
+| `signalr_seq_replay_from_ack_total`               | counter | `hub`, `result`    | `result ∈ {hit, miss, expired}`                                 |
+| `signalr_seq_store_rows_active`                   | gauge   | none               | Sampled per scrape via `ISignalRSequenceStore.CountAsync`       |
+| `signalr_seq_retention_sweep_deleted_total`       | counter | none               | Cumulative since process start                                  |
+
+### §8.2 — Increment semantics
+
+* `signalr_seq_replay_from_ack_total{hub, result=hit}` —
+  callers stamp `hit` when `ReadFromAckAsync` returns one or
+  more rows.
+* `signalr_seq_replay_from_ack_total{hub, result=miss}` —
+  stamped when the store query resolved without finding any
+  newer-than-ack rows (typically a brand-new connection).
+* `signalr_seq_replay_from_ack_total{hub, result=expired}` —
+  stamped when the caller's last-acked sequence is older than
+  the retention window. Surfaces the canonical
+  "your reconnect window has lapsed; rebroadcast from
+  full-state" failure mode.
+* `signalr_seq_retention_sweep_deleted_total` — incremented by
+  the W13 retention sweep with the count of rows it deleted on
+  each tick. Zero-delete ticks don't bump the counter.
+
+### §8.3 — Wire shape
+
+The metrics ride on the existing
+`GET /metrics` endpoint. Schema is rendered unconditionally
+(HELP + TYPE preambles always emitted) so a Prometheus parser
+sees the same shape even when no events have occurred yet. A
+missing collector (test fixture) falls back to a zeroed
+envelope — schema is stable, samples are absent.
+
+Example snapshot:
+
+```
+# HELP signalr_seq_replay_from_ack_total Total SignalR replay-from-ack queries…
+# TYPE signalr_seq_replay_from_ack_total counter
+signalr_seq_replay_from_ack_total{hub="ChangshaHub",result="hit"} 142
+signalr_seq_replay_from_ack_total{hub="ChangshaHub",result="miss"} 73
+signalr_seq_replay_from_ack_total{hub="TournamentMatchHub",result="hit"} 31
+# HELP signalr_seq_store_rows_active Currently retained SignalR sequence rows…
+# TYPE signalr_seq_store_rows_active gauge
+signalr_seq_store_rows_active 4128
+# HELP signalr_seq_retention_sweep_deleted_total Total SignalR sequence rows…
+# TYPE signalr_seq_retention_sweep_deleted_total counter
+signalr_seq_retention_sweep_deleted_total 9417
+```
+
+### §8.4 — Registration
+
+* `SignalRSequenceMetrics` is a singleton in `Program.cs` —
+  registered unconditionally so the metrics endpoint always
+  sees a collector.
+* `SignalRSequenceRetentionSweep` takes the collector as an
+  optional ctor arg and stamps the deletion counter on every
+  tick that evicts ≥ 1 row.
+* The replay-from-ack counter is bumped at the
+  `ReadFromAckAsync` call sites (broadcaster + future
+  reconnect paths in Phase L). W14 ships the collector + the
+  sweep wiring; broadcaster instrumentation lands in L2 when
+  the WebRTC reconnect path adopts the durable store.
+
+### §8.5 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W14/Bishop/SignalRSequenceMetricsTests.cs`:
+
+* `SignalRSequenceMetrics.MetricReplayFromAckTotal == "signalr_seq_replay_from_ack_total"`.
+* `MetricStoreRowsActive == "signalr_seq_store_rows_active"`.
+* `MetricRetentionSweepDeletedTotal == "signalr_seq_retention_sweep_deleted_total"`.
+* `RecordReplayFromAck("hub", "hit")` increments the
+  `{hub="hub", result="hit"}` bucket by 1.
+* `RecordRetentionSweepDeleted(5)` adds 5 to the lifetime
+  counter; zero / negative is a no-op.
+* The retention sweep stamps the counter on every non-zero
+  tick.
+* The `/metrics` endpoint emits all three metrics with HELP +
+  TYPE preambles even when no events have occurred yet.

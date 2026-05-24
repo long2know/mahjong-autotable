@@ -38,15 +38,18 @@ public sealed class SignalRSequenceRetentionSweep : BackgroundService
     private readonly ISignalRSequenceStore _store;
     private readonly int _intervalMinutes;
     private readonly ILogger<SignalRSequenceRetentionSweep> _logger;
+    private readonly SignalRSequenceMetrics? _metrics;
 
     public SignalRSequenceRetentionSweep(
         ISignalRSequenceStore store,
         SignalRSequenceRetentionSweepOptions options,
-        ILogger<SignalRSequenceRetentionSweep> logger)
+        ILogger<SignalRSequenceRetentionSweep> logger,
+        SignalRSequenceMetrics? metrics = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         ArgumentNullException.ThrowIfNull(options);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _metrics = metrics;
         _intervalMinutes = options.SweepIntervalMinutes > 0
             ? options.SweepIntervalMinutes
             : DefaultSweepIntervalMinutes;
@@ -92,6 +95,10 @@ public sealed class SignalRSequenceRetentionSweep : BackgroundService
         {
             _logger.LogInformation(
                 "SignalRSequenceRetentionSweep removed {Count} expired entries.", removed);
+            // Phase K Wave 14 — Bishop. Stamp the
+            // signalr_seq_retention_sweep_deleted_total counter so
+            // Prometheus dashboards graph the eviction rate.
+            _metrics?.RecordRetentionSweepDeleted(removed);
         }
         return removed;
     }

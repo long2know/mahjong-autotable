@@ -35,6 +35,22 @@ namespace Mahjong.Autotable.Api.Auth;
 /// and a token claiming HS256 MUST verify against an entry in
 /// <see cref="JwtSigningKeyProvider.AllKeys"/>. Any other algorithm
 /// returns <see cref="ErrorUnsupportedAlg"/>.</para>
+///
+/// <para>Phase K Wave 14 — Bishop. JWKS overlap-window enforcement.
+/// During a staged rotation
+/// (<see cref="JwtStagedRotationPolicy.IsWithinOverlapWindow"/>),
+/// validation continues to accept BOTH the active key (kid index 0)
+/// AND the previous active (kid index &gt; 0). However, any token
+/// whose <c>iat</c> claim falls AT OR AFTER
+/// <see cref="JwtStagedRotationPolicy.RotationStartUtc"/> must NOT
+/// have been signed with a previous-active key — issuance switched
+/// to the new active at rotation start, so a kid-index-&gt;0 match on
+/// a freshly-issued token signals a rollback attack (or a buggy
+/// minter). The validator rejects these with
+/// <see cref="ErrorRollbackRejected"/>. Outside the overlap window
+/// the check is a no-op; tokens issued BEFORE the rotation start
+/// remain valid under the previous-active key for the full overlap
+/// window. See <c>docs/jwt-rotation.md §14</c>.</para>
 /// </summary>
 public sealed class JwtValidationService
 {
@@ -44,11 +60,37 @@ public sealed class JwtValidationService
     public const string ErrorPremature = "premature";
     public const string ErrorUnsupportedAlg = "unsupported-alg";
 
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Returned when a token was signed
+    /// with the previous-active key but its <c>iat</c> claim falls
+    /// inside the current staged rotation overlap window AT OR
+    /// AFTER the rotation start instant. Indicates a rollback
+    /// attack (or a buggy minter that didn't switch keys at
+    /// rotation start). See <c>docs/jwt-rotation.md §14</c>.
+    /// </summary>
+    public const string ErrorRollbackRejected = "rollback-rejected";
+
     private readonly JwtSigningKeyProvider _keys;
+    private readonly JwtStagedRotationPolicy? _rotation;
 
     public JwtValidationService(JwtSigningKeyProvider keys)
     {
         _keys = keys;
+        _rotation = null;
+    }
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Overload that accepts the staged
+    /// rotation policy so the validator can enforce the
+    /// previous-active-key rollback check during the overlap
+    /// window. The single-arg constructor remains for legacy call
+    /// sites; the DI container resolves this overload at production
+    /// runtime so the policy is always wired.
+    /// </summary>
+    public JwtValidationService(JwtSigningKeyProvider keys, JwtStagedRotationPolicy? rotation)
+    {
+        _keys = keys;
+        _rotation = rotation;
     }
 
     /// <summary>
@@ -145,6 +187,29 @@ public sealed class JwtValidationService
             return JwtValidationResult.Failure(ErrorPremature);
         }
 
+        // Phase K Wave 14 — Bishop. Overlap-window enforcement. If
+        // we matched a non-active key (kid index > 0) AND the token
+        // was issued AT OR AFTER the rotation start instant, this
+        // is either a rollback attack or a buggy minter that kept
+        // signing with the demoted key after rotation. Reject with
+        // the canonical rollback-rejected reason so audit + alerting
+        // surfaces can pin the failure mode. The check is a no-op
+        // when no rotation is in progress (policy unset) or when
+        // we matched the active key (kid index 0).
+        if (_rotation is { } rotation
+            && rotation.RotationStartUtc is { } rotationStart
+            && IsPreviousActiveKey(isRs256, matchedKid)
+            && payload.TryGetValue("iat", out var iat2El)
+            && iat2El.ValueKind == JsonValueKind.Number
+            && iat2El.TryGetInt64(out var iat2))
+        {
+            var iatUtc = DateTimeOffset.FromUnixTimeSeconds(iat2).UtcDateTime;
+            if (iatUtc >= rotationStart)
+            {
+                return JwtValidationResult.Failure(ErrorRollbackRejected);
+            }
+        }
+
         var subject = payload.TryGetValue("sub", out var subEl) && subEl.ValueKind == JsonValueKind.String
             ? subEl.GetString() ?? string.Empty
             : string.Empty;
@@ -187,6 +252,30 @@ public sealed class JwtValidationService
                 return candidate.Kid;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Phase K Wave 14 — Bishop. Returns <c>true</c> when the
+    /// supplied <paramref name="matchedKid"/> belongs to a
+    /// non-active key in the appropriate algorithm family. The
+    /// W4 + W6 surface stamps key index 0 as the active signer
+    /// across both HS256 + RS256 families; any other index is a
+    /// "previous" key retained for validation during the rotation
+    /// overlap window. Returns <c>false</c> for the active key (no
+    /// rollback risk) or when the matched kid does not resolve in
+    /// the provider (defensive — should not happen in practice
+    /// because the matched kid came from a successful verify).
+    /// </summary>
+    private bool IsPreviousActiveKey(bool isRs256, string? matchedKid)
+    {
+        if (string.IsNullOrEmpty(matchedKid)) return false;
+        if (isRs256)
+        {
+            var rsa = _keys.TryGetRsaByKid(matchedKid);
+            return rsa is not null && rsa.Index > 0;
+        }
+        var hmac = _keys.TryGetByKid(matchedKid);
+        return hmac is not null && hmac.Index > 0;
     }
 
     private static bool VerifySignature(byte[] signingInput, byte[] expected, JwtSigningKey key)

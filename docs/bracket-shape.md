@@ -152,3 +152,86 @@ Hard-asserted in
   upserted into the store at the correct slot tail.
 * Constructing `TournamentService` without a store leaves the
   service functional (no NRE on advance/forfeit).
+
+## §5 — Bracket query API (Phase K Wave 14)
+
+W12 landed `IBracketStore` persistence; W13 wired
+`TournamentService` to emit + advance rows. W14 closes the loop
+with the read surface: a paginated query over the
+`BracketRecords` table.
+
+### §5.1 — Endpoint
+
+```
+GET /api/tournaments/{tournamentId}/brackets
+    ?skip={int?}
+    &limit={int?}
+```
+
+* **Auth**: anonymous-allowed (mirrors the existing
+  `GET /api/tournaments/{id}/bracket` snapshot endpoint —
+  bracket viewing is public).
+* **Ordering**: `(RoundNumber, MatchSlot)` ascending — the same
+  canonical order the W12 in-memory + EF stores expose via
+  `IBracketStore.ListAsync`.
+* **Page-size**: clamped to `[1, BracketQueryOptions.MaxPageSize]`
+  (200). Default is `Tournament:PageSize`; falls back to 50 when
+  unset. The full result set is fetched once + sliced — fine for
+  the canonical 16- / 32- / 64-player tournament shapes; larger
+  shapes can revisit the projection in a later wave.
+
+### §5.2 — Response
+
+```json
+{
+  "tournamentId": "…",
+  "totalCount": 31,
+  "count": 25,
+  "skip": 0,
+  "limit": 25,
+  "pageSize": 50,
+  "items": [
+    {
+      "id": "…",
+      "tournamentId": "…",
+      "roundNumber": 1,
+      "matchSlot": 0,
+      "seedA": "player-a",
+      "seedB": "player-b",
+      "winnerSeed": null,
+      "status": "pending",
+      "completedAt": null
+    }
+  ]
+}
+```
+
+* Items carry the durable columns from W12 + W13:
+  `roundNumber`, `matchSlot`, `seedA`, `seedB`, `winnerSeed`
+  (null while pending), `status`
+  (`pending` / `active` / `completed` / `forfeit` / `bye`),
+  `completedAt` (null while pending).
+* `winnerSeed` for byes carries the bye-recipient (W13 contract).
+
+### §5.3 — Store-unavailable shape
+
+When no bracket store is wired the endpoint returns HTTP 503
+with `{ "error": "bracket-store-unavailable" }`. Distinguishes a
+mis-configured deployment from an empty tournament.
+
+### §5.4 — Configuration
+
+| Key                          | Default | Notes                                          |
+| ---------------------------- | ------- | ---------------------------------------------- |
+| `Tournament:PageSize`        | 50      | Server-side default; clamped to `[1, 200]`     |
+
+### §5.5 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W14/Bishop/BracketQueryEndpointTests.cs`:
+
+* Anonymous gets a 200 with the canonical envelope.
+* Empty tournament → `items.Length == 0`, `totalCount == 0`.
+* W13 bracket rows surface in `(RoundNumber, MatchSlot)` order.
+* `skip` + `limit` slice correctly.
+* `limit` clamps to 200 / 1.
