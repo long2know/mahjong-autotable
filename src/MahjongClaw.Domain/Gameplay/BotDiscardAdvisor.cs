@@ -1044,6 +1044,7 @@ public static class BotDiscardAdvisor
         }
 
         var prioritizedCandidates = candidates;
+        var appliedSevenPairsTripletFocus = false;
         if (ruleset == MahjongRuleset.ChineseOfficial && sevenPairsPairCount >= 6)
         {
             var tripletCandidates = prioritizedCandidates
@@ -1053,6 +1054,21 @@ public static class BotDiscardAdvisor
             if (tripletCandidates.Count > 0)
             {
                 prioritizedCandidates = tripletCandidates;
+                appliedSevenPairsTripletFocus = true;
+            }
+        }
+
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && sevenPairsPairCount >= 6
+            && !appliedSevenPairsTripletFocus)
+        {
+            var singletonCandidates = prioritizedCandidates
+                .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count) && count == 1)
+                .ToList();
+
+            if (singletonCandidates.Count > 0)
+            {
+                prioritizedCandidates = singletonCandidates;
             }
         }
 
