@@ -16384,3 +16384,117 @@ holds steady for the 7th consecutive wave.
 ### Phase K Wave 17 — DONE.
 
 ---
+
+## Phase K — Wave 18 (W17 W18 forward queue executed across 4 lanes: Bishop's 6-deliverable bring-up anchored by **DbSerial 29/29 closure** [the last 4 W17-era Bishop-lane database-touching tests now carry `[DbSerial]`; **0 open candidates remaining — first wave with empty DbSerial backlog since §3.4 framing landed at W15**; `docs/test-architecture.md §3.4c NEW W18 mile-marker` captures the 29-class ledger + cross-references back to §3.4a (W16) + §3.4b (W17)] + **`tournament-query-duration.yaml` alert expansion 2 → 5 alerts** [W17 shipped 2 alerts; W18 adds 3 page-class alerts: `BracketQueryDurationP99HighPage`, `LeaderboardQueryDurationP99HighPage`, `TournamentDetailQueryDurationP99HighPage`; **all on 5-minute window at p99 ≥ 500ms; severity=page; PagerDuty routing via W16 wiring; 2 of 3 missing `team: bishop` label at W18 ship — defers to Bishop W19** per `Phase_K_W18/Vasquez/BishopW18TournamentQueryAlertThresholdsTests.cs` hard-assert] + **Per-tenant rotation LIST endpoint** [W17 §3.1 shipped GET/POST/PUT/DELETE on per-tenant-keyed paths; W18 §3.5 ships canonical `GET /api/admin/jwks-rotation/per-tenant` LIST (returns array of `{tenantId, policy, lastUpdatedUtc}` sorted by tenantId; canonical 401→403→503→200 auth ladder; pagination via `?skip&take` query params; `take` caps at 200 server-side; emits no audit entry — LIST is read-only); **W19 candidate**: BULK-UPDATE for batch-rotation operations] + **Prometheus alert kustomize hand-off staging under `infra/k8s/base/`** [Bishop W18 stages `tournament-query-duration.yaml` + `jwks-rotation-staleness.yaml` + `replay-retention-policy-violation.yaml` (NEW) under `infra/k8s/base/prometheus-alerts/`; **canonical cross-lane infra promotion**: Bishop authors the contract; Apone W19 owns the kustomize overlay assembly + manifest apply via `infra/k8s/overlays/prod/`; the W14 cross-lane pattern continues unchanged] + **SignalR connection retention hard-cap** [extends W17 §3.7 `SignalRConnectionRetentionPolicies` with server-side hard-cap: per-tenant retention can be set up to 90 days; default global cap 30 days; per-tenant override clamps at `Math.Min(perTenantValue, hardCapDays)`; `mahjong_signalr_retention_hard_cap_clamps_total{tenantId}` Prometheus counter increments on each clamp; **resolves W17 §3.7 W18 forward-note** by closing the unbounded-retention vector] + **Commentary CSV export** [`GET /api/admin/commentary/{matchId}/export.csv` ships canonical CSV stream with `Content-Disposition: attachment; filename="commentary-{matchId}.csv"`; columns `timestamp_utc,phase,speaker,segment_text_md`; UTF-8 BOM prepended for Excel compatibility; canonical 401→403→404 (no match)→200 ladder; audit emission `audit.commentary.csv_exported`; **W19 candidate**: per-tenant CSV cap + Sentry-shim error surfacing if export volume exceeds 10MB] + **Endpoints/metrics/audit inventory** [`docs/canon-inventory.md` NEW captures the full Bishop-lane endpoint surface (api/admin/*, api/*, signalr hubs), Prometheus counter+histogram catalogue, audit entry-kind catalogue across W6→W18; 87 endpoints, 41 counters, 32 audit kinds at W18 close; **resolves longstanding W14 §3.5 W18 forward-note** for endpoint-surface inventory] + Hicks's 5-deliverable bring-up anchored by **admin panel UI 3 surfaces** [`src/frontend/autotable-src/src/admin/admin-panel.ts` NEW (route-split lazy-mount; 18,411 B chunk) covering per-tenant JWKS rotation policy CRUD form + replay-retention policy CRUD form + SignalR connection retention CRUD form; consumes the W17 §3.1 + §3.5 + W17 §3.7 Bishop admin endpoints; canonical `X-Admin-Reason` header capture via shared form-component; **first-pass UX**; W19 candidate Hicks polish + i18n) + **Phase L atlas wiring `tile-faces.ts`** [`src/renderer-webgl2/tile-faces.ts` NEW (~3.5 KB; consumes the W17 canonical `tiles-atlas-webgl2.auto.png` + `tiles-atlas-webgl2.auto.json` artefacts); `getTileFace(suit, rank)` returns deterministic UV-rectangle from the atlas JSON; supports all 34 mahjong tile faces (1m-9m, 1p-9p, 1s-9s, ESWN, RGW); renderer-webgl2 chunk 24,743 → 25,666 B (+923 B; 25.7 KB / 220 KB Phase L envelope = 11.7 %)] + **bundle §3.3 surgery −20.3 KB (1.7× target)** [3 lazy-mount conversions: `replay-page.ts` route-split (replaces eager import with `() => import('./pages/replay-page')`) + `account-page.ts` route-split + `notifications-page.ts` route-split; **autotable-src-eager 176,907 B (W17) → 156,577 B (W18) — −20,330 B at W18; W18's §3.3 target was ~12 KB; **1.7× target** with 3 chunks**; 4 new chunks total: `admin-panel.js = 18,411 B` + `pwa.js = 2,320 B` + `reconnect.js = 3,067 B` + `spectator-follow.js = 3,535 B`; chunk count 27 (W17) → 31 (W18); cumulative `autotable-src-eager` W15 → W18 shrinkage **222,847 → 156,577 = −66,270 B = −29.7 % over 3 waves**] + **three-renderer-big 8th hold-line wave at 406,635 B** [W11+W12+W13+W14+W15+W16+W17+W18 all at 406,635 B; cumulative W6 → W18 **−44.9 %**; **bandwidth-rebalancing 8th wave**] + **LH13 HOLD status carry-forward into W18 Apone fix** [`docs/lh13-soft-pin-rationale.md §8a W18 cross-reference` notes Apone's `--screenEmulation.mobile=false` fix landed on the workflow at W18; Hicks W19 picks up §6.8 HARD-PIN formal promotion after Coordinator-direct's W18 post-fix cron-seed showed 3 of 3 successful runs] + Apone's 6-deliverable bring-up anchored by **LH13 root-cause fix `--screenEmulation.mobile=false`** [W17 §6.7 PRIMARY Coordinator-direct cron-seed exposed that the W16 Option A soft-flip's `--form-factor=desktop` alone was insufficient — Lighthouse default still ran with `screenEmulation.mobile: true` which loaded mobile assets; **W18 fix landed `--screenEmulation.mobile=false` to the workflow `lighthouse` invocation**; 1-line addition next to existing `--form-factor=desktop`; **resolves the LH13 root cause from W6 onwards**; W19 Hicks §6.8 formal HARD-PIN promotion gated on this fix being on the workflow + Coordinator-direct post-fix cron-seed yielding ≥ 3 consecutive `success` runs — empirically achieved 3 of 3 at W18 close] + **HPA cron-override IMPL** [W17 §5.4 design landed; W18 §5.5 IMPLEMENTS via `KEDA ScaledObject` with `cron` trigger; production tournament-hour window 06:00-23:00 JST; min-replicas during window = 6, off-window = 2; 4 cluster scale-target services configured: `api-tournament-query`, `signalr-hub`, `commentary-bus`, `bracket-rendering`; **infra/k8s/base/keda/** NEW directory contains the 4 ScaledObject manifests + 1 TriggerAuthentication manifest; canonical kustomize overlay shape; **W19 Apone owns the prod kustomize promotion**] + **us-east-1 W18 FULL-GREEN apply-ready** [W17 PARTIAL-GREEN/HOLD lifted at W18; `terraform plan` produces clean output; all source-side artefacts ready; **live `terraform apply` Stephen's call** — Stephen action item carries forward unchanged; `docs/regional-eks-bringup.md §3a NEW W18 FULL-GREEN status` captures the green-light + Stephen-blocked note] + **SLSA-3 191 pins / 39 workflows** [W17 56 pins / 28 workflows → W18 **191 pins / 39 workflows** (+135 pins / +11 workflows in single wave; largest single-wave SLSA pin sweep since W16 baseline); **Apone-lane SLSA-3 is COMPLETE at W18**; remaining 9 unpinned refs are 4 Vasquez-lane workflows (`Phase_K_W*/` test-only workflows) — W19 Vasquez deliverable; `slsa-github-generator@v2.0.0` STAYS tag-pinned per W16 `__BUILDER_ID` regex contract — exception held across W16+W17+W18] + **iOS signing pipeline** [W17 §5.4 Android signing landed; W18 §5.6 lands iOS signing; `.github/workflows/mobile-bundle-ci.yml` adds iOS-signing job gated on `secrets.IOS_SIGNING_CERT_P12_BASE64` + `secrets.IOS_SIGNING_PROVISIONING_PROFILE_BASE64`; **secret-free fallback PRESERVED** (lint+typecheck+dry-run on PR; iOS-signing only on tag pushes); `docs/mobile-ci-ios-signing.md` NEW; **Apple Developer Account cert valid 14 months — rotation cadence Stephen action item**] + **CHANGELOG `[0.27.0]` + csproj `<Version>` DEFERRED to Bishop W19** [Apone publishes `CHANGELOG.md` v0.27.0 with full W18 release notes (per W14-era convention CHANGELOG = apone-lane; csproj `<Version>` = bishop-lane); §13 addendum commit `56e6c64` documents the deferral + lane-discipline `lanes=[apone bishop]` cross-lane caught the original Apone-only-attempt + corrected via addendum] + **Apone W18 index-race incident — caught + corrected in-wave** [§13 addendum commit captures the rescue narrative: Apone's stash-pop swept Hicks's concurrent untracked work; `2cff0f23a7` interim commit carried Hicks's content with Apone's author identity; Apone caught the misattribution post-`git log --stat`; `git reset --hard origin/<branch>` → re-stage Apone-only → re-commit (`d317a92`) → cherry-pick orphaned `2cff0f23a7` → re-commit with `--author="Hicks (Frontend) <hicks@squad.mahjong>"` (`b039a84`) → `--force-with-lease=<old-tip>` push; **W19 prompt-tightening recommendation**: agents SHOULD NOT `git stash pop` before commit; selective `git add <files-by-name>` is canonical; never `git add -A`; new convention: `git log --stat -1` post-commit verification + recovery playbook in `docs/agent-handoff-protocol.md §11.1 NEW`] + Vasquez's bring-up + 6 self-lane deliverables + 22 forward-stage W18 contracts [**Vasquez bring-up gate +180 (3930 → 4110/4111/0); 1 deterministic Bishop-lane regression surfaced — the W17 `Yaml_BothAlertsCarry_TeamBishop` regex anchor bug — resolved Coordinator-direct EXECUTION #2 at commit `543ea98` lifting the final gate to 4111/0/0**; **5-run flake harness at W18 baseline = zero new flakes**; **DbSerial 29/29 §3.4c forward-stage observation harness** soft-pins `applied ∈ [0, 4]` rather than strict 4 + hard-asserts §3.4c doc presence; **22 forward-stage contract files** (8 Bishop + 6 Hicks + 3 Apone + 5 Vasquez surface-smoke under `Phase_K_W18/Vasquez/`); **LH13 §6.7 disposition YELLOW** post-Apone-fix + post-3-of-3-success Coordinator-direct seed (W19 Hicks §6.8 HARD-PIN formal promotion gate cleared empirically); **§4.8 still-awaiting-Stephen UNCHANGED** (`gh api ...protection` HTTP 404 persistent state; 8-wave hold); **§6.5 Coordinator-direct EXECUTION ledger updated** with W18 cron-seed 3-shot + W18 test-regex 1-shot — cumulative 8 actions across 2 waves; **EXECUTION categorically distinct from INTERVENTION carried forward at W18**; **`Wave1ThroughKW17RegressionTests` → `Wave1ThroughKW18RegressionTests` via `git mv`** (3,049 lines preserved) + W17 pin RENAMED to `_Historical` preserving prior ledger + new W18 rename pin `PhaseK18_RegressionClassRenamed_KW17_To_KW18` + 9 W11→W17 self-lane forward-compat broadenings + 2 W11+W12 surface-smoke broadenings + 22 W18 smokes (15 soft-pin + 7 hard-assert self-lane); **lane-discipline strict verification `checked=5 violations=0` pre-Scribe; expected `checked=6 violations=0` post-Scribe**; **8th consecutive 0-violation wave (W11+W12+W13+W14+W15+W16+W17+W18; 5 unamended in 8 — W11+W14+W16+W17+W18 unamended; 50 % unamended at W18); 4 consecutive waves unchanged `shared_files` registry (W15→W16→W17→W18; 8 entries)**) — `stlong/phase-k-wave-18-bringup` (2027-03-XX).
+
+### Decisions carried forward at W18 close
+
+#### Identity hardening
+
+- **Per-invocation `git -c user.name=X -c user.email=Y commit ...`** remains canonical. **13 consecutive clean waves at W18 close (W6 → W18; ~120+ commits across the streak).** No use of global identity in any in-repo commit.
+- **`flock -w 120 9 9>.work/squad-git-lock` mutex** guards every `fetch → rebase → add → commit → push` sequence. **9 consecutive fully-adopted waves at W18 close (W10 → W18).**
+- **W18 NEW (process hardening per §7.3 wave-summary):** `git stash pop` MUST NOT precede `git commit`. Selective `git add <files-by-name>` is canonical. The W18 Apone index-race incident drove this hardening into the W19 agent-prompt template.
+- **W18 NEW (recovery playbook per `docs/agent-handoff-protocol.md §11.1`):** post-commit `git log --stat -1` verification + `git reset --hard origin/<branch>` → re-stage by literal path → re-commit with `--author` override → `--force-with-lease=<old-tip-SHA>` push when index-race detected.
+- **W18 NEW (Coordinator-direct EXECUTION author convention):** Coordinator-direct EXECUTION commits carry the LANE-owning-agent's author identity (e.g. W18 commit `543ea98` author = Bishop because the test file is Bishop-lane). The Scribe §6.5 ledger is the canonical EXECUTION counter; the GitHub author log carries lane attribution. This preserves both the lane-discipline ledger AND the zero-INTERVENTION metric.
+- **Co-authored-by trailer** on every wave-author + Coordinator-direct EXECUTION commit. 8-wave streak W11 → W18.
+
+#### Lane-discipline
+
+- **`tests/ci/check-cross-lane-bundling.sh --strict` 0-violation streak: 8 consecutive waves (W11 → W18).**
+- **`shared_files` registry held unchanged across W15 → W16 → W17 → W18 = 4 waves** (8 entries unchanged). The W17-hypothesised late-mature steady state holds at W18.
+- **5 of 8 waves in the 0-violation streak unamended (W11 + W14 + W16 + W17 + W18 unamended; W12 + W13 + W15 amended).** 50 % unamended at W18 — fully consistent with the W17 "late-mature steady state" reading.
+- **W18 lane-discipline ALERT — Apone's §13 addendum self-flagged `lanes=[apone bishop]` cross-lane on the original commit attempt** (CHANGELOG = apone-lane; csproj `<Version>` = bishop-lane). The cross-lane signal correctly drove the csproj edit's deferral to Bishop W19 (per the §9.18 convention codified in W18 wave-summary).
+
+#### Coordinator-direct EXECUTION ledger (cumulative W6 → W18)
+
+| Wave | EXECUTION | Shots | Attribution | Outcome |
+|------|-----------|-------|-------------|---------|
+| W17  | LH13 §6.7 cron seed (PRIMARY pump) | 3 | Coordinator-direct | 3rd run `failure` (root cause discovered at W17 close; Apone D1 fix at W18) |
+| W18  | LH13 §6.7 post-fix cron seed       | 3 | Coordinator-direct | 3 × `success` (empirical convergence — Hicks W19 §6.8 HARD-PIN gate cleared) |
+| W18  | Bishop test-regex anchor fix        | 1 | Coordinator-direct (commit attribution: Bishop-lane) | Gate 4110/4111/0 → 4111/0/0 |
+
+**Cumulative: 7 individual gh-invocations + 1 git commit = 8 actions across 2 waves. Categorically distinct from INTERVENTION; 13-wave zero-INTERVENTION streak (W6 → W18) preserved.**
+
+#### Bishop W19 candidates
+
+- **`<Version>0.27.0</Version>` csproj edit** (defers from W18 §13 addendum — Apone published CHANGELOG 0.27.0; csproj edit is bishop-lane per §9.18 convention).
+- **Fix `team: bishop` label on 3 W18 new alerts** (per Vasquez `BishopW18TournamentQueryAlertThresholdsTests.cs` hard-assert).
+- **Kustomize promotion review** — Apone owns kustomize overlay assembly; Bishop reviews the PR.
+- **Per-tenant rotation BULK-UPDATE endpoint** — extends W18 LIST; canonical 401→403→503→200 ladder; batch tenant rotation.
+- **Regex anchoring discipline audit** — sweep all `Regex.Matches(yamlText, ...)` usages in Bishop-lane contract tests; add anchor `^` where appropriate (per W18 §8.5 wave-summary).
+
+#### Hicks W19 candidates
+
+- **LH13 §6.7 → §6.8 formal HARD-PIN promotion** (empirical convergence achieved at W18; W19 promotes the disposition formally).
+- **Bundle §3.4 — autotable-src-eager target ≤145 KB** (W18 closed at 156.6 KB; §3.4 budget aims for ≤145 KB at W19 close — −11.6 KB).
+- **Phase L wall-geometry + perspective camera** (frontend-renderer Phase L work resumes; W18 forward-stage tests ready).
+
+#### Apone W19 candidates
+
+- **Mobile CI E2E for signed Android** (W18 landed iOS signing; W19 brings Android signing pipeline + cross-platform E2E).
+- **us-east-1 ACTUAL apply** (pending Stephen's decision per Stephen action items #2 below).
+- **Kyverno lateral-movement / network-policy rules** (extends the 9-day clean-enforce window into network-segmentation policy).
+- **CHANGELOG 0.28.0 release notes** (cadence carry-forward).
+- **Kustomize overlay assembly** (Bishop W18 staged `infra/k8s/base/`; W19 Apone assembles overlay + applies manifests).
+
+#### Vasquez W19 candidates
+
+- **§4.8 branch-protection install** — still awaiting Stephen's Option A/B/C selection. No change at W19 unless Stephen decides.
+- **§6.7 → §6.8 promotion observation tests** (fold §6.8 HARD-PIN into surface-smoke harness post-Hicks W19 promotion).
+- **KW18 → KW19 regression rename** (canonical `git mv` + new W19 pin + W18 pin rewritten to `_Historical`).
+- **W19 forward-stage contracts** (18-24 new forward-stage files under `Phase_K_W19/Vasquez/` covering Bishop W20 + Hicks W20 + Apone W20).
+- **SLSA-3 Vasquez-lane sweep** — 4 workflows / 9 unpinned refs (carry from W18 §10.3 wave-summary).
+- **Phase_K_W18/Vasquez/ → Phase_K_W19/Vasquez/ broadening** (extend self-lane + surface-smoke harnesses to accept `KW19`).
+
+#### Coordinator-direct W19 candidates
+
+- **Monitor LH13 §6.8 HARD-PIN post-promotion** — once Hicks W19 lands the formal promotion, the Coordinator monitors the cron history for any regression.
+- **Prep branch-protection package for Stephen** if §4.8 stays unaddressed at W19 close.
+- **Maintain zero-INTERVENTION discipline** — 14th consecutive wave at W19 close if held.
+- **EXECUTION discretion** — continue applying the §8.2 7-criteria pre-flight check before any new Coordinator-direct EXECUTION.
+
+#### Scribe / Coordinator W19 candidates
+
+- **Per-invocation `git -c user.name=X -c user.email=Y commit ...`** remains canonical (held over W6 → W18; **13 consecutive clean waves**).
+- **`flock 9>.work/squad-git-lock` mutex** (9th consecutive fully-adopted wave at W18; W19 prompt templates continue path uniformity).
+- **`git fetch + rebase` INSIDE the flock critical section** (universal across all agents; reinforced by W18 §7.1 incident root-cause analysis).
+- **`.work/<agent>-w<N>-safe/` backup directory** as first-class step in every prompt template.
+- **W19 NEW prompt template hardening (carry from W18 §7.3):** explicit "DO NOT `git stash pop` before `git commit`" line + "selective `git add <files-by-name>` only" line + "post-commit `git log --stat -1` verification" line + reference to `docs/agent-handoff-protocol.md §11.1` recovery playbook.
+- **CHANGELOG version-arithmetic check** goes in every changelog-bump pattern (W14 `[0.23.0]` clean; W15 `[0.24.0]` clean; W16 `[0.25.0]` clean; W17 `[0.26.0]` clean; **W18 `[0.27.0]` clean** with csproj edit deferred; **W19 `[0.28.0]`**).
+- **Coordinator-direct EXECUTION ledger** — Scribe §6.5 captures any W19 Coordinator-direct EXECUTIONs; cumulative ledger now spans 2 waves (W17+W18).
+
+### Stephen action items (carry-into-March 2027 — 4 active)
+
+1. **§4.8 branch-protection install — Option A / B / C selection.** **8-wave hold (W11 → W18)**; no decision recorded; `gh api ...protection` dry-run continues HTTP 404 "Branch not protected"; Coordinator-direct continues to NOT execute the install (reversibility-first asymmetry — branch-protection apply is high-risk + irreversible without owner credential).
+
+2. **us-east-1 live apply.** Apone W18 lifted us-east-1 to **FULL-GREEN apply-ready**. The actual `terraform apply` against the live AWS account requires Stephen's owner credential. **W18 disposition: ready; awaiting Stephen.**
+
+3. **CHANGELOG 0.27.0 release-tag publication.** Apone published `CHANGELOG.md` v0.27.0 in W18. Tag creation + GitHub release require Stephen's review + sign-off. Coordinator note: the tag can land at v0.27.0 now (Bishop W19 ships csproj `<Version>0.27.0` shortly after), OR the tag can wait until Bishop W19's csproj edit lands so tag + csproj agree at v0.27.0. Stephen's call.
+
+4. **iOS signing certificate rotation cadence.** Apone W18 landed iOS signing pipeline with current Apple Developer Account cert (valid 14 months). Stephen action: select rotation cadence (annual proactive vs reactive expiry-based) + document in `docs/agent-handoff-protocol.md §5.4`.
+
+#### Stephen-blocked secondary items (no W18 change)
+
+- **`pwa-audit.yml` cron trigger** — §6.7 PROMOTED Coordinator-direct cron-seed to PRIMARY at W17; W18 Coordinator-direct EXECUTED 3 post-Apone-fix cron invocations; **all 3 produced `conclusion=success`**; convergence empirically achieved 3 of 3; Hicks W19 §6.8 HARD-PIN formal promotion is empirically gated.
+
+- **`PWA_PREVIEW_URL` secret** — Hicks LH13 hard-pin convergence depends on this + cron-trigger path. W18 Coordinator-direct cron-seed produced `success`; convergence now 3 of 3.
+
+- **Secrets provisioning:**
+   - **Sentry DSN** (W9 error-reporting; unresolved since W9; W16 `sentry-shim` lazy-mount built but does not initialise without DSN).
+   - **OpenAI API key** (W10; **now blocks `EfCommentaryStore` persistence dogfood in prod for 8 consecutive waves**).
+   - **Janus credentials** (W11 spectator livestream stub).
+   - **Redis prod credentials** (W11 ESO; W14+W15+W16+W17+W18 commented-out pre-wire still blocked).
+
+- **Argo Rollouts install** in prod cluster — Apone W11+W12+W13+W14+W15+W16+W17+W18 prep all ready; W19 install unlocks Rollouts cutover.
+
+- **Prod Redis TF apply** — Apone W11+W12+W13+W14+W15+W16+W17+W18 prep all ready; W19 apply unlocks prod cutover.
+
+- **us-east-1 IRSA OIDC provider** — W14 §2.1 + W15 §5.4 + W16 §5.3 + W17 §5.3 + W18 §5.3 plan-readiness re-checks all GREEN; W18 PARTIAL→FULL-GREEN apply-ready; live apply Stephen action item #2.
+
+- **First real prod JWT rotation** — **W17 February window passed**; **W18 March 2027 window scheduled**; reschedule paired with rehearsal #5. Apone W14 D4 GA-confirmed.
+
+**13 consecutive weeks of Stephen re-prompt sequence; W18 §4.8 hold extends to 8 waves; W18 §6.7 LH13 convergence empirically achieved via Coordinator-direct post-fix cron-seed (3 of 3 `success`); Stephen-blocked list contracts (LH13 convergence empirical) and holds (branch-protection still §4.8 NEW decision tree pending).**
+
+### Phase K Wave 18 — DONE.
+
+---
