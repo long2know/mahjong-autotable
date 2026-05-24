@@ -163,6 +163,29 @@ patches:
             name: mahjong-redis-prod
             optional: true
 
+  # Phase K Wave 14 — Apone (DevOps). Post-cutover hardening
+  # gate 1 (Redis envFrom `optional: true → false`). The patch
+  # below is PRE-WIRED but COMMENTED OUT — the W13 PR-ready
+  # artefact moves from "exists on disk only" to "exists on
+  # disk AND pre-registered in this kustomization" so the
+  # cutover-day enablement is a one-line uncomment, not a
+  # multi-line block add. See `docs/prod-cutover.md §6.8
+  # "Post-cutover patch enablement"` for the four pre-conditions
+  # that must hold before uncommenting + the rollback path.
+  # The patch file's own header (`redis-envfrom-required-patch.yaml`)
+  # documents the index pin (`/envFrom/4/secretRef/optional`),
+  # which is the gating contract this wire-up depends on — if a
+  # future wave inserts an additional envFrom entry BEFORE the
+  # Redis one, the index pin shifts and the uncomment MUST be
+  # paired with a path update in the patch file. The §6.8
+  # operator runbook covers that case.
+  #
+  # DO NOT uncomment until §6.8 pre-conditions are green.
+  # - path: redis-envfrom-required-patch.yaml  # ENABLE AT PROD CUTOVER per docs/prod-cutover.md §6.8
+  #   target:
+  #     kind: Deployment
+  #     name: mahjong-autotable
+
 configMapGenerator:
   - name: mahjong-autotable
     behavior: merge

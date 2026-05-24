@@ -965,3 +965,167 @@ were captured against the K13 build, so the spec should
 report a pixel-perfect match. If it does not, the delta is
 a true positive (visual regression introduced between W13
 capture and the W14 spec re-run).
+
+## §12 — Wave 14: PWA Builder preview URL provisioning
+
+> Phase K Wave 14 — workflow hardening authored by Apone
+> (DevOps); doc landed in Hicks's `frontend-pwa-audit.md`
+> per the W10 precedent that PWA workflow runtime details
+> live in this doc even when Apone authors them.
+
+### §12.1 — Background
+
+The W11 `.github/workflows/pwa-builder.yml` workflow runs the
+PWA Builder analyse CLI against a public preview URL and
+gates PRs on a 75-point-per-platform readiness floor. The
+preview URL feeds in via one of two paths:
+
+1. `workflow_dispatch` input `preview_url` — operator-driven
+   one-shot URL (highest precedence).
+2. `secrets.PWA_PREVIEW_URL` — repo secret feeding the
+   scheduled cron + the pull_request trigger.
+
+The W11 baseline behaviour when NEITHER input was provided
+was: emit a `::warning::` log line, set `steps.url.outputs.url`
+to empty, and skip downstream steps via the `if: steps.url.outputs.url
+!= ''` gate. This was functionally a graceful skip — but it
+left two operator-visible gaps:
+
+* The skipped run looked GREEN with no obvious explanation
+  in the PR review surface.
+* The `$GITHUB_STEP_SUMMARY` was empty so an SRE reviewing a
+  scheduled-run failure inbox couldn't tell whether the
+  run did nothing because the URL was missing OR because the
+  PWA Builder CLI itself broke.
+
+### §12.2 — W14 hardening (workflow-side)
+
+W14 lands three changes to `.github/workflows/pwa-builder.yml`:
+
+1. **Provenance-tagged URL resolution.** The `Resolve preview
+   URL` step now emits both `outputs.url` AND
+   `outputs.source` (`workflow_dispatch input` /
+   `secrets.PWA_PREVIEW_URL` / `none`). Downstream steps and
+   the step-summary cite the source so reviewers can tell at
+   a glance whether the score came from a manual override or
+   the canonical secret.
+
+2. **`$GITHUB_STEP_SUMMARY` always populated.** Whether the
+   URL is provisioned or skipped, the step-summary now
+   carries a four-line block:
+
+   ```
+   ## PWA Builder readiness — run state
+
+   * Preview URL: `<url-or-not-provisioned>`
+   * Source: <workflow_dispatch input | secrets.PWA_PREVIEW_URL | none>
+   * Status: <analyse + gate downstream | ⏭ Skipped — see ...>
+   ```
+
+   A scheduled-run inbox can now distinguish "skipped because
+   no URL" from "ran and gated" without opening the run log.
+
+3. **PR comment on skip.** When a `pull_request`-event run
+   has NO preview URL, a single explanatory comment is
+   posted under the same `<!-- pwa-builder-report -->`
+   marker as the success-path comment. The comment lists the
+   two ways to provision the URL (set the repo secret or
+   re-run with `workflow_dispatch --field preview_url=<url>`)
+   and links back to this §12. A later push that DOES
+   provision a URL OVERWRITES the skip note with the real
+   readiness card under the same marker — no comment churn.
+
+The success-path PR comment also gained a prominent preview-
+URL hyperlink + source field (above the scores table) so the
+clickable preview is the first thing a reviewer sees, not
+just the third-party report-card link.
+
+### §12.3 — Preview URL provisioning (operator runbook)
+
+Three provisioning paths, in order of operator preference:
+
+1. **`secrets.PWA_PREVIEW_URL` (canonical, scheduled-run
+   driver).** Set once at the repo level via
+   `gh secret set PWA_PREVIEW_URL --body 'https://preview.mahjong.example.com'`.
+   The value SHOULD be a stable preview URL that tracks
+   `main` (e.g. a Cloudflare Pages branch deploy that
+   follows `main`, OR a GH Pages publish from the docs
+   workflow). The W14 hardening lets repo owners leave the
+   secret unset on bring-up branches without breaking the
+   schedule; once a stable preview is wired, set the secret
+   to flip the schedule into active readiness scoring.
+
+2. **`workflow_dispatch` input (one-shot, PR rehearsal).**
+   When a PR previews a frontend change to a deploy preview
+   (e.g. a Vercel or Cloudflare Pages branch URL), the PR
+   author can rehearse readiness against that preview before
+   merge:
+   ```bash
+   gh workflow run pwa-builder \
+       --ref <pr-branch> \
+       --field preview_url=https://preview-PR-NNN.mahjong-autotable.workers.dev
+   ```
+   The dispatch run respects the same 75-point gate; the
+   provenance-tagged step summary shows `source:
+   workflow_dispatch input` so the PR reviewer knows the
+   score came from the manual override rather than the repo
+   secret.
+
+3. **None (forks / fresh branches).** Leave both unset; the
+   W14 hardening posts an explanatory PR comment + step
+   summary noting the skip. The skip is NOT a failure —
+   forks routinely lack repo-secret access by design (GitHub
+   Actions security model).
+
+### §12.4 — Fork PR handling
+
+The W11 baseline job-level `if:` filter restricts
+`pull_request`-event runs to PRs from the same-repo head:
+
+```yaml
+github.event_name == 'pull_request' &&
+  github.event.pull_request.head.repo.full_name == github.repository
+```
+
+This is the W11 W4-secrets-leak guard (forks can't read repo
+secrets per GitHub's security model). The W14 hardening
+INTERACTS with this filter as follows:
+
+* Fork PRs → entire job skipped at the `if:` gate (no skip
+  comment posted because the job never runs).
+* Same-repo PRs without the secret → job runs, posts skip
+  comment, step-summary populated.
+* Same-repo PRs with the secret → job runs, posts readiness
+  card, step-summary populated.
+
+Fork-PR authors who want PWA Builder readiness on their PR
+must wait for a same-repo maintainer to retrigger the
+workflow via `workflow_dispatch` with an explicit preview
+URL (per §12.3 path 2).
+
+### §12.5 — Schedule sweep cleanliness
+
+The W14 hardening preserves the W11 schedule sweep behaviour:
+the nightly cron at `30 3 * * *` UTC runs against the
+canonical preview URL (when the secret is set) and reports
+readiness drift in the workflow-run artefact + step summary
+WITHOUT gating any PR. The nightly run's failure is
+operator-visible via the GitHub Actions UI but does not block
+merges (it's a `secrets.PWA_PREVIEW_URL`-side regression
+signal, not a PR signal).
+
+When the canonical preview URL is NOT provisioned, the
+nightly run terminates cleanly (step summary records the
+skip) — no spurious notifications.
+
+### §12.6 — Hand-off to W15
+
+W14 closes the W11 preview-URL hand-off (per §5 carry-over
+notes). The remaining open item from §5 was "PWA Builder CLI
+integration once a preview URL is public" — the integration
+ITSELF was closed in W11 §6; W14 closes the operator-facing
+provisioning gap. Future waves should treat §12 as the
+canonical operator runbook for preview URL provisioning;
+hand-offs concerning the PWA Builder workflow itself fall
+back to §4 (W10 W11 origin) and §12 (W14 hardening).
+

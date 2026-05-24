@@ -94,16 +94,42 @@ jobs:
           SECRET_URL: ${{ secrets.PWA_PREVIEW_URL }}
         run: |
           set -euo pipefail
+          # Phase K Wave 14 — Apone (DevOps). Hardened resolve.
+          # Three input paths (dispatch input > repo secret > none);
+          # always emit a `source` output so downstream steps and
+          # the step-summary can attribute the URL provenance
+          # without re-reading raw env vars. Missing-secret is
+          # NEVER a failure — schedule runs against a repo that
+          # hasn't provisioned `secrets.PWA_PREVIEW_URL` (forks,
+          # bring-up branches, transient secret rotation) skip
+          # downstream steps cleanly.
+          url=""
+          source=""
           if [ -n "${DISPATCH_URL:-}" ]; then
-            echo "url=${DISPATCH_URL}" >> "$GITHUB_OUTPUT"
-            echo "Using workflow_dispatch input URL"
+            url="${DISPATCH_URL}"
+            source="workflow_dispatch input"
           elif [ -n "${SECRET_URL:-}" ]; then
-            echo "url=${SECRET_URL}" >> "$GITHUB_OUTPUT"
-            echo "Using secrets.PWA_PREVIEW_URL"
+            url="${SECRET_URL}"
+            source="secrets.PWA_PREVIEW_URL"
           else
-            echo "::warning::No preview URL configured (set secrets.PWA_PREVIEW_URL); skipping PWA Builder run"
-            echo "url=" >> "$GITHUB_OUTPUT"
+            echo "::warning::No preview URL configured (set secrets.PWA_PREVIEW_URL or use workflow_dispatch); skipping PWA Builder run"
+            source="none"
           fi
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+          echo "source=${source}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## PWA Builder readiness — run state"
+            echo ""
+            if [ -n "${url}" ]; then
+              echo "* Preview URL: \`${url}\`"
+              echo "* Source: ${source}"
+              echo "* Status: analyse + gate downstream"
+            else
+              echo "* Preview URL: _not provisioned_"
+              echo "* Source: none"
+              echo "* Status: ⏭ Skipped — see [docs/frontend-pwa-audit.md §8](../tree/${{ github.sha }}/docs/frontend-pwa-audit.md) for provisioning"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install PWA Builder CLI
         if: steps.url.outputs.url != ''
@@ -205,11 +231,24 @@ jobs:
           CHROME: ${{ steps.scores.outputs.chrome }}
           SAFARI: ${{ steps.scores.outputs.safari }}
           URL: ${{ steps.url.outputs.url }}
+          SOURCE: ${{ steps.url.outputs.source }}
         run: |
           set -euo pipefail
+          # Phase K Wave 14 — Apone (DevOps). Hardened PR
+          # comment composition. The W11 baseline showed the
+          # report-card link; W14 surfaces the actual preview
+          # URL prominently so reviewers can click straight to
+          # the previewed build (not just the third-party
+          # readiness page). Also tags the URL provenance so
+          # the squad can tell at a glance whether the score
+          # came from a manual dispatch override or the canonical
+          # `secrets.PWA_PREVIEW_URL`.
           {
             echo "body<<EOF"
-            echo "**PWA Builder readiness** ([report card](https://www.pwabuilder.com/reportcard?site=${URL}))"
+            echo "**PWA Builder readiness**"
+            echo ""
+            echo "🔗 **Preview URL:** [\`${URL}\`](${URL}) (source: \`${SOURCE}\`)"
+            echo "📋 [PWA Builder report card](https://www.pwabuilder.com/reportcard?site=${URL})"
             echo ""
             echo "| Platform | Score | Gate |"
             echo "|----------|-------|------|"
@@ -246,6 +285,49 @@ jobs:
             } else {
               await github.rest.issues.createComment({
                 owner, repo, issue_number, body: composed,
+              });
+            }
+
+      # Phase K Wave 14 — Apone (DevOps). When the resolve step
+      # determined NO preview URL was available on a PR run, post
+      # a single explanatory comment under the SAME marker as the
+      # success-path comment so reviewers see why no readiness
+      # card was emitted (and so a later push that DOES provision
+      # the URL silently overwrites the skip note with a real
+      # report). Keeps the PR review surface honest — a missing
+      # comment used to mean "workflow broken"; now it means
+      # "deliberately skipped".
+      - name: Post PR comment — skip note
+        if: github.event_name == 'pull_request' && steps.url.outputs.url == ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- pwa-builder-report -->';
+            const body = [
+              marker,
+              '**PWA Builder readiness** — ⏭ skipped',
+              '',
+              'No preview URL was available for this run. The PWA Builder readiness gate is advisory when no preview URL is provisioned (forks, fresh branches, or transient secret rotation).',
+              '',
+              'To enable readiness scoring on this PR:',
+              '* repo owners: set the `PWA_PREVIEW_URL` repository secret to the published preview URL, or',
+              '* re-run with `gh workflow run pwa-builder --field preview_url=<url>`.',
+              '',
+              'See [docs/frontend-pwa-audit.md §8](../tree/' + (process.env.GITHUB_SHA || 'main') + '/docs/frontend-pwa-audit.md) for preview-URL provisioning.',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
               });
             }
 
