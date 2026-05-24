@@ -12,6 +12,7 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W17.Bishop;
 /// admin DELETE handler to upsert a sentinel row; W17 lands the
 /// real persistence-level delete.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class PerTenantRotationDeleteAsyncTests
 {
     private static PerTenantJwksRotationPolicy MakePolicy(string tenantId) =>

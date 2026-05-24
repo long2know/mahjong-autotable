@@ -15,6 +15,7 @@ namespace Mahjong.Autotable.Api.Tests.Phase_K_W16.Bishop;
 /// SQLite-backed AppDbContext so the audit-write side effect is
 /// exercised end-to-end.
 /// </summary>
+[Collection("DbSerial")]
 public sealed class PerTenantRotationAdminControllerTests : IDisposable
 {
     private static readonly string _scratchDir =

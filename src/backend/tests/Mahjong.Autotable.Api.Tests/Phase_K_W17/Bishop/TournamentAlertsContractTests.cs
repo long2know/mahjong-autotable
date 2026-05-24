@@ -111,7 +111,15 @@ public sealed class TournamentAlertsContractTests
     public void Yaml_BothAlertsCarry_TeamBishop()
     {
         var text = LoadAlertsYaml();
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"team:\s*bishop").Count);
+        // W17 shipped two alerts; W18 added three more. The
+        // contract is that every alert in the file carries the
+        // bishop team label — assert that the team-label count
+        // matches the alert count and that we have at least the
+        // W17 baseline.
+        var alertCount = System.Text.RegularExpressions.Regex.Matches(text, @"- alert:\s+").Count;
+        var teamBishopCount = System.Text.RegularExpressions.Regex.Matches(text, @"team:\s*bishop").Count;
+        Assert.True(alertCount >= 2, $"expected at least the W17 baseline of 2 alerts, found {alertCount}");
+        Assert.Equal(alertCount, teamBishopCount);
     }
 
     [Fact, Trait("Category", "Alerts"), Trait("Wave", "Phase-K-17"), Trait("Lane", "Bishop")]

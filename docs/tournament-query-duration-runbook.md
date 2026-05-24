@@ -1,20 +1,26 @@
 # Tournament query duration — operator runbook
 
-**Owner:** Bishop (Backend). Phase K Wave 17.
+**Owner:** Bishop (Backend). Phase K Wave 17, extended W18 with
+the bracket-p99 PAGE, the swiss-pairing p99 PAGE, and the
+no-traffic heartbeat TICKET.
 
 This runbook walks the operator through the
-`TournamentQueryDurationP99HighPage` (PAGE) and
-`TournamentQueryDurationP95HighTicket` (TICKET) alerts raised by
-the Prometheus rules in
+`TournamentQueryDurationP99HighPage` (PAGE),
+`TournamentQueryDurationP95HighTicket` (TICKET),
+`BracketQueryDurationP99HighPage` (W18 PAGE),
+`SwissPairingDurationP99HighPage` (W18 PAGE), and
+`TournamentQueryNoTrafficHeartbeat` (W18 TICKET) alerts raised
+by the Prometheus rules in
 `src/backend/src/Mahjong.Autotable.Api/Observability/Alerts/tournament-query-duration.yaml`.
 
-The alerts wrap the
+The W17 alerts wrap the
 `tournament_query_duration_seconds` histogram landed by the W15
 surface (`TournamentQueryLatencyMetrics`) — bucketed by
-`endpoint` + `page_size_bucket`. The two-rail design lets the
-on-call engineer reach for a non-paging investigation thread
-(TICKET) before the latency regression escalates to a wake-up
-PAGE.
+`endpoint` + `page_size_bucket`. W18 adds two sibling
+histograms (`bracket_query_duration_seconds` +
+`swiss_pairing_duration_seconds`) on the same dashboard and a
+heartbeat so silent observation-pipeline outages don't hide a
+production-quiet endpoint.
 
 ## Alerts
 
@@ -66,6 +72,79 @@ slower-paced than the PAGE rail — by the time it fires, the
 operator usually has a clear pattern of degradation on the
 dashboard. Cross-reference with the W15 bracket store
 dashboard (Grafana ID `bishop-bracket-store-v1`).
+
+### bracket-p99-page
+
+* **Threshold:** `histogram_quantile(0.99, …) > 1.0s`
+* **Window:** 5-minute rate, 5-minute `for`
+* **Severity:** `page` — wakes the on-call.
+* **Wrapped metric:** `bracket_query_duration_seconds`
+  (W18 `BracketQueryLatencyMetrics`).
+
+Trips when 1-in-100 bracket-store queries cross 1 s for five
+consecutive minutes. The bracket-store join path is the most
+expensive tournament read; the 1 s threshold is double the
+parent `tournament_query` p99 because the bracket-store
+endpoint joins three tables before returning the bracket
+tree.
+
+**Mitigation:**
+
+* Cross-check the database CPU + the parent
+  `TournamentQueryDurationP99HighPage` alert. If both are
+  firing simultaneously the root cause is below the
+  bracket-store layer.
+* Short-term: same per-tenant shed as the W17 rail
+  (`BracketQueryRateLimiter` runtime override).
+* Long-term: revisit the bracket-store join (index hints +
+  W14 page-size bucket envelope).
+
+### swiss-pairing-p99
+
+* **Threshold:** `histogram_quantile(0.99, …) > 1.0s`
+* **Window:** 5-minute rate, 5-minute `for`
+* **Severity:** `page` — wakes the on-call.
+* **Wrapped metric:** `swiss_pairing_duration_seconds`
+  (W18 `SwissPairingLatencyMetrics`, per-stage label).
+
+Swiss pairing is an O(R*N^2) computation; p99 above 1 s for
+five minutes implies the pairing dataset has grown beyond the
+W14 envelope or the pairing algorithm has regressed. Filter
+the firing alert by the `stage` label
+(`round-robin` / `swiss` / `single-elim-cutover`) to pinpoint
+the regressed phase.
+
+**Mitigation:**
+
+* Short-term: defer the next round of pairings via the W18
+  pairing admin override (forward-staged).
+* Medium-term: page the tournament-engine team; the regression
+  is almost certainly an N-squared scaling artefact in the
+  active code path.
+
+### heartbeat
+
+* **Threshold:** `sum(rate(tournament_query_duration_seconds_count[10m])) == 0`
+* **Window:** 10-minute rate, 10-minute `for`
+* **Severity:** `ticket` — files a non-paging followup.
+
+Fires when the tournament-query endpoints have recorded ZERO
+observations for ten consecutive minutes. The PAGE-class
+quantile alerts can't fire if the histogram has no
+observations — this rail catches the silent failure mode
+(scrape pipeline outage, exporter misconfiguration, all
+clients gone away).
+
+**Mitigation:**
+
+* Cross-check `up{job="mahjong-autotable"}` to verify the
+  scrape target is up. If the scraper is up but no
+  observations are landing, escalate to Apone (DevOps).
+* If `up == 0`, follow the standard scrape-outage runbook
+  before assuming a tournament-load drop.
+* If both `up == 1` and the exporter is healthy, validate the
+  CDN / WAF in front of the tournament endpoints isn't
+  silently absorbing traffic.
 
 ## Dashboards
 
