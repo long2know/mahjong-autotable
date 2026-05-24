@@ -2868,3 +2868,85 @@ next bring-up dodges this.
 
 **Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-12.md`
 — per-deliverable design + Wave 13 forward notes.
+
+
+## Phase K — Wave 13 (2026-05-23)
+
+**Branch:** `stlong/phase-k-wave-13-bringup`
+
+Seven backend deliverables landed in a single bring-up:
+
+1. **Bracket store wiring** — `TournamentService.StartAsync` now
+   upserts `BracketRecord` rows; `AdvanceMatchAsync` /
+   `ForfeitMatchAsync` / `ForfeitMatchByIdAsync` stamp the result
+   + emit next-round rows via `MaybeAdvanceRoundAsync` (which now
+   returns the newly emitted matches). Slot indices tracked
+   locally — no schema change to `TournamentMatches`. New
+   `BracketByeSeed = "__bye__"` canon.
+2. **Commentary cost SignalR broadcast** —
+   `CommentaryCostAdminHub` at `/hubs/admin/commentary-cost` +
+   `CommentaryCostBroadcaster` singleton. `Evaluate()` fires the
+   broadcast inside the existing one-shot per-month
+   `Interlocked.CompareExchange` gates via a `FireBroadcast`
+   helper that observes the task's exception. Fire-and-forget,
+   exception-safe.
+3. **`commentary_cost_dollars_total` Prometheus counter** — added
+   to `MetricsEndpoint` with `model` + `month` labels. HELP +
+   TYPE preambles unconditional; zero sample emitted on every
+   scrape even when the budget isn't wired so the schema is
+   stable.
+4. **Redis OAuth introspect rate limiter** — three-command Redis
+   sorted-set protocol (`ZREMRANGEBYSCORE` → `ZCARD` → `ZADD` +
+   `EXPIRE`) keyed on `mahjong:oauth-introspect:{clientId}`.
+   Falls back to in-memory limiter on Redis exception so a
+   transient outage degrades to per-replica enforcement.
+5. **Spectator handoff audit log** —
+   `SpectatorHandoffAuditRecord` entity +
+   `SpectatorHandoffAuditRecords` table across all three
+   providers + W13 migration. Controller mints JTI as
+   `Guid.NewGuid().ToString("D")`, passes it as a `"jti"` claim
+   inside the existing claims dict envelope, and writes the row
+   in a try/catch after the mint succeeds.
+6. **Replay POST admin gate** — `Replays:RequireAdminForPost`
+   (default true) on `POST /api/replays`. Anonymous → 401,
+   non-admin → 403 with `replay.post.admin_required`, admin →
+   unchanged W12 mint flow.
+7. **Always-on SignalR sequence retention sweep** —
+   `SignalRSequenceRetentionSweep` hosted service runs against
+   any `ISignalRSequenceStore` impl (no longer gated on `"Ef"`).
+   New key `SignalR:Sequences:SweepIntervalMinutes` (default 5,
+   floor 1) with W12 fallback.
+
+**Test gate:** `dotnet test src/backend/Mahjong.Autotable.slnx
+--nologo` → **2789 passed, 0 failed, 0 skipped**. Up from W12's
+2610. 58 new W13 Bishop facts; the remaining +121 came from
+sibling-lane work (Vasquez / Hicks / Apone) on the same branch.
+
+**Build:** 0 warnings, 0 errors.
+
+**Lessons / forward notes:**
+
+- The bracket-store integration sidestepped a `MatchSlot` schema
+  migration by tracking slots locally in `StartAsync` and
+  re-deriving them on advance/forfeit via seed match. Cheap +
+  correct; the W14 forward note recommends backfilling the column
+  to make the lookup a direct read.
+- `FireBroadcast` is the canonical fire-and-forget pattern for
+  hot-path SignalR side-channels: dispatch via
+  `task.ContinueWith(_ => _ = t.Exception, TaskScheduler.Default)`
+  so the unobserved-task finalizer never sees the exception.
+- The Redis limiter writes a unique token
+  (`{nowMs}:{Guid.NewGuid()}`) per replica so the sorted-set
+  score doesn't collide. ZADD with the score-as-key would have
+  silently merged concurrent calls under load.
+- `Spectator:Audit:StorageImpl` follows the same toggle shape as
+  every other W12 store option (`InMemory` default / `Ef` for
+  prod). Resist the temptation to invent a new convention.
+- The W13 sweep service runs for any `ISignalRSequenceStore`
+  impl; this is the canonical pattern for "lift a service from
+  one impl to all impls" — keep the sweep predicate inside the
+  store, expose the same `SweepExpiredAsync` contract, register
+  the hosted service unconditionally.
+
+**Memo:** `.squad/decisions/inbox/bishop-phase-k-wave-13.md`
+— per-deliverable design + Wave 14 forward notes.

@@ -144,4 +144,16 @@ public sealed class OAuthIntrospectRateLimitOptions
     /// <summary>Sliding window size in seconds. 0 = use the
     /// default (<see cref="DefaultWindowSeconds"/>).</summary>
     public int WindowSeconds { get; set; } = DefaultWindowSeconds;
+
+    /// <summary>
+    /// Phase K Wave 13 — Bishop. Implementation selector —
+    /// case-insensitive. <c>"InMemory"</c> (default) uses
+    /// <see cref="OAuthIntrospectRateLimiter"/>; <c>"Redis"</c>
+    /// uses <see cref="RedisOAuthIntrospectRateLimiter"/> which
+    /// shares a single sliding-window across all replicas via a
+    /// Redis sorted-set. The Redis path falls back to the in-memory
+    /// limiter when Redis is unreachable. See
+    /// <c>docs/oauth-introspect-rate-limit.md §2</c>.
+    /// </summary>
+    public string LimiterImpl { get; set; } = "InMemory";
 }

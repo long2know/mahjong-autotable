@@ -323,6 +323,24 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>()
 // `spectator:{gameId}` JWTs are minted by the controller and verified
 // by this validator when the livestream endpoint receives `?token=…`.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorHandoffTokenValidator>();
+
+// Phase K Wave 13 — Bishop. Spectator handoff audit store. Toggled
+// via Spectator:Audit:StorageImpl ("InMemory" default tests /
+// "Ef" prod). See Spectator/SpectatorHandoffAudit.cs +
+// docs/spectator-handoff.md §3.
+builder.Services.Configure<Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditOptions>(
+    builder.Configuration.GetSection("Spectator:Audit"));
+var spectatorAuditImpl = builder.Configuration["Spectator:Audit:StorageImpl"];
+if (string.Equals(spectatorAuditImpl, "Ef", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.ISpectatorHandoffAuditStore,
+        Mahjong.Autotable.Api.Spectator.EfSpectatorHandoffAuditStore>();
+}
+else
+{
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.ISpectatorHandoffAuditStore,
+        Mahjong.Autotable.Api.Spectator.InMemorySpectatorHandoffAuditStore>();
+}
 // Phase K Wave 12 — Bishop. Staged rotation policy. Surfaces the
 // configured 30-day overlap window so the cadence validator + ops
 // dashboard can audit it without re-deriving the math. See
@@ -346,8 +364,37 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy
     var windowSeconds = introOpts.WindowSeconds > 0
         ? introOpts.WindowSeconds
         : Mahjong.Autotable.Api.Auth.OAuthIntrospectRateLimitOptions.DefaultWindowSeconds;
-    builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IOAuthIntrospectRateLimiter>(
-        _ => new Mahjong.Autotable.Api.Auth.OAuthIntrospectRateLimiter(capacity, windowSeconds));
+    // Phase K Wave 13 — Bishop. Implementation selector.
+    // `OAuth:Introspect:LimiterImpl` ∈ { "InMemory", "Redis" }. The
+    // Redis path shares a single sliding-window across all replicas;
+    // the InMemory path is per-replica (W12 baseline). The Redis path
+    // resolves IConnectionMultiplexer from the existing idempotency
+    // wiring when present; the limiter falls back to in-memory enforcement
+    // on any Redis error (logged).
+    var limiterImpl = introOpts.LimiterImpl ?? "InMemory";
+    if (string.Equals(limiterImpl, "Redis", StringComparison.OrdinalIgnoreCase))
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IOAuthIntrospectRateLimiter>(sp =>
+        {
+            var mux = sp.GetService<StackExchange.Redis.IConnectionMultiplexer>();
+            if (mux is null)
+            {
+                var log = sp.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("OAuthIntrospectRateLimiter");
+                log.LogWarning(
+                    "OAuth:Introspect:LimiterImpl=Redis but no IConnectionMultiplexer is registered; falling back to InMemory.");
+                return new Mahjong.Autotable.Api.Auth.OAuthIntrospectRateLimiter(capacity, windowSeconds);
+            }
+            var redisLog = sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Auth.RedisOAuthIntrospectRateLimiter>>();
+            return new Mahjong.Autotable.Api.Auth.RedisOAuthIntrospectRateLimiter(
+                mux, capacity, windowSeconds, redisLog);
+        });
+    }
+    else
+    {
+        builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.IOAuthIntrospectRateLimiter>(
+            _ => new Mahjong.Autotable.Api.Auth.OAuthIntrospectRateLimiter(capacity, windowSeconds));
+    }
 }
 // Phase K Wave 8 — Bishop. JWKS pre-marshal cache. Owns the
 // IMemoryCache the JwksCacheService projects through. Singleton so
@@ -675,6 +722,12 @@ builder.Services.Configure<Mahjong.Autotable.Api.Commentary.CommentaryOptions>(
 // so the controller can fall back regardless of the active
 // ICommentaryGenerator binding. See docs/commentary-llm.md §4.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.StubCommentaryGenerator>();
+// Phase K Wave 13 — Bishop. SignalR broadcaster for cost-budget
+// state transitions. The hub is mapped at
+// /hubs/admin/commentary-cost (admin-only). The broadcaster is
+// resolved as an optional dependency by CommentaryCostBudget so
+// unit-tests can construct the budget without DI.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.CommentaryCostBroadcaster>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Commentary.CommentaryCostBudget>();
 
 // Phase K Wave 11 — Bishop. Per-record CommentaryRecord storage
@@ -849,15 +902,32 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
     {
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.ISignalRSequenceStore,
             Mahjong.Autotable.Api.Observability.EfSignalRSequenceStore>();
-        builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRSequenceSweepService>();
-        builder.Services.AddHostedService(sp =>
-            sp.GetRequiredService<Mahjong.Autotable.Api.Observability.SignalRSequenceSweepService>());
     }
     else
     {
         builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.ISignalRSequenceStore,
             Mahjong.Autotable.Api.Observability.InMemorySignalRSequenceStore>();
     }
+
+    // Phase K Wave 13 — Bishop. Always-on retention sweeper. W12 only
+    // registered the sweep when impl=Ef; W13 lifts the registration so
+    // the InMemory store also sheds expired rows on long-lived
+    // single-replica dev sessions. The new SignalRSequenceRetentionSweep
+    // reads its cadence from `SignalR:Sequences:SweepIntervalMinutes`
+    // (default 5). See docs/realtime-resilience.md §7.
+    var sweepOptions = new Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweepOptions
+    {
+        // Inherit W12 cadence so an operator upgrading without an
+        // appsettings edit keeps the prior behaviour.
+        SweepIntervalMinutes = seqOptions.SweepIntervalMinutes > 0
+            ? seqOptions.SweepIntervalMinutes
+            : Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep.DefaultSweepIntervalMinutes,
+    };
+    builder.Configuration.GetSection("SignalR:Sequences").Bind(sweepOptions);
+    builder.Services.AddSingleton(sweepOptions);
+    builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep>();
+    builder.Services.AddHostedService(sp =>
+        sp.GetRequiredService<Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep>());
 }
 
 // Phase K Wave 8 — Bishop. Centralised "is player on this table?"
@@ -1223,6 +1293,17 @@ app.MapHub<Mahjong.Autotable.Api.Tournament.TournamentMatchHub>("/hubs/tournamen
 // supervisor itself is only registered + running when
 // Voice:SpectatorSfuImpl=Janus.
 app.MapHub<Mahjong.Autotable.Api.Voice.JanusReadinessHub>("/hubs/voice/readiness");
+
+// Phase K Wave 13 — Bishop. Admin SignalR hub for commentary cost
+// budget transitions. CommentaryCostBroadcaster pushes
+// `CommentaryCostWarning` (at 80% of cap) + `CommentaryCostCapReached`
+// (at 100% of cap) envelopes to admin clients subscribed via
+// JoinAdminChannel. The hub doesn't perform per-message admin
+// authentication — production deployments gate the negotiate path
+// at the reverse proxy + the broadcast group is a single
+// admin-only channel ("commentary:cost:admin"). See
+// docs/commentary-llm.md §5.
+app.MapHub<Mahjong.Autotable.Api.Commentary.CommentaryCostAdminHub>("/hubs/admin/commentary-cost");
 
 // Phase K Wave 2 — Bishop (Backend). ICE-server discovery endpoint.
 // Returns the configured STUN/TURN list as the WebRTC client

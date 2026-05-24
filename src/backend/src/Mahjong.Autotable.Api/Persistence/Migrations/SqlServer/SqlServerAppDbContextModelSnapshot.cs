@@ -1172,6 +1172,57 @@ namespace Mahjong.Autotable.Api.Persistence.Migrations.SqlServer
                     b.ToTable("Replays");
                 });
 
+            modelBuilder.Entity("Mahjong.Autotable.Api.Spectator.SpectatorHandoffAuditRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ClientIp")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("GameId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("IssuedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("TokenJti")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("UserAgent")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssuedAt");
+
+                    b.HasIndex("TokenJti")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("GameId", "IssuedAt");
+
+                    b.ToTable("SpectatorHandoffAuditRecords");
+                });
+
             modelBuilder.Entity("Mahjong.Autotable.Api.Tournament.BracketRecord", b =>
                 {
                     b.Property<Guid>("Id")

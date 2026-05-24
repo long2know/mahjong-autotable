@@ -35,17 +35,20 @@ public sealed class CommentaryCostBudget
     private readonly IOptionsMonitor<CommentaryOptions> _options;
     private readonly ICommentaryUsageMeter _meter;
     private readonly ILogger<CommentaryCostBudget> _logger;
+    private readonly CommentaryCostBroadcaster? _broadcaster;
     private long _warningEmittedForMonth;
     private long _exhaustedEmittedForMonth;
 
     public CommentaryCostBudget(
         IOptionsMonitor<CommentaryOptions> options,
         ICommentaryUsageMeter meter,
-        ILogger<CommentaryCostBudget> logger)
+        ILogger<CommentaryCostBudget> logger,
+        CommentaryCostBroadcaster? broadcaster = null)
     {
         _options = options;
         _meter = meter;
         _logger = logger;
+        _broadcaster = broadcaster;
     }
 
     /// <summary>
@@ -83,13 +86,21 @@ public sealed class CommentaryCostBudget
         // operator knows when the surface flips, but we don't spam
         // every Evaluate() call. The "month key" pins the message
         // to a single calendar month; the next month resets.
+        //
+        // Phase K Wave 13 — Bishop. The same one-shot gate now also
+        // fans out a SignalR envelope to the admin commentary-cost
+        // hub so operator dashboards react in realtime. The
+        // broadcaster is optional — unit-test harnesses that
+        // construct the budget without DI skip it cleanly.
         var monthKey = (utcNow.Year * 100L) + utcNow.Month;
+        var evaluation = new BudgetEvaluation(state, usdSpent, cap, ratio, monthlyTokens, tokensPerDollar);
         if (state == BudgetState.Warning
             && System.Threading.Interlocked.Exchange(ref _warningEmittedForMonth, monthKey) != monthKey)
         {
             _logger.LogWarning(
                 "Commentary cost budget WARNING: monthlyUsd={UsdSpent:F2} of cap={Cap:F2} ({Ratio:P0}); model={Model}.",
                 usdSpent, cap, ratio, _options.CurrentValue.Model);
+            FireBroadcast(_broadcaster?.BroadcastWarningAsync(evaluation, _options.CurrentValue.Model));
         }
         if (state == BudgetState.Exhausted
             && System.Threading.Interlocked.Exchange(ref _exhaustedEmittedForMonth, monthKey) != monthKey)
@@ -97,8 +108,27 @@ public sealed class CommentaryCostBudget
             _logger.LogError(
                 "Commentary cost budget EXHAUSTED: monthlyUsd={UsdSpent:F2} reached cap={Cap:F2}; switching to stub generator for the remainder of the month.",
                 usdSpent, cap);
+            FireBroadcast(_broadcaster?.BroadcastCapReachedAsync(evaluation, _options.CurrentValue.Model));
         }
-        return new BudgetEvaluation(state, usdSpent, cap, ratio, monthlyTokens, tokensPerDollar);
+        return evaluation;
+    }
+
+    /// <summary>
+    /// Phase K Wave 13 — Bishop. Fire-and-forget the broadcaster
+    /// task so the synchronous <see cref="Evaluate"/> path doesn't
+    /// block on the SignalR send. Failures are already swallowed
+    /// inside the broadcaster; this wrapper observes the task to
+    /// avoid an unobserved-task exception finalizer hit.
+    /// </summary>
+    private static void FireBroadcast(Task? task)
+    {
+        if (task is null) return;
+        _ = task.ContinueWith(static t =>
+        {
+            // Touch the exception so the GC unobserved-task hook
+            // doesn't elevate it. The broadcaster already logs.
+            _ = t.Exception;
+        }, TaskScheduler.Default);
     }
 }
 

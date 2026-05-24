@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Mahjong.Autotable.Api.Changsha.Runtime;
+using Mahjong.Autotable.Api.Commentary;
 using Mahjong.Autotable.Api.Voice;
+using Microsoft.Extensions.Options;
 
 namespace Mahjong.Autotable.Api.Observability;
 
@@ -92,7 +94,61 @@ public static class MetricsEndpoint
         var voice = services.GetService<VoiceHubMetricsService>();
         AppendVoiceMetrics(sb, voice);
 
+        // Phase K Wave 13 — Bishop. Commentary LLM cost ledger. The
+        // CommentaryCostBudget evaluates current monthly spend in USD;
+        // we surface it as a labelled counter so an operator dashboard
+        // can graph spend per (model, calendar month).
+        var costBudget = services.GetService<CommentaryCostBudget>();
+        var commentaryOptions = services.GetService<IOptionsMonitor<CommentaryOptions>>();
+        AppendCommentaryCostMetric(sb, costBudget, commentaryOptions, DateTime.UtcNow);
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
+    }
+
+    /// <summary>
+    /// Phase K Wave 13 — Bishop. Canonical metric name for the
+    /// commentary LLM cost counter. Operators alert on this in the
+    /// `mahjong-commentary` Grafana board.
+    /// </summary>
+    public const string MetricCommentaryCostDollarsTotal = "commentary_cost_dollars_total";
+
+    /// <summary>
+    /// Phase K Wave 13 — Bishop. Emits the commentary cost counter
+    /// in Prometheus exposition format with <c>model</c> + <c>month</c>
+    /// labels. The HELP + TYPE preambles are emitted unconditionally
+    /// so a Prometheus parser sees a stable schema even before the
+    /// first LLM call is logged. When the budget service isn't wired
+    /// (test harnesses) we still emit a zero sample so the metric
+    /// exists in every scrape.
+    /// </summary>
+    internal static void AppendCommentaryCostMetric(
+        StringBuilder sb,
+        CommentaryCostBudget? budget,
+        IOptionsMonitor<CommentaryOptions>? options,
+        DateTime utcNow)
+    {
+        sb.Append("# HELP ").Append(MetricCommentaryCostDollarsTotal)
+          .AppendLine(" Cumulative USD spent on commentary LLM generation in the current calendar month. Resets on the first of each month. Labelled by `model` (configured LLM identifier) and `month` (YYYY-MM).");
+        sb.Append("# TYPE ").Append(MetricCommentaryCostDollarsTotal).AppendLine(" counter");
+
+        var model = options?.CurrentValue?.Model ?? "unknown";
+        var monthLabel = $"{utcNow.Year:D4}-{utcNow.Month:D2}";
+        decimal usd = 0m;
+        if (budget is not null)
+        {
+            try
+            {
+                usd = budget.Evaluate(utcNow).MonthlyUsd;
+            }
+            catch
+            {
+                usd = 0m;
+            }
+        }
+        sb.Append(MetricCommentaryCostDollarsTotal)
+          .Append("{model=\"").Append(EscapeLabelValue(model)).Append('"')
+          .Append(",month=\"").Append(EscapeLabelValue(monthLabel)).Append("\"} ")
+          .AppendLine(usd.ToString("F4", CultureInfo.InvariantCulture));
     }
 
     /// <summary>

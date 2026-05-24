@@ -80,6 +80,28 @@ label value is `dev`.
 mahjong_build_info{sha!="dev"}
 ```
 
+#### `commentary_cost_dollars_total` (counter)
+
+Phase K Wave 13 — Bishop. Cumulative USD spent on commentary LLM
+generation in the current calendar month. The value is computed by
+`CommentaryCostBudget.Evaluate(utcNow).MonthlyUsd` at scrape time
+and resets to zero on the first scrape of each new month.
+
+| Label   | Source                                                     |
+| ------- | ---------------------------------------------------------- |
+| `model` | `Commentary:Model` configuration value (`"unknown"` when not configured) |
+| `month` | `YYYY-MM` calendar-month tag                               |
+
+The metric is emitted on every `/metrics` scrape with HELP + TYPE
+preambles even when the cost budget isn't wired (test harnesses),
+so a Prometheus parser sees a stable schema before the first LLM
+call is logged.
+
+```promql
+# Project monthly LLM spend across all models — alert at 80% of cap.
+sum(commentary_cost_dollars_total{month="2026-06"}) by (model)
+```
+
 ### Sample output
 
 ```

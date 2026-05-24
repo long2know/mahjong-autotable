@@ -29,15 +29,18 @@ public sealed class TournamentService
     private readonly AppDbContext _db;
     private readonly SeasonRolloverService? _rollover;
     private readonly TournamentBracketBroadcaster? _bracketBroadcaster;
+    private readonly IBracketStore? _bracketStore;
 
     public TournamentService(
         AppDbContext db,
         SeasonRolloverService? rollover = null,
-        TournamentBracketBroadcaster? bracketBroadcaster = null)
+        TournamentBracketBroadcaster? bracketBroadcaster = null,
+        IBracketStore? bracketStore = null)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _rollover = rollover;
         _bracketBroadcaster = bracketBroadcaster;
+        _bracketStore = bracketStore;
     }
 
     public async Task<Data.Entities.Tournament> CreateAsync(
@@ -220,24 +223,44 @@ public sealed class TournamentService
 
         var seededPlayers = regs.Select(r => r.PlayerId).ToList();
         var matches = new List<TournamentMatch>();
+        // Phase K Wave 13 — Bishop. Track per-round slot indices so
+        // we can upsert a durable BracketRecord per pairing. The
+        // store is optional — when not wired, only the
+        // TournamentMatches rows land. The slot index is NOT
+        // persisted on the TournamentMatch entity itself; it lives
+        // only on the BracketRecord row (natural-key column). The
+        // result-recording path (AdvanceMatchAsync /
+        // ForfeitMatchAsync) re-derives the slot by matching
+        // seeds against the stored BracketRecord rows.
+        var slotByRound = new Dictionary<int, int>();
+        int NextSlot(int round)
+        {
+            var slot = slotByRound.TryGetValue(round, out var s) ? s : 0;
+            slotByRound[round] = slot + 1;
+            return slot;
+        }
+        var matchSlots = new List<int>();
         switch (t.Format)
         {
             case "round-robin":
                 foreach (var (round, pair) in TournamentPairing.RoundRobin(seededPlayers))
                 {
                     matches.Add(BuildMatch(t.Id, round, pair));
+                    matchSlots.Add(NextSlot(round));
                 }
                 break;
             case "single-elimination":
                 foreach (var pair in TournamentPairing.SingleEliminationFirstRound(seededPlayers))
                 {
                     matches.Add(BuildMatch(t.Id, round: 1, pair));
+                    matchSlots.Add(NextSlot(1));
                 }
                 break;
             case "swiss":
                 foreach (var pair in TournamentPairing.SwissFirstRound(seededPlayers))
                 {
                     matches.Add(BuildMatch(t.Id, round: 1, pair));
+                    matchSlots.Add(NextSlot(1));
                 }
                 break;
             case "double-elimination":
@@ -252,6 +275,7 @@ public sealed class TournamentService
                 foreach (var pair in TournamentPairing.SingleEliminationFirstRound(seededPlayers))
                 {
                     matches.Add(BuildMatch(t.Id, round: 1, pair));
+                    matchSlots.Add(NextSlot(1));
                 }
                 break;
             default:
@@ -262,7 +286,150 @@ public sealed class TournamentService
         t.Status = "in-progress";
         t.StartedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
+        // Phase K Wave 13 — Bishop. Persist the durable
+        // BracketRecord rows AFTER SaveChangesAsync so the match
+        // ids are stable. Idempotent on the natural key
+        // (TournamentId, RoundNumber, MatchSlot) — replaying StartAsync
+        // (operator retry, test fixture reset) updates instead of
+        // duplicating.
+        await UpsertBracketRecordsAsync(matches, matchSlots, ct);
         return matches;
+    }
+
+    private async Task UpsertBracketRecordsAsync(
+        IReadOnlyList<TournamentMatch> matches,
+        IReadOnlyList<int> matchSlots,
+        CancellationToken ct)
+    {
+        if (_bracketStore is null) return;
+        for (var i = 0; i < matches.Count; i++)
+        {
+            var match = matches[i];
+            var slot = i < matchSlots.Count ? matchSlots[i] : i;
+            var record = new BracketRecord
+            {
+                TournamentId = match.TournamentId,
+                RoundNumber = match.Round,
+                MatchSlot = slot,
+                SeedA = match.Player1Id ?? string.Empty,
+                SeedB = string.IsNullOrWhiteSpace(match.Player2Id)
+                    ? BracketByeSeed
+                    : match.Player2Id!,
+                Status = match.Status switch
+                {
+                    "complete" => string.IsNullOrWhiteSpace(match.Player2Id) ? "bye" : "completed",
+                    _ => "pending",
+                },
+                WinnerSeed = match.WinnerPlayerId,
+                CompletedAt = match.CompletedAt,
+            };
+            await _bracketStore.UpsertAsync(record, ct);
+        }
+    }
+
+    /// <summary>Phase K Wave 13 — Bishop. Seed literal stamped on
+    /// the B side of a bye pairing (matches the convention used
+    /// elsewhere in the bracket surface).</summary>
+    public const string BracketByeSeed = "__bye__";
+
+    /// <summary>
+    /// Phase K Wave 13 — Bishop. Stamp the durable bracket row
+    /// with the completion details. The slot is re-derived by
+    /// listing existing rows for the match's (tournamentId,
+    /// round) and matching against
+    /// <see cref="TournamentMatch.Player1Id"/> /
+    /// <see cref="TournamentMatch.Player2Id"/>. When no row
+    /// exists (the StartAsync was invoked before W13 wired the
+    /// store), the call is a no-op.
+    /// </summary>
+    private async Task RecordBracketResultAsync(
+        TournamentMatch match, string status, CancellationToken ct)
+    {
+        if (_bracketStore is null) return;
+        if (match.WinnerPlayerId is null) return;
+        if (match.CompletedAt is null) return;
+        var rows = await _bracketStore.ListAsync(match.TournamentId, ct);
+        var row = rows.FirstOrDefault(r =>
+            r.RoundNumber == match.Round
+            && SeedsMatchMatch(r, match));
+        if (row is null) return;
+        await _bracketStore.RecordResultAsync(
+            match.TournamentId,
+            row.RoundNumber,
+            row.MatchSlot,
+            match.WinnerPlayerId,
+            status,
+            match.CompletedAt.Value,
+            ct);
+    }
+
+    /// <summary>
+    /// Phase K Wave 13 — Bishop. Upsert BracketRecord rows for a
+    /// round's worth of newly emitted next-round pairings. The
+    /// slot index is derived from the row's position in the
+    /// supplied list (matches insertion order).
+    /// </summary>
+    private async Task UpsertNextRoundBracketRecordsAsync(
+        IReadOnlyList<TournamentMatch> newMatches, CancellationToken ct)
+    {
+        if (_bracketStore is null) return;
+        if (newMatches.Count == 0) return;
+        // Group by round in case the caller emitted multiple
+        // rounds in one tick (defensive — today's flow only emits
+        // one round at a time).
+        foreach (var roundGroup in newMatches.GroupBy(m => m.Round))
+        {
+            var tournamentId = roundGroup.First().TournamentId;
+            // Phase K Wave 13 — Bishop. When a previous attempt
+            // partially populated the next round, the existing
+            // rows pin the slot ordering; new pairings extend the
+            // tail. Listing the round once + re-using the count
+            // keeps the slot allocation deterministic across
+            // replays.
+            var existing = await _bracketStore.ListAsync(tournamentId, ct);
+            var slotBase = existing
+                .Where(r => r.RoundNumber == roundGroup.Key)
+                .Select(r => r.MatchSlot)
+                .DefaultIfEmpty(-1)
+                .Max() + 1;
+            var i = 0;
+            foreach (var m in roundGroup)
+            {
+                // Skip if a row with these seeds already exists
+                // (replay scenario) — RecordResultAsync /
+                // upstream UpsertAsync will refresh it.
+                var sa = m.Player1Id ?? string.Empty;
+                var sb = string.IsNullOrWhiteSpace(m.Player2Id) ? BracketByeSeed : m.Player2Id!;
+                if (existing.Any(r => r.RoundNumber == roundGroup.Key
+                    && r.SeedA == sa && r.SeedB == sb))
+                {
+                    continue;
+                }
+                var rec = new BracketRecord
+                {
+                    TournamentId = m.TournamentId,
+                    RoundNumber = m.Round,
+                    MatchSlot = slotBase + i,
+                    SeedA = sa,
+                    SeedB = sb,
+                    Status = "pending",
+                };
+                await _bracketStore.UpsertAsync(rec, ct);
+                i++;
+            }
+        }
+    }
+
+    /// <summary>Phase K Wave 13 — Bishop. Returns true when the
+    /// supplied BracketRecord's seeds match the
+    /// TournamentMatch's player1/player2 (in either ordering — A/B
+    /// vs B/A — to tolerate seed-swap pair builders).</summary>
+    private static bool SeedsMatchMatch(BracketRecord r, TournamentMatch m)
+    {
+        var p1 = m.Player1Id ?? string.Empty;
+        var p2 = string.IsNullOrWhiteSpace(m.Player2Id) ? BracketByeSeed : m.Player2Id!;
+        return (r.SeedA == p1 && r.SeedB == p2)
+            || (r.SeedA == p2 && r.SeedB == p1);
     }
 
     /// <summary>
@@ -348,12 +515,22 @@ public sealed class TournamentService
         });
 
         var tournament = await _db.Tournaments.FirstOrDefaultAsync(t => t.Id == match.TournamentId, ct);
+        List<TournamentMatch>? newlyEmittedMatches = null;
         if (tournament is not null)
         {
-            await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
+            newlyEmittedMatches = await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
         }
         await _db.SaveChangesAsync(ct);
         await MaybeDrainSeasonDeferralsAsync(tournament, ct);
+        // Phase K Wave 13 — Bishop. Idempotent durable bracket
+        // completion. Re-applying a `game-complete` event with the
+        // same winner is a no-op on the row.
+        await RecordBracketResultAsync(match, "completed", ct);
+        // Phase K Wave 13 — Bishop. Persist next-round pairings.
+        if (newlyEmittedMatches is { Count: > 0 })
+        {
+            await UpsertNextRoundBracketRecordsAsync(newlyEmittedMatches, ct);
+        }
         await BroadcastBracketUpdateAsync(match.TournamentId, ct);
         return match;
     }
@@ -404,12 +581,21 @@ public sealed class TournamentService
         });
 
         var tournament = await _db.Tournaments.FirstOrDefaultAsync(t => t.Id == match.TournamentId, ct);
+        List<TournamentMatch>? newlyEmittedMatches = null;
         if (tournament is not null)
         {
-            await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
+            newlyEmittedMatches = await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
         }
         await _db.SaveChangesAsync(ct);
         await MaybeDrainSeasonDeferralsAsync(tournament, ct);
+        // Phase K Wave 13 — Bishop. Stamp the forfeit on the
+        // durable bracket row so a multi-replica admin client
+        // sees the forfeit status without reconstructing it.
+        await RecordBracketResultAsync(match, "forfeit", ct);
+        if (newlyEmittedMatches is { Count: > 0 })
+        {
+            await UpsertNextRoundBracketRecordsAsync(newlyEmittedMatches, ct);
+        }
         await BroadcastBracketUpdateAsync(match.TournamentId, ct);
         return match;
     }
@@ -470,12 +656,18 @@ public sealed class TournamentService
         });
 
         var tournament = await _db.Tournaments.FirstOrDefaultAsync(t => t.Id == match.TournamentId, ct);
+        List<TournamentMatch>? newlyEmittedMatches = null;
         if (tournament is not null)
         {
-            await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
+            newlyEmittedMatches = await MaybeAdvanceRoundAsync(tournament, match.Round, ct);
         }
         await _db.SaveChangesAsync(ct);
         await MaybeDrainSeasonDeferralsAsync(tournament, ct);
+        await RecordBracketResultAsync(match, "forfeit", ct);
+        if (newlyEmittedMatches is { Count: > 0 })
+        {
+            await UpsertNextRoundBracketRecordsAsync(newlyEmittedMatches, ct);
+        }
         await BroadcastBracketUpdateAsync(match.TournamentId, ct);
         return match;
     }
@@ -628,8 +820,9 @@ public sealed class TournamentService
     private static string SerializeGameIds(List<Guid> ids)
         => JsonSerializer.Serialize(ids);
 
-    private async Task MaybeAdvanceRoundAsync(Data.Entities.Tournament tournament, int round, CancellationToken ct)
+    private async Task<List<TournamentMatch>> MaybeAdvanceRoundAsync(Data.Entities.Tournament tournament, int round, CancellationToken ct)
     {
+        var emitted = new List<TournamentMatch>();
         var roundMatches = await _db.TournamentMatches
             .Where(m => m.TournamentId == tournament.Id && m.Round == round)
             .ToListAsync(ct);
@@ -637,7 +830,7 @@ public sealed class TournamentService
         // the change tracker until SaveChanges runs; we treat it as
         // complete since the caller already flipped it.
         if (roundMatches.Any(m => m.Status != "complete"))
-            return;
+            return emitted;
 
         if (tournament.Format == "round-robin")
         {
@@ -651,7 +844,7 @@ public sealed class TournamentService
                 tournament.Status = "complete";
                 tournament.CompletedAt = DateTime.UtcNow;
             }
-            return;
+            return emitted;
         }
 
         var winners = roundMatches.Select(m => m.WinnerPlayerId).Where(w => !string.IsNullOrWhiteSpace(w)).Cast<string>().ToList();
@@ -660,7 +853,7 @@ public sealed class TournamentService
         {
             tournament.Status = "complete";
             tournament.CompletedAt = DateTime.UtcNow;
-            return;
+            return emitted;
         }
 
         var nextRound = round + 1;
@@ -675,10 +868,12 @@ public sealed class TournamentService
             for (var i = 0; i < winners.Count; i += 2)
             {
                 if (i + 1 >= winners.Count) break;
-                _db.TournamentMatches.Add(BuildMatch(
+                var m = BuildMatch(
                     tournament.Id,
                     nextRound,
-                    new TournamentPairing.Pairing(winners[i], winners[i + 1], null, null)));
+                    new TournamentPairing.Pairing(winners[i], winners[i + 1], null, null));
+                _db.TournamentMatches.Add(m);
+                emitted.Add(m);
             }
         }
         else if (tournament.Format == "swiss")
@@ -688,12 +883,15 @@ public sealed class TournamentService
             var ordered = standings.Select(s => s.PlayerId).ToList();
             for (var i = 0; i + 1 < ordered.Count; i += 2)
             {
-                _db.TournamentMatches.Add(BuildMatch(
+                var m = BuildMatch(
                     tournament.Id,
                     nextRound,
-                    new TournamentPairing.Pairing(ordered[i], ordered[i + 1], null, null)));
+                    new TournamentPairing.Pairing(ordered[i], ordered[i + 1], null, null));
+                _db.TournamentMatches.Add(m);
+                emitted.Add(m);
             }
         }
+        return emitted;
     }
 
     public sealed record TournamentLeaderboardRow(string PlayerId, int Wins, int Buchholz);

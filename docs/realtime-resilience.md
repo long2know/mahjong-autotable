@@ -330,3 +330,52 @@ Hard-asserted in `tests/Mahjong.Autotable.Api.Tests/Phase_K_W12/Bishop/SignalRSe
 * `AppendAsync` pins `ExpiresAt = CreatedAt + RetentionMinutes`.
 * `SweepExpiredAsync` drops expired rows (in-memory + EF).
 * `SignalRSequencePayloadSerializer` round-trips a dictionary payload.
+
+
+## §7 — Always-on retention sweep (Phase K Wave 13)
+
+### §7.1 — Why lift the sweep
+
+The W12 `SignalRSequenceSweepService` was registered ONLY when the
+EF store was selected — the in-memory store accumulated rows for
+the lifetime of the process. Long-lived single-replica development
+sessions (or any test fixture that kept the API up for hours) would
+slowly leak memory through expired sequence entries.
+
+Wave 13 lifts the sweep to run for any `ISignalRSequenceStore`
+implementation. Both the in-memory and EF stores expose the same
+`SweepExpiredAsync` contract, so a single hosted service can
+discharge the work without an implementation switch.
+
+### §7.2 — Surface
+
+* **Hosted service**: `Observability/SignalRSequenceRetentionSweep.cs`.
+* **Cadence**: `SignalR:Sequences:SweepIntervalMinutes` (default 5,
+  floor 1). Falls back to the legacy
+  `SignalRSequenceStoreOptions.SweepIntervalMinutes` when the new key
+  is absent so an operator upgrading from W12 keeps the existing
+  cadence without an appsettings edit.
+* **Predicate**: `ExpiresAt < utcNow`. Both stores stamp
+  `ExpiresAt = CreatedAt + RetentionMinutes` at append time, so the
+  predicate is equivalent to the spec's "`LastSeenAt < now - retention`".
+
+### §7.3 — Logging
+
+A single info log per tick records the count evicted. Zero-evict
+ticks are silenced so the log stream stays readable under steady
+state. Errors from `SweepExpiredAsync` are caught + logged as
+warnings so a transient store failure (e.g. EF deadlock) does not
+crash the hosted service.
+
+### §7.4 — Contract pins
+
+Hard-asserted in
+`tests/Mahjong.Autotable.Api.Tests/Phase_K_W13/Bishop/SignalRSequenceRetentionSweepTests.cs`:
+
+* `SignalRSequenceRetentionSweep.DefaultSweepIntervalMinutes == 5`.
+* `MinSweepIntervalMinutes == 1`.
+* The sweep runs against any `ISignalRSequenceStore` impl (both
+  in-memory + EF).
+* Each tick invokes `SweepExpiredAsync` with `DateTime.UtcNow`.
+* A negative / zero configured interval is clamped to the floor.
+* A swallowed `SweepExpiredAsync` exception does not stop the loop.
