@@ -22,7 +22,11 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 474-test suite runs on a single worker; the legacy 30-min cap
+    # was sized for a smaller suite and now hard-times out the run.
+    # Bumped to 60 to give the smoke set headroom; tracked as a
+    # standalone follow-up to investigate worker-parallelism.
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
