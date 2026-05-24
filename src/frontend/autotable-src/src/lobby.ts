@@ -247,6 +247,16 @@ function isSeatChoice(n: number): n is Exclude<SeatChoice, null> {
 // server will accept, and so a hand-typed URL with botCount=4 but no
 // seat=-1 doesn't silently get reified to a 4-bot picker that then
 // fails server-side validation.
+//
+// Phase K (bot-autoplay) — when the URL explicitly carries `botCount=4`
+// without an explicit seat, we treat it as the spectator-watch shortcut:
+// rather than clamping to 3 (which would silently demote the user's
+// "watch all-bots" intent into a "play with 3 bots" session and never
+// fire the auto-deal hook on the backend), we leave the 4 alone here
+// and let the *seat* default to -1 in `resolveInitialState`.  This
+// matches the Phase K backend rule (AutotableWsEndpoint.cs) that
+// auto-promotes a `?botCount=4` connection without an explicit seat to
+// spectator on the wire.
 function clampBotCountForSeat(botCount: BotCount, seat: SeatChoice): BotCount {
   if (seat === -1) return botCount;
   return botCount === 4 ? 3 : botCount;
@@ -385,10 +395,26 @@ function parseLocalStorageState(): Partial<LobbyState> {
 // `?botCount=4` but no `?seat=-1` doesn't slip a 4 into the picker, and
 // so localStorage from a previous spectator session doesn't pollute a
 // fresh play session.
+//
+// Phase K (bot-autoplay) — exception: if the URL explicitly says
+// `botCount=4`, promote the (otherwise default) seat to -1 (spectator)
+// so the lobby state matches the backend's promote-rule.  Without this
+// the lobby would render the "Take seat" UI for a user whose URL is
+// asking for an all-bots watch experience, then silently demote
+// botCount to 3.  The frontend now respects the user's intent: 4 bots
+// means spectator.  Callers that *want* to play with three bots can
+// either drop `botCount` (default 3) or use `botCount=3`.
 function resolveInitialState(): LobbyState {
   const url = parseUrlState();
   const ls = parseLocalStorageState();
-  const seat = url.seat !== undefined ? url.seat : (ls.seat !== undefined ? ls.seat : DEFAULTS.seat);
+  let seat = url.seat !== undefined ? url.seat : (ls.seat !== undefined ? ls.seat : DEFAULTS.seat);
+  // Phase K — promote a `?botCount=4` URL without an explicit seat to
+  // spectator (-1).  This mirrors AutotableWsEndpoint.cs's server-side
+  // promote rule and is the difference between "watch 4 bots play" and
+  // "play with 3 bots" in the lobby state.
+  if (url.botCount === 4 && url.seat === undefined) {
+    seat = -1;
+  }
   const rawBotCount = url.botCount ?? ls.botCount ?? DEFAULTS.botCount;
   const botCount = clampBotCountForSeat(rawBotCount, seat);
   return {

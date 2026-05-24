@@ -201,8 +201,10 @@ public sealed class AutotableConnectionManager : IDisposable
 
         int? viewerSeat = null;
         var isSpectator = false;
+        var seatExplicitlyProvided = false;
         if (query.TryGetValue("seat", out var s) && int.TryParse(s.ToString(), out var parsedSeat) && parsedSeat is >= -1 and <= 3)
         {
+            seatExplicitlyProvided = true;
             // Phase I Wave 4 — seat=-1 is the "spectator" sentinel. The connection
             // joins the game (receives snapshots / updates), but ViewerSeat stays
             // null so the per-viewer privacy filter treats it as a spectator (all
@@ -229,6 +231,22 @@ public sealed class AutotableConnectionManager : IDisposable
         var dealMode = "manual";
         if (query.TryGetValue("dealMode", out var dm) && !string.IsNullOrEmpty(dm.ToString()))
             dealMode = dm.ToString();
+
+        // Phase K (bot-autoplay) — `?botCount=4` without an explicit `?seat=`
+        // means "I want four bots", which has only one viable interpretation:
+        // a spectator watching an all-bots match. Auto-promote to spectator so
+        // the auto-deal hook (TryAutoDealForSpectatorAsync) fires and the
+        // table self-plays. Callers that explicitly send `seat=0..3` with
+        // `botCount=4` still hit the existing cap-to-3 clamp below (the
+        // Seat0_BotCount_StillCapsAt3 acceptance test pins that behaviour).
+        if (!seatExplicitlyProvided
+            && query.TryGetValue("botCount", out var bcSpec)
+            && int.TryParse(bcSpec.ToString(), out var bcSpecParsed)
+            && bcSpecParsed == 4)
+        {
+            isSpectator = true;
+            viewerSeat = null;
+        }
 
         // Phase I Wave 4 — spectators (seat=-1) can fill all four seats with bots
         // to watch a fully-bot table; player connections keep the existing 0..3 cap.

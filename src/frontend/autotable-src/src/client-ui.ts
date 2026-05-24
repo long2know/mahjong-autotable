@@ -368,13 +368,21 @@ export class ClientUi {
   // seat, :192 for botCount), so they have to ride the WS URL — the page
   // URL alone doesn't reach the server.
   //
-  // We forward both seat and botCount so:
+  // We forward seat, botCount, variant, dealMode and botDifficulty so:
   //   • Spectator (?seat=-1) actually reaches the backend as a "no seat"
   //     connection — the seat-take auto-fill is suppressed and the runtime
   //     auto-deals when bots fill the remaining seats.
   //   • The lobby's chosen botCount actually drives the backend's
-  //     auto-bot-fill on this connection (previously the WS URL only
-  //     carried gameId, so botCount was forever the server default).
+  //     auto-bot-fill on this connection.
+  //   • Phase K (bot-autoplay) — variant / dealMode / botDifficulty also
+  //     ride the WS URL.  Previously the bundle silently dropped them and
+  //     the backend always defaulted to dealMode=manual / botDifficulty=
+  //     Medium, so the user's `?dealMode=auto` choice was effectively
+  //     ignored on the wire (state.DealMode happens to default to Auto
+  //     in the runtime so the auto-deal still fired, but logs reported
+  //     the wrong mode and the lobby's botDifficulty never reached the
+  //     server).  Forwarding them keeps server-side telemetry honest and
+  //     lets the backend act on the lobby's settings end-to-end.
   private buildWsUrl(gameId: string): string {
     const params = new URLSearchParams();
     params.set('gameId', gameId);
@@ -392,6 +400,18 @@ export class ClientUi {
       if (!isNaN(bc) && bc >= 0 && bc <= 4) {
         params.set('botCount', String(bc));
       }
+    }
+    const variantRaw = pageQuery.get('variant');
+    if (variantRaw !== null && variantRaw.length > 0 && variantRaw.length <= 32) {
+      params.set('variant', variantRaw);
+    }
+    const dealModeRaw = pageQuery.get('dealMode');
+    if (dealModeRaw === 'manual' || dealModeRaw === 'auto') {
+      params.set('dealMode', dealModeRaw);
+    }
+    const botDifficultyRaw = pageQuery.get('botDifficulty');
+    if (botDifficultyRaw !== null && botDifficultyRaw.length > 0 && botDifficultyRaw.length <= 32) {
+      params.set('botDifficulty', botDifficultyRaw);
     }
     const separator = this.url.indexOf('?') >= 0 ? '&' : '?';
     return `${this.url}${separator}${params.toString()}`;
