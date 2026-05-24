@@ -322,6 +322,11 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
 // {reason=stale_per_tenant_policy|per_tenant_store_missing}. The
 // MetricsEndpoint renders the snapshot at /metrics.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssueBlockedMetrics>();
+// Phase K Wave 19 — Bishop. JWT issue + validator duration
+// histograms. The issuing service + validator both take this as
+// an optional dep so the per-tenant latency is observable on the
+// MetricsEndpoint. See docs/realtime-resilience.md §10.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtDurationMetrics>();
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 // Phase K Wave 14 — Bishop. JWKS overlap-window enforcement. The
 // validator now takes the staged rotation policy so it can reject
@@ -330,10 +335,15 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtIssuingService>();
 // registered below; we resolve it through the IoC container so
 // either constructor overload can hydrate. See
 // docs/jwt-rotation.md §14.
+//
+// Phase K Wave 19 — Bishop. The DI factory now also threads the
+// JwtDurationMetrics collector through the W19 overload so the
+// validator-check histogram records every call.
 builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.JwtValidationService>(sp =>
     new Mahjong.Autotable.Api.Auth.JwtValidationService(
         sp.GetRequiredService<Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider>(),
-        sp.GetService<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy>()));
+        sp.GetService<Mahjong.Autotable.Api.Auth.JwtStagedRotationPolicy>(),
+        sp.GetService<Mahjong.Autotable.Api.Auth.JwtDurationMetrics>()));
 // Phase K Wave 12 — Bishop. Spectator handoff validator pairs with
 // the controller in Spectator/SpectatorHandoffController.cs. Scoped
 // `spectator:{gameId}` JWTs are minted by the controller and verified
@@ -1055,6 +1065,18 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Spectator.SpectatorService>(
     builder.Services.AddHostedService(sp =>
         sp.GetRequiredService<Mahjong.Autotable.Api.Observability.SignalRSequenceRetentionSweep>());
 }
+
+// Phase K Wave 19 — Bishop. Per-tenant SignalR retention
+// lifecycle metrics. Distinct from the W18
+// `signalr_retention_policy_capped_total` counter — this collector
+// exposes `signalr_retention_applied{tenant}` +
+// `signalr_retention_cap_triggered{tenant}` so the W19 dashboard
+// can graph the lifecycle without joining against the audit
+// table. Registered unconditionally so the MetricsEndpoint can
+// resolve the collector even on shapes that haven't touched the
+// SignalR retention path yet. See
+// docs/realtime-resilience.md §7.2.
+builder.Services.AddSingleton<Mahjong.Autotable.Api.Observability.SignalRRetentionLifecycleMetrics>();
 
 // Phase K Wave 15 — Bishop. Tournament-scale query latency
 // histogram, bucketed by endpoint + page_size_bucket. Surfaced

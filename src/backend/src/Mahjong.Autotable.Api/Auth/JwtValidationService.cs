@@ -72,11 +72,13 @@ public sealed class JwtValidationService
 
     private readonly JwtSigningKeyProvider _keys;
     private readonly JwtStagedRotationPolicy? _rotation;
+    private readonly JwtDurationMetrics? _durationMetrics;
 
     public JwtValidationService(JwtSigningKeyProvider keys)
     {
         _keys = keys;
         _rotation = null;
+        _durationMetrics = null;
     }
 
     /// <summary>
@@ -91,6 +93,29 @@ public sealed class JwtValidationService
     {
         _keys = keys;
         _rotation = rotation;
+        _durationMetrics = null;
+    }
+
+    /// <summary>
+    /// Phase K Wave 19 — Bishop. Overload that wires the
+    /// <see cref="JwtDurationMetrics"/> collector so every
+    /// <see cref="Validate"/> call records a sample into the
+    /// <c>jwt_validator_check_duration_seconds{tenant}</c>
+    /// histogram. Tenant id is lifted from the token's
+    /// <c>tenant</c> claim when present (else folds into the
+    /// <c>_unknown</c> bucket). The W14 + W4 constructors remain
+    /// for legacy call sites; the DI container resolves this
+    /// overload at production runtime so the histogram is always
+    /// observed.
+    /// </summary>
+    public JwtValidationService(
+        JwtSigningKeyProvider keys,
+        JwtStagedRotationPolicy? rotation,
+        JwtDurationMetrics? durationMetrics)
+    {
+        _keys = keys;
+        _rotation = rotation;
+        _durationMetrics = durationMetrics;
     }
 
     /// <summary>
@@ -99,6 +124,72 @@ public sealed class JwtValidationService
     /// <see cref="ErrorBadSignature"/>.
     /// </summary>
     public JwtValidationResult Validate(string? token)
+    {
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return ValidateCore(token);
+        }
+        finally
+        {
+            // Phase K Wave 19 — Bishop. Stamp duration on the
+            // per-tenant histogram. Tenant id is best-effort
+            // resolved from the token's `tenant` claim; tokens
+            // without a tenant claim collapse to the _unknown
+            // bucket. The collector is optional — when no
+            // collector is wired (legacy DI shape) the call is a
+            // no-op so the validator stays drop-in compatible.
+            if (_durationMetrics is not null)
+            {
+                var tenantForMetric = JwtDurationMetrics.UnknownTenantLabel;
+                if (!string.IsNullOrEmpty(token))
+                {
+                    var parts = token.Split('.');
+                    if (parts.Length == 3)
+                    {
+                        try
+                        {
+                            var payloadBytes = Base64UrlDecode(parts[1]);
+                            var payload = JsonSerializer
+                                .Deserialize<Dictionary<string, JsonElement>>(payloadBytes);
+                            if (payload is not null
+                                && payload.TryGetValue("claims", out var claimsEl)
+                                && claimsEl.ValueKind == JsonValueKind.Object
+                                && claimsEl.TryGetProperty("tenant", out var tenantEl)
+                                && tenantEl.ValueKind == JsonValueKind.String)
+                            {
+                                var raw = tenantEl.GetString();
+                                if (!string.IsNullOrWhiteSpace(raw))
+                                {
+                                    tenantForMetric = raw;
+                                }
+                            }
+                            else if (payload is not null
+                                     && payload.TryGetValue("tenant", out var topTenantEl)
+                                     && topTenantEl.ValueKind == JsonValueKind.String)
+                            {
+                                var raw = topTenantEl.GetString();
+                                if (!string.IsNullOrWhiteSpace(raw))
+                                {
+                                    tenantForMetric = raw;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Best-effort — malformed tokens fold
+                            // into the _unknown bucket.
+                        }
+                    }
+                }
+                _durationMetrics.RecordValidatorCheck(
+                    tenantForMetric,
+                    System.Diagnostics.Stopwatch.GetElapsedTime(startedAt));
+            }
+        }
+    }
+
+    private JwtValidationResult ValidateCore(string? token)
     {
         if (string.IsNullOrEmpty(token))
             return JwtValidationResult.Failure(ErrorMalformed);

@@ -459,6 +459,86 @@ public sealed class TournamentController : ControllerBase
     }
 
     /// <summary>
+    /// Phase K Wave 19 — Bishop. Admin-only read surface for the
+    /// Swiss pairing audit trail introduced in W19. Returns every
+    /// <see cref="SwissPairingAuditEntry"/> row for the supplied
+    /// tournament, ordered by <c>(Round, Board)</c> so an
+    /// operator can step through the round-by-round pairing
+    /// decisions taken by <c>FideC04SwissPairingService</c>.
+    ///
+    /// <para>Auth: 401 (no session) → 403 (non-admin) → 200
+    /// (success). The endpoint always succeeds when the
+    /// tournament has no rows — callers receive an empty
+    /// <c>entries</c> array so they can distinguish "no audit"
+    /// from "endpoint disabled".</para>
+    ///
+    /// <para>Every successful call writes a single
+    /// <see cref="ReconnectAuditEntry.KindTournamentSwissPairingAuditRead"/>
+    /// row with <c>Detail = "tournament=&lt;id&gt;|rows=&lt;n&gt;"</c>
+    /// so the audit trail itself is auditable.</para>
+    ///
+    /// <para>See <c>docs/swiss-pairing.md §7 "Audit trail"</c>
+    /// (added W19) for the operator runbook.</para>
+    /// </summary>
+    [HttpGet("{id:guid}/swiss-pairing-audit")]
+    public async Task<IActionResult> GetSwissPairingAudit(
+        [FromRoute] Guid id,
+        CancellationToken ct)
+    {
+        var session = await _cookies.ResolveAsync(HttpContext, ct);
+        if (session is null) return Unauthorized(new { error = "session-required" });
+        if (!string.Equals(session.Role, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "admin-required" });
+        }
+
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var entries = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+            db.SwissPairingAuditEntries
+                .Where(e => e.TournamentId == id)
+                .OrderBy(e => e.Round).ThenBy(e => e.Board)
+                .Select(e => new
+                {
+                    e.Id,
+                    e.TournamentId,
+                    e.Round,
+                    e.Board,
+                    white = e.White,
+                    black = e.Black,
+                    isBye = e.Black == FideC04SwissPairingService.ByeOpponent,
+                    tiebreaker = e.Tiebreaker,
+                    e.CreatedAtUtc,
+                }), ct);
+
+        try
+        {
+            db.ReconnectAuditEntries.Add(new ReconnectAuditEntry
+            {
+                Id = Guid.NewGuid(),
+                PlayerId = session.PlayerId ?? "admin",
+                At = DateTime.UtcNow,
+                Kind = ReconnectAuditEntry.KindTournamentSwissPairingAuditRead,
+                Detail = $"tournament={id:N}|rows={entries.Count}",
+            });
+            await db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // Best-effort — failure to write the audit row must
+            // not poison the read.
+        }
+
+        return Ok(new
+        {
+            tournamentId = id,
+            entries,
+            rowCount = entries.Count,
+        });
+    }
+
+    /// <summary>
     /// Phase K Wave 3 — Bishop. Body shape for the
     /// <c>POST /api/tournaments/{id}/seed</c> admin endpoint. The
     /// outer envelope keeps <c>seeds</c> as an array so a single push

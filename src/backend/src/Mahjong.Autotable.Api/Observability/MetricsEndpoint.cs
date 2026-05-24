@@ -146,6 +146,50 @@ public static class MetricsEndpoint
             sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Auth.JwtIssueBlockedMetrics.MetricName).AppendLine(" counter");
         }
 
+        // Phase K Wave 19 — Bishop. JWT issue / validator duration
+        // histograms. Surfaces p50/p95/p99 latency for the issue +
+        // validate pipelines so a regression in either path is
+        // immediately visible on the JWT dashboard. Falls back to
+        // zeroed envelopes when the collector is not wired so
+        // dashboards see a stable schema. See
+        // docs/realtime-resilience.md §10.
+        var jwtDuration = services.GetService<Mahjong.Autotable.Api.Auth.JwtDurationMetrics>();
+        if (jwtDuration is not null)
+        {
+            jwtDuration.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Auth.JwtDurationMetrics.IssueMetricName)
+              .AppendLine(" JWT issue request duration (seconds). Collector not wired.");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Auth.JwtDurationMetrics.IssueMetricName).AppendLine(" histogram");
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Auth.JwtDurationMetrics.ValidatorCheckMetricName)
+              .AppendLine(" JWT validator check duration (seconds). Collector not wired.");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Auth.JwtDurationMetrics.ValidatorCheckMetricName).AppendLine(" histogram");
+        }
+
+        // Phase K Wave 19 — Bishop. Per-tenant SignalR retention
+        // lifecycle metrics — applied + cap-triggered counters.
+        // Distinct from the W18 capped counter (which is the
+        // historical fire count); this is the forward-looking
+        // lifecycle observer. Falls back to zeroed envelopes when
+        // the collector is not wired so dashboards see a stable
+        // schema. See docs/realtime-resilience.md §7.2.
+        var signalrLifecycle = services.GetService<SignalRRetentionLifecycleMetrics>();
+        if (signalrLifecycle is not null)
+        {
+            signalrLifecycle.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(SignalRRetentionLifecycleMetrics.MetricAppliedName)
+              .AppendLine(" Per-tenant SignalR retention apply events. Collector not wired.");
+            sb.Append("# TYPE ").Append(SignalRRetentionLifecycleMetrics.MetricAppliedName).AppendLine(" counter");
+            sb.Append("# HELP ").Append(SignalRRetentionLifecycleMetrics.MetricCapTriggeredName)
+              .AppendLine(" Per-tenant SignalR retention cap-triggered events. Collector not wired.");
+            sb.Append("# TYPE ").Append(SignalRRetentionLifecycleMetrics.MetricCapTriggeredName).AppendLine(" counter");
+        }
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
     }
 

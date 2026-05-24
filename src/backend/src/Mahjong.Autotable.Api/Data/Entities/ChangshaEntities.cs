@@ -500,6 +500,26 @@ public class ReconnectAuditEntry
     /// successful CSV export. Detail format:
     /// <c>"from={YYYY-MM}|to={YYYY-MM}|tenant={tenant}|rows={count}"</c>.</summary>
     public const string KindCommentaryCostBudgetExport = "commentary.cost-budget.export";
+
+    /// <summary>Phase K Wave 19 — Bishop. Audit Kind stamped by
+    /// the W19 <c>PerTenantRotationBulkUpdateController</c> on
+    /// each successfully-applied row inside a transactional
+    /// bulk-update batch. Detail format:
+    /// <c>"tenant={tenant}|reason={X-Admin-Reason}|batchId={guid}"</c>.</summary>
+    public const string KindAuthJwksPerTenantBulkApplied = "auth.jwks.per-tenant.bulk-applied";
+
+    /// <summary>Phase K Wave 19 — Bishop. Audit Kind stamped by
+    /// the W19 <c>ReplayStoreIntegrityAuditController</c> on a
+    /// successful integrity-audit query. Detail format:
+    /// <c>"from={iso}|to={iso}|tenants={n}|rows={n}"</c>.</summary>
+    public const string KindReplayIntegrityAudit = "replays.integrity-audit";
+
+    /// <summary>Phase K Wave 19 — Bishop. Audit Kind stamped by
+    /// <c>TournamentController.GetSwissPairingAudit</c> on a
+    /// successful read of the per-tournament Swiss pairing audit
+    /// log. Detail format:
+    /// <c>"tournamentId={id}|rows={n}"</c>.</summary>
+    public const string KindTournamentSwissPairingAuditRead = "tournament.swiss-pairing.audit.read";
 }
 
 /// <summary>
@@ -1041,4 +1061,84 @@ public sealed class CommentaryRecordRow
     /// <c>GeneratedAtUtc + RetentionDays</c>. Indexed so the sweep
     /// query is a single index seek.</summary>
     public DateTime ExpiresAtUtc { get; set; }
+}
+
+/// <summary>
+/// Phase K Wave 19 — Bishop. Per-tournament Swiss pairing audit
+/// log row. Every pairing decision the
+/// <see cref="Mahjong.Autotable.Api.Tournament.FideC04SwissPairingService"/>
+/// (or the heuristic <see cref="Mahjong.Autotable.Api.Tournament.DutchSwissPairingService"/>)
+/// emits gets persisted here so an operator chasing a "why was
+/// player X paired against player Y in round 5?" question can
+/// replay the algorithmic verdict without re-running the pairing
+/// engine.
+///
+/// <para>Surface: <c>GET /api/admin/tournaments/{id}/swiss-pairing-audit</c>
+/// (admin-gated; see <c>TournamentController.GetSwissPairingAudit</c>).
+/// The row is wire-projected as <c>{ tournamentId, round, board,
+/// white, black, tiebreaker, createdAtUtc }</c>.</para>
+///
+/// <para>Indexes: <c>(TournamentId, Round, Board)</c> uniquely
+/// keyed so a single rerun of the pairing service cannot double-
+/// stamp; <c>CreatedAtUtc</c> for the trail-by-time view.</para>
+///
+/// <para>The entity is intentionally schema-stable. The
+/// <see cref="Tiebreaker"/> column holds the wire-name of the
+/// tiebreaker rule that produced the pairing (e.g.
+/// <c>"buchholz"</c>, <c>"sonneborn-berger"</c>,
+/// <c>"seed"</c>) and stays bounded so EF can index it without a
+/// blob-store column. <see cref="White"/> + <see cref="Black"/>
+/// store the canonical PlayerId values (matching the wider
+/// codebase <c>PlayerId</c> column shape, 128 chars max).</para>
+///
+/// <para>See <c>docs/swiss-pairing-audit.md</c> (added W19) for
+/// the runbook + dashboard joins.</para>
+/// </summary>
+public class SwissPairingAuditEntry
+{
+    /// <summary>Synthetic row id.</summary>
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>Owning tournament id. Joins to
+    /// <see cref="Tournament.Id"/>.</summary>
+    public Guid TournamentId { get; set; }
+
+    /// <summary>Round number (1-based) the pairing decision was
+    /// emitted for.</summary>
+    public int Round { get; set; }
+
+    /// <summary>Board number inside the round (1-based). Each
+    /// board hosts one pairing. The
+    /// <c>(TournamentId, Round, Board)</c> tuple is the natural
+    /// key — pairing engines may not double-stamp a board.</summary>
+    public int Board { get; set; }
+
+    /// <summary>PlayerId assigned to the "white" seat (the
+    /// higher-rated seat by Swiss convention; canonical
+    /// PlayerId — 128 char column matching the codebase
+    /// pattern).</summary>
+    public string White { get; set; } = string.Empty;
+
+    /// <summary>PlayerId assigned to the "black" seat. The
+    /// sentinel string <c>"__bye__"</c> records a bye pairing
+    /// (no opponent); compare against
+    /// <see cref="Mahjong.Autotable.Api.Tournament.FideC04SwissPairingService.ByeOpponent"/>.</summary>
+    public string Black { get; set; } = string.Empty;
+
+    /// <summary>Tiebreaker rule wire-name that resolved the
+    /// pairing. Free-form short string (<see cref="MaxTiebreakerLength"/>
+    /// chars); operators query by this to filter
+    /// e.g. <c>?tiebreaker=buchholz</c>.</summary>
+    public string Tiebreaker { get; set; } = string.Empty;
+
+    /// <summary>UTC timestamp when the pairing decision was
+    /// stamped. Indexed so the trail-by-time view scrolls
+    /// without a full table scan.</summary>
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Maximum length of the
+    /// <see cref="Tiebreaker"/> column. 64 — large enough for
+    /// canonical wire-names plus a small suffix
+    /// (<c>"buchholz-cut1"</c> etc.).</summary>
+    public const int MaxTiebreakerLength = 64;
 }
