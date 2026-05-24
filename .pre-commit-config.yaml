@@ -43,6 +43,7 @@ repos:
     rev: v4.6.0
     hooks:
       - id: check-yaml
+        args: [--allow-multiple-documents]
         exclude: |
           (?x)^(
             helm/.*/templates/.*\.yaml|
@@ -54,7 +55,8 @@ repos:
             \.tool-.*|
             \.work/.*|
             mobile/.*/android/.*|
-            mobile/.*/ios/.*
+            mobile/.*/ios/.*|
+            .*\.(png|jpg|jpeg|gif|webp|ico|bmp|svgz|mp3|mp4|webm|ogg|wav|woff|woff2|ttf|otf|eot|pdf|zip|gz|tgz|bz2|xz|7z|tar|jar|aar|aab|apk|ipa|exe|dll|so|dylib|class|wasm|bin|glb|gltf|hdr|ktx|ktx2|basis|dds)
           )$
       - id: trailing-whitespace
         exclude: |
@@ -62,7 +64,8 @@ repos:
             \.tool-.*|
             \.work/.*|
             mobile/.*/android/.*|
-            mobile/.*/ios/.*
+            mobile/.*/ios/.*|
+            .*\.(png|jpg|jpeg|gif|webp|ico|bmp|svgz|mp3|mp4|webm|ogg|wav|woff|woff2|ttf|otf|eot|pdf|zip|gz|tgz|bz2|xz|7z|tar|jar|aar|aab|apk|ipa|exe|dll|so|dylib|class|wasm|bin|glb|gltf|hdr|ktx|ktx2|basis|dds)
           )$
       - id: check-merge-conflict
       - id: check-added-large-files
