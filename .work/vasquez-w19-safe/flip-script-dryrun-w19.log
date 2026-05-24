@@ -1,0 +1,25 @@
+# Phase K Wave 19 — Vasquez QA flip-script dry-run capture
+# Command: bash tests/ci/lane-discipline-flip-required.sh --dry-run
+# Branch:  stlong/phase-k-wave-19-bringup
+# Author:  Vasquez (QA)
+# Purpose: Evidence archive for §4.8 Stephen-decision tree (branch-
+#          protection enforcement flip) at W19 close.
+#
+# §4.8 status at W19 close: UNCHANGED.  11-wave deferral arc (W7 → W19)
+# continues.  Stephen has NOT selected an Option (A: enable required
+# status checks; B: defer to phase L; C: open Required-Reviewer rule
+# only).  See docs/agent-handoff-protocol.md §4.8 + Vasquez W19 inbox
+# memo §2.2 for full status capture.
+#
+# Tool dependency note: the flip script invokes the GitHub branch-
+# protection REST API and parses the response with `jq`.  On the W19
+# Vasquez bring-up environment, `jq` is not on PATH, so the script
+# exits with status 2 before executing the dry-run plan.  This is
+# captured below verbatim for audit trail.
+#
+# ── stderr ─────────────────────────────────────────────────────────
+ERR: jq not on PATH. The script uses jq for response parsing.
+exit=2
+# ── end ────────────────────────────────────────────────────────────
+# Net §4.8 disposition: NO CHANGE.  Stephen-decision still open;
+# enforcement flip remains deferred.  Re-prompt at W20.

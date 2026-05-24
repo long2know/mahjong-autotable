@@ -257,7 +257,8 @@ public sealed class VasquezW17SelfLaneTests
         // self-lane test stays green across the W18 rename wave.
         var t = asm.GetTypes().FirstOrDefault(x =>
             x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW19RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 
