@@ -17004,3 +17004,80 @@ W21 closed `admin-panel` at 48,984 B with only 168 B headroom under the 49,152 B
 ### Phase K Wave 22 — DONE.
 
 ---
+## Phase K — Wave 23 (W22 → W23 forward queue executed across 4 lanes: Apone's 6-deliverable bring-up anchored by **Kyverno W23 audit-launch 4th batch (`require-readonly-rootfs` + `require-runas-non-root`; 5-WAVE grace W23 → W28 — WIDEST grace window of Phase K)** + SLSA drift retrospective + Mobile platform cross-check workflow + us-east-1 V3 runbook + Argo Rollouts post-install verification + CHANGELOG `[0.32.0]`; Bishop's 7-deliverable backend bring-up anchored by **Buchholz + Sonneborn-Berger tiebreakers + `GET /api/tournaments/{id}/standings` first PUBLIC-facing endpoint added since W6 baseline** + Replay chunked-UPLOAD finalize-with-checksum endpoint + JWT rotation-drill autorun BackgroundService + SignalR per-group EWMA telemetry + `GET /api/signalr/groups` + Audit-log retention purge + Replay restoration audit-history paginated + 6 NEW audit-kind constants + 3-provider migration `Phase_K_W23_BuchholzAndSignalRGroupTelemetry` + 82 NEW tests; Hicks's 5-deliverable frontend bring-up anchored by **bundle audit §3.8 ≤95 KiB ceiling HIT CLEANLY at 44,550 B with 51.49 KiB headroom (LARGEST §-step margin of Phase K) + SignalR `manualChunks` vendor split (FIRST vendor-package code-split of Phase K) + cumulative `autotable-src-eager` compression −80.0 % milestone CROSSED CLEANLY (W15→W23: 222,847 → 44,550 = −178,297 B)** + `lobby.ts` ~600 LOC surgery splitting into 5 NEW lazy chunks + Phase L discard-pile + score-display wire-up via `discard-pile-controller.ts` (1-wave-staging from W22 forge-of-pause-lobby pattern) + 6 W23 admin UI surfaces (Buchholz / SignalR groups / JWT drill / retention / replay-history / theme); Vasquez's 6-deliverable QA bring-up anchored by **§6.12 NEW LH13 W23 HOLD-YELLOW ratification (6th consecutive HOLD-YELLOW W18→W23; W25 PROMOTE EARLIEST unchanged)** + §11 NEW W23 retrospective audit (5-rule structural-discipline check; 4 lane bring-up commits CLEAN on all 5; coord-direct EXECUTION row remains the W22 K8sManifestSanity entry with no W23 addition) + §11.4 NEW 15-wave-deferral-arc NOT-OPEN-§4.9 rationale (preserves zero-EXECUTION streak at W23; reversibility-first asymmetry continues to apply; W24 16-wave re-evaluation flagged) + KW22 → KW23 regression rename + 3-wave mobile-pin OR-broadening (3-version OR `{ 0.30.0, 0.31.0, 0.32.0 }`) + W22 csproj soft-pin repair propagation; **final gate 5257/0/0 (+185 over W22 close 5072)**; **13th consecutive 0-violation lane-discipline wave** (`tests/ci/check-cross-lane-bundling.sh --strict` `checked=4 violations=0`); **4-for-4 CLEAN — no Coord-direct EXECUTION required at W23 — 1st zero-EXECUTION wave post-W22 reset**; **3rd consecutive 4-for-4 atomic-flock compliance (W21 + W22 + W23) — convention NOW RATCHETED into permanent process invariant**; **18-wave zero-INTERVENTION streak (W6 → W23) preserved**; **13th consecutive three-renderer-big hold-line wave at 406,635 B**) — stlong/phase-k-wave-23-bringup (2027-05-XX)
+
+### Decisions carried forward at W23 close
+
+#### Identity hardening
+
+- **Per-invocation `git -c user.name=X -c user.email=Y commit ...`** remains canonical. **18 consecutive clean waves at W23 close (W6 → W23; ~165+ commits across the streak — incl. 1 coord-direct fix commit at `7888b3b` from W22).** No use of global identity in any in-repo commit.
+- **`flock -w 120 9 9>.work/squad-git-lock` mutex** guards every `fetch → rebase → add → commit → push` sequence. **14 consecutive fully-adopted waves at W23 close (W10 → W23). THIRD consecutive wave with 4-for-4 atomic-flock compliance (W21 first; W22 second; W23 third — meets the W22 §7.8 ratcheted-convention 3-consecutive-wave threshold; discipline NOW transitions from "lesson from a specific incident (W19 §7.1)" to permanent process invariant).**
+- **W21 §9 stash-isolation directive** (5 sub-rules) continues to hold for the 3rd consecutive wave at W23; W23 retrospective audit (`docs/agent-handoff-protocol.md §11`) shows all 4 lane bring-up commits CLEAN on all 6 rules (5 stash-isolation + 1 selective-add); zero coord-direct EXECUTION at W23.
+- **W22 NEW 3-version OR forward-broadening precedent for mobile version-pin contract tests** propagates into W23 cleanly — Vasquez W23 lands the 3rd consecutive cross-wave mobile-pin self-repair (W23 OR broadened to `{ 0.30.0, 0.31.0, 0.32.0 }` to absorb the W23 0.32.0 CHANGELOG bump). **3rd consecutive wave of in-lane QA self-repair via forward-broadening — precedent now 3-wave-old + canonical.** Vasquez W23 ALSO ships a second self-repair: W22 csproj soft-pin re-broadening to accept either `8.0.0` or `8.0.1` ServiceDefaults package floors (W22 had soft-pinned to `8.0.0`; W23 forward-stages `8.0.1` as the in-development floor).
+- **Co-authored-by trailer** on every wave-author + Coordinator-direct EXECUTION commit. 13-wave streak W11 → W23.
+
+#### Lane-discipline
+
+- **`tests/ci/check-cross-lane-bundling.sh --strict` 0-violation streak at tip: 13 consecutive waves (W11 → W23). 13th-consecutive-wave milestone.**
+- **`shared_files` registry held unchanged across W15 → W23 = 9 waves** (8 entries unchanged). The W17-hypothesised late-mature steady state confirms for the 6th consecutive wave at W23.
+- **13 of 13 waves in the 0-violation streak: 10 unamended (W11 + W14 + W16 + W17 + W18 + W19 + W20 + W21 + W22 + W23 unamended; W12 + W13 + W15 amended). 77 % of all 13 waves unamended; 100 % of last 7 waves (W17→W23) unamended — late-mature steady state hardens further wave-on-wave for the 6th consecutive wave** (W18: 50 %; W19: 63 %; W20: 70 %; W21: 73 %; W22: 75 %; W23: 77 %).
+- **W23 lane-discipline NARRATIVE — fourth wave with ZERO in-flight violations across all 4 bring-up commits.** Same posture as W20 + W21 + W22; W17–W19 lessons + W20 §7 retro + W21 §9 stash-isolation directive + W22 §10 retrospective audit + W22 §9.4.1 K8sManifestSanity bug-pattern lesson + W22 §9.4.2 future CI safeguard candidate all propagated cleanly into the W23 per-agent prompt template. No coord-direct EXECUTION required; `checked=4 violations=0` at Scribe pre-flight + post-Scribe re-check.
+
+#### Coordinator-direct EXECUTION ledger (cumulative W6 → W23)
+
+| Wave | EXECUTION | Shots | Attribution | Outcome |
+|------|-----------|-------|-------------|---------|
+| W17  | LH13 §6.7 cron seed (PRIMARY pump) | 3 | Coordinator-direct | 3rd run `failure` (root cause at W17 close; Apone D1 fix at W18) |
+| W18  | LH13 §6.7 post-fix cron seed       | 3 | Coordinator-direct | 3 × `success` (empirical convergence) |
+| W18  | Bishop test-regex anchor fix        | 1 | Coordinator-direct (commit attribution: Bishop-lane) | Gate 4110/4111/0 → 4111/0/0 |
+| W19  | Bishop W19 inbox-memo `git add -f` force-add (`e341092`) | 1 | Coordinator-direct (commit attribution: Bishop-lane per W18 §8.3) | Preserves Scribe-fold input for W19 decision-ledger continuity |
+| W20  | — (zero) | 0 | — | First zero-EXECUTION wave |
+| W21  | — (zero) | 0 | — | Second consecutive zero-EXECUTION wave |
+| W22  | Apone K8sManifestSanity kustomization fix (`7888b3b`) | 1 | Coordinator-direct (commit attribution: Apone-lane per W18 §8.3 precedent) | Gate 5071/1/0 → 5072/0/0; BROKE the 2-wave zero-EXECUTION streak |
+| **W23**  | **— (zero)** | **0** | **—** | **1st zero-EXECUTION wave post-W22 reset; 4-for-4 CLEAN; W22 §9.4.1 K8sManifestSanity lesson propagation validated end-to-end (no W22-style missed-entry repeat at W23)** |
+
+**Cumulative across 4 waves (W17+W18+W19+W22): 4 EXECUTION events / 9 individual actions (7 gh-invocations + 2 git commits). W20 + W21 + W23 each contribute ZERO; W22 contributes ONE.** Categorically distinct from INTERVENTION; **18-wave zero-INTERVENTION streak (W6 → W23) preserved.** EXECUTION cadence by wave: W17 1 → W18 2 → W19 1 → W20 0 → W21 0 → W22 1 → **W23 0**. W23 is the 1st zero-EXECUTION wave post-W22 reset; the W22 §9.4.1 K8sManifestSanity bug pattern propagation into the W23 prompt template prevented a recurrence at W23 (lane-author + manifest-list-add coupling now part of the prompt's standing self-checks).
+
+#### −80.0 % cumulative-bundle-compression milestone (W23 NEW)
+
+`autotable-src-eager` W15 → W23 cumulative compression: 222,847 → **44,550 = −178,297 B = −80.0 %** over 8 waves. **Crosses the −80 % milestone CLEANLY** (W22 was −52.0 %; W23 surgery extracts onboarding-stage-2 + avatar-cache + 3 lobby-route splits + theme-extracted = 5 NEW lazy chunks 10,884 B total + 3 NEW lazy probes 7,701 B + theme 2,227 B). **Second half-life milestone in Phase K** (after W22's −52.0 %). The §3.x audit ladder (§3.0 framing W14 → §3.1 W15 → §3.2 W16/W17 → §3.3 W18 1.7× target → §3.4 W19 1.03× → §3.5 W20 1.09× → §3.6 W21 1.05× → §3.7 W22 1.005× → **§3.8 W23 ≤95 KiB ceiling HIT at 44,550 B with 51.49 KiB headroom — LARGEST §-step margin of Phase K**) continues. **W23 single-wave delta of −62,470 B (eclipses W17's −45,940 B at the §3.2 first major shed by +16,530 B / +36 %) is the LARGEST single-wave compression delta of Phase K.**
+
+#### Bundle audit §3.8 ≤95 KiB ceiling HIT (W23 NEW)
+
+`autotable-src-eager` 44,550 B vs §3.8 ≤95 KiB (97,280 B) ceiling = **+52,730 B / +51.49 KiB headroom**. **LARGEST §-step margin of Phase K.** §3.8 was framed at W22 close as the next §3.x ceiling target; W23 HITS it CLEANLY in a single wave with double-digit-KB headroom. Headroom remaining is suff. cushion for ≥6 more single-wave compression steps at the W17 §3.2-class delta band (~30 KB/wave) before the next §3.x ceiling-step would need to be framed.
+
+#### SignalR `manualChunks` vendor split (W23 NEW — first vendor-package code-split of Phase K)
+
+`src/frontend/autotable-src/vite.config.ts` adds a `manualChunks(id)` callback that routes all `@microsoft/signalr` module IDs to a dedicated `signalr` chunk. **Result: NEW 56,692 B `signalr` lazy chunk; the SignalR client + WebSocket transport modules no longer eagerly contribute to `autotable-src-eager`.** First vendor-package code-split of Phase K — establishes the pattern for future vendor splits (Three.js renderer-pack, Howler audio-pack, future tournament-table heavy-vendor packs candidate at W24+).
+
+#### Three-renderer-big hold-line (13th consecutive wave)
+
+Three-renderer-big: 406,635 B at W23 close (unchanged from W22 close = 406,635 B). **13 consecutive wave hold-line milestone.** Cumulative W6 → W23 = −44.9 % unchanged. `renderer-webgl2` 40,292 → 47,315 B (+7,023 B; Phase L discard-pile + score-display wire-up live; 21.5 % of the 220 KB Phase L envelope consumed at this point). Tile-mesh `MAX_INSTANCES` 200 → 320 for the larger discard-pile during long hands.
+
+#### LH13 §6.12 HOLD YELLOW (6th consecutive wave W18 → W23)
+
+`docs/learning-history.md §6.12` (LH13 ratification entry) carries HOLD YELLOW for the 6th consecutive wave (W18 first → W23 sixth). Natural cron-pace accumulation blocker unchanged; W25 PROMOTE EARLIEST prediction unchanged from W22's projection.
+
+#### §4.8 15-wave deferral arc (W7 → W23) + §11.4 NEW NOT-OPEN-§4.9 rationale (W23 NEW)
+
+`docs/agent-handoff-protocol.md §4.8` deferral arc extends to **15 waves at W23 (W7 through W23)** — 15-wave-deferral milestone. Vasquez W23 §11.4 NEW EXPLICIT NOT-OPEN-§4.9 rationale: (1) reversibility-first asymmetry continues to apply — opening §4.9 cannot be cleanly un-opened mid-wave; (2) W23 ships ZERO Coord-direct EXECUTION (the strongest possible signal that §4.8 hold remains correct under current operating posture); (3) the W22 reset event was strict-bug-class (K8s kustomization missed-entry; W22 §9.4.1) and does NOT shift the §4.9 calculus; (4) **W24 16-wave re-evaluation explicitly flagged** in §11.4 — first wave at which §4.9 should be RE-OPENED for active reconsideration if §6.12 LH13 promotes OR a fresh strict-bug-class Coord-direct EXECUTION event lands. Until then, §4.8 hold extends naturally.
+
+#### Forward queue / Stephen-blocked at W23 close
+
+- **us-east-1 IRSA + Argo Rollouts** — W22 ships the auto-rollback dry-run trigger workflow + runbook; W23 Apone D4 ships the post-install verification runbook (us-east-1 V3); live apply Stephen action item #2.
+- **First real prod JWT rotation** — W19 April 2027 window scheduled; W23 ships the autorun BackgroundService drill scaffold (Bishop D3); live rotation Stephen-scheduled.
+- **W20-BLOCKED — Kyverno W19 enforce-flip prod cluster apply** — manifests in place; Stephen `kubectl apply`.
+- **W21-BLOCKED — Helm chart `helm-vX.Y.Z` first tag creation.** Triggers signed release pipeline (`helm-release.yml`). Awaiting Stephen.
+- **W21-BLOCKED — us-east-1 auto-rollback opt-in.** W21 D3 + W22 D5 + W23 D4 ship safety net + dry-run trigger + post-install verification; Stephen selects `enable_auto_rollback = true` at apply.
+- **W22-BLOCKED — Kyverno W22 ingress-validation enforce-flip + W22 audit-mode pair (`require-resource-limits` + `disallow-host-paths`) prod apply.** W23 enforce-flip pre-wired by Apone W23 D1 ladder.
+- **W22-BLOCKED — SLSA-3 drift-detection weekly cron** — W23 Apone D2 ships the FIRST drift-retrospective (auto-fires on weekly cron's first non-empty result; recovery runbook in `docs/slsa-drift-detection.md`).
+- **W22-BLOCKED — Mobile tvOS + watchOS Apple Developer enrolment** — unchanged from W22; W23 mobile platform cross-check workflow (Apone D3) does not unblock the Apple-side enrolment.
+- **NEW W23-BLOCKED — Kyverno W23 audit-launch 4th batch (`require-readonly-rootfs` + `require-runas-non-root`).** **5-WAVE GRACE W23 → W28 — WIDEST grace window of Phase K** (W19's 3-wave + W22's 4-wave grace windows surpassed). Stephen prod-cluster `kubectl apply` on the W23 audit-mode policies pending.
+- **NEW W23-BLOCKED — Buchholz / Sonneborn-Berger tiebreaker live tournament adoption.** Bishop W23 D1 lands the algorithms + `GET /api/tournaments/{id}/standings` PUBLIC endpoint (FIRST PUBLIC-facing endpoint added since W6 baseline); live tournament operator selection of Buchholz vs SB tiebreakers is Stephen / tournament-runner action.
+- **NEW W23-BLOCKED — SignalR per-group EWMA telemetry first prod-flag-flip.** Bishop W23 D4 lands the telemetry + `GET /api/signalr/groups` admin endpoint; Stephen feature-flag flip to enable in prod once observability dashboards are validated.
+
+**18 consecutive weeks of Stephen re-prompt sequence; W23 §4.8 hold extends to 15 waves (W7 → W23) with §11.4 NEW explicit NOT-OPEN-§4.9 rationale + W24 16-wave re-evaluation flag; W23 §6.12 LH13 HOLD YELLOW maintained for the 6th consecutive wave (natural cron-pace accumulation gap; W25 PROMOTE EARLIEST unchanged); Stephen-blocked list expands (Kyverno W23 audit-launch 4th batch with 5-WAVE grace NEW; Buchholz / Sonneborn-Berger live adoption NEW; SignalR per-group EWMA prod flag-flip NEW) while contracting nothing (W22 Kyverno enforce-flips remain pending pre-flip).**
+
+### Phase K Wave 23 — DONE.
+
+---
