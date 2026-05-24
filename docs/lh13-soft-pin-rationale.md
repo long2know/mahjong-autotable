@@ -519,3 +519,99 @@ W21.**  Identical reasoning to W20: with HOLD disposition, no
 W21 Vasquez bring-up may cross-ref this §12 and re-confirm the
 HOLD in the §6.8 row (per the W19 hand-off's "Vasquez cross-ref"
 clause, carried forward through W20 and now W21).
+
+## §13 — W22 bring-up status update (Hicks)
+
+Re-running the §4.2 evidence-gate check at W22 bring-up against
+the post-W18-merge baseline.  The §4.2 convergence criterion
+remains "≥3 consecutive successful `schedule:`-event runs against
+the candidate workflow tree".
+
+**Key disclosure from the W21-close coordinator probe (carried
+through to W22 open).**  The W21 Vasquez bring-up window finally
+landed an authenticated `gh run list` against the actual
+`pwa-audit.yml` history.  The factual record on `main` (post-W18
+merge `7832f49`) at W22 bring-up is:
+
+| Metric | Count | Notes |
+|--------|-------|-------|
+| `pwa-audit.yml` `schedule`-event runs TOTAL on `main` (any conclusion) | **1** | sha=`c866535` (W16 merge), FAILED (pre-W18 fix) |
+| `pwa-audit.yml` `schedule`-event runs with `conclusion=success` post-W18-merge | **0** | the natural cron has not yet fired against the W18-patched tree |
+| `pwa-audit.yml` `workflow_dispatch` runs post-W18-merge | 1 (frozen since W19) | `success`, sha=`7832f49` |
+
+The W21-close coordinator readout confirmed the `pwa-audit.yml`
+cron schedule is `30 2 * * *` (nightly at 02:30 UTC; verified
+against the workflow-file `schedule:` block).  This is once-per-
+day, NOT hourly as the W19→W21 §4.2 analysis tacitly assumed
+("hourly cron tick" wording).
+
+**Consequence.**  The §4.2 evidence-gate cannot accumulate ≥3
+SUCCESS schedule-event runs until at least 3 nightly cron ticks
+have fired against the W18-patched tree.  The W18 merge landed
+at `2026-05-24T11:02:58Z`; the first post-merge nightly cron
+fires at `2026-05-25T02:30Z`, the second at `2026-05-26T02:30Z`,
+the third at `2026-05-27T02:30Z`.
+
+**Re-evaluation projection.**  At W22 bring-up (~`2026-05-24T09:1xZ`)
+the wall-clock is still PRE-FIRST-POST-MERGE-CRON.  The §4.2
+evidence-gate is mathematically impossible to satisfy until at
+least `2026-05-27 02:30 UTC` (3rd nightly cron tick post-W18-
+merge).  Projected PROMOTE wave: **W25 earliest** assuming the
+bring-up cadence holds at ~1 wave per ~1.5 hours; W22→W23→W24→W25
+puts the W25 bring-up window comfortably past `2026-05-27 02:30 UTC`.
+
+**The gh-auth gap is NO LONGER the blocker.**  W19 / W20 / W21
+all carried "bring-up shell can't authenticate `gh`" as the
+gate-blocker.  The W21-close coordinator probe cleared that
+read: the actual count IS observable; it is just **0** until the
+cron has fired enough nights to accumulate the sample.  The
+blocker is now purely **natural cron-pace accumulation**.
+
+**Decision: HOLD §6.8 YELLOW.  Do NOT promote to hard-pin GREEN.**
+
+Reason: the §4.2 binary count of successful schedule-event runs
+on `main` post-W18-merge stands at 0 of 3 required.  The HOLD
+disposition is unchanged from W19/W20/W21 but the underlying
+reason has shifted from "observation gap" → "sample-accumulation
+gap".
+
+**No regression to RED.**  The LH13 row stays YELLOW (not RED)
+for the same reasons as W19/W20/W21: the W18 remediation IS on
+`main`, the `workflow_dispatch` smoke continues to return
+`success`, and no regression evidence is observed.  The only
+remaining gate is calendar time.
+
+**Re-eval criterion (calmly restated for W23+ inheritors).**  Promote
+§6.8 to hard-pin GREEN when the canonical §4.2 query
+
+```
+gh run list --workflow=pwa-audit.yml --event=schedule \
+  --limit 20 --json status,conclusion,createdAt,headSha,databaseId \
+  --jq '.[] | select(.conclusion == "success")'
+```
+
+returns **≥3 entries with `createdAt > 2026-05-24T11:02:58Z`
+(the W18 merge timestamp)** AND each of the 3 entries' `headSha`
+resolves to a commit that includes the LH13 root-cause fix from
+`docs/lh13-root-cause-fix-w18.md`.
+
+**Predicted PROMOTE wave: W25 earliest.**  3 daily cron runs
+post-W18-merge accumulate by ~`2026-05-27 02:30 UTC`.  The W25
+bring-up window is the earliest agent-runtime opportunity to
+observe the third successful cron tick.  If the bring-up cadence
+slows or the cron schedule is changed (e.g. to hourly to
+accelerate the gate), the projection slides accordingly.
+
+**No `docs/agent-handoff-protocol.md §6.8` PROMOTE update at
+W22.**  Identical reasoning to W19/W20/W21: with HOLD disposition,
+no §6.8 row mutation is in scope for the W22 Hicks lane.  The
+W22 Vasquez bring-up may cross-ref this §13 and re-confirm the
+HOLD in the §6.8 row (per the W19 hand-off's "Vasquez cross-ref"
+clause, carried forward through W20/W21 and now W22).
+
+**Hand-off to W23 Hicks bring-up:** re-run the §4.2 canonical
+query.  If the cron has fired post-merge but accumulated <3
+successes, document the running count in a §14 W23 update and
+hold YELLOW.  If 3+ post-merge successes are observed, promote
+§6.8 to hard-pin GREEN per the §6 protocol.  No earlier action
+required on this doc.

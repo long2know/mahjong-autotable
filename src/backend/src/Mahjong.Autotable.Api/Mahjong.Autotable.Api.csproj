@@ -4,15 +4,16 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Phase K Wave 21 — Bishop (Backend). W21 cadence bump.
+    <!-- Phase K Wave 22 — Bishop (Backend). W22 cadence bump.
          W19 landed the canonical <Version> element + first
          strict-> baseline contract; W20 advanced 0.28.0 → 0.29.0;
-         W21 advances 0.29.0 → 0.30.0 and the W21 contract test
-         (tests/Phase_K_W21/Bishop/BackendCsprojVersionTests.cs)
-         pins both the new stamp and the strict-> 0.29.0 invariant
+         W21 advanced 0.29.0 → 0.30.0; W22 advances 0.30.0 → 0.31.0
+         and the W22 contract test
+         (tests/Phase_K_W22/Bishop/BackendCsprojVersionTests.cs)
+         pins both the new stamp and the strict-> 0.30.0 invariant
          so a future rebase that drops the bump fails loudly in CI.
          See docs/agent-handoff-protocol.md §VERSION-BUMP. -->
-    <Version>0.30.0</Version>
+    <Version>0.31.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

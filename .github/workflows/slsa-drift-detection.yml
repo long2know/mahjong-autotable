@@ -1,0 +1,199 @@
+# Phase K Wave 22 — Apone (DevOps).
+#
+# SLSA-3 drift-detection — weekly sustaining workflow.
+#
+# W20 closed the repo-wide SLSA-3 SHA-pinning sweep — 197
+# apone-lane pins / 39 workflows landed at W19/W20 ship,
+# with the 9 vasquez-lane pins documented in
+# `docs/slsa-pinning-w20-sweep.md` for a parallel lane-pure
+# follow-up. W22 adds the SUSTAINING workflow that detects
+# pin drift week-over-week:
+#
+#   1. Walk every `.github/workflows/*.yml` file.
+#   2. Extract every `uses: <action>@<ref>` reference.
+#   3. FAIL the run if any `<ref>` matches the
+#      semver-shaped pattern `v<digits>(.<digits>)*` —
+#      i.e. is NOT a 40-character SHA. The SLSA reusable
+#      workflow (`slsa-framework/slsa-github-generator/
+#      .github/workflows/generator_generic_slsa3.yml`) is
+#      the documented exception per the SLSA-3 spec; it is
+#      explicitly allow-listed.
+#   4. Pass the run when every ref outside the allow-list
+#      is a 40-char hex SHA pin.
+#
+# # Why a SEPARATE workflow (not extended sbom.yml /
+#   slsa-provenance.yml)
+#
+# Drift detection has a different cadence (weekly vs
+# per-PR), a different failure semantic (drift surfaces
+# as a CI red rather than a release block), and a
+# different scope (every workflow file rather than a
+# specific image manifest). Keeping it in its own file
+# means:
+#
+#   * A failure here is unambiguous — drift, not a CVE
+#     and not a build break.
+#   * The workflow CAN run independently of the release
+#     pipeline (weekly cron + manual workflow_dispatch).
+#   * `docs/slsa-drift-detection.md` documents the
+#     allow-list + the operator runbook in one place
+#     rather than bolting onto the SLSA-3 provenance doc.
+#
+# # Schedule rationale
+#
+# Weekly (Monday 07:00 UTC) — one cycle ahead of the
+# Monday release.yml ship. Drift surfaced on Monday
+# morning gives Apone the full week to land the pin
+# rewrite + a clean re-run before the next release.
+# Aligns with the W17 lane-discipline-nightly cadence
+# (06:00 UTC daily) — drift-detection runs ONE HOUR
+# after the nightly so the lane-baseline report is
+# available for cross-reference.
+#
+# # Cross-references
+#
+#   * `docs/slsa-pinning-w20-sweep.md` — the W20 sweep
+#     ledger (the source of truth for expected SHAs).
+#   * `docs/slsa-drift-detection.md` — the W22 runbook.
+#   * `docs/slsa-provenance.md` — repo-wide SLSA-3 stance.
+
+name: slsa-drift-detection
+
+on:
+  schedule:
+    # Monday 07:00 UTC — one hour after the W17 lane-
+    # discipline-nightly (06:00 UTC) so the latest lane
+    # baseline is available when drift detection runs.
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: 'Print every checked ref (not just drift hits)'
+        required: false
+        default: 'false'
+
+permissions:
+  # Read repo contents only — drift detection is a
+  # static check on the workflow YAMLs in the tree.
+  contents: read
+  # Allow opening / commenting on an issue when drift
+  # surfaces. Mirrors lane-discipline-nightly.yml's
+  # `issues: write` so the operator gets an
+  # acknowledgement trail in the issue tracker rather
+  # than only the failed CI run.
+  issues: write
+
+concurrency:
+  group: slsa-drift-detection-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan workflows for non-SHA pin drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+
+      - name: Scan every workflow for non-SHA `uses:` refs
+        id: scan
+        run: |
+          set -euo pipefail
+          # The allow-list:
+          #   1. SLSA reusable workflow — SLSA-3 spec
+          #      explicitly anchors trust on the semver
+          #      TAG, not the SHA (the OIDC trust contract
+          #      verifies the tag against an in-toto trust
+          #      policy). See docs/slsa-pinning-w20-sweep.md §4
+          #      for the carve-out.
+          #   2. Local workflows — `./.github/workflows/X.yml` —
+          #      shipped from the same repo, no SHA to pin.
+          DRIFT_FILE="$RUNNER_TEMP/drift-hits.txt"
+          : > "$DRIFT_FILE"
+          for wf in .github/workflows/*.yml; do
+            # `grep -nE 'uses:'` lines: capture the action ref
+            # and the file:line for the drift report.
+            while IFS= read -r line; do
+              # `line` shape: `<file>:<lineno>:    uses: <action>@<ref>`
+              ref=$(echo "$line" | sed -E 's/.*uses:[[:space:]]+([^[:space:]]+).*/\1/')
+              # Allow-list 1 — SLSA reusable workflow tag.
+              if echo "$ref" | grep -qE '^slsa-framework/slsa-github-generator/'; then
+                continue
+              fi
+              # Allow-list 2 — local workflows (path starts with `./`).
+              if echo "$ref" | grep -qE '^\./'; then
+                continue
+              fi
+              # Extract the post-`@` portion and check its shape.
+              after_at=$(echo "$ref" | sed -E 's/^[^@]+@//')
+              # SHA pin shape: 40 hex chars (case-insensitive).
+              if echo "$after_at" | grep -qE '^[0-9a-fA-F]{40}$'; then
+                if [ "${{ inputs.verbose }}" = "true" ]; then
+                  echo "OK: $line"
+                fi
+                continue
+              fi
+              # Semver tag drift shape: `v<digits>(.<digits>)*` OR
+              # branch/ref shape (anything not a 40-char SHA).
+              echo "DRIFT: $line" | tee -a "$DRIFT_FILE"
+            done < <(grep -nE '^[[:space:]]*uses:[[:space:]]+[^[:space:]#]+' "$wf" | sed "s|^|$wf:|")
+          done
+
+          drift_count=$(wc -l < "$DRIFT_FILE")
+          echo "drift_count=$drift_count" >> "$GITHUB_OUTPUT"
+          if [ "$drift_count" -gt 0 ]; then
+            echo "::error::SLSA-3 drift detected — $drift_count non-SHA \`uses:\` ref(s) outside the allow-list"
+            echo "==== Drift report ===="
+            cat "$DRIFT_FILE"
+            cp "$DRIFT_FILE" drift-hits.txt
+            exit 1
+          fi
+          echo "==== No drift — every \`uses:\` ref is a 40-char SHA pin (or allow-listed) ===="
+
+      - name: Upload drift report artefact
+        if: failure() && steps.scan.outcome == 'failure'
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: slsa-drift-hits-${{ github.run_id }}
+          path: drift-hits.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Open / update tracking issue on drift
+        if: failure() && steps.scan.outcome == 'failure' && github.event_name == 'schedule'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require('fs');
+            let body = 'SLSA-3 drift detection (weekly) failed. See the failed run for the artefact `slsa-drift-hits-${{ github.run_id }}`.\n\n';
+            try {
+              body += '```\n' + fs.readFileSync('drift-hits.txt', 'utf8') + '\n```';
+            } catch (_) {
+              body += '_(drift-hits.txt unavailable — consult the workflow log directly.)_';
+            }
+            const title = 'SLSA-3 drift detected — weekly drift-detection failed';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'slsa-drift'
+            });
+            if (existing.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['slsa-drift', 'apone']
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body
+              });
+            }

@@ -1,0 +1,214 @@
+# Phase K Wave 22 — Apone (DevOps).
+#
+# SignalR sticky-session shared-cookie validation contract.
+#
+# W19 hardened the nginx-ingress sticky-session cookie shape on
+# infra/k8s/base/ingress.yaml (Secure + SameSite=Lax + 86400s TTL +
+# IP-hash fallback when the cookie is missing). The W20 retro flagged
+# that there is NO admission-time guard against a future operator
+# accidentally:
+#
+#   * dropping the `affinity: "cookie"` annotation
+#   * changing the cookie name from `mahjong_aff` to something else
+#   * shrinking the cookie TTL below the SignalR re-handshake window
+#   * removing the IP-hash configuration-snippet fallback
+#   * disabling the `affinity-mode: "persistent"` annotation
+#
+# Any single one of those edits would silently break SignalR mid-stream
+# (the W11/W12/W19 retro pattern). The W19 hardening lives in YAML
+# annotations rather than runtime checks; only the GitOps reviewer can
+# catch the regression — and the reviewer's eye is not a CI gate.
+#
+# W22 closes that gap with a Kyverno-shaped VALIDATION CONTRACT that
+# REJECTS any Ingress in `mahjong-prod` whose annotations diverge from
+# the W19 sticky-session contract.
+#
+# # Why Kyverno (not OPA / mutating webhook / pre-commit hook)
+#
+# Kyverno is already the W14/W15/W19/W20/W21/W22 admission-control
+# substrate for the cluster. A new Kyverno ClusterPolicy:
+#
+#   * Lands in the same RBAC / webhook trust surface as
+#     `disallow-lateral-movement.yaml` + `require-network-policy.yaml`
+#     + the W21/W22 pair — no new operator action to bootstrap.
+#   * Is observable via the SAME PolicyReport stream Hudson's
+#     `kyverno-deny-events` panel already consumes.
+#   * Carries the SAME rollback path — single `git revert` restores
+#     the prior policy state.
+#
+# A mutating webhook is overkill (the contract is to REJECT bad
+# config, not to repair it — a silent mutation would mask the
+# operator's mis-edit). An OPA/Gatekeeper deployment would
+# introduce a SECOND admission stack — operationally expensive.
+#
+# # The shape — one ClusterPolicy with FIVE invariant sub-rules
+#
+# Each sub-rule asserts ONE element of the W19 sticky-session
+# contract. A single failed assertion REJECTS the Ingress apply.
+# All five sub-rules use the canonical Kyverno `pattern:` shape;
+# `validate.message:` carries the cross-reference to the W19
+# hardening doc so the operator sees the rationale inline.
+#
+# # Why audit-mode at the W22 LAUNCH
+#
+# Mirrors the W19→W20 + W21→W22 audit→enforce cadence. The W22
+# launch lands in Audit mode with a 5-day grace window; the W23
+# enforce-flip is the planned cutover (see
+# docs/signalr-affinity-validation-w22.md §3.4).
+#
+# # Audit-mode + zero-violation baseline
+#
+# Pre-W22 verification confirms the current `infra/k8s/base/
+# ingress.yaml` satisfies ALL FIVE sub-rules — the policy lands
+# clean against the current prod Ingress.
+#
+# # Wiring
+#
+# Out-of-band at W22 — NOT in `base/kustomization.yaml`. Same shape
+# as the W19/W21 Kyverno ClusterPolicies. Apply directly:
+#
+#   kubectl apply -f infra/k8s/base/ingress-validation.yaml
+#
+# # Cross-references
+#
+#   * `infra/k8s/base/ingress.yaml` — the W7/W19-hardened Ingress
+#     this policy guards.
+#   * `infra/k8s/base/kyverno-policies/disallow-lateral-movement.yaml`
+#     — W19/W20 reference policy shape.
+#   * `docs/signalr-affinity-hardening-w19.md` — the W19 cookie
+#     contract this policy enforces.
+#   * `docs/signalr-affinity-validation-w22.md` — W22 operator
+#     runbook.
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: validate-signalr-sticky-session
+  annotations:
+    policies.kyverno.io/title: "Validate SignalR sticky-session ingress contract (W22, Audit)"
+    policies.kyverno.io/category: "SignalR / Affinity Hardening"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/subject: "Ingress"
+    policies.kyverno.io/description: >-
+      W22 audit-mode policy. Five sub-rules assert the W19
+      sticky-session ingress contract on every Ingress in
+      mahjong-prod: cookie-affinity + persistent mode +
+      mahjong_aff cookie name + 86400s TTL + IP-hash
+      fallback snippet. A diverging Ingress would silently
+      break SignalR mid-stream (W11/W12/W19 retro pattern).
+      5-day grace window precedes the W23 enforce-flip —
+      see docs/signalr-affinity-validation-w22.md §3.4 for
+      the cutover plan.
+spec:
+  # W22 audit-mode launch — mirrors the W19/W21 audit
+  # window discipline. The W23 cutover flips this to
+  # Enforce alongside `failurePolicy: Ignore → Fail`.
+  validationFailureAction: Audit
+  background: true
+  webhookTimeoutSeconds: 30
+  failurePolicy: Ignore
+  rules:
+    - name: require-affinity-cookie
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+              namespaces:
+                - mahjong-prod
+      validate:
+        message: >-
+          mahjong-prod Ingress MUST declare
+          nginx.ingress.kubernetes.io/affinity: "cookie".
+          Dropping the annotation silently breaks SignalR
+          mid-stream (the WS upgrade round-robins to a
+          fresh pod). See docs/signalr-affinity-validation-w22.md §1.1.
+        pattern:
+          metadata:
+            annotations:
+              nginx.ingress.kubernetes.io/affinity: "cookie"
+    - name: require-affinity-mode-persistent
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+              namespaces:
+                - mahjong-prod
+      validate:
+        message: >-
+          mahjong-prod Ingress MUST declare
+          nginx.ingress.kubernetes.io/affinity-mode: "persistent".
+          `balanced` mode allows the cookie to round-robin
+          to a fresh pod on backend churn — incompatible
+          with SignalR's stateful WS connection. See
+          docs/signalr-affinity-validation-w22.md §1.2.
+        pattern:
+          metadata:
+            annotations:
+              nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    - name: require-session-cookie-name-mahjong-aff
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+              namespaces:
+                - mahjong-prod
+      validate:
+        message: >-
+          mahjong-prod Ingress MUST declare
+          nginx.ingress.kubernetes.io/session-cookie-name:
+          "mahjong_aff". The cookie name is the
+          stable identifier for the affinity fallback
+          (configuration-snippet's $cookie_mahjong_aff
+          reference). Renaming the cookie breaks the
+          fallback. See docs/signalr-affinity-validation-w22.md §1.3.
+        pattern:
+          metadata:
+            annotations:
+              nginx.ingress.kubernetes.io/session-cookie-name: "mahjong_aff"
+    - name: require-session-cookie-max-age-86400
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+              namespaces:
+                - mahjong-prod
+      validate:
+        message: >-
+          mahjong-prod Ingress MUST declare
+          nginx.ingress.kubernetes.io/session-cookie-max-age:
+          "86400" (24h). The 86400s TTL matches the
+          SignalR /hubs/changsha re-handshake window from
+          docs/signalr-sequence-slo.md §3. Shrinking the
+          TTL causes mid-session pod migrations. See
+          docs/signalr-affinity-validation-w22.md §1.4.
+        pattern:
+          metadata:
+            annotations:
+              nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+    - name: require-ip-hash-fallback-snippet
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+              namespaces:
+                - mahjong-prod
+      validate:
+        message: >-
+          mahjong-prod Ingress MUST declare a
+          nginx.ingress.kubernetes.io/configuration-snippet
+          carrying the W19 IP-hash fallback for clients
+          whose mahjong_aff cookie is stripped (corporate
+          proxy / private window / aggressive cookie-
+          clear). The `*` wildcard accepts any snippet
+          that contains the W19 shape; the existence of
+          the annotation is the contract. See
+          docs/signalr-affinity-validation-w22.md §1.5.
+        pattern:
+          metadata:
+            annotations:
+              nginx.ingress.kubernetes.io/configuration-snippet: "?*"

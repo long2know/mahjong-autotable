@@ -247,7 +247,7 @@ async function scheduleAvatarMigrationLazyMount(): Promise<void> {
   } catch { /* corrupt cache — the identity module will repair it */ }
   if (!needsMigration) return;
   try {
-    const mod = await import('./identity');
+    const mod = await import('./identity-avatar-migration');
     mod.installAvatarMigrationModalIfNeeded();
   } catch { /* fail-open: never block the lobby on migration */ }
 }

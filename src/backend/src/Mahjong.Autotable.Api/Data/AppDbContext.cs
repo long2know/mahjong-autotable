@@ -176,6 +176,21 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
     public DbSet<Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt> ReplayRestorationAttempts =>
         Set<Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt>();
 
+    // Phase K Wave 22 — Bishop. Per-tournament final standings
+    // recorded when an admin finalizes a tournament via
+    // POST /api/admin/tournaments/{id}/finalize. One row per
+    // (TournamentId, PlayerId). See
+    // Mahjong.Autotable.Api.Tournament.TournamentFinalizationController.
+    public DbSet<TournamentStanding> TournamentStandings =>
+        Set<TournamentStanding>();
+
+    // Phase K Wave 22 — Bishop. Emergency-revoked JWT key ids,
+    // one row per (TenantId, Kid). Written by
+    // POST /api/admin/jwt-keys/emergency-revoke. See
+    // Mahjong.Autotable.Api.Auth.JwtEmergencyRevokeController.
+    public DbSet<JwtEmergencyRevokedKid> JwtEmergencyRevokedKids =>
+        Set<JwtEmergencyRevokedKid>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ChangshaGame>(entity =>
@@ -763,6 +778,39 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
                 .HasMaxLength(Mahjong.Autotable.Api.Replays.ReplayRestorationAttempt.MaxDetailLength);
             entity.HasIndex(x => new { x.ReplayId, x.AttemptedAtUtc });
             entity.HasIndex(x => x.AttemptedAtUtc);
+        });
+
+        // Phase K Wave 22 — Bishop. Per-tournament final
+        // standings row. (TournamentId, PlayerId) is unique so
+        // a double-finalize is caught at the schema level. The
+        // (TournamentId, Rank) index supports the leaderboard
+        // render ordered by rank.
+        modelBuilder.Entity<TournamentStanding>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlayerId).HasMaxLength(128).IsRequired();
+            entity.HasIndex(x => new { x.TournamentId, x.PlayerId }).IsUnique();
+            entity.HasIndex(x => new { x.TournamentId, x.Rank });
+            entity.HasIndex(x => x.TournamentId);
+            entity.HasOne<Mahjong.Autotable.Api.Data.Entities.Tournament>()
+                .WithMany()
+                .HasForeignKey(x => x.TournamentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Phase K Wave 22 — Bishop. Emergency-revoked JWT key
+        // id. (TenantId, Kid) is unique so re-revocation is a
+        // no-op at the schema level. The TenantId-only index
+        // supports the JwksCacheService validate-time lookup.
+        modelBuilder.Entity<JwtEmergencyRevokedKid>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.TenantId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Kid).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(512).IsRequired();
+            entity.HasIndex(x => new { x.TenantId, x.Kid }).IsUnique();
+            entity.HasIndex(x => x.TenantId);
+            entity.HasIndex(x => x.RevokedAtUtc);
         });
     }
 }

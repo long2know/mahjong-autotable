@@ -589,6 +589,37 @@ public class ReconnectAuditEntry
     /// runs a manual purge of SignalR sequence rows. Detail
     /// format: <c>"reason={r}|tenant={t}|before={iso}|purged={n}"</c>.</summary>
     public const string KindSignalRManualPurge = "signalr.retention.manual-purge";
+
+    /// <summary>Phase K Wave 22 — Bishop. Audit Kind stamped by
+    /// <c>TournamentFinalizationController</c> when an admin
+    /// finalizes a tournament. Locks all rounds, records final
+    /// standings, emits TournamentCompleted event. Detail
+    /// format: <c>"reason={r}|tournamentId={id}|standings={n}"</c>.</summary>
+    public const string KindTournamentFinalized = "tournament.finalized";
+
+    /// <summary>Phase K Wave 22 — Bishop. Audit Kind emitted as a
+    /// TournamentCompleted event row companion to
+    /// <see cref="KindTournamentFinalized"/>. Detail format:
+    /// <c>"tournamentId={id}|winnerPlayerId={pid}|playerCount={n}"</c>.</summary>
+    public const string KindTournamentCompleted = "tournament.completed";
+
+    /// <summary>Phase K Wave 22 — Bishop. Audit Kind stamped by
+    /// <c>JwtEmergencyRevokeController</c> when an admin
+    /// emergency-revokes a kid for a tenant. Detail format:
+    /// <c>"reason={r}|tenant={t}|kid={k}"</c>.</summary>
+    public const string KindJwtEmergencyRevoke = "auth.jwt.emergency-revoke";
+
+    /// <summary>Phase K Wave 22 — Bishop. Audit Kind stamped by
+    /// <c>RoundTimerService</c> when a round is auto-closed past
+    /// its time limit. Detail format:
+    /// <c>"tournamentId={id}|round={r}|matches={n}"</c>.</summary>
+    public const string KindTournamentRoundAutoClosed = "tournament.round.auto-closed";
+
+    /// <summary>Phase K Wave 22 — Bishop. Audit Kind stamped by
+    /// the W22 audit-log paginated query endpoint on every
+    /// successful read. Detail format:
+    /// <c>"kind={k}|actor={a}|page={p}|pageSize={n}|rows={n}"</c>.</summary>
+    public const string KindAuditLogQueried = "audit.log.queried";
 }
 
 /// <summary>
@@ -776,6 +807,26 @@ public class TournamentMatch
     /// when <see cref="ForfeitedByDisconnect"/> is false.
     /// </summary>
     public string? ForfeitedPlayerId { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 22 — Bishop. UTC timestamp when the match
+    /// transitioned out of <c>pending</c>. Set by the runtime
+    /// when a game starts; consulted by the round timer service
+    /// to decide whether to auto-close the round. Null while the
+    /// match is still pending.
+    /// </summary>
+    public DateTime? StartedAtUtc { get; set; }
+
+    /// <summary>
+    /// Phase K Wave 22 — Bishop. Per-match round time limit in
+    /// minutes. When &gt; 0, the round timer service auto-closes
+    /// the match (status → <c>complete</c> with no winner; the
+    /// match is recorded as a draw-by-timeout) once
+    /// <c>StartedAtUtc + TimeLimitMinutes</c> elapses. 0 = no
+    /// auto-close. The default is intentionally 0 so legacy
+    /// tournaments keep their existing behaviour.
+    /// </summary>
+    public int TimeLimitMinutes { get; set; } = 0;
 }
 
 /// <summary>
@@ -1210,4 +1261,82 @@ public class SwissPairingAuditEntry
     /// canonical wire-names plus a small suffix
     /// (<c>"buchholz-cut1"</c> etc.).</summary>
     public const int MaxTiebreakerLength = 64;
+}
+
+/// <summary>
+/// Phase K Wave 22 — Bishop. Final per-player standing recorded
+/// when a tournament is finalized via the W22 finalization
+/// endpoint (<c>POST /api/admin/tournaments/{id}/finalize</c>).
+/// One row per (TournamentId, PlayerId). Rank is the 1-based
+/// final placement; Points is the per-player score the format
+/// uses (wins for round-robin, raw Swiss points, etc.).
+///
+/// <para>The shape is intentionally flat (no FK back to the
+/// tournament) so a tournament hard-delete cascades cleanly
+/// via the explicit relationship below. The
+/// <c>(TournamentId, PlayerId)</c> tuple is unique — refusing
+/// double-finalization at the schema level closes a race the
+/// service-level idempotency guard would otherwise have to
+/// catch.</para>
+/// </summary>
+public sealed class TournamentStanding
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TournamentId { get; set; }
+    public string PlayerId { get; set; } = string.Empty;
+
+    /// <summary>1-based final rank. Ties resolved by the
+    /// finalizer at write time (the service stamps the same
+    /// rank for tied players, then the next non-tied player
+    /// receives <c>rank + tieCount</c> — competition ranking).</summary>
+    public int Rank { get; set; }
+
+    /// <summary>Per-player score in the format's scoring units.
+    /// Defaults to the count of wins recorded for the player in
+    /// <see cref="TournamentMatch"/> rows when the format does
+    /// not surface a richer scoring model.</summary>
+    public int Points { get; set; }
+
+    /// <summary>Total games played by this player across the
+    /// finalized tournament. Surfaced for the operator
+    /// dashboard so a withdrawn player's truncated participation
+    /// is visible at a glance.</summary>
+    public int GamesPlayed { get; set; }
+
+    /// <summary>UTC instant the standings row was stamped.
+    /// Identical across every standing row for the same
+    /// finalize call — the operator dashboard groups by this
+    /// to render the "tournament closed at" timestamp.</summary>
+    public DateTime FinalizedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Phase K Wave 22 — Bishop. Emergency-revoked JWT key id.
+/// Written by the W22 emergency-revoke admin endpoint
+/// (<c>POST /api/admin/jwt-keys/emergency-revoke</c>); consulted
+/// by the JwksCacheService companion on validate-time so a
+/// revoked kid surfaces as a JWKS-document gap immediately,
+/// not after the next rotation tick.
+///
+/// <para>The <c>(TenantId, Kid)</c> tuple is unique — re-
+/// revocation of the same kid for the same tenant is
+/// idempotent at the schema level. The audit trail captures
+/// every attempt via <see cref="ReconnectAuditEntry.KindJwtEmergencyRevoke"/>
+/// even when the row already existed.</para>
+/// </summary>
+public sealed class JwtEmergencyRevokedKid
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string TenantId { get; set; } = string.Empty;
+    public string Kid { get; set; } = string.Empty;
+
+    /// <summary>UTC instant the revocation was recorded.
+    /// Surfaced so the operator dashboard can render
+    /// "revoked N minutes ago".</summary>
+    public DateTime RevokedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Operator-supplied reason (<c>X-Admin-Reason</c>
+    /// header) at revocation time. 512-char cap matches the
+    /// codebase convention for admin reason fields.</summary>
+    public string Reason { get; set; } = string.Empty;
 }

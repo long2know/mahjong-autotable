@@ -51,6 +51,17 @@ resources:
   - coturn-deployment.yaml
   - coturn-configmap.yaml
   - coturn-secret.yaml
+  # Phase K Wave 22 — Apone (DevOps). SignalR sticky-session shared-cookie
+  # validation contract (Kyverno ClusterPolicy). Lives top-level in base/
+  # rather than `kyverno-policies/` subdir because it's a SignalR-affinity
+  # contract scoped to the Ingress resource shipped from this kustomization
+  # — i.e. it's an admission-gate FOR the ingress.yaml above, not a
+  # generic cluster-wide rule. K8sManifestSanity test
+  # (`BaseKustomization_IncludesAllResources`) enumerates every top-level
+  # base/*.yaml and requires each be listed here; missing entries silently
+  # skip deploy. See docs/signalr-affinity-validation-w22.md for the
+  # admission flow + rejection examples.
+  - ingress-validation.yaml
 
 images:
   - name: ghcr.io/long2know/mahjong-autotable

@@ -46,12 +46,18 @@ public sealed class AponeW20ChangelogW20ContractTests
         // tracks the W20+ release cadence — not to hard-pin a
         // single historical value.  W21 Apone's mobile-shell bump
         // landed in 55fc04e (canary-rollout follow-through).
+        // W22 forward-broadening (Vasquez): also accept 0.31.0
+        // (Apone W22 bump in 10907cd, paired with Bishop's
+        // backend csproj 0.30.0 → 0.31.0 bump in 5029650).
         var has = text.Contains("\"version\": \"0.29.0\"", StringComparison.Ordinal)
                    || text.Contains("\"version\":\"0.29.0\"", StringComparison.Ordinal)
                    || text.Contains("0.29.0", StringComparison.Ordinal)
                    || text.Contains("\"version\": \"0.30.0\"", StringComparison.Ordinal)
                    || text.Contains("\"version\":\"0.30.0\"", StringComparison.Ordinal)
-                   || text.Contains("0.30.0", StringComparison.Ordinal);
+                   || text.Contains("0.30.0", StringComparison.Ordinal)
+                   || text.Contains("\"version\": \"0.31.0\"", StringComparison.Ordinal)
+                   || text.Contains("\"version\":\"0.31.0\"", StringComparison.Ordinal)
+                   || text.Contains("0.31.0", StringComparison.Ordinal);
         Assert.True(has);
     }
 }

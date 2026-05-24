@@ -45,13 +45,18 @@ public sealed class W21SurfaceSmokeFactsTests
     {
         var root = FindRepoRoot();
         Assert.NotNull(root);
-        var newPath = Path.Combine(root!.FullName, "src", "backend", "tests",
-            "Mahjong.Autotable.Api.Tests", "Regression",
-            "Wave1ThroughKW21RegressionTests.cs");
-        var oldPath = Path.Combine(root!.FullName, "src", "backend", "tests",
-            "Mahjong.Autotable.Api.Tests", "Regression",
-            "Wave1ThroughKW20RegressionTests.cs");
-        Assert.True(File.Exists(newPath), "New W21 regression class missing.");
+        // W22 forward-broadening (Vasquez): accept either the W21
+        // rename target (Wave1ThroughKW21RegressionTests.cs) OR the
+        // W22 rename target (Wave1ThroughKW22RegressionTests.cs) so
+        // this historical W21-rename-landed pin keeps passing across
+        // each subsequent wave's KW(N) → KW(N+1) rename.
+        var regDir = Path.Combine(root!.FullName, "src", "backend", "tests",
+            "Mahjong.Autotable.Api.Tests", "Regression");
+        var w21Path = Path.Combine(regDir, "Wave1ThroughKW21RegressionTests.cs");
+        var w22Path = Path.Combine(regDir, "Wave1ThroughKW22RegressionTests.cs");
+        var oldPath = Path.Combine(regDir, "Wave1ThroughKW20RegressionTests.cs");
+        Assert.True(File.Exists(w21Path) || File.Exists(w22Path),
+            "Neither the W21 nor the W22 regression class is present.");
         Assert.False(File.Exists(oldPath), "Old W20 regression class still present.");
     }
 
