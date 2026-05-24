@@ -49,14 +49,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # We need full history so `git rev-parse --short HEAD` resolves
           # and the wrapper can stamp the commit column in the history file.
           fetch-depth: 1
 
       - name: Set up Node (for lobby-flood.js + the sentry helper)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
 
@@ -132,7 +132,7 @@ jobs:
 
       - name: Upload load-test artefacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: load-test-${{ github.run_id }}
           path: |
@@ -149,7 +149,7 @@ jobs:
         if: always() && steps.loadtest.outputs.result == 'regression' && env.SMTP_USERNAME != ''
         env:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@4226df7daafa6fc901a43789c49bf7ab309066e7 # v3.12.0
         with:
           server_address: ${{ secrets.SMTP_SERVER || 'smtp.gmail.com' }}
           server_port: ${{ secrets.SMTP_PORT || 587 }}

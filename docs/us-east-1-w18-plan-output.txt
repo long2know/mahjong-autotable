@@ -1,0 +1,225 @@
+# us-east-1 — Phase K Wave 18 terraform plan capture
+#
+# Captured: Phase K Wave 18 PR-readiness window close
+# Captured by: Apone (DevOps)
+# Stack: infra/terraform/envs/prod/ (the apex region IS the
+#        us-east-1 stack per docs/regional-eks-bringup.md §2.1)
+# Command:
+#   # Override the s3 backend → local for the dry-run capture.
+#   echo 'terraform { backend "local" {} }' > _override.tf
+#   cp terraform.tfvars.example terraform.tfvars
+#   terraform init -input=false
+#   AWS_ACCESS_KEY_ID=DRYRUNKEY ... terraform plan \
+#       -refresh=false -lock=false -input=false
+#   rm -f _override.tf terraform.tfvars terraform.tfstate
+#
+# This file is the W18 dry-run capture per the task spec —
+# READ-ONLY plan output, no apply. The W16 + W17 captures are
+# the precedent; the W18 refresh confirms zero source-side
+# drift between W17 and W18 (Apone's W18 source survey returns
+# `git diff origin/main..HEAD -- infra/terraform/` = empty and
+# `git log --oneline c866535..HEAD -- infra/terraform/` = empty).
+#
+# Plan status: PARTIAL-CAPTURE — same as W16 + W17; the AWS-
+# side resources still require valid STS creds. The capture
+# exists for diff-against-W17 evidence + apply-readiness gate
+# documentation (see §3 of docs/regional-eks-bringup.md).
+#
+# W18 verdict: **FULL-GREEN APPLY-READINESS GATE.** The W17
+# Row 3 AMBER (`autotable-src-eager` 209 KB > 200 KB ceiling)
+# is CLEARED at W18 — Hicks's W17 close-out landed the eager-
+# bundle split at 176907 bytes (~177 KB). See §6 below.
+#
+# Cross-references:
+#   * docs/regional-eks-bringup.md §3.9 — W18 apply-readiness
+#     gate (NEW; FULL-GREEN).
+#   * docs/us-east-1-w17-plan-output.txt — W17 dry-run capture.
+#   * docs/us-east-1-w16-plan-output.txt — W16 dry-run capture.
+#   * docs/regional-eks-bringup-plans/ — operator-driven full
+#     plan archive (NOT in CI scope).
+#
+
+=== §1: terraform init (W18 dry-run) ===
+
+Initializing modules...
+Initializing provider plugins...
+- Finding hashicorp/aws versions matching "~> 5.50"...
+- Finding hashicorp/random versions matching "~> 3.6"...
+- Installing hashicorp/aws v5.100.0...
+- Installed hashicorp/aws v5.100.0 (signed by HashiCorp)
+- Installing hashicorp/random v3.9.0...
+- Installed hashicorp/random v3.9.0 (signed by HashiCorp)
+
+Terraform has been successfully initialized!
+
+=== §2: terraform validate ===
+
+Success! The configuration is valid.
+
+=== §3: terraform plan (-refresh=false, dry-run AWS creds) ===
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform planned the following actions, but then encountered a problem:
+
+  # module.redis.random_password.auth_token[0] will be created
+  + resource "random_password" "auth_token" {
+      + bcrypt_hash = (sensitive value)
+      + id          = (known after apply)
+      + length      = 32
+      + lower       = true
+      + min_lower   = 0
+      + min_numeric = 0
+      + min_special = 0
+      + min_upper   = 0
+      + number      = true
+      + numeric     = true
+      + result      = (sensitive value)
+      + special     = false
+      + upper       = true
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + redis_auth_token = (sensitive value)
+
+=== §4: STS + tfvars validation errors (expected — operator-side) ===
+
+  Error: Retrieving AWS account details: validating provider
+         credentials: retrieving caller identity from STS:
+         InvalidClientTokenId: The security token included in
+         the request is invalid.
+    with provider["registry.terraform.io/hashicorp/aws"],
+    on main.tf line 78, in provider "aws":
+
+  Error: Retrieving AWS account details: validating provider
+         credentials: retrieving caller identity from STS:
+         InvalidClientTokenId: The security token included in
+         the request is invalid.
+    with provider["registry.terraform.io/hashicorp/aws"].us_east_1,
+    on main.tf line 86, in provider "aws":
+
+  Error: Invalid value for variable
+    on terraform.tfvars line 50:
+      50: vpc_id             = "vpc-placeholder"
+    vpc_id must look like `vpc-…` (8-17 hex chars after the
+    prefix). (validation rule at variables.tf:122,3-13)
+
+All three errors are operator-side — a cutover-day plan run
+with valid AWS creds + an operator-supplied tfvars file
+(vpc_id populated from `terraform output vpc_id` against the
+primary stack) clears all three. The W18 capture re-validates:
+
+  * terraform init succeeds against the existing module set
+    (W11 → W14 → W15 → W16 → W17 → W18 module baseline holds).
+  * terraform validate confirms the configuration parses + the
+    type constraints pass (exit 0).
+  * The plan engine starts; the FIRST resource
+    (module.redis.random_password.auth_token[0]) plans cleanly
+    without AWS access.
+  * The terraform-side blockers are exclusively operator-side
+    (creds + tfvars), NOT source-side drift.
+
+=== §5: W17 vs W18 source-side drift check ===
+
+The W18 source survey re-runs the W17 drift-check shape against
+the W17 baseline tip (dd2b1c0):
+
+  git diff origin/main..HEAD -- infra/terraform/envs/prod/    → EMPTY
+  git diff origin/main..HEAD -- infra/terraform/modules/edge/ → EMPTY
+  git diff origin/main..HEAD -- infra/terraform/modules/redis/→ EMPTY
+  git log  --oneline dd2b1c0..HEAD -- infra/terraform/        → EMPTY
+
+All four return empty against the W17 baseline. The W18 TF-side
+stack is byte-identical to W11/W14/W15/W16/W17 — the W18 dry-
+run shape matches W14 + W15 + W16 + W17:
+
+  Plan: ~20 to add, 0 to change, 0 to destroy.
+
+(The "~20" estimate breakdown lives at
+docs/regional-eks-bringup.md §2.1.2 W14 expected plan shape;
+W18 inherits the same shape unchanged across SEVEN consecutive
+waves — terraform-side maturity is GREEN.)
+
+=== §6: Hicks renderer-bandwidth budget gate (W18 shape) ===
+
+Per the W17 task brief, the us-east-1 apply readiness is GATED
+on a two-row contract:
+
+  Row 1: renderer-webgl2 ≤ 40 KB
+  Row 2: autotable-src-eager ≤ 200 KB
+
+The W18 budget probe (sourced from
+src/frontend/autotable-src/dist-size.json `current` entry, the
+K17 history record — Hicks's W17 close-out landed the eager-
+bundle split):
+
+  renderer-webgl2 chunk @ K17: ~24.7 KB (vs 40 KB ceiling)
+  Verdict on Row 1: ✅ GREEN — ~15 KB headroom under the ceiling.
+
+  autotable-src-eager chunk @ K17: ~176.9 KB (vs 200 KB ceiling)
+  Verdict on Row 2: ✅ GREEN — ~23 KB headroom under the ceiling.
+  (W17 AMBER posture at 209 KB is CLEARED at W18 — the eager
+   split landed at K17, not as a W18 source change. The W18
+   gate inherits the post-K17 reading.)
+
+Combined gate verdict: **FULL-GREEN / APPLY-READY**.
+
+W18 ADVANCES the apply-readiness gate past the W16 + W17
+"HOLD" posture. The W18 deliverable is the dry-run capture +
+the GREEN gate-status update in docs/regional-eks-bringup.md
+§3.9; the live apply remains Stephen's call (not Apone's) —
+this is a "GO-GATE-CLEARED" signal, not the apply itself.
+
+=== §7: W18 → W19 apply hand-off ===
+
+W18 closes the live-apply blocker chain that W16 + W17 walked.
+Stephen's GO/NO-GO call on the live apply is now unblocked from
+the W17 Row 2 AMBER; the per-region §4 Cutover-Ready checklist
+is the remaining operator-driven gate (operator opens
+`stlong/phase-k-wave-19-prod-us-east-1-apply` for the actual
+apply PR — Apone-lane W18 ships the GREEN dry-run + gate
+flip; the apply PR shape is the standard precedent from
+docs/regional-eks-bringup.md §2.1.3).
+
+Two W19+ possible paths:
+
+  Path A (live apply scheduled):
+    Stephen schedules the live apply against valid AWS creds +
+    operator-supplied tfvars. The W18 dry-run capture (this
+    file) is the "before" snapshot the live apply diff lands
+    against.
+
+  Path B (live apply deferred to a later wave):
+    The W19 owner re-runs the source-drift + render-bandwidth
+    survey + opens the next-wave hand-off in
+    docs/us-east-1-w19-plan-output.txt. The §3.9 W18 GREEN
+    gate posture re-validates wave-over-wave with zero source-
+    side churn (the seven-consecutive-wave terraform-side
+    discipline holds).
+
+Until the live apply, the apex stays single-region (the W11
+primary stack's existing prod ALB). The W12 latency-set wire
+defaults to empty `regional_endpoints`; no traffic shift
+occurs from this W18 dry-run.
+
+=== §8: What W18 does NOT change ===
+
+* No `infra/terraform/envs/prod/*.tf` source edits — the W11
+  module set + W11 type constraints pass unchanged.
+* No `infra/terraform/modules/edge/` edits.
+* No `infra/terraform/modules/redis/` edits.
+* No live AWS-side resource provisioning (`terraform apply` is
+  Stephen's call, not Apone's).
+* No `regional_endpoints` tfvar mutation — the prod latency-set
+  remains empty (single-region apex).
+* No drift on the operator-side `backend.hcl` + `terraform.tfvars`
+  shape — the W11 example files (`backend.example.hcl`,
+  `terraform.tfvars.example`) are unchanged.
+
+The W18 deliverable is a CI-driven DRY-RUN CAPTURE + a §3.9
+gate-status FLIP-TO-GREEN ONLY. The live apply is the next-
+wave operator-driven artefact.

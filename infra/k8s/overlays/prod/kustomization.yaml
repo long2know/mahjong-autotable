@@ -20,6 +20,16 @@ namePrefix: prod-
 
 resources:
   - ../../base
+  # Phase K Wave 18 — Apone (DevOps). Off-peak HPA `minReplicas`
+  # override (cron-scheduled) lives at `infra/k8s/base/hpa-cron-
+  # override.yaml` and is wired in via base/kustomization.yaml
+  # (LoadRestrictor blocks overlay-side ../../base/<file> refs).
+  # The prod overlay inherits the off-peak schedule unchanged
+  # from base; the W18 design + operator runbook lives in
+  # `docs/hpa-cron-override.md`. Prod-side relevance is the
+  # primary driver — staging also benefits but the canonical
+  # use-case is the prod off-peak window (US-night / Asia-pre-
+  # dawn).
   # Phase K Wave 4 — Apone. Cluster-scoped supplemental policy.
   # Listed as a resource (rather than a patch) because Kyverno
   # ClusterPolicies are independent objects; multiple policies on

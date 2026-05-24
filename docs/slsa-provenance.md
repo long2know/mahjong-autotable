@@ -893,3 +893,173 @@ This is the same procedure §7c.5 documented at W16 — the
 W17 pin expansion does NOT introduce a new failure mode or
 recovery shape.
 
+
+## 10. SLSA-3 final SHA pinning — W18 (Phase K Wave 18 — Apone)
+
+> Phase K Wave 18 — Apone (DevOps). The W17 §9 wave broadened
+> the W16 §7c.1 6-pin baseline to 56 pins across 11 security-
+> critical workflow files. W18 COMPLETES the §7b.2.2 sweep by
+> pinning the remaining 30 workflow files in the apone lane
+> (every workflow under `.github/workflows/` except the 4
+> vasquez-lane files documented in §9.5 — those stay vasquez-
+> primary per `tests/ci/lane-map.json`).
+
+### 10.1 W18 net new SHA pins
+
+The W18 pin-apply script (`.work/apone-w18-tools/pin-apply.py`)
+swept 30 apone-lane workflows and replaced every `uses:
+<action>@v<X>` reference with `uses: <action>@<40-hex-sha> #
+v<X.Y.Z>` per the §7c.5 pin format. The script preserved
+indentation, list-marker prefixes (`- uses: ...`), and the
+slsa-github-generator non-pin (per §7c.2).
+
+The W18 per-workflow new-pin count:
+
+| Workflow                              | W18 pin count (new) | Wave introduced | Notes                                                          |
+|---------------------------------------|---------------------|-----------------|----------------------------------------------------------------|
+| `bundle-health.yml`                   | 5                   | W18             | Shared with hicks (per `pwa_audit_workflow_shared` precedent). |
+| `container-scan-remediation.yml`      | 3                   | W18             | Trivy remediation PR-bot.                                      |
+| `db-providers.yml`                    | 3                   | W18             | EF Core multi-provider build matrix.                           |
+| `docker-smoke.yml`                    | 3                   | W18             | Docker container smoke for the image-build path.               |
+| `dr-rehearsal.yml`                    | 4                   | W18             | Disaster-recovery scheduled rehearsal workflow.                |
+| `e2e-playwright.yml`                  | 3                   | W18             | Playwright e2e CI; counterpart to vasquez visual-regression.   |
+| `hsts-readiness-check.yml`            | 1                   | W18             | HSTS preload header readiness probe.                           |
+| `jwt-rotation-rehearsal.yml`          | 3                   | W18             | Manual JWT signing-key rotation rehearsal.                     |
+| `jwt-rotation-rehearsal-scheduled.yml`| 1                   | W18             | Monthly cron variant of jwt-rotation-rehearsal.                |
+| `load-test-nightly.yml`               | 4                   | W18             | k6 load-test cron.                                             |
+| `mobile-external-testing.yml`         | 8                   | W18             | TestFlight external + Play Beta release path.                  |
+| `mobile-internal-testing.yml`         | 15                  | W18             | TestFlight internal + Play Internal release path.              |
+| `mobile-production-hotfix.yml`        | 8                   | W18             | Out-of-band mobile hotfix release.                             |
+| `mobile-production-release.yml`       | 8                   | W18             | Scheduled mobile production release.                           |
+| `pre-commit-check.yml`                | 3                   | W18             | Linter pre-commit hook CI.                                     |
+| `prod-health-check.yml`               | 3                   | W18             | Synthetic-probe cron against the prod apex.                    |
+| `pwa-audit.yml`                       | 5                   | W18             | Shared (hicks+apone) per `pwa_audit_workflow_shared`.          |
+| `pwa-builder.yml`                     | 5                   | W18             | Shared (hicks+apone) per `pwa_audit_workflow_shared`.          |
+| `pwa-smoke.yml`                       | 3                   | W18             | Per-PR PWA installability smoke.                               |
+| `redis-load-test-reminder.yml`        | 2                   | W18             | Quarterly Redis sizing-review reminder issue.                  |
+| `release.yml`                         | 9                   | W18             | GitHub release publish flow.                                   |
+| `sbom.yml` (+2 trivy)                 | +2 (trivy)          | W18             | W17 pinned 7; W18 pins remaining 2 trivy refs (see §10.3).    |
+| `container-scan.yml` (+4 trivy)       | +4 (trivy)          | W18             | W17 pinned 7; W18 pins remaining 4 trivy refs (see §10.3).    |
+| `secrets-history-sweep.yml`           | 3                   | W18             | Gitleaks history-sweep cron.                                   |
+| `secrets-scan.yml`                    | 3                   | W18             | Per-PR Gitleaks scan.                                          |
+| `slsa-provenance.yml`                 | 9                   | W18             | Provenance-emit + verify glue (slsa-github-generator stays @v2.0.0 per §7c.2). |
+| `squad-heartbeat.yml`                 | 3                   | W18             | Squad-status cron heartbeat.                                   |
+| `squad-issue-assign.yml`              | 3                   | W18             | Issue auto-assign hook.                                        |
+| `squad-triage.yml`                    | 2                   | W18             | Issue triage label-bot.                                        |
+| `sync-squad-labels.yml`               | 2                   | W18             | Squad-label sync cron.                                         |
+
+**W18 net new SHA pins: +130** (from 30 workflow files). The
+expanded scope reflects the §7b.3 sequencing — every workflow
+in the apone lane is now SHA-pinned for the §7b.2.2 supply-
+chain hardening property.
+
+### 10.2 Cumulative pin count — wave-over-wave
+
+| Wave | Pinned actions (cumulative) | Workflow files with ≥1 pin |
+|------|------------------------------|------------------------------|
+| W16  | 6                            | 1                            |
+| W17  | 56                           | 11                           |
+| W18  | **191**                      | **39**                       |
+
+Verification command (post-W18):
+
+```bash
+grep -rE 'uses:.*@[0-9a-f]{40}' .github/workflows/ | wc -l
+# → 191
+
+grep -rlE 'uses:.*@[0-9a-f]{40}' .github/workflows/ | wc -l
+# → 39
+```
+
+Remaining unpinned references (`grep -rn 'uses:.*@v[0-9]'
+.github/workflows/ | grep -v -E '@[0-9a-f]{40}|slsa-github-
+generator' | wc -l` → 9) all live in the 4 vasquez-lane
+workflows (`lane-discipline.yml`, `lane-discipline-nightly.yml`,
+`lane-discipline-status.yml`, `playwright-visual-regression.
+yml`) per §9.5. Vasquez can land those pins in a parallel
+W18+ commit without conflict.
+
+### 10.3 W18 NEW SHA reference table
+
+The W18 sweep introduced eight NEW action SHAs beyond the
+W17 §9.2 table:
+
+| Action                                       | SHA (40 hex chars)                              | Tag        | Used in (W18)                                          |
+|----------------------------------------------|-------------------------------------------------|------------|--------------------------------------------------------|
+| `actions/cache`                              | `0057852bfaa89a56745cba8c7296529d2fc39830`      | `v4.2.0`   | `bundle-health.yml`, `pwa-builder.yml`                 |
+| `actions/setup-dotnet`                       | `67a3573c9a986a3f9c594539f4ab511d57bb3ce9`      | `v4.1.0`   | `db-providers.yml`                                     |
+| `actions/setup-python`                       | `a26af69be951a213d495a4c3e4e4022e16d87065`      | `v5.3.0`   | `secrets-history-sweep.yml`, `secrets-scan.yml`         |
+| `hashicorp/setup-terraform`                  | `b9cd54a3c349d3f38e8881555d616ced269862dd`      | `v3.1.2`   | `dr-rehearsal.yml`                                     |
+| `dawidd6/action-send-mail`                   | `4226df7daafa6fc901a43789c49bf7ab309066e7`      | `v3.12.0`  | `prod-health-check.yml`                                |
+| `gitleaks/gitleaks-action`                   | `ff98106e4c7b2bc287b24eaf42907196329070c7`      | `v2.3.7`   | `secrets-history-sweep.yml`, `secrets-scan.yml`         |
+| `peter-evans/create-or-update-comment`       | `71345be0265236311c031f5c7866368bd1eff043`      | `v4.0.0`   | `bundle-health.yml`                                    |
+| `ruby/setup-ruby`                            | `afeafc3d1ab54a631816aba4c914a0081c12ff2f`      | `v1.310.0` | `mobile-internal-testing.yml`, `mobile-external-testing.yml`, `mobile-production-hotfix.yml`, `mobile-production-release.yml` |
+| `aquasecurity/trivy-action`                  | `915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2`      | `0.28.0`   | `container-scan.yml` (4 refs), `sbom.yml` (2 refs) — note: upstream uses `0.28.0` without the `v` prefix (the `v0.28.0` git tag points to the same commit). |
+
+The remaining 13 action SHAs are the same as the W17 §9.2
+table (no W18 re-roll — quarterly refresh per §7c.5 is
+unchanged W17 → W18).
+
+Every SHA above was resolved via the **public unauthenticated
+GitHub API** (`api.github.com/repos/<owner>/<repo>/git/refs/tags/<tag>`)
+and, where the ref's `object.type` was `tag` (i.e. an
+annotated tag), dereferenced through `git/tags/<sha>` to the
+commit SHA. The W18 pin-resolution table lives at
+`.work/apone-w18-tools/pin-shas.txt` (gitignored — the table
+here is the authoritative source-of-truth).
+
+### 10.4 §7b.3 W18 status — sequence update
+
+| §7b.2 item                          | W17 status                              | W18 status                                       | Next wave |
+|--------------------------------------|------------------------------------------|--------------------------------------------------|-----------|
+| §7b.2.2 — Action SHA pin (broad)     | ✅ W17 — 56 across 11 workflows.         | ✅ W18 — **191 across 39 workflows** (apone lane complete; 9 remaining vasquez-lane). | Vasquez lane W18+ |
+| §7b.2.2 — Verifier-side builder SHA pin | ⏸ DEFERRED to W18                      | ⏸ DEFERRED to W19 (paired with Kyverno CEL update) | W19 |
+| §7b.2.1 — Dedicated runner pool     | ⏸ DEFERRED to W18                       | ⏸ DEFERRED to W19 design memo                    | W19 design memo |
+| §7b.2.3a — Network egress allow-list | ⏸ DEFERRED to W18                       | ⏸ DEFERRED to W19 design memo                    | W19 design memo |
+| §7b.2.3b — Hermetic BuildKit        | ⏸ DEFERRED to W18                       | ⏸ DEFERRED to W19 design memo                    | W19 design memo |
+| §7b.2.3c — Materials enumeration    | ⏸ DEFERRED to W18                       | ⏸ DEFERRED to W19                                | W19 |
+
+W18 chose to FINISH the §7b.2.2 sweep across the apone lane
+rather than open new §7b.2 surfaces — the §7b.2.2 work is now
+COMPLETE for the apone lane and ready for handoff to the
+quarterly-refresh §7c.5 cadence. The §7b.2.1 + §7b.2.3a +
+§7b.2.3b items remain W19+ targets per the W17 sequencing.
+
+### 10.5 What W18 hardening does NOT change
+
+* The `.github/workflows/slsa-provenance.yml` caller-side
+  pin `@v2.0.0` is UNCHANGED at W18 — the §7c.2 ⚠️ warning
+  applies through W18 + W19 + W20. The verifier-side pin
+  (§7c.3 W19 row) is the next change to the SLSA chain, NOT
+  the caller-side pin.
+* The cosign + SLSA chain remains end-to-end signed and
+  Rekor-anchored.
+* Build performance is unaffected — pin expansion is a
+  static workflow-parse-time concern; no runtime cost.
+* The pinned SHAs are NOT rolled forward as a side-effect of
+  W18 — they reflect the latest stable upstream releases as
+  of the W18 PR-readiness window. Quarterly refresh per §7c.5
+  carries the next bump.
+* The 4 vasquez-lane workflows are intentionally left
+  un-pinned at W18 — vasquez can land those pins in a
+  parallel W18+ commit without conflict. The §9.5 lane-
+  discipline note from W17 still applies.
+
+### 10.6 Rollback shape (unchanged from §7c.5 + §9.6)
+
+If any W18 SHA pin needs reverting before the quarterly
+refresh cadence:
+
+1. Identify the new SHA via `curl -s
+   "https://api.github.com/repos/<owner>/<repo>/git/refs/tags/<tag>"`
+   (the `curl` form replaces W17's `gh api` form for
+   unauthenticated reads — the W18 ship-window did not have
+   `gh auth login` available in the run environment).
+2. Replace the SHA + trailing `# vX.Y.Z` comment in the
+   affected workflow.
+3. PR + CI green confirms the pin re-roll.
+
+This is the same procedure §7c.5 documented at W16 — the
+W18 pin expansion does NOT introduce a new failure mode or
+recovery shape.
+

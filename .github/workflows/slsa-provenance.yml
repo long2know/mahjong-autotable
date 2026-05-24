@@ -165,7 +165,7 @@ jobs:
           echo "Resolved tag: ${tag}"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -226,7 +226,7 @@ jobs:
       base64-subjects: ${{ steps.compute.outputs.base64-subjects }}
     steps:
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -237,7 +237,7 @@ jobs:
         # GHA; it accepts a registry reference + writes SBOM to disk.
         # We pin the published digest (not the tag) so the SBOM is
         # bound to EXACTLY what provenance is being generated for.
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@fc46e51fd3cb168ffb36c6d1915723c47db58abb # v0.17.7
         with:
           image: ${{ needs.resolve-digest.outputs.image }}@${{ needs.resolve-digest.outputs.digest }}
           format: cyclonedx-json
@@ -286,7 +286,7 @@ jobs:
         # Provenance + attest jobs (and the Release-attach job)
         # download this back so the SBOM file is consistent across
         # the whole pipeline (sha256 frozen at this step).
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: cyclonedx-sbom
           path: ${{ env.SBOM_NAME }}
@@ -338,19 +338,19 @@ jobs:
       id-token: write     # OIDC token → Fulcio short-lived cert (cosign keyless).
     steps:
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
         with:
           cosign-release: v2.4.1
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download unified predicate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: ${{ needs.provenance.outputs.provenance-name }}
           path: predicate/
@@ -397,13 +397,13 @@ jobs:
       contents: write
     steps:
       - name: Download unified predicate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: ${{ needs.provenance.outputs.provenance-name }}
           path: predicate/
 
       - name: Download CycloneDX SBOM
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: cyclonedx-sbom
           path: sbom/

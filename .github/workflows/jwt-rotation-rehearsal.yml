@@ -140,10 +140,9 @@ jobs:
           echo "target_env=staging (gate OK)"
 
       - name: Checkout
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Configure AWS credentials (staging)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
         with:
           role-to-assume: arn:aws:iam::000000000000:role/mahjong-autotable-jwt-rehearsal
           aws-region: ${{ env.AWS_REGION }}
@@ -424,7 +423,7 @@ jobs:
           echo "report_path=$REPORT" >> "$GITHUB_OUTPUT"
 
       - name: Upload report as artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: jwt-rotation-rehearsal-${{ steps.start.outputs.rehearsal_date }}
           path: ${{ steps.report.outputs.report_path }}

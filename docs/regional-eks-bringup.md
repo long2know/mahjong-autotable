@@ -458,6 +458,71 @@ DRY-RUN CAPTURE + a §3.6 gate-row refresh ONLY:
 * **No source-side TF edits.** §3.6 Row 1 GREEN reflects the
   zero-drift discipline carried forward to W17.
 
+### 3.9 W18 apply-readiness gate update — FULL-GREEN (GO-GATE-CLEARED)
+
+> Phase K Wave 18 — Apone (DevOps). The W17 PARTIAL-GREEN
+> posture flips to FULL-GREEN at W18 — Hicks's W17 close-out
+> landed the `autotable-src-eager` chunk at ~177 KB, closing
+> the Row 3 AMBER (was 209 KB > 200 KB ceiling at W17).
+
+The W18 source survey re-confirms zero drift since
+W11/W14/W15/W16/W17; the renderer-bandwidth gate is re-paired
+against the W17 two-row contract and ALL rows now GREEN:
+
+| # | Row                              | Pre-condition                                | W18 measurement                                                                | Verdict at W18 |
+|---|----------------------------------|----------------------------------------------|--------------------------------------------------------------------------------|----------------|
+| 1 | TF-side source                   | Zero drift between W11/W14/W15/W16/W17 and W18 HEAD. | §5 of `us-east-1-w18-plan-output.txt` — all four `git diff` + `git log` checks empty. | ✅ GREEN |
+| 2 | `renderer-webgl2` chunk          | ≤ 40 KB (W17 ceiling held at W18).           | ~24.7 KB from `src/frontend/autotable-src/dist-size.json` (K17 history entry). | ✅ GREEN (~15 KB headroom). |
+| 3 | `autotable-src-eager` chunk      | ≤ 200 KB (W17 NEW row).                      | ~176.9 KB from `dist-size.json` K17 history entry (Hicks W17 close-out).        | ✅ GREEN (~23 KB headroom). |
+| 4 | Per-region cluster Cutover-Ready | Per `§4` operator-driven checklist.          | Operator-driven (NOT W18 CI surface).                                          | Operator-driven |
+| 5 | Squad sign-off                   | Stephen approves the apply PR.               | W19+ operator PR.                                                              | W19+ — not gated this wave |
+
+**Combined verdict:** FULL-GREEN / **APPLY-READY**. The W18
+deliverable is the dry-run capture + the §3.9 gate flip to
+GREEN; the live apply is Stephen's call (not Apone's). Rows 1
+through 3 all GREEN means there is no source-side blocker on
+the GO/NO-GO call — the remaining gates (Row 4 operator
+checklist + Row 5 squad sign-off) are out-of-band by design.
+
+The W18 dry-run capture lives at
+[`docs/us-east-1-w18-plan-output.txt`](./us-east-1-w18-plan-output.txt)
+— it is byte-for-byte the W16 + W17 captures' §1–§5 shape
+plus the W18 GREEN gate verdict at §6 (post-K17 bundle-size
+readings) and the §7 apply hand-off note.
+
+### 3.10 W18 → W19 apply hand-off
+
+The §3.7 Path A "GREEN" branch is now the active path. The
+W19 operator opens the apply PR
+(`stlong/phase-k-wave-19-prod-us-east-1-apply`); Stephen
+runs the §2.1.1 dry-run with fresh AWS creds + an operator-
+supplied `terraform.tfvars` and archives the plan per §2.1.4
+conventions.
+
+If Stephen elects to defer the live apply to a later wave,
+the W19+ wave-author re-runs the §3.9 gate survey and opens
+the next-wave hand-off in `docs/us-east-1-w19-plan-output.txt`
+— the W11 → W18 zero-drift terraform discipline holds and
+the capture is re-validatable at any subsequent PR-readiness
+without source-side churn.
+
+### 3.11 What the W18 dry-run does NOT change
+
+Same shape as §3.5 + §3.8 — the W18 deliverable is a CI-
+driven DRY-RUN CAPTURE + a §3.9 gate flip ONLY:
+
+* **No `terraform apply` runs at W18.** Cluster + traffic
+  posture unchanged from W17. The GREEN verdict is a
+  go-signal, NOT the apply.
+* **No `regional_endpoints` modifications.** Empty stays
+  empty; no traffic shift.
+* **No tfvars commits.** Placeholder values used; operator
+  tfvars stays operator-side.
+* **No source-side TF edits.** §3.9 Row 1 GREEN reflects the
+  zero-drift discipline carried forward to W18 (now SEVEN
+  consecutive waves: W11/W14/W15/W16/W17/W18).
+
+
 ## 4. Per-region Cutover-Ready checklist
 
 Each region runs the same readiness sequence. Mark items as
