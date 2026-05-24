@@ -38,6 +38,11 @@ import { SWISS_PAIRING_AUDIT_SPEC } from './swiss-pairing-audit';
 import { SWISS_PAIR_NEXT_ROUND_SPEC } from './swiss-pair-next-round';
 import { ROTATION_POLICY_BULK_ACTIONS_SPEC } from './rotation-policy-bulk-actions';
 import { JWT_ROTATION_DRILL_SPEC } from './jwt-rotation-drill';
+import { SWISS_APPLY_ROUND_SPEC } from './swiss-apply-round';
+import { ROTATION_SCHEDULE_SPEC } from './rotation-schedule';
+import { TOURNAMENT_WITHDRAW_SPEC } from './tournament-withdraw';
+import { SIGNALR_PURGE_SPEC } from './signalr-purge';
+import { REPLAY_RESTORATION_AUDIT_SPEC } from './replay-restoration-audit';
 
 interface AnySpec extends AdminSurfaceSpec<unknown, unknown> {}
 
@@ -56,6 +61,12 @@ interface AnySpec extends AdminSurfaceSpec<unknown, unknown> {}
 // the registry: Swiss pair-next-round trigger, rotation-policy
 // bulk-actions (delete + enable/disable), and JWT-keys rotation
 // drill.  Admin-panel chunk W20 ceiling: ≤ 38 KB.
+//
+// Phase K Wave 21 — five Bishop W21 surfaces appended at the tail
+// of the registry: Swiss apply-round, per-tenant rotation schedule,
+// tournament withdraw-player, SignalR retention-purge, and the
+// read-only replay restoration-audit log.  Admin-panel chunk W21
+// ceiling: ≤ 48 KB.
 const SURFACES: ReadonlyArray<AnySpec> = [
   REPLAY_RETENTION_SPEC as unknown as AnySpec,
   JWKS_ROTATION_SPEC as unknown as AnySpec,
@@ -66,6 +77,11 @@ const SURFACES: ReadonlyArray<AnySpec> = [
   SWISS_PAIR_NEXT_ROUND_SPEC as unknown as AnySpec,
   ROTATION_POLICY_BULK_ACTIONS_SPEC as unknown as AnySpec,
   JWT_ROTATION_DRILL_SPEC as unknown as AnySpec,
+  SWISS_APPLY_ROUND_SPEC as unknown as AnySpec,
+  ROTATION_SCHEDULE_SPEC as unknown as AnySpec,
+  TOURNAMENT_WITHDRAW_SPEC as unknown as AnySpec,
+  SIGNALR_PURGE_SPEC as unknown as AnySpec,
+  REPLAY_RESTORATION_AUDIT_SPEC as unknown as AnySpec,
 ];
 
 let activeSurfaceIndex = 0;

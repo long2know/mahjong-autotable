@@ -38,19 +38,48 @@
 // pattern.* keys on top of the bundled ones.
 
 import enCatalog from './i18n/en.json';
-import zhHansCatalog from './i18n/zh-Hans.json';
-import zhHantCatalog from './i18n/zh-Hant.json';
+
+// Phase K Wave 21 — Hicks (bundle-audit §3.6).  Only the English
+// catalog is bundled eagerly; the zh-Hans / zh-Hant tables (~5 KB
+// each minified) lazy-import the first time the resolved active
+// locale is zh-* (either via auto-detect at boot or an explicit
+// `setLanguage()` flip).  Until the chunk arrives, `t()` falls
+// back to the English catalog (the documented fallback path).
+// For users whose browser language resolves to zh-*, this means
+// a ~10-30 ms window of English strings at lobby cold start
+// before the zh chunk lands; acceptable trade-off to keep the
+// eager bundle under the W21 ceiling.
 
 export type LocaleTag = 'en' | 'zh-Hans' | 'zh-Hant';
 export type LanguagePreference = 'auto' | LocaleTag;
 
 type Catalog = Readonly<Record<string, string>>;
 
-const CATALOGS: Readonly<Record<LocaleTag, Catalog>> = {
+const CATALOGS: Record<LocaleTag, Catalog | null> = {
   'en': enCatalog as Catalog,
-  'zh-Hans': zhHansCatalog as Catalog,
-  'zh-Hant': zhHantCatalog as Catalog,
+  'zh-Hans': null,
+  'zh-Hant': null,
 };
+
+const loadingCatalog: Partial<Record<LocaleTag, Promise<Catalog>>> = {};
+
+function ensureCatalog(locale: LocaleTag): Promise<Catalog> | null {
+  if (CATALOGS[locale] !== null) return null;
+  const inFlight = loadingCatalog[locale];
+  if (inFlight !== undefined) return inFlight;
+  const p = (async (): Promise<Catalog> => {
+    const mod = locale === 'zh-Hans'
+      ? await import('./i18n/zh-Hans.json')
+      : await import('./i18n/zh-Hant.json');
+    const cat = (mod.default ?? mod) as Catalog;
+    CATALOGS[locale] = cat;
+    delete loadingCatalog[locale];
+    if (locale === activeLocale) emit();
+    return cat;
+  })();
+  loadingCatalog[locale] = p;
+  return p;
+}
 
 const LS_KEY = 'mahjong.settings.v1';
 const LS_FIELD = 'lang';
@@ -146,9 +175,9 @@ function apply(): void {
  */
 export function t(key: string, params?: Record<string, string | number>): string {
   const active = CATALOGS[activeLocale];
-  let str = active[key];
+  let str = active === null ? undefined : active[key];
   if (str === undefined || str === null || str === '') {
-    str = CATALOGS['en'][key];
+    str = CATALOGS['en']?.[key];
   }
   if (str === undefined || str === null || str === '') {
     return key;
@@ -181,6 +210,10 @@ export function setLanguage(pref: LanguagePreference): void {
     apply();
     emit();
   }
+  // Kick off the lazy catalog load if the new active locale isn't
+  // bundled.  Re-emit happens inside `ensureCatalog` when the
+  // chunk lands so listeners can re-render with localized strings.
+  void ensureCatalog(activeLocale);
 }
 
 export function onLanguageChange(handler: (locale: LocaleTag) => void): () => void {
@@ -207,6 +240,10 @@ export function installI18n(): void {
   userPref = loadFromStorage();
   activeLocale = resolveLocale(userPref);
   apply();
+  // If the resolved active locale isn't English, kick off the
+  // catalog fetch so `t()` lookups graduate from English fallback
+  // to localized strings as soon as the chunk lands.
+  void ensureCatalog(activeLocale);
 }
 
 /**
@@ -220,11 +257,23 @@ export function mergeServerCatalog(
   patch: Readonly<Record<string, string>>,
   force: boolean = false,
 ): void {
-  const target = CATALOGS[locale] as Record<string, string>;
+  // The zh-* catalogs may not be resident in memory yet (W21 §3.6
+  // lazifies them).  In that case, kick off the load and re-apply
+  // the patch after it lands so server-supplied patterns are
+  // additive on top of the freshly-arrived bundled keys.
+  const target = CATALOGS[locale];
+  if (target === null) {
+    const loader = ensureCatalog(locale);
+    if (loader !== null) {
+      void loader.then(() => { mergeServerCatalog(locale, patch, force); });
+    }
+    return;
+  }
+  const mut = target as Record<string, string>;
   for (const [k, v] of Object.entries(patch)) {
     if (typeof v !== 'string') continue;
-    if (!force && target[k] !== undefined) continue;
-    target[k] = v;
+    if (!force && mut[k] !== undefined) continue;
+    mut[k] = v;
   }
   if (locale === activeLocale) emit();
 }

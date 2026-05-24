@@ -334,13 +334,14 @@ void (async (): Promise<void> => {
   // `?renderer=webgl2-hello` (or the W16 `?renderer=webgl2-tile-mesh`
   // tile-mesh smoke, the W17 `?renderer=webgl2-scene` full
   // scene-runtime + picking smoke, the W19 `?renderer=webgl2-wall`
-  // canonical wall + camera-mode smoke, or the W20
+  // canonical wall + camera-mode smoke, the W20
   // `?renderer=webgl2-interactive` drag-and-drop + lift-animation
-  // smoke).  Dev/spike harness — never runs on the lobby cold path.
-  // The dynamic import boundary forces vite to emit `renderer-webgl2.
-  // <hash>.js` as its own measurable chunk; see
-  // `docs/phase-l-renderer-implementation.md`.
-  if (/[?&]renderer=webgl2-(hello|tile-mesh|scene|wall|interactive)/.test(window.location.search)) {
+  // smoke, or the W21 `?renderer=webgl2-meld` claim-animation +
+  // meld-display smoke).  Dev/spike harness — never runs on the
+  // lobby cold path.  The dynamic import boundary forces vite to
+  // emit `renderer-webgl2.<hash>.js` as its own measurable chunk;
+  // see `docs/phase-l-renderer-implementation.md`.
+  if (/[?&]renderer=webgl2-(hello|tile-mesh|scene|wall|interactive|meld)/.test(window.location.search)) {
     void import('./renderer-webgl2/hello').then((mod) => mod.mount());
   }
 

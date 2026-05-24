@@ -47,13 +47,20 @@ import type { Client } from './client';
 import type * as MatchmakingModule from './matchmaking';
 import type { PublicGame } from './matchmaking';
 import {
-  installProfileDrawer,
-  installProfileToggle,
   hydrateProfileFromCacheIfAvailable,
   onProfile,
   getProfile,
   type PlayerProfile,
 } from './profile';
+// Phase K Wave 21 — Hicks (bundle-audit §3.6).  `profile-drawer.ts`
+// (~6 KB raw / ~2 KB minified) is now lazy-loaded behind
+// `scheduleProfileDrawerLazyMount()` (defined at the bottom of
+// this file).  The lobby cold path no longer pays for the legacy
+// Wave-5 drawer's DOM-installation graph; the drawer + chip-
+// toggle mount on the first `lobby-open-profile` chip
+// hover/focus/click, parallel to the W17 §3.2 lazy-mount of
+// `./profile-page` and `./settings-drawer`.
+import type * as ProfileDrawerModule from './profile-drawer';
 // Phase K Wave 19 — bundle audit §3.4 (Hicks).  `stats.ts` is a small
 // DOM formatter (~2 KB minified) that the lobby only needs *after*
 // Bishop's SignalR `ProfileLoaded` payload arrives — which happens
@@ -749,8 +756,12 @@ export function initLobby(client?: Client): void {
   // make-public toggle / stats panel.  These helpers are defined at the
   // bottom of this file; they are idempotent and bail out if their
   // anchor elements are missing.
-  installProfileDrawer();
-  installProfileToggle();
+  // Phase K Wave 21 — Hicks (bundle-audit §3.6).  `installProfileDrawer`
+  // + `installProfileToggle` extracted into `./profile-drawer` and
+  // lazy-mounted on first chip activation.  The lobby cold path
+  // sheds ~6 KB raw / ~2 KB minified (the drawer's DOM-installation
+  // graph) until the user shows intent to open their profile.
+  scheduleProfileDrawerLazyMount();
   // Phase J Wave 7 — mount the app-wide settings drawer (separate from
   // the Wave-2 per-game settings panel) and the player profile page
   // overlay.  Both are idempotent and intercept clicks before the
@@ -1637,6 +1648,42 @@ function scheduleProfilePageLazyMount(): void {
 
   // Avoid an unused-variable warning when the chip is missing.
   void chipPreOpen;
+}
+
+// Phase K Wave 21 — Hicks (bundle-audit §3.6).
+//
+// `profile-drawer.ts` (~6 KB raw / ~2 KB minified) is now lazy-
+// loaded behind `scheduleProfileDrawerLazyMount`.  The drawer is
+// the legacy Wave-5 side surface; on modern paths it is hidden
+// behind `./profile-page` (Wave 7+) which intercepts the
+// `lobby-open-profile` chip click in CAPTURE phase, so the
+// drawer's chip handler is effectively dormant.  The drawer's
+// DOM event handlers (close, save, name input, color picker,
+// presets, custom color) still wire up on first activation so
+// any third-party flow that calls `openProfileDrawer()`
+// programmatically continues to work.
+//
+// Mount triggers (chip hover / focus / click) parallel the W17
+// §3.2 `scheduleProfilePageLazyMount` so both modules load
+// together when the user shows intent to open their profile.
+
+let _profileDrawerMod: typeof ProfileDrawerModule | null = null;
+
+async function loadProfileDrawer(): Promise<typeof ProfileDrawerModule> {
+  if (_profileDrawerMod !== null) return _profileDrawerMod;
+  _profileDrawerMod = await import('./profile-drawer');
+  // Idempotent — bails out on the second call inside the module.
+  _profileDrawerMod.installProfileDrawer();
+  _profileDrawerMod.installProfileToggle();
+  return _profileDrawerMod;
+}
+
+function scheduleProfileDrawerLazyMount(): void {
+  const chip = document.getElementById('lobby-open-profile');
+  if (chip === null) return;
+  chip.addEventListener('mouseenter', () => { void loadProfileDrawer(); }, { once: true });
+  chip.addEventListener('focus', () => { void loadProfileDrawer(); }, { once: true });
+  chip.addEventListener('click', () => { void loadProfileDrawer(); }, { once: true });
 }
 
 // ---------------------------------------------------------------------
