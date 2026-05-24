@@ -371,16 +371,41 @@ jobs:
           fi
           echo "Attesting ${IMAGE}@${DIGEST} with ${predicate_path}"
 
-          # The generic generator already produces a DSSE-wrapped
-          # in-toto statement signed via OIDC + Fulcio. `cosign
-          # attest --type slsaprovenance` would re-wrap the predicate
-          # in its own envelope; instead we use `--predicate` with
-          # `--type slsaprovenance1` and let cosign UPLOAD the bundle
-          # as a sidecar artefact whose discovery shape matches what
-          # Kyverno's `attestations:` verifier expects.
+          # Apone — CI emergency fix. The generic SLSA generator emits
+          # a DSSE-wrapped in-toto Statement; cosign v2.4+ with
+          # `--type slsaprovenance1 --predicate <file>` strictly
+          # validates the file against the SLSA v1 predicate schema
+          # (requires `buildDefinition`), which a DSSE envelope does
+          # not satisfy at the file level. Unwrap the envelope first:
+          # base64-decode the `payload` field of the first DSSE line
+          # and extract its in-toto Statement's `predicate` object
+          # into a bare JSON file that cosign can consume. We feed
+          # cosign the bare predicate so cosign re-wraps it in its
+          # own envelope for the OCI sidecar (the original envelope
+          # is still uploaded as a separate artefact + lives in Rekor).
+          bare_predicate="predicate/predicate.bare.json"
+          SRC="${predicate_path}" DST="${bare_predicate}" python3 -c '
+          import base64, json, os, sys
+          src = os.environ["SRC"]
+          dst = os.environ["DST"]
+          with open(src, "r", encoding="utf-8") as f:
+              first = f.readline().strip()
+          env = json.loads(first)
+          payload_b64 = env.get("payload")
+          if not payload_b64:
+              raise SystemExit(f"no payload field in DSSE envelope at {src}")
+          statement = json.loads(base64.b64decode(payload_b64))
+          predicate = statement.get("predicate")
+          if predicate is None:
+              raise SystemExit(f"no predicate field in in-toto Statement at {src}")
+          with open(dst, "w", encoding="utf-8") as f:
+              json.dump(predicate, f)
+          print(f"Extracted bare predicate to {dst}; keys={sorted(predicate)}")
+          '
+
           cosign attest \
               --type slsaprovenance1 \
-              --predicate "${predicate_path}" \
+              --predicate "${bare_predicate}" \
               --yes \
               "${IMAGE}@${DIGEST}"
 
