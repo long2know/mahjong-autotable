@@ -195,9 +195,16 @@ public sealed class VasquezW19SelfLaneTests
     [Fact, Trait("Category", "LaneDiscipline"), Trait("Wave", "Phase-K-19")]
     public void Wave1ThroughKW19RegressionTests_Class_Present()
     {
+        // W20 broadens this hard-assert to accept either the W19
+        // class name OR the W20 rename target (Wave1ThroughKW20) —
+        // when the W20 Vasquez bring-up lands, the W19 class is
+        // renamed away and the W20 class takes its place. Without
+        // this broadening, the W19 self-lane harness would
+        // false-fail on W20 PR-branch builds.
         var asm = typeof(VasquezW19SelfLaneTests).Assembly;
         var t = asm.GetTypes().FirstOrDefault(x =>
-            x.Name.Equals("Wave1ThroughKW19RegressionTests", StringComparison.Ordinal));
+            x.Name.Equals("Wave1ThroughKW19RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 

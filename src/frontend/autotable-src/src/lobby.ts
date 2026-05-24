@@ -81,7 +81,19 @@ import {
 // audit.md §3.2` for the W17 delivered-savings table.
 import type * as LeaderboardModule from './leaderboard';
 import type * as ProfilePageModule from './profile-page';
-import { installAuthUi } from './auth';
+// Phase K Wave 20 — Hicks (bundle-audit §3.5).  `auth` (~40 KB
+// source / ~16-20 KB minified incl. EventEmitter + sign-in modal
+// scaffolding + linked-accounts renderer) is now lazy-loaded behind
+// `scheduleAuthUiLazyMount()` (defined at the bottom of this file).
+// The lobby's eager bootstrap no longer pulls the auth-UI graph;
+// `installAuthUi()` mounts on the next idle window after first
+// paint, so the lobby cold path renders without waiting on the
+// auth chunk.  The `auth-shared` chunk that emerges from the
+// dynamic-import boundary is shared with `rule-presets` (W19 lazy)
+// which also consumes `getAuthState/onAuth`.  See
+// `docs/frontend-bundle-audit.md §3.5` for the W20 delivered-
+// savings table.
+import type * as AuthModule from './auth';
 // Phase K Wave 19 — Hicks (bundle-audit §3.4).  `rule-presets`
 // (~12.5 KB minified incl. EventEmitter) is now lazy-loaded behind
 // `scheduleRulePresetsUiLazyMount()` (defined at the bottom of this
@@ -757,10 +769,15 @@ export function initLobby(client?: Client): void {
   // theme-dark / theme-light) before the auth UI / rule-presets pickers
   // render so the chrome paints with the correct palette immediately.
   installDisplayPreferences();
-  // Phase J Wave 8 — sign-in modal + linked-accounts section in the
-  // profile drawer; rule preset picker in the lobby + editor tab in
-  // the settings drawer; spectator follow-seat helper.
-  installAuthUi();
+  // Phase K Wave 20 — Hicks (bundle-audit §3.5).  `installAuthUi()`
+  // is now lazy-mounted behind `scheduleAuthUiLazyMount()` (defined
+  // at the bottom of this file).  Auth state subscribers (the
+  // header chip, linked-accounts panel) live in `./auth` and the
+  // chunk is dropped from the eager bundle; the lobby first-paint
+  // renders without waiting for the auth-UI graph.  Sign-in chip
+  // appears as soon as the idle-window callback resolves the
+  // dynamic import (~1 paint after first paint on a fresh load).
+  scheduleAuthUiLazyMount();
   // Phase K Wave 19 — bundle audit §3.4: rule-presets editor surface
   // (~12.5 KB minified) is deferred to the next idle window so the
   // lobby first-paint never blocks on it.  The picker's <select> is
@@ -1757,4 +1774,48 @@ async function loadStatsModule(): Promise<typeof StatsModule> {
     return m;
   });
   return _statsLoading;
+}
+
+// Phase K Wave 20 — bundle audit §3.5: auth-UI lazy mount.
+//
+// The `./auth` module (~16-20 KB minified after rollup's chunker
+// applies its tree-shake to the lobby-static import graph) was the
+// last >10 KB eager dep blocking the W20 ≤135 KB target for
+// `autotable-src-eager`.  We defer `installAuthUi()` to the next
+// idle window so the lobby first-paint never waits on the auth-UI
+// chunk download/parse.
+//
+// User-visible effect: the sign-in header chip ("Sign in" button)
+// appears one paint frame later than it did at W19.  Anonymous
+// lobby visitors never interact with auth before that frame; the
+// degraded UX is bounded to ~1 frame (~16 ms on a fresh load,
+// since rollup's content-hashed chunks are pre-cached after first
+// visit).
+//
+// Cross-module impact: `rule-presets.ts` (already lazy as of W19)
+// statically imports `getAuthState/onAuth` from `./auth`.  When
+// both consumers go dynamic, rollup either emits a shared chunk
+// for `./auth` OR collapses it into whichever lazy chunk loads
+// first.  Either way, the eager bundle no longer carries it.  See
+// `docs/frontend-bundle-audit.md §3.5` for the W20 measurement.
+let _authMod: typeof AuthModule | null = null;
+
+function scheduleAuthUiLazyMount(): void {
+  if (_authMod !== null) return;
+  const load = async (): Promise<void> => {
+    if (_authMod !== null) return;
+    try {
+      _authMod = await import('./auth');
+      _authMod.installAuthUi();
+    } catch { /* fail-open — anonymous lobby still functional */ }
+  };
+  // Prefer `requestIdleCallback` so the auth chip mounts in the
+  // next idle window; fall back to a microtask-ish timeout for
+  // browsers that lack the API (Safari).
+  const ric = (window as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(() => { void load(); }, { timeout: 1500 });
+  } else {
+    window.setTimeout(() => { void load(); }, 0);
+  }
 }

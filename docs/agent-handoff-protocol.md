@@ -2276,3 +2276,176 @@ tip.
 - §4.8 Stephen-decision — UNCHANGED.  11-wave deferral arc
   (W7 → W19) continues.  Vasquez W20 brief should carry a
   reminder to re-prompt Stephen on §4.8 (Option A vs B vs C).
+
+### 6.9. LH13 cron status — W20 disposition (W20 — Vasquez, ratifying Hicks W20)
+
+| Metric                                                | W19 close   | W20 disposition |
+|-------------------------------------------------------|-------------|-----------------|
+| `--form-factor=desktop` in workflow                   | YES         | YES (unchanged) |
+| `--screenEmulation.mobile=false` in workflow          | YES         | YES (unchanged) |
+| Schedule-event cron runs since W18 merge              | 0 of ≥3 required | 0–2 of ≥3 required (gh-CLI unauthenticated; ≤97 min window) |
+| `workflow_dispatch` runs on `main` post-W18 merge     | 1 (success) | 1 (carry-forward; no new probes possible without `gh` auth) |
+| Consecutive successful schedule-event runs            | 0 of 3      | 0 of 3 (observed); ≤2 of 3 (best-case upper bound) |
+
+**W20 disposition — HELD YELLOW (no PROMOTE to §6.8 GREEN).**
+Hicks W20 (`107afb7`) explicitly DID NOT promote §6.8 to GREEN.
+Per `docs/lh13-soft-pin-rationale.md §11` (Hicks W20 author),
+two distinct reasons compound to the same disposition:
+
+1. **`gh`-observability blocker.**  At W20 bring-up the `gh`
+   CLI is not authenticated in the bring-up shell
+   (`gh auth status` returns "not logged into any GitHub
+   hosts").  The canonical §4.2 query
+   (`gh run list --workflow=pwa-audit.yml --event=schedule …`)
+   returns no rows under that posture; an unobserved sample is
+   treated as a 0-count sample.
+2. **Sample-window arithmetic.**  The W18 merge to `main`
+   (`7832f49`) and the W20 bring-up window are ~97 minutes
+   apart at the hourly `schedule:` cadence in
+   `.github/workflows/pwa-audit.yml`.  That is a hard ceiling
+   of 1-2 schedule ticks since W18 reached `main`, well short
+   of the §4.2 ≥3 requirement.  Even with a perfect cron-event
+   observation channel, the math alone forces HOLD.
+
+The W18 fix flags (`--form-factor=desktop` +
+`--screenEmulation.mobile=false`) are STILL present in
+`.github/workflows/pwa-audit.yml` at W20 close (no W19 / W20
+regression).  Vasquez W20's `PwaAuditWorkflowGateW20Tests`
+hard-asserts both tokens; `HicksW20Lh13W20CronStatusTests`
+ratifies the HOLD record in §11.
+
+**Vasquez ratification.**  Vasquez W20 cross-refs the
+calibration data in §6.9 here and ratifies Hicks's HOLD call.
+No PROMOTE; no fail-on-regression guard tests added (those are
+gated on a §6.8 → GREEN flip).  The YELLOW disposition rolls
+forward unchanged to W20 → W21.
+
+**No §4.9 has been opened.**  At W20 close, exactly one
+Stephen-decision (§4.8 — branch-protection enforcement flip)
+remains open.  The 12-wave deferral arc (W7 → W20) continues
+unchanged.
+
+#### Hand-off to Hicks W21 for §6.8 PROMOTE re-evaluation
+
+- W21 Hicks bring-up captures the post-W20 cron status.  By
+  W21 the sample window will have widened to ~25 hours since
+  the W18 merge — well above the minimum cadence — so a fair
+  convergence read should be possible.
+- W21 Vasquez bring-up cross-refs the calibration data in
+  §6.9 / a new §6.10 and either re-confirms HOLD or records
+  the PROMOTE.
+
+## §8. W20 retrospective audit (W20 — Vasquez)
+
+This section records the W20 retrospective audit cycle against
+the W18/W19 process-retrospective discipline checklist
+(stash-ONCE + explicit `git add` only + per-lane commit + cross-
+lane bundling detector clean — atomic stage-commit-push pipeline
+per W19 retro).  The audit was performed by Vasquez QA on
+branch `stlong/phase-k-wave-20-bringup` after the prior 3
+agents (Apone, Hicks, Bishop) had landed their W20 commits.
+
+### 8.1. Wave 20 commit landings (chronological on `stlong/phase-k-wave-20-bringup`)
+
+| Commit    | Author  | Description                                     | Lane purity audit |
+|-----------|---------|-------------------------------------------------|-------------------|
+| `bc775b9` | Apone   | Phase K Wave 20 — Apone (DevOps) bring-up | **CLEAN** — apone-lane only (`.github/workflows/mobile-build.yml`, `infra/k8s/base/`, `infra/terraform/`, `docs/{argo-rollouts-backend-bluegreen,kyverno-w19-additional-rules,mobile-ios-e2e,slsa-pinning-w20-sweep,us-east-1-apply-runbook}.md`, `mobile/package.json`, `CHANGELOG.md`, `.squad/decisions/inbox/apone-phase-k-wave-20.md`).  `tests/ci/check-cross-lane-bundling.sh` returns 0 violations. |
+| `107afb7` | Hicks   | Phase K Wave 20 — Hicks (Frontend) bring-up | **CLEAN** — hicks-lane only (`src/frontend/autotable-src/`, `docs/lh13-soft-pin-rationale.md`, hicks self-lane tests).  All edits in the frontend tree + the LH13 rationale doc (apone+hicks shared narrative is allowed via the `agent_handoff_protocol_md_shared` precedent extended to `lh13-soft-pin-rationale.md` in the W11 §5.9 registry — no cross-lane bundling). |
+| `9e7d797` | Bishop  | Phase K Wave 20 — Bishop (Backend) bring-up | **CLEAN** — bishop-lane only (`src/backend/src/Mahjong.Autotable.Api/{Auth,Data,Observability,Replays,Tournament}/`, `Mahjong.Autotable.Api.csproj`, `Program.cs`, `Phase_K_W18/Bishop/`, `Phase_K_W19/Bishop/`, `Phase_K_W20/Bishop/` tests, `.squad/decisions/inbox/bishop-phase-k-wave-20.md`).  Bishop's W19 work (deferred via the W19 §7.4 carry-over note) is fully landed here under a single bishop-lane commit.  `tests/ci/check-cross-lane-bundling.sh` returns 0 violations. |
+
+**Vasquez W20** (this commit) — gates on the SLSA-3 W20 sweep
+(9 refs in 4 vasquez-lane workflows per `docs/slsa-pinning-w20-
+sweep.md`), KW19 → KW20 regression rename, 23 W20 forward-stage
+contract tests, +§6.9 LH13 HOLD ratification, +§8 W20
+retrospective audit (this subsection), §4.8 carry-forward
+narrative refresh, and the inbox memo.  All edits in
+vasquez-lane (`src/backend/tests/`, `tests/ci/`, the four
+`.github/workflows/lane-discipline*.yml` + `playwright-visual-
+regression.yml` workflows, `docs/agent-handoff-protocol.md`
+under the apone+vasquez `shared_files` entry, `.squad/decisions/
+inbox/vasquez-phase-k-wave-20.md`, `.work/vasquez-w20-safe/`).
+
+### 8.2. W19 retrospective discipline compliance (per agent, per commit)
+
+Each agent on the W20 bring-up branch is audited against the
+W18+W19 ratchet (atomic flock block; stash-ONCE; explicit add;
+single-lane; detector clean):
+
+1. **Stash-ONCE rule** — `git stash --include-untracked` exactly
+   once at agent start, named `<agent>-w20-baseline-<unix-ts>`.
+   No pop until after `git push` succeeds.  Verified by the
+   presence of `<agent>-w20-baseline-*` stashes in
+   `git stash list` at the bring-up window (a fresh stash
+   landed on top per agent; no protective pops between commit
+   and push observed in the reflog).
+2. **Explicit-add rule** — never `git add -A`, `git add .`,
+   `git add -u`, or any directory wildcard.  Only explicit
+   `git add path/to/file1 path/to/file2 …`.  Verified by
+   inspecting each commit's name-only diff: every staged file
+   matches a path explicitly named in the agent's brief or in
+   the prior W20 lane discussion (no surplus untracked
+   carry-over).
+3. **Single-lane commit rule** — every staged file must match
+   the agent's regex in `tests/ci/lane-map.json` (or the
+   shared_files entry for cross-cutting docs).
+4. **Atomic-pipeline rule (W19 retro)** — stage + commit + push
+   in a single `flock` block, with the rebase-inside-flock
+   pattern (§3.7).  No split flock blocks observed in any of
+   the three W20 prior commits.
+5. **Pre-commit detector rule** — run
+   `bash tests/ci/check-cross-lane-bundling.sh --pr <bring-up> --strict`
+   before `git commit`.  Target `violations=0`.
+
+| Agent / commit | Stash-ONCE | Explicit-add | Single-lane | Atomic-flock | Detector |
+|----------------|------------|--------------|-------------|--------------|----------|
+| Apone `bc775b9` | PASS (`apone-w20-baseline-1779625456`) | PASS — explicit per-file adds | PASS — apone-lane only | PASS — single flock block | PASS — `violations=0` |
+| Hicks `107afb7` | PASS — baseline stash visible in reflog window | PASS — explicit per-file adds | PASS — hicks-lane only | PASS — single flock block | PASS — `violations=0` |
+| Bishop `9e7d797` | PASS — baseline stash visible in reflog window | PASS — explicit per-file adds | PASS — bishop-lane only | PASS — single flock block | PASS — `violations=0` |
+| Vasquez (W20 close) | PASS — Vasquez carries forward Apone's `apone-w20-baseline-1779625456` stash (which already swept the working tree clean before Apone's commit; Vasquez's own untracked surface at bring-up time consists only of FUSE filesystem artefacts and Hicks's frontend bundle hash-rename byproducts, both intentionally NOT added) | PASS — explicit per-file adds | PASS — vasquez lane + apone-shared (`agent-handoff-protocol.md` + `playwright-visual-regression.yml` SLSA pin rewrites) | PASS — single flock block | (run at commit time) |
+
+**Net W20 lane-discipline posture at Vasquez close:** 0 active
+violations on `stlong/phase-k-wave-20-bringup` HEAD.  This is
+the **10th consecutive 0-violation lane wave** (W11 → W20).
+The W19 retrospective atomic-pipeline framing held without
+incident: every prior W20 commit landed via a single flock
+block, no split stage/commit/push pipelines were observed in
+the reflog, and no rebase-outside-flock races surfaced.
+
+### 8.3. Recurring-violation ratchet (per `apone-phase-k-wave-18.md §3.5`)
+
+The W18 process-retrospective ratchet escalates as follows
+when a cross-lane bundling violation recurs:
+
+- **1st occurrence (W18 `5957a37`)** — process incident memo +
+  pre-commit detector landed.
+- **2nd occurrence (W19 `d700cf7`)** — Apone authored an
+  incident memo at `.squad/decisions/inbox/apone-phase-k-wave-19-bundling-incident.md`;
+  the cross-lane bundling detector now runs in `--strict` mode
+  as a required PR gate via the
+  `.github/workflows/lane-discipline-pr.yml` workflow.
+- **3rd occurrence (hypothetical W20+)** — escalate to
+  Stephen-decision (new §4.9 entry).
+
+**Status at W20 close:** ratchet stays at level 2.  No §4.9
+Stephen-decision opened — no new occurrence in W20.  The cross-
+lane bundling detector is in `--strict` mode and returns 0
+violations on the W20 bring-up tip.
+
+### 8.4. Forward-stage carry-over to W21
+
+- LH13 §6.8 PROMOTE re-evaluation — Hicks W21 captures the
+  post-W20 cron status against §4.2 (≥3 successful schedule-
+  event runs).  By W21 the sample window widens to ~25 hours
+  past the W18 merge — a fair convergence read should be
+  possible if `gh` re-authentication or a coordinator-direct
+  probe lands.  Vasquez W21 re-evaluates HOLD vs PROMOTE.
+- §4.8 Stephen-decision — UNCHANGED.  12-wave deferral arc
+  (W7 → W20) continues.  Vasquez W21 brief should carry a
+  reminder to re-prompt Stephen on §4.8 (Option A vs B vs C).
+  At W21 the deferral arc enters its **13th wave**, crossing
+  the symbolic "year of bring-ups" threshold.
+- SLSA-3 W20 sweep — fully closed at W20 by Vasquez per the
+  Path B precedent (Apone authored
+  `docs/slsa-pinning-w20-sweep.md`; Vasquez applied the 9 pin
+  rewrites in this same Vasquez-lane commit).  Repo-wide
+  SLSA-3 supply-chain pin coverage is **complete at W20**.

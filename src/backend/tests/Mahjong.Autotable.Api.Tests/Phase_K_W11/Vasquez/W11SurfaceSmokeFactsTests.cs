@@ -286,6 +286,7 @@ public sealed class W11SurfaceSmokeFactsTests
         // W12 renames to Wave1ThroughKW12RegressionTests; W13
         // renames to Wave1ThroughKW13RegressionTests; W14 renames
         // to Wave1ThroughKW14RegressionTests; W15 → KW15; W16 → KW16; W17 → KW17;
+        // W18 → KW18; W19 → KW19; W20 → KW20.
         // W18 → KW18.
         // Accept any of the six names so this smoke stays green
         // across each rename wave.
@@ -298,7 +299,8 @@ public sealed class W11SurfaceSmokeFactsTests
             || x.Name.Equals("Wave1ThroughKW16RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW17RegressionTests", StringComparison.Ordinal)
             || x.Name.Equals("Wave1ThroughKW18RegressionTests", StringComparison.Ordinal)
-            || x.Name.Equals("Wave1ThroughKW19RegressionTests", StringComparison.Ordinal));
+            || x.Name.Equals("Wave1ThroughKW19RegressionTests", StringComparison.Ordinal)
+            || x.Name.Equals("Wave1ThroughKW20RegressionTests", StringComparison.Ordinal));
         Assert.NotNull(t);
     }
 }

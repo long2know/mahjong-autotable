@@ -549,9 +549,210 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Phase K Wave 20 — Apone (DevOps). iOS E2E smoke against the
+  # SIGNED .app, mirroring the W19 Android `android-e2e` job
+  # shape. Boots an iOS Simulator (xcrun simctl), installs the
+  # SIGNED .app, launches the app via `simctl launch`, smoke-
+  # tests process liveness via `xcrun simctl spawn ... ps`, and
+  # captures a `simctl io screenshot` PNG (+ `simctl spawn ...
+  # log show` tail) into the `ios-e2e-artefacts` upload
+  # (14-day retention).
+  #
+  # The job is gated on the four `IOS_*` signing secrets being
+  # present (proxy: `IOS_DEV_CERT_BASE64`). When secrets are
+  # absent, the gate step short-circuits with
+  # `should-run=false` and no Simulator boot occurs — preserves
+  # the W2 → W19 behaviour for fork PRs + main-pushes before
+  # Stephen lands the iOS distribution identity.
+  #
+  # Run triggers: `push` to `main` + `workflow_dispatch` (NOT
+  # `pull_request` — secrets unreachable from fork PRs anyway,
+  # and the macos-latest runner is expensive enough that
+  # per-PR runs would burn credit).
+  #
+  # The `release` job's `needs:` list is extended to include
+  # `ios-e2e` so a failing SIGNED E2E blocks the prerelease
+  # publication (parallel to the W19 `android-e2e` shape).
+  #
+  # # Why xcrun simctl (NOT Detox)
+  #
+  # Detox is the JS-native E2E framework most React-Native /
+  # Capacitor apps reach for. Two reasons we don't use it here:
+  #
+  #   1. The Capacitor shell is a WebView wrapper; the squad's
+  #      "real" E2E surface is Playwright against the web app
+  #      (covered by `.github/workflows/e2e-playwright.yml`).
+  #      The mobile E2E only needs to verify the shell BOOTS
+  #      and serves the bundle — not full UI interaction.
+  #   2. Detox requires the app to be instrumented with a Detox
+  #      runtime (`detox-rn` or equivalent); adding that
+  #      instrumentation to a SIGNED .app would invalidate the
+  #      signature. Using `xcrun simctl` avoids the
+  #      instrumentation requirement entirely — the SIGNED .app
+  #      runs unmodified in the Simulator.
+  #
+  # Reference: docs/mobile-ios-e2e.md.
+  ios-e2e:
+    name: iOS E2E smoke (SIGNED only)
+    needs: [build-frontend-bundle, ios]
+    runs-on: macos-latest
+    timeout-minutes: 45
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    env:
+      IOS_DEV_CERT_BASE64: ${{ secrets.IOS_DEV_CERT_BASE64 }}
+    steps:
+      - name: Skip if SIGNED secrets absent
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ -z "${IOS_DEV_CERT_BASE64:-}" ]; then
+            echo "::notice::IOS_DEV_CERT_BASE64 absent — E2E smoke skipped (UNSIGNED legacy path)"
+            echo "should-run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::SIGNED branch detected — iOS E2E smoke will run"
+            echo "should-run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.should-run == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download SIGNED iOS artefact
+        if: steps.gate.outputs.should-run == 'true'
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: ios-artefacts
+          path: artefacts/ios/
+
+      - name: Locate SIGNED .app bundle
+        id: app
+        if: steps.gate.outputs.should-run == 'true'
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find artefacts/ios -name '*.app' -type d | head -1)"
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "::error::No .app bundle found in artefacts/ios/"
+            exit 1
+          fi
+          # Resolve the bundle id from the .app's Info.plist —
+          # the Capacitor template's CFBundleIdentifier (or the
+          # operator's override via mobile/capacitor.config.json).
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          if [ -z "$BUNDLE_ID" ]; then
+            echo "::error::Failed to resolve CFBundleIdentifier from Info.plist"
+            exit 1
+          fi
+          echo "app-path=${APP_PATH}" >> "$GITHUB_OUTPUT"
+          echo "bundle-id=${BUNDLE_ID}" >> "$GITHUB_OUTPUT"
+          echo "::notice::E2E target .app: ${APP_PATH} (bundle ${BUNDLE_ID})"
+
+      - name: Boot iOS Simulator
+        id: sim
+        if: steps.gate.outputs.should-run == 'true'
+        run: |
+          set -euo pipefail
+          # iOS 17.x Simulator on the macos-latest runner. The
+          # exact iOS version drifts with the GitHub Actions
+          # macOS image; using `latest` resolves to whatever
+          # the runner ships.
+          DEVICE_NAME="iPhone 15"
+          RUNTIME="$(xcrun simctl list runtimes \
+              | grep -E '^iOS [0-9]' \
+              | tail -1 \
+              | awk -F'[()]' '{print $2}')"
+          if [ -z "$RUNTIME" ]; then
+            echo "::error::No iOS runtime found on this runner"
+            xcrun simctl list runtimes
+            exit 1
+          fi
+          echo "::notice::Booting ${DEVICE_NAME} on runtime ${RUNTIME}"
+          UDID="$(xcrun simctl create "mahjong-e2e-${GITHUB_RUN_ID}" \
+              "${DEVICE_NAME}" "${RUNTIME}")"
+          echo "udid=${UDID}" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "${UDID}"
+          # Wait for the Simulator to reach Booted state.
+          for i in $(seq 1 60); do
+            STATE="$(xcrun simctl list devices booted | grep "${UDID}" | grep -oE '\((Booted|Booting)\)')"
+            if [ "${STATE}" = "(Booted)" ]; then
+              echo "::notice::Simulator booted after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          xcrun simctl bootstatus "${UDID}" -b
+
+      - name: Install SIGNED .app + smoke-test
+        if: steps.gate.outputs.should-run == 'true'
+        env:
+          APP_PATH: ${{ steps.app.outputs.app-path }}
+          BUNDLE_ID: ${{ steps.app.outputs.bundle-id }}
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -euo pipefail
+          echo "===== Pre-install Simulator state ====="
+          xcrun simctl list devices booted
+
+          echo "===== Install SIGNED .app ====="
+          xcrun simctl install "${UDID}" "${APP_PATH}"
+
+          echo "===== Launch app ====="
+          xcrun simctl launch "${UDID}" "${BUNDLE_ID}"
+          # Allow the Capacitor WebView + autotable PWA bundle
+          # to mount. Mirror the W19 Android 15s budget.
+          sleep 15
+
+          echo "===== Smoke 1: app process alive ====="
+          PID="$(xcrun simctl spawn "${UDID}" launchctl list \
+              | grep -F "${BUNDLE_ID}" \
+              | awk '{print $1}' \
+              | head -1 || true)"
+          if [ -z "$PID" ] || [ "$PID" = "-" ]; then
+            echo "::error::App process not running after launch"
+            xcrun simctl spawn "${UDID}" log show --last 2m \
+                --predicate 'eventType == logEvent' \
+                | tail -200
+            exit 1
+          fi
+          echo "App pid: $PID"
+
+          echo "===== Smoke 2: capture screenshot ====="
+          mkdir -p e2e-output
+          xcrun simctl io "${UDID}" screenshot e2e-output/home-screen.png
+          BYTES="$(wc -c < e2e-output/home-screen.png)"
+          if [ "$BYTES" -lt 1024 ]; then
+            echo "::error::Screenshot suspiciously small (${BYTES} bytes) — Simulator render likely failed"
+            exit 1
+          fi
+          echo "Screenshot: ${BYTES} bytes captured"
+
+          echo "===== Smoke 3: collect last 2 minutes of os_log ====="
+          xcrun simctl spawn "${UDID}" log show --last 2m \
+              --predicate 'subsystem CONTAINS "'"${BUNDLE_ID}"'"' \
+              > e2e-output/oslog-tail.txt 2>&1 || true
+
+          echo "===== E2E smoke PASSED ====="
+
+      - name: Tear down Simulator
+        if: always() && steps.sim.outputs.udid != ''
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set +e
+          xcrun simctl shutdown "${UDID}" || true
+          xcrun simctl delete "${UDID}" || true
+
+      - name: Upload E2E artefacts
+        if: steps.gate.outputs.should-run == 'true' && (success() || failure())
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: ios-e2e-artefacts
+          path: e2e-output/
+          if-no-files-found: warn
+          retention-days: 14
+
   release:
     name: Mobile prerelease (main only)
-    needs: [android, android-e2e, ios]
+    needs: [android, android-e2e, ios, ios-e2e]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10

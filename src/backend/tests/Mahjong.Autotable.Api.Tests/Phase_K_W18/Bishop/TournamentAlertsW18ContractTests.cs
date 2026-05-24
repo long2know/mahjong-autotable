@@ -154,8 +154,13 @@ public sealed class TournamentAlertsW18ContractTests
     {
         var y = LoadYaml();
         var teamCount = System.Text.RegularExpressions.Regex.Matches(y, @"team:\s*bishop").Count;
-        // W17: 2 alerts × 1 team line. W18: 3 new alerts × 1 each = 5 total.
-        Assert.Equal(5, teamCount);
+        // Phase K Wave 20 — Bishop. Relaxed from exact-5 pin to
+        // strict-AT-OR-ABOVE so future-wave alert additions don't
+        // trip this contract. The W20 test
+        // (Phase_K_W20/Bishop/SwissPairingAlertsW20ContractTests)
+        // takes over the exact-count pin for the W20 surface.
+        Assert.True(teamCount >= 5,
+            $"expected at least the W18 baseline of 5 team:bishop labels, found {teamCount}");
     }
 
     [Fact, Trait("Category", "Alerts"), Trait("Wave", "Phase-K-18"), Trait("Lane", "Bishop")]

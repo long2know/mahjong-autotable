@@ -520,6 +520,38 @@ public class ReconnectAuditEntry
     /// log. Detail format:
     /// <c>"tournamentId={id}|rows={n}"</c>.</summary>
     public const string KindTournamentSwissPairingAuditRead = "tournament.swiss-pairing.audit.read";
+
+    /// <summary>Phase K Wave 20 — Bishop. Audit Kind stamped by
+    /// the W20 <c>SwissPairingService</c> on a successful
+    /// computation of the next Swiss round. Detail format:
+    /// <c>"tournamentId={id}|round={r}|pairings={n}"</c>.</summary>
+    public const string KindTournamentSwissPairingComputed = "tournament.swiss-pairing.computed";
+
+    /// <summary>Phase K Wave 20 — Bishop. Audit Kind stamped by
+    /// <c>PerTenantRotationBulkDeleteController</c> for each
+    /// tenant deleted in the bulk-delete batch. Detail format:
+    /// <c>"reason={r}|tenantId={t}|batchId={b}"</c>.</summary>
+    public const string KindAuthJwksPerTenantBulkDeleted = "auth.jwks.per-tenant.bulk-deleted";
+
+    /// <summary>Phase K Wave 20 — Bishop. Audit Kind stamped by
+    /// <c>PerTenantRotationBulkEnableController</c> for each
+    /// tenant whose rotation window was renewed in the
+    /// bulk-enable batch. Detail format:
+    /// <c>"reason={r}|tenantId={t}|batchId={b}|windowDays={d}"</c>.</summary>
+    public const string KindAuthJwksPerTenantBulkEnabled = "auth.jwks.per-tenant.bulk-enabled";
+
+    /// <summary>Phase K Wave 20 — Bishop. Audit Kind stamped by
+    /// the W20 <c>ReplayStoreExpiryHandler</c> for each tenant
+    /// whose replay rows were swept by the auto-expiry CronJob.
+    /// Detail format: <c>"tenant={t}|expired={n}|tickId={g}"</c>.</summary>
+    public const string KindReplayAutoExpiry = "replays.auto-expiry";
+
+    /// <summary>Phase K Wave 20 — Bishop. Audit Kind stamped by
+    /// the W20 <c>JwtRotationDrillController</c> when an admin
+    /// successfully runs a (non-prod) rotation drill. Detail
+    /// format:
+    /// <c>"reason={r}|drillId={g}|env={e}|tenants={n}"</c>.</summary>
+    public const string KindJwtKeyRotationDrill = "auth.jwt.key-rotation-drill";
 }
 
 /// <summary>

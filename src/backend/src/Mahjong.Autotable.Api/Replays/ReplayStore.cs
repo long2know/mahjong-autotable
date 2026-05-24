@@ -85,6 +85,41 @@ public interface IReplayStore
         DateTime utcNow,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Phase K Wave 20 — Bishop. Per-tenant aware sweep that
+    /// ALSO returns the per-tenant breakdown of the evicted
+    /// row count. Mirrors the W16
+    /// <see cref="SweepWithPerTenantPolicyAsync"/> semantics
+    /// — same policy lookup + same fallback retention — but
+    /// surfaces the count-by-tenant map so the W20
+    /// <c>ReplayStoreExpiryHandler</c> can emit the
+    /// <c>replay_expired_total{tenant=…}</c> counter without
+    /// re-querying the store. Rows whose
+    /// <see cref="ReplayRecord.TenantId"/> is null / empty
+    /// land under the literal key <c>""</c> (rendered as
+    /// <c>_unknown</c> in Prometheus by the metric
+    /// collector — same bucket convention as the W19
+    /// integrity-audit surface).
+    ///
+    /// <para>Default interface implementation: round-trips
+    /// through the W16 sweep, returns a single-bucket map
+    /// keyed by <c>""</c> with the total count. This keeps
+    /// the contract additive — every existing implementation
+    /// compiles without modification — and the canonical
+    /// <see cref="InMemoryReplayStore"/> /
+    /// <see cref="EfReplayStore"/> overrides supply the real
+    /// per-tenant breakdown.</para>
+    /// </summary>
+    async Task<IReadOnlyDictionary<string, int>> SweepWithPerTenantBreakdownAsync(
+        IReplayRetentionPolicyStore policyStore,
+        int fallbackDays,
+        DateTime utcNow,
+        CancellationToken ct = default)
+    {
+        var total = await SweepWithPerTenantPolicyAsync(policyStore, fallbackDays, utcNow, ct);
+        return new Dictionary<string, int> { [string.Empty] = total };
+    }
+
     /// <summary>Total row count — surfaced so tests can assert
     /// the insert path landed.</summary>
     Task<int> CountAsync(CancellationToken ct = default);
@@ -211,6 +246,52 @@ public sealed class InMemoryReplayStore : IReplayStore
             }
         }
         return removed;
+    }
+
+    /// <summary>Phase K Wave 20 — Bishop. In-memory override of
+    /// <see cref="IReplayStore.SweepWithPerTenantBreakdownAsync"/>
+    /// that supplies the real per-tenant breakdown rather than
+    /// the single-bucket fallback baked into the interface
+    /// default.</summary>
+    public async Task<IReadOnlyDictionary<string, int>> SweepWithPerTenantBreakdownAsync(
+        IReplayRetentionPolicyStore policyStore,
+        int fallbackDays,
+        DateTime utcNow,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(policyStore);
+        var policies = await policyStore.ListAsync(ct).ConfigureAwait(false);
+        var map = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var p in policies)
+        {
+            if (!string.IsNullOrWhiteSpace(p.TenantId) && p.RetentionDays > 0)
+            {
+                map[p.TenantId] = p.RetentionDays;
+            }
+        }
+        var fallbackCutoff = fallbackDays > 0
+            ? utcNow.AddDays(-fallbackDays)
+            : (DateTime?)null;
+        var breakdown = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var pair in _rows)
+        {
+            var row = pair.Value;
+            DateTime? cutoff;
+            if (!string.IsNullOrEmpty(row.TenantId) && map.TryGetValue(row.TenantId, out var days))
+            {
+                cutoff = utcNow.AddDays(-days);
+            }
+            else
+            {
+                cutoff = fallbackCutoff;
+            }
+            if (cutoff is { } c && row.CompletedAt < c && _rows.TryRemove(pair.Key, out _))
+            {
+                var bucket = string.IsNullOrEmpty(row.TenantId) ? string.Empty : row.TenantId!;
+                breakdown[bucket] = breakdown.TryGetValue(bucket, out var existing) ? existing + 1 : 1;
+            }
+        }
+        return breakdown;
     }
 
     public Task<int> CountAsync(CancellationToken ct = default) =>
@@ -438,6 +519,106 @@ public sealed class EfReplayStore : IReplayStore
         return totalRemoved;
     }
 
+    /// <summary>Phase K Wave 20 — Bishop. EF override of
+    /// <see cref="IReplayStore.SweepWithPerTenantBreakdownAsync"/>.
+    /// Mirrors the W16 EF sweep semantics — per-tenant bulk
+    /// delete + fallback NOT-IN delete — but counts rows by
+    /// tenant before deletion so the W20 expiry handler can
+    /// emit the per-tenant counter.</summary>
+    public async Task<IReadOnlyDictionary<string, int>> SweepWithPerTenantBreakdownAsync(
+        IReplayRetentionPolicyStore policyStore,
+        int fallbackDays,
+        DateTime utcNow,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(policyStore);
+        var policies = await policyStore.ListAsync(ct).ConfigureAwait(false);
+        var map = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var p in policies)
+        {
+            if (!string.IsNullOrWhiteSpace(p.TenantId) && p.RetentionDays > 0)
+            {
+                map[p.TenantId] = p.RetentionDays;
+            }
+        }
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var breakdown = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (tenant, days) in map)
+        {
+            var cutoff = utcNow.AddDays(-days);
+            var t = tenant;
+            var c = cutoff;
+            var count = await db.Replays.CountAsync(r => r.TenantId == t && r.CompletedAt < c, ct);
+            if (count == 0) continue;
+            try
+            {
+                var deleted = await db.Replays
+                    .Where(r => r.TenantId == t && r.CompletedAt < c)
+                    .ExecuteDeleteAsync(ct);
+                breakdown[t] = (breakdown.TryGetValue(t, out var existing) ? existing : 0) + deleted;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Per-tenant bulk-delete (breakdown) failed for tenant={Tenant}; falling back to per-row delete.",
+                    tenant);
+                var rows = await db.Replays
+                    .Where(r => r.TenantId == t && r.CompletedAt < c)
+                    .ToListAsync(ct);
+                db.Replays.RemoveRange(rows);
+                await db.SaveChangesAsync(ct);
+                breakdown[t] = (breakdown.TryGetValue(t, out var existing) ? existing : 0) + rows.Count;
+            }
+        }
+        if (fallbackDays > 0)
+        {
+            var cutoff = utcNow.AddDays(-fallbackDays);
+            var tenantKeys = map.Keys.ToList();
+            try
+            {
+                // Use a single query to fetch the tenant ids of the rows
+                // about to be evicted so the per-tenant breakdown picks
+                // them up under their real bucket; the null bucket lands
+                // under "" (rendered as "_unknown" by the metric).
+                var doomed = await db.Replays
+                    .Where(r => r.CompletedAt < cutoff)
+                    .Where(r => r.TenantId == null || !tenantKeys.Contains(r.TenantId))
+                    .Select(r => r.TenantId)
+                    .ToListAsync(ct);
+                if (doomed.Count > 0)
+                {
+                    await db.Replays
+                        .Where(r => r.CompletedAt < cutoff)
+                        .Where(r => r.TenantId == null || !tenantKeys.Contains(r.TenantId))
+                        .ExecuteDeleteAsync(ct);
+                    foreach (var raw in doomed)
+                    {
+                        var bucket = string.IsNullOrEmpty(raw) ? string.Empty : raw!;
+                        breakdown[bucket] = (breakdown.TryGetValue(bucket, out var existing) ? existing : 0) + 1;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Fallback bulk-delete (breakdown) failed; per-row pass.");
+                var rows = await db.Replays
+                    .Where(r => r.CompletedAt < cutoff)
+                    .Where(r => r.TenantId == null || !tenantKeys.Contains(r.TenantId))
+                    .ToListAsync(ct);
+                db.Replays.RemoveRange(rows);
+                await db.SaveChangesAsync(ct);
+                foreach (var row in rows)
+                {
+                    var bucket = string.IsNullOrEmpty(row.TenantId) ? string.Empty : row.TenantId!;
+                    breakdown[bucket] = (breakdown.TryGetValue(bucket, out var existing) ? existing : 0) + 1;
+                }
+            }
+        }
+        return breakdown;
+    }
+
     public async Task<int> CountAsync(CancellationToken ct = default)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -534,6 +715,17 @@ public sealed class ReplayOptions
     /// (nightly). Lowered values are tolerated for test
     /// fixtures.</summary>
     public int SweepIntervalHours { get; set; } = 24;
+
+    /// <summary>
+    /// Phase K Wave 20 — Bishop. Cadence of the W20
+    /// auto-expiry CronJob handler in minutes. Default
+    /// 60 (hourly). The handler walks the W16 per-tenant
+    /// breakdown sweep on every tick and emits one
+    /// <c>replay_expired_total{tenant=…}</c> observation per
+    /// evicted row. Lowered values are tolerated for test
+    /// fixtures; 0 falls back to the default 60.
+    /// </summary>
+    public int AutoExpiryTickIntervalMinutes { get; set; } = 60;
 
     /// <summary>Maximum compressed-payload size accepted on
     /// POST. Defaults to 8 MB — large enough for the longest

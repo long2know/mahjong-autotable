@@ -190,6 +190,28 @@ public static class MetricsEndpoint
             sb.Append("# TYPE ").Append(SignalRRetentionLifecycleMetrics.MetricCapTriggeredName).AppendLine(" counter");
         }
 
+        // Phase K Wave 20 — Bishop. Per-tenant replay auto-expiry
+        // counter rendered by the W20 ReplayStoreExpiryHandler.
+        // Falls back to a zeroed envelope with the
+        // tenant="_unknown" placeholder so the W20
+        // signalr-retention-metrics dashboard's neighbouring
+        // panel never observes a missing series at startup.
+        var replayExpiry = services.GetService<Mahjong.Autotable.Api.Replays.ReplayExpiryMetrics>();
+        if (replayExpiry is not null)
+        {
+            replayExpiry.AppendPrometheus(sb);
+        }
+        else
+        {
+            sb.Append("# HELP ").Append(Mahjong.Autotable.Api.Replays.ReplayExpiryMetrics.MetricName)
+              .AppendLine(" Total replay rows auto-expired (collector not wired).");
+            sb.Append("# TYPE ").Append(Mahjong.Autotable.Api.Replays.ReplayExpiryMetrics.MetricName).AppendLine(" counter");
+            sb.Append(Mahjong.Autotable.Api.Replays.ReplayExpiryMetrics.MetricName)
+              .Append('{').Append(Mahjong.Autotable.Api.Replays.ReplayExpiryMetrics.TenantLabel)
+              .Append("=\"").Append(Mahjong.Autotable.Api.Replays.ReplayExpiryMetrics.UnknownTenantBucket).Append("\"} 0")
+              .AppendLine();
+        }
+
         return Results.Text(sb.ToString(), "text/plain; version=0.0.4");
     }
 

@@ -1,0 +1,333 @@
+# Phase K Wave 20 — Apone (DevOps).
+#
+# Argo Rollouts — BlueGreen strategy template for the
+# `mahjong-autotable` backend Deployment.
+#
+# This manifest declares a Rollout CR (Argo Rollouts'
+# Deployment-equivalent CRD) that wraps the existing
+# `mahjong-autotable` backend with a BlueGreen promotion
+# strategy:
+#
+#   * `active` Service receives 100% of production traffic.
+#   * `preview` Service is wired to the new (green) ReplicaSet
+#     for human + automated smoke-testing BEFORE cutover.
+#   * `autoPromotionEnabled: false` — the cutover from
+#     preview → active is a MANUAL operator action (a
+#     `kubectl argo rollouts promote` invocation, OR a click
+#     in the Argo Rollouts dashboard). This is the W20 design
+#     point: zero auto-promotion until the squad has
+#     operational confidence in the analysis run + the
+#     preview-side smoke tests.
+#   * A 60s `prePromotionAnalysis` run executes against the
+#     preview Service before promotion is even allowed — the
+#     `backend-bluegreen-prepromotion` AnalysisTemplate
+#     queries Prometheus for the preview Service's P95
+#     request latency over a 60s window. Failing the analysis
+#     blocks promotion (manual override possible via the
+#     dashboard's "promote-full" button).
+#
+# # Why BlueGreen and not Canary?
+#
+# The W9 canary path lives at `helm/mahjong/templates/canary-
+# deployment.yaml` (3× AnalysisTemplate gates: success-rate,
+# p99-latency, error-budget). That covers the gradual-shift
+# use-case for the backend's request-loaded workload.
+#
+# W20 adds BlueGreen alongside the canary — NOT replacing
+# it — for the cases where:
+#
+#   * The release carries a SCHEMA migration the canary
+#     path cannot safely partial-traffic against (e.g. an
+#     ALTER TABLE that the OLD pods cannot SELECT through).
+#   * The release shifts the SignalR sticky-session shape
+#     (touched in W19); BlueGreen avoids the
+#     ".../negotiate routes to the old pod but
+#     .../start routes to the new pod" hash-mismatch.
+#   * The squad wants a HUMAN review of the preview pod's
+#     `/health` + `/build-info` output before a single user
+#     request hits it.
+#
+# Operator chooses between BlueGreen and Canary at apply-
+# time via the helm chart's `deploymentStrategy:` value
+# (W20+ enhancement; default remains canary for backward
+# compatibility). See docs/argo-rollouts-backend-bluegreen.md
+# for the runbook.
+#
+# # Wiring
+#
+# This manifest is OUT-OF-BAND at W20 — NOT in
+# `base/kustomization.yaml`. The W19 install runbook
+# (`docs/argo-rollouts-install-runbook.md`) lands the
+# controller; W20 lands the strategy template. The operator
+# applies this manifest only when promoting a release via
+# the BlueGreen path:
+#
+#   kubectl apply -f infra/k8s/base/argo-rollouts/backend-bluegreen.yaml
+#
+# from the operator workstation. The Rollout CR then assumes
+# ownership of the underlying Deployment (the W2 base
+# Deployment continues to exist; the Rollout CR's selector
+# matches the same pod-labels, but only one of {Deployment,
+# Rollout} can own the ReplicaSet at a time — see the
+# runbook for the cutover sequence).
+#
+# # Cross-references
+#
+#   * docs/argo-rollouts-install-runbook.md — W19 controller
+#     install runbook (prereq for this manifest).
+#   * docs/argo-rollouts-backend-bluegreen.md — W20 runbook
+#     for THIS file.
+#   * helm/mahjong/templates/canary-deployment.yaml — W9
+#     Canary alternative (the prior strategy).
+#   * infra/k8s/base/deployment.yaml — the base Deployment
+#     this Rollout supersedes when BlueGreen mode is active.
+#   * infra/k8s/base/service.yaml — the base Service the
+#     active selector layers on top of.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: mahjong-autotable
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: mahjong-autotable
+    mahjong.io/rollout-strategy: bluegreen
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-20
+    mahjong.io/runbook: "docs/argo-rollouts-backend-bluegreen.md"
+spec:
+  # Match the base Deployment's replica count. Overlays
+  # patch this for staging (1) and prod (3) — see the
+  # `infra/k8s/overlays/*/kustomization.yaml` patches that
+  # cover the equivalent shape on the W2 Deployment.
+  replicas: 2
+
+  # Pod-template selector — identical to the W2 base
+  # Deployment so the Rollout CR can take over the same
+  # pod-label set on cutover.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mahjong-autotable
+
+  # PodTemplateSpec — the Rollout owns its own template
+  # (the W2 Deployment's template is duplicated here). When
+  # the operator switches the cluster from Deployment-mode
+  # to Rollout-mode, the helm/kustomize-side wiring drops
+  # the Deployment and the Rollout takes over.
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mahjong-autotable
+        app.kubernetes.io/component: api
+    spec:
+      # Non-root runtime — matches Dockerfile USER 1000.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: api
+          image: ghcr.io/long2know/mahjong-autotable:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+  strategy:
+    blueGreen:
+      # `activeService` — the Service receiving production
+      # traffic. References the W2 base Service name; the
+      # Rollout controller patches the Service's pod-selector
+      # to point at the ACTIVE (blue) ReplicaSet's
+      # rollout-pod-template-hash label.
+      activeService: mahjong-autotable
+
+      # `previewService` — separate Service for the GREEN
+      # ReplicaSet. The Rollout controller patches this
+      # Service's selector to point at the new ReplicaSet
+      # the moment a new image lands; the operator runs
+      # smoke tests against this preview endpoint before
+      # promotion.
+      previewService: mahjong-autotable-preview
+
+      # `autoPromotionEnabled: false` — MANUAL review gate.
+      # The new ReplicaSet stays in `Paused` state after the
+      # prePromotionAnalysis passes; the operator manually
+      # promotes via `kubectl argo rollouts promote
+      # mahjong-autotable` (or the dashboard equivalent).
+      # This is the W20 design point: no auto-promotion
+      # until the squad has soaked the BlueGreen path
+      # against a non-trivial production traffic shape.
+      autoPromotionEnabled: false
+
+      # `scaleDownDelaySeconds` — how long the OLD (blue)
+      # ReplicaSet remains running after the promote. 30s
+      # gives in-flight requests time to drain (matches the
+      # W2 Deployment's RollingUpdate `maxUnavailable: 0`
+      # pattern). After 30s the controller scales the blue
+      # ReplicaSet to 0; the rollback path becomes a
+      # `kubectl argo rollouts undo` invocation.
+      scaleDownDelaySeconds: 30
+
+      # `scaleDownDelayRevisionLimit` — keep the previous 2
+      # blue ReplicaSets around for fast rollback. Older
+      # ReplicaSets are GC'd by the controller.
+      scaleDownDelayRevisionLimit: 2
+
+      # `abortScaleDownDelaySeconds` — when an operator
+      # ABORTS the rollout (via `kubectl argo rollouts abort`
+      # or the dashboard), the new (green) ReplicaSet is
+      # scaled to 0 after this delay. 30s symmetric with
+      # `scaleDownDelaySeconds` above.
+      abortScaleDownDelaySeconds: 30
+
+      # `prePromotionAnalysis` — the analysis run executes
+      # BEFORE the operator is allowed to promote. The
+      # `backend-bluegreen-prepromotion` AnalysisTemplate
+      # queries Prometheus for the preview Service's P95
+      # request latency over a 60s window. Failing the
+      # analysis prevents promote (operator can still
+      # `--force-promote` via the dashboard, but that
+      # action is audit-logged).
+      prePromotionAnalysis:
+        templates:
+          - templateName: backend-bluegreen-prepromotion
+        args:
+          - name: service-name
+            value: mahjong-autotable-preview
+
+      # `postPromotionAnalysis` — re-run the same analysis
+      # AFTER promotion, against the now-active Service.
+      # Catches the case where the preview Service was
+      # healthy but the cutover itself induced latency
+      # (e.g. a Service-selector flip caused a brief
+      # connection-storm). On failure, the controller
+      # auto-rolls-back to the blue ReplicaSet.
+      postPromotionAnalysis:
+        templates:
+          - templateName: backend-bluegreen-prepromotion
+        args:
+          - name: service-name
+            value: mahjong-autotable
+
+---
+# AnalysisTemplate — backend BlueGreen pre/post-promotion gate.
+#
+# Polls Prometheus every 10s for 6 iterations (60s total).
+# Each iteration computes the P95 of the request-duration
+# histogram over a rolling 1m window. The analysis passes
+# when 5 of 6 iterations report P95 < threshold (default
+# 300ms — chosen lower than the W9 canary p99 500ms
+# threshold because BlueGreen sees ALL traffic at promote
+# time, so the latency budget is tighter).
+#
+# Operator override paths:
+#   * Bump `thresholdMillis` via a kustomize patch when a
+#     known slow release is rolling.
+#   * `--skip-analysis-run` on the rollout-controller's CLI
+#     (escalation only).
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: backend-bluegreen-prepromotion
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/part-of: mahjong-autotable
+    app.kubernetes.io/component: api-bluegreen-analysis
+    mahjong.io/bluegreen-gate: p95-latency
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-20
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: p95-latency-ms
+      # 60s analysis run = 10s interval × 6 iterations.
+      interval: 10s
+      count: 6
+      # Pass criterion: P95 < 300ms. Tunable via a
+      # kustomize patch against this AnalysisTemplate.
+      successCondition: result[0] <= 300
+      # Allow ONE blip — a single noisy sample shouldn't
+      # block a release. Two failures abort the analysis.
+      failureLimit: 1
+      provider:
+        prometheus:
+          # In-cluster Prometheus endpoint — same address
+          # the W9 canary AnalysisTemplates target. Overlay
+          # patches can rewrite the address for non-prod
+          # clusters.
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(
+                http_request_duration_seconds_bucket{service="{{args.service-name}}"}[1m]
+              ))
+            ) * 1000
+
+---
+# Service — mahjong-autotable-preview.
+#
+# A second Service whose selector the Rollout controller
+# patches at apply-time to point at the GREEN (new)
+# ReplicaSet. Pre-creating the Service here means the
+# operator can issue smoke-test traffic against the preview
+# endpoint the moment the new image lands.
+#
+# The active Service (`mahjong-autotable`) lives at
+# `infra/k8s/base/service.yaml` — this preview Service
+# mirrors its shape (same port 80 → 8080 mapping).
+apiVersion: v1
+kind: Service
+metadata:
+  name: mahjong-autotable-preview
+  labels:
+    app.kubernetes.io/name: mahjong-autotable
+    app.kubernetes.io/component: api-preview
+    mahjong.io/bluegreen-role: preview
+  annotations:
+    rollout.argoproj.io/wave: phase-k-wave-20
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  # The selector here is a PLACEHOLDER; the Rollout
+  # controller patches `selector` with the
+  # `rollouts-pod-template-hash` of the GREEN ReplicaSet at
+  # apply-time. Pre-creating the Service with the broad
+  # app.kubernetes.io/name selector means a fresh apply
+  # without the Rollout controller running falls back to
+  # selecting all backend pods (safe — same behaviour as
+  # the active Service).
+  selector:
+    app.kubernetes.io/name: mahjong-autotable
