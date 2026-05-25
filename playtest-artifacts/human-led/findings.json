@@ -1,0 +1,352 @@
+{
+  "url": "http://127.0.0.1:8089/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1779744769392-825",
+  "variant": "changsha",
+  "dealMode": "manual",
+  "botCount": 3,
+  "steps": [
+    {
+      "name": "1-load",
+      "ok": true,
+      "result": {
+        "url": "http://127.0.0.1:8089/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1779744769392-825",
+        "gameId": "humanled-1779744769392-825"
+      }
+    },
+    {
+      "name": "2-dismiss-tour",
+      "ok": true
+    },
+    {
+      "name": "3-close-lobby",
+      "ok": true,
+      "result": {
+        "lobbyStillOpen": false
+      }
+    },
+    {
+      "name": "4-connect",
+      "ok": true,
+      "result": {
+        "alreadyConnected": true
+      }
+    },
+    {
+      "name": "5-take-seat",
+      "ok": true,
+      "result": {
+        "total": 4,
+        "visibleCount": 4,
+        "clickedIdx": 0,
+        "ourSeat": 0
+      }
+    },
+    {
+      "name": "6-deal",
+      "ok": true,
+      "result": {
+        "visible": true,
+        "enabled": true,
+        "clicked": true
+      }
+    },
+    {
+      "name": "7-roll-dice",
+      "ok": true,
+      "result": {
+        "ok": true
+      }
+    },
+    {
+      "name": "8-drive-deal",
+      "ok": true,
+      "result": {
+        "iterations": 1,
+        "lastPickup": null,
+        "finalHandSize": 0
+      }
+    },
+    {
+      "name": "8b-wait-hand-populated",
+      "ok": true,
+      "result": {
+        "elapsedMs": 20636,
+        "finalHandSize": 0
+      }
+    },
+    {
+      "name": "9-post-deal",
+      "ok": true,
+      "result": {
+        "seat": 0,
+        "handTileCount": 0,
+        "sampleSlots": [],
+        "thingsByPrefix": {
+          "wall": 136,
+          "marker": 1,
+          "tray": 60
+        }
+      }
+    },
+    {
+      "name": "10-discard-attempt",
+      "ok": true,
+      "result": {
+        "ok": false,
+        "tried": [],
+        "reason": "no own-seat hand tile found in things collection",
+        "seat": 0
+      }
+    },
+    {
+      "name": "11-observe-8s",
+      "ok": true,
+      "result": {
+        "moveLogCount": 1,
+        "recent": [
+          "[14:32:51]System: Match started — dealer is Seat 0"
+        ]
+      }
+    },
+    {
+      "name": "12-continuous-observation",
+      "ok": true,
+      "result": {
+        "captureCount": 12,
+        "finalLogCount": 1
+      }
+    },
+    {
+      "name": "13-synthetic-hu",
+      "ok": true,
+      "result": {
+        "ok": true,
+        "modalVisible": true
+      }
+    },
+    {
+      "name": "14-final",
+      "ok": true,
+      "result": {
+        "visibleButtonCount": 22
+      }
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0x3ef40015b200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x3ef40015b200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x3ef40015b200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x3ef40015b200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8089/api/games/humanled-1779744769392-825",
+    "404 GET http://127.0.0.1:8089/api/games/humanled-1779744769392-825/settings"
+  ],
+  "collections": {
+    "match": 1,
+    "seats": 7,
+    "things": 197,
+    "nicks": 7,
+    "mouse": 0,
+    "sound": 0,
+    "dice": 0,
+    "claim": 0,
+    "result": 0,
+    "pickup": 0,
+    "discard": 0,
+    "gameComplete": 1
+  },
+  "visibleButtonsAfterDeal": [
+    "Deal (#deal)",
+    "4p, no red (#setup-desc)",
+    "Setup (#toggle-setup)",
+    "Dealer (#toggle-dealer)",
+    "碰 Pung (#claim-pung)",
+    "吃 Chow (#claim-chow)",
+    "杠 Kong (#claim-kong)",
+    "胡 Hu (#claim-hu)",
+    "跳过 Pass (#claim-pass)",
+    "Disconnect (#disconnect)",
+    "Nick (#)",
+    "Leave seat (#leave-seat)",
+    "More (#)",
+    "× (#)",
+    "☰\n        Lobby (#lobby-toggle)",
+    "⚙ (#settings-toggle)",
+    "⚙\n        Settings (#settings-button)",
+    "🆕 New Game (#game-complete-new-game)",
+    "🎞 View Replay (#game-complete-replay)",
+    "☰ Back to Lobby (#game-complete-lobby)",
+    "💬 Chat (#chat-toggle)",
+    "🎙️ Mute (#)"
+  ],
+  "pickupProgression": [
+    {
+      "atSec": "0.1",
+      "seat": 0,
+      "pickup": null,
+      "myTurn": false,
+      "mySeatHandTiles": 0
+    }
+  ],
+  "moveLogProgression": [
+    {
+      "atSec": 0,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 5,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 10,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 15,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 20,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 25,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 30,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 35,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 40,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 45,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 50,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    },
+    {
+      "atSec": 55,
+      "count": 1,
+      "recent": [
+        "[14:32:51]System: Match started — dealer is Seat 0"
+      ],
+      "phase": {
+        "pickup": null,
+        "result": null
+      }
+    }
+  ],
+  "discardAttempt": {
+    "ok": false,
+    "tried": [],
+    "reason": "no own-seat hand tile found in things collection",
+    "seat": 0
+  },
+  "syntheticHu": {
+    "attempted": true,
+    "ok": true,
+    "modalVisible": true
+  },
+  "postDealHandSize": {
+    "seat": 0,
+    "handTileCount": 0,
+    "sampleSlots": [],
+    "thingsByPrefix": {
+      "wall": 136,
+      "marker": 1,
+      "tray": 60
+    }
+  }
+}
