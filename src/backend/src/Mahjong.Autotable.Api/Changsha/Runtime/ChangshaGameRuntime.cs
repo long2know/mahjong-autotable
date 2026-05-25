@@ -42,8 +42,43 @@ public interface IChangshaGameRuntime
     /// </summary>
     Task<int> TakeSeatAsync(string gameId, string playerId, string connectionId, int? seatIndex, CancellationToken ct = default);
     Task FillEmptySeatsWithBotsAsync(string gameId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Propagates a transport-layer deal-mode hint (typically the autotable
+    /// WS <c>?dealMode=</c> query param) onto <see cref="ChangshaGameState.DealMode"/>.
+    /// Only applies when the game is still in <see cref="ChangshaPhase.Seating"/>:
+    /// once the deal (auto or manual) has begun, the mode is locked. Returns
+    /// <c>true</c> when the value was applied (including no-op writes of the same
+    /// value), <c>false</c> when the game had already started or no game is bound.
+    ///
+    /// <para>Wave-23 follow-up to W22 (Bishop): closes the gap where the autotable
+    /// WS endpoint read <c>?dealMode=manual</c> into <see cref="AutotableConnection.DealMode"/>
+    /// but never forwarded it to the runtime, so manual deals silently became
+    /// auto deals. The accessor is intentionally idempotent and phase-guarded so
+    /// reconnects against a mid-hand game can't flip the mode under us.</para>
+    /// </summary>
+    Task<bool> ApplyDealModeAsync(string gameId, DealMode mode, CancellationToken ct = default);
+
     Task StartGameAsync(string gameId, CancellationToken ct = default, int? expectedVersion = null);
+
+    /// <summary>
+    /// Marks a seat as having acknowledged the deal-time TilesDealt payload.
+    /// Idempotent: a HashSet under the instance lock dedupes repeat calls, and
+    /// the downstream <c>TryAdvanceAfterDealAsync</c> uses a sentinel to prevent
+    /// double-starting the turn loop. Safe to invoke implicitly from non-SignalR
+    /// transports (e.g. the autotable WS bootstrap) where the bundle has no
+    /// explicit ack wiring.
+    /// </summary>
     Task AcknowledgeDealAsync(string gameId, int seatIndex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the seat index currently bound to <paramref name="connectionId"/>
+    /// for <paramref name="gameId"/>, or <c>null</c> if the connection doesn't
+    /// own a seat (or the game doesn't exist). Used by the autotable WS endpoint
+    /// to implicit-ack deals on behalf of seated human connections, since the
+    /// bundle has no AckDeal route of its own.
+    /// </summary>
+    int? TryGetSeatForConnection(string gameId, string connectionId);
     Task DiscardAsync(string gameId, int seatIndex, int tileId, CancellationToken ct = default, int? expectedVersion = null);
     Task ClaimAsync(string gameId, int seatIndex, string claimType, int[]? tileIds, CancellationToken ct = default, int? expectedVersion = null);
     Task PassAsync(string gameId, int seatIndex, CancellationToken ct = default, int? expectedVersion = null);
@@ -218,6 +253,20 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         }
         state = null;
         return false;
+    }
+
+    public int? TryGetSeatForConnection(string gameId, string connectionId)
+    {
+        if (string.IsNullOrEmpty(gameId) || string.IsNullOrEmpty(connectionId)) return null;
+        if (!_games.TryGetValue(gameId, out var instance)) return null;
+        foreach (var kvp in instance.SeatConnections)
+        {
+            if (string.Equals(kvp.Value, connectionId, StringComparison.Ordinal))
+            {
+                return kvp.Key;
+            }
+        }
+        return null;
     }
 
     public int GameCount => _games.Count;
@@ -457,6 +506,27 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     }
 
     // ── StartGame ─────────────────────────────────────────────────────
+
+    public async Task<bool> ApplyDealModeAsync(string gameId, DealMode mode, CancellationToken ct = default)
+    {
+        if (!_games.TryGetValue(gameId, out var instance)) return false;
+
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            // Phase-guard: once StartGameAsync has fired (or a manual deal is in
+            // mid-flight), DealMode is locked. Returning false here lets WS
+            // callers safely re-invoke on reconnect without flipping the mode
+            // mid-hand. Seating is the only legal moment to override.
+            if (instance.State.Phase != ChangshaPhase.Seating) return false;
+            instance.State.DealMode = mode;
+            return true;
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+    }
 
     public async Task StartGameAsync(string gameId, CancellationToken ct = default, int? expectedVersion = null)
     {
