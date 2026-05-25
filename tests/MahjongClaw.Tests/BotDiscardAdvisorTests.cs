@@ -191,6 +191,34 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_PrioritizesDeadSingleton_WhenSevenPairsLeanHasTriplet_ForChineseOfficial()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 5), new(TileSuit.Dots, 5),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Characters, 9)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 9), new(TileSuit.Characters, 9), new(TileSuit.Characters, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 9));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesBreakingDeadPair_WhenChineseOfficialAndExtraPairAvailable()
     {
         var handTiles = new List<Tile>
@@ -259,6 +287,32 @@ public class BotDiscardAdvisorTests
         handTiles[discardIndex].Should().BeOneOf(
             new Tile(TileSuit.Dots, 3),
             new Tile(TileSuit.Bamboos, 1));
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_DiscardsDeadOffRankPair_WhenChangsha258EyeAlreadySecured()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 5), new(TileSuit.Dots, 6),
+            new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 5), new(TileSuit.Bamboos, 6),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 8), new(TileSuit.Characters, 9),
+            new(TileSuit.Bamboos, 1)
+        };
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 3));
     }
 
     [Fact]

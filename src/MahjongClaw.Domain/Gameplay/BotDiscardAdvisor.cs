@@ -12,7 +12,7 @@ public static class BotDiscardAdvisor
     private const int LastSmallWinSingletonKeepBonus = 12;
     private const int OpponentKongFeedAvoidBonus = 12;
     private const int OpponentKongFeedLastCopyAvoidBonus = 10;
-    private const int OpponentKongFeedOutsTolerance = 1;
+    private const int OpponentKongFeedOutsTolerance = 2;
     private const int DeadSmallWinPairOutsTolerance = 1;
     private const int NearDeadSmallWinPairOutsTolerance = 1;
     private const int NearDeadOffRankPairOutsTolerance = 1;
@@ -379,8 +379,7 @@ public static class BotDiscardAdvisor
                     var hasAlternateLiveSmallWinCandidates = liveSmallWinPairCandidates is not null
                         && liveSmallWinPairCandidates.Count > 1;
                     var shouldProtectSingleton = !hasAlternateLiveSmallWinCandidates
-                        || liveSingleton.RemainingCopies >= 2
-                        || pairCount == 0;
+                        && (liveSingleton.RemainingCopies >= 2 || pairCount == 0);
 
                     if (shouldProtectSingleton)
                     {
@@ -825,7 +824,19 @@ public static class BotDiscardAdvisor
                     .Where(candidate => candidate.WinningDrawOuts == bestNonKongOuts)
                     .Max(candidate => candidate.WinningDrawOutCopies);
 
-                if (bestNonKongOuts == bestOverallOuts
+                var losesAllOutsByAvoidingKong = bestOverallOuts > 0 && bestNonKongOuts == 0;
+                if (losesAllOutsByAvoidingKong)
+                {
+                    var kongCandidates = candidates
+                        .Where(candidate => protectedKongTiles.Contains(candidate.Tile))
+                        .ToList();
+
+                    if (kongCandidates.Count > 0)
+                    {
+                        candidates = kongCandidates;
+                    }
+                }
+                else if (bestNonKongOuts == bestOverallOuts
                     && bestNonKongOutCopies == bestOverallOutCopies)
                 {
                     candidates = nonKongCandidates;
@@ -1004,22 +1015,47 @@ public static class BotDiscardAdvisor
                 }
 
                 var distinctOrphanTypes = orphanTiles.Distinct().Count();
-                if (distinctOrphanTypes >= 11 && nonOrphanCount is > 0 and <= 3)
+                if (nonOrphanCount is > 0 and <= 3)
                 {
-                    var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
-                        ownedCounts,
-                        visibleCounts,
-                        distinctOrphanTypes);
-
-                    if (hasLiveThirteenOrphansPath)
+                    if (distinctOrphanTypes >= 11)
                     {
-                        var nonOrphanCandidates = candidates
-                            .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
+                        var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
+                            ownedCounts,
+                            visibleCounts,
+                            distinctOrphanTypes);
+
+                        if (hasLiveThirteenOrphansPath)
+                        {
+                            var nonOrphanCandidates = candidates
+                                .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
+                                .ToList();
+
+                            if (nonOrphanCandidates.Count > 0)
+                            {
+                                candidates = nonOrphanCandidates;
+                            }
+                        }
+                        else
+                        {
+                            var orphanCandidates = candidates
+                                .Where(candidate => candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
+                                .ToList();
+
+                            if (orphanCandidates.Count > 0)
+                            {
+                                candidates = orphanCandidates;
+                            }
+                        }
+                    }
+                    else if (distinctOrphanTypes >= 8)
+                    {
+                        var orphanCandidates = candidates
+                            .Where(candidate => candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
                             .ToList();
 
-                        if (nonOrphanCandidates.Count > 0)
+                        if (orphanCandidates.Count > 0)
                         {
-                            candidates = nonOrphanCandidates;
+                            candidates = orphanCandidates;
                         }
                     }
                 }
@@ -1044,6 +1080,22 @@ public static class BotDiscardAdvisor
         }
 
         var prioritizedCandidates = candidates;
+        if (ruleset == MahjongRuleset.ChineseOfficial
+            && sevenPairsPairCount >= 6
+            && visibleCounts.Count > 0)
+        {
+            var deadSingletonCandidates = prioritizedCandidates
+                .Where(candidate => handCounts.TryGetValue(candidate.Tile, out var count)
+                    && count == 1
+                    && candidate.RemainingCopies == 0)
+                .ToList();
+
+            if (deadSingletonCandidates.Count > 0)
+            {
+                prioritizedCandidates = deadSingletonCandidates;
+            }
+        }
+
         var appliedSevenPairsTripletFocus = false;
         if (ruleset == MahjongRuleset.ChineseOfficial && sevenPairsPairCount >= 6)
         {
@@ -1652,7 +1704,7 @@ public static class BotDiscardAdvisor
                 };
             }
 
-            var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 ? 4 : 0;
+            var honorMajorityBonus = tileMatchCount == 1 && honorCount >= 7 && honorSingletonCount >= 3 ? 4 : 0;
 
             return score + suitClusterBonus + suitFocusPenalty + suitFocusBonus + honorFocusPenalty + sevenPairsBias + sevenPairsTripletBonus + honorMajorityBonus + smallWinPairBonus + requiredSmallWinPairBonus + missingSmallWinPairBonus + deadSmallWinPairPenalty + nonSmallWinPairPenalty + adjacentSmallWinSingletonPenalty + meldSuitFocusBonus + meldExtensionBonus + concealedKongBonus + soleSmallWinPairKeepBonus + soleSmallWinPairSingletonBonus + deadPairPenalty + deadFallbackNonSmallWinPairPenalty;
         }
