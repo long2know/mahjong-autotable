@@ -4010,3 +4010,118 @@ bringup branch immediately before W13 launch.
 
 Stephen standing directive `claude-opus-4.7-xhigh` honoured
 throughout the wave.
+
+---
+
+## 2025 — fix/frontend-playability-iter2 (iter2)
+
+Stephen asked for three frontend playability fixes shipped as one PR. All
+landed:
+
+### Fix 1 — Human click-to-discard
+
+Symptom: human dealer with 14 tiles had no UI path to discard. Bots
+worked (server autoplay) but humans could not advance the turn.
+
+Wire (new):
+
+```text
+client → server   ["discard", <seatIndex>, { "tileId": <int> }]
+server → client   (none — resulting tile move is broadcast via the
+                  standard `things` collection)
+```
+
+Backend:
+- `AutotableProtocol.cs` — added `ChangshaCollectionKinds.Discard
+  = "discard"` constant.
+- `AutotableWsEndpoint.cs` — added `case ChangshaCollectionKinds.Discard:`
+  to the inbound-UPDATE switch + `TryHandleDiscardActionAsync(...)` which
+  parses `{ tileId: int }` from the entry value, derives the seat from the
+  entry key (string-coerced), and calls
+  `_runtime.DiscardAsync(gameId, seatIndex, tileId, ct)`. Errors are
+  caught and silently swallowed (the runtime already validates
+  `phase == AwaitingDiscard` and `seatIndex == ActiveSeat`).
+
+Frontend:
+- `client.ts` — added `DiscardCommand { tileId }` interface and
+  `discard: Collection<string|number, DiscardCommand>` field on
+  `Client`, marked ephemeral so the server doesn't echo it back.
+- `world.ts` — added `emitDiscard(tile)` and `hasExtraHandTile()` plus a
+  click-to-discard intercept in `onDragStart`: when the user clicks on
+  their own hand tile AND their hand has > 13 tiles AND no pickup
+  affordance is pending, we fire `client.discard.set(seat, { tileId })`
+  instead of starting a drag.
+
+### Fix 2 — Lobby auto-close after Quick Match
+
+Symptom: lobby panel stayed `display: block` after a Quick Match reload,
+intercepting pointer events for `#connect`, `#deal`, and `.take-seat`.
+
+`lobby.ts` got a localStorage flag (`mahjong.lobby.skipOpenOnLoad`) plus
+two helpers:
+
+- `markSkipOpenOnLoadFlag()` — set by the Quick Match handler
+  *before* `window.location.replace(url)`; also calls `hidePanel()`
+  immediately as belt-and-suspenders.
+- `consumeSkipOpenOnLoadFlag()` — called at the end of `initLobby`,
+  reads + clears the flag and force-closes the panel if set.
+
+This covers both the synchronous case (page replaces fast enough that
+`hidePanel()` sticks) and the SW-cached / replayed-history case (the
+flag survives the replace, the consume step closes the panel on the new
+load).
+
+### Fix 3 — Wall-animation queue errors
+
+Symptom: ~140 `21 wall.5.1@0`-style errors per spectator playtest. Root
+cause: `thing.ts:62` throws `slot not empty: ${index} ${target.name}` when
+`onThings` processes a batched UPDATE that wants to move tile X into a
+slot still occupied by tile Y whose move isn't in the same batch.
+(Playwright's `pageerror` strips the `slot not empty: ` prefix as if it
+were `errorName: message` — hence the cryptic format.)
+
+Fix in `world.ts onThings`:
+
+1. **Pass 1** — `prepareMove` every batch source.
+2. **Pass 2** — for any slot the batch is writing into, if it still has
+   a stale occupant whose move isn't in the batch, `prepareMove` that
+   occupant too (forces it to vacate before the new tile lands).
+3. **Pass 3** — `moveTo` for each entry, with a defensive `try/catch +
+   throttled warn` so we degrade to "skip + log once per second" instead
+   of throwing if some other unanticipated batch shape slips through.
+
+Result: 145 → 0 errors in the standard spectator-bot playtest.
+
+## Learnings (iter2)
+
+- The bundle exposes `window.__mahjongClient` (the `Client` instance) and
+  `window.game` (the `Game` instance from `three-renderer.ts:62`).
+  Specs that need to drive an ephemeral collection from inside the page
+  should go via `__mahjongClient.<kind>.set(key, value)`; specs that need
+  world-level APIs (`world.deal`, `world.seat`, etc.) should go via
+  `window.game.world`.
+- The Deal button (`#deal`) is a 600 ms progress button — a single
+  Playwright `.click()` will not fire it. Either hold via
+  `mouse.down() / sleep(900ms) / mouse.up()`, or skip the UI and call
+  `window.game.world.deal('HANDS')` directly.
+- Vite bundle splitting puts world/client code in
+  `three-renderer.<hash>.js`, NOT `autotable-src.<hash>.js` (the latter is
+  only the eager entry). Always `grep` across `src/frontend/autotable/*.js`
+  when verifying that source changes landed in the build.
+- Discard has no server-emitted form: the move is broadcast via the
+  existing `things` collection, matching how bot autoplay already moves
+  tiles. We didn't have to extend any server → client wire surface.
+- The `ChangshaGameRuntime.DiscardAsync` already exists (line ~620);
+  iter2 only had to wire the inbound WS handler. Future "human X" hooks
+  for ChiPong, Mahjong (win declaration), etc. should follow the same
+  pattern.
+
+## Pre-existing issue surfaced (NOT this PR)
+
+The hand-result modal hits `e.score is not iterable` at `game-ui.ts:998`
+when the result data shape is unexpected. Baseline showed 1× per
+playtest; in iter2 it became 113× per playtest — same bug, but bots now
+play more hands because the wall-anim throw no longer truncates the
+script early. Filed in
+`.squad/decisions/inbox/hicks-frontend-playability-iter2.md` for
+follow-up.

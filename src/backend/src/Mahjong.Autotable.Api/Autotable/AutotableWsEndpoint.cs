@@ -510,6 +510,15 @@ public sealed class AutotableConnectionManager : IDisposable
                     await TryHandlePickupActionAsync(connection, entry, ct);
                     break;
 
+                case ChangshaCollectionKinds.Discard:
+                    // Hicks playability iter2 — human player click-to-discard.
+                    // The runtime validates phase + active seat; invalid clicks
+                    // are no-ops. The resulting tile move comes back through the
+                    // standard things-collection broadcast so we don't relay
+                    // this entry to other clients.
+                    await TryHandleDiscardActionAsync(connection, entry, ct);
+                    break;
+
                 case "match":
                     // Match update from bundle. If the game hasn't started yet,
                     // treat any client-driven match push as a "Deal" command.
@@ -686,6 +695,50 @@ public sealed class AutotableConnectionManager : IDisposable
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Pickup action {Action} failed for seat {Seat}", action, seatIndex);
+        }
+    }
+
+    /// <summary>
+    /// Hicks playability iter2 — human click-to-discard. The bundle emits a
+    /// <see cref="ChangshaCollectionKinds.Discard"/> entry keyed by seat with
+    /// value <c>{ tileId: int }</c>. We route to
+    /// <see cref="IChangshaGameRuntime.DiscardAsync"/> which validates phase
+    /// (must be <c>AwaitingDiscard</c>), active seat, and tile ownership.
+    /// Invalid clicks are silently swallowed — the bundle's hand state is
+    /// already authoritative on the server side so the next <c>things</c>
+    /// push will re-snap any optimistic UI to the truth.
+    /// </summary>
+    private async Task TryHandleDiscardActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
+    {
+        if (entry.Value is null) return;
+        if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
+        if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
+
+        // Seat: prefer explicit key (an int seat), fall back to "seatIndex" prop.
+        var seatIndex = entry.Key switch
+        {
+            long l => (int)l,
+            int i => i,
+            string s when int.TryParse(s, out var p) => p,
+            _ => -1
+        };
+        if (seatIndex is < 0 or > 3)
+        {
+            if (je.TryGetProperty("seatIndex", out var seatEl) && seatEl.ValueKind == JsonValueKind.Number && seatEl.TryGetInt32(out var s))
+                seatIndex = s;
+        }
+        if (seatIndex is < 0 or > 3) return;
+
+        if (!je.TryGetProperty("tileId", out var tileEl) || tileEl.ValueKind != JsonValueKind.Number) return;
+        if (!tileEl.TryGetInt32(out var tileId)) return;
+
+        try
+        {
+            await _runtime.DiscardAsync(runtimeGameId, seatIndex, tileId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Discard failed for seat {Seat} tile {Tile}", seatIndex, tileId);
         }
     }
 

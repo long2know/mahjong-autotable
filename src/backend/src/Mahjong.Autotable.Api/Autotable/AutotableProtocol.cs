@@ -79,6 +79,17 @@ public static class ChangshaCollectionKinds
     public const string Claim = "claim";
     public const string Result = "result";
     public const string Pickup = "pickup";
+
+    /// <summary>
+    /// Client-emitted only: an active-seat human player clicked a hand tile to
+    /// discard it. Keyed by seat index (0..3), value =
+    /// <c>{ tileId: int }</c>. The backend routes it to
+    /// <see cref="IChangshaGameRuntime.DiscardAsync"/>. Phase/seat are validated
+    /// by the state machine — invalid clicks are silently dropped. No
+    /// server-emitted form (the resulting tile move is already broadcast via
+    /// the <c>things</c> collection).
+    /// </summary>
+    public const string Discard = "discard";
 }
 
 /// <summary>

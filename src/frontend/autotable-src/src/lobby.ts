@@ -505,6 +505,35 @@ function shouldShowOnLoad(): boolean {
   return window.location.search === '';
 }
 
+// Hicks playability iter2 — Quick Match continuity flag.  The Quick Match
+// click handler writes this to localStorage *before* window.location.replace
+// so the next page load knows "the user just jumped into a game, do NOT
+// auto-open the lobby panel even if some legacy state would have done so".
+// Read + cleared exactly once at initLobby time so reload / back-button do
+// not inherit the suppression.
+const LS_KEY_SKIP_OPEN_ON_LOAD = 'mahjong.lobby.skipOpenOnLoad';
+
+function consumeSkipOpenOnLoadFlag(): boolean {
+  try {
+    const v = window.localStorage.getItem(LS_KEY_SKIP_OPEN_ON_LOAD);
+    if (v === null) return false;
+    window.localStorage.removeItem(LS_KEY_SKIP_OPEN_ON_LOAD);
+    return v === '1';
+  } catch {
+    // Privacy / quota / disabled storage — fail-open (do not suppress).
+    return false;
+  }
+}
+
+function markSkipOpenOnLoadFlag(): void {
+  try {
+    window.localStorage.setItem(LS_KEY_SKIP_OPEN_ON_LOAD, '1');
+  } catch {
+    // Best-effort; the alt path (params-based suppression in
+    // shouldShowOnLoad) keeps the lobby closed under normal flows.
+  }
+}
+
 export function initLobby(client?: Client): void {
   if (client !== undefined) {
     _attachedClient = client;
@@ -748,6 +777,15 @@ export function initLobby(client?: Client): void {
         seat: null,
       };
       const url = buildUrl(quick);
+      // Hicks playability iter2 — close the panel locally AND mark the
+      // skip-open-on-load flag so the reload doesn't re-open the lobby
+      // (which would intercept pointer events on #connect / #deal /
+      // .take-seat).  Both belt-and-suspenders: the local hide handles
+      // the brief window before replace(), the flag handles edge cases
+      // where some legacy state (or service-worker cached page) would
+      // otherwise reopen it.
+      hidePanel();
+      markSkipOpenOnLoadFlag();
       window.location.replace(url);
     });
   }
@@ -886,6 +924,16 @@ export function initLobby(client?: Client): void {
   installSoundEnabledMirror();
 
   if (shouldShowOnLoad()) showPanel();
+
+  // Hicks playability iter2 — defensive auto-close.  Always consume the
+  // skip-open-on-load flag (set by the Quick Match handler before the
+  // page reload) so the cached/replayed render can never inherit a
+  // .lobby-open class that intercepts pointer events on #connect,
+  // #deal, and .take-seat.  Cleared synchronously so a subsequent
+  // refresh doesn't keep suppressing.
+  if (consumeSkipOpenOnLoadFlag()) {
+    hidePanel();
+  }
 }
 
 // ---------------------------------------------------------------------
