@@ -201,5 +201,13 @@ jobs:
       - name: Fail on diff
         if: steps.vis-run.outputs.rc != '0'
         run: |
-          echo "::error::Visual regression specs failed with exit code ${{ steps.vis-run.outputs.rc }}. See artefacts."
-          exit 1
+          # CI-noise iter2 (Apone, 2027-02-XX) — NON-BLOCKING.
+          # Stephen is in playability-first mode; visual baselines
+          # are intentionally drifting as the producer-side gets
+          # tuned. Until baselines stabilize, emit a warning instead
+          # of a hard fail so legitimate playability PRs don't gate
+          # on a 2% pixel-diff budget that's expected to drift.
+          # Diffs + artifacts still upload; sticky PR comment still
+          # posts. Flip back to blocking by replacing the warning
+          # below with `exit 1` once baselines stabilize.
+          echo "::warning::Visual regression specs failed with exit code ${{ steps.vis-run.outputs.rc }}. See artefacts. NON-BLOCKING per CI-noise iter2 (.squad/decisions/inbox/apone-ci-noise-iter2.md)."

@@ -14,9 +14,15 @@
 name: lane-discipline-nightly
 
 on:
-  schedule:
-    # 06:00 UTC daily.
-    - cron: '0 6 * * *'
+  # CI-noise iter2 (Apone, 2027-02-XX): nightly schedule disabled.
+  # Wave-mill killed by Stephen in playability-first mode; the
+  # nightly cross-lane scan is no longer relevant and was spamming
+  # the tracking issue + Stephen's inbox with baseline reports.
+  # workflow_dispatch retained for ad-hoc audits if wave discipline
+  # returns. Re-enable by uncommenting the `schedule:` block below.
+  # schedule:
+  #   # 06:00 UTC daily.
+  #   - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       verbose:

@@ -16,13 +16,25 @@
 #     enforces the gate at merge time (configured in repo settings).
 #
 # Owner: Vasquez (QA). See `docs/agent-handoff-protocol.md`.
+#
+# ## CI-noise iter2 (Apone, 2027-02-XX) — PR TRIGGER DISABLED
+#
+# Stephen explicitly killed the wave-mill / per-lane policy in
+# playability-first mode. The lane-discipline gate is a wave-machine
+# artifact and is no longer applicable to a multi-lane playability
+# PR (cf. PR #82 fix/frontend-playability-iter2 spanning bishop +
+# hicks lanes legitimately). The PR-trigger is removed; the
+# workflow remains available via `workflow_dispatch` for ad-hoc
+# audits if/when wave discipline returns. The companion
+# `lane-discipline-status (OPTIONAL-FOR-NOW)` workflow is left in
+# place as a non-blocking preview. Decision note:
+# `.squad/decisions/inbox/apone-ci-noise-iter2.md`.
 
 name: lane-discipline
 
 on:
-  pull_request:
-    branches:
-      - main
+  # CI-noise iter2 (Apone): pull_request trigger removed —
+  # workflow_dispatch ONLY until Stephen reinstates lane discipline.
   workflow_dispatch:
     inputs:
       verbose:
