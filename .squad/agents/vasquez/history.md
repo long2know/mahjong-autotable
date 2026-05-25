@@ -2938,3 +2938,55 @@ clean (`bash -n tests/ci/check-cross-lane-bundling.sh`); backend
 gate untouched (3312 / 0 / 0 from W15 bring-up `0a316d7`). 5th-
 consecutive-wave 0-violation invariant restored on the W15 PR
 branch.
+
+## W?? — Human-led playtest harness (2026-05-25)
+
+**Task:** Build a Playwright playtest (`playtest-artifacts/playtest-human-led.spec.mjs`) that drives a human-led Changsha session (seat 0 dealer + 3 bots) end-to-end: deal → roll → manual pickup → discard → bot reactions → multi-turn observation → synthetic-Hu sanity check. Observational only; do not modify backend or frontend.
+
+**Branch:** `feat/playtest-human-led`
+
+### Work completed
+
+1. **Spec written** (`playtest-artifacts/playtest-human-led.spec.mjs`, ~410 lines):
+   - 15 numbered steps from page-load through final-state.
+   - Manual-mode URL params: `?variant=changsha&dealMode=manual&botCount=3&handCount=4`.
+   - Tour overlay defanged via `addInitScript` CSS injection.
+   - Closes `#lobby-panel`, clicks `#connect`, claims `.take-seat[0]` → human at seat 0.
+   - Clicks Deal, drives `world.emitRollDice()` then loops `world.emitTakePickup()` whenever `world.isMyPickupTurn()`.
+   - Discard step tries 4 backdoors in order: `client.sendDiscard`, `world.emitDiscard`, `world.discardTile`, and the **WS-direct** path `client.update([['discard', String(seat), { tileId }]])` which exercises `AutotableWsEndpoint.TryHandleDiscardActionAsync` (already wired backend-side at `AutotableWsEndpoint.cs:711-743`).
+   - 60s continuous observation captures move-log + pickup/result phase every 5s.
+   - Synthetic-Hu step uses `cli.events.emit('update', [['gameComplete', 'current', payload]], false)` to dispatch a fake collection update; `GameUi.renderGameComplete` surfaces `#game-complete-modal`. PROVEN to render the win modal end-to-end.
+
+2. **Backend gaps documented** (from `findings.json`):
+
+   - **Gap 1 — `?dealMode=manual` is a no-op on first hand.** `AutotableConnection.DealMode` (string) is set from the query at `AutotableWsEndpoint.cs:266` but is NEVER propagated to `ChangshaGameState.DealMode` (enum). The state defaults to `DealMode.Auto` at `ChangshaDomain.cs:417`; `StartGameAsync` therefore runs the one-shot auto-deal regardless of the query. Manual flow only activates once `RollDiceAsync` runs (which sets `state.DealMode = Manual` at `ChangshaGameRuntime.cs:504`), but the auto path skips the RollingDice phase entirely. → `pickup` collection size stays 0 across the entire session; pickup-driver loop bails immediately on iter 1.
+
+   - **Gap 2 — Hand tiles never broadcast to the human seat.** After Deal, `cli.things.size === 197` but `thingsByPrefix === { wall: 136, marker: 1, tray: 60 }` — ZERO entries with `slotName` starting `hand.`. The runtime auto-deal completes (move log shows "Match started — dealer is Seat 0") but the Changsha-to-autotable translator does not emit hand-tile placements until the human seat sends `AcknowledgeDealAsync` (gate at `ChangshaGameRuntime.cs:582`), and the frontend bundle has no wiring to call ack from the autotable WS endpoint (only SignalR `Discard` hub is auth'd). → human dealer sees an empty hand forever.
+
+   - **Gap 3 — Bot autoplay does not start.** Combined effect of 1+2: with no hand state and no human ack, the runtime never advances to AwaitingDiscard, so no bot fires Pung/Chow. Move log stays at a single "Match started" entry across the full 60s observation window.
+
+3. **Slot-name gotcha discovered + corrected mid-iteration.** Initial hand-tile detection filtered by `key.startsWith('hand.')` but `things` is keyed by tile-id (number), with the slot name on the value (`v.slotName`) per `AutotableProtocol.cs:24` (`["things", 42, { slotName: "hand.0@0", ... }]`). Corrected to `v.slotName?.startsWith('hand.') && v.slotName.endsWith('@' + seat)` — and the corrected filter exposed the empty-hand state (thingsByPrefix shows no `hand` bucket at all).
+
+4. **Synthetic-Hu backdoor works** — final findings confirm `modalVisible: true` after the synthetic dispatch.
+
+### Findings.json summary
+
+- 15/15 steps `ok: true` (none threw)
+- collections post-deal: `match: 1, seats: 7, things: 197, pickup: 0, discard: 0, result: 0`
+- thingsByPrefix: `wall: 136, marker: 1, tray: 60` (no `hand.*`)
+- discardAttempt: `ok: false, tried: []` — no candidate tile-id found because hand state never broadcast; the WS-direct path never had a tile to push
+- syntheticHu: `ok: true, modalVisible: true`
+- 0 pageErrors, 3 console warnings, 2 network 404s (pre-existing `/api/games/<id>` + `/settings`)
+
+### Skill extracted
+
+`.squad/skills/playtest-ws-backdoor/SKILL.md` documents two reusable playtest patterns:
+
+1. **`cli.events.emit('update', updates, false)`** for collections that are normally server-pushed but lack a frontend-driven write API.
+2. **`cli.update([[kind, key, value]])`** for WS routes whose frontend UI hasn't shipped yet but whose backend route is already wired (e.g. `discard` per `AutotableWsEndpoint.TryHandleDiscardActionAsync`).
+
+### Recommendations to other agents
+
+- **Bishop**: wire `connection.DealMode → state.DealMode` in `StartGameAsync` or `CreateGameAsync`, and either add an `ackDeal` WS collection route OR make the deal-ack implicit on first `things` consume by the human seat.
+- **Hicks**: shipping `world.emitDiscard(tileId)` that calls `client.update([['discard', String(this.seat), { tileId }]])` is the minimum-viable frontend wiring for human discards. Backend route already exists.
+- **All**: the synthetic-Hu pattern is now an established harness primitive; reuse it for any "did the modal/event surface render" smoke test.
