@@ -64,6 +64,15 @@ export interface GameCompleteEntry {
 }
 
 
+// Hicks playability iter2 — outbound shape of a human click-to-discard.
+// Mirrors the backend's TryHandleDiscardActionAsync parser: it reads
+// `tileId` (required) off the value object; the seat is taken from the
+// collection entry key.
+export interface DiscardCommand {
+  tileId: number;
+}
+
+
 export class Client extends BaseClient {
   match: Collection<number, MatchInfo>;
   seats: Collection<string, SeatInfo>;
@@ -88,6 +97,13 @@ export class Client extends BaseClient {
   // string|number so the singleton snapshot and the command-shaped outbound
   // entries share one collection without a parallel event system.
   pickup: Collection<string | number, PickupEntry>;
+
+  // Hicks playability iter2 — human click-to-discard.  Keyed by seat index
+  // (0..3), value = { tileId: int }.  Outbound only (the backend interprets
+  // the entry and emits the resulting tile move via the `things` collection;
+  // there's no server-emitted form of this collection).  Ephemeral so the
+  // entry doesn't survive a reconnect replay.
+  discard: Collection<string | number, DiscardCommand>;
 
   // Phase J Wave 2 — singleton key="current" carrying the end-of-game
   // payload Bishop's runtime emits when MaxHands is exhausted.  We treat
@@ -121,6 +137,7 @@ export class Client extends BaseClient {
     this.claim = new Collection('claim', this, { ephemeral: true });
     this.result = new Collection('result', this);
     this.pickup = new Collection('pickup', this, { ephemeral: true });
+    this.discard = new Collection('discard', this, { ephemeral: true });
     this.gameComplete = new Collection('gameComplete', this, { ephemeral: true });
     this.seats.on('update', this.onSeats.bind(this));
 

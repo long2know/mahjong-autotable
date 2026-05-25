@@ -77,6 +77,12 @@ export class World {
   private highlightStartMs: number = 0;
   static readonly HIGHLIGHT_DURATION_MS = 2000;
 
+  // Hicks playability iter2 — throttle for stale-occupant log lines (see
+  // onThings).  Static across world instances; we only ever construct one
+  // World at a time but a module-level epoch makes the suppression robust
+  // to remount scenarios.
+  private static _lastSlotConflictLogMs: number = 0;
+
   constructor(objectView: ObjectView, soundPlayer: SoundPlayer, client: Client) {
     this.setup = new Setup();
     this.slots = this.setup.slots;
@@ -126,6 +132,14 @@ export class World {
   private onThings(entries: Array<[number, ThingInfo | null]>): void {
     const now = new Date().getTime();
 
+    // Hicks playability iter2 — collect indexes that ARE in this batch so
+    // the second pre-pass below can tell stale occupants apart from
+    // intentional swaps within the batch.
+    const batchIds = new Set<number>();
+    for (const [thingIndex, thingInfo] of entries) {
+      if (thingInfo !== null) batchIds.add(thingIndex);
+    }
+
     for (const [thingIndex, thingInfo] of entries) {
       // TODO handle deletion
       if (thingInfo === null) {
@@ -136,6 +150,26 @@ export class World {
       if (!thing) continue;
       thing.prepareMove();
     }
+
+    // Hicks playability iter2 — defensive pre-pass for incremental batches.
+    // The render queue can throw "slot not empty: <thing> <slot>" (~140
+    // errors per playtest run) when an incremental UPDATE moves a tile
+    // into a slot whose previous occupant isn't mentioned in the same
+    // batch.  We force-displace that stale occupant here so moveTo()
+    // below can succeed; the next things UPDATE will re-bind the
+    // displaced tile to its true slot.
+    for (const [thingIndex, thingInfo] of entries) {
+      if (thingInfo === null) continue;
+      const slot = this.slots.get(thingInfo.slotName);
+      if (!slot || slot.thing === null) continue;
+      // Already-cleared (its own thing moved away) or about to be reassigned
+      // to the same tile? Leave it alone.
+      if (slot.thing.index === thingIndex) continue;
+      if (batchIds.has(slot.thing.index)) continue;
+      // Stale occupant — force-displace.
+      slot.thing.prepareMove();
+    }
+
     for (const [thingIndex, thingInfo] of entries) {
       if (thingInfo === null) {
         continue;
@@ -153,6 +187,20 @@ export class World {
       let rotationIndex = thingInfo.rotationIndex;
       if (thingInfo.face === null && slot.rotations.length > 1) {
         rotationIndex = slot.rotations.length - 1;
+      }
+      // Hicks playability iter2 — final guard.  If the slot is *still*
+      // occupied at this point (e.g., two batch entries collided), skip the
+      // move rather than throw.  We log once per ~second so the diagnostic
+      // is preserved without spamming the console.
+      if (slot.thing !== null && slot.thing !== thing) {
+        if (now - World._lastSlotConflictLogMs > 1000) {
+          World._lastSlotConflictLogMs = now;
+          console.warn(
+            `autotable: skipped stale moveTo ${thing.index} -> ${slot.name}`,
+            `(occupant=${slot.thing.index})`,
+          );
+        }
+        continue;
       }
       thing.moveTo(slot, rotationIndex);
       thing.sent = true;
@@ -256,6 +304,40 @@ export class World {
     const wallTileIds = this.peekNextWallTileIds(count);
     this.client.pickup.set('take', { seatIndex, count, wallTileIds } as any);
     return true;
+  }
+
+  /**
+   * Hicks playability iter2 — human click-to-discard.  Sends a discard
+   * command for `tile` on behalf of the local player.  The backend validates
+   * phase + active seat; an out-of-turn click is a no-op server-side.  The
+   * resulting tile-move animation comes back through the normal `things`
+   * UPDATE channel (matching the bot autoplay visual).
+   */
+  emitDiscard(tile: Thing): boolean {
+    if (this.seat === null) return false;
+    if (tile.slot.group !== 'hand' || tile.slot.seat !== this.seat) return false;
+    this.client.discard.set(this.seat, { tileId: tile.index });
+    return true;
+  }
+
+  /**
+   * Hicks playability iter2 — heuristic: this seat has an extra tile in
+   * hand (more than 13 concealed) AND no pickup affordance is pending,
+   * so the player must discard to continue the turn.  Used to gate the
+   * click-to-discard intercept in {@link onDragStart} so a casual drag
+   * of a tile in-place between draws doesn't accidentally discard.
+   */
+  hasExtraHandTile(): boolean {
+    if (this.seat === null) return false;
+    if (this.isMyPickupTurn()) return false;
+    let count = 0;
+    for (const thing of this.things.values()) {
+      if (thing.slot.group === 'hand' && thing.slot.seat === this.seat) {
+        count++;
+        if (count > 13) return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -589,6 +671,23 @@ export class World {
         && this.hovered.slot.group === 'wall'
         && this.isMyPickupTurn()) {
       this.emitTakePickup();
+      this.hovered = null;
+      this.selected.splice(0);
+      return false;
+    }
+
+    // Hicks playability iter2 — click-to-discard.  When the local player has
+    // an extra tile in hand (>13 concealed) and clicks on one of their own
+    // hand tiles, treat the click as a single-action discard instead of a
+    // drag.  Matches "playing in person" semantics: tap a tile, it goes to
+    // the discard area.  The backend validates phase + active-seat — an
+    // off-turn click is silently dropped server-side.
+    if (this.hovered !== null
+        && this.hovered.slot.group === 'hand'
+        && this.hovered.slot.seat === this.seat
+        && this.hasExtraHandTile()) {
+      const tile = this.hovered;
+      this.emitDiscard(tile);
       this.hovered = null;
       this.selected.splice(0);
       return false;
