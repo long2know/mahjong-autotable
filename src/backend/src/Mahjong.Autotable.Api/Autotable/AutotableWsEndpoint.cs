@@ -574,12 +574,82 @@ public sealed class AutotableConnectionManager : IDisposable
             {
                 await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
             }
+
+            // W23 follow-up (Gap 2) — if the seat-take lands on an already-dealt
+            // game (e.g. a fresh tab opened against a hand that's already in
+            // AwaitingDiscard), implicit-ack so the runtime doesn't stall
+            // waiting for a SignalR-style AckDeal that this transport will
+            // never send. No-op when the state is still pre-deal.
+            await TryAutoAckSeatedConnectionAsync(connection, runtimeGameId, ct);
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Seat take failed for connection {ConnectionId} seat {Seat}", connection.Id, seatIndex);
         }
     }
+
+    /// <summary>
+    /// W23 follow-up (Vasquez Gap 2) — implicit AckDeal for the autotable WS
+    /// transport. The bundle has no AckDeal route of its own (only the SignalR
+    /// <c>changsha</c> hub does), so the runtime would otherwise wait
+    /// indefinitely for a handshake that never arrives.
+    ///
+    /// <para>Invariants:
+    /// <list type="bullet">
+    ///   <item>Phase-guarded — we only ack when the runtime is in
+    ///   <see cref="ChangshaPhase.AwaitingDiscard"/> or later. Pre-deal phases
+    ///   (Seating, RollingDice, manual pickup) are skipped: no hand exists yet
+    ///   so no ack is meaningful, and acking pre-deal could cause the turn loop
+    ///   to start the instant the deal completes without giving the bundle a
+    ///   chance to render. (Idempotent re-entry on the next state change picks
+    ///   up the post-deal phase naturally.)</item>
+    ///   <item>Idempotent — <see cref="IChangshaGameRuntime.AcknowledgeDealAsync"/>
+    ///   uses a HashSet under the instance lock; repeat calls are safe.</item>
+    ///   <item>Seat-scoped — only acks the seat actually bound to this
+    ///   connection (via <see cref="IChangshaGameRuntime.TryGetSeatForConnection"/>).
+    ///   A spectator connection (no bound seat) is a clean no-op.</item>
+    /// </list></para>
+    /// </summary>
+    private async Task TryAutoAckSeatedConnectionAsync(
+        AutotableConnection connection,
+        string runtimeGameId,
+        CancellationToken ct)
+    {
+        if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
+        if (!IsPastDealPhase(snap.Phase)) return;
+
+        var seat = _runtime.TryGetSeatForConnection(runtimeGameId, connection.Id.ToString("N"));
+        if (seat is null) return;
+
+        // Defensive: a seat reported as a bot shouldn't be auto-acked from a
+        // human connection path (would only happen if a bot fill raced this
+        // call). HasAllHumanAcks ignores bot seats so this is also harmless.
+        if (snap.Seats[seat.Value].IsBot) return;
+
+        try
+        {
+            await _runtime.AcknowledgeDealAsync(runtimeGameId, seat.Value, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Auto-ack failed (gameId={GameId}, seat={Seat}, connectionId={ConnectionId})",
+                runtimeGameId, seat, connection.Id);
+        }
+    }
+
+    private static bool IsPastDealPhase(ChangshaPhase phase) => phase switch
+    {
+        ChangshaPhase.AwaitingDiscard => true,
+        ChangshaPhase.AwaitingClaim => true,
+        ChangshaPhase.DeclaringKong => true,
+        ChangshaPhase.DrawingReplacement => true,
+        ChangshaPhase.Scoring => true,
+        ChangshaPhase.EndHand => true,
+        ChangshaPhase.RotatingBanker => true,
+        ChangshaPhase.WallExhausted => true,
+        _ => false
+    };
 
     private async Task TryHandleClaimActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
@@ -642,25 +712,45 @@ public sealed class AutotableConnectionManager : IDisposable
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
         if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
 
-        // Seat: prefer explicit key (an int seat), fall back to "seatIndex" prop,
-        // else use the runtime's current pickup cursor.
+        // Action wire-format (per autotable-src/src/client.ts:90-95):
+        //   outbound "rollDice" : ["pickup", "rollDice", { seatIndex }]
+        //   outbound "take"     : ["pickup", "take",     { seatIndex, wallTileIds }]
+        // The bundle puts the command verb in the ENTRY KEY (string), not in a
+        // value field. Value-side `action` is also honoured for forward-compat
+        // with any client that prefers the verbose shape.
+        var keyAction = entry.Key as string;
+        var action = string.Empty;
+        if (!string.IsNullOrEmpty(keyAction) && !int.TryParse(keyAction, out _))
+        {
+            action = keyAction;
+        }
+        else if (je.TryGetProperty("action", out var actionEl) && actionEl.ValueKind == JsonValueKind.String)
+        {
+            action = actionEl.GetString() ?? string.Empty;
+        }
+
+        // Seat: when the key is numeric (legacy bundle), prefer that as a seat.
+        // Otherwise read "seatIndex" from the value; else fall back to the
+        // runtime's current pickup cursor (or dealer for rollDice).
         var seatFromKey = entry.Key switch
         {
             long l => (int)l,
             int i => i,
+            double d => (int)d,
             string s when int.TryParse(s, out var p) => p,
             _ => -1
         };
         int seatIndex = seatFromKey;
         if (seatIndex is < 0 or > 3)
         {
-            if (je.TryGetProperty("seatIndex", out var seatEl) && seatEl.ValueKind == JsonValueKind.Number && seatEl.TryGetInt32(out var s))
+            if (je.TryGetProperty("seatIndex", out var seatEl)
+                && seatEl.ValueKind == JsonValueKind.Number
+                && (seatEl.TryGetInt32(out var s)
+                    || (seatEl.TryGetDouble(out var sd) && sd >= 0 && sd <= 3 && (s = (int)sd) >= 0)))
+            {
                 seatIndex = s;
+            }
         }
-
-        var action = string.Empty;
-        if (je.TryGetProperty("action", out var actionEl) && actionEl.ValueKind == JsonValueKind.String)
-            action = actionEl.GetString() ?? string.Empty;
 
         try
         {
@@ -748,14 +838,37 @@ public sealed class AutotableConnectionManager : IDisposable
 
         // A match[0] push with `dealCommand: "start"` is Hicks's "Deal" button.
         // We also fall back to "any match push with dealer field while seating"
-        // for compatibility with the upstream bundle's vanilla Deal control.
+        // for compatibility with the upstream bundle's vanilla Deal control —
+        // `world.deal()` (autotable-src/src/world.ts) emits `{ dealer, honba,
+        // conditions }` with no dealCommand field, and that is the ONLY match
+        // push that fires from a Seating phase. Vasquez W23 follow-up: without
+        // this fallback, the human-led "Deal" click never reaches
+        // StartGameAsync (observed in playtest-artifacts/playtest-human-led).
         var isDealCommand = false;
         if (je.TryGetProperty("dealCommand", out var cmdEl) && cmdEl.ValueKind == JsonValueKind.String)
         {
             isDealCommand = string.Equals(cmdEl.GetString(), "start", StringComparison.OrdinalIgnoreCase);
         }
 
-        if (!isDealCommand) return;
+        // Vanilla deal push from upstream `world.deal()` — match[0] with `{ dealer,
+        // honba, conditions }` and no `dealCommand` field. The bundle's
+        // setupDealButton.onSuccess is exactly this push. Key may arrive as long
+        // OR double (the JS bundle serializes `0` as a plain `0`, but the .NET
+        // reader sometimes routes it through TryGetDouble for the boxed key).
+        var keyIsZero = entry.Key switch
+        {
+            long l => l == 0,
+            int i => i == 0,
+            double d => d == 0.0,
+            string s => s == "0",
+            _ => false
+        };
+        var isVanillaDealPush = !isDealCommand
+            && keyIsZero
+            && je.TryGetProperty("dealer", out var dealerEl)
+            && dealerEl.ValueKind == JsonValueKind.Number;
+
+        if (!isDealCommand && !isVanillaDealPush) return;
 
         try
         {
@@ -768,7 +881,28 @@ public sealed class AutotableConnectionManager : IDisposable
             {
                 await _runtime.FillEmptySeatsWithBotsAsync(runtimeGameId, ct);
             }
+
+            // W23 follow-up — propagate the connection's `?dealMode=` query into
+            // the runtime state BEFORE StartGameAsync branches on it. Without
+            // this hop, `?dealMode=manual` is silently a no-op (Vasquez's Gap 1
+            // — see .squad/decisions/inbox/vasquez-human-led-playtest.md). Phase
+            // guard inside ApplyDealModeAsync prevents accidental mid-hand
+            // flips when this path is re-entered on a reconnect.
+            var requestedMode = string.Equals(connection.DealMode, "manual", StringComparison.OrdinalIgnoreCase)
+                ? DealMode.Manual
+                : DealMode.Auto;
+            await _runtime.ApplyDealModeAsync(runtimeGameId, requestedMode, ct);
+
             await _runtime.StartGameAsync(runtimeGameId, ct);
+
+            // W23 follow-up — auto-ack on the caller's bound seat (Gap 2). After
+            // an auto-deal the runtime sits in AwaitingDiscard; the SignalR
+            // contract waits for AcknowledgeDealAsync before broadcasting the
+            // private hand-tile payload. The autotable bundle has no ack route,
+            // so we ack implicitly here. Idempotent + phase-aware: a no-op if
+            // the state hasn't reached AwaitingDiscard (manual deal) or if the
+            // seat already acked.
+            await TryAutoAckSeatedConnectionAsync(connection, runtimeGameId, ct);
         }
         catch (Exception ex)
         {

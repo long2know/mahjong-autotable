@@ -176,17 +176,35 @@ await step('5-take-seat', async () => {
 });
 
 // 6) Click Deal — backend reads dealMode=manual and parks in RollingDice.
+// NB: the bundle's `#deal` element is a "hold-to-confirm" progress button
+// (see autotable-src/src/game-ui.ts:setupProgressButton — onmousedown starts
+// a 600ms transition, onmouseup commits only if the press lasted past the
+// transition). Playwright's `.click()` and `dispatchEvent` sequences don't
+// reliably trigger the bundle's onmousedown/onmouseup property handlers in
+// headless mode. We invoke `world.deal('hands')` directly — that's exactly
+// what setupDealButton's onSuccess callback does after a real human hold,
+// and it's the same entry-point already used for emitRollDice() in step 7.
 await step('6-deal', async () => {
-  const deal = page.locator('#deal');
-  const visible = await deal.first().isVisible().catch(() => false);
-  const enabled = await deal.first().isEnabled().catch(() => false);
-  if (!visible || !enabled) {
-    return { visible, enabled, clicked: false };
-  }
-  await deal.first().click({ timeout: 5000 });
+  const dealResult = await page.evaluate(() => {
+    const g = window.game;
+    if (!g || !g.world) return { ok: false, reason: 'no window.game.world' };
+    try {
+      // DealType.HANDS = 'HANDS' (see autotable-src/src/types.ts). Casing
+      // matters — DEALS[gameType][dealType] is a string-key lookup so lower-
+      // case is a silent no-op.
+      const conditions = g.world.conditions;
+      const seat = g.world.seat;
+      const isConn = g.client.connected();
+      const before = { seat, gameType: conditions?.gameType, dealMode: conditions?.dealMode, connected: isConn };
+      g.world.deal('HANDS');
+      // Capture post-deal client.match state for diagnostics.
+      const matchAfter = g.client.match.get(0);
+      return { ok: true, before, matchAfter };
+    } catch (e) { return { ok: false, reason: String(e), stack: e.stack }; }
+  });
   await page.waitForTimeout(3500);
   await snap('05-after-deal.png');
-  return { visible, enabled, clicked: true };
+  return dealResult;
 });
 
 // 7) Roll dice on the dealer's behalf via World.emitRollDice() — equivalent
@@ -510,6 +528,10 @@ console.log(JSON.stringify({
 if (findings.pageErrors.length) {
   console.log('\nPAGE ERRORS:');
   for (const e of findings.pageErrors) console.log(' -', e);
+}
+if (findings.consoleErrors.length) {
+  console.log('\nCONSOLE ERRORS:');
+  for (const e of findings.consoleErrors) console.log(' -', e);
 }
 if (findings.networkFailures.length) {
   console.log('\nNETWORK FAILURES (first 10):');

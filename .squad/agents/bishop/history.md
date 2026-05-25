@@ -3285,3 +3285,96 @@ dashboard for the new histogram).
 wiring, hard-delete `DeleteAsync` for the store seam, admin
 CRUD for `ReplayRetentionPolicy`, `X-Admin-Reason` header
 unification for the commentary override).
+
+## Phase K Wave 23 — Human-led manual-deal plumbing + implicit auto-ack (2026-07-25)
+
+**Branch:** `fix/manual-deal-plumb-and-auto-ack` (PR #85 — auto-merge enabled).
+**Issue origin:** `.squad/decisions/inbox/vasquez-human-led-playtest.md` Gaps 1 + 2.
+
+**Backend gaps closed:**
+
+- **Gap 1 — `?dealMode=manual` was a no-op.**
+  `AutotableConnection.DealMode` was read from the query
+  string but never forwarded to `ChangshaGameState.DealMode`.
+  Fix: new `IChangshaGameRuntime.ApplyDealModeAsync` (Seating-
+  phase-guarded so reconnects can't flip mode mid-hand)
+  called from the WS Deal handler immediately before
+  `StartGameAsync`.
+
+- **Gap 2 — Hand tiles never broadcast.** The SignalR
+  `changsha` hub gates broadcast on `AcknowledgeDealAsync`,
+  but the autotable WS bundle has no ack route. Fix: new
+  `IChangshaGameRuntime.TryGetSeatForConnection` accessor +
+  `TryAutoAckSeatedConnectionAsync` helper invoked implicitly
+  from `TryHandleSeatTakeAsync` and the Deal flow. Idempotent
+  + past-deal-phase-guarded.
+
+**Three gotchas surfaced during playtest validation:**
+
+1. **Vanilla `world.deal()` push has no `dealCommand`** —
+   upstream `autotable-src/src/world.ts:431-470` pushes
+   `match.set(0, { dealer, honba, conditions })` with no
+   command field. Pre-fix only the `{ dealCommand: "start" }`
+   shape was honoured. Added a "any match[0] push with
+   `dealer` field while Seating" fallback.
+
+2. **JSON numeric `0` arrives as `Double`, not `long`.**
+   `CollectionEntryJsonConverter.Read` does
+   `TryGetInt64(out var l) ? l : reader.GetDouble()`. For
+   some serializer paths the bundle's `match[0]` key boxes
+   into `Double` (0.0). The C# pattern `is 0 or 0L or "0"`
+   does **not** match boxed double — must use an explicit
+   switch with `double d => d == 0.0`. **All numeric-key
+   parsers anywhere in the WS endpoint are vulnerable to
+   this.** Pickup seat-key parsing now handles it too.
+
+3. **Pickup action verb lives in the entry KEY, not the
+   value.** Per the authoritative wire shape documented in
+   `autotable-src/src/client.ts:91-94`:
+   - `["pickup", "rollDice", { seatIndex }]`
+   - `["pickup", "take",     { seatIndex, wallTileIds }]`
+   The pre-fix `TryHandlePickupActionAsync` doc-comment
+   promised both shapes but the code only ever read `action`
+   from the value object. Fixed: action is read from the KEY
+   when it's a non-numeric string; falls back to
+   `value.action` for forward-compat with any verbose-shape
+   client.
+
+**Playtest workaround banked (for Hicks/playtest follow-ups):**
+
+The bundle's "Deal" button is hold-to-confirm
+(`setupProgressButton` in `game-ui.ts:709-746` uses property-
+assigned `onmousedown`/`onmouseup` with a 600ms transition
+gate). Playwright `.click()` and even
+`dispatchEvent('mousedown'/'mouseup')` don't reliably fire
+the property handler. The reliable bypass is to call
+`window.game.world.deal('HANDS')` directly from page-evaluate.
+**Note: `DealType.HANDS` is upper-case;** lowercase fails the
+`DEALS[gameType][dealType]` lookup silently.
+
+**Tests:**
+
+- 10 new W23-trait acceptance tests in
+  `tests/Mahjong.Autotable.Api.Tests/Autotable/ManualDealPlumbingAndAutoAckTests.cs`
+  — all pass.
+- Full backend suite: **5082 passed / 1 failed** (the one
+  failure is the pre-existing W9 `^\s*schedule:` regex test
+  on the nightly cron workflow, unrelated to this lane).
+
+**Remaining follow-up (NOT in this PR):**
+
+The playtest harness still reports `finalMoveLogCount=1`
+and `collections.pickup=0` because the bundle's
+`world.deal('HANDS')` does not currently emit per-round
+`pickup[take]` actions — it does a client-side visual deal
+animation. That is a bundle-side gap and belongs to Hicks per
+the original Vasquez decision doc. The backend now:
+- accepts manual mode (`dealMode=Manual` persisted)
+- accepts the Roll-Dice push (`phase=PickupRound1`,
+  `lastDiceRoll` set)
+- auto-acks the human seat when the deal lands
+- accepts `pickup[take]` with action-in-key shape
+…so once the bundle wires the take loop, the runtime is
+ready.
+
+**Decision memo:** `.squad/decisions/inbox/bishop-manual-deal-plumb.md`.
