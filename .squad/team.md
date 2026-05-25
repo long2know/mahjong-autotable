@@ -18,6 +18,8 @@
 | Vasquez | Rules Engineer | `.squad/agents/vasquez/charter.md` | Active |
 | Hudson | Tester | `.squad/agents/hudson/charter.md` | Active |
 | Apone | DevOps / Platform Engineer | `.squad/agents/apone/charter.md` | Active |
+| Frost | Backend Dev (parallel to Bishop) | `.squad/agents/frost/charter.md` | Active |
+| Ferro | Frontend / UI Engineer (parallel to Hicks) | `.squad/agents/ferro/charter.md` | Active |
 | Scribe | Session Logger | `.squad/agents/scribe/charter.md` | Active |
 | Ralph | Work Monitor | `.squad/agents/ralph/charter.md` | Active |
 
