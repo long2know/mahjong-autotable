@@ -1324,3 +1324,143 @@ helm lint helm/mahjong/   # → clean (carry)
 ### 5. Apone-lane scope discipline (per W6 invariant)
 
 This wave touched ONLY DevOps-lane paths: `.github/workflows/lane-discipline-nightly.yml` (modified — heredoc fix), `infra/k8s/overlays/prod/kyverno-enforce-policies.yaml` (NEW — pre-wire ClusterPolicy), `infra/k8s/overlays/prod/kustomization.yaml` (modified — commented-out `resources:` entry; byte-identical kustomize-build), `docs/{kyverno-enforce-rollout,hpa-min-replicas-tuning,phase-l-l1-design,retro-2027-01}.md` (NEW), `docs/{regional-eks-bringup,slsa-provenance,agent-handoff-protocol}.md` (modified — additive sections at §2.2 + §7b + §5.10), `CHANGELOG.md`, `.squad/agents/apone/history.md`, `.squad/decisions/inbox/apone-phase-k-wave-15.md` (NEW), `Phase_K_W15/Apone/{charter,history}.md` (NEW). NO `src/**` touches, NO `tests/**` touches, NO mobile source code, NO Helm chart code touches (the HPA bump is documented but NOT applied), NO Terraform code changes (the §2.2 drift check is doc-only; CLI baseline unchanged at W14's 1.11.4 workflow-config bump). The `docs/agent-handoff-protocol.md §5.10` insert is parallel to Vasquez's §6 lane-discipline-maturity narrative; both lanes touch the same file per W10 allowlist precedent, with §5.10 (Apone) inserted before §6 (Vasquez) to preserve file ordering and non-overlapping edits. Pre-existing untracked frontend artefacts (`src/frontend/autotable-src/.fuse_hidden*` FUSE artefacts) NOT staged — not in Apone's lane; left for Hicks to address. Pre-push `git status --short` verification confirms zero out-of-lane staging (explicit-path `git add`, never `git add -A`).
+
+## CI noise suppression iter2 — out-of-wave emergency (2027-02-XX)
+
+Stephen reported a SECOND wave of CI failure emails after iter1 fixes
+(PRs #70/#71/#72/#74) landed. `gh run list --limit 100` showed 17
+failures across two days, concentrated on PRs that had already been
+admin-merged.
+
+### 1. What I shipped
+
+Branch: `fix/ci-noise-suppression-iter2`. ONE atomic PR. Eight workflow
+files touched, two inbox memos, one new skill.
+
+* **Made non-blocking (PR-trigger workflows that gate playability PRs):**
+  - `.github/workflows/db-providers.yml` — job-level
+    `continue-on-error: true`. Real test-isolation bug; hand-off memo
+    to Bishop.
+  - `.github/workflows/playwright-visual-regression.yml` — softened
+    "Fail on diff" step to `::warning::`. Artifacts + sticky PR
+    comment still post.
+  - `.github/workflows/lane-discipline.yml` — `pull_request:` trigger
+    removed; `workflow_dispatch:` retained. Stephen killed the wave-
+    mill; this gate is now policy-artifact.
+
+* **Disabled `schedule:` triggers (kept `workflow_dispatch:`):**
+  - `.github/workflows/lane-discipline-nightly.yml` (wave-mill artifact)
+  - `.github/workflows/load-test-nightly.yml` (stack expects state CI
+    can't provide)
+  - `.github/workflows/hsts-readiness-check.yml` (probes placeholder
+    `mahjong.example.com`)
+  - `.github/workflows/docker-smoke.yml` (docker stack flaky under
+    playability churn)
+  - `.github/workflows/us-east-1-auto-rollback.yml` (terraform expects
+    AWS state CI doesn't have)
+
+* **Inbox memos:**
+  - `.squad/decisions/inbox/apone-db-providers-stuck.md` — Bishop hand-
+    off with repro + three fix options (test collection serialization,
+    Respawn between tests, per-test schema).
+  - `.squad/decisions/inbox/apone-ci-noise-iter2.md` — decision note
+    with per-workflow root cause + action table + suggestions for
+    Stephen's GitHub notification settings.
+
+* **New skill:**
+  - `.squad/skills/ci-noise-management/SKILL.md` — methodology to
+    triage email-flood CI failures without breaking real gates. Four-
+    bucket diagnosis (A real bug / B policy artifact / C test infra
+    bug / D scheduled probe with no target) with hard rules + anti-
+    patterns + recurring patterns.
+
+### 2. What I did NOT change (deliberate, charter-aligned)
+
+* `secrets-scan` (gitleaks) — detected a real leak; supply-chain
+  workflow per charter, MUST stay enabled. Stephen needs separate
+  triage.
+* `slsa-drift-detection` — Apone-owned supply-chain workflow; left
+  enabled.
+* `container-scan`, `sign-image`, `sbom`, `slsa-provenance` — all
+  passing on main; untouched.
+* `pre-commit-check` — config is correct. Iter1's binary-extension
+  excludes + multi-doc YAML allowance still in place. The iter2
+  failure was a transient content bug (`.squad/agents/hicks/history.md`
+  trailing newline) that was resolved at merge of PR #82. No config
+  change.
+* Backend code, frontend code, migrations — NOT touched (Bishop's
+  in-flight working tree on `fix/manual-deal-plumb-and-auto-ack`
+  preserved; explicit `git add <path>` for every staged file).
+
+### 3. Validation gate output
+
+```bash
+# YAML parse + actionlint, eight files touched:
+python3 -c "import yaml; [yaml.safe_load(open(f)) for f in [...]]"
+# → OK on all 8.
+
+.work/apone-w21-tools/actionlint <eight files>
+# → clean (post-fix; first pass caught the empty schedule: scalar on
+#   us-east-1-auto-rollback.yml, fixed by commenting the schedule
+#   key itself, not just the cron child).
+```
+
+### 4. Decisions worth carrying forward
+
+* **Bucket-D pattern: placeholder URLs in scheduled probes.** Two
+  examples in this repo (`mahjong.example.com` in HSTS probe,
+  `api.mahjong-autotable.com` in prod-health-check). Both fail every
+  day they run because there's no real production yet. Pattern: a
+  scheduled probe needs ONE of (real target URL, gating env-var that
+  short-circuits when target is missing, `if: github.event_name !=
+  'schedule'` to opt out of the cron). Default-fail is unacceptable.
+* **Wave-mill artifact gates outlive the policy.** `lane-discipline`
+  was a Wave-6/7-era Vasquez gate enforcing per-agent file ownership.
+  When Stephen kills the wave-mill, ALL gates that encode wave
+  policy must follow OR explicitly be re-scoped. Catch them by
+  searching for "Wave N" / "per-lane" / "cross-lane" in workflow
+  comments.
+* **db-providers test isolation is not a migration issue.** Bishop's
+  W22 PG migration applied cleanly; the failures are SQLite fixtures
+  that skip `EnsureCreated` + parallel xUnit collections racing on a
+  shared Postgres CI database. Future debuggers: don't regenerate
+  snapshots — verify them against the current migration set first
+  (matches → it's a test-infra bug, not a snapshot drift).
+* **`continue-on-error: true` at JOB level, not STEP level.** Step-
+  level scatter is hard to revert; job-level is a single line + a
+  comment block. Two-line revert when the underlying bug is fixed.
+* **Notification settings hint as part of the decision note.** A CI
+  noise PR can quiet the failures, but the GITHUB EMAIL ROUTING is
+  Stephen's account-level setting. Always include a "if even the real
+  ones are too noisy, here's how to scope" footer in the decision
+  memo.
+
+### 5. Handoffs
+
+* **Bishop (backend / data plumbing)** — Read
+  `.squad/decisions/inbox/apone-db-providers-stuck.md`. Three-option
+  fix list for the test-isolation bug; Apone will re-enable
+  db-providers blocking on signal.
+* **Vasquez (QA)** — `lane-discipline-nightly` schedule is off; the
+  `OPTIONAL-FOR-NOW` companion still runs on PR. If wave discipline
+  ever comes back, the cron is a two-line uncomment.
+* **Stephen** — Two follow-ups:
+  1. `secrets-scan` flagged a real gitleaks finding on the 2027-02-25
+     nightly. SARIF is in GitHub Security tab. Triage at convenience.
+  2. If even the supply-chain workflow failure emails are too noisy,
+     scope GitHub Notifications → Actions → "Only notifications for
+     workflows I have triggered". Per-repo override available via the
+     Watch dropdown.
+
+### 6. Apone-lane scope discipline (per W6 invariant)
+
+This out-of-wave emergency touched ONLY `.github/workflows/*.yml` (8
+files) + `.squad/decisions/inbox/{apone-ci-noise-iter2,apone-db-
+providers-stuck}.md` (NEW) + `.squad/skills/ci-noise-management/
+SKILL.md` (NEW) + `.squad/agents/apone/history.md` (this append). NO
+backend / frontend / migration / Helm / Terraform touches. Bishop's
+uncommitted working tree (`fix/manual-deal-plumb-and-auto-ack` — backend
+WS endpoint + Changsha runtime + playtest artifacts) was preserved
+across the branch-off via explicit-path `git add`; never
+`git add -A` / `git add .`. Pre-push `git status --short` verified
+zero out-of-lane staging.

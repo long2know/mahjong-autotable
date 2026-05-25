@@ -105,12 +105,19 @@ on:
         required: false
         default: '300'
         type: string
-  schedule:
-    # Sunday 02:00 UTC — DRY-RUN ONLY. Catches drift in the
-    # terraform module / smoke script week-over-week. The
-    # schedule trigger CANNOT flip actually_rollback_on_
-    # failure; it always runs in dry-run mode.
-    - cron: '0 2 * * 0'
+  # CI-noise iter2 (Apone, 2027-02-XX): weekly schedule disabled.
+  # The dry-run keeps emitting failures because the terraform
+  # workspace expects AWS state that doesn't exist in CI; emails
+  # were reaching Stephen in playability-first mode. workflow_
+  # dispatch + the pull_request path-filter are sufficient to
+  # catch drift on actual edits. Re-enable by uncommenting the
+  # schedule block below when AWS state is available.
+  # schedule:
+  #   # Sunday 02:00 UTC — DRY-RUN ONLY. Catches drift in the
+  #   # terraform module / smoke script week-over-week. The
+  #   # schedule trigger CANNOT flip actually_rollback_on_
+  #   # failure; it always runs in dry-run mode.
+  #   - cron: '0 2 * * 0'
   pull_request:
     paths:
       - 'infra/terraform/regional-eks/us-east-1/auto-rollback.tf'
