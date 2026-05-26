@@ -1079,7 +1079,13 @@ public sealed class AutotableConnectionManager : IDisposable
         if (runtimeState is not null)
         {
             gameState.ApplyUpdate(translatorEntries, UpdateSource.Runtime);
-            snapshot = gameState.Snapshot();
+            var stored = gameState.Snapshot();
+            // Ephemeral kinds (claim, pickup, dice, sound, …) are deliberately
+            // NOT stored by ApplyUpdate, so they would be missing from the
+            // gameState snapshot even though the runtime just produced them.
+            // Re-attach the latest translator output for any ephemeral kind so
+            // the full snapshot we ship is actually full.
+            snapshot = MergeRuntimeEphemerals(stored, translatorEntries, gameState);
         }
         else
         {
@@ -1122,6 +1128,33 @@ public sealed class AutotableConnectionManager : IDisposable
                 index[key] = merged.Count;
                 merged.Add(e);
             }
+        }
+        return merged;
+    }
+
+    /// <summary>
+    /// Phase F gap-fix — when a Changsha runtime is backing the connection,
+    /// <see cref="AutotableGameState.Snapshot"/> deliberately omits ephemeral
+    /// kinds (claim, pickup, dice, sound, …) because <see cref="AutotableGameState.ApplyUpdate"/>
+    /// never stored them. Without this merge the full-snapshot broadcast that
+    /// fires on every <c>StateChanged</c> would silently drop the runtime's
+    /// pickup affordance, leaving manual-deal clients unable to drive the
+    /// take-tiles chain. Re-attach the latest translator output for any
+    /// ephemeral kind so the snapshot we ship is actually full.
+    /// </summary>
+    private static IReadOnlyList<CollectionEntry> MergeRuntimeEphemerals(
+        IReadOnlyList<CollectionEntry> storedEntries,
+        IReadOnlyList<CollectionEntry> translatorEntries,
+        AutotableGameState gameState)
+    {
+        var merged = new List<CollectionEntry>(storedEntries.Count + translatorEntries.Count);
+        merged.AddRange(storedEntries);
+        foreach (var entry in translatorEntries)
+        {
+            if (!gameState.IsEphemeral(entry.Kind)) continue;
+            if (entry.Value is null) continue;
+            if (entry.Value is JsonElement je && je.ValueKind == JsonValueKind.Null) continue;
+            merged.Add(entry);
         }
         return merged;
     }

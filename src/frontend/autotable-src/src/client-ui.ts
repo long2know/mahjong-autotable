@@ -85,6 +85,22 @@ export function readSpectatorFromUrl(): boolean {
   return !isNaN(n) && n === SPECTATOR_SEAT;
 }
 
+// Bishop W23 — exported so world.ts can detect human-led manual deal
+// mode without the round-tripped match snapshot (which strips the
+// dealMode field — see ChangshaToAutotableTranslator.BuildMatch).  The
+// URL param is authoritative because it's what's forwarded to the WS
+// connection and what the backend uses to drive the runtime's DealMode.
+export function readDealModeFromUrl(): 'manual' | 'auto' | null {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const raw = q.get('dealMode');
+    if (raw === 'manual' || raw === 'auto') return raw;
+  } catch {
+    // Non-browser test contexts; let callers fall back.
+  }
+  return null;
+}
+
 export class ClientUi {
   url: string;
   client: Client;

@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import { Movement } from "./movement";
 import { Client } from "./client";
-import { readSpectatorFromUrl } from "./client-ui";
+import { readSpectatorFromUrl, readDealModeFromUrl } from "./client-ui";
 import { mostCommon, rectangleOverlap, filterMostCommon, compareZYX } from "./utils";
 import { MouseTracker } from "./mouse-tracker";
 import { Setup } from './setup';
@@ -82,6 +82,13 @@ export class World {
   // World at a time but a module-level epoch makes the suppression robust
   // to remount scenarios.
   private static _lastSlotConflictLogMs: number = 0;
+
+  // Bishop W23 — generation counter for the manual-deal pickup chain.  Each
+  // call to deal('HANDS') in manual mode bumps this; an in-flight chain
+  // bails out as soon as its generation is stale, so back-to-back deals (or
+  // re-entry from the playtest harness) don't fight each other for the
+  // pickup wire.
+  private manualDealChainGen: number = 0;
 
   constructor(objectView: ObjectView, soundPlayer: SoundPlayer, client: Client) {
     this.setup = new Setup();
@@ -308,15 +315,34 @@ export class World {
 
   /**
    * Hicks playability iter2 — human click-to-discard.  Sends a discard
-   * command for `tile` on behalf of the local player.  The backend validates
-   * phase + active seat; an out-of-turn click is a no-op server-side.  The
-   * resulting tile-move animation comes back through the normal `things`
-   * UPDATE channel (matching the bot autoplay visual).
+   * command on behalf of the local player.  The backend validates phase +
+   * active seat; an out-of-turn click is a no-op server-side.  The resulting
+   * tile-move animation comes back through the normal `things` UPDATE
+   * channel (matching the bot autoplay visual).
+   *
+   * Accepts either a {@link Thing} (canonical, validated against the local
+   * hand slot) or a numeric tileId (Vasquez Gap 4 informational backdoor:
+   * playtest harnesses and external drivers can pass the raw id without
+   * needing to look up the Thing first).  When a numeric id is provided we
+   * look up the Thing locally for the same hand-slot validation; if the
+   * tile isn't in our local view we still emit the discard (the backend's
+   * `TryHandleDiscardActionAsync` is the authoritative validator).
    */
-  emitDiscard(tile: Thing): boolean {
+  emitDiscard(tileOrId: Thing | number): boolean {
     if (this.seat === null) return false;
-    if (tile.slot.group !== 'hand' || tile.slot.seat !== this.seat) return false;
-    this.client.discard.set(this.seat, { tileId: tile.index });
+    let tileId: number;
+    let tile: Thing | undefined;
+    if (typeof tileOrId === 'number') {
+      tileId = tileOrId;
+      tile = this.things.get(tileId);
+    } else {
+      tile = tileOrId;
+      tileId = tile.index;
+    }
+    if (tile && (tile.slot.group !== 'hand' || tile.slot.seat !== this.seat)) {
+      return false;
+    }
+    this.client.discard.set(this.seat, { tileId });
     return true;
   }
 
@@ -466,6 +492,125 @@ export class World {
       this.client.match.set(0, match);
       this.client.dice.set(0, diceInfo);
       this.sendUpdate(true);
+    });
+
+    // Bishop W23 — manual-deal pickup chain.  In manual mode Bishop's runtime
+    // parks in RollingDice after the implicit Deal trigger and waits for
+    // per-round `pickup` emissions from the seated client(s).  Drive the
+    // dealer-side chain (1 × rollDice + 4 × take: 3 rounds of 4 tiles +
+    // 1 final round of 1 tile per Changsha v1.2 §6.3) so the human-led
+    // table actually reaches the play loop.  Auto-mode deals are unchanged.
+    // Spectators (seat === null guard above) and non-HANDS deals skip the
+    // chain too.  The runtime auto-handles bot seats between our turns
+    // (ChangshaGameRuntime.ScheduleBotIfNeededAsync), so we only emit for
+    // our own seat.
+    //
+    // We accept either source-of-truth for dealMode: the local conditions
+    // object (if the picker / overrides set it) OR the URL `?dealMode=`
+    // param (which is what the WS connection forwards to the runtime).
+    // The round-tripped match snapshot from the server STRIPS dealMode
+    // (ChangshaToAutotableTranslator.BuildMatch only emits gameType/back/
+    // fives/points/dealType), so once the first server match push lands
+    // `this.conditions.dealMode` becomes undefined.  The URL fallback
+    // keeps the chain firing regardless.  The runtime will silently
+    // reject `rollDice` if the table is in auto mode, so blind-firing
+    // is safe.
+    const urlDealMode = readDealModeFromUrl();
+    const effectiveDealMode = conditions.dealMode ?? urlDealMode;
+    if (dealType === DealType.HANDS && effectiveDealMode === 'manual') {
+      const gen = ++this.manualDealChainGen;
+      void this.driveManualDealChain(gen);
+    }
+  }
+
+  /**
+   * Bishop W23 — drive the dealer-side pickup chain for the local seat in
+   * manual-deal mode.  After the implicit Deal trigger the runtime parks
+   * in RollingDice with NO pickup affordance broadcast (the translator
+   * gates pickup emissions on {@link IsPickupPhase} which excludes
+   * RollingDice — see ChangshaToAutotableTranslator.cs §pickup).  So we
+   * blind-emit `rollDice` first; the runtime rejects it server-side if
+   * we aren't the dealer (silent debug log).  Once it accepts, pickup
+   * state pushes through and we drive 4 `take` rounds (3 × 4 tiles +
+   * 1 × 1 tile per Changsha v1.2 §6.3).  Bots autoplay their own pickup
+   * rounds server-side via ScheduleBotIfNeededAsync between our turns,
+   * so this loop only handles the local seat.
+   *
+   * Cancels itself if a newer chain has bumped {@link manualDealChainGen}.
+   */
+  private async driveManualDealChain(gen: number): Promise<void> {
+    const seat = this.seat;
+    if (seat === null) return;
+
+    // 1) Give the server time to process the implicit Deal trigger
+    //    (match push → ApplyDealMode(manual) → StartGameAsync parks the
+    //    runtime in RollingDice).  Without this gap the rollDice emit
+    //    races the runtime's transition and is dropped as
+    //    "wrong-phase" on the server.
+    await new Promise<void>(r => setTimeout(r, 300));
+    if (this.manualDealChainGen !== gen) return;
+
+    // 2) Emit rollDice unconditionally.  On hand 1 the dealer is seat 0
+    //    (Changsha §6.2) and the human-led playtest takes the first
+    //    visible seat, so the local seat IS the dealer in the common
+    //    path.  If we aren't the dealer the runtime's RollDiceAsync
+    //    throws and TryHandlePickupActionAsync swallows it at debug
+    //    level — no client-visible side effect.
+    this.emitRollDice();
+
+    // 3) Four take rounds: 3 × 4-tile (PickupRound1..3) + 1 × 1-tile
+    //    (SingleTilePickup or DealerExtra; the runtime collapses both
+    //    into a single 1-tile pickup affordance for our seat).  Between
+    //    our turns the runtime cycles through the bot seats via
+    //    ScheduleBotIfNeededAsync; we just re-wait for our seat to come
+    //    up again.  The 12s timeout per round accommodates the bot
+    //    pickup delay (BotPickupDelayMs default) × 3 bots + slack.
+    for (let round = 0; round < 4; round++) {
+      const myTurn = await this.waitForPickup(
+        gen,
+        p => p !== null && p.seatIndex === seat && p.count > 0,
+        12000,
+      );
+      if (!myTurn) return;
+      if (this.manualDealChainGen !== gen) return;
+      const ok = this.emitTakePickup();
+      if (!ok) return;
+      await new Promise<void>(r => setTimeout(r, 120));
+    }
+  }
+
+  /**
+   * Bishop W23 — poll-based wait for a pickup-state predicate.  Returns
+   * true when the predicate becomes truthy, false on timeout or if a
+   * newer chain has cancelled this one.  Collection doesn't expose an
+   * `off` for one-shot listeners so we poll the locally-cached
+   * `this.pickup` (refreshed by {@link onPickup}) at ~60ms cadence.
+   */
+  private waitForPickup(
+    gen: number,
+    pred: (p: PickupEntry | null) => boolean,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      if (this.manualDealChainGen !== gen) return resolve(false);
+      if (pred(this.pickup)) return resolve(true);
+      const startMs = Date.now();
+      const timer = setInterval(() => {
+        if (this.manualDealChainGen !== gen) {
+          clearInterval(timer);
+          resolve(false);
+          return;
+        }
+        if (pred(this.pickup)) {
+          clearInterval(timer);
+          resolve(true);
+          return;
+        }
+        if (Date.now() - startMs > timeoutMs) {
+          clearInterval(timer);
+          resolve(false);
+        }
+      }, 60);
     });
   }
 
