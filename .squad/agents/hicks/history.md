@@ -4179,3 +4179,124 @@ Decision memo: `.squad/decisions/inbox/hicks-manual-pickup-emit.md`.
   still fires when the runtime emits a `result["current"]` entry —
   unaffected by this PR but visible in spectator findings. Same bug
   recorded in `hicks-frontend-playability-iter2.md`.
+
+## 2026-05-25 — Mobile responsive (375 px) + lobby overlay sizing parity
+
+**Branch:** `feat/mobile-responsive-and-lobby-overlay`
+**Trigger:** Stephen's 2026-05-19 directive — "the overlay on the left
+with the Deal/Setup options is a different size" + mobile-375 audit
+gap flagged after the variant-switcher ship (b9b6482).
+
+**Visible changes:**
+
+- New `src/frontend/autotable-src/src/ui/hicks-mobile-sidebar.css`
+  (~200 LOC, layered after `style.css` so it wins the cascade).
+- `src/frontend/autotable-src/src/index.ts` adds the side-effect
+  CSS import after the existing `initLobby`/`installI18n` block.
+- Two surface fixes:
+  1. **Mobile reflow at ≤ 480 px** — `#lobby-panel` is pinned to
+     `top:0; left:0` so the existing 480-pixel `width:100vw;
+     height:100vh` rule stops producing a 12 px horizontal scroll
+     (docW `387 → 375` at innerW 375).  `#sidebar` collapses to a
+     160 px compact pill with `max-height: calc(100vh - 70px)` so
+     the own-hand row stays visible.  Pickup HUD stacks vertically.
+     Lobby/move-log toggles + lobby-close button get 44 px touch
+     targets + `env(safe-area-inset-*)` to clear iOS notches.
+  2. **Sidebar parity with upstream** — Stephen flagged that the
+     left-edge Deal/Setup overlay reads bigger than upstream-
+     autotable's.  Used `:has(#claim-*[disabled])` to hide the
+     legacy claim button row (4 buttons + countdown) when no claim
+     window is active — that's the steady-state for every visible
+     second of a game.  At desktop the sidebar height drops from
+     516 px to 385 px (-25 %), bringing the silhouette back to the
+     upstream-autotable footprint Stephen cited in the image diff.
+     At desktop the new `#lobby-panel` (which is *not* in upstream)
+     trims to 280 px wide with tighter padding so it visually feels
+     proportional to the 220 px upstream sidebar rather than
+     overshadowing it.
+
+**Lane discipline:**
+
+- Touched only Hicks-owned files (`index.ts` + new ui/*.css).
+- No backend, no Ferro CSS (claim-window-overlay / win-screen-polish
+  / ferro-bootstrap / variant-picker untouched).
+- No workflow changes.
+
+## Validation
+
+- New `playtest-artifacts/playtest-mobile-375.spec.mjs` drives both
+  `?dealMode=auto&botCount=4` and `?dealMode=manual&botCount=3`
+  scenarios at 375×667.  Both scenarios assert
+  `pageErrorsCount === 0`, no horizontal overflow at lobby AND
+  mid-game, Quick-Match + Ferro variant picker `min-height ≥ 44 px`,
+  canvas count ≥ 1.  **ALL SCENARIOS PASS.**
+- `playtest-v3-fresh.spec.mjs` (spectator regression at 1280×800):
+  identical to baseline — 0 page errors, 3 console errors (pre-
+  existing), 2 network failures (pre-existing 404 GETs on
+  `/api/games/changsha-default`).
+- Backend tests: 5125/1 (unchanged — no backend touched).
+- Before/after screenshots for the lobby-overlay regression in
+  `playtest-artifacts/lobby-overlay/` (desktop 1280 + mobile 375
+  pairs); mobile/midgame screenshots in
+  `playtest-artifacts/mobile-375/`.
+
+## Open follow-up
+
+- The Quick-Match button at 375 px sits at `y ≈ 2300` inside the
+  lobby's internal scroll (lobby body is ~2400 px tall on mobile).
+  Reachable but requires scrolling — a future iter could collapse
+  the Stats / Public-Games tabs by default to lift Quick-Match
+  closer to the top.
+- The `display: none` heuristic for the legacy claim row hides it
+  for spectators too (they have no claim opportunity by design,
+  so this is a feature not a bug — but worth a glance if Frost
+  surfaces a spectator-claim feature later).
+
+Decision memo: `.squad/decisions/inbox/hicks-mobile-375-and-lobby-overlay.md`.
+
+## 2026-05-25 — Mobile responsive (375 px) + lobby overlay sizing parity
+
+**Branch:** `feat/mobile-responsive-and-lobby-overlay`
+**Trigger:** Stephen's 2026-05-19 directive — "the overlay on the left
+with the Deal/Setup options is a different size" + mobile-375 audit
+gap flagged after the variant-switcher ship (b9b6482).
+
+**Visible changes:**
+
+- New `src/frontend/autotable-src/src/ui/hicks-mobile-sidebar.css`
+  (~200 LOC, layered after `style.css` so it wins the cascade).
+- `src/frontend/autotable-src/src/index.ts` adds the side-effect
+  CSS import after the existing `initLobby`/`installI18n` block.
+- Two surface fixes:
+  1. Mobile reflow at <=480 px — `#lobby-panel` pinned to top:0/left:0
+     so the 480-pixel width:100vw rule stops producing a 12 px
+     horizontal scroll (docW 387 -> 375).  Sidebar collapses to a
+     160 px pill with vertical scroll; pickup HUD stacks; touch
+     targets >=44 px; safe-area insets honoured.
+  2. Sidebar parity with upstream — `:has(#claim-*[disabled])`
+     hides the legacy claim row (4 buttons + countdown) when no
+     claim window is active.  Sidebar height drops 516 -> 385 px
+     at desktop 1280, bringing the silhouette back to upstream-
+     autotable's compact box.  Lobby panel trimmed to 280 px
+     (was 320) at desktop.
+
+**Lane discipline:**
+
+- Only Hicks-owned files touched (`index.ts` + new ui/*.css).
+- Ferro CSS untouched (claim-window-overlay / win-screen-polish
+  / ferro-bootstrap / variant-picker).
+- No backend, no workflows.
+
+## Validation
+
+- New `playtest-artifacts/playtest-mobile-375.spec.mjs` runs both
+  `?dealMode=auto&botCount=4` and `?dealMode=manual&botCount=3`
+  at 375x667.  ALL SCENARIOS PASS: pageErrorsCount=0, no
+  horizontal overflow, QM/picker >=44 px, canvas mounted.
+- `playtest-v3-fresh.spec.mjs` at 1280x800: identical to
+  baseline (0 page errors, 3 pre-existing console warnings).
+- Backend tests: 5125 / 1 pre-existing (no backend touched).
+- Before/after screenshots in `playtest-artifacts/lobby-overlay/`
+  and mobile screenshots in `playtest-artifacts/mobile-375/`.
+
+Decision memo: `.squad/decisions/inbox/hicks-mobile-375-and-lobby-overlay.md`.

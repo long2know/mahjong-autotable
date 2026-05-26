@@ -1,0 +1,178 @@
+{
+  "label": "auto",
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=4",
+  "viewport": {
+    "width": 375,
+    "height": 667
+  },
+  "steps": [
+    {
+      "name": "1-load",
+      "ok": true,
+      "result": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=4"
+      }
+    },
+    {
+      "name": "2-lobby-view",
+      "ok": true,
+      "result": {
+        "docW": 375,
+        "innerW": 375,
+        "lobby": {
+          "x": 0,
+          "y": 0,
+          "w": 375,
+          "h": 667
+        },
+        "qm": {
+          "x": 15,
+          "y": 2294.546875,
+          "w": 337,
+          "h": 44
+        },
+        "picker": {
+          "x": 24,
+          "y": 914.96875,
+          "w": 327,
+          "h": 44
+        }
+      }
+    },
+    {
+      "name": "3-quick-match",
+      "ok": true,
+      "result": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4",
+        "uniqueGameId": "mobile375-auto-1779762032811-706"
+      }
+    },
+    {
+      "name": "3b-close-lobby",
+      "ok": true
+    },
+    {
+      "name": "3c-connect",
+      "ok": true,
+      "result": {
+        "wasVisible": true
+      }
+    },
+    {
+      "name": "4-take-seat-if-available",
+      "ok": true,
+      "result": {
+        "spectator": true,
+        "total": 4
+      }
+    },
+    {
+      "name": "5-deal-if-button-shown",
+      "ok": true,
+      "result": {
+        "visible": true,
+        "enabled": false
+      }
+    },
+    {
+      "name": "6-observe-midgame",
+      "ok": true,
+      "result": {
+        "docW": 375,
+        "innerW": 375,
+        "canvasCount": 2,
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "w": 160,
+          "h": 482.8125
+        },
+        "handThings": 0
+      }
+    },
+    {
+      "name": "7-claim-window-snapshot",
+      "ok": true,
+      "result": {
+        "created": true,
+        "docW": 375,
+        "innerW": 375
+      }
+    },
+    {
+      "name": "8-final",
+      "ok": true
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0xb2400154e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0xb2400154e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0xb2400154e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0xb2400154e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8088/api/games/changsha-default",
+    "404 GET http://127.0.0.1:8088/api/games/changsha-default/settings"
+  ],
+  "collections": {
+    "match": 1,
+    "seats": 4,
+    "things": 108,
+    "nicks": 4,
+    "mouse": 0,
+    "sound": 0,
+    "dice": 1,
+    "claim": 0,
+    "result": 0,
+    "pickup": 0,
+    "discard": 0,
+    "gameComplete": 0
+  },
+  "overflow": {
+    "docW": 375,
+    "innerW": 375
+  },
+  "measurements": {
+    "lobby": {
+      "docW": 375,
+      "innerW": 375,
+      "lobby": {
+        "x": 0,
+        "y": 0,
+        "w": 375,
+        "h": 667
+      },
+      "qm": {
+        "x": 15,
+        "y": 2294.546875,
+        "w": 337,
+        "h": 44
+      },
+      "picker": {
+        "x": 24,
+        "y": 914.96875,
+        "w": 327,
+        "h": 44
+      }
+    },
+    "midgame": {
+      "docW": 375,
+      "innerW": 375,
+      "canvasCount": 2,
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "w": 160,
+        "h": 482.8125
+      },
+      "handThings": 0
+    }
+  }
+}

@@ -13,6 +13,14 @@
 import { initLobby } from './lobby';
 import { installI18n } from './i18n';
 
+// Hicks — mobile-responsive + lobby/sidebar sizing parity.  Eager-loaded
+// CSS-only side-effect import so the styles ship in the lobby cold path
+// (the lobby panel is the primary surface that needs the 480-pixel
+// reset).  ~2 KB minified; negligible cost.  See `ui/hicks-mobile-
+// sidebar.css` for the inline rationale and Stephen's 2026-05-19
+// directive notes.
+import './ui/hicks-mobile-sidebar.css';
+
 // Phase K Wave 18 — Hicks bundle-audit §3.3 (Hicks).
 //
 // Three additional eager imports are now lazy-mounted to shrink
