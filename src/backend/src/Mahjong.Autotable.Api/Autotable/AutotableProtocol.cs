@@ -225,6 +225,56 @@ public sealed class ScoreResultEntry
 
     [JsonPropertyName("payments")]
     public List<ScorePaymentEntry> Payments { get; set; } = [];
+
+    /// <summary>
+    /// Fan-catalog breakdown layered onto the base score (Frost's
+    /// <c>FanCalculator.EvaluateHand</c>, wired in
+    /// <c>ChangshaGameStateMachine.Score</c>). Each entry carries the canonical
+    /// <see cref="Fan"/> enum name (e.g. <c>"selfDraw"</c>, <c>"fullFlush"</c>) and
+    /// the per-payment point value. Empty when no fan applied. Backward-compatible:
+    /// legacy clients that ignore this field continue working unchanged.
+    /// </summary>
+    [JsonPropertyName("fans")]
+    public List<FanEntry> Fans { get; set; } = [];
+
+    /// <summary>
+    /// Sum of every <see cref="FanEntry.Points"/> — mirrors
+    /// <see cref="ScoreResult.FanPoints"/>. Useful for the result modal's
+    /// "fan total" subtotal line without re-aggregating <see cref="Fans"/>.
+    /// </summary>
+    [JsonPropertyName("fanPoints")]
+    public int FanPoints { get; set; }
+}
+
+/// <summary>
+/// Phase L (post-W23) — single detected fan in <see cref="ScoreResultEntry.Fans"/>.
+/// Wire shape carries the catalog identifier (<c>fan</c>, camelCase of the
+/// <c>Fan</c> enum), Chinese/Pinyin/English labels for direct frontend rendering,
+/// and per-payment points. The catalog is the source of truth — frontend renderers
+/// can also look up <c>fan</c> in their own i18n catalog if they need a different
+/// language path (see <c>FanCatalog.Get(fan)</c>).
+/// </summary>
+public sealed class FanEntry
+{
+    /// <summary>Canonical fan identifier (camelCase of the <c>Fan</c> enum, e.g.
+    /// <c>"selfDraw"</c>, <c>"kongReplacement"</c>, <c>"fullFlush"</c>).</summary>
+    [JsonPropertyName("fan")]
+    public string Fan { get; set; } = string.Empty;
+
+    /// <summary>Per-payment point value contributed by this fan
+    /// (e.g. <c>1</c> for SelfDraw, <c>6</c> for FullFlush). Multiplied across each
+    /// existing base payment by <c>ChangshaGameStateMachine.Score</c>.</summary>
+    [JsonPropertyName("points")]
+    public int Points { get; set; }
+
+    [JsonPropertyName("chinese")]
+    public string Chinese { get; set; } = string.Empty;
+
+    [JsonPropertyName("pinyin")]
+    public string Pinyin { get; set; } = string.Empty;
+
+    [JsonPropertyName("english")]
+    public string English { get; set; } = string.Empty;
 }
 
 public sealed class ScorePaymentEntry

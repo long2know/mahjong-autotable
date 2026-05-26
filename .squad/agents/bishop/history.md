@@ -3378,3 +3378,122 @@ the original Vasquez decision doc. The backend now:
 ready.
 
 **Decision memo:** `.squad/decisions/inbox/bishop-manual-deal-plumb.md`.
+
+## Fan-catalog integration (post-W23)
+
+**Branch:** `feat/fan-catalog-integration` (PR forthcoming).
+**Hand-off origin:** `.squad/decisions/inbox/frost-fan-catalog.md` (Frost W23 — 14-fan catalog landed standalone with 39 tests, deferred trunk integration to Bishop).
+
+**What shipped:**
+
+- `ScoreResult` (in `ChangshaDomain.cs`) gained two ADDITIVE
+  fields: `IReadOnlyList<Scoring.DetectedFan> Fans` (deterministic
+  enum-declaration order) + `int FanPoints` (sum of per-payment
+  fan points). Existing `Category` / `BasePoints` / `Payments`
+  fields untouched — backward compatible with every legacy caller.
+
+- `ChangshaGameStateMachine.Score` composes a `Scoring.FanContext`
+  from `state.CurrentWin` flags (`IsSelfDraw`, `IsKongReplacement`,
+  `IsRobbedKong`) + `AllPatterns` membership (`HeavenlyHand`,
+  `EarthlyHand`, `LastTileFromWall`, `LastDiscardCatch`) + seat /
+  round wind, then runs `FanCalculator.EvaluateHand`. The returned
+  `FanResult` is layered onto the base score by:
+    - **Self-draw wins:** each fan adds `Points` to EACH of the 3
+      base opponent-pays-winner rows → fan bonus is `Points × 3`.
+    - **Discard / robbing-kong wins:** each fan adds `Points` to
+      the single source-pays-winner row → fan bonus is `Points × 1`.
+  This mirrors how the 258-pair small/big-win base already scales
+  by method, so zero-sum (`CumulativeScores.Values.Sum() == 0`)
+  holds across the full hand without special casing.
+
+- Every fan-bonus contribution is a real `PaymentEntry` row with
+  `Reason = "fan:<camelCaseFanName>"`. Consequence:
+  `BasePoints == Payments.Sum(p => p.Amount)` still holds (existing
+  invariant). Audit / replay / CumulativeScores math all keep
+  working through the same payment-application loop.
+
+- Wire shape:
+    - **Bundle WS** (`ChangshaToAutotableTranslator.BuildHandResult`
+      → `HandResultEntry.ScoreResult`) extended with optional
+      `fans` (list of `FanEntry { fan, points, chinese, pinyin,
+      english }`) + `fanPoints`. Labels rehydrated from
+      `FanCatalog.Get(fan)` so the win-screen modal can render
+      localised chips without extra round-trips.
+    - **SignalR** (`ChangshaGameRuntime.EmitScoringAndHandFinishedAsync`)
+      mirrors the same shape on the `HandFinished` payload's
+      `scoreResult`. Parity across both transports.
+
+**Pre-existing tests updated:**
+
+| Test | File | Old → New |
+|---|---|---|
+| `Bot_AllPatterns_StacksContextual` | `Changsha/Acceptance/BotContextualHuTests.cs:458` | `BasePoints == 24` → `BasePoints == 72` (dealer self-draw HeavenlyHand+FullFlush stacks SelfDraw(1)+FullFlush(6)+HeavenlyHand(8)+ConcealedHand(1)=16 per payment × 3 base payments = 48 fan bonus) + added 4 `Assert.Contains` rows pinning each fan enum value. |
+
+That is the SOLE pre-existing test that asserted a hard total
+through the `ChangshaGameStateMachine.Score` pipeline. Every
+other state-machine score test either (a) goes through
+`ScoringService.CalculateScore` directly (which the fan layer
+never touches — `ScoringServiceTests`, `ScoringTests`,
+`StackedBigWinScoringTests`), (b) uses a ratio / inequality
+assertion that the fan multiplier preserves (`EdgeCaseTests
+.MultipleBigWinPatterns_ScoresStack_DeferredToV2` — stacked
+≥ 2× single still holds because both sides pick up the same
+fan delta), or (c) doesn't pin `BasePoints` at all
+(`EndToEndPlayableTests`, `MissedWinPenaltyTests` — the false-Hu
+test uses `RecordFalseHu`, not `Score`).
+
+**New tests:**
+
+- `Changsha/Acceptance/FanCatalogIntegrationTests.cs` — 3 tests:
+    - `SelfDrawHu_AddsSelfDrawFanBonusOnTopOfBaseScore` — dealer
+      self-draw Standard, asserts SelfDraw + ConcealedHand fans
+      fire, fan rows have `Reason="fan:selfDraw"` / `"fan:concealedHand"`,
+      `BasePoints` reflects base + fan bonus, zero-sum holds.
+    - `KongReplacementSelfDraw_AddsKongReplacementFanBonus` —
+      dealer declares concealed kong, draws planted replacement
+      tile, declares self-draw Hu. Asserts SelfDraw + KongReplacement +
+      ConcealedHand fans fire (concealed kong still satisfies 门清
+      per `FanCalculator.IsConcealedHand`), `KongReplacement`
+      contributes 2 points per payment.
+    - `ScoreResult_FanBreakdown_RoundTripsThroughBundleTranslator` —
+      non-dealer self-draw AllPungs, then translates state to
+      `HandResultEntry`. Asserts the bundle WS `scoreResult.fans`
+      payload carries `chinese="自摸"`, `pinyin="zì mō"`,
+      `english="Self-draw"` (rehydrated from `FanCatalog`) and
+      backward-compat `category`/`basePoints`/`payments` survive
+      unchanged.
+
+**Build / test gate:**
+
+- **5125 backend tests; 5124 pass; 1 fails** (the pre-existing
+  W9 `^\s*schedule:` regex test — Vasquez's nightly cron workflow
+  self-lane fixture, documented as unrelated in
+  `.squad/decisions/inbox/bishop-manual-deal-plumb.md` and
+  Frost's W23 memo). Baseline was 5121 + 1 fail before this
+  PR → +3 new tests → 5124 + 1 fail after.
+
+**Three notes for future passes:**
+
+1. **`InternalsVisibleTo` made `BuildHandResult` callable from the
+   test suite.** Bumped from `private` to `internal` so the wire
+   round-trip test can exercise the translator without going
+   through the full SignalR/WS stack. No other call-site exposure
+   change.
+
+2. **Fan distribution policy is per-payment-multiplied, NOT
+   per-fan-flat.** A SelfDraw win with 4 detected fans adds
+   `4 × 3 = 12` `PaymentEntry` rows (not 4 flat rows). This makes
+   per-opponent accounting trivial (each opponent's CumulativeScores
+   delta is `basePerOpp + sum(fanPoints)`) and keeps zero-sum
+   automatic. If a future ruleset wants flat-bonus distribution
+   instead, swap `ApplyFanBonusesToPayments` for a different
+   distribution helper — the rest of the pipeline doesn't care.
+
+3. **Variant default is `FanVariant.Changsha`.** Hard-coded in
+   `EvaluateFanBonuses`. When `RuleOptions.Variant` lands per
+   Frost's follow-up, thread it through `state` → `FanContext.Variant`.
+   The variant-gated fans (`MixedOneSuit`, `BigThreeDragons`) are
+   already filtered correctly by `FanCalculator.EvaluateHand`;
+   only the seam needs widening.
+
+**Decision memo:** `.squad/decisions/inbox/bishop-fan-catalog-integration.md`.

@@ -454,8 +454,20 @@ public class BotContextualHuTests
         // Scoring: dealer self-draw BigWin base = BigWinSelfDrawDealer (4) per opponent
         // × 3 opponents × ×2 stacking multiplier = 24.
         // (Single-pattern baseline would be 4 × 3 × 1 = 12.)
+        //
+        // Post-W23 fan layer (Frost's FanCalculator, wired into ChangshaGameStateMachine.Score):
+        //   SelfDraw (1) + FullFlush (6) + HeavenlyHand (8) + ConcealedHand (1) = 16 fan
+        //   points per base payment. With 3 base payments the fan delta is 3 × 16 = 48.
+        //   Total BasePoints = 24 (base × multiplier) + 48 (fan bonus) = 72.
+        // The base/multiplier contract above remains intact — fans are ADDITIVE on top
+        // of the small/big-win tier.
         Assert.Equal(ScoreCategory.BigWin, score.Category);
-        Assert.Equal(24, score.BasePoints);
+        Assert.Equal(72, score.BasePoints);
+        Assert.Equal(48, score.FanPoints * 3);
+        Assert.Contains(score.Fans, f => f.Fan == Mahjong.Autotable.Api.Changsha.Scoring.Fan.SelfDraw);
+        Assert.Contains(score.Fans, f => f.Fan == Mahjong.Autotable.Api.Changsha.Scoring.Fan.FullFlush);
+        Assert.Contains(score.Fans, f => f.Fan == Mahjong.Autotable.Api.Changsha.Scoring.Fan.HeavenlyHand);
+        Assert.Contains(score.Fans, f => f.Fan == Mahjong.Autotable.Api.Changsha.Scoring.Fan.ConcealedHand);
     }
 
     // ────────────────────────────────────────────────────────────────────
