@@ -76,3 +76,71 @@ I should READ `.squad/decisions.md` and `.squad/agents/hicks/history.md` before 
 ---
 
 ## Log
+
+### Iter 1 — 2026-05-23 — Claim-window countdown + Win-screen polish
+
+**PR:** `feat/ferro-claim-window-and-win-screen` (this branch).
+**Decision memo:** `.squad/decisions/inbox/ferro-claim-window-and-win-screen.md`
+
+Picked up tasks 2 + 3 from the initial charter (claim-window countdown
+overlay + win-screen polish) because Hicks's PR #82 had already shipped
+the gameplay loop (lobby auto-close + click-to-discard + wall anim).
+Postponed the lobby-overlay-sizing polish (task 1) to a follow-up iter so
+Stephen could see the more visible UX polish first.
+
+**What I built:**
+
+- `src/ui/claim-window-overlay.ts` + `.css` — fixed bottom-bar that
+  subscribes to `client.claim` Collection, renders 44px-tall Pung/Chow/
+  Kong/Hu chips with keyboard shortcuts (P/C/K/H/Esc), aria-live timer,
+  progress bar that fills as the window expires, auto-pass at 0.
+- `src/ui/win-screen-polish.ts` + `.css` — wraps `#game-complete-modal`
+  with a MutationObserver, replaces the static "Total Δ" numbers with
+  1.2s rolling rAF counters (ease-out cubic, 80ms stagger), inserts a
+  "番种 Fans Scored" card grid between totals and recap.
+- `src/ui/ferro-bootstrap.ts` — listens for `mahjong:three-renderer-ready`
+  + polling fallback; attaches both classes idempotently.
+- 1-line dynamic import in `src/index.ts` (NOT on Hicks's forbidden list).
+
+**Trunk discipline:** Did NOT touch any of: `world.ts`, `setup.ts`,
+`setup-deal.ts`, `mouse-tracker.ts`, `game-ui.ts`, `lobby.ts`,
+`index.html`.  The win-screen polish wraps the existing modal markup via
+MutationObserver — no edits to the modal DOM that `game-ui.ts` produces.
+
+**Bundle impact:** ferro-bootstrap chunk = 14.34 kB raw / 4.89 kB gzipped.
+No new runtime deps.
+
+**Trunk bugs discovered (logged for Hicks, NOT fixed here):**
+
+1. `game-ui.ts:refreshClaimButtons` — TypeError on `.available.includes()`
+   when `client.claim.set({action:'pass', type:null})` echoes locally.
+   Mitigation: my overlay uses `isClaimEntry()` guard — Hicks should
+   add the same in `refreshClaimButtons`.
+2. `game-ui.ts:998` — `[...result.score].sort(...)` crashes when
+   `result.score` is undefined/null.  Easy fix: `[...(result.score ?? [])]`.
+
+**Playtest evidence:** 6 screenshots in `playtest-artifacts/ferro-iter1/`
+covering desktop + mobile (375px) for both overlays.  Spectator playtest
+regression: pageErrors=0, ≥30 move-log entries ✓.
+
+**Lessons learned:**
+
+- The Collection.set echo behavior depends on `client.connected()` — in
+  the disconnected branch it emits locally immediately, in the connected
+  branch it pends + sends.  Synthetic specs MUST close claim windows via
+  `events.emit('update', [['claim','0',null]], false)` tombstones, NOT
+  by pressing Escape (which triggers the trunk bug above).
+- Bootstrap 4 modal-dialog-centered loses its show state when the
+  viewport resizes from desktop → mobile; force-show via
+  `$('#game-complete-modal').modal('show')` is necessary. Also remember
+  to hide BOTH `#settings-drawer` AND `#settings-drawer-v2` — the v2
+  variant overlays the modal on 375px viewports.
+- `MutationObserver` on a Bootstrap modal needs a `subtree: true` watcher
+  on the modal-body, not just the modal — game-ui re-renders the table
+  in place.
+
+**Charter follow-ups still open:**
+
+- Lobby overlay sizing parity (task 1)
+- Variant switcher (task 5)
+- Mobile canvas/HUD beyond what's already verified (task 4)

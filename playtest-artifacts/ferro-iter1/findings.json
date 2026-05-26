@@ -1,0 +1,56 @@
+{
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=4",
+  "steps": [
+    {
+      "name": "1-load",
+      "ok": true,
+      "result": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Medium&handCount=4"
+      }
+    },
+    {
+      "name": "1b-bootstrap-ready",
+      "ok": true,
+      "result": {
+        "gotGame": true
+      }
+    },
+    {
+      "name": "2-synthetic-claim",
+      "ok": true,
+      "result": {
+        "ok": true,
+        "seat": 0
+      }
+    },
+    {
+      "name": "3-synthetic-hu",
+      "ok": true,
+      "result": {
+        "ok": {
+          "ok": true
+        },
+        "fansSection": 1,
+        "rollCounters": 4
+      }
+    },
+    {
+      "name": "4-mobile-win",
+      "ok": true
+    },
+    {
+      "name": "5-mobile-claim",
+      "ok": true
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0x302c00139c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x302c00139c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x302c00139c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x302c00139c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ]
+}
