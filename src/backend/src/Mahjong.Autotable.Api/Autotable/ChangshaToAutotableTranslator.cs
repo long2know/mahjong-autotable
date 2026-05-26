@@ -184,7 +184,7 @@ public static class ChangshaToAutotableTranslator
         };
     }
 
-    private static HandResultEntry BuildHandResult(ChangshaGameState state)
+    internal static HandResultEntry BuildHandResult(ChangshaGameState state)
     {
         var win = state.CurrentWin;
         var winnerSeat = win?.WinningSeatIndex ?? -1;
@@ -249,7 +249,24 @@ public static class ChangshaToAutotableTranslator
                 ToSeatIndex = p.ToSeatIndex,
                 Amount = p.Amount,
                 Reason = p.Reason
-            }).ToList()
+            }).ToList(),
+            // Post-W23 — Frost's fan catalog breakdown surfaced on the bundle WS path
+            // so the win-screen modal can render per-fan chips with Chinese/Pinyin/English
+            // labels without a second round-trip. Empty list = no fans applied (legacy
+            // 258-pair Standard win off a discard, etc.).
+            Fans = score.Fans.Select(f =>
+            {
+                var info = Mahjong.Autotable.Api.Changsha.Scoring.FanCatalog.Get(f.Fan);
+                return new FanEntry
+                {
+                    Fan = ChangshaGameStateMachine.FanWireName(f.Fan),
+                    Points = f.Points,
+                    Chinese = info.Chinese,
+                    Pinyin = info.Pinyin,
+                    English = info.English,
+                };
+            }).ToList(),
+            FanPoints = score.FanPoints,
         };
 
         return new HandResultEntry

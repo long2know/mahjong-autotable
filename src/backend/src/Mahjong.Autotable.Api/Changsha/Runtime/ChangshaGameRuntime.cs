@@ -1800,7 +1800,22 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     toSeatIndex = p.ToSeatIndex,
                     amount = p.Amount,
                     reason = p.Reason
-                }).ToArray()
+                }).ToArray(),
+                // Post-W23 — fan-catalog breakdown surfaced on the SignalR transport
+                // (parity with the bundle WS ScoreResultEntry). Empty array = no fans.
+                fans = score.Fans.Select(f =>
+                {
+                    var info = Mahjong.Autotable.Api.Changsha.Scoring.FanCatalog.Get(f.Fan);
+                    return new
+                    {
+                        fan = ChangshaGameStateMachine.FanWireName(f.Fan),
+                        points = f.Points,
+                        chinese = info.Chinese,
+                        pinyin = info.Pinyin,
+                        english = info.English,
+                    };
+                }).ToArray(),
+                fanPoints = score.FanPoints,
             },
             isDraw = false
         };

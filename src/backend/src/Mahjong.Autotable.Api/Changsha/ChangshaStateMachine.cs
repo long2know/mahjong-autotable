@@ -866,10 +866,32 @@ public sealed class ChangshaGameStateMachine
         // construction sites that didn't populate AllPatterns get the ×1 default
         // (empty list → Count=0 → clamped to 1 inside ScoringService).
         var bigWinPatternCount = state.CurrentWin.AllPatterns.Count;
-        state.CurrentScore = scoringService.CalculateScore(
+        var baseScore = scoringService.CalculateScore(
             state.CurrentWin, state.DealerSeatIndex, state.CurrentWin.IsFullFlush, bigWinPatternCount);
 
-        // Apply payments to cumulative scores
+        // Post-W23 — Frost's FanCalculator layer (see .squad/decisions/inbox/frost-fan-catalog.md).
+        // Compose a FanContext from the current-win flags + state, evaluate the 14-fan
+        // catalog, and append fan-bonus PaymentEntry rows on top of the base small/big-win
+        // tier. Each detected fan adds `fan.Points` to EACH existing base payment, so:
+        //   - SelfDraw wins distribute the fan bonus across all 3 opponent → winner payments
+        //   - Discard / robbing-kong wins concentrate the bonus on the single source payment
+        // This mirrors how the 258-pair base scaling already handles the two methods.
+        // BasePoints stays equal to Payments.Sum(p => p.Amount) by construction.
+        var fanResult = EvaluateFanBonuses(state);
+        var paymentsWithFans = ApplyFanBonusesToPayments(baseScore.Payments, fanResult);
+        var totalBasePoints = paymentsWithFans.Sum(p => p.Amount);
+
+        state.CurrentScore = new ScoreResult
+        {
+            Category = baseScore.Category,
+            BasePoints = totalBasePoints,
+            Payments = paymentsWithFans,
+            Fans = fanResult.Detected,
+            FanPoints = fanResult.TotalPoints,
+        };
+
+        // Apply payments (base + fan bonuses) to cumulative scores. Zero-sum is preserved
+        // because every fan-bonus payment is a (from, to, amount) triple just like the base.
         foreach (var payment in state.CurrentScore.Payments)
         {
             state.CumulativeScores[payment.ToSeatIndex] += payment.Amount;
@@ -878,7 +900,88 @@ public sealed class ChangshaGameStateMachine
 
         state.Phase = ChangshaPhase.EndHand;
         return [CreateEvent(state, "scoring-complete", state.CurrentWin.WinningSeatIndex,
-            detail: $"category:{state.CurrentScore.Category}")];
+            detail: $"category:{state.CurrentScore.Category},fans:{fanResult.Detected.Count},fanPoints:{fanResult.TotalPoints}")];
+    }
+
+    /// <summary>
+    /// Composes a <see cref="Scoring.FanContext"/> + <see cref="Scoring.WinningHand"/>
+    /// from the current win state and runs <see cref="Scoring.FanCalculator.EvaluateHand"/>.
+    /// Pure helper — no state mutation. Returns <see cref="Scoring.FanResult.Empty"/> if no
+    /// win/hand is in flight (guarded by the caller, but defensive belt-and-braces).
+    /// </summary>
+    private static Scoring.FanResult EvaluateFanBonuses(ChangshaGameState state)
+    {
+        var win = state.CurrentWin;
+        if (win is null) return Scoring.FanResult.Empty;
+
+        var winningHand = GetHand(state, win.WinningSeatIndex);
+        var seatWind = state.Seats.FirstOrDefault(s => s.SeatIndex == win.WinningSeatIndex)?.Wind ?? Wind.East;
+
+        // The state machine has already authoritatively decided every situational axis
+        // (IsSelfDraw, IsKongReplacement, IsRobbedKong, AllPatterns containing LastTileFromWall /
+        // LastDiscardCatch / HeavenlyHand / EarthlyHand). Just mirror them into FanContext.
+        var ctx = new Scoring.FanContext
+        {
+            IsSelfDraw = win.IsSelfDraw,
+            IsKongReplacement = win.IsKongReplacement,
+            IsLastTileFromWall = win.AllPatterns.Contains(WinPattern.LastTileFromWall),
+            IsLastDiscardCatch = win.AllPatterns.Contains(WinPattern.LastDiscardCatch),
+            IsRobbingKong = win.IsRobbedKong,
+            IsHeavenlyHand = win.AllPatterns.Contains(WinPattern.HeavenlyHand),
+            IsEarthlyHand = win.AllPatterns.Contains(WinPattern.EarthlyHand),
+            SeatWind = seatWind,
+            RoundWind = state.RoundWind,
+            Variant = Scoring.FanVariant.Changsha,
+        };
+        var hand = new Scoring.WinningHand
+        {
+            ConcealedTileIds = winningHand.ConcealedTiles.ToList(),
+            Melds = winningHand.Melds.ToList(),
+            WinningTileId = win.WinningTileId,
+        };
+        return Scoring.FanCalculator.EvaluateHand(hand, ctx);
+    }
+
+    /// <summary>
+    /// Returns a NEW list containing every base <paramref name="basePayments"/> entry
+    /// followed by one fan-bonus <see cref="PaymentEntry"/> per detected fan per base
+    /// payment. Reason is <c>"fan:{fanName}"</c> (camelCase) so the wire surface can be
+    /// rendered as a stacked breakdown. The (from, to) pair of each fan-bonus row mirrors
+    /// the corresponding base payment so zero-sum holds across the full hand.
+    /// </summary>
+    private static List<PaymentEntry> ApplyFanBonusesToPayments(
+        IReadOnlyList<PaymentEntry> basePayments,
+        Scoring.FanResult fanResult)
+    {
+        var combined = new List<PaymentEntry>(basePayments);
+        if (fanResult.Detected.Count == 0) return combined;
+
+        foreach (var basePayment in basePayments)
+        {
+            foreach (var fan in fanResult.Detected)
+            {
+                combined.Add(new PaymentEntry
+                {
+                    FromSeatIndex = basePayment.FromSeatIndex,
+                    ToSeatIndex = basePayment.ToSeatIndex,
+                    Amount = fan.Points,
+                    Reason = $"fan:{FanWireName(fan.Fan)}",
+                });
+            }
+        }
+        return combined;
+    }
+
+    /// <summary>
+    /// Wire-shape mapping from <see cref="Scoring.Fan"/> to camelCase identifier
+    /// (matches the convention used by <see cref="Mahjong.Autotable.Api.Autotable.FanEntry.Fan"/>).
+    /// Centralised here so both the in-state <see cref="PaymentEntry.Reason"/> column and
+    /// the translator emit the same identifier.
+    /// </summary>
+    internal static string FanWireName(Scoring.Fan fan)
+    {
+        var name = fan.ToString();
+        return char.ToLowerInvariant(name[0]) + name[1..];
     }
 
     public static List<ChangshaEvent> HandleWallExhausted(ChangshaGameState state)
