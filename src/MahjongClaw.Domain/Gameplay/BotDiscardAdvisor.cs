@@ -961,7 +961,17 @@ public static class BotDiscardAdvisor
         {
             var terminalOrHonorCount = ownedTiles.Count(static tile => tile.IsHonor || IsTerminalSuitedTile(tile));
             var nonTerminalSuitedCount = ownedTiles.Count(static tile => !tile.IsHonor && !IsTerminalSuitedTile(tile));
-            if (terminalOrHonorCount >= 11 && nonTerminalSuitedCount > 0)
+            var distinctOwnedOrphanTypes = meldTiles.Count == 0
+                ? ownedTiles
+                    .Where(tile => tile.IsHonor || IsTerminalSuitedTile(tile))
+                    .Distinct()
+                    .Count()
+                : 0;
+            var nearThirteenOrphansShape = meldTiles.Count == 0
+                && nonTerminalSuitedCount is >= 0 and <= 3
+                && distinctOwnedOrphanTypes >= 8;
+
+            if (terminalOrHonorCount >= 11 && nonTerminalSuitedCount > 0 && !nearThirteenOrphansShape)
             {
                 allowBreakingSolePairForTerminalHonorLean = true;
 
