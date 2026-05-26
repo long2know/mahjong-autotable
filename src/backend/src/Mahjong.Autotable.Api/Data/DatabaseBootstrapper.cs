@@ -6,8 +6,75 @@ namespace Mahjong.Autotable.Api.Data;
 
 public static class DatabaseBootstrapper
 {
+    // Phase K Wave 23 — Vasquez (Rules Engineer / Tester). Process-wide
+    // serialization gate around the entire InitializeAsync body.
+    //
+    // <para>Background: Apone's CI-noise iter2 memo
+    // (`.squad/decisions/inbox/apone-db-providers-stuck.md`) caught the
+    // db-providers Postgres matrix failing on every backend PR with
+    // four parallel <c>__EFMigrationsHistory</c> races at the start of
+    // the run, followed by <c>relation "ChangshaGames" already exists</c>
+    // / <c>column ... already exists</c> errors. The root cause is
+    // xUnit's default parallelism: each test class boots its own
+    // <c>WebApplicationFactory&lt;Program&gt;</c> which lands here, and
+    // four collections racing <c>Database.MigrateAsync</c> on the same
+    // Postgres database all win partially, leaving the schema half-baked
+    // for whichever collection's tests run after.</para>
+    //
+    // <para>The semaphore serializes bootstrap across the whole process.
+    // In production this is a one-shot at startup — the lock is held for
+    // a few hundred ms once and never again, so the cost is invisible.
+    // In tests, every <see cref="Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory{TEntryPoint}"/>
+    // boot queues here, which is exactly the contract Apone's memo §3
+    // ("fixture-singleton lock around the initial migration apply")
+    // asked for.</para>
+    private static readonly SemaphoreSlim _bootstrapGate = new(initialCount: 1, maxCount: 1);
+
     public static async Task InitializeAsync(AppDbContext db, CancellationToken cancellationToken = default)
     {
+        await _bootstrapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await InitializeCoreAsync(db, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _bootstrapGate.Release();
+        }
+    }
+
+    private static async Task InitializeCoreAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        // Phase K Wave 23 — Vasquez. Test-isolation hook. The test
+        // assembly's module initializer
+        // (`tests/.../TestInfrastructure/PostgresTestDatabaseLifetime.cs`)
+        // sets <c>MAT_TEST_RESET_DB=1</c> when running against the
+        // per-process throwaway Postgres DB. We reset the schema on
+        // every factory boot so each test class's <c>IAsyncLifetime</c>
+        // starts from a clean state — fixing the data-pollution
+        // failures (Leaderboard / Players / Audit row-count drift) that
+        // surfaced on Apone's W22 PG migration PR.
+        //
+        // Guarded by env-var so production deploys NEVER trip this.
+        // SQLite tests already get a fresh per-class temp file from
+        // the existing IAsyncLifetime pattern, so the reset is a no-op
+        // there (EnsureCreated against an empty file just creates).
+        var resetForTests = string.Equals(
+            Environment.GetEnvironmentVariable("MAT_TEST_RESET_DB"),
+            "1",
+            StringComparison.Ordinal);
+
+        if (resetForTests && !db.Database.IsSqlite())
+        {
+            // Postgres path — drop+recreate the `public` schema in the
+            // current database so every test class gets a clean slate.
+            // Faster than DROP DATABASE + CREATE DATABASE because we
+            // stay connected and Npgsql's pool keeps warm.
+            await db.Database.ExecuteSqlRawAsync(
+                "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;",
+                cancellationToken).ConfigureAwait(false);
+        }
+
         if (db.Database.IsSqlite())
         {
             // SQLite — dev / single-replica default. EnsureCreated + the

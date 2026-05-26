@@ -91,6 +91,21 @@ public class PlayerProfileServiceTests : IAsyncLifetime
         return _factory!.Services.GetRequiredService<PlayerProfileService>();
     }
 
+    /// <summary>
+    /// Phase K Wave 23 — Vasquez. Truncate a <see cref="DateTime"/> to
+    /// microsecond precision (drops the last decimal tick digit) so
+    /// equality assertions against a Postgres round-tripped timestamp
+    /// hold. Postgres <c>timestamptz</c> is microsecond-precise; .NET
+    /// <see cref="DateTime"/> ticks are 100ns. SQLite stores the raw
+    /// .NET tick count in text, so this truncation is a no-op on the
+    /// SQLite cell of the db-providers matrix.
+    /// </summary>
+    private static DateTime TruncateToMicroseconds(DateTime value)
+    {
+        const long ticksPerMicrosecond = 10;
+        return new DateTime(value.Ticks - (value.Ticks % ticksPerMicrosecond), value.Kind);
+    }
+
     private async Task<PlayerStats> ReadStatsAsync(string playerId)
     {
         // Read directly off the DB context instead of going through
@@ -171,7 +186,18 @@ public class PlayerProfileServiceTests : IAsyncLifetime
         var second = await svc.GetOrCreateAsync(playerId);
 
         Assert.Equal(playerId, second.PlayerId);
-        Assert.Equal(createdAt, second.CreatedAt);
+        // Phase K Wave 23 — Vasquez. Compare CreatedAt at microsecond
+        // granularity. The first call returns the in-memory entity
+        // post-Add (full .NET DateTime 100ns-tick precision); the
+        // second call returns the entity fetched fresh from the DB,
+        // and Postgres `timestamptz` only stores 6 sub-second digits
+        // (microsecond precision) — so the round-trip drops the last
+        // tick digit. SQLite stores the literal .NET tick count as
+        // text so the equality holds there without normalization, but
+        // pinning to microseconds is provider-stable and the contract
+        // under test ("same CreatedAt across reconnects") is satisfied
+        // at any reasonable precision.
+        Assert.Equal(TruncateToMicroseconds(createdAt), TruncateToMicroseconds(second.CreatedAt));
 
         // LastSeenAt SHOULD advance on every call (lobby UI uses it for
         // "recently online" — see PlayerProfileService.GetOrCreateAsync).

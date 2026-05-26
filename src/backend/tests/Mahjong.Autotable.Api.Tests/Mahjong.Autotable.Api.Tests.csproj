@@ -36,4 +36,18 @@
     <ProjectReference Include="../../src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj" />
   </ItemGroup>
 
+  <!-- Phase K Wave 23 — Vasquez (Rules Engineer / Tester). Copy
+       xunit.runner.json into the test binary output so xUnit picks it
+       up at test-host launch. The config disables cross-collection
+       parallelism, which is required for the per-process throwaway
+       Postgres DB pattern in
+       TestInfrastructure/PostgresTestDatabaseLifetime.cs to be safe.
+       See `.squad/decisions/inbox/vasquez-db-providers-isolation.md`
+       for the design rationale. -->
+  <ItemGroup>
+    <None Update="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

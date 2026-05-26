@@ -2,8 +2,11 @@ using System.Text.Json;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Tables;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using static Mahjong.Autotable.Api.Tests.Changsha._TestHarness.ChangshaTestHelpers;
 
@@ -378,8 +381,42 @@ public class HydrationOnStartupTests
         {
             builder.UseEnvironment("Development");
             builder.UseSetting("ConnectionStrings:Sqlite", $"Data Source={sqlitePath}");
+            // Phase K Wave 23 — Vasquez. Pin the provider to SQLite even
+            // when the db-providers matrix is running the Postgres cell
+            // (which sets `Persistence__Provider=Postgres` process-wide).
+            // These hydration tests INSERT into ChangshaGames via a raw
+            // Microsoft.Data.Sqlite connection (see InsertSnapshotAsync
+            // below) and would otherwise see "SQLite Error 1: 'no such
+            // table'" on the Postgres cell because the factory
+            // bootstrapped Postgres instead of the per-test SQLite file.
+            //
+            // <para>This test exercises the JSON ↔ domain hydration
+            // round-trip through the SQLite path specifically; the
+            // equivalent Postgres-side contract for replay-snapshot
+            // round-tripping is held by
+            // <c>Phase_K_W12.Bishop.ReplayStorePersistenceFacts</c>.</para>
+            //
+            // <para>Implementation note: we both override configuration
+            // (via <see cref="IConfigurationBuilder.AddInMemoryCollection"/>)
+            // AND tear-down/rebuild the EF DbContext registrations in
+            // <see cref="IServiceCollection"/>. The configuration override
+            // alone is not always sufficient because
+            // <c>WebApplicationFactory&lt;Program&gt;</c> on the new
+            // minimal-hosting model has subtle ordering for env vs
+            // user-config sources; the explicit
+            // <c>AddDbContext&lt;SqliteAppDbContext&gt;</c> below is the
+            // authoritative pin.</para>
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new[]
+                {
+                    new KeyValuePair<string, string?>("Persistence:Provider", "Sqlite"),
+                    new KeyValuePair<string, string?>("ConnectionStrings:Sqlite", $"Data Source={sqlitePath}"),
+                });
+            });
             builder.ConfigureServices(services =>
             {
+                RebindToSqlite(services, sqlitePath);
                 services.Configure<ChangshaRuntimeOptions>(o =>
                 {
                     o.BotTurnDelayMs = 5_000;       // Park bot turns well past test wall-clock
@@ -394,6 +431,42 @@ public class HydrationOnStartupTests
         // app.Run() prologue, which is where HydrateAsync fires.
         _ = factory.Server;
         return factory;
+    }
+
+    /// <summary>Strips the AppDbContext / PostgresAppDbContext /
+    /// SqlServerAppDbContext registrations that Program.cs installed
+    /// (whose provider is determined by the live env var
+    /// <c>Persistence__Provider</c>) and re-registers a SQLite-only
+    /// stack pinned to <paramref name="sqlitePath"/>. Required because
+    /// these hydration tests perform raw <see cref="Microsoft.Data.Sqlite.SqliteConnection"/>
+    /// inserts against the test's temp SQLite file and must run against
+    /// the SQLite provider regardless of which matrix cell is firing.</summary>
+    private static void RebindToSqlite(IServiceCollection services, string sqlitePath)
+    {
+        var toRemove = services.Where(d =>
+            d.ServiceType.FullName is
+                "Mahjong.Autotable.Api.Data.AppDbContext" or
+                "Mahjong.Autotable.Api.Persistence.PostgresAppDbContext" or
+                "Mahjong.Autotable.Api.Persistence.SqlServerAppDbContext" or
+                "Mahjong.Autotable.Api.Persistence.SqliteAppDbContext"
+            ||
+            (d.ServiceType.IsGenericType
+             && d.ServiceType.GetGenericTypeDefinition() == typeof(Microsoft.EntityFrameworkCore.DbContextOptions<>)
+             && d.ServiceType.GetGenericArguments()[0].FullName?.StartsWith("Mahjong.Autotable.Api") == true)
+            ||
+            d.ServiceType == typeof(Microsoft.EntityFrameworkCore.DbContextOptions)
+        ).ToList();
+        foreach (var d in toRemove) services.Remove(d);
+
+        services.AddDbContext<Mahjong.Autotable.Api.Persistence.SqliteAppDbContext>(options =>
+        {
+            options.UseSqlite($"Data Source={sqlitePath}", sqlite =>
+            {
+                sqlite.MigrationsAssembly(typeof(Mahjong.Autotable.Api.Persistence.SqliteAppDbContext).Assembly.GetName().Name);
+            });
+        });
+        services.AddScoped<Mahjong.Autotable.Api.Data.AppDbContext>(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Persistence.SqliteAppDbContext>());
     }
 
     /// <summary>Direct SQLite insertion of a serialized snapshot. Uses the same

@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit.Abstractions;
 
@@ -503,8 +505,23 @@ public class GameCompletionLifecycleTests(ITestOutputHelper output)
         {
             builder.UseEnvironment("Development");
             builder.UseSetting("ConnectionStrings:Sqlite", $"Data Source={sqlitePath}");
+            // Phase K Wave 23 — Vasquez. Pin SQLite (mirrors the same
+            // fix in HydrationOnStartupTests). The HydrationFilter test
+            // below uses a raw SqliteConnection to seed ChangshaGames
+            // rows, so the factory must boot the SQLite provider even
+            // when the Postgres matrix cell is running. See
+            // `.squad/decisions/inbox/vasquez-db-providers-isolation.md`.
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new[]
+                {
+                    new KeyValuePair<string, string?>("Persistence:Provider", "Sqlite"),
+                    new KeyValuePair<string, string?>("ConnectionStrings:Sqlite", $"Data Source={sqlitePath}"),
+                });
+            });
             builder.ConfigureServices(services =>
             {
+                RebindToSqlite(services, sqlitePath);
                 services.Configure<ChangshaRuntimeOptions>(o =>
                 {
                     // Park bot turns well past wall-clock so the hydration test
@@ -520,6 +537,39 @@ public class GameCompletionLifecycleTests(ITestOutputHelper output)
         });
         _ = factory.Server;
         return factory;
+    }
+
+    /// <summary>Strips the EF DbContext registrations Program.cs installed
+    /// (whose provider is determined by env vars on the Postgres matrix cell)
+    /// and re-registers a SQLite-only stack pinned to
+    /// <paramref name="sqlitePath"/>. See twin helper of the same name in
+    /// <see cref="Mahjong.Autotable.Api.Tests.Changsha.Acceptance.HydrationOnStartupTests"/>.</summary>
+    private static void RebindToSqlite(IServiceCollection services, string sqlitePath)
+    {
+        var toRemove = services.Where(d =>
+            d.ServiceType.FullName is
+                "Mahjong.Autotable.Api.Data.AppDbContext" or
+                "Mahjong.Autotable.Api.Persistence.PostgresAppDbContext" or
+                "Mahjong.Autotable.Api.Persistence.SqlServerAppDbContext" or
+                "Mahjong.Autotable.Api.Persistence.SqliteAppDbContext"
+            ||
+            (d.ServiceType.IsGenericType
+             && d.ServiceType.GetGenericTypeDefinition() == typeof(Microsoft.EntityFrameworkCore.DbContextOptions<>)
+             && d.ServiceType.GetGenericArguments()[0].FullName?.StartsWith("Mahjong.Autotable.Api") == true)
+            ||
+            d.ServiceType == typeof(Microsoft.EntityFrameworkCore.DbContextOptions)
+        ).ToList();
+        foreach (var d in toRemove) services.Remove(d);
+
+        services.AddDbContext<Mahjong.Autotable.Api.Persistence.SqliteAppDbContext>(options =>
+        {
+            options.UseSqlite($"Data Source={sqlitePath}", sqlite =>
+            {
+                sqlite.MigrationsAssembly(typeof(Mahjong.Autotable.Api.Persistence.SqliteAppDbContext).Assembly.GetName().Name);
+            });
+        });
+        services.AddScoped<Mahjong.Autotable.Api.Data.AppDbContext>(sp =>
+            sp.GetRequiredService<Mahjong.Autotable.Api.Persistence.SqliteAppDbContext>());
     }
 
     private static async Task InsertSnapshotAsync(string sqlitePath, Guid gameId, ChangshaGameState state)
