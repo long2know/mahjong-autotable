@@ -1063,7 +1063,7 @@ public static class BotDiscardAdvisor
                 var distinctOrphanTypes = orphanTiles.Distinct().Count();
                 if (nonOrphanCount is > 0 and <= 3)
                 {
-                    if (distinctOrphanTypes >= 11)
+                    if (distinctOrphanTypes >= 10)
                     {
                         var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
                             ownedCounts,
