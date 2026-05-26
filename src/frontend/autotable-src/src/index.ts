@@ -359,6 +359,10 @@ void (async (): Promise<void> => {
   // the shortcut).  Empty search after the strip → lobby-only.
   if (!pwaActionHandled && window.location.search !== '') {
     void import('./game-bootstrap').then(mod => mod.bootstrapGame());
+    // Ferro — claim-window countdown + win-screen polish.  Gated on
+    // game pages only; the bootstrap module listens for the public
+    // `mahjong:three-renderer-ready` event before attaching.
+    void import('./ui/ferro-bootstrap');
   }
 })();
 
