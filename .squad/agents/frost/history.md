@@ -106,3 +106,61 @@ still fails (unrelated).
 **Followups documented in decision memo:** Bishop to consider extending
 `ScoreResult` with a `FanBreakdown` field and switching `ChangshaStateMachine.Score`
 to call `FanCalculator.EvaluateHand` for the additive bonus.
+
+### 2026-07-26 — PR `feat/bot-strategy-changsha-heuristics` — Changsha-aware bot heuristics (W24)
+
+**Second ship.** Delivered on Master's previously-unfulfilled "suit-purity
+awareness" docstring promise and added a real tenpai-aware defensive
+discard tier, plus a clean public `Shanten.Calculate` façade. All
+additions live under `Changsha/Bot/Heuristics/` so Bishop's trunk
+(`ChangshaGameStateMachine.cs`, `ChangshaGameRuntime.cs`,
+`AutotableWsEndpoint.cs`, `ChangshaDomain.cs`) stays untouched.
+
+**Files added (NEW only):**
+- `Changsha/Bot/Heuristics/Shanten.cs` — public façade for
+  `HandEvaluator.MinShantenToHu`. Exposes `Calculate`,
+  `CalculateAfterDiscardingLogical`, `CalculateAfterAddingLogical`,
+  and `IsTenpai`.
+- `Changsha/Bot/Heuristics/DiscardEfficiency.cs` — pure scorer for the
+  directive's exact formula `neighbours + 2 * matches`. Reference
+  implementation untainted by 2/5/8 / gap-partial tuning.
+- `Changsha/Bot/Heuristics/SuitCommitment.cs` — detects ≥8-tile
+  dominant suit (declared melds count); returns −1 bias for
+  non-dominant discards to drive 清一色 (FullFlush, 4-fan).
+- `Changsha/Bot/Heuristics/TenpaiDetector.cs` — flags opponents with
+  ≥3 declared melds as likely-tenpai; `SafetyBias` returns −1 when
+  a tile is genbutsu against at least one dangerous opponent.
+
+**Files modified (within my lane):**
+- `Changsha/Bot/MasterStrategy.cs` — added two `ThenBy(...)` tier
+  breakers after the existing opponent-discard safety: `TenpaiDetector.SafetyBias`
+  and `SuitCommitment.Bias`. Both return small ints (−1) only in
+  hot-path conditions so the shanten + keep-score primaries always
+  dominate. Also extended `DecideWithReasoning` to surface
+  "tenpai defense" and "suit-commitment" lines in the audit replay.
+
+**Test files added:**
+- `tests/.../Changsha/Bots/BotStrategyTests.cs` — 20 focused unit
+  tests across heuristics (≥2 per directive), claim priority, and
+  Master-tier composition.
+- `tests/.../Changsha/Bots/BotSimulationLog.cs` — [Skip]-gated 100-game
+  simulation harness (run manually for memo data).
+
+**Test count:** 5125 → 5145 (+20). Same 1 pre-existing W9 cron-schedule
+failure, unchanged.
+
+**Simulation results (memo `frost-bot-strategy.md` §Simulation):**
+- 4×Master 100-game self-play: seat0=23, seat1=20, seat2=32,
+  seat3=12, draws=13. Healthy distribution, not degenerate.
+- Master vs 3×Hard 100 hands: master=22, hard avg/seat=21.67 — Master
+  matches Hard's baseline; the new tiers deliver reasoning lift, not
+  raw win-rate lift (which is the directive's "FUN to watch" goal).
+
+**Lane discipline:** Followed the directive — no migrations (Vasquez's
+in-flight test-isolation work), no state-machine changes (Bishop's
+trunk), no frontend.
+
+**Followups documented in memo:**
+1. `botDifficulty` query string is parsed but `ChangshaGameRuntime`
+   always uses Medium — Bishop should wire it through.
+2. Replay storage deferred to wave 4 per directive.
