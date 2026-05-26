@@ -66,3 +66,43 @@ I should READ `.squad/decisions.md` and `.squad/agents/bishop/history.md` before
 ---
 
 ## Log
+
+### 2026-07-25 — PR `feat/changsha-fan-catalog` — Fan catalog beyond 258-pair
+
+**First ship.** Extended Changsha scoring with a standalone fan-catalog layer
+without touching Bishop's trunk (`ChangshaGameRuntime.cs`,
+`AutotableWsEndpoint.cs`, `ChangshaDomain.cs`).
+
+**Files added (NEW only — no edits to existing):**
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/Scoring/Fan.cs`
+  — `Fan` enum (14 members) + `FanInfo` record + `FanCatalog` lookup with
+    Chinese / Pinyin / English / Points / Description / Variant per fan.
+  — `FanVariant` enum: `Changsha` (default) and `ExpandedChinese` (gate for
+    future 144-tile / honors / dragons rules).
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/Scoring/FanCalculator.cs`
+  — Pure-function `FanCalculator.EvaluateHand(WinningHand, FanContext) → FanResult`.
+  — `WinningHand` (concealed + melds + winning tile id) and `FanContext`
+    (situational flags + variant) records — deliberately a SIBLING of the
+    existing `WinContext` in `WinDetector.cs` to avoid coupling the two
+    layers.
+  — Variant-gated fans (`MixedOneSuit` 混一色, `BigThreeDragons` 大三元) are
+    SOLELY filtered at emission time via `ctx.Variant`; the dragon/honor
+    detection hooks already exist for a future expanded-deck builder (tile-id
+    range 108..119 reserved for 中/發/白).
+- `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Scoring/FanCalculatorTests.cs`
+  — 39 tests: positive + negative per fan + catalog integrity + deterministic
+    ordering + combinatorial smoke.
+
+**Integration status:** Opt-in / query-only. Did NOT wire into
+`ChangshaStateMachine.Score` because the existing state-machine-driven score
+tests assert exact `BasePoints` from `ScoringService.CalculateScore`, and
+adding fan bonuses would silently break ~dozens of regression tests. The
+calculator is ready for a follow-up by Bishop to integrate via a wire-surface
+extension (see `.squad/decisions/inbox/frost-fan-catalog.md`).
+
+**Test count:** 5082 → 5121 (+39). One pre-existing W9 cron-schedule test
+still fails (unrelated).
+
+**Followups documented in decision memo:** Bishop to consider extending
+`ScoreResult` with a `FanBreakdown` field and switching `ChangshaStateMachine.Score`
+to call `FanCalculator.EvaluateHand` for the additive bonus.
