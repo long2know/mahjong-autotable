@@ -841,7 +841,7 @@ export class GameUi {
     }
 
     for (const t of allTypes) {
-      this.elements.claim[t].disabled = !claim.available.includes(t);
+      this.elements.claim[t].disabled = !(Array.isArray(claim.available) && claim.available.includes(t));
     }
     this.elements.claim.Pass.disabled = false;
     showEl(this.elements.claimCountdown);
@@ -885,7 +885,7 @@ export class GameUi {
     if (selfSeat === null) return;
     if (!this.activeClaim) return;
     if (action.action === 'claim'
-        && !this.activeClaim.available.includes(action.type)) {
+        && !(Array.isArray(this.activeClaim.available) && this.activeClaim.available.includes(action.type))) {
       return; // defensive — should not happen because button is disabled
     }
     this.client.claim.set(String(selfSeat), action as any);
@@ -995,7 +995,7 @@ export class GameUi {
     // Score deltas table.
     const tbody = this.elements.resultScoreBody;
     tbody.innerHTML = '';
-    const ordered = [...result.score].sort((a, b) => a.seat - b.seat);
+    const ordered = [...(result.score ?? [])].sort((a, b) => a.seat - b.seat);
     for (const { seat, delta } of ordered) {
       const tr = document.createElement('tr');
       const tdSeat = document.createElement('td');
