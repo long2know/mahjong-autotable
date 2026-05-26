@@ -1,0 +1,99 @@
+{
+  "baseUrl": "http://127.0.0.1:8088",
+  "steps": [
+    {
+      "step": "default-value",
+      "value": "changsha",
+      "expected": "changsha"
+    },
+    {
+      "step": "screenshot-desktop",
+      "path": "/data/source/mahjong-autotable/playtest-artifacts/ferro-iter2/variant-picker-desktop.png"
+    },
+    {
+      "step": "option-list",
+      "options": [
+        {
+          "value": "changsha",
+          "label": "Changsha (长沙麻将)",
+          "disabled": false,
+          "group": null
+        },
+        {
+          "value": "four-player",
+          "label": "Riichi — 4 player (日本麻将)",
+          "disabled": false,
+          "group": "Original Autotable"
+        },
+        {
+          "value": "three-player",
+          "label": "Riichi — 3 player",
+          "disabled": false,
+          "group": "Original Autotable"
+        },
+        {
+          "value": "bamboo",
+          "label": "Bamboo (American)",
+          "disabled": false,
+          "group": "Original Autotable"
+        },
+        {
+          "value": "minefield",
+          "label": "Minefield",
+          "disabled": false,
+          "group": "Original Autotable"
+        },
+        {
+          "value": "hong-kong",
+          "label": "Hong Kong (港麻)",
+          "disabled": true,
+          "group": "Coming soon"
+        }
+      ]
+    },
+    {
+      "step": "after-change",
+      "url": "http://127.0.0.1:8088/autotable/?variant=four-player",
+      "localStorage": "four-player",
+      "expectedLs": "four-player",
+      "expectedUrlContains": "variant=four-player"
+    },
+    {
+      "step": "pre-populate-from-url",
+      "value": "four-player",
+      "expected": "four-player"
+    },
+    {
+      "step": "pre-populate-from-localstorage",
+      "value": "four-player",
+      "expected": "four-player"
+    },
+    {
+      "step": "touch-target",
+      "height": 44,
+      "width": 327,
+      "expectedMinHeight": 44
+    },
+    {
+      "step": "screenshot-mobile",
+      "path": "/data/source/mahjong-autotable/playtest-artifacts/ferro-iter2/variant-picker-mobile.png"
+    },
+    {
+      "step": "default-mobile",
+      "value": "changsha",
+      "expected": "changsha"
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "[desktop] THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is"
+  ],
+  "consoleWarnings": [
+    "[desktop] [.WebGL-0x1974013daa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[desktop] [.WebGL-0x1974013daa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[desktop] [.WebGL-0x1974013daa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[desktop] [.WebGL-0x1974013daa00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ],
+  "pageErrorsCount": 0,
+  "consoleErrorsCount": 1
+}

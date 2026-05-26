@@ -15,6 +15,7 @@
 
 import { ClaimWindowOverlay } from './claim-window-overlay';
 import { WinScreenPolish } from './win-screen-polish';
+import './variant-picker';
 
 type AnyGame = { client?: unknown };
 

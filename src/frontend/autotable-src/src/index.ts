@@ -364,6 +364,11 @@ void (async (): Promise<void> => {
     // `mahjong:three-renderer-ready` event before attaching.
     void import('./ui/ferro-bootstrap');
   }
+  // Ferro — lobby variant picker.  Loads on every entry point (including
+  // lobby cold paths where ferro-bootstrap is skipped) so the dropdown
+  // is available whenever `#lobby-panel` mounts.  Self-installing via
+  // MutationObserver; idempotent.
+  void import('./ui/variant-picker');
 })();
 
 async function maybeHandlePwaAction(): Promise<boolean> {

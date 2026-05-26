@@ -144,3 +144,86 @@ regression: pageErrors=0, ≥30 move-log entries ✓.
 - Lobby overlay sizing parity (task 1)
 - Variant switcher (task 5)
 - Mobile canvas/HUD beyond what's already verified (task 4)
+
+### Iter 2 — 2026-05-25 — Lobby variant switcher
+
+**PR:** `feat/variant-switcher` (this branch).
+**Decision memo:** `.squad/decisions/inbox/ferro-variant-switcher.md`
+
+Picked up task 5 from the initial charter (variant switcher) — surfaced
+by Stephen's 2026-05-19 "Changsha-realism" directive, which calls out
+F-3: "Variant switching: Changsha ↔ original autotable variants must
+coexist."
+
+**Backend already supported it.** `AutotableWsEndpoint.cs:228` takes
+`?variant=` verbatim at WS handshake; `changsha` (case-insensitive)
+routes to `ChangshaRuntime`, every other non-empty string routes to
+Relay mode which forwards the upstream Riichi/Bamboo/Minefield setup.
+Five variants are natively live: `changsha`, `four-player`,
+`three-player`, `bamboo`, `minefield`.  Hong Kong (`hong-kong`) is
+shipped as a disabled "Coming soon" option per the spec.
+
+**What I built:**
+
+- `src/ui/variant-picker.ts` + `.css` — self-installing `<select>`
+  dropdown that mounts at the top of `#lobby-panel` via MutationObserver,
+  inserts BEFORE Hicks's `#lobby-variant-fieldset` radio group.  6
+  options across 3 `<optgroup>`s (Changsha; Original Autotable; Coming
+  soon).  Change handler writes `localStorage['mahjong.preferredVariant']`,
+  updates URL `?variant=`, then `window.location.replace(...)` so the WS
+  handshake re-runs against the matching runtime.
+- Resolution priority on render: URL `?variant=` > localStorage >
+  default `changsha`.
+- CSS `:has(.ferro-variant-picker) #lobby-variant-fieldset { display: none !important }` — safe additive hide: if the picker fails to mount,
+  Hicks's radios remain visible as fallback.  The fieldset stays in the
+  DOM so Hicks's `readPickers()` flow at `lobby.ts:612` still works for
+  Apply & Start, and `writePickers()` pre-populates from URL on every
+  `showPanel()`.
+- 1-line `import './variant-picker';` in `src/ui/ferro-bootstrap.ts`.
+- 1-line `void import('./ui/variant-picker');` in `src/index.ts`
+  (NOT on Hicks's forbidden list) — needed because `ferro-bootstrap`
+  only loads on game pages (gated on `window.location.search !== ''`),
+  but the picker must work on lobby cold paths.
+
+**Trunk discipline:** Did NOT touch any of `world.ts`, `setup.ts`,
+`setup-deal.ts`, `mouse-tracker.ts`, `game-ui.ts`, `lobby.ts`,
+`index.html`.  Module is purely additive; idempotent install.
+
+**Bundle impact:** `variant-picker.ee62af4e.js` = 3.26 kB raw /
+1.38 kB gzipped.  No new runtime deps.
+
+**Playtest evidence** (`playtest-artifacts/ferro-iter2/`):
+- `variant-picker.spec.mjs` — 9 behavior steps, all pass:
+  default→changsha, 6 options correctly grouped, URL change triggers
+  reload with `?variant=four-player`, localStorage written + read back,
+  pre-populate from URL works, pre-populate from LS works, 44px touch
+  target on mobile.
+- `variant-picker-desktop.png` (1280×800) — dropdown at top of lobby
+  panel, gold chevron, no duplicate "VARIANT" label (radio fieldset
+  correctly hidden by `:has()` rule).
+- `variant-picker-mobile.png` (375×667) — picker prominent after
+  tour/drawer dismissal, full-width 44px touch target.
+- Spectator playtest regression (`playtest-v3-fresh.spec.mjs`):
+  pageErrors=0, 23 move-log entries, only pre-existing console noise
+  (THREE NaN warning, 404 on `/api/games/changsha-default*`).
+
+**Lessons learned:**
+
+- `ferro-bootstrap.ts` is only imported when `window.location.search !== ''`
+  — i.e. on game pages.  Anything that must run on lobby cold paths
+  needs its OWN dynamic import in `index.ts`.  Precedent: PR #87 also
+  added a 1-line `index.ts` import (acceptable trunk-adjacent edit).
+- The lobby panel's `#lobby-variant-fieldset` is NOT a direct child of
+  `.lobby-body` — it lives inside `#lobby-tab-my-game`.  Insertion
+  logic must walk to `existingFieldset.parentNode` rather than assume
+  a fixed parent.
+- Tour LS key is `mahjong.tour.completed.v1` and the value is the string
+  `'true'` (NOT `'1'`).  Mobile screenshot specs must pre-seed this
+  BEFORE navigation so the tour module skips mount.
+- Both `#settings-drawer` AND `#settings-drawer-v2` need to be hidden
+  for mobile screenshots (carried over from iter-1).
+
+**Charter follow-ups still open:**
+
+- Lobby overlay sizing parity (task 1)
+- Mobile canvas/HUD polish beyond verified pieces (task 4)
