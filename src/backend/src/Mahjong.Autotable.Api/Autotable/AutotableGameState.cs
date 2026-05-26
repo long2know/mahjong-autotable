@@ -154,6 +154,21 @@ public sealed class AutotableGameState
     }
 
     /// <summary>
+    /// Returns true when <paramref name="kind"/> has been declared ephemeral
+    /// by a prior <c>['ephemeral', kind, true]</c> meta-side-effect. Lets
+    /// callers (notably the runtime broadcast path) include ephemeral
+    /// entries in a full snapshot since they are deliberately dropped by
+    /// <see cref="Snapshot"/>.
+    /// </summary>
+    public bool IsEphemeral(string kind)
+    {
+        lock (_lock)
+        {
+            return _ephemeralKinds.Contains(kind);
+        }
+    }
+
+    /// <summary>
     /// Test/diagnostic hook: returns the number of stored entries for a specific
     /// collection <paramref name="kind"/>. Lets integration tests wait on a
     /// deterministic per-kind count instead of an aggregate count that may already

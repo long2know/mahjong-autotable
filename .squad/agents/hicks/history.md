@@ -4125,3 +4125,57 @@ play more hands because the wall-anim throw no longer truncates the
 script early. Filed in
 `.squad/decisions/inbox/hicks-frontend-playability-iter2.md` for
 follow-up.
+
+---
+
+## fix/frontend-manual-pickup-emit — Manual-deal pickup chain + snapshot gap-fix
+
+**Trigger:** Apone's playability gate — `?dealMode=manual` games never
+reached `AwaitingDiscard`. Human-led playtest stalled with
+`finalMoveLogCount = 1` and `collections.pickup = 0`.
+
+**Visible changes:**
+
+- `world.ts` — `deal('HANDS')` in manual mode now spawns a
+  `driveManualDealChain(gen)` coroutine that: waits 300ms for the
+  implicit Deal trigger to land, emits `pickup[rollDice]`, then loops
+  4× waiting on the local seat's pickup affordance and emitting
+  `pickup[take]`. Generation counter cancels in-flight chains on re-deal.
+  Auto-mode and spectator paths untouched.
+- `world.ts` — `emitDiscard(tile: Thing | number)` accepts a tileId
+  (Vasquez Gap 4) by looking the Thing up in `this.things`.
+- `client-ui.ts` — new `readDealModeFromUrl()` export; the chain uses
+  `conditions.dealMode ?? urlDealMode` because the server's
+  `ChangshaToAutotableTranslator.BuildMatch` strips `dealMode` from the
+  round-tripped match snapshot. Without the URL fallback the chain
+  would never re-fire after the first server match-push.
+
+## Backend snapshot gap (D4 — crossed lanes, see decision memo)
+
+Root-cause investigation revealed the chain was firing correctly but
+the server's pickup affordance never reached the client because
+`AutotableGameState.Snapshot()` deliberately omits ephemeral kinds
+(`pickup`, `claim`, `dice`, …) and the runtime-driven full-snapshot
+broadcast in `SendFullSnapshotAsync` is the only path that propagates
+state changes. Fixed by attaching the latest translator output for
+any ephemeral kind via a new `MergeRuntimeEphemerals` helper +
+`AutotableGameState.IsEphemeral` accessor. This also fixes
+broadcast for `claim` and `sound` collections (untested in this PR,
+documented for follow-up).
+
+Decision memo: `.squad/decisions/inbox/hicks-manual-pickup-emit.md`.
+
+## Validation
+
+- `playtest-human-led.spec.mjs`: 0 page-errors, 4 pickup transitions
+  observed ending in `pickup = null` (deal complete), `moveLog = 15`,
+  `discardAttempt.ok = true` via `world.emitDiscard(tileId)`.
+- `playtest-v3-fresh.spec.mjs` (spectator regression): all 8 steps
+  pass; page-error count strictly below baseline.
+
+## Open follow-up
+
+- The pre-existing `result.score is not iterable` (`game-ui.ts:998`)
+  still fires when the runtime emits a `result["current"]` entry —
+  unaffected by this PR but visible in spectator findings. Same bug
+  recorded in `hicks-frontend-playability-iter2.md`.
