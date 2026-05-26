@@ -1,3 +1,4 @@
+using Mahjong.Autotable.Api.Changsha.Bot.Heuristics;
 using Mahjong.Autotable.Api.Tables;
 
 namespace Mahjong.Autotable.Api.Changsha.Bot;
@@ -148,6 +149,50 @@ public sealed class MasterStrategy : IChangshaBotStrategy
                 reasoning.Add("safety analysis: no opponent has yet discarded this logical tile");
             }
             reasoning.Add($"opponent-discard inference tier active (Master-only): logical={logical}");
+
+            // Phase K Wave 24 — Frost: tenpai-aware defensive tier. When an
+            // opponent is "likely tenpai" (≥3 declared melds) and our chosen
+            // discard is genbutsu against them, surface that as a defensive
+            // reasoning line so the audit replay shows the tier engaged.
+            var dangerousOpponents = TenpaiDetector.CollectDangerousOpponents(state, botSeatIndex);
+            if (dangerousOpponents.Count > 0)
+            {
+                var genbutsu = TenpaiDetector.CollectGenbutsuLogicals(state, dangerousOpponents);
+                if (genbutsu.Contains(logical))
+                {
+                    reasoning.Add($"tenpai defense: opponent(s) {string.Join(",", dangerousOpponents)} likely tenpai; discard is genbutsu (safe against them)");
+                }
+                else
+                {
+                    reasoning.Add($"tenpai defense: opponent(s) {string.Join(",", dangerousOpponents)} likely tenpai; discard is NOT genbutsu (forced by primary tiers)");
+                }
+            }
+
+            // Phase K Wave 24 — Frost: suit-commitment (清一色 drive). When
+            // ≥8 tiles of one suit are held (declared melds count too), the
+            // bot is structurally committed; surface the dominant suit so
+            // the audit replay shows the FullFlush-shoot intent.
+            if (SuitCommitment.IsCommitted(hand))
+            {
+                var (dominantSuit, _) = SuitCommitment.DominantSuit(hand);
+                var suitName = dominantSuit switch
+                {
+                    Suit.Wan => "Wan",
+                    Suit.Tong => "Tong",
+                    Suit.Tiao => "Tiao",
+                    _ => dominantSuit.ToString()
+                };
+                var discardSuit = ChangshaDeckBuilder.GetSuit(tileId);
+                if (discardSuit != dominantSuit)
+                {
+                    reasoning.Add($"suit-commitment: dominant={suitName} (discard outside dominant suit — drives toward 清一色 FullFlush)");
+                }
+                else
+                {
+                    reasoning.Add($"suit-commitment: dominant={suitName} (discard inside dominant suit — forced by primary tiers)");
+                }
+            }
+
             return new BotDecision(BotAction.Discard(tileId), tileId, Score: postShanten, reasoning);
         }
 
@@ -192,10 +237,16 @@ public sealed class MasterStrategy : IChangshaBotStrategy
         // never worse than Hard on a single decision. The Master-only edge
         // comes from a *third*-level tie-breaker (opponent-discard safety)
         // that fires only when shanten AND Hard's keep-score both tie.
+        // Phase K Wave 24 — Frost: two further tier-breakers fire only when
+        // the prior tiers tie: tenpai-aware safety and suit-commitment
+        // (清一色 drive). Both return small ints (-1 or 0) so they cannot
+        // override the shanten primary.
         return hand.ConcealedTiles
             .OrderBy(t => shantenByLogical[ChangshaDeckBuilder.GetLogicalTile(t)])
             .ThenBy(t => ComputeHardCompatibleDiscardScore(t, logicalCounts, discardedLogicals))
             .ThenBy(t => OpponentSafetyTieBreaker(t, opponentDiscardLogicals))
+            .ThenBy(t => TenpaiDetector.SafetyBias(t, state, botSeatIndex))
+            .ThenBy(t => SuitCommitment.Bias(t, hand))
             .ThenByDescending(t => t)
             .First();
     }
