@@ -4300,3 +4300,53 @@ gap flagged after the variant-switcher ship (b9b6482).
   and mobile screenshots in `playtest-artifacts/mobile-375/`.
 
 Decision memo: `.squad/decisions/inbox/hicks-mobile-375-and-lobby-overlay.md`.
+
+---
+
+## 2026-05-27 — Face-down walls + canonical 4-wall manual deal layout
+
+**Directive:** `.squad/decisions/inbox/copilot-directive-2026-05-27T2127Z-face-down-walls.md`
+(Stephen: "Tiles MUST start FACE DOWN", "(4) simple walls", "pick groups
+of FOUR").
+
+**Branch:** `fix/facedown-walls-and-pickup-choreography` off main `c616407`.
+
+**Root cause:** `world.ts` `onThings` had an unconditional privacy
+fallback `if (face === null && slot.rotations.length > 1) rotationIndex
+= slot.rotations.length - 1`. That convention is correct only for
+`hand` slots whose `rotations[]` ends in FACE_DOWN. Wall rotations are
+`[FACE_DOWN, FACE_UP]` — last entry = FACE_UP — so the fallback flipped
+every foreign-seat wall tile face-up the moment the backend stripped
+`face`. Discards from non-self seats took a similar miscarriage.
+
+**Fix:**
+
+1. `onThings` — restrict the rotation fallback to `slot.group === 'hand'`.
+   For wall/discard/meld we now trust the backend-authored
+   `rotationIndex` (which is 0 = FACE_DOWN for walls).
+2. Constructor — read `?dealMode=manual` from the URL synchronously and
+   override `conditions.dealType = INITIAL` before the first Setup call,
+   so the local pre-WS paint matches the post-WS RollingDice snapshot
+   (108 tiles in 4 walls, face-down).
+
+**Validation:**
+
+- New spec `playtest-artifacts/playtest-walls-facedown.spec.mjs`:
+  `wallCount=106`, `wallBackRotationCount=106`,
+  `wallFrontRotationCount=0`, `foreignHandFaceUp=0`,
+  `wallSeats=[0,1,2,3]`, `pickupReachedDealerHand=true`, dealer hand
+  grew 9 → 14 over 3.5 s with wall draining ~106 → 75 in groups of ~4.
+  All 5 checks pass, `pageErrorsCount=0`.
+- `playtest-v3-fresh.spec.mjs`: all steps OK, `pageErrorsCount=0`. No
+  spectator/auto regression.
+- `npm run build` clean.
+
+**Lane discipline:** Only `world.ts` + new spec + screenshots. No
+backend, no Ferro CSS, no workflows.
+
+**Known follow-ups:** Backend still emits `gameType="FOUR_PLAYER"` so
+the bundle creates 136 tiles (108 backend + 28 ghost). All face-down
+visually, but a future Changsha-aware translator pass should prune the
+ghosts.
+
+Decision memo: `.squad/decisions/inbox/hicks-walls-facedown.md`.

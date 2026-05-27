@@ -1,0 +1,283 @@
+{
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=hicks-walls-1779918528981-903",
+  "steps": [
+    {
+      "name": "1-load-lobby",
+      "ok": true,
+      "result": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=hicks-walls-1779918528981-903"
+      }
+    },
+    {
+      "name": "2-dismiss-tour",
+      "ok": true
+    },
+    {
+      "name": "3-quick-match-and-connect",
+      "ok": true
+    },
+    {
+      "name": "3b-trigger-deal",
+      "ok": true,
+      "result": {
+        "ok": true,
+        "seat": 0,
+        "gameType": "FOUR_PLAYER"
+      }
+    },
+    {
+      "name": "4-assert-walls-face-down",
+      "ok": true,
+      "result": {
+        "seat": 0,
+        "wallCount": 106,
+        "wallBackRotationCount": 106,
+        "wallFrontRotationCount": 0,
+        "foreignHandFaceUp": 0,
+        "wallSlotRotationsLen": [
+          2
+        ],
+        "wallSeats": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "wallSlotKeyCount": 96
+      }
+    },
+    {
+      "name": "5-pickup-choreography",
+      "ok": true,
+      "result": {
+        "observations": [
+          {
+            "atMs": 0,
+            "dealerHand": 9,
+            "allHand": 30,
+            "wallCount": 106,
+            "seat": 0
+          },
+          {
+            "atMs": 500,
+            "dealerHand": 9,
+            "allHand": 34,
+            "wallCount": 102,
+            "seat": 0
+          },
+          {
+            "atMs": 1000,
+            "dealerHand": 9,
+            "allHand": 38,
+            "wallCount": 98,
+            "seat": 0
+          },
+          {
+            "atMs": 1500,
+            "dealerHand": 13,
+            "allHand": 46,
+            "wallCount": 90,
+            "seat": 0
+          },
+          {
+            "atMs": 2000,
+            "dealerHand": 13,
+            "allHand": 50,
+            "wallCount": 86,
+            "seat": 0
+          },
+          {
+            "atMs": 2500,
+            "dealerHand": 14,
+            "allHand": 59,
+            "wallCount": 77,
+            "seat": 0
+          },
+          {
+            "atMs": 3000,
+            "dealerHand": 14,
+            "allHand": 60,
+            "wallCount": 76,
+            "seat": 0
+          },
+          {
+            "atMs": 3500,
+            "dealerHand": 14,
+            "allHand": 61,
+            "wallCount": 75,
+            "seat": 0
+          },
+          {
+            "atMs": 4000,
+            "dealerHand": 14,
+            "allHand": 62,
+            "wallCount": 74,
+            "seat": 0
+          },
+          {
+            "atMs": 4500,
+            "dealerHand": 14,
+            "allHand": 62,
+            "wallCount": 74,
+            "seat": 0
+          },
+          {
+            "atMs": 5000,
+            "dealerHand": 14,
+            "allHand": 62,
+            "wallCount": 74,
+            "seat": 0
+          },
+          {
+            "atMs": 5500,
+            "dealerHand": 14,
+            "allHand": 62,
+            "wallCount": 74,
+            "seat": 0
+          }
+        ],
+        "maxDealerHand": 14
+      }
+    },
+    {
+      "name": "6-post-deal",
+      "ok": true
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0x1ac40015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x1ac40015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x1ac40015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x1ac40015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+    "autotable: skipped stale moveTo 108 -> wall.12.1@1 (occupant=2)",
+    "autotable: skipped stale moveTo 108 -> wall.12.1@1 (occupant=89)",
+    "autotable: skipped stale moveTo 108 -> wall.12.1@1 (occupant=9)",
+    "autotable: skipped stale moveTo 108 -> wall.12.1@1 (occupant=90)",
+    "autotable: skipped stale moveTo 108 -> wall.12.1@1 (occupant=60)",
+    "autotable: skipped stale moveTo 108 -> wall.12.1@1 (occupant=75)",
+    "autotable: skipped stale moveTo 108 -> wall.12.1@1 (occupant=6)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8088/api/games/hicks-walls-1779918528981-903",
+    "404 GET http://127.0.0.1:8088/api/games/hicks-walls-1779918528981-903/settings"
+  ],
+  "assertions": {
+    "summary": {
+      "seat": 0,
+      "wallCount": 106,
+      "wallBackRotationCount": 106,
+      "wallFrontRotationCount": 0,
+      "foreignHandFaceUp": 0,
+      "wallSlotRotationsLen": [
+        2
+      ],
+      "wallSeats": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "wallSlotKeyCount": 96
+    },
+    "pickupProgression": [
+      {
+        "atMs": 0,
+        "dealerHand": 9,
+        "allHand": 30,
+        "wallCount": 106,
+        "seat": 0
+      },
+      {
+        "atMs": 500,
+        "dealerHand": 9,
+        "allHand": 34,
+        "wallCount": 102,
+        "seat": 0
+      },
+      {
+        "atMs": 1000,
+        "dealerHand": 9,
+        "allHand": 38,
+        "wallCount": 98,
+        "seat": 0
+      },
+      {
+        "atMs": 1500,
+        "dealerHand": 13,
+        "allHand": 46,
+        "wallCount": 90,
+        "seat": 0
+      },
+      {
+        "atMs": 2000,
+        "dealerHand": 13,
+        "allHand": 50,
+        "wallCount": 86,
+        "seat": 0
+      },
+      {
+        "atMs": 2500,
+        "dealerHand": 14,
+        "allHand": 59,
+        "wallCount": 77,
+        "seat": 0
+      },
+      {
+        "atMs": 3000,
+        "dealerHand": 14,
+        "allHand": 60,
+        "wallCount": 76,
+        "seat": 0
+      },
+      {
+        "atMs": 3500,
+        "dealerHand": 14,
+        "allHand": 61,
+        "wallCount": 75,
+        "seat": 0
+      },
+      {
+        "atMs": 4000,
+        "dealerHand": 14,
+        "allHand": 62,
+        "wallCount": 74,
+        "seat": 0
+      },
+      {
+        "atMs": 4500,
+        "dealerHand": 14,
+        "allHand": 62,
+        "wallCount": 74,
+        "seat": 0
+      },
+      {
+        "atMs": 5000,
+        "dealerHand": 14,
+        "allHand": 62,
+        "wallCount": 74,
+        "seat": 0
+      },
+      {
+        "atMs": 5500,
+        "dealerHand": 14,
+        "allHand": 62,
+        "wallCount": 74,
+        "seat": 0
+      }
+    ],
+    "checks": {
+      "wallCountAtLeast100": true,
+      "zeroForeignHandFaceUp": true,
+      "allWallBackRotation": true,
+      "fourSeatWalls": true,
+      "pickupReachedDealerHand": true
+    },
+    "pageErrorsCount": 0
+  }
+}

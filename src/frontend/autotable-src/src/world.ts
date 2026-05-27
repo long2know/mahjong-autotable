@@ -96,6 +96,21 @@ export class World {
     this.things = this.setup.things;
     this.pushes = this.setup.pushes;
     this.conditions = Conditions.initial();
+
+    // Hicks 2026-05-27 — In manual deal mode the canonical pre-game render
+    // is "all 108 tiles in the four walls, face-down".  The default
+    // `dealType: HANDS` would lay 13 tiles into each seat's hand and
+    // 14/15/13/13 tiles into the walls — that pre-WS state briefly shows
+    // FACE-UP hands + asymmetric walls, which Stephen's 2026-05-27 directive
+    // flagged as "scattered, not the canonical 4-simple-walls square".
+    // Read the URL's dealMode and use INITIAL when it's manual so the
+    // first paint already matches Bishop's post-WS RollingDice snapshot
+    // (all 108 in walls).  Spectator/auto paths keep the upstream HANDS
+    // default so the sandbox / standalone debug view stays intact.
+    const urlDealMode = readDealModeFromUrl();
+    if (urlDealMode === 'manual') {
+      this.conditions = { ...this.conditions, dealType: DealType.INITIAL };
+    }
     this.setup.setup(this.conditions);
 
     this.objectView = objectView;
@@ -189,10 +204,33 @@ export class World {
       // Phase D — tile face privacy. Bishop's WS endpoint strips `face` to
       // null on tiles concealed from this viewer. The bundle defends against
       // a backend that forgets to flip rotationIndex by coercing the visible
-      // rotation to a face-down index (the slot's last rotation, which by
-      // setup-slots convention is the back-up orientation for hand slots).
+      // rotation to a face-down index for **hand slots only**.
+      //
+      // Hicks 2026-05-27 — RESTRICTED to `slot.group === 'hand'` (was
+      // unconditional on any slot with multiple rotations).  The previous
+      // "pick the last rotation index" heuristic was tied to the hand
+      // slot's `[STANDING, FACE_UP, FACE_DOWN]` shape — last = FACE_DOWN.
+      // For the WALL slot (`[FACE_DOWN, FACE_UP]`) last = FACE_UP, so
+      // the guard FLIPPED walls face-UP whenever Bishop's filter stripped
+      // `face` for foreign seats — which is every wall tile when viewerSeat
+      // is null (spectator/unseated) or != the wall's owning seat.  Same
+      // miscarriage hit DISCARD (`[FACE_UP, FACE_UP_SIDEWAYS, FACE_DOWN,
+      // FACE_DOWN_SIDEWAYS]` → last = FACE_DOWN_SIDEWAYS) so other
+      // seats' discards rendered as upside-down sideways tiles.
+      //
+      // The backend already authors the correct rotation for every non-
+      // hand slot (wall=FACE_DOWN, discard=FACE_UP, exposed meld=FACE_UP,
+      // concealed kong=FACE_DOWN), and explicitly forces hand-slot rotation
+      // to FACE_DOWN when stripping face (see AutotableWsEndpoint.
+      // FilterEntriesForViewer → StripFace with forceHandFaceDown=true).
+      // Trust the backend's authored rotation for everything except the
+      // hand-slot belt-and-suspenders guard.
       let rotationIndex = thingInfo.rotationIndex;
-      if (thingInfo.face === null && slot.rotations.length > 1) {
+      if (
+        thingInfo.face === null &&
+        slot.group === 'hand' &&
+        slot.rotations.length > 1
+      ) {
         rotationIndex = slot.rotations.length - 1;
       }
       // Hicks playability iter2 — final guard.  If the slot is *still*
