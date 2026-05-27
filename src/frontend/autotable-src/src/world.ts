@@ -225,8 +225,31 @@ export class World {
       // FilterEntriesForViewer → StripFace with forceHandFaceDown=true).
       // Trust the backend's authored rotation for everything except the
       // hand-slot belt-and-suspenders guard.
+      //
+      // Hicks 2026-05-28 — local-seat exception (forced face-up).
+      // AutotableConnection.ViewerSeat is set ONCE at WS-upgrade time
+      // from the ?seat= query param and has no setter, so the take-seat
+      // click after WS connect never updates it. The privacy filter then
+      // treats the local seat's own hand as foreign (viewerSeat is null
+      // ⇒ slotSeat == viewerSeat.Value is false for every slot) and
+      // StripFace strips `face` to null AND coerces rotationIndex to 2
+      // (FACE_DOWN). Without this client-side override the dealer can't
+      // see their own concealed tiles after the pickup ceremony. Hand
+      // slots' rotations are authored [STANDING, FACE_UP, FACE_DOWN]
+      // (see setup-slots.ts §START['hand'] and 'hand.3p' / 'hand.extra')
+      // so index 1 is always FACE_UP for the hand group. Foreign-seat
+      // hands keep the backend's FACE_DOWN rotation via the original
+      // fallback below. Memo: .squad/decisions/inbox/hicks-localseat-
+      // faceup.md asks Bishop to fix ViewerSeat post-take-seat so this
+      // client-side override can later be removed.
       let rotationIndex = thingInfo.rotationIndex;
-      if (
+      const isLocalSeatHand =
+        slot.group === 'hand' &&
+        this.seat !== null &&
+        slot.seat === this.seat;
+      if (isLocalSeatHand) {
+        rotationIndex = 1;
+      } else if (
         thingInfo.face === null &&
         slot.group === 'hand' &&
         slot.rotations.length > 1

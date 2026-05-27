@@ -4350,3 +4350,128 @@ visually, but a future Changsha-aware translator pass should prune the
 ghosts.
 
 Decision memo: `.squad/decisions/inbox/hicks-walls-facedown.md`.
+
+---
+
+## 2026-05-28 — Local seat sees own hand face-up (follow-up to 4d9e3ce)
+
+**Branch:** `fix/local-seat-hand-face-up` → main (squash)
+**Files:** `src/frontend/autotable-src/src/world.ts`,
+`src/frontend/autotable/*` (bundle rebuild),
+`playtest-artifacts/playtest-walls-facedown.spec.mjs` (extended).
+
+**Stephen's report (post-4d9e3ce visual check):** "I can't play — my own
+tiles render face-down too." Confirmed in 04-post-deal.png from the
+previous run: seat 0 (bottom of screen) showed yellow tile backs after
+the pickup ceremony delivered 13 tiles to the dealer's hand. Same back
+rendering as the bots — meaning the dealer couldn't see their own tile
+faces.
+
+### Diagnosis (CDP-tap of WS frames)
+
+Hooked `Network.webSocketFrameReceived` via Playwright's CDP to dump
+the wire entries the backend ships to the dealer. Found:
+
+```
+{"slotName":"hand.8@0","rotationIndex":2,"face":null,"hasFace":true}
+```
+
+That's the StripFace(forceHandFaceDown=true) output — `face` explicitly
+null AND `rotationIndex` coerced to 2 (FACE_DOWN). Should only fire for
+foreign-seat hands. So the backend is treating the dealer's own hand as
+foreign.
+
+Read `AutotableConnection` (AutotableWsEndpoint.cs:1478–1557) and
+identified the root cause:
+
+```cs
+public int? ViewerSeat { get; }   // ← get-only, set ONCE at WS upgrade
+```
+
+`ViewerSeat` is initialised from the `?seat=` query string at WS
+handshake. The bundle opens the WS with no `seat=` param (the user
+hasn't picked a seat yet), so `ViewerSeat` starts null. The post-
+handshake "Take Seat" click routes through `TryHandleSeatTakeAsync` →
+`_runtime.TakeSeatAsync`, but **never** assigns
+`connection.ViewerSeat = seatIndex`. So `FilterEntriesForViewer` always
+runs with viewerSeat=null after that — every hand entry falls through
+the `slotSeat == viewerSeat.Value` short-circuit and gets StripFace'd
+including the dealer's own.
+
+### Fix shipped (client-side workaround)
+
+Extended `world.ts onThings` so that when the slot belongs to the local
+seat (`slot.group === 'hand' && slot.seat === this.seat && this.seat !==
+null`), `rotationIndex` is forced to `1` (FACE_UP — index 1 in the
+canonical `[STANDING, FACE_UP, FACE_DOWN]` hand-slot rotation array, per
+setup-slots.ts:106,117,132). The original foreign-hand face-down
+fallback (face===null + hand → coerce to last index) still runs for
+slots that DON'T belong to the local seat. Non-hand slots (walls,
+discards, melds) are untouched by either branch, preserving 4d9e3ce.
+
+### Backend follow-up flagged to Bishop
+
+Memo: `.squad/decisions/inbox/hicks-localseat-faceup.md`. Asks Bishop
+to make `ViewerSeat` settable + assign it in `TryHandleSeatTakeAsync`
+after the runtime accepts the seat-take. Adds a regression test to
+assert the post-take-seat snapshot ships the dealer's own hand with
+`face != null` and `rotationIndex=1`. Once the backend ships, the
+client-side override can be removed (degrades gracefully — backend will
+ship rotationIndex=1 which my override also lands at).
+
+### Validation
+
+`E2E_BASE_URL=http://127.0.0.1:8088 node playtest-artifacts/playtest-walls-facedown.spec.mjs`
+
+```
+{
+  "wallCountAtLeast100": true,        // 114
+  "zeroForeignHandFaceUp": true,      // no regression to 4d9e3ce
+  "allWallBackRotation": true,        // no regression to 4d9e3ce
+  "fourSeatWalls": true,
+  "pickupReachedDealerHand": true,
+  "localSeatHandFaceUp": true         // ← NEW gate, 13/13 dealer tiles at idx=1
+}
+ALL CHECKS PASSED
+```
+
+Spec extended with `localSeatHandFaceUp` gate that asserts
+`localSeatHandFaceUp >= 13` post-deal. Probe sample:
+`localSeatRotIdx: [1,1,1,1,1,1,1,1,1,1,1,1,1]` (vs. the pre-fix
+`[2,2,2,2,2,2,2,2,2,2,2,2,2]`).
+
+### Learnings
+
+- **WS frame tap via Playwright CDP** is the right tool when the bundle
+  console doesn't show enough detail. `Network.enable` +
+  `Network.webSocketFrameReceived` exposes every UPDATE payload so you
+  can see exactly what the backend is shipping. The "patch `onmessage`
+  via property descriptor" approach failed silently — CDP doesn't.
+- **`thingInfo.face === null` is NOT the same as `thingInfo.face ===
+  undefined`.** The Changsha translator (`BuildThingEntry`) omits the
+  `face` field entirely so the wire entry has no `face` property at
+  all when the privacy filter doesn't strip — but the StripFace path
+  EXPLICITLY writes `face: null`. So `=== null` only matches stripped
+  entries, not omitted ones. The pre-existing privacy fallback in
+  world.ts already relied on this distinction.
+- **The "ViewerSeat is sticky-null" backend bug** affects EVERY snapshot
+  to a post-take-seat dealer. It just happened to not bite previously
+  because: (a) the previous hand layout came from the dealer's own
+  local Setup.deal('HANDS') which laid tiles face-down too, so the
+  bug + the broken local layout cancelled out visually; and (b) the
+  WS spectator-mode pre-deal tests run with viewerSeat=null
+  intentionally. After 4d9e3ce stopped relying on the broken local
+  layout for the visible "I am face-down" presentation, the bug
+  became visible.
+- **Hand slot rotation indices are stable across all variants** —
+  `[STANDING, FACE_UP, FACE_DOWN]` for `'hand'`, `'hand.3p'`, and
+  `'hand.extra'`. Hard-coding `1` for FACE_UP in the local-seat
+  override is safe; using `slot.rotations.indexOf(FACE_UP)` would
+  require importing the Rotation map into world.ts for no gain.
+- **`flock`'d atomic sequences are mandatory in this squad's main
+  branch flow.** Two of my edits got reverted mid-task by parallel
+  squad agents (Frost cherry-picking, Bishop merging). The
+  `.work/squad-git-lock` flock + a saved patch under .work/ let me
+  recover without losing the diagnostic work. Save patches early.
+
+Decision memo: `.squad/decisions/inbox/hicks-localseat-faceup.md`.

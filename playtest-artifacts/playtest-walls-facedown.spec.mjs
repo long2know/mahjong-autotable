@@ -190,6 +190,8 @@ const wallSnapshot = await step('4-assert-walls-face-down', async () => {
     let foreignHandFaceUp = 0;
     let wallBackRotationCount = 0;
     let wallFrontRotationCount = 0;
+    let localSeatHandFaceUp = 0;
+    let localSeatHandTotal = 0;
     const wallSlotRotationsLen = new Set();
     const wallSeats = new Set();
     const wallSlotKeys = new Set();
@@ -211,6 +213,12 @@ const wallSnapshot = await step('4-assert-walls-face-down', async () => {
         // rotationIndex 2 = FACE_DOWN per hand slot rotations.
         if (thing.rotationIndex !== 2) foreignHandFaceUp++;
       }
+      // Hicks 2026-05-28 — Local seat must see its OWN hand face-up.
+      // Hand rotations are [STANDING, FACE_UP, FACE_DOWN] → index 1 = FACE_UP.
+      if (slot.group === 'hand' && slot.seat !== null && slot.seat === seat) {
+        localSeatHandTotal++;
+        if (thing.rotationIndex === 1) localSeatHandFaceUp++;
+      }
     }
     return {
       seat,
@@ -218,6 +226,8 @@ const wallSnapshot = await step('4-assert-walls-face-down', async () => {
       wallBackRotationCount,
       wallFrontRotationCount,
       foreignHandFaceUp,
+      localSeatHandFaceUp,
+      localSeatHandTotal,
       wallSlotRotationsLen: [...wallSlotRotationsLen],
       wallSeats: [...wallSeats].sort(),
       wallSlotKeyCount: wallSlotKeys.size,
@@ -266,6 +276,32 @@ await step('5-pickup-choreography', async () => {
 await step('6-post-deal', async () => {
   await page.waitForTimeout(2000);
   await snap('04-post-deal.png');
+
+  // Hicks 2026-05-28 — Local-seat face-up probe. Final post-deal snapshot
+  // must show the dealer (local seat) with their own concealed hand
+  // rendered face-up. rotationIndex=1 = FACE_UP for hand slots.
+  const postDeal = await page.evaluate(() => {
+    const w = (window).game?.world;
+    if (!w) return null;
+    const seat = w.seat;
+    let localSeatHandFaceUp = 0;
+    let localSeatHandTotal = 0;
+    let localSeatHandFaceCount = 0;
+    const localSeatRotIdx = [];
+    for (const thing of w.things.values()) {
+      const slot = thing.slot;
+      if (!slot) continue;
+      if (slot.group === 'hand' && slot.seat === seat) {
+        localSeatHandTotal++;
+        localSeatRotIdx.push(thing.rotationIndex);
+        if (thing.rotationIndex === 1) localSeatHandFaceUp++;
+        if (typeof thing.typeIndex === 'number') localSeatHandFaceCount++;
+      }
+    }
+    return { seat, localSeatHandFaceUp, localSeatHandTotal, localSeatHandFaceCount, localSeatRotIdx };
+  });
+  findings.assertions.postDeal = postDeal;
+  return postDeal;
 });
 
 await browser.close();
@@ -282,6 +318,14 @@ const maxDealer = Math.max(
   ...(findings.assertions.pickupProgression ?? []).map(o => o.dealerHand ?? 0),
 );
 checks.pickupReachedDealerHand = maxDealer >= 4;
+
+// Hicks 2026-05-28 — Local-seat face-up gate. After deal completes the
+// dealer must have at least 13 of their own concealed hand tiles
+// rendered face-up (rotationIndex === 1). 14 is the dealer's full count
+// after East's initial deal+draw; the gate tolerates >= 13 to allow for
+// in-transit batching at the snapshot moment.
+const post = findings.assertions.postDeal ?? {};
+checks.localSeatHandFaceUp = (post.localSeatHandFaceUp ?? 0) >= 13;
 
 findings.assertions.checks = checks;
 findings.assertions.pageErrorsCount = findings.pageErrors.length;

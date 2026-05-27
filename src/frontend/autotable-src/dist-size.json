@@ -469,14 +469,14 @@
     {
       "wave": "K22",
       "bundler": "vite",
-      "recordedAt": "2026-05-27T21:48:34.023Z",
+      "recordedAt": "2026-05-27T22:24:22.755Z",
       "chunks": {
         "autotable-src-eager": 107555,
         "game-bootstrap": 174691,
         "scene-shell": 2547,
         "scene-effects": 59387,
         "three-renderer-big": 406736,
-        "three-renderer-small": 77817,
+        "three-renderer-small": 77876,
         "gltf-loader": 44223,
         "stats-module": 3227,
         "commentary-panel": 8269,
