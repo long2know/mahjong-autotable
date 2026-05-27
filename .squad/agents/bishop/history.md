@@ -3497,3 +3497,120 @@ test uses `RecordFalseHu`, not `Score`).
    only the seam needs widening.
 
 **Decision memo:** `.squad/decisions/inbox/bishop-fan-catalog-integration.md`.
+
+## Face-down walls + ceremony acceptance (post-fan-catalog, 2026-05-27)
+
+**Directive:** Stephen, `.squad/decisions/inbox/copilot-directive-2026-05-27T2127Z-face-down-walls.md`.
+
+**Scope I owned:** translator audit (Task A) + backend acceptance
+for the manual-pickup ceremony (Task B). Hicks owned the bundle/
+frontend half; Frost owns the optional `Changsha/Dealing/` helper
+which is separate from this PR.
+
+**Problem statement (Stephen verbatim, distilled):** at
+`?dealMode=manual` the Changsha table rendered tile FACES on
+game-start, plus a messy non-canonical layout, plus the per-4
+pickup ceremony was visually unauthored. Two backend root causes:
+
+1. `ChangshaToAutotableTranslator.BuildThingEntries` iterated
+   `state.Wall` directly. In `Seating` and `RollingDice` (manual:
+   pre-`BeginManualDeal`) `state.Wall` is empty — so 0 `things`
+   entries were emitted. The pwmarcz bundle's local scene with
+   `dealType='HANDS'` default then took over and animated 14
+   tiles to the dealer hand FACE-UP.
+2. The Phase F pickup state machine (`BeginManualDeal`,
+   `TakeTilesFromWall`, `AdvancePickupCursor`,
+   `ExpectedPickupCount`) was already complete but had no
+   acceptance contract, so any future translator/state-machine
+   work could silently regress the ceremony.
+
+**Backend fix shipped (this PR):**
+
+- New private static `ChangshaToAutotableTranslator.ShouldSynthesizeWall`
+  gate: returns true iff `state.Wall.Count == 0` AND
+  `state.Phase ∈ { Seating, RollingDice }` AND `state.DiscardPile`
+  empty AND all `state.Hands[i].ConcealedTiles` + `Melds` empty.
+- `BuildThingEntries` Wall section replaced direct
+  `foreach (var tileId in state.Wall)` with
+  `var wallTiles = ShouldSynthesizeWall(state) ? Enumerable.Range(0, AutotableSlotMap.TotalTiles) : (IEnumerable<int>)state.Wall;`
+  before placement. All 108 synthetic tiles land at
+  `WallRotFaceDown = 0` in canonical 14/14/13/13 `AutotableSlotMap`
+  slots. Other empty-wall states (`EndHand`, `WallExhausted`,
+  `GameComplete`) fall through to the authoritative path because
+  they always have hands/discards/melds populated.
+- New `ManualDealCeremonyTests` (15 cases) pins both layers:
+  translator face-down emission contract for Seating /
+  RollingDice / BreakPointMarked, the full pickup ceremony
+  progression (BreakPointMarked → 3×PickupRound → SingleTilePickup
+  → DealerExtra → AwaitingDiscard with 14/13/13/13 final hands),
+  wrong-seat/wrong-count throws, mid-ceremony render with viewer
+  face-up own hand + foreign hand face-down, auto-mode parity
+  non-regression, and the EndHand-empty-wall non-regression
+  (proving the synth-gate is strict).
+
+**Coordination drama (worth remembering):**
+
+- First attempt used branch name
+  `fix/walls-facedown-and-pickup-state-machine` per directive.
+  While my 8-minute full-suite test was running, Hicks reused
+  that exact branch name for an unrelated frontend commit
+  (`adf29df`) and force-pushed; that landed as squash-merge
+  `4d9e3ce`. My uncommitted translator edit + new test file were
+  wiped from the local working tree.
+- Redo (this PR) ran inside a single `flock -w 180 9
+  9>.work/squad-git-lock` block: stash other agents' WIP under
+  uniquely-named labels → `git checkout -B
+  fix/walls-facedown-backend-translator-and-state-machine
+  origin/main` → apply patch (python) → copy test file in →
+  build (10s, clean) → targeted test (144 ms, 15/15 pass) →
+  commit + push branch → squash-merge to main → push main →
+  delete feature branch on remote. Landed at `9ca96c3`.
+- Staging area outside the repo at
+  `/data/source/mahjong-autotable-bishop-staging/` held the
+  test-file payload and the python patch script across the
+  pre-flock prep phase so they survived any concurrent
+  agent's `git checkout`.
+
+**Hicks's complementary frontend fix (4d9e3ce)** restricted the
+bundle's privacy-fallback rotation coercion to `hand` slots only
+(walls preserve authored rotation) and switched the bundle's
+local `Setup` to `DealType.INITIAL` when `?dealMode=manual`. This
+PR does the backend defense-in-depth — even in relay-mode for
+late-joining spectators, or any future client that doesn't apply
+Hicks's local-DealType switch, the server snapshot is now
+self-sufficient.
+
+**Build / test gate:**
+
+- Build clean (2 pre-existing xUnit2002 warnings unrelated to
+  this PR).
+- New 15 acceptance tests green in 144 ms.
+- Full-suite re-run not attempted post-merge (atomic flock
+  pipeline prioritised getting the work durable on origin/main
+  to avoid a second commandeering). Pre-flock build + targeted
+  run is the gate.
+
+**Three notes for future passes:**
+
+1. **The synthetic-wall fallback is *strictly* phase-gated.**
+   Any future phase whose semantics include "wall is empty but
+   no tiles have been dealt yet" must extend `ShouldSynthesizeWall`
+   explicitly. Adding new phases without considering this gate
+   will surface as either 0 wall things (bundle's local scene
+   leaks) or 108 phantom face-down tiles after the deal
+   (visual chaos).
+2. **Branch-name collisions across agents are a real failure
+   mode.** Suggest adding an agent-prefix convention
+   (`bishop/...`, `hicks/...`) or holding the flock for the
+   full lifecycle (branch → commit → push → squash-merge) so
+   the namespace window is milliseconds, not minutes.
+3. **`AutotableJson.Options` is the shared `JsonSerializerOptions`
+   for translator-value round-trips.** My ceremony tests use
+   `JsonSerializer.Serialize(value, AutotableJson.Options)` +
+   `JsonDocument.Parse` to extract `slotName` / `rotationIndex`
+   from the anonymous `Value` objects emitted by
+   `BuildThingEntry`. Match that pattern in any future translator
+   acceptance test that needs to assert on the wire payload shape.
+
+**Decision memo:** `.squad/decisions/inbox/bishop-walls-facedown.md`.
+**Squash commit on main:** `9ca96c3`.
