@@ -17004,3 +17004,761 @@ W21 closed `admin-panel` at 48,984 B with only 168 B headroom under the 49,152 B
 ### Phase K Wave 22 — DONE.
 
 ---
+### 2026-05-27T21:27:00Z: User directive — Changsha dealing ceremony is wrong
+
+**By:** Stephen (long2know, via Copilot)
+
+**What:** The Changsha-variant rendering at game start is wrong. Stephen showed a screenshot of `?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4`. Stated requirements (verbatim):
+
+1. **Tiles MUST start FACE DOWN** when the game is started — only the player's own picked-up hand is face-up. Other seats see backs only. Walls show backs only.
+2. **There should be (4) simple walls** — the canonical mahjong square wall layout, not the messy mix currently rendered (face-up tiles around the perimeter + scattered side stacks).
+3. **Players take turns picking tiles in groups of FOUR** until they have their starting 12 (then the first player takes one more for 14), then must discard. This is the dealing ceremony per Changsha rules.
+
+**Why:** Stephen's words: "It seems you really missed the boat here." Our `?dealMode=manual` plumbing emitted pickup actions to the wire, but the VISUAL CHOREOGRAPHY did not render the wall→pick ceremony. Tiles appear to be placed face-up at hand positions immediately. The 14/14 OK Playwright passing status hid this regression because the test drove `world.deal('HANDS')` rather than observing the visual state.
+
+**Constraints:**
+- Must work with the existing `?variant=changsha&dealMode=manual` URL.
+- Must keep the spectator/auto path working (current 4-bot autoplay rendering is acceptable).
+- Original autotable variant must remain available via Ferro's variant switcher.
+
+**Impact:** Re-opens the "playable" milestone. The current human-led playtest is insufficient as a gate — needs visual assertions for wall orientation + pickup choreography.
+
+### 2026-05-27T21:39Z: Stephen — auto-deal mode evidence
+**By:** Stephen Long (long2know, via Copilot)
+**Screenshot:** copilot-screenshot-2026-05-27T2139Z-auto-deal-no-hand.png
+
+URL state: `?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=changsha-default`
+
+**What's broken (verbatim from user):**
+> "This is what it looks like if I auto-deal ... I'm seat 0 (I think). My tiles should be visible to me. Also, I can't even select a tile from my tiles. I don't understand why the four walls are all half taken. That's not how dealing or shuffling works."
+
+**Visual evidence in screenshot:**
+1. ✅ Walls now render face-down (yellow tile backs) — improvement over earlier face-up bug
+2. ❌ Seat 0 (the local player) has NO visible hand — the user can't see their tiles
+3. ❌ Seat 0 cannot interact with / select tiles
+4. ❌ Four walls appear "half taken" — they look single-row (1-high), not stacked 2-high as canonical mahjong walls should be
+5. ❌ Walls are short (~9-10 tiles wide) instead of the expected 13-14 (Changsha 108/4/2=13.5) or 18 (expanded 144/4/2=18)
+
+**Implication for in-flight Wave 4 work:**
+- Bishop/Frost/Hicks/Vasquez agents MUST address: (a) 2-high stacked wall structure (not single row), (b) seat-0 hand visibility, (c) tile selection interaction restored for local player.
+- The "half taken" appearance is likely because the build-the-wall step is producing flat single-layer walls instead of canonical 2-tile-high stacks.
+
+**Constraints (still in force):**
+- Must work for `?variant=changsha` (108-tile deck — 4 walls × 13.5 wide × 2 high)
+- Must also work for expanded Chinese (144-tile deck — 4 walls × 18 wide × 2 high)
+- Manual deal mode (`dealMode=manual`) must run the per-4 pickup ceremony
+- Auto deal mode (`dealMode=auto`) must just deal hands directly but still build 2-high walls visually then collapse
+- Must NOT break spectator path (`?dealMode=auto&botCount=4`)
+- Must NOT break Ferro's variant switcher (#91) — variants other than changsha use Relay mode
+
+# PlayerStats.LastGameAt schema mismatch — surgical hotfix
+
+**By:** Drake (backend hotfix engineer), 2026-05-27
+
+**Branch:** `fix/playerstats-lastgameat-nullable`
+
+---
+
+## Symptom
+
+At runtime, Stephen hit:
+
+```
+Microsoft.Data.Sqlite.SqliteException : SQLite Error 19:
+'NOT NULL constraint failed: PlayerStats.LastGameAt'.
+```
+
+The exception surfaces the moment a brand-new player profile is created
+(`POST /api/identity` → `PlayerProfileService.GetOrCreateAsync` →
+`db.PlayerStats.Add(new PlayerStats { PlayerId = playerId })`). The
+`PlayerStats` model declares `public DateTime? LastGameAt { get; set; }`
+(nullable until the player completes their first game) so EF sends
+`NULL` for `LastGameAt`, but on the running dev SQLite the column was
+declared `NOT NULL`.
+
+## Initial triage (corrected on audit)
+
+The initial triage memo from Stephen pointed at the EF migration
+`Persistence/Migrations/20260523031206_AddPlayerProfileAndStats.cs` as
+the source of the `NOT NULL` column. **That was wrong** — the migration
+and all its mirrors are clean:
+
+| Location | LastGameAt declaration |
+|---|---|
+| `Players/PlayerStats.cs:18` | `public DateTime? LastGameAt { get; set; }` ✅ |
+| `Persistence/Migrations/20260523031206_AddPlayerProfileAndStats.cs:88` | `nullable: true` ✅ |
+| `Persistence/Migrations/20260523031206_AddPlayerProfileAndStats.Designer.cs:159` | `Property<DateTime?>` ✅ |
+| `Persistence/Migrations/AppDbContextModelSnapshot.cs:180` | `Property<DateTime?>` ✅ |
+| `Persistence/Migrations/Sqlite/20260523051740_InitialSqlite.cs:102` | `nullable: true` ✅ |
+| `Persistence/Migrations/Sqlite/SqliteAppDbContextModelSnapshot.cs:1346` | `Property<DateTime?>` ✅ |
+| `Persistence/Migrations/Postgres/20260523051747_InitialPostgres.cs:103` | `nullable: true` ✅ |
+| `Persistence/Migrations/Postgres/PostgresAppDbContextModelSnapshot.cs:1355` | `Property<DateTime?>` ✅ |
+| `Persistence/Migrations/SqlServer/20260523051750_InitialSqlServer.cs:102` | `nullable: true` ✅ |
+| `Persistence/Migrations/SqlServer/SqlServerAppDbContextModelSnapshot.cs:1355` | `Property<DateTime?>` ✅ |
+| `Data/AppDbContext.cs:235–243` (fluent config) | no `.IsRequired()` on LastGameAt ✅ |
+
+There is no `IEntityTypeConfiguration<PlayerStats>` file — the only
+fluent configuration is the inline `modelBuilder.Entity<PlayerStats>`
+block in `AppDbContext.cs`, which only sets the PK and FK and does
+not constrain `LastGameAt`.
+
+## Actual root cause
+
+`src/backend/src/Mahjong.Autotable.Api/Data/DatabaseBootstrapper.cs`
+line 301 (pre-fix) — a Phase J Wave 5 defensive **SQLite-only** bootstrap
+function that issues `CREATE TABLE IF NOT EXISTS "PlayerStats" (...)`
+to upgrade existing-prod SQLite databases that pre-date the
+`AddPlayerProfileAndStats` migration. The hand-rolled SQL was wrong:
+
+```sql
+"LastGameAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+```
+
+This shadowed the model on any SQLite DB where:
+
+1. The database file already existed when the runtime first booted
+   (so `EnsureCreatedAsync` was a no-op — it only creates schema if
+   the DB is empty), AND
+2. `PlayerStats` was missing (because the DB pre-dated Wave 5).
+
+In that path, the `CREATE TABLE IF NOT EXISTS` from
+`EnsureSqlitePlayerTablesAsync` was the only thing landing the table —
+so the buggy hand-rolled schema won.
+
+This explains why CI tests pass (CI's test fixtures always create a
+fresh in-process SQLite file, so `EnsureCreatedAsync` lands the
+correct EF schema and the bootstrap CREATE is a no-op) but Stephen's
+dev box trips on it (his `mahjong.db` predates Wave 5).
+
+## Fix (this branch)
+
+Single file changed: `Data/DatabaseBootstrapper.cs`,
+`EnsureSqlitePlayerTablesAsync`:
+
+1. Corrected the CREATE TABLE — `"LastGameAt" TEXT NULL`.
+2. Added a defensive remediation pass: introspect the existing
+   `PlayerStats` table via `PRAGMA table_info`, and if the
+   `LastGameAt` column still has `notnull=1`, rebuild the table
+   using the SQLite-recommended pattern
+   (`CREATE TABLE PlayerStats_new + INSERT SELECT + DROP + RENAME`,
+   wrapped in `PRAGMA foreign_keys=OFF; BEGIN; … COMMIT; PRAGMA
+   foreign_keys=ON;`). The `INSERT SELECT` maps the buggy sentinel
+   default `'0001-01-01 00:00:00'` back to `NULL` so historical rows
+   come out semantically correct.
+
+This is fully idempotent: a fresh `EnsureCreatedAsync` DB never trips
+the remediation (notnull=0 already), and a re-bootstrap on an
+already-fixed DB is also a no-op.
+
+## Why no new migration
+
+The EF migration set and model snapshots are **already correct** —
+every provider declares `LastGameAt` as nullable. Adding a
+`NullablePlayerStatsLastGameAt` migration would only introduce
+no-op churn (Postgres/SqlServer would generate empty migration
+bodies) and lengthen the chain Frost's Dealing rework has to rebase
+through. SQLite is the only provider whose runtime schema actually
+diverged from the model, and that divergence lives in the hand-rolled
+bootstrap, not in the migrations.
+
+## What I did NOT touch
+
+Strict lane discipline per Stephen's brief:
+
+- `Changsha/Runtime/**` (Bishop)
+- `Changsha/Dealing/**` (Frost — new, WIP)
+- `Changsha/Bot/**` / `Changsha/Scoring/**` (Frost)
+- `Autotable/**` (Bishop)
+- Frontend
+- Workflows
+- `TestInfrastructure/**` (Vasquez)
+- All EF migration files (since they were already correct)
+
+## Verification
+
+### Build + targeted tests
+- `dotnet build src/backend/src/Mahjong.Autotable.Api/Mahjong.Autotable.Api.csproj` — 0 errors, 0 warnings.
+- `dotnet test … --filter "FullyQualifiedName~PlayerStats|FullyQualifiedName~PlayerProfile|FullyQualifiedName~DatabaseBootstrap"` — **11/11 passed**.
+
+### Full suite
+- `dotnet test src/backend/Mahjong.Autotable.slnx --nologo` — **5219 passed, 0 skipped relevant to my scope, 2 flaky autotable tests** that re-passed 8/8 in isolation (`Autotable/MultiGameRoutingTests`, Bishop's lane; flakes were caused by a concurrent test-runner from another squad agent racing on the shared SQLite test DB during my full-suite run).
+
+### Runtime smoke — fresh DB
+- `rm -f .work/drake-fix.db && dotnet run` → `GET /health` 200 OK.
+- `POST /api/identity` 200 OK → row inserted with `LastGameAt = NULL`. No `SqliteException`.
+- `sqlite3` introspection: `LastGameAt TEXT NULL` (notnull=0). ✅
+
+### Runtime smoke — broken-DB remediation
+- Hand-seeded `.work/drake-broken.db` with the old buggy `LastGameAt TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'` schema + two rows (one with real timestamp, one with sentinel default).
+- Booted the backend against it.
+- Post-boot introspection:
+  - Schema: `LastGameAt TEXT NULL` (notnull=0) ✅
+  - Real-timestamp row preserved: `('abc-existing-1', 3, 1, 100, …, '2026-05-15T12:34:56Z')` ✅
+  - Sentinel row remapped: `('abc-pre-default', 0, …, None)` ✅
+- `POST /api/identity` 200 OK → new row inserted with `LastGameAt = NULL`. ✅
+
+## Future-proofing notes
+
+- If a fourth provider is ever added (MySQL? CockroachDB?), the same
+  pattern applies: trust the EF migration for that provider, and only
+  add a defensive bootstrap if existing-prod databases need to be
+  upgraded without `dotnet ef database update`.
+- The defensive bootstrappers in `DatabaseBootstrapper.cs` are
+  effectively a hand-rolled migration chain for SQLite. Any future
+  schema change to `PlayerStats` (or anything else with a defensive
+  `EnsureSqlite…` helper) must update BOTH the EF migration AND the
+  hand-rolled SQL — otherwise this exact class of bug recurs.
+
+# Bishop — Face-down walls (synth) + ceremony state-machine acceptance
+
+**Author:** Bishop (Backend Dev)
+**Date:** 2026-05-27
+**Branch / PR:** squash-merged direct to `main` at `9ca96c3`
+(feature branch `fix/walls-facedown-backend-translator-and-state-machine`,
+deleted on push).
+**Closes:** Stephen 2026-05-27 face-down-walls directive
+(`.squad/decisions/inbox/copilot-directive-2026-05-27T2127Z-face-down-walls.md`).
+
+## Decision
+
+The translator (`ChangshaToAutotableTranslator.BuildThingEntries`) is the
+single backend point of truth for tile placement on the wire. When the
+authoritative `state.Wall` is empty AND no tiles have left it yet
+(no hands, no melds, no discards) AND the phase is one of the two pre-deal
+phases (`Seating`, `RollingDice`), the translator synthesizes a 108-tile
+face-down wall using the canonical 14/14/13/13 `AutotableSlotMap` slots.
+After `BeginManualDeal` materialises `state.Wall` (with the shuffled deck
+rotated to the break point) the synthetic-fallback shuts off and the
+authoritative wall flows through normally.
+
+The Changsha manual-pickup state machine already existed (Phase F —
+`BreakPointMarked` → `PickupRound1..3` → `SingleTilePickup` →
+`DealerExtra` → `AwaitingDiscard`, hands ending at 14/13/13/13). This
+PR pins it with a 15-test acceptance contract so future translator or
+state-machine work cannot silently regress the ceremony.
+
+## Why
+
+Stephen's playtest at `?dealMode=manual` rendered TILE FACES at game
+start, plus a messy non-canonical layout, plus the per-4 pickup ceremony
+was visually unauthored. Two problems compounded:
+
+1. The pwmarcz/autotable bundle ships a local 108-Changsha-tile scene
+   whose default `dealType` is `HANDS`. At connect time, before the
+   user clicks Deal, the bundle animates 14 tiles to the dealer's hand
+   FACE-UP. The server snapshot did not override this because in
+   `Seating` and `RollingDice` the authoritative `state.Wall` is empty
+   (the shuffled wall is only materialised inside `BeginManualDeal`).
+2. The translator was iterating `state.Wall` directly, so 0 wall tiles
+   in those phases meant 0 `things` entries emitted, meaning the
+   bundle's local pre-deal animation went unauthored.
+
+The fix is a defense-in-depth backend authority layer that complements
+Hicks's frontend fix at `4d9e3ce` (bundle-side: privacy-fallback rotation
+coercion restricted to `hand` slots only, and local `DealType.INITIAL`
+when `?dealMode=manual`). Even if the bundle is ever swapped out, or
+late-joining spectators land on a different code path, the server-
+authoritative snapshot now carries the correct face-down placement.
+
+## What shipped
+
+### Translator change
+`src/backend/src/Mahjong.Autotable.Api/Autotable/ChangshaToAutotableTranslator.cs`
+
+- New private static `ShouldSynthesizeWall(ChangshaGameState state)`
+  returning true iff:
+  - `state.Wall.Count == 0`
+  - `state.Phase ∈ { Seating, RollingDice }`
+  - `state.DiscardPile.Count == 0`
+  - all `state.Hands[i].ConcealedTiles` empty and all `Melds` empty
+- In `BuildThingEntries`, the `state.Wall` loop is replaced with
+  `var wallTiles = ShouldSynthesizeWall(state) ? Enumerable.Range(0, AutotableSlotMap.TotalTiles) : (IEnumerable<int>)state.Wall;`
+  before iterating into canonical wall slots at `WallRotFaceDown`.
+- All other emit paths (hands, discards, melds, claim window) untouched.
+
+### Acceptance tests
+`src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Acceptance/ManualDealCeremonyTests.cs`
+
+15 `[Fact, Trait("Category", "ManualDealCeremony")]` cases:
+
+**Translator — face-down wall emission:**
+- `Seating_Emits_108_FaceDown_Wall_Things_NoHandSlots_NoDiscards`
+- `RollingDice_Manual_BeforeRoll_StillRenders_108_FaceDown_Walls`
+- `SyntheticWall_Uses_Canonical_14_14_13_13_Slot_Layout`
+- `BreakPointMarked_RendersFullFaceDownWall_AfterBeginManualDeal`
+
+**State machine — pickup ceremony:**
+- `RollDice_Transitions_RollingDice_To_BreakPointMarked_WithBreakPointSet`
+- `Pickup_Round1_FirstTake_AdvancesCursor_ToNextCcwSeat`
+- `Pickup_Round1_Complete_Transitions_To_PickupRound2_DealerNext`
+- `Pickup_Round3_Complete_Transitions_To_SingleTilePickup`
+- `Pickup_SingleTileRound_Complete_Transitions_To_DealerExtra`
+- `Pickup_DealerExtra_Complete_Transitions_To_AwaitingDiscard_14_13_13_13`
+- `Pickup_WrongSeat_Throws_InvalidOperationException`
+- `Pickup_WrongCount_Throws_InvalidOperationException`
+- `Pickup_MidCeremony_Translator_RendersWallShrinking_HandsGrowing`
+
+**Non-regression:**
+- `AutoMode_FastDealPath_LandsAtAwaitingDiscard_With_14_13_13_13_NoPickupPhases`
+- `EndHand_WithEmptyWall_DoesNotSynthesizeFaceDownWall`
+
+## Verification
+
+- Build clean (only pre-existing xUnit2002 warnings unrelated to this PR).
+- New 15-test suite green (144 ms).
+- Inside flock: branch → patch → build → targeted test → commit → push →
+  squash-merge to main → push main → delete feature branch. Single
+  atomic pipeline via `flock -w 180 9 9>.work/squad-git-lock`.
+
+## Coordination notes
+
+- **Hicks's frontend half** at `4d9e3ce` is complementary, not redundant:
+  it fixes the bundle-internal privacy-rotation coercion and local
+  `DealType` so the bundle behaves correctly even when the server
+  snapshot is delayed by RTT. The backend fix here makes the server
+  snapshot itself correct from the first frame, which is required for
+  relay-mode spectators and any future client that doesn't apply
+  Hicks's local-DealType switch.
+- **Branch-name collision warning:** the original directive used
+  `fix/walls-facedown-and-pickup-state-machine`. Hicks claimed that
+  name for the frontend PR mid-flight, which clobbered Bishop's first
+  attempt. This redo uses a more distinct
+  `fix/walls-facedown-backend-translator-and-state-machine` and
+  squash-merges direct so the namespace clears immediately. Suggest
+  the Scribe rules add an agent-prefix to feature-branch naming.
+- **Open observation:** Drake's `PlayerStats.LastGameAt` hotfix at
+  `c369c54` left behind a working-tree edit to `DatabaseBootstrapper.cs`
+  in some sessions. Confirmed it is NOT part of this PR — `git status`
+  inside the flock showed only the two intended files staged.
+
+## Follow-ups
+
+- Frost's `Changsha/Dealing/` helper (per the directive) — still
+  separately on Frost's queue; this PR does not block it.
+- Optional WS smoke test: spin up the backend at
+  `?variant=changsha&dealMode=manual&botCount=3&gameId=changsha-default`
+  and dump the first `things` snapshot; expect 108 entries, all
+  `slotName` starting `wall.`, all `rotationIndex == 0`. Not run as
+  part of this PR — the 15 acceptance tests pin the translator output
+  shape directly.
+
+### 2026-05-27T22:00:00Z: Frost — Changsha dealing ceremony rule engine (`Changsha/Dealing/ChangshaDealingCeremony.cs`)
+
+**By:** Frost (parallel backend dev), per Stephen's `copilot-directive-2026-05-27T2127Z-face-down-walls.md` directive on the dealing ceremony being wrong.
+
+**What:** Shipped a pure-function rule engine for the Changsha dealing ceremony as a sibling to Bishop's runtime-side state machine. Lives entirely under `src/backend/src/Mahjong.Autotable.Api/Changsha/Dealing/`. Does NOT touch the runtime, the SignalR endpoint, or the translator.
+
+#### Public API
+
+```csharp
+namespace Mahjong.Autotable.Api.Changsha.Dealing;
+
+public enum ChangshaDealingPhase { WaitingForDice, PickingFour, PickingOne, DealerExtra, Complete }
+
+public sealed record ChangshaDealingState(
+    int DealerSeat,
+    int[]? DiceRoll,        // null until rolled; e.g. [3, 5]
+    int? StartingWall,      // 0..3, computed from dealer + diceSum
+    int? BreakIndex,        // tile offset (= 2 × diceSum) from right end of starting wall
+    int CurrentPickerSeat,
+    int TilesTakenThisRound,// 0..4 normal rounds; 0..1 dealer-extra
+    int RoundIndex,         // 0..2 = PickingFour rounds; 3 = PickingOne/DealerExtra/Complete
+    int[] HandSizes,        // per-seat concealed count
+    ChangshaDealingPhase Phase);
+
+public sealed record ChangshaDealingResult(
+    bool Valid, string? RejectReason, ChangshaDealingState NewState, int TilesPickedUp);
+
+public static class ChangshaDealingCeremony {
+    public static ChangshaDealingState Start(int dealerSeat);                            // phase = WaitingForDice
+    public static ChangshaDealingState ApplyDiceRoll(ChangshaDealingState s, int[] dice);// phase → PickingFour
+    public static ChangshaDealingResult ValidateAndApplyPickup(ChangshaDealingState s, int seatIndex, int requestedCount);
+    public static int ComputeStartingWall(int dealerSeat, int diceSum); // (dealer + (sum-1) % 4) % 4
+    public static int ComputeBreakIndex(int diceSum);                   // 2 × diceSum tiles in from right
+    public static int ExpectedPickupCount(ChangshaDealingPhase phase);
+}
+```
+
+#### Invariants
+
+- Pure-function transducer — `state` is never mutated; every method returns a fresh `ChangshaDealingState` or a `ChangshaDealingResult`. The input array passed to `ApplyDiceRoll` is cloned so caller mutation does NOT leak into state.
+- Programmer-error inputs (`dealerSeat` out of range, `diceSum` outside [2, 12], wrong dice-array shape, applying a roll twice) throw `ArgumentOutOfRangeException` / `ArgumentException` / `InvalidOperationException`.
+- Runtime violations (out-of-turn seat, wrong pickup count, pickup before dice or after completion) are NEVER thrown — they are surfaced as `ChangshaDealingResult { Valid = false, RejectReason = "…" }` with `NewState` aliased back to the input state. This lets Bishop's runtime translate them into wire-level error frames without try/catch overhead.
+- Turn order is counter-clockwise from the dealer: `CurrentPickerSeat = (DealerSeat + TilesTakenThisRound) % 4`. The picker resets to the dealer at every round boundary.
+- `BreakIndex` is measured in **TILES** from the right end of the chosen wall (= `2 × diceSum`), so the runtime can address per-stack-of-2 wall slots without re-deriving the conversion.
+- At `Complete`: `HandSizes[dealer] == 14`, `HandSizes[other] == 13`, total = 53 (out of the 108-tile deck — 55 remain in the live wall, matching `DealService.ExpectedRemainingWall`).
+
+#### Integration contract — what Bishop's runtime must call
+
+1. **Game start (manual mode):** `var state = ChangshaDealingCeremony.Start(dealerSeat);` Persist the state alongside the existing `ChangshaGameState`. The wall does NOT need to be shuffled yet — the ceremony only commits to a starting wall + break index after the dice roll.
+
+2. **Dice roll event:** When `RollDice` or `BeginManualDeal` fires, call `state = ChangshaDealingCeremony.ApplyDiceRoll(state, new[] { roll.Die1, roll.Die2 });`. After this returns, `state.StartingWall` and `state.BreakIndex` are populated. Bishop's existing `BreakPointService.ComputeBreakPoint` is equivalent on the wall index but returns *absolute* stack index across the flattened wall — these two layers are compatible because the ceremony engine never references the flattened wall directly; the runtime owns that translation via its existing `ApplyBreakPointToWall` helper.
+
+3. **Per-pickup:** On each `TakeTilesFromWall` command from the wire (or bot policy), call:
+   ```csharp
+   var result = ChangshaDealingCeremony.ValidateAndApplyPickup(state, seatIndex, requestedCount);
+   if (!result.Valid) {
+       // emit error frame with result.RejectReason; do NOT mutate game state
+       return;
+   }
+   state = result.NewState;
+   // Bishop's runtime then slices result.TilesPickedUp tile-ids off the front
+   // of the wall (state.Wall.GetRange(0, result.TilesPickedUp)) and attaches
+   // them to the player's concealed hand. Phase + cursor are already advanced.
+   ```
+
+4. **Runtime owns tile-id assignment.** This engine is wall-storage-agnostic. It tells you WHEN to pick, WHO is picking, and HOW MANY tiles to slice; the runtime tells you WHICH tile-ids those are.
+
+#### Parity with existing implementation
+
+Bishop's `ChangshaStateMachine.BeginManualDeal` + `TakeTilesFromWall` + `AdvancePickupCursor` already implement an equivalent state machine in the runtime layer. The ceremony engine is intentionally a clean-room reimplementation as a pure-function library: it is the canonical specification of the rules, decoupled from `ChangshaGameState` so future refactors can collapse the duplication without rewriting the rule logic. Both implementations agree on:
+- Turn order (CCW from dealer): `(dealer + i) % 4`
+- Wall index from dice sum: `(dealer + (sum-1) % 4) % 4`
+- Phase progression: PickingFour ×3 → PickingOne → DealerExtra → Complete
+- Final hand sizes: 14 / 13 / 13 / 13
+
+#### Suggested follow-up (Bishop's lane)
+
+When Bishop's runtime is ready to consolidate, replace the body of `BeginManualDeal` and `TakeTilesFromWall` with calls into `ChangshaDealingCeremony` and store the returned `ChangshaDealingState` alongside (or in place of) the pickup fields on `ChangshaGameState`. The runtime keeps ownership of:
+- Wall shuffling + `ApplyBreakPointToWall` slot translation
+- Tile-id assignment + persistence
+- Event emission (`dice-rolled`, `tiles-picked-up`, `tiles-dealt`)
+- Phase F's auto-deal one-shot path (DealMode.Auto) — unchanged.
+
+#### Tests
+
+`tests/.../Changsha/Dealing/ChangshaDealingCeremonyTests.cs` — 28 distinct test methods that expand under xunit Theories to **76 individual test cases**, all green:
+- Start / WaitingForDice initial state
+- ApplyDiceRoll happy path, immutability, dice-array cloning, out-of-range dice, wrong dice count, out-of-phase throw
+- ComputeStartingWall — 15 cases covering all dice sums (2..12) and dealer rotations (0..3)
+- ComputeBreakIndex — 11 cases covering all dice sums (2..12)
+- ValidateAndApplyPickup — happy path, out-of-turn, wrong count, before-dice, after-complete, out-of-range seat
+- PickingOne phase — count-1 vs count-4 enforcement
+- Round-completion rotation (picker resets to dealer)
+- Full deal sequence + every-dealer parametrisation + combinatorial smoke (6 dealer/sum pairs)
+- Phase transition log (12 PickingFour + 4 PickingOne + 1 DealerExtra = 17 total pickups)
+- Dealer-extra "only dealer may pick" enforcement
+- Purity assertion on ValidateAndApplyPickup
+- ExpectedPickupCount table-driven coverage of all 5 phases
+
+#### Verification
+
+`dotnet test src/backend/Mahjong.Autotable.slnx --nologo` — 5219 pass, 1 pre-existing W9 cron-schedule fail (Vasquez's known flaky). My 76 new tests all green.
+
+#### Lane discipline
+
+- Touched: `src/backend/src/Mahjong.Autotable.Api/Changsha/Dealing/**` (NEW), `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/Dealing/**` (NEW)
+- Did NOT touch: `Changsha/Runtime/**`, `AutotableWsEndpoint.cs`, `ChangshaToAutotableTranslator.cs`, `ChangshaDomain.cs`, `Changsha/Scoring/**`, persistence, migrations, frontend.
+
+### 2026-05-27T22:45:00Z: Hicks — Face-down walls + canonical 4-wall manual-deal layout
+
+**By:** Hicks (Frontend)
+
+**Directive:** `.squad/decisions/inbox/copilot-directive-2026-05-27T2127Z-face-down-walls.md` (Stephen). "Tiles MUST start FACE DOWN", "(4) simple walls", "pick groups of FOUR".
+
+**Branch:** `fix/facedown-walls-and-pickup-choreography` off main `c616407`.
+
+---
+
+## Root cause
+
+`world.ts` `onThings` had an unconditional privacy fallback:
+
+```ts
+if (thingInfo.face === null && slot.rotations.length > 1) {
+  rotationIndex = slot.rotations.length - 1;
+}
+```
+
+The backend (`AutotableWsEndpoint.FilterEntriesForViewer` → `StripFace`) nulls
+the `face` field for every foreign-seat tile to avoid leaking ids over the
+wire. The frontend was then coercing the rotation to "the last entry in
+`slot.rotations`" as a privacy fallback.
+
+That convention is correct **only** for `hand` slots whose rotation list is
+`[STANDING, FACE_UP, FACE_DOWN]` — last index = FACE_DOWN, hides the tile.
+
+For other slot groups the rotation list does **not** put FACE_DOWN last
+(see `setup-slots.ts`):
+
+| Slot group | rotations[]                                              | last entry             |
+| ---------- | --------------------------------------------------------- | ---------------------- |
+| `wall`     | `[FACE_DOWN, FACE_UP]`                                    | **FACE_UP** ← bug      |
+| `discard`  | `[FACE_UP, FACE_UP_SIDEWAYS, FACE_DOWN, FACE_DOWN_SIDEWAYS]` | FACE_DOWN_SIDEWAYS ← bug |
+| `meld`     | `[FACE_UP, FACE_DOWN]`                                    | FACE_DOWN              |
+
+So every wall tile rendered for a foreign seat got flipped face-up, exposing
+the suits and breaking Stephen's "4 face-down walls" requirement. Discards
+from the three other seats took a similar miscarriage.
+
+The backend already authors the correct rotation for non-hand slots
+(`ChangshaToAutotableTranslator.BuildThingEntries` sets `WallRotFaceDown=0`,
+`DiscardRotFaceUp=0`, etc.) and only force-overrides the rotation when the
+slot key starts with `hand.` (`StripFace` lines ~1257). So the frontend
+fallback is **redundant** for non-hand slots and **wrong** for walls/discards.
+
+---
+
+## Fix
+
+Two surgical edits to `src/frontend/autotable-src/src/world.ts`:
+
+### 1. `onThings` — restrict the privacy fallback to hand slots
+
+```ts
+// Hicks 2026-05-27 — RESTRICTED to `slot.group === 'hand'` …
+if (
+  thingInfo.face === null &&
+  slot.group === 'hand' &&
+  slot.rotations.length > 1
+) {
+  rotationIndex = slot.rotations.length - 1;
+}
+```
+
+For wall/discard/meld slots we now trust the backend-authored
+`rotationIndex` (which is always `0 = FACE_DOWN` for walls).
+
+### 2. Constructor — start in `DealType.INITIAL` when `?dealMode=manual`
+
+Before WS connects, the bundle previously initialised the local `Setup` with
+`DealType.HANDS`, which lays 13 tiles into each seat's hand and only 55 into
+the wall. The very first paint (before any `onThings` arrives) therefore
+showed pre-dealt hands — even if briefly. We now read `?dealMode=manual`
+from the URL synchronously and override `conditions.dealType = INITIAL` so
+the first paint matches the post-WS `RollingDice` snapshot (all 108 tiles
+in walls, face-down).
+
+---
+
+## Validation
+
+Backend running on `:8088` with isolated `Data Source=/tmp/hicks-walls.db`.
+
+### New spec — `playtest-artifacts/playtest-walls-facedown.spec.mjs`
+
+Loads `?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4`,
+takes seat 0, calls `g.world.deal('HANDS')`, asserts on `window.game.world.things`:
+
+```
+{
+  "wallCount": 106,
+  "wallBackRotationCount": 106,      // every wall tile at rotation 0 (face-down)
+  "wallFrontRotationCount": 0,       // zero wall tiles at FACE_UP
+  "foreignHandFaceUp": 0,            // no other-seat hand tile is face-up
+  "wallSlotRotationsLen": [2],       // confirms slot.rotations = [FACE_DOWN, FACE_UP]
+  "wallSeats": [0,1,2,3]             // four canonical walls
+}
+checks: {
+  wallCountAtLeast100: true,
+  zeroForeignHandFaceUp: true,
+  allWallBackRotation: true,
+  fourSeatWalls: true,
+  pickupReachedDealerHand: true     // dealer hand grew 9 → 14 over 3.5 s
+}
+pageErrorsCount: 0
+```
+
+Pickup choreography polling sample (`5-pickup-choreography`):
+
+```
+t=0     dealerHand= 9  allHand=30  wallCount=106
+t=500   dealerHand= 9  allHand=34  wallCount=102
+t=1000  dealerHand= 9  allHand=38  wallCount= 98
+t=1500  dealerHand=13  allHand=46  wallCount= 90
+t=2000  dealerHand=13  allHand=50  wallCount= 86
+t=2500  dealerHand=14  allHand=59  wallCount= 77
+t=3500  dealerHand=14  allHand=61  wallCount= 75
+```
+
+Wall drains in groups of ~4 per seat across ~3 s — exactly the
+counter-clockwise 4-per-pick ceremony Bishop's `driveManualDealChain`
+already drives. Visual confirmation in
+`playtest-artifacts/walls-facedown/{01-lobby,02-connected-walls,03-mid-pickup,04-post-deal}.png`.
+
+### Regression — `playtest-artifacts/playtest-v3-fresh.spec.mjs`
+
+All steps `ok: true`, `pageErrorsCount: 0`. No spectator/autoplay
+regression.
+
+### Build
+
+`npm run build` clean. Bundle sizes within baseline.
+
+---
+
+## Lane discipline
+
+Only Hicks-owned files touched:
+- `src/frontend/autotable-src/src/world.ts` (frontend lane)
+- `playtest-artifacts/playtest-walls-facedown.spec.mjs` (new spec)
+- `playtest-artifacts/walls-facedown/*.png` (artifacts)
+
+Untouched: backend, Ferro CSS (claim-window/win-screen/variant-picker),
+workflows.
+
+---
+
+## Known follow-ups (not in this PR)
+
+1. **Backend emits `gameType="FOUR_PLAYER"`** in `BuildMatch` (line 326,
+   `ChangshaToAutotableTranslator.cs`), so the bundle's `Setup.replace`
+   path creates 136 tiles (ids 0..135) even though Changsha has 108. The
+   extra 28 tiles end up in the local-INITIAL wall slot 14..17 of two seats.
+   Visually fine (still face-down) but worth a future translator pass to
+   emit a Changsha-aware `gameType` and prune the ghost tiles.
+2. **`face===null` from backend during pre-deal phases** — the backend
+   `state.Wall` is empty during `Seating`/`RollingDice` until
+   `BeginManualDeal` materialises the shuffled wall. The bundle's local
+   `DealType.INITIAL` keeps the visual integrity in the meantime. If/when
+   Bishop adds a "synthesize wall placement" path in `BuildThingEntries`,
+   we can stop relying on the local fallback.
+
+---
+
+## Files
+
+- `src/frontend/autotable-src/src/world.ts` — `onThings` (l. ~225-235), constructor (l. ~96-115)
+- `playtest-artifacts/playtest-walls-facedown.spec.mjs` — 6-step spec
+- `playtest-artifacts/walls-facedown/{01-lobby,02-connected-walls,03-mid-pickup,04-post-deal}.png`
+
+Branch: `fix/facedown-walls-and-pickup-choreography`.
+
+# Hicks decision memo — local seat sees own hand face-up
+
+**Date:** 2026-05-28
+**Author:** Hicks (Frontend)
+**Status:** Shipped (client-side workaround), with backend follow-up requested
+**Scope:** `src/frontend/autotable-src/src/world.ts`, `playtest-artifacts/playtest-walls-facedown.spec.mjs`
+**Companion commits:** 4d9e3ce (face-down walls), 9ca96c3 (Bishop translator synth)
+
+## What shipped
+
+After the manual-mode pickup ceremony, the local player (seat 0 = dealer)
+now sees the FACES of their own 13 concealed hand tiles. Foreign-seat
+hands stay face-down (privacy preserved). Walls stay face-down (no
+regression to 4d9e3ce). Stephen can now play.
+
+`world.ts onThings` was extended with a local-seat exception that
+**forces** `rotationIndex = 1` (FACE_UP) for any hand-group slot whose
+`slot.seat === this.seat` (and `this.seat !== null`). The original
+face-down fallback (face===null + hand → coerce to face-down rotation)
+still runs for foreign-seat hands and is unchanged for non-hand slots.
+
+## Root cause — backend ViewerSeat is sticky-null (Bishop, please)
+
+Diagnosis under CDP-tap of the WS frames:
+
+```
+{"slotName":"hand.8@0","rotationIndex":2,"face":null,"hasFace":true}
+```
+
+The backend is shipping **rotationIndex=2 and face=null** for the
+dealer's own hand. That's the `StripFace(forceHandFaceDown=true)` path in
+`AutotableWsEndpoint.FilterEntriesForViewer`. It only takes that path
+when `viewerSeat.HasValue && slotSeat == viewerSeat.Value` is false.
+
+Reading `AutotableConnection` (lines 1478–1557):
+
+```cs
+public sealed class AutotableConnection
+{
+    ...
+    public int? ViewerSeat { get; }              // ← GET-only, no setter
+    ...
+    public AutotableConnection(WebSocket socket, string? gameId, int? viewerSeat)
+    {
+        ViewerSeat = viewerSeat;
+    }
+}
+```
+
+`ViewerSeat` is set ONCE at WS-upgrade time from the `?seat=` query
+string. The bundle always opens the WS without a `seat=` param (the user
+hasn't picked a seat yet at handshake time), so `ViewerSeat` starts at
+`null`. When the user clicks "Take Seat" later, `TryHandleSeatTakeAsync`
+routes the seat-take to the runtime, but **never** updates
+`connection.ViewerSeat`. It stays null forever.
+
+Consequence: for **every** post-take-seat snapshot the privacy filter
+runs with `viewerSeat=null`, the `slotSeat == viewerSeat.Value` short-
+circuit is false for every entry, and the dealer's own hand goes through
+`StripFace(forceHandFaceDown=true)` — face stripped, rotationIndex forced
+to 2 (FACE_DOWN).
+
+The frontend has no way to "tell" the backend its seat after the fact,
+so the only way to fix this in the bundle alone is to override
+rotationIndex client-side for the local seat. That's what shipped.
+
+## Requested backend follow-up (Bishop's lane)
+
+1. Make `ViewerSeat` settable (drop `{ get; }` → add `internal set;`
+   or convert to a field with a setter).
+2. In `TryHandleSeatTakeAsync` after `_runtime.TakeSeatAsync` succeeds,
+   set `connection.ViewerSeat = seatIndex` so subsequent snapshots
+   correctly identify the dealer's own hand.
+3. Add a regression test in
+   `tests/Mahjong.Autotable.Api.Tests/Autotable/AutotableWsEndpointTests.cs`
+   (or similar) that asserts the post-take-seat snapshot includes the
+   dealer's `hand.X@0` entries with `face != null` and `rotationIndex=1`
+   for a viewer that took seat 0.
+4. Once the backend ships, I can remove the client-side override in
+   `world.ts` (it'll degrade gracefully — backend ships rotationIndex=1
+   which my override also lands at).
+
+Tagged: `bishop`, `backend-followup`, `frontend-workaround-active`.
+
+## Why this is safe today
+
+- Foreign hands: `slot.seat !== this.seat` ⇒ `isLocalSeatHand=false` ⇒
+  original face-down fallback still runs. **No regression to 4d9e3ce.**
+- Walls: `slot.group === 'wall' !== 'hand'` ⇒ `isLocalSeatHand=false`
+  AND original fallback's `slot.group === 'hand'` check is false ⇒
+  walls trust the backend's rotationIndex=0 (FACE_DOWN). **No
+  regression to 4d9e3ce.**
+- Discards / melds: `slot.group ∈ {discard, meld}` ⇒ both branches skip
+  ⇒ trust the backend.
+- Spectator viewer (`this.seat === null`): `isLocalSeatHand=false`
+  guard ⇒ all hands face-down (correct).
+- Hand-slot rotations are authored `[STANDING, FACE_UP, FACE_DOWN]`
+  identically for `'hand'`, `'hand.3p'`, and `'hand.extra'` (see
+  `setup-slots.ts:106,117,132`) — index 1 is always FACE_UP across
+  every Changsha hand variant. The hard-coded `1` is correct.
+
+## Validation
+
+`E2E_BASE_URL=http://127.0.0.1:8088 node playtest-artifacts/playtest-walls-facedown.spec.mjs`
+— all checks pass:
+
+```
+{
+  "wallCountAtLeast100": true,         //  114 walls
+  "zeroForeignHandFaceUp": true,       //  bots' hands hidden
+  "allWallBackRotation": true,         //  no face-up walls
+  "fourSeatWalls": true,
+  "pickupReachedDealerHand": true,     //  ceremony drove tiles in
+  "localSeatHandFaceUp": true          //  ← NEW: 13/13 dealer tiles at rotationIndex=1
+}
+ALL CHECKS PASSED
+```
+
+Spec extended with a new `localSeatHandFaceUp` gate that asserts
+`>=13` dealer hand tiles have `rotationIndex === 1` (FACE_UP) in the
+post-deal snapshot. Probed: `localSeatRotIdx: [1,1,1,1,1,1,1,1,1,1,1,1,1]`.
+
+Final screenshot: `playtest-artifacts/walls-facedown/04-post-deal.png` —
+seat 0 (bottom of screen) now shows tile faces (suited mahjong tiles)
+instead of yellow backs.
+
+## Lane discipline
+
+Touched only:
+- `src/frontend/autotable-src/src/world.ts` (the fix)
+- `src/frontend/autotable/*` (rebuilt bundle, hashed)
+- `playtest-artifacts/playtest-walls-facedown.spec.mjs` (extended)
+- `.squad/decisions/inbox/hicks-localseat-faceup.md` (this memo)
+- `.squad/agents/hicks/history.md` (appended)
+
+Did NOT touch: backend C#, Frost's dealing branch, Bishop's runtime
+branch, Drake's persistence.
+
