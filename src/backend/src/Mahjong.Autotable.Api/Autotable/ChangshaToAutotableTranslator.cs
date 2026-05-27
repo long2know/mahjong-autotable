@@ -399,12 +399,28 @@ public static class ChangshaToAutotableTranslator
         }
 
         // Wall — remaining tiles. Place them into wall slots in canonical
-        // 14/14/13/13 order. After deal there are 55 wall tiles; before deal
-        // (Seating / RollingDice / Dealing phase) there are 0 (Hands empty)
-        // or 108 (state.Wall holds the full deck). Either way we never
-        // exceed 108 wall slots.
+        // 14/14/13/13 order. After deal there are 55 wall tiles; during the
+        // manual-pickup ceremony there are 108..55 wall tiles depending on
+        // pickup progress. In Seating (before any deal) and RollingDice
+        // (manual: after StartGame, before BeginManualDeal materializes the
+        // shuffled wall) state.Wall is empty.
+        //
+        // Stephen 2026-05-27 face-down-walls directive: the bundle MUST show
+        // four canonical face-down walls from the moment the user connects
+        // through the full pickup ceremony. When the authoritative wall is
+        // empty AND no tiles have been dealt out yet (no hands, no melds,
+        // no discards) we synthesize a 108-tile face-down placement so the
+        // bundle's local "HANDS"-style dealType animation is overridden by
+        // the authoritative snapshot the moment the deal click round-trips
+        // to the server. Tile ids are emitted in canonical order (0..107);
+        // the actual shuffled ordering is materialized later by
+        // BeginManualDeal — at which point state.Wall takes over.
+        var wallTiles = ShouldSynthesizeWall(state)
+            ? Enumerable.Range(0, AutotableSlotMap.TotalTiles)
+            : (IEnumerable<int>)state.Wall;
+
         using var slotEnumerator = AutotableSlotMap.EnumerateWallSlotsInOrder().GetEnumerator();
-        foreach (var tileId in state.Wall)
+        foreach (var tileId in wallTiles)
         {
             if (!slotEnumerator.MoveNext())
             {
@@ -419,6 +435,29 @@ public static class ChangshaToAutotableTranslator
                 AutotableSlotMap.WallSlot(seat, col, layer),
                 WallRotFaceDown);
         }
+    }
+
+    /// <summary>
+    /// True when the authoritative wall is empty but the table has not yet
+    /// distributed any tiles, so the translator should synthesize a 108-tile
+    /// face-down wall placement to keep the four canonical walls visible.
+    /// Gates strictly on <see cref="ChangshaPhase.Seating"/> and
+    /// <see cref="ChangshaPhase.RollingDice"/> — the only two pre-deal phases
+    /// where state.Wall can legitimately be empty. End-of-hand / wall-exhausted
+    /// / game-complete states also have an empty wall but already have hands,
+    /// discards, or melds, so they fall through to the authoritative path.
+    /// </summary>
+    private static bool ShouldSynthesizeWall(ChangshaGameState state)
+    {
+        if (state.Wall.Count != 0) return false;
+        if (state.Phase is not (ChangshaPhase.Seating or ChangshaPhase.RollingDice)) return false;
+        if (state.DiscardPile.Count != 0) return false;
+        foreach (var hand in state.Hands)
+        {
+            if (hand.ConcealedTiles.Count != 0) return false;
+            if (hand.Melds.Count != 0) return false;
+        }
+        return true;
     }
 
     private static CollectionEntry BuildThingEntry(int changshaTileId, string slotName, int rotationIndex)
