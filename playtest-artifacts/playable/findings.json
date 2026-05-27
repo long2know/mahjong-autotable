@@ -1,0 +1,394 @@
+{
+  "url": {
+    "manual": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-playable-1779922923243-36",
+    "auto": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-playable-auto-1779922945824-882"
+  },
+  "steps": [
+    {
+      "name": "M1-load-manual",
+      "ok": true,
+      "result": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-playable-1779922923243-36"
+      }
+    },
+    {
+      "name": "M2-take-seat",
+      "ok": true
+    },
+    {
+      "name": "M3-trigger-deal",
+      "ok": true,
+      "result": {
+        "ok": true,
+        "seat": 0
+      }
+    },
+    {
+      "name": "M4-wait-for-take-button",
+      "ok": true,
+      "result": {
+        "snap": {
+          "seat": 0,
+          "myHand": 15,
+          "myHandFaceUp": 15,
+          "allDiscard": 0,
+          "myDiscard": 0,
+          "phase": "DealerExtra",
+          "pickupSeat": 0,
+          "pickupCount": 1,
+          "claimedByDist": {
+            "undefined": 13,
+            "null": 2
+          },
+          "myHandIds": [
+            8,
+            22,
+            25,
+            35,
+            39,
+            42,
+            56,
+            60,
+            68,
+            74,
+            83,
+            85,
+            107,
+            122,
+            131
+          ],
+          "discardIds": [],
+          "hasExtra": false,
+          "hovered": null,
+          "selected": []
+        },
+        "btnVisible": true
+      }
+    },
+    {
+      "name": "M5-click-take-button",
+      "ok": true,
+      "result": {
+        "ok": true
+      }
+    },
+    {
+      "name": "M5b-settle-take-animation",
+      "ok": true,
+      "result": {
+        "holding": false,
+        "claimedHand": 0,
+        "unclaimedHand": 16,
+        "claimedByDist": {
+          "undefined": 14,
+          "null": 2
+        },
+        "selSelfHand": 2,
+        "pickupPhase": null,
+        "pickupSeat": null,
+        "pickupCount": null
+      }
+    },
+    {
+      "name": "M6-canvas-hover-and-click",
+      "ok": true,
+      "result": {
+        "hoverStateAfterMouseA": {
+          "seat": 0,
+          "myHand": 16,
+          "myHandFaceUp": 16,
+          "allDiscard": 0,
+          "myDiscard": 0,
+          "phase": null,
+          "pickupSeat": null,
+          "pickupCount": null,
+          "claimedByDist": {
+            "undefined": 14,
+            "null": 2
+          },
+          "myHandIds": [
+            8,
+            22,
+            25,
+            35,
+            39,
+            42,
+            56,
+            60,
+            68,
+            74,
+            83,
+            85,
+            87,
+            107,
+            122,
+            131
+          ],
+          "discardIds": [],
+          "hasExtra": true,
+          "hovered": null,
+          "selected": []
+        },
+        "hoverStateAfterMouseB": {
+          "hovered": 131,
+          "selected": []
+        },
+        "clickState": {
+          "seat": 0,
+          "myHand": 16,
+          "myHandFaceUp": 16,
+          "allDiscard": 0,
+          "myDiscard": 0,
+          "phase": null,
+          "pickupSeat": null,
+          "pickupCount": null,
+          "claimedByDist": {
+            "undefined": 14,
+            "null": 2
+          },
+          "myHandIds": [
+            8,
+            22,
+            25,
+            35,
+            39,
+            42,
+            56,
+            60,
+            68,
+            74,
+            83,
+            85,
+            87,
+            107,
+            122,
+            131
+          ],
+          "discardIds": [],
+          "hasExtra": true,
+          "hovered": 131,
+          "selected": []
+        }
+      }
+    },
+    {
+      "name": "M7-direct-api-discard",
+      "ok": true,
+      "result": {
+        "ok": true,
+        "targetId": 122,
+        "hasExtraBefore": true,
+        "dragStart": false,
+        "emitDiscard": true
+      }
+    },
+    {
+      "name": "A1-load-auto",
+      "ok": true,
+      "result": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-playable-auto-1779922945824-882"
+      }
+    },
+    {
+      "name": "A2-take-seat",
+      "ok": true
+    },
+    {
+      "name": "A3-trigger-auto-deal",
+      "ok": true,
+      "result": {
+        "ok": true,
+        "seat": 0
+      }
+    },
+    {
+      "name": "A4-wait-for-auto-deal",
+      "ok": true,
+      "result": {
+        "seat": 0,
+        "myHand": 13,
+        "myHandFaceUp": 0,
+        "allDiscard": 0,
+        "myDiscard": 0,
+        "phase": null,
+        "pickupSeat": null,
+        "pickupCount": null,
+        "claimedByDist": {
+          "null": 13
+        },
+        "myHandIds": [
+          7,
+          41,
+          44,
+          56,
+          57,
+          62,
+          74,
+          88,
+          92,
+          95,
+          106,
+          119,
+          124
+        ],
+        "discardIds": [],
+        "hasExtra": false,
+        "hovered": null,
+        "selected": []
+      }
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0x13e40015da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x13e40015da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x13e40015da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x13e40015da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+    "autotable: skipped stale moveTo 108 -> wall.4.0@3 (occupant=90)",
+    "autotable: skipped stale moveTo 108 -> wall.4.0@3 (occupant=90)",
+    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=98)",
+    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=28)",
+    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=5)",
+    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=24)",
+    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=21)",
+    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=62)",
+    "autotable: skipped stale moveTo 108 -> wall.7.1@2 (occupant=71)",
+    "autotable: skipped stale moveTo 108 -> wall.7.1@2 (occupant=71)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-1779922923243-36",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-1779922923243-36/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-auto-1779922945824-882",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-auto-1779922945824-882/settings"
+  ],
+  "gates": {
+    "G1_setup": {
+      "status": "PASS",
+      "detail": {
+        "handCount": 15,
+        "takeButtonVisible": true,
+        "phase": "DealerExtra"
+      }
+    },
+    "G2_takeButton": {
+      "status": "PASS",
+      "detail": {
+        "preTakeHand": 15,
+        "postTakeHand": 16,
+        "phase": null,
+        "awaitingDiscardish": false,
+        "hasExtraHandTile": true
+      }
+    },
+    "G3_selectUI": {
+      "status": "PASS",
+      "detail": {
+        "targetId": 131,
+        "projection": {
+          "ok": true,
+          "targetId": 131,
+          "targetSlotName": "hand.5@0",
+          "rotationIndex": 1,
+          "selectableCount": 2,
+          "worldPos": {
+            "x": 79,
+            "y": 4.5,
+            "z": 2
+          },
+          "size": {
+            "x": 6,
+            "y": 9,
+            "z": 4
+          },
+          "ndc": {
+            "x": -0.08218921471198466,
+            "y": -0.7305519038223152
+          },
+          "rect": {
+            "left": 40,
+            "top": 0,
+            "w": 1200,
+            "h": 800
+          },
+          "offsetX": 550.6864711728092,
+          "offsetY": 692.2207615289261,
+          "clientX": 590.6864711728092,
+          "clientY": 692.2207615289261
+        },
+        "hoveredAfterPlaywrightMove": null,
+        "hoveredAfterSyntheticMove": 131,
+        "hoveredAfterClick": 131,
+        "hoverOnTarget": true,
+        "notes": null
+      }
+    },
+    "G4_discard": {
+      "status": "FAIL",
+      "detail": {
+        "preDiscardHand": 16,
+        "prePhase": null,
+        "postClickHand": 16,
+        "postClickDiscardPile": 0,
+        "directApiAttempted": true,
+        "directApiOk": false,
+        "postDirectApiHand": 16,
+        "postDirectApiDiscardPile": 0,
+        "moveLogTail": [
+          "[16:02:11] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
+          "[16:02:12] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
+          "[16:02:12] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
+          "[16:02:12] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+          "[16:02:13] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+          "[16:02:13] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+          "[16:02:14] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+          "[16:02:16] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)"
+        ],
+        "sawDiscardInLog": false,
+        "notes": "Discard round-trip FAILED. Front-end emitDiscard returned true (see M7 result) — `client.discard.set(seat, {tileId})` did push a WS payload. Backend never echoed a `things` UPDATE moving the tile to a `discard.*@N` slot; move-log shows NO discard entry. Pre-discard pickup phase was \"null\". Bishop should check: (1) does AutotableWsEndpoint.TryHandleDiscardActionAsync trigger when pickup state has just cleared DealerExtra without yet flipping to AwaitingDiscard? (2) does ApplyChangshaPickupCompletionAsync transition to AwaitingDiscard for the dealer's seat after dealerExtra take? Repro: run this spec headless, watch `pickup.phase` move DealerExtra → null at the take-button click but NEVER advance to inPlay/AwaitingDiscard. The dealer is stranded with 14 tiles and no valid action."
+      }
+    },
+    "G5_autoDealFaceUp": {
+      "status": "PASS",
+      "detail": {
+        "seat": 0,
+        "handCount": 14,
+        "handFaceUp": 14,
+        "phase": null,
+        "notes": null
+      }
+    }
+  },
+  "moveLog": [
+    "[16:02:03] System::  Match started — dealer is Seat 0",
+    "[16:02:09] System::  Dice rolled: 4 + 4 = 8",
+    "[16:02:09] Seat 0 (Seat 0)::  break-point marked @ col [object Object]",
+    "[16:02:09] Seat 1 (Bot 1)::  picking 4 tiles (round 1)",
+    "[16:02:10] Seat 2 (Bot 2)::  picking 4 tiles (round 1)",
+    "[16:02:10] Seat 3 (Bot 3)::  picking 4 tiles (round 1)",
+    "[16:02:11] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
+    "[16:02:11] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
+    "[16:02:12] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
+    "[16:02:12] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
+    "[16:02:12] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+    "[16:02:13] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+    "[16:02:13] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+    "[16:02:14] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+    "[16:02:16] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)"
+  ],
+  "summary": {
+    "G1_setup": "PASS",
+    "G2_takeButton": "PASS",
+    "G3_selectUI": "PASS",
+    "G4_discard": "FAIL",
+    "G5_autoDealFaceUp": "PASS"
+  },
+  "pageErrorsCount": 0
+}
