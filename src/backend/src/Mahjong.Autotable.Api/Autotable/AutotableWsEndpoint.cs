@@ -654,10 +654,16 @@ public sealed class AutotableConnectionManager : IDisposable
     private async Task TryHandleClaimActionAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         if (entry.Value is null) return;
+        // Vasquez tile-interaction G4 root-cause defence — also accept `double` keys
+        // so a bundle that sends a JS-native numeric seat (always serialised as a
+        // JSON number, sometimes routed through the protocol's `double` fallback)
+        // is parsed instead of being silently dropped. See
+        // `CollectionEntryJsonConverter.Read` for the upstream parse rules.
         var seatIndex = entry.Key switch
         {
             long l => (int)l,
             int i => i,
+            double d => (int)d,
             string s when int.TryParse(s, out var p) => p,
             _ => -1
         };
@@ -805,10 +811,18 @@ public sealed class AutotableConnectionManager : IDisposable
         if (!_runtimeBinding.TryGetValue(connection.GameId!, out var runtimeGameId)) return;
 
         // Seat: prefer explicit key (an int seat), fall back to "seatIndex" prop.
+        // Vasquez tile-interaction G4 root-cause defence — accept `double` keys
+        // alongside `long` / `int`. Pre-fix the discard handler only matched
+        // integer types and silently dropped pushes whose key was boxed as
+        // `double` by the protocol parser (which prior to the W4-followup fix in
+        // `CollectionEntryJsonConverter.Read` could happen for any integer-valued
+        // key). Without this case the dealer's `["discard", 0, …]` push was
+        // rejected as a bad seat and the runtime never saw the discard.
         var seatIndex = entry.Key switch
         {
             long l => (int)l,
             int i => i,
+            double d => (int)d,
             string s when int.TryParse(s, out var p) => p,
             _ => -1
         };

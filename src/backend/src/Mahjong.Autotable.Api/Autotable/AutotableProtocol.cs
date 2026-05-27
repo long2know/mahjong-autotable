@@ -450,10 +450,18 @@ internal sealed class CollectionEntryJsonConverter : JsonConverter<CollectionEnt
         var kind = reader.GetString() ?? throw new JsonException("CollectionEntry.kind must be a string.");
 
         reader.Read();
+        // NB: explicit `(object)` casts on both branches prevent C# from unifying
+        // `long` and `double` to `double` via implicit conversion. Without them the
+        // conditional expression's static type is `double`, so even when
+        // `TryGetInt64` succeeds the boxed `entry.Key` is a `Double` — silently
+        // breaking every downstream `entry.Key is long` / `is int` pattern match
+        // (notably `TryHandleDiscardActionAsync` / `TryHandleClaimActionAsync`,
+        // which would then read `Double 0.0`, fall through every case, and reject
+        // the action as a bad seat).
         object key = reader.TokenType switch
         {
             JsonTokenType.String => reader.GetString()!,
-            JsonTokenType.Number => reader.TryGetInt64(out var l) ? l : reader.GetDouble(),
+            JsonTokenType.Number => reader.TryGetInt64(out var l) ? (object)l : (object)reader.GetDouble(),
             _ => throw new JsonException("CollectionEntry.key must be string or number.")
         };
 
