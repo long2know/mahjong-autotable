@@ -164,3 +164,52 @@ trunk), no frontend.
 1. `botDifficulty` query string is parsed but `ChangshaGameRuntime`
    always uses Medium — Bishop should wire it through.
 2. Replay storage deferred to wave 4 per directive.
+
+### 2026-07-27 — PR `feat/changsha-dealing-ceremony` — Pure-function dealing ceremony rule engine
+
+**Third ship.** Per Stephen's `copilot-directive-2026-05-27T2127Z-face-down-walls.md`,
+shipped a pure-function rule engine for the Changsha 抓牌 ceremony as a sibling
+to Bishop's runtime-side state machine. Lives entirely under
+`src/backend/src/Mahjong.Autotable.Api/Changsha/Dealing/` — does NOT touch the
+runtime, the SignalR endpoint, the translator, or the domain.
+
+**Files added (NEW only):**
+- `Changsha/Dealing/ChangshaDealingCeremony.cs` — public static API
+  (`Start`, `ApplyDiceRoll`, `ValidateAndApplyPickup`, `ComputeStartingWall`,
+  `ComputeBreakIndex`, `ExpectedPickupCount`) + immutable
+  `ChangshaDealingState` (DealerSeat, DiceRoll, StartingWall, BreakIndex,
+  CurrentPickerSeat, TilesTakenThisRound, RoundIndex, HandSizes, Phase) +
+  `ChangshaDealingResult` (Valid, RejectReason, NewState, TilesPickedUp) +
+  `ChangshaDealingPhase` enum (WaitingForDice/PickingFour/PickingOne/
+  DealerExtra/Complete).
+- `tests/.../Changsha/Dealing/ChangshaDealingCeremonyTests.cs` — 28 test
+  methods expanding to 76 xunit cases via Theories. Covers every dice sum
+  (2..12), every dealer (0..3), every phase transition, every reject path,
+  plus a combinatorial full-deal smoke.
+
+**Lane discipline:** Per the directive, I touched ONLY new files under
+`Changsha/Dealing/**`. Did not touch `Changsha/Runtime/**`,
+`AutotableWsEndpoint.cs`, `ChangshaToAutotableTranslator.cs`,
+`ChangshaDomain.cs`, `Changsha/Scoring/**`, persistence, migrations, or
+frontend.
+
+**Workspace hazard during this ship:** another agent ran branch switches
+that clobbered my untracked working files mid-flight. Recovered by writing
+content into `.work/` (which survives branch switches better than
+working-tree files) and doing all git ops under flock. Committed
+immediately after writing files to make subsequent clobbers harmless.
+
+**Integration contract:** documented in `.squad/decisions/inbox/frost-changsha-dealing-ceremony.md`.
+Bishop's runtime must call: `Start(dealer)` at game start (manual mode),
+`ApplyDiceRoll(state, dice)` on dice action, and
+`ValidateAndApplyPickup(state, seat, count)` on each pickup. Runtime owns
+tile-id assignment from wall slots; the ceremony only computes turn order
++ counts + phase.
+
+**Test count:** baseline 5145 + 76 new = 5221 expected; actual 5223 (includes
+2 from other intervening merges), 5220 pass / 1 pre-existing W9 cron fail / 2
+skipped.
+
+**Commits:**
+- Feature branch: `feat/changsha-dealing-ceremony` → `15fa72d`
+- Squash-merged to main as `85b8ed6`
