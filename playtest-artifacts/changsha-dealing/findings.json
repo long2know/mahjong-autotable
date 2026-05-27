@@ -1,0 +1,1066 @@
+{
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-gate-c616407-worktree",
+  "gameId": "vasquez-gate-c616407-worktree",
+  "variant": "changsha",
+  "dealMode": "manual",
+  "botCount": 3,
+  "steps": [
+    {
+      "name": "1-load",
+      "ok": true,
+      "result": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-gate-c616407-worktree"
+      }
+    },
+    {
+      "name": "2-dismiss-tour",
+      "ok": true
+    },
+    {
+      "name": "3-close-lobby",
+      "ok": true
+    },
+    {
+      "name": "4-connect",
+      "ok": true,
+      "result": {
+        "connected": true
+      }
+    },
+    {
+      "name": "5-take-seat",
+      "ok": true,
+      "result": {
+        "ourSeat": 0
+      }
+    },
+    {
+      "name": "6-walls-only-snapshot",
+      "ok": true,
+      "result": {
+        "thingsTotal": 197,
+        "wallStacksBySeat": {
+          "0": 19,
+          "1": 19,
+          "2": 19,
+          "3": 18
+        },
+        "wallTilesBySeat": {
+          "0": 33,
+          "1": 36,
+          "2": 33,
+          "3": 34
+        },
+        "wallTilesFaceUpCount": 0,
+        "handTilesBySeat": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "diceEntry": null,
+        "pickupEntry": null
+      }
+    },
+    {
+      "name": "6b-fire-deal",
+      "ok": true,
+      "result": {
+        "fire": {
+          "ok": true
+        },
+        "postDeal": {
+          "thingsByPrefix": {
+            "hand": 28,
+            "wall": 108,
+            "marker": 1,
+            "tray": 60
+          },
+          "dice": {
+            "dice": [
+              5,
+              2
+            ],
+            "state": "rolled"
+          },
+          "pickup": {
+            "phase": "PickupRound2",
+            "seatIndex": 1,
+            "count": 4,
+            "dealMode": "manual",
+            "breakPoint": {
+              "wallIndex": 2,
+              "stackIndex": 7,
+              "tileIndex": 68
+            },
+            "wallIndex": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "7-roll-dice",
+      "ok": true,
+      "result": {
+        "emit": {
+          "ok": true,
+          "via": "world.emitRollDice"
+        },
+        "dice": {
+          "dice": [
+            5,
+            2
+          ],
+          "state": "rolled"
+        },
+        "pickup": {
+          "phase": "PickupRound3",
+          "seatIndex": 3,
+          "count": 4,
+          "dealMode": "manual",
+          "breakPoint": {
+            "wallIndex": 2,
+            "stackIndex": 7,
+            "tileIndex": 68
+          },
+          "wallIndex": 0
+        }
+      }
+    },
+    {
+      "name": "8-drive-three-rounds-of-four",
+      "ok": true,
+      "result": {
+        "iterations": 48,
+        "finalHandsBySeat": {
+          "0": 15,
+          "1": 15,
+          "2": 18,
+          "3": 13
+        }
+      }
+    },
+    {
+      "name": "9-single-tile-round",
+      "ok": true,
+      "result": {
+        "handTilesBySeat": {
+          "0": 15,
+          "1": 15,
+          "2": 18,
+          "3": 13
+        },
+        "pickupEntry": null
+      }
+    },
+    {
+      "name": "10-dealer-extra",
+      "ok": true,
+      "result": {
+        "handTilesBySeat": {
+          "0": 15,
+          "1": 15,
+          "2": 18,
+          "3": 13
+        },
+        "pickupEntry": null
+      }
+    }
+  ],
+  "gates": {
+    "GATE-1-wall-count-eq-4": {
+      "ok": true,
+      "detail": {
+        "seatsWithWall": 4,
+        "wallStacksBySeat": {
+          "0": 19,
+          "1": 19,
+          "2": 19,
+          "3": 18
+        },
+        "totalWallTiles": 136,
+        "canonicalChangshaStacks": false,
+        "canonicalChangshaTotal108": false
+      }
+    },
+    "GATE-2-walls-all-face-down": {
+      "ok": true,
+      "detail": {
+        "faceDownCount": 136,
+        "faceUpCount": 0,
+        "sampleFaceUp": []
+      }
+    },
+    "GATE-3-no-hand-tiles-visible": {
+      "ok": true,
+      "detail": {
+        "handTilesBySeat": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "handTilesFaceUpBySeat": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0
+        }
+      }
+    },
+    "GATE-4-dice-not-yet-rolled": {
+      "ok": true,
+      "detail": {
+        "dice": null,
+        "diceRolled": false
+      }
+    },
+    "GATE-5-twelve-tiles-after-3-rounds": {
+      "ok": false,
+      "detail": {
+        "handsBySeat": {
+          "0": 15,
+          "1": 15,
+          "2": 18,
+          "3": 13
+        },
+        "totalHands": 61,
+        "expected": "either {12,12,12,12} or {14,13,13,13}",
+        "intermediateReached": false,
+        "finalDealReached": false
+      }
+    },
+    "GATE-6-zero-page-errors": {
+      "ok": true,
+      "detail": {
+        "count": 0,
+        "sample": []
+      }
+    }
+  },
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0x2c8c0015e600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2c8c0015e600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2c8c0015e600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x2c8c0015e600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+    "autotable: skipped stale moveTo 108 -> wall.6.1@1 (occupant=53)",
+    "autotable: skipped stale moveTo 108 -> wall.6.1@1 (occupant=89)",
+    "autotable: skipped stale moveTo 108 -> wall.6.1@1 (occupant=49)",
+    "autotable: skipped stale moveTo 108 -> wall.6.1@1 (occupant=63)",
+    "autotable: skipped stale moveTo 108 -> wall.6.1@1 (occupant=22)",
+    "autotable: skipped stale moveTo 108 -> wall.6.1@1 (occupant=67)",
+    "autotable: skipped stale moveTo 108 -> wall.6.1@1 (occupant=77)",
+    "autotable: skipped stale moveTo 108 -> wall.6.1@1 (occupant=9)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-gate-c616407-worktree",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-gate-c616407-worktree/settings"
+  ],
+  "collections": {
+    "match": 1,
+    "seats": 7,
+    "things": 197,
+    "nicks": 7,
+    "mouse": 0,
+    "sound": 0,
+    "dice": 1,
+    "claim": 0,
+    "result": 0,
+    "pickup": 0,
+    "discard": 0,
+    "gameComplete": 0
+  },
+  "wallTopology": {
+    "seat": 0,
+    "connected": true,
+    "thingsTotal": 197,
+    "wallTilesBySeat": {
+      "0": 33,
+      "1": 36,
+      "2": 33,
+      "3": 34
+    },
+    "wallTilesFaceUp": [],
+    "wallTilesFaceDown": 136,
+    "wallStacksBySeat": {
+      "0": 19,
+      "1": 19,
+      "2": 19,
+      "3": 18
+    },
+    "handTilesBySeat": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0
+    },
+    "handTilesFaceUpBySeat": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0
+    },
+    "discardTilesBySeat": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0
+    },
+    "meldTilesBySeat": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0
+    },
+    "thingsByPrefix": {
+      "wall": 136,
+      "marker": 1,
+      "tray": 60
+    },
+    "diceEntry": null,
+    "pickupEntry": null,
+    "matchEntry": {
+      "dealer": 0,
+      "honba": 0,
+      "conditions": {
+        "gameType": "FOUR_PLAYER",
+        "back": 0,
+        "fives": "000",
+        "points": "25",
+        "dealType": "INITIAL"
+      }
+    }
+  },
+  "handProgression": [
+    {
+      "iter": 0,
+      "atMs": 31,
+      "handsTotal": 52,
+      "handsBySeat": {
+        "0": 13,
+        "1": 14,
+        "2": 17,
+        "3": 8
+      },
+      "wallTotal": 84,
+      "pickupEntry": {
+        "phase": "PickupRound3",
+        "seatIndex": 3,
+        "count": 4,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
+        },
+        "wallIndex": 0
+      }
+    },
+    {
+      "iter": 1,
+      "atMs": 1130,
+      "handsTotal": 58,
+      "handsBySeat": {
+        "0": 14,
+        "1": 15,
+        "2": 17,
+        "3": 12
+      },
+      "wallTotal": 78,
+      "pickupEntry": {
+        "phase": "SingleTilePickup",
+        "seatIndex": 2,
+        "count": 1,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
+        },
+        "wallIndex": 0
+      }
+    },
+    {
+      "iter": 2,
+      "atMs": 1746,
+      "handsTotal": 59,
+      "handsBySeat": {
+        "0": 14,
+        "1": 15,
+        "2": 18,
+        "3": 12
+      },
+      "wallTotal": 77,
+      "pickupEntry": {
+        "phase": "SingleTilePickup",
+        "seatIndex": 3,
+        "count": 1,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
+        },
+        "wallIndex": 0
+      }
+    },
+    {
+      "iter": 3,
+      "atMs": 2393,
+      "handsTotal": 60,
+      "handsBySeat": {
+        "0": 14,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 76,
+      "pickupEntry": {
+        "phase": "DealerExtra",
+        "seatIndex": 0,
+        "count": 1,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
+        },
+        "wallIndex": 0
+      }
+    },
+    {
+      "iter": 4,
+      "atMs": 3010,
+      "handsTotal": 60,
+      "handsBySeat": {
+        "0": 14,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 76,
+      "pickupEntry": {
+        "phase": "DealerExtra",
+        "seatIndex": 0,
+        "count": 1,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
+        },
+        "wallIndex": 0
+      }
+    },
+    {
+      "iter": 5,
+      "atMs": 3646,
+      "handsTotal": 60,
+      "handsBySeat": {
+        "0": 14,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 76,
+      "pickupEntry": {
+        "phase": "DealerExtra",
+        "seatIndex": 0,
+        "count": 1,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
+        },
+        "wallIndex": 0
+      }
+    },
+    {
+      "iter": 6,
+      "atMs": 4299,
+      "handsTotal": 60,
+      "handsBySeat": {
+        "0": 14,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 76,
+      "pickupEntry": {
+        "phase": "DealerExtra",
+        "seatIndex": 0,
+        "count": 1,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
+        },
+        "wallIndex": 0
+      }
+    },
+    {
+      "iter": 7,
+      "atMs": 4966,
+      "handsTotal": 60,
+      "handsBySeat": {
+        "0": 14,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 76,
+      "pickupEntry": {
+        "phase": "DealerExtra",
+        "seatIndex": 0,
+        "count": 1,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 2,
+          "stackIndex": 7,
+          "tileIndex": 68
+        },
+        "wallIndex": 0
+      },
+      "stalled": true,
+      "fallbackPush": {
+        "seatIndex": 0,
+        "count": 1
+      }
+    },
+    {
+      "iter": 8,
+      "atMs": 5853,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 9,
+      "atMs": 6533,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 10,
+      "atMs": 7174,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 11,
+      "atMs": 7791,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 12,
+      "atMs": 8414,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 13,
+      "atMs": 9044,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 14,
+      "atMs": 9650,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 15,
+      "atMs": 10259,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 16,
+      "atMs": 10918,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 17,
+      "atMs": 11574,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 18,
+      "atMs": 12239,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 19,
+      "atMs": 12916,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 20,
+      "atMs": 13554,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 21,
+      "atMs": 14264,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 22,
+      "atMs": 14873,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 23,
+      "atMs": 15485,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 24,
+      "atMs": 16125,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 25,
+      "atMs": 16757,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 26,
+      "atMs": 17381,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 27,
+      "atMs": 18006,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 28,
+      "atMs": 18620,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 29,
+      "atMs": 19233,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 30,
+      "atMs": 19839,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 31,
+      "atMs": 20467,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 32,
+      "atMs": 21095,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 33,
+      "atMs": 21728,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 34,
+      "atMs": 22334,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 35,
+      "atMs": 22948,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 36,
+      "atMs": 23577,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 37,
+      "atMs": 24217,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 38,
+      "atMs": 24825,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 39,
+      "atMs": 25451,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 40,
+      "atMs": 26080,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 41,
+      "atMs": 26705,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 42,
+      "atMs": 27329,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 43,
+      "atMs": 27961,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 44,
+      "atMs": 28575,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 45,
+      "atMs": 29179,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 46,
+      "atMs": 29794,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    },
+    {
+      "iter": 47,
+      "atMs": 30423,
+      "handsTotal": 61,
+      "handsBySeat": {
+        "0": 15,
+        "1": 15,
+        "2": 18,
+        "3": 13
+      },
+      "wallTotal": 75,
+      "pickupEntry": null
+    }
+  ],
+  "diceState": {
+    "dice": [
+      5,
+      2
+    ],
+    "state": "rolled"
+  }
+}

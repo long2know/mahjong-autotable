@@ -2990,3 +2990,150 @@ branch.
 - **Bishop**: wire `connection.DealMode → state.DealMode` in `StartGameAsync` or `CreateGameAsync`, and either add an `ackDeal` WS collection route OR make the deal-ack implicit on first `things` consume by the human seat.
 - **Hicks**: shipping `world.emitDiscard(tileId)` that calls `client.update([['discard', String(this.seat), { tileId }]])` is the minimum-viable frontend wiring for human discards. Backend route already exists.
 - **All**: the synthetic-Hu pattern is now an established harness primitive; reuse it for any "did the modal/event surface render" smoke test.
+
+## 2026-05-27 — Changsha dealing-ceremony visual gate (Stephen W24)
+
+**Branch:** `test/visual-gate-walls-facedown`
+**Base:** main @ `c616407` (post db-providers fix)
+**Task:** Build a Playwright visual gate that would have caught Stephen's
+2026-05-27T21:27Z regression where Changsha walls rendered face-up +
+scattered rather than the canonical four face-down walls. Document the
+gap, ship the gate, capture the c616407 baseline (expected to fail),
+and promote the gate to the team's "playable" definition.
+
+**Deliverable:**
+- `playtest-artifacts/playtest-changsha-dealing-ceremony.spec.mjs` (NEW, 360 LOC)
+- `playtest-artifacts/changsha-dealing/` (NEW screenshots dir + findings.json)
+- `docs/playable-gates.md` (NEW — codified gate policy)
+- `.squad/decisions/inbox/vasquez-changsha-dealing-ceremony-gate.md` (memo)
+- This history entry (force-added per `.squad/decisions.md` history-include rule)
+
+### The gap
+
+`playtest-human-led.spec.mjs` was the most-recent "Changsha plays" gate.
+It returned **14/14 OK** against c616407 even though Stephen's screenshot
+showed face-up tiles + scattered walls. Why: the spec drove
+`world.deal('HANDS')` and then counted `postDealHandSize.handTileCount`
+on the SELF seat only. It never asserted:
+
+1. Wall tiles are face-down (`face === null`).
+2. Exactly 4 walls present, one per seat.
+3. No hand tiles visible pre-deal.
+4. Dice not yet rolled pre-deal.
+5. Pickup ceremony reaches canonical 14/13/13/13 at completion.
+6. Zero JS errors during the ceremony.
+
+The new spec asserts all six (GATE-1..GATE-6). Exit code 0 on a clean
+ceremony; non-zero on any gate failure so CI can wire it in directly.
+
+### Spec architecture
+
+- **probeState()** runs in the page and walks `client.things` /
+  `client.dice` / `client.pickup` / `client.match` collections to build
+  a structured snapshot: wall tiles per seat, wall stack count per seat,
+  hand tiles per seat (and per-seat face-up count), discard/meld counts,
+  dice entry, pickup affordance entry.
+- The probe parses `slotName` with `/^(\w+)\.(\d+)(?:\.(\d+))?@(\d)$/`
+  so wall.13.1@2 → group=wall, col=13, layer=1, seat=2. This is the
+  authoritative mapping per `AutotableSlotMap.cs` §1.
+- **Step 6b** fires `world.deal('HANDS')` to actually drive the runtime
+  out of Seating phase. The walls-only snapshot at step 6 runs BEFORE
+  this — that's the canonical "post-connect, pre-deal" gate state.
+- **Step 8** is observational rather than driving: with Hicks PR #88
+  the `driveManualDealChain` auto-emits `pickup[rollDice]` + 4× takes
+  for the dealer's seat, and bot AI auto-takes for the other 3 seats.
+  Pushing explicit takes (as the directive's first-pass spec did) would
+  double-fire and over-distribute. The current loop polls hand counts
+  + pickup affordance for 30s and only falls back to a manual push
+  when the chain stalls for ≥4 ticks (~2.4s) AND the affordance shows
+  a pending take. This handles both the post-Hicks-fix
+  (chain auto-drives) and the pre-fix (chain broken — manual push lets
+  us see whether the runtime would have progressed) cases.
+- **Baseline screenshot copy** automatically captures the most-
+  informative artifact (final-deal screenshot showing the regression)
+  whenever any gate fails AND `PLAYTEST_POST_FIX` isn't set.
+
+### c616407 baseline (Task B — expected failure captured)
+
+```
+✅ GATE-1-wall-count-eq-4
+✅ GATE-2-walls-all-face-down (136 face-down, 0 face-up)
+✅ GATE-3-no-hand-tiles-visible
+✅ GATE-4-dice-not-yet-rolled
+❌ GATE-5-twelve-tiles-after-3-rounds: hands {0:17, 1:15, 2:18, 3:15}, total 65, expected 48 or 53
+✅ GATE-6-zero-page-errors
+```
+
+Plus informational diagnostics on GATE-1:
+- `wallStacksBySeat: {0:19, 1:19, 2:19, 3:18}` — NOT the canonical
+  Changsha 14/14/13/13 contract from `AutotableSlotMap.WallStackCount`.
+- `totalWallTiles: 136` — the FOUR_PLAYER 136-tile deck, NOT the
+  Changsha 108-tile deck.
+- `canonicalChangshaStacks: false`
+- `canonicalChangshaTotal108: false`
+
+Confirms Stephen's regression: the backend is emitting the full
+136-tile FOUR_PLAYER wall layout for Changsha sessions, and the chain
+over-distributes tiles past the canonical 14/13/13/13 final state.
+
+Baseline screenshot: `playtest-artifacts/changsha-dealing/baseline-before-fix.png`.
+
+### Findings for the implementation lanes
+
+1. **Bishop lane** — `ChangshaToAutotableTranslator.BuildWallEntries`
+   appears to emit FOUR_PLAYER-shape entries even when the runtime is
+   in CHANGSHA mode (136 tiles in 19-col layout vs the locked
+   14/14/13/13 contract from `AutotableSlotMap`). Cross-check the
+   condition-derived gameType + the actual slot fills.
+
+2. **Hicks lane** — `driveManualDealChain` (PR #88) is racing with the
+   bot-AI takes on seats 1/2/3. The chain doesn't gate against
+   already-completed picks. Symptom: seats end at 15-18 tiles each
+   instead of 13.
+
+3. **Frost lane** — bot strategy may be over-eager on the take-phase,
+   firing takes that the chain has already issued. Consider gating
+   bot autoplay until the chain reports `phase: 'inPlay'`.
+
+### Backend run recipe (refresh of W23 recipe)
+
+The previously-shipped backend on port 8088 had been running 1d 20h
+with a stale binary (process started before May 27 dll rebuild;
+mapped dll showed `(deleted)`). Killed it and restarted from the
+project directory so `ContentRootPath` resolves correctly for the
+static-files mount at `/autotable`:
+
+```bash
+cd src/backend/src/Mahjong.Autotable.Api
+ASPNETCORE_URLS=http://0.0.0.0:8088 ASPNETCORE_ENVIRONMENT=Development \
+  dotnet bin/Debug/net10.0/Mahjong.Autotable.Api.dll &
+```
+
+**Recipe trap recorded**: starting the backend from the repo root
+puts ContentRootPath at the repo root and `Program.cs:1237`'s
+`../../../frontend/autotable` walks outside the repo → all
+`/autotable/*` requests 404. Future agents: always start from the
+project directory.
+
+### Maintenance notes for next agent
+
+- Run the gate with `PLAYTEST_POST_FIX=1` after Bishop+Hicks+Frost
+  merge to suppress the baseline copy and confirm post-fix green
+  state.
+- Bumping the chain budget (`budgetMs = 30_000` in step 8) is the
+  only acceptable relaxation if a future legitimate change makes
+  the ceremony take longer. **Never weaken the gate criteria.**
+- `wallTilesFaceUp` (the list of `{tileId, slot, face}`) is the
+  diagnostic field to inspect if GATE-2 ever regresses again —
+  it pinpoints the specific tiles whose face value leaked.
+- The spec's URL fingerprint matches Stephen's directive verbatim:
+  `?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4`.
+  Any change to the URL contract requires re-baselining.
+
+### Skill candidate
+
+The probe + structured-gate + auto-baseline-on-failure pattern
+generalises to any "visual contract enforcement" use case for
+client-side state. Recommend filing as
+`.squad/skills/visual-state-gate-playwright/` if a second feature
+(claim window, win modal, scoring panel) needs the same pattern.
