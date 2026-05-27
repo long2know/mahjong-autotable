@@ -289,6 +289,20 @@ public static class DatabaseBootstrapper
 
             await using (var createStats = connection.CreateCommand())
             {
+                // Drake (backend hotfix, 2026-05-27) — LastGameAt MUST be NULL.
+                // The PlayerStats EF model declares it as `DateTime?`
+                // (Players/PlayerStats.cs L18) and every EF migration +
+                // model snapshot agrees: nullable. An earlier revision of
+                // this bootstrap declared it `NOT NULL DEFAULT '0001-01-01
+                // 00:00:00'`, which silently shadowed the model on any
+                // pre-PlayerStats dev SQLite DB where EnsureCreatedAsync
+                // was a no-op and the CREATE-IF-NOT-EXISTS pass was the
+                // only thing landing the table. The result was a runtime
+                // SqliteException 19 — "NOT NULL constraint failed:
+                // PlayerStats.LastGameAt" — the first time a brand-new
+                // profile got upserted (PlayerProfileService writes a
+                // fresh PlayerStats row with LastGameAt=null until the
+                // player completes their first game).
                 createStats.CommandText = """
                     CREATE TABLE IF NOT EXISTS "PlayerStats" (
                         "PlayerId" TEXT NOT NULL CONSTRAINT "PK_PlayerStats" PRIMARY KEY,
@@ -298,11 +312,73 @@ public static class DatabaseBootstrapper
                         "HighestSingleGameScore" INTEGER NOT NULL DEFAULT 0,
                         "LongestWinStreak" INTEGER NOT NULL DEFAULT 0,
                         "CurrentWinStreak" INTEGER NOT NULL DEFAULT 0,
-                        "LastGameAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00',
+                        "LastGameAt" TEXT NULL,
                         CONSTRAINT "FK_PlayerStats_PlayerProfiles_PlayerId" FOREIGN KEY ("PlayerId") REFERENCES "PlayerProfiles" ("PlayerId") ON DELETE CASCADE
                     );
                     """;
                 await createStats.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Drake (backend hotfix, 2026-05-27) — remediation pass for
+            // dev SQLite DBs that already had the buggy CREATE applied
+            // (LastGameAt NOT NULL DEFAULT '0001-01-01 00:00:00'). SQLite
+            // doesn't support ALTER COLUMN DROP NOT NULL, so we detect the
+            // bad column via PRAGMA table_info and rebuild the table with
+            // the SQLite-recommended table-rebuild pattern. Sentinel
+            // '0001-01-01 00:00:00' values get mapped back to NULL on the
+            // way through. Fresh-create DBs (which already land on the
+            // correct nullable shape via EnsureCreatedAsync or the fixed
+            // CREATE above) skip the rebuild entirely.
+            var lastGameAtIsNotNull = false;
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA table_info(\"PlayerStats\");";
+                await using var reader = await pragma.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var name = reader.GetString(1);
+                    if (string.Equals(name, "LastGameAt", StringComparison.Ordinal))
+                    {
+                        // PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
+                        lastGameAtIsNotNull = reader.GetInt32(3) != 0;
+                        break;
+                    }
+                }
+            }
+            if (lastGameAtIsNotNull)
+            {
+                await using var rebuild = connection.CreateCommand();
+                rebuild.CommandText = """
+                    PRAGMA foreign_keys = OFF;
+                    BEGIN TRANSACTION;
+                    CREATE TABLE "PlayerStats_new" (
+                        "PlayerId" TEXT NOT NULL CONSTRAINT "PK_PlayerStats" PRIMARY KEY,
+                        "GamesPlayed" INTEGER NOT NULL DEFAULT 0,
+                        "GamesWon" INTEGER NOT NULL DEFAULT 0,
+                        "TotalScore" INTEGER NOT NULL DEFAULT 0,
+                        "HighestSingleGameScore" INTEGER NOT NULL DEFAULT 0,
+                        "LongestWinStreak" INTEGER NOT NULL DEFAULT 0,
+                        "CurrentWinStreak" INTEGER NOT NULL DEFAULT 0,
+                        "LastGameAt" TEXT NULL,
+                        CONSTRAINT "FK_PlayerStats_PlayerProfiles_PlayerId" FOREIGN KEY ("PlayerId") REFERENCES "PlayerProfiles" ("PlayerId") ON DELETE CASCADE
+                    );
+                    INSERT INTO "PlayerStats_new" (
+                        "PlayerId", "GamesPlayed", "GamesWon", "TotalScore",
+                        "HighestSingleGameScore", "LongestWinStreak",
+                        "CurrentWinStreak", "LastGameAt"
+                    )
+                    SELECT
+                        "PlayerId", "GamesPlayed", "GamesWon", "TotalScore",
+                        "HighestSingleGameScore", "LongestWinStreak",
+                        "CurrentWinStreak",
+                        CASE WHEN "LastGameAt" = '0001-01-01 00:00:00' THEN NULL ELSE "LastGameAt" END
+                    FROM "PlayerStats";
+                    DROP TABLE "PlayerStats";
+                    ALTER TABLE "PlayerStats_new" RENAME TO "PlayerStats";
+                    COMMIT;
+                    PRAGMA foreign_keys = ON;
+                    """;
+                await rebuild.ExecuteNonQueryAsync(cancellationToken);
             }
         }
         finally
