@@ -96,6 +96,34 @@ public sealed class MissedWinLockTests
     }
 
     [Fact]
+    public void IsLockedOnTile_WindLock_DoesNotBlockDifferentWind()
+    {
+        var lockedTiles = new HashSet<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East)
+        };
+        var missedWinLock = new MissedWinLock(lockedTiles);
+
+        var result = missedWinLock.IsLockedOnTile(new Tile(TileSuit.Winds, 0, Wind.South));
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsLockedOnTile_DragonLock_DoesNotBlockDifferentDragon()
+    {
+        var lockedTiles = new HashSet<Tile>
+        {
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+        var missedWinLock = new MissedWinLock(lockedTiles);
+
+        var result = missedWinLock.IsLockedOnTile(new Tile(TileSuit.Dragons, 0, null, Dragon.Green));
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public void ComputeWaitSet_SimpleWait_ReturnsCorrectSet()
     {
         var handTiles = new List<Tile>
