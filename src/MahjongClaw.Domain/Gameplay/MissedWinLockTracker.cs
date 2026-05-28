@@ -87,20 +87,38 @@ public static class MissedWinLockTracker
     {
         if (ruleset == MahjongRuleset.Changsha258)
         {
-            var suits = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos };
-            var tiles = new List<Tile>();
-            
-            foreach (var suit in suits)
-            {
-                for (int rank = 1; rank <= 9; rank++)
-                {
-                    tiles.Add(new Tile(suit, rank));
-                }
-            }
-            
-            return tiles;
+            return BuildSuitedTiles(new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos });
+        }
+
+        if (ruleset == MahjongRuleset.ChineseOfficial)
+        {
+            var suitedTiles = BuildSuitedTiles(new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos });
+            var windTiles = Enum
+                .GetValues<Wind>()
+                .Select(wind => new Tile(TileSuit.Winds, 0, wind));
+            var dragonTiles = Enum
+                .GetValues<Dragon>()
+                .Select(dragon => new Tile(TileSuit.Dragons, 0, null, dragon));
+
+            return suitedTiles
+                .Concat(windTiles)
+                .Concat(dragonTiles);
         }
 
         throw new NotSupportedException($"Ruleset {ruleset} not supported for wait set computation.");
+    }
+
+    private static IEnumerable<Tile> BuildSuitedTiles(IEnumerable<TileSuit> suits)
+    {
+        var tiles = new List<Tile>();
+        foreach (var suit in suits)
+        {
+            for (var rank = 1; rank <= 9; rank++)
+            {
+                tiles.Add(new Tile(suit, rank));
+            }
+        }
+
+        return tiles;
     }
 }
