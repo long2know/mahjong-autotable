@@ -290,7 +290,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithVisibleTiles_DiscardsDeadOffRankPair_WhenChangsha258EyeAlreadySecured()
+    public void SelectDiscardIndex_WithVisibleTiles_PrefersChowPotentialOverDeadOffRankPair_WhenChangsha258EyeAlreadySecured()
     {
         var handTiles = new List<Tile>
         {
@@ -312,7 +312,7 @@ public class BotDiscardAdvisorTests
             visibleTiles,
             MahjongRuleset.Changsha258);
 
-        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 3));
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 1));
     }
 
     [Fact]
@@ -1209,7 +1209,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithVisibleTiles_DiscardsDeadOffRankPair_WhenSmallWinPairAlreadySecured()
+    public void SelectDiscardIndex_WithVisibleTiles_PrefersChowPotentialOverDeadOffRankPair_WhenSmallWinPairAlreadySecured()
     {
         var handTiles = new List<Tile>
         {
@@ -1253,7 +1253,7 @@ public class BotDiscardAdvisorTests
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
 
-        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Characters, 7));
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 8));
     }
 
     [Fact]
@@ -1860,6 +1860,33 @@ public class BotDiscardAdvisorTests
         var visibleTiles = new List<Tile>
         {
             new(TileSuit.Characters, 4),
+            new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
+            new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 9));
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_WithVisibleTiles_DoesNotDiscardDeadOffRankPair_WhenChowPotentialExists()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2), new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 5),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 7),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 2), new(TileSuit.Characters, 3),
+            new(TileSuit.Characters, 4), new(TileSuit.Characters, 5)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
             new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7), new(TileSuit.Bamboos, 7),
             new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8), new(TileSuit.Bamboos, 8),
             new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9), new(TileSuit.Bamboos, 9)

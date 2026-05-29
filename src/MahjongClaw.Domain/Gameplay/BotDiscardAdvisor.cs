@@ -519,7 +519,13 @@ public static class BotDiscardAdvisor
 
                     ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
                     visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
-                    return 4 - ownedCount - visibleCount <= 0;
+
+                    if (4 - ownedCount - visibleCount > 0)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
                 })
                 .ToList();
 
