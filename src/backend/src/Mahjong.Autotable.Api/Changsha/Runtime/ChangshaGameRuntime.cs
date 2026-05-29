@@ -44,6 +44,19 @@ public interface IChangshaGameRuntime
     Task FillEmptySeatsWithBotsAsync(string gameId, CancellationToken ct = default);
 
     /// <summary>
+    /// Explicit seat release initiated from the client (e.g. the autotable Player
+    /// drawer's "Leave" action which pushes <c>["seats", N, { seat: null }]</c>).
+    /// Distinct from <see cref="HandleDisconnectAsync"/>: this is intentional, the
+    /// transport stays open, and we clear the persistent
+    /// <see cref="ChangshaSeatState.PlayerId"/> in addition to the per-tab
+    /// transport binding so the seat actually becomes free for other players.
+    ///
+    /// <para>No-op when no seat is bound to this connection / playerId — repeat
+    /// calls from a flaky client are safe.</para>
+    /// </summary>
+    Task ReleaseSeatAsync(string gameId, string playerId, string connectionId, CancellationToken ct = default);
+
+    /// <summary>
     /// Propagates a transport-layer deal-mode hint (typically the autotable
     /// WS <c>?dealMode=</c> query param) onto <see cref="ChangshaGameState.DealMode"/>.
     /// Only applies when the game is still in <see cref="ChangshaPhase.Seating"/>:
@@ -124,6 +137,24 @@ public interface IChangshaGameRuntime
 
     /// <summary>Test/diagnostic accessor: returns true if the game exists in memory.</summary>
     bool TryGetSnapshot(string gameId, out ChangshaGameState? state);
+
+    /// <summary>
+    /// Lock-protected deep-clone snapshot — guarantees the caller iterates a
+    /// stable <see cref="ChangshaGameState"/> graph that cannot be mutated
+    /// underneath them by a concurrent runtime operation (DrawTile, Discard,
+    /// claim resolution, …).
+    ///
+    /// <para>Use this instead of <see cref="TryGetSnapshot"/> on any path that
+    /// will iterate <c>state.Hands</c>, <c>state.DiscardPile</c>, or
+    /// <c>state.Wall</c> outside the runtime's instance lock — most notably the
+    /// autotable WS broadcast pipeline. <see cref="TryGetSnapshot"/> returns a
+    /// live reference and is safe only for read-once scalar field access.</para>
+    ///
+    /// <para>The clone is produced by a JSON round-trip under the instance lock
+    /// (same serializer the runtime uses for persistence), so all reference-typed
+    /// collections on the returned state are independent of the live state.</para>
+    /// </summary>
+    Task<ChangshaGameState?> TryGetSnapshotCopyAsync(string gameId, CancellationToken ct = default);
 
     /// <summary>
     /// Test/diagnostic accessor: number of active in-memory games. Used by the
@@ -253,6 +284,37 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         }
         state = null;
         return false;
+    }
+
+    /// <summary>
+    /// Vasquez integration audit A2/A3 — defensive snapshot copy used by the
+    /// autotable WS broadcast pipeline. The broadcast translator iterates the
+    /// state's List&lt;T&gt; collections (DiscardPile, Hands[i].ConcealedTiles,
+    /// Wall) outside the instance lock, so a concurrent DrawTile / Discard /
+    /// claim resolution can race the iteration and produce a snapshot that
+    /// omits or duplicates entries. The serialised AutotableGameState then
+    /// retains stale entries (it stores by tile-id), which surfaces as the
+    /// "dealer pile never grew" drift Vasquez observed: the discard was
+    /// authoritative in the runtime but missing from the wire snapshot.
+    ///
+    /// <para>JSON round-trip is intentional — it produces an isolated graph
+    /// without any reference sharing back to the live state, so the caller can
+    /// iterate without lock guards. Cost is paid only on broadcast, not on
+    /// hot-path runtime mutations.</para>
+    /// </summary>
+    public async Task<ChangshaGameState?> TryGetSnapshotCopyAsync(string gameId, CancellationToken ct = default)
+    {
+        if (!_games.TryGetValue(gameId, out var instance)) return null;
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            var json = JsonSerializer.Serialize(instance.State, SnapshotJson);
+            return JsonSerializer.Deserialize<ChangshaGameState>(json, SnapshotJson);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
     }
 
     public int? TryGetSeatForConnection(string gameId, string connectionId)
@@ -497,6 +559,81 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     isBot = true
                 }, ct);
             }
+            await PersistSnapshotAsync(instance, ct);
+        }
+        finally
+        {
+            instance.Lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Ripley L-10 audit fix — explicit seat release driven by the autotable
+    /// client's "Leave" action (<c>["seats", N, { seat: null }]</c>). Unlike
+    /// <see cref="HandleDisconnectAsync"/> (which keeps the persistent
+    /// <see cref="ChangshaSeatState.PlayerId"/> in place so a reconnect can
+    /// reclaim the seat), this clears the persistent identity too — the
+    /// player has voluntarily vacated, the seat is free for anyone.
+    ///
+    /// <para>Phase guard: only releases while the game is still in
+    /// <see cref="ChangshaPhase.Seating"/>. Mid-hand leaves are routed via
+    /// disconnect/forfeit paths instead, so we don't blow up an active hand
+    /// by clearing a seat that owes a discard.</para>
+    ///
+    /// <para>No-op when no seat matches the supplied
+    /// <paramref name="connectionId"/> / <paramref name="playerId"/>.</para>
+    /// </summary>
+    public async Task ReleaseSeatAsync(string gameId, string playerId, string connectionId, CancellationToken ct = default)
+    {
+        if (!_games.TryGetValue(gameId, out var instance)) return;
+        await instance.Lock.WaitAsync(ct);
+        try
+        {
+            // Mid-hand leave is out of scope here — disconnect path handles it.
+            if (instance.State.Phase != ChangshaPhase.Seating) return;
+
+            // Find seats this connection (or player) owns. Connection match
+            // wins so a stale call from a different tab doesn't kick the
+            // active tab. Fall back to playerId so a connection that lost
+            // its routing entry (e.g. reconnect mid-leave) still releases.
+            var releasedSeats = new List<int>();
+            foreach (var kvp in instance.SeatConnections)
+            {
+                if (!string.Equals(kvp.Value, connectionId, StringComparison.Ordinal)) continue;
+                if (instance.SeatConnections.TryRemove(kvp.Key, out _))
+                    releasedSeats.Add(kvp.Key);
+            }
+
+            if (releasedSeats.Count == 0 && !string.IsNullOrEmpty(playerId))
+            {
+                for (var i = 0; i < instance.State.Seats.Count; i++)
+                {
+                    var seat = instance.State.Seats[i];
+                    if (!seat.IsBot
+                        && string.Equals(seat.PlayerId, playerId, StringComparison.Ordinal))
+                    {
+                        instance.SeatConnections.TryRemove(i, out _);
+                        releasedSeats.Add(i);
+                    }
+                }
+            }
+
+            if (releasedSeats.Count == 0) return;
+
+            foreach (var idx in releasedSeats)
+            {
+                var seat = instance.State.Seats[idx];
+                seat.IsBot = false;
+                seat.PlayerId = string.Empty;
+                await _hub.Clients.Group(gameId).SendAsync("PlayerSeated", new
+                {
+                    gameId,
+                    seatIndex = idx,
+                    playerId = (string?)null,
+                    isBot = false
+                }, ct);
+            }
+            instance.LastActivityUtc = DateTime.UtcNow;
             await PersistSnapshotAsync(instance, ct);
         }
         finally
