@@ -133,3 +133,48 @@ The §2.4 doc has a corrective breadcrumb (initial mislabeling of `PickupRound3`
 
 #### Process discipline observation
 - Branch `stlong/phase-h-wave-1-stability-polish` already had Bishop and Hicks's in-flight Wave 1 changes (new `ChangshaConcurrencyException.cs`, modified `ChangshaGameRuntime.cs` + `ChangshaBotEngine.cs` + `ChangshaRuntimeOptions.cs`, plus frontend lobby polish + Parcel rebuild) when I started. Stayed strictly in my docs-only scope and committed only the three Ripley files. Other agents own their commits independently.
+
+## Phase L+ — Full-System Audit with Real Integration Testing (2026-05-29)
+
+**Branch:** `audit/system-checklist` (squashed into `main`)
+**Base:** `main` @ `4f81e08`
+**Directive:** Stephen — "Yes - continue... fan out and perform an audit with real integration testing to confirm that the game works."
+**Mode:** Audit-only. No product code touched.
+
+### Drops
+- `playtest-artifacts/playtest-system-audit.spec.mjs` (NEW, ~750 LOC) — full Playwright audit spec, ESM, runs 43 gates across 7 categories (DB / lobby / seat-matrix / spectator / leave-seat / reconnect / variants×5 / mobile / claim / win-modal) producing PASS/FAIL/SKIP with evidence + screenshots.
+- `playtest-artifacts/system-audit/` (NEW) — findings.json (691 lines, machine-readable), REPORT.md (167 lines, human-readable), run.log, and 17 screenshots.
+- `.squad/decisions/inbox/ripley-system-audit.md` (NEW) — verdict memo with per-fail routing to Bishop / Frost.
+
+### Verdict — 🟡 SHIPPABLE WITH CAVEATS
+**38 PASS / 5 FAIL / 0 SKIP across 43 gates.** All 5 failures cluster on two narrow surfaces — one backend wire-handler bug and one documented architectural limit for relay variants. Changsha runtime (canonical) fully green. Lobby, all 4 seats, spectator, reconnect, mobile (375px), claim overlay, win modal, DB persistence all green.
+
+### Learnings
+
+#### Real product bugs found
+- **`L-10-leave-seat` — Bishop's lane.** `TryHandleSeatTakeAsync` at `AutotableWsEndpoint.cs:553-559` does `if (seatEl.ValueKind != JsonValueKind.Number) return false;` which silently drops the frontend's `{seat: null}` release payload (sent by `game-ui.ts:579`). The disconnect path (`RemovePlayerEntries` ~line 982) cleans up correctly, which is why reconnect/spectator pass. Fix is ~10 lines: add an `else if (seatEl.ValueKind == JsonValueKind.Null)` branch that clears the seat for that `playerId`.
+- **`V-2..V-5-bot-move` — Bishop or Frost's call.** All four relay variants (riichi4 / riichi3 / bamboo / minefield) render fine (`thingsCount=197`, wall=136) but never advance after `#deal` because `?botCount=N` only triggers backend autobots through the **Changsha runtime path** (`AutotableWsEndpoint.cs:235, 253`), and relay variants explicitly do not bind a Changsha runtime (`AutotableWsEndpoint.cs:561`: "Relay-mode connections do NOT bind a Changsha runtime. The bundle's local Setup drives the deal; the backend only relays.") — so they have no autobot driver. Two resolution paths surfaced in the memo: (a) accept and document, (b) build a relay-side autobot harness. Needs Stephen's call.
+
+#### Test pattern discoveries
+- **Synthetic claim must key by `String(selfSeat)`, not `'current'`.** `claim-window-overlay.ts:307` filters by `key === String(client.seat)`. The first iteration used `'current'` and silently no-op'd — gates passed-but-broken until I traced the filter. Documented in the spec and the memo.
+- **Win-modal close uses the tombstone path.** `$('#game-complete-modal').modal('hide')` from `page.evaluate` is unreliable because jQuery `$` isn't always in Playwright's isolated context. Emitting `[['current', null]]` on `client.gameComplete.events` fires `dismissGameCompleteModal()` via the production subscriber at `game-ui.ts:1814`. More robust because it exercises the actual production close path.
+- **Ferro overlay attach is polling-based** — `ClaimWindowOverlay.attach()` polls every 100ms for up to 30s. The first probe on a fresh page races the attach; the spec uses a 30×500ms retry loop on `C-1-claim-overlay-attached` to absorb this. Without the loop, runs would intermittently flap (saw it on iteration 3 — 5/5 claim gates FAILed because attach hadn't completed).
+
+#### Environment quirks
+- **No `sqlite3` CLI, no sudo.** The DB snapshot helper wraps `python3 -c "import sqlite3; ..."` via `execFileSync`. Future audits should reuse this pattern (`readPlayerStatsSnapshot()` at ~L155 of the spec).
+- **Run from repo root.** `path.resolve('./playtest-artifacts/system-audit')` double-nests if you run from inside `playtest-artifacts/`. Codified in the memo's run command.
+- **Backend already running** on port 8088 with sqlite at `/tmp/mat-postfix.db`. Identity endpoint `POST /api/identity` is 200 OK with arbitrary `{displayName}` (Drake's c369c54 working as designed).
+
+#### Coverage map
+- Changsha (canonical) — full green: deal → seat → discard → claim overlay → win modal → DB row written.
+- 4 relay variants — render-only green; bot-move FAIL (architectural).
+- All 4 seats (E/S/W/N) take cleanly with seat-take screenshots as visual evidence.
+- Mobile @ 375px — sidebar 160px (matches `hicks-mobile-sidebar.css:115-122`), all touch targets ≥44px (qm=44, picker=44, lobby-close=44×44), safe-area-inset present on both `#lobby-panel` and `#lobby-toggle`, no horizontal overflow.
+- DB rowcount delta — 84 → 101 across the run, confirming PlayerStats writes are landing.
+
+### Self-Critique
+- **4 iterations to stabilise.** Should have caught the `#game-id` vs `#lobby-gameId` selector drift and the overlay-attach race on iteration 1 by reading the DOM more carefully before writing assertions. Future audit specs: bias toward retry-with-diagnostics loops on any DOM that's populated by an async/polling subsystem.
+- **Marking the 4 relay-variant `bot-move` gates as FAIL surfaces the architectural gap (good) but conflates a documented design decision with a regression (less good).** A more accurate audit would SKIP these gates with a `reason: "Relay variants have no backend bot driver — see AutotableWsEndpoint.cs:561"`. The current binary PASS/FAIL/SKIP model handled it correctly enough; future iterations might add a `KNOWN-LIMIT` status.
+- **The DB-1 schema gate is brittle.** Static expected-column list will FAIL on any schema change. Acceptable trade-off (loose pattern-match hides real drift) but flagged for whoever next touches `PlayerStats`.
+- **Did not exercise:** WebSocket disconnect under load, multi-game-per-instance (pinned by `AutotableWsRelayTests.cs:182`), bot-vs-bot full hand to completion. These are the next layer if Stephen wants deeper coverage.
+- **Strict lane discipline held.** Touched only the spec file, the system-audit/ output directory, the memo, and this history file. Did not edit `AutotableWsEndpoint.cs` or `claim-window-overlay.ts` even though I'd diagnosed the bugs — those are Bishop and Ferro's lanes.

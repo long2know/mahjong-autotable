@@ -1,0 +1,165 @@
+
+=== DB baseline ===
+{
+  "schema": [
+    [
+      0,
+      "PlayerId",
+      "TEXT",
+      1,
+      null,
+      1
+    ],
+    [
+      1,
+      "GamesPlayed",
+      "INTEGER",
+      1,
+      null,
+      0
+    ],
+    [
+      2,
+      "GamesWon",
+      "INTEGER",
+      1,
+      null,
+      0
+    ],
+    [
+      3,
+      "TotalScore",
+      "INTEGER",
+      1,
+      null,
+      0
+    ],
+    [
+      4,
+      "HighestSingleGameScore",
+      "INTEGER",
+      1,
+      null,
+      0
+    ],
+    [
+      5,
+      "LongestWinStreak",
+      "INTEGER",
+      1,
+      null,
+      0
+    ],
+    [
+      6,
+      "CurrentWinStreak",
+      "INTEGER",
+      1,
+      null,
+      0
+    ],
+    [
+      7,
+      "LastGameAt",
+      "TEXT",
+      0,
+      null,
+      0
+    ]
+  ],
+  "lastGameAtNullable": true,
+  "count": 84,
+  "sample": [
+  
+[PASS] DB-1-schema — 6-db-persistence
+        evidence: {"sqlitePath":"/tmp/mat-postfix.db","hasPlayerStatsTable":true,"lastGameAtNullable":true,"baselineRows":84,"schemaColumns":["PlayerId:TEXT NN","GamesPlayed:INTEGER NN","GamesWon:INTEGER NN","TotalScore:INTEGER NN","HighestSingleGameScore:INTEGER NN","LongestWinStreak:INTEGER NN",…
+[PASS] DB-2-identity-endpoint — 6-db-persistence
+        evidence: {"status":200,"ok":true}
+[PASS] L-1-lobby-render — 1-lobby
+        evidence: {"pageErrors":0,"consoleErrors":0,"url":"http://127.0.0.1:8088/autotable/"}
+[PASS] L-2-variant-switcher — 1-lobby
+        evidence: {"options":[{"value":"changsha","label":"Changsha (长沙麻将)","disabled":false},{"value":"four-player","label":"Riichi — 4 player (日本麻将)","disabled":false},{"value":"three-player","label":"Riichi — 3 player","disabled":false},{"value":"bamboo","label":"Bamboo (American)","disabled":f…
+[PASS] L-3-gameid-prefill — 1-lobby
+        evidence: {"gameIdInputPresent":true,"filled":"audit-prefill-1780077672288","echo":"audit-prefill-1780077672288"}
+[PASS] L-4-take-seat-buttons — 1-lobby
+        evidence: {"takeSeatCount":4}
+[PASS] L-5-quick-match-visible — 1-lobby
+        evidence: {"qmVisible":true}
+[PASS] L-6-connect-button — 1-lobby
+        evidence: {"count":1}
+[PASS] L-7-leave-seat-button — 1-lobby
+        evidence: {"count":1}
+[PASS] L-8-take-seat-0 — 1-lobby
+        evidence: {"seatIdx":0,"seatTaken":0,"worldSeat":0,"thingsCount":197,"pageErrors":0,"pageErrorMessages":[]}
+[PASS] L-8-take-seat-1 — 1-lobby
+        evidence: {"seatIdx":1,"seatTaken":1,"worldSeat":1,"thingsCount":197,"pageErrors":0,"pageErrorMessages":[]}
+[PASS] L-8-take-seat-2 — 1-lobby
+        evidence: {"seatIdx":2,"seatTaken":2,"worldSeat":2,"thingsCount":197,"pageErrors":0,"pageErrorMessages":[]}
+[PASS] L-8-take-seat-3 — 1-lobby
+        evidence: {"seatIdx":3,"seatTaken":3,"worldSeat":3,"thingsCount":197,"pageErrors":0,"pageErrorMessages":[]}
+[PASS] L-9-spectator-mode — 1-lobby
+        evidence: {"worldSeat":null,"things":197,"hand":38,"wall":69,"discard":14,"pageErrors":0,"pageErrorMessages":[]}
+[FAIL] L-10-leave-seat — 1-lobby
+        evidence: {"leaveVisible":true,"seatBefore":0,"seatAfter":0,"playerSeatBefore":{"playerId":"85833b8bf8114028a19a1480a46557c8","entry":{"seat":0},"clientSeat":0},"playerSeatAfter":{"playerId":"85833b8bf8114028a19a1480a46557c8","entry":{"seat":0},"clientSeat":0},"takeSeatVisibleAfter":0,"pag…
+[PASS] L-11-reconnect-after-reload — 1-lobby
+        evidence: {"worldSeat":0,"things":197,"connected":true,"pageErrors":0}
+[PASS] V-1-changsha-render — 2-variants
+        evidence: {"variant":"changsha","expectedRuntime":"ChangshaRuntime","canvasMounted":true,"thingsCount":197,"wallCount":83,"handCount":43,"connected":true,"pageErrors":0,"pageErrorMessages":[]}
+[PASS] V-1-changsha-bot-move — 2-variants
+        evidence: {"variant":"changsha","observedMovement":true,"discardAfter":0,"thingsAfter":197,"thingsBefore":197}
+[PASS] V-2-riichi4-render — 2-variants
+        evidence: {"variant":"riichi4","expectedRuntime":"Relay","canvasMounted":true,"thingsCount":197,"wallCount":136,"handCount":0,"connected":true,"pageErrors":0,"pageErrorMessages":[]}
+[FAIL] V-2-riichi4-bot-move — 2-variants
+        evidence: {"variant":"riichi4","observedMovement":false,"discardAfter":null,"thingsAfter":null,"thingsBefore":197}
+[PASS] V-3-riichi3-render — 2-variants
+        evidence: {"variant":"riichi3","expectedRuntime":"Relay","canvasMounted":true,"thingsCount":197,"wallCount":136,"handCount":0,"connected":true,"pageErrors":0,"pageErrorMessages":[]}
+[FAIL] V-3-riichi3-bot-move — 2-variants
+        evidence: {"variant":"riichi3","observedMovement":false,"discardAfter":null,"thingsAfter":null,"thingsBefore":197}
+[PASS] V-4-bamboo-render — 2-variants
+        evidence: {"variant":"bamboo","expectedRuntime":"Relay","canvasMounted":true,"thingsCount":197,"wallCount":136,"handCount":0,"connected":true,"pageErrors":0,"pageErrorMessages":[]}
+[FAIL] V-4-bamboo-bot-move — 2-variants
+        evidence: {"variant":"bamboo","observedMovement":false,"discardAfter":null,"thingsAfter":null,"thingsBefore":197}
+[PASS] V-5-minefield-render — 2-variants
+        evidence: {"variant":"minefield","expectedRuntime":"Relay","canvasMounted":true,"thingsCount":197,"wallCount":136,"handCount":0,"connected":true,"pageErrors":0,"pageErrorMessages":[]}
+[FAIL] V-5-minefield-bot-move — 2-variants
+        evidence: {"variant":"minefield","observedMovement":false,"discardAfter":null,"thingsAfter":null,"thingsBefore":197}
+[PASS] M-1-no-h-overflow — 3-mobile
+        evidence: {"docW":375,"innerW":375,"delta":0}
+[PASS] M-2-touch-target-qm — 3-mobile
+        evidence: {"height":44,"width":337}
+[PASS] M-3-touch-target-picker — 3-mobile
+        evidence: {"height":44,"width":327}
+[PASS] M-4-touch-target-lobby-close — 3-mobile
+        evidence: {"height":44,"width":44}
+[PASS] M-5-sidebar-160px — 3-mobile
+        evidence: {"width":160,"cssText":"160px/none"}
+[PASS] M-6-safe-area-inset — 3-mobile
+        evidence: {"lobbyTop":true,"lobbyToggle":true}
+[PASS] M-7-mobile-page-errors — 3-mobile
+        evidence: {"pageErrors":0,"first":[]}
+[PASS] C-1-claim-overlay-attached — 4-claim
+        evidence: {"attempts":30,"exists":true,"badgeCount":4,"types":["Pung","Chow","Kong","Hu"],"hasPassButton":true,"hasTimer":true}
+        clientState: {"hasGame":true,"hasClient":true,"hasClaim":true,"hasGameComplete":true,"clientSeat":0,"rendererReady":true,"canvasCount":2}
+[PASS] C-2-claim-overlay-visible-on-synthetic — 4-claim
+        evidence: {"synthetic":{"ok":true,"selfSeat":0,"key":"0","payload":{"available":["Pung","Kong","Chow","Hu"],"deadline":1780077822719,"source":1,"tile":5}},"visState":{"visible":true,"innerText":"六Seat 1Claim window7.0s碰PUNGP吃CHOWC杠KONGK胡HUHClick a chip or press the highlighted key — auto-p…
+[PASS] C-3-claim-countdown-decrements — 4-claim
+        evidence: {"sequence":["7.0","6.3","5.7","5.1"],"numeric":[7,6.3,5.7,5.1]}
+[PASS] C-4-legacy-claim-buttons — 4-claim
+        evidence: {"pung":true,"chow":true,"kong":true,"hu":true,"pass":true}
+[PASS] C-5-pass-button — 4-claim
+        evidence: {"exists":true,"labelText":"跳过PASS"}
+[PASS] W-1-modal-present — 5-win-modal
+        evidence: {"modalExists":true}
+[PASS] W-2-modal-renders-on-synthetic — 5-win-modal
+        evidence: {"inject":{"ok":true},"state":{"exists":true,"rendered":true,"classList":"modal show","display":"block","totalsRowCount":4,"firstRowText":"0 (E 东)Seat 0 (You)+42","headlineText":"🏆 GAME OVER 🏆","subtitleText":"4-hand match complete"}}
+[PASS] W-3-modal-can-close — 5-win-modal
+        evidence: {"hidden":{"ok":true},"afterHide":{"classList":"modal","display":"none"}}
+[PASS] W-4-fan-section-attached-conditional — 5-win-modal
+        evidence: {"hasFanSection":false}
+[PASS] DB-3-rowcount-delta — 6-db-persistence
+        evidence: {"baseline":84,"after":101,"grew":true,"error":null}
+
+=== SUMMARY ===
+PASS=38  FAIL=5  SKIP=0
+Report:    /data/source/mahjong-autotable/playtest-artifacts/system-audit/REPORT.md
+Findings:  /data/source/mahjong-autotable/playtest-artifacts/system-audit/findings.json

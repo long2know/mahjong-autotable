@@ -1,0 +1,692 @@
+{
+  "startedAt": "2026-05-29T18:01:09.158Z",
+  "finishedAt": "2026-05-29T18:03:48.461Z",
+  "baseUrl": "http://127.0.0.1:8088",
+  "sqlitePath": "/tmp/mat-postfix.db",
+  "counts": {
+    "PASS": 38,
+    "FAIL": 5,
+    "SKIP": 0
+  },
+  "findings": [
+    {
+      "id": "DB-1-schema",
+      "category": "6-db-persistence",
+      "status": "PASS",
+      "evidence": {
+        "sqlitePath": "/tmp/mat-postfix.db",
+        "hasPlayerStatsTable": true,
+        "lastGameAtNullable": true,
+        "baselineRows": 84,
+        "schemaColumns": [
+          "PlayerId:TEXT NN",
+          "GamesPlayed:INTEGER NN",
+          "GamesWon:INTEGER NN",
+          "TotalScore:INTEGER NN",
+          "HighestSingleGameScore:INTEGER NN",
+          "LongestWinStreak:INTEGER NN",
+          "CurrentWinStreak:INTEGER NN",
+          "LastGameAt:TEXT"
+        ],
+        "error": null
+      },
+      "screenshots": []
+    },
+    {
+      "id": "DB-2-identity-endpoint",
+      "category": "6-db-persistence",
+      "status": "PASS",
+      "evidence": {
+        "status": 200,
+        "ok": true
+      },
+      "screenshots": []
+    },
+    {
+      "id": "L-1-lobby-render",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "pageErrors": 0,
+        "consoleErrors": 0,
+        "url": "http://127.0.0.1:8088/autotable/"
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/01-lobby-render.png"
+      ]
+    },
+    {
+      "id": "L-2-variant-switcher",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "options": [
+          {
+            "value": "changsha",
+            "label": "Changsha (长沙麻将)",
+            "disabled": false
+          },
+          {
+            "value": "four-player",
+            "label": "Riichi — 4 player (日本麻将)",
+            "disabled": false
+          },
+          {
+            "value": "three-player",
+            "label": "Riichi — 3 player",
+            "disabled": false
+          },
+          {
+            "value": "bamboo",
+            "label": "Bamboo (American)",
+            "disabled": false
+          },
+          {
+            "value": "minefield",
+            "label": "Minefield",
+            "disabled": false
+          },
+          {
+            "value": "hong-kong",
+            "label": "Hong Kong (港麻)",
+            "disabled": true
+          }
+        ],
+        "expectedAll": [
+          "changsha",
+          "four-player",
+          "three-player",
+          "bamboo",
+          "minefield",
+          "hong-kong"
+        ],
+        "hongKongDisabled": true
+      },
+      "screenshots": []
+    },
+    {
+      "id": "L-3-gameid-prefill",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "gameIdInputPresent": true,
+        "filled": "audit-prefill-1780077672288",
+        "echo": "audit-prefill-1780077672288"
+      },
+      "screenshots": []
+    },
+    {
+      "id": "L-4-take-seat-buttons",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "takeSeatCount": 4
+      },
+      "screenshots": []
+    },
+    {
+      "id": "L-5-quick-match-visible",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "qmVisible": true
+      },
+      "screenshots": []
+    },
+    {
+      "id": "L-6-connect-button",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "count": 1
+      },
+      "screenshots": []
+    },
+    {
+      "id": "L-7-leave-seat-button",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "count": 1
+      },
+      "screenshots": []
+    },
+    {
+      "id": "L-8-take-seat-0",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "seatIdx": 0,
+        "seatTaken": 0,
+        "worldSeat": 0,
+        "thingsCount": 197,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/seat-0-after-take.png"
+      ]
+    },
+    {
+      "id": "L-8-take-seat-1",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "seatIdx": 1,
+        "seatTaken": 1,
+        "worldSeat": 1,
+        "thingsCount": 197,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/seat-1-after-take.png"
+      ]
+    },
+    {
+      "id": "L-8-take-seat-2",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "seatIdx": 2,
+        "seatTaken": 2,
+        "worldSeat": 2,
+        "thingsCount": 197,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/seat-2-after-take.png"
+      ]
+    },
+    {
+      "id": "L-8-take-seat-3",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "seatIdx": 3,
+        "seatTaken": 3,
+        "worldSeat": 3,
+        "thingsCount": 197,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/seat-3-after-take.png"
+      ]
+    },
+    {
+      "id": "L-9-spectator-mode",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "worldSeat": null,
+        "things": 197,
+        "hand": 38,
+        "wall": 69,
+        "discard": 14,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/spectator-mode.png"
+      ]
+    },
+    {
+      "id": "L-10-leave-seat",
+      "category": "1-lobby",
+      "status": "FAIL",
+      "evidence": {
+        "leaveVisible": true,
+        "seatBefore": 0,
+        "seatAfter": 0,
+        "playerSeatBefore": {
+          "playerId": "85833b8bf8114028a19a1480a46557c8",
+          "entry": {
+            "seat": 0
+          },
+          "clientSeat": 0
+        },
+        "playerSeatAfter": {
+          "playerId": "85833b8bf8114028a19a1480a46557c8",
+          "entry": {
+            "seat": 0
+          },
+          "clientSeat": 0
+        },
+        "takeSeatVisibleAfter": 0,
+        "pageErrors": 0
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/leave-seat-after.png"
+      ]
+    },
+    {
+      "id": "L-11-reconnect-after-reload",
+      "category": "1-lobby",
+      "status": "PASS",
+      "evidence": {
+        "worldSeat": 0,
+        "things": 197,
+        "connected": true,
+        "pageErrors": 0
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/reconnect-after-reload.png"
+      ]
+    },
+    {
+      "id": "V-1-changsha-render",
+      "category": "2-variants",
+      "status": "PASS",
+      "evidence": {
+        "variant": "changsha",
+        "expectedRuntime": "ChangshaRuntime",
+        "canvasMounted": true,
+        "thingsCount": 197,
+        "wallCount": 83,
+        "handCount": 43,
+        "connected": true,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/variant-changsha.png"
+      ]
+    },
+    {
+      "id": "V-1-changsha-bot-move",
+      "category": "2-variants",
+      "status": "PASS",
+      "evidence": {
+        "variant": "changsha",
+        "observedMovement": true,
+        "discardAfter": 0,
+        "thingsAfter": 197,
+        "thingsBefore": 197
+      },
+      "screenshots": []
+    },
+    {
+      "id": "V-2-riichi4-render",
+      "category": "2-variants",
+      "status": "PASS",
+      "evidence": {
+        "variant": "riichi4",
+        "expectedRuntime": "Relay",
+        "canvasMounted": true,
+        "thingsCount": 197,
+        "wallCount": 136,
+        "handCount": 0,
+        "connected": true,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/variant-riichi4.png"
+      ]
+    },
+    {
+      "id": "V-2-riichi4-bot-move",
+      "category": "2-variants",
+      "status": "FAIL",
+      "evidence": {
+        "variant": "riichi4",
+        "observedMovement": false,
+        "discardAfter": null,
+        "thingsAfter": null,
+        "thingsBefore": 197
+      },
+      "screenshots": []
+    },
+    {
+      "id": "V-3-riichi3-render",
+      "category": "2-variants",
+      "status": "PASS",
+      "evidence": {
+        "variant": "riichi3",
+        "expectedRuntime": "Relay",
+        "canvasMounted": true,
+        "thingsCount": 197,
+        "wallCount": 136,
+        "handCount": 0,
+        "connected": true,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/variant-riichi3.png"
+      ]
+    },
+    {
+      "id": "V-3-riichi3-bot-move",
+      "category": "2-variants",
+      "status": "FAIL",
+      "evidence": {
+        "variant": "riichi3",
+        "observedMovement": false,
+        "discardAfter": null,
+        "thingsAfter": null,
+        "thingsBefore": 197
+      },
+      "screenshots": []
+    },
+    {
+      "id": "V-4-bamboo-render",
+      "category": "2-variants",
+      "status": "PASS",
+      "evidence": {
+        "variant": "bamboo",
+        "expectedRuntime": "Relay",
+        "canvasMounted": true,
+        "thingsCount": 197,
+        "wallCount": 136,
+        "handCount": 0,
+        "connected": true,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/variant-bamboo.png"
+      ]
+    },
+    {
+      "id": "V-4-bamboo-bot-move",
+      "category": "2-variants",
+      "status": "FAIL",
+      "evidence": {
+        "variant": "bamboo",
+        "observedMovement": false,
+        "discardAfter": null,
+        "thingsAfter": null,
+        "thingsBefore": 197
+      },
+      "screenshots": []
+    },
+    {
+      "id": "V-5-minefield-render",
+      "category": "2-variants",
+      "status": "PASS",
+      "evidence": {
+        "variant": "minefield",
+        "expectedRuntime": "Relay",
+        "canvasMounted": true,
+        "thingsCount": 197,
+        "wallCount": 136,
+        "handCount": 0,
+        "connected": true,
+        "pageErrors": 0,
+        "pageErrorMessages": []
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/variant-minefield.png"
+      ]
+    },
+    {
+      "id": "V-5-minefield-bot-move",
+      "category": "2-variants",
+      "status": "FAIL",
+      "evidence": {
+        "variant": "minefield",
+        "observedMovement": false,
+        "discardAfter": null,
+        "thingsAfter": null,
+        "thingsBefore": 197
+      },
+      "screenshots": []
+    },
+    {
+      "id": "M-1-no-h-overflow",
+      "category": "3-mobile",
+      "status": "PASS",
+      "evidence": {
+        "docW": 375,
+        "innerW": 375,
+        "delta": 0
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/mobile-01-lobby.png"
+      ]
+    },
+    {
+      "id": "M-2-touch-target-qm",
+      "category": "3-mobile",
+      "status": "PASS",
+      "evidence": {
+        "height": 44,
+        "width": 337
+      },
+      "screenshots": []
+    },
+    {
+      "id": "M-3-touch-target-picker",
+      "category": "3-mobile",
+      "status": "PASS",
+      "evidence": {
+        "height": 44,
+        "width": 327
+      },
+      "screenshots": []
+    },
+    {
+      "id": "M-4-touch-target-lobby-close",
+      "category": "3-mobile",
+      "status": "PASS",
+      "evidence": {
+        "height": 44,
+        "width": 44
+      },
+      "screenshots": []
+    },
+    {
+      "id": "M-5-sidebar-160px",
+      "category": "3-mobile",
+      "status": "PASS",
+      "evidence": {
+        "width": 160,
+        "cssText": "160px/none"
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/mobile-02-sidebar.png"
+      ]
+    },
+    {
+      "id": "M-6-safe-area-inset",
+      "category": "3-mobile",
+      "status": "PASS",
+      "evidence": {
+        "lobbyTop": true,
+        "lobbyToggle": true
+      },
+      "screenshots": []
+    },
+    {
+      "id": "M-7-mobile-page-errors",
+      "category": "3-mobile",
+      "status": "PASS",
+      "evidence": {
+        "pageErrors": 0,
+        "first": []
+      },
+      "screenshots": []
+    },
+    {
+      "id": "C-1-claim-overlay-attached",
+      "category": "4-claim",
+      "status": "PASS",
+      "evidence": {
+        "attempts": 30,
+        "exists": true,
+        "badgeCount": 4,
+        "types": [
+          "Pung",
+          "Chow",
+          "Kong",
+          "Hu"
+        ],
+        "hasPassButton": true,
+        "hasTimer": true
+      },
+      "screenshots": []
+    },
+    {
+      "id": "C-2-claim-overlay-visible-on-synthetic",
+      "category": "4-claim",
+      "status": "PASS",
+      "evidence": {
+        "synthetic": {
+          "ok": true,
+          "selfSeat": 0,
+          "key": "0",
+          "payload": {
+            "available": [
+              "Pung",
+              "Kong",
+              "Chow",
+              "Hu"
+            ],
+            "deadline": 1780077822719,
+            "source": 1,
+            "tile": 5
+          }
+        },
+        "visState": {
+          "visible": true,
+          "innerText": "六Seat 1Claim window7.0s碰PUNGP吃CHOWC杠KONGK胡HUHClick a chip or press the highlighted key — auto-pass at 0.跳过PASSEsc",
+          "badgesVisible": [
+            {
+              "type": "Pung",
+              "available": true
+            },
+            {
+              "type": "Chow",
+              "available": true
+            },
+            {
+              "type": "Kong",
+              "available": true
+            },
+            {
+              "type": "Hu",
+              "available": true
+            }
+          ]
+        }
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/claim-overlay-synthetic.png"
+      ]
+    },
+    {
+      "id": "C-3-claim-countdown-decrements",
+      "category": "4-claim",
+      "status": "PASS",
+      "evidence": {
+        "sequence": [
+          "7.0",
+          "6.3",
+          "5.7",
+          "5.1"
+        ],
+        "numeric": [
+          7,
+          6.3,
+          5.7,
+          5.1
+        ]
+      },
+      "screenshots": []
+    },
+    {
+      "id": "C-4-legacy-claim-buttons",
+      "category": "4-claim",
+      "status": "PASS",
+      "evidence": {
+        "pung": true,
+        "chow": true,
+        "kong": true,
+        "hu": true,
+        "pass": true
+      },
+      "screenshots": []
+    },
+    {
+      "id": "C-5-pass-button",
+      "category": "4-claim",
+      "status": "PASS",
+      "evidence": {
+        "exists": true,
+        "labelText": "跳过PASS"
+      },
+      "screenshots": []
+    },
+    {
+      "id": "W-1-modal-present",
+      "category": "5-win-modal",
+      "status": "PASS",
+      "evidence": {
+        "modalExists": true
+      },
+      "screenshots": []
+    },
+    {
+      "id": "W-2-modal-renders-on-synthetic",
+      "category": "5-win-modal",
+      "status": "PASS",
+      "evidence": {
+        "inject": {
+          "ok": true
+        },
+        "state": {
+          "exists": true,
+          "rendered": true,
+          "classList": "modal show",
+          "display": "block",
+          "totalsRowCount": 4,
+          "firstRowText": "0 (E 东)Seat 0 (You)+42",
+          "headlineText": "🏆 GAME OVER 🏆",
+          "subtitleText": "4-hand match complete"
+        }
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/system-audit/win-modal-synthetic.png"
+      ]
+    },
+    {
+      "id": "W-3-modal-can-close",
+      "category": "5-win-modal",
+      "status": "PASS",
+      "evidence": {
+        "hidden": {
+          "ok": true
+        },
+        "afterHide": {
+          "classList": "modal",
+          "display": "none"
+        }
+      },
+      "screenshots": []
+    },
+    {
+      "id": "W-4-fan-section-attached-conditional",
+      "category": "5-win-modal",
+      "status": "PASS",
+      "evidence": {
+        "hasFanSection": false
+      },
+      "screenshots": []
+    },
+    {
+      "id": "DB-3-rowcount-delta",
+      "category": "6-db-persistence",
+      "status": "PASS",
+      "evidence": {
+        "baseline": 84,
+        "after": 101,
+        "grew": true,
+        "error": null
+      },
+      "screenshots": []
+    }
+  ]
+}
