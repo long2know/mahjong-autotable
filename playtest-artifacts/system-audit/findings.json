@@ -1,6 +1,6 @@
 {
-  "startedAt": "2026-05-29T18:01:09.158Z",
-  "finishedAt": "2026-05-29T18:03:48.461Z",
+  "startedAt": "2026-05-29T19:47:17.818Z",
+  "finishedAt": "2026-05-29T19:50:01.817Z",
   "baseUrl": "http://127.0.0.1:8088",
   "sqlitePath": "/tmp/mat-postfix.db",
   "counts": {
@@ -17,7 +17,7 @@
         "sqlitePath": "/tmp/mat-postfix.db",
         "hasPlayerStatsTable": true,
         "lastGameAtNullable": true,
-        "baselineRows": 84,
+        "baselineRows": 102,
         "schemaColumns": [
           "PlayerId:TEXT NN",
           "GamesPlayed:INTEGER NN",
@@ -110,8 +110,8 @@
       "status": "PASS",
       "evidence": {
         "gameIdInputPresent": true,
-        "filled": "audit-prefill-1780077672288",
-        "echo": "audit-prefill-1780077672288"
+        "filled": "audit-prefill-1780084041058",
+        "echo": "audit-prefill-1780084041058"
       },
       "screenshots": []
     },
@@ -222,8 +222,8 @@
       "evidence": {
         "worldSeat": null,
         "things": 197,
-        "hand": 38,
-        "wall": 69,
+        "hand": 37,
+        "wall": 70,
         "discard": 14,
         "pageErrors": 0,
         "pageErrorMessages": []
@@ -241,14 +241,14 @@
         "seatBefore": 0,
         "seatAfter": 0,
         "playerSeatBefore": {
-          "playerId": "85833b8bf8114028a19a1480a46557c8",
+          "playerId": "184cc19e1afc43a4a17e849a6b4b70ac",
           "entry": {
             "seat": 0
           },
           "clientSeat": 0
         },
         "playerSeatAfter": {
-          "playerId": "85833b8bf8114028a19a1480a46557c8",
+          "playerId": "184cc19e1afc43a4a17e849a6b4b70ac",
           "entry": {
             "seat": 0
           },
@@ -284,8 +284,8 @@
         "expectedRuntime": "ChangshaRuntime",
         "canvasMounted": true,
         "thingsCount": 197,
-        "wallCount": 83,
-        "handCount": 43,
+        "wallCount": 81,
+        "handCount": 47,
         "connected": true,
         "pageErrors": 0,
         "pageErrorMessages": []
@@ -301,7 +301,7 @@
       "evidence": {
         "variant": "changsha",
         "observedMovement": true,
-        "discardAfter": 0,
+        "discardAfter": 4,
         "thingsAfter": 197,
         "thingsBefore": 197
       },
@@ -545,14 +545,14 @@
               "Chow",
               "Hu"
             ],
-            "deadline": 1780077822719,
+            "deadline": 1780084195567,
             "source": 1,
             "tile": 5
           }
         },
         "visState": {
           "visible": true,
-          "innerText": "六Seat 1Claim window7.0s碰PUNGP吃CHOWC杠KONGK胡HUHClick a chip or press the highlighted key — auto-pass at 0.跳过PASSEsc",
+          "innerText": "六Seat 1Claim window6.9s碰PUNGP吃CHOWC杠KONGK胡HUHClick a chip or press the highlighted key — auto-pass at 0.跳过PASSEsc",
           "badgesVisible": [
             {
               "type": "Pung",
@@ -583,16 +583,16 @@
       "status": "PASS",
       "evidence": {
         "sequence": [
-          "7.0",
-          "6.3",
-          "5.7",
-          "5.1"
+          "6.9",
+          "6.2",
+          "5.6",
+          "5.0"
         ],
         "numeric": [
-          7,
-          6.3,
-          5.7,
-          5.1
+          6.9,
+          6.2,
+          5.6,
+          5
         ]
       },
       "screenshots": []
@@ -681,9 +681,9 @@
       "category": "6-db-persistence",
       "status": "PASS",
       "evidence": {
-        "baseline": 84,
-        "after": 101,
-        "grew": true,
+        "baseline": 102,
+        "after": 102,
+        "grew": false,
         "error": null
       },
       "screenshots": []

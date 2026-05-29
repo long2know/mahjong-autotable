@@ -1,5 +1,5 @@
 {
-  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1779756929928-283",
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1780084293766-469",
   "variant": "changsha",
   "dealMode": "manual",
   "botCount": 3,
@@ -8,8 +8,8 @@
       "name": "1-load",
       "ok": true,
       "result": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1779756929928-283",
-        "gameId": "humanled-1779756929928-283"
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&gameId=humanled-1780084293766-469",
+        "gameId": "humanled-1780084293766-469"
       }
     },
     {
@@ -76,15 +76,15 @@
       "result": {
         "iterations": 4,
         "lastPickup": null,
-        "finalHandSize": 18
+        "finalHandSize": 15
       }
     },
     {
       "name": "8b-wait-hand-populated",
       "ok": true,
       "result": {
-        "elapsedMs": 42,
-        "finalHandSize": 18
+        "elapsedMs": 41,
+        "finalHandSize": 15
       }
     },
     {
@@ -92,28 +92,28 @@
       "ok": true,
       "result": {
         "seat": 0,
-        "handTileCount": 18,
+        "handTileCount": 15,
         "sampleSlots": [
           {
-            "tileId": 1,
-            "slot": "hand.11@0"
+            "tileId": 3,
+            "slot": "hand.8@0"
           },
           {
-            "tileId": 13,
-            "slot": "hand.1@0"
+            "tileId": 25,
+            "slot": "hand.13@0"
           },
           {
-            "tileId": 17,
+            "tileId": 26,
             "slot": "hand.5@0"
           },
           {
-            "tileId": 20,
-            "slot": "hand.2@0"
+            "tileId": 39,
+            "slot": "hand.12@0"
           }
         ],
         "thingsByPrefix": {
-          "hand": 67,
-          "wall": 69,
+          "wall": 74,
+          "hand": 62,
           "marker": 1,
           "tray": 60
         }
@@ -125,7 +125,7 @@
       "result": {
         "ok": true,
         "via": "world.emitDiscard",
-        "tileId": 1,
+        "tileId": 3,
         "seat": 0,
         "tried": [
           {
@@ -145,16 +145,16 @@
       "result": {
         "moveLogCount": 15,
         "recent": [
-          "[17:55:41]Seat 3 (Bot 3): picking 4 tiles (round 1)",
-          "[17:55:41]Seat 0 (Seat 0): picking 4 tiles (round 2)",
-          "[17:55:41]Seat 1 (Bot 1): picking 4 tiles (round 2)",
-          "[17:55:42]Seat 2 (Bot 2): picking 4 tiles (round 2)",
-          "[17:55:42]Seat 3 (Bot 3): picking 4 tiles (round 2)",
-          "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-          "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-          "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-          "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-          "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+          "[12:51:43]Seat 3 (Bot 3): picking 4 tiles (round 1)",
+          "[12:51:43]Seat 0 (Seat 0): picking 4 tiles (round 2)",
+          "[12:51:44]Seat 1 (Bot 1): picking 4 tiles (round 2)",
+          "[12:51:44]Seat 2 (Bot 2): picking 4 tiles (round 2)",
+          "[12:51:45]Seat 3 (Bot 3): picking 4 tiles (round 2)",
+          "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+          "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+          "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+          "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+          "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
         ]
       }
     },
@@ -178,39 +178,33 @@
       "name": "14-final",
       "ok": true,
       "result": {
-        "visibleButtonCount": 23
+        "visibleButtonCount": 18
       }
     }
   ],
   "pageErrors": [],
   "consoleErrors": [
-    "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-kTiAkvejfHM9yC7XOEzKnCMmdKmlue3fH/RsM/XFqdI='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked.",
-    "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-aqNNdDLnnrDOnTNdkJpYlAxKVJtLt9CtFLklmInuUAE='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked.",
-    "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-aqNNdDLnnrDOnTNdkJpYlAxKVJtLt9CtFLklmInuUAE='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked.",
-    "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-aqNNdDLnnrDOnTNdkJpYlAxKVJtLt9CtFLklmInuUAE='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked.",
-    "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-aqNNdDLnnrDOnTNdkJpYlAxKVJtLt9CtFLklmInuUAE='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked.",
-    "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-aqNNdDLnnrDOnTNdkJpYlAxKVJtLt9CtFLklmInuUAE='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked.",
-    "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-aqNNdDLnnrDOnTNdkJpYlAxKVJtLt9CtFLklmInuUAE='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked.",
     "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
     "Failed to load resource: the server responded with a status of 404 (Not Found)",
     "Failed to load resource: the server responded with a status of 404 (Not Found)"
   ],
   "consoleWarnings": [
-    "[.WebGL-0x31f40015e800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x31f40015e800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x31f40015e800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x31f40015e800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
-    "autotable: skipped stale moveTo 110 -> wall.4.1@0 (occupant=105)",
-    "autotable: skipped stale moveTo 110 -> wall.4.1@0 (occupant=95)",
-    "autotable: skipped stale moveTo 109 -> hand.4@0 (occupant=38)",
-    "autotable: skipped stale moveTo 109 -> hand.4@0 (occupant=38)",
-    "autotable: skipped stale moveTo 109 -> hand.4@0 (occupant=38)",
-    "autotable: skipped stale moveTo 109 -> hand.4@0 (occupant=38)",
-    "autotable: skipped stale moveTo 109 -> hand.4@0 (occupant=38)"
+    "[.WebGL-0x341c0015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x341c0015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x341c0015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x341c0015ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+    "autotable: forcing stale moveTo 108 -> wall.0.1@1 (occupant=29)",
+    "autotable: forcing stale moveTo 108 -> wall.0.1@1 (occupant=29)",
+    "autotable: forcing stale moveTo 111 -> wall.9.1@1 (occupant=82)",
+    "autotable: forcing stale moveTo 111 -> wall.9.1@1 (occupant=88)",
+    "autotable: forcing stale moveTo 111 -> wall.9.1@1 (occupant=60)",
+    "autotable: forcing stale moveTo 108 -> hand.11@1 (occupant=45)",
+    "autotable: forcing stale moveTo 108 -> hand.11@1 (occupant=45)",
+    "autotable: forcing stale moveTo 108 -> hand.11@1 (occupant=45)"
   ],
   "networkFailures": [
-    "404 GET http://127.0.0.1:8088/api/games/humanled-1779756929928-283",
-    "404 GET http://127.0.0.1:8088/api/games/humanled-1779756929928-283/settings"
+    "404 GET http://127.0.0.1:8088/api/games/humanled-1780084293766-469",
+    "404 GET http://127.0.0.1:8088/api/games/humanled-1780084293766-469/settings"
   ],
   "collections": {
     "match": 1,
@@ -231,11 +225,6 @@
     "4p, no red (#setup-desc)",
     "Setup (#toggle-setup)",
     "Dealer (#toggle-dealer)",
-    "碰 Pung (#claim-pung)",
-    "吃 Chow (#claim-chow)",
-    "杠 Kong (#claim-kong)",
-    "胡 Hu (#claim-hu)",
-    "跳过 Pass (#claim-pass)",
     "Disconnect (#disconnect)",
     "Nick (#)",
     "Leave seat (#leave-seat)",
@@ -256,37 +245,40 @@
       "atSec": "0.1",
       "seat": 0,
       "pickup": {
-        "phase": "PickupRound3",
-        "seatIndex": 3,
-        "count": 4,
-        "dealMode": "manual",
-        "breakPoint": {
-          "wallIndex": 2,
-          "stackIndex": 11,
-          "tileIndex": 76
-        },
-        "wallIndex": 0
-      },
-      "myTurn": false,
-      "mySeatHandTiles": 16
-    },
-    {
-      "atSec": "1.3",
-      "seat": 0,
-      "pickup": {
         "phase": "SingleTilePickup",
-        "seatIndex": 2,
+        "seatIndex": 0,
         "count": 1,
         "dealMode": "manual",
         "breakPoint": {
-          "wallIndex": 2,
+          "wallIndex": 1,
           "stackIndex": 11,
-          "tileIndex": 76
+          "tileIndex": 50
+        },
+        "wallIndex": 0
+      },
+      "myTurn": true,
+      "mySeatHandTiles": 13,
+      "emitTake": {
+        "ok": false
+      }
+    },
+    {
+      "atSec": "1.4",
+      "seat": 0,
+      "pickup": {
+        "phase": "SingleTilePickup",
+        "seatIndex": 3,
+        "count": 1,
+        "dealMode": "manual",
+        "breakPoint": {
+          "wallIndex": 1,
+          "stackIndex": 11,
+          "tileIndex": 50
         },
         "wallIndex": 0
       },
       "myTurn": false,
-      "mySeatHandTiles": 17
+      "mySeatHandTiles": 14
     },
     {
       "atSec": "2.6",
@@ -297,24 +289,24 @@
         "count": 1,
         "dealMode": "manual",
         "breakPoint": {
-          "wallIndex": 2,
+          "wallIndex": 1,
           "stackIndex": 11,
-          "tileIndex": 76
+          "tileIndex": 50
         },
         "wallIndex": 0
       },
       "myTurn": true,
-      "mySeatHandTiles": 17,
+      "mySeatHandTiles": 14,
       "emitTake": {
         "ok": true
       }
     },
     {
-      "atSec": "3.8",
+      "atSec": "3.9",
       "seat": 0,
       "pickup": null,
       "myTurn": false,
-      "mySeatHandTiles": 18
+      "mySeatHandTiles": 15
     }
   ],
   "moveLogProgression": [
@@ -322,11 +314,11 @@
       "atSec": 0,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -337,11 +329,11 @@
       "atSec": 5,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -352,11 +344,11 @@
       "atSec": 10,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -367,11 +359,11 @@
       "atSec": 15,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -382,11 +374,11 @@
       "atSec": 20,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -397,11 +389,11 @@
       "atSec": 25,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -412,11 +404,11 @@
       "atSec": 30,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -427,11 +419,11 @@
       "atSec": 35,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -442,11 +434,11 @@
       "atSec": 40,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -457,11 +449,11 @@
       "atSec": 45,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -472,11 +464,11 @@
       "atSec": 50,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -487,11 +479,11 @@
       "atSec": 55,
       "count": 15,
       "recent": [
-        "[17:55:43]Seat 0 (Seat 0): picking 4 tiles (round 3)",
-        "[17:55:43]Seat 1 (Bot 1): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 2 (Bot 2): picking 4 tiles (round 3)",
-        "[17:55:44]Seat 3 (Bot 3): picking 4 tiles (round 3)",
-        "[17:55:46]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
+        "[12:51:45]Seat 0 (Seat 0): picking 4 tiles (round 3)",
+        "[12:51:45]Seat 1 (Bot 1): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 2 (Bot 2): picking 4 tiles (round 3)",
+        "[12:51:46]Seat 3 (Bot 3): picking 4 tiles (round 3)",
+        "[12:51:48]Seat 0 (Seat 0): picking 1 tile (dealerextra)"
       ],
       "phase": {
         "pickup": null,
@@ -502,7 +494,7 @@
   "discardAttempt": {
     "ok": true,
     "via": "world.emitDiscard",
-    "tileId": 1,
+    "tileId": 3,
     "seat": 0,
     "tried": [
       {
@@ -522,28 +514,28 @@
   },
   "postDealHandSize": {
     "seat": 0,
-    "handTileCount": 18,
+    "handTileCount": 15,
     "sampleSlots": [
       {
-        "tileId": 1,
-        "slot": "hand.11@0"
+        "tileId": 3,
+        "slot": "hand.8@0"
       },
       {
-        "tileId": 13,
-        "slot": "hand.1@0"
+        "tileId": 25,
+        "slot": "hand.13@0"
       },
       {
-        "tileId": 17,
+        "tileId": 26,
         "slot": "hand.5@0"
       },
       {
-        "tileId": 20,
-        "slot": "hand.2@0"
+        "tileId": 39,
+        "slot": "hand.12@0"
       }
     ],
     "thingsByPrefix": {
-      "hand": 67,
-      "wall": 69,
+      "wall": 74,
+      "hand": 62,
       "marker": 1,
       "tray": 60
     }

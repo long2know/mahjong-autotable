@@ -1,14 +1,14 @@
 {
   "url": {
-    "manual": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-playable-1779922923243-36",
-    "auto": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-playable-auto-1779922945824-882"
+    "manual": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-playable-1780084293789-620",
+    "auto": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-playable-auto-1780084318080-490"
   },
   "steps": [
     {
       "name": "M1-load-manual",
       "ok": true,
       "result": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-playable-1779922923243-36"
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-playable-1780084293789-620"
       }
     },
     {
@@ -29,8 +29,8 @@
       "result": {
         "snap": {
           "seat": 0,
-          "myHand": 15,
-          "myHandFaceUp": 15,
+          "myHand": 17,
+          "myHandFaceUp": 17,
           "allDiscard": 0,
           "myDiscard": 0,
           "phase": "DealerExtra",
@@ -38,24 +38,25 @@
           "pickupCount": 1,
           "claimedByDist": {
             "undefined": 13,
-            "null": 2
+            "null": 4
           },
           "myHandIds": [
-            8,
-            22,
-            25,
-            35,
-            39,
+            0,
+            18,
+            30,
             42,
-            56,
-            60,
             68,
-            74,
-            83,
-            85,
+            75,
+            90,
+            94,
+            97,
+            98,
+            103,
+            105,
             107,
-            122,
-            131
+            118,
+            120,
+            129
           ],
           "discardIds": [],
           "hasExtra": false,
@@ -78,12 +79,12 @@
       "result": {
         "holding": false,
         "claimedHand": 0,
-        "unclaimedHand": 16,
+        "unclaimedHand": 18,
         "claimedByDist": {
           "undefined": 14,
-          "null": 2
+          "null": 4
         },
-        "selSelfHand": 2,
+        "selSelfHand": 4,
         "pickupPhase": null,
         "pickupSeat": null,
         "pickupCount": null
@@ -95,8 +96,8 @@
       "result": {
         "hoverStateAfterMouseA": {
           "seat": 0,
-          "myHand": 16,
-          "myHandFaceUp": 16,
+          "myHand": 18,
+          "myHandFaceUp": 18,
           "allDiscard": 0,
           "myDiscard": 0,
           "phase": null,
@@ -104,39 +105,39 @@
           "pickupCount": null,
           "claimedByDist": {
             "undefined": 14,
-            "null": 2
+            "null": 4
           },
           "myHandIds": [
-            8,
-            22,
-            25,
-            35,
-            39,
+            0,
+            18,
+            30,
             42,
-            56,
-            60,
+            50,
             68,
-            74,
-            83,
-            85,
-            87,
+            75,
+            90,
+            94,
+            97,
+            98,
+            103,
+            105,
             107,
-            122,
-            131
+            118,
+            120
           ],
           "discardIds": [],
           "hasExtra": true,
-          "hovered": null,
+          "hovered": 129,
           "selected": []
         },
         "hoverStateAfterMouseB": {
-          "hovered": 131,
+          "hovered": 129,
           "selected": []
         },
         "clickState": {
           "seat": 0,
-          "myHand": 16,
-          "myHandFaceUp": 16,
+          "myHand": 18,
+          "myHandFaceUp": 18,
           "allDiscard": 0,
           "myDiscard": 0,
           "phase": null,
@@ -144,30 +145,32 @@
           "pickupCount": null,
           "claimedByDist": {
             "undefined": 14,
-            "null": 2
+            "null": 4
           },
           "myHandIds": [
-            8,
-            22,
-            25,
-            35,
-            39,
+            0,
+            18,
+            30,
             42,
-            56,
-            60,
+            50,
             68,
-            74,
-            83,
-            85,
-            87,
+            75,
+            90,
+            94,
+            97,
+            98,
+            103,
+            105,
             107,
-            122,
-            131
+            118,
+            120
           ],
           "discardIds": [],
           "hasExtra": true,
-          "hovered": 131,
-          "selected": []
+          "hovered": 129,
+          "selected": [
+            129
+          ]
         }
       }
     },
@@ -176,7 +179,7 @@
       "ok": true,
       "result": {
         "ok": true,
-        "targetId": 122,
+        "targetId": 118,
         "hasExtraBefore": true,
         "dragStart": false,
         "emitDiscard": true
@@ -186,7 +189,7 @@
       "name": "A1-load-auto",
       "ok": true,
       "result": {
-        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-playable-auto-1779922945824-882"
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-playable-auto-1780084318080-490"
       }
     },
     {
@@ -217,19 +220,19 @@
           "null": 13
         },
         "myHandIds": [
-          7,
-          41,
-          44,
-          56,
-          57,
-          62,
-          74,
-          88,
-          92,
-          95,
-          106,
+          0,
+          5,
+          25,
+          27,
+          35,
+          36,
+          37,
+          63,
+          84,
+          89,
           119,
-          124
+          129,
+          133
         ],
         "discardIds": [],
         "hasExtra": false,
@@ -248,32 +251,33 @@
     "Failed to load resource: the server responded with a status of 404 (Not Found)"
   ],
   "consoleWarnings": [
-    "[.WebGL-0x13e40015da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x13e40015da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x13e40015da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
-    "[.WebGL-0x13e40015da00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
-    "autotable: skipped stale moveTo 108 -> wall.4.0@3 (occupant=90)",
-    "autotable: skipped stale moveTo 108 -> wall.4.0@3 (occupant=90)",
-    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=98)",
-    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=28)",
-    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=5)",
-    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=24)",
-    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=21)",
-    "autotable: skipped stale moveTo 109 -> wall.7.1@1 (occupant=62)",
-    "autotable: skipped stale moveTo 108 -> wall.7.1@2 (occupant=71)",
-    "autotable: skipped stale moveTo 108 -> wall.7.1@2 (occupant=71)"
+    "[.WebGL-0x8040015a600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x8040015a600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x8040015a600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x8040015a600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+    "autotable: forcing stale moveTo 108 -> wall.8.0@0 (occupant=16)",
+    "autotable: forcing stale moveTo 108 -> wall.8.0@0 (occupant=16)",
+    "autotable: forcing stale moveTo 108 -> wall.8.1@0 (occupant=99)",
+    "autotable: forcing stale moveTo 108 -> wall.8.1@0 (occupant=100)",
+    "autotable: forcing stale moveTo 108 -> wall.8.1@0 (occupant=49)",
+    "autotable: forcing stale moveTo 108 -> wall.8.1@0 (occupant=40)",
+    "autotable: forcing stale moveTo 108 -> wall.8.1@0 (occupant=104)",
+    "autotable: forcing stale moveTo 108 -> wall.8.1@0 (occupant=48)",
+    "autotable: forcing stale moveTo 108 -> wall.8.1@0 (occupant=91)",
+    "autotable: forcing stale moveTo 110 -> wall.3.1@1 (occupant=35)",
+    "autotable: forcing stale moveTo 110 -> wall.3.1@1 (occupant=35)"
   ],
   "networkFailures": [
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-1779922923243-36",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-1779922923243-36/settings",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-auto-1779922945824-882",
-    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-auto-1779922945824-882/settings"
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-1780084293789-620",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-1780084293789-620/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-auto-1780084318080-490",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-playable-auto-1780084318080-490/settings"
   ],
   "gates": {
     "G1_setup": {
       "status": "PASS",
       "detail": {
-        "handCount": 15,
+        "handCount": 17,
         "takeButtonVisible": true,
         "phase": "DealerExtra"
       }
@@ -281,8 +285,8 @@
     "G2_takeButton": {
       "status": "PASS",
       "detail": {
-        "preTakeHand": 15,
-        "postTakeHand": 16,
+        "preTakeHand": 17,
+        "postTakeHand": 18,
         "phase": null,
         "awaitingDiscardish": false,
         "hasExtraHandTile": true
@@ -291,15 +295,15 @@
     "G3_selectUI": {
       "status": "PASS",
       "detail": {
-        "targetId": 131,
+        "targetId": 129,
         "projection": {
           "ok": true,
-          "targetId": 131,
-          "targetSlotName": "hand.5@0",
+          "targetId": 129,
+          "targetSlotName": "hand.12@0",
           "rotationIndex": 1,
-          "selectableCount": 2,
+          "selectableCount": 4,
           "worldPos": {
-            "x": 79,
+            "x": 121,
             "y": 4.5,
             "z": 2
           },
@@ -309,7 +313,7 @@
             "z": 4
           },
           "ndc": {
-            "x": -0.08218921471198466,
+            "x": 0.34930416252593405,
             "y": -0.7305519038223152
           },
           "rect": {
@@ -318,14 +322,14 @@
             "w": 1200,
             "h": 800
           },
-          "offsetX": 550.6864711728092,
+          "offsetX": 809.5824975155605,
           "offsetY": 692.2207615289261,
-          "clientX": 590.6864711728092,
+          "clientX": 849.5824975155605,
           "clientY": 692.2207615289261
         },
-        "hoveredAfterPlaywrightMove": null,
-        "hoveredAfterSyntheticMove": 131,
-        "hoveredAfterClick": 131,
+        "hoveredAfterPlaywrightMove": 129,
+        "hoveredAfterSyntheticMove": 129,
+        "hoveredAfterClick": 129,
         "hoverOnTarget": true,
         "notes": null
       }
@@ -333,23 +337,23 @@
     "G4_discard": {
       "status": "FAIL",
       "detail": {
-        "preDiscardHand": 16,
+        "preDiscardHand": 18,
         "prePhase": null,
-        "postClickHand": 16,
+        "postClickHand": 18,
         "postClickDiscardPile": 0,
         "directApiAttempted": true,
         "directApiOk": false,
-        "postDirectApiHand": 16,
+        "postDirectApiHand": 18,
         "postDirectApiDiscardPile": 0,
         "moveLogTail": [
-          "[16:02:11] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
-          "[16:02:12] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
-          "[16:02:12] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
-          "[16:02:12] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
-          "[16:02:13] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
-          "[16:02:13] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
-          "[16:02:14] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
-          "[16:02:16] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)"
+          "[12:51:42] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
+          "[12:51:43] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
+          "[12:51:43] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
+          "[12:51:44] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+          "[12:51:44] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+          "[12:51:44] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+          "[12:51:45] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+          "[12:51:47] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)"
         ],
         "sawDiscardInLog": false,
         "notes": "Discard round-trip FAILED. Front-end emitDiscard returned true (see M7 result) — `client.discard.set(seat, {tileId})` did push a WS payload. Backend never echoed a `things` UPDATE moving the tile to a `discard.*@N` slot; move-log shows NO discard entry. Pre-discard pickup phase was \"null\". Bishop should check: (1) does AutotableWsEndpoint.TryHandleDiscardActionAsync trigger when pickup state has just cleared DealerExtra without yet flipping to AwaitingDiscard? (2) does ApplyChangshaPickupCompletionAsync transition to AwaitingDiscard for the dealer's seat after dealerExtra take? Repro: run this spec headless, watch `pickup.phase` move DealerExtra → null at the take-button click but NEVER advance to inPlay/AwaitingDiscard. The dealer is stranded with 14 tiles and no valid action."
@@ -367,21 +371,21 @@
     }
   },
   "moveLog": [
-    "[16:02:03] System::  Match started — dealer is Seat 0",
-    "[16:02:09] System::  Dice rolled: 4 + 4 = 8",
-    "[16:02:09] Seat 0 (Seat 0)::  break-point marked @ col [object Object]",
-    "[16:02:09] Seat 1 (Bot 1)::  picking 4 tiles (round 1)",
-    "[16:02:10] Seat 2 (Bot 2)::  picking 4 tiles (round 1)",
-    "[16:02:10] Seat 3 (Bot 3)::  picking 4 tiles (round 1)",
-    "[16:02:11] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
-    "[16:02:11] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
-    "[16:02:12] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
-    "[16:02:12] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
-    "[16:02:12] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
-    "[16:02:13] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
-    "[16:02:13] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
-    "[16:02:14] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
-    "[16:02:16] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)"
+    "[12:51:34] System::  Match started — dealer is Seat 0",
+    "[12:51:40] System::  Dice rolled: 5 + 3 = 8",
+    "[12:51:40] Seat 0 (Seat 0)::  break-point marked @ col [object Object]",
+    "[12:51:40] Seat 1 (Bot 1)::  picking 4 tiles (round 1)",
+    "[12:51:41] Seat 2 (Bot 2)::  picking 4 tiles (round 1)",
+    "[12:51:41] Seat 3 (Bot 3)::  picking 4 tiles (round 1)",
+    "[12:51:42] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
+    "[12:51:42] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
+    "[12:51:43] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
+    "[12:51:43] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
+    "[12:51:44] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+    "[12:51:44] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+    "[12:51:44] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+    "[12:51:45] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+    "[12:51:47] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)"
   ],
   "summary": {
     "G1_setup": "PASS",
