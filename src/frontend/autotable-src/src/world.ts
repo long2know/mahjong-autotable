@@ -154,14 +154,52 @@ export class World {
   private onThings(entries: Array<[number, ThingInfo | null]>): void {
     const now = new Date().getTime();
 
-    // Hicks playability iter2 — collect indexes that ARE in this batch so
-    // the second pre-pass below can tell stale occupants apart from
-    // intentional swaps within the batch.
-    const batchIds = new Set<number>();
-    for (const [thingIndex, thingInfo] of entries) {
-      if (thingInfo !== null) batchIds.add(thingIndex);
-    }
-
+    // Hicks 2026-05-29 — Two-pass slot merge (Vasquez integration-audit
+    // memo `.squad/decisions/inbox/vasquez-integration-audit.md`).
+    //
+    // The backend `things` broadcast frequently contains tile-swap
+    // pairs and slot-takeover batches where the target slot is still
+    // occupied at the start of the batch. Naïvely calling
+    // `thing.moveTo(slot)` on those throws "slot not empty"; the old
+    // logic guarded against the throw by silently skipping the move
+    // (the "skipped stale moveTo" console.warn), which caused the
+    // client view to drift away from the authoritative server state.
+    // Vasquez's audit counted ~97 dropped moves in 5 minutes of play —
+    // dropped moves included legitimate discards, breaking scenarios
+    // A (manual discard round-robin), B (bot autoplay), and D (claim
+    // window appearance).
+    //
+    // Earlier iterations had two pre-passes:
+    //   (1) `thing.prepareMove()` on every batched thing — nulls the
+    //       thing's CURRENT slot pointer.
+    //   (2) Force-displace target-slot occupants ONLY when the
+    //       occupant is NOT also in the batch, on the assumption that
+    //       within-batch occupants were already cleared by pass 1.
+    //
+    // The assumption broke in the orphan-stale-ownership case:
+    //   slot X.thing === Z   AND   Z.slot === some-other-slot
+    // where Z's `.slot` was reassigned by a prior moveTo but slot X's
+    // `.thing` pointer was never cleared (moveTo only writes
+    // target.thing, never sources). When the new batch said
+    // [W → X, Z → Y], pass 1 cleared Z.slot.thing (= some-other-slot,
+    // NOT X) and pass 2 skipped force-displacing slot X (because Z
+    // was "in the batch"). The placement loop then saw X still
+    // occupied by Z and silently dropped W's move.
+    //
+    // Fix:
+    //   1a. Pre-vacate every source slot (existing `prepareMove`).
+    //   1b. Pre-vacate every target slot whose CURRENT occupant is a
+    //       different tile, regardless of whether that tile is in the
+    //       batch. Setting `slot.thing = null` is safe — if the
+    //       displaced tile has its own batch entry, it will be re-
+    //       bound by the placement loop below; if not, it becomes an
+    //       orphan that the next UPDATE rebinds (the existing pattern
+    //       — see `emitDiscard` orphan handling in this file).
+    //   2.  Placement loop still defends against an unreachable
+    //       "still occupied" branch with a throttled warning, but
+    //       force-clears + places instead of silently skipping. Last-
+    //       write-wins guarantees the client tracks the server.
+    // Pass 1a — vacate each batched thing's CURRENT slot.
     for (const [thingIndex, thingInfo] of entries) {
       // TODO handle deletion
       if (thingInfo === null) {
@@ -173,23 +211,18 @@ export class World {
       thing.prepareMove();
     }
 
-    // Hicks playability iter2 — defensive pre-pass for incremental batches.
-    // The render queue can throw "slot not empty: <thing> <slot>" (~140
-    // errors per playtest run) when an incremental UPDATE moves a tile
-    // into a slot whose previous occupant isn't mentioned in the same
-    // batch.  We force-displace that stale occupant here so moveTo()
-    // below can succeed; the next things UPDATE will re-bind the
-    // displaced tile to its true slot.
+    // Pass 1b — vacate each batched target slot regardless of whether
+    // the previous occupant is in this batch.  Replaces the older
+    // "skip if occupant in batch" optimisation that misfired on
+    // stale-ownership pointers (occupant's .slot was already
+    // reassigned by a previous moveTo but THIS slot's .thing pointer
+    // still referenced it).
     for (const [thingIndex, thingInfo] of entries) {
       if (thingInfo === null) continue;
       const slot = this.slots.get(thingInfo.slotName);
       if (!slot || slot.thing === null) continue;
-      // Already-cleared (its own thing moved away) or about to be reassigned
-      // to the same tile? Leave it alone.
       if (slot.thing.index === thingIndex) continue;
-      if (batchIds.has(slot.thing.index)) continue;
-      // Stale occupant — force-displace.
-      slot.thing.prepareMove();
+      slot.thing = null;
     }
 
     for (const [thingIndex, thingInfo] of entries) {
@@ -256,19 +289,22 @@ export class World {
       ) {
         rotationIndex = slot.rotations.length - 1;
       }
-      // Hicks playability iter2 — final guard.  If the slot is *still*
-      // occupied at this point (e.g., two batch entries collided), skip the
-      // move rather than throw.  We log once per ~second so the diagnostic
-      // is preserved without spamming the console.
+      // Hicks 2026-05-29 — defensive last-line guard.  After the two-
+      // pass slot merge above, this branch SHOULD be unreachable for
+      // any well-formed backend batch.  If we still see an occupied
+      // target slot, the batch probably double-targets the slot (two
+      // entries → same slotName).  Prefer last-write-wins so the
+      // client tracks the server, and emit a throttled warning so the
+      // condition is visible without spamming the console.
       if (slot.thing !== null && slot.thing !== thing) {
         if (now - World._lastSlotConflictLogMs > 1000) {
           World._lastSlotConflictLogMs = now;
           console.warn(
-            `autotable: skipped stale moveTo ${thing.index} -> ${slot.name}`,
+            `autotable: forcing stale moveTo ${thing.index} -> ${slot.name}`,
             `(occupant=${slot.thing.index})`,
           );
         }
-        continue;
+        slot.thing = null;
       }
       thing.moveTo(slot, rotationIndex);
       thing.sent = true;
