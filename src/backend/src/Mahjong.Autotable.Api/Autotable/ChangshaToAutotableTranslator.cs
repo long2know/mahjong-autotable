@@ -273,7 +273,17 @@ public static class ChangshaToAutotableTranslator
         {
             Winner = winnerSeat,
             Type = type,
-            Score = new Dictionary<int, int>(state.CumulativeScores),
+            // Project Dictionary<int,int> CumulativeScores → ordered List<ScoreDeltaEntry>.
+            // The wire contract is an ARRAY of { seat, delta } so the frontend's
+            // `[...result.score]` spread + sort works directly. Emitting the dict
+            // serializes as a JSON object {"0":..., "1":...} which is NOT iterable —
+            // see game-ui.ts:renderResult + ScoreDeltaEntry XML doc. OrderBy(seat)
+            // gives deterministic wire ordering across snapshots; the frontend
+            // re-sorts anyway, so this is purely defensive.
+            Score = state.CumulativeScores
+                .OrderBy(kv => kv.Key)
+                .Select(kv => new ScoreDeltaEntry { Seat = kv.Key, Delta = kv.Value })
+                .ToList(),
             Hand = winningHand,
             NextBanker = nextBanker,
             WinResult = winResult,

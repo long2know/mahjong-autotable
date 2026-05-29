@@ -60,9 +60,13 @@ public sealed class AutotableInboundMessage
 ///
 ///   <item><b><c>result</c></b> (Bishop Phase D-backend §2): keyed by the literal string
 ///   <c>"current"</c>, value = <c>{ winner: int, type: "Hu"|"Draw"|"ZhaHu",
-///   score: { seat: points }[], hand: int[], nextBanker: int }</c>. Server-emitted on
-///   hand end (Hu, washout, or false-Hu penalty). Used by the autotable scene to drive
-///   the result panel + banker arrow rotation. Lives until the next deal clears it.</item>
+///   score: { seat: int, delta: int }[], hand: int[], nextBanker: int }</c>.
+///   Server-emitted on hand end (Hu, washout, or false-Hu penalty). Used by the
+///   autotable scene to drive the result panel + banker arrow rotation. Lives until
+///   the next deal clears it. Note: <c>score</c> is an ARRAY of seat/delta entries
+///   (matches the frontend <c>ScoreDelta</c> interface in <c>types.ts</c>) — emitting
+///   it as a JSON object trips <c>TypeError: ... is not iterable</c> in the
+///   <c>game-ui.ts:renderResult</c> spread.</item>
 ///
 ///   <item><b><c>pickup</c></b> (Bishop Phase F §2): keyed by the literal string
 ///   <c>"current"</c>, value = <c>{ phase: string, seatIndex: int, count: int,
@@ -127,11 +131,24 @@ public sealed class HandResultEntry
     [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
 
-    /// <summary>Cumulative net payments per seat for this hand (positive = gained).</summary>
+    /// <summary>
+    /// Cumulative net payments per seat for this hand (positive = gained). Wire shape is
+    /// an array of <c>{ seat, delta }</c> objects ordered by seat — see
+    /// <see cref="ScoreDeltaEntry"/>. The frontend result modal spreads this field
+    /// (<c>[...result.score]</c>) so it MUST always be a JSON array (possibly empty),
+    /// never a JSON object or null. Initialized to an empty list so even a partial
+    /// <see cref="HandResultEntry"/> emitted before scoring completes serializes as
+    /// <c>"score": []</c>.
+    /// </summary>
     [JsonPropertyName("score")]
-    public Dictionary<int, int> Score { get; set; } = new();
+    public List<ScoreDeltaEntry> Score { get; set; } = [];
 
-    /// <summary>Tile ids in the winning hand (concealed + meld) for the result panel.</summary>
+    /// <summary>
+    /// Tile ids in the winning hand (concealed + meld) for the result panel. Wire shape
+    /// is an array of tile-id ints — the frontend iterates this field with
+    /// <c>for (const tile of result.hand)</c> so it MUST always be a JSON array
+    /// (possibly empty), never null or a scalar.
+    /// </summary>
     [JsonPropertyName("hand")]
     public List<int> Hand { get; set; } = [];
 
@@ -155,6 +172,28 @@ public sealed class HandResultEntry
     /// </summary>
     [JsonPropertyName("scoreResult")]
     public ScoreResultEntry? ScoreResult { get; set; }
+}
+
+/// <summary>
+/// Per-seat cumulative score delta entry carried inside <see cref="HandResultEntry.Score"/>.
+/// Wire shape mirrors the frontend <c>ScoreDelta</c> interface (<c>types.ts</c>) so the
+/// result-modal spread + sort
+/// (<c>[...result.score ?? []].sort((a, b) =&gt; a.seat - b.seat)</c>) works directly
+/// on the deserialized payload without any client-side coercion. Backend MUST emit
+/// <see cref="HandResultEntry.Score"/> as an ARRAY of these — emitting a JSON object
+/// (e.g. from <c>Dictionary&lt;int,int&gt;</c>) trips a <c>TypeError: ... is not iterable</c>
+/// in <c>game-ui.ts:renderResult</c> because the <c>??</c> guard only catches
+/// <c>null</c> / <c>undefined</c>.
+/// </summary>
+public sealed class ScoreDeltaEntry
+{
+    /// <summary>Seat index 0..3.</summary>
+    [JsonPropertyName("seat")]
+    public int Seat { get; set; }
+
+    /// <summary>Cumulative net point delta for this seat (positive = gained, negative = paid).</summary>
+    [JsonPropertyName("delta")]
+    public int Delta { get; set; }
 }
 
 /// <summary>
