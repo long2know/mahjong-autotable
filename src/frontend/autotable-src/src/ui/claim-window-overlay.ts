@@ -323,13 +323,15 @@ export class ClaimWindowOverlay {
       return;
     }
 
-    // Cache the window size when the claim is fresh (>= 90% remaining)
-    // so the progress bar fills proportionally even though `deadline`
-    // is absolute epoch ms.  We refresh the cache on every new claim
-    // entry rather than monotonically growing it.
-    const remaining = Math.max(0, claim.deadline - Date.now());
+    // Frost 2026-05-29 — when the backend emits `deadline=0` it means
+    // "no client-side countdown; server enforces the timeout".  Render
+    // the overlay (badges + Pass) without a countdown rather than
+    // treating 0 as "already expired" (which used to auto-hide the
+    // overlay the instant a claim window opened for the local seat).
+    const hasCountdown = claim.deadline > 0;
+    const remaining = hasCountdown ? Math.max(0, claim.deadline - Date.now()) : 0;
     if (claim !== this.lastClaimRef) {
-      this.windowMs = Math.max(remaining, 1);
+      this.windowMs = hasCountdown ? Math.max(remaining, 1) : 1;
       this.lastClaimRef = claim;
     }
 
@@ -351,8 +353,18 @@ export class ClaimWindowOverlay {
 
     this.root.hidden = false;
     this.root.classList.add('ferro-claim-overlay-visible');
-    this.startTicker();
-    this.tick();
+    if (hasCountdown) {
+      this.startTicker();
+      this.tick();
+    } else {
+      // Server-only timer — surface a static "—" instead of a counting timer
+      // and hold the progress bar full so the overlay reads "open, no expiry".
+      this.stopTicker();
+      this.timerEl.textContent = '—';
+      this.progressEl.style.width = '100%';
+      this.progressEl.parentElement?.setAttribute('aria-valuenow', '100');
+      this.root.classList.remove('ferro-claim-urgent', 'ferro-claim-critical');
+    }
   }
 
   private startTicker(): void {
@@ -371,6 +383,13 @@ export class ClaimWindowOverlay {
     if (this.root === null) return;
     const claim = this.activeClaim;
     if (claim === null) {
+      this.stopTicker();
+      return;
+    }
+    // Frost 2026-05-29 — guard against deadline=0 reaching the ticker
+    // (defensive — refresh() should already have skipped startTicker, but
+    // an inflight tick from a previous claim could land after a transition).
+    if (claim.deadline <= 0) {
       this.stopTicker();
       return;
     }

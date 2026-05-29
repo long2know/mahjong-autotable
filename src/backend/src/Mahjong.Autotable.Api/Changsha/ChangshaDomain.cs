@@ -535,6 +535,16 @@ public sealed class ChangshaClaimWindow
     public List<ChangshaClaimOpportunity> Opportunities { get; set; } = [];
 
     /// <summary>
+    /// Frost 2026-05-29 — UTC unix millis at which this window was opened. The
+    /// runtime's claim-window timer fires at <c>OpenedAtUnixMs + ClaimWindowTimeoutMs</c>;
+    /// the translator surfaces that absolute deadline to the autotable client so the
+    /// bottom overlay + side-panel countdown can render a meaningful timer instead of
+    /// auto-passing on a zero-deadline. Zero = unknown (rehydrated state); clients
+    /// should treat zero as "no client-side countdown" rather than "already expired".
+    /// </summary>
+    public long OpenedAtUnixMs { get; set; }
+
+    /// <summary>
     /// Phase H Wave 2 — true when the window was opened by an added-kong (補杠)
     /// declaration rather than a regular discard. In this mode the window only
     /// surfaces Hu opportunities (Pung/Kong/Chow are illegal — the tile is being

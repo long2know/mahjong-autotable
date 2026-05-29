@@ -58,10 +58,17 @@ public static class ChangshaToAutotableTranslator
     /// <param name="state">Authoritative Changsha state. May be null when no game is bound (always-available pattern).</param>
     /// <param name="viewerSeat">Optional seat of the connected viewer. If supplied, that seat's hand tiles render face-up; other seats stay face-down.</param>
     /// <param name="viewerPlayerId">Optional player id of the viewer (used to populate the <c>seats</c> collection so the bundle's camera rotates correctly).</param>
+    /// <param name="claimWindowTimeoutMs">Frost 2026-05-29 — total claim-window duration (matches
+    /// <see cref="Changsha.Runtime.ChangshaRuntimeOptions.ClaimWindowTimeoutMs"/>). When &gt; 0
+    /// the translator emits an absolute deadline = <c>state.ClaimWindow.OpenedAtUnixMs + claimWindowTimeoutMs</c>
+    /// so the autotable client can render a meaningful countdown. When 0 (default), the deadline
+    /// stays 0 — clients must treat that as "no client-side countdown" (server enforces the timeout)
+    /// rather than "already expired".</param>
     public static IReadOnlyList<CollectionEntry> Translate(
         ChangshaGameState? state,
         int? viewerSeat = null,
-        string? viewerPlayerId = null)
+        string? viewerPlayerId = null,
+        int claimWindowTimeoutMs = 0)
     {
         var entries = new List<CollectionEntry>();
 
@@ -120,19 +127,29 @@ public static class ChangshaToAutotableTranslator
         // The bundle's claim collection drives the 碰/吃/杠/胡 buttons (Phase B scene).
         if (state.ClaimWindow is { } window && state.Phase == ChangshaPhase.AwaitingClaim)
         {
+            // Frost 2026-05-29 — emit a real deadline (epoch ms) so the autotable
+            // overlay + side-panel show a meaningful countdown instead of treating
+            // the value as "expired now" and auto-passing.  Falls back to 0 when:
+            //   • caller didn't supply ClaimWindowTimeoutMs (back-compat for tests
+            //     that don't care about the deadline), OR
+            //   • OpenedAtUnixMs is 0 (rehydrated state from before this field
+            //     existed) — in which case the client must treat 0 as "no client
+            //     timer" rather than "expired".
+            var deadlineUnixMs = (claimWindowTimeoutMs > 0 && window.OpenedAtUnixMs > 0)
+                ? window.OpenedAtUnixMs + claimWindowTimeoutMs
+                : 0L;
             foreach (var seatGroup in window.Opportunities.GroupBy(o => o.SeatIndex))
             {
                 var available = seatGroup
                     .Select(o => ClaimTypeToWire(o.ClaimType))
                     .Distinct()
                     .ToList();
-                // Deadline = 0 means "no client-side timer" — server enforces the timeout.
                 entries.Add(ChangshaCollectionEncoder.EncodeClaimWindow(
                     seatGroup.Key,
                     available,
                     window.DiscardSeatIndex,
                     window.DiscardTileId,
-                    deadlineUnixMs: 0));
+                    deadlineUnixMs: deadlineUnixMs));
             }
         }
 

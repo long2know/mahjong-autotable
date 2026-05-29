@@ -346,4 +346,179 @@ public class AutotableTranslatorTests
         using var doc = JsonDocument.Parse(json);
         return doc.RootElement.GetProperty("rotationIndex").GetInt32();
     }
+
+    // ── claim window deadline plumbing (Frost 2026-05-29) ─────────────
+    //
+    // When the runtime opens a claim window the state machine stamps
+    // <c>ChangshaClaimWindow.OpenedAtUnixMs</c>.  The translator must surface
+    // an absolute deadline = OpenedAtUnixMs + claimWindowTimeoutMs so the
+    // autotable overlay / side-panel countdown renders meaningfully instead
+    // of treating <c>deadline=0</c> as "already expired" and auto-passing.
+    // Falls back to 0 when the caller doesn't supply a timeout (back-compat).
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void ClaimEntry_EmitsAbsoluteDeadline_WhenTimeoutPassed()
+    {
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingClaim,
+            ClaimWindow = new ChangshaClaimWindow
+            {
+                DiscardSeatIndex = 0,
+                DiscardTileId = 12,
+                OpenedAtUnixMs = 1_700_000_000_000L,
+                Opportunities = [
+                    new ChangshaClaimOpportunity
+                    {
+                        SeatIndex = 1,
+                        ClaimType = Tables.TableClaimType.Pung,
+                        Priority = 1
+                    }
+                ]
+            }
+        };
+        for (var i = 0; i < 4; i++)
+        {
+            state.Seats.Add(new ChangshaSeatState { SeatIndex = i });
+            state.Hands.Add(new ChangshaHandState { SeatIndex = i });
+        }
+
+        var entries = ChangshaToAutotableTranslator.Translate(
+            state, viewerSeat: 1, claimWindowTimeoutMs: 5000);
+
+        var claim = entries.Single(e => e.Kind == "claim");
+        var json = JsonSerializer.Serialize(claim.Value, AutotableJson.Options);
+        using var doc = JsonDocument.Parse(json);
+        // deadline = 1_700_000_000_000 + 5000 = 1_700_000_005_000
+        Assert.Equal(1_700_000_005_000L, doc.RootElement.GetProperty("deadline").GetInt64());
+    }
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void ClaimEntry_EmitsZeroDeadline_WhenTimeoutNotPassed()
+    {
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingClaim,
+            ClaimWindow = new ChangshaClaimWindow
+            {
+                DiscardSeatIndex = 0,
+                DiscardTileId = 12,
+                OpenedAtUnixMs = 1_700_000_000_000L,
+                Opportunities = [
+                    new ChangshaClaimOpportunity
+                    {
+                        SeatIndex = 1,
+                        ClaimType = Tables.TableClaimType.Pung,
+                        Priority = 1
+                    }
+                ]
+            }
+        };
+        for (var i = 0; i < 4; i++)
+        {
+            state.Seats.Add(new ChangshaSeatState { SeatIndex = i });
+            state.Hands.Add(new ChangshaHandState { SeatIndex = i });
+        }
+
+        // Caller didn't supply a timeout — preserve the legacy contract
+        // (0 = "no client timer; server enforces").
+        var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 1);
+
+        var claim = entries.Single(e => e.Kind == "claim");
+        var json = JsonSerializer.Serialize(claim.Value, AutotableJson.Options);
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(0L, doc.RootElement.GetProperty("deadline").GetInt64());
+    }
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void ClaimEntry_EmitsZeroDeadline_WhenOpenedAtZero_EvenWithTimeout()
+    {
+        // Rehydrated state from before OpenedAtUnixMs existed — translator
+        // must NOT compute a bogus deadline = 0 + timeout, since that's a
+        // 1970 epoch value that fails the "is this still open" check.
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingClaim,
+            ClaimWindow = new ChangshaClaimWindow
+            {
+                DiscardSeatIndex = 0,
+                DiscardTileId = 12,
+                OpenedAtUnixMs = 0L, // rehydrated / legacy
+                Opportunities = [
+                    new ChangshaClaimOpportunity
+                    {
+                        SeatIndex = 1,
+                        ClaimType = Tables.TableClaimType.Pung,
+                        Priority = 1
+                    }
+                ]
+            }
+        };
+        for (var i = 0; i < 4; i++)
+        {
+            state.Seats.Add(new ChangshaSeatState { SeatIndex = i });
+            state.Hands.Add(new ChangshaHandState { SeatIndex = i });
+        }
+
+        var entries = ChangshaToAutotableTranslator.Translate(
+            state, viewerSeat: 1, claimWindowTimeoutMs: 5000);
+
+        var claim = entries.Single(e => e.Kind == "claim");
+        var json = JsonSerializer.Serialize(claim.Value, AutotableJson.Options);
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(0L, doc.RootElement.GetProperty("deadline").GetInt64());
+    }
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void ClaimEntry_EmitsOnePerEligibleSeat_KeyedBySeatIndex()
+    {
+        // Per Changsha spec §3.3 every eligible seat (not just the priority
+        // winner) gets its own claim entry, keyed by that seat's index.  The
+        // frontend overlay matches `key === String(selfSeat)` to decide
+        // whether to surface the window; missing entries = no overlay.
+        var state = new ChangshaGameState
+        {
+            Phase = ChangshaPhase.AwaitingClaim,
+            ClaimWindow = new ChangshaClaimWindow
+            {
+                DiscardSeatIndex = 0,
+                DiscardTileId = 12,
+                OpenedAtUnixMs = 1_700_000_000_000L,
+                Opportunities = [
+                    new ChangshaClaimOpportunity
+                    {
+                        SeatIndex = 1, ClaimType = Tables.TableClaimType.Chow, Priority = 1
+                    },
+                    new ChangshaClaimOpportunity
+                    {
+                        SeatIndex = 2, ClaimType = Tables.TableClaimType.Pung, Priority = 2
+                    },
+                    new ChangshaClaimOpportunity
+                    {
+                        SeatIndex = 3, ClaimType = Tables.TableClaimType.Hu, Priority = 3
+                    }
+                ]
+            }
+        };
+        for (var i = 0; i < 4; i++)
+        {
+            state.Seats.Add(new ChangshaSeatState { SeatIndex = i });
+            state.Hands.Add(new ChangshaHandState { SeatIndex = i });
+        }
+
+        var entries = ChangshaToAutotableTranslator.Translate(
+            state, viewerSeat: 1, claimWindowTimeoutMs: 5000);
+
+        var claims = entries.Where(e => e.Kind == "claim").ToList();
+        Assert.Equal(3, claims.Count);
+        // Frost 2026-05-29 — keys are stringified to match the frontend
+        // Collection's Map<string, V> storage convention (game-ui.ts writes
+        // `client.claim.set(String(selfSeat), …)` locally; the server must
+        // use the same key shape so updates merge into a single entry).
+        Assert.Contains(claims, c => c.Key.Equals("1"));
+        Assert.Contains(claims, c => c.Key.Equals("2"));
+        Assert.Contains(claims, c => c.Key.Equals("3"));
+        // Discarder (seat 0) never gets a claim entry.
+        Assert.DoesNotContain(claims, c => c.Key.Equals("0"));
+    }
 }

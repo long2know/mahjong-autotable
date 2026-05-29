@@ -440,7 +440,8 @@ public sealed class ChangshaGameStateMachine
             {
                 DiscardSeatIndex = seatIndex,
                 DiscardTileId = tileId,
-                Opportunities = opportunities
+                Opportunities = opportunities,
+                OpenedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
             state.Phase = ChangshaPhase.AwaitingClaim;
             events.Add(CreateEvent(state, "claim-window-open", seatIndex, tileId: tileId,
@@ -751,7 +752,8 @@ public sealed class ChangshaGameStateMachine
                 DiscardTileId = tileId,
                 Opportunities = huOpportunities,
                 IsKongRobbing = true,
-                KongDeclarerSeatIndex = seatIndex
+                KongDeclarerSeatIndex = seatIndex,
+                OpenedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
             state.Phase = ChangshaPhase.AwaitingClaim;
             return [

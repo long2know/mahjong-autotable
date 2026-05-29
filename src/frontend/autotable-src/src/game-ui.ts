@@ -870,6 +870,15 @@ export class GameUi {
       this.stopClaimTimer();
       return;
     }
+    // Frost 2026-05-29 — deadline=0 means "no client-side countdown; server
+    // enforces the timeout".  Without this guard the side-panel claim UI
+    // immediately auto-passed when the backend (legacy contract) omitted
+    // the deadline, hiding the claim window before the player ever saw it.
+    if (claim.deadline <= 0) {
+      this.elements.claimCountdownValue.textContent = '—';
+      this.stopClaimTimer();
+      return;
+    }
     const remainingMs = claim.deadline - Date.now();
     if (remainingMs <= 0) {
       // Auto-pass on expiry.

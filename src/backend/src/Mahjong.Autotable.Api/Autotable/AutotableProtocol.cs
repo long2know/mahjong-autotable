@@ -338,13 +338,24 @@ public static class ChangshaCollectionEncoder
     /// Encodes a claim window for <paramref name="seat"/> as the <c>claim</c> collection
     /// entry the bundle expects. Caller decides timeout policy.
     /// </summary>
+    /// <remarks>
+    /// Frost 2026-05-29 — the bundle-side <c>Collection&lt;K,V&gt;</c> stores entries in a
+    /// JS <c>Map</c>, where <c>Map.get(0)</c> and <c>Map.get("0")</c> are distinct lookups.
+    /// <c>game-ui.ts.sendClaim()</c> writes its outbound action via
+    /// <c>client.claim.set(String(selfSeat), …)</c>, so the entry the frontend hands back
+    /// to itself is keyed by string. If we emit the seat as a number here, every server
+    /// snapshot replaces the string entry with a numeric one, causing the overlay's
+    /// <c>key !== String(selfSeat)</c> filter to silently drop the entry (the overlay
+    /// stays hidden even though a real claim window is open). Emitting the seat as a
+    /// stringified number keeps both write paths keyed consistently.
+    /// </remarks>
     public static CollectionEntry EncodeClaimWindow(
         int seat,
         IEnumerable<string> available,
         int sourceSeat,
         int tileId,
         long deadlineUnixMs)
-        => new(ChangshaCollectionKinds.Claim, seat, new ClaimWindowEntry
+        => new(ChangshaCollectionKinds.Claim, seat.ToString(System.Globalization.CultureInfo.InvariantCulture), new ClaimWindowEntry
         {
             Available = available.ToList(),
             DeadlineUnixMs = deadlineUnixMs,
@@ -354,7 +365,7 @@ public static class ChangshaCollectionEncoder
 
     /// <summary>Encodes a tombstone for <paramref name="seat"/>'s claim window (window closed).</summary>
     public static CollectionEntry EncodeClaimWindowClosed(int seat)
-        => new(ChangshaCollectionKinds.Claim, seat, null);
+        => new(ChangshaCollectionKinds.Claim, seat.ToString(System.Globalization.CultureInfo.InvariantCulture), null);
 
     /// <summary>Encodes the current hand's result as the <c>result["current"]</c> entry.</summary>
     public static CollectionEntry EncodeHandResult(HandResultEntry result)

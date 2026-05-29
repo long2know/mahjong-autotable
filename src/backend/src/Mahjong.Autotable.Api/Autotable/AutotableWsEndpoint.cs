@@ -5,6 +5,7 @@ using System.Text.Json;
 using Mahjong.Autotable.Api.Changsha;
 using Mahjong.Autotable.Api.Changsha.Runtime;
 using Mahjong.Autotable.Api.Players;
+using Microsoft.Extensions.Options;
 
 namespace Mahjong.Autotable.Api.Autotable;
 
@@ -124,13 +125,19 @@ public sealed class AutotableConnectionManager : IDisposable
     // Lock to serialise lazy runtime-game creation per relay gameId.
     private readonly SemaphoreSlim _bindingLock = new(1, 1);
     private readonly Action<string> _stateChangedHandler;
+    // Frost 2026-05-29 — surfaced via the translator's claim-entry deadline so the
+    // autotable client can render a real countdown.  Snapshot at construction time
+    // (singleton) — runtime options are read-only at startup.
+    private readonly int _claimWindowTimeoutMs;
 
     public AutotableConnectionManager(
         IChangshaGameRuntime runtime,
-        ILogger<AutotableConnectionManager> logger)
+        ILogger<AutotableConnectionManager> logger,
+        IOptions<ChangshaRuntimeOptions> runtimeOptions)
     {
         _runtime = runtime;
         _logger = logger;
+        _claimWindowTimeoutMs = runtimeOptions?.Value?.ClaimWindowTimeoutMs ?? 0;
         _stateChangedHandler = OnStateChanged;
         _runtime.StateChanged += _stateChangedHandler;
     }
@@ -554,13 +561,34 @@ public sealed class AutotableConnectionManager : IDisposable
         if (entry.Value is null) return;
         if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
         if (!je.TryGetProperty("seat", out var seatEl)) return;
-        if (seatEl.ValueKind != JsonValueKind.Number) return;
-        if (!seatEl.TryGetInt32(out var seatIndex)) return;
-        if (seatIndex is < 0 or > 3) return;
 
         // Phase F §1.2 — Relay-mode connections do NOT bind a Changsha runtime.
         // The bundle's local Setup drives the deal; the backend only relays.
         if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return;
+
+        // Ripley L-10 audit fix — `{seat: null}` is the upstream Player.svelte
+        // shape for an explicit "Leave" action. Previously this returned silently
+        // because the handler only accepted JsonValueKind.Number, leaving stale
+        // seats around (`nicks` entries never cleared, the lobby seat counter
+        // permanently stuck at 4/4). Route through the runtime so the persistent
+        // identity AND the per-tab transport binding both clear.
+        if (seatEl.ValueKind == JsonValueKind.Null)
+        {
+            try
+            {
+                var runtimeGameIdLeave = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct);
+                await _runtime.ReleaseSeatAsync(runtimeGameIdLeave, connection.PlayerId, connection.Id.ToString("N"), ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Seat release failed for connection {ConnectionId}", connection.Id);
+            }
+            return;
+        }
+
+        if (seatEl.ValueKind != JsonValueKind.Number) return;
+        if (!seatEl.TryGetInt32(out var seatIndex)) return;
+        if (seatIndex is < 0 or > 3) return;
 
         try
         {
@@ -1064,7 +1092,8 @@ public sealed class AutotableConnectionManager : IDisposable
             // No game bound — ship only the translator's match[0] override
             // so the bundle creates tiles with fives='000'.
             var translatorEntriesNoGame = ChangshaToAutotableTranslator.Translate(state: null,
-                viewerSeat: connection.ViewerSeat, viewerPlayerId: connection.PlayerId);
+                viewerSeat: connection.ViewerSeat, viewerPlayerId: connection.PlayerId,
+                claimWindowTimeoutMs: _claimWindowTimeoutMs);
             var msg = new UpdateMessage { Entries = translatorEntriesNoGame.ToList(), Full = true };
             await SendJsonAsync(connection, msg, ct);
             return;
@@ -1072,16 +1101,26 @@ public sealed class AutotableConnectionManager : IDisposable
 
         // Look up the bound runtime game (may be null if no seat has been
         // taken yet). The translator absorbs nulls and degrades to match-only.
+        //
+        // Vasquez integration audit A2/A3 — use TryGetSnapshotCopyAsync (lock-
+        // protected JSON deep clone) instead of TryGetSnapshot (live reference)
+        // so the translator iterates a stable graph. TryGetSnapshot returns
+        // instance.State directly, which can be mutated mid-iteration by a
+        // concurrent DrawTile / Discard / claim resolution running on a runtime
+        // worker thread — producing a snapshot that drops the most-recent
+        // discard from the wire view (the runtime keeps it, but the broadcast
+        // does not) and gaslights the client into rendering a stale board.
         ChangshaGameState? runtimeState = null;
         if (_runtimeBinding.TryGetValue(gameId, out var runtimeGameId))
         {
-            _runtime.TryGetSnapshot(runtimeGameId, out runtimeState);
+            runtimeState = await _runtime.TryGetSnapshotCopyAsync(runtimeGameId, ct);
         }
 
         var translatorEntries = ChangshaToAutotableTranslator.Translate(
             runtimeState,
             viewerSeat: connection.ViewerSeat,
-            viewerPlayerId: connection.PlayerId);
+            viewerPlayerId: connection.PlayerId,
+            claimWindowTimeoutMs: _claimWindowTimeoutMs);
 
         var gameState = _games.GetOrAdd(gameId, id => new AutotableGameState(id));
 
