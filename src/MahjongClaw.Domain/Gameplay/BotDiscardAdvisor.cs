@@ -437,7 +437,34 @@ public static class BotDiscardAdvisor
                     }
                 }
             }
+        }
 
+        if (ruleset == MahjongRuleset.Changsha258
+            && !hasAnySmallWinTileInHand
+            && visibleCounts.Count > 0)
+        {
+            var deadOffRankPairCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 2 || Changsha258Ruleset.IsSmallWinPair(candidate.Tile))
+                    {
+                        return false;
+                    }
+
+                    if (candidate.RemainingCopies > 0)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                })
+                .ToList();
+
+            if (deadOffRankPairCandidates.Count > 0)
+            {
+                candidates = deadOffRankPairCandidates;
+            }
         }
 
         if (ruleset == MahjongRuleset.Changsha258)
@@ -503,11 +530,41 @@ public static class BotDiscardAdvisor
             }
         }
 
+        if (changshaSmallWinPairCount >= 1 && !filteredByDeadOffRankPair)
+        {
+            var deadSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 1)
+                    {
+                        return false;
+                    }
+
+                    ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
+                    visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
+                    if (4 - ownedCount - visibleCount > 0)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                })
+                .ToList();
+
+            if (deadSingletonCandidates.Count > 0)
+            {
+                candidates = deadSingletonCandidates;
+                filteredByDeadSingleton = true;
+            }
+        }
+
         if (ruleset == MahjongRuleset.Changsha258
             && enforceSmallWinPairBias
             && visibleCounts.Count > 0
             && changshaSmallWinPairCount >= 1
-            && !filteredByDeadOffRankPair)
+            && !filteredByDeadOffRankPair
+            && !filteredByDeadSingleton)
         {
             var nearDeadOffRankPairCandidates = candidates
                 .Where(candidate =>
@@ -652,35 +709,6 @@ public static class BotDiscardAdvisor
                         candidates = nearDeadPairCandidates;
                     }
                 }
-            }
-        }
-
-        if (changshaSmallWinPairCount >= 1 && !filteredByDeadOffRankPair)
-        {
-            var deadSingletonCandidates = candidates
-                .Where(candidate =>
-                {
-                    handCounts.TryGetValue(candidate.Tile, out var handCount);
-                    if (handCount != 1)
-                    {
-                        return false;
-                    }
-
-                    ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
-                    visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
-                    if (4 - ownedCount - visibleCount > 0)
-                    {
-                        return false;
-                    }
-
-                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
-                })
-                .ToList();
-
-            if (deadSingletonCandidates.Count > 0)
-            {
-                candidates = deadSingletonCandidates;
-                filteredByDeadSingleton = true;
             }
         }
 
