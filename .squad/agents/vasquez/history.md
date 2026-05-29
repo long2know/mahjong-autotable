@@ -3001,3 +3001,47 @@ branch.
 - **The dealer-extra "stuck" pattern**: any future spec exercising discard must FIRST verify `pickup.phase` advanced past `DealerExtra` (or `null`) into `AwaitingDiscard` before calling `emitDiscard`. Otherwise the discard silently dies. Until Bishop fixes the transition, treat `phase === null` post-dealerExtra as the canonical "dealer stranded" repro signature.
 - **`thing.claimedBy` undefined-vs-null trap**: world.ts:1185 filters strictly on `=== null`. After WS UPDATE replays, `thingInfo.claimedBy` may be missing and the assignment at world.ts:276 sets it to `undefined`. Tests polling `toSelect()` should either wait past the transient OR explicitly normalise `undefined → null` to surface the rayable tile.
 - **Direct-API parity check**: when `mouse.move + mouse.down/up` doesn't engage `world.onDragStart`, programmatically setting `world.hovered = thing; world.onDragStart()` bypasses the raycaster and reproduces the click-to-discard intercept exactly. This is the cleanest separator between "raycast missed" (Hicks fix) and "discard wire broken" (Bishop fix).
+
+## Full game integration audit (2026-05-29)
+
+**Task:** Build a Playwright spec that drives a complete Changsha game across 5 scenarios (manual deal + dealer discard + round-robin, auto deal + bot autoplay, DOM tile selection, claim window, synthetic Hu win) and grade every gate from real backend state (no fake-greens).
+
+**Branch:** `test/full-game-integration` (squashed to main).
+
+### Work completed
+
+1. **Spec** (`playtest-artifacts/playtest-full-game-integration.spec.mjs`, ~720 lines):
+   - 5 scenarios, 15 graded gates, per-scenario screenshots, full diagnostics.
+   - Behavior-first: every PASS asserts REAL `world.things` state OR DOM observable, never just "no exception thrown".
+   - Captures page-error stack traces, console warnings (specifically `skipped stale moveTo`), and network 404s.
+   - Click-to-discard test retries across up to 5 rack tiles for stability.
+
+2. **Findings** (`playtest-artifacts/integration-audit/findings.json` + 13 PNGs + run.log):
+   - PASS: C (DOM selection 3/3), E (win modal 3/3).
+   - FAIL: A (2/4), B (2/4), D (1/2) — all rooted in ONE bug.
+
+3. **Root cause** identified: `world.ts:263-272` silently drops backend slot moves when the target slot is occupied (97 `skipped stale moveTo` warnings in ~5 min). This drift causes:
+   - A2: dealer's own discard never visible in `discardBySeat`
+   - B4: only 1 tile in discard slots vs. 37 in move log
+   - D1: claim windows never open (because client never sees the source discards)
+
+4. **Secondary bug** identified: `GameUi.renderResult` throws `(intermediate value) is not iterable` 6× during 35s of bot autoplay — the `for (const tile of result.hand)` and `[...(result.score ?? [])]` aren't defended for non-array shapes from the backend.
+
+### Findings.json summary (final run)
+
+- staleMoveToWarnings: **97**
+- pageErrors: 235 (one unique stack: `lt.renderResult` → `lt.onResultUpdate`)
+- consoleErrors: 15 (mostly THREE.js NaN bounding-sphere warnings + 404s)
+- networkFailures: 10 (pre-existing `/api/games/<id>` and `/settings` 404s)
+
+### Decision memo
+
+`.squad/decisions/inbox/vasquez-integration-audit.md` — fix sketch for `world.ts` two-pass merge, hand-off list to Hicks (world merge) + Bishop (translator batch ordering, `renderResult` payload shape) + Frost (re-validate claim window after bug #1 fixed).
+
+### Skill / learning takeaways
+
+- **`world.things` is a Map**, not a POJO. `Object.values(world.things)` returns `[]` silently. probe-end-to-end.mjs had this bug.
+- **Discard success cannot be graded on `handBySeat[seat] <= 13`**: dealer immediately draws next pickup, hand bounces back to 14/15. Grade via `discardBySeat[seat] > 0` AND move-log entry.
+- **Game-complete modal dismiss path**: tombstone via `cli.events.emit('update', [['gameComplete','current',null]], false)` is the canonical hide (game-ui.ts:1814 `dismissGameCompleteModal`). jQuery `.modal('hide')` doesn't reliably work in this bundle context.
+- **`page.on('console')` must filter for `warn`** as well as `error` — drift bugs only surface as `console.warn` lines (world.ts:266 `_lastSlotConflictLogMs` throttling).
+- **Tile-selection runtime contract**: `world.selected: Array<Thing>` exists (world.ts:34) but click-to-discard fires off `world.hovered` via `world.onDragStart` (world.ts:885+) without populating `selected`. There is no persistent "select then act" UI mode in the codebase.

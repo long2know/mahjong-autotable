@@ -1,0 +1,1933 @@
+{
+  "startedAt": "2026-05-29T17:53:41.897Z",
+  "baseUrl": "http://127.0.0.1:8088",
+  "scenarios": {
+    "A_manualDealRoundRobin": {
+      "status": "FAIL",
+      "gates": {
+        "A1_dealerHas14FaceUp": {
+          "status": "PASS",
+          "detail": {
+            "preHand": 14,
+            "postHand": 15,
+            "myHandFaceUp": 15,
+            "hasExtraHandTile": true
+          }
+        },
+        "A2_dealerDiscardRoundTrip": {
+          "status": "FAIL",
+          "detail": {
+            "preHand": 15,
+            "postHand": 15,
+            "totalDiscard": 0,
+            "discardBySeat": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "dealerPileGrew": false,
+            "logShowsDealerDiscard": true,
+            "moveLogTail": [
+              "[10:53:53] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+              "[10:53:53] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+              "[10:53:54] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+              "[10:53:56] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
+              "[10:54:00] Seat 0 (Seat 0)::  discarded 2万"
+            ],
+            "notes": "Discard did not round-trip back to the local view AND/OR move-log.  Even though emitDiscard() returned true, the backend response did not place a tile into discard.*@0 — Bishop should check TryHandleDiscardActionAsync + the things-broadcast path for seat 0 dealer."
+          }
+        },
+        "A3_roundRobinAllSeats": {
+          "status": "FAIL",
+          "detail": {
+            "discardBySeat": [
+              1,
+              0,
+              1,
+              1
+            ],
+            "live": {
+              "seat1": false,
+              "seat2": true,
+              "seat3": true
+            },
+            "log": {
+              "seat1": true,
+              "seat2": true,
+              "seat3": true
+            },
+            "runtimeTotalDiscard": 3,
+            "logDiscardCount": 4,
+            "seatHands": [
+              15,
+              13,
+              11,
+              13
+            ],
+            "notes": "Both the live `world.things` count AND the move-log are sampled — they can disagree when the runtime drops things-broadcasts (B4 drift)."
+          }
+        },
+        "A4_dealerNextDrawTouched": {
+          "status": "PASS",
+          "detail": {
+            "seat0ActionsInLog": 6,
+            "dealerCurrentHand": 15,
+            "notes": null
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-A-1780077221987-458",
+        "deal": {
+          "ok": true
+        },
+        "preTakeSnap": {
+          "seat": 0,
+          "handBySeat": [
+            14,
+            13,
+            14,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "myHandIds": [
+            {
+              "id": 1
+            },
+            {
+              "id": 11
+            },
+            {
+              "id": 12
+            },
+            {
+              "id": 18
+            },
+            {
+              "id": 39
+            },
+            {
+              "id": 51
+            },
+            {
+              "id": 61
+            },
+            {
+              "id": 71
+            },
+            {
+              "id": 74
+            },
+            {
+              "id": 80
+            },
+            {
+              "id": 82
+            },
+            {
+              "id": 86
+            },
+            {
+              "id": 96
+            },
+            {
+              "id": 133
+            }
+          ],
+          "myHandFaceUp": 14,
+          "foreignHandFaceUp": 0,
+          "wallCount": 82,
+          "pickup": {
+            "phase": "DealerExtra",
+            "seatIndex": 0,
+            "count": 1
+          },
+          "claim": null,
+          "gameComplete": null,
+          "hovered": null,
+          "hasExtraHandTile": false
+        },
+        "takeBtnVisibleBeforeClick": true,
+        "postTakeSnap": {
+          "seat": 0,
+          "handBySeat": [
+            15,
+            13,
+            14,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "myHandIds": [
+            {
+              "id": 1
+            },
+            {
+              "id": 11
+            },
+            {
+              "id": 12
+            },
+            {
+              "id": 18
+            },
+            {
+              "id": 39
+            },
+            {
+              "id": 51
+            },
+            {
+              "id": 61
+            },
+            {
+              "id": 71
+            },
+            {
+              "id": 74
+            },
+            {
+              "id": 80
+            },
+            {
+              "id": 82
+            },
+            {
+              "id": 86
+            },
+            {
+              "id": 96
+            },
+            {
+              "id": 99
+            },
+            {
+              "id": 133
+            }
+          ],
+          "myHandFaceUp": 15,
+          "foreignHandFaceUp": 0,
+          "wallCount": 81,
+          "pickup": null,
+          "claim": null,
+          "gameComplete": null,
+          "hovered": null,
+          "hasExtraHandTile": true
+        },
+        "discardTarget": {
+          "id": 1
+        },
+        "discardEmit": {
+          "ok": true
+        },
+        "postDiscardSnap": {
+          "seat": 0,
+          "handBySeat": [
+            15,
+            13,
+            14,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "myHandIds": [
+            {
+              "id": 1
+            },
+            {
+              "id": 11
+            },
+            {
+              "id": 12
+            },
+            {
+              "id": 18
+            },
+            {
+              "id": 39
+            },
+            {
+              "id": 51
+            },
+            {
+              "id": 61
+            },
+            {
+              "id": 71
+            },
+            {
+              "id": 74
+            },
+            {
+              "id": 80
+            },
+            {
+              "id": 82
+            },
+            {
+              "id": 86
+            },
+            {
+              "id": 96
+            },
+            {
+              "id": 99
+            },
+            {
+              "id": 133
+            }
+          ],
+          "myHandFaceUp": 15,
+          "foreignHandFaceUp": 0,
+          "wallCount": 81,
+          "pickup": null,
+          "claim": null,
+          "gameComplete": null,
+          "hovered": null,
+          "hasExtraHandTile": true
+        },
+        "logAfterDiscard": [
+          "[10:53:51] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
+          "[10:53:51] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
+          "[10:53:52] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
+          "[10:53:52] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
+          "[10:53:53] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+          "[10:53:53] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+          "[10:53:53] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+          "[10:53:54] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+          "[10:53:56] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
+          "[10:54:00] Seat 0 (Seat 0)::  discarded 2万"
+        ],
+        "rrSnap": {
+          "seat": 0,
+          "handBySeat": [
+            15,
+            13,
+            11,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            3,
+            0
+          ],
+          "discardBySeat": [
+            1,
+            0,
+            1,
+            1
+          ],
+          "totalDiscard": 3,
+          "totalMeld": 3,
+          "myHandIds": [
+            {
+              "id": 6
+            },
+            {
+              "id": 11
+            },
+            {
+              "id": 12
+            },
+            {
+              "id": 18
+            },
+            {
+              "id": 39
+            },
+            {
+              "id": 51
+            },
+            {
+              "id": 61
+            },
+            {
+              "id": 71
+            },
+            {
+              "id": 74
+            },
+            {
+              "id": 80
+            },
+            {
+              "id": 82
+            },
+            {
+              "id": 86
+            },
+            {
+              "id": 96
+            },
+            {
+              "id": 99
+            },
+            {
+              "id": 133
+            }
+          ],
+          "myHandFaceUp": 15,
+          "foreignHandFaceUp": 0,
+          "wallCount": 78,
+          "pickup": null,
+          "claim": null,
+          "gameComplete": null,
+          "hovered": null,
+          "hasExtraHandTile": true
+        },
+        "rrLogTail": [
+          "[10:53:51] Seat 3 (Bot 3)::  picking 4 tiles (round 1)",
+          "[10:53:51] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
+          "[10:53:51] Seat 1 (Bot 1)::  picking 4 tiles (round 2)",
+          "[10:53:52] Seat 2 (Bot 2)::  picking 4 tiles (round 2)",
+          "[10:53:52] Seat 3 (Bot 3)::  picking 4 tiles (round 2)",
+          "[10:53:53] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+          "[10:53:53] Seat 1 (Bot 1)::  picking 4 tiles (round 3)",
+          "[10:53:53] Seat 2 (Bot 2)::  picking 4 tiles (round 3)",
+          "[10:53:54] Seat 3 (Bot 3)::  picking 4 tiles (round 3)",
+          "[10:53:56] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
+          "[10:54:00] Seat 0 (Seat 0)::  discarded 2万",
+          "[10:54:00] Seat 1 (Bot 1)::  discarded 6条",
+          "[10:54:00] Seat 2 (Bot 2)::  claim window — Chow on 6条 (from Seat 1)",
+          "[10:54:01] Seat 2 (Bot 2)::  discarded 9万",
+          "[10:54:01] Seat 3 (Bot 3)::  discarded 4条"
+        ],
+        "rrLogDiscardCount": 4,
+        "dealerMoveCount": 6,
+        "dealerMoves": [
+          "[10:53:42] System::  Match started — dealer is Seat 0",
+          "[10:53:49] Seat 0 (Seat 0)::  break-point marked @ col [object Object]",
+          "[10:53:51] Seat 0 (Seat 0)::  picking 4 tiles (round 2)",
+          "[10:53:53] Seat 0 (Seat 0)::  picking 4 tiles (round 3)",
+          "[10:53:56] Seat 0 (Seat 0)::  picking 1 tile (dealerextra)",
+          "[10:54:00] Seat 0 (Seat 0)::  discarded 2万"
+        ]
+      }
+    },
+    "B_autoDealBotAutoplay": {
+      "status": "FAIL",
+      "gates": {
+        "B1_allSeatsDealt": {
+          "status": "PASS",
+          "detail": {
+            "handBySeat": [
+              14,
+              13,
+              13,
+              13
+            ],
+            "wallCount": 83,
+            "notes": null
+          }
+        },
+        "B2_30PlusBotDiscards": {
+          "status": "PASS",
+          "detail": {
+            "discardEntriesInLog": 37,
+            "totalLogEntries": 50,
+            "runtimeTotalDiscard": 1
+          }
+        },
+        "B3_noPageErrors": {
+          "status": "FAIL",
+          "detail": {
+            "pageErrorsDelta": 6,
+            "latestPageErrors": [
+              {
+                "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+                "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+              },
+              {
+                "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+                "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+              },
+              {
+                "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+                "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+              },
+              {
+                "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+                "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+              },
+              {
+                "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+                "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+              }
+            ]
+          }
+        },
+        "B4_someProgressMarker": {
+          "status": "FAIL",
+          "detail": {
+            "meldsOnTable": 0,
+            "meldBySeat": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "winModalVisible": false,
+            "wallNearlyExhausted": false,
+            "totalDiscard": 1
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=4&gameId=vasquez-B-1780077302253-527",
+        "postDealSnap": {
+          "seat": null,
+          "handBySeat": [
+            14,
+            13,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 0,
+          "totalMeld": 0,
+          "myHandIds": [],
+          "myHandFaceUp": 0,
+          "foreignHandFaceUp": 0,
+          "wallCount": 83,
+          "pickup": null,
+          "claim": null,
+          "gameComplete": null,
+          "hovered": null,
+          "hasExtraHandTile": false
+        },
+        "observed": {
+          "seat": null,
+          "handBySeat": [
+            13,
+            14,
+            13,
+            13
+          ],
+          "meldBySeat": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "discardBySeat": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "totalDiscard": 1,
+          "totalMeld": 0,
+          "myHandIds": [],
+          "myHandFaceUp": 0,
+          "foreignHandFaceUp": 0,
+          "wallCount": 82,
+          "pickup": null,
+          "claim": null,
+          "gameComplete": null,
+          "hovered": null,
+          "hasExtraHandTile": false
+        },
+        "observedLogTail": [
+          "[10:55:20] Seat 0 (Bot 0)::  discarded 2条",
+          "[10:55:20] Seat 1 (Bot 1)::  discarded 7万",
+          "[10:55:21] Seat 2 (Bot 2)::  discarded 9万",
+          "[10:55:21] Seat 3 (Bot 3)::  discarded 3万",
+          "[10:55:21] Seat 0 (Bot 0)::  discarded 7条",
+          "[10:55:22] Seat 1 (Bot 1)::  discarded 2万",
+          "[10:55:22] Seat 2 (Bot 2)::  discarded 2筒",
+          "[10:55:23] Seat 3 (Bot 3)::  discarded 3条",
+          "[10:55:23] Seat 0 (Bot 0)::  claim window — Hu/Chow on 3条 (from Seat 3)",
+          "[10:55:23] System::  Dice rolled: 1 + 5 = 6",
+          "[10:55:23] Seat 0 (Bot 0)::  discarded 4筒",
+          "[10:55:23] System::  Dice rolled: 1 + 1 = 2",
+          "[10:55:23] System::  Dice rolled: 1 + 5 = 6",
+          "[10:55:23] System::  Dice rolled: 1 + 1 = 2",
+          "[10:55:23] System::  Dice rolled: 1 + 5 = 6"
+        ],
+        "observedLogCount": 50
+      }
+    },
+    "C_tileSelectionDom": {
+      "status": "PASS",
+      "gates": {
+        "C1_hoverViaMouseMove": {
+          "status": "PASS",
+          "detail": {
+            "targetTileId": 87,
+            "hoverPathA": null,
+            "hoverPathB": 87,
+            "exactHit": true
+          }
+        },
+        "C2_clickSelectsOrDiscards": {
+          "status": "PASS",
+          "detail": {
+            "tried": 5,
+            "tileId": 89,
+            "proj": {
+              "ok": true,
+              "tileId": 89,
+              "slotName": "hand.11@0",
+              "rotationIndex": 1,
+              "worldPos": {
+                "x": 115,
+                "y": 4.5,
+                "z": 2
+              },
+              "ndc": {
+                "x": 0.28766225149194563,
+                "y": -0.7305519038223152
+              },
+              "clientX": 812.5973508951673,
+              "clientY": 692.2207615289261,
+              "offsetX": 772.5973508951673,
+              "offsetY": 692.2207615289261
+            },
+            "post": {
+              "totalDiscard": 1,
+              "discardBySeat": [
+                0,
+                0,
+                0,
+                1
+              ],
+              "hand": 13
+            },
+            "discardFired": true,
+            "selectedSet": true,
+            "selected": [
+              {
+                "id": 89,
+                "slot": "meld.0.1@3"
+              }
+            ],
+            "hovered": null,
+            "notes": null
+          }
+        },
+        "C3_selectionStateExists": {
+          "status": "PASS",
+          "detail": {
+            "selectedFieldType": "object",
+            "isArray": true,
+            "length": 1,
+            "hoveredFieldType": "object",
+            "notes": "world.selected exists as Array<Thing> per world.ts:34. world.hovered is the single-hover tracker per world.ts:33. Click-to-discard intercept lives in world.onDragStart (world.ts:885+). There is NO multi-tile \"select then act\" UI — Hicks's playability iter2 wired direct click-to-discard, so the canonical \"selection\" in this codebase is the transient hover, not a persistent list."
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-C-1780077324338-243",
+        "candidate": {
+          "ok": true,
+          "tileId": 87,
+          "selectableCount": 14
+        },
+        "projection": {
+          "ok": true,
+          "tileId": 87,
+          "slotName": "hand.8@0",
+          "rotationIndex": 1,
+          "worldPos": {
+            "x": 97,
+            "y": 4.5,
+            "z": 2
+          },
+          "ndc": {
+            "x": 0.1027365183899805,
+            "y": -0.7305519038223152
+          },
+          "clientX": 701.6419110339882,
+          "clientY": 692.2207615289261,
+          "offsetX": 661.6419110339882,
+          "offsetY": 692.2207615289261
+        },
+        "hoverAfterPlaywrightMove": null,
+        "hoverAfterSyntheticMove": 87,
+        "candidates": [
+          87,
+          89,
+          82,
+          93,
+          67
+        ],
+        "clickResult": {
+          "tileId": 89,
+          "proj": {
+            "ok": true,
+            "tileId": 89,
+            "slotName": "hand.11@0",
+            "rotationIndex": 1,
+            "worldPos": {
+              "x": 115,
+              "y": 4.5,
+              "z": 2
+            },
+            "ndc": {
+              "x": 0.28766225149194563,
+              "y": -0.7305519038223152
+            },
+            "clientX": 812.5973508951673,
+            "clientY": 692.2207615289261,
+            "offsetX": 772.5973508951673,
+            "offsetY": 692.2207615289261
+          },
+          "post": {
+            "totalDiscard": 1,
+            "discardBySeat": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "hand": 13
+          },
+          "discardFired": true,
+          "selectedSet": true,
+          "selected": [
+            {
+              "id": 89,
+              "slot": "meld.0.1@3"
+            }
+          ],
+          "hovered": null
+        },
+        "selectionReport": {
+          "selected": [
+            {
+              "id": 89,
+              "slot": "meld.0.1@3"
+            }
+          ],
+          "hovered": null
+        }
+      }
+    },
+    "D_claimWindow": {
+      "status": "FAIL",
+      "gates": {
+        "D1_claimWindowAppears": {
+          "status": "FAIL",
+          "detail": {
+            "claimCollectionFired": false,
+            "claimOverlayVisible": false,
+            "claimOverlayElementExists": true,
+            "notes": "No claim window opened within 90s of bot autoplay. With 4 Hard bots this is unusual — either claim windows are gated to the human seat only (in which case the local-seat hand is never the claim target since seat 0 is the dealer), or claim logic isn't firing on bot-vs-bot discards. The latter would be a Bishop/Frost rule-engine bug."
+          }
+        },
+        "D2_claimResolves": {
+          "status": "PASS",
+          "detail": {
+            "passClicked": false,
+            "clearedByClick": false,
+            "autoTimedOut": false,
+            "reason": "No claim was ever surfaced — gate is vacuously PASS (nothing to resolve)."
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=4&botDifficulty=Hard&handCount=4&gameId=vasquez-D-1780077349607-811",
+        "claimSeen": null,
+        "claimDomVisible": false,
+        "observationCount": 0,
+        "passClicked": false,
+        "claimAfterPass": null,
+        "autoTimedOut": false
+      }
+    },
+    "E_winDetection": {
+      "status": "PASS",
+      "gates": {
+        "E1_winModalAppears": {
+          "status": "PASS",
+          "detail": {
+            "modalVisible": true
+          }
+        },
+        "E2_modalShowsTotals": {
+          "status": "PASS",
+          "detail": {
+            "modalTextContains100": true,
+            "modalTextContains50": true,
+            "modalTextContains25": true,
+            "textLength": 389
+          }
+        },
+        "E3_modalDismisses": {
+          "status": "PASS",
+          "detail": {
+            "dismissed": true,
+            "notes": null
+          }
+        }
+      },
+      "diagnostics": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Hard&handCount=4&gameId=vasquez-E-1780077445161-825",
+        "synthDispatch": {
+          "ok": true
+        },
+        "modalVisible": true,
+        "modalTextSnippet": "🏆 GAME OVER 🏆\n4-hand match complete\nFinal Scores\n座位 Seat\t玩家 Player\t总分 Total Δ\n0 (E 东)\tSeat 0 (You)\t+100\n1 (S 南)\tBot 1\t+50\n2 (W 西)\tBot 2\t+25\n3 (N 北)\tBot 3\t0\n番种 FANS SCORED\nNo bonus fans this match (base wins only).\nHand-by-hand\nNo hands recorded.\nYour stats\nGAMES PLAYED\n0\nGAMES WON\n0\nWIN RATE\n—\nLONGEST STREAK\n0\nCURRENT STREAK\n0\nHIGHEST SCORE\n0\n🆕 New Game\n🎞 View Replay\n☰ Back to Lobby",
+        "dismissed": true
+      }
+    }
+  },
+  "pageErrors": [
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    },
+    {
+      "message": "(intermediate value)(intermediate value)(intermediate value) is not iterable",
+      "stack": "TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28927)\n    at lt.onResultUpdate (http://127.0.0.1:8088/autotable/scene-effects.0ec6af34.js:1:28092)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)\n    at I.onUpdate (http://127.0.0.1:8088/autotable/three-renderer.c0f0a4a3.js:19:8420)\n    at y.emit (http://127.0.0.1:8088/autotable/autotable-src.bf04f627.js:2:3272)"
+    }
+  ],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0x23bc00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x23bc00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x23bc00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x23bc00157600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+    "autotable: skipped stale moveTo 108 -> wall.8.1@3 (occupant=99)",
+    "autotable: skipped stale moveTo 108 -> wall.8.1@3 (occupant=99)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=26)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=46)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=76)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=57)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=36)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=31)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=54)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=54)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=62)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=34)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=27)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=5)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=67)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=88)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=63)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=23)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=42)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=28)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=54)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=10)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=9)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=97)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=66)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=46)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=3)",
+    "autotable: skipped stale moveTo 119 -> wall.6.1@0 (occupant=44)",
+    "autotable: skipped stale moveTo 111 -> wall.1.1@1 (occupant=31)",
+    "autotable: skipped stale moveTo 111 -> wall.1.1@1 (occupant=31)",
+    "autotable: skipped stale moveTo 108 -> wall.5.1@1 (occupant=12)",
+    "autotable: skipped stale moveTo 108 -> wall.5.1@1 (occupant=17)",
+    "autotable: skipped stale moveTo 108 -> wall.5.1@1 (occupant=53)",
+    "autotable: skipped stale moveTo 108 -> wall.5.1@1 (occupant=21)",
+    "autotable: skipped stale moveTo 108 -> wall.5.1@1 (occupant=90)",
+    "autotable: skipped stale moveTo 108 -> wall.5.1@1 (occupant=47)",
+    "autotable: skipped stale moveTo 108 -> wall.5.1@1 (occupant=47)",
+    "autotable: skipped stale moveTo 115 -> wall.12.1@1 (occupant=89)",
+    "autotable: skipped stale moveTo 116 -> wall.12.0@1 (occupant=19)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=24)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=13)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=100)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=94)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=35)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=4)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=89)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=30)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=68)",
+    "autotable: skipped stale moveTo 115 -> wall.12.1@1 (occupant=80)",
+    "autotable: skipped stale moveTo 115 -> wall.12.1@1 (occupant=59)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=68)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=68)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=22)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=66)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=76)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=67)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=59)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=18)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=96)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=57)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=37)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=2)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=0)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=22)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=76)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=67)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=80)",
+    "autotable: skipped stale moveTo 116 -> wall.12.0@1 (occupant=27)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=13)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=2)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=0)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=0)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=87)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=54)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=27)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=21)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=21)",
+    "autotable: skipped stale moveTo 115 -> wall.12.1@1 (occupant=24)",
+    "autotable: skipped stale moveTo 116 -> wall.12.0@1 (occupant=24)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=31)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=26)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=106)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=51)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=28)",
+    "autotable: skipped stale moveTo 117 -> wall.5.1@1 (occupant=28)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=96)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=36)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=10)",
+    "autotable: skipped stale moveTo 121 -> wall.6.1@0 (occupant=10)",
+    "autotable: skipped stale moveTo 109 -> wall.10.1@1 (occupant=49)",
+    "autotable: skipped stale moveTo 109 -> wall.10.1@1 (occupant=49)",
+    "autotable: skipped stale moveTo 113 -> hand.3@2 (occupant=105)",
+    "autotable: skipped stale moveTo 113 -> hand.3@2 (occupant=105)",
+    "autotable: skipped stale moveTo 113 -> hand.3@2 (occupant=105)",
+    "autotable: skipped stale moveTo 113 -> hand.3@2 (occupant=105)",
+    "autotable: skipped stale moveTo 113 -> hand.3@2 (occupant=105)",
+    "autotable: skipped stale moveTo 113 -> hand.3@2 (occupant=105)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-A-1780077221987-458",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-A-1780077221987-458/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-B-1780077302253-527",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-B-1780077302253-527/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-C-1780077324338-243",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-C-1780077324338-243/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-D-1780077349607-811",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-D-1780077349607-811/settings",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-E-1780077445161-825",
+    "404 GET http://127.0.0.1:8088/api/games/vasquez-E-1780077445161-825/settings"
+  ],
+  "staleMoveToWarnings": 97,
+  "staleMoveToSamples": [
+    "autotable: skipped stale moveTo 108 -> wall.8.1@3 (occupant=99)",
+    "autotable: skipped stale moveTo 108 -> wall.8.1@3 (occupant=99)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=26)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=46)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=76)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=57)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=36)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=31)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=54)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=54)",
+    "autotable: skipped stale moveTo 110 -> wall.12.0@1 (occupant=62)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=34)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=27)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=5)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=67)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=88)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=63)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=23)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=42)",
+    "autotable: skipped stale moveTo 112 -> wall.9.0@0 (occupant=28)"
+  ],
+  "finishedAt": "2026-05-29T17:57:44.778Z",
+  "summary": {
+    "A_manualDealRoundRobin": "FAIL",
+    "B_autoDealBotAutoplay": "FAIL",
+    "C_tileSelectionDom": "PASS",
+    "D_claimWindow": "FAIL",
+    "E_winDetection": "PASS"
+  },
+  "pageErrorsCount": 235,
+  "consoleErrorsCount": 15,
+  "networkFailuresCount": 10
+}

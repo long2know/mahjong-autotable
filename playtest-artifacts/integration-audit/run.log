@@ -1,0 +1,56 @@
+
+========================================
+  SCENARIO A — Manual deal + round-robin
+========================================
+  A_manualDealRoundRobin.A1_dealerHas14FaceUp: PASS  {"preHand":14,"postHand":15,"myHandFaceUp":15,"hasExtraHandTile":true}
+  A_manualDealRoundRobin.A2_dealerDiscardRoundTrip: FAIL  {"preHand":15,"postHand":15,"totalDiscard":0,"discardBySeat":[0,0,0,0],"dealerPileGrew":false,"logShowsDealerDiscard":true,"moveLogTail":["[10:53:53] Seat 1 (Bot 1)::  picking 4 tiles (round 3)","[10:53:53] Seat 2 (Bot 2)::  picking 4 tiles (round 3)","[10:53:
+  A_manualDealRoundRobin.A3_roundRobinAllSeats: FAIL  {"discardBySeat":[1,0,1,1],"live":{"seat1":false,"seat2":true,"seat3":true},"log":{"seat1":true,"seat2":true,"seat3":true},"runtimeTotalDiscard":3,"logDiscardCount":4,"seatHands":[15,13,11,13],"notes":"Both the live `world.things` count AND the move-log are sa
+  A_manualDealRoundRobin.A4_dealerNextDrawTouched: PASS  {"seat0ActionsInLog":6,"dealerCurrentHand":15,"notes":null}
+
+>>> Scenario A_manualDealRoundRobin: FAIL
+
+========================================
+  SCENARIO B — Auto deal bot autoplay
+========================================
+  B_autoDealBotAutoplay.B1_allSeatsDealt: PASS  {"handBySeat":[14,13,13,13],"wallCount":83,"notes":null}
+  B_autoDealBotAutoplay.B2_30PlusBotDiscards: PASS  {"discardEntriesInLog":37,"totalLogEntries":50,"runtimeTotalDiscard":1}
+  B_autoDealBotAutoplay.B3_noPageErrors: FAIL  {"pageErrorsDelta":6,"latestPageErrors":[{"message":"(intermediate value)(intermediate value)(intermediate value) is not iterable","stack":"TypeError: (intermediate value)(intermediate value)(intermediate value) is not iterable\n    at lt.renderResult (http://
+  B_autoDealBotAutoplay.B4_someProgressMarker: FAIL  {"meldsOnTable":0,"meldBySeat":[0,0,0,0],"winModalVisible":false,"wallNearlyExhausted":false,"totalDiscard":1}
+
+>>> Scenario B_autoDealBotAutoplay: FAIL
+
+========================================
+  SCENARIO C — DOM tile selection
+========================================
+  C_tileSelectionDom.C1_hoverViaMouseMove: PASS  {"targetTileId":87,"hoverPathA":null,"hoverPathB":87,"exactHit":true}
+  C_tileSelectionDom.C2_clickSelectsOrDiscards: PASS  {"tried":5,"tileId":89,"proj":{"ok":true,"tileId":89,"slotName":"hand.11@0","rotationIndex":1,"worldPos":{"x":115,"y":4.5,"z":2},"ndc":{"x":0.28766225149194563,"y":-0.7305519038223152},"clientX":812.5973508951673,"clientY":692.2207615289261,"offsetX":772.59735
+  C_tileSelectionDom.C3_selectionStateExists: PASS  {"selectedFieldType":"object","isArray":true,"length":1,"hoveredFieldType":"object","notes":"world.selected exists as Array<Thing> per world.ts:34. world.hovered is the single-hover tracker per world.ts:33. Click-to-discard intercept lives in world.onDragStart
+
+>>> Scenario C_tileSelectionDom: PASS
+
+========================================
+  SCENARIO D — Claim window
+========================================
+  D_claimWindow.D1_claimWindowAppears: FAIL  {"claimCollectionFired":false,"claimOverlayVisible":false,"claimOverlayElementExists":true,"notes":"No claim window opened within 90s of bot autoplay. With 4 Hard bots this is unusual — either claim windows are gated to the human seat only (in which case the l
+  D_claimWindow.D2_claimResolves: PASS  {"passClicked":false,"clearedByClick":false,"autoTimedOut":false,"reason":"No claim was ever surfaced — gate is vacuously PASS (nothing to resolve)."}
+
+>>> Scenario D_claimWindow: FAIL
+
+========================================
+  SCENARIO E — Win detection
+========================================
+  E_winDetection.E1_winModalAppears: PASS  {"modalVisible":true}
+  E_winDetection.E2_modalShowsTotals: PASS  {"modalTextContains100":true,"modalTextContains50":true,"modalTextContains25":true,"textLength":389}
+  E_winDetection.E3_modalDismisses: PASS  {"dismissed":true,"notes":null}
+
+>>> Scenario E_winDetection: PASS
+
+=== SCENARIO SUMMARY ===
+  A_manualDealRoundRobin: FAIL  gates={"PASS":2,"FAIL":2}
+  B_autoDealBotAutoplay: FAIL  gates={"PASS":2,"FAIL":2}
+  C_tileSelectionDom: PASS  gates={"PASS":3}
+  D_claimWindow: FAIL  gates={"FAIL":1,"PASS":1}
+  E_winDetection: PASS  gates={"PASS":3}
+pageErrors=235 consoleErrors=15 networkFails=10
+
+FAILING SCENARIOS: A_manualDealRoundRobin(FAIL), B_autoDealBotAutoplay(FAIL), D_claimWindow(FAIL)
