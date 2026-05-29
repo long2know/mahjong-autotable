@@ -771,7 +771,12 @@ public static class BotDiscardAdvisor
                     .Where(candidate =>
                     {
                         handCounts.TryGetValue(candidate.Tile, out var handCount);
-                        return handCount == 2 && candidate.RemainingCopies == 0;
+                        if (handCount != 2 || candidate.RemainingCopies != 0)
+                        {
+                            return false;
+                        }
+
+                        return !HasInHandSequenceAnchor(candidate.Tile, handCounts);
                     })
                     .ToList();
 
@@ -2360,6 +2365,41 @@ public static class BotDiscardAdvisor
         }
 
         return null;
+    }
+
+    private static bool HasInHandSequenceAnchor(
+        Tile tile,
+        IReadOnlyDictionary<Tile, int> handCounts)
+    {
+        if (!IsSuitedTile(tile))
+        {
+            return false;
+        }
+
+        var suit = tile.Suit;
+        var rank = tile.Rank;
+
+        bool HasTileInHand(int targetRank)
+        {
+            if (targetRank is < Changsha258Ruleset.MinSuitedRank or > Changsha258Ruleset.MaxSuitedRank)
+            {
+                return false;
+            }
+
+            return handCounts.TryGetValue(new Tile(suit, targetRank), out var count) && count > 0;
+        }
+
+        var hasLowSequence = rank >= 3
+            && HasTileInHand(rank - 2)
+            && HasTileInHand(rank - 1);
+        var hasMiddleSequence = rank is >= 2 and <= 8
+            && HasTileInHand(rank - 1)
+            && HasTileInHand(rank + 1);
+        var hasHighSequence = rank <= 7
+            && HasTileInHand(rank + 1)
+            && HasTileInHand(rank + 2);
+
+        return hasLowSequence || hasMiddleSequence || hasHighSequence;
     }
 
     private static bool HasAdjacentSuitedTile(
