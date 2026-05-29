@@ -400,6 +400,46 @@ export class World {
       tile = tileOrId;
       tileId = tile.index;
     }
+
+    // Hicks 2026-05-29 — dealer-extra preview-tile fix (Bishop memo
+    // `.squad/decisions/inbox/bishop-dealerextra-fix.md`).
+    //
+    // joinMatch runs an optimistic local `setup.deal('HANDS')` that
+    // pre-places tiles into the hand slots (incl. `hand.extra@N` for
+    // the dealer's 14th preview).  The backend then progressively
+    // pushes its OWN tile-ids into `hand.0..13@N` during the pickup
+    // ceremony.  Two failure shapes arise after the backend take:
+    //
+    //   (a) Orphan — `onThings` force-displaces the stale local-deal
+    //       occupant via `Thing.prepareMove()`, which clears
+    //       `slot.thing` but does NOT clear the displaced Thing's
+    //       own `.slot` reference (see thing.ts §prepareMove).  The
+    //       orphan still reports `slot.group === 'hand'` even though
+    //       `slot.thing` is now the backend tile.
+    //   (b) hand.extra preview — `hand.extra@N` is a frontend-only
+    //       slot (the backend's `AutotableSlotMap.HandSlot` only emits
+    //       `hand.0..13@N`).  The local-deal preview tile sits here
+    //       unowned by the backend.
+    //
+    // A click on either phantom (or the playtest harness's M7
+    // `claimedBy === null` fallback in
+    // playtest-artifacts/playtest-playable-interaction.spec.mjs) would
+    // emit `discard` carrying a tileId that the runtime still owns in
+    // the wall, which `ChangshaStateMachine.Discard()` silently rejects
+    // ("Tile X not in seat N's hand").  Remap (a) onto the slot's
+    // authoritative occupant; reject (b) outright so the caller / UI
+    // can pick a real hand tile instead.
+    if (tile && tile.slot.thing !== null && tile.slot.thing !== tile) {
+      const occupant = tile.slot.thing;
+      if (occupant.slot.group === 'hand' && occupant.slot.seat === this.seat) {
+        tile = occupant;
+        tileId = occupant.index;
+      }
+    }
+    if (tile && tile.slot.name.startsWith('hand.extra@')) {
+      return false;
+    }
+
     if (tile && (tile.slot.group !== 'hand' || tile.slot.seat !== this.seat)) {
       return false;
     }
@@ -419,7 +459,17 @@ export class World {
     if (this.isMyPickupTurn()) return false;
     let count = 0;
     for (const thing of this.things.values()) {
-      if (thing.slot.group === 'hand' && thing.slot.seat === this.seat) {
+      // Hicks 2026-05-29 — count only backend-authoritative hand tiles:
+      // skip orphans whose `.slot` still points at a hand slot that has
+      // since been re-bound to a backend tile, and skip the frontend-only
+      // `hand.extra@N` preview slot.  Without these guards the count is
+      // inflated by phantom local-deal residues and we'd intercept
+      // click-to-discard before the dealer has actually drawn the 14th
+      // tile.  See `emitDiscard` for the full mechanics.
+      if (thing.slot.group === 'hand'
+          && thing.slot.seat === this.seat
+          && thing.slot.thing === thing
+          && !thing.slot.name.startsWith('hand.extra@')) {
         count++;
         if (count > 13) return true;
       }
