@@ -581,7 +581,12 @@ public static class BotDiscardAdvisor
                         return false;
                     }
 
-                    return candidate.RemainingCopies == 1;
+                    if (candidate.RemainingCopies != 1)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
                 })
                 .ToList();
 
