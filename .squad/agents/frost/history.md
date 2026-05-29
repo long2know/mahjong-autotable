@@ -215,3 +215,66 @@ skipped.
 - Squash-merged to main as `85b8ed6`
 
 📌 Team update (2026-05-27T22:00:00Z): Wave 4 — Dealing ceremony rebuild. Shipped pure-function Changsha dealing ceremony rule engine at Changsha/Dealing/ChangshaDealingCeremony.cs. Public API: Start(dealerSeat) → WaitingForDice; ApplyDiceRoll(state, dice[]) → PickingFour; ValidateAndApplyPickup(state, seat, count) → validation result or new state. Invariants: pure-function transducer (no mutation), programmer errors throw (ArgumentException/InvalidOperationException), runtime violations surface as ChangshaDealingResult { Valid=false, RejectReason="…" }. Turn order: CCW from dealer (dealer + i) % 4. Final hands: 14 (dealer) / 13 (others). Tests: 28 methods, 76 cases under xunit Theories covering Start, ApplyDiceRoll, ComputeStartingWall (15 cases), ComputeBreakIndex (11 cases), ValidateAndApplyPickup, full deal sequence, phase transitions (17 pickups), purity assertions, all ✅. Sibling to Bishop's runtime state machine (intentional clean-room reimplementation as canonical rule spec). Suggested follow-up (Bishop's lane): Consolidate runtime to call this engine, store returned ChangshaDealingState on game state. Full suite 5219 tests pass.
+
+---
+
+## Wave-K — Scoring End-to-End Audit (2026-05-29)
+
+**Audit scope:** End-to-end Hu → `FanCalculator` → `ScoreResult` → `PlayerStats`
+pipeline + bot-strength sanity check. Report at
+`.squad/decisions/inbox/frost-scoring-audit.md`.
+
+**Findings**
+
+- Fan catalog: 14 fans defined, 12 reachable in pure Changsha (2 correctly
+  variant-gated to `ExpandedChinese`). All 12 reachable fans have unit-test
+  coverage; the variant-gated pair has gating tests.
+- Hu → score → persistence pipeline is intact. New
+  `HuToScoreToPersistenceTests` drives the real `ChangshaGameStateMachine`
+  through self-draw Hu and discard-Hu and asserts the resulting `PlayerStats`
+  row lands in SQLite with the expected `GamesWon` / `LastGameAt` / `TotalScore`
+  / `LongestWinStreak`.
+- Bot-strength simulation: 4×Master produces 20 Hu / 30 hands, 4×Easy
+  produces 18 Hu / 30 hands, Master@seat0-vs-3×Easy produces a clean +9 win
+  delta for the Master seat. The strategy abstraction is observable.
+
+**New tests (all passing)**
+
+- `Changsha/Acceptance/HuToScoreToPersistenceTests.cs` — 3 tests
+  - `SevenPairsSelfDrawHu_ScoresAndPersistsWinnerStats` — BasePoints=30,
+    persists row.
+  - `DiscardHu_ScoresAndPersistsWinnerStats` — 7-pair shape completing on
+    dealer's discard; persists row with `SelfDraw` fan absent.
+  - `RepeatedHu_AccumulatesWinsAndStreak` — 3 self-draws → streak=3.
+- `Changsha/Bots/BotStrengthSimulationTests.cs` — 3 tests, permanent
+  unskipped sibling of `BotSimulationLog.cs`.
+
+**Pitfall captured for future Frost / Bishop work**
+
+`PlayerProfileService.RecordGameCompletedAsync` skips IDs starting with
+`bot-` (PlayerProfileService.cs:256). `ChangshaGameStateMachine.CreateGame`
+seeds bot seats with exactly that prefix. Any test asserting persistence
+**must** overwrite seat `PlayerId` to a non-bot ID before invoking the
+persistence hook, or the test will pass-by-vacuum (no row written and no
+assertion that catches it).
+
+**Lane discipline**
+
+Touched only test files under `src/backend/tests/Mahjong.Autotable.Api.Tests/Changsha/`
+and two squad-state files (`.squad/decisions/inbox/frost-scoring-audit.md`,
+this file). No production code changed.
+
+**Regression**
+
+61 / 61 pass on
+`~FanCalculator|~FanCatalogIntegration|~HuToScoreToPersistence|~BotStrengthSimulation|~BotContextualHu|~ScoringService`.
+
+**Suggested follow-ups (handed to next Frost wave)**
+
+1. Variant switcher to enable `FanVariant.ExpandedChinese` + 144-tile deck.
+2. End-to-end persistence test for robbing-kong Hu (currently only the fan
+   detection is covered in isolation).
+3. Persistence-side stacked-fan test (HeavenlyHand + FullFlush) confirming
+   `HighestSingleGameScore` increments by the correct stacked total.
+
+📌 Team update (2026-05-29T00:00:00Z): Wave K — Scoring end-to-end audit. Verified Hu → FanCalculator → ScoreResult → PlayerStats pipeline is intact. New tests: HuToScoreToPersistenceTests (3, self-draw + discard + streak, real SQLite persistence) and BotStrengthSimulationTests (3, permanent 30-hand bot-strength simulation). Audit memo at .squad/decisions/inbox/frost-scoring-audit.md with fan coverage matrix (12/12 reachable fans tested, 2 variant-gated for future ExpandedChinese deck), per-seat bot simulation numbers (4×Master: 20 Hu / 30 hands; Master@seat0 banks +9 wins vs Easy peers), and persistence-side gaps for follow-up. **Pitfall for all squad members:** PlayerProfileService.cs:256 skips PlayerIds starting with "bot-" — persistence tests must overwrite the seed IDs the state machine plants or assertions pass-by-vacuum.
