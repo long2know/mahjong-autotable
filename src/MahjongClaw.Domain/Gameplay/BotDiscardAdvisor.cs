@@ -135,7 +135,6 @@ public static class BotDiscardAdvisor
 
         var hasSmallWinTileInHand = enforceSmallWinPairBias
             && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
-        var hasAnySmallWinTileInHand = handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
 
         var forcedDiscardIndex = TrySelectChangshaDeadSmallWinSingletonDiscardIndex(
             handTiles,
@@ -414,8 +413,13 @@ public static class BotDiscardAdvisor
             }
         }
 
+        var changshaSmallWinPairCount = ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias
+            ? handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+            : 0;
+
         if (ruleset == MahjongRuleset.Changsha258
-            && !hasAnySmallWinTileInHand)
+            && enforceSmallWinPairBias
+            && changshaSmallWinPairCount == 0)
         {
             var pairCount = handCounts.Count(entry => entry.Value >= 2);
             if (pairCount >= 2)
@@ -453,7 +457,8 @@ public static class BotDiscardAdvisor
         }
 
         if (ruleset == MahjongRuleset.Changsha258
-            && !hasAnySmallWinTileInHand
+            && enforceSmallWinPairBias
+            && changshaSmallWinPairCount == 0
             && visibleCounts.Count > 0)
         {
             var deadOffRankPairCandidates = candidates
@@ -513,9 +518,6 @@ public static class BotDiscardAdvisor
             }
         }
 
-        var changshaSmallWinPairCount = ruleset == MahjongRuleset.Changsha258 && enforceSmallWinPairBias
-            ? handCounts.Count(entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
-            : 0;
         var filteredByDeadOffRankPair = false;
         var filteredByDeadSingleton = false;
 
