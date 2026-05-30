@@ -382,8 +382,21 @@ public static class BotDiscardAdvisor
                     var pairCount = handCounts.Count(entry => entry.Value >= 2);
                     var hasAlternateLiveSmallWinCandidates = liveSmallWinPairCandidates is not null
                         && liveSmallWinPairCandidates.Count > 1;
+                    var hasLiveNonSmallWinPair = handCounts
+                        .Where(entry => entry.Value >= 2 && !Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                        .Any(entry =>
+                        {
+                            ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                            visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                            if (4 - ownedCount - visibleCount > 0)
+                            {
+                                return true;
+                            }
+
+                            return HasSequencePotential(entry.Key, handCounts, ownedCounts, visibleCounts);
+                        });
                     var shouldProtectSingleton = !hasAlternateLiveSmallWinCandidates
-                        && (liveSingleton.RemainingCopies >= 2 || pairCount == 0);
+                        && (liveSingleton.RemainingCopies >= 2 || pairCount == 0 || !hasLiveNonSmallWinPair);
 
                     if (shouldProtectSingleton)
                     {
