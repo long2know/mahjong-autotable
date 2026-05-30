@@ -434,6 +434,15 @@ public static class BotDiscardAdvisor
 
                 if (offRankPairCandidates.Count > 0)
                 {
+                    var offRankPairsWithoutSequence = offRankPairCandidates
+                        .Where(candidate => !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts))
+                        .ToList();
+
+                    if (offRankPairsWithoutSequence.Count > 0)
+                    {
+                        offRankPairCandidates = offRankPairsWithoutSequence;
+                    }
+
                     var bestOverallOuts = candidates.Max(candidate => candidate.WinningDrawOuts);
                     var bestOverallOutCopies = candidates
                         .Where(candidate => candidate.WinningDrawOuts == bestOverallOuts)
