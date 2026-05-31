@@ -89,6 +89,23 @@ public static class BotDiscardAdvisor
             .Concat(meldTiles)
             .GroupBy(static tile => tile)
             .ToDictionary(group => group.Key, group => group.Count());
+        var ownedTiles = handTiles.Concat(meldTiles).ToList();
+        var hasChangshaPureSuitLean = false;
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            var changshaSuitCounts = ownedTiles
+                .Where(static tile => !tile.IsHonor)
+                .GroupBy(static tile => tile.Suit)
+                .ToDictionary(group => group.Key, group => group.Count());
+
+            if (changshaSuitCounts.Count > 0)
+            {
+                var maxSuitCount = changshaSuitCounts.Values.Max();
+                var dominantSuitCount = changshaSuitCounts.Count(entry => entry.Value == maxSuitCount);
+                hasChangshaPureSuitLean = dominantSuitCount == 1
+                    && maxSuitCount >= Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold;
+            }
+        }
 
         var sevenPairsPairCount = meldTiles.Count == 0
             ? handCounts.Sum(static entry => entry.Value / 2)
@@ -419,7 +436,8 @@ public static class BotDiscardAdvisor
 
         if (ruleset == MahjongRuleset.Changsha258
             && enforceSmallWinPairBias
-            && changshaSmallWinPairCount == 0)
+            && changshaSmallWinPairCount == 0
+            && !hasChangshaPureSuitLean)
         {
             var pairCount = handCounts.Count(entry => entry.Value >= 2);
             if (pairCount >= 2)
@@ -874,12 +892,27 @@ public static class BotDiscardAdvisor
             }
         }
 
+        var concealedKongTiles = handCounts
+            .Where(entry => entry.Value >= 4)
+            .Select(entry => entry.Key)
+            .ToHashSet();
+        var promotableKongTiles = meldTiles
+            .GroupBy(static tile => tile)
+            .Where(group => group.Count() == 3)
+            .Select(group => group.Key)
+            .ToHashSet();
+
         if (visibleCounts.Count > 0)
         {
             var deadHonorSingletonCandidates = candidates
                 .Where(candidate =>
                 {
                     if (!candidate.Tile.IsHonor || candidate.RemainingCopies > 0)
+                    {
+                        return false;
+                    }
+
+                    if (promotableKongTiles.Contains(candidate.Tile))
                     {
                         return false;
                     }
@@ -911,16 +944,6 @@ public static class BotDiscardAdvisor
                 }
             }
         }
-
-        var concealedKongTiles = handCounts
-            .Where(entry => entry.Value >= 4)
-            .Select(entry => entry.Key)
-            .ToHashSet();
-        var promotableKongTiles = meldTiles
-            .GroupBy(static tile => tile)
-            .Where(group => group.Count() == 3)
-            .Select(group => group.Key)
-            .ToHashSet();
 
         if (ruleset == MahjongRuleset.Changsha258 && promotableKongTiles.Count > 0)
         {
@@ -1050,7 +1073,6 @@ public static class BotDiscardAdvisor
             }
         }
 
-        var ownedTiles = handTiles.Concat(meldTiles).ToList();
         var suitCounts = ownedTiles
             .Where(static tile => !tile.IsHonor)
             .GroupBy(static tile => tile.Suit)
