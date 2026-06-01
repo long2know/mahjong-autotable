@@ -185,6 +185,98 @@ public class AutotableTranslatorTests
         Assert.Equal(55, wallCount);
     }
 
+    // ── Frost 2026-05-29 — post-deal wall distribution regression ──────
+    //
+    // Stephen surfaced "dealing seems very whacky" — screenshot showed flat
+    // wall strips at the corners. Live WS capture proved the translator was
+    // packing all 55 post-deal wall tiles into seats 0 + 1 (col-major within
+    // a seat, seats 0..3 outer), leaving seats 2 and 3 with physically empty
+    // walls. The frontend renderer can only show what the backend ships, so
+    // empty wall seats render as missing geometry.
+    //
+    // Fix: column-major-across-seats enumeration (see
+    // <see cref="AutotableSlotMap.EnumerateWallSlotsInOrder"/>) ships ~13-14
+    // tiles to every seat after deal so all four canonical 2-high stacks
+    // remain visible.
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void Snapshot_AfterStartGame_WallTiles_DistributedAcrossAllFourSeats()
+    {
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 7);
+        var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0);
+
+        var perSeatWallCounts = new Dictionary<int, int> { [0] = 0, [1] = 0, [2] = 0, [3] = 0 };
+        foreach (var e in entries.Where(e => e.Kind == "things"))
+        {
+            var slot = ExtractSlotName(e.Value!);
+            if (!slot.StartsWith("wall.")) continue;
+            var seat = int.Parse(slot.Split('@')[1]);
+            perSeatWallCounts[seat]++;
+        }
+
+        for (var seat = 0; seat < 4; seat++)
+        {
+            Assert.True(perSeatWallCounts[seat] > 0,
+                $"seat {seat} wall has 0 tiles after deal — translator must distribute the 55 remaining wall tiles across all four seats (got {perSeatWallCounts[seat]}).");
+        }
+
+        // Counts should be balanced — within a few tiles of each other.
+        // (55 / 4 = 13.75 → expect 13 or 14 per seat.)
+        var min = perSeatWallCounts.Values.Min();
+        var max = perSeatWallCounts.Values.Max();
+        Assert.True(max - min <= 2,
+            $"Wall tile distribution is unbalanced (min={min}, max={max}); expected ≤ 2 tiles spread across seats.");
+    }
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void Snapshot_AfterStartGame_WallTiles_StackedTwoHighAtEverySeat()
+    {
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 7);
+        var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0);
+
+        // For every seat, layer 0 and layer 1 must both have at least one
+        // tile so the renderer can draw genuine 2-high stacks rather than
+        // a single flat row of tiles.
+        var byLayer = new Dictionary<(int seat, int layer), int>();
+        foreach (var e in entries.Where(e => e.Kind == "things"))
+        {
+            var slot = ExtractSlotName(e.Value!);
+            if (!slot.StartsWith("wall.")) continue;
+            // wall.{col}.{layer}@{seat}
+            var beforeAt = slot.Split('@')[0];
+            var parts = beforeAt.Split('.');
+            var seat = int.Parse(slot.Split('@')[1]);
+            var layer = int.Parse(parts[2]);
+            var key = (seat, layer);
+            byLayer[key] = byLayer.GetValueOrDefault(key) + 1;
+        }
+
+        for (var seat = 0; seat < 4; seat++)
+        {
+            Assert.True(byLayer.GetValueOrDefault((seat, 0)) > 0,
+                $"seat {seat} layer 0 (bottom wall tiles) is empty after deal.");
+            Assert.True(byLayer.GetValueOrDefault((seat, 1)) > 0,
+                $"seat {seat} layer 1 (top wall tiles) is empty after deal — wall renders as flat single-row instead of 2-high stacks.");
+        }
+    }
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void Snapshot_AfterStartGame_NoPhantomDiscards_BeforeAnyDiscardEvent()
+    {
+        // The dealing ceremony alone must not produce any discard.X.Y@N slots.
+        // A phantom discard would surface as a stray tile in the radial tray.
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 7);
+        var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0);
+
+        var discardSlots = entries
+            .Where(e => e.Kind == "things")
+            .Select(e => ExtractSlotName(e.Value!))
+            .Where(s => s.StartsWith("discard."))
+            .ToList();
+
+        Assert.Empty(discardSlots);
+    }
+
     // ── discard slot mapping ──────────────────────────────────────────
 
     [Fact, Trait("Category", "Phase5a")]

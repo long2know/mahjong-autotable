@@ -106,17 +106,31 @@ public static class AutotableSlotMap
     }
 
     /// <summary>
-    /// Enumerates every (seat, col, layer) wall slot in canonical placement order
-    /// (seats 0..3, cols ascending, layer 0 then layer 1). Total = 108 tuples
-    /// for the 14/14/13/13 split.
+    /// Enumerates every (seat, col, layer) wall slot in <b>balanced placement order</b>:
+    /// columns ascending, all four seats per column, both layers per (seat, col)
+    /// before advancing the column. Total = 108 tuples for the 14/14/13/13 split
+    /// (seats 0,1 contribute through col 13; seats 2,3 only through col 12).
+    ///
+    /// <para><b>Why column-major-across-seats:</b> the translator packs the
+    /// authoritative <c>state.Wall</c> (108 pre-deal, 55 immediately after deal)
+    /// into the first N slots yielded here. A seat-major order packs the entire
+    /// post-deal remainder into seats 0 and 1, leaving seats 2 and 3 with
+    /// physically empty walls — visually catastrophic (Stephen 2026-05-29
+    /// "dealing seems very whacky"). Column-major-across-seats ships ~13-14
+    /// tiles to every seat after deal, preserving the canonical 2-high stack
+    /// silhouette on all four sides of the table without requiring the
+    /// translator to thread break-point physics through the wire format.</para>
     /// </summary>
     public static IEnumerable<(int Seat, int Col, int Layer)> EnumerateWallSlotsInOrder()
     {
-        for (var seat = 0; seat < 4; seat++)
+        // Largest seat-wall depth is 14 (seats 0,1); seats 2,3 cap at 13.
+        // Stepping by column outer + seat inner gives the balanced fill.
+        const int MaxStacks = 14;
+        for (var col = 0; col < MaxStacks; col++)
         {
-            var stacks = WallStackCount(seat);
-            for (var col = 0; col < stacks; col++)
+            for (var seat = 0; seat < 4; seat++)
             {
+                if (col >= WallStackCount(seat)) continue;
                 for (var layer = 0; layer < 2; layer++)
                 {
                     yield return (seat, col, layer);
