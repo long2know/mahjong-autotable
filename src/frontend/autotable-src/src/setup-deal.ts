@@ -34,8 +34,8 @@ export const DEALS: Record<GameType, Partial<Record<DealType, Array<DealPart>>>>
         ranges: [
           ['wall.1.0', 0, 28],
           ['wall.1.0', 1, 28],
-          ['wall.1.0', 2, 26],
-          ['wall.1.0', 3, 26],
+          ['wall.0.0', 2, 26],
+          ['wall.0.0', 3, 26],
         ],
       },
     ],
@@ -54,8 +54,8 @@ export const DEALS: Record<GameType, Partial<Record<DealType, Array<DealPart>>>>
         ranges: [
           ['wall.1.0', 0, 14],
           ['wall.1.0', 1, 15],
-          ['wall.1.0', 2, 13],
-          ['wall.1.0', 3, 13],
+          ['wall.0.0', 2, 13],
+          ['wall.0.0', 3, 13],
         ],
       },
     ],
@@ -64,8 +64,8 @@ export const DEALS: Record<GameType, Partial<Record<DealType, Array<DealPart>>>>
         ranges: [
           ['wall.1.0', 0, 28],
           ['wall.1.0', 1, 28],
-          ['wall.1.0', 2, 26],
-          ['wall.1.0', 3, 26],
+          ['wall.0.0', 2, 26],
+          ['wall.0.0', 3, 26],
         ],
       },
     ],
