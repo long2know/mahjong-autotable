@@ -1689,7 +1689,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithVisibleTiles_PrefersNonSmallWinPair_WhenOnlyOneSmallWinSingletonCopyRemains()
+    public void SelectDiscardIndex_WithVisibleTiles_ProtectsOnlySmallWinSingleton_WhenOnlyOneCopyRemains()
     {
         var handTiles = new List<Tile>
         {
@@ -1721,7 +1721,7 @@ public class BotDiscardAdvisorTests
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), visibleTiles, MahjongRuleset.Changsha258);
 
-        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 2));
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 2));
     }
 
     [Fact]

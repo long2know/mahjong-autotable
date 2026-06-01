@@ -154,10 +154,15 @@ public static class BotDiscardAdvisor
             }
         }
 
+        var hasChangshaDominantSuitTriplet = hasChangshaPureSuitLean
+            && changshaDominantSuit.HasValue
+            && ownedCounts.Any(entry => entry.Value >= 3 && entry.Key.Suit == changshaDominantSuit.Value);
+
         var allowBreakingSoleChangshaSmallWinPairForPureSuitLean = hasChangshaPureSuitLean
             && soleChangshaSmallWinPairTile is not null
             && changshaDominantSuit.HasValue
-            && soleChangshaSmallWinPairTile.Suit != changshaDominantSuit.Value;
+            && soleChangshaSmallWinPairTile.Suit != changshaDominantSuit.Value
+            && hasChangshaDominantSuitTriplet;
 
         var hasSmallWinTileInHand = enforceSmallWinPairBias
             && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
@@ -420,8 +425,15 @@ public static class BotDiscardAdvisor
 
                             return HasSequencePotential(entry.Key, handCounts, ownedCounts, visibleCounts);
                         });
+                    var isOnlyLiveSmallWinCandidate = liveSmallWinPairCandidates is not null
+                        && liveSmallWinPairCandidates.Count == 1
+                        && liveSmallWinPairCandidates.Contains(liveSingleton.Tile);
+
                     var shouldProtectSingleton = !hasAlternateLiveSmallWinCandidates
-                        && (liveSingleton.RemainingCopies >= 2 || pairCount == 0 || !hasLiveNonSmallWinPair);
+                        && (liveSingleton.RemainingCopies >= 2
+                            || pairCount == 0
+                            || !hasLiveNonSmallWinPair
+                            || (liveSingleton.RemainingCopies == 1 && isOnlyLiveSmallWinCandidate));
 
                     if (shouldProtectSingleton)
                     {
