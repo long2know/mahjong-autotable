@@ -3045,3 +3045,66 @@ branch.
 - **Game-complete modal dismiss path**: tombstone via `cli.events.emit('update', [['gameComplete','current',null]], false)` is the canonical hide (game-ui.ts:1814 `dismissGameCompleteModal`). jQuery `.modal('hide')` doesn't reliably work in this bundle context.
 - **`page.on('console')` must filter for `warn`** as well as `error` — drift bugs only surface as `console.warn` lines (world.ts:266 `_lastSlotConflictLogMs` throttling).
 - **Tile-selection runtime contract**: `world.selected: Array<Thing>` exists (world.ts:34) but click-to-discard fires off `world.hovered` via `world.onDragStart` (world.ts:885+) without populating `selected`. There is no persistent "select then act" UI mode in the codebase.
+
+## Broken-deal visual repro for Stephen (2026-06-01)
+
+**Task:** Stephen pinged "is the game working? The dealing seems very whacky." with
+a screenshot showing 5 visual bugs. Reproduce in Playwright at HEAD `dd2608d`,
+dump `window.game.world` state, hand off to Hicks/Frost.
+
+**Branch:** `test/repro-broken-deal` (squashed to main).
+
+### Work completed
+
+1. **Spec** (`playtest-artifacts/playtest-broken-deal-repro.spec.mjs`):
+   diagnostic-only, drives auto-deal flow, dumps thingCount + slot
+   inventory + sample `thing.place()` coords + DOM signals to JSON.
+2. **Artifacts:**
+   `playtest-artifacts/screenshots/broken-deal-repro-<ts>.{png,json}`.
+3. **Memo:** `.squad/decisions/inbox/vasquez-broken-deal-repro.md` with
+   per-bug repro status, smoking-gun signals, and hand-off to Hicks.
+
+### Findings
+
+- **Backend (Frost): clean.** Per-seat tile counts post-deal are
+  14 / 13 / 13 / 13 with correct face-up (dealer) / face-down
+  (foreign) rotations.  83 tiles remain in wall.  152 wall slots,
+  15 hand slots/seat, 88 discard slots, 64 meld slots — all
+  populated with sensible `slot.name` values.  `match.phase = null`
+  but that's auto-deal idle.
+- **Frontend (Hicks): 3 of 5 bugs reproduce.**
+  - Flat walls: `Thing.place().z` returns {2, 6} for same x,y pairs
+    (engine wants stacked) but render is single-layer.  Mesh writer
+    is dropping z.
+  - Corner triangular artifacts: THREE.js logs
+    `Computed radius is NaN. The "position" attribute is likely to
+    have NaN values.` — geometry NaN at 4-corner positions.
+  - "Bot 1/2/3 + Seat 0" label overlay: a `3 bots — Medium · seats…`
+    HUD widget and the in-canvas score panel both render over the
+    table; position is viewport-dependent.
+- **Bug #2 (only 1 tile in front of seat 0): does NOT reproduce**
+  after the 8-second settle wait. Stephen likely caught it
+  mid-animation.
+
+### Skill / learning takeaways
+
+- **Dev backend port shifted.** Previous specs assumed `:8088`; the
+  current live dev backend runs on `https://127.0.0.1:7135` (the
+  VS Code launch profile HTTPS port) with the ASP.NET self-signed
+  dev cert.  Specs need `ignoreHTTPSErrors: true` on the context
+  and `NODE_TLS_REJECT_UNAUTHORIZED=0` in the env.
+- **`world.slots` is a `Map<string, Slot>`** (world.ts:29), NOT a
+  POJO.  `Object.keys(w.slots)` returns []; use
+  `Array.from(w.slots.keys())`.  Same gotcha as `world.things`
+  (also a Map) flagged in the integration-audit memo.
+- **`Thing.place()` is a METHOD** (thing.ts:41), not a property —
+  returns `{position: Vector3, rotation}`.  `thing.position` and
+  `thing.rotation` do NOT exist on the Thing class.  Specs that
+  want real render coords need `thing.place().position.{x,y,z}`.
+- **`Slot.position` may be null even when `Thing.place()` returns
+  valid coords** — the Place is computed from `placeWithOffset`
+  which uses internal origin + index, not the bare `slot.position`.
+- **THREE.js `Computed radius is NaN` is the canonical smoking gun
+  for geometry corruption** — any future "weird wedge artifacts"
+  diagnosis should `page.on('console','error')`-filter for that
+  exact substring first.
