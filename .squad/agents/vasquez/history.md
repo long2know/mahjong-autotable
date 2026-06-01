@@ -3108,3 +3108,8 @@ dump `window.game.world` state, hand off to Hicks/Frost.
   for geometry corruption** — any future "weird wedge artifacts"
   diagnosis should `page.on('console','error')`-filter for that
   exact substring first.
+
+## Team updates
+
+📌 **2026-06-01** — Broken-deal response: Repro spec + state-dump proving backend was 90% innocent — commits `2a9adea` + `edce01d`.
+

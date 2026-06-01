@@ -184,3 +184,8 @@ codebase (`MatchHistory(PlayerId, GameId)`, `PlayerSeasonStats(PlayerId,
 Season)`, `TournamentParticipants(TournamentId, PlayerId)`, etc.) has
 the same race shape. Not fixing them in this hotfix (surgical scope),
 but flagging for whichever agent owns the next race report.
+
+## Team updates
+
+📌 **2026-06-01** — Broken-deal response: PlayerProfiles.PlayerId UNIQUE race hotfix — commit `2df2e75`.
+

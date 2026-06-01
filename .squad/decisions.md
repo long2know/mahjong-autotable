@@ -17762,3 +17762,53 @@ Touched only:
 Did NOT touch: backend C#, Frost's dealing branch, Bishop's runtime
 branch, Drake's persistence.
 
+
+---
+
+### 2026-06-01T19:46Z: User directive — broken dealing screenshot
+**By:** Stephen Long (long2know, via Copilot)
+**What:** Stephen ran the live app (auto-deal, 3 bots Hard, handCount=4) and screenshotted a deeply broken table:
+- Walls rendered as flat single-row strips (not 2-high stacked bricks)
+- Only ONE tile face-up in front of Seat 0 (should be 13 for dealer)
+- Gray wedge artifacts at 4 corners (broken wall geometry)
+- Tiny floating "Bot 1/2/3 + Seat 0" label box dead-center on table
+**Why:** Visual proof the dealing is broken end-to-end despite Wave 5 audit claiming "shippable." Must reproduce + fix.
+
+---
+
+### 2026-06-01: Vasquez — Broken Deal Visual Repro
+**By:** Vasquez (Integration / Playwright Specialist)
+**What:** Reproduction spec + state dump at HEAD `5144dc8` (functionally `dd2608d` + 2 docs-only commits). Key finding: **The backend deal is correct. The frontend rendering is broken.** All 3 bugs Stephen could prove from the screenshot (flat walls, corner artifacts, in-canvas Bot label box) reproduce deterministically. The "only 1 tile in front of seat 0" bug does not reproduce after the ~7s deal animation settles — was almost certainly mid-animation snapshot.
+- **Repro spec:** `playtest-artifacts/playtest-broken-deal-repro.spec.mjs`
+- **Screenshot:** `playtest-artifacts/screenshots/broken-deal-repro-2026-06-01T19-52-51-434Z.png`
+- **State JSON:** `playtest-artifacts/screenshots/broken-deal-repro-2026-06-01T19-52-51-434Z.json`
+- **Evidence:** thingCount=197 (broken), wall tiles seated 28/27/0/0 (uneven), THREE.js error "Computed radius is NaN" (corner wedges). Hand off: **HICKS** (frontend rendering & HUD), **FROST** (wall distribution).
+**Outcome:** Commit `2a9adea` + `edce01d` (spec + evidence).
+
+---
+
+### 2026-06-01: Hicks — Broken Deal Fix (frontend mitigation)
+**By:** Hicks (Frontend / Three.js Lead)
+**What:** Root cause: `ChangshaToAutotableTranslator.BuildMatch()` hardcodes `gameType = "FOUR_PLAYER"` (Riichi) in conditions block; omits `dealMode` and `baseUnit`. Frontend receives mismatch, calls `Conditions.equals() → false`, rebuilds Tiles as 136-tile Riichi set (197 things total vs. correct 108 Changsha). Mitigation: pin `gameType` from URL variant — if `?variant=changsha`, World stays CHANGSHA regardless of backend's gameType assertion.
+- **Files changed:** `src/frontend/autotable-src/src/client-ui.ts` (readVariantFromUrl helper), `src/frontend/autotable-src/src/world.ts` (onMatch merge + pin).
+- **Validation:** thingCount 197→109, dealer face-up 1→14, walls clean 2-high (z=2,6). Hicks round 2 in flight for residual corner wedges + center HUD + wall gap.
+**Outcome:** Commit `3560008` (gameType pin). Round 2 cleanup scheduled.
+
+---
+
+### 2026-06-01: Frost — Backend Deal Emit Verdict
+**By:** Frost (Backend / Dealing & State Emit)
+**What:** WS probe against running backend shows **wall tile distribution bug**: `AutotableSlotMap.EnumerateWallSlotsInOrder` was seat-major (seat 0 cols 0..13, seat 1 cols 0..13, ..., seat 2/3 empty). 55 tiles fill seats 0/1 → seats 2/3 rendered as empty corners. **Fix:** Reorder to column-major (for each col 0..13, yield all seats). 55 tiles now distribute ~13-14 per seat, 2-high at every seat.
+- **Files:** `src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableSlotMap.cs` (enum reorder), 3 new regression tests in AutotableTranslatorTests.cs.
+- **Tests:** All 110 translator tests pass (+3 new). Full suite: 5263/5267 (pre-existing 2 failures, 2 skipped, unrelated to translator).
+**Outcome:** Commit `99c1af0` (column-major wall distribution). Backend healthy :8088, zero errors.
+
+---
+
+### 2026-06-01: Drake — PlayerProfiles.PlayerId UNIQUE constraint hotfix
+**By:** Drake (Persistence Hotfix Engineer)
+**What:** Stephen hit UNIQUE constraint crash in live play: `SQLite Error 19: 'UNIQUE constraint failed: PlayerProfiles.PlayerId'`. Classic SELECT-then-INSERT race in `PlayerProfileService.GetOrCreateAsync`: two concurrent `/api/identity` requests both saw null, both called Add(), one lost. Fix: Factored private `UpsertProfileAsync` with 2-attempt retry loop wrapping SELECT-then-INSERT. Cross-provider error detection (SQLite 19, Postgres 23505, SqlServer 2627/2601). All three public mutation methods (`GetOrCreateAsync`, `UpdateDisplayNameAsync`, `UpdateAvatarColorAsync`) now use the safe pattern.
+- **Files:** `src/backend/src/Mahjong.Autotable.Api/Players/PlayerProfileService.cs` (race-safe upsert pattern), regression test `GetOrCreate_IsRaceSafe_WhenCalledConcurrently_WithSameId` in PlayerProfileServiceTests.cs.
+- **Validation:** 15 player-profile tests pass. Live probe: 20 parallel `/api/identity` with same cookie → all 20 succeed, 1 row each in PlayerProfiles + PlayerStats. 5 of 20 lost the race (recovered via retry).
+**Outcome:** Commit `2df2e75` (race-safe upsert). Follow-up memo `5144dc8` (docs).
+
