@@ -103,7 +103,7 @@ exact class of bug recurs.
 
 ## Second task — PlayerProfiles.PlayerId UNIQUE race hotfix (2026-05-29)
 
-**Commit authored:** _TBD — recorded after squash-merge_
+**Commit authored:** `2df2e75` — `fix(persistence): PlayerProfiles.PlayerId UNIQUE race-safe upsert (squash)`
 
 **Symptom:** Stephen hit
 `CLR/Microsoft.EntityFrameworkCore.DbUpdateException` with innermost

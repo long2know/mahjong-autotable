@@ -3,7 +3,7 @@
 **Author:** Drake (Persistence Hotfix Engineer)
 **Date:** 2026-05-29
 **Branch:** `fix/playerprofiles-unique-constraint`
-**Commit on `main`:** _recorded after squash-merge_
+**Commit on `main`:** `2df2e75`
 **Severity:** Runtime crash hit by Stephen in live play.
 
 ## Symptom
