@@ -302,7 +302,66 @@ public class PlayerProfileServiceTests : IAsyncLifetime
     }
 
     // ────────────────────────────────────────────────────────────────────
-    //  5. PlayerProfile.AvatarColor class-initializer default is a palette
+    //  5. GetOrCreateAsync is race-safe under concurrent first-create calls
+    //     (Drake hotfix — PlayerProfiles.PlayerId UNIQUE constraint)
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Players"), Trait("Wave", "Phase-K-Hotfix")]
+    public async Task GetOrCreate_IsRaceSafe_WhenCalledConcurrently_WithSameId()
+    {
+        // Drake (backend hotfix, 2026-05-29) — Stephen hit a runtime
+        // DbUpdateException → SqliteException 19: "UNIQUE constraint
+        // failed: PlayerProfiles.PlayerId" in live play. Two concurrent
+        // first-touch requests for the same persistent player id
+        // (POST /api/identity + ChangshaHub.OnConnectedAsync's "ensure
+        // profile on first connect" call, or two browser tabs onboarding
+        // together) both observed FirstOrDefault → null and both called
+        // db.PlayerProfiles.Add; the second SaveChangesAsync crashed on
+        // the unique PK.
+        //
+        // The fix wraps GetOrCreateAsync in a race-safe upsert: catch
+        // DbUpdateException, recognise the unique violation across all
+        // three database providers (SqliteErrorCode 19, Postgres
+        // SqlState 23505, SqlServer Number 2627/2601), drop the losing
+        // scope, and re-enter the loop so the next iteration finds the
+        // row the winning caller just committed and takes the
+        // existing-row branch.
+        //
+        // This test fires 8 parallel GetOrCreateAsync calls for the same
+        // id and asserts:
+        //   • all 8 succeed (no DbUpdateException leaks),
+        //   • exactly ONE PlayerProfiles row lands in the DB,
+        //   • exactly ONE PlayerStats row lands in the DB (the
+        //     profile/stats pair that GetOrCreateAsync wires up).
+        var svc = GetService();
+        var playerId = "race-test-" + Guid.NewGuid().ToString("N");
+
+        const int concurrency = 8;
+        var tasks = Enumerable.Range(0, concurrency)
+            .Select(_ => Task.Run(() => svc.GetOrCreateAsync(playerId)))
+            .ToArray();
+        var profiles = await Task.WhenAll(tasks);
+
+        Assert.All(profiles, p => Assert.Equal(playerId, p.PlayerId));
+        Assert.All(profiles, p => Assert.Matches("^Player-[0-9A-F]{6}$", p.DisplayName));
+
+        Assert.NotNull(_factory);
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var profileRows = await db.PlayerProfiles
+            .AsNoTracking()
+            .Where(p => p.PlayerId == playerId)
+            .CountAsync();
+        var statsRows = await db.PlayerStats
+            .AsNoTracking()
+            .Where(s => s.PlayerId == playerId)
+            .CountAsync();
+        Assert.Equal(1, profileRows);
+        Assert.Equal(1, statsRows);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    //  6. PlayerProfile.AvatarColor class-initializer default is a palette
     //     member (Phase J Wave 7 backstop — Vasquez)
     // ────────────────────────────────────────────────────────────────────
 

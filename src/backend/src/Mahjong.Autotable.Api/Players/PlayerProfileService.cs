@@ -91,36 +91,22 @@ public sealed class PlayerProfileService
     /// access. Always touches <c>LastSeenAt</c> so the lobby UI can show
     /// "recently online" indicators in a future wave.
     /// </summary>
-    public async Task<PlayerProfile> GetOrCreateAsync(string playerId, CancellationToken ct = default)
+    public Task<PlayerProfile> GetOrCreateAsync(string playerId, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(playerId)) throw new ArgumentException("playerId required", nameof(playerId));
 
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.PlayerId == playerId, ct);
-        if (profile is null)
-        {
-            profile = new PlayerProfile
+        var now = DateTime.UtcNow;
+        return UpsertProfileAsync(
+            playerId,
+            onCreate: profile =>
             {
-                PlayerId = playerId,
-                DisplayName = DefaultDisplayName(playerId),
-                AvatarColor = DefaultAvatarColor(playerId),
-                CreatedAt = DateTime.UtcNow,
-                LastSeenAt = DateTime.UtcNow,
-            };
-            db.PlayerProfiles.Add(profile);
-
-            // Pair the profile with an empty stats row so subsequent
-            // RecordGameCompleted calls don't need a "create on first game"
-            // branch — keeps the hot-path single-query.
-            db.PlayerStats.Add(new PlayerStats { PlayerId = playerId });
-        }
-        else
-        {
-            profile.LastSeenAt = DateTime.UtcNow;
-        }
-        await db.SaveChangesAsync(ct);
-        return profile;
+                profile.DisplayName = DefaultDisplayName(playerId);
+                profile.AvatarColor = DefaultAvatarColor(playerId);
+                profile.CreatedAt = now;
+                profile.LastSeenAt = now;
+            },
+            onExisting: profile => profile.LastSeenAt = DateTime.UtcNow,
+            ct);
     }
 
     /// <summary>
@@ -150,7 +136,7 @@ public sealed class PlayerProfileService
     /// Throws <see cref="ArgumentException"/> on invalid input — callers
     /// at the hub layer translate this to a <c>HubException</c>.
     /// </summary>
-    public async Task<PlayerProfile> UpdateDisplayNameAsync(string playerId, string displayName, CancellationToken ct = default)
+    public Task<PlayerProfile> UpdateDisplayNameAsync(string playerId, string displayName, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(playerId)) throw new ArgumentException("playerId required", nameof(playerId));
         if (displayName is null) throw new ArgumentException("displayName required", nameof(displayName));
@@ -166,29 +152,22 @@ public sealed class PlayerProfileService
             throw new ArgumentException("displayName must not have leading or trailing whitespace.", nameof(displayName));
         }
 
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.PlayerId == playerId, ct);
-        if (profile is null)
-        {
-            profile = new PlayerProfile
+        var now = DateTime.UtcNow;
+        return UpsertProfileAsync(
+            playerId,
+            onCreate: profile =>
             {
-                PlayerId = playerId,
-                DisplayName = trimmed,
-                AvatarColor = DefaultAvatarColor(playerId),
-                CreatedAt = DateTime.UtcNow,
-                LastSeenAt = DateTime.UtcNow,
-            };
-            db.PlayerProfiles.Add(profile);
-            db.PlayerStats.Add(new PlayerStats { PlayerId = playerId });
-        }
-        else
-        {
-            profile.DisplayName = trimmed;
-            profile.LastSeenAt = DateTime.UtcNow;
-        }
-        await db.SaveChangesAsync(ct);
-        return profile;
+                profile.DisplayName = trimmed;
+                profile.AvatarColor = DefaultAvatarColor(playerId);
+                profile.CreatedAt = now;
+                profile.LastSeenAt = now;
+            },
+            onExisting: profile =>
+            {
+                profile.DisplayName = trimmed;
+                profile.LastSeenAt = DateTime.UtcNow;
+            },
+            ct);
     }
 
     /// <summary>
@@ -196,7 +175,7 @@ public sealed class PlayerProfileService
     /// <c>#RRGGBB</c> (lower or upper case). Throws
     /// <see cref="ArgumentException"/> for any other shape.
     /// </summary>
-    public async Task<PlayerProfile> UpdateAvatarColorAsync(string playerId, string avatarColor, CancellationToken ct = default)
+    public Task<PlayerProfile> UpdateAvatarColorAsync(string playerId, string avatarColor, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(playerId)) throw new ArgumentException("playerId required", nameof(playerId));
         if (string.IsNullOrEmpty(avatarColor) || !AvatarColorPattern.IsMatch(avatarColor))
@@ -204,29 +183,123 @@ public sealed class PlayerProfileService
             throw new ArgumentException("avatarColor must be a #RRGGBB hex string.", nameof(avatarColor));
         }
 
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.PlayerId == playerId, ct);
-        if (profile is null)
-        {
-            profile = new PlayerProfile
+        var now = DateTime.UtcNow;
+        return UpsertProfileAsync(
+            playerId,
+            onCreate: profile =>
             {
-                PlayerId = playerId,
-                DisplayName = DefaultDisplayName(playerId),
-                AvatarColor = avatarColor,
-                CreatedAt = DateTime.UtcNow,
-                LastSeenAt = DateTime.UtcNow,
-            };
-            db.PlayerProfiles.Add(profile);
-            db.PlayerStats.Add(new PlayerStats { PlayerId = playerId });
-        }
-        else
+                profile.DisplayName = DefaultDisplayName(playerId);
+                profile.AvatarColor = avatarColor;
+                profile.CreatedAt = now;
+                profile.LastSeenAt = now;
+            },
+            onExisting: profile =>
+            {
+                profile.AvatarColor = avatarColor;
+                profile.LastSeenAt = DateTime.UtcNow;
+            },
+            ct);
+    }
+
+    /// <summary>
+    /// Race-safe upsert shared by <see cref="GetOrCreateAsync"/>,
+    /// <see cref="UpdateDisplayNameAsync"/>, and
+    /// <see cref="UpdateAvatarColorAsync"/>.
+    ///
+    /// <para>Drake (backend hotfix, 2026-05-29) — the original SELECT-then-INSERT
+    /// pattern in these methods could race when two concurrent requests for the
+    /// same persistent player id (e.g. <c>POST /api/identity</c> + the
+    /// <c>ChangshaHub.OnConnectedAsync</c> "ensure profile on first connect"
+    /// branch, or two browser tabs onboarding together) both observed
+    /// <c>FirstOrDefault → null</c> and both called <c>PlayerProfiles.Add</c>,
+    /// causing the second <c>SaveChangesAsync</c> to throw
+    /// <c>DbUpdateException</c> → <c>SqliteException 19 — UNIQUE constraint
+    /// failed: PlayerProfiles.PlayerId</c> in live play. The upsert flow below
+    /// catches the unique-violation, discards the losing scope (so the dangling
+    /// tracked inserts are dropped with it), and re-enters the loop to take the
+    /// "update existing row" branch with the row the winning request just
+    /// committed. Exactly one retry — if even the post-retry SELECT misses, the
+    /// next save's exception bubbles up so a genuine schema problem isn't
+    /// masked.</para>
+    /// </summary>
+    private async Task<PlayerProfile> UpsertProfileAsync(
+        string playerId,
+        Action<PlayerProfile> onCreate,
+        Action<PlayerProfile> onExisting,
+        CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
         {
-            profile.AvatarColor = avatarColor;
-            profile.LastSeenAt = DateTime.UtcNow;
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var profile = await db.PlayerProfiles.FirstOrDefaultAsync(p => p.PlayerId == playerId, ct);
+            if (profile is null)
+            {
+                profile = new PlayerProfile { PlayerId = playerId };
+                onCreate(profile);
+                db.PlayerProfiles.Add(profile);
+
+                // Pair the profile with an empty stats row so subsequent
+                // RecordGameCompleted calls don't need a "create on first game"
+                // branch — keeps the hot-path single-query. Defensive AnyAsync
+                // skips the insert if a concurrent GetStatsAsync already
+                // landed the stats row (rare but possible — stats has no FK
+                // problem either way because we're adding the profile in the
+                // same SaveChanges).
+                var statsExist = await db.PlayerStats.AnyAsync(s => s.PlayerId == playerId, ct);
+                if (!statsExist)
+                {
+                    db.PlayerStats.Add(new PlayerStats { PlayerId = playerId });
+                }
+            }
+            else
+            {
+                onExisting(profile);
+            }
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return profile;
+            }
+            catch (DbUpdateException ex) when (attempt == 0 && IsUniqueViolation(ex))
+            {
+                _logger.LogDebug(
+                    ex,
+                    "UpsertProfileAsync lost an insert race for {PlayerId}; retrying via update branch.",
+                    playerId);
+                // Drop this scope (and its tracked Add() entries) and loop —
+                // the next iteration's FirstOrDefault will find the row the
+                // other caller just committed and take the existing-row path.
+            }
         }
-        await db.SaveChangesAsync(ct);
-        return profile;
+    }
+
+    /// <summary>
+    /// Cross-provider unique-constraint-violation predicate. Returns true when
+    /// the innermost exception identifies a UNIQUE / PRIMARY KEY violation on
+    /// SQLite (<c>SqliteErrorCode == 19</c>), Postgres (<c>SqlState == "23505"</c>),
+    /// or SQL Server (<c>Number == 2627 or 2601</c>) — covering every database
+    /// provider this codebase ships against (see
+    /// <c>Persistence/ServiceCollectionExtensions.cs</c>). Used by
+    /// <see cref="UpsertProfileAsync"/> to recognise the "another request just
+    /// inserted the same PlayerId" race so we can re-fetch instead of failing.
+    /// </summary>
+    private static bool IsUniqueViolation(DbUpdateException ex)
+    {
+        for (var inner = ex.InnerException; inner is not null; inner = inner.InnerException)
+        {
+            switch (inner)
+            {
+                case Microsoft.Data.Sqlite.SqliteException sqlite when sqlite.SqliteErrorCode == 19:
+                    return true;
+                case Npgsql.PostgresException pg when pg.SqlState == "23505":
+                    return true;
+                case Microsoft.Data.SqlClient.SqlException sql when sql.Number == 2627 || sql.Number == 2601:
+                    return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>

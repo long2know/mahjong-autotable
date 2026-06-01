@@ -100,3 +100,87 @@ hand-rolled migration chain for the SQLite provider. Any future
 schema change covered by one of those helpers MUST update both the
 canonical EF migration AND the hand-rolled SQL in lockstep, or this
 exact class of bug recurs.
+
+## Second task — PlayerProfiles.PlayerId UNIQUE race hotfix (2026-05-29)
+
+**Commit authored:** _TBD — recorded after squash-merge_
+
+**Symptom:** Stephen hit
+`CLR/Microsoft.EntityFrameworkCore.DbUpdateException` with innermost
+`Microsoft.Data.Sqlite.SqliteException : SQLite Error 19: 'UNIQUE
+constraint failed: PlayerProfiles.PlayerId'` during live play. Stack
+started at `ReaderModificationCommandBatch.ExecuteAsync`.
+
+**Root cause:** Classic SELECT-then-INSERT race in
+`Players/PlayerProfileService.GetOrCreateAsync` (and the two sibling
+`Update*Async` methods that share the same shape). Two concurrent
+requests for the same persistent player id (POST `/api/identity` racing
+the `ChangshaHub.OnConnectedAsync` "ensure profile on first connect"
+call, or two browser tabs onboarding together) both saw
+`FirstOrDefault → null` and both called `db.PlayerProfiles.Add`. The
+losing `SaveChangesAsync` violated the unique PK.
+
+**Fix:** Surgical single-file refactor of
+`Players/PlayerProfileService.cs`:
+1. New `UpsertProfileAsync(playerId, onCreate, onExisting, ct)` private
+   helper — 2-attempt loop, fresh `IServiceScope` per attempt, catches
+   `DbUpdateException` only when `IsUniqueViolation(ex)` is true and
+   re-fetches the row the winning caller just committed.
+2. New `IsUniqueViolation(DbUpdateException)` cross-provider predicate
+   (SQLite errno 19, Postgres SqlState 23505, SqlServer Number 2627/2601)
+   so the fix lands once and works on every provider this codebase ships
+   against.
+3. `GetOrCreateAsync`, `UpdateDisplayNameAsync`, `UpdateAvatarColorAsync`
+   rewritten as thin shells over `UpsertProfileAsync`. Happy-path
+   behaviour identical; only race semantics changed.
+4. `GetStatsAsync` and `RecordGameCompletedAsync` left alone —
+   different table (`PlayerStats`), not what Stephen hit.
+
+No schema / migration / bootstrap changes — the schema was correct, the
+bug was at the service layer.
+
+**Regression test added:**
+`PlayerProfileServiceTests.GetOrCreate_IsRaceSafe_WhenCalledConcurrently_WithSameId`
+— 8 parallel `GetOrCreateAsync(samePlayerId)` via `Task.Run` +
+`Task.WhenAll`. Verified to fail **with the exact exception Stephen
+reported** when the production fix is stashed; passes deterministically
+with the fix in place.
+
+**Verified:**
+- `dotnet build` — 0 errors, 0 warnings.
+- `dotnet test … --filter PlayerProfile|PlayerIdentity|PersistentPlayerId`
+  — 15/15 pass (4 pre-existing + 1 new race regression + 10 across the
+  three sibling test classes).
+- Fresh-DB runtime probe: backend booted on port 8088, `/health` 200,
+  `POST /api/identity` (no cookie + same-cookie idempotent) 200.
+- Race probe: **20 parallel `POST /api/identity` with the SAME
+  fresh-but-never-created cookie value** — 53/53 POSTs across all
+  probes returned 200; exactly **1 row** in PlayerProfiles + 1 in
+  PlayerStats for the racy PID; EF logged 5/20 race losses, my retry
+  loop recovered all 5; 0 unhandled exceptions.
+
+**Memo:** `.squad/decisions/inbox/drake-playerprofiles-unique-fix.md`
+
+**Lane discipline observed:** Touched only
+`src/backend/src/Mahjong.Autotable.Api/Players/PlayerProfileService.cs`
+(production) and `src/backend/tests/Mahjong.Autotable.Api.Tests/Players/PlayerProfileServiceTests.cs`
+(test). Did NOT touch Changsha runtime, Bot / Scoring (Frost lane),
+Autotable WS (Bishop lane), frontend (Hicks lane), test infrastructure
+(Vasquez lane), or DevOps / CI (Apone lane).
+
+**Cross-reference to first fix (`c369c54`):** Same exception class
+(`SqliteException 19`), totally different root cause. Last time it was
+a hand-rolled `CREATE TABLE` in `DatabaseBootstrapper` declaring
+`LastGameAt NOT NULL` against an EF model that said nullable. This
+time it was a service-layer race on a unique PK. **Pattern locked in:**
+"`SqliteException 19`" can come from either a NOT-NULL violation OR a
+UNIQUE/PK violation — always read the constraint name in the error
+message before deciding which bug class it is. And always check BOTH
+the EF migration chain AND the runtime write path when this error
+class surfaces.
+
+**Forward-looking note:** Every other "natural-key-PK upsert" in this
+codebase (`MatchHistory(PlayerId, GameId)`, `PlayerSeasonStats(PlayerId,
+Season)`, `TournamentParticipants(TournamentId, PlayerId)`, etc.) has
+the same race shape. Not fixing them in this hotfix (surgical scope),
+but flagging for whichever agent owns the next race report.
