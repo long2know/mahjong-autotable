@@ -277,6 +277,122 @@ public class AutotableTranslatorTests
         Assert.Empty(discardSlots);
     }
 
+    // ── Frost 2026-06-01 — wall fence-post regression ──────────────────
+    //
+    // Hicks's setup-slots.ts split CHANGSHA walls into per-seat sizes
+    // (seats 0,1 → row(14); seats 2,3 → row(13)), so the only valid wall
+    // slot keys for seats 2,3 are wall.{0..12}.{0,1}@{2,3}.  Anything
+    // referencing col >= 13 for seat 2 or 3 (or col >= 14 for seat 0 or 1)
+    // is an out-of-bounds emit and surfaces as a frontend
+    // <c>throw `slot not found: wall.13.0@2`</c> page error (the
+    // pageerror name="slot not found" + message="wall.13.0@2" pair from
+    // <c>setup.ts:256</c>).  This test pins the contract that the
+    // translator NEVER emits such a slot — covering BOTH the synthesized
+    // 108-tile pre-WS wall (Seating + RollingDice) AND the post-deal
+    // 55-tile authoritative wall path.
+
+    [Theory, Trait("Category", "Phase5a")]
+    [InlineData(ChangshaPhase.Seating)]
+    [InlineData(ChangshaPhase.RollingDice)]
+    public void Snapshot_PreDeal_NeverEmits_OverLimitWallSlots(ChangshaPhase phase)
+    {
+        // Pre-deal synthesized wall path — state.Wall is empty, no hands,
+        // no melds, no discards. Translator synthesizes 108 face-down tiles.
+        var (state, _) = ChangshaGameStateMachine.CreateGame(seed: 7);
+        state.Phase = phase;
+
+        var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0);
+        AssertNoOverLimitWallSlots(entries);
+    }
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void Snapshot_PostDeal_NeverEmits_OverLimitWallSlots()
+    {
+        // Post-deal authoritative wall path — state.Wall has 55 tiles
+        // (108 dealt - 53 to hands). Translator uses EnumerateWallSlotsInOrder.
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed: 7);
+        var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0);
+        AssertNoOverLimitWallSlots(entries);
+    }
+
+    [Theory, Trait("Category", "Phase5a")]
+    [InlineData(11)]
+    [InlineData(13)]
+    [InlineData(17)]
+    [InlineData(23)]
+    [InlineData(31)]
+    public void Snapshot_NeverEmits_OverLimitWallSlots_AcrossSeeds(int seed)
+    {
+        // Regression sweep — multiple seeds in case the shuffled wall
+        // order ever influences slot emission (it shouldn't, but pin it).
+        var state = ChangshaTestHelpers.NewGameDealtTo(seed);
+        var entries = ChangshaToAutotableTranslator.Translate(state, viewerSeat: 0);
+        AssertNoOverLimitWallSlots(entries);
+    }
+
+    [Fact, Trait("Category", "Phase5a")]
+    public void EnumerateWallSlotsInOrder_NeverYields_OverLimitTuples()
+    {
+        // Belt-and-suspenders against the raw enumeration. The iterator
+        // is the only producer of (seat, col, layer) tuples; if it ever
+        // yields col >= WallStackCount(seat) the WallSlot validator will
+        // throw at emit time (caught by the snapshot tests above), but
+        // pinning the iterator directly prevents the bug from regressing
+        // into runtime exceptions that look like backend errors when the
+        // real cause would be a translator-internal off-by-one.
+        foreach (var (seat, col, layer) in AutotableSlotMap.EnumerateWallSlotsInOrder())
+        {
+            Assert.InRange(seat, 0, 3);
+            Assert.InRange(col, 0, AutotableSlotMap.WallStackCount(seat) - 1);
+            Assert.InRange(layer, 0, 1);
+        }
+    }
+
+    private static void AssertNoOverLimitWallSlots(IReadOnlyList<CollectionEntry> entries)
+    {
+        var wallSlots = entries
+            .Where(e => e.Kind == "things")
+            .Select(e => ExtractSlotName(e.Value!))
+            .Where(s => s.StartsWith("wall."))
+            .ToList();
+
+        // Cover both the per-seat upper bounds the task brief calls out:
+        //   • seats 2,3 — col must be in [0,12]; wall.{13|14|…}@{2|3} is illegal
+        //   • seats 0,1 — col must be in [0,13]; wall.{14|15|…}@{0|1} is illegal
+        var seat23OverLimit = new System.Text.RegularExpressions.Regex(
+            @"^wall\.(?:1[3-9]|[2-9]\d|\d{3,})\.[01]@[23]$");
+        var seat01OverLimit = new System.Text.RegularExpressions.Regex(
+            @"^wall\.(?:1[4-9]|[2-9]\d|\d{3,})\.[01]@[01]$");
+
+        foreach (var slot in wallSlots)
+        {
+            Assert.False(seat23OverLimit.IsMatch(slot),
+                $"Backend emitted out-of-bounds wall slot for seat 2/3: {slot} " +
+                $"(seats 2,3 only have cols 0..12 per Hicks's row(13) setup-slots.ts layout).");
+            Assert.False(seat01OverLimit.IsMatch(slot),
+                $"Backend emitted out-of-bounds wall slot for seat 0/1: {slot} " +
+                $"(seats 0,1 only have cols 0..13 per Hicks's row(14) setup-slots.ts layout).");
+        }
+
+        // Stronger invariant — every wall slot must parse cleanly and the
+        // (seat, col) tuple must satisfy WallSlot's range guard.
+        foreach (var slot in wallSlots)
+        {
+            // wall.{col}.{layer}@{seat}
+            var beforeAt = slot.Split('@')[0];
+            var afterAt = slot.Split('@')[1];
+            var parts = beforeAt.Split('.');
+            Assert.Equal(3, parts.Length);
+            var col = int.Parse(parts[1]);
+            var layer = int.Parse(parts[2]);
+            var seat = int.Parse(afterAt);
+
+            Assert.InRange(seat, 0, 3);
+            Assert.InRange(layer, 0, 1);
+            Assert.InRange(col, 0, AutotableSlotMap.WallStackCount(seat) - 1);
+        }
+    }
+
     // ── discard slot mapping ──────────────────────────────────────────
 
     [Fact, Trait("Category", "Phase5a")]
