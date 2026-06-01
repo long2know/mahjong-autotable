@@ -17812,3 +17812,65 @@ branch, Drake's persistence.
 - **Validation:** 15 player-profile tests pass. Live probe: 20 parallel `/api/identity` with same cookie → all 20 succeed, 1 row each in PlayerProfiles + PlayerStats. 5 of 20 lost the race (recovered via retry).
 **Outcome:** Commit `2df2e75` (race-safe upsert). Follow-up memo `5144dc8` (docs).
 
+---
+
+### 2026-06-01: Hicks — Broken Deal Cleanup Round 2
+**By:** Hicks (Frontend / Three.js Specialist)
+**What:** Stephen's follow-up screenshot revealed three residual visual bugs after Hicks round 1 + Frost's per-seat wall rebalance:
+1. **Gray triangular wedges at 4 corners** — Riichi point-stick trays (THREE.js NaN warning log source) leaking into Changsha scene.
+2. **Tiny floating "Seat 0" HUD dead-centre on table** — Riichi scoreboard (upstream `Center` mesh + CanvasTexture) rendering even though Changsha has no stick/score display.
+3. **Visible top-wall gap / phantom wall slots** — `setup-slots.ts` using uniform `row(19)` for every variant (left 4–6 trailing empty columns per seat on Changsha's 108-tile budget).
+
+**Fix:** 
+- `setup-slots.ts` — Split CHANGSHA wall into `row(14)` for seats 0/1 and `row(13)` for seats 2/3 (matches backend 28/28/26/26 = 108 layout). Updated `fixupSlots()` to use per-seat last-col index for drop-shadow placement.
+- `object-view.ts` — New `setVariant(gameType)` method toggles tray + center mesh visibility (both off for Changsha, both on for Riichi variants). Constructor calls `setVariant` with URL-declared variant; `updateScores()` skips `center.draw()` when hidden.
+- `world.ts` — `updateConditions()` calls `this.objectView.setVariant(conditions.gameType)` to propagate backend/dropdown variant flips into static scenery.
+
+**Validation:** Reran `playtest-broken-deal-repro.spec.mjs` — thingCount 109 ✓, wallSlots 108 ✓, tilesInWall 55 ✓, dealer face-up 14 ✓, stick trays hidden ✓, center HUD hidden ✓, wall gap eliminated ✓. Proof: `playtest-artifacts/screenshots/hicks-deal-fixed-round2-20260601T202305Z.png`.
+
+**Residual flagged (design decision for Stephen):** Top-wall corner "gap" is physically correct (corners unowned by any seat). With old `row(19)` phantom slots masked the corner; with per-seat exact-fit the corner is now honest. Options: (a) accept-as-physics, (b) re-origin walls to center on table edge (Phase-G refactor).
+
+**Outcome:** Commit `b4c82ec` (cleanup round 2).
+
+---
+
+### 2026-06-01: Frost — Wall Fence-Post Fix (Diagnostic + Regression Tests)
+**By:** Frost (Backend Specialist)
+**What:** Stephen reported `wall.13.0@2` page error persisting after Hicks round 2 + Frost's prior `99c1af0` per-seat rebalance. Investigation revealed: **Backend is healthy.** The `wall.13.0@2` error originates from frontend's local pre-WS render path (`setup-deal.ts`), NOT from backend slot emit. Backend's `EnumerateWallSlotsInOrder` already caps per-seat via `col >= WallStackCount(seat) continue` and `WallSlot` validates `col < WallStackCount(seat)` with throw. The frontend DEALS table for Changsha still inherited the old uniform layout's `wall.1.0` start for seats 2/3 — when round-2 constrained those seats to 26 slots (wall.0.0 through wall.12.1), the table-walk from index 2 + 26 entries ran off the end.
+
+**Fix (frontend patch, Hicks's lane):** 
+In `src/frontend/autotable-src/src/setup-deal.ts` CHANGSHA table, flip seats 2/3 from `wall.1.0` (slotNames index 2) to `wall.0.0` (index 0) across three blocks (INITIAL, HANDS[1], UNSHUFFLED) — 6 lines total.
+
+**This commit's contribution (backend regression tests):**
+Added 4 new tests to `AutotableTranslatorTests.cs`:
+- `Snapshot_PreDeal_NeverEmits_OverLimitWallSlots` — pre-deal synthesized 108-tile path never yields per-seat cols ≥ limit.
+- `Snapshot_PostDeal_NeverEmits_OverLimitWallSlots` — post-deal authoritative 55-tile path never emits per-seat cols ≥ limit.
+- `Snapshot_NeverEmits_OverLimitWallSlots_AcrossSeeds` (theory, 5 cases) — same under multiple shuffles.
+- `EnumerateWallSlotsInOrder_NeverYields_OverLimitTuples` — iterator direct pin (prevents silent refactor slip).
+
+All tests use exact-pattern regexes: `^wall\.(?:1[3-9]|[2-9]\d|\d{3,})\.[01]@[23]$` (seats 2/3 cols ≥13), `^wall\.(?:1[4-9]|[2-9]\d|\d{3,})\.[01]@[01]$` (seats 0/1 cols ≥14). 35 translator tests pass (+4 new, no production code change).
+
+**Pitfall captured for future squad members:** Playwright `pageerror` handler parses thrown string `${name}: ${message}` at the first `:`. A thrown `slot not found: wall.13.0@2` surfaces as `err.name='slot not found' | err.message='wall.13.0@2'` (NOT the full string). When triaging fence-post bugs, the captured `message` is the last interpolation, not the whole throw — cross-check with `err.name`.
+
+**Outcome:** Commit `165166d` (wall fence-post diagnostic + 5 regression tests). Hand-off memo provided to Hicks with 6-line patch verbatim.
+
+---
+
+### 2026-06-01: Hicks — Setup-Deal Fence-Post Patch (Round 3)
+**By:** Hicks (Frontend / Three.js Specialist)
+**What:** Applied Frost's 6-line patch verbatim to `setup-deal.ts`. Updated DEALS.CHANGSHA to flip seats 2/3 from `wall.1.0` (index 2) to `wall.0.0` (index 0) across:
+- INITIAL block (2 lines: seat 2 + seat 3)
+- HANDS[1] block (2 lines: seat 2 + seat 3)
+- UNSHUFFLED block (2 lines: seat 2 + seat 3)
+
+The vestigial `wall.1.0` start was inherited from upstream's uniform `row(19)` layout where seats 2/3 had 38 slots each (so index 2 + 26 = 28 < 38 was harmless). With Hicks round 2's per-seat `row(13)` for seats 2/3, the row now has 26 slots and dealPart() MUST fill from index 0.
+
+**Validation:** Rebuilt bundle cleanly; verified across 3 playtests:
+- `walls-facedown.spec.mjs` → `pageErrorsCount: 0` ✅
+- `human-led.spec.mjs` → `pageErrorsCount: 0` ✅
+- `broken-deal-repro.spec.mjs` → `pageErrorsCount: 0` ✅
+
+Previously failing `pageErrors: ["wall.13.0@2"]` is gone. All other invariants on walls-facedown pass (zero foreign hands face-up, all wall backs rotated, four-seat walls present, pickup reached dealer hand, local seat hand face-up). Proof screenshot: `playtest-artifacts/screenshots/hicks-final-clean-2026-06-01T20-52-57Z.png` — shows 4 clean walls, player's 13 face-up tiles, real Changsha dealing ceremony in progress with "Your turn — pick 1 tile" + Take 1 prompt.
+
+**Outcome:** Commit `ff096ff` (setup-deal fence-post patch). ZERO page errors end-to-end. Game is visually + functionally playable end-to-end.
+
