@@ -91,6 +91,7 @@ public static class BotDiscardAdvisor
             .ToDictionary(group => group.Key, group => group.Count());
         var ownedTiles = handTiles.Concat(meldTiles).ToList();
         var hasChangshaPureSuitLean = false;
+        TileSuit? changshaDominantSuit = null;
         if (ruleset == MahjongRuleset.Changsha258)
         {
             var changshaSuitCounts = ownedTiles
@@ -102,8 +103,11 @@ public static class BotDiscardAdvisor
             {
                 var maxSuitCount = changshaSuitCounts.Values.Max();
                 var dominantSuitCount = changshaSuitCounts.Count(entry => entry.Value == maxSuitCount);
-                hasChangshaPureSuitLean = dominantSuitCount == 1
-                    && maxSuitCount >= Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold;
+                if (dominantSuitCount == 1 && maxSuitCount >= Changsha258Ruleset.BigWinPureSuitEyeFlexibleThreshold)
+                {
+                    hasChangshaPureSuitLean = true;
+                    changshaDominantSuit = changshaSuitCounts.First(entry => entry.Value == maxSuitCount).Key;
+                }
             }
         }
 
@@ -149,6 +153,11 @@ public static class BotDiscardAdvisor
                 soleChangshaSmallWinPairTile = smallWinPairs[0];
             }
         }
+
+        var allowBreakingSoleChangshaSmallWinPairForPureSuitLean = hasChangshaPureSuitLean
+            && soleChangshaSmallWinPairTile is not null
+            && changshaDominantSuit.HasValue
+            && soleChangshaSmallWinPairTile.Suit != changshaDominantSuit.Value;
 
         var hasSmallWinTileInHand = enforceSmallWinPairBias
             && handTiles.Any(static tile => Changsha258Ruleset.IsSmallWinPair(tile));
@@ -1113,7 +1122,7 @@ public static class BotDiscardAdvisor
                             .Select(entry => entry.Key)
                             .ToList();
 
-                        if (smallWinPairTiles.Count == 1)
+                        if (smallWinPairTiles.Count == 1 && !allowBreakingSoleChangshaSmallWinPairForPureSuitLean)
                         {
                             var protectedTile = smallWinPairTiles[0];
                             offSuitCandidates = offSuitCandidates
@@ -1416,7 +1425,7 @@ public static class BotDiscardAdvisor
         if (soleChangshaSmallWinPairTile is not null)
         {
             handCounts.TryGetValue(soleChangshaSmallWinPairTile, out var solePairCount);
-            if (solePairCount <= 2)
+            if (solePairCount <= 2 && !allowBreakingSoleChangshaSmallWinPairForPureSuitLean)
             {
                 var nonPairCandidates = prioritizedCandidates
                     .Where(candidate => !candidate.Tile.Equals(soleChangshaSmallWinPairTile))
