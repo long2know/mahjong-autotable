@@ -575,6 +575,10 @@ export class World {
   updateConditions(conditions: Conditions): void {
     this.conditions = conditions;
     this.setup.replace(conditions);
+    // Hicks 2026-06-01 round 2 — propagate variant flips into ObjectView so
+    // it can hide / show the Riichi-only static scenery (stick trays + center
+    // score readout).  No-op when the variant didn't change.
+    this.objectView.setVariant(conditions.gameType);
     this.setupView();
   }
 

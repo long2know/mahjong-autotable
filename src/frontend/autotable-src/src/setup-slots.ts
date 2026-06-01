@@ -233,11 +233,21 @@ export const SLOT_GROUPS: Record<GameType, Array<SlotGroup>> = {
   // Phase F — Changsha keeps the 108-tile shape Hicks built in Phase B.  No
   // tray / payment / riichi sticks; Changsha scoring is server-authoritative
   // numeric units (Vasquez §1.14) and never renders sticks.
+  //
+  // Hicks 2026-06-01 round 2 — wall row count now matches backend exactly:
+  // `AutotableSlotMap.WallStackCount` ships seats 0,1 → 14 stacks and seats
+  // 2,3 → 13 stacks (28+28+26+26 = 108 tiles).  The legacy `row(19)` blanket
+  // emitted phantom slots `wall.14..18@*` (seats 0,1) and `wall.13..18@*`
+  // (seats 2,3) that the backend never wrote to — they showed up as the
+  // visible mid-wall gap and the THREE.js `Computed radius is NaN` log
+  // Vasquez captured at HEAD `dd2608d`.  Splitting the wall group per-seat
+  // makes every emitted slot something the backend will populate.
   CHANGSHA: [
     [start('hand'), row(14, undefined, {shift: true}), seats()],
     [start('hand.extra'), seats()],
     [start('meld'), column(4), row(4, -Size.TILE.x, {push: true, shift: true}), seats()],
-    [start('wall'), row(19), stack(), seats()],
+    [start('wall'), row(14), stack(), seats([0, 1])],
+    [start('wall'), row(13), stack(), seats([2, 3])],
     [start('discard'), column(3, -Size.TILE.y), row(6, undefined, {push: true}), seats()],
     [start('discard.extra'), row(4, undefined, {push: true}), seats()],
     [start('marker'), seats()],
@@ -298,7 +308,7 @@ export const SLOT_GROUPS: Record<GameType, Array<SlotGroup>> = {
   ],
 };
 
-function fixupSlots(slots: Array<Slot>, _gameType: GameType): void {
+function fixupSlots(slots: Array<Slot>, gameType: GameType): void {
   for (const slot of slots) {
     if (slot.name.startsWith('discard.extra')) {
       slot.linkDesc.requires = `discard.2.5@${slot.seat}`;
@@ -306,9 +316,21 @@ function fixupSlots(slots: Array<Slot>, _gameType: GameType): void {
     if (slot.name.startsWith('discard.2.5')) {
       slot.linkDesc.push = `discard.extra.0@${slot.seat}`;
     }
-    if (slot.group === 'wall' &&
-        slot.indexes[0] !== 0 && slot.indexes[0] !== 18 && slot.indexes[1] === 0) {
-      slot.drawShadow = true;
+    if (slot.group === 'wall' && slot.indexes[1] === 0) {
+      // Drop-shadow under interior wall columns only (skip the two end
+      // columns so the wall-end miter doesn't bleed shadow off the table).
+      // Hicks 2026-06-01 round 2 — per-seat last-col index now reflects the
+      // variant-aware wall depth: Changsha uses 14 stacks for seats 0,1 and
+      // 13 stacks for seats 2,3 (canonical 28+28+26+26 = 108 layout).
+      let lastCol: number;
+      if (gameType === GameType.CHANGSHA) {
+        lastCol = slot.seat === 0 || slot.seat === 1 ? 13 : 12;
+      } else {
+        lastCol = 18;
+      }
+      if (slot.indexes[0] !== 0 && slot.indexes[0] !== lastCol) {
+        slot.drawShadow = true;
+      }
     }
     if (slot.group === 'meld' && slot.indexes[0] > 0) {
       slot.linkDesc.requires = `meld.${slot.indexes[0]-1}.1@${slot.seat}`;

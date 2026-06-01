@@ -41,8 +41,9 @@ import { World } from "./world";
 import { Client } from "./client";
 import { AssetLoader } from "./asset-loader";
 import { Center } from "./center";
+import { readVariantFromUrl } from "./client-ui";
 import { ThingParams, ThingGroup, TileThingGroup, StickThingGroup, MarkerThingGroup } from "./thing-group";
-import { ThingType, Place, TileVariant, DiceInfo } from "./types";
+import { ThingType, Place, TileVariant, DiceInfo, GameType } from "./types";
 
 export interface Render {
   type: ThingType;
@@ -71,6 +72,13 @@ export class ObjectView {
   private assetLoader: AssetLoader;
 
   private center: Center;
+
+  // Hicks 2026-06-01 round 2 — store the merged stick-tray mesh so we can
+  // toggle visibility per variant.  Changsha has no sticks; the dark gray
+  // tray geometry was rendering as the 4 corner "wedges" in Stephen's
+  // verification screenshot (`broken-deal-repro-2026-06-01T20-05-35-522Z.png`).
+  // Built once, shown only when the active variant uses sticks.
+  private trayMesh: Mesh | null = null;
 
   private thingGroups: Map<ThingType, ThingGroup>;
 
@@ -125,6 +133,32 @@ export class ObjectView {
     this.dropShadowProto.name = 'dropShadow';
 
     this.addStatic();
+
+    // Hicks 2026-06-01 round 2 — gate Riichi-only static scenery (point
+    // sticks + central score readout) based on the URL-declared variant
+    // at boot.  World.updateConditions re-calls setVariant whenever the
+    // backend / dropdown flips us into / out of CHANGSHA, so this initial
+    // pass just makes sure the first paint matches the URL intent (so
+    // Stephen never sees the corner wedges flash on for Changsha).
+    const urlVariant = readVariantFromUrl();
+    if (urlVariant !== null) {
+      this.setVariant(urlVariant as GameType);
+    }
+  }
+
+  /**
+   * Hicks 2026-06-01 round 2 — variant-aware static scenery toggle.
+   * Changsha hides the upstream stick trays (gray corner wedges) and
+   * the central score readout mesh (the "Seat 0" floating HUD).  Riichi
+   * variants restore both.  Idempotent; safe to call repeatedly from
+   * `World.updateConditions`.
+   */
+  setVariant(gameType: GameType): void {
+    const isChangsha = gameType === GameType.CHANGSHA;
+    if (this.trayMesh !== null) {
+      this.trayMesh.visible = !isChangsha;
+    }
+    this.center.mesh.visible = !isChangsha;
   }
 
   replaceThings(params: Map<number, ThingParams>): void {
@@ -165,6 +199,20 @@ export class ObjectView {
     tableMesh.updateMatrixWorld();
     this.center.mesh.updateMatrixWorld();
 
+    // Hicks 2026-06-01 round 2 — skip building the merged stick-tray
+    // geometry entirely when the URL declares a stickless variant
+    // (Changsha).  Just hiding the mesh wasn't enough: THREE still ran
+    // `computeBoundingSphere()` on the merged geometry once per frame
+    // (frustum cull), and the underlying GLB tray prototype has a
+    // degenerate vertex that produces a NaN bounding radius — the exact
+    // `Computed radius is NaN` log Vasquez captured.  Skipping the merge
+    // removes both the visible wedge artefact AND the console error.
+    const urlVariant = readVariantFromUrl();
+    if (urlVariant === GameType.CHANGSHA) {
+      this.trayMesh = null;
+      return;
+    }
+
     const tray = this.assetLoader.makeTray();
     tray.updateMatrixWorld();
     const geometries: Array<BufferGeometry> = [];
@@ -193,9 +241,18 @@ export class ObjectView {
     tray.position.set(0, 0, 0);
     this.mainGroup.add(tray);
     tray.updateMatrixWorld();
+    this.trayMesh = tray;
   }
 
   updateScores(scores: Array<number | null>): void {
+    // Hicks 2026-06-01 round 2 — defense in depth.  When the variant hides
+    // the center mesh (Changsha), skip the canvas paint to avoid burning
+    // CPU on a texture nothing renders, and to keep the cached canvas in
+    // its initial blank/transparent state if the variant ever flips back.
+    if (!this.center.mesh.visible) {
+      this.center.setScores(scores);
+      return;
+    }
     this.center.setScores(scores);
     this.center.draw();
   }
