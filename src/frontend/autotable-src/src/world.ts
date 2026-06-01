@@ -1,7 +1,7 @@
 import { Vector3 } from "three";
 import { Movement } from "./movement";
 import { Client } from "./client";
-import { readSpectatorFromUrl, readDealModeFromUrl } from "./client-ui";
+import { readSpectatorFromUrl, readDealModeFromUrl, readVariantFromUrl } from "./client-ui";
 import { mostCommon, rectangleOverlap, filterMostCommon, compareZYX } from "./utils";
 import { MouseTracker } from "./mouse-tracker";
 import { Setup } from './setup';
@@ -334,7 +334,40 @@ export class World {
       return;
     }
 
-    const conditions = match.conditions;
+    // Hicks 2026-06-01 — Stephen's broken-deal-repro (2026-06-01T19:46Z
+    // directive) traced the "walls flat / corner wedges / center score
+    // panel" symptoms to a single root cause: the backend translator's
+    // `ChangshaToAutotableTranslator.BuildMatch` hardcodes
+    // `gameType="FOUR_PLAYER"` (legacy compat from when this bundle was
+    // Riichi-only) and OMITS `dealMode` / `baseUnit`.  Naively pushing
+    // that payload through `updateConditions(...)` flipped a Changsha
+    // table into the upstream Riichi layout, which:
+    //
+    //   • Swapped the 108-tile Changsha catalog for the 136-tile Riichi
+    //     one — 28 phantom tiles got scattered into wall slots that the
+    //     backend never overwrites, producing the visual "flat single-
+    //     row" walls with stray bumps.
+    //   • Added 60 stick `Thing`s into corner `tray.*` slots — the gray
+    //     triangular corner wedges in Stephen's screenshot.
+    //   • Re-enabled the Riichi center score panel and the upstream
+    //     "Dealer / Setup / 4p, no red" sidebar (both gated on
+    //     `gameType !== CHANGSHA`).
+    //
+    // Backend translator change is Frost's lane (see
+    // `.squad/decisions/inbox/hicks-broken-deal-fix.md`).  Frontend
+    // mitigation: pin `gameType` to whatever the URL declared, and fall
+    // back to the locally-known `dealMode` / `baseUnit` when the
+    // backend conditions don't include them.  Behaviour for non-
+    // Changsha variants is unchanged — the URL variant IS the upstream
+    // gameType in those flows.
+    const urlVariant = readVariantFromUrl();
+    const pinnedGameType = (urlVariant ?? this.conditions.gameType) as Conditions['gameType'];
+    const conditions: Conditions = {
+      ...this.conditions,
+      ...match.conditions,
+      gameType: pinnedGameType,
+    };
+
     if (!Conditions.equals(conditions, this.conditions)) {
       this.updateConditions(conditions);
 

@@ -101,6 +101,36 @@ export function readDealModeFromUrl(): 'manual' | 'auto' | null {
   return null;
 }
 
+// Hicks 2026-06-01 — exported so world.ts can pin the local gameType
+// to the URL-declared variant.  The backend's
+// ChangshaToAutotableTranslator.BuildMatch ships
+// `conditions.gameType="FOUR_PLAYER"` as a legacy compatibility hack
+// (back when this bundle was Riichi-only); without this pin the
+// frontend's `onMatch` would flip the world out of Changsha into the
+// Riichi-shaped 136-tile + sticks layout, breaking wall stacking,
+// dealer-hand visibility, and corner geometry (Stephen's
+// 2026-06-01 broken-deal screenshot).  Returns the canonical GameType
+// string for the URL variant, or null if absent / unrecognised.
+export function readVariantFromUrl(): string | null {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const raw = q.get('variant');
+    if (!raw) return null;
+    const upper = raw.toUpperCase().replace(/-/g, '_');
+    // Match the canonical GameType enum string set used by the bundle.
+    // Kept as a string-set check (rather than importing GameType) so
+    // client-ui has no new module-graph cycle through types.ts.
+    if (upper === 'CHANGSHA' || upper === 'FOUR_PLAYER' ||
+        upper === 'THREE_PLAYER' || upper === 'BAMBOO' ||
+        upper === 'MINEFIELD') {
+      return upper;
+    }
+  } catch {
+    // Non-browser test contexts; let callers fall back.
+  }
+  return null;
+}
+
 export class ClientUi {
   url: string;
   client: Client;
