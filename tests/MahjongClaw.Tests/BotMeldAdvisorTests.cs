@@ -286,4 +286,56 @@ public class BotMeldAdvisorTests
         result.Should().BeTrue();
         kongTile.Should().Be(new Tile(TileSuit.Dots, 3));
     }
+
+    [Fact]
+    public void TrySelectConcealedKong_SkipsKong_WhenItEliminatesAllImmediateWinningOutsInChangsha258()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7), new(TileSuit.Characters, 7),
+            new(TileSuit.Characters, 5),
+            new(TileSuit.Characters, 2),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Bamboos, 5),
+            new(TileSuit.Bamboos, 8),
+            new(TileSuit.Characters, 3),
+            new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Characters, 6)
+        };
+
+        var result = BotMeldAdvisor.TrySelectConcealedKong(handTiles, MahjongRuleset.Changsha258, out _);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TrySelectPromotedKong_SkipsKong_WhenItEliminatesAllImmediateWinningOutsInChineseOfficial()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 4),
+            new(TileSuit.Bamboos, 4),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Red)
+        };
+        var meldTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North)
+        };
+
+        var result = BotMeldAdvisor.TrySelectPromotedKong(handTiles, meldTiles, MahjongRuleset.ChineseOfficial, out _);
+
+        result.Should().BeFalse();
+    }
 }

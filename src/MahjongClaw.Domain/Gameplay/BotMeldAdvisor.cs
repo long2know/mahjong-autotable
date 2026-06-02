@@ -5,6 +5,9 @@ namespace MahjongClaw.Domain.Gameplay;
 
 public static class BotMeldAdvisor
 {
+    private static readonly IReadOnlyList<Tile> ChineseOfficialDrawTileTypes = BuildDrawTileTypes(MahjongRuleset.ChineseOfficial);
+    private static readonly IReadOnlyList<Tile> Changsha258DrawTileTypes = BuildDrawTileTypes(MahjongRuleset.Changsha258);
+
     public static bool TrySelectConcealedKong(
         IReadOnlyList<Tile> handTiles,
         MahjongRuleset ruleset,
@@ -71,6 +74,22 @@ public static class BotMeldAdvisor
                     return false;
                 }
             }
+        }
+
+        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, ruleset);
+        if (bestPreKongOuts > 0)
+        {
+            var candidatesThatKeepOuts = candidates
+                .Where(candidate => CountWinningOutsAfterConcealedKong(handTiles, meldTiles, candidate, ruleset) > 0)
+                .ToList();
+
+            if (candidatesThatKeepOuts.Count == 0)
+            {
+                kongTile = null!;
+                return false;
+            }
+
+            candidates = candidatesThatKeepOuts;
         }
 
         var prioritizedCandidates = candidates
@@ -146,6 +165,22 @@ public static class BotMeldAdvisor
             }
         }
 
+        var bestPreKongOuts = CountBestWinningOutsWithoutKong(handTiles, meldTiles, ruleset);
+        if (bestPreKongOuts > 0)
+        {
+            var candidatesThatKeepOuts = candidates
+                .Where(candidate => CountWinningOutsAfterPromotedKong(handTiles, meldTiles, candidate, ruleset) > 0)
+                .ToList();
+
+            if (candidatesThatKeepOuts.Count == 0)
+            {
+                kongTile = null!;
+                return false;
+            }
+
+            candidates = candidatesThatKeepOuts;
+        }
+
         var prioritizedCandidates = candidates
             .OrderBy(candidate => ruleset == MahjongRuleset.Changsha258 && Changsha258Ruleset.IsSmallWinPair(candidate) ? 1 : 0)
             .ThenBy(candidate => candidate.IsHonor ? 0 : 1)
@@ -171,6 +206,138 @@ public static class BotMeldAdvisor
 
         var pairCount = handCounts.Values.Sum(static count => count / 2);
         return pairCount >= 6;
+    }
+
+    private static int CountBestWinningOutsWithoutKong(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        MahjongRuleset ruleset)
+    {
+        var bestOuts = 0;
+
+        for (var discardIndex = 0; discardIndex < handTiles.Count; discardIndex++)
+        {
+            var reducedHand = handTiles
+                .Where((_, index) => index != discardIndex)
+                .ToList();
+
+            var outs = CountWinningDrawOutsAfterSupplementDraw(reducedHand, meldTiles, ruleset);
+            if (outs > bestOuts)
+            {
+                bestOuts = outs;
+            }
+        }
+
+        return bestOuts;
+    }
+
+    private static int CountWinningOutsAfterConcealedKong(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile kongTile,
+        MahjongRuleset ruleset)
+    {
+        var handAfterKong = new List<Tile>(handTiles);
+
+        for (var i = 0; i < 4; i++)
+        {
+            var index = handAfterKong.FindIndex(tile => tile.Equals(kongTile));
+            if (index < 0)
+            {
+                return 0;
+            }
+
+            handAfterKong.RemoveAt(index);
+        }
+
+        var meldAfterKong = meldTiles
+            .Concat(Enumerable.Repeat(kongTile, 4))
+            .ToList();
+
+        return CountWinningDrawOutsAfterSupplementDraw(handAfterKong, meldAfterKong, ruleset);
+    }
+
+    private static int CountWinningOutsAfterPromotedKong(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        Tile kongTile,
+        MahjongRuleset ruleset)
+    {
+        var handAfterKong = new List<Tile>(handTiles);
+        var kongTileIndex = handAfterKong.FindIndex(tile => tile.Equals(kongTile));
+        if (kongTileIndex < 0)
+        {
+            return 0;
+        }
+
+        handAfterKong.RemoveAt(kongTileIndex);
+
+        var meldAfterKong = meldTiles
+            .Concat(new[] { kongTile })
+            .ToList();
+
+        return CountWinningDrawOutsAfterSupplementDraw(handAfterKong, meldAfterKong, ruleset);
+    }
+
+    private static int CountWinningDrawOutsAfterSupplementDraw(
+        IReadOnlyList<Tile> handTiles,
+        IReadOnlyList<Tile> meldTiles,
+        MahjongRuleset ruleset)
+    {
+        var drawTileTypes = ruleset == MahjongRuleset.Changsha258
+            ? Changsha258DrawTileTypes
+            : ChineseOfficialDrawTileTypes;
+
+        var ownedTiles = handTiles
+            .Concat(meldTiles)
+            .ToList();
+        var ownedCounts = ownedTiles
+            .GroupBy(static tile => tile)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var winningOuts = 0;
+
+        foreach (var drawTileType in drawTileTypes)
+        {
+            ownedCounts.TryGetValue(drawTileType, out var drawTileCount);
+            if (drawTileCount >= 4)
+            {
+                continue;
+            }
+
+            var candidateTiles = ownedTiles
+                .Append(drawTileType)
+                .ToList();
+            if (RulesetHandAnalyzer.IsWinningHand(candidateTiles, ruleset))
+            {
+                winningOuts++;
+            }
+        }
+
+        return winningOuts;
+    }
+
+    private static IReadOnlyList<Tile> BuildDrawTileTypes(MahjongRuleset ruleset)
+    {
+        var suitedTiles = new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos }
+            .SelectMany(static suit => Enumerable.Range(1, 9).Select(rank => new Tile(suit, rank)));
+
+        if (ruleset == MahjongRuleset.Changsha258)
+        {
+            return suitedTiles.ToArray();
+        }
+
+        var windTiles = Enum
+            .GetValues<Wind>()
+            .Select(wind => new Tile(TileSuit.Winds, 0, wind));
+        var dragonTiles = Enum
+            .GetValues<Dragon>()
+            .Select(dragon => new Tile(TileSuit.Dragons, 0, null, dragon));
+
+        return suitedTiles
+            .Concat(windTiles)
+            .Concat(dragonTiles)
+            .ToArray();
     }
 
     private static bool ShouldAvoidChangshaSmallWinKong(Tile candidate, IReadOnlySet<Tile> smallWinPairs)
