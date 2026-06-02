@@ -221,6 +221,17 @@ public static class BotDiscardAdvisor
             ? BuildLiveSmallWinPairCandidates(handCounts, ownedCounts, visibleCounts)
             : null;
 
+        if (!allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && hasChangshaPureSuitLean
+            && soleChangshaSmallWinPairTile is not null
+            && changshaDominantSuit.HasValue
+            && soleChangshaSmallWinPairTile.Suit != changshaDominantSuit.Value
+            && liveSmallWinPairCandidates is not null
+            && liveSmallWinPairCandidates.Any(tile => tile.Suit == changshaDominantSuit.Value))
+        {
+            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = true;
+        }
+
         var candidates = handTiles
             .Select((tile, index) =>
             {

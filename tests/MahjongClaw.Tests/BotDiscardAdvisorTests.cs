@@ -2167,6 +2167,37 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_AllowsBreakingOffSuitSmallWinPair_WhenDominantSuitHasLiveCandidate()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 3), new(TileSuit.Dots, 3),
+            new(TileSuit.Dots, 4), new(TileSuit.Dots, 4),
+            new(TileSuit.Dots, 6), new(TileSuit.Dots, 6),
+            new(TileSuit.Dots, 7),
+            new(TileSuit.Dots, 8),
+            new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 2), new(TileSuit.Bamboos, 2)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Dots, 2),
+            new(TileSuit.Dots, 2)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().Be(new Tile(TileSuit.Bamboos, 2));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesPureSuitHonors_WhenChineseOfficialRuleset()
     {
         var handTiles = new List<Tile>
