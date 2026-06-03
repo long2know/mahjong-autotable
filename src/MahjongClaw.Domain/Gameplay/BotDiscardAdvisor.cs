@@ -1259,6 +1259,18 @@ public static class BotDiscardAdvisor
 
                     if (duplicateOrphanCandidates.Count > 0)
                     {
+                        if (visibleCounts.Count > 0)
+                        {
+                            var deadDuplicateOrphanCandidates = duplicateOrphanCandidates
+                                .Where(candidate => candidate.RemainingCopies <= 0)
+                                .ToList();
+
+                            if (deadDuplicateOrphanCandidates.Count > 0)
+                            {
+                                duplicateOrphanCandidates = deadDuplicateOrphanCandidates;
+                            }
+                        }
+
                         candidates = duplicateOrphanCandidates;
                     }
                 }
