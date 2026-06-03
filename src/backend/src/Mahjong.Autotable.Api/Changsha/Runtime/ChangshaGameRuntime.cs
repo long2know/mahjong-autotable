@@ -72,6 +72,36 @@ public interface IChangshaGameRuntime
     /// </summary>
     Task<bool> ApplyDealModeAsync(string gameId, DealMode mode, CancellationToken ct = default);
 
+    /// <summary>
+    /// Bishop W25 — bind a per-game bot strategy override resolved from
+    /// the autotable WS endpoint's <c>?botDifficulty=</c> query param
+    /// (Easy / Medium / Hard / Master, case-insensitive; unknown values
+    /// fall back to Medium via <see cref="ChangshaBotEngine.Resolve"/>).
+    /// Before this hook the runtime always dispatched on a single
+    /// process-scoped <see cref="ChangshaBotEngine.Default"/> (Medium)
+    /// regardless of URL difficulty — the W25 audit memo
+    /// (<c>bishop-bots-multigame-audit.md</c>) documents the gap.
+    /// Idempotent: re-binding the same difficulty is a no-op; rebinding
+    /// to a different difficulty silently replaces the current strategy
+    /// (Stephen wanted "hot swap" semantics so a test harness or admin
+    /// console can flip difficulty between hands without a restart).
+    /// Returns true when applied, false when the game is unknown.
+    /// </summary>
+    Task<bool> SetBotStrategyAsync(string gameId, string difficulty, CancellationToken ct = default);
+
+    /// <summary>
+    /// Bishop W25 — diagnostic accessor reporting the lowercase
+    /// difficulty discriminator of the strategy that will be dispatched
+    /// for <paramref name="gameId"/> the next time a bot ticks. Returns
+    /// the per-game override when one is bound, otherwise the runtime
+    /// default's discriminator. Null when the gameId is unknown. Used
+    /// by the W25 acceptance tests to assert URL-difficulty plumbing
+    /// without exposing the strategy instance itself (the strategies
+    /// are stateless singletons but the test harness only needs the
+    /// discriminator).
+    /// </summary>
+    string? GetActiveBotDifficulty(string gameId);
+
     Task StartGameAsync(string gameId, CancellationToken ct = default, int? expectedVersion = null);
 
     /// <summary>
@@ -663,6 +693,39 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
         {
             instance.Lock.Release();
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> SetBotStrategyAsync(string gameId, string difficulty, CancellationToken ct = default)
+    {
+        if (!_games.TryGetValue(gameId, out var instance)) return false;
+
+        // ChangshaBotEngine.Resolve returns Medium for null / whitespace /
+        // unknown — the W25 audit explicitly preserves this UX rule so a
+        // typo in the URL doesn't crash the table.
+        var strategy = ChangshaBotEngine.Resolve(difficulty);
+
+        // Volatile setter on the instance — no need to hold the per-game
+        // lock; bot decisions read the same volatile field and naturally
+        // pick up the new strategy on the next tick. Synchronous mutation
+        // matches the unit-test expectation that the accessor below
+        // reflects the new value immediately.
+        instance.BotStrategy = strategy;
+
+        _logger.LogInformation(
+            "Bot strategy for game {GameId} bound to '{Difficulty}' (requested='{Requested}').",
+            gameId, strategy.Difficulty, difficulty);
+
+        await Task.CompletedTask;
+        return true;
+    }
+
+    /// <inheritdoc />
+    public string? GetActiveBotDifficulty(string gameId)
+    {
+        if (!_games.TryGetValue(gameId, out var instance)) return null;
+        var perGame = instance.BotStrategy;
+        return (perGame ?? _strategy).Difficulty;
     }
 
     public async Task StartGameAsync(string gameId, CancellationToken ct = default, int? expectedVersion = null)
@@ -1258,9 +1321,12 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
             // Phase J Wave 10 — DecideWithReasoning surfaces the strategy's
             // tiered explanation; the BotDecision is stashed on the
             // instance for replay-debugScore enrichment.
+            // Bishop W25 — per-game strategy override (URL `?botDifficulty=`)
+            // takes precedence; null falls back to the runtime default.
             var state = instance.State;
+            var strategy = instance.BotStrategy ?? _strategy;
             var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
-                () => _strategy.DecideWithReasoning(state, seatIndex),
+                () => strategy.DecideWithReasoning(state, seatIndex),
                 _options.BotDecisionTimeoutMs,
                 () => BotDecision.FromAction(BotAction.Pass()),
                 _logger,
@@ -1499,10 +1565,13 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                 // makes progress instead of blocking the table indefinitely.
                 // Phase J Wave 10 — capture the decision (with reasoning)
                 // and stash on the instance for replay-debugScore enrichment.
+                // Bishop W25 — per-game strategy override (URL `?botDifficulty=`)
+                // takes precedence; null falls back to the runtime default.
                 var state = instance.State;
                 var hand = instance.State.Hands.Single(h => h.SeatIndex == seatIndex);
+                var strategy = instance.BotStrategy ?? _strategy;
                 var decision = await ChangshaBotEngine.DecideWithReasoningWithTimeoutAsync(
-                    () => _strategy.DecideWithReasoning(state, seatIndex),
+                    () => strategy.DecideWithReasoning(state, seatIndex),
                     _options.BotDecisionTimeoutMs,
                     () => BotDecision.FromAction(BotAction.Discard(ChangshaBotPolicy.SelectDiscardTile(hand))),
                     _logger,
@@ -2266,7 +2335,7 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
                     tilesJson = JsonSerializer.Serialize(tileIds, SnapshotJson),
                     timestampUtc = evt.OccurredUtc,
                     // Phase J Wave 9 — per-event metadata for the v2 envelope.
-                    source = ResolveReplayEventSource(state, evt),
+                    source = ResolveReplayEventSource(instance, state, evt),
                     durationMs = duration,
                     // Phase J Wave 10 — per-bot-event reasoning + score
                     // (Hicks's admin audit drilldown).
@@ -2320,12 +2389,19 @@ public sealed class ChangshaGameRuntime : IChangshaGameRuntime
     /// "unknown" placeholder. The runtime owns one strategy at a time
     /// (singleton lifetime), so this is necessarily uniform across all
     /// bot seats in the same game — sufficient for the audit drilldown.</para>
+    ///
+    /// <para>Bishop W25 — when a per-game strategy override is bound
+    /// (URL <c>?botDifficulty=</c>), report THAT difficulty instead of
+    /// the runtime default. Pre-W25 the replay always logged
+    /// <c>bot:medium</c> regardless of URL difficulty, masking
+    /// difficulty regressions and confusing the audit replay.</para>
     /// </summary>
-    private string ResolveReplayEventSource(ChangshaGameState state, ChangshaEvent evt)
+    private string ResolveReplayEventSource(ChangshaGameInstance instance, ChangshaGameState state, ChangshaEvent evt)
     {
         if (evt.SeatIndex < 0 || evt.SeatIndex >= state.Seats.Count) return "system";
         var seat = state.Seats[evt.SeatIndex];
-        return seat.IsBot ? $"bot:{_strategy.Difficulty}" : "human";
+        var strategy = instance.BotStrategy ?? _strategy;
+        return seat.IsBot ? $"bot:{strategy.Difficulty}" : "human";
     }
 
     /// <summary>

@@ -439,7 +439,11 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             // Spectator auto-deal binds the runtime game with no host id —
             // there is no human player at the table to act as host.
-            var runtimeGameId = await EnsureRuntimeBoundAsync(connection.GameId!, hostPlayerId: null, ct);
+            // Bishop W25 — forward the spectator's `?botDifficulty=` so
+            // an all-bots watch-mode table honours the URL difficulty.
+            var runtimeGameId = await EnsureRuntimeBoundAsync(
+                connection.GameId!, hostPlayerId: null, ct,
+                botDifficulty: connection.BotDifficulty);
             if (!_runtime.TryGetSnapshot(runtimeGameId, out var snap) || snap is null) return;
             if (snap.Phase != ChangshaPhase.Seating) return;
 
@@ -592,7 +596,15 @@ public sealed class AutotableConnectionManager : IDisposable
 
         try
         {
-            var runtimeGameId = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct);
+            // Bishop W25 — forward `?botDifficulty=` on the seat-take path
+            // so a human-created game honours the URL difficulty for its
+            // bot opponents. EnsureRuntimeBoundAsync only emits the
+            // SetBotStrategyAsync call when a non-empty difficulty is
+            // supplied; the runtime default (Medium) covers callers that
+            // never specified one.
+            var runtimeGameId = await EnsureRuntimeBoundAsync(
+                connection.GameId!, connection.PlayerId, ct,
+                botDifficulty: connection.BotDifficulty);
             // Phase J Wave 6 — pass the persistent player id alongside the
             // per-connection transport id (the AutotableConnection.Id GUID
             // serves as the connection-level routing key inside the runtime).
@@ -961,14 +973,33 @@ public sealed class AutotableConnectionManager : IDisposable
     /// public via the matchmaking service (closes Vasquez's Wave-5 blind
     /// spot #4 where autotable games carried a null host id).
     /// </summary>
-    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct)
+    private async Task<string> EnsureRuntimeBoundAsync(string relayGameId, string? hostPlayerId, CancellationToken ct, string? botDifficulty = null)
     {
-        if (_runtimeBinding.TryGetValue(relayGameId, out var existing)) return existing;
+        if (_runtimeBinding.TryGetValue(relayGameId, out var existing))
+        {
+            // Bishop W25 — idempotent re-binding still propagates the
+            // requested difficulty; a reconnect from a client with a
+            // different `?botDifficulty=` will rebind the strategy. The
+            // SetBotStrategyAsync call is itself idempotent so this is
+            // safe even when the difficulty is unchanged.
+            if (!string.IsNullOrWhiteSpace(botDifficulty))
+            {
+                await _runtime.SetBotStrategyAsync(existing, botDifficulty!, ct);
+            }
+            return existing;
+        }
 
         await _bindingLock.WaitAsync(ct);
         try
         {
-            if (_runtimeBinding.TryGetValue(relayGameId, out existing)) return existing;
+            if (_runtimeBinding.TryGetValue(relayGameId, out existing))
+            {
+                if (!string.IsNullOrWhiteSpace(botDifficulty))
+                {
+                    await _runtime.SetBotStrategyAsync(existing, botDifficulty!, ct);
+                }
+                return existing;
+            }
             // botSeatIndexes = empty so the runtime starts with all-human seats;
             // we'll convert seats to bots on demand via FillEmptySeatsWithBotsAsync.
             var runtimeGameId = await _runtime.CreateGameAsync(
@@ -979,6 +1010,20 @@ public sealed class AutotableConnectionManager : IDisposable
                 ct);
             _runtimeBinding[relayGameId] = runtimeGameId;
             _relayBinding[runtimeGameId] = relayGameId;
+
+            // Bishop W25 — bind the URL-supplied `?botDifficulty=` to the
+            // freshly-created runtime game. Pre-W25 this was a silent
+            // drop (the WS endpoint captured BotDifficulty into the
+            // AutotableConnection but never forwarded it to the runtime,
+            // so every game played at the Medium default regardless of
+            // URL). Null / whitespace skips the call so the runtime
+            // default (Medium) applies, matching pre-W25 behaviour for
+            // clients that don't specify a difficulty.
+            if (!string.IsNullOrWhiteSpace(botDifficulty))
+            {
+                await _runtime.SetBotStrategyAsync(runtimeGameId, botDifficulty!, ct);
+            }
+
             return runtimeGameId;
         }
         finally

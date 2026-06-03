@@ -50,6 +50,23 @@ internal sealed class ChangshaGameInstance : IAsyncDisposable
     /// </summary>
     public ConcurrentDictionary<int, BotDecision> LastBotDecisions { get; } = new();
 
+    /// <summary>
+    /// Per-game bot strategy override (Bishop W25 — `?botDifficulty=` URL
+    /// plumbing). When non-null, supersedes the runtime-wide default
+    /// (<see cref="ChangshaBotEngine.Default"/>) for every bot decision
+    /// dispatched on this instance. Null means "fall back to the runtime
+    /// default" so existing call sites that never set a per-game strategy
+    /// keep their pre-W25 behaviour. Volatile to publish the assignment
+    /// across worker threads; the field is otherwise written once during
+    /// game setup and read on every bot turn / claim window.
+    /// </summary>
+    private IChangshaBotStrategy? _botStrategy;
+    public IChangshaBotStrategy? BotStrategy
+    {
+        get => Volatile.Read(ref _botStrategy);
+        set => Volatile.Write(ref _botStrategy, value);
+    }
+
     public ChangshaGameInstance(string gameId, ChangshaGameState state)
     {
         GameId = gameId;

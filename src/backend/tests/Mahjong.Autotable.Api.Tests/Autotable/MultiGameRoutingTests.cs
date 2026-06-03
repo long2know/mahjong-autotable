@@ -84,8 +84,19 @@ public class MultiGameRoutingTests : IAsyncLifetime
 
         // Bob pushes a distinct "things" entry into MULTI-B (different
         // collection + key so we can tell them apart in Charlie's snapshot).
-        var bobThing = JsonSerializer.SerializeToElement(new { slotName = "hand.0@0", rotationIndex = 1 });
-        await bob.SendUpdateAsync(new[] { new object[] { "things", 42L, bobThing } });
+        //
+        // Bishop W25 — the key MUST be outside the tile-id range
+        // (AutotableSlotMap.TotalTiles = 108) to avoid colliding with the
+        // ChangshaToAutotableTranslator's synthetic face-down wall, which
+        // emits keys 0..107 during Seating / RollingDice phases when the
+        // runtime state has no real wall yet. Bob's key was 42L before,
+        // which collided with the synthetic wall and caused intermittent
+        // false positives. We also tag the value with a unique marker so
+        // even a coincidental key collision can't pass the assertion.
+        const long bobUniqueKey = 999_999_042L;
+        const string bobMarker = "bishop-w25-multi-b-marker";
+        var bobThing = JsonSerializer.SerializeToElement(new { slotName = "hand.0@0", rotationIndex = 1, marker = bobMarker });
+        await bob.SendUpdateAsync(new[] { new object[] { "things", bobUniqueKey, bobThing } });
 
         // Wait for both UPDATEs to land in the per-game stores before Charlie joins.
         await WaitForAsync(
@@ -107,16 +118,25 @@ public class MultiGameRoutingTests : IAsyncLifetime
                 sawAliceSeat = true;
             }
             if (kind == "things" && entries[i][1].ValueKind == JsonValueKind.Number
-                && entries[i][1].GetInt64() == 42L)
+                && entries[i][1].GetInt64() == bobUniqueKey)
             {
-                sawBobThing = true;
+                // Defence-in-depth: also require the marker so a key
+                // collision (e.g. a future translator change reintroducing
+                // wide-range synthetic ids) can't accidentally pass.
+                if (entries[i][2].ValueKind == JsonValueKind.Object
+                    && entries[i][2].TryGetProperty("marker", out var m)
+                    && m.ValueKind == JsonValueKind.String
+                    && m.GetString() == bobMarker)
+                {
+                    sawBobThing = true;
+                }
             }
         }
 
         Assert.True(sawAliceSeat,
             "Charlie joined MULTI-A and must receive Alice's seats[alice] entry in the full snapshot.");
         Assert.False(sawBobThing,
-            "Charlie joined MULTI-A and must NOT see Bob's things[42] (which lives in MULTI-B).");
+            $"Charlie joined MULTI-A and must NOT see Bob's things[{bobUniqueKey}] (which lives in MULTI-B).");
     }
 
     // ── #3 — Concurrent NEW under different gameIds doesn't collide ──────
