@@ -272,3 +272,5 @@ memo) and the sibling natural-key-PK tables (`MatchHistory`,
 race shape can re-use the now-`internal` `IsUniqueViolation` helper
 verbatim. If a second consumer lands, lift to a
 `Persistence/UniqueViolationDetector.cs` static helper.
+
+📌 Persistence thorough audit (2026-06-03): 100-parallel race-safe, schema drift detection, cross-provider parity — committed `67be128`.

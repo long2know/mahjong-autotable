@@ -219,3 +219,5 @@ Did NOT touch any source file. The L-10 fix belongs to Bishop's lane.
 - **The `findings.json` on disk for the system-audit run is stale** — concurrent process collision. The `.work/ripley-audit.log` is the authoritative source-of-truth for today's run. Future audits should write to run-specific suffixes (`findings-${timestamp}.json`) to avoid file-overwrite races between waves.
 - **Spec stabilisation was clean this time** — 3 iterations on the prodready spec (Node WebSocket vs `ws` package, `rg` vs `grep -rn`, multi-game gameId probe robustness). Faster than the system-audit's 4 iterations because I borrowed the same patterns (retry loops, env-aware tool detection).
 - **Did not exercise:** bot-vs-bot completion of all 4 hands, live WS disconnect under load, cross-provider live DB validation (Postgres/SqlServer). Drake covered persistence at unit-test fidelity; cross-provider live matrix is the next layer if Stephen wants deeper coverage.
+
+📌 Production-readiness audit (2026-06-03): 54/59 system gates, 16/16 prodready gates, caught leave-seat blocker — committed `ea36eb2`.

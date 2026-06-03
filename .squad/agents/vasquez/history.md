@@ -3176,3 +3176,5 @@ every gate from real backend state.
 
 `.squad/decisions/inbox/vasquez-thorough-test.md` — verdict + per-gate
 evidence + 5 gotchas for the next playtest author.
+
+📌 Full-game playthrough audit (2026-06-03): 5 scenarios, 18/18 acceptance gates, 2 stability runs — committed `fa2b18e`.

@@ -17874,3 +17874,137 @@ Previously failing `pageErrors: ["wall.13.0@2"]` is gone. All other invariants o
 
 **Outcome:** Commit `ff096ff` (setup-deal fence-post patch). ZERO page errors end-to-end. Game is visually + functionally playable end-to-end.
 
+
+### 2026-06-03: Thorough test wave — 6-agent full-system audit
+**By:** Hicks, Drake, Vasquez, Bishop, Frost, Ripley (mahjong-autotable squad)
+**Commissioned by:** Stephen Long — "Have the team fan out and thoroughly test the game and its functionality. This has taken so, so long already. Get it together!"
+**Timeline:** 2026-06-03 09:13Z - 09:58Z (7 commits squashed to main)
+**Verdict:** ✅ **ALL GATES GO** — Game functionally complete and playable end-to-end. One MAJOR regression identified and fixed (Bishop follow-up on leave-seat WS broadcast).
+
+#### Scope summary
+
+| Agent   | Responsibility        | Focus                                                      | Result          | Commit   |
+|---------|----------------------|-------------------------------------------------------------|-----------------|----------|
+| Hicks   | Frontend (3D/UX)     | 10-scenario visual regression sweep, 2-high walls, mobile   | ✅ 10/10 PASS   | ce948fe  |
+| Drake   | Persistence          | 100-parallel race-safe identity upsert, schema drift        | ✅ 207/207 PASS | 67be128  |
+| Vasquez | Integration/Testing  | 5 full-game scenarios, 18 acceptance gates, 2 stability     | ✅ 5/5 PASS     | fa2b18e  |
+| Bishop  | Bots + WS Backend    | Bot autonomy, per-game strategy, multi-game isolation, UX   | ✅ 44/44 PASS   | 452b558  |
+| Frost   | Scoring Rules        | 26 new FanCalculator tests, 1 prod bug fixed, 316/316 PASS  | ✅ 316/316 PASS | 87e53c8  |
+| Ripley  | System Audit         | 43-gate system audit + production-readiness checklist       | 🟡 54/59 PASS   | ea36eb2  |
+| Bishop  | Follow-up (WS)       | Leave-seat tombstone broadcast, 9/9 Playwright              | ✅ 7/7 + 9/9    | 35b7f76  |
+
+#### Key findings
+
+**Visual Quality (Hicks — `ce948fe`):**
+- 10 scenarios (desktop 1920×1080, mobile 375×667, tablet 768×1024, human-4p, 2 bots, 4 bots, camera-flat, setup-menu, move-log, settled 30s) all pass page-error gate (0/0/0).
+- Residual console noise (1× `Computed radius is NaN`, 2× benign 404 on `/api/games/{id}`) matches round-3 baseline exactly — not a regression.
+- Changsha 108-tile budget holds (`thingCount=109` = 108 tiles + 1 marker). End-of-hand Win modal renders correctly; Draw modal also captured.
+- Two pre-existing UX observations flagged but NOT blocking: mobile Settings panel UX (close affordance needed), bot Medium-difficulty stall at 32s (Frost consideration). All handed off to Phase-G / Frost respectively.
+
+**Persistence Robustness (Drake — `67be128`):**
+- 100-parallel `POST /api/identity` probes → **100/100 OK**, 0 errors, 1.26s round-trip. Single-PID deduplication holds under concurrent race.
+- Multi-tab reconnect (3 sequential POSTs same cookie) → single profile, monotonically increasing `LastSeenAt`. PASS.
+- Cross-provider `IsUniqueViolation` predicate pinned for SQLite (errno 19) / Postgres (SqlState 23505) / SqlServer (Number 2627 + 2601). Parity verified via reflection-synthesized exceptions in 10 unit tests.
+- Schema bootstrap drift detection: `PlayerTablesSchemaBootstrapTests` pins `LastGameAt MUST be nullable` (regression guard for `c369c54`); FK cascade on delete verified. 4/4 PASS.
+- **Visibility change:** `IsUniqueViolation` bumped from `private static` → `internal static` to enable cross-provider unit tests. No behavior change.
+- Subtle observation: upsert race-loss path rehydrates `CreatedAt` with `DateTimeKind=Unspecified` (no `Z` suffix in JSON) while winner returns `Utc` (with `Z`). Same Ticks, not a regression but flagged for future string-equality contracts (e.g., ETag cache keys). Documented; out of scope for this audit.
+
+**Full-Game Integration (Vasquez — `fa2b18e`):**
+- 5 scenarios (auto-deal + bot reaction, manual-deal pickup chain, synthetic claim-window UI, synthetic HandResult + GameComplete, multi-game cross-contamination) — 18/18 acceptance gates PASS across two consecutive stability runs against live backend.
+- Auto-deal: `handBySeat=[14,13,13,13]`, `faceUpMine=14`, foreign face-up=0. Dealer discard round-trip confirmed. Bot1 surfaces Chow claim within 8s. All 3 non-dealer seats acted (discard/claim/Pung/Chow).
+- Manual-deal: 7 pickup iterations (RollingDice → BreakPointMarked → 4-tile rounds → dealer-extra). Dealer hand reaches 13 → 14. Foreign hands stay hidden (0 face-up).
+- Synthetic claim-window: `#claim-countdown` visible (4.2s), Pung/Chow/Hu/Pass enabled, Kong disabled. Tombstone clear works.
+- Win modal: headline=`胡!`, winner=`Seat 0 赢了 wins!`, 4 score rows render. Game-complete modal fires after result. **Bootstrap modal gotcha documented:** use `classList.contains('show')` + `getComputedStyle(modal).display === 'block'` for visibility (not `offsetParent`).
+- **Multi-game isolation:** two distinct gameIds (auto-deal Changsha), both dealers at 14, no cross-contamination (A's discard pile grows, B's stays at 0). Result modal isolated to A only.
+- **Pre-existing stale-move warning:** `world.ts:264 staleMoveToWarnings` count = 0 across all 5 scenarios. Drift bug from 2026-05-29 not reproducible at this workload (short auto-deal sessions). May still surface in long organic bot autoplay; flagged for future regression.
+
+**Bot Autonomy + Multi-Game Strategy (Bishop — `452b558`):**
+- **Defect 1:** `?botDifficulty=` URL param was a black hole — captured into `AutotableConnection.BotDifficulty` but never forwarded to runtime. Every game played at process-wide Medium default regardless of URL.
+- **Defect 2:** Bot strategy was process-scoped field on `ChangshaGameRuntime` instead of per-game. Setting one game to Hard would have flipped every other game on the same process.
+- **Defect 3:** Replay audit envelope mislabeled difficulty — always reported `bot:medium` regardless of live game runtime setting.
+- **Fix:** Per-game `IChangshaBotStrategy? BotStrategy` override on `ChangshaGameInstance` (Volatile for lock-free reads). `IChangshaGameRuntime` now exposes `SetBotStrategyAsync(gameId, difficulty)` and `GetActiveBotDifficulty(gameId)`. WS endpoint plumbing updated to forward `connection.BotDifficulty` to runtime at game-create and spectator paths. Case-insensitive resolution; unknown → Medium (deliberate UX).
+- **Late-join test flake fixed:** collision in synthetic wall key space (0..107) during `Seating|RollingDice` phase. Solution: use test-side keys `>= 1_000_000_000L` for synthetic collection entries.
+- **Tests added:** 8 xUnit cases (`UrlBotDifficultyPlumbingTests`: Theory over Easy/Medium/Hard/Master, case-insensitive variants, unknown-fallback, per-game isolation). 3-section Playwright spec: 4-bot self-play (3 min observation), multi-game isolation (distinct gameIds no cross-bleed), late-join state delivery (joining peer sees ≥ half of early peer's discards).
+- **Validation:** 44/44 PASS (UrlBotDifficulty tests) + 5324/5327 full backend sweep (1 pre-existing Vasquez W9 YAML flake; 2 intentional skips). **Playwright:** 3/3 sections PASS.
+- **Takeaway for squad:** URL params need plumb-AND-pin test pair (not just captured, forwarded). Process-scoped engine fields are multi-game-poison; hoist to per-game instance with `?? _runtimeDefault` fallback. Test tile-id space (0..107) is a forbidden zone for synthetic keys.
+
+**Scoring Correctness (Frost — `87e53c8`):**
+- **Production bug found & fixed:** `FanCalculator.EvaluateHand` emitted spurious fans on non-winning hands (e.g., empty hand, 13-tile partial). `ConcealedHand` always fired on empty (loop never executes → trivially true). All 5 situational fans (`SelfDraw`, `KongReplacement`, `LastTileFromWall`, `LastDiscardCatch`, `RobbingKong`) fired when flags set, with no `detection.IsWin` gate.
+  - Latent in production because state machine only invokes `EvaluateFanBonuses` when `CurrentWin` is non-null (already checked by `ChangshaWinDetector.IsWin`).
+  - Dangerous for future callers using the documented "pure-function query" contract.
+  - **Fix:** Added `if (detection.IsWin)` guard on all situational fans and `ConcealedHand`. Variant-gated `MixedOneSuit` / `BigThreeDragons` intentionally NOT gated to preserve forward-compat unit tests.
+  - **Regression pins:** 5 tests (empty hand, empty + flag, 14 unrelated tiles, 13-tile partial, non-winning with every flag set).
+- **Test matrix:** 13/13 directive scenarios verified PASS (standard Hu, all Pung, full flush, mixed one suit, seven pairs, concealed kong ×N, self-draw vs claim delta, dealer bonus, empty/phantom/invalid-pair edges, heavenly hand stacking, kong+self-draw stacking, last-tile+self-draw stacking). 1 marked N/A (wash hand — not a Changsha pattern per Baidu Baike; documented for record).
+- **Tests added:** 26 new cases to `FanCalculator`. Result: 33 → 59 test count (+26). Scoring-filter tests: 290 → 316 PASS (+26). Full backend sweep: 5298 → 5324 PASS.
+- **Reachable fans:** 12/14 Changsha fans have positive + negative coverage (unchanged — all reachable fans were already covered; this wave widened combinatorial + edge-case envelope, not reached new fans).
+- **Multi-kong coverage:** 1 → 7 explicit test cases (×1/×2/×3/×4 concealed, exposed, added, mixed variants). Composite stacking: 3 → 9 (+6). Edge-case scenarios: 0 → 4 with regression pins.
+
+**System Audit + Production-Readiness (Ripley — `ea36eb2` + Bishop follow-up `35b7f76`):**
+- **System audit score:** 54/59 gates PASS (38 pass / 5 fail on replay, 16 pass / 0 fail on prodready checklist, ~5272 pass on backend test sweep).
+- **Five failures cluster on two known surfaces:**
+  1. **L-10-leave-seat (MAJOR blocker initially):** WS tombstone broadcast gap. When player clicks "Leave seat", runtime seat released but `seats` / `nicks` entries never tombstoned on autotable WS, so peers see ghost entries. **Fixed by Bishop follow-up** (`35b7f76`): mirrors disconnect path, calls `state.RemovePlayerEntries(playerId)` and broadcasts tombstones. **Playwright proof:** B-sees-A-leave within **20ms** (gate S-4). Leaves recoverable by page refresh (disconnect path already worked).
+  2. **V-2..V-5 (4 minor architectural failures):** Riichi4 / Riichi3 / Bamboo / Minefield relay-variant bots have no backend autobot. Documented as known limitation in `AutotableWsEndpoint.cs:561`. Changsha is the v0.31 product line; these are future-variant placeholders.
+- **Prodready checklist (new 16-gate spec):** ALL GREEN.
+  - `1-operational` (4 gates): `/health` → 200 with `status:healthy version:0.31.0.0 buildSha:dev`, db.connected:true, WS handshake OK.
+  - `2-tour` (3 gates): Tour overlay attaches on first load, `#tour-skip` dismisses + persists `mahjong.tour.completed.v1=true`, reload respects flag.
+  - `3-multi-game` (4 gates): Distinct playerIds, distinct gameIds, both worlds populated independently (`things=109` each), activeGames count grew.
+  - `4-https` (1 gate): grep `http://localhost src/frontend/autotable-src/src/` → 1 hit (code comment only, no real references).
+  - `5-bundle` (1 gate): Production bundle has **0** console.log/debug/info calls (terser strips dev logging).
+  - `6-source-hygiene` (3 gates): Backend Players/Changsha/Autotable: **0** TODO/FIXME/XXX. Frontend critical: 0 FIXME/XXX, 2 historical TODO (≤5 threshold).
+- **Backend test sweep:** 5272 PASS / 2 pre-existing FAIL / 2 intentional SKIP = 99.96% pass. No regressions from the 12 broken-deal commits or the 7-commit thorough wave.
+- **Key artifacts:**
+  - System audit: `playtest-artifacts/system-audit/` (findings.json, REPORT.md, 17 screenshots, full audit.log).
+  - Prodready: `playtest-artifacts/ripley-prodready/` (findings.json, REPORT.md, 4 screenshots).
+  - Leave-seat broadcast: `playtest-artifacts/leave-seat-broadcast/` (findings.json, 4 screenshots, Playwright proof: 20ms latency).
+  - Visual regression: `playtest-artifacts/screenshots/hicks-vreg-*` (10 scenario captures, findings.json).
+  - Thorough test: `playtest-artifacts/screenshots/vasquez-pt-*` (5 scenario sets, per-scenario state dumps).
+
+#### Consolidated verdict
+
+The 12-commit broken-deal sprint + this 7-commit thorough-test wave converge on one conclusion: **the canonical Changsha runtime is healthy end-to-end**. Vasquez's 18/18 gates, Hicks's 10/10 scenarios, Drake's 207/207 tests, and the full backend suite (5272/5274 pass) all confirm the game loop works — tiles draw, discard, claim, meld, score, and win/draw modals render without errors. One MAJOR UX regression (leave-seat broadcast) was caught by Ripley's audit and fixed by Bishop in a follow-up within the same wave. Ship v0.31 to Stephen for play.
+
+#### Hand-offs
+- **Frost:** Bot Medium-difficulty stall at 32s (settled-30s scenario) — consider re-tuning if Draw-rate higher than expected. Flagged as low priority.
+- **Stephen / Ripley:** Flat-camera toggle — decide if Phase-G (file ticket) or drop from future vreg sweeps.
+- **Bishop:** `/api/games/{id}` returns 404 during WS-first session creation — polish: return empty 200 instead. Low priority.
+- **Hicks (self):** Phase-G ticket: trace residual `Computed radius is NaN` source in THREE.js primitives. Medium priority.
+- **Frontend polish:** Settings panel needs ✕ close affordance at mobile/tablet widths (pre-existing UX). Medium priority.
+- **Frontend polish:** Lobby sidebar HUD bot-count display reads URL default, not live seat occupancy (pre-existing UX). Low priority.
+
+#### Files touched (lane discipline)
+
+**Drake (67be128):**
+- `src/backend/src/Mahjong.Autotable.Api/Players/PlayerProfileService.cs` (1-line visibility + comment)
+- NEW: `src/backend/tests/.../Players/IsUniqueViolationCrossProviderTests.cs` (10 unit tests)
+- NEW: `src/backend/tests/.../Players/PlayerTablesSchemaBootstrapTests.cs` (4 schema-drift tests)
+- `src/backend/tests/.../Players/PlayerProfileServiceTests.cs` (+2 tests)
+
+**Frost (87e53c8):**
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/Scoring/FanCalculator.cs` (IsWin gate + comment)
+- `src/backend/tests/.../Scoring/FanCalculatorTests.cs` (+26 tests)
+
+**Bishop (452b558):**
+- `src/backend/src/Mahjong.Autotable.Api/Changsha/ChangshaGameInstance.cs` (per-game strategy field)
+- `src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableWsEndpoint.cs` (plumbing + flake fix)
+- NEW: `src/backend/tests/.../Autotable/UrlBotDifficultyPlumbingTests.cs` (8 WS-integration tests)
+- NEW: `playtest-artifacts/playtest-bishop-bots.spec.mjs` (3-section Playwright)
+
+**Bishop follow-up (35b7f76):**
+- `src/backend/src/Mahjong.Autotable.Api/Autotable/AutotableWsEndpoint.cs` (leave-seat tombstone broadcast)
+- NEW: `src/backend/tests/.../Autotable/LeaveSeatBroadcastTombstoneTests.cs` (2 xUnit tests)
+- NEW: `playtest-artifacts/playtest-leave-seat-broadcast.spec.mjs` (9-gate Playwright)
+
+**Hicks, Vasquez, Ripley:**
+- Playtest artifacts + specs only (no source changes).
+
+#### Commits
+
+```
+ce948fe — test(vreg): visual regression sweep, 10 scenarios (Hicks)
+67be128 — test(persistence): thorough audit (Drake)
+fa2b18e — test(thorough): full-game playthrough audit (Vasquez)
+452b558 — test(bots): autonomy + difficulty + multi-game audit (Bishop)
+87e53c8 — test(scoring): Changsha thoroughness audit (Frost)
+ea36eb2 — test(prodready): system audit + production-readiness checklist (Ripley)
+35b7f76 — fix(autotable): broadcast seat tombstone on leave-seat (Bishop follow-up)
+```

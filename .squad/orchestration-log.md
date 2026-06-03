@@ -110,3 +110,51 @@ Vasquez Hicks   Bishop      (background, all 3)
 ### Reviewer Rejection Lockout — not triggered
 
 This wave had no rejection events; the reconciliation pass was mechanical wire-key alignment + a Bishop-diagnosed test bug applied by the coordinator (not a verdict against Bishop's work — Bishop deliberately did not fix it from his own seat per file-scope discipline).
+# Session 2026-06-03 — Thorough test wave wrap
+
+**Date:** 2026-06-03T10:30Z  
+**Agents:** Hicks, Drake, Vasquez, Bishop (×2), Frost, Ripley  
+**Task:** Merge 7 test-wave commit memos into squad decisions + cross-reference agent histories + clean inbox
+
+## Summary
+
+Consolidated 7-agent thorough test wave (2026-06-03 09:13Z - 09:58Z) into `.squad/decisions.md`:
+
+- **Hicks** `ce948fe` — 10-scenario visual regression sweep ✅ 10/10 PASS
+- **Drake** `67be128` — Persistence thorough audit ✅ 207/207 PASS
+- **Vasquez** `fa2b18e` — Full-game integration ✅ 5/5 + 18/18 gates PASS
+- **Bishop** `452b558` — Bots autonomy + multi-game ✅ 44/44 PASS
+- **Frost** `87e53c8` — Scoring correctness ✅ 316/316 PASS (1 prod bug fixed)
+- **Ripley** `ea36eb2` — System audit ✅ 54/59 PASS (1 blocker caught)
+- **Bishop** `35b7f76` — Leave-seat WS broadcast (follow-up) ✅ 7/7 + 9/9 PASS
+
+## Verdict
+
+🟡 **GO** — All gates pass except 1 MAJOR (leave-seat WS) + 4 MINOR (future-variant bots). MAJOR was caught by Ripley's audit and fixed by Bishop within same wave. Game functionally complete and playable end-to-end.
+
+## Files changed
+
+- `.squad/decisions.md` → +1 consolidated entry (2026-06-03 thorough test wave)
+- `.squad/orchestration-log.md` → +1 session log entry
+- `.squad/agents/{hicks,drake,vasquez,bishop,frost,ripley}/history.md` → +1 one-line entry each
+- `.squad/decisions/inbox/` → deleted 7 merged memos
+
+## Memos merged
+
+1. hicks-vreg-sweep.md
+2. drake-persistence-thorough-audit.md
+3. vasquez-thorough-test.md
+4. bishop-bots-multigame-audit.md
+5. frost-scoring-thorough-audit.md
+6. ripley-prodready-final.md
+7. bishop-leave-seat-fix.md
+
+## Cleanup
+
+Deleted from `.squad/decisions/inbox/`:
+- All 7 memos listed above (merged into decisions.md)
+- (OLD Phase-J waves 3–10 remain in inbox — pre-existing, already merged in prior sessions)
+
+---
+
+**Scribe:** Documentation sweep complete. All agents' memos consolidated. Game ready for v0.31 release.

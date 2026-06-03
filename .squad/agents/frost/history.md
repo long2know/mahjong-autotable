@@ -365,3 +365,5 @@ the orphan; re-applied the FanCalculator.cs fix + history append on a
 fresh branch off `origin/main`. Final clean commit lands my four
 lane-files only.
 
+
+📌 Scoring thoroughness audit (2026-06-03): 26 new FanCalculator tests, 1 prod bug fixed (spurious fans on non-winning hands) — committed `87e53c8`.
