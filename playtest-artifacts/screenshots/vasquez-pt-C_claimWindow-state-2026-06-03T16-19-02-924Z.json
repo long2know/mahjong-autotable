@@ -1,0 +1,172 @@
+{
+  "diag": {
+    "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&gameId=vasquez-ptC-1780503567889",
+    "baseline": {
+      "seat": 0,
+      "handBySeat": [
+        14,
+        13,
+        13,
+        13
+      ],
+      "meldBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "discardBySeat": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "totalDiscard": 0,
+      "totalMeld": 0,
+      "wallCount": 55,
+      "myHandIds": [
+        {
+          "id": 2
+        },
+        {
+          "id": 22
+        },
+        {
+          "id": 25
+        },
+        {
+          "id": 28
+        },
+        {
+          "id": 45
+        },
+        {
+          "id": 46
+        },
+        {
+          "id": 50
+        },
+        {
+          "id": 59
+        },
+        {
+          "id": 66
+        },
+        {
+          "id": 75
+        },
+        {
+          "id": 76
+        },
+        {
+          "id": 92
+        },
+        {
+          "id": 94
+        },
+        {
+          "id": 100
+        }
+      ],
+      "myHandFaceUp": 0,
+      "foreignHandFaceUp": 0,
+      "hasExtraHandTile": false,
+      "pickup": null,
+      "result": null,
+      "gameComplete": null,
+      "claimsBySeat": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "matchPhase": null
+    },
+    "injection": {
+      "ok": true,
+      "seat": 0,
+      "payload": {
+        "available": [
+          "Pung",
+          "Chow",
+          "Hu"
+        ],
+        "deadline": 1780503580757,
+        "source": 1,
+        "tile": 5
+      }
+    },
+    "ui": {
+      "countdownVisible": true,
+      "countdownText": "4.1",
+      "disabled": {
+        "Pung": false,
+        "Chow": false,
+        "Kong": true,
+        "Hu": false,
+        "Pass": false
+      }
+    },
+    "uiAfterTombstone": {
+      "countdownStillVisible": false,
+      "pungDisabled": true,
+      "passDisabled": true
+    },
+    "pageDiag": {
+      "label": "C",
+      "pageErrors": [],
+      "consoleErrors": [
+        "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "consoleWarnings": [],
+      "networkFailures": [
+        "404 GET http://127.0.0.1:8088/api/games/vasquez-ptC-1780503567889",
+        "404 GET http://127.0.0.1:8088/api/games/vasquez-ptC-1780503567889/settings"
+      ],
+      "staleMoveToWarnings": 0
+    }
+  },
+  "gates": {
+    "C1_injectionAccepted": {
+      "status": "PASS",
+      "detail": {
+        "ok": true,
+        "seat": 0,
+        "payload": {
+          "available": [
+            "Pung",
+            "Chow",
+            "Hu"
+          ],
+          "deadline": 1780503580757,
+          "source": 1,
+          "tile": 5
+        }
+      }
+    },
+    "C2_claimUiSurfaces": {
+      "status": "PASS",
+      "detail": {
+        "countdownVisible": true,
+        "countdownText": "4.1",
+        "disabled": {
+          "Pung": false,
+          "Chow": false,
+          "Kong": true,
+          "Hu": false,
+          "Pass": false
+        }
+      }
+    },
+    "C3_claimTombstoneClears": {
+      "status": "PASS",
+      "detail": {
+        "countdownStillVisible": false,
+        "pungDisabled": true,
+        "passDisabled": true
+      }
+    }
+  }
+}

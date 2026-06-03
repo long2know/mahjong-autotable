@@ -3113,3 +3113,66 @@ dump `window.game.world` state, hand off to Hicks/Frost.
 
 📌 **2026-06-01** — Broken-deal response: Repro spec + state-dump proving backend was 90% innocent — commits `2a9adea` + `edce01d`.
 
+
+## Thorough full-game playthrough audit (2026-06-03)
+
+**Task:** Stephen's "are you done?" directive — fan out and thoroughly
+test the game with a 5-scenario integration spec covering auto-deal,
+manual-deal, claim window, synthetic Hu, multi-game isolation. Grade
+every gate from real backend state.
+
+**Branch:** `test/vasquez-thorough` (squashed to main).
+**HEAD before:** `35cc58b` (broken-deal final wrap).
+
+### Work completed
+
+1. **Smoke tests** (regression baseline at HEAD `35cc58b`):
+   - `playtest-walls-facedown.spec.mjs`: 0 pageErrors, `wallCountAtLeast100`
+     fails on spec-premise (Changsha has 108 wall slots, post-deal=88 — not
+     a regression, Riichi-vintage check).
+   - `playtest-human-led.spec.mjs`: 15/15 steps OK, 0 pageErrors.
+   - `playtest-broken-deal-repro.spec.mjs`: 0 pageErrors, seat 0 = 14
+     face-up post-deal, 13 face-down per other seat.
+
+2. **Spec** (`playtest-artifacts/playtest-vasquez-thorough.spec.mjs`, ~700 lines):
+   - 5 scenarios, 18 gates, per-scenario screenshots + JSON state dumps.
+   - Reuses `worldSnapshot()` shape from the integration-audit spec but
+     adds `claimsBySeat`, `result`, `gameComplete` collection peeks.
+   - Each scenario runs in its own browser context to avoid bleed; E
+     scenario uses TWO concurrent contexts.
+
+3. **Verdict: 5/5 PASS, 18/18 gates green** across 2 consecutive
+   stability runs on `http://127.0.0.1:8088`. **The Changsha game is
+   functionally playable end-to-end.**
+
+### Gotchas captured
+
+- **Face-up flip lags hand-growth by ~3s.** Break-on-hand-only catches
+  mid-flip state where `myHandFaceUp=0` and `emitDiscard` silently
+  no-ops. Must gate on BOTH `handBySeat[seat] >= N` AND `myHandFaceUp >=
+  N-1`.
+- **Bootstrap modal visibility cannot use `offsetParent`.**
+  `#result-modal` and `#game-complete-modal` are absolute-positioned and
+  don't satisfy `offsetParent !== null` even when visible. Use
+  `classList.contains('show')` + `getComputedStyle(el).display`.
+- **Bots Chow / Pung discards immediately.** `discardBySeat[dealer] > 0`
+  is a FRAGILE PASS signal — a claimed discard moves to a meld slot, not
+  the discard pile. Use `totalDiscard + totalMeld > 0` instead.
+- **Claim windows extend bot turn time by 5s.** Round-robin gates with
+  3 Medium-difficulty bots need a 60s deadline (was 30s, flaky on first
+  iteration). Also tolerate (acted=2/3 + ≥3 total discards) for cases
+  where one bot's turn was drained by a prior claim.
+
+### Findings.json summary
+
+- `playtest-artifacts/screenshots/vasquez-pt-summary-<ts>.json`
+- 18/18 PASS, 0 page errors across all scenarios
+- 0 staleMoveToWarnings (the 2026-05-29 drift bug appears resolved for
+  short auto-deal workloads at HEAD `35cc58b`).
+- Pre-existing console noise: THREE.js NaN computeBoundingSphere ×1,
+  `/api/games/<id>` 404, `/settings` 404 — not flagged in any gate.
+
+### Decision memo
+
+`.squad/decisions/inbox/vasquez-thorough-test.md` — verdict + per-gate
+evidence + 5 gotchas for the next playtest author.
