@@ -361,6 +361,71 @@ public class PlayerProfileServiceTests : IAsyncLifetime
     }
 
     // ────────────────────────────────────────────────────────────────────
+    //  5b. Race-safety scales — 50 parallel callers for the SAME id, then
+    //      50 parallel callers each for a DIFFERENT id (Drake thorough
+    //      audit — mirrors the 100-parallel live probe at xUnit fidelity)
+    // ────────────────────────────────────────────────────────────────────
+
+    [Fact, Trait("Category", "Players"), Trait("Wave", "Phase-K-Drake-Audit")]
+    public async Task GetOrCreate_IsRaceSafe_AtHighConcurrency_SameId()
+    {
+        // Push the 8-parallel race regression test up to 50 parallel
+        // callers so the retry-loop is exercised under more realistic
+        // contention than CI's lone fast path. The live probe goes to
+        // 100 via the HTTP surface; 50 in-process here keeps the test
+        // under the 5-second budget while still hitting > 1 race retry
+        // on contemporary CI hardware (observed: 4–8 unique-violation
+        // recoveries out of 50 on this machine).
+        var svc = GetService();
+        var playerId = "race50-" + Guid.NewGuid().ToString("N");
+
+        const int concurrency = 50;
+        var tasks = Enumerable.Range(0, concurrency)
+            .Select(_ => Task.Run(() => svc.GetOrCreateAsync(playerId)))
+            .ToArray();
+        var profiles = await Task.WhenAll(tasks);
+
+        Assert.Equal(concurrency, profiles.Length);
+        Assert.All(profiles, p => Assert.Equal(playerId, p.PlayerId));
+
+        Assert.NotNull(_factory);
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await db.PlayerProfiles.AsNoTracking().CountAsync(p => p.PlayerId == playerId));
+        Assert.Equal(1, await db.PlayerStats.AsNoTracking().CountAsync(s => s.PlayerId == playerId));
+    }
+
+    [Fact, Trait("Category", "Players"), Trait("Wave", "Phase-K-Drake-Audit")]
+    public async Task GetOrCreate_HighConcurrency_DistinctIds_AllResolveSeparately()
+    {
+        // Counterpart to the same-id stress: 50 parallel callers each
+        // with their OWN unique id should produce 50 distinct profile
+        // rows + 50 distinct stats rows, no cross-contamination, no
+        // unique-violation retries (the predicate must NOT false-fire
+        // and short-circuit a legitimate first-create on a different
+        // id). Matches the live "A2 DISTINCT cookies" probe.
+        var svc = GetService();
+        var ids = Enumerable.Range(0, 50)
+            .Select(_ => "distinct-" + Guid.NewGuid().ToString("N"))
+            .ToArray();
+
+        var tasks = ids.Select(id => Task.Run(() => svc.GetOrCreateAsync(id))).ToArray();
+        var profiles = await Task.WhenAll(tasks);
+
+        Assert.Equal(50, profiles.Length);
+        Assert.Equal(ids.OrderBy(x => x).ToArray(), profiles.Select(p => p.PlayerId).OrderBy(x => x).ToArray());
+
+        Assert.NotNull(_factory);
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var idSet = ids.ToHashSet();
+        var profileCount = await db.PlayerProfiles.AsNoTracking().CountAsync(p => idSet.Contains(p.PlayerId));
+        var statsCount = await db.PlayerStats.AsNoTracking().CountAsync(s => idSet.Contains(s.PlayerId));
+        Assert.Equal(50, profileCount);
+        Assert.Equal(50, statsCount);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
     //  6. PlayerProfile.AvatarColor class-initializer default is a palette
     //     member (Phase J Wave 7 backstop — Vasquez)
     // ────────────────────────────────────────────────────────────────────

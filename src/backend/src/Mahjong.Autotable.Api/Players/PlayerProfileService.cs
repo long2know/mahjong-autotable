@@ -285,7 +285,17 @@ public sealed class PlayerProfileService
     /// <see cref="UpsertProfileAsync"/> to recognise the "another request just
     /// inserted the same PlayerId" race so we can re-fetch instead of failing.
     /// </summary>
-    private static bool IsUniqueViolation(DbUpdateException ex)
+    // Visibility note (Drake, 2026-06-03 thorough-audit pass): bumped from
+    // `private static` to `internal static` so the cross-provider parity
+    // unit test (`IsUniqueViolationCrossProviderTests`) can drive the
+    // predicate directly with a synthetic provider exception for each of
+    // SQLite, Postgres, and SqlServer — verifying the
+    // "fix lands once, works everywhere" claim of the upsert hotfix
+    // without needing a live Postgres / SqlServer in CI. The
+    // <c>InternalsVisibleTo</c> entry for
+    // <c>Mahjong.Autotable.Api.Tests</c> is already declared in the API
+    // project's csproj (line 51), so no project-file change is needed.
+    internal static bool IsUniqueViolation(DbUpdateException ex)
     {
         for (var inner = ex.InnerException; inner is not null; inner = inner.InnerException)
         {
