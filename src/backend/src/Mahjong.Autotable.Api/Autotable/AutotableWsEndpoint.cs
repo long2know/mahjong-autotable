@@ -500,11 +500,19 @@ public sealed class AutotableConnectionManager : IDisposable
                 case "seats":
                     // Hicks's "Take Seat" click — route to runtime.TakeSeatAsync,
                     // optionally auto-fill remaining seats with bots for solo play.
-                    await TryHandleSeatTakeAsync(connection, entry, ct);
-                    // Mirror upstream's perPlayer semantics so the seat shows up
-                    // immediately for other clients; runtime will reconfirm on its
-                    // next StateChanged push.
-                    passthroughEntries.Add(entry);
+                    // The leave-seat path (Ripley L-10) owns its own peer broadcast
+                    // (per-player tombstones via RemovePlayerEntries) and signals
+                    // back via the return value so we skip the raw passthrough that
+                    // would otherwise re-store a stale `seats[playerId]={seat:null}`
+                    // entry and undo the tombstone.
+                    var handledAsLeave = await TryHandleSeatTakeAsync(connection, entry, ct);
+                    if (!handledAsLeave)
+                    {
+                        // Mirror upstream's perPlayer semantics so the seat shows up
+                        // immediately for other clients; runtime will reconfirm on its
+                        // next StateChanged push.
+                        passthroughEntries.Add(entry);
+                    }
                     break;
 
                 case ChangshaCollectionKinds.Claim:
@@ -559,16 +567,22 @@ public sealed class AutotableConnectionManager : IDisposable
 
     // ── Inbound action routing (seats / claim / match) ───────────────
 
-    private async Task TryHandleSeatTakeAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
+    private async Task<bool> TryHandleSeatTakeAsync(AutotableConnection connection, CollectionEntry entry, CancellationToken ct)
     {
         // value shape: { seat: int } (per upstream Player.svelte). null = leave.
-        if (entry.Value is null) return;
-        if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return;
-        if (!je.TryGetProperty("seat", out var seatEl)) return;
+        // Returns true ONLY when the entry has been fully handled as a "leave seat"
+        // action — in that case the caller skips the raw passthrough because this
+        // method already broadcast per-player tombstones (seats/nicks/mouse) that
+        // supersede the inbound `{seat: null}` payload. Returns false for the
+        // "take seat" path and for all guard / no-op exits so the existing
+        // passthrough behaviour is preserved verbatim.
+        if (entry.Value is null) return false;
+        if (entry.Value is not JsonElement je || je.ValueKind != JsonValueKind.Object) return false;
+        if (!je.TryGetProperty("seat", out var seatEl)) return false;
 
         // Phase F §1.2 — Relay-mode connections do NOT bind a Changsha runtime.
         // The bundle's local Setup drives the deal; the backend only relays.
-        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return;
+        if (connection.RuntimeMode != AutotableRuntimeMode.ChangshaRuntime) return false;
 
         // Ripley L-10 audit fix — `{seat: null}` is the upstream Player.svelte
         // shape for an explicit "Leave" action. Previously this returned silently
@@ -582,17 +596,54 @@ public sealed class AutotableConnectionManager : IDisposable
             {
                 var runtimeGameIdLeave = await EnsureRuntimeBoundAsync(connection.GameId!, connection.PlayerId, ct);
                 await _runtime.ReleaseSeatAsync(runtimeGameIdLeave, connection.PlayerId, connection.Id.ToString("N"), ct);
+
+                // Ripley prodready follow-up (L-10 part 2, 2026-06-03) — the
+                // runtime's ReleaseSeatAsync only broadcasts on SignalR
+                // (`PlayerSeated` event), but the autotable bundle listens on
+                // the WS `/autotable/ws` upstream protocol. Without this
+                // mirror of the disconnect path (see HandleDisconnectAsync
+                // ~30 LOC below), the peer's `seats`/`nicks` collection
+                // entries for this playerId stay stored under the persistent
+                // key and never tombstone, so the lobby seat-counter and the
+                // sidebar nickname remain ghosted as "occupied" until a
+                // page refresh re-runs the JOIN flow.
+                //
+                // RemovePlayerEntries clears (seats, nicks, mouse, …) for
+                // this playerId in the per-game relay store; broadcasting the
+                // resulting null entries to peers triggers the bundle's
+                // standard tombstone path (Collection#set(key, undefined)).
+                // The runtime's StateChanged push that fires inside
+                // ReleaseSeatAsync above then refills seat 0 with the
+                // translator's placeholder identity (`seat-0`) so peers see
+                // the seat as available, not occupied by a ghost.
+                if (_games.TryGetValue(connection.GameId!, out var state))
+                {
+                    var tombstones = state.RemovePlayerEntries(connection.PlayerId);
+                    if (tombstones.Count > 0)
+                    {
+                        try
+                        {
+                            await BroadcastToOthersAsync(connection, tombstones, full: false, ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug(ex,
+                                "Failed to broadcast leave-seat tombstones for {ConnectionId}",
+                                connection.Id);
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex, "Seat release failed for connection {ConnectionId}", connection.Id);
             }
-            return;
+            return true;
         }
 
-        if (seatEl.ValueKind != JsonValueKind.Number) return;
-        if (!seatEl.TryGetInt32(out var seatIndex)) return;
-        if (seatIndex is < 0 or > 3) return;
+        if (seatEl.ValueKind != JsonValueKind.Number) return false;
+        if (!seatEl.TryGetInt32(out var seatIndex)) return false;
+        if (seatIndex is < 0 or > 3) return false;
 
         try
         {
@@ -626,6 +677,11 @@ public sealed class AutotableConnectionManager : IDisposable
         {
             _logger.LogDebug(ex, "Seat take failed for connection {ConnectionId} seat {Seat}", connection.Id, seatIndex);
         }
+
+        // Take-seat path falls through to passthrough (caller relays the seats
+        // entry to peers as an optimistic mirror until the runtime's
+        // StateChanged push reconfirms the authoritative seat assignment).
+        return false;
     }
 
     /// <summary>

@@ -1,0 +1,95 @@
+{
+  "ts": "2026-06-03T16-56-46-315Z",
+  "baseUrl": "http://127.0.0.1:8088",
+  "gates": [
+    {
+      "id": "PRE-1-health",
+      "status": "PASS",
+      "evidence": {
+        "status": "healthy",
+        "version": "0.31.0.0",
+        "dbConnected": true
+      }
+    },
+    {
+      "id": "S-1-bundles-ready",
+      "status": "PASS",
+      "evidence": {
+        "aReady": true,
+        "bReady": true
+      }
+    },
+    {
+      "id": "S-2-distinct-player-ids",
+      "status": "PASS",
+      "evidence": {
+        "aPid": "ad0f99baf9b5402cbb41d6c0526f4b36",
+        "bPid": "2fecdb2995f3426793e45e385ec25038"
+      }
+    },
+    {
+      "id": "S-3-A-takes-seat-0",
+      "status": "PASS",
+      "evidence": {
+        "takeVia": "client.seats.set",
+        "seatedFromA": true,
+        "seatedFromB": true
+      }
+    },
+    {
+      "id": "S-4-B-sees-A-leave-within-5s",
+      "status": "PASS",
+      "evidence": {
+        "leaveVia": "#leave-seat click",
+        "elapsedMs": 20,
+        "preLeave": {
+          "seatsEntry": {
+            "seat": 0
+          },
+          "nicksEntry": "Seat 0"
+        },
+        "postLeave": {
+          "seatsEntry": null,
+          "nicksEntry": null,
+          "seatVacated": true,
+          "nickVacated": true
+        }
+      }
+    },
+    {
+      "id": "S-5-A-local-seat-cleared",
+      "status": "PASS",
+      "evidence": {
+        "pid": "ad0f99baf9b5402cbb41d6c0526f4b36",
+        "seatsEntry": null,
+        "clientSeat": null
+      }
+    },
+    {
+      "id": "S-6-A-no-page-errors",
+      "status": "PASS",
+      "evidence": {
+        "pageErrorsCount": 0,
+        "pageErrors": []
+      }
+    },
+    {
+      "id": "S-7-B-no-page-errors",
+      "status": "PASS",
+      "evidence": {
+        "pageErrorsCount": 0,
+        "pageErrors": []
+      }
+    },
+    {
+      "id": "S-8-bob-can-claim-seat-0-after-A-leaves",
+      "status": "PASS",
+      "evidence": {
+        "takeVia": "client.seats.set",
+        "bobNowSeated": true
+      }
+    }
+  ],
+  "pass": 9,
+  "fail": 0
+}
