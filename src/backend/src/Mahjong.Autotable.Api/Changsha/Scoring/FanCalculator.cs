@@ -135,27 +135,46 @@ public static class FanCalculator
     {
         var detected = new List<DetectedFan>();
 
-        // ── Situational / method fans (from ctx flags) ─────────────
-        if (ctx.IsSelfDraw)
-            Add(detected, Fan.SelfDraw);
+        // Run the structural detector FIRST so all win-only fans (situational,
+        // ConcealedHand, prestige) can gate on detection.IsWin. Per the class-
+        // level contract, EvaluateHand must return FanResult.Empty when no fan
+        // applies — including the entire "non-winning hand" case. Previously,
+        // SelfDraw / KongReplacement / LastTileFromWall / LastDiscardCatch /
+        // RobbingKong / ConcealedHand emitted from ctx flags or trivially-true
+        // meld checks on hands that were not structurally winning (e.g. empty
+        // hand, 13-tile partial, 14-tile non-Hu shape). Production was masked
+        // because the state machine only invokes Score on a detector-confirmed
+        // win, but the XML doc markets query-only use (replay, frontend audit)
+        // and any future caller would see phantom fans on non-wins.
+        var detection = RunDetector(hand);
 
-        if (ctx.IsKongReplacement)
-            Add(detected, Fan.KongReplacement);
+        // ── Situational / method fans (from ctx flags, gated on IsWin) ─────
+        if (detection.IsWin)
+        {
+            if (ctx.IsSelfDraw)
+                Add(detected, Fan.SelfDraw);
 
-        if (ctx.IsLastTileFromWall)
-            Add(detected, Fan.LastTileFromWall);
+            if (ctx.IsKongReplacement)
+                Add(detected, Fan.KongReplacement);
 
-        if (ctx.IsLastDiscardCatch)
-            Add(detected, Fan.LastDiscardCatch);
+            if (ctx.IsLastTileFromWall)
+                Add(detected, Fan.LastTileFromWall);
 
-        if (ctx.IsRobbingKong)
-            Add(detected, Fan.RobbingKong);
+            if (ctx.IsLastDiscardCatch)
+                Add(detected, Fan.LastDiscardCatch);
+
+            if (ctx.IsRobbingKong)
+                Add(detected, Fan.RobbingKong);
+        }
 
         // ── Structural fans (delegated to ChangshaWinDetector) ─────
-        var detection = RunDetector(hand);
         if (detection.IsFullFlush)
             Add(detected, Fan.FullFlush);
 
+        // Variant-gated fans (MixedOneSuit / BigThreeDragons) are intentionally
+        // NOT gated by detection.IsWin so the v1 forward-compat tests (which
+        // use phantom expanded-deck logical IDs the detector doesn't recognise)
+        // keep working in advance of an expanded-deck WinDetector.
         if (IsMixedOneSuit(hand, ctx))
             Add(detected, Fan.MixedOneSuit);
 
@@ -165,7 +184,7 @@ public static class FanCalculator
         if (detection.IsAllPungs)
             Add(detected, Fan.AllPungs);
 
-        if (IsConcealedHand(hand.Melds))
+        if (detection.IsWin && IsConcealedHand(hand.Melds))
             Add(detected, Fan.ConcealedHand);
 
         if (IsBigThreeDragons(hand, ctx))

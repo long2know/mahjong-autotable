@@ -289,3 +289,79 @@ this file). No production code changed.
 
 📌 **2026-06-01T13:41Z** — Wave N continued — `wall.13.0@2` fence-post final diagnosis & regression tests (commit `165166d`). Stephen reported a page error after my `99c1af0` (backend col-major enum) collided with Hicks's `b4c82ec` (frontend per-seat `row(13)`/`row(14)` setup-slots layout). Task brief proposed "option 1: backend caps per-seat". **Diagnosis: backend was already capping correctly** — `EnumerateWallSlotsInOrder` skips `col >= WallStackCount(seat)` and `WallSlot` throws on out-of-range col. No backend code path can emit `wall.13.0@2`. Real root cause: **frontend `src/frontend/autotable-src/src/setup-deal.ts` DEALS.CHANGSHA table** (Hicks's lane) still uses `['wall.1.0', 2, 26]` for seats 2/3, which walks `slotNames[2..27]` = `wall.1.0 .. wall.13.1`. With Hicks's per-seat split, slots `wall.13.{0,1}@{2,3}` don't exist → `setup.ts:256` throws `slot not found: wall.13.0@2`. Pitfall captured: Playwright `pageerror` parses thrown strings into `name`+`message` at the first `:` — `err.message` is the LAST template-literal interpolation, not the whole thrown string. Empirically verified via a 10-line repro. Backend-side regression (this commit): 5 new tests + 1 helper in `AutotableTranslatorTests.cs` pin both pre-deal (synthesized) and post-deal (authoritative) wall paths against the over-limit slot patterns the task brief called out; iterator-direct test `EnumerateWallSlotsInOrder_NeverYields_OverLimitTuples` pins the iterator independently. All 35 translator tests pass. Lane discipline kept — did NOT touch frontend. Hand-off memo `.squad/decisions/inbox/frost-wall-fence-post-fix.md` contains the 6-line fix for Hicks's setup-deal.ts and the bundle-rebuild + playtest verification recipe. Hicks subsequently applied the patch in round 3 (commit `ff096ff`) and validated across 3 playtests: **ZERO page errors end-to-end. Game is visually + functionally playable.** My regression tests now guarantee this fence-post can't slip back in via backend.
 
+
+---
+
+## Wave N — Scoring + Rules Thoroughness Audit (2026-06-03)
+
+**Trigger:** Stephen's "fan out + thoroughly test" directive after the
+broken-deal wrap. Memo: `.squad/decisions/inbox/frost-scoring-thorough-audit.md`.
+
+**Production bug found AND fixed.** `FanCalculator.EvaluateHand` emitted
+`ConcealedHand` + every set situational fan (`SelfDraw`,
+`KongReplacement`, `LastTileFromWall`, `LastDiscardCatch`, `RobbingKong`)
+on hands that were NOT structurally winning. `HeavenlyHand`/`EarthlyHand`
+had the right gate; the other six didn't. Empty hand with no flags →
+`[ConcealedHand]` (1 point) instead of empty. The production state
+machine masked it (only calls Score when CurrentWin is populated by a
+detector that already returned IsWin=true), but the calculator class
+XML doc explicitly markets query-only use (replay, frontend audit) and
+documents an empty-when-no-fan-applies contract, so the gap was a
+ticking time bomb for any future caller. Fix: hoist `RunDetector` to
+the top of `EvaluateHand` and gate situational fans + `ConcealedHand`
+on `detection.IsWin`. Variant-gated `MixedOneSuit`/`BigThreeDragons`
+remain ungated by IsWin so they stay unit-testable with phantom-tile
+forward-compat hands (preserving the existing
+`MixedOneSuit_ExpandedChineseWithHonors_FanEmitted` test verbatim).
+
+**Tests added (all PASS): 26 new** in
+`Changsha/Scoring/FanCalculatorThoroughnessTests.cs`:
+
+- Edge cases (5): empty hand ×2, non-winning 14-tile, all-phantom,
+  phantom-mixed-with-suit FullFlush spillover, Standard-shape with
+  invalid pair rank.
+- Multi-kong (7): 1/2/3/4 concealed, exposed-only, added-kong,
+  mixed-concealed-and-exposed.
+- Self-draw vs discard delta (2): standard hand delta = +1 fan point;
+  FullFlush self-draw vs claimed-chow delta = +2 (SelfDraw + ConcealedHand).
+- Dealer bonus via ScoringService (3): dealer self-draw / non-dealer
+  self-draw / stacked Big Win ×2 multiplier × dealer bonus.
+- Composite stacking (6): SevenPairs+FullFlush, AllPungs+FullFlush,
+  NineTerminals+SevenPairs (NineTerminals+AllPungs is mathematically
+  impossible — NineTerminals needs 6 distinct terminals but AllPungs
+  caps at 5 distinct logicals; documented inline), Heavenly+FullFlush+
+  AllPungs+SelfDraw+Concealed ultimate, KongReplacement+AllPungs,
+  LastTileFromWall+SelfDraw.
+- IsWin defensive gate regression pins (2): non-winning hand with every
+  flag set; 13-tile partial hand.
+
+**Wash hand (洗胡):** Verified N/A for Changsha per Baidu Baike 长沙麻将
+patterns section + Reddit r/Mahjong Changsha variant guide. Not a
+Changsha scoring pattern; appears in Shanghai/Wuhan variants only.
+Documented in the new test class XML doc + audit memo §3.
+
+**Test count:** baseline 290 scoring-filter / 5298 full → after this
+wave: 316 scoring-filter (+26) / 5324 full (+26). Only remaining
+failures are pre-existing baseline (`VasquezW9SelfLaneTests.
+NightlyCronWorkflow_HasSchedule_AndRepoMode`) and flaky parallel
+(`DealerExtraTransitionsToAwaitingDiscardTests.WsEndpoint_DealerDiscard…`
+— passes in isolation). Neither caused by this wave.
+
+**Lane discipline:**
+
+- Touched only `Changsha/Scoring/FanCalculator.cs` (fix) +
+  `Changsha/Scoring/FanCalculatorThoroughnessTests.cs` (new) +
+  the audit memo + this history file.
+- Did NOT touch: frontend, Players, Auth, Hub, Runtime, Translator,
+  AutotableProtocol, ChangshaStateMachine, ScoringService, WinDetector.
+
+**Cross-lane WIP encountered + recovery.** Local working tree carried
+Bishop's W25 botDifficulty WIP in `AutotableWsEndpoint.cs` +
+`ChangshaGameRuntime.cs` + `ChangshaGameInstance.cs`. A concurrent agent
+race during the initial git push caused my first commit attempt
+(`abc1cf1`, orphan) to land on `test/bishop-bots-multigame` with mixed
+content + my fix reverted. Recovered the test file + audit memo from
+the orphan; re-applied the FanCalculator.cs fix + history append on a
+fresh branch off `origin/main`. Final clean commit lands my four
+lane-files only.
+
