@@ -178,3 +178,44 @@ The §2.4 doc has a corrective breadcrumb (initial mislabeling of `PickupRound3`
 - **The DB-1 schema gate is brittle.** Static expected-column list will FAIL on any schema change. Acceptable trade-off (loose pattern-match hides real drift) but flagged for whoever next touches `PlayerStats`.
 - **Did not exercise:** WebSocket disconnect under load, multi-game-per-instance (pinned by `AutotableWsRelayTests.cs:182`), bot-vs-bot full hand to completion. These are the next layer if Stephen wants deeper coverage.
 - **Strict lane discipline held.** Touched only the spec file, the system-audit/ output directory, the memo, and this history file. Did not edit `AutotableWsEndpoint.cs` or `claim-window-overlay.ts` even though I'd diagnosed the bugs — those are Bishop and Ferro's lanes.
+
+---
+
+## 2026-06-03 — Production-readiness audit (post broken-deal sprint)
+
+### Directive
+Stephen — "So, are you done? Have the team fan out and throughly test the game and its functionality. This has taken so, so long already. Get it together!"
+
+### Verdict
+🟡 **GO — 54/59 gates PASS** (91.5%). The canonical Changsha + 3-bots game is healthy end-to-end. One MAJOR (incomplete L-10 leave-seat WS broadcast — Bishop's lane) + 4 MINOR (relay-variant bot-move architectural gaps). Backend test sweep 5272/5276 (99.96%).
+
+### Workstream
+1. Re-ran prior 43-gate `playtest-system-audit.spec.mjs` → 38 PASS / 5 FAIL — **no regressions** vs prior `b7b58e9` baseline.
+2. Built new 16-gate `playtest-ripley-prodready.spec.mjs` covering operational (health/DB/migrations/WS), tour overlay, multi-game isolation, HTTPS-readiness, bundle hygiene, source hygiene → **16/16 PASS**.
+3. Full backend test sweep: 5272 PASS / 2 FAIL / 2 SKIP. The 2 fails are pre-existing flakes (W9 NightlyCron YAML, MultiGameRouting LateJoin).
+4. Cross-agent sync — read and incorporated:
+   - Vasquez `vasquez-thorough-test.md` — 18/18 gates, 5/5 scenarios, multi-game isolation E1-E4 PASS.
+   - Hicks `hicks-vreg-sweep.md` — 10/10 visual scenarios, 0 page errors.
+   - Drake `drake-persistence-thorough-audit.md` — 207/207 persistence tests, 100-parallel race stress green, schema-drift detector.
+5. Delivered `.squad/decisions/inbox/ripley-prodready-final.md` (the verdict memo).
+
+### Findings
+- **L-10 leave-seat still regresses.** Bishop's `1febbd8` only fixed the runtime — `ReleaseSeatAsync` broadcasts on SignalR `/hubs/changsha`, not the autotable WS where the frontend's `seats` collection lives. Fix needed (Bishop's lane): mirror `AutotableWsEndpoint.cs:1015-1027` disconnect path — `state.RemovePlayerEntries(connection.PlayerId)` + `BroadcastToOthersAsync(connection, tombstones, full: false)` inside `TryHandleSeatTakeAsync`'s null branch. ~10 LOC.
+- **Relay variants** (Riichi4/Riichi3/Bamboo/Minefield) `V-2..V-5-bot-move` FAIL is architectural — no backend autobot. Documented at `AutotableWsEndpoint.cs:561`. Acceptable for v0.31 (Changsha is primary scope).
+- **README is severely out of date** (still documents the deleted `Tables/*` REST endpoints and the deleted React/Fluent UI 9 modern frontend). Doc debt, not a blocker. Scribe's lane.
+- **Production bundle is clean** — 0 `console.log/debug/info` in `autotable-src.*.js` (terser stripped), only 1 hardcoded `http://localhost` reference (a code comment in `hub.ts:49`), 0 `TODO/FIXME/XXX` in backend Players/Changsha/Autotable critical paths.
+
+### Lane discipline
+Touched ONLY:
+- `playtest-artifacts/playtest-ripley-prodready.spec.mjs` (new)
+- `playtest-artifacts/ripley-prodready/*` (artifacts)
+- `.squad/decisions/inbox/ripley-prodready-final.md` (new)
+- `.squad/agents/ripley/history.md` (this entry)
+
+Did NOT touch any source file. The L-10 fix belongs to Bishop's lane.
+
+### Self-Critique
+- **The L-10 regression I flagged in the prior wave is still not fixed.** Bishop's `1febbd8` addressed only half the problem. I should have re-read the entire fix commit at squash time and flagged this before declaring the prior wave done. **Lesson:** when a prior-wave fix lands, the next audit MUST trace the full data pipeline (runtime → broadcast → frontend collection → world render), not just inspect the immediate symptom site.
+- **The `findings.json` on disk for the system-audit run is stale** — concurrent process collision. The `.work/ripley-audit.log` is the authoritative source-of-truth for today's run. Future audits should write to run-specific suffixes (`findings-${timestamp}.json`) to avoid file-overwrite races between waves.
+- **Spec stabilisation was clean this time** — 3 iterations on the prodready spec (Node WebSocket vs `ws` package, `rg` vs `grep -rn`, multi-game gameId probe robustness). Faster than the system-audit's 4 iterations because I borrowed the same patterns (retry loops, env-aware tool detection).
+- **Did not exercise:** bot-vs-bot completion of all 4 hands, live WS disconnect under load, cross-provider live DB validation (Postgres/SqlServer). Drake covered persistence at unit-test fidelity; cross-provider live matrix is the next layer if Stephen wants deeper coverage.

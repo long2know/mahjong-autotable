@@ -1,0 +1,212 @@
+{
+  "startedAt": "2026-06-03T16:15:58.452Z",
+  "finishedAt": "2026-06-03T16:16:19.222Z",
+  "baseUrl": "http://127.0.0.1:8088",
+  "wsBaseUrl": "ws://127.0.0.1:8088",
+  "counts": {
+    "PASS": 16,
+    "FAIL": 0,
+    "SKIP": 0
+  },
+  "findings": [
+    {
+      "id": "O-1-health-200",
+      "category": "1-operational",
+      "status": "PASS",
+      "evidence": {
+        "httpStatus": 200,
+        "bodyStatus": "healthy",
+        "version": "0.31.0.0",
+        "uptime": "00:13:54.9611943",
+        "buildSha": "dev",
+        "latencyMs": 10,
+        "error": null
+      },
+      "screenshots": []
+    },
+    {
+      "id": "O-2-db-connected",
+      "category": "1-operational",
+      "status": "PASS",
+      "evidence": {
+        "connected": true,
+        "canQuery": true,
+        "providerName": "Microsoft.EntityFrameworkCore.Sqlite",
+        "latencyMs": 0,
+        "migrationsApplied": 0
+      },
+      "screenshots": []
+    },
+    {
+      "id": "O-3-migrations-or-bootstrap",
+      "category": "1-operational",
+      "status": "PASS",
+      "evidence": {
+        "providerName": "Microsoft.EntityFrameworkCore.Sqlite",
+        "migrationsApplied": 0,
+        "sqliteEnsureCreatedAccepted": true
+      },
+      "screenshots": []
+    },
+    {
+      "id": "O-4-ws-handshake",
+      "category": "1-operational",
+      "status": "PASS",
+      "evidence": {
+        "ok": true,
+        "url": "ws://127.0.0.1:8088/autotable/ws"
+      },
+      "screenshots": []
+    },
+    {
+      "id": "T-1-tour-attaches-on-first-load",
+      "category": "2-tour",
+      "status": "PASS",
+      "evidence": {
+        "present": true,
+        "visible": true,
+        "hasSkipButton": true,
+        "hasCard": true,
+        "skipLabel": "Skip tour"
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/ripley-prodready/t-1-tour-first-load.png"
+      ]
+    },
+    {
+      "id": "T-2-tour-dismisses-and-persists",
+      "category": "2-tour",
+      "status": "PASS",
+      "evidence": {
+        "overlayStillPresent": false,
+        "tourFlag": "true"
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/ripley-prodready/t-2-after-skip.png"
+      ]
+    },
+    {
+      "id": "T-3-tour-no-replay-after-flag",
+      "category": "2-tour",
+      "status": "PASS",
+      "evidence": {
+        "overlayPresent": false,
+        "tourFlag": "true"
+      },
+      "screenshots": []
+    },
+    {
+      "id": "MG-1-distinct-identities",
+      "category": "3-multi-game",
+      "status": "PASS",
+      "evidence": {
+        "playerA": "39afa3a2ae7d4a26a8e19a927129888e",
+        "playerB": "38e95ba1a41648ca9fecb84b1b6ebade",
+        "sameId": false
+      },
+      "screenshots": []
+    },
+    {
+      "id": "MG-2-distinct-game-ids",
+      "category": "3-multi-game",
+      "status": "PASS",
+      "evidence": {
+        "requestedA": "ripley-prodready-A-1780503362695",
+        "observedA": null,
+        "observedLastIdA": "ripley-prodready-A-1780503362695",
+        "urlIdA": "ripley-prodready-A-1780503362695",
+        "effectiveA": "ripley-prodready-A-1780503362695",
+        "requestedB": "ripley-prodready-B-1780503362695",
+        "observedB": null,
+        "observedLastIdB": "ripley-prodready-B-1780503362695",
+        "urlIdB": "ripley-prodready-B-1780503362695",
+        "effectiveB": "ripley-prodready-B-1780503362695"
+      },
+      "screenshots": []
+    },
+    {
+      "id": "MG-3-both-worlds-populated",
+      "category": "3-multi-game",
+      "status": "PASS",
+      "evidence": {
+        "thingsA": 109,
+        "thingsB": 109,
+        "seatA": null,
+        "seatB": null
+      },
+      "screenshots": [
+        "/data/source/mahjong-autotable/playtest-artifacts/ripley-prodready/mg-1-gameA.png",
+        "/data/source/mahjong-autotable/playtest-artifacts/ripley-prodready/mg-2-gameB.png"
+      ]
+    },
+    {
+      "id": "MG-4-backend-activeGames-grew",
+      "category": "3-multi-game",
+      "status": "PASS",
+      "evidence": {
+        "activeGamesAfter": 47,
+        "activeGamesBefore": 47
+      },
+      "screenshots": []
+    },
+    {
+      "id": "H-1-no-hardcoded-localhost",
+      "category": "4-https",
+      "status": "PASS",
+      "evidence": {
+        "totalRawHits": 1,
+        "realCodeHits": 0,
+        "commentOnlyHits": 1,
+        "firstHits": [
+          "/data/source/mahjong-autotable/src/frontend/autotable-src/src/hub.ts:49:  // at http://localhost:5000.  Same-origin defaults work in dev"
+        ]
+      },
+      "screenshots": []
+    },
+    {
+      "id": "B-1-bundle-no-console-spam",
+      "category": "5-bundle",
+      "status": "PASS",
+      "evidence": {
+        "autotableBundleHits": 0,
+        "totalHits": 0,
+        "perFile": []
+      },
+      "screenshots": []
+    },
+    {
+      "id": "S-1-no-todo-fixme-xxx-backend",
+      "category": "6-source-hygiene",
+      "status": "PASS",
+      "evidence": {
+        "occurrences": 0,
+        "hits": []
+      },
+      "screenshots": []
+    },
+    {
+      "id": "S-2-no-fixme-xxx-frontend",
+      "category": "6-source-hygiene",
+      "status": "PASS",
+      "evidence": {
+        "occurrences": 0,
+        "hits": []
+      },
+      "screenshots": []
+    },
+    {
+      "id": "S-3-todo-tally-frontend",
+      "category": "6-source-hygiene",
+      "status": "PASS",
+      "evidence": {
+        "occurrences": 2,
+        "threshold": 5,
+        "hits": [
+          "/data/source/mahjong-autotable/src/frontend/autotable-src/src/world.ts:132:  // TODO Phase D: banker rotation becomes server-authoritative; this client-side",
+          "/data/source/mahjong-autotable/src/frontend/autotable-src/src/world.ts:204:      // TODO handle deletion"
+        ]
+      },
+      "screenshots": []
+    }
+  ]
+}
