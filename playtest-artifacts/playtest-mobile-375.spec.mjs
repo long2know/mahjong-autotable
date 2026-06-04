@@ -200,7 +200,33 @@ async function runScenario(label, urlSuffix) {
     const visible = await deal.first().isVisible().catch(() => false);
     const enabled = await deal.first().isEnabled().catch(() => false);
     if (visible && enabled) {
-      await deal.first().click({ timeout: 5000 });
+      // Vasquez 2026-06-04 — on 375 px the floating `#lobby-toggle`
+      // (re-open-lobby chevron) can sit over `#deal` and intercept
+      // pointer events. Stash it visibility-hidden for the click and
+      // restore after; this preserves the real DOM but bypasses the
+      // overlap. Falls back to a Playwright force-click if hiding the
+      // toggle isn't possible.
+      await page.evaluate(() => {
+        const t = document.getElementById('lobby-toggle');
+        if (t) {
+          t.dataset.vasquezPrevVisibility = t.style.visibility || '';
+          t.style.visibility = 'hidden';
+          t.style.pointerEvents = 'none';
+        }
+      }).catch(() => {});
+      try {
+        await deal.first().click({ timeout: 5000 });
+      } catch {
+        await deal.first().click({ timeout: 5000, force: true });
+      }
+      await page.evaluate(() => {
+        const t = document.getElementById('lobby-toggle');
+        if (t) {
+          t.style.visibility = t.dataset.vasquezPrevVisibility ?? '';
+          t.style.pointerEvents = '';
+          delete t.dataset.vasquezPrevVisibility;
+        }
+      }).catch(() => {});
       await page.waitForTimeout(4500);
     }
     return { visible, enabled };

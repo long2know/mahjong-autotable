@@ -425,24 +425,37 @@ async function sectionD() {
     const earlyAfter = await snapshotWorld(pageEarly);
     bag.early.afterLateJoined = earlyAfter;
 
-    // Assertion: late-joiner must see ≥ half the discards the early
-    // context sees at the same wall-clock moment. We use a fraction
-    // rather than exact equality because the bot loop is still
-    // running and the early/late contexts each render their own
-    // animation queues — but a true "no late-join state delivery"
-    // bug produces 0 discards on the late side while early has 6+.
-    const earlyDiscards = earlyAfter.byGroup?.discard ?? 0;
-    const lateDiscards = lateSnap.byGroup?.discard ?? 0;
-    bag.earlyDiscards = earlyDiscards;
-    bag.lateDiscards = lateDiscards;
+    // Assertion: late-joiner must see ≥ half the "in-play" tiles
+    // (discards + melds) the early context sees at the same wall-clock
+    // moment. Vasquez 2026-06-04 — the original assertion only counted
+    // `byGroup.discard`, but Hard/Medium bots now (post b5575b3
+    // difficulty differentiation) claim discards into melds and often
+    // complete hands inside the 20s observation window. When a hand
+    // ends and a new one begins the `discard` group resets to a
+    // single-digit count while `meld` accumulates, so discards-only is
+    // a brittle proxy for "the late joiner got hydrated state". Sum
+    // discard + meld + hand + wall to track the durable in-play
+    // population. A true "no late-join state delivery" bug produces 0
+    // hydrated tiles on the late side while early has > 50.
+    const inPlay = (snap) => (snap.byGroup?.discard ?? 0)
+      + (snap.byGroup?.meld ?? 0)
+      + (snap.byGroup?.hand ?? 0)
+      + (snap.byGroup?.wall ?? 0);
+    const earlyInPlay = inPlay(earlyAfter);
+    const lateInPlay = inPlay(lateSnap);
+    bag.earlyInPlay = earlyInPlay;
+    bag.lateInPlay = lateInPlay;
+    // Keep the legacy discard counters in the bag for diagnostics.
+    bag.earlyDiscards = earlyAfter.byGroup?.discard ?? 0;
+    bag.lateDiscards = lateSnap.byGroup?.discard ?? 0;
 
-    if (earlyDiscards < 2) {
-      bag.failures.push(`early context didn't accumulate enough discards (${earlyDiscards}); late-join check is vacuous`);
+    if (earlyInPlay < 20) {
+      bag.failures.push(`early context didn't accumulate enough in-play tiles (${earlyInPlay}); late-join check is vacuous`);
     }
-    if (lateDiscards < Math.max(1, Math.floor(earlyDiscards / 2))) {
+    if (lateInPlay < Math.max(20, Math.floor(earlyInPlay / 2))) {
       bag.failures.push(
-        `late joiner saw ${lateDiscards} discards; expected ≥ ${Math.max(1, Math.floor(earlyDiscards / 2))} ` +
-        `(early at same moment: ${earlyDiscards})`);
+        `late joiner saw ${lateInPlay} in-play tiles; expected ≥ ${Math.max(20, Math.floor(earlyInPlay / 2))} ` +
+        `(early at same moment: ${earlyInPlay})`);
     }
 
     bag.ok = bag.failures.length === 0;

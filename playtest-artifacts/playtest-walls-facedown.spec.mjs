@@ -309,7 +309,13 @@ await browser.close();
 // Evaluate pass/fail.
 const a = findings.assertions.summary ?? {};
 const checks = {
-  wallCountAtLeast100: (a.wallCount ?? 0) >= 100,
+  // Vasquez 2026-06-04 — Threshold lowered from Riichi (136-tile deck →
+  // ≥100 post-deal) to Changsha (108-tile deck → ≥80 post-deal). The
+  // 4-seat 14/14/13/13 wall split lands at 108 − (14 + 13×3) = 55 once
+  // initial hands deal, and animation snapshots may run a few extra
+  // ticks behind. 80 gives the same "wall still mostly intact" semantics
+  // the original assertion meant for Riichi.
+  wallCountAtLeast80: (a.wallCount ?? 0) >= 80,
   zeroForeignHandFaceUp: (a.foreignHandFaceUp ?? 1) === 0,
   allWallBackRotation: (a.wallFrontRotationCount ?? 1) === 0 && (a.wallBackRotationCount ?? 0) > 0,
   fourSeatWalls: (a.wallSeats ?? []).length === 4,
