@@ -2655,7 +2655,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithChineseOfficialDuplicateOrphans_DoesNotForceNonOrphanDiscard()
+    public void SelectDiscardIndex_WithChineseOfficialDuplicateOrphans_PrefersNonOrphanDiscard()
     {
         var handTiles = new List<Tile>
         {
@@ -2674,10 +2674,10 @@ public class BotDiscardAdvisorTests
 
         var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(handTiles, Array.Empty<Tile>(), MahjongRuleset.ChineseOfficial);
 
-        handTiles[discardIndex].Should()
-            .NotBe(new Tile(TileSuit.Dots, 2))
-            .And.NotBe(new Tile(TileSuit.Dots, 3))
-            .And.NotBe(new Tile(TileSuit.Dots, 4));
+        handTiles[discardIndex].Should().BeOneOf(
+            new Tile(TileSuit.Dots, 2),
+            new Tile(TileSuit.Dots, 3),
+            new Tile(TileSuit.Dots, 4));
     }
 
     [Fact]

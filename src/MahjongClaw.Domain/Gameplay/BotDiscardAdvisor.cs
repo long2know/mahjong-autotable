@@ -1203,27 +1203,13 @@ public static class BotDiscardAdvisor
                 var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
                 if (honorCount >= 9 && suitedCount is > 0 and <= 3)
                 {
-                    if (nonTerminalSuitedCount > 0)
+                    var nonTerminalCandidates = candidates
+                        .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
+                        .ToList();
+
+                    if (nonTerminalCandidates.Count > 0)
                     {
-                        var nonTerminalCandidates = candidates
-                            .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
-                            .ToList();
-
-                        if (nonTerminalCandidates.Count > 0)
-                        {
-                            candidates = nonTerminalCandidates;
-                        }
-                        else
-                        {
-                            var offHonorCandidates = candidates
-                                .Where(candidate => !candidate.Tile.IsHonor)
-                                .ToList();
-
-                            if (offHonorCandidates.Count > 0)
-                            {
-                                candidates = offHonorCandidates;
-                            }
-                        }
+                        candidates = nonTerminalCandidates;
                     }
                     else
                     {
@@ -1236,6 +1222,17 @@ public static class BotDiscardAdvisor
                         if (honorSingletonCandidates.Count > 0)
                         {
                             candidates = honorSingletonCandidates;
+                        }
+                        else
+                        {
+                            var offHonorCandidates = candidates
+                                .Where(candidate => !candidate.Tile.IsHonor)
+                                .ToList();
+
+                            if (offHonorCandidates.Count > 0)
+                            {
+                                candidates = offHonorCandidates;
+                            }
                         }
                     }
                 }
@@ -1313,7 +1310,7 @@ public static class BotDiscardAdvisor
                 var distinctOrphanTypes = orphanTiles.Distinct().Count();
                 if (nonOrphanCount is > 0 and <= 3)
                 {
-                    if (distinctOrphanTypes >= 10)
+                    if (distinctOrphanTypes >= 9)
                     {
                         var hasLiveThirteenOrphansPath = HasLiveThirteenOrphansPath(
                             ownedCounts,
