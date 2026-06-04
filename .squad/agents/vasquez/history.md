@@ -3178,3 +3178,5 @@ every gate from real backend state.
 evidence + 5 gotchas for the next playtest author.
 
 📌 Full-game playthrough audit (2026-06-03): 5 scenarios, 18/18 acceptance gates, 2 stability runs — committed `fa2b18e`.
+
+📌 Definitive visual proof (2026-06-04): 10/10 phases captured, 0 page errors, 10 unique md5s across 2 consecutive stability runs.
