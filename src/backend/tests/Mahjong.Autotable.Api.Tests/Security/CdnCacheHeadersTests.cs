@@ -38,6 +38,8 @@ public class CdnCacheHeadersTests : IAsyncLifetime
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Production");
+            // Phase L — Drake. Prod hardening: see SecurityHeadersTests for context.
+            b.UseSetting("Auth:JwtSigningKeys:0", "test-prod-stable-jwt-key-aaaaaaaaaaaaaaaaaaaaaaaa");
             b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={_tempDb}");
             b.UseSetting("Cors:AllowedOrigins:0", "https://example.test");
             b.ConfigureServices(s =>

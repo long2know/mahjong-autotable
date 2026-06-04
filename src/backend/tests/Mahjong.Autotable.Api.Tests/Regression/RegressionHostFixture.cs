@@ -45,6 +45,11 @@ public sealed class RegressionHostFixture : IAsyncLifetime
             // Wave 8 CSP only lands in Production — the regression class
             // pins prod-shape headers, so we keep this environment.
             b.UseEnvironment("Production");
+            // Phase L — Drake. Prod hardening: JwtSigningKeyProvider now
+            // refuses to boot in Production with an ephemeral random
+            // HMAC key. Supply a stable test key so the factory starts.
+            // See docs/jwt-rotation.md §7.
+            b.UseSetting("Auth:JwtSigningKeys:0", "test-prod-stable-jwt-key-aaaaaaaaaaaaaaaaaaaaaaaa");
             b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={TempDb}");
             b.ConfigureServices(s =>
             {

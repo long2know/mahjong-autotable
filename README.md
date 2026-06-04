@@ -106,19 +106,34 @@ The repo-root `Dockerfile` is a 3-stage build:
 # 1. Build the image (~5 min cold, ~30s with BuildKit cache)
 docker build -t mahjong-autotable:latest .
 
-# 2. Run it (replace 8080 with whatever port your server has free)
+# 2. Generate a stable JWT signing key (Phase L hardening — required
+#    in Production so JWTs survive container restarts. See
+#    docs/jwt-rotation.md §7.1 for the full operator runbook).
+JWT_KEY="$(openssl rand -base64 48)"
+
+# 3. Run it (replace 8080 with whatever port your server has free)
 docker run -d --name mahjong --restart unless-stopped \
     -p 8080:8080 \
     -e ASPNETCORE_URLS="http://0.0.0.0:8080" \
+    -e Authentication__JwtSigningKeys__0="$JWT_KEY" \
     -v mahjong-data:/data \
     mahjong-autotable:latest
 
-# 3. Verify health
+# 4. Verify health
 curl -sf http://127.0.0.1:8080/health
 
-# 4. Open the game in your browser
+# 5. Open the game in your browser
 open http://127.0.0.1:8080/autotable/      # or visit it from another machine
 ```
+
+> **⚠️ Production-required env var:** the image pins
+> `ASPNETCORE_ENVIRONMENT=Production`, and the API now refuses to
+> start in Production without `Authentication__JwtSigningKeys__0`.
+> Without it every JWT minted by the prior container is silently
+> invalidated on restart. Persist `$JWT_KEY` in your secrets store
+> and reuse it across restarts. See
+> [`docs/jwt-rotation.md`](docs/jwt-rotation.md) §7.1 for the
+> rotation runbook + the optional `__1` fallback slot.
 
 The smoke test (`playtest-artifacts/playtest-docker-smoke.spec.mjs`)
 proves the deployed image end-to-end: `/health` returns JSON 200,

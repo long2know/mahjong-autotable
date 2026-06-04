@@ -42,6 +42,12 @@ public class CspStrictStylesProductionConfigTests
         return new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment(env);
+            // Phase L — Drake. Prod hardening: JwtSigningKeyProvider now
+            // refuses to boot in Production with an ephemeral random
+            // HMAC key. Supply a stable test key so prod-env factories
+            // start. See docs/jwt-rotation.md §7.
+            if (string.Equals(env, "Production", StringComparison.OrdinalIgnoreCase))
+                b.UseSetting("Auth:JwtSigningKeys:0", "test-prod-stable-jwt-key-aaaaaaaaaaaaaaaaaaaaaaaa");
             b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={tempDb}");
             if (strictStyles is not null)
                 b.UseSetting(SecurityHeadersMiddleware.CspStrictStylesConfigKey, strictStyles);

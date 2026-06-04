@@ -264,12 +264,36 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
 // We bind both shapes into a synthetic JwtAuthOptions instance so the
 // existing AuthOptions schema stays untouched.
 {
+    // Phase L — Drake. Use a small helper to honour BOTH the legacy
+    // `Auth:` and the canonical `Authentication:` sections while
+    // correctly falling through when the first section is a
+    // NON-NULL EMPTY array (e.g. `appsettings.json` ships
+    // `Auth:JwtSigningKeys: []` which `.Get<string[]>()` materialises
+    // as a non-null `[]`; the original `??` chain stopped there and
+    // never read `Authentication:JwtSigningKeys`, which meant operator
+    // env vars like `Authentication__JwtSigningKeys__0=<key>` were
+    // silently ignored — Drake's `jwt-restart-survival.sh` proof
+    // surfaced this regression at boot).
+    static string[] FirstNonEmptyArray(params string[]?[] candidates)
+    {
+        foreach (var c in candidates)
+        {
+            if (c is { Length: > 0 } &&
+                c.Any(static s => !string.IsNullOrEmpty(s)))
+            {
+                return c;
+            }
+        }
+        return Array.Empty<string>();
+    }
     var jwtAuthOptions = new Mahjong.Autotable.Api.Auth.AuthOptions
     {
-        JwtSigningKeys = builder.Configuration.GetSection("Auth:JwtSigningKeys").Get<string[]>()
-            ?? authOptions.JwtSigningKeys
-            ?? Array.Empty<string>(),
+        JwtSigningKeys = FirstNonEmptyArray(
+            builder.Configuration.GetSection("Auth:JwtSigningKeys").Get<string[]>(),
+            builder.Configuration.GetSection("Authentication:JwtSigningKeys").Get<string[]>(),
+            authOptions.JwtSigningKeys),
         JwtSigningKey = builder.Configuration.GetValue<string>("Auth:JwtSigningKey")
+            ?? builder.Configuration.GetValue<string>("Authentication:JwtSigningKey")
             ?? authOptions.JwtSigningKey
             ?? string.Empty,
         // Phase K Wave 6 — Bishop. Algorithm + RSA-key knobs are bound
@@ -280,10 +304,10 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
         JwtAlgorithm = builder.Configuration.GetValue<string>("Auth:JwtAlgorithm")
             ?? builder.Configuration.GetValue<string>("Authentication:JwtAlgorithm")
             ?? (string.IsNullOrWhiteSpace(authOptions.JwtAlgorithm) ? "HS256" : authOptions.JwtAlgorithm),
-        JwtRsaKeys = builder.Configuration.GetSection("Auth:JwtRsaKeys").Get<string[]>()
-            ?? builder.Configuration.GetSection("Authentication:JwtRsaKeys").Get<string[]>()
-            ?? authOptions.JwtRsaKeys
-            ?? Array.Empty<string>(),
+        JwtRsaKeys = FirstNonEmptyArray(
+            builder.Configuration.GetSection("Auth:JwtRsaKeys").Get<string[]>(),
+            builder.Configuration.GetSection("Authentication:JwtRsaKeys").Get<string[]>(),
+            authOptions.JwtRsaKeys),
         // Phase K Wave 7 — Bishop. `Auth:Issuer` (canonical) /
         // `Authentication:Issuer` (legacy) feeds the OIDC discovery
         // hard contract: with RS256 + a non-empty issuer the
@@ -305,9 +329,24 @@ builder.Services.AddSingleton<Mahjong.Autotable.Api.Auth.OAuthService>();
             ?? builder.Configuration.GetValue<int?>("Authentication:JwtRsaKeys:RotationGracePeriodSeconds")
             ?? (authOptions.RotationGracePeriodSeconds > 0 ? authOptions.RotationGracePeriodSeconds : 600),
     };
-    builder.Services.AddSingleton(sp => new Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider(
+    // Phase L — Drake. Construct the provider EAGERLY so the prod
+    // hardening check (throws when Production + no operator-provided
+    // keys) fires at boot — not on the first JWT resolve. The factory
+    // would otherwise defer construction until the first request,
+    // letting the listener bind under a half-broken auth surface.
+    var jwtSigningLogger = LoggerFactory
+        .Create(b => b.AddConsole())
+        .CreateLogger<Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider>();
+    var jwtSigningProvider = new Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider(
         jwtAuthOptions,
-        sp.GetRequiredService<ILogger<Mahjong.Autotable.Api.Auth.JwtSigningKeyProvider>>()));
+        jwtSigningLogger,
+        // Production hardening: refuse to boot with an ephemeral
+        // random HMAC key (it re-mints on every restart, silently
+        // invalidating every prior JWT). Dev / test keep the
+        // historical auto-mint shape so `dotnet run` / `F5` never
+        // require operator config. See docs/jwt-rotation.md §7.
+        requireOperatorKeys: builder.Environment.IsProduction());
+    builder.Services.AddSingleton(jwtSigningProvider);
     // Phase K Wave 9 — Bishop. Hard-asserted JWKS TTL / rotation
     // cadence invariant. Throws InvalidOperationException at host
     // boot when JwksCacheTtl > RotationGracePeriod / 2. See

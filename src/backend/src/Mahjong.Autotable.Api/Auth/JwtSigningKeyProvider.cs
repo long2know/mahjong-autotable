@@ -30,6 +30,21 @@ namespace Mahjong.Autotable.Api.Auth;
 /// validation of legacy HMAC tokens continues to work during the
 /// migration window — issuance, however, branches strictly on the
 /// resolved algorithm.</para>
+///
+/// <para>Phase L — Drake. <c>requireOperatorKeys</c> hardens the
+/// production deploy path: when <see langword="true"/> and the
+/// operator left <see cref="AuthOptions.JwtSigningKeys"/> AND
+/// <see cref="AuthOptions.JwtSigningKey"/> empty (and the resolved
+/// algorithm is HS256), the constructor throws
+/// <see cref="InvalidOperationException"/> BEFORE the host starts
+/// listening. Without this guard, the ephemeral per-process random
+/// HMAC key is re-minted on every restart, silently invalidating
+/// every JWT issued by the prior process — see
+/// <c>docs/jwt-rotation.md</c> §7 for the operator runbook. The same
+/// guard fires for RS256 when no PEM is supplied. Program.cs passes
+/// <c>builder.Environment.IsProduction()</c>; tests default to
+/// <see langword="false"/> so the legacy dev / test fallback shape
+/// is unchanged.</para>
 /// </summary>
 public sealed class JwtSigningKeyProvider
 {
@@ -41,7 +56,31 @@ public sealed class JwtSigningKeyProvider
     private readonly string _algorithm;
     private readonly string _issuer;
 
+    /// <summary>Operator-actionable error message thrown when
+    /// <c>requireOperatorKeys</c> is set, the resolved algorithm is
+    /// HS256, and no HMAC key material is configured. Public so tests
+    /// (and ops tooling) can hard-assert against the canonical
+    /// wording — emitted verbatim in the prod-startup failure path.</summary>
+    public const string ProdRequiresOperatorHmacKeyMessage =
+        "Authentication:JwtSigningKeys is required in Production but is empty. " +
+        "Set Authentication__JwtSigningKeys__0=<base64-key>=48-bytes-recommended (and " +
+        "optionally Authentication__JwtSigningKeys__1=<previous-key> for rotation) so " +
+        "JWTs survive container restarts. See docs/jwt-rotation.md §1 + §7.";
+
+    /// <summary>Operator-actionable error message thrown when
+    /// <c>requireOperatorKeys</c> is set, the resolved algorithm is
+    /// RS256, and no RSA PEM material is configured.</summary>
+    public const string ProdRequiresOperatorRsaKeyMessage =
+        "Authentication:JwtAlgorithm=RS256 in Production but Authentication:JwtRsaKeys is empty. " +
+        "Set Authentication__JwtRsaKeys__0=<PEM-encoded private key> so JWTs survive " +
+        "container restarts. See docs/jwt-rotation.md §1 + §7.";
+
     public JwtSigningKeyProvider(AuthOptions options, ILogger<JwtSigningKeyProvider> logger)
+        : this(options, logger, requireOperatorKeys: false)
+    {
+    }
+
+    public JwtSigningKeyProvider(AuthOptions options, ILogger<JwtSigningKeyProvider> logger, bool requireOperatorKeys)
     {
         // Phase K Wave 6 — resolve the configured algorithm. Anything
         // other than the two supported values defaults to HS256 +
@@ -68,6 +107,19 @@ public sealed class JwtSigningKeyProvider
         }
         if (resolved.Count == 0)
         {
+            // Phase L — Drake. Production hardening: when the host
+            // is bound to Production AND the resolved algorithm is
+            // HS256, refuse to start with an ephemeral random key.
+            // Without this guard a container restart silently
+            // invalidates every JWT minted by the prior process
+            // because the new random key never matches the old
+            // signature. Operators MUST set Authentication:JwtSigningKeys[0]
+            // (or, for legacy deploys, the deprecated singular
+            // Authentication:JwtSigningKey). See docs/jwt-rotation.md §7.
+            if (requireOperatorKeys && string.Equals(_algorithm, "HS256", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(ProdRequiresOperatorHmacKeyMessage);
+            }
             // Phase K Wave 4 — dev / test fallback: mint a per-process
             // random key so the issuance + validation surface stays
             // resolvable without explicit operator config. The warning
@@ -115,6 +167,17 @@ public sealed class JwtSigningKeyProvider
         }
         if (_algorithm == "RS256" && rsa.Count == 0)
         {
+            // Phase L — Drake. Production hardening: when the host is
+            // bound to Production AND the resolved algorithm is RS256,
+            // refuse to start without operator-provided PEM material —
+            // the issuer would otherwise throw on first ActiveRsaKey
+            // resolve, taking the listener down mid-request. Fail fast
+            // at boot so the deploy pipeline catches the misconfig
+            // before traffic lands. See docs/jwt-rotation.md §7.
+            if (requireOperatorKeys)
+            {
+                throw new InvalidOperationException(ProdRequiresOperatorRsaKeyMessage);
+            }
             logger.LogError(
                 "Authentication:JwtAlgorithm is RS256 but Authentication:JwtRsaKeys is empty. Token issuance will fail until at least one PEM-encoded private key is provided. See docs/jwt-rotation.md §RS256.");
         }

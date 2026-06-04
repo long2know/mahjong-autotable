@@ -274,3 +274,127 @@ verbatim. If a second consumer lands, lift to a
 `Persistence/UniqueViolationDetector.cs` static helper.
 
 📌 Persistence thorough audit (2026-06-03): 100-parallel race-safe, schema drift detection, cross-provider parity — committed `67be128`.
+
+## JWT signing-key production hardening (2026-06-04)
+
+**Commit authored:** _TBD — recorded after squash-merge_
+
+**Briefing:** Ripley's Docker-deploy-proof wave
+(`ripley-docker-deploy-proof.md`, `ab34d09`) flagged ONE remaining
+production blocker: JWT signing key falls back to per-process random
+HMAC when `Authentication:JwtSigningKeys` unset. Container restart
+silently invalidates every prior JWT. Stephen runs the canonical
+image on his own Linux server — daily-hazard, not quarterly-risk.
+
+**Approach chosen: Option B — fail-fast in Production.** Rationale:
+docs/jwt-rotation.md §2 already specified this shape ("Program.cs
+throws InvalidOperationException before the host starts listening")
+but it was never implemented. Matches the existing
+`RotationCadenceValidator` security posture (W9 Bishop).
+
+**Implementation:**
+
+1. `JwtSigningKeyProvider` — added `requireOperatorKeys` ctor flag.
+   When `true` AND `_algorithm == "HS256"` AND no operator-provided
+   HMAC keys, throws `InvalidOperationException` with the canonical
+   `ProdRequiresOperatorHmacKeyMessage` literal (exposed as a public
+   constant so tests + ops tooling can hard-assert against the
+   wording). Mirror guard for `RS256` + empty `JwtRsaKeys`. Back-
+   compat constructor overload preserved so 0 existing W4 tests need
+   to change to declare the dev-fallback shape.
+
+2. `Program.cs` — eager construction (no factory lambda) so the
+   `InvalidOperationException` fires at boot, not on first JWT
+   resolve. Wired `builder.Environment.IsProduction()` →
+   `requireOperatorKeys`.
+
+3. `Program.cs` — fixed a pre-existing precedence bug uncovered by
+   the restart-survival proof: `appsettings.json` ships
+   `Auth:JwtSigningKeys: []` which `.Get<string[]>()` materialises
+   as a NON-NULL empty array, short-circuiting the `??` chain and
+   ignoring `Authentication__JwtSigningKeys__N` env vars entirely.
+   Replaced with a `FirstNonEmptyArray()` helper that prefers
+   non-null AND non-empty AND not-all-blank-entries. Same fix
+   applied to `JwtRsaKeys`. Without this, Stephen's
+   `Authentication__JwtSigningKeys__0=<key>` would have been a
+   silent no-op and the fail-fast would have been unrecoverable —
+   the restart-survival shell-script caught this on first run.
+
+**Tests:**
+`tests/Mahjong.Autotable.Api.Tests/Auth/JwtProdHardeningTests.cs`
+(new, 10 facts):
+- `Dev_NoOperatorKeys_StartsWithEphemeralFallback`
+- `Dev_NoOperatorKeys_BackCompatCtor_StartsWithEphemeralFallback`
+- `Prod_NoOperatorKeys_HS256_Throws_WithOperatorActionableMessage`
+- `Prod_EmptyStringEntries_StillTreatedAsNoOperatorKeys_Throws`
+- `Prod_WithJwtSigningKeysArray_StartsCleanly`
+- `Prod_WithLegacySingularJwtSigningKey_StartsCleanly`
+- `Prod_WithJwtSigningKeysArray_SignsAndValidatesJwts`
+- `Prod_TokenIssuedThenRebound_SurvivesRestartWithSameKey`
+- `Dev_TokenIssuedThenRebound_DoesNotSurviveRestart_ProvesProblem`
+  (regression-guard documenting the original bug shape)
+- `Prod_Rs256_NoRsaKeys_Throws_WithOperatorActionableMessage`
+
+**Validation:**
+- `dotnet test ... --filter "Jwt|Auth|Signing"` → **507/507 PASS** (47s).
+- Full suite (`dotnet test ...`): 5332/5343 pass (2 skipped, 11
+  pre-existing `*_Memo_Present` failures — these check for
+  agents' inbox memo files that don't exist on `origin/main`;
+  unrelated to my change, verified by stashing).
+
+**Test-file coupling (necessary fan-out):** the prod fail-fast
+change required updating existing tests that build a Production-env
+`WebApplicationFactory` without supplying keys (would otherwise
+be broken by my change). Surgical one-line `UseSetting` addition
+per file, with a comment pointing at `docs/jwt-rotation.md §7`:
+- `Auth/DevLoginTests.cs`
+- `Regression/RegressionHostFixture.cs`
+- `Security/CdnCacheHeadersTests.cs`
+- `Security/CspHeaderTests.cs` (2 factories)
+- `Security/CspStrictStylesProductionConfigTests.cs` (guarded by env)
+- `Security/CspStyleSrcNoUnsafeInlineTests.cs`
+- `Security/SecurityHeadersTests.cs`
+- `RateLimiting/RateLimitingTests.cs`
+- `Phase_K_W5/TestShimSanityTests.cs`
+
+I used `Auth:JwtSigningKeys:0` (legacy section) in the tests
+because Program.cs reads it first; both shapes bind the same
+provider in production (operators set `Authentication__JwtSigningKeys__N`
+per the docs and ESO conventions — both work after the precedence fix).
+
+**Live restart-survival proof:**
+`playtest-artifacts/jwt-restart-survival.sh` (bash + openssl
+HMAC-SHA256 minter; no UI flow). Builds image, runs container A
+with stable key, mints JWT, validates → 200 valid:true,
+`docker rm -f` + re-runs container B with SAME key, re-validates
+SAME token → 200 valid:true. Both kids match
+(`dTMKdVtuJFE` deterministic from the SHA-256 truncation in
+`JwtSigningKey.ComputeKid`). Also exercised the negative path
+(prod env, no key) → container exits with the canonical
+`InvalidOperationException` message on the first stdout line.
+
+**Docs:**
+- `docs/jwt-rotation.md` §7.1 new — "Phase L — Production
+  fail-fast on missing operator keys (Drake)". Documents the
+  contract, the operator-actionable error message verbatim, the
+  required env-var format, and points at the restart-survival
+  shell script.
+- `README.md` Docker section — added the `JWT_KEY="$(openssl rand
+  -base64 48)"` minting step and the
+  `Authentication__JwtSigningKeys__0` env-var to the verified
+  `docker run` example, plus a callout blockquote linking to
+  `docs/jwt-rotation.md §7.1`.
+
+**Memo:** `.squad/decisions/inbox/drake-jwt-hardening.md`
+
+**Lane discipline observed:** Touched only auth-area source
+(`Auth/JwtSigningKeyProvider.cs` + the JWT-config block of
+`Program.cs`), JWT-area tests (new `Auth/JwtProdHardeningTests.cs`
+plus one-line fan-out to the prod-env factory tests listed
+above), `docs/jwt-rotation.md`, `README.md` Docker section, and
+the playtest-artifacts shell script. Did NOT touch frontend,
+Changsha runtime, Bishop's WS dispatch, Frost's bot / scoring,
+Persistence layer, Apone's Dockerfile, or any other agent's
+production source.
+
+📌 JWT signing-key prod hardening (2026-06-04): fail-fast in Production + restart-survival proven end-to-end — committed _TBD_.

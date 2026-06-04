@@ -80,6 +80,8 @@ public class RateLimitingTests : IAsyncLifetime
             // services are still keyed off `Enabled == true` in the
             // extension method.
             b.UseEnvironment("Production");
+            // Phase L — Drake. Prod hardening: see SecurityHeadersTests for context.
+            b.UseSetting("Auth:JwtSigningKeys:0", "test-prod-stable-jwt-key-aaaaaaaaaaaaaaaaaaaaaaaa");
             b.UseSetting("RateLimiting:Enabled", "true");
             b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={_tempDb}");
             b.ConfigureServices(s =>

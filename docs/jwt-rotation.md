@@ -288,6 +288,106 @@ the secret (current behaviour), and AS SOON AS Bishop binds
 `Auth.JwtSigningKeys`, the ESO-materialised values feed the array
 with zero further DevOps work.
 
+### 7.1 Phase L — Production fail-fast on missing operator keys (Drake)
+
+> Phase L — Drake (Backend). Production hardening landed alongside
+> Ripley's single-image Docker deploy proof
+> (`ripley-docker-deploy-proof.md`).
+
+The Wave-4 code-side binding shipped a **dev-friendly fallback**:
+when `Authentication:JwtSigningKeys` is empty (and the legacy
+singular `Authentication:JwtSigningKey` is also empty),
+`JwtSigningKeyProvider` mints a per-process random HMAC key + logs
+a loud warning. That keeps `dotnet run` / F5 / `xunit` frictionless
+for local developers — they never have to seed a key just to get
+the API to boot.
+
+**The production restart-survival bug:** the per-process random key
+is regenerated on every container start. A JWT minted by the FIRST
+container fails signature validation under the SECOND container
+because the new random key never matches the old signature.
+Effective user impact: every authenticated session is silently
+invalidated on every restart / rolling-deploy / OOM-kill / node
+reschedule. Stephen runs the canonical
+`mahjong-autotable:latest` image on his own Linux server — so
+"restart re-mints" is a daily operational hazard, not a
+once-per-quarter incident.
+
+**Phase L fix (Drake).** `JwtSigningKeyProvider` now takes a
+`requireOperatorKeys` constructor flag. Program.cs wires it to
+`builder.Environment.IsProduction()`:
+
+* **`Development` (default for `dotnet run` / `F5`):**
+  `requireOperatorKeys = false` → the historical Wave-4 fallback
+  is preserved. The random per-process key + loud warning shape is
+  unchanged.
+
+* **`Production` (default for the Docker image — `Dockerfile`
+  pins `ASPNETCORE_ENVIRONMENT=Production`):**
+  `requireOperatorKeys = true` → if no operator-provided HMAC
+  material is present, the constructor throws
+  `InvalidOperationException` with the canonical
+  `ProdRequiresOperatorHmacKeyMessage` literal BEFORE the listener
+  binds. The deploy pipeline catches the misconfig at boot rather
+  than letting a half-broken auth surface accept traffic. The same
+  guard fires for `JwtAlgorithm=RS256` when `JwtRsaKeys` is empty
+  (canonical `ProdRequiresOperatorRsaKeyMessage`).
+
+**Operator-actionable startup error (HS256):**
+
+```
+System.InvalidOperationException: Authentication:JwtSigningKeys is required
+in Production but is empty. Set Authentication__JwtSigningKeys__0=<base64-key>
+=48-bytes-recommended (and optionally Authentication__JwtSigningKeys__1=
+<previous-key> for rotation) so JWTs survive container restarts. See
+docs/jwt-rotation.md §1 + §7.
+```
+
+**Required environment variables for production Docker deploys.**
+Pin at least the active signer. A second slot for rotation
+fallback is recommended but optional:
+
+```bash
+# Generate a stable 48-byte (384-bit) base64 secret.
+KEY_ACTIVE="$(openssl rand -base64 48)"
+KEY_PREVIOUS="$(openssl rand -base64 48)"  # only on first deploy
+
+docker run -d --name mahjong-autotable \
+  -p 8080:8080 \
+  -v mahjong-data:/data \
+  -e ASPNETCORE_ENVIRONMENT=Production \
+  -e Authentication__JwtSigningKeys__0="$KEY_ACTIVE" \
+  -e Authentication__JwtSigningKeys__1="$KEY_PREVIOUS" \
+  mahjong-autotable:latest
+```
+
+Both `Auth__JwtSigningKeys__N` (legacy "Auth" section) and
+`Authentication__JwtSigningKeys__N` (canonical "Authentication"
+section) bind to the same provider; `Auth:` wins on conflict per
+the Phase-K-W6 precedence in `Program.cs`. ESO / Kubernetes
+deployments continue to use `auth__jwtsigningkeys__N` via the
+W4 `mahjong-jwt-keys` ExternalSecret (§1) — no change for
+cluster operators.
+
+**Restart-survival proof.** A bash-level check is committed at
+`playtest-artifacts/jwt-restart-survival.sh`. It builds the
+image, runs it with `Authentication__JwtSigningKeys__0=<stable
+key>`, mints a JWT via `POST /api/auth/token`, restarts the
+container, and validates the SAME token against
+`POST /api/auth/validate` after the restart. Pre-Phase-L the
+post-restart validation 401s (key re-minted); post-Phase-L it 200s
+(stable key survives).
+
+**Test coverage.** Drake's
+`tests/Mahjong.Autotable.Api.Tests/Auth/JwtProdHardeningTests.cs`
+pins the contract:
+DEV-no-keys boots fine, PROD-no-keys throws,
+PROD-with-keys mints+validates JWTs, AND the regression-guard
+`Dev_TokenIssuedThenRebound_DoesNotSurviveRestart_ProvesProblem`
+documents the original bug shape so a future refactor that
+accidentally makes the dev fallback stable doesn't weaken the
+operator-must-pin-keys contract.
+
 ## 8. RS256 key provisioning (Phase K Wave 7)
 
 > Phase K Wave 7 — Bishop (Backend).

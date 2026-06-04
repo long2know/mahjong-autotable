@@ -55,6 +55,11 @@ public class DevLoginTests : IAsyncLifetime
         _prodFactory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Production");
+            // Phase L — Drake. Prod hardening: JwtSigningKeyProvider now
+            // refuses to boot in Production with an ephemeral random
+            // HMAC key. Supply a stable test key so the factory starts.
+            // See docs/jwt-rotation.md §7.
+            b.UseSetting("Auth:JwtSigningKeys:0", "test-prod-stable-jwt-key-aaaaaaaaaaaaaaaaaaaaaaaa");
             b.UseSetting("ConnectionStrings:Sqlite", $"Data Source={_prodDb}");
             // Production-required CORS origins (empty in Wave-6 default).
             b.UseSetting("Cors:AllowedOrigins:0", "https://example.test");
