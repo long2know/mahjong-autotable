@@ -232,6 +232,14 @@ public static class BotDiscardAdvisor
             allowBreakingSoleChangshaSmallWinPairForPureSuitLean = true;
         }
 
+        if (allowBreakingSoleChangshaSmallWinPairForPureSuitLean
+            && liveSmallWinPairCandidates is not null
+            && changshaDominantSuit.HasValue
+            && !liveSmallWinPairCandidates.Any(tile => tile.Suit == changshaDominantSuit.Value))
+        {
+            allowBreakingSoleChangshaSmallWinPairForPureSuitLean = false;
+        }
+
         var candidates = handTiles
             .Select((tile, index) =>
             {
