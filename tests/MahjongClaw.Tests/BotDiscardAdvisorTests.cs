@@ -3903,6 +3903,31 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_DoesNotForceTerminalDiscard_WhenHonorHeavyWithOnlyTerminalSuits()
+    {
+        var tiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South), new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Dots, 1),
+            new(TileSuit.Bamboos, 9)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(tiles, MahjongRuleset.ChineseOfficial);
+
+        tiles[discardIndex].Should().BeOneOf(
+            new Tile(TileSuit.Winds, 0, Wind.North),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.Green),
+            new Tile(TileSuit.Dragons, 0, null, Dragon.White));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PrioritizesDeadPair_WhenChineseOfficialRuleset()
     {
         var handTiles = new List<Tile>

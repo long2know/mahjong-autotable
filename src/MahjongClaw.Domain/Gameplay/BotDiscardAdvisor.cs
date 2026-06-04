@@ -1195,13 +1195,40 @@ public static class BotDiscardAdvisor
                 var suitedCount = ownedTiles.Count(static tile => !tile.IsHonor);
                 if (honorCount >= 9 && suitedCount is > 0 and <= 3)
                 {
-                    var offHonorCandidates = candidates
-                        .Where(candidate => !candidate.Tile.IsHonor)
-                        .ToList();
-
-                    if (offHonorCandidates.Count > 0)
+                    if (nonTerminalSuitedCount > 0)
                     {
-                        candidates = offHonorCandidates;
+                        var nonTerminalCandidates = candidates
+                            .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
+                            .ToList();
+
+                        if (nonTerminalCandidates.Count > 0)
+                        {
+                            candidates = nonTerminalCandidates;
+                        }
+                        else
+                        {
+                            var offHonorCandidates = candidates
+                                .Where(candidate => !candidate.Tile.IsHonor)
+                                .ToList();
+
+                            if (offHonorCandidates.Count > 0)
+                            {
+                                candidates = offHonorCandidates;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var honorSingletonCandidates = candidates
+                            .Where(candidate => candidate.Tile.IsHonor
+                                && handCounts.TryGetValue(candidate.Tile, out var count)
+                                && count == 1)
+                            .ToList();
+
+                        if (honorSingletonCandidates.Count > 0)
+                        {
+                            candidates = honorSingletonCandidates;
+                        }
                     }
                 }
             }
