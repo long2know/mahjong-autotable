@@ -167,6 +167,59 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Settings panel — fit-to-content on mobile/tablet (≤ 768 px).           */
+/*                                                                        */
+/* Stephen's 2026-06-03 polish directive flagged that both the Phase J    */
+/* Wave 2 per-game Settings drawer (#settings-drawer) and the Wave 7      */
+/* app-wide Settings drawer (.settings-drawer-v2) cover the entire game   */
+/* board on phones/tablets.  Pre-existing style.css rules push them to    */
+/* `width:100vw; height:100vh` at ≤ 480 px (and `width:100vw` at the      */
+/* Wave 7 720 px breakpoint), which hides the table behind the panel.    */
+/*                                                                        */
+/* New behaviour at ≤ 768 px:                                             */
+/*   • width      = min(90vw, 360 px)  — leaves the right edge of the    */
+/*                  table visible so the user can dismiss with context.  */
+/*   • height     = auto + max-height: 90vh — fits the content; scrolls  */
+/*                  if knobs exceed the cap.                              */
+/*   • anchored to the top-right with a small inset so the gear button    */
+/*                  and variant badge stay reachable above it.            */
+/*   • overflow-y: auto on the drawer itself so the body's internal      */
+/*                  flex:1 region keeps its scroll behaviour without     */
+/*                  requiring a fixed parent height.                      */
+/*                                                                        */
+/* Layered after `style.css` so the cascade wins without specificity      */
+/* hacks; desktop (> 768 px) styling is intentionally untouched.          */
+/* ---------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    #settings-drawer,
+    .settings-drawer,
+    .settings-drawer-v2 {
+        top: max(8px, env(safe-area-inset-top, 8px));
+        right: max(8px, env(safe-area-inset-right, 8px));
+        left: auto;
+        bottom: auto;
+        width: min(90vw, 360px);
+        max-width: min(90vw, 360px);
+        height: auto;
+        max-height: 90vh;
+        overflow-y: auto;
+        border-radius: 10px;
+        box-shadow: -4px 4px 24px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Closed state for the Wave 2 drawer uses `right: -340px` to slide
+     * off-screen; the new width caps the slide distance so the panel
+     * doesn't peek back in.  Mirror the slide formula against the new
+     * max width. */
+    #settings-drawer:not(.settings-open) {
+        right: calc(-1 * min(90vw, 360px) - 24px);
+    }
+    #settings-drawer.settings-open {
+        right: max(8px, env(safe-area-inset-right, 8px));
+    }
+}
+
+/* ---------------------------------------------------------------------- */
 /* Lobby overlay sizing parity (desktop ≥ 481 px) — Stephen's 2026-05-19  */
 /* directive flagged that the left-edge Deal/Setup overlay feels heavier  */
 /* than upstream-autotable.  Upstream's #sidebar is 220 px wide with a    */

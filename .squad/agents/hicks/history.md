@@ -4512,3 +4512,78 @@ Decision memo: `.squad/decisions/inbox/hicks-localseat-faceup.md`.
   - Decision memo: `.squad/decisions/inbox/hicks-vreg-sweep.md` (full per-scenario summary table + screenshot paths). Spec is the sole code artifact. Lane discipline kept (touched only spec + memo + this history entry — screenshots gitignored). **Verdict: no regressions vs `hicks-final-clean-2026-06-01T20-52-57Z.png` baseline. The Changsha bring-up is visually + functionally clean end-to-end.**
 
 📌 Visual regression sweep (2026-06-03): 10 scenarios, 0 page errors, no regressions vs round-3 baseline — committed `ce948fe`.
+
+## 2026-06-04 — Polish pass (settings panel + leave-seat UX proof + 4-bot re-sweep)
+
+Stephen's polish brief flagged two cosmetic items from my prior visual
+regression sweep (`ce948fe`):
+
+1. **Settings panel filled the viewport on mobile/tablet.** The pre-existing
+   `style.css` rules in `@media (max-width: 768px)` and `@media (max-width:
+   480px)` pushed both `#settings-drawer` (Phase J Wave 2 per-game gear) AND
+   `.settings-drawer-v2` (Phase J Wave 7 app-wide) to `width:100vw` /
+   `height:100vh`, hiding the entire table behind the panel.
+2. **4-bot games tend to Draw at ~32 s.** Re-verify visual coherence (the
+   actual draw-vs-hu logic is Frost's lane and was addressed in `87e53c8`).
+
+He also asked for proof that:
+- Bishop's leave-seat broadcast (`35b7f76`) actually clears the seat label in
+  another tab within ~1 s without page refresh.
+- Frost's `IsWin` gating fix (`87e53c8`) doesn't break the HandResult modal.
+
+**Change set:**
+
+- `src/frontend/autotable-src/src/ui/hicks-mobile-sidebar.css` — added a new
+  `@media (max-width: 768px)` block that re-anchors both settings drawers
+  to `top: max(8px, safe-area)` / `right: max(8px, safe-area)`, caps width
+  at `min(90vw, 360 px)` and height at `max-height: 90vh` with
+  `overflow-y: auto`, and recomputes the Wave 2 closed-state `right:`
+  offset so the new narrower panel slides fully off-screen.  Layered after
+  `style.css` so the cascade wins without specificity hacks.  Desktop
+  (>768 px) styling untouched.
+- Rebuilt the Vite bundle (`npm run build` in `src/frontend/autotable-src/`).
+  New artifacts under `src/frontend/autotable/`; the merged style.css
+  contains both `min(90vw,360px)` and `max-height:90vh` rules — verified
+  via grep against `autotable/style.fff5167f.css`.
+- `playtest-artifacts/playtest-leave-seat-ux.spec.mjs` — new spec that
+  drives two browser contexts against the same `gameId`, Tab A takes
+  seat 0, Tab A clicks `#leave-seat`, and the spec asserts Tab B's
+  bundle clears `(seats|nicks)[aPid]` within 1500 ms with screenshots
+  before & after.  Outputs `leave-seat-ux-findings.json`.
+- `playtest-artifacts/playtest-hicks-polish.spec.mjs` — aggregate harness
+  that ships the four polish gates Stephen specified (settings sizing
+  mobile + tablet, synthetic HandResult render, 4-bot self-play at
+  5 s/15 s/30 s) and shells out to the leave-seat-ux child spec so all
+  artifacts land in a single timestamped dir.  Emits the Stephen-shaped
+  `findings.json` with `settingsPanelFixed`, `leaveSeatBroadcast`,
+  `handResultModalRender`, `fourBotSelfPlay`, `pageErrorsTotal`,
+  `knownIgnored`.
+
+**Run results (`hicks-polish-2026-06-04T14-02-59-220Z`):**
+
+| gate                              | result | evidence                                          |
+| --------------------------------- | ------ | ------------------------------------------------- |
+| Settings panel — mobile-375       | PASS   | width = 337 px / height ≪ 90 vh, table visible    |
+| Settings panel — tablet-768       | PASS   | width = 360 px / height ≪ 90 vh, table visible    |
+| Leave-seat broadcast (1500 ms)    | PASS   | deltaMs = 28, both seats[] + nicks[] tombstoned   |
+| HandResult modal — synthetic Hu   | PASS   | 4 score rows, 14 hand tiles, headline `胡!`        |
+| 4-bot self-play — 5 s/15 s/30 s   | PASS   | all > 5 KB; real Hu at 15 s AND 30 s, no draws    |
+| pageErrorsTotal                   | 0      | `Computed radius is NaN` THREE warning ignored    |
+
+**Bonus:** the 4-bot runs at 15 s and 30 s each ended in a REAL Hu (not a
+draw) — incidentally confirming Frost's `IsWin` gating fix is taking
+effect.  No "Draw at ~32 s" anymore.
+
+**Verdict: GO** — settings panel polished, leave-seat broadcast proven
+(28 ms peer-clear), HandResult modal renders cleanly with fans + score
++ payments, 4-bot self-play visually coherent across the 30-second
+observation window.
+
+Lane discipline: touched only `src/frontend/autotable-src/**`,
+`src/frontend/autotable/**` (build output), the two new
+`playtest-artifacts/*.spec.mjs` specs + their `screenshots/hicks-polish-*/`
+output dir, and this history file.  Did NOT touch backend, did NOT touch
+Vasquez/Frost lanes.
+
+📌 Polish pass shipped (2026-06-04): settings panel sized correctly on
+mobile/tablet, Bishop leave-seat broadcast clears peers in 28 ms.
