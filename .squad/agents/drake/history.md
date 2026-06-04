@@ -397,4 +397,4 @@ Changsha runtime, Bishop's WS dispatch, Frost's bot / scoring,
 Persistence layer, Apone's Dockerfile, or any other agent's
 production source.
 
-📌 JWT signing-key prod hardening (2026-06-04): fail-fast in Production + restart-survival proven end-to-end — committed _TBD_.
+📌 JWT signing-key prod hardening (2026-06-04): fail-fast in Production + restart-survival proven end-to-end — committed `385e7fc`. Merged to squad decision: Production-Ready Wave (2026-06-04).
