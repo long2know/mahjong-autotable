@@ -18008,3 +18008,57 @@ fa2b18e — test(thorough): full-game playthrough audit (Vasquez)
 ea36eb2 — test(prodready): system audit + production-readiness checklist (Ripley)
 35b7f76 — fix(autotable): broadcast seat tombstone on leave-seat (Bishop follow-up)
 ```
+
+---
+
+### 2026-06-04: Definitive Proof Wave — 3 Agents, 10 Canonical Phases
+
+**By:** Vasquez, Hicks, Frost (mahjong-autotable squad)
+
+**Status:** ✅ COMPLETE — All 3 commits landed on `origin/main` with visual proof
+
+**Wave Summary:**
+Three parallel proof streams converge on **definitive visual validation** of the Changsha game loop end-to-end:
+
+1. **Vasquez (17e69d7)** — 10 canonical phases captured across 2 consecutive stability runs with zero page errors and unique image signatures (md5-validated).
+   - Phases: walls-facedown → dice-rolled → dealing-ceremony → hand-dealt-faceup → tile-selected → discard-on-table → claim-window → hand-result-modal → game-complete-modal → multi-game-isolation-A
+   - Proof location: `playtest-artifacts/screenshots/def-proof-1780583073618/`
+   - Test spec: `playtest-artifacts/playtest-definitive-proof.spec.mjs` (1034 LOC, 10-phase gate validation)
+
+2. **Hicks (7d4d0fa)** — Polish pass: mobile settings panel + leave-seat UX proof with 28ms broadcast latency.
+   - Fixed: Settings drawer now anchors at `top: max(8px, safe-area-inset-top)`, caps width at `min(90vw, 360px)`, preserves `height: 90vh` with overflow scroll on mobile/tablet.
+   - Proof: `playtest-artifacts/playtest-leave-seat-ux.spec.mjs` (two-browser-context, Tab-A-leaves, Tab-B-sees-tombstone within 28ms).
+   - Verified: 4-bot games proceed cleanly; HandResult modal renders; game-complete modal surfaces without UI regressions.
+
+3. **Frost (4cd8963)** — Live scoring proof: FanCalculator wired end-to-end.
+   - Proof: 6 new acceptance tests (`LiveHuFanWiringTests.cs`) + Playwright wire-tap spec (`playtest-scoring-live.spec.mjs`)
+   - Verified: concealedHand fan emitted on wire with full Chinese/Pinyin/English labels; 6 CDP-captured WS frames confirm independent wire proof (not bundle echo).
+   - Latest run: 2 distinct Hu's observed in 75s game; Hu#2 carried 1 point from concealedHand fan.
+
+**Integrated Verdict:**
+
+All game-flow gates validated across the entire canonical sequence:
+- Deal ceremony (4 walls + dealer hand) — 14/13/13/13 seat distribution confirmed
+- Hand presentation (face-up for seat 0, face-down for others)
+- Tile interaction (discard, claim window, meld UI)
+- Score resolution (fan evaluation, payment rows, Chinese labels)
+- Modal lifecycle (result → next-hand → game-complete)
+- Multi-game isolation (distinct gameIds, no cross-contamination)
+- UX polish (mobile responsive, leave-seat tombstone broadcast ≤28ms)
+
+**Commits:**
+
+```
+17e69d7 — test(proof): definitive end-to-end visual proof — 10 phases (squash) [Vasquez]
+7d4d0fa — fix(ui): polish pass — settings panel + leave-seat UX proof (squash) [Hicks]
+4cd8963 — test(changsha): live wire-proof for FanCalculator scoring path (squash) [Frost]
+```
+
+**Artifacts:**
+- Visual proof: `playtest-artifacts/screenshots/def-proof-1780583073618/{01-10}.png` (10 canonical phases)
+- Hicks polish: `playtest-artifacts/playtest-hicks-polish.spec.mjs`, `playtest-leave-seat-ux.spec.mjs`
+- Frost scoring: `playtest-artifacts/playtest-scoring-live.spec.mjs`, `LiveHuFanWiringTests.cs` (+6 tests)
+- Decision memos: `.squad/decisions/inbox/frost-scoring-live-wiring.md` (merged to decisions.md)
+
+**Verdict for Stephen:**
+The definitive proof wave confirms the Changsha bring-up is **visually + functionally complete and ready for playtest release**. All 10 canonical phases render without errors, all UX polish metrics (settings panel responsiveness, leave-seat latency) meet target, and fan scoring is wired and validated end-to-end.
