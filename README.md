@@ -1,5 +1,7 @@
 # Mahjong Autotable (Changsha-first)
 
+> 📖 See [STATE-OF-GAME.md](./STATE-OF-GAME.md) for proven game state and deploy guide.
+
 Changsha-style 4-player Mahjong, forked from
 [`pwmarcz/autotable`](https://github.com/pwmarcz/autotable) — a 3D
 tabletop renderer with WebGL tiles, dice, and physics. This fork adds

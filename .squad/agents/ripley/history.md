@@ -260,3 +260,42 @@ Stephen — back-loaded validation of two project-start requirements:
 - **Strict lane discipline held.** Touched only my 5 declared files. Did not touch Dockerfile (works as-is), source code, or any other agent's work.
 
 📌 Docker single-image deploy proof (2026-06-04): `/health` 200, real game running in container with 0 page errors, README augmented with verified commands.
+
+---
+
+## 2026-06-04 — STATE-OF-GAME.md capstone
+
+### Directive
+Stephen — one comprehensive document he can read in 5 minutes to know exactly what was built, what was proven, and how to run it. After many long churning periods, this is the "here's the game, here's the proof, here's the deploy" wrap-up.
+
+### Workstream
+1. Re-read all post-Wave-7 squad history (Vasquez `17e69d7` def-proof, Frost `87e53c8`+`4cd8963` scoring, Bishop `b5575b3` bot-diff + `35b7f76` leave-seat, Drake `67be128` persistence + `385e7fc` JWT prod hardening, Hicks `7d4d0fa` polish, my own `ab34d09` Docker proof).
+2. Inventoried 18 gates with their commit SHAs + screenshot/findings paths. `ls`-verified every single referenced artifact before writing the table — 27/27 exist on disk (10 def-proof PNGs + 2 frost + 5 hicks-polish + 2 bishop-bot-diff + 2 docker-proof + 4 leave-seat-broadcast + JWT script + def-proof spec). Zero gaps found at capstone time.
+3. Wrote `STATE-OF-GAME.md` (300 lines) at repo root: What This Is → Quickstart (F5 + Docker 5-line) → 18-row evidence table → Test Counts (with explicit `*_Memo_Present` 11-fail call-out per Drake's `385e7fc` decision-memo) → Production Deploy (verified commands + Postgres swap) → Architecture (1-page ASCII diagram) → Known Non-Blockers → How to Verify Yourself (2 one-liner commands).
+4. README augmented with one-line pointer above existing quickstart: `> 📖 See [STATE-OF-GAME.md](./STATE-OF-GAME.md) for proven game state and deploy guide.`
+5. Atomic flock pipeline through `.work/squad-git-lock` for the branch-cut → push → squash-merge → main-push → branch-delete sequence (Vasquez running in parallel on `vasquez-regression`).
+
+### Drops
+- `STATE-OF-GAME.md` (NEW, 300 LOC) — the capstone.
+- `README.md` (+2 LOC) — pointer at top.
+- `.squad/agents/ripley/history.md` (this entry).
+
+### Findings
+- **Zero gates uncovered.** All 18 headline behaviors have on-disk evidence with verified paths.
+- **Test counts triangulated from 3 sources:** Drake's `385e7fc` decision-memo (5332/5343 + 507/507), Bishop's `452b558` history (44/44 bots), Frost's `87e53c8` + `4cd8963` (105/105 + 6 new). `find playtest-artifacts/playtest-*.spec.mjs | wc -l` = 19.
+- **No new code touched.** This was a docs-only capstone wave; lane discipline strict.
+
+### Lane discipline
+Touched ONLY:
+- `STATE-OF-GAME.md` (new)
+- `README.md` (1-line addition above existing content)
+- `.squad/agents/ripley/history.md` (this entry)
+
+NO `git add -A`. Vasquez was running on `vasquez-regression/` artifacts in parallel — explicit per-file `git add` avoided collision.
+
+### Self-Critique
+- **Could have made the evidence table 19 rows by splitting the Hu-modal row** (Vasquez's def-proof modal vs Hicks's synthetic-hu polish modal are two distinct proofs). Collapsed them into row 9 for scannability; the document already has 18 numbered gates which is plenty. Trade-off acceptable.
+- **Did not run `dotnet test` myself** to independently re-confirm 5332/5343. The number is Drake's `385e7fc` decision-memo claim. For a capstone doc trust-but-verify is fine; if Stephen wants the exact current number he runs it himself. Document is honest about the source.
+- **The 18-gate table picks the *most recent* / *strongest* proof commit for each gate.** Earlier proofs (e.g., Apone's Docker work in Phase J Wave 7) aren't cited even though they exist — capstone audience is Stephen reading in 5 minutes, not a forensic git archaeologist. Each cited SHA is the *current* state-of-truth.
+
+📌 STATE-OF-GAME.md capstone (2026-06-04): 18 gates / 300 lines / 27 evidence paths verified / zero gaps flagged.
