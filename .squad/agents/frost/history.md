@@ -367,3 +367,90 @@ lane-files only.
 
 
 📌 Scoring thoroughness audit (2026-06-03): 26 new FanCalculator tests, 1 prod bug fixed (spurious fans on non-winning hands) — committed `87e53c8`.
+
+## Wave-O — Live scoring wire-proof (2026-06-04)
+
+**Goal.** Prove end-to-end that `FanCalculator` fires during a real
+4-bot Changsha game AND that fans land on the WebSocket payload the
+frontend reads — not just unit-test isolation.
+
+**Outcome.** ✅ Wiring verified intact at every layer. Memory entry
+claiming "FanCalculator NOT wired" was OUTDATED — corrected via
+downvote + new fact. Decision memo:
+`.squad/decisions/inbox/frost-scoring-live-wiring.md`.
+
+**Verified live path (citations).**
+
+- `Changsha/ChangshaStateMachine.cs:944` — `Score` action calls
+  `FanCalculator.EvaluateHand` via `EvaluateFanBonuses`.
+- `Changsha/ChangshaStateMachine.cs:983` — `FanWireName` enum →
+  camelCase id mapping.
+- `Autotable/ChangshaToAutotableTranslator.cs:274-285` —
+  `BuildHandResult` projects `score.Fans` into `ScoreResultEntry.Fans`
+  with `FanCatalog.Get` labels.
+- `Autotable/AutotableProtocol.cs:296-317` — `FanEntry` wire schema
+  `{ fan, points, chinese, pinyin, english }`.
+- `Autotable/AutotableProtocol.cs:479-486` —
+  `JsonIgnoreCondition.WhenWritingNull` → Draw outcomes OMIT
+  `scoreResult` entirely (not `null`).
+- `Changsha/Runtime/ChangshaGameRuntime.cs:1972-2036` — SignalR
+  `ScoringComplete` mirror of the same shape.
+
+**Acceptance tests (new).** 6 tests in
+`tests/Mahjong.Autotable.Api.Tests/Changsha/Scoring/LiveHuFanWiringTests.cs`:
+
+1. `SelfDraw7PairHu_WireSerialization_CarriesFansWithLabels`
+2. `Discard7PairHu_WireSerialization_CarriesSevenPairsAndConcealedHandFans`
+3. `Draw_WireSerialization_OmitsScoreResultAndWinResult` (pins
+   `WhenWritingNull` semantics).
+4. `FullFlushSelfDrawConcealedHu_StacksFans_FanPointsMatchesPerFanSum`
+5. `WireSerialization_PaymentsRows_HaveFanReasonPrefix`
+6. `FanWireIdentifiers_RoundTripThroughFanCatalog` (catalog drift
+   guard).
+
+All 6 PASS. Targeted sweep
+(`~Scoring|~FanCalculator|~HandResult`) remains 105/105 green.
+
+**Live wire-tap spec (new).**
+`playtest-artifacts/playtest-scoring-live.spec.mjs` — spectates real
+4-bot Hard games at `:8088`, loops up to 6 fresh games, captures on
+TWO channels: (a) bundle `client.result.on('update')` events, (b)
+CDP `Network.webSocketFrameReceived` to prove the wire payload
+itself carries fans. Asserts at least one Hu with non-empty fans +
+full schema + payments fan-reason rows.
+
+**Latest run (game 1):**
+
+```
+[frost-scoring-live] Hu#1 winner=1 basePoints=1 fanPoints=0 fans=[]
+[frost-scoring-live] Hu#2 winner=2 basePoints=2 fanPoints=1 fans=[concealedHand]
+[frost-scoring-live] wireSnapshot: result=111, Hu=111, fans=6
+[frost-scoring-live] FIRST Hu-with-fans @ game 1: winner=2,
+    basePoints=2, fanPoints=1, category=smallWin
+[frost-scoring-live]   · concealedHand (门清 / mén qīng / Concealed
+    Hand) = 1 pts
+[frost-scoring-live] result: PASS
+```
+
+Findings + screenshot:
+`playtest-artifacts/screenshots/frost-scoring-live-2026-06-04T14-11-30-915Z/`.
+
+**4-bot Draw investigation.** Hicks's earlier "stuck on hand 1"
+observation was an ARTEFACT of my first spec's poller — it counted
+each snapshot replay (327 in 300 s) as a fresh event. The current
+spec de-duplicates by `winner|basePoints|fanPoints|fan-ids`
+fingerprint and correctly observes 2 distinct Hu's in a single 75 s
+game. 4-bot Hard advances normally. The "Medium Draw-bias"
+hypothesis remains open as a future bot-strategy tuning wave (my
+lane) but is OUT OF SCOPE for this wave.
+
+**Lane discipline.** Touched only the explicit allowlist: the new
+test file, the new spec, screenshots, the decision memo, and this
+history file. Did NOT touch frontend, Players, runtime, translator,
+state machine, or scoring production sources.
+
+
+📌 Live scoring wire-proof (2026-06-04): 6 new wire-serialization
+tests + CDP-tapped Playwright spec PASS — `FanCalculator` is wired
+end-to-end and fans reach the WebSocket. Memo:
+`.squad/decisions/inbox/frost-scoring-live-wiring.md`.

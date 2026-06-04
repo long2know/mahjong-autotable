@@ -1,0 +1,195 @@
+{
+  "baseUrl": "http://127.0.0.1:8088",
+  "startedAt": "2026-06-04T14:11:30.965Z",
+  "perGame": [
+    {
+      "gameIndex": 0,
+      "gameId": "frost-scoring-live-1780582290965-0-3586",
+      "huForGame": 2,
+      "huWithFansForGame": 1,
+      "firstHuWithFansForGame": {
+        "winner": 2,
+        "type": "Hu",
+        "score": [
+          {
+            "seat": 0,
+            "delta": -1
+          },
+          {
+            "seat": 1,
+            "delta": 0
+          },
+          {
+            "seat": 2,
+            "delta": 2
+          },
+          {
+            "seat": 3,
+            "delta": -1
+          }
+        ],
+        "hand": [
+          4,
+          9,
+          105,
+          18,
+          23,
+          99,
+          25,
+          31,
+          5,
+          100,
+          30,
+          17,
+          6,
+          15
+        ],
+        "nextBanker": 2,
+        "winResult": {
+          "winningSeatIndex": 2,
+          "winType": "discard",
+          "winPattern": "standard",
+          "winningTileId": 15,
+          "sourceSeatIndex": 3,
+          "allPatterns": [],
+          "isRobbedKong": false,
+          "isSelfDraw": false,
+          "isKongReplacement": false
+        },
+        "scoreResult": {
+          "category": "smallWin",
+          "basePoints": 2,
+          "payments": [
+            {
+              "fromSeatIndex": 3,
+              "toSeatIndex": 2,
+              "amount": 1,
+              "reason": "SmallWin-discard"
+            },
+            {
+              "fromSeatIndex": 3,
+              "toSeatIndex": 2,
+              "amount": 1,
+              "reason": "fan:concealedHand"
+            }
+          ],
+          "fans": [
+            {
+              "fan": "concealedHand",
+              "points": 1,
+              "chinese": "门清",
+              "pinyin": "mén qīng",
+              "english": "Concealed Hand"
+            }
+          ],
+          "fanPoints": 1
+        }
+      },
+      "wireForGame": {
+        "resultFramesSeen": 111,
+        "huFramesSeen": 111,
+        "fansFramesSeen": 6,
+        "huFingerprints": [
+          "1|1|0|",
+          "2|2|1|concealedHand"
+        ]
+      }
+    }
+  ],
+  "wireSnapshot": {
+    "resultFramesSeen": 111,
+    "huFramesSeen": 111,
+    "fansFramesSeen": 6,
+    "uniqueHuFingerprints": [
+      "1|1|0|",
+      "2|2|1|concealedHand"
+    ],
+    "lastFansFrame": null
+  },
+  "huObserved": 2,
+  "huWithFansObserved": 1,
+  "firstHuWithFans": {
+    "gameIndex": 0,
+    "gameId": "frost-scoring-live-1780582290965-0-3586",
+    "value": {
+      "winner": 2,
+      "type": "Hu",
+      "score": [
+        {
+          "seat": 0,
+          "delta": -1
+        },
+        {
+          "seat": 1,
+          "delta": 0
+        },
+        {
+          "seat": 2,
+          "delta": 2
+        },
+        {
+          "seat": 3,
+          "delta": -1
+        }
+      ],
+      "hand": [
+        4,
+        9,
+        105,
+        18,
+        23,
+        99,
+        25,
+        31,
+        5,
+        100,
+        30,
+        17,
+        6,
+        15
+      ],
+      "nextBanker": 2,
+      "winResult": {
+        "winningSeatIndex": 2,
+        "winType": "discard",
+        "winPattern": "standard",
+        "winningTileId": 15,
+        "sourceSeatIndex": 3,
+        "allPatterns": [],
+        "isRobbedKong": false,
+        "isSelfDraw": false,
+        "isKongReplacement": false
+      },
+      "scoreResult": {
+        "category": "smallWin",
+        "basePoints": 2,
+        "payments": [
+          {
+            "fromSeatIndex": 3,
+            "toSeatIndex": 2,
+            "amount": 1,
+            "reason": "SmallWin-discard"
+          },
+          {
+            "fromSeatIndex": 3,
+            "toSeatIndex": 2,
+            "amount": 1,
+            "reason": "fan:concealedHand"
+          }
+        ],
+        "fans": [
+          {
+            "fan": "concealedHand",
+            "points": 1,
+            "chinese": "门清",
+            "pinyin": "mén qīng",
+            "english": "Concealed Hand"
+          }
+        ],
+        "fanPoints": 1
+      }
+    }
+  },
+  "pageErrors": [],
+  "issues": []
+}
