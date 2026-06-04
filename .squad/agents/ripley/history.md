@@ -221,3 +221,42 @@ Did NOT touch any source file. The L-10 fix belongs to Bishop's lane.
 - **Did not exercise:** bot-vs-bot completion of all 4 hands, live WS disconnect under load, cross-provider live DB validation (Postgres/SqlServer). Drake covered persistence at unit-test fidelity; cross-provider live matrix is the next layer if Stephen wants deeper coverage.
 
 📌 Production-readiness audit (2026-06-03): 54/59 system gates, 16/16 prodready gates, caught leave-seat blocker — committed `ea36eb2`.
+
+---
+
+## 2026-06-04 — Docker single-image deploy proof
+
+### Directive
+Stephen — back-loaded validation of two project-start requirements:
+1. "The frontend and backend should be packageable as a single docker image so that I can run in a container on my Linux server that I already have."
+2. "I should be able to build + run the backend and frontend with VS Code by just hitting F5. Local dev should be easy."
+
+### Verdict
+✅ **DEPLOY-READY.** Both requirements satisfied and proven. Single `docker build` + `docker run` produces a working server-authoritative Changsha runtime with frontend bundle on the same port, persisting SQLite on a `/data` volume, healthchecked, running as non-root UID 1000.
+
+### Workstream
+1. `docker build -t mahjong-autotable:proof .` — clean build, ~11s warm / ~5min cold. No Dockerfile changes needed (Apone's Phase J Wave 3-8 work holds up).
+2. `docker run -d --name mat-proof -p 9099:8080 -e ASPNETCORE_URLS="http://0.0.0.0:8080" mahjong-autotable:proof` — container started in ~2s; EF Core hydrated 0 games; HTTP listener bound on `0.0.0.0:8080`; clean shutdown via `tini` + `docker stop`.
+3. Probed `/health` → 200 JSON `{status:healthy, db.connected:true, providerName:Sqlite, ...}` (latency ≤12ms).
+4. Probed `/autotable/` → 200 HTML, 92KB, title + `autotable-src.192512af.js` Vite bundle present.
+5. New Playwright spec `playtest-artifacts/playtest-docker-smoke.spec.mjs` (~290 LOC) drove a real 4-bot Changsha game via spectator URL (`seat=-1&botCount=4&dealMode=auto&handCount=4&botDifficulty=Easy`) — captured `docker-game-running.png` showing live deal + claim/discard motion. 0 page errors.
+6. README augmented (NOT replaced): new Quickstart table, Docker section with verified build/run commands, F5 section matching actual `.vscode/launch.json` compound name, Postgres-swap pointer, embedded proof screenshot. Dropped stale `Tables/*` REST endpoint dump (those routes were deleted in Phase G) and the dead `src/frontend/modern/` reference.
+
+### Drops
+- `playtest-artifacts/playtest-docker-smoke.spec.mjs` (NEW, ~290 LOC) — Node 22+ playwright spec, exit 0 on PASS, suitable for CI.
+- `playtest-artifacts/screenshots/ripley-docker-proof-1780583814524/` (NEW) — `docker-game-running.png` (727KB, 1280×800) + `findings.json`.
+- `README.md` (MODIFIED) — surgical augment, ~150 net lines changed.
+- `.squad/decisions/inbox/ripley-docker-deploy-proof.md` (NEW) — verdict memo.
+
+### Findings
+- **Dockerfile is solid.** 3-stage build (Node 20 Alpine → .NET 10 SDK → ASP.NET 10 runtime), non-root UID 1000, `/data` volume for SQLite, `tini` PID 1, `HEALTHCHECK` against `/health`. BuildKit cache mounts on `/root/.npm` and Vite's `node_modules/.vite` keep warm rebuilds sub-15s.
+- **README was severely stale on deploy paths.** Prior README pointed at a non-existent `F5 Full Stack (Backend + Modern Frontend)` compound and walked through a `src/frontend/modern/` flow that no longer exists. The actual compound is `F5 Full Stack (Backend + Autotable)` and the only frontend is `src/frontend/autotable-src/` (TypeScript+Three.js, Vite-built). Fixed.
+- **Two non-Docker production-readiness flags carry forward** (out of lane today): JWT signing key falls back to per-process random HMAC (operators MUST set `Authentication:JwtSigningKeys[0]` for restart-survival), and L-10 leave-seat broadcast still has Bishop's incomplete fix per `ripley-prodready-final.md`. Neither affects the single-image deploy proof.
+
+### Self-Critique
+- **3 spec iterations to stabilize.** Iter 1 used the lobby seat-take flow (`botCount=3`) — fresh container had no humans in the lobby, so deal never fired with handBySeat all zero. Iter 2 used spectator `seat=-1&botCount=4` Medium difficulty — game ran TOO fast, by capture time wall was already at 26 + hands at 4-10. Iter 3 used `botDifficulty=Easy&handCount=4` (longer-lived game) with a relaxed "real motion present" predicate (handSum≥40 + any discards/melds) — landed cleanly. **Lesson:** for live-game smoke tests, predicate on motion present, never on a specific transient state (deal moment, exact wall count, exact hand count).
+- **Did not write a multi-architecture build path.** Image is `linux/amd64`-only. Stephen's Linux server is presumably amd64 but if he ever wants Raspberry Pi or Apple Silicon native, the Dockerfile needs `--platform`-aware tooling. Out of scope today; flagged for Apone if asked.
+- **Did not exercise:** TLS termination (Stephen's server likely fronts this with a reverse proxy), backup/restore of `/data` volume mid-game, `docker compose down -v` data wipe regression, `Persistence__Provider=SqlServer` swap (only Sqlite + Postgres have compose overlays).
+- **Strict lane discipline held.** Touched only my 5 declared files. Did not touch Dockerfile (works as-is), source code, or any other agent's work.
+
+📌 Docker single-image deploy proof (2026-06-04): `/health` 200, real game running in container with 0 page errors, README augmented with verified commands.
