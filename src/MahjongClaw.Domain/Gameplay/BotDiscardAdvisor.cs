@@ -1317,15 +1317,18 @@ public static class BotDiscardAdvisor
                             visibleCounts,
                             distinctOrphanTypes);
 
-                        var nonOrphanCandidates = candidates
-                            .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
-                            .ToList();
-
-                        if (nonOrphanCandidates.Count > 0)
+                        if (hasLiveThirteenOrphansPath)
                         {
-                            candidates = nonOrphanCandidates;
+                            var nonOrphanCandidates = candidates
+                                .Where(candidate => !candidate.Tile.IsHonor && !IsTerminalSuitedTile(candidate.Tile))
+                                .ToList();
+
+                            if (nonOrphanCandidates.Count > 0)
+                            {
+                                candidates = nonOrphanCandidates;
+                            }
                         }
-                        else if (!hasLiveThirteenOrphansPath)
+                        else
                         {
                             var orphanCandidates = candidates
                                 .Where(candidate => candidate.Tile.IsHonor || IsTerminalSuitedTile(candidate.Tile))
