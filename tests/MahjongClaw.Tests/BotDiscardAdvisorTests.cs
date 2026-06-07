@@ -2603,7 +2603,7 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
-    public void SelectDiscardIndex_WithChineseOfficialNearThirteenOrphans_WhenMissingOrphanIsDead_DiscardsNonOrphanTile()
+    public void SelectDiscardIndex_WithChineseOfficialNearThirteenOrphans_WhenMissingOrphanIsDead_DiscardsOrphanTile()
     {
         var handTiles = new List<Tile>
         {
@@ -2634,7 +2634,8 @@ public class BotDiscardAdvisorTests
             visibleTiles,
             MahjongRuleset.ChineseOfficial);
 
-        handTiles[discardIndex].Should().BeOneOf(new Tile(TileSuit.Dots, 2), new Tile(TileSuit.Dots, 3));
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 2));
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 3));
     }
 
     [Fact]
@@ -3951,6 +3952,44 @@ public class BotDiscardAdvisorTests
             MahjongRuleset.Changsha258);
 
         handTiles[discardIndex].Should().Be(new Tile(TileSuit.Dots, 3));
+    }
+
+    [Fact]
+    public void SelectDiscardIndex_PivotsFromDeadThirteenOrphansPath_WhenOrphanTilesAreExhausted()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 1),
+            new(TileSuit.Characters, 9),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 1),
+            new(TileSuit.Dots, 9), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1),
+            new(TileSuit.Bamboos, 9),
+            new(TileSuit.Winds, 0, Wind.East), new(TileSuit.Winds, 0, Wind.East),
+            new(TileSuit.Winds, 0, Wind.South),
+            new(TileSuit.Dragons, 0, null, Dragon.Red), new(TileSuit.Dragons, 0, null, Dragon.Red),
+            new(TileSuit.Dots, 5)
+        };
+
+        var visibleTiles = new List<Tile>
+        {
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.West), new(TileSuit.Winds, 0, Wind.West),
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Winds, 0, Wind.North), new(TileSuit.Winds, 0, Wind.North),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.Green), new(TileSuit.Dragons, 0, null, Dragon.Green),
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White),
+            new(TileSuit.Dragons, 0, null, Dragon.White), new(TileSuit.Dragons, 0, null, Dragon.White)
+        };
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.ChineseOfficial);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Dots, 5));
     }
 
     [Fact]
