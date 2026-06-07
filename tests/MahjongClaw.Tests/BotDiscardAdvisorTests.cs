@@ -3893,6 +3893,38 @@ public class BotDiscardAdvisorTests
     }
 
     [Fact]
+    public void SelectDiscardIndex_ProtectsFallbackPair_WhenChangshaSmallWinTilesAreDead()
+    {
+        var handTiles = new List<Tile>
+        {
+            new(TileSuit.Characters, 6), new(TileSuit.Characters, 6),
+            new(TileSuit.Dots, 1), new(TileSuit.Dots, 3), new(TileSuit.Dots, 4), new(TileSuit.Dots, 7), new(TileSuit.Dots, 9),
+            new(TileSuit.Bamboos, 1), new(TileSuit.Bamboos, 3), new(TileSuit.Bamboos, 4), new(TileSuit.Bamboos, 6), new(TileSuit.Bamboos, 7),
+            new(TileSuit.Characters, 1), new(TileSuit.Characters, 3)
+        };
+
+        var visibleTiles = new List<Tile>();
+        foreach (var suit in new[] { TileSuit.Characters, TileSuit.Dots, TileSuit.Bamboos })
+        {
+            foreach (var rank in new[] { 2, 5, 8 })
+            {
+                for (var i = 0; i < 4; i++)
+                {
+                    visibleTiles.Add(new Tile(suit, rank));
+                }
+            }
+        }
+
+        var discardIndex = BotDiscardAdvisor.SelectDiscardIndex(
+            handTiles,
+            Array.Empty<Tile>(),
+            visibleTiles,
+            MahjongRuleset.Changsha258);
+
+        handTiles[discardIndex].Should().NotBe(new Tile(TileSuit.Characters, 6));
+    }
+
+    [Fact]
     public void SelectDiscardIndex_PreservesSoleSmallWinPair_WhenNoLive258InDominantSuit()
     {
         var handTiles = new List<Tile>
