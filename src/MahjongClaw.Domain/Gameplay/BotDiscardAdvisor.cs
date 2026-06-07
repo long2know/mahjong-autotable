@@ -2350,6 +2350,8 @@ public static class BotDiscardAdvisor
             return true;
         }
 
+        var pairCount = handCounts.Count(entry => entry.Value >= 2);
+
         foreach (var tile in Changsha258SmallWinPairTiles)
         {
             handCounts.TryGetValue(tile, out var handCount);
@@ -2371,7 +2373,10 @@ public static class BotDiscardAdvisor
 
                 if (remainingCopies >= 1 && HasAdjacentSuitedTile(handCounts, tile))
                 {
-                    return true;
+                    if (pairCount == 0)
+                    {
+                        return true;
+                    }
                 }
 
                 continue;
