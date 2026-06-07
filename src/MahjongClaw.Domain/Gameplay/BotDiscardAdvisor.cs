@@ -2281,6 +2281,7 @@ public static class BotDiscardAdvisor
             return false;
         }
 
+        var hasMissingOrphan = false;
         foreach (var tile in ChineseOfficialOrphanTileTypes)
         {
             if (ownedCounts.ContainsKey(tile))
@@ -2288,14 +2289,15 @@ public static class BotDiscardAdvisor
                 continue;
             }
 
+            hasMissingOrphan = true;
             visibleCounts.TryGetValue(tile, out var visibleCount);
-            if (4 - visibleCount > 0)
+            if (4 - visibleCount <= 0)
             {
-                return true;
+                return false;
             }
         }
 
-        return false;
+        return hasMissingOrphan;
     }
 
     private static IReadOnlySet<Tile> BuildLiveSmallWinPairCandidates(
