@@ -4587,3 +4587,16 @@ Vasquez/Frost lanes.
 
 📌 Polish pass shipped (2026-06-04): settings panel sized correctly on
 mobile/tablet, Bishop leave-seat broadcast clears peers in 28 ms.
+
+
+### 2026-05-26 — First-play P0 fixes (5 surgical changes, SHA 554749a)
+
+Hicks's static code audit identified 6 hard blockers across the bare-URL fresh-user flow. Shipped Fix-1 (gameId minting in buildUrl), Fix-2 (dealMode=auto default), Fix-3 (tour is now opt-in only), Fix-4 (deal button is single-click with disabled-tooltip), and Fix-5 (discard rejections surface 2s toasts). All validated via smoke tests and TypeScript type-check.
+
+**Key learning:** The tour overlay at z=2000 was the highest-friction blocker — auto-mounting above the lobby and intercepting pointer events. By making it strictly opt-in (clickable "Take a tour" link in the lobby footer), the bare-URL user lands on an interactive table without friction.
+
+### 2026-05-26 — Turn-indicator wave (2 additions, SHA 7a50257)
+
+Vasquez's postfix-verify uncovered a new P0-NEW: after a user discard, subsequent turns had no visual "your turn" indicator. Hicks shipped the turn-banner (3-state priority: claim window → pickup → discard) and canvas pointer-cursor affordance. Banner appears within 500ms of seat reaching 14 tiles, includes live claim-countdown, and uses `requestAnimationFrame` debounce to avoid reflow thrashing during tile deals.
+
+**Key learning:** State-driven turn logic (reading `cli.claim`/`cli.pickup`/`hasExtraHandTile()`) is more reliable than inferring from DOM animations. The banner is a view layer over those state channels, not the source of truth.

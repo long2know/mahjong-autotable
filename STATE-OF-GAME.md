@@ -298,3 +298,71 @@ docker stop mat-proof && docker rm mat-proof
 
 **Ready to ship.** Run the two verification commands above against
 your deploy and you're done.
+
+---
+
+## 2026-05-26 — Playability wave: Bare-URL fresh-user flow
+
+### What was blocked
+
+Stephen Long's bare-URL entry point (`http://127.0.0.1:8088/autotable/`, no query params) had 4 P0 blockers preventing play progression:
+- **P0-D:** "Apply & Start" button reloaded the page with lobby query params but no `gameId`, so auto-connect was skipped (required manual Connect button click).
+- **P0-H:** Tile-click-to-discard was silently rejected with zero UI feedback when the user tried to play off-turn or before picking enough tiles from the wall.
+- **P0-I & P0-K:** Bots stalled during claim windows, leaving the table frozen for 5s even when the human user had no winning claim opportunity.
+- **P1-B:** Tour overlay auto-mounted above the lobby at z=2000, intercepting all pointer events and blocking access to lobby controls without an obvious Skip button.
+
+Hicks's static code audit pinpointed the root causes (6 hard blockers total across tour overlay, deal button, tile interaction, gameId minting, dealMode default, and auto-connect gating). Vasquez's live playtest spec (`playtest-artifacts/playtest-stephen-first-play.spec.mjs`) confirmed 4/4 P0s in real-time.
+
+### What shipped (5 fixes)
+
+**Wave 1 (Hicks, SHA 554749a):**
+- `src/frontend/autotable-src/src/lobby.ts:437-459` — `mintFreshGameId()` now generates unique IDs when Quick Match is clicked, ensuring `client-ui.start()` auto-connects post-reload.
+- `src/frontend/autotable-src/src/lobby.ts:192-200` + `index.html:1158-1159` — Default `dealMode=auto` so fresh users don't have to manually pick tiles before their hand reaches 14.
+- `src/frontend/autotable-src/src/index.ts:103-117` + `index.html:1569-1574` — Tour is now opt-in only (click "Take a tour" link in lobby footer); no auto-mounted overlay.
+- `src/frontend/autotable-src/src/game-ui.ts:678-712` + `624-686` — Deal button is now single-click with `title="Take a seat first"` tooltip when disabled.
+- `src/frontend/autotable-src/src/world.ts:21,461-535,1040-1075` — `emitDiscard()` rejections now surface 2s toasts ("Not your turn", "Pick from the wall first", etc.) instead of silently failing.
+
+Postfix-verify (Vasquez, SHA abe5e86) confirmed all 5 fixes live across 3 independent test runs. Uncovered new P0-NEW: no visual "your turn" indicator after a user discard, causing the table to appear frozen on subsequent turns.
+
+**Wave 2 (Hicks, SHA 7a50257):**
+- `src/frontend/autotable-src/index.html:407-415` + `style.css:443-499` + `game-ui.ts:1672-1825` — Added `#turn-banner` floating pill displaying "Your turn — click a tile to discard" / "Your turn — pick N tiles" / "Claim opportunity — Pong/Chow/Kong/Hu" with live claim-countdown. Banner appears within 500ms of seat reaching 14 tiles, uses `requestAnimationFrame` debounce to avoid reflow thrashing.
+- `style.css:493-499` + `game-ui.ts:1810` — Hand-tile hover affordance: canvas cursor turns `pointer` when it's your turn with 14 tiles, signaling discardability.
+
+(Bishop, SHA c7fdb8b): Backend fix for the claim-window 5s stall. Added `CanResolveEarly(ChangshaGameInstance)` logic that compares unresponded seats' hypothetical max claims against the current leader's tier using the exact same `TierOf` + `CounterClockwiseDistance` ordering used by claim resolution. If no unresponded seat could win, the window resolves immediately (except kong-robbing windows which must wait). Tested with 11 new unit cases + 168 existing acceptance tests (all pass). Live all-bots smoke showed ~30% throughput gain (46–51 discards/60s post-fix vs 31–44 pre-fix).
+
+### Verified playable (Vasquez final-verify, SHA 84522b9)
+
+Extended the playtest spec with a state-driven autoplay driver (Phase H3, emits every 250ms) and continuous-play measurement (Phase N, 90s window, PASS = ≥5 discards OR gameCompleted). All 3 runs reached game completion with banner and cursor affordances live:
+
+```
+Run 1: gameCompleted=true, 61 total discards, 4 discard-phase turns captured
+Run 2: gameCompleted=true, 19 total discards, 3 discard-phase turns captured  
+Run 3: gameCompleted=true, 61 total discards, 4 discard-phase turns captured
+```
+
+**Flow verified end-to-end:**
+1. Bare URL `http://127.0.0.1:8088/autotable/` → no query params
+2. Skip onboarding card (P1 friction, not blocking)
+3. Click **Quick Match** (no tour overlay blocking it)
+4. Page reloads with `?gameId=changsha-<8hex>&dealMode=auto&botCount=3&...`
+5. Auto-connect succeeds (gameId param present, Connect button hidden)
+6. Take seat 0 (auto-seat via bot-fill, or manual radio click)
+7. Auto-deal fires (dealMode=auto)
+8. Dealer hand reaches 14 tiles → turn-banner appears "Your turn — click a tile to discard"
+9. Click hand tile → emitDiscard succeeds, discard animation fires
+10. Turn rotates to next player → banner updates "Waiting for your turn" OR shows opponent's discard
+11. Bots play in quick succession (claim-window early-resolve gates timeout waiting)
+12. User discards again when their turn returns
+13. ... play continues until game completion (Hu/draw) in ~60s
+
+**Zero P0 blockers remain.** The playability wave closes the gap between "production-ready tests with URL params" and "fresh user on bare URL".
+
+### How to verify
+
+```bash
+# The final-verify spec (deterministic game flow from bare URL, 3/3 PASS)
+E2E_BASE_URL=http://127.0.0.1:8088 \
+    npx playwright test playtest-artifacts/playtest-stephen-first-play.spec.mjs --headed
+```
+
+Or just visit `http://127.0.0.1:8088/autotable/` in a browser, click Quick Match, and play.

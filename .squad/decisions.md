@@ -18262,3 +18262,22 @@ ab34d09 — chore(deploy): docker build+smoke proof + README deploy guide (squas
 - ✅ Prod deployment command verified + documented
 
 **Ready for Stephen's production deploy.**
+
+
+## 2026-05-26 — Playability wave: Stephen can play (HEAD 84522b9)
+
+**Complaint:** Stephen Long rejected three times that the bare-URL entry point `http://127.0.0.1:8088/autotable/` was not production-ready. Hicks performed a static code audit (6 hard blockers across lobby UX, tour overlay, deal button, tile interaction, and auto-connect). Vasquez ran a live playtest spec confirming 4 P0 blockers that froze user progression.
+
+**Wave 1 (554749a):** Hicks shipped 5 frontend surgical fixes — gameId minting in Quick Match, dealMode=auto default, tour is now opt-in, deal button single-click + tooltip, and discard rejections surface toast feedback. Vasquez postfix-verified with 3 independent runs, uncovering a new P0-NEW issue (no turn indicator banner) that halted user play after one rotation.
+
+**Wave 2 (7a50257 + c7fdb8b + 84522b9):** Hicks added a high-contrast turn-banner indicator ("Your turn — click a tile to discard") + canvas pointer-cursor affordance. Bishop fixed the claim-window 5s stall with CanResolveEarly logic (30% throughput gain in bot playtests). Vasquez's final-verify spec (3/3 PASS continuous-play loop, gameCompleted=true) confirmed the bareURL flow end-to-end.
+
+**Verified playable:** Bare URL `http://127.0.0.1:8088/autotable/` → skip onboarding → Quick Match → reload (auto-connect via gameId param) → take seat → auto-deal (dealMode=auto) → discard → turn banner guides turn rotation → play continues to game completion. No P0 blockers remain.
+
+| Agent | Commit | What |
+|-------|--------|------|
+| Hicks | 554749a | 5 P0 fixes — URL gameId minting, dealMode=auto, tour opt-in, deal single-click, discard toast |
+| Vasquez | abe5e86 | postfix verify — 3 runs, P0-NEW turn-indicator gap exposed |
+| Hicks | 7a50257 | turn-banner + canvas cursor affordance, P0-NEW cleared |
+| Bishop | c7fdb8b | CanResolveEarly claim-window fix, 30% throughput gain, P1-NEW bot-stall cleared |
+| Vasquez | 84522b9 | final-verify 3/3 PASS — continuous-play loop, gameCompleted=true |

@@ -3252,3 +3252,62 @@ no code regressions were found.
 
 (to be backfilled after the flock-pipeline commit)
 
+
+
+## 2026-06-08 — Stephen-first-play audit ⛔ NOT PRODUCTION READY
+
+Stephen Long rejected the team's "production ready" claim for the 3rd time. I built a
+Playwright spec that simulates Stephen's grandma scenario: open
+http://127.0.0.1:8088/autotable/ with NO query params and walk through the entire flow.
+
+**Verdict: 4 P0 blockers + 1 P1 confusion + 2 P2 polish items.** Stable across 4 runs.
+
+### P0 Blockers
+
+1. **(D) Apply & Start does NOT auto-connect** — lobby.ts:448 buildUrl() omits gameId,
+   client-ui.ts:490 start() only auto-connects when gameId is present. User lands on
+   empty 3D table with Connect button still showing.
+
+2. **(H) Discard silently rejected, NO UI feedback** — world.emitDiscard() returns false
+   (DealerExtra phase in Manual deal mode, or pickupCurrent=null), no toast, no
+   console.warn. User taps a hand tile and nothing happens.
+
+3. **(I) Bots stall after partial round** — no other seat discards over 30s. Cascade
+   from H.
+
+4. **(K) 60s sustained observation: zero progress** — game is dead in the water.
+
+### Artifacts
+
+- Spec: `playtest-artifacts/playtest-stephen-first-play.spec.mjs` (~45KB, phases A–L)
+- Findings: `playtest-artifacts/screenshots/stephen-first-play-2026-06-08T20-31-50-566Z/findings.md`
+- 18 PNG screenshots + summary.json
+- Branch pushed: `test/vasquez-stephen-first-play` (commit c234a02)
+- Compare URL: https://github.com/long2know/mahjong-autotable/compare/main...test/vasquez-stephen-first-play?expand=1
+- Decision: `.squad/decisions/inbox/vasquez-vasquez-first-play-audit-bare-url-is-not-productio.md`
+
+### Recommendation
+
+1. Fix P0 D (lobby.ts buildUrl mints gameId) — ~5 lines, single file
+2. Fix P0 H (default dealMode=auto OR add discard rejection toast)
+3. Re-run the spec; expect P0 count to drop to 0–1
+4. THEN claim production ready
+
+
+### 2026-05-26 — First-play audit: 4 P0 blockers live-confirmed (SHA abe5e86 postfix)
+
+Vasquez built a Playwright spec opening `http://127.0.0.1:8088/autotable/` with zero query params, walking Stephen-as-grandma through the happy path (lobby dismiss → Quick Match → Apply & Start → manual Connect → take seat → hold-deal → discard). Over 4 independent runs, confirmed P0-D (no auto-connect after Apply), P0-H (silent discard rejection), P0-I (bot stall after partial round), and P0-K (sustained play freezes in 60s).
+
+**Key learning:** The `cli.things` DTO collection has `slotName: string` properties, not `Slot` objects — always use numeric tile IDs when calling `world.emitDiscard()`, never pass the DTO directly. This TypeError was a frequent gotcha during autoplay driver prototyping.
+
+### 2026-05-26 — Postfix verify after Hicks wave (3/3 PASS phases, SHA abe5e86 squash)
+
+Re-ran the spec against bundled fixes (gameId minting, dealMode=auto, tour opt-in, deal single-click, toast rejections). P0-D (no auto-connect) cleared in 3/3 runs, P0-H (silent discard) cleared when Quick Match set dealMode=auto (bots could finally play). Uncovered P0-NEW (no turn banner after 1 user discard halts play). Confirmed zero new console errors and all 168 existing acceptance tests still passing.
+
+**Key learning:** The turn banner is essential for user awareness at turn transitions. Without it, after the user's first discard, they sit idle waiting for bots to return to them, unsure whether the game is processing or frozen.
+
+### 2026-05-26 — Final-verify: continuous-play loop 3/3 PASS (SHA 84522b9, gameCompleted=true)
+
+Extended the spec with Phase H3 autoplay driver (state-driven emits every 250ms) and Phase N continuous-play measurement (90s window, PASS = ≥5 discards OR gameCompleted). All 3 runs reached game completion with the turn-banner and cursor affordances live (Phase O proof). Also patched Phase I/K to gate on `window.__autoplay.gameCompleteAt` so a Hu/draw resolution is no longer mis-reported as a frozen table.
+
+**Key learning:** The banner-grace tick (250ms pause after detecting `hasExtraHandTile()`) is critical — without it the discard banner is never captured by the autoplay observer because the runtime's state update races the reactive banner render. One-tick patience makes the observation reliable.
