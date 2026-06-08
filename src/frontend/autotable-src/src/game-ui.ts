@@ -628,6 +628,15 @@ export class GameUi {
       this.elements.leaveSeat,
       this.elements.toggleSetup,
     ];
+    // Hicks 2026-05-26 — first-play P1 unblock (B3).  When `#deal` is
+    // disabled (no seat) we surface the gate in a tooltip so the user
+    // knows what to do next instead of guessing.  When enabled we
+    // restore the action description.
+    const dealEl = this.elements.deal;
+    const updateDealTitle = (disabled: boolean): void => {
+      dealEl.title = disabled ? 'Take a seat first' : 'Deal a new hand';
+      dealEl.setAttribute('aria-label', dealEl.title);
+    };
     // Phase I Wave 4 — spectators have no seat and can never take one.
     // Keep the .seat-buttons row hidden + the toDisable buttons disabled
     // so the seat-only affordances don't flash visible between connects.
@@ -640,6 +649,7 @@ export class GameUi {
       for (const button of toDisable) {
         button.disabled = true;
       }
+      updateDealTitle(true);
       this.refreshClaimButtons();
       this.refreshBotBanner();
       return;
@@ -663,11 +673,13 @@ export class GameUi {
       for (const button of toDisable) {
         button.disabled = true;
       }
+      updateDealTitle(true);
     } else {
       (document.querySelector('.seat-buttons')! as HTMLElement).style.display = 'none';
       for (const button of toDisable) {
         button.disabled = false;
       }
+      updateDealTitle(false);
     }
     // Phase D — re-evaluate claim button states (selfSeat may have changed)
     // and refresh the bot banner whenever seat ↔ nick mapping shifts.
@@ -678,9 +690,20 @@ export class GameUi {
   private setupDealButton(): void {
     const buttonElement = document.getElementById('deal')! as HTMLButtonElement;
 
-    this.setupProgressButton(buttonElement, 600, () => {
+    // Hicks 2026-05-26 — first-play P1 unblock (B3).  The legacy 600 ms
+    // press-and-hold (setupProgressButton) was opaque: users clicked,
+    // nothing happened, no toast.  Replaced with a single-click
+    // handler.  The `.btn-progress` child is kept so the existing CSS
+    // class doesn't break, but its width stays at 0% so the progress
+    // ribbon never appears.  Tooltip surfaces the disabled-state
+    // reason via the dynamic `title` attr (updated in `updateSeats`).
+    const progressElement = buttonElement.querySelector('.btn-progress') as HTMLElement | null;
+    if (progressElement !== null) {
+      progressElement.style.transitionDuration = '0ms';
+      progressElement.style.width = '0%';
+    }
+    const fireDeal = (): void => {
       const dealType = this.elements.dealType.value as DealType;
-
       // Phase F — fold the latest picker selections into Conditions so the
       // server (or local-relay path) sees the right variant + fives + points
       // + deal-mode on this deal.  defaultsFor() gives us safe per-variant
@@ -688,6 +711,14 @@ export class GameUi {
       const overrides = this.collectConditionOverrides();
       this.world.deal(dealType, overrides);
       this.hideSetup();
+      buttonElement.blur();
+    };
+    buttonElement.onmousedown = null;
+    buttonElement.onmouseup = null;
+    buttonElement.onmouseleave = null;
+    buttonElement.addEventListener('click', () => {
+      if (buttonElement.disabled) return;
+      fireDeal();
     });
   }
 

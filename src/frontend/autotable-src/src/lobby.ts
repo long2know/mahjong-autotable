@@ -189,9 +189,15 @@ interface LobbyState {
 //   • handCount = 4 (mirrors Bishop's runtime east-wind rotation default)
 //   • seed = null (server randomises)
 //   • seat = null (server picks, legacy flow)
+// Hicks 2026-05-26 — first-play P0 unblock: dealMode default flipped to
+// `auto`.  Manual mode parks the dealer in DealerExtra waiting for the
+// user to click 14 individual wall tiles (Vasquez P0-H/I/K cascade —
+// `.squad/decisions/inbox/vasquez-vasquez-first-play-audit-bare-url-is-
+// not-productio.md`).  The manual radio is still selectable for power
+// users; we just stop defaulting fresh users into it.
 const DEFAULTS: LobbyState = {
   variant: 'changsha',
-  dealMode: 'manual',
+  dealMode: 'auto',
   botCount: 3,
   botDifficulty: 'Hard',
   seed: null,
@@ -428,6 +434,30 @@ function resolveInitialState(): LobbyState {
   };
 }
 
+// Hicks 2026-05-26 — first-play P0 unblock.  Mints `changsha-<8 hex
+// chars>` so each lobby-initiated session lands in its own isolated
+// game.  Prefers `crypto.randomUUID()` (everywhere in supported
+// browsers); falls back to `crypto.getRandomValues` and finally to
+// `Math.random()` so the helper never throws on legacy / non-secure
+// contexts.  See `buildUrl` for the call-site rationale.
+function mintFreshGameId(): string {
+  let hex = '';
+  try {
+    const c = (window as { crypto?: Crypto }).crypto;
+    if (c !== undefined && typeof c.randomUUID === 'function') {
+      hex = c.randomUUID().replace(/-/g, '').slice(0, 8);
+    } else if (c !== undefined && typeof c.getRandomValues === 'function') {
+      const buf = new Uint8Array(4);
+      c.getRandomValues(buf);
+      hex = Array.from(buf, b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch { /* fall through to Math.random fallback */ }
+  if (hex === '') {
+    hex = Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, '0');
+  }
+  return `changsha-${hex}`;
+}
+
 function writeLocalStorageDefaults(state: LobbyState): void {
   try {
     window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
@@ -451,9 +481,21 @@ function buildUrl(state: LobbyState): string {
   // a lobby Apply & Start doesn't silently switch the user back to the
   // default game.  client-ui.ts is the source of truth for editing
   // gameId; the lobby just passes it through.
+  //
+  // Hicks 2026-05-26 — first-play P0 unblock (Vasquez P0-D, Hicks B6):
+  // when no gameId is present we mint a per-session one
+  // (`changsha-<8 hex chars>`) so (a) the resulting URL satisfies
+  // `client-ui.start()`'s `getUrlState() !== null` guard at
+  // client-ui.ts:490 and triggers auto-connect, and (b) every fresh
+  // user lands in their own isolated game instead of sharing the
+  // legacy `changsha-default` room with everyone else on the host.
+  // An explicit user-set gameId (tournaments / shared rooms) is kept
+  // verbatim — minting only happens on the bare-URL → lobby path.
   const currentGameId = new URLSearchParams(window.location.search).get('gameId');
   if (currentGameId !== null && currentGameId !== '') {
     p.set('gameId', currentGameId);
+  } else {
+    p.set('gameId', mintFreshGameId());
   }
   p.set('variant', state.variant);
   // dealMode is Changsha-only — Riichi variants ignore it.  Emit only

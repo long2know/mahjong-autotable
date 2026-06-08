@@ -13,6 +13,11 @@ import {
 } from "./types";
 import { Slot } from "./slot";
 import { Thing } from "./thing";
+// Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).  When
+// a click-to-discard is silently rejected we surface a one-line toast
+// so the user knows why the click didn't fire instead of assuming the
+// game is broken.  showToast is the shared `#toast-region` helper.
+import { showToast } from "./toast";
 
 
 interface Select extends Place {
@@ -459,7 +464,10 @@ export class World {
    * `TryHandleDiscardActionAsync` is the authoritative validator).
    */
   emitDiscard(tileOrId: Thing | number): boolean {
-    if (this.seat === null) return false;
+    if (this.seat === null) {
+      this.surfaceDiscardRejection('Take a seat first');
+      return false;
+    }
     let tileId: number;
     let tile: Thing | undefined;
     if (typeof tileOrId === 'number') {
@@ -506,14 +514,38 @@ export class World {
       }
     }
     if (tile && tile.slot.name.startsWith('hand.extra@')) {
+      // Pre-deal preview tile — the runtime hasn't pushed the real
+      // 14th tile yet.  Tell the user to wait for the deal to settle.
+      this.surfaceDiscardRejection('Pick a tile after the deal completes');
       return false;
     }
 
     if (tile && (tile.slot.group !== 'hand' || tile.slot.seat !== this.seat)) {
+      this.surfaceDiscardRejection('That tile is not in your hand');
       return false;
     }
     this.client.discard.set(this.seat, { tileId });
     return true;
+  }
+
+  // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).
+  // Throttled toast surface for silently-rejected discard attempts.
+  // Without this, off-turn / pre-pickup hand clicks are NO-OPs and the
+  // user has no idea why; with it, they see "Not your turn" / "Pick
+  // from the wall first" for ~2 s and learn the rules by playing.
+  // The 1500 ms guard prevents toast spam if the user keeps clicking.
+  private lastDiscardToastAt = 0;
+  private surfaceDiscardRejection(reason: string): void {
+    const now = Date.now();
+    if (now - this.lastDiscardToastAt < 1500) return;
+    this.lastDiscardToastAt = now;
+    try {
+      showToast(reason, 'info', 2000);
+    } catch {
+      // Defensive: showToast falls back to console.warn if the region
+      // is missing.  We never want a toast failure to break the click
+      // path, so swallow any unexpected exception.
+    }
   }
 
   /**
@@ -1011,15 +1043,30 @@ export class World {
     // drag.  Matches "playing in person" semantics: tap a tile, it goes to
     // the discard area.  The backend validates phase + active-seat — an
     // off-turn click is silently dropped server-side.
+    //
+    // Hicks 2026-05-26 — first-play P1 unblock (B4 / Vasquez P0-H).  When
+    // the click DOES NOT have an extra tile (it's not our turn, or we
+    // haven't drawn the 14th tile yet), the legacy path silently fell
+    // through to drag.  We now surface a one-line toast so the user
+    // learns the rule instead of perceiving the click as a NO-OP.  We
+    // still let the drag fall through so power-users can re-order tiles
+    // by hand.
     if (this.hovered !== null
         && this.hovered.slot.group === 'hand'
-        && this.hovered.slot.seat === this.seat
-        && this.hasExtraHandTile()) {
-      const tile = this.hovered;
-      this.emitDiscard(tile);
-      this.hovered = null;
-      this.selected.splice(0);
-      return false;
+        && this.hovered.slot.seat === this.seat) {
+      if (this.hasExtraHandTile()) {
+        const tile = this.hovered;
+        this.emitDiscard(tile);
+        this.hovered = null;
+        this.selected.splice(0);
+        return false;
+      }
+      // Inform — but don't intercept; the drag-fallthrough still runs
+      // so existing re-ordering UX is unchanged.
+      const reason = this.isMyPickupTurn()
+        ? 'Pick from the wall first'
+        : 'Not your turn';
+      this.surfaceDiscardRejection(reason);
     }
 
     if (this.hovered !== null && !this.isHolding()) {

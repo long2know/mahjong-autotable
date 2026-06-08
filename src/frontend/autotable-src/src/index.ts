@@ -100,7 +100,16 @@ void scheduleHistoryLazyMount();
 // the LS flag only; Wave 2 prefers the server-authoritative
 // `/api/players/me/onboarding-status` endpoint so first-launch state
 // follows the user across devices.  LS remains the offline fallback.
-void scheduleOnboardingTour();
+//
+// Hicks 2026-05-26 — first-play P0 unblock (B5 / P1-B): the auto-tour
+// paints a z=2000 overlay over the auto-opened lobby and intercepts
+// every pointer event until the user finds the small Skip button.
+// First-time users had a 10-step interrupt before they could press
+// Quick Match.  We now require an explicit opt-in via the
+// `#lobby-tour-link` element in the lobby footer (wired below).  The
+// LS flag `mahjong.tour.completed.v1` still gets set when users
+// complete / skip an opt-in tour so we don't pester them again.
+void scheduleOnboardingTourOptIn();
 
 // Phase J Wave 8 — Frontend error reporting.  Sentry only initialises
 // when a non-empty DSN is exposed via <meta name="sentry-dsn"> or
@@ -192,19 +201,33 @@ async function scheduleHistoryLazyMount(): Promise<void> {
   chip?.addEventListener('mouseenter', () => { void load(); }, { once: true });
 }
 
-async function scheduleOnboardingTour(): Promise<void> {
-  // Wave 2 — server-authoritative first-launch detection.  Load the
-  // tour module lazily; the module itself probes
-  // `/api/players/me/onboarding-status` and falls back to the LS flag
-  // on network failure / 404.  Fast-path: if the LS flag is already
-  // set, never even fetch the module.
-  let done = false;
-  try { done = window.localStorage.getItem('mahjong.tour.completed.v1') === 'true'; }
-  catch { /* offline / blocked storage — treat as not done */ }
-  if (done) return;
-  window.setTimeout(() => {
-    void import('./tour').then(mod => mod.installOnboardingTour());
-  }, 350);
+async function scheduleOnboardingTourOptIn(): Promise<void> {
+  // Hicks 2026-05-26 — first-play P0 unblock.  Replaces the legacy
+  // `scheduleOnboardingTour()` auto-mount path.  The tour is now
+  // strictly opt-in: we attach a click listener to the lobby footer's
+  // `#lobby-tour-link` (rendered into the lobby HTML) and lazy-load
+  // `./tour` only when the user actually asks for it.  Lobby cold
+  // path no longer pulls the tour chunk OR paints the z=2000 overlay
+  // over the lobby controls.
+  const wireLink = (): void => {
+    const link = document.getElementById('lobby-tour-link');
+    if (link === null) return;
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      void import('./tour').then(mod => {
+        // Reset the LS flag so an opt-in click always runs the tour,
+        // even if a previous visit marked it complete.  Users who
+        // explicitly asked for the tour want the tour.
+        try { mod.resetTour(); } catch { /* best-effort */ }
+        mod.startTour();
+      });
+    });
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireLink, { once: true });
+  } else {
+    wireLink();
+  }
 }
 
 async function scheduleSpectatorRouteLazyMount(): Promise<void> {
