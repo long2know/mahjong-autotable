@@ -1,0 +1,620 @@
+{
+  "runTag": "stephen-first-play-2026-06-08T20-31-50-566Z",
+  "startedAt": "2026-06-08T20:31:50.568Z",
+  "baseUrl": "http://127.0.0.1:8088",
+  "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&seat=0",
+  "phases": [
+    {
+      "name": "Phase A: Landing (bare URL, no query params)",
+      "ok": true,
+      "durMs": 4719,
+      "result": {
+        "lobbyPanel": {
+          "present": true,
+          "visible": true
+        },
+        "lobbyOpen": true,
+        "bodyLobbyActv": true,
+        "lobbyToggle": {
+          "present": true,
+          "visible": false
+        },
+        "quickMatch": {
+          "present": true,
+          "visible": true
+        },
+        "applyBtn": {
+          "present": true,
+          "visible": true
+        },
+        "tourOverlay": {
+          "present": true,
+          "visible": true
+        },
+        "tourSkip": {
+          "present": true,
+          "visible": true
+        },
+        "onboarding": {
+          "present": true,
+          "visible": true
+        },
+        "onboardingSkip": {
+          "present": true,
+          "visible": true
+        },
+        "magicLink": {
+          "present": true,
+          "visible": false
+        },
+        "signin": {
+          "present": true,
+          "visible": false
+        },
+        "loadingText": {
+          "present": true,
+          "visible": true
+        },
+        "url": "http://127.0.0.1:8088/autotable/"
+      },
+      "error": null
+    },
+    {
+      "name": "Phase B: Dismissals (Skip Tour + Skip Onboarding)",
+      "ok": true,
+      "durMs": 1712,
+      "result": {
+        "dismissed": [
+          "tour",
+          "onboarding"
+        ],
+        "reachable": {
+          "present": true,
+          "visible": true,
+          "hitTopId": "lobby-apply",
+          "hitTopTag": "BUTTON",
+          "isApplyClickable": true
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "Phase C: Lobby picks (Changsha + 3 bots + seat 0)",
+      "ok": true,
+      "durMs": 3188,
+      "result": {
+        "variantPick": {
+          "picked": true,
+          "viaJs": true,
+          "reason": "TimeoutError: locator.click: Timeout 3000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('label:has(input[name=\"lobby-variant\"][value=\"changsha\"])').first()\u001b[22m\n\u001b[2m    - locator resolved to <label>…</label>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    6 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 500ms\u001b[22m\n"
+        },
+        "botsPick": {
+          "picked": true
+        },
+        "diffPick": {
+          "picked": true
+        },
+        "seatPick": {
+          "picked": true
+        },
+        "handPick": {
+          "picked": true
+        },
+        "checked": {
+          "variant": "changsha",
+          "dealMode": "manual",
+          "botCount": "3",
+          "difficulty": "Medium",
+          "seat": "0",
+          "handCount": "4"
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "Phase D: Apply & Start (navigate)",
+      "ok": true,
+      "durMs": 4985,
+      "result": {
+        "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&seat=0",
+        "probe": {
+          "url": "http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&seat=0",
+          "hasGameIdParam": false,
+          "gamePresent": true,
+          "clientConnected": false,
+          "connectBtn": {
+            "display": "block",
+            "visible": true
+          },
+          "disconnectBtn": {
+            "display": "none",
+            "visible": false
+          }
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "Phase D2: Click Connect (manual)",
+      "ok": true,
+      "durMs": 4152,
+      "result": {
+        "settled": {
+          "ok": true,
+          "seat": 0,
+          "elapsedMs": 0,
+          "hasWorld": true
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "Phase E: Take seat (manual fallback if auto-seat skipped)",
+      "ok": true,
+      "durMs": 55,
+      "result": {
+        "alreadySeated": true,
+        "seat": 0
+      },
+      "error": null
+    },
+    {
+      "name": "Phase F: Deal — hold-to-confirm 700ms on #deal",
+      "ok": true,
+      "durMs": 10502,
+      "result": {
+        "seat": 0,
+        "mySeatHand": 14,
+        "allHandTiles": 50,
+        "wallTiles": 52,
+        "discards": 3
+      },
+      "error": null
+    },
+    {
+      "name": "Phase G: My hand populated",
+      "ok": true,
+      "durMs": 1856,
+      "result": {
+        "seat": 0,
+        "myTotal": 14,
+        "otherTotal": 36,
+        "myRotIdxCounts": {
+          "1": 14
+        },
+        "sampleMy": [
+          {
+            "id": 21,
+            "slot": "hand.0@0",
+            "rotIdx": 1
+          },
+          {
+            "id": 14,
+            "slot": "hand.1@0",
+            "rotIdx": 1
+          },
+          {
+            "id": 84,
+            "slot": "hand.2@0",
+            "rotIdx": 1
+          },
+          {
+            "id": 59,
+            "slot": "hand.3@0",
+            "rotIdx": 1
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Phase H: Discard — human-style click on hand tile",
+      "ok": true,
+      "durMs": 3604,
+      "result": {
+        "pre": {
+          "seat": 0,
+          "discardCount": 3,
+          "myHandCount": 14,
+          "hasExtra": false
+        },
+        "canvasClicked": false,
+        "midDiscards": 3,
+        "discardAttempt": {
+          "ok": false,
+          "via": "world.emitDiscard(id)",
+          "tileId": 21,
+          "diag": {
+            "seat": 0,
+            "pickupCurrent": null,
+            "myPickupTurn": false,
+            "hasExtra": false
+          }
+        },
+        "post": {
+          "seat": 0,
+          "discardCount": 3,
+          "myHandCount": 14
+        },
+        "dischargeDelta": 0,
+        "handDelta": 0
+      },
+      "error": null
+    },
+    {
+      "name": "Phase H2: Click #pickup-take-btn → does pickup phase advance?",
+      "ok": true,
+      "durMs": 69,
+      "result": {
+        "takeBtnVis": {
+          "present": true,
+          "visible": false,
+          "text": "Take 4",
+          "hudVisible": false,
+          "hudText": "Your turn — pick 4 tiles"
+        },
+        "phaseBefore": null
+      },
+      "error": null
+    },
+    {
+      "name": "Phase I: Bot draw + discard cadence (30s)",
+      "ok": true,
+      "durMs": 30489,
+      "result": {
+        "captures": [
+          {
+            "atSec": 5,
+            "discardsBySeat": {
+              "0": 1,
+              "1": 1,
+              "2": 0,
+              "3": 1
+            },
+            "handBySeat": {
+              "0": 14,
+              "1": 13,
+              "2": 13,
+              "3": 10
+            },
+            "mySeat": 0,
+            "pickupCurrent": null,
+            "resultCurrent": null
+          },
+          {
+            "atSec": 10,
+            "discardsBySeat": {
+              "0": 1,
+              "1": 1,
+              "2": 0,
+              "3": 1
+            },
+            "handBySeat": {
+              "0": 14,
+              "1": 13,
+              "2": 13,
+              "3": 10
+            },
+            "mySeat": 0,
+            "pickupCurrent": null,
+            "resultCurrent": null
+          },
+          {
+            "atSec": 15,
+            "discardsBySeat": {
+              "0": 1,
+              "1": 1,
+              "2": 0,
+              "3": 1
+            },
+            "handBySeat": {
+              "0": 14,
+              "1": 13,
+              "2": 13,
+              "3": 10
+            },
+            "mySeat": 0,
+            "pickupCurrent": null,
+            "resultCurrent": null
+          },
+          {
+            "atSec": 20,
+            "discardsBySeat": {
+              "0": 1,
+              "1": 1,
+              "2": 0,
+              "3": 1
+            },
+            "handBySeat": {
+              "0": 14,
+              "1": 13,
+              "2": 13,
+              "3": 10
+            },
+            "mySeat": 0,
+            "pickupCurrent": null,
+            "resultCurrent": null
+          },
+          {
+            "atSec": 25,
+            "discardsBySeat": {
+              "0": 1,
+              "1": 1,
+              "2": 0,
+              "3": 1
+            },
+            "handBySeat": {
+              "0": 14,
+              "1": 13,
+              "2": 13,
+              "3": 10
+            },
+            "mySeat": 0,
+            "pickupCurrent": null,
+            "resultCurrent": null
+          },
+          {
+            "atSec": 30,
+            "discardsBySeat": {
+              "0": 1,
+              "1": 1,
+              "2": 0,
+              "3": 1
+            },
+            "handBySeat": {
+              "0": 14,
+              "1": 13,
+              "2": 13,
+              "3": 10
+            },
+            "mySeat": 0,
+            "pickupCurrent": null,
+            "resultCurrent": null
+          }
+        ],
+        "moveLogEntryCount": 6,
+        "lastLog": [
+          "[13:32:05]System: Match started — dealer is Seat 0",
+          "[13:32:05]Seat 3: formed a meld with 7万",
+          "[13:32:05]Seat 0: discarded 8条",
+          "[13:32:05]Seat 1: discarded 7筒",
+          "[13:32:05]Seat 3: discarded 7条",
+          "[13:32:05]System: Dice rolled: 2 + 3 = 5"
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Phase J: Claim window visibility",
+      "ok": true,
+      "durMs": 20360,
+      "result": {
+        "everSawActive": false,
+        "activeSnapshot": null
+      },
+      "error": null
+    },
+    {
+      "name": "Phase K: Sustained play observation (60s)",
+      "ok": true,
+      "durMs": 60472,
+      "result": {
+        "trajectory": [
+          {
+            "atSec": 10,
+            "totalDiscards": 3,
+            "totalHandTiles": 50,
+            "resultPresent": false,
+            "gameComplete": false
+          },
+          {
+            "atSec": 20,
+            "totalDiscards": 3,
+            "totalHandTiles": 50,
+            "resultPresent": false,
+            "gameComplete": false
+          },
+          {
+            "atSec": 30,
+            "totalDiscards": 3,
+            "totalHandTiles": 50,
+            "resultPresent": false,
+            "gameComplete": false
+          },
+          {
+            "atSec": 40,
+            "totalDiscards": 3,
+            "totalHandTiles": 50,
+            "resultPresent": false,
+            "gameComplete": false
+          },
+          {
+            "atSec": 50,
+            "totalDiscards": 3,
+            "totalHandTiles": 50,
+            "resultPresent": false,
+            "gameComplete": false
+          },
+          {
+            "atSec": 60,
+            "totalDiscards": 3,
+            "totalHandTiles": 50,
+            "resultPresent": false,
+            "gameComplete": false
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "Phase L: Final UI inventory",
+      "ok": true,
+      "durMs": 1465,
+      "result": {
+        "visibleButtonCount": 13,
+        "buttons": [
+          {
+            "id": "deal",
+            "text": "Deal",
+            "disabled": false
+          },
+          {
+            "id": "setup-desc",
+            "text": "4p, no red",
+            "disabled": true
+          },
+          {
+            "id": "toggle-setup",
+            "text": "Setup",
+            "disabled": false
+          },
+          {
+            "id": "toggle-dealer",
+            "text": "Dealer",
+            "disabled": false
+          },
+          {
+            "id": "disconnect",
+            "text": "Disconnect",
+            "disabled": false
+          },
+          {
+            "id": "",
+            "text": "Nick",
+            "disabled": false
+          },
+          {
+            "id": "leave-seat",
+            "text": "Leave seat",
+            "disabled": false
+          },
+          {
+            "id": "",
+            "text": "More",
+            "disabled": false
+          },
+          {
+            "id": "",
+            "text": "×",
+            "disabled": false
+          },
+          {
+            "id": "lobby-toggle",
+            "text": "☰\n        Lobby",
+            "disabled": false
+          },
+          {
+            "id": "settings-toggle",
+            "text": "⚙",
+            "disabled": false
+          },
+          {
+            "id": "settings-button",
+            "text": "⚙\n        Settings",
+            "disabled": false
+          },
+          {
+            "id": "",
+            "text": "🎙️ Mute",
+            "disabled": true
+          }
+        ]
+      },
+      "error": null
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [
+    "THREE.BufferGeometry.computeBoundingSphere(): Computed radius is NaN. The \"position\" attribute is likely to have NaN values. Is",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "[.WebGL-0x172c0015a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x172c0015a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x172c0015a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[.WebGL-0x172c0015a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ],
+  "networkFailures": [
+    "404 GET http://127.0.0.1:8088/api/games/changsha-default",
+    "404 GET http://127.0.0.1:8088/api/games/changsha-default/settings"
+  ],
+  "collections": {
+    "match": 1,
+    "seats": 4,
+    "things": 108,
+    "nicks": 4,
+    "mouse": 0,
+    "sound": 0,
+    "dice": 1,
+    "claim": 0,
+    "result": 0,
+    "pickup": 0,
+    "discard": 0,
+    "gameComplete": 0
+  },
+  "blockers": [
+    {
+      "phase": "D",
+      "description": "\"Apply & Start\" navigated to http://127.0.0.1:8088/autotable/?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&seat=0 BUT did NOT auto-connect to the WebSocket. The lobby's buildUrl() omits ?gameId=, and client-ui.ts:start() guards auto-connect on getUrlState() (the gameId query param), so the user lands on an EMPTY 3D table with a \"Connect\" button and must click it manually. This contradicts the button label \"Apply & Start\".",
+      "screenshot": "phase-D-after-apply.png",
+      "repro": "1) Open http://127.0.0.1:8088/autotable/ bare. 2) Dismiss tour + onboarding. 3) Pick Changsha + 3 bots + Seat 0 (defaults). 4) Click Apply & Start. 5) Observe: page reloads with ?variant=changsha&dealMode=manual&botCount=3&botDifficulty=Medium&handCount=4&seat=0 (NO gameId), the 3D table renders empty, and #connect button is still shown.",
+      "suspect": "src/frontend/autotable-src/src/lobby.ts buildUrl() at line 448 (does not add gameId) + src/frontend/autotable-src/src/client-ui.ts start() at line 490 (only auto-connects when getUrlState() returns non-null gameId). Fix: lobby.buildUrl should mint a fresh gameId (e.g. crypto.randomUUID slice) when none exists, OR client-ui.ts:start() should auto-connect on ANY lobby-built URL.",
+      "severity": "P0"
+    },
+    {
+      "phase": "H",
+      "description": "User-style click on a hand tile did NOT register a discard. The user is staring at a hand of 14 tiles and tap-clicking has zero effect — silent rejection from world.emitDiscard. pickupCurrent=null (no take pending), myPickupTurn=false, hasExtra=false, before=3, after=3. The runtime is NOT obviously in a pickup phase that would explain the rejection; play has stalled with no UI feedback explaining why. This is the \"the game won't let me play\" complaint.",
+      "screenshot": "phase-H-after-discard.png",
+      "repro": "1) Bare URL → lobby defaults → Apply & Start → Connect → Take Seat 0 → hold #deal 700ms → wait 8s. 2) Click any tile in your hand (or call world.emitDiscard via console). 3) Observe: silent no-op, discards collection does not grow, the game just sits there.",
+      "suspect": "world.ts emitDiscard at line 461 — needs at MINIMUM a toast/console.warn explaining WHY the discard was rejected (wrong phase, not your turn, no pickup pending, etc.). Currently the failure path is a bare `return false` with zero user feedback. Backend ChangshaStateMachine.Discard should also surface rejection to the client.",
+      "severity": "P0"
+    },
+    {
+      "phase": "I",
+      "description": "Over 30s, NO bot at any other seat made a discard (delta=0). No pickup state present — bots may be misconfigured. moveLog entries=6.",
+      "screenshot": "phase-I-after-30s.png",
+      "repro": "After deal, wait 30s without any further user action. Expect bots to draw + discard; observed: zero progress.",
+      "suspect": "BotEngine.cs in src/backend / bot-turn loop / turn rotation",
+      "severity": "P0"
+    },
+    {
+      "phase": "K",
+      "description": "Over 60s of observation, total discards grew by 0 (from 3 to 3). Play has stalled — no bot is taking turns, no human discard registered, no win condition hit. The user is staring at a frozen 3D table. This is the \"I waited and nothing happened\" complaint and is likely a CASCADE from Phase H (the dealer-extra/discard-rejection issue) blocking the entire turn rotation.",
+      "screenshot": "phase-K-final-60s.png",
+      "repro": "1) Bare URL → complete the lobby + connect + seat + deal flow. 2) Wait 60+ seconds without any further user action. 3) Observe: discards count does not advance, no bot draws or discards. The game is dead in the water.",
+      "suspect": "Cascade from Phase H — fix the dealer-extra / silent-discard-rejection issue and the turn rotation should resume. Also recommend defaulting the lobby to Auto deal mode for first-time users (lobby.ts initLobby).",
+      "severity": "P0"
+    }
+  ],
+  "confusions": [
+    {
+      "phase": "B",
+      "description": "Tour overlay appears before lobby and intercepts pointer events on Apply & Start — user MUST click Skip Tour first",
+      "screenshot": "phase-A-landing.png",
+      "repro": "Open bare URL.  Tour overlay covers the lobby.  User must locate + click \"Skip tour\" before proceeding.",
+      "suspect": "src/frontend/autotable-src/src/tour.ts ensureRoot — consider not painting modal overlay until lobby is dismissed, or moving tour to a non-blocking corner.",
+      "severity": "P1"
+    }
+  ],
+  "polish": [
+    {
+      "phase": "B",
+      "description": "Onboarding card (name/avatar) appears in the lobby — Skip is available but it adds friction to first play",
+      "screenshot": "phase-A-landing.png",
+      "repro": "Open bare URL.  Onboarding card sits between user and Apply & Start.",
+      "suspect": "src/frontend/autotable-src/src/identity-onboarding.ts",
+      "severity": "P2"
+    },
+    {
+      "phase": "J",
+      "severity": "P2",
+      "description": "No claim window became active during the 20s observation — could be normal (no discard matched our hand)",
+      "screenshot": "phase-I-after-30s.png"
+    }
+  ],
+  "endedAt": "2026-06-08T20:34:18.285Z",
+  "totalBlockers": 4,
+  "totalConfusions": 1,
+  "totalPolish": 2
+}
