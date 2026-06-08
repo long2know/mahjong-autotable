@@ -1,0 +1,465 @@
+{
+  "verifier": "vasquez",
+  "role": "Squad Tester",
+  "verifiedAt": "2026-06-08T21:09Z",
+  "bundle": "autotable-src.25dc5f79.js",
+  "targetSha": "554749a",
+  "spec": "playtest-artifacts/playtest-stephen-first-play.spec.mjs",
+  "specChange": "added Phase M (FIX 4 verification) at end of spec; no behavior change to A-L",
+  "backend": "http://127.0.0.1:8088 (not restarted)",
+  "verdict": "FAIL",
+  "verdictReason": "P0-K still fires in all 3 runs (0 discard growth in 60s). Cascade IS broken (user CAN discard, bots DO take turns), but after one rotation the table waits on seat 0 and the spec only discards once. P0-I cleared in run 2 only; flaky in runs 1 & 3.",
+  "fixesVerified": {
+    "fix1_buildUrl_mints_gameId": {
+      "verified": true,
+      "phase": "D",
+      "evidence": "?gameId=changsha-<8hex> in URL after Apply in all 3 runs; auto-connect succeeded (Disconnect shown, Connect hidden)"
+    },
+    "fix2_default_dealMode_auto": {
+      "verified": true,
+      "phase": "C",
+      "evidence": "Auto radio is default; ?dealMode=auto in URL; dealer hand reaches 14 (auto extra)"
+    },
+    "fix3_tour_opt_in": {
+      "verified": true,
+      "phase": "A",
+      "evidence": "tourOverlay.present=false; only onboarding dismissed; no tour-skip required"
+    },
+    "fix4_deal_single_click_tooltip": {
+      "verified": true,
+      "phase": "M",
+      "evidence": "disabled title=\"Take a seat first\", enabled title=\"Deal a new hand\", page.click() (no hold) -> 14 tiles in ~7s"
+    },
+    "fix5_emitDiscard_toast": {
+      "verified": "indirectly",
+      "phase": "H",
+      "evidence": "Discard succeeded in all 3 runs so the toast path was not triggered; source diff per Hicks; #toast-region present in DOM"
+    }
+  },
+  "p0_status": {
+    "D": {
+      "preFix": "fail",
+      "postFix": "cleared",
+      "runs_passing": 3,
+      "runs_total": 3
+    },
+    "H": {
+      "preFix": "fail",
+      "postFix": "cleared",
+      "runs_passing": 3,
+      "runs_total": 3
+    },
+    "I": {
+      "preFix": "fail",
+      "postFix": "flaky",
+      "runs_passing": 1,
+      "runs_total": 3,
+      "note": "cleared in run 2 (5 bot discards); flaky in runs 1/3 (only 2). Bot stochasticity around claim windows."
+    },
+    "K": {
+      "preFix": "fail",
+      "postFix": "still_failing",
+      "runs_passing": 0,
+      "runs_total": 3,
+      "note": "cascade IS broken (2-6 initial discards) but after one rotation seat 0 must discard again and spec is idle"
+    }
+  },
+  "p1_status": {
+    "B": {
+      "preFix": "fail",
+      "postFix": "cleared",
+      "evidence": "no tour overlay; lobby Apply is hit-clickable"
+    }
+  },
+  "consoleErrors_perRun": [
+    3,
+    3,
+    3
+  ],
+  "pageErrors_perRun": [
+    0,
+    0,
+    0
+  ],
+  "consoleErrors_kind": "all 3 are pre-existing: THREE NaN cosmetic + 2x 404 (favicon/asset)",
+  "newP0s": [
+    {
+      "id": "L-passive-user-stall",
+      "severity": "P0-NEW",
+      "phase": "K",
+      "description": "After one user discard + one bot rotation, the turn returns to seat 0 with hand=14 and there is NO visible turn indicator. Game freezes from user perspective until they realize they must discard again. Stephen would call this \"the game stopped working\".",
+      "suggested_fix": "High-visibility \"Your turn \u2014 discard a tile\" banner when hand>=14 and pickup state is null (i.e. AwaitingDiscard)."
+    },
+    {
+      "id": "I-bot-stall-flaky",
+      "severity": "P1-NEW",
+      "phase": "I",
+      "description": "In runs 1 & 3, bots stopped after only one partial cycle. Each time, the last move log entry was a bot claim window that did not trigger an action, suggesting a possible race where the next bot turn does not start if the claim window times out without anyone claiming. Run 2 ran fine.",
+      "suggested_fix": "Investigate ChangshaStateMachine.AdvanceAfterClaimExpiry / bot-turn rotation under claim-window timeouts."
+    }
+  ],
+  "runs": [
+    {
+      "label": "run1",
+      "runTag": "2026-06-08T20-54-49-931Z",
+      "url": "http://127.0.0.1:8088/autotable/?gameId=changsha-5a34ae24&variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&seat=0",
+      "blockers": [
+        {
+          "phase": "I",
+          "description": "Over 30s, NO bot at any other seat made a discard (delta=0). No pickup state present \u2014 bots may be misconfigured. moveLog entries=9."
+        },
+        {
+          "phase": "K",
+          "description": "Over 60s of observation, total discards grew by 0 (from 2 to 2). Play has stalled \u2014 no bot is taking turns, no human discard registered, no win condition hit. The user is staring at a frozen 3D table. This is the \"I waited and nothing happened\" complaint and is likely a CASCADE from Phase H (the dealer-extra/discard-rejection issue) blocking the entire turn rotation."
+        }
+      ],
+      "phaseI_lastLog": [
+        "[13:55:08]System: Dice rolled: 4 + 4 = 8",
+        "[13:55:20]Seat 0 (Seat 0): discarded 2\u7b52",
+        "[13:55:20]Seat 1 (Bot 1): claim window \u2014 Chow on 2\u7b52 (from Seat 0)",
+        "[13:55:20]Seat 1 (Bot 1): discarded 3\u7b52",
+        "[13:55:21]Seat 2 (Bot 2): discarded 8\u4e07",
+        "[13:55:21]Seat 0 (Seat 0): claim window \u2014 Pung on 8\u4e07 (from Seat 2)",
+        "[13:55:21]Seat 3 (Bot 3): claim window \u2014 Chow on 8\u4e07 (from Seat 2)",
+        "[13:55:26]Seat 3 (Bot 3): discarded 6\u6761"
+      ],
+      "phaseK_trajectory": [
+        {
+          "atSec": 10,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 20,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 30,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 40,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 50,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 60,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        }
+      ],
+      "phaseH_result": {
+        "pre": {
+          "seat": 0,
+          "discardCount": 0,
+          "myHandCount": 14,
+          "hasExtra": true
+        },
+        "canvasClicked": false,
+        "midDiscards": 0,
+        "discardAttempt": {
+          "ok": true,
+          "via": "world.emitDiscard(id)",
+          "tileId": 10,
+          "diag": {
+            "seat": 0,
+            "pickupCurrent": null,
+            "myPickupTurn": false,
+            "hasExtra": true
+          }
+        },
+        "post": {
+          "seat": 0,
+          "discardCount": 2,
+          "myHandCount": 13
+        },
+        "dischargeDelta": 2,
+        "handDelta": -1
+      },
+      "phaseM_result": {
+        "dealDisabledBeforeSeat": true,
+        "dealTitleBeforeSeat": "Take a seat first",
+        "dealDisabledAfterSeat": false,
+        "dealTitleAfterSeat": "Deal a new hand",
+        "singleClickDealtTiles": 14,
+        "singleClickMs": 7070,
+        "autoConnected": {
+          "ok": true,
+          "ms": 0
+        },
+        "urlAfterApply": "http://127.0.0.1:8088/autotable/?gameId=changsha-e989eb25&variant=changsha&dealMode=auto&botCount=3&botDifficulty=Hard&handCount=4",
+        "dealAriaBeforeSeat": "Take a seat first",
+        "dealAriaAfterSeat": "Deal a new hand",
+        "stateBeforeClick": {
+          "wall": 108,
+          "hand": 0
+        },
+        "stateAfterClick": {
+          "wall": 55,
+          "hand": 53,
+          "mySeatHand": 14,
+          "seat": 0
+        }
+      }
+    },
+    {
+      "label": "run2",
+      "runTag": "2026-06-08T20-59-30-805Z",
+      "url": "http://127.0.0.1:8088/autotable/?gameId=changsha-3cd4564c&variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&seat=0",
+      "blockers": [
+        {
+          "phase": "K",
+          "description": "Over 60s of observation, total discards grew by 0 (from 6 to 6). Play has stalled \u2014 no bot is taking turns, no human discard registered, no win condition hit. The user is staring at a frozen 3D table. This is the \"I waited and nothing happened\" complaint and is likely a CASCADE from Phase H (the dealer-extra/discard-rejection issue) blocking the entire turn rotation."
+        }
+      ],
+      "phaseI_lastLog": [
+        "[14:00:08]Seat 2 (Bot 2): discarded 3\u6761",
+        "[14:00:08]Seat 0 (Seat 0): claim window \u2014 Pung on 3\u6761 (from Seat 2)",
+        "[14:00:13]Seat 3 (Bot 3): discarded 8\u7b52",
+        "[14:00:13]Seat 1 (Bot 1): claim window \u2014 Pung on 8\u7b52 (from Seat 3)",
+        "[14:00:14]Seat 1 (Bot 1): discarded 1\u6761",
+        "[14:00:14]Seat 2 (Bot 2): discarded 2\u7b52",
+        "[14:00:14]Seat 3 (Bot 3): claim window \u2014 Chow on 2\u7b52 (from Seat 2)",
+        "[14:00:15]Seat 3 (Bot 3): discarded 4\u7b52"
+      ],
+      "phaseK_trajectory": [
+        {
+          "atSec": 10,
+          "totalDiscards": 6,
+          "totalHandTiles": 41,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 20,
+          "totalDiscards": 6,
+          "totalHandTiles": 41,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 30,
+          "totalDiscards": 6,
+          "totalHandTiles": 41,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 40,
+          "totalDiscards": 6,
+          "totalHandTiles": 41,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 50,
+          "totalDiscards": 6,
+          "totalHandTiles": 41,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 60,
+          "totalDiscards": 6,
+          "totalHandTiles": 41,
+          "resultPresent": false,
+          "gameComplete": false
+        }
+      ],
+      "phaseH_result": {
+        "pre": {
+          "seat": 0,
+          "discardCount": 0,
+          "myHandCount": 14,
+          "hasExtra": true
+        },
+        "canvasClicked": false,
+        "midDiscards": 0,
+        "discardAttempt": {
+          "ok": true,
+          "via": "world.emitDiscard(id)",
+          "tileId": 2,
+          "diag": {
+            "seat": 0,
+            "pickupCurrent": null,
+            "myPickupTurn": false,
+            "hasExtra": true
+          }
+        },
+        "post": {
+          "seat": 0,
+          "discardCount": 4,
+          "myHandCount": 13
+        },
+        "dischargeDelta": 4,
+        "handDelta": -1
+      },
+      "phaseM_result": {
+        "dealDisabledBeforeSeat": true,
+        "dealTitleBeforeSeat": "Take a seat first",
+        "dealDisabledAfterSeat": false,
+        "dealTitleAfterSeat": "Deal a new hand",
+        "singleClickDealtTiles": 14,
+        "singleClickMs": 7070,
+        "autoConnected": {
+          "ok": true,
+          "ms": 0
+        },
+        "urlAfterApply": "http://127.0.0.1:8088/autotable/?gameId=changsha-0f048b07&variant=changsha&dealMode=auto&botCount=3&botDifficulty=Hard&handCount=4",
+        "dealAriaBeforeSeat": "Take a seat first",
+        "dealAriaAfterSeat": "Deal a new hand",
+        "stateBeforeClick": {
+          "wall": 108,
+          "hand": 0
+        },
+        "stateAfterClick": {
+          "wall": 55,
+          "hand": 53,
+          "mySeatHand": 14,
+          "seat": 0
+        }
+      }
+    },
+    {
+      "label": "run3",
+      "runTag": "2026-06-08T21-03-53-161Z",
+      "url": "http://127.0.0.1:8088/autotable/?gameId=changsha-65daa05b&variant=changsha&dealMode=auto&botCount=3&botDifficulty=Medium&handCount=4&seat=0",
+      "blockers": [
+        {
+          "phase": "I",
+          "description": "Over 30s, NO bot at any other seat made a discard (delta=0). No pickup state present \u2014 bots may be misconfigured. moveLog entries=8."
+        },
+        {
+          "phase": "K",
+          "description": "Over 60s of observation, total discards grew by 0 (from 2 to 2). Play has stalled \u2014 no bot is taking turns, no human discard registered, no win condition hit. The user is staring at a frozen 3D table. This is the \"I waited and nothing happened\" complaint and is likely a CASCADE from Phase H (the dealer-extra/discard-rejection issue) blocking the entire turn rotation."
+        }
+      ],
+      "phaseI_lastLog": [
+        "[14:04:03]System: Match started \u2014 dealer is Seat 0",
+        "[14:04:11]System: Dice rolled: 1 + 3 = 4",
+        "[14:04:23]Seat 0 (Seat 0): discarded 8\u4e07",
+        "[14:04:23]Seat 1 (Bot 1): claim window \u2014 Chow on 8\u4e07 (from Seat 0)",
+        "[14:04:24]Seat 1 (Bot 1): discarded 9\u6761",
+        "[14:04:24]Seat 2 (Bot 2): discarded 4\u7b52",
+        "[14:04:24]Seat 3 (Bot 3): claim window \u2014 Chow on 4\u7b52 (from Seat 2)",
+        "[14:04:25]Seat 3 (Bot 3): discarded 7\u4e07"
+      ],
+      "phaseK_trajectory": [
+        {
+          "atSec": 10,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 20,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 30,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 40,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 50,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        },
+        {
+          "atSec": 60,
+          "totalDiscards": 2,
+          "totalHandTiles": 47,
+          "resultPresent": false,
+          "gameComplete": false
+        }
+      ],
+      "phaseH_result": {
+        "pre": {
+          "seat": 0,
+          "discardCount": 0,
+          "myHandCount": 14,
+          "hasExtra": true
+        },
+        "canvasClicked": false,
+        "midDiscards": 0,
+        "discardAttempt": {
+          "ok": true,
+          "via": "world.emitDiscard(id)",
+          "tileId": 7,
+          "diag": {
+            "seat": 0,
+            "pickupCurrent": null,
+            "myPickupTurn": false,
+            "hasExtra": true
+          }
+        },
+        "post": {
+          "seat": 0,
+          "discardCount": 2,
+          "myHandCount": 14
+        },
+        "dischargeDelta": 2,
+        "handDelta": 0
+      },
+      "phaseM_result": {
+        "dealDisabledBeforeSeat": true,
+        "dealTitleBeforeSeat": "Take a seat first",
+        "dealDisabledAfterSeat": false,
+        "dealTitleAfterSeat": "Deal a new hand",
+        "singleClickDealtTiles": 14,
+        "singleClickMs": 7045,
+        "autoConnected": {
+          "ok": true,
+          "ms": 0
+        },
+        "urlAfterApply": "http://127.0.0.1:8088/autotable/?gameId=changsha-1e2ac2e2&variant=changsha&dealMode=auto&botCount=3&botDifficulty=Hard&handCount=4",
+        "dealAriaBeforeSeat": "Take a seat first",
+        "dealAriaAfterSeat": "Deal a new hand",
+        "stateBeforeClick": {
+          "wall": 108,
+          "hand": 0
+        },
+        "stateAfterClick": {
+          "wall": 55,
+          "hand": 53,
+          "mySeatHand": 14,
+          "seat": 0
+        }
+      }
+    }
+  ]
+}
