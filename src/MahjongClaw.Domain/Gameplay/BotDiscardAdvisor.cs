@@ -114,6 +114,9 @@ public static class BotDiscardAdvisor
         var sevenPairsPairCount = meldTiles.Count == 0
             ? handCounts.Sum(static entry => entry.Value / 2)
             : 0;
+        var hasChangshaSevenPairsLean = ruleset == MahjongRuleset.Changsha258
+            && meldTiles.Count == 0
+            && sevenPairsPairCount >= 6;
 
         Tile? soleChineseOfficialPairTile = null;
         var allowBreakingSolePairForTerminalHonorLean = false;
@@ -501,6 +504,39 @@ public static class BotDiscardAdvisor
             {
                 candidates = deadOffRankSingletonCandidates;
             }
+            else
+            {
+                var liveSmallWinSingletons = handCounts
+                    .Where(entry => entry.Value == 1 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
+                    .Select(entry =>
+                    {
+                        ownedCounts.TryGetValue(entry.Key, out var ownedCount);
+                        visibleCounts.TryGetValue(entry.Key, out var visibleCount);
+                        return new
+                        {
+                            Tile = entry.Key,
+                            RemainingCopies = 4 - ownedCount - visibleCount
+                        };
+                    })
+                    .Where(entry => entry.RemainingCopies > 0)
+                    .ToList();
+
+                if (liveSmallWinSingletons.Count == 1 && liveSmallWinSingletons[0].RemainingCopies == 1)
+                {
+                    var offRankPairCandidates = candidates
+                        .Where(candidate =>
+                        {
+                            handCounts.TryGetValue(candidate.Tile, out var handCount);
+                            return handCount == 2 && !Changsha258Ruleset.IsSmallWinPair(candidate.Tile);
+                        })
+                        .ToList();
+
+                    if (offRankPairCandidates.Count > 0)
+                    {
+                        candidates = offRankPairCandidates;
+                    }
+                }
+            }
         }
 
         if (ruleset == MahjongRuleset.Changsha258
@@ -619,6 +655,35 @@ public static class BotDiscardAdvisor
 
         if (changshaSmallWinPairCount >= 1)
         {
+            var deadSingletonCandidates = candidates
+                .Where(candidate =>
+                {
+                    handCounts.TryGetValue(candidate.Tile, out var handCount);
+                    if (handCount != 1)
+                    {
+                        return false;
+                    }
+
+                    ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
+                    visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
+                    if (4 - ownedCount - visibleCount > 0)
+                    {
+                        return false;
+                    }
+
+                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
+                })
+                .ToList();
+
+            if (deadSingletonCandidates.Count > 0)
+            {
+                candidates = deadSingletonCandidates;
+                filteredByDeadSingleton = true;
+            }
+        }
+
+        if (changshaSmallWinPairCount >= 1 && !filteredByDeadSingleton && !hasChangshaSevenPairsLean)
+        {
             var deadOffRankPairCandidates = candidates
                 .Where(candidate =>
                 {
@@ -647,41 +712,13 @@ public static class BotDiscardAdvisor
             }
         }
 
-        if (changshaSmallWinPairCount >= 1 && !filteredByDeadOffRankPair)
-        {
-            var deadSingletonCandidates = candidates
-                .Where(candidate =>
-                {
-                    handCounts.TryGetValue(candidate.Tile, out var handCount);
-                    if (handCount != 1)
-                    {
-                        return false;
-                    }
-
-                    ownedCounts.TryGetValue(candidate.Tile, out var ownedCount);
-                    visibleCounts.TryGetValue(candidate.Tile, out var visibleCount);
-                    if (4 - ownedCount - visibleCount > 0)
-                    {
-                        return false;
-                    }
-
-                    return !HasSequencePotential(candidate.Tile, handCounts, ownedCounts, visibleCounts);
-                })
-                .ToList();
-
-            if (deadSingletonCandidates.Count > 0)
-            {
-                candidates = deadSingletonCandidates;
-                filteredByDeadSingleton = true;
-            }
-        }
-
         if (ruleset == MahjongRuleset.Changsha258
             && enforceSmallWinPairBias
             && visibleCounts.Count > 0
             && changshaSmallWinPairCount >= 1
             && !filteredByDeadOffRankPair
-            && !filteredByDeadSingleton)
+            && !filteredByDeadSingleton
+            && !hasChangshaSevenPairsLean)
         {
             var nearDeadOffRankPairCandidates = candidates
                 .Where(candidate =>
@@ -1617,6 +1654,12 @@ public static class BotDiscardAdvisor
         var smallWinPairCount = ruleset == MahjongRuleset.Changsha258
             ? tileCounts.Count(static entry => entry.Value >= 2 && Changsha258Ruleset.IsSmallWinPair(entry.Key))
             : 0;
+        var sevenPairsPairCount = meldTiles.Count == 0
+            ? tileCounts.Sum(static entry => entry.Value / 2)
+            : 0;
+        var hasChangshaSevenPairsLean = ruleset == MahjongRuleset.Changsha258
+            && meldTiles.Count == 0
+            && sevenPairsPairCount >= 6;
         if (tileMatchCount == 2 && pairCount == 1)
         {
             score += 2;
@@ -1643,8 +1686,12 @@ public static class BotDiscardAdvisor
                 {
                     // Once a valid 2/5/8 eye is already secured in Changsha,
                     // dead off-rank pairs are low-value baggage and should be
-                    // broken before live, connected singletons.
-                    deadPairPenalty = -18;
+                    // broken before live, connected singletons (unless leaning
+                    // on a seven-pairs finish).
+                    if (!hasChangshaSevenPairsLean)
+                    {
+                        deadPairPenalty = -18;
+                    }
                 }
                 else if (ruleset == MahjongRuleset.Changsha258
                          && actualPairCount >= 2
@@ -1656,9 +1703,6 @@ public static class BotDiscardAdvisor
         }
 
         var sevenPairsBias = 0;
-        var sevenPairsPairCount = meldTiles.Count == 0
-            ? tileCounts.Sum(static entry => entry.Value / 2)
-            : 0;
         if (meldTiles.Count == 0 && sevenPairsPairCount >= 3)
         {
             if (tileMatchCount >= 2)
